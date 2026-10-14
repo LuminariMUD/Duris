@@ -3,6 +3,7 @@
 #include "account/creation_availability_config.h"
 #include "classes/specializations.h"
 #include "classes/skills.h"
+#include "classes/necromancy.h"
 #include "player/character_mechanics.h"
 #include "combat/damage.h"
 #include "magic/spells.h"
@@ -715,6 +716,86 @@ static void command_registration()
 		registrations);
 }
 
+static void disabled_transformations()
+{
+	char_data character{};
+	pc_only_data pc{};
+	obj_data corpse{};
+	character.only.pc = &pc;
+	character.player.race = RACE_HUMAN;
+	character.player.m_class = CLASS_PALADIN;
+	character.player.level = 50;
+	pc.epics = 300;
+	character.carrying = &corpse;
+	corpse.type = ITEM_CORPSE;
+	corpse.value[CORPSE_RACE] = RACE_ORC;
+	char argument[] = "";
+	const int ledger = mechanic_ledger_calls, saves = mechanic_saves;
+	auto unchanged = [&](auto invoke, const char *message)
+	{
+		const auto before = character;
+		const auto before_pc = pc;
+		const auto before_corpse = corpse;
+		mechanic_output.clear();
+		invoke();
+		assert(!std::memcmp(&character, &before, sizeof(character)));
+		assert(!std::memcmp(&pc, &before_pc, sizeof(pc)));
+		assert(!std::memcmp(&corpse, &before_corpse, sizeof(corpse)));
+		assert(mechanic_output.find(message) != std::string::npos);
+		assert(mechanic_ledger_calls == ledger && mechanic_saves == saves);
+	};
+	for (auto cls : { CLASS_PALADIN, CLASS_AVENGER, CLASS_THEURGIST })
+	{
+		character.player.m_class = cls;
+		unchanged(
+			[&]
+			{ cmd_info[CMD_ASCEND].command_pointer(&character, argument, CMD_ASCEND); },
+			"too powerful an enchantment");
+	}
+	character.player.m_class = CLASS_WARRIOR;
+	unchanged([&] { cmd_info[CMD_DESCEND].command_pointer(&character, argument, CMD_DESCEND); },
+		  "convictions aren't appropriate");
+	character.player.m_class = CLASS_NECROMANCER;
+	character.player.level = 49;
+	unchanged([&] { cmd_info[CMD_DESCEND].command_pointer(&character, argument, CMD_DESCEND); },
+		  "must be level");
+	character.player.level = 50;
+	unchanged([&] { cmd_info[CMD_DESCEND].command_pointer(&character, argument, CMD_DESCEND); },
+		  "disabled until further notice");
+	const auto mechanics = mechanic_connections();
+	for (const auto &connection : mechanics)
+	{
+		if (connection.id == MechanicId::old_descend_attempt)
+		{
+			const auto legacy = std::get<CommandHandler>(connection.binding);
+			for (const auto &slot : cmd_info)
+				assert(slot.command_pointer != legacy);
+		}
+		if (connection.id == MechanicId::ascend_theurgist)
+		{
+			SET_BIT(character.specials.act, ACT_ISNPC);
+			unchanged([&]
+				  { std::get<CharacterAction>(connection.binding)(&character); },
+				  "");
+			REMOVE_BIT(character.specials.act, ACT_ISNPC);
+		}
+	}
+	assert(skills[SPELL_CORPSEFORM].spell_pointer == spell_corpseform);
+	unchanged(
+		[&]
+		{
+			skills[SPELL_CORPSEFORM].spell_pointer(50, &character, argument,
+							       SPELL_TYPE_SPELL, nullptr, &corpse);
+		},
+		"Temporarily disabled");
+	const auto callback = skills[SPELL_CORPSEFORM].spell_pointer;
+	skills[SPELL_CORPSEFORM].spell_pointer = nullptr;
+	assert(!validate_mechanics(mechanics).empty());
+	skills[SPELL_CORPSEFORM].spell_pointer = callback;
+	std::puts(
+		"transformations.disabled: PASS (actual registered PC ascend, opposing Theurgist NPC gate, wrong-class/49/50 descend and corpseform callbacks preserve complete character/PC/corpse state and queue no saves/ledger; legacy descend unregistered; accepted completion is separate)");
+}
+
 static void guardian_bulwark()
 {
 	load_character_properties();
@@ -1025,6 +1106,7 @@ int main()
 	ability_registration();
 	specialization_transition();
 	command_registration();
+	disabled_transformations();
 	creation_bindings();
 	guardian_bulwark();
 	unspecialization_transition();

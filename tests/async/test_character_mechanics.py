@@ -169,6 +169,10 @@ def check_mechanic_sites(sources, bindings):
     The remainder of the option-site migration is still explicitly outstanding.
     """
     obligations = {
+        "ascend_attempt": ("cmd/actoth.c", r'if\s*\(!IS_NPC\(ch\)\)\s*\{\s*send_to_char\("&\+WThis is too powerful an enchantment for you to master\.\.\.&n\\n\\r",\s*ch\);\s*return;\s*\}'),
+        "ascend_theurgist": ("cmd/actoth.c", r'if\s*\(IS_NPC\(ch\)\)\s*return;'),
+        "descend_attempt": ("cmd/actoth.c", r'send_to_char\("This command has been disabled until further notice\.\\n", ch\);\s*return;'),
+        "corpseform_attempt": ("classes/necromancy.c", r'send_to_char\("Temporarily disabled\.\\n", ch\);\s*return;'),
         "telnet_race_entry": ("account/nanny.c", r"select_race\(d, arg\);"),
         "telnet_class_entry": ("account/nanny.c", r"select_class\(d, arg\);"),
         "telnet_alignment_entry": ("account/nanny.c", r"select_alignment\(d, arg\);"),
@@ -732,6 +736,21 @@ combat_bodies = (
         ("db.c", "int real_room0("), ("db.c", "int real_room("),
     ])
 )
+combat_bodies += (
+    production_function("actoth.c", "enum class ascend_kind : int") + ";\n"
+    + production_function("actoth.c", "struct ascend_context") + ";\n"
+    + "\nvoid ascend_committed(P_char, bool, const epic_command_result &, unsigned int, const uint8_t *, size_t) { std::abort(); }\n"
+    + "P_char FindTeacher(P_char) { std::abort(); }\n"
+    + "void do_old_descend(P_char, char *, int) { std::abort(); }\n"
+    + "bool isCarved(P_obj);\n"
+    + production_function("actoth.c", "void ascend_theurgist(")
+    + production_function("actoth.c", "void do_ascend(")
+    + production_function("actoth.c", "void do_descend(")
+    + production_function("necromancy.c", "void spell_corpseform(")
+    + production_function("necromancy.c", "void event_corpseform_wearoff(")
+    + production_function("actoth.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::ascension_connections(")
+    + production_function("necromancy.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::corpseform_connections(")
+)
 interpreter = source("interp.c").read_text()
 command_initializer = production_function("interp.c", "void assign_command_pointers(void)")
 command_callbacks = set(re.findall(
@@ -837,7 +856,7 @@ for call in re.finditer(r'\b(SPELL_CREATE(?:_MSG|2)?|POISON_CREATE)\(\s*"[^"\n]*
         skill_callbacks[callback] = "affected_type *" if call[1] == "POISON_CREATE" else "P_obj"
 skill_callback_stubs = "\n".join(
     f'void {name}(int, P_char, char *, int, P_char, {last}) {{ std::abort(); }}'
-    for name, last in sorted(skill_callbacks.items()))
+    for name, last in sorted(skill_callbacks.items()) if name != "spell_corpseform")
 skill_registration_source = (
     skill_source[skill_source.index('#include "core/defines.h"'):skill_source.index('int numSkills;')]
         .replace('#ifndef _DE_', '')
@@ -904,7 +923,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
             assert path in ("src/classes/innates.c", "src/combat/fight.c", "src/cmd/interp.c",
                             "src/classes/specializations.c", "src/classes/skills.c", "src/guild/guild.c",
                             "src/account/nanny.c", "src/net/ws_handlers.c", "src/account/creation_availability_config.c",
-                            "src/account/account.c", "src/account/racewar_admission.c",
+                            "src/account/account.c", "src/account/racewar_admission.c", "src/classes/necromancy.c",
                             "src/specs/specs.assign.c", "src/specs/specs.object.c", "src/classes/memorize.c",
                             "src/world/epic_transaction.c",
                             "src/economy/tradeskill.c",

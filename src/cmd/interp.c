@@ -256,6 +256,8 @@ static void record_command(int command, std::string_view handler,
 
 std::span<const character_mechanics::MechanicConnection> character_mechanics::command_connections()
 {
+	static constexpr MechanicId ascend[] = { MechanicId::ascend_attempt };
+	static constexpr MechanicId descend[] = { MechanicId::descend_attempt };
 	static constexpr MechanicId dependencies[] = { MechanicId::specialization_select };
 	static constexpr MechanicId innate_dependencies[] = { MechanicId::innate_dispatch };
 	static constexpr MechanicId multiclass_dependencies[] = { MechanicId::multiclass_list };
@@ -279,6 +281,26 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::co
 		  Access::conditional,
 		  Implementation::connected,
 		  "Observed writes from every existing command-assignment macro, including handler symbol and source caller, before overwrites disappear; handler effect ownership remains separate.",
+		  {} },
+		{ MechanicId::ascend_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&cmd_info[CMD_ASCEND].command_pointer),
+		  ascend,
+		  Access::disabled,
+		  Implementation::connected,
+		  "Registered ordinary command; the native handler owns the preserved player denial.",
+		  {} },
+		{ MechanicId::descend_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&cmd_info[CMD_DESCEND].command_pointer),
+		  descend,
+		  Access::disabled,
+		  Implementation::connected,
+		  "Registered ordinary command; the native handler owns the preserved player denial.",
 		  {} },
 		{ MechanicId::specialization_entry,
 		  Relation::entry,

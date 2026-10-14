@@ -37,6 +37,12 @@ bool entry_registered(const MechanicConnection &entry,
 				    json->lookup(json->command) == *handler && *handler)
 					return true;
 			}
+			if (const auto *slot = std::get_if<SpellSlot>(&entry.binding))
+			{
+				const auto *handler = std::get_if<SpellHandler>(&target.binding);
+				if (*slot && **slot && handler && **slot == *handler)
+					return true;
+			}
 			if (const auto *slot = std::get_if<CommandSlot>(&entry.binding))
 			{
 				const auto *handler = std::get_if<CommandHandler>(&target.binding);
@@ -263,6 +269,26 @@ std::string_view mechanic_name(MechanicId id)
 		return "command.table";
 	case MechanicId::command_registration:
 		return "command.registration";
+	case MechanicId::ascend_entry:
+		return "ascend.entry";
+	case MechanicId::ascend_attempt:
+		return "ascend.attempt";
+	case MechanicId::ascend_theurgist:
+		return "ascend.theurgist";
+	case MechanicId::ascend_commit:
+		return "ascend.commit";
+	case MechanicId::descend_entry:
+		return "descend.entry";
+	case MechanicId::descend_attempt:
+		return "descend.attempt";
+	case MechanicId::old_descend_attempt:
+		return "descend.legacy";
+	case MechanicId::corpseform_entry:
+		return "corpseform.entry";
+	case MechanicId::corpseform_attempt:
+		return "corpseform.attempt";
+	case MechanicId::corpseform_expiry:
+		return "corpseform.expiry";
 	case MechanicId::count:
 		break;
 	}
@@ -306,7 +332,9 @@ std::vector<MechanicConnection> mechanic_connections()
 				  creation_rule_connections(),
 				  telnet_creation_connections(),
 				  websocket_creation_connections(),
-				  admission_connections() })
+				  admission_connections(),
+				  ascension_connections(),
+				  corpseform_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -630,6 +658,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::effect:
 			compatible =
+				std::holds_alternative<SpellHandler>(connection.binding) ||
 				std::holds_alternative<AdmissionCommit>(connection.binding) ||
 				std::holds_alternative<DescriptorSelection>(connection.binding) ||
 				std::holds_alternative<JsonCommand>(connection.binding) ||
@@ -651,6 +680,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::entry:
 			compatible =
+				std::holds_alternative<SpellSlot>(connection.binding) ||
 				std::holds_alternative<CommandSlot>(connection.binding) ||
 				std::holds_alternative<ObjectRegistration>(connection.binding) ||
 				std::holds_alternative<RoomRegistration>(connection.binding) ||

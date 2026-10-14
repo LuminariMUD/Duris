@@ -60,6 +60,15 @@ Telnet relog. Human Necromancer is accepted by Telnet but rejected by WebSocket'
 faction-derived alignment despite appearing in its menu. Complete changed-state,
 body/innate-bit and starter-kit lifecycle ownership remains incomplete.
 
+Disabled transformation connections bind ascend/descend's real command slots,
+Theurgist helper and completion callback, legacy descend, and corpseform's real
+spell slot/expiry. Native denial assertions compare complete character, PC and
+corpse state and require no ledger/save calls. The `--trace disabled` option of
+`test_character_mechanics_journey.py` exercises mortal interpreter denials and saved
+state in the full world. Staff supplies boundary classes, levels and resources.
+Successful completion and unreachable conversion branches remain separate,
+incomplete declarations; binding an expiry callback does not prove its lifecycle.
+
 The separate `python3 tests/async/test_character_mechanics_journey.py` drives private
 full-world command and persistence cases. Staff-supplied items, levels and transport
 are fixture setup and do not prove ordinary acquisition. Native Bulwark cases

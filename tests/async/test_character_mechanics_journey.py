@@ -93,6 +93,35 @@ def run(binary, build, trace="all"):
                 return json.loads(subprocess.check_output(
                     [str(inspector), env["FLATFILE_STATE_DIR"], "inspect", str(pid)], text=True))
 
+            def disabled_case(player, staff):
+                fields = ("race", "birth_time", "class_primary", "class_secondary", "specialization",
+                          "level", "experience", "epics", "skills", "wallet", "snapshot_uids", "player_items")
+
+                def denied(command_text, message):
+                    save(player)
+                    before = snapshot()
+                    reply = command(player, command_text)
+                    assert message in reply, reply
+                    save(player)
+                    after = snapshot()
+                    assert {key: before[key] for key in fields} == {key: after[key] for key in fields}
+
+                command(staff, "setbit char " + PLAYER + " epics 300")
+                command(staff, "setbit char " + PLAYER + " level 50")
+                for cls in ("Paladin", "Avenger", "Theurgist"):
+                    command(staff, "setbit char " + PLAYER + " class " + cls)
+                    denied("ascend", "too powerful an enchantment")
+                command(staff, "setbit char " + PLAYER + " class Warrior")
+                denied("descend", "convictions aren't appropriate")
+                command(staff, "setbit char " + PLAYER + " class Necromancer")
+                command(staff, "setbit char " + PLAYER + " level 49")
+                denied("descend", "must be level")
+                command(staff, "setbit char " + PLAYER + " level 50")
+                denied("descend", "disabled until further notice")
+                command(staff, "setbit char " + PLAYER + " class Warrior")
+                command(staff, "setbit char " + PLAYER + " level 1")
+                print("PASS transformations.disabled/world: mortal interpreter ascend for Paladin/Avenger/Theurgist, wrong-class and level-49/50 descend preserve saved identity, skills, epics, wallet and item ownership; staff supplies classes/levels/resources", flush=True)
+
             def multiclass_case(player, staff, name, pid, race, safe_room):
                 command(staff, "setbit char " + name + " level 50")
                 if race == 1:
@@ -282,6 +311,11 @@ def run(binary, build, trace="all"):
                     return
                 staff = login(STAFF, STAFF_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
+                disabled_case(player, staff)
+                if trace == "disabled":
+                    print("Fixture: flatfile, committed full world, normal creation/Chaos switches false; staff supplies class/level/epic boundaries; corpseform callback denial is separate native evidence", flush=True)
+                    print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
+                    return
                 denied = command(player, "specialize guardian")
                 assert "find a teacher first" in denied, denied
                 command(staff, "setbit char " + PLAYER + " level 29")
@@ -436,7 +470,7 @@ def run(binary, build, trace="all"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trace", choices=("all", "revenant"), default="all")
+    parser.add_argument("--trace", choices=("all", "revenant", "disabled"), default="all")
     args = parser.parse_args()
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)

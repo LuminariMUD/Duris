@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "combat/training_dummy.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -39,6 +40,7 @@
 #include "world/vnum.obj.h"
 
 extern P_room world;
+extern Skill skills[];
 extern P_index mob_index;
 extern P_index obj_index;
 extern struct str_app_type str_app[];
@@ -2422,6 +2424,7 @@ void spell_corpseform(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 
 	// Leaving the game (dying / renting / etc) breaks this 'cause affect is removed,
 	//   and event is removed but not the actual change in race.  It needs a rework. - Lohrr
+	CHARACTER_MECHANIC_SITE(corpseform_attempt);
 	send_to_char("Temporarily disabled.\n", ch);
 	return;
 
@@ -3073,4 +3076,50 @@ void spell_compact_corpse(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 	{
 		send_to_char("You spell fails to load the pile.  Tell an Imm.\n", ch);
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::corpseform_connections()
+{
+	static constexpr MechanicId attempt[] = { MechanicId::corpseform_attempt };
+	static constexpr MechanicId cleanup[] = {
+		MechanicId::corpseform_expiry, MechanicId::race_affect_cleanup,
+		MechanicId::innate_identity,   MechanicId::affects_capture,
+		MechanicId::affects_load,      MechanicId::transient_race_capture,
+		MechanicId::race_status_load
+	};
+	static constexpr MechanicId removal[] = { MechanicId::race_affect_cleanup };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::corpseform_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&skills[SPELL_CORPSEFORM].spell_pointer),
+		  attempt,
+		  Access::disabled,
+		  Implementation::connected,
+		  "Actual initialized spell callback slot; class/circle grants remain in the native ability table.",
+		  {} },
+		{ MechanicId::corpseform_attempt,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(spell_corpseform),
+		  cleanup,
+		  Access::disabled,
+		  Implementation::incomplete,
+		  "Unconditionally denies before corpse checks, affect/race mutation, pet changes, content transfer or corpse consumption. Dynamic target is the supplied corpse race; ordinary and superior forms retain different effective-innate semantics.",
+		  "Disabled downstream branches and complete state/target declarations remain; current denial, not historical comments, is the behavioral claim." },
+		{ MechanicId::corpseform_expiry,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(event_corpseform_wearoff),
+		  removal,
+		  Access::disabled,
+		  Implementation::connected,
+		  "Existing event retains the form while SPELL_CORPSEFORM exists; otherwise restores TAG_RACE_CHANGE modifier and invokes generic affect removal. No new lifecycle path is enabled.",
+		  {} },
+	};
+	return connections;
 }

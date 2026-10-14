@@ -7135,6 +7135,7 @@ void ascend_theurgist(P_char ch)
 
 	if (!ch)
 		return;
+	CHARACTER_MECHANIC_SITE(ascend_theurgist);
 	if (IS_NPC(ch))
 		return;
 
@@ -7181,6 +7182,7 @@ void do_ascend(P_char ch, char * /*arg*/, int /*cmd*/)
 
 	if (!ch)
 		return;
+	CHARACTER_MECHANIC_SITE(ascend_attempt);
 	if (!IS_NPC(ch))
 	{
 		send_to_char("&+WThis is too powerful an enchantment for you to master...&n\n\r",
@@ -7279,6 +7281,7 @@ void do_descend(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
+	CHARACTER_MECHANIC_SITE(descend_attempt);
 	send_to_char("This command has been disabled until further notice.\n", ch);
 	return;
 
@@ -7721,6 +7724,74 @@ character_mechanics::multiclass_command_connections()
 		  Implementation::connected,
 		  "List choices for eligible Human/Orc PCs; configured level floor, legacy fallback 41; no identity mutation.",
 		  {} }
+	};
+	return connections;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::ascension_connections()
+{
+	static constexpr MechanicId attempt[] = { MechanicId::ascend_theurgist,
+						  MechanicId::ascend_commit };
+	static constexpr MechanicId commit[] = { MechanicId::ascend_commit };
+	static constexpr MechanicId lifecycle[] = {
+		MechanicId::epics_transaction, MechanicId::multiclass_newbie_skills,
+		MechanicId::multiclass_reset,  MechanicId::multiclass_forget,
+		MechanicId::status_capture,    MechanicId::status_load,
+		MechanicId::skills_capture,    MechanicId::skills_load,
+		MechanicId::affects_capture,   MechanicId::affects_load
+	};
+	static const MechanicConnection connections[] = {
+		{ MechanicId::ascend_attempt,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_ascend),
+		  attempt,
+		  Access::disabled,
+		  Implementation::incomplete,
+		  "Rejects PCs before resources or identity can change. Unreachable player routes retain Paladin to Agathinon/Avenger and Avenger specialization choices at rooms 13272/75610.",
+		  "Exact downstream mutation branches, all changed/retained fields and target ownership remain to be declared; the native player denial is characterized." },
+		{ MechanicId::ascend_theurgist,
+		  Relation::effect,
+		  { OptionKind::character_class, CLASS_THEURGIST, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(ascend_theurgist),
+		  commit,
+		  Access::disabled,
+		  Implementation::connected,
+		  "Rejects NPCs, whereas its registered caller rejects PCs. Its Eladrin offering uses a teacher and ascend.epicCost.Eladrin; no currently admitted caller crosses both gates.",
+		  {} },
+		{ MechanicId::ascend_commit,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(ascend_committed),
+		  lifecycle,
+		  Access::disabled,
+		  Implementation::incomplete,
+		  "Actual epic completion: rejected offerings return unchanged; accepted contexts perform Theurgist/Eladrin, Paladin/Agathinon/Avenger or Avenger specialization reset and recalculation.",
+		  "Complete branch target/state declarations and accepted completion behavior remain unverified; the denial fixture aborts if completion is reached." },
+		{ MechanicId::descend_attempt,
+		  Relation::effect,
+		  { OptionKind::race, RACE_LICH, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_descend),
+		  lifecycle,
+		  Access::disabled,
+		  Implementation::incomplete,
+		  "Requires Necromancer and level 50, then unconditionally denies before item checks or the retained Lich/secondary-Sorcerer conversion body.",
+		  "Unreachable conversion body still needs complete state and target declarations; denial preserves resources, inventory and identity." },
+		{ MechanicId::old_descend_attempt,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_old_descend),
+		  {},
+		  Access::disabled,
+		  Implementation::legacy,
+		  "Legacy helper has no active command registration; its own PC denial precedes old conversion choices.",
+		  "Legacy branches/targets require exact reverse accounting; no ordinary reachability or successful conversion is claimed." },
 	};
 	return connections;
 }

@@ -58,9 +58,10 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last committed checkpoint: `4a11e79f6` connects character creation dispatch and
-account admission; `1abfef484` connects ability tables/provenance; `ff80bae30`
-connects generic race restoration and death cleanup. Their focused checks passed.
+Last committed checkpoint: `c926e427b` connects complete command registration and
+guard provenance; `4a11e79f6` connects creation/admission; `1abfef484` connects ability
+tables/provenance; `ff80bae30` connects generic race restoration and death cleanup.
+Their focused checks passed.
 Upstream `0e27ef1e8` was integrated through
 `f75e77b34`; these are reference points, not a later remote-head claim.
 
@@ -85,7 +86,7 @@ dependent: Telnet accepts it; WebSocket lists it but rejects creation because Hu
 receives good-faction alignment. Initialization's complete state/innate/body sites
 and starter-kit lifecycle ownership remain incomplete.
 
-The current command batch binds the complete native command vocabulary and slots.
+The command connections bind the complete native command vocabulary and slots.
 The seven existing assignment macros observe **845 writes** with handler symbols,
 native IDs, all seven handler/guard fields and production caller locations.
 Combined registration coverage is **4,235 source locations**. Native validation
@@ -117,10 +118,31 @@ documentation checks passed. Logs: `bin/tests/character-mechanics-command-native
 `character-mechanics-command-documentation.log`. Native fixture SHA256:
 `1256332313c56d235c35754ce8c6de13b05c75019d299e819bdcb0294ad37339`.
 
+The current disabled-route batch binds registered ascend/descend slots, actual
+attempts, Theurgist helper and epic completion, legacy descend, the initialized
+corpseform spell slot and its existing expiry callback. Exact source markers cover
+the four denial gates. Native assertions invoke the real denied bodies and compare
+complete character/PC/corpse state; no save or ledger operation occurs. The native
+command table confirms legacy descend is unregistered. Accepted ascension completion,
+legacy conversion branches and complete changed-state/target declarations remain
+incomplete; the denial fixture aborts if those services are reached. Corpseform's
+historic comment is not promoted to a demonstrated lifecycle defect.
+
+Disabled-batch native/mutation checks, server build, formatting, whitespace and
+documentation checks passed (`bin/tests/character-mechanics-disabled-*.log`).
+`test_character_mechanics_journey.py --trace disabled` also passed using a private
+flat-file server with the committed full world and normal switches false: mortal
+interpreter ascend for Paladin/Avenger/Theurgist, wrong-class descend, and Necromancer
+levels 49/50 preserve saved identity, skills, epics, wallet and item ownership.
+Staff supplies class/level/resource boundaries; corpseform denial remains native
+callback evidence. Full-server SHA256:
+`f5fc132582dd9fde5f5d1c61ed384e5fbcc5e430ebad21285aac8959b054e685`.
+
 Full reverse ownership beyond these tables and the existing Bulwark/altar/
 multiclass/crown/cleanup sites remains open. The candidate scan is investigation
 input, not classified coverage. Bulwark's native raw damage is still a recording
-stub. Complete creation state/lifecycle ownership, other consumers and transitions, natural acquisition and
+stub. Complete creation state/lifecycle ownership, downstream disabled conversion
+declarations, other consumers and transitions, natural acquisition and
 the required wider behavioral cases remain.
 
 Last full repository gate predates these batches: **729 passed, 1 failed**, 669.44
