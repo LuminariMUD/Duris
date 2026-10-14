@@ -263,7 +263,7 @@ in memory too. Ordered entity snapshots persist current state; type-9 commands
 record captured history and never apply rewards on completion. Per-entity dirty
 metadata and commit receipts distinguish unsaved state from committed history.
 Producer/restart qualification is recorded in the
-[evidence](../ongoing-projects/plan-log_review.md#qualification-update-2026-10-14); the detailed
+[evidence](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14); the detailed
 contract is in [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md#artifact-and-guild-rewards-live-in-memory).
 
 Recurring database work uses `src/persistence/maintenance_scheduler.c`. Stable per-instance offsets

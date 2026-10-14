@@ -1380,6 +1380,8 @@ void update_pos(P_char ch)
 	/*
 	 * finally, set new position and status
 	 */
+	if (stat == STAT_RESTING && pos == POS_STANDING)
+		pos = POS_SITTING;
 
 	SET_POS(ch, pos + stat);
 	if (stat == STAT_DEAD)
@@ -3809,6 +3811,7 @@ bool can_hit_target(P_char ch, P_char vict)
  * damage API. It is provided for backward compatibility and should not be
  * used in the new code, call directly spell_damage and melee_damage instead.
  */
+// Stop the calling skill after either participant dies.
 bool damage(P_char ch, P_char victim, double dam, int attacktype)
 {
 	struct damage_messages tmsg;
@@ -3847,7 +3850,7 @@ bool damage(P_char ch, P_char victim, double dam, int attacktype)
 
 		return spell_damage(ch, victim, dam, type, flags, &tmsg);
 	}
-	else if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &tmsg) == DAM_VICTDEAD)
+	else if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &tmsg) != DAM_NONEDEAD)
 	{
 		return TRUE;
 	}

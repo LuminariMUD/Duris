@@ -11,6 +11,48 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Combined log-review integration qualification
+
+The combined server/world/schema at `8b2681862` incorporates master `c6a95a470`
+and PRs #70 → #73 → #74 → #75. The following commands passed on that stable tree:
+
+```sh
+make -C src -j16
+make -C src pfile -j16
+make -C migrations/tools all affects pfile_converter -j16
+make -B -C migrations/tools all affects pfile_converter -j16
+./scripts/format.sh --all --check
+make test-all -j16 TEST_JOBS=16
+make test-db
+python3 tests/async/test_documentation_contract.py
+npm test --prefix site
+```
+
+Results: **736/736 regressions**, 591.84 seconds; **77/77 database legs** in one
+707-second run; **14 documentation checks**, **15 site tests**, and formatting
+of all 1052 tracked C/C++ files. Every artifact/guild gameplay variant passes:
+Summon Ghasts/boons, crash before artifact save, crash after artifact save, crash
+after history commit, blocked shutdown and actual PvP/restart. Standard gameplay
+also verifies canceled blocked copyover, successful drained copyover and clean
+restart. Native/SQL checks retain the full ES-01–ES-05 acceptance matrix; the
+following sections describe their individual boundaries. Final logs are under
+`bin/analysis/review-final/`, including the build, pfile, migration tools, formatting,
+regression, database and site output. Per-database-leg output is in `bin/tests/db/`.
+
+This run includes the corrected connection observer test from `d4fe27272` and
+the MySQL/MariaDB kingdom-interface repair from `b6a8ecb4c`. The latter also
+passes actual MySQL 8.0.46 server/pfile/migration-tool builds, the flat-file boot
+preflight, and `make security-check`; its before/after script reports **1/1
+catches**. See the client-interface section below for the proof boundary.
+
+Earlier qualification at `42b7afb17` passed 736 regressions in 567.56 seconds
+and 77 database legs in 710 seconds, with logs retained in
+`bin/analysis/integrated/`. The corrected observer's separate journey and
+deterministic before/after probe remain there too. The newer full run above
+supersedes that aggregate. Final handoff commits change documentation only.
+No production deployment, historical data repair or owner-deferred investigation
+is claimed by this qualification.
+
 ## Statistics across restarts and interrupted output
 
 Issue #56 (LR-01): new maintenance work no longer reuses port/tick-derived IDs.
@@ -126,7 +168,7 @@ not final combined-stack qualification or production rollout; full-server fault
 journeys and the broad gates remain due after #73–#75 integration.
 
 Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
-[qualification record](../ongoing-projects/plan-log_review.md#qualification-update-2026-10-14)
+[qualification record](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
 maps the acceptance criteria to tests, records local logs and separates review
 readiness from production rollout.
 
@@ -342,6 +384,43 @@ passes in single full runs. Direct base-data lookup fails specifically at the
 missing Web Spray topic and passes after; the before/after script also reports
 2/2 catches, with its information-journey summary ending in an unrelated runtime
 warning. The original zone attribution remains open.
+
+## Damage death results, healing posture and graph distance
+
+The legacy physical `damage()` wrapper now stops a skill after either
+participant dies, matching its spell branch. Previously simultaneous death
+fell through into fighting/counterattack setup and `cleave()` could request a
+short affect for its dead NPC target. `test_damage_death_result.py` executes the
+actual wrapper and cleave under ASan/UBSan, controlling lower-layer death
+outcomes and unrelated eligibility. It proves live effects, victim/both/actor
+death stopping, and fresh storage reuse; real scheduler/cancellation harnesses
+retain dead-owner rejection, extraction cleanup and owner reuse. This is a
+producer reproduction, not a full lower-layer combat journey or exact
+attribution of the original logged NPC schedule.
+
+The existing posture test now executes `calculate_ch_state()`/`update_pos()`.
+An upright humanoid can remain standing at -3 HP/incapacitated and heal to -2;
+the producer now selects sitting/resting instead of standing/resting. Native
+cases preserve lower postures, normal standing and standing sleep, then verify
+stand/rest state and regeneration-start/feedback observations. Random falling,
+combat/wake and unrelated services are adapters. The original player's precise
+transition remains unknown.
+
+`test_graph_distance_runtime.py` runs the actual `how_close()`/queue/mark bodies
+and edge macros. Maximum distance now precedes target acceptance: distance four
+with limit three, and distance one with limit zero, are refused. Exact/below/
+above, negative limits, invalid rooms, door eligibility, ocean/NOWHERE exclusions,
+unchanged room cap, one diagnostic per bounded exit, queue cleanup and reuse
+pass. Allocation/logging are adapters. Original reported caller/source/target
+attribution remains unavailable.
+
+All three native checks fail on `b2982e75e` and pass on `f8e302270` in the formal
+before/after script (3/3). Focused sanitizer runs, command-latency/budget and
+real scheduler/cancellation checks pass. Final qualification on `7ab77e895`
+passes all 736 regressions in 869.90 s and all 77 database checks in one 775 s
+run, including the full connection journey and every artifact/reward variant.
+The separate native cure-spell producer probe also fails before and passes after;
+its heal arithmetic is an adapter, while cure/update/stand/rest are actual code.
 
 ## Crumbling equipment removal
 
@@ -796,6 +875,18 @@ silent at the account name and password prompts, closed between 115 and 135 s, w
 website client that sends a login every 25 s is still open at 130 s; a banned address;
 and TLS connections to a full server. It takes about three minutes (173 s in a loaded
 gate).
+
+The LR-11 extension measures another 2,001 sequential plain/TLS/WebSocket
+attempts and separate incomplete handshakes on the isolated server. Its focused
+qualification took 80.835 s (24.75/s), kept descriptors at 10 before/after with a
+peak of 26, and grew peak RSS by 1,012 KiB. Process CPU was 9.02 s; 2,563 lines /
+261,011 bytes were logged, with no pulse above 250 ms. An authenticated account
+menu responded throughout (maximum 216.93 ms) and the burst address could log in
+afterward. Held WebSocket/TLS handshakes expired at 27.16/37.54 s. Assertions cap
+resource/log growth for the stream and verify cleanup and reconnect. A fixture
+context-manager error after the first resource measurement was corrected; the
+focused rerun passes. No admission/rate-control source changed; these local
+measurements are not an unlimited-load guarantee or privileged host audit.
 
 ## Copyover state path and failure output
 
@@ -1517,3 +1608,30 @@ Not covered: the original report, an intermittent full-world crash in room 40200
 purging an apprentice and running `zresetfull`, was never attributed to this defect by a
 core or sanitizer trace. A full-world sanitizer journey with a real summoned
 master-and-follower chain would settle it.
+
+## Connection timeout observer cleanup
+
+The LR-11 churn fixture used to close incomplete TLS/WebSocket sockets before
+joining their timeout observers. A fast churn loop could therefore count its own
+cleanup as a server expiry or race the receiver. The fixture now retains and
+joins both observers through their existing 45-second deadlines, asserts both
+results, then closes the sockets in `finally`. No server code changes.
+
+A controlled before/after probe executes the actual `connection_churn` function:
+the former version closes sockets before observations finish; the repaired version
+waits for delayed server expiries, and an unexpired handshake fails before cleanup.
+The exact repaired test bytes also pass the full isolated server journey via:
+
+```sh
+PYTHONPATH=tests/async DURIS_REGRESSION_BUILD_CACHE=bin/regression-artifacts python3 bin/analysis/integrated/connection-fixed.py
+```
+
+The outside-tree copy kept the qualification tree stable and is byte-identical to
+`tests/async/test_connection_limit_journey.py`. The real run observed 2,001 attempts,
+TLS/WebSocket expiry at 37.53/27.25 seconds, successful reconnect, peak RSS +372 KiB,
+33 peak descriptors against 20 initially (10 after cleanup), 264,876 log bytes,
+maximum menu response 193.81 ms and no 250 ms pulse overrun. Evidence is retained
+in `bin/analysis/integrated/observer-probe.log` and `connection-fixed.log`.
+The controlled scheduling probe supplies the regression's before/after evidence;
+a normal timely server can pass the old fixture, so its green result alone does
+not establish correct observer cleanup.

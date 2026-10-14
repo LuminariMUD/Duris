@@ -230,7 +230,7 @@ This section describes the locally qualified #58 implementation. Runtime,
 snapshot, SQL rollback/reload and producer-replay tests pass, together with the
 full-server boon/PvP, crash, shutdown, copyover and restart cases. Evidence and
 fixture boundaries are recorded in
-[plan-log_review.md](../ongoing-projects/plan-log_review.md#qualification-update-2026-10-14).
+[plan-estale.md](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14).
 
 For a new source award, the game thread captures eligible artifact feeds and guild
 prestige/construction from current memory, checks the combined bounds, applies
