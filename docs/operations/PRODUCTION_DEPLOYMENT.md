@@ -1,6 +1,6 @@
 # Production deployment tracker
 
-Last verified: 2026-10-10 14:12 UTC (staging names retired, MUD backups scheduled)
+Last verified: 2026-10-10 14:12 UTC (production service names adopted, MUD backups scheduled)
 
 ## Objective
 
@@ -122,8 +122,9 @@ the public health checks below.
   `duris-backup-backup.timer` takes one an hour and `duris-backup-health.timer` checks
   them every minute. Both units are in `~/.config/systemd/user`, adapted from
   `deploy/systemd/duris-backup-*` without the sandboxing options a user unit can't use.
-  There is no off-host replica and no restore drill: the account has no SSHFS mount
-  and no dedicated restore filesystem, and no `OnFailure=` alert is connected.
+  The 2026-10-10 follow-up records an `OnFailure=` alert through
+  `duris-backup-alert@.service`, but Plesk blocks its mail. An off-host replica and
+  restore drill also remain unverified; see the [host follow-ups](#host-follow-ups).
 - The website's own hourly dump of the shared database: `~/durisweb-backups`
 - One-off copies (pre-change dumps, configuration): `~/backups/duris/<date>-*`
 - Host AppArmor allowance for the MUD database: `/etc/apparmor.d/local/mariadbd`
@@ -131,6 +132,58 @@ the public health checks below.
   too. Without this file, MariaDB can't read `~/.config/duris-mariadb/my.cnf` or
   `~/.local/state/duris-mariadb/`, or tell systemd it is ready. If those paths or the
   account's uid change, root must update it.
+
+## Host follow-ups
+
+These items preserve the 2026-10-10 14:20 UTC observations recorded in commit
+`023179af6` before the separate host follow-up note was retired.
+They were reconciled into this tracker on 2026-10-14 without a new host inspection.
+Their completion has not been verified here.
+
+### Backup alerts and restore qualification
+
+A failed backup or health run starts `duris-backup-alert@.service`. Its helper,
+`~/.local/libexec/duris-backup-alert`, mails the operator through
+`/usr/sbin/sendmail` at most once an hour per unit. The recorded delivery attempt
+was refused by Plesk's outgoing mail control for the service account.
+
+The owner must allow that account to send mail, then run the deliberate invalid-policy
+test described in [Backup operations](BACKUPS.md) and confirm receipt. A connected
+failure unit alone does not prove that an operator receives an alert.
+
+At that check there was no off-host replica or restore drill; the owner had deferred
+the off-host copy. Providing an SSHFS mount for `replica_root` and a dedicated restore
+filesystem for `restore_root`, then setting `drill_seconds`, remains separate work.
+Follow [separate/off-host storage](BACKUPS.md#separateoff-host-storage) and the restore
+qualification procedure in that runbook.
+
+### Planned service-account rename
+
+At the same check, production service names had changed but the Linux account still
+used its staging name. A root-led account rename was planned. Confirm the current
+account, UID and paths from the operator's private configuration before scheduling
+an authorized maintenance window. Preserve the existing UID so ownership and the
+AppArmor allowance continue to identify the same account.
+
+1. While logged in as the old service account, rename its MariaDB administrative
+   login first: `unix_socket` authentication maps the Linux login name. Pause the
+   website watchdog and stop every `duris-*` and `durisweb-*` user unit and timer.
+2. As root, disable lingering and stop the old account's user manager and sessions.
+   Rename the Linux login, primary group and home directory, retaining the UID.
+3. Replace the old home path in `~/duris/.env`, `~/.config/duris-backup/policy.json`
+   (including its `custodian`), `~/.config/duris-mariadb/my.cnf`,
+   `~/.config/duris-redis/redis.conf`, `~/.config/durisweb/redis.conf`,
+   `~/.config/letsencrypt/renewal/mud.duris.sbs.conf`, and both ACME hooks under
+   `~/.local/libexec/`. Update DurisWeb's `backend/.env` (including `MUD_PROCESS_USER`),
+   `frontend/.env` and `deploy/deployment.env`; re-render its units from that deployment
+   input. Re-create the absolute `~/duris/duris.crt` and `duris.key` symlinks and the
+   five `durisweb-*` unit links under `~/.config/systemd/user`.
+4. Update the paths in `/etc/apparmor.d/local/mariadbd` and reload the MariaDB profile.
+   Update the account in the `Match User` rule under
+   `/etc/ssh/sshd_config.d/40-hardening.conf`; validate with `sshd -t` before reloading SSH.
+5. Enable lingering for the renamed account. As that account, reload the user manager,
+   start the services and timers, resume the watchdog, and run the
+   [verification commands](#verification-commands) below.
 
 ## Verification commands
 
