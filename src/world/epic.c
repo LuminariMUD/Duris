@@ -49,6 +49,7 @@ using namespace std;
 #include "redis/redis_key_registry.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
+#include "persistence/persistence_checkpoint.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "world/timers.h"
@@ -100,6 +101,7 @@ struct epic_award_context
 	int amount;
 	bool blessing;
 	bool task_penalty;
+	bool *committed = nullptr;
 };
 
 struct epic_level_context
@@ -197,6 +199,8 @@ void epic_award_committed(P_char ch, bool committed, const epic_command_result &
 	}
 	epic_award_context context = {};
 	memcpy(&context, raw_context, sizeof(context));
+	if (context.committed)
+		*context.committed = true;
 	if (context.blessing)
 		send_to_char("You feel the &+cblessing&n of the &+WGods&n wash over you.\n", ch);
 	if (context.task_penalty)
@@ -396,11 +400,15 @@ void epic_complete_errand(P_char ch, int zone)
 	}
 }
 
-int epic_random_task_zone(P_char ch)
+int epic_random_task_zone(P_char ch, epic_task_selection_status *status)
 {
 	if (!ch || IS_NPC(ch))
+	{
+		if (status)
+			*status = epic_task_selection_status::unavailable;
 		return -1;
-	return epic_task_catalog_select(&ch->only.pc->gameplay_reads);
+	}
+	return epic_task_catalog_select(&ch->only.pc->gameplay_reads, status);
 }
 
 void epic_choose_new_epic_task(P_char ch)
@@ -410,20 +418,41 @@ void epic_choose_new_epic_task(P_char ch)
 	struct affected_type af;
 	int zone_number = -1;
 
-	if (!IS_ALIVE(ch))
+	if (!IS_ALIVE(ch) || IS_NPC(ch) || has_epic_task(ch))
 	{
 		return;
 	}
+
+	affected_type *pending = get_spell_from_char(ch, TAG_EPIC_TASK_PENDING);
 
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_EPIC_ERRAND;
 	af.flags = AFFTYPE_STORE | AFFTYPE_PERM;
 	af.duration = -1;
 
-	// Now a 5% chance to get spill blood down from 9%.
-	if (number(0, 19))
+	// Roll once per assignment. A deferred zone roll must not reroll into Spill Blood.
+	if (pending || number(0, 19))
 	{
-		zone_number = epic_random_task_zone(ch);
+		epic_task_selection_status status = epic_task_selection_status::unavailable;
+		zone_number = epic_random_task_zone(ch, &status);
+		if (status == epic_task_selection_status::unavailable)
+		{
+			if (!pending)
+			{
+				af.type = TAG_EPIC_TASK_PENDING;
+				affect_to_char(ch, &af);
+				mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_AFFECTS);
+				logit(LOG_STATUS,
+				      "Epic task assignment deferred: catalog_ready=%d zones=%zu player_reads_ready=%d",
+				      epic_task_catalog_ready(), epic_task_catalog_size(),
+				      ch->only.pc->gameplay_reads.status ==
+					      gameplay_read_status::ready);
+				send_to_char(
+					"Your earned epic task is waiting for the Gods. It will be assigned automatically when task data is available.\n",
+					ch);
+			}
+			return;
+		}
 	}
 
 	// Getting rid of nexus . 7/13 Drannak
@@ -458,6 +487,9 @@ void epic_choose_new_epic_task(P_char ch)
 	}
 
 	affect_to_char(ch, &af);
+	if (pending)
+		affect_remove(ch, pending);
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_AFFECTS);
 }
 
 // The zones of a character's epic zone awards (rows of zone, time, oldest first), newest
@@ -522,16 +554,6 @@ void group_gain_epic(P_char ch, int type, int data, int amount)
 	}
 }
 
-int epic_gain_min_level()
-{
-	return BOUNDED(1, static_cast<int>(get_property("epic.gain.minLevel", 50.000)), MAXLVL);
-}
-
-bool epic_level_can_gain(P_char ch)
-{
-	return ch && GET_LEVEL(ch) >= epic_gain_min_level();
-}
-
 int epic_skills_min_level()
 {
 	return BOUNDED(1, static_cast<int>(get_property("epic.skills.minLevel", 30.000)), MAXLVL);
@@ -553,10 +575,6 @@ static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool c
 	{
 		return false;
 	}
-
-	// No epic points below epic.gain.minLevel, whatever their source.
-	if (!epic_level_can_gain(ch))
-		return false;
 
 	// Epic bonus from witch potion.
 	bool blessing = IS_AFFECTED4(ch, AFF4_EPIC_INCREASE) && type != EPIC_BOTTLE;
@@ -602,35 +620,41 @@ static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool c
 	return amount > 0;
 }
 
-void gain_epic(P_char ch, int type, int data, int amount)
+bool gain_epic(P_char ch, int type, int data, int amount)
 {
 	epic_award_context context = {};
 	if (!prepare_epic_award(ch, type, data, amount, false, &context))
-		return;
+		return false;
 	amount = context.amount;
 	const epic_reason_type reason = epic_award_reason(type);
 	if (reason == epic_reason_type::unknown)
 	{
 		logit(LOG_DEBUG, "gain_epic: unsupported award type %d for %s", type, J_NAME(ch));
-		return;
+		return false;
 	}
 	critical_operation_id operation_id = {};
 	if (!critical_operation_id_generate(&operation_id))
 	{
 		send_to_char("The epic award service is busy. Please try again.\n", ch);
-		return;
+		return false;
 	}
+	// Epic transactions call their completion before returning.
+	bool committed = false;
+	context.committed = &committed;
 	if (!epic_transaction_submit_identified(ch, operation_id, amount, reason, data, 0,
 						epic_award_source(type),
 						critical_deadline_class::interactive,
 						epic_award_committed, &context, sizeof(context)))
 	{
 		send_to_char("The epic award service is busy. Please try again.\n", ch);
-		return;
+		return false;
 	}
+	if (!committed)
+		return false;
 	if (!artifact_guild_transaction_submit(ch, operation_id, amount, type))
 		logit(LOG_FILE,
 		      "artifact_guild: component=epic_capture outcome=deferred_effect_unavailable actor=redacted");
+	return true;
 }
 
 struct affected_type *get_epic_task(P_char ch)
@@ -675,7 +699,7 @@ void epic_frag(P_char ch, int victim_pid, int amount)
 
 int epic_calculate_pvp_award(P_char ch, int amount)
 {
-	if (!ch || IS_NPC(ch) || amount < 1 || errand_notch < 1 || !epic_level_can_gain(ch))
+	if (!ch || IS_NPC(ch) || amount < 1 || errand_notch < 1)
 		return 0;
 	if (IS_AFFECTED4(ch, AFF4_EPIC_INCREASE))
 		amount = static_cast<int>(amount * get_property("epic.witch.multiplier", 1.5));
@@ -1070,17 +1094,6 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 		} this mitigation is no longer necessary for wipe2011, as exp must be gained in zone before touch
 		  can reward player - Jexni */
 
-		// Only characters who can earn epic points draw on the stone; the touch-stone level
-		// costs themselves are unchanged. Group members below the level are left out of the
-		// award, because every award recipient must receive a positive amount.
-		if (!epic_level_can_gain(ch))
-		{
-			send_to_char_f(
-				ch, "The stone's power is beyond you until you reach level %d.\r\n",
-				epic_gain_min_level());
-			return TRUE;
-		}
-
 		/* calculate epic value */
 		int epic_value = epic_stone_payout(obj, ch);
 
@@ -1100,7 +1113,7 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			for (struct group_list *gl = ch->group; gl; gl = gl->next)
 				if (gl->ch != ch && IS_PC(gl->ch) && !IS_TRUSTED(gl->ch) &&
-				    gl->ch->in_room == ch->in_room && epic_level_can_gain(gl->ch))
+				    gl->ch->in_room == ch->in_room)
 					participants.push_back(gl->ch);
 		}
 		if (participants.size() > ZONE_TOUCH_MAX_PARTICIPANTS)

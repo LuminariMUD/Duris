@@ -67,8 +67,8 @@ bool next_revision(MYSQL *connection, const std::string &query, uint64_t *revisi
 }
 } // namespace
 
-void artifact_guild_repository_diagnostic(const critical_command &command, const char *reason,
-					  unsigned int error)
+std::array<char, 1024> artifact_guild_repository_diagnostic(const critical_command &command,
+							    const char *reason, unsigned int error)
 {
 	char operation[CRITICAL_COMMAND_ID_HEX_SIZE] = {},
 	     parent[CRITICAL_COMMAND_ID_HEX_SIZE] = {};
@@ -80,26 +80,32 @@ void artifact_guild_repository_diagnostic(const critical_command &command, const
 			    parent_id.bytes.begin());
 		critical_operation_id_to_hex(parent_id, parent, sizeof(parent));
 	}
-	char record[512];
+	artifact_guild_payload payload = {};
+	const bool decoded = artifact_guild_command_decode_payload(command, &payload);
+	std::array<char, 1024> record = {};
 	snprintf(
-		record, sizeof(record),
-		"domain=artifact_guild action=history outcome=alert detail=reason=%s operation=%s parent=%s version=%u accepted_us=%llu error=%u",
+		record.data(), record.size(),
+		"domain=artifact_guild action=history outcome=alert detail=reason=%s operation=%s parent=%s version=%u accepted_us=%llu error=%u site=%s:%d decoded=%d actor_pid=%u guild_id=%u artifact_count=%u",
 		reason, operation, parent[0] ? parent : "unavailable", command.payload_version,
-		static_cast<unsigned long long>(command.accepted_at_usec), error);
+		static_cast<unsigned long long>(command.accepted_at_usec), error, __FILE__,
+		__LINE__, decoded, decoded ? payload.actor_pid : 0, decoded ? payload.guild_id : 0,
+		decoded ? payload.artifact_count : 0);
 	// This runs on the SQL writer. The record contains only controlled categories,
 	// opaque IDs and numbers; never traverse descriptors or use logit's shared clock.
-	persistence_log_submit(record);
+	persistence_log_submit(record.data());
+	return record;
 }
 
 bool artifact_guild_repository_execute(MYSQL *connection, const critical_command &command,
 				       artifact_guild_result *result, unsigned int *result_code,
-				       bool *mutation_applied)
+				       bool *mutation_applied,
+				       std::array<char, 1024> *failure_detail)
 {
-	if (!connection || !result || !result_code || !mutation_applied)
+	if (!connection || !result || !result_code || !mutation_applied || !failure_detail)
 		return false;
 	const auto fail = [&](const char *reason, unsigned int code)
 	{
-		artifact_guild_repository_diagnostic(command, reason, code);
+		*failure_detail = artifact_guild_repository_diagnostic(command, reason, code);
 		errno = code;
 		return false;
 	};

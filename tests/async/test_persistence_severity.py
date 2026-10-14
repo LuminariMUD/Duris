@@ -18,9 +18,10 @@ assert reporter.count('std::chrono::seconds(30)') == 2
 reporter = reporter.replace('std::chrono::seconds(30)', 'std::chrono::milliseconds(300)')
 diagnostic = extract_function('artifact_guild_transaction.c', 'void diagnostic(')
 harness = r'''
-#include "persistence/critical_command.h"
+#include "persistence/critical_command_completion.h"
 #define AVATAR 57
 #include <cassert>
+#include <cerrno>
 #include <cctype>
 #include <cstdarg>
 #include <cstdio>
@@ -39,10 +40,11 @@ struct record { std::string sink, text; };
 std::vector<record> logs;
 std::vector<std::string> broadcasts;
 int audience = 0;
+bool accept_log = true;
 bool persistence_log_submit(const char *text) {
     logs.push_back({LOG_FILE, text});
     logs.push_back({LOG_WIZ, text});
-    return true;
+    return accept_log;
 }
 void wizlog(int level, const char *format, ...) {
     char text[2048]; va_list args; va_start(args, format);
@@ -128,6 +130,52 @@ int main() {
     diagnostic(operation,parent,"history_completion","missing_parent",2,38);
     assert(logs.size()==4 && broadcasts.size()==1);
 
+
+    logs.clear(); broadcasts.clear();
+    critical_completion failure = {};
+    failure.operation_id.bytes[0] = 0xab;
+    failure.type = critical_command_type::artifact;
+    failure.outcome = critical_apply_outcome::terminal_failure;
+    failure.error_code = ESTALE;
+    snprintf(failure.failure_detail.data(), failure.failure_detail.size(),
+             "actor_pid=42 guild_id=7 site=src/guild/artifact_guild_repository.c:180 "
+             "check=artifact_expected_state artifact_vnum=123 expected_timer=10 actual_timer=20");
+    persistence_critical_failure(57, failure);
+    assert(logs.size() == 2 && broadcasts.size() == 1);
+    assert(broadcasts[0].find("artifact/guild reward failed: state mismatch (ESTALE)") != std::string::npos);
+    assert(broadcasts[0].find("Ref ab000000000000000000000000000000; details: file") != std::string::npos);
+    assert(logs[0].text.find("operation=ab000000000000000000000000000000") != std::string::npos);
+    assert(logs[0].text.find("artifact_vnum=123 expected_timer=10 actual_timer=20") != std::string::npos);
+    assert(logs[0].text.find("actor_pid=42 guild_id=7 site=src/guild/") != std::string::npos);
+    failure.operation_id.bytes[0] = 0xcd;
+    persistence_critical_failure(57, failure);
+    assert(logs.size() == 4 && broadcasts.size() == 1);
+    assert(logs[2].text.find("operation=cd000000000000000000000000000000") != std::string::npos);
+    // Another command type or error must not be hidden by the artifact burst.
+    failure.type = critical_command_type::auction;
+    persistence_critical_failure(57, failure);
+    assert(broadcasts.size() == 2);
+    failure.error_code = 1062;
+    persistence_critical_failure(57, failure);
+    assert(broadcasts.size() == 3);
+    assert(broadcasts.back().find("duplicate database key") != std::string::npos);
+    failure.type = critical_command_type::artifact;
+    failure.error_code = ESTALE;
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    persistence_critical_failure(57, failure);
+    assert(broadcasts.size() == 4);
+    assert(broadcasts.back().find("1 similar notices hidden") != std::string::npos);
+    failure.type = static_cast<critical_command_type>(65535);
+    failure.error_code = 2;
+    accept_log = false;
+    persistence_critical_failure(57, failure);
+    assert(broadcasts.back().find("unknown operation failed: operation refused [error 2]") != std::string::npos);
+    assert(broadcasts.back().find("LOG QUEUE FAILED") != std::string::npos);
+    const auto log_count = logs.size();
+    const auto notice_count = broadcasts.size();
+    failure.outcome = critical_apply_outcome::applied;
+    persistence_critical_failure(57, failure);
+    assert(logs.size() == log_count && broadcasts.size() == notice_count);
 }
 '''
 outputs = ROOT / 'bin/tests'
@@ -136,7 +184,8 @@ with tempfile.TemporaryDirectory(prefix='persistence-severity-', dir=outputs) as
     source = Path(temp) / 'reporter.cpp'
     binary = Path(temp) / 'reporter'
     source.write_text(harness)
-    subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc', str(source), 'src/persistence/critical_command.c', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
+    subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc', str(source),
+                    'src/persistence/critical_command.c', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)
 print('[PASS] production reporter routing, fallback severity, legacy alerts, formatting and redaction')
 print('[PASS] wizlog repeats are grouped by domain and action and counted')

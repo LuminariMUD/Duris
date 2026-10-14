@@ -67,6 +67,45 @@ not run a server or a real database.
 
 ## Artifact and guild rewards
 
+Integration with master `67ca142ff` (PRs #69/#72/#76), 2026-10-14: all-level
+awards and deferred task recovery coexist with immediate memory rewards. History
+rejections carry their reason, full operation/parent identity and decoded entity
+context through the generic repository and coordinator. SQL vetoes of current
+artifact/guild state remain removed. The SQL harness checks diagnostics after
+rollback for malformed payload, both identity-conflict routes, missing parent
+and unsupported uncommitted v1 history; it retains v1 receipt/outbox compatibility
+and actual mirror/reload/order checks.
+
+Focused integration commands passed:
+
+```sh
+make -C src -j16
+./scripts/format.sh --all --check
+python3 scripts/epic_zone_seed.py check
+python3 tests/async/test_epic_gain_runtime.py
+python3 tests/async/test_epic_skill_level_gate.py
+python3 tests/async/test_epic_bonus_hot_path.py
+python3 tests/async/test_set_based_gameplay_reads.py
+python3 tests/async/test_persistence_severity.py
+python3 tests/async/test_persistence_log.py
+python3 tests/async/test_persistence_log_hygiene.py
+python3 tests/async/test_critical_command_coordinator.py
+python3 tests/async/test_critical_transaction_contract.py
+python3 tests/async/test_artifact_guild_transactional_cutover.py
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+python3 tests/async/test_combat_artifact_persistence.py
+python3 tests/async/test_artifact_cache_codec.py
+tests/async/with_disposable_mariadb.sh bash tests/async/run_artifact_guild_schema_mysql.sh
+python3 tests/async/test_documentation_contract.py
+npm test --prefix site
+```
+
+The regenerated manifest changes only `src/world/epic.h`'s source hash. No payout,
+group size or override policy changed. Build evidence is retained in the isolated
+integration worktree's `bin/analysis/integration/build.log`. This focused pass is
+not final combined-stack qualification or production rollout; full-server fault
+journeys and the broad gates remain due after #73–#75 integration.
+
 Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
 [qualification record](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
 maps the acceptance criteria to tests, records local logs and separates review

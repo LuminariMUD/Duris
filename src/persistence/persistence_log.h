@@ -34,3 +34,8 @@ persistence_log_metrics persistence_log_snapshot();
 bool persistence_log_drain(unsigned timeout_ms);
 // Game-thread observer; implemented alongside wizlog, never called by the worker.
 void persistence_log_poll();
+
+struct critical_completion;
+// Game-thread failure report: one searchable disk record per operation, with a
+// readable, rate-limited staff notice. Only typed diagnostic values enter it.
+void persistence_critical_failure(int level, const critical_completion &completion);

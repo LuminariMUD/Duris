@@ -246,6 +246,22 @@ int main()
 			if (line.find(std::string("reason=") + reason) != std::string::npos)
 				named = true;
 		assert(named);
+		const std::string detail = result.failure_detail.data();
+		assert(detail.find(std::string("reason=") + reason) != std::string::npos);
+		assert(detail.find("operation=" + hex_id(command.operation_id)) !=
+		       std::string::npos);
+		assert(detail.find("site=src/guild/artifact_guild_repository.c:") !=
+		       std::string::npos);
+		artifact_guild_payload captured = {};
+		if (artifact_guild_command_decode_payload(command, &captured))
+		{
+			assert(detail.find("parent=" + hex_id(captured.parent_operation_id)) !=
+			       std::string::npos);
+			assert(detail.find("actor_pid=" + std::to_string(captured.actor_pid)) !=
+			       std::string::npos);
+			assert(detail.find("guild_id=" + std::to_string(captured.guild_id)) !=
+			       std::string::npos);
+		}
 	};
 	artifact_guild_payload payload = {};
 	payload.actor_pid = ACTOR_PID;

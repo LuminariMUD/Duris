@@ -1,5 +1,36 @@
 # Log review: implementation and follow-up plan
 
+## Current integration checkpoint — 2026-10-14
+
+#70 is being reconciled with `origin/master` at `67ca142ff` using a merge that
+preserves published history. The current full queue and retained archive are on
+the top review branch `fix/56-runtime-review`; the earlier qualification below
+does not prove this integration. Next propagate #70 through #73, #74 and #75,
+repair #73's obsolete boon gate and #74's area overflow/Seadog help, then qualify
+the stable combined batch. Leave all reviews unmerged.
+
+Outcome: retain all-level awards, pending task recovery and readable bounded
+diagnostics with memory-authoritative artifact/guild rewards. Files: the epic,
+repository/coordinator and completion paths, existing harnesses and pipeline
+documentation. Proof: focused native/SQL checks followed by the final stack's
+required build, regression, database, formatting and documentation gates.
+Production operations and historical repair remain outside this work.
+
+Ablation retains one history implementation: old SQL gameplay vetoes and their
+rejection tests are replaced by diagnostic checks for actual v2 history failures.
+Existing v1 receipt/outbox compatibility and mirror reconciliation remain. The
+epic-zone manifest was regenerated; only the header hash changes, with payouts,
+group sizes and override policy verified unchanged.
+
+Focused integration validation passed: `make -C src -j16`, full-tree formatting,
+14 documentation and 15 site tests; epic gain/skill/bonus/task tests; persistence
+severity/log/hygiene/coordinator/transaction tests; artifact cutover/runtime,
+combat persistence and cache tests; and the disposable artifact/guild SQL wrapper
+including snapshot reload, ordering and v1 receipt/outbox cases. Exact commands
+are recorded in `docs/testing/REGRESSIONS.md`. Full-server restart/crash journeys
+and broad gates remain due on the final combined stack; prior results do not
+substitute for that pass.
+
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
 Status: active. LR-01 statistics was squash-merged in
@@ -252,21 +283,8 @@ The existing scheduler harness alone does not prove cross-store agreement.
 
 ### LR-02 — Epic boon eligibility feedback (medium; #56 §3)
 
-- [ ] Show accurate completion/reward feedback below and at the epic gain gate.
-
-[boon.c](../../src/economy/boon.c), `boon_publish_transaction_result()`, announces
-completion before `gain_epic()` can decline a below-level award.
-[epic.c](../../src/world/epic.c) already provides `epic_level_can_gain()` and
-`epic_gain_min_level()`; the checked-in minimum is 50. Reuse those rules to explain
-why a completed epic boon awarded no epics. Preserve boon completion semantics,
-non-epic rewards, and the existing successful-award feedback; do not lower the
-gate, reopen a consumed boon, or claim a persistence failure.
-
-Extend [test_epic_level_gate.py](../../tests/async/test_epic_level_gate.py) with
-the actual publication/award path, supplementing its helper/source checks.
-At levels 49/50 and an overridden configured boundary, assert message, epic
-balance, and completion state together. Cover a declined award without a false
-success message and ensure the change adds no second reward application.
+- [x] Retired the level-boundary feedback work: epic points can be earned at any
+  level, so boon awards cannot be declined for being below an epic gain minimum.
 
 ### LR-03 — Epic training minimum (medium; policy decision; #56 §3)
 
@@ -279,14 +297,14 @@ read by `epic_skills_min_level()` and enforced by `epic_teacher()` in
 [epic_skills.c](../../src/classes/epic_skills.c). Refusal below 30 follows that
 rule. The property, compiled default, [Ship Damage Control reference](../reference/SHIP_GAMEPLAY.md#ship-damage-control),
 and [CODEBASE.md](../reference/CODEBASE.md#epic-point-and-epic-skill-levels) now
-agree. Epic point gain remains separately gated at level 50. The teacher-command
+agree. Epic points can be earned at any level. The teacher-command
 journey below remains the focused follow-up for this plan.
 
 Prove teacher behavior at minimum minus one, minimum, and minimum plus one with
 otherwise eligible characters and sufficient funds. Refusal must spend nothing;
 successful training must retain its class/prerequisite/cost checks. Extend the
-level-gate test and run an actual teacher-command journey. Keep epic gain and
-epic training thresholds independently configurable.
+skill-level test and run an actual teacher-command journey. Keep the epic
+training minimum configurable; epic point gain has no level threshold.
 
 ### LR-04 — Mastery completion feedback (low; #56 §3)
 

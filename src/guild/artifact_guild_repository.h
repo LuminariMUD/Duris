@@ -19,10 +19,11 @@
 
 #include <mysql/mysql.h>
 
-void artifact_guild_repository_diagnostic(const critical_command &command, const char *reason,
-					  unsigned int error);
+std::array<char, 1024> artifact_guild_repository_diagnostic(const critical_command &command,
+							    const char *reason, unsigned int error);
 bool artifact_guild_repository_execute(MYSQL *connection, const critical_command &command,
 				       artifact_guild_result *result, unsigned int *result_code,
-				       bool *mutation_applied);
+				       bool *mutation_applied,
+				       std::array<char, 1024> *failure_detail);
 
 #endif

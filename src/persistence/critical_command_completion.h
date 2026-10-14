@@ -43,6 +43,9 @@ struct critical_apply_result
 	unsigned int error_code;
 	uint16_t result_size = 0;
 	std::array<uint8_t, CRITICAL_COMPLETION_RESULT_MAX_BYTES> result_payload = {};
+	// Diagnostic text contains only source labels and numeric identities/state, never SQL
+	// or player-supplied strings. It is transient, not part of the durable result codec.
+	std::array<char, 1024> failure_detail = {};
 };
 
 struct critical_completion
@@ -58,6 +61,7 @@ struct critical_completion
 	uint64_t completed_at_usec;
 	uint16_t result_size = 0;
 	std::array<uint8_t, CRITICAL_COMPLETION_RESULT_MAX_BYTES> result_payload = {};
+	std::array<char, 2048> failure_detail = {};
 };
 
 // Completion delivery is serialized by the coordinator mutex. It owns bounded

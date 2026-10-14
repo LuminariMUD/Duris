@@ -96,7 +96,7 @@ class ArtifactGuildCutoverTests(unittest.TestCase):
             self.assertNotIn("add_points_from_epics", body)
             self.assertNotIn("epic_feed_artifacts", body)
             self.assertNotIn("artifact_feed_sql", body)
-        gain_start = epic.index("void gain_epic(")
+        gain_start = epic.index("bool gain_epic(")
         gain_end = epic.index("struct affected_type *get_epic_task", gain_start)
         gain = epic[gain_start:gain_end]
         self.assertIn("epic_transaction_submit_identified", gain)

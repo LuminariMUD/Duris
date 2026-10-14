@@ -703,9 +703,11 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	     !zone_command && !audit_command) ||
 	    !critical_command_valid(command))
 	{
+		auto rejected = failure(EINVAL);
 		if (command.type == critical_command_type::artifact)
-			artifact_guild_repository_diagnostic(command, "malformed_payload", EINVAL);
-		return { critical_apply_outcome::terminal_failure, 0, EINVAL };
+			rejected.failure_detail = artifact_guild_repository_diagnostic(
+				command, "malformed_payload", EINVAL);
+		return rejected;
 	}
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> command_hash = {}, keys_hash = {};
 	if (!command_hashes(command, &command_hash, &keys_hash))
@@ -733,11 +735,13 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 			}
 			if (!identity_matches(stored, command, command_hash, keys_hash))
 			{
+				auto rejected = failure(EEXIST);
 				if (command.type == critical_command_type::artifact)
-					artifact_guild_repository_diagnostic(
-						command, "identity_conflict", EEXIST);
+					rejected.failure_detail =
+						artifact_guild_repository_diagnostic(
+							command, "identity_conflict", EEXIST);
 				rollback(connection);
-				return { critical_apply_outcome::terminal_failure, 0, EEXIST };
+				return rejected;
 			}
 			rollback(connection);
 			return stored_result(stored.result_code ?
@@ -1022,15 +1026,19 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	if (artifact_guild_command)
 	{
 		artifact_guild_result outcome_result = {};
+		std::array<char, 1024> failure_detail = {};
 		unsigned int result_code = 0;
 		bool mutation_applied = false;
 		if (!artifact_guild_repository_execute(connection, command, &outcome_result,
-						       &result_code, &mutation_applied))
+						       &result_code, &mutation_applied,
+						       &failure_detail))
 		{
 			const unsigned int database_failure = database_error(connection);
 			const unsigned int error = database_failure ? database_failure : errno;
 			rollback(connection);
-			return failure(error);
+			auto rejected = failure(error);
+			rejected.failure_detail = failure_detail;
+			return rejected;
 		}
 		std::array<uint8_t, ARTIFACT_GUILD_RESULT_BYTES> result_payload = {};
 		uint64_t durable_revision = outcome_result.guild_revision;

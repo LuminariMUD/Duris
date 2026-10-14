@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -208,17 +210,52 @@ player_save_apply_result execute(const writer_job &job)
 		}
 		return { player_save_apply_outcome::retryable_failure, 0, applied.error_code };
 	}
-	const critical_completion completion = { .operation_id = job.command.operation_id,
-						 .type = job.command.type,
-						 .outcome = applied.outcome,
-						 .durable_revision = applied.durable_revision,
-						 .error_code = applied.error_code,
-						 .attempt = 1,
-						 .queued_at_usec = job.queued_at_usec,
-						 .started_at_usec = started,
-						 .completed_at_usec = now_usec(),
-						 .result_size = applied.result_size,
-						 .result_payload = applied.result_payload };
+	critical_completion completion = { .operation_id = job.command.operation_id,
+					   .type = job.command.type,
+					   .outcome = applied.outcome,
+					   .durable_revision = applied.durable_revision,
+					   .error_code = applied.error_code,
+					   .attempt = 1,
+					   .queued_at_usec = job.queued_at_usec,
+					   .started_at_usec = started,
+					   .completed_at_usec = now_usec(),
+					   .result_size = applied.result_size,
+					   .result_payload = applied.result_payload };
+	if (applied.outcome == critical_apply_outcome::terminal_failure)
+	{
+		// Carry owned diagnostic values to the game thread before the command is erased.
+		// A bounded record names any omitted keys explicitly; the repository's exact
+		// failed comparison is kept first so large commands cannot displace it.
+		static const char *source_names[] = { "unknown",	"command", "combat",
+						      "zone_event",	"login",   "recovery",
+						      "operator_repair" };
+		const auto source = static_cast<size_t>(job.command.source_site);
+		snprintf(completion.failure_detail.data(), completion.failure_detail.size(),
+			 "%s source=%s key_count=%zu keys=", applied.failure_detail.data(),
+			 source < std::size(source_names) ? source_names[source] : "unknown",
+			 job.command.keys.size());
+		static const char *key_names[] = { "unknown",	 "player",    "account",  "item",
+						   "guild",	 "locker",    "corpse",	  "auction",
+						   "room",	 "system",    "artifact", "zone",
+						   "shopkeeper", "collector", "pet" };
+		for (size_t index = 0; index < job.command.keys.size(); ++index)
+		{
+			const size_t used = strlen(completion.failure_detail.data());
+			const size_t remaining = completion.failure_detail.size() - used;
+			if (remaining < 96)
+			{
+				snprintf(completion.failure_detail.data() + used, remaining,
+					 " omitted_keys=%zu", job.command.keys.size() - index);
+				break;
+			}
+			const auto &key = job.command.keys[index];
+			const auto type = static_cast<size_t>(key.type);
+			snprintf(completion.failure_detail.data() + used, remaining, "%s%s:%llu",
+				 index ? "," : "",
+				 type < std::size(key_names) ? key_names[type] : "unknown",
+				 static_cast<unsigned long long>(key.id));
+		}
+	}
 	std::lock_guard<std::mutex> lock(coordinator_mutex);
 	// There is room for one completion per operation, so none is dropped here.
 	if (health.initialized && job.generation == generation)
