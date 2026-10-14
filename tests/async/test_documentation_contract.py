@@ -71,7 +71,7 @@ def github_anchors(markdown: str) -> set[str]:
         # GitHub and GitLab keep a heading's underscores in its anchor.
         heading = re.sub(r"[`*~]", "", heading).strip().lower()
         slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"\s+", "-", slug)
+        slug = slug.replace(" ", "-")
         suffix = counts.get(slug, 0)
         counts[slug] = suffix + 1
         anchors.add(slug if suffix == 0 else f"{slug}-{suffix}")
@@ -89,6 +89,14 @@ class DocumentationContractTest(unittest.TestCase):
         # Guard the discovery itself: an over-broad exclude would silently empty
         # the corpus and turn every content assertion below into a no-op.
         self.assertGreater(len(GUIDES), len(ANCHORS))
+
+    def test_heading_punctuation_preserves_each_space(self) -> None:
+        # github-slugger (also used by site/build.mjs) replaces each space,
+        # including the two left when punctuation between words is removed.
+        self.assertEqual(github_anchors("## Integration handoff \u2014 2026-10-13\n"
+                                        "## Integration handoff \u2014 2026-10-13\n"),
+                         {"integration-handoff--2026-10-13",
+                          "integration-handoff--2026-10-13-1"})
 
     def test_readme_version_and_setup_contract(self) -> None:
         readme = self.text[ROOT / "README.md"]
