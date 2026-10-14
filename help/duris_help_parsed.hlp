@@ -7811,6 +7811,18 @@ random direction.
 Epic
 Epic - Last Edited: 2015-09-18 16:37:13 by lohrr
 ================================================
+You can earn Epic Points at any level, from runestones and monoliths,
+enemy kills and other epic rewards. Epic potions can be quaffed at any
+level and award 75 points each.
+
+Use 'score' to see your balance, total earned points and current epic task.
+The Gods may assign a task as you earn points. Until it is complete, some
+further awards are reduced. Epic potions do not count toward assigning tasks.
+Epic skill training begins at level 30, with each skill's usual class,
+prerequisite, epic-point and platinum requirements. Use 'epic skills' to
+find teachers. Epic points are spent directly; separate skill points are
+no longer used.
+
 The epics needed to progress past level 50 are as follows...
 * 51:  1000 + touch Charcoal Palace, The Great Shaboath, or Lost Temple of Tikitzopl
 * 52:  2500 + touch Plane of Fire-Brass, Githzerai Stronghold or Temple of Earth.
@@ -7845,12 +7857,15 @@ The following help topics also matched your search:
 Epic skills
 Epic skills - Last Edited: 2015-01-22 20:31:43 by ashyel
 ========================================================
-Epic skills are a series of skills that can be enhanced through advanced learning.  In order to gain these skills a player would need to seek out a special teacher and provide him payment in the form of epic skill points and platinum.  A list of the available epic skills and the teachers who can provide them can be found by typing 'epic skills'.  Further details, including zone information, can be found by typing help <epic skill name>.
-Epic skills can be notched in parts or maxed out in one visit based on how many skill points/platinum coins a player is willing or able to spend at one time.
+Epic skills can be enhanced through advanced learning. Seek out a special
+teacher and pay with epic points and platinum. Type 'epic skills' for the
+available skills and their teachers, or 'help <epic skill name>' for details.
+Skills can be notched in parts or mastered in one visit if you can pay the
+cost. Epic points are spent directly; separate skill points are not used.
 
 Epic skill training begins at level 30. Each skill still requires its usual
-eligibility, epic points and platinum. Earning new epic points requires
-level 50; lowering the training level does not change stone costs.
+eligibility, epic points and platinum. You can earn new epic points at any
+level. Stone costs are unchanged.
 A more comprehensive list, including names and locations of epic skill teachers, can be found on the DurisMUD wiki at http://duris.wikia.com/wiki/Epic_skills.
 ==See also==
 * Epic skill cost

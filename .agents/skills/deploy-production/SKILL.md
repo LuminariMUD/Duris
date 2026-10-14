@@ -57,12 +57,12 @@ Consult subsystem documentation only for the operations that actually apply.
   those mechanics, not as a requirement to create a test environment. Do not
   replay historical repair/wipe scripts as though they were pending migrations.
   Finish with `migrations/verify_runtime_compatibility.sh`.
-- Update help when the release changes it. The importer gives
-  `help/duris_help_parsed.hlp` precedence over `lib/information/help_index`;
-  correct colliding stale entries. Run the innate help generator only when
-  relevant. Update `lib/information/news` for missing player-facing changes in
-  the release, retaining its colors/layout and avoiding duplicate announcements
-  or temporary deployment notices.
+- Update help when the release changes it. See SKILL `.agents/skills/news-update`
+  The importer gives `help/duris_help_parsed.hlp` precedence over
+  `lib/information/help_index`; correct colliding stale entries. Run the innate
+  help generator only when relevant. Update `lib/information/news` for missing
+  player-facing changes in the release, retaining its colors/layout and avoiding
+  duplicate announcements or temporary deployment notices.
 - Preview and publish changed content using
   `scripts/import_help_to_prod.sh --local --dry-run`, then `--local`.
   Use `--news-only` for both commands when only news changed. Answer its normal
@@ -125,6 +125,10 @@ Confirm the game's countdown/message. Keep Veridian connected and observe the
 countdown until the server disconnects for reboot. Do not resend `shutdown` to
 check progress; it can cancel or replace a pending shutdown. Use `time` instead.
 
+Keep Veridian logged in through the reboot. Answer any questions asked to you
+on any of the channels to the best of your ability, but add a little note
+that you are an AI Agent.
+
 ## 5. Watch the logs and verify the game returns
 
 Start observing before the reboot and continue through startup. Follow the
@@ -146,3 +150,6 @@ schema. Report unresolved failures with the actual service state. Completion
 means the rebuilt game is running and healthy, not merely that reboot was
 scheduled. Report the revision, migrations/content changed, build result, and
 restart/log/health result concisely.
+
+In case of disaster, restore the preserved executable and production stamp, then
+reboot with it.

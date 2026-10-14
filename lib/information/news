@@ -20,6 +20,22 @@ coverage, back to December 14, 2025, and the archive follow.
 &+Y-&n An epic potion stays in your hand or pack if its award cannot be given.
   A successful quaff consumes one potion and awards &+Y75 epic points&n.
 
+&+CRewards, training and recovery&n
+&+Y-&n Artifact and guild rewards now keep up correctly when you earn several
+  epic awards in quick succession, including across saves and reconnects.
+&+Y-&n Epic boons report whether points were actually awarded. Paid epic
+  training updates derived hit points and client displays immediately,
+  and announces when you master the skill.
+&+Y-&n Healing correctly clears an incapacitated or stunned posture once
+  you recover. Combat stops processing a strike when either fighter dies.
+&+Y-&n Area listings stay within their output limit and show corrected zone
+  averages. Help now covers &+C'web spray'&n, &+C'seadog'&n and &+C'quickstep'&n.
+
+&+CHometown warnings and racial shrug&n
+&+Y-&n Evil hometown invasion alarms are enabled, using the same alarm
+  chances and timing as before. Good hometown alarms remain enabled.
+&+Y-&n Grey Elf shrug returns to &+Y30&n and Drow Elf shrug to &+Y38&n.
+
 &+R10/12/26 - 10/13/26&n &+L-&n &+YOld battle rhythms and earlier epic training&n
 &+W----------------------------------------------------------------------&n
 

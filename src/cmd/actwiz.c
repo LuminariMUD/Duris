@@ -4649,8 +4649,7 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 
 	int mins_to_reboot = 0;
 	const char *type = "reboot";
-	char reason[MAX_STRING_LENGTH];
-	strcpy(reason, "No reason given"); // Default reason
+	char reason[MAX_STRING_LENGTH] = "";
 
 	type = scheduled_shutdown_type_name(shutdownData.eShutdownType, false);
 
@@ -4728,7 +4727,7 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 			"Notes:\r\n"
 			"  - Scheduled shutdowns are cancelled when the scheduler leaves the game\r\n"
 			"    or uses the shutdown command again\r\n"
-			"  - Reason is optional but recommended for tracking purposes\r\n",
+			"  - Reason is optional; it is broadcast to players and saved for tracking\r\n",
 			ch);
 		return;
 	}
@@ -4804,7 +4803,8 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	}
 	type = scheduled_shutdown_type_name(shutdownData.eShutdownType, false);
 	strcpy(shutdownData.IssuedBy, GET_NAME(ch));
-	strlcpy(shutdownData.Reason, reason, sizeof shutdownData.Reason);
+	strlcpy(shutdownData.Reason, *reason ? reason : "No reason given",
+		sizeof shutdownData.Reason);
 	shutdownData.next_warning = -1;
 	shutdownData.reboot_time = (time(0) + (mins_to_reboot * 60));
 	snprintf(buf, sizeof buf, "Scheduled %s initiated by %s in %d minutes.", type, GET_NAME(ch),
@@ -4812,6 +4812,11 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	wizlog(60, "%s", buf);
 	sql_log(ch, WIZLOG, "%s initiated by %s in %d minutes.", type, GET_NAME(ch),
 		mins_to_reboot);
+	if (*reason)
+	{
+		send_to_all(reason);
+		send_to_all("&n\r\n");
+	}
 	// calling the event will start the event
 	timedShutdown(NULL, NULL, NULL, NULL);
 }
@@ -6546,41 +6551,44 @@ void do_vis(P_char ch, char *argument, int /*cmd*/)
 
 namespace
 {
-struct demote_context
-{
-	uint32_t administrator_pid;
-};
+	struct demote_context
+	{
+		uint32_t administrator_pid;
+	};
 
-void demote_committed(P_char victim, bool committed, const epic_command_result &, unsigned int,
-		      const uint8_t *raw_context, size_t context_size)
-{
-	if (!committed)
+	void demote_committed(P_char victim, bool committed, const epic_command_result &,
+			      unsigned int, const uint8_t *raw_context, size_t context_size)
 	{
-		send_to_char("The administrative epic reset failed; demotion was not applied.\n",
-			     victim);
-		return;
+		if (!committed)
+		{
+			send_to_char(
+				"The administrative epic reset failed; demotion was not applied.\n",
+				victim);
+			return;
+		}
+		for (int skill = 0; skill < MAX_SKILLS; ++skill)
+			victim->only.pc->skills[skill].learned = 0;
+		NewbySkillSet(victim, TRUE);
+		victim->points.max_mana = 0;
+		victim->points.max_vitality = 0;
+		victim->specials.conditions[0] = 24;
+		victim->specials.conditions[1] = 24;
+		victim->specials.conditions[2] = 0;
+		do_start(victim, 0);
+		send_to_char("You have just been demoted to level one... oh well.\n", victim);
+		logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset",
+		      GET_NAME(victim));
+		if (context_size == sizeof(demote_context))
+		{
+			demote_context context = {};
+			memcpy(&context, raw_context, sizeof(context));
+			P_char administrator = find_player_by_pid(context.administrator_pid);
+			if (administrator)
+				send_to_char(
+					"The demotion and epic reset committed successfully.\n",
+					administrator);
+		}
 	}
-	for (int skill = 0; skill < MAX_SKILLS; ++skill)
-		victim->only.pc->skills[skill].learned = 0;
-	NewbySkillSet(victim, TRUE);
-	victim->points.max_mana = 0;
-	victim->points.max_vitality = 0;
-	victim->specials.conditions[0] = 24;
-	victim->specials.conditions[1] = 24;
-	victim->specials.conditions[2] = 0;
-	do_start(victim, 0);
-	send_to_char("You have just been demoted to level one... oh well.\n", victim);
-	logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset", GET_NAME(victim));
-	if (context_size == sizeof(demote_context))
-	{
-		demote_context context = {};
-		memcpy(&context, raw_context, sizeof(context));
-		P_char administrator = find_player_by_pid(context.administrator_pid);
-		if (administrator)
-			send_to_char("The demotion and epic reset committed successfully.\n",
-				     administrator);
-	}
-}
 } // namespace
 
 void do_demote(P_char ch, char *argument, int /*cmd*/)
