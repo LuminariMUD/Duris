@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "net/discord_petition.h"
 #include "account/creation_availability_config.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -6551,44 +6552,41 @@ void do_vis(P_char ch, char *argument, int /*cmd*/)
 
 namespace
 {
-	struct demote_context
-	{
-		uint32_t administrator_pid;
-	};
+struct demote_context
+{
+	uint32_t administrator_pid;
+};
 
-	void demote_committed(P_char victim, bool committed, const epic_command_result &,
-			      unsigned int, const uint8_t *raw_context, size_t context_size)
+void demote_committed(P_char victim, bool committed, const epic_command_result &, unsigned int,
+		      const uint8_t *raw_context, size_t context_size)
+{
+	if (!committed)
 	{
-		if (!committed)
-		{
-			send_to_char(
-				"The administrative epic reset failed; demotion was not applied.\n",
-				victim);
-			return;
-		}
-		for (int skill = 0; skill < MAX_SKILLS; ++skill)
-			victim->only.pc->skills[skill].learned = 0;
-		NewbySkillSet(victim, TRUE);
-		victim->points.max_mana = 0;
-		victim->points.max_vitality = 0;
-		victim->specials.conditions[0] = 24;
-		victim->specials.conditions[1] = 24;
-		victim->specials.conditions[2] = 0;
-		do_start(victim, 0);
-		send_to_char("You have just been demoted to level one... oh well.\n", victim);
-		logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset",
-		      GET_NAME(victim));
-		if (context_size == sizeof(demote_context))
-		{
-			demote_context context = {};
-			memcpy(&context, raw_context, sizeof(context));
-			P_char administrator = find_player_by_pid(context.administrator_pid);
-			if (administrator)
-				send_to_char(
-					"The demotion and epic reset committed successfully.\n",
-					administrator);
-		}
+		send_to_char("The administrative epic reset failed; demotion was not applied.\n",
+			     victim);
+		return;
 	}
+	for (int skill = 0; skill < MAX_SKILLS; ++skill)
+		victim->only.pc->skills[skill].learned = 0;
+	NewbySkillSet(victim, TRUE);
+	victim->points.max_mana = 0;
+	victim->points.max_vitality = 0;
+	victim->specials.conditions[0] = 24;
+	victim->specials.conditions[1] = 24;
+	victim->specials.conditions[2] = 0;
+	do_start(victim, 0);
+	send_to_char("You have just been demoted to level one... oh well.\n", victim);
+	logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset", GET_NAME(victim));
+	if (context_size == sizeof(demote_context))
+	{
+		demote_context context = {};
+		memcpy(&context, raw_context, sizeof(context));
+		P_char administrator = find_player_by_pid(context.administrator_pid);
+		if (administrator)
+			send_to_char("The demotion and epic reset committed successfully.\n",
+				     administrator);
+	}
+}
 } // namespace
 
 void do_demote(P_char ch, char *argument, int /*cmd*/)
@@ -7622,6 +7620,7 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
 		send_to_char("That person can't hear you.\n", ch);
 		return;
 	}
+	discord_petition_export(ch, msg, vict);
 	if (ch->desc)
 	{
 		if (IS_SET(ch->specials.act, PLR_ECHO))

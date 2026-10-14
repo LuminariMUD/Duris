@@ -16778,6 +16778,10 @@ currently on the MUD (if there are any).  Certain guidelines should be
 followed when petitioning:
 * Do not inquire if gods are online. Describe your problem in details
 so they can come back to it later when they have time.
+When the optional Discord petition feed is enabled, accepted petitions and
+staff ptell replies may also appear in a staff-only Discord channel, even when
+no gods are online. Discord posts cannot reply into the game. Native petition
+recipients, toggles, and logs remain unchanged; the feed is best effort.
 ==See also==
 gods, togglepetition, website, forums, bug, idea, typo, tell
 The following help topics also matched your search:

@@ -10,6 +10,7 @@
  */
 
 #include "core/prototypes.h"
+#include "net/discord_petition.h"
 #include "player/output_message.h"
 #include "cmd/information_cache.h"
 #include "cmd/help_cache.h"
@@ -278,6 +279,7 @@ void do_petition(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("Petition what?\r\n", ch);
 	else if (IS_PC(ch))
 	{
+		discord_petition_export(ch, argument);
 		if (IS_SET(ch->specials.act, PLR_ECHO))
 		{
 			snprintf(

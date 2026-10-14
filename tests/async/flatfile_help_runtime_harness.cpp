@@ -34,6 +34,11 @@ int main()
 	const string missing = wiki_help("definitely missing topic");
 	require(missing.find("no help topics") != string::npos,
 		"missing help did not preserve the user-facing result");
+	const string ptell = wiki_help("ptell");
+	for (const char *disclosure : { "staff-only Discord", "sender and target", "Someone",
+					"cannot become game replies", "best effort" })
+		require(ptell.find(disclosure) != string::npos,
+			"canonical PTELL help omitted the Discord privacy disclosure");
 	for (const char *query : { "nolocate", "no locate", "no-locate", "toggle_nolocate" })
 	{
 		const string no_locate = wiki_help(query);

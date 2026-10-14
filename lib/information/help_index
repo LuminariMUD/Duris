@@ -6766,6 +6766,11 @@ This is exactly like tell, except that <text> is broadcast to all gods
 with petition toggled on, to let them know that you responded to a
 particular petition.
 
+When enabled, the optional staff-only Discord petition feed also receives one
+copy of an accepted ptell, labeled with its sender and target. Concealed names
+are shown as Someone. Discord posts cannot become game replies. The existing
+native recipients, toggles, and logs are unchanged; delivery is best effort.
+
 Example:
         Oinkoink petitions 'Why is the sky blue?'
 
@@ -20297,6 +20302,11 @@ Syntax: ptell <player> <message>
 Avatar command (level 57). Responds directly to a mortal's petition. The reply is shown to
 the petitioner attributed to you (or 'Someone' if invisible), and gods
 watching petitions see a copy.
+
+When enabled, the optional staff-only Discord petition feed also receives one
+copy of an accepted ptell, labeled with its sender and target. Concealed names
+are shown as Someone. Discord posts cannot become game replies. The existing
+native recipients, toggles, and logs are unchanged; delivery is best effort.
 
 See also: PETITION_BLOCK, WIZMSG
 ===========================================================================
