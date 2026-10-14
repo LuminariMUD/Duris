@@ -93,6 +93,8 @@ enum class MechanicId
 	equipment_load,
 	inventory_load,
 	racial_age_data,
+	race_affect_cleanup,
+	death_affect_cleanup,
 	count
 };
 
@@ -148,6 +150,7 @@ using CommandHandler = void (*)(char_data *, char *, int);
 using CommandSlot = CommandHandler const *;
 using RaceSpecPredicate = bool (*)(int, unsigned int, int);
 using CharacterAction = void (*)(char_data *);
+using AffectRemoval = void (*)(char_data *, affected_type *);
 using ObjectAction = void (*)(char_data *, obj_data *);
 using EpicSubmit = decltype(&epic_transaction_submit);
 using WalletSubmit = decltype(&currency_transaction_submit_wallet_value);
@@ -183,7 +186,7 @@ using MechanicBinding =
 		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue,
 		     RoomRegistration, RoomProcedure, CharacterReset, SkillReset, SkillDataQuery,
 		     WalletSubmit, ClassHitpointFactors, RacialStatFactors, StatusFields,
-		     player_checkpoint_component, event_func_type, RacialAgeData>;
+		     player_checkpoint_component, event_func_type, RacialAgeData, AffectRemoval>;
 
 struct MechanicConnection
 {
@@ -259,6 +262,8 @@ std::span<const MechanicConnection> revenant_connections();
 std::span<const MechanicConnection> object_periodic_connections();
 std::span<const MechanicConnection> item_load_connections();
 std::span<const MechanicConnection> racial_age_connections();
+std::span<const MechanicConnection> affect_cleanup_connections();
+std::span<const MechanicConnection> death_connections();
 std::span<const TransitionConnection> revenant_transitions();
 std::span<const TransitionConnection> multiclass_transitions();
 std::span<const TransitionConnection> specialization_transitions();

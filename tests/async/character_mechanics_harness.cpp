@@ -158,7 +158,93 @@ static void revenant_transition()
 	assert(mechanic_object_events == 2);
 	obj_index[0].func.obj = nullptr;
 	std::puts(
-		"revenant.entry/lifecycle: PASS (registered periodic callback, guards, race/tag/birth, stripping, retention, removal and conflicts; scheduler, equipment transfer and generic affect cleanup are fixture boundaries)");
+		"revenant.entry/lifecycle: PASS (registered periodic callback, guards, race/tag/birth, stripping, retention, removal and conflicts; scheduler, equipment transfer and derived-stat services are fixture boundaries)");
+}
+
+static void race_and_death_cleanup()
+{
+	AffectRemoval remove = nullptr;
+	CharacterAction death = nullptr;
+	for (const auto &connection : mechanic_connections())
+	{
+		if (connection.id == MechanicId::race_affect_cleanup)
+			remove = std::get<AffectRemoval>(connection.binding);
+		if (connection.id == MechanicId::death_affect_cleanup)
+			death = std::get<CharacterAction>(connection.binding);
+	}
+	assert(remove == affect_remove && death);
+	char_data subject{};
+	pc_only_data pc{};
+	subject.only.pc = &pc;
+	SET_POS(&subject, STAT_DEAD);
+	// Exercise real head, middle and tail removal. The last case represents
+	// raw_damage having already restored race before generic cleanup runs.
+	for (int position = 0; position < 3; ++position)
+	{
+		affected_type *nodes[] = { new affected_type{}, new affected_type{},
+					   new affected_type{} };
+		for (int i = 0; i < 3; ++i)
+		{
+			nodes[i]->type = SPELL_BLESS;
+			nodes[i]->next = i < 2 ? nodes[i + 1] : nullptr;
+		}
+		nodes[position]->type = TAG_RACE_CHANGE;
+		nodes[position]->modifier = RACE_ORC;
+		nodes[position]->flags = AFFTYPE_NOSAVE | AFFTYPE_NOAPPLY;
+		subject.affected = nodes[0];
+		subject.player.race = position == 2 ? RACE_ORC : RACE_REVENANT;
+		const auto now = time(nullptr);
+		subject.player.time.birth = now - 100 * SECS_PER_MUD_YEAR;
+		remove(&subject, nodes[position]);
+		assert(subject.player.race == RACE_ORC);
+		assert(subject.player.time.birth >= now - 15 * SECS_PER_MUD_YEAR);
+		assert(subject.player.time.birth <= time(nullptr) - 15 * SECS_PER_MUD_YEAR);
+		int survivors = 0;
+		for (auto *af = subject.affected; af; af = af->next)
+		{
+			assert(af->type == SPELL_BLESS);
+			++survivors;
+		}
+		assert(survivors == 2);
+		while (subject.affected)
+			remove(&subject, subject.affected);
+	}
+	auto *memory = new affected_type{};
+	auto *race = new affected_type{};
+	auto *temporary = new affected_type{};
+	auto *permanent = new affected_type{};
+	auto *temporary_memory = new affected_type{};
+	memory->type = temporary_memory->type = TAG_MEMORIZE;
+	memory->flags = AFFTYPE_PERM | MEMTYPE_FULL;
+	temporary_memory->flags = MEMTYPE_FULL;
+	memory->modifier = SPELL_BLESS;
+	permanent->type = SPELL_BLESS;
+	permanent->flags = AFFTYPE_PERM;
+	race->type = TAG_RACE_CHANGE;
+	race->modifier = RACE_ORC;
+	race->flags = AFFTYPE_NOSAVE | AFFTYPE_NOAPPLY;
+	memory->next = race;
+	race->next = temporary;
+	temporary->next = permanent;
+	permanent->next = temporary_memory;
+	subject.affected = memory;
+	subject.player.race = RACE_REVENANT;
+	const auto now = time(nullptr);
+	subject.player.time.birth = now - 100 * SECS_PER_MUD_YEAR;
+	const int before_removed = mechanic_removed_affects;
+	death(&subject);
+	assert(mechanic_removed_affects == before_removed + 3);
+	assert(subject.affected == memory && memory->next == permanent && !permanent->next);
+	assert((memory->flags & AFFTYPE_PERM) && !(memory->flags & MEMTYPE_FULL));
+	assert(memory->modifier == SPELL_BLESS && permanent->flags == AFFTYPE_PERM);
+	assert(subject.player.race == RACE_ORC);
+	assert(subject.player.time.birth >= now - 15 * SECS_PER_MUD_YEAR);
+	assert(subject.player.time.birth <= time(nullptr) - 15 * SECS_PER_MUD_YEAR);
+	while (subject.affected)
+		remove(&subject, subject.affected);
+	death(&subject);
+	std::puts(
+		"race/death.cleanup: PASS (real removal at head/middle/tail, original race/birth even after fatal race reset, permanent retention and memorized fullness; stat/light/event services remain fixture boundaries)");
 }
 
 static void multiclass_denials()
@@ -701,6 +787,7 @@ int main()
 	multiclass_denials();
 	multiclass_reset_and_consumers();
 	revenant_transition();
+	race_and_death_cleanup();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));
 	const auto connections = identity_connections();

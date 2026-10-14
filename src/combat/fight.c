@@ -2330,11 +2330,44 @@ static long lich_death_residual_experience(long experience, int level)
 	return MAX(1L, static_cast<long>(experience * percentage));
 }
 
+static void remove_death_affects(P_char ch)
+{
+	struct affected_type *af, *next_af;
+	for (af = ch->affected; af; af = next_af)
+	{
+		next_af = af->next;
+		CHARACTER_MECHANIC_SITE(death_affect_cleanup);
+		if (!(af->flags & AFFTYPE_PERM))
+			affect_remove(ch, af);
+		else if (af->type == TAG_MEMORIZE)
+			af->flags &= ~MEMTYPE_FULL;
+	}
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::death_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::race_affect_cleanup,
+						       MechanicId::status_capture,
+						       MechanicId::affects_capture };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::death_affect_cleanup,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(remove_death_affects),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "die removes non-permanent affects and clears fullness on permanent memorized spells before terminal capture; arena and final Hardcore branches retain their existing separate paths.",
+		  {} }
+	};
+	return connections;
+}
+
 void die(P_char ch, P_char killer)
 {
 	char buf[MAX_STRING_LENGTH];
 	P_char tmp_ch;
-	struct affected_type *af, *next_af;
 	P_obj corpse = NULL;
 	int loss = 0, i;
 
@@ -2808,14 +2841,8 @@ void die(P_char ch, P_char killer)
 
 			GET_MANA(ch) = 0;
 
-			for (af = ch->affected; af; af = next_af)
-			{
-				next_af = af->next;
-				if (!(af->flags & AFFTYPE_PERM))
-					affect_remove(ch, af);
-				else if (af->type == TAG_MEMORIZE)
-					af->flags &= ~MEMTYPE_FULL;
-			}
+			CHARACTER_MECHANIC_SITE(death_affect_cleanup);
+			remove_death_affects(ch);
 
 			disarm_char_nevents(ch, NULL);
 			ch->specials.conditions[DISEASE_TYPE] = 0;

@@ -29,6 +29,14 @@ def check_mechanic_sites(sources, bindings):
     The remainder of the option-site migration is still explicitly outstanding.
     """
     obligations = {
+        "race_affect_cleanup": ("magic/affects.c", (
+            r"GET_RACE\(ch\) = af->modifier;",
+            r"if\s*\(af->type == TAG_RACE_CHANGE && IS_SET\(af->flags, AFFTYPE_NOSAVE\) &&\s*af->modifier >= RACE_NONE && af->modifier <= LAST_RACE\)\s*ch->player\.time\.birth =\s*time\(NULL\) - racial_data\[af->modifier\]\.base_age \* SECS_PER_MUD_YEAR;",
+        )),
+        "death_affect_cleanup": ("combat/fight.c", (
+            r"if\s*\(!\(af->flags & AFFTYPE_PERM\)\)\s*affect_remove\(ch, af\);\s*else if\s*\(af->type == TAG_MEMORIZE\)\s*af->flags &= ~MEMTYPE_FULL;",
+            r"remove_death_affects\(ch\);",
+        )),
         "revenant_entry": ("specs/specs.assign.c", r"obj_index\[real_object0\(22070\)\]\.func\.obj\s*=\s*revenant_helm;"),
         "revenant_value": ("economy/tradeskill.c", r"if\s*\(proc == revenant_helm\)\s*\{\s*return 225;\s*\}"),
         "object_periodic": ("world/db.c", (
@@ -138,7 +146,7 @@ def check_mechanic_sites(sources, bindings):
                    for key, (owner, patterns) in obligations.items()}
     seen = set()
     errors = []
-    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904|revenant_helm|event_revenant_crown|REVENANT_CROWN_VNUM|22070)\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
+    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904|revenant_helm|event_revenant_crown|REVENANT_CROWN_VNUM|22070|remove_death_affects)\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
     # Macro stringification makes these names the same native bindings the
     # executable used, rather than a second editable table of function names.
     for mechanic, (symbol, kind) in bindings.items():
@@ -194,6 +202,8 @@ def check_mechanic_sites(sources, bindings):
             seen.add((site, index))
             covered.append((marker.end(), marker.end() + match.end()))
             guard = None
+            if site == "race_affect_cleanup" and index == 0:
+                guard = r"if\s*\(af->type == TAG_RACE_CHANGE \|\| af->type == SPELL_DRACONIC_APOTHEOSIS\)\s*\{\s*$"
             if site == "revenant_lifecycle" and index == 0:
                 guard = r"else if\s*\(armor != NULL && obj_index\[armor->R_num\]\.virtual_number == REVENANT_CROWN_VNUM\)\s*\{\s*$"
             if site == "object_periodic" and index == 1:
@@ -237,7 +247,34 @@ def check_mechanic_sites(sources, bindings):
             if (token.group() == "event_revenant_crown" and path == "specs/specs.object.c"
                     and re.fullmatch(r"void event_revenant_crown\(P_char ch, P_char\s*, P_obj obj, void \*\s*\)\s*", line)):
                 continue
+            if (token.group() == "remove_death_affects" and path == "combat/fight.c"
+                    and re.fullmatch(r"static void remove_death_affects\(P_char ch\)\s*", line)):
+                continue
             errors.append(f"{path}:{code.count(chr(10), 0, token.start()) + 1}: unregistered site/alias {token.group()}")
+    death = list(function_bodies(strip_comments(sources["combat/fight.c"]), r"\bvoid\s+die\s*\("))
+    if len(death) != 1 or death[0].count("remove_death_affects(ch);") != 1:
+        errors.append("death.affect.cleanup: missing death caller")
+    else:
+        body = death[0]
+        cleanup = body.index("remove_death_affects(ch);")
+        terminal = body.find("persistence_save_character_terminal(ch, RENT_DEATH);")
+        if terminal < cleanup:
+            errors.append("death.affect.cleanup: cleanup must precede terminal capture")
+        # Keep the actual caller's existing arena/PC guards. A marker inside a
+        # newly added conditional must not certify an unreachable cleanup call.
+        lexical = re.sub(r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
+                         lambda match: " " * len(match.group()), body)
+        scopes = []
+        for position, character in enumerate(lexical[:cleanup]):
+            if character == "{":
+                scopes.append(position)
+            elif character == "}":
+                scopes.pop()
+        guards = ("", "if(!CHAR_IN_ARENA(ch)||IS_NPC(ch))", "if(IS_PC(ch))")
+        if len(scopes) != len(guards) or any(
+                not re.sub(r"\s+", "", lexical[:position]).endswith(guard)
+                for position, guard in zip(scopes, guards)):
+            errors.append("death.affect.cleanup: death caller guards changed")
     for site, (_, statements) in obligations.items():
         for index in range(len(statements)):
             if (site, index) not in seen:
@@ -279,6 +316,7 @@ valuation_stubs = "\n".join(f'int {name}(P_obj, P_char, int, char *) {{ assert(f
                             for name in valued_callbacks)
 combat_prelude = r'''
 #include "core/prototypes.h"
+#include "core/mm.h"
 #include "core/utils.h"
 #include "net/comm.h"
 #include "combat/damage.h"
@@ -294,6 +332,7 @@ combat_prelude = r'''
 #include "item/trophy.h"
 #include "classes/epic_skills.h"
 #include "world/epic.h"
+#include "world/events.h"
 #include "world/hardcore_config.h"
 #include "economy/currency_transaction.h"
 #include "persistence/persistence_mode.h"
@@ -403,12 +442,27 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
     ++mechanic_ledger_calls;
     return critical_submit_result::accepted;
 }
-void affect_remove(P_char ch, affected_type *removed) {
-    auto **link = &ch->affected;
-    while (*link && *link != removed) link = &(*link)->next;
-    assert(*link && (removed->type == TAG_MEMORIZE || removed->type == TAG_RACE_CHANGE));
-    *link = removed->next; delete removed; ++mechanic_removed_affects;
+mm_ds mechanic_affect_pool{};
+mm_ds *dead_affect_pool = &mechanic_affect_pool;
+void mm_release(mm_ds *pool, void *value) {
+    assert(pool == dead_affect_pool);
+    delete static_cast<affected_type *>(value);
+    ++mechanic_removed_affects;
 }
+// The real removal algorithm owns unlinking and race/birth changes. These
+// services bound derived stats, notifications, linked affects and the scheduler.
+void all_affects(P_char, int) {}
+void balance_affects(P_char) {}
+int char_light(P_char) { return 0; }
+int room_light(int, int) { return 0; }
+void gmcp_char_affects(P_char) {}
+void unlink_char_affect(P_char, affected_type *) { std::abort(); }
+void unlink_char_obj_affect(P_char, affected_type *) { std::abort(); }
+void event_short_affect(P_char, P_char, P_obj, void *) { std::abort(); }
+void event_web_spray(P_char, P_char, P_obj, void *) { std::abort(); }
+void disarm_char_nevents(P_char, event_func_type) { std::abort(); }
+nevent_handle nevent_handle_from_event(P_nevent) { std::abort(); }
+nevent_cancel_result nevent_cancel(nevent_handle) { std::abort(); }
 void stop_memorizing(P_char, memorization_stop_reason) { ++mechanic_stop_memorizing; }
 extern const innate_data innates_data[];
 std::string mechanic_output;
@@ -505,6 +559,10 @@ combat_bodies = (
         ("memorize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::memorization_connections("),
         ("db.c", "int real_object0("), ("db.c", "int real_object(const int"),
         ("specs.object.c", "int unspec_altar("),
+        ("affects.c", "void affect_remove("),
+        ("affects.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::affect_cleanup_connections("),
+        ("fight.c", "static void remove_death_affects("),
+        ("fight.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::death_connections("),
         ("specs.object.c", "void event_revenant_crown("),
         ("specs.object.c", "int revenant_helm("),
         ("specs.object.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::revenant_connections("),
@@ -652,6 +710,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("crown_alias", "specs/unregistered.h", "#define MY_CROWN 22070\n", "unregistered site/alias"),
         ("crown_overwrite", "specs/unregistered.c", "void overwrite() { obj_index[real_object0(22070)].func.obj = other; }\n", "unregistered site/alias"),
         ("crown_new_caller", "specs/unregistered.c", "void invoke(P_char ch) { event_revenant_crown(ch, 0, 0, 0); }\n", "unregistered site/alias"),
+        ("death_new_alias", "combat/unregistered.h", "#define MY_DEATH_CLEANUP remove_death_affects\n", "unregistered site/alias"),
     ]
     for name, path, changed, diagnostic in mutations:
         fixture = work / "mutations" / name / path
@@ -665,6 +724,13 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     print("multiclass.reverse: PASS (new room overwrite, temple alias and caller rejected)")
     print("revenant.reverse: PASS (new crown alias, overwrite and lifecycle caller rejected)")
     for name, path, old, new, diagnostic in [
+        ("death_call_removed", "combat/fight.c", "remove_death_affects(ch);", ";", "missing death caller"),
+        ("death_call_guarded", "combat/fight.c", "CHARACTER_MECHANIC_SITE(death_affect_cleanup);\n\t\t\tremove_death_affects(ch);",
+         "if (false) { CHARACTER_MECHANIC_SITE(death_affect_cleanup);\n\t\t\tremove_death_affects(ch); }", "death caller guards changed"),
+        ("death_capture_too_early", "combat/fight.c", "CHARACTER_MECHANIC_SITE(death_affect_cleanup);\n\t\t\tremove_death_affects(ch);",
+         "persistence_save_character_terminal(ch, RENT_DEATH);\n\t\t\tCHARACTER_MECHANIC_SITE(death_affect_cleanup);\n\t\t\tremove_death_affects(ch);", "cleanup must precede terminal capture"),
+        ("crown_direct_reversal_removed", "specs/specs.object.c", "ch->player.race = af->modifier;", ";", "revenant_lifecycle"),
+        ("crown_direct_birth_removed", "specs/specs.object.c", "ch->player.time.birth -= (racial_data[GET_RACE(ch)].base_age) * SECS_PER_MUD_YEAR;", ";", "revenant_lifecycle"),
         ("crown_locator_changed", "specs/specs.mobile.c", "virtual_number == 22070",
          "virtual_number == 22071", "crown locator exclusion changed"),
         ("crown_retention_guard", "specs/specs.object.c", "virtual_number == REVENANT_CROWN_VNUM",
@@ -722,9 +788,15 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("crown_race_not_applied", "ch->player.race = RACE_REVENANT;", ";", "wearer.player.race == RACE_REVENANT"),
         ("crown_original_race_lost", "af.modifier = GET_RACE(ch);", "af.modifier = RACE_REVENANT;",
          "wearer.affected && wearer.affected->modifier == RACE_ORC"),
-        ("crown_reversal_omitted", "ch->player.race = af->modifier;", ";", "wearer.player.race == RACE_ORC && !wearer.affected"),
-        ("crown_birth_reversal_omitted", "ch->player.time.birth -= (racial_data[GET_RACE(ch)].base_age) * SECS_PER_MUD_YEAR;",
-         ";", "wearer.player.time.birth <= time(nullptr) - 15 * SECS_PER_MUD_YEAR"),
+        ("crown_cleanup_omitted", "CHARACTER_MECHANIC_SITE(revenant_lifecycle);\n\t\taffect_remove(ch, af);",
+         ";", "wearer.player.race == RACE_ORC && !wearer.affected"),
+        ("generic_race_restore_omitted", "GET_RACE(ch) = af->modifier;", ";", "subject.player.race == RACE_ORC"),
+        ("generic_birth_restore_omitted", "ch->player.time.birth =\n\t\t\t\ttime(NULL) - racial_data[af->modifier].base_age * SECS_PER_MUD_YEAR;",
+         ";", "subject.player.time.birth >= now - 15 * SECS_PER_MUD_YEAR"),
+        ("death_permanent_removed", "if (!(af->flags & AFFTYPE_PERM))", "if (true)",
+         "mechanic_removed_affects == before_removed + 3"),
+        ("death_memory_fullness_retained", "else if (af->type == TAG_MEMORIZE)\n\t\t\taf->flags &= ~MEMTYPE_FULL;", ";",
+         "!(memory->flags & MEMTYPE_FULL)"),
         ("crown_event_not_scheduled", "CHARACTER_MECHANIC_SITE(revenant_apply);\n\tadd_event(event_revenant_crown, (int)(0.5 * PULSE_VIOLENCE), ch, 0, 0, 0, 0, 0);",
          ";", "mechanic_crown_events == 1 && mechanic_object_events == 1"),
         ("effect_stubbed", "dam *= dam_factor[DF_GUARDIANS_BULWARK];", "dam *= 1.0;",
@@ -763,7 +835,8 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
     print("innate.dispatch.mutations: PASS (removed registration, active passive callback and stubbed dispatch rejected)")
-    print("revenant.mutations: PASS (removed registration/dispatch/schedule, lost original race and omitted race/birth reversal rejected)")
+    print("revenant.mutations: PASS (removed registration/dispatch/schedule/cleanup and lost original race rejected)")
+    print("race/death.cleanup.mutations: PASS (missing race/birth restoration, removed permanent affects and retained memory fullness rejected)")
     # Removing the actual refresh call must fail the learned/taught assertion,
     # even though the refresh function and connection still exist.
     for name, file, old, new, diagnostic in [

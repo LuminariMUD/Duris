@@ -189,6 +189,7 @@ print("immutable player snapshot capture contracts passed")
 HELD_PETS_HARNESS = r"""
 #include "core/prototypes.h"
 #include "core/mm.h"
+#include "player/character_mechanics.h"
 #include "core/utils.h"
 #include "classes/necromancy.h"
 #include "core/files.h"

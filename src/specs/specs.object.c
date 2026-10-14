@@ -2488,7 +2488,8 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::re
 	static constexpr MechanicId lifecycle[] = { MechanicId::revenant_lifecycle,
 						    MechanicId::transient_race_capture,
 						    MechanicId::racial_age_data };
-	static constexpr MechanicId age[] = { MechanicId::racial_age_data };
+	static constexpr MechanicId age[] = { MechanicId::racial_age_data,
+					      MechanicId::race_affect_cleanup };
 	static const MechanicConnection connections[] = {
 		{ MechanicId::revenant_apply,
 		  Relation::mutation,
@@ -2526,6 +2527,7 @@ character_mechanics::revenant_transitions()
 		player_status_field::experience,     player_status_field::epics
 	};
 	static constexpr MechanicId lifecycle[] = {
+		MechanicId::race_affect_cleanup, MechanicId::death_affect_cleanup,
 		MechanicId::object_periodic,	 MechanicId::revenant_lifecycle,
 		MechanicId::race_status_capture, MechanicId::transient_race_capture,
 		MechanicId::race_status_load,	 MechanicId::status_capture,

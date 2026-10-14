@@ -2070,10 +2070,12 @@ void affect_remove(P_char ch, struct affected_type *af)
 	// Handle race changes.
 	if (af->type == TAG_RACE_CHANGE || af->type == SPELL_DRACONIC_APOTHEOSIS)
 	{
+		CHARACTER_MECHANIC_SITE(race_affect_cleanup);
 		GET_RACE(ch) = af->modifier;
 		// NOSAVE crown/legacy Dragonlord forms replace birth on application.
 		// Death can remove their tag before checkpoint capture sees it, so use
 		// the same birth-date policy as normal item removal here as well.
+		CHARACTER_MECHANIC_SITE(race_affect_cleanup);
 		if (af->type == TAG_RACE_CHANGE && IS_SET(af->flags, AFFTYPE_NOSAVE) &&
 		    af->modifier >= RACE_NONE && af->modifier <= LAST_RACE)
 			ch->player.time.birth =
@@ -2123,10 +2125,28 @@ void affect_remove(P_char ch, struct affected_type *af)
 	gmcp_char_affects(ch);
 }
 
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::affect_cleanup_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::racial_age_data };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::race_affect_cleanup,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(affect_remove),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Generic removal unlinks the affect, restores race and NOSAVE race-tag birth before release, then reapplies stats and notifications. Saveable race tags and Apotheosis retain birth.",
+		  {} }
+	};
+	return connections;
+}
+
 /*
  * call affect_remove with every spell of spelltype "skill"
  */
-
 void affect_from_char(P_char ch, int skill)
 {
 	struct affected_type *hjp, *tmp;

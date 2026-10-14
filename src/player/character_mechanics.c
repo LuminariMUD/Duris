@@ -196,6 +196,10 @@ std::string_view mechanic_name(MechanicId id)
 		return "inventory.load";
 	case MechanicId::racial_age_data:
 		return "racial.age.data";
+	case MechanicId::race_affect_cleanup:
+		return "race.affect.cleanup";
+	case MechanicId::death_affect_cleanup:
+		return "death.affect.cleanup";
 	case MechanicId::count:
 		break;
 	}
@@ -231,7 +235,9 @@ std::vector<MechanicConnection> mechanic_connections()
 				  revenant_connections(),
 				  object_periodic_connections(),
 				  item_load_connections(),
-				  racial_age_connections() })
+				  racial_age_connections(),
+				  affect_cleanup_connections(),
+				  death_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -328,6 +334,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::effect:
 			compatible =
+				std::holds_alternative<AffectRemoval>(connection.binding) ||
 				std::holds_alternative<event_func_type>(connection.binding) ||
 				std::holds_alternative<MeleeDamage>(connection.binding) ||
 				std::holds_alternative<CharacterAction>(connection.binding) ||
