@@ -13,6 +13,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 static room_data rooms[3];
 P_room world = rooms;
@@ -26,7 +27,8 @@ const ShipCrewData ship_crew_data[MAXCREWS] = {};
 const ShipChiefData ship_chief_data[MAXCHIEFS] = {};
 const WeaponData weapon_data[MAXWEAPON] = {};
 const EquipmentData equipment_data[MAXEQUIPMENT] = {};
-static ShipData vessel, enemy;
+static ShipData vessel, enemy, second_vessel;
+static bool second_ship_enabled;
 static std::map<P_desc, std::vector<std::string>> wire;
 int top_of_zone_table = 0;
 index_data *mob_index, *obj_index;
@@ -77,6 +79,7 @@ int flag2idx(int flags)
 }
 
 static int contact_count = 1;
+static int contact_scans;
 int is_desc_valid(P_desc d)
 {
 	return d != nullptr;
@@ -93,15 +96,18 @@ int websocket_send_json(P_desc, const char *, const char *)
 }
 P_ship get_ship_from_char(P_char ch)
 {
+	if (second_ship_enabled && ch->in_room == 0)
+		return &second_vessel;
 	return ch->in_room == 1 ? &vessel : nullptr;
 }
 int real_room(const int room)
 {
 	return room;
 }
-int getcontacts(P_ship, bool)
+int getcontacts(P_ship ship, bool)
 {
-	return contact_count;
+	++contact_scans;
+	return ship == &second_vessel ? 0 : contact_count;
 }
 string strip_ansi(const char *text)
 {
@@ -147,8 +153,10 @@ int sql_world_quest_can_do_another(P_char)
 	return 2;
 }
 static char_data quest_mob;
+static int quest_loads;
 P_char read_mobile(int, int)
 {
+	++quest_loads;
 	return &quest_mob;
 }
 int real_mobile(const int)
@@ -162,11 +170,20 @@ int real_zone0(const int)
 void extract_char(P_char) {}
 time_info_data time_info;
 const char *month_name[] = { "Moon" };
-void gmcp_quest_status(P_char ch)
+void char_from_room(P_char)
 {
-	char *json = json_build_quest_status(ch);
-	gmcp_send(ch->desc, "Quest.Status", json);
-	free(json);
+	assert(false && "GMCP map refresh must not run movement hooks");
+}
+bool char_to_room(P_char, int, int)
+{
+	assert(false && "GMCP map refresh must not run movement hooks");
+	return false;
+}
+void display_map_room(P_char ch, int room, int radius, int mode, int package)
+{
+	assert(ch->in_room == room && room == 2);
+	assert(radius == 20 && mode == 999 && package == 1);
+	gmcp_send_quest_map(ch, "quest map");
 }
 
 #include "production.inc"
@@ -251,9 +268,33 @@ int main()
 	flush();
 	assert(wire.empty());
 	ad.next = &bd;
+	contact_scans = 0;
 	flush();
+	assert(contact_scans == 1); // one all-ships scan for both bridge observers
 	assert(wire[&ad].empty() && wire[&bd].size() == 2); // stationary newcomer
 	assert(payload(&bd, "Ship.Info").find("\"maxSpeed\":23") != std::string::npos);
+	bd.durisweb_verified = 1;
+	wire.clear();
+	contact_scans = 0;
+	flush();
+	assert(contact_scans == 1);
+	assert(payload(&bd, "Ship.Contacts").find("\"worldX\"") != std::string::npos);
+	assert(wire[&ad].empty());
+	bd.durisweb_verified = 0;
+	flush();
+	assert(payload(&bd, "Ship.Contacts").find("\"worldX\"") == std::string::npos);
+	second_vessel.flags = LOADED;
+	second_vessel.bridge = 0;
+	second_vessel.location = 2;
+	second_ship_enabled = true;
+	b.in_room = 0;
+	contact_scans = 0;
+	gmcp_flush_dirty_ship_contacts();
+	assert(contact_scans == 2); // independent contact set for each occupied ship
+	assert(payload(&bd, "Ship.Contacts").find("\"contacts\":[]") != std::string::npos);
+	second_ship_enabled = false;
+	b.in_room = 1;
+	flush();
 	wire.clear();
 	b.points.mana = 24;
 	flush();
@@ -280,11 +321,14 @@ int main()
 	wire.clear();
 	ad.gmcp_enabled = 0;
 	gmcp_handle_negotiation(&ad, TELNET_DO);
+	assert(wire.empty());
+	gmcp_flush_initial_states();
 	for (const char *pkg : { "Char.Status", "Char.Vitals", "Char.Affects", "Group.Status",
 				 "Room.Info", "Quest.Status", "Combat.Update" })
 		payload(&ad, pkg);
 	wire.clear();
 	gmcp_handle_negotiation(&ad, TELNET_DO);
+	gmcp_flush_initial_states();
 	assert(wire.empty());
 	gmcp_send_room_map(&a, "&+G@&n\n");
 	emit(&ad, "Room.Map");
@@ -295,6 +339,19 @@ int main()
 	victim.points.max_hit = 100;
 	applied_damage_notice(&a, &victim, 8);
 	emit(&ad, "Combat.Update");
+	static char_data primary;
+	primary.player.name = const_cast<char *>("primary");
+	primary.points.hit = 90;
+	primary.points.max_hit = 100;
+	a.specials.fighting = &primary;
+	applied_damage_notice(&a, &victim, 8);
+	assert(payload(&ad, "Combat.Update").find("\"name\":\"primary\"") != std::string::npos);
+	assert(payload(&ad, "Combat.Update").find("\"round\"") == std::string::npos);
+	a.specials.fighting = &victim;
+	applied_damage_notice(&a, &victim, 8);
+	assert(payload(&ad, "Combat.Update").find("\"name\":\"wolf\"") != std::string::npos);
+	assert(payload(&ad, "Combat.Update").find("\"damage\":8") != std::string::npos);
+	a.specials.fighting = nullptr;
 	gmcp_combat_end(&a);
 	assert(payload(&ad, "Combat.Update") == "{\"target\":null}");
 	zones[0].flags = 0;
@@ -323,6 +380,77 @@ int main()
 	apc.quest_kill_how_many = 2;
 	gmcp_quest_status(&a);
 	emit(&ad, "Quest.Status");
+	apc.quest_map_bought = 1;
+	apc.quest_map_room = 2;
+	apc.quest_zone_number = 228;
+	ad.gmcp_quest_map_sent = 1;
+	quest_loads = 0;
+	wire.clear();
+	for (int i = 0; i < 500; ++i)
+	{
+		gmcp_handle_negotiation(&ad, TELNET_DONT);
+		gmcp_handle_negotiation(&ad, TELNET_DO);
+	}
+	assert(wire.empty() && quest_loads == 0);
+	gmcp_flush_initial_states();
+	assert(quest_loads == 1 && ad.gmcp_quest_map_sent == 1);
+	assert(payload(&ad, "Quest.Map") == "{\"map\":\"quest map\",\"zoneNumber\":228}");
+	assert(a.in_room == 1);
+	wire.clear();
+	gmcp_flush_initial_states();
+	assert(wire.empty() && quest_loads == 1);
+	gmcp_handle_negotiation(&ad, TELNET_DONT);
+	gmcp_handle_negotiation(&ad, TELNET_DO);
+	gmcp_handle_negotiation(&ad, TELNET_DONT);
+	gmcp_flush_initial_states();
+	assert(wire.empty()); // disabling before the flush cancels the request
+	gmcp_handle_negotiation(&ad, TELNET_DO);
+	gmcp_flush_initial_states();
+	assert(quest_loads == 2); // later legitimate re-negotiation is not lost
+	payload(&ad, "Quest.Map");
+	wire.clear();
+	gmcp_send_initial_state(&a); // toggle/reconnect also resends an already-sent map
+	payload(&ad, "Quest.Map");
+	static char_data morph;
+	static npc_only_data morph_npc;
+	morph.player.name = const_cast<char *>("morph body");
+	morph.specials.act = ACT_ISNPC;
+	morph.only.npc = &morph_npc;
+	morph_npc.orig_char = &a;
+	morph.desc = &ad;
+	morph.in_room = 0;
+	morph.points.hit = 37;
+	morph.points.max_hit = 80;
+	morph.affected = &affect;
+	morph.specials.fighting = &victim;
+	rooms[0].name = const_cast<char *>("Morph room");
+	ad.original = &a;
+	ad.character = &morph;
+	a.desc = nullptr;
+	wire.clear();
+	gmcp_send_initial_state(&morph);
+	assert(payload(&ad, "Char.Status").find("\"name\":\"Tester\"") != std::string::npos);
+	assert(payload(&ad, "Char.Vitals").find("\"hp\":37") != std::string::npos);
+	assert(payload(&ad, "Char.Affects").find("bless") != std::string::npos);
+	assert(payload(&ad, "Room.Info").find("Morph room") != std::string::npos);
+	assert(payload(&ad, "Combat.Update").find("wolf") != std::string::npos);
+	assert(payload(&ad, "Quest.Status").find("\"active\":true") != std::string::npos);
+	assert(payload(&ad, "Quest.Map").find("\"zoneNumber\":228") != std::string::npos);
+	payload(&ad, "Group.Status");
+	assert(morph.in_room == 0 && a.in_room == 1 && !a.desc && ad.character == &morph);
+	a.specials.act3 |= PLR3_NOGMCP;
+	wire.clear();
+	gmcp_send_initial_state(&morph);
+	gmcp_quest_status(&morph);
+	assert(wire.empty()); // the original player's preference controls the morph
+	a.specials.act3 &= ~PLR3_NOGMCP;
+	gmcp_send_initial_state(&morph);
+	payload(&ad, "Quest.Map");
+	ad.original = nullptr;
+	ad.character = &a;
+	a.desc = &ad;
+	morph.desc = nullptr;
+	apc.quest_map_bought = 0;
 	gmcp_comm_channel_ex(&a, "nchat", "Tester", "hello", "good");
 	emit(&ad, "Comm.Channel");
 	group_list member_b = { &b, nullptr };

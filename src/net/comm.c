@@ -2158,6 +2158,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 	if (!(pulse % 2))
 	{
 		const uint64_t gmcp_begin_us = loop_monotonic_us();
+		gmcp_flush_initial_states();
 		gmcp_flush_dirty_rooms();
 		gmcp_flush_dirty_ship_contacts();
 		gmcp_flush_dirty_ship_info();

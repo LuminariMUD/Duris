@@ -1775,6 +1775,7 @@ struct descriptor_data
 	size_t ws_control_output_len;
 	size_t ws_control_output_offset;
 	int gmcp_enabled;
+	bool gmcp_initial_state_pending;
 	int sga_disabled;
 	int write_failed;
 	unsigned char *telnet_output_buffer;

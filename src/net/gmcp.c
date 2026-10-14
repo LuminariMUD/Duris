@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unordered_map>
 #include "world/handler.h"
 #include "core/json_utils.h"
 #include "world/map.h"
@@ -63,12 +64,25 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 		bool was_enabled = d->gmcp_enabled;
 		d->gmcp_enabled = 1;
 		if (!was_enabled && STATE(d) == CON_PLAYING)
-			gmcp_send_initial_state(d->character);
-		statuslog(56, "GMCP enabled for %s", d->host);
+			d->gmcp_initial_state_pending = true;
 	}
 	else if (cmd == TELNET_DONT)
 	{
 		d->gmcp_enabled = 0;
+		d->gmcp_initial_state_pending = false;
+	}
+}
+
+/* Coalesce option toggles until the next periodic GMCP flush. */
+void gmcp_flush_initial_states(void)
+{
+	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
+	{
+		if (!d->gmcp_initial_state_pending)
+			continue;
+		d->gmcp_initial_state_pending = false;
+		if (STATE(d) == CON_PLAYING)
+			gmcp_send_initial_state(d->character);
 	}
 }
 
@@ -244,8 +258,10 @@ void gmcp_send(struct descriptor_data *d, const char *package, const char *json)
 /* Bootstrap state that otherwise only changes after a gameplay event. */
 void gmcp_send_initial_state(struct char_data *ch)
 {
-	if (!GMCP_ENABLED(ch) || IS_NPC(ch))
+	if (!GMCP_ENABLED(ch) || (IS_NPC(ch) && !IS_MORPH(ch)))
 		return;
+	ch->desc->gmcp_initial_state_pending = false;
+	ch->desc->gmcp_quest_map_sent = 0;
 	ch->desc->gmcp_ship_bridge = 0;
 	ch->desc->gmcp_ship_contacts_hash = 0;
 	ch->desc->gmcp_ship_info_hash = 0;
@@ -336,7 +352,8 @@ void gmcp_send_quest_map(struct char_data *ch, const char *map_buf)
 		return;
 	if (!map_buf || !*map_buf)
 		return;
-	if (!ch->only.pc)
+	struct char_data *player = GET_PLYR(ch);
+	if (IS_NPC(player))
 		return;
 
 	json = cJSON_CreateObject();
@@ -344,7 +361,7 @@ void gmcp_send_quest_map(struct char_data *ch, const char *map_buf)
 		return;
 
 	cJSON_AddStringToObject(json, "map", map_buf);
-	cJSON_AddNumberToObject(json, "zoneNumber", ch->only.pc->quest_zone_number);
+	cJSON_AddNumberToObject(json, "zoneNumber", player->only.pc->quest_zone_number);
 
 	json_str = cJSON_PrintUnformatted(json);
 	cJSON_Delete(json);
@@ -459,10 +476,9 @@ static unsigned long hash_string(const char *str)
 }
 
 /* build json for ship contacts */
-static char *json_build_ship_contacts(struct ShipData *ship, struct descriptor_data *d)
+static cJSON *json_build_ship_contacts(struct ShipData *ship)
 {
 	cJSON *root, *contacts_arr, *contact_obj;
-	char *json_str;
 	int k, i;
 	const char *race_str;
 	const char *status_str;
@@ -478,7 +494,7 @@ static char *json_build_ship_contacts(struct ShipData *ship, struct descriptor_d
 	cJSON_AddNumberToObject(root, "heading", (int)ship->heading);
 	cJSON_AddNumberToObject(root, "speed", ship->speed);
 
-	/* world position - always calculate for hash, only send to verified clients */
+	/* The flush removes world position from the unverified client payload. */
 	if (ship->location >= 0 && ship->location < top_of_world)
 	{
 		struct zone_data *zone = &zone_table[world[ship->location].zone];
@@ -488,17 +504,8 @@ static char *json_build_ship_contacts(struct ShipData *ship, struct descriptor_d
 			int zone_start = world[zone->real_bottom].number;
 			int local_x = (vroom - zone_start) % zone->mapx;
 			int local_y = ((vroom - zone_start) / zone->mapx) % zone->mapy;
-			if (d && d->durisweb_verified)
-			{
-				cJSON_AddNumberToObject(root, "worldX", local_x);
-				cJSON_AddNumberToObject(root, "worldY", local_y);
-			}
-			else if (!d)
-			{
-				/* include in hash calculation so position changes trigger updates */
-				cJSON_AddNumberToObject(root, "worldX", local_x);
-				cJSON_AddNumberToObject(root, "worldY", local_y);
-			}
+			cJSON_AddNumberToObject(root, "worldX", local_x);
+			cJSON_AddNumberToObject(root, "worldY", local_y);
 		}
 	}
 
@@ -599,31 +606,53 @@ static char *json_build_ship_contacts(struct ShipData *ship, struct descriptor_d
 
 	cJSON_AddItemToObject(root, "contacts", contacts_arr);
 
-	json_str = cJSON_PrintUnformatted(root);
-	cJSON_Delete(root);
-
-	return json_str;
+	return root;
 }
 
 void gmcp_flush_dirty_ship_contacts(void)
 {
+	/* Contacts depend on the ship and verification status, not the observer.
+	 * Share both payload variants for this flush; keep delivery state per client. */
+	struct snapshot
+	{
+		char *json[2] = {};
+		unsigned long hash[2] = {};
+	};
+	std::unordered_map<struct ShipData *, snapshot> snapshots;
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
 		struct ShipData *ship = gmcp_player_ship(d);
 		if (!ship)
 			continue;
 
-		/* Docking must send an empty list to retire contacts from open sea. */
-		char *json = json_build_ship_contacts(ship, d);
-		if (!json)
-			continue;
-		unsigned long new_hash = hash_string(json);
-		if (new_hash != d->gmcp_ship_contacts_hash)
+		auto [entry, inserted] = snapshots.try_emplace(ship);
+		snapshot &state = entry->second;
+		if (inserted)
 		{
-			gmcp_send(d, GMCP_PKG_SHIP_CONTACTS, json);
-			d->gmcp_ship_contacts_hash = new_hash;
+			/* Docking produces an empty list to retire open-sea contacts. */
+			cJSON *root = json_build_ship_contacts(ship);
+			if (!root)
+				continue;
+			state.json[1] = cJSON_PrintUnformatted(root);
+			cJSON_DeleteItemFromObject(root, "worldX");
+			cJSON_DeleteItemFromObject(root, "worldY");
+			state.json[0] = cJSON_PrintUnformatted(root);
+			cJSON_Delete(root);
+			state.hash[0] = hash_string(state.json[0]);
+			state.hash[1] = hash_string(state.json[1]);
 		}
-		free(json);
+		int variant = d->durisweb_verified ? 1 : 0;
+		if (state.json[variant] && state.hash[variant] != d->gmcp_ship_contacts_hash)
+		{
+			gmcp_send(d, GMCP_PKG_SHIP_CONTACTS, state.json[variant]);
+			d->gmcp_ship_contacts_hash = state.hash[variant];
+		}
+	}
+	// NOLINTNEXTLINE(bugprone-nondeterministic-pointer-iteration-order): only frees temporary buffers.
+	for (auto &entry : snapshots)
+	{
+		free(entry.second.json[0]);
+		free(entry.second.json[1]);
 	}
 }
 
@@ -902,7 +931,7 @@ void gmcp_char_status(struct char_data *ch)
 	if (!GMCP_ENABLED(ch))
 		return;
 
-	json = json_build_char_status(ch);
+	json = json_build_char_status(GET_PLYR(ch));
 
 	if (json)
 	{
@@ -1102,7 +1131,10 @@ void gmcp_quest_status(struct char_data *ch)
 	if (!GMCP_ENABLED(ch))
 		return;
 
-	json = json_build_quest_status(ch);
+	struct char_data *player = GET_PLYR(ch);
+	if (IS_NPC(player))
+		return;
+	json = json_build_quest_status(player);
 
 	if (json)
 	{
@@ -1111,7 +1143,7 @@ void gmcp_quest_status(struct char_data *ch)
 	}
 
 	/* send quest map once per session if player has one purchased */
-	if (ch->only.pc && ch->only.pc->quest_map_bought == 1 && !ch->desc->gmcp_quest_map_sent)
+	if (player->only.pc->quest_map_bought == 1 && !ch->desc->gmcp_quest_map_sent)
 	{
 		gmcp_quest_map(ch);
 		ch->desc->gmcp_quest_map_sent = 1;
@@ -1127,24 +1159,21 @@ void gmcp_quest_map(struct char_data *ch)
 		return;
 	if (!GMCP_ENABLED(ch))
 		return;
-	if (!ch->only.pc)
-		return;
-	if (ch->only.pc->quest_map_bought != 1)
+	struct char_data *player = GET_PLYR(ch);
+	if (IS_NPC(player) || player->only.pc->quest_map_bought != 1)
 		return;
 
-	map_room = real_room(ch->only.pc->quest_map_room);
+	map_room = real_room(player->only.pc->quest_map_room);
 	if (map_room < 0)
 		return;
 
-	/* temporarily move to map room */
+	/* Select the map viewpoint without movement hooks, casting cancellation,
+	 * or changing either room's occupant list. Rendering is synchronous. */
 	old_room = ch->in_room;
-	char_from_room(ch);
-	char_to_room(ch, map_room, -2);
+	ch->in_room = map_room;
 
 	/* generate and send quest map (20 tile radius) */
 	display_map_room(ch, map_room, 20, 999, 1);
 
-	/* return to original room */
-	char_from_room(ch);
-	char_to_room(ch, old_room, -2);
+	ch->in_room = old_room;
 }

@@ -24,16 +24,21 @@ functions = [
     ('gmcp.c', 'void gmcp_char_vitals('),
     ('gmcp.c', 'void gmcp_send('),
     ('gmcp.c', 'void gmcp_handle_negotiation('),
+    ('gmcp.c', 'void gmcp_flush_initial_states('),
     ('gmcp.c', 'void gmcp_send_initial_state('),
     ('gmcp.c', 'static struct ShipData *gmcp_player_ship('),
     ('gmcp.c', 'static unsigned long hash_string('),
-    ('gmcp.c', 'static char *json_build_ship_contacts('),
+    ('gmcp.c', 'static cJSON *json_build_ship_contacts('),
     ('gmcp.c', 'void gmcp_flush_dirty_ship_contacts('),
     ('gmcp.c', 'void gmcp_flush_dirty_ship_info('),
     ('gmcp.c', 'void gmcp_combat_update('),
     ('gmcp.c', 'void gmcp_combat_target('),
     ('gmcp.c', 'void gmcp_combat_end('),
     ('gmcp.c', 'void gmcp_send_room_map('),
+    ('gmcp.c', 'void gmcp_send_quest_map('),
+    ('gmcp.c', 'void gmcp_quest_status('),
+    ('gmcp.c', 'void gmcp_quest_map('),
+    ('utility.c', 'int IS_MORPH('),
 ]
 # MAP_AUTOMAP already suppresses text; mutating websocket would change framing.
 comm = source('comm.c').read_text()
@@ -41,8 +46,10 @@ passenger_map = comm[comm.index('// For ship passengers:'):comm.index('t_ch->des
 assert 'websocket =' not in passenger_map
 assert 'MAP_AUTOMAP, 0' in passenger_map
 assert 'gmcp_send_initial_state(ch);' in source('nanny.c').read_text()
-assert 'gmcp_send_initial_state(ch);' in source('actoth.c').read_text()
+assert 'gmcp_send_initial_state(send_ch);' in source('actoth.c').read_text()
 assert 'gmcp_send_initial_state(d->character);' in source('account.c').read_text()
+periodic = extract_function('comm.c', 'static void run_recurring_persistence_phase(')
+assert periodic.index('if (!(pulse % 2))') < periodic.index('gmcp_flush_initial_states();')
 
 build = ROOT / 'bin/tests'
 build.mkdir(parents=True, exist_ok=True)

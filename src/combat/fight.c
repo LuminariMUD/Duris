@@ -5638,8 +5638,12 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 			/* Send GMCP updates for combat */
 			gmcp_char_vitals(victim); /* Update victim's vitals */
 			if (victim != ch)
-				gmcp_combat_update(ch, GET_OPPONENT(ch) ? GET_OPPONENT(ch) : victim,
-						   (int)dam, "unknown", 0);
+			{
+				if (GET_OPPONENT(ch) && GET_OPPONENT(ch) != victim)
+					gmcp_combat_target(ch, GET_OPPONENT(ch));
+				else
+					gmcp_combat_update(ch, victim, (int)dam, "unknown", 0);
+			}
 		}
 
 		if (IS_PC(victim) && victim->desc &&

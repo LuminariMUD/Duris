@@ -42,6 +42,19 @@ int getcontacts(P_ship, bool)
 {
 	return 0;
 }
+P_ship get_ship_from_char(P_char)
+{
+	return nullptr;
+}
+int IS_MORPH(P_char)
+{
+	return 0;
+}
+int get_property(const char *, int fallback)
+{
+	return fallback;
+}
+void update_groupies(P_char, bool) {}
 char *json_build_char_affects(struct char_data *)
 {
 	return nullptr;
