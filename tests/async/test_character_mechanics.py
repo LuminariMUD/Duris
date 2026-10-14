@@ -454,7 +454,7 @@ properties = source("properties.c").read_text()
 innate_table = re.search(r"const struct innate_data innates_data\[LAST_INNATE \+ 1\] = .*?\n};", innates, re.S).group()
 active_callbacks = sorted(set(re.findall(r'\{ "[^"]+", (\w+) \}', innate_table)) - {"NULL"})
 innate_stubs = "\n".join(f'void {name}(P_char, char *, int) {{ assert(false && "unexpected active innate callback"); }}'
-                         for name in active_callbacks)
+                         for name in active_callbacks if name != "do_phantasmal_form")
 valuation_body = production_function("tradeskill.c", "int get_ival_from_proc(obj_proc_type proc)")
 valued_callbacks = sorted(set(re.findall(r"\bproc\s*==\s*(\w+)", strip_comments(valuation_body))) - {"unspec_altar", "revenant_helm"})
 valuation_stubs = "\n".join(f'int {name}(P_obj, P_char, int, char *) {{ assert(false && "valuation does not invoke object callbacks"); return 0; }}'
@@ -493,6 +493,7 @@ combat_prelude = r'''
 #include <cmath>
 #include <cstring>
 #include <string>
+void do_phantasmal_form(P_char, char *, int);
 #define PROPERTIES_FILE "lib/duris.properties"
 #define MAX_PROPERTIES 3000
 int properties_count;
@@ -599,6 +600,7 @@ void mm_release(mm_ds *pool, void *value) {
 // The real removal algorithm owns unlinking and race/birth changes. These
 // services bound derived stats, notifications, linked affects and the scheduler.
 void all_affects(P_char, int) {}
+bool check_innate_time(P_char, int, int) { std::abort(); } // Removal does not spend cooldown.
 void balance_affects(P_char) {}
 int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }
@@ -674,6 +676,7 @@ combat_bodies = (
         ("innates.c", "bool has_innate("),
         ("innates.c", "void assign_innates("),
         ("innates.c", "bool can_use_innate("),
+        ("innates.c", "void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)"),
         ("innates.c", "void do_innate(P_char ch, char *arg, int cmd)"),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections("),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_registration_connections("),
@@ -708,6 +711,8 @@ combat_bodies = (
         ("db.c", "int real_object0("), ("db.c", "int real_object(const int"),
         ("specs.object.c", "int unspec_altar("),
         ("affects.c", "void affect_remove("),
+        ("affects.c", "void affect_from_char("),
+        ("affects.c", "void wear_off_message("),
         ("affects.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::affect_cleanup_connections("),
         ("fight.c", "static void remove_death_affects("),
         ("fight.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::death_connections("),
@@ -1070,6 +1075,8 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     # omit provenance and introduce conflicts; those do not need extra compilations.
     # Build variants under bin/ without editing the live worktree.
     for name, old, new, diagnostic in [
+        ("phantasmal_released_message", "if (afp)\n\t\t\twear_off_message(ch, afp);\n\t\taffect_from_char(ch, TAG_PHANTASMAL_FORM);",
+         "affect_from_char(ch, TAG_PHANTASMAL_FORM);\n\t\twear_off_message(ch, afp);", "heap-use-after-free"),
         ("crown_original_race_lost", "af.modifier = GET_RACE(ch);", "af.modifier = RACE_REVENANT;",
          "wearer.affected && wearer.affected->modifier == RACE_ORC"),
         ("generic_birth_restore_omitted", "ch->player.time.birth =\n\t\t\t\ttime(NULL) - racial_data[af->modifier].base_age * SECS_PER_MUD_YEAR;",
@@ -1089,7 +1096,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
-    print("state/lifecycle.mutations: PASS (lost original form identity and omitted birth restoration rejected)")
+    print("state/lifecycle.mutations: PASS (phantasmal released-node read fails ASan; lost original form identity and omitted birth restoration rejected)")
     # Completion and debit are distinct from an effect or property failure.
     for name, file, old, new, diagnostic in [
         ("purchase_callback_not_called", "specializations.c", "unspecialize_committed, nullptr, 0)", "nullptr, nullptr, 0)",

@@ -58,8 +58,9 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last committed checkpoint: `c926e427b` connects complete command registration and
-guard provenance; `4a11e79f6` connects creation/admission; `1abfef484` connects ability
+Last committed checkpoint: `2fe7f8d72` connects disabled transformation routes and
+denial-state retention; `c926e427b` connects command registration/guards;
+`4a11e79f6` connects creation/admission; `1abfef484` connects ability
 tables/provenance; `ff80bae30` connects generic race restoration and death cleanup.
 Their focused checks passed.
 Upstream `0e27ef1e8` was integrated through
@@ -118,7 +119,7 @@ documentation checks passed. Logs: `bin/tests/character-mechanics-command-native
 `character-mechanics-command-documentation.log`. Native fixture SHA256:
 `1256332313c56d235c35754ce8c6de13b05c75019d299e819bdcb0294ad37339`.
 
-The current disabled-route batch binds registered ascend/descend slots, actual
+The disabled-route connections bind registered ascend/descend slots, actual
 attempts, Theurgist helper and epic completion, legacy descend, the initialized
 corpseform spell slot and its existing expiry callback. Exact source markers cover
 the four denial gates. Native assertions invoke the real denied bodies and compare
@@ -137,6 +138,16 @@ levels 49/50 preserve saved identity, skills, epics, wallet and item ownership.
 Staff supplies class/level/resource boundaries; corpseform denial remains native
 callback evidence. Full-server SHA256:
 `f5fc132582dd9fde5f5d1c61ed384e5fbcc5e430ebad21285aac8959b054e685`.
+
+A separately scoped phantasmal removal repair passed: the callback now
+emits its message before releasing the affect and handles a supplied flag without
+a matching affect. The native fixture executes the actual callback, message and
+removal; the old order must fail ASan at the release boundary. See
+[the regression](../testing/REGRESSIONS.md#phantasmal-form-removal-message-lifetime).
+Native assertions and all seven compiled mutations, the server build, formatter,
+whitespace and documentation checks passed. Logs:
+`bin/tests/character-mechanics-phantasmal-*.log`. Full phantasmal entry,
+cooldown, flag recalculation and lifecycle ownership remain open.
 
 Full reverse ownership beyond these tables and the existing Bulwark/altar/
 multiclass/crown/cleanup sites remains open. The candidate scan is investigation

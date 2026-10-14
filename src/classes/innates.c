@@ -2665,8 +2665,9 @@ void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (IS_AFFECTED4(ch, AFF4_PHANTASMAL_FORM))
 	{
 		afp = get_spell_from_char(ch, TAG_PHANTASMAL_FORM);
+		if (afp)
+			wear_off_message(ch, afp);
 		affect_from_char(ch, TAG_PHANTASMAL_FORM);
-		wear_off_message(ch, afp);
 		return;
 	}
 

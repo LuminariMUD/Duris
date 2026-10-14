@@ -23,6 +23,7 @@
 
 using namespace character_mechanics;
 
+void do_phantasmal_form(P_char, char *, int);
 void load_character_properties();
 void set_character_property(const char *key, float value);
 void clear_character_properties();
@@ -796,6 +797,26 @@ static void disabled_transformations()
 		"transformations.disabled: PASS (actual registered PC ascend, opposing Theurgist NPC gate, wrong-class/49/50 descend and corpseform callbacks preserve complete character/PC/corpse state and queue no saves/ledger; legacy descend unregistered; accepted completion is separate)");
 }
 
+static void phantasmal_removal()
+{
+	char_data character{};
+	SET_BIT(character.specials.affected_by4, AFF4_PHANTASMAL_FORM);
+	character.affected = new affected_type{};
+	character.affected->type = TAG_PHANTASMAL_FORM;
+	character.affected->flags = AFFTYPE_SHORT;
+	mechanic_output.clear();
+	const int removed = mechanic_removed_affects;
+	do_phantasmal_form(&character, nullptr, CMD_INNATE);
+	assert(!character.affected && mechanic_removed_affects == removed + 1);
+	assert(mechanic_output.find(skills[TAG_PHANTASMAL_FORM].wear_off_char[0]) !=
+	       std::string::npos);
+	// A supplied flag without a character affect must not dereference null.
+	do_phantasmal_form(&character, nullptr, CMD_INNATE);
+	assert(!character.affected && mechanic_removed_affects == removed + 1);
+	std::puts(
+		"phantasmal.removal: PASS (real callback/message/unlink; message precedes released affect access; missing affect safe; stat-bit/event recalculation remains a fixture boundary)");
+}
+
 static void guardian_bulwark()
 {
 	load_character_properties();
@@ -1107,6 +1128,7 @@ int main()
 	specialization_transition();
 	command_registration();
 	disabled_transformations();
+	phantasmal_removal();
 	creation_bindings();
 	guardian_bulwark();
 	unspecialization_transition();

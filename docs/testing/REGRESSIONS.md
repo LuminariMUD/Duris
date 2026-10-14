@@ -21,6 +21,20 @@ adjacent spaces, distinct single-space headings, duplicate suffixes and tabs,
 alongside the full maintained-document link scan. The linked heading and its
 existing link remain unchanged.
 
+## Phantasmal form removal message lifetime
+
+`do_phantasmal_form` now emits its removal message before `affect_from_char`
+returns the affect to the pool. The old order read released storage after removal
+and recalculation, when that storage could already be reused. A flag without a
+matching character affect also exits safely.
+
+`test_character_mechanics.py` invokes the real innate callback, message function,
+affect unlink and removal. Its release boundary deletes the node under ASan;
+restoring the old order must report `heap-use-after-free`. The positive assertion
+checks the normal message and exactly one removal, then repeats with no affect.
+Derived-stat bits and event scheduling remain fixture boundaries; this is not a
+claim of complete phantasmal lifecycle coverage.
+
 ## Temporary race changes across a checkpoint and restart
 
 Snapshot capture saves the original race and the existing removal birth-date
