@@ -46,6 +46,10 @@ int calculate_hitpoints2(P_char);
 int multiclass_proc(int, P_char, int, char *);
 extern P_nevent current_nevent;
 extern int mechanic_crown_events, mechanic_object_events, mechanic_wait;
+extern P_char character_list;
+extern std::vector<std::pair<int, event_short_affect_data>> mechanic_short_events;
+bool can_use_innate(P_char, int);
+int get_innate_property(int, const char *, int);
 
 static void revenant_transition()
 {
@@ -478,7 +482,10 @@ static void specialization_transition()
 	for (const auto &error : errors)
 		std::fprintf(stderr, "%s\n", error.c_str());
 	assert(errors.empty());
-	assert(transitions.size() == 4);
+	assert(transitions.size() == 5);
+	auto missing_status = transitions;
+	missing_status.front().changed_status = {};
+	assert(!validate_transitions(missing_status, mechanics).empty());
 	assert(transitions.front().kind == TransitionKind::permanent);
 
 	const auto handler = cmd_info[CMD_SPECIALIZE].command_pointer;
@@ -817,6 +824,85 @@ static void phantasmal_removal()
 		"phantasmal.removal: PASS (real callback/message/unlink; message precedes released affect access; missing affect safe; stat-bit/event recalculation remains a fixture boundary)");
 }
 
+static void active_innate_lifecycle()
+{
+	load_character_properties();
+	char_data character{};
+	pc_only_data pc{};
+	character.only.pc = &pc;
+	character.player.race = RACE_PHANTOM;
+	character.player.m_class = CLASS_WARRIOR;
+	character.player.level = 19;
+	SET_POS(&character, STAT_NORMAL + POS_STANDING);
+	character_list = &character;
+	char argument[] = "phantasmal";
+	const auto invoke = [&]
+	{ cmd_info[CMD_INNATE].command_pointer(&character, argument, CMD_INNATE); };
+	mechanic_short_events.clear();
+	invoke();
+	assert(!character.affected && mechanic_short_events.empty());
+	character.player.level = 20;
+	invoke();
+	assert(mechanic_short_events.size() == 2);
+	assert(mechanic_short_events[0].first == 720 * WAIT_SEC);
+	assert(mechanic_short_events[1].first == 980);
+	auto timer = mechanic_short_events[0].second;
+	auto form = mechanic_short_events[1].second;
+	assert(timer.af->type == TAG_INNATE_TIMER && timer.af->location == INNATE_PHANTASMAL_FORM);
+	assert(timer.af->modifier == 1 && (timer.af->flags & AFFTYPE_NOAPPLY));
+	assert(form.af->type == TAG_PHANTASMAL_FORM && form.af->duration == 980);
+	assert(IS_AFFECTED(&character, AFF_INVISIBLE) && IS_AFFECTED2(&character, AFF2_PASSDOOR));
+	assert(IS_AFFECTED4(&character, AFF4_PHANTASMAL_FORM));
+	assert(!can_use_innate(&character, INNATE_PHANTASMAL_FORM));
+	// The actual event rejects wrong owners and PCs absent from the live list.
+	const auto removal_count = mechanic_removed_affects;
+	auto wrong_owner = form;
+	wrong_owner.ch = nullptr;
+	event_short_affect(&character, nullptr, nullptr, &wrong_owner);
+	character_list = nullptr;
+	event_short_affect(&character, nullptr, nullptr, &form);
+	assert(mechanic_removed_affects == removal_count);
+	character_list = &character;
+	event_short_affect(&character, nullptr, nullptr, &form);
+	assert(mechanic_removed_affects == removal_count + 1 && character.affected == timer.af);
+	event_short_affect(&character, nullptr, nullptr, &form); // No longer in the list.
+	assert(mechanic_removed_affects == removal_count + 1);
+	// Derived-stat recalculation is stubbed here; the world journey checks flags.
+	character.specials.affected_by = character.specials.affected_by2 =
+		character.specials.affected_by4 = 0;
+	mechanic_output.clear();
+	invoke();
+	assert(character.affected == timer.af && mechanic_short_events.size() == 2);
+	assert(mechanic_output.find("too tired") != std::string::npos);
+	// Remaining-use and explicit-duration branches use the same native owner.
+	timer.af->modifier = 3;
+	assert(check_innate_time(&character, INNATE_PHANTASMAL_FORM, 0));
+	assert(timer.af->modifier == 2);
+	assert(check_innate_time(&character, INNATE_PHANTASMAL_FORM, 0));
+	assert(timer.af->modifier == 1);
+	assert(!check_innate_time(&character, INNATE_PHANTASMAL_FORM, 0));
+	event_short_affect(&character, nullptr, nullptr, &timer);
+	assert(!character.affected && can_use_innate(&character, INNATE_PHANTASMAL_FORM));
+	set_character_property("innate.timer.secs.default", 180);
+	invoke();
+	assert(mechanic_short_events[2].first == 180 * WAIT_SEC);
+	assert(character.player.race == RACE_PHANTOM && character.player.level == 20);
+	// Death's shared real cleanup removes both form and cooldown.
+	for (const auto &connection : mechanic_connections())
+		if (connection.id == MechanicId::death_affect_cleanup)
+			std::get<CharacterAction>(connection.binding)(&character);
+	assert(!character.affected);
+	character.specials.affected_by = character.specials.affected_by2 =
+		character.specials.affected_by4 = 0;
+	assert(check_innate_time(&character, INNATE_PHANTASMAL_FORM, 11));
+	assert(mechanic_short_events.back().first == 11 * WAIT_SEC);
+	affect_from_char(&character, TAG_INNATE_TIMER);
+	character_list = nullptr;
+	clear_character_properties();
+	std::puts(
+		"innate.active/lifecycle: PASS (registered Phantom 19/20 dispatch, real timer/use/default/override, flag application, native short-event liveness/expiry, cooldown denial/reuse and death cleanup; scheduler delivery and derived-stat recalculation are world boundaries)");
+}
+
 static void guardian_bulwark()
 {
 	load_character_properties();
@@ -1129,6 +1215,7 @@ int main()
 	command_registration();
 	disabled_transformations();
 	phantasmal_removal();
+	active_innate_lifecycle();
 	creation_bindings();
 	guardian_bulwark();
 	unspecialization_transition();

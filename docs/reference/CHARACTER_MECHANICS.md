@@ -69,6 +69,19 @@ state in the full world. Staff supplies boundary classes, levels and resources.
 Successful completion and unreachable conversion branches remain separate,
 incomplete declarations; binding an expiry callback does not prove its lifecycle.
 
+Shared innate connections bind the real property/cooldown owner, affect allocation
+and short-event expiry. The phantasmal route uses the existing affect component
+without changing persisted identity fields; its transition therefore declares an
+affect component and retained identity instead of inventing a changed race. Native
+assertions exercise level gating, flags, timer uses/defaults/overrides, expiry,
+cooldown reuse and death removal. Derived-stat recalculation and actual scheduler
+delivery remain separate world/event evidence. `--trace innate` in the private
+world journey proves live toggling, cooldown denial, quit/relog and save/restart
+retain the form/timer, identity and item ownership. Staff supplies Phantom race and
+level; ordinary acquisition remains open. Read current fixture conditions in the
+plan. The final status guard still rejects a transition that claims status changes
+without declaring their fields.
+
 The separate `python3 tests/async/test_character_mechanics_journey.py` drives private
 full-world command and persistence cases. Staff-supplied items, levels and transport
 are fixture setup and do not prove ordinary acquisition. Native Bulwark cases

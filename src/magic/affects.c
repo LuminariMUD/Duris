@@ -2129,7 +2129,29 @@ std::span<const character_mechanics::MechanicConnection>
 character_mechanics::affect_cleanup_connections()
 {
 	static constexpr MechanicId dependencies[] = { MechanicId::racial_age_data };
+	static constexpr MechanicId expiry[] = { MechanicId::short_affect_expiry };
+	static constexpr MechanicId removal[] = { MechanicId::race_affect_cleanup };
 	static const MechanicConnection connections[] = {
+		{ MechanicId::affect_apply,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(affect_to_char),
+		  expiry,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native affect allocation/link, flag application and short-event scheduling; loading affects uses this same owner.",
+		  {} },
+		{ MechanicId::short_affect_expiry,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(event_short_affect),
+		  removal,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual short-affect callback validates owner/liveness/list membership, emits wear-off then removes through the common cleanup owner. Stale callbacks cannot remove another affect.",
+		  {} },
 		{ MechanicId::race_affect_cleanup,
 		  Relation::effect,
 		  { OptionKind::shared, 0, 0 },

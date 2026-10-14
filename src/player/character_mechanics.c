@@ -289,6 +289,18 @@ std::string_view mechanic_name(MechanicId id)
 		return "corpseform.attempt";
 	case MechanicId::corpseform_expiry:
 		return "corpseform.expiry";
+	case MechanicId::innate_cooldown:
+		return "innate.cooldown";
+	case MechanicId::innate_readiness:
+		return "innate.readiness";
+	case MechanicId::innate_property:
+		return "innate.property";
+	case MechanicId::phantasmal_form:
+		return "phantasmal.form";
+	case MechanicId::affect_apply:
+		return "affect.apply";
+	case MechanicId::short_affect_expiry:
+		return "short.affect.expiry";
 	case MechanicId::count:
 		break;
 	}
@@ -342,8 +354,8 @@ std::vector<MechanicConnection> mechanic_connections()
 std::vector<TransitionConnection> transition_connections()
 {
 	std::vector<TransitionConnection> result;
-	for (auto connections :
-	     { specialization_transitions(), multiclass_transitions(), revenant_transitions() })
+	for (auto connections : { specialization_transitions(), multiclass_transitions(),
+				  revenant_transitions(), phantasmal_transitions() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -622,6 +634,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::eligibility:
 			compatible =
+				std::holds_alternative<InnateCooldown>(connection.binding) ||
 				std::holds_alternative<CharacterIntPredicate>(connection.binding) ||
 				std::holds_alternative<CharacterIntFunction>(connection.binding) ||
 				std::holds_alternative<RaceSpecPredicate>(connection.binding) ||
@@ -649,6 +662,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::configuration:
 			compatible =
+				std::holds_alternative<InnateProperty>(connection.binding) ||
 				std::holds_alternative<const float *>(connection.binding) ||
 				std::holds_alternative<ObjectProcValue>(connection.binding) ||
 				std::holds_alternative<SkillDataQuery>(connection.binding) ||
@@ -658,6 +672,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::effect:
 			compatible =
+				std::holds_alternative<AffectInsertion>(connection.binding) ||
 				std::holds_alternative<SpellHandler>(connection.binding) ||
 				std::holds_alternative<AdmissionCommit>(connection.binding) ||
 				std::holds_alternative<DescriptorSelection>(connection.binding) ||
@@ -866,7 +881,10 @@ std::vector<std::string> validate_transitions(std::span<const TransitionConnecti
 					"command registration missing or different handler");
 			require(reaches(id, transition.mutation), "entry does not reach mutation");
 		}
-		require(!transition.changed_status.empty() && !transition.context.empty(),
+		require((!transition.changed_status.empty() || transition.changed_components) &&
+				(!(transition.changed_components & PLAYER_COMPONENT_STATUS) ||
+				 !transition.changed_status.empty()) &&
+				!transition.context.empty(),
 			"missing state description");
 		for (auto field : transition.changed_status)
 		{

@@ -58,113 +58,82 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last committed checkpoint: `2fe7f8d72` connects disabled transformation routes and
-denial-state retention; `c926e427b` connects command registration/guards;
-`4a11e79f6` connects creation/admission; `1abfef484` connects ability
-tables/provenance; `ff80bae30` connects generic race restoration and death cleanup.
-Their focused checks passed.
-Upstream `0e27ef1e8` was integrated through
-`f75e77b34`; these are reference points, not a later remote-head claim.
+Last pushed checkpoint: `41714f500`, the separately scoped phantasmal removal
+lifetime repair. Earlier passing batches are `2fe7f8d72` (disabled routes),
+`c926e427b` (commands), `4a11e79f6` (creation), `1abfef484` (ability tables), and
+`ff80bae30` (generic race/death cleanup). Upstream `0e27ef1e8` was integrated
+through `f75e77b34`; this is not a later remote-head claim. Work is active.
 
-The registration connections bind the complete initialized skill/spell/tag and
-innate tables. Startup provenance observes **8,807 skill/definition writes and 447
-innate grants at 3,390 caller locations**. Native checks compare final cells with
-observed writes, catch missing provenance and incompatible overwrites, and preserve
-specialization overrides of class-wide defaults. The reverse check matches actual
-initializer calls to those native locations; new aliases/callers and stale calls
-are deliberate negative cases. This completes table/provenance coverage, not the
-remaining ability acquisition, effects or lifecycle connections. All **632**
-registered spell/poison callback symbols resolve uniquely to production definitions;
-removing an implementation is a negative case. This proves location, not effects.
+**Current batch:** connect shared innate property/cooldown, real affect application
+and short-event expiry, and the affect-only phantasmal transition. The native
+fixture now executes `affect_to_char` and `event_short_affect`, replacing the old
+allocation stub. Phantom level 19/20, timer duration/default/override, remaining
+uses, flag application, liveness/expiry, cooldown denial/reuse and shared death
+cleanup pass. Derived-stat recalculation and scheduler delivery remain boundaries
+of that fixture. Source validation excludes only the exact empty offline pfile
+`update_skills` and `event_short_affect` stubs; real bodies must resolve uniquely.
+The full native run and all seven compiled mutations passed. Final readiness
+bindings and the status-field guard were then checked with the same native
+positive/malformed-view assertions and current source locations; unchanged
+behavior mutations were reused. The private-world persistence rerun passed.
+Its inventory assertion caught an overbroad fixture reset: purging all
+affects erased achievement progress and awarded another satchel at login. The
+fixture now removes only the innate timer, retaining unrelated achievement state,
+and compares UIDs/ownership independently of serialization order. No gameplay fix
+was needed for this fixture mismatch. `--trace innate` proves live flag toggle,
+cooldown denial, quit/relog and save/restart retain the form/timer, identity and
+item UIDs/ownership. Staff supplies Phantom race and level; original faction is
+retained. Natural Phantom acquisition and natural scheduler delivery remain
+separate. World binary SHA256:
+`264276e854fc350d0eee416b9433098999941106ec724d14fb10705cfbf3c1bc`.
 
-The creation connections bind the actual Telnet state/selection calls, WebSocket
-command table/lookup/dispatcher, shared creation predicates, account preflight/commit
-and character initialization. Native checks reject detached handlers, altered state
-bindings and new aliases, and exercise the actual JSON writer fence and unknown
-command fallback. Full-server fixtures cover normal menus, forbidden submissions,
-starter skills and persistence. Human Necromancer remains explicitly transport
-dependent: Telnet accepts it; WebSocket lists it but rejects creation because Human
-receives good-faction alignment. Initialization's complete state/innate/body sites
-and starter-kit lifecycle ownership remain incomplete.
+Native/build/format/documentation/source checks passed in `innate-*.log` (the final
+native binding assertions are `innate-bindings.log`, and current source locations
+are `innate-source.log`). The ASan/UBSan event-cancellation test also passed;
+`extract_char`'s common disarm caller is present but still needs its own reverse
+connection. Affect-only transitions may omit changed status fields; transitions
+claiming the status component still reject a missing status-field declaration.
 
-The command connections bind the complete native command vocabulary and slots.
-The seven existing assignment macros observe **845 writes** with handler symbols,
-native IDs, all seven handler/guard fields and production caller locations.
-Combined registration coverage is **4,235 source locations**. Native validation
-detects missing handlers, changed guards and conflicting overwrites; the reverse
-checker rejects new macro aliases/callers and direct unobserved command writes.
-All **437 command callback symbols** resolve independently in both backend source
-arms, including native overloads and `ACMD` declarations. Unexercised command bodies
-abort in the registration fixture; this is ownership/location evidence, not effect
-or interpreter reachability proof.
+**Next concrete repair:** `event_hatred_check` removes every hatred affect while
+iterating pointers into that same list, then accesses released nodes. Its hated-race
+loop also includes index `MAX_HATRED`, outside the native row. Qualify both in the
+existing native fixture and fix separately before continuing broader consumers.
 
-One precise existing conflict remains incomplete: blindfighting's Rogue Assassin
-cap 100 is overwritten by the later class-wide cap 90. The test requires that exact
-conflict and both original values, while rejecting additional conflicts. Preserve
-the current result pending a balance decision; it is not an intentional override
-inferred from the final table.
-
-| Evidence for the current creation batch | Scope/status |
+| Connected scope | Current evidence and boundary |
 | --- | --- |
-| `python3 tests/async/test_character_mechanics.py` | Passed for creation bindings, 3,390 source/provenance locations, 632 callback implementations, native assertions and six compiled negative cases. Log: `bin/tests/character-mechanics-creation-native.log`. |
-| `make -C src -j8` | Passed; `bin/tests/character-mechanics-creation-build.log`. |
-| `python3 tests/async/test_creation_prompt_journey.py` | All 15 private-server scenarios passed, including JSON admission cooldown after good-side creation, starter skill/save/restart and Telnet relog; flat-file minimal world, normal switches false except explicit override scenarios. Log: `bin/tests/character-mechanics-creation-prompts.log`. |
-| Login/admission regressions | Focused login source/crash and admission policy/source tests passed; `bin/tests/character-mechanics-creation-admission.log`. |
-| Other build consumers | Editor, pfile and migration-tool checks passed at `1abfef484`; the final integration gate still includes them. |
-| Documentation/format/whitespace | Passed; `bin/tests/character-mechanics-creation-documentation.log` and `character-mechanics-creation-format.log`. |
+| Native identity, creation and ordered-pair tables | Exhaustive finite traversal and typed predicate checks pass. Traversal proves safety/consistency, not independent policy correctness for every cell. |
+| Skill/spell/tag and innate tables | 8,807 skill/definition writes and 447 innate grants at 3,390 native caller locations; final-cell/provenance/conflict checks and new alias/caller/stale-call mutations pass. All 632 spell/poison callback symbols resolve to production implementations; effect coverage remains separate. |
+| Command vocabulary/slots | 845 writes with native IDs, handlers and every guard field; combined registration coverage is 4,235 locations. All 437 command callbacks resolve independently in both backend source arms, including overloads/ACMD. Handler/guard/conflict and unobserved-write cases pass. Unexercised bodies abort in the fixture. |
+| Both creation transports and account admission | All 15 private-server scenarios pass: normal menus/forbidden submissions, good-side commit/opposite-side cooldown denial, starter skills, save/restart/Telnet relog. Human Necromancer remains accepted by Telnet but listed/rejected by WebSocket's faction-derived alignment. Complete initialization state/body/innate-bit and starter-kit lifecycle ownership remains open. |
+| Specialization, unspecialization, Human/Orc multiclass, Revenant and cleanup | Existing native/world/persistence cases pass at their recorded inputs. Crown normal removal, death and restart restore base race/birth. Natural teacher/altar/temple/crown acquisition and complete broader consumer coverage remain open. Bulwark still has a recording raw-damage boundary; actual HP proof is required. |
+| Disabled transformations | Actual registered ascend, opposing Theurgist NPC gate, wrong-class/49/50 descend and corpseform callbacks preserve full native character/PC/corpse state and queue no save/ledger. Private full-world mortal ascend/descend and saved-state checks pass. Legacy descend is unregistered. Downstream conversion branch/target/state declarations and successful completion behavior remain incomplete. |
+| Phantasmal removal repair | Real callback/message/removal passes; restoring the old released-node read fails ASan. Missing-affect case passes. See [REGRESSIONS.md](../testing/REGRESSIONS.md#phantasmal-form-removal-message-lifetime). |
+| Live progression | `with_disposable_mariadb.sh python3 tests/async/run_level_cap_mysql.py` passed against its private database: qualifying frags, thresholds/config changes, side/timer/circle unlocks, persistence and rerunnable ally-count migration. Contract ownership and character level/grant journeys still need connection. |
 
-Command-batch native/mutation validation, server build, formatting, whitespace and
-documentation checks passed. Logs: `bin/tests/character-mechanics-command-native.log`,
-`character-mechanics-command-build.log`, `character-mechanics-command-format.log` and
-`character-mechanics-command-documentation.log`. Native fixture SHA256:
-`1256332313c56d235c35754ce8c6de13b05c75019d299e819bdcb0294ad37339`.
+One precise existing conflict stays incomplete: blindfighting's Rogue Assassin
+cap 100 is overwritten by the later class-wide cap 90. The native test requires
+exactly that diagnostic and both original values. Preserve current behavior
+pending a balance decision; final-table order alone does not establish intent.
 
-The disabled-route connections bind registered ascend/descend slots, actual
-attempts, Theurgist helper and epic completion, legacy descend, the initialized
-corpseform spell slot and its existing expiry callback. Exact source markers cover
-the four denial gates. Native assertions invoke the real denied bodies and compare
-complete character/PC/corpse state; no save or ledger operation occurs. The native
-command table confirms legacy descend is unregistered. Accepted ascension completion,
-legacy conversion branches and complete changed-state/target declarations remain
-incomplete; the denial fixture aborts if those services are reached. Corpseform's
-historic comment is not promoted to a demonstrated lifecycle defect.
+Focused evidence lives under `bin/tests/character-mechanics-`: `creation-native.log`,
+`creation-prompts.log`, `creation-build.log`, `command-native.log`,
+`command-build.log`, `disabled-native.log`, `disabled-world.log`,
+`phantasmal-native.log`, `phantasmal-build.log`, `progression-mysql.log`, and the
+current `innate-*.log`. The corresponding formatter/documentation logs passed for
+committed batches. Editor, pfile and migration tools passed at `1abfef484`; the
+final gate still checks their current shared headers. The shared dev game is untouched.
 
-Disabled-batch native/mutation checks, server build, formatting, whitespace and
-documentation checks passed (`bin/tests/character-mechanics-disabled-*.log`).
-`test_character_mechanics_journey.py --trace disabled` also passed using a private
-flat-file server with the committed full world and normal switches false: mortal
-interpreter ascend for Paladin/Avenger/Theurgist, wrong-class descend, and Necromancer
-levels 49/50 preserve saved identity, skills, epics, wallet and item ownership.
-Staff supplies class/level/resource boundaries; corpseform denial remains native
-callback evidence. Full-server SHA256:
-`f5fc132582dd9fde5f5d1c61ed384e5fbcc5e430ebad21285aac8959b054e685`.
-
-A separately scoped phantasmal removal repair passed: the callback now
-emits its message before releasing the affect and handles a supplied flag without
-a matching affect. The native fixture executes the actual callback, message and
-removal; the old order must fail ASan at the release boundary. See
-[the regression](../testing/REGRESSIONS.md#phantasmal-form-removal-message-lifetime).
-Native assertions and all seven compiled mutations, the server build, formatter,
-whitespace and documentation checks passed. Logs:
-`bin/tests/character-mechanics-phantasmal-*.log`. Full phantasmal entry,
-cooldown, flag recalculation and lifecycle ownership remain open.
-
-Full reverse ownership beyond these tables and the existing Bulwark/altar/
-multiclass/crown/cleanup sites remains open. The candidate scan is investigation
-input, not classified coverage. Bulwark's native raw damage is still a recording
-stub. Complete creation state/lifecycle ownership, downstream disabled conversion
-declarations, other consumers and transitions, natural acquisition and
-the required wider behavioral cases remain.
+The wider reverse inventory, other consumers and transitions, natural acquisition,
+and required family/lifecycle cases remain open. The candidate scan is input, not
+classified coverage. Continue the owner groups below; do not substitute additional
+polishing of these traces for the remaining migration. The reference describes
+[current bindings and evidence boundaries](../reference/CHARACTER_MECHANICS.md).
 
 Last full repository gate predates these batches: **729 passed, 1 failed**, 669.44
 seconds (`bin/tests/character-mechanics-revenant-death-test-all.log`). The sole
 `test_web_spray.py` fixture dependency was repaired and its focused rerun passed;
-that does not turn the earlier aggregate result green. Existing private-world
-teacher/altar, both multiclass races, crown removal/restart and staff/combat death
-journeys passed at their recorded prior inputs. New world evidence and the final
-integration gate remain required where inputs changed. The shared dev game is
-untouched. See [the reference](../reference/CHARACTER_MECHANICS.md) for the current
-contract and evidence boundaries.
+that does not turn the earlier aggregate result green. Run the final gate at the
+completed candidate, not at every metadata checkpoint.
 
 ## Shortest implementation sequence
 

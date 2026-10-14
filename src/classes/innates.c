@@ -122,6 +122,8 @@ void do_throw_lightning(P_char, char *, int);
 void do_stone_skin(P_char, char *, int);
 void do_innate_reflection(P_char, char *, int);
 void do_phantasmal_form(P_char, char *, int);
+int get_innate_property(int, const char *, int);
+bool can_use_innate(P_char, int);
 void do_shade_movement(P_char, char *, int);
 void do_dimension_door(P_char, char *, int);
 void do_god_call(P_char, char *, int);
@@ -1068,12 +1070,59 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::in
 	static constexpr MechanicId eligibility_dependencies[] = { MechanicId::innate_unlock };
 	static constexpr MechanicId grant_dependencies[] = { MechanicId::innate_eligibility,
 							     MechanicId::specialization_select };
-	static constexpr MechanicId dispatch_dependencies[] = { MechanicId::innate_eligibility };
+	static constexpr MechanicId dispatch_dependencies[] = { MechanicId::innate_eligibility,
+								MechanicId::innate_readiness,
+								MechanicId::phantasmal_form };
+	static constexpr MechanicId cooldown_dependencies[] = { MechanicId::innate_property,
+								MechanicId::affect_apply };
+	static constexpr MechanicId form_dependencies[] = { MechanicId::innate_cooldown,
+							    MechanicId::affect_apply,
+							    MechanicId::race_affect_cleanup };
 	static constexpr MechanicId passive_dependencies[] = {
 		MechanicId::innate_dispatch, MechanicId::guardian_bulwark_grant,
 		MechanicId::guardian_bulwark_effect
 	};
 	static const MechanicConnection connections[] = {
+		{ MechanicId::innate_readiness,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(can_use_innate),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Read-only menu cooldown/use predicate; actual callbacks spend their timer through check_innate_time.",
+		  {} },
+		{ MechanicId::innate_property,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(get_innate_property),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Shared innate-name property formatting and existing property loader defaults; no copied cooldown rule.",
+		  {} },
+		{ MechanicId::innate_cooldown,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(check_innate_time),
+		  cooldown_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Existing timer/remaining-use check and native short timer creation; can_use_innate remains a read-only menu check.",
+		  {} },
+		{ MechanicId::phantasmal_form,
+		  Relation::mutation,
+		  { OptionKind::race, RACE_PHANTOM, 0 },
+		  INNATE_PHANTASMAL_FORM,
+		  CHARACTER_MECHANIC_BIND(do_phantasmal_form),
+		  form_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Phantom level-20 innate creates invisibility/passdoor/phantasmal short affect for 980 pulses after spending cooldown; manual removal keeps the cooldown. Identity and inventory are retained.",
+		  {} },
 		{ MechanicId::innate_identity,
 		  Relation::identity,
 		  { OptionKind::shared, 0, 0 },
@@ -5264,4 +5313,34 @@ character_mechanics::innate_registration_connections()
 	};
 	connections[2].binding = GrantWrites(innate_registration_writes);
 	return connections;
+}
+
+std::span<const character_mechanics::TransitionConnection>
+character_mechanics::phantasmal_transitions()
+{
+	static constexpr MechanicId entries[] = { MechanicId::innate_entry };
+	static constexpr player_status_field retained[] = { player_status_field::race,
+							    player_status_field::class_primary,
+							    player_status_field::class_secondary,
+							    player_status_field::specialization,
+							    player_status_field::level,
+							    player_status_field::experience,
+							    player_status_field::birth_time,
+							    player_status_field::epics };
+	static constexpr MechanicId lifecycle[] = {
+		MechanicId::affect_apply,	 MechanicId::short_affect_expiry,
+		MechanicId::race_affect_cleanup, MechanicId::death_affect_cleanup,
+		MechanicId::affects_capture,	 MechanicId::affects_load
+	};
+	static const TransitionConnection transitions[] = {
+		{ MechanicId::phantasmal_form,
+		  entries,
+		  TransitionKind::temporary,
+		  {},
+		  retained,
+		  lifecycle,
+		  "Affect-only form: no identity mutation. Short-event expiry and manual toggle remove the form; death removes nonpermanent form and timer. Ordinary checkpoints retain both and load recreates their short events. Removal is allowed during cooldown; another activation is denied until the timer expires. Extraction cancels owned short events through the common event lifecycle.",
+		  PLAYER_COMPONENT_AFFECTS }
+	};
+	return transitions;
 }

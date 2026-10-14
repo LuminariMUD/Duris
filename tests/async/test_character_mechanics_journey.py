@@ -122,6 +122,63 @@ def run(binary, build, trace="all"):
                 command(staff, "setbit char " + PLAYER + " level 1")
                 print("PASS transformations.disabled/world: mortal interpreter ascend for Paladin/Avenger/Theurgist, wrong-class and level-49/50 descend preserve saved identity, skills, epics, wallet and item ownership; staff supplies classes/levels/resources", flush=True)
 
+            def active_innate_case(player, staff):
+                command(staff, "setbit char " + PLAYER + " race Phantom")
+                command(staff, "setbit char " + PLAYER + " level 19")
+                denied = command(player, "innate phantasmal")
+                assert "You know no such ability!" in denied, denied
+                command(staff, "setbit char " + PLAYER + " level 20")
+
+                def enter():
+                    reply = command(player, "innate phantasmal")
+                    assert "attachment to the world lessen" in reply, reply
+                    save(player)
+                    state = snapshot()
+                    assert {2003, 2011} <= {affect["type"] for affect in state["affects"]}
+                    assert state["race"] == 27 and state["level"] == 20
+                    return state
+
+                def remove_and_deny():
+                    reply = command(player, "innate phantasmal")
+                    assert "return to normal" in reply, reply
+                    denied = command(player, "innate phantasmal")
+                    assert "too tired" in denied, denied
+                    save(player)
+                    state = snapshot()
+                    types = {affect["type"] for affect in state["affects"]}
+                    assert 2003 not in types and 2011 in types
+                    assert state["race"] == 27 and state["class_primary"] == 1
+
+                before = enter()
+                player.send("quit")
+                player.expect("ACCOUNT MENU", timeout=45)
+                player.send("0")
+                player.close()
+                clients.remove(player)
+                player = login(PLAYER, ACCOUNT)
+                remove_and_deny()  # Flag/application and timer survive ordinary relog.
+                command(staff, "affectpurge " + PLAYER + " 'innate timer'")
+                enter()
+                stop()
+                boot()
+                player = login(PLAYER, ACCOUNT)
+                save(player)
+                restored = snapshot()
+                assert {2003, 2011} <= {affect["type"] for affect in restored["affects"]}
+                assert sorted(restored["snapshot_uids"]) == sorted(before["snapshot_uids"]), (before, restored)
+                assert sorted(restored["player_items"], key=lambda item: item["uid"]) == sorted(
+                    before["player_items"], key=lambda item: item["uid"]), (before, restored)
+                for key in ("race", "class_primary", "class_secondary", "specialization", "level",
+                            "experience", "epics", "wallet"):
+                    assert restored[key] == before[key], (key, before[key], restored[key])
+                remove_and_deny()
+                staff = login(STAFF, STAFF_ACCOUNT)
+                command(staff, "affectpurge " + PLAYER + " 'innate timer'")
+                command(staff, "setbit char " + PLAYER + " race Human")
+                command(staff, "setbit char " + PLAYER + " level 1")
+                print("PASS innate.active/world: mortal Phantom 19/20 dispatch, live flag toggle/removal, cooldown denial, quit/relog and save/restart retain both form/timer and identity/items; staff supplies race/level and resets cooldown between persistence cases", flush=True)
+                return player, staff
+
             def multiclass_case(player, staff, name, pid, race, safe_room):
                 command(staff, "setbit char " + name + " level 50")
                 if race == 1:
@@ -316,6 +373,11 @@ def run(binary, build, trace="all"):
                     print("Fixture: flatfile, committed full world, normal creation/Chaos switches false; staff supplies class/level/epic boundaries; corpseform callback denial is separate native evidence", flush=True)
                     print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
                     return
+                player, staff = active_innate_case(player, staff)
+                if trace == "innate":
+                    print("Fixture: flatfile, committed full world, normal switches false; staff-supplied Phantom race/levels, retained original faction; ordinary Phantom acquisition and natural short-event delivery remain separate", flush=True)
+                    print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
+                    return
                 denied = command(player, "specialize guardian")
                 assert "find a teacher first" in denied, denied
                 command(staff, "setbit char " + PLAYER + " level 29")
@@ -470,7 +532,7 @@ def run(binary, build, trace="all"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trace", choices=("all", "revenant", "disabled"), default="all")
+    parser.add_argument("--trace", choices=("all", "revenant", "disabled", "innate"), default="all")
     args = parser.parse_args()
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)

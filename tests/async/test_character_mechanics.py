@@ -132,9 +132,9 @@ def native_definition_count(sources, symbol):
         if symbol not in text:
             continue
         text = text.replace("[[maybe_unused]]", "")
-        for body in function_bodies(text, rf"\b(?:int|bool|void|ClassSkillInfo|account_racewar_admission)\s+{symbol}\s*\("):
-            # This exact offline stub deliberately has no gameplay refresh.
-            if (path == "account/pfile-stubs.c" and symbol == "update_skills"
+        for body in function_bodies(text, rf"\b(?:int|bool|void|ClassSkillInfo|account_racewar_admission|struct\s+affected_type\s*\*)\s*{symbol}\s*\("):
+            # These exact empty offline stubs have no gameplay refresh/scheduler.
+            if (path == "account/pfile-stubs.c" and symbol in ("update_skills", "event_short_affect")
                     and re.fullmatch(r"\{\s*\}", body)):
                 continue
             count += 1
@@ -462,6 +462,7 @@ valuation_stubs = "\n".join(f'int {name}(P_obj, P_char, int, char *) {{ assert(f
 combat_prelude = r'''
 #include "core/prototypes.h"
 #include "core/mm.h"
+#include "core/profile.h"
 #include "core/utils.h"
 #include "net/comm.h"
 #include "combat/damage.h"
@@ -547,8 +548,14 @@ void event_revenant_crown(P_char, P_char, P_obj, void *);
 void event_object_proc(P_char, P_char, P_obj, void *);
 P_nevent current_nevent = nullptr;
 int mechanic_crown_events, mechanic_object_events, mechanic_wait;
+std::vector<std::pair<int, event_short_affect_data>> mechanic_short_events;
 nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_char victim,
         P_obj obj, int flag, const void *data, int size) {
+    if (callback == event_short_affect) {
+        assert(ch && !victim && !obj && !flag && data && size == sizeof(event_short_affect_data));
+        mechanic_short_events.emplace_back(delay, *static_cast<const event_short_affect_data *>(data));
+        return {nevent_schedule_status::scheduled, {nullptr, 0}};
+    }
     assert(!victim && !flag && !data && !size);
     if (callback == event_revenant_crown) {
         assert(ch && !obj && delay == PULSE_VIOLENCE / 2);
@@ -560,13 +567,7 @@ nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_ch
     return {nevent_schedule_status::scheduled, {nullptr, 0}};
 }
 void CharWait(P_char, int delay) { mechanic_wait = delay; }
-affected_type *affect_to_char(P_char ch, affected_type *affect) {
-    assert(affect->type == TAG_RACE_CHANGE);
-    auto *copy = new affected_type(*affect);
-    copy->next = ch->affected;
-    ch->affected = copy;
-    return copy;
-}
+
 P_obj unequip_char(P_char ch, int slot, bool saving) {
     assert(!saving && ch->equipment[slot]);
     P_obj obj = ch->equipment[slot];
@@ -592,6 +593,10 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 }
 mm_ds mechanic_affect_pool{};
 mm_ds *dead_affect_pool = &mechanic_affect_pool;
+mm_ds *mm_create(const char *, size_t, size_t, unsigned) { std::abort(); }
+void *_mm_get(mm_ds *pool, const char *, int) {
+    assert(pool == dead_affect_pool); return new affected_type{};
+}
 void mm_release(mm_ds *pool, void *value) {
     assert(pool == dead_affect_pool);
     delete static_cast<affected_type *>(value);
@@ -600,14 +605,12 @@ void mm_release(mm_ds *pool, void *value) {
 // The real removal algorithm owns unlinking and race/birth changes. These
 // services bound derived stats, notifications, linked affects and the scheduler.
 void all_affects(P_char, int) {}
-bool check_innate_time(P_char, int, int) { std::abort(); } // Removal does not spend cooldown.
 void balance_affects(P_char) {}
 int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }
 void gmcp_char_affects(P_char) {}
 void unlink_char_affect(P_char, affected_type *) { std::abort(); }
 void unlink_char_obj_affect(P_char, affected_type *) { std::abort(); }
-void event_short_affect(P_char, P_char, P_obj, void *) { std::abort(); }
 void event_web_spray(P_char, P_char, P_obj, void *) { std::abort(); }
 void disarm_char_nevents(P_char, event_func_type) { std::abort(); }
 nevent_handle nevent_handle_from_event(P_nevent) { std::abort(); }
@@ -629,6 +632,9 @@ float dam_factor[LAST_DF + 1];
 static double delivered_damage;
 static int damage_calls;
 P_desc descriptor_list = nullptr;
+P_char character_list = nullptr;
+bool do_profile = false;
+profile_timer short_affect_liveness_profile{};
 void *__malloc(size_t size, const char *, const char *, int) { return malloc(size); }
 void __free(void *p, const char *, int) { free(p); }
 affected_type *get_spell_from_char(P_char ch, int spell, void *, int) {
@@ -675,10 +681,14 @@ combat_bodies = (
         ("innates.c", "static int innate_unlock_level("),
         ("innates.c", "bool has_innate("),
         ("innates.c", "void assign_innates("),
-        ("innates.c", "bool can_use_innate("),
+        ("innates.c", "void get_property_format("),
+        ("innates.c", "int get_innate_property(int innate, const char *prefix, int default_value)"),
+        ("innates.c", "bool check_innate_time("),
+        ("innates.c", "bool can_use_innate(P_char ch, int innate)"),
         ("innates.c", "void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)"),
         ("innates.c", "void do_innate(P_char ch, char *arg, int cmd)"),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections("),
+        ("innates.c", "std::span<const character_mechanics::TransitionConnection> character_mechanics::phantasmal_transitions("),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_registration_connections("),
         ("fight.c", "void update_dam_factors("),
         ("fight.c", "int melee_damage("),
@@ -710,6 +720,8 @@ combat_bodies = (
         ("memorize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::memorization_connections("),
         ("db.c", "int real_object0("), ("db.c", "int real_object(const int"),
         ("specs.object.c", "int unspec_altar("),
+        ("affects.c", "struct affected_type *affect_to_char(P_char ch, struct affected_type *af)"),
+        ("affects.c", "void event_short_affect("),
         ("affects.c", "void affect_remove("),
         ("affects.c", "void affect_from_char("),
         ("affects.c", "void wear_off_message("),
