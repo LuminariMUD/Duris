@@ -1,36 +1,37 @@
-# Log review: review handoff
+# Log review: merged delivery and release handoff
 
 Tracking: [#56](https://github.com/LuminariMUD/Duris/issues/56) and
 [#58](https://github.com/LuminariMUD/Duris/issues/58).
 Completed work, acceptance contracts, test evidence and history are in
-[plan-estale.md](plan-estale.md). This file records review readiness and the remaining conditional/deferred work.
+[plan-estale.md](plan-estale.md). This file records the merged delivery and the remaining conditional/deferred work.
 
 ## Integration and review fixes
 
-The requested repository delivery is complete and ready for an authorized squash merge. The stack
-**#70 → #73 → #74 → #75** remains open and unmerged. Master is `c6a95a470`.
+The authorized repository delivery was merged in **#70 → #73 → #74 → #75**
+order on 2026-10-14; #75 includes this final handoff. All four use squash merges to
+preserve master's linear history. Master was still `c6a95a470` when landing
+began, so no additional conflict resolution was needed.
 
-The final review audit carried master's documentation-only #78 through every
-branch with ordinary merge commits. Each parent remains an ancestor of its child.
-Master's active rules require linear history and restrict updates to authorized
-maintainers; #70 reports `MERGEABLE` but `BLOCKED`, while the children are `CLEAN`.
-Leave those protections intact. Land each PR by squash merge in stack order.
-After each parent lands, carry the child's tested tree diff relative to its saved
-parent head onto the new master, verify the resulting tree, then update the child
-with an explicit force-with-lease and retarget it. Do not use a plain rebase that
-could discard conflict resolutions held in merge commits. No release tag or
-branch rewrite is needed before the owner requests landing.
-All three review findings remain fixed and resolved; review replies identify the
-repair and its proof. A subsequent hosted build exposed a MySQL-client type
-mismatch in the kingdom interface. `b6a8ecb4c` fixes it with the existing
-`sql_work` type and is carried through every branch. Gameplay behavior is unchanged.
+After each parent landed, the child's complete diff relative to its saved parent
+head was applied to the new master. Each resulting tree exactly matched its
+qualified branch before the documentation-only handoff below. Published child
+branches were updated with explicit old-head leases and retargeted to master.
+This preserved the reconciliations in earlier merge commits. Existing repository
+rules stayed intact, unrelated worktrees were preserved, and no release tag was
+created.
 
-| PR | Qualified implementation checkpoint | Integration/repair |
+All three review findings are fixed and resolved. The MySQL-client interface
+repair `b6a8ecb4c` uses the existing `sql_work` type and is present throughout the
+landed stack. The final source, tests and runtime data are unchanged from the
+qualified combined tree `8b2681862`; later changes only update documentation.
+The retained 736-regression/77-database evidence therefore remains applicable.
+
+| PR | Qualified checkpoint | Landing |
 | --- | --- | --- |
-| [#70](https://github.com/LuminariMUD/Duris/pull/70) | `b6a8ecb4c` | Master awards, task recovery and diagnostics reconciled; MySQL/MariaDB interface repaired |
-| [#73](https://github.com/LuminariMUD/Duris/pull/73) | `bf07716c5` | Actual all-level boon results; level-30 training and immediate HP retained |
-| [#74](https://github.com/LuminariMUD/Duris/pull/74) | `5e67ad3dc` | Complete bounded area response and accurate Seadog owner/panel help |
-| [#75](https://github.com/LuminariMUD/Duris/pull/75) | `8b2681862` | Combined qualification, connection observer cleanup and client compatibility |
+| [#70](https://github.com/LuminariMUD/Duris/pull/70) | `b6a8ecb4c` | `455b76a04`: artifact/guild memory authority, all-level awards, task recovery and diagnostics |
+| [#73](https://github.com/LuminariMUD/Duris/pull/73) | `bf07716c5` | `ad91bba76`: actual boon results, level-30 training and immediate HP |
+| [#74](https://github.com/LuminariMUD/Duris/pull/74) | `5e67ad3dc` | `aaa0aa5aa`: bounded area output and accurate innate help |
+| [#75](https://github.com/LuminariMUD/Duris/pull/75) | `8b2681862` (code), `e5dd89d11` (review handoff) | Final delivery: death/healing/distance repairs, connection observer cleanup and this release handoff |
 
 `8b2681862` passed `make -C src -j16`, `make -C src pfile -j16`, maintained
 migration targets (also force-rebuilt with `make -B -C migrations/tools all
@@ -56,10 +57,12 @@ MariaDB. #74 reports 2/2, with direct evidence of the original ASan overflow and
 old Seadog wording failing the renderer. The original #75 lifecycle 3/3 catches
 remain valid for unchanged repairs. All three review findings (#74 area/help,
 #75 observer cleanup) are resolved. #56/#58 and the PR descriptions carry the
-current evidence; skipped items stay deferred. No production action occurred.
+current evidence; skipped items stay deferred. #58 is closed by #70 with all six
+implementation acceptance criteria checked. #56 stays open for its deferred
+scope. No production action occurred.
 
-**Outcome:** reconcile and qualify all four review branches and resolve the three
-#74/#75 findings. **Non-goals:** production rollout, historical repair, owner-skipped
+**Outcome:** land all four qualified PRs, reconcile issue status and record the
+remaining release handoff. **Non-goals:** production rollout, historical repair, owner-skipped
 investigations, and ship-mechanic changes. **Files:** the affected award,
 repository/coordinator, boon, area and help paths and their existing tests/docs.
 **Proof:** focused executable and disposable gameplay/SQL journeys, defect
@@ -141,7 +144,7 @@ The permanent expanded regression and response repair pass at `2a0b335e3`;
 the committed before/after check reports 2/2 catches.
 
 The original reported zone/catalog attribution is skipped below; this concrete
-review finding remains active.
+review finding is fixed and qualified.
 
 ### 4. Correct #74's Seadog help — P2, LR-08
 
@@ -180,7 +183,7 @@ review finding remains active.
   substitute for local proof or bypass review/branch protection.
 - [x] Record exact qualified commits, commands, results and limitations in
   [REGRESSIONS.md](../testing/REGRESSIONS.md) and the archive. Update PR bodies
-  and #56/#58 status; the #58 issue still has open reward-state acceptance boxes.
+  and #56/#58 status; all six #58 implementation acceptance boxes are checked.
   Do not label the combined release complete from older branch results.
 
 Use isolated worlds/databases and retain evidence in ignored `bin/analysis/`.
@@ -188,15 +191,28 @@ Another worktree may be testing the shared dev game. These tasks do not advance
 that separate [#52 character-mechanics plan](plan.md) or
 [#57 PSP/movement defects](https://github.com/LuminariMUD/Duris/issues/57).
 
+## Next session: release preparation, when requested
+
+No further implementation session is queued for the completed delivery. The
+next step is an explicitly requested production release preparation using the
+[runbook](../operations/RUNBOOK.md), followed by the owner's in-game reboot and
+post-release checks below. Start by checking current master and the actual
+production state; this merge does not establish deployment. This session stops
+at the repository handoff.
+
+The updated handoff passes `python3 tests/async/test_documentation_contract.py`
+(14 checks) and `npm test --prefix site` (15 tests). Landing evidence is retained
+in `bin/analysis/landing/`; source qualification remains in
+`bin/analysis/review-final/`.
+
 ## Conditional release and historical repair
 
 These operations are still unfinished and require their specific owner
 authorization; listing them here does not authorize production changes.
 
-- [ ] When merge is requested and requirements are satisfied, land
-  **#70 → #73 → #74 → #75** by authorized squash merges, carrying forward each
-  child's tested diff and retargeting it as described above.
-  Keep skipped items explicitly deferred when reconciling issue closure.
+- [x] Land **#70 → #73 → #74 → #75** by authorized squash merges, preserving
+  each child's tested tree and updating the final handoff with #75. Keep skipped
+  items explicitly deferred when reconciling issue closure.
 
 - [ ] For an authorized release, prepare the integrated binary/world/configuration
   and help publication through the [runbook](../operations/RUNBOOK.md). Preserve
@@ -226,16 +242,16 @@ on 2026-10-13. Full requirements and evidence remain in [plan-estale.md](plan-es
 
 | Item | Work we are skipping for now |
 | --- | --- |
-| LR-06 — original zone attribution | Identify the reported room/zone and verify its catalog population. The active response-overflow repair above is not skipped. |
+| LR-06 — original zone attribution | Identify the reported room/zone and verify its catalog population. The response-overflow repair above is delivered by #74. |
 | LR-07 — movement report | Recover the player's race/class, posture, terrain, load, effects, resources, actions and timing; reproduce drain/regen or establish a supported explanation. Keep correlation with #57 distinct. |
-| LR-08 — `skeer` | Identify the intended ability/topic before adding help; no meaning has been established. The Seadog correction above remains active. |
-| LR-09/LR-10 — historical attribution | Identify the exact original dead-NPC scheduling and standing/resting producer sequences. Preserve and integrate the demonstrated #75 producer repairs. |
+| LR-08 — `skeer` | Identify the intended ability/topic before adding help; no meaning has been established. The Seadog correction above is delivered by #74. |
+| LR-09/LR-10 — historical attribution | Identify the exact original dead-NPC scheduling and standing/resting producer sequences. The demonstrated #75 producer repairs are delivered. |
 | LR-12 — host log rotation | Obtain protected diagnostics, identify the failed rule/hook and verify a successful scheduled/authorized rotation with correct ownership and live writers. |
 | LR-13 — off-host replica | Obtain an approved remote destination; provision the supported mount/permissions/retention and prove publication, checksum/readback and failure/recovery. `replica_root` was null. |
 | LR-14 — restore qualification | Provision a separate isolated filesystem, enable the drill policy, restore a verified generation including a replica, observe receipt/readiness/cleanup and record recovery time/point. Drills were disabled. |
 | LR-15 — failure alerts | Diagnose sendmail exit 100 using protected mail evidence; verify actual OnFailure delivery/recipient receipt and success-only quiet-period stamping. No test alert is authorized by this plan. |
 | LR-16 — tunnel impact | Correlate recovered connection IDs/timestamps with contemporaneous external health and client disconnects; establish impact or a supported monitoring-only disposition. |
 | LR-17 — exact lookup attribution | Recover the original lookup mode/query and concurrent load for live command/callback correlation. Representative native profiling and the decision not to retain an unproven optimization are archived. |
-| LR-18 — original pathfinding reports | Recover caller/source/target rooms for the 22 room-budget and 15 distance-limit exits. The demonstrated #75 maximum-distance repair remains part of the active integration. |
+| LR-18 — original pathfinding reports | Recover caller/source/target rooms for the 22 room-budget and 15 distance-limit exits. The demonstrated #75 maximum-distance repair is delivered. |
 | LR-19 — public health monitor | Identify the intended public URL, client/method/headers and network location; verify healthy/unhealthy behavior and resolve urllib 403/1010 versus curl without unsupported rule changes. |
 | LR-20 — protected host audit | Review system/kernel/auth/mail/Fail2Ban/Plesk/web-server/host-database logs, including rotations and retention gaps, for 2026-10-12 22:25:09–2026-10-13 05:25:09 UTC. Missing access is not a clean result. |
