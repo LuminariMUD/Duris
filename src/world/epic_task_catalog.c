@@ -46,7 +46,7 @@ bool parse_zone(const char *value, int32_t *zone_number)
 
 bool epic_task_catalog_publish(const int32_t *zone_numbers, size_t count)
 {
-	if (count > EPIC_TASK_CATALOG_MAX || (count && !zone_numbers))
+	if (!count || count > EPIC_TASK_CATALOG_MAX || !zone_numbers)
 		return false;
 	std::vector<int32_t> candidate;
 	try
@@ -110,8 +110,11 @@ bool epic_task_catalog_refresh(void)
 #endif
 }
 
-int epic_task_catalog_select(const gameplay_read_state *state)
+int epic_task_catalog_select(const gameplay_read_state *state,
+			     epic_task_selection_status *status)
 {
+	if (status)
+		*status = epic_task_selection_status::unavailable;
 	if (!ready || !state || state->status != gameplay_read_status::ready)
 		return -1;
 	int selected = -1;
@@ -123,6 +126,9 @@ int epic_task_catalog_select(const gameplay_read_state *state)
 			if (number(1, eligible) == 1)
 				selected = zone_number;
 		}
+	if (status)
+		*status = selected < 0 ? epic_task_selection_status::exhausted
+				       : epic_task_selection_status::selected;
 	return selected;
 }
 
