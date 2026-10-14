@@ -19,6 +19,7 @@ banned address is told so and closed, and the server stays up. A full server ref
 from __future__ import annotations
 
 import os
+import json
 import socket
 import tempfile
 import threading
@@ -27,6 +28,7 @@ from pathlib import Path
 
 from test_account_recovery_journey import (
     ACCOUNT, OLD_PASSWORD, IsolatedServer, MudClient, build_flatfile_server, create_account, require,
+    enter_account_name, login_to_menu,
 )
 
 LIMIT = 8
@@ -187,6 +189,116 @@ def ban(run_root: Path) -> None:
     (run_root / "lib/misc/ban_sites").write_text(f"Journey\n60\n{BANNED}\n")
 
 
+def connection_churn(server: IsolatedServer, legitimate: MudClient) -> None:
+    """Measure 2,001 sequential attempts while an authenticated client responds."""
+    count = 2001
+    source = "127.0.0.24"
+    proc = Path(f"/proc/{server.process.pid}")
+    baseline_fd = len(list((proc / "fd").iterdir()))
+    baseline_rss = rss_kib(server)
+    peak_fd, peak_rss = baseline_fd, baseline_rss
+    initial_logs = dict(server.log_corpus())
+    before_logs = sum(len(data) for data in initial_logs.values())
+    before_lines = sum(data.count(b"\n") for data in initial_logs.values())
+    def cpu_seconds() -> float:
+        fields = (proc / "stat").read_text().split(") ", 1)[1].split()
+        return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
+    cpu_before = cpu_seconds()
+    # Hold genuinely incomplete handshakes throughout their timeout, separately
+    # from the immediately disconnected stream.
+    incomplete = []
+    observers = []
+    expiries = []
+    for mode in (1, 2):
+        sock = socket.create_connection(("127.0.0.1", server.plain_port + mode), timeout=5,
+                                        source_address=("127.0.0.25", 0))
+        if mode == 2:
+            sock.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\n")
+        incomplete.append(sock)
+        def observe_timeout(sock=sock, mode=mode) -> None:
+            began = time.monotonic()
+            text = closed_within(sock, 45)
+            expiries.append((mode, text is not None, time.monotonic() - began))
+        thread = threading.Thread(target=observe_timeout, daemon=True)
+        thread.start()
+        observers.append(thread)
+    stop = threading.Event()
+    def sample() -> None:
+        nonlocal peak_fd, peak_rss
+        while not stop.wait(.01):
+            peak_fd = max(peak_fd, len(list((proc / "fd").iterdir())))
+            peak_rss = max(peak_rss, rss_kib(server))
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    latencies = []
+    started = time.monotonic()
+    try:
+        for attempt in range(count):
+            mode = attempt % 3
+            with socket.create_connection(("127.0.0.1", server.plain_port + mode), timeout=5,
+                                          source_address=(source, 0)) as sock:
+                if mode == 1:
+                    sock.sendall(b"\x16\x03") # Incomplete TLS record.
+                elif mode == 2:
+                    sock.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\n")
+            # Pace this sequential stream so the test measures admitted churn,
+            # rather than only refusing a backlog at the concurrent limit.
+            time.sleep(.02)
+            if attempt % 100 == 0:
+                began = time.monotonic()
+                legitimate.send("")
+                legitimate.expect("Please select an option", timeout=2)
+                latencies.append(time.monotonic() - began)
+    finally:
+        stop.set()
+        sampler.join()
+        for observer in observers:
+            observer.join()
+        try:
+            require(len(expiries) == 2 and all(closed for _, closed, _ in expiries),
+                    "an incomplete TLS/WebSocket handshake survived 45 seconds")
+        finally:
+            for sock in incomplete:
+                sock.close()
+    elapsed = time.monotonic() - started
+    time.sleep(2) # Include async disconnect/error log flush and DNS worker cleanup.
+    final_fd = len(list((proc / "fd").iterdir()))
+    final_rss = rss_kib(server)
+    corpus = server.log_corpus()
+    log_bytes = sum(len(data) for _, data in corpus) - before_logs
+    log_lines = sum(data.count(b"\n") for _, data in corpus) - before_lines
+    source_lines = sum(data.count(source.encode()) for _, data in corpus)
+    overruns = sum(data[len(initial_logs.get(name, b"")):].count(b"MUD TICK TOOK TOO LONG")
+                   for name, data in corpus)
+    print("connection churn " + json.dumps({
+        "attempts": count, "seconds": round(elapsed, 3), "attempts_per_second": round(count/elapsed, 2),
+        "baseline_fd": baseline_fd, "peak_fd": peak_fd, "final_fd": final_fd,
+        "baseline_rss_kib": baseline_rss, "peak_rss_kib": peak_rss, "final_rss_kib": final_rss,
+        "log_lines": log_lines, "log_bytes": log_bytes, "source_mentions": source_lines,
+        "max_menu_response_ms": round(max(latencies) * 1000, 2),
+        "cpu_seconds": round(cpu_seconds() - cpu_before, 3), "pulse_overruns_250ms": overruns,
+        "incomplete_handshake_expiry_seconds": {str(mode): round(seconds, 2)
+                                                for mode, _, seconds in expiries},
+    }), flush=True)
+    require(peak_fd <= baseline_fd + 32, "descriptor cleanup fell behind connection churn")
+    require(final_fd <= baseline_fd + 2, "connection churn retained descriptors")
+    require(peak_rss - baseline_rss < 8192, "connection churn grew memory by 8 MiB")
+    require(log_lines < count * 10 and log_bytes < count * 2048,
+            "connection churn produced more than ten lines/2 KiB per attempt")
+    require(source_lines >= count, "connection stream was not observed by the server")
+    # The stream's own address is usable again; no residual per-address refusal.
+    legitimate.send("0")
+    legitimate.expect("Thank you for playing!")
+    legitimate.close()
+    reconnect = BoundClient(server.plain_port, source)
+    try:
+        enter_account_name(reconnect)
+        reconnect.expect("password")
+        login_to_menu(reconnect, OLD_PASSWORD)
+    finally:
+        reconnect.close()
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="duris-connection-limit-build-") as build:
         binary = build_flatfile_server(Path(build))
@@ -318,6 +430,8 @@ def main() -> int:
                 website.join()
                 require(website.ended is None, "a website client that sent a message every 25 s "
                         f"was closed: {website.ended!r}")
+
+                connection_churn(server, other)
 
                 # Fill the server: a TLS connection it refuses keeps no GnuTLS session
                 # (about 8 KiB each before). The connections opened just after `waiting`

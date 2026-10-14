@@ -93,7 +93,7 @@ and `guild_outcome_ledger` record captured reward facts. Their revisions order
 history; they do not approve gameplay or reconstruct present totals after later
 spending or timer adjustments. A history receipt alone does not prove that all
 state snapshots committed. Existing schema and committed v1 receipts/outbox remain
-supported. See the [qualification evidence](../ongoing-projects/plan-log_review.md#qualification-update-2026-10-14)
+supported. See the [qualification evidence](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
 and the pipeline's reconciliation contract before interpreting these tables.
 
 ## External consumers and writers

@@ -5,7 +5,7 @@
 
 **2026-10-14 follow-up:** the artifact/guild reward clarification below describes
 the locally qualified #58 implementation on `fix/58-artifact-guild-memory`; see the
-[evidence](../ongoing-projects/plan-log_review.md#qualification-update-2026-10-14). It is not a production
+[evidence](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14). It is not a production
 rollout or a claim that the original reset included this change.
 
 This records why the server saves the way it does and what was deliberately left out. How
