@@ -57,12 +57,15 @@ Consult subsystem documentation only for the operations that actually apply.
   those mechanics, not as a requirement to create a test environment. Do not
   replay historical repair/wipe scripts as though they were pending migrations.
   Finish with `migrations/verify_runtime_compatibility.sh`.
-- Update help when the release changes it. See SKILL `.agents/skills/news-update`
+- Update help when the release changes it.
   The importer gives `help/duris_help_parsed.hlp` precedence over
   `lib/information/help_index`; correct colliding stale entries. Run the innate
-  help generator only when relevant. Update `lib/information/news` for missing
-  player-facing changes in the release, retaining its colors/layout and avoiding
-  duplicate announcements or temporary deployment notices.
+  help generator only when relevant.
+- Follow [news-update](../news-update/SKILL.md) to prepare
+  `lib/information/news` for missing player-facing changes in the release.
+  Put the new release headline and main addition before the previous newest
+  section, including for another release on the same day. Keep temporary
+  deployment notices out of player news.
 - Preview and publish changed content using
   `scripts/import_help_to_prod.sh --local --dry-run`, then `--local`.
   Use `--news-only` for both commands when only news changed. Answer its normal
@@ -140,9 +143,13 @@ Require the new server child's `/proc/<pid>/exe` hash to match the rebuilt
 binary, the production stamp to match, and startup/world/persistence loading to
 complete without unresolved errors. Check `scripts/healthcheck.sh`, public MUD
 health at `https://ws.duris.sbs/health`, and website health at
-`https://duris.sbs/health`. Reconnect to confirm the game accepts logins, then
-quit the deployment character and close your session. Observe another minute
-of normal operation for crashes, restart loops, or recurring errors.
+`https://duris.sbs/health`. Reconnect to confirm the game accepts logins.
+When news changed, run `news` and complete the player-visible readback in
+[news-update](../news-update/SKILL.md): verify the newest headline and main
+addition on the first page and read through the new section. Database equality
+or a successful help lookup does not replace this check. Report any incomplete
+readback. Then quit the deployment character and close your session. Observe
+another minute of normal operation for crashes, restart loops, or recurring errors.
 
 Diagnose any failure from the logs and fix direct deployment mistakes where
 possible; do not blindly repeat reboots or roll old code onto an incompatible
