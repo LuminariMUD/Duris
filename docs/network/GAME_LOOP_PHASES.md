@@ -23,6 +23,11 @@ work across this table without a separate behavior change and trace evidence.
 | 6 | `run_activity_phase`, then `run_combat_phase` | Due activities, violence, and descriptor-related map/group/movement updates | Activities precede combat exactly as before; descriptor traversal remains on the game thread and uses borrowed live pointers only for the duration of the phase. |
 | 7 | `run_pulse_reset_phase` | Tick advance, due affect/point updates, latency diagnostics, trace snapshots, remaining-pulse wait, and end-of-pulse time refresh | The event tick advances after combat. The wait is bounded by the pulse budget and may return early on an interrupt; the next top-level pulse retries. |
 
+The optional Discord petition endpoint polls accepts/control input during the
+connection phase and flushes its bounded output queue during the output phase.
+It owns separate nonblocking sockets, never player sessions. See
+[DISCORD_BRIDGE.md](DISCORD_BRIDGE.md) for budgets and copyover behavior.
+
 The top-level call sequence is therefore:
 
 ```text

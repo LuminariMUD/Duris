@@ -30,6 +30,7 @@
 #include "core/structs.h"
 #include "telemetry/telemetry_runtime.h"
 #include "net/comm.h"
+#include "net/discord_bridge.h"
 #include "net/session_input.h"
 #include "net/output_style.h"
 #include "net/chat_presentation.h"
@@ -1294,8 +1295,9 @@ static void prepare_descriptor_latency_event(command_latency_event *event,
 
 class scoped_command_latency
 {
-    public:
-	scoped_command_latency(command_latency_tracker *tracker, const command_latency_event *event)
+public:
+	scoped_command_latency(command_latency_tracker * tracker,
+			       const command_latency_event *event)
 		: tracker_(tracker)
 		, event_(event)
 		, started_us_(loop_monotonic_us())
@@ -1303,7 +1305,10 @@ class scoped_command_latency
 	{
 	}
 
-	~scoped_command_latency() { finish(); }
+	~scoped_command_latency()
+	{
+		finish();
+	}
 
 	void finish()
 	{
@@ -1315,9 +1320,9 @@ class scoped_command_latency
 	}
 
 	scoped_command_latency(const scoped_command_latency &) = delete;
-	scoped_command_latency &operator=(const scoped_command_latency &) = delete;
+	scoped_command_latency &operator = (const scoped_command_latency &) = delete;
 
-    private:
+private:
 	command_latency_tracker *tracker_;
 	const command_latency_event *event_;
 	uint64_t started_us_;
@@ -1512,6 +1517,22 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
 	//PROFILE_END(process_signal_shutdown_pending);
 	persistence_log_poll();
 	checkpointing();
+	discord_bridge_poll();
+	static uint64_t discord_report_at = 0;
+	if (loop_monotonic_us() >= discord_report_at)
+	{
+		discord_report_at = loop_monotonic_us() + 60000000;
+		const auto bridge = discord_bridge_get_status();
+		if (bridge.listening)
+			logit(LOG_STATUS,
+			      "Discord bridge: connected=%d authenticated=%d queued=%zu sent=%llu dropped=%llu rejected=%llu clients_rejected=%llu auth_failed=%llu",
+			      bridge.connected, bridge.authenticated, bridge.queued_events,
+			      (unsigned long long)bridge.sent_events,
+			      (unsigned long long)bridge.dropped_events,
+			      (unsigned long long)bridge.rejected_records,
+			      (unsigned long long)bridge.rejected_clients,
+			      (unsigned long long)bridge.auth_failures);
+	}
 
 	if ((last_desc_per_hour_reset + 3600) <= time(0))
 	{
@@ -1938,6 +1959,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 
 static void run_output_phase(game_loop_pulse_context &ctx)
 {
+	discord_bridge_flush();
 	const uint64_t loop_tick = ctx.loop_tick;
 	P_desc point, next_point;
 
@@ -2595,6 +2617,11 @@ void game_loop(int port, int sslport)
 		}
 	}
 
+	// The JSON bridge is recreated after exec, never inherited as a player socket.
+	if (!discord_bridge_init())
+		logit(LOG_STATUS,
+		      "WARNING: Discord bridge failed to start; check DURIS_DISCORD settings or port availability");
+
 	// store in file-scope statics for copyover access
 	mother_desc = s;
 	mother_desc_ssl = S;
@@ -2681,6 +2708,8 @@ resume_game_loop:
 		}
 		return;
 	}
+
+	discord_bridge_shutdown();
 
 	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
 	// failure is reported, never a reason to keep running. The writer gets 30 s for
@@ -3475,7 +3504,7 @@ void close_socket(struct descriptor_data *d)
 		FREE(d->storage);
 
 #endif
-		/* I really don't wanna crash it  */
+	/* I really don't wanna crash it  */
 #ifdef USE_ACCOUNT
 	if (d->account)
 		d->account = free_account(d->account);

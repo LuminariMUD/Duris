@@ -196,6 +196,7 @@ OBJS =  $(SHIP_OBJS) \
 				combat/chaos_config.o \
 				net/command_latency.o \
 				 net/comm.o \
+				 net/discord_bridge.o \
 				 persistence/copyover.o \
 				 core/common.o \
 				 world/condition.o \
