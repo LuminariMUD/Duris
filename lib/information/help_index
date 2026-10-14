@@ -4940,24 +4940,18 @@ See also: "CLOAK OF FEAR"
 #
 EPIC
 ===========================================================================
-Once a character reaches level 50, they can begin to accumulate Epic Points. 
-You can gain these points from either finding and touching the may 
-runestones and monoliths hidden about the lands, or by tasting the blood of 
-your enemies. The epic points will accumulate, and once you reach a certain 
-amount you will gain a skill point. Skill points can be used for several 
-things in the realms, most notably the advancement of epic skills. The epic 
-skills list as follows:
+You can earn Epic Points at any level. Touch runestones and monoliths hidden
+about the lands, defeat enemies, or earn other epic rewards. Epic potions can
+also be quaffed at any level and award 75 points each.
 
-&+WAnatomy
-&+WAdvanced Meditation
-&+WSummon Blizzard
-&+WChant Mastery
-&+WSummon Familiar
-&+WHone Weapon&n
+Use 'score' to see your balance, total earned points, and current epic task.
+The Gods may give you a task as you earn points. Until it is complete, some
+further awards are reduced. Epic potions do not count toward assigning tasks.
 
-It is also rumored that 50 Epic Points are required to venture into the 
-realm of multiclassing, and that skill points have the capability to reset 
-one's chosen path.
+Epic skill training begins at level 30 by default. Each skill still has its
+own class, prerequisite, epic-point and platinum requirements. Use
+'epic skills' to find the available skills and their teachers. You spend
+epic points directly; separate skill points are no longer used.
 ===========================================================================
 
 #

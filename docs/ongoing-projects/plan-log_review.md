@@ -230,21 +230,8 @@ The existing scheduler harness alone does not prove cross-store agreement.
 
 ### LR-02 — Epic boon eligibility feedback (medium; #56 §3)
 
-- [ ] Show accurate completion/reward feedback below and at the epic gain gate.
-
-[boon.c](../../src/economy/boon.c), `boon_publish_transaction_result()`, announces
-completion before `gain_epic()` can decline a below-level award.
-[epic.c](../../src/world/epic.c) already provides `epic_level_can_gain()` and
-`epic_gain_min_level()`; the checked-in minimum is 50. Reuse those rules to explain
-why a completed epic boon awarded no epics. Preserve boon completion semantics,
-non-epic rewards, and the existing successful-award feedback; do not lower the
-gate, reopen a consumed boon, or claim a persistence failure.
-
-Extend [test_epic_level_gate.py](../../tests/async/test_epic_level_gate.py) with
-the actual publication/award path, supplementing its helper/source checks.
-At levels 49/50 and an overridden configured boundary, assert message, epic
-balance, and completion state together. Cover a declined award without a false
-success message and ensure the change adds no second reward application.
+- [x] Retired the level-boundary feedback work: epic points can be earned at any
+  level, so boon awards cannot be declined for being below an epic gain minimum.
 
 ### LR-03 — Epic training minimum (medium; policy decision; #56 §3)
 
@@ -257,14 +244,14 @@ read by `epic_skills_min_level()` and enforced by `epic_teacher()` in
 [epic_skills.c](../../src/classes/epic_skills.c). Refusal below 30 follows that
 rule. The property, compiled default, [Ship Damage Control reference](../reference/SHIP_GAMEPLAY.md#ship-damage-control),
 and [CODEBASE.md](../reference/CODEBASE.md#epic-point-and-epic-skill-levels) now
-agree. Epic point gain remains separately gated at level 50. The teacher-command
+agree. Epic points can be earned at any level. The teacher-command
 journey below remains the focused follow-up for this plan.
 
 Prove teacher behavior at minimum minus one, minimum, and minimum plus one with
 otherwise eligible characters and sufficient funds. Refusal must spend nothing;
 successful training must retain its class/prerequisite/cost checks. Extend the
-level-gate test and run an actual teacher-command journey. Keep epic gain and
-epic training thresholds independently configurable.
+skill-level test and run an actual teacher-command journey. Keep the epic
+training minimum configurable; epic point gain has no level threshold.
 
 ### LR-04 — Mastery completion feedback (low; #56 §3)
 

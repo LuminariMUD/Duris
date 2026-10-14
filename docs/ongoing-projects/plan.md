@@ -97,8 +97,12 @@ Implementation checkpoints pushed: `6060b7e86` fixes hatred traversal/bounds;
 `41714f500` fixes phantasmal removal lifetime. Earlier passing batches are
 `2fe7f8d72` (disabled routes),
 `c926e427b` (commands), `4a11e79f6` (creation), `1abfef484` (ability tables), and
-`ff80bae30` (generic race/death cleanup). Upstream `0e27ef1e8` was integrated
-through `f75e77b34`; this is not a later remote-head claim.
+`ff80bae30` (generic race/death cleanup). The 2026-10-14 branch sync integrates
+upstream `67ca142ff` after the earlier `0e27ef1e8` baseline. This brings in #72
+(deferred epic tasks), #69 (epic awards at every level), and #76 (persistence
+failure diagnostics). Epic skill training retains its separate level requirement.
+Character-mechanics implementation remains paused and incomplete; this sync only
+updates its upstream baseline.
 
 The shared-owner batch connects innate property/cooldown, real affect application
 and short-event expiry, and the affect-only phantasmal transition. The native

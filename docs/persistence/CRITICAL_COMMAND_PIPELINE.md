@@ -94,6 +94,38 @@ high-water marks, accepts, attachments, outcomes, retries, ambiguous results, st
 completions, overloads and oldest age. It never prints
 command payloads or entity identities.
 
+Terminal command failures also go to `logs/log/file` and `logs/player-log/wizcmds`,
+relative to the server's runtime directory, whether or not a staff member is online.
+The staff notice names the operation (for example, `artifact/guild reward`), explains
+recognized errors, and gives the full 32-digit operation reference and log path.
+It is limited to one notice per command type/error every 30 seconds; this limit
+does not suppress the detailed log records. Copyover/shutdown drains use the same
+reporter. A full log queue or failed file append is tracked by the existing
+persistence log health counters; a refused submission is identified in the notice.
+
+To investigate, copy the reference from the notice and search on the server:
+
+```sh
+rg -n -F 'operation=PASTE_THE_32_DIGIT_REFERENCE' logs/log/file* logs/player-log/wizcmds*
+```
+
+Each record includes the operation ID, named command, numeric error, source category,
+and affected entity types/IDs. Large key lists explicitly count omitted keys. For
+artifact/guild state mismatches (`type=9 error=116`, `ESTALE`), it also includes the
+parent operation ID, actor PID, guild ID, source filename/line, and the failed check:
+
+- `artifact_expected_state`: artifact vnum and expected/actual timer, soul-owner PID,
+  and bind timer.
+- `artifact_mirror`: artifact vnum and the values read from the domain state and
+  legacy artifact/bind rows.
+- `guild_revision`: expected/actual guild revision.
+
+These values are captured at rejection, before rollback, so a missing
+`critical_operation_inbox` row does not remove the evidence. Search the parent
+operation ID to connect the reward to its originating operation. No raw SQL,
+credentials, character names, or arbitrary command payloads enter this report.
+The older numeric-only notices cannot identify which comparison failed after the fact.
+
 The database inbox stores the canonical command/key hashes and authoritative result.
 An identical duplicate returns that result; different bytes under the same operation ID
 fail closed. Connection loss after `COMMIT` is reconciled by rereading the inbox before

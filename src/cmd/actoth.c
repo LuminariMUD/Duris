@@ -4448,13 +4448,6 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if (OBJ_VNUM(bottle) == VOBJ_EPIC_BOTTLE_EPICS && !epic_level_can_gain(ch))
-	{
-		send_to_char_f(ch, "You must reach level %d before you can quaff epic potions.\r\n",
-			       epic_gain_min_level());
-		return;
-	}
-
 	if (affected_by_spell(ch, TAG_POTION_TIMER))
 	{
 		// gellz added potion messages for timer durations  070316
@@ -4515,6 +4508,9 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
+	if (OBJ_VNUM(bottle) == VOBJ_EPIC_BOTTLE_EPICS && !gain_epic(ch, EPIC_BOTTLE, 0, 75))
+		return;
+
 	act("$n &+yquaffs&n $p.", TRUE, ch, bottle, 0, TO_ROOM);
 	act("As you quaff $p, the vial disappears in a bright &+Wflash of light!&n", FALSE, ch,
 	    bottle, 0, TO_CHAR);
@@ -4527,7 +4523,6 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 	// epic potion
 	if (OBJ_VNUM(bottle) == VOBJ_EPIC_BOTTLE_EPICS)
 	{
-		gain_epic(ch, EPIC_BOTTLE, 0, 75);
 		send_to_char("&+CYou suddenly feel.. epic!\r\n", ch);
 		extract_obj(bottle);
 		return;

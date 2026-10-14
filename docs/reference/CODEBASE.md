@@ -343,15 +343,9 @@ verify the pruning policy; they do not reproduce every reported encounter.
 
 ## Epic point and epic skill levels
 
-`epic.gain.minLevel` (default 50) is the lowest level that earns epic points. The
-gate sits in `prepare_epic_award()`, which every `gain_epic()` caller and each epic stone
-participant pass through, and in `epic_calculate_pvp_award()` for PvP. A zone-touch
-payload needs the toucher as its first recipient and a positive award for every
-recipient, so a toucher below the level is refused and group members below it are left
-out of the award. Touch-stone level costs are unchanged. `epic.skills.minLevel` (default
-30) is the lowest level at which an epic teacher will teach. Epic potions use the same
-gain-level requirement before quaffing, so an ineligible character keeps the potion
-and receives the required level without consuming it or incurring a wait.
+Epic points have no level requirement: every award path, the epic stones, and epic
+potions work at any level. `epic.skills.minLevel` (default 30) is the lowest level at
+which an epic teacher will teach.
 
 ## Server difficulty dials
 

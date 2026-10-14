@@ -1015,15 +1015,19 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	if (artifact_guild_command)
 	{
 		artifact_guild_result outcome_result = {};
+		std::array<char, 1024> failure_detail = {};
 		unsigned int result_code = 0;
 		bool mutation_applied = false;
 		if (!artifact_guild_repository_execute(connection, command, &outcome_result,
-						       &result_code, &mutation_applied))
+						       &result_code, &mutation_applied,
+						       &failure_detail))
 		{
 			const unsigned int database_failure = database_error(connection);
 			const unsigned int error = database_failure ? database_failure : errno;
 			rollback(connection);
-			return failure(error);
+			auto rejected = failure(error);
+			rejected.failure_detail = failure_detail;
+			return rejected;
 		}
 		std::array<uint8_t, ARTIFACT_GUILD_RESULT_BYTES> result_payload = {};
 		uint64_t durable_revision = outcome_result.guild_revision;

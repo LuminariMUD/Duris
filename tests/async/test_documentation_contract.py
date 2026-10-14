@@ -85,8 +85,10 @@ class DocumentationContractTest(unittest.TestCase):
     def test_heading_spaces_and_duplicate_anchors(self) -> None:
         self.assertEqual(
             github_anchors("## Integration handoff \u2014 2026-10-13\n"
+                           "## Integration handoff \u2014 2026-10-13\n"
                            "## A \u2014 B\n## A  B\n## A B\n## A\tB\n"),
-            {"integration-handoff--2026-10-13", "a--b", "a--b-1", "a-b", "ab"},
+            {"integration-handoff--2026-10-13", "integration-handoff--2026-10-13-1",
+             "a--b", "a--b-1", "a-b", "ab"},
         )
 
     def setUp(self) -> None:

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cstdio>
 #include <cstdlib>
 #include <mysql.h>
 #include <string>
@@ -74,7 +75,8 @@ std::string bytes_hex(const uint8_t *bytes, size_t size)
 	return result;
 }
 
-bool load_artifact(MYSQL *connection, int32_t vnum, artifact_state *state)
+bool load_artifact(MYSQL *connection, int32_t vnum, artifact_state *state, char *detail,
+		   size_t detail_size)
 {
 	if (!execute(connection,
 		     "SELECT s.timer_epoch,s.bind_owner_pid,s.bind_timer_epoch,s.revision,"
@@ -98,7 +100,20 @@ bool load_artifact(MYSQL *connection, int32_t vnum, artifact_state *state)
 	if (rows)
 		mysql_free_result(rows);
 	if (!ok && mysql_errno(connection) == 0)
+	{
+		snprintf(
+			detail, detail_size,
+			"site=%s:%d check=artifact_mirror artifact_vnum=%d row_present=%d "
+			"domain_timer=%lld artifacts_timer=%lld domain_soul_pid=%lld bind_soul_pid=%lld "
+			"domain_bind_timer=%lld bind_timer=%lld",
+			__FILE__, __LINE__, vnum, row != nullptr,
+			static_cast<long long>(state->timer), static_cast<long long>(legacy_timer),
+			static_cast<long long>(bind_owner),
+			static_cast<long long>(legacy_bind_owner),
+			static_cast<long long>(state->bind_timer),
+			static_cast<long long>(legacy_bind_timer));
 		errno = row ? ESTALE : ENOENT;
+	}
 	return ok;
 }
 
@@ -133,7 +148,8 @@ bool apply_delta(uint64_t value, int64_t delta, uint64_t *result)
 
 bool artifact_guild_repository_execute(MYSQL *connection, const critical_command &command,
 				       artifact_guild_result *result, unsigned int *result_code,
-				       bool *mutation_applied)
+				       bool *mutation_applied,
+				       std::array<char, 1024> *failure_detail)
 {
 	if (!critical_command_valid(command))
 	{
@@ -141,7 +157,7 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 		return false;
 	}
 
-	if (!connection || !result || !result_code || !mutation_applied)
+	if (!connection || !result || !result_code || !mutation_applied || !failure_detail)
 		return false;
 	artifact_guild_payload payload = {};
 	if (!artifact_guild_command_decode_payload(command, &payload))
@@ -152,12 +168,22 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 	*result = {};
 	*result_code = 0;
 	*mutation_applied = false;
+	const std::string parent = bytes_hex(payload.parent_operation_id.bytes.data(),
+					     payload.parent_operation_id.bytes.size());
+	const int prefix_size = snprintf(failure_detail->data(), failure_detail->size(),
+					 "parent_operation=%s actor_pid=%u guild_id=%u ",
+					 parent.c_str(), payload.actor_pid, payload.guild_id);
+	char *detail = failure_detail->data() + prefix_size;
+	const size_t detail_size = failure_detail->size() - prefix_size;
+	snprintf(detail, detail_size, "site=%s:%d check=artifact_guild_execute", __FILE__,
+		 __LINE__);
 
 	std::array<artifact_state, ARTIFACT_GUILD_MAX_ARTIFACTS> artifact_states = {};
 	for (size_t index = 0; index < payload.artifact_count; ++index)
 	{
 		const auto &entry = payload.artifacts[index];
-		if (!load_artifact(connection, entry.vnum, &artifact_states[index]))
+		if (!load_artifact(connection, entry.vnum, &artifact_states[index], detail,
+				   detail_size))
 			return false;
 		// The game holds an artifact's timer and soul, not its revision, which the other
 		// transactions that ledger artifact changes advance too.
@@ -166,6 +192,17 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 		    state.bind_owner_pid != entry.expected_bind_owner_pid ||
 		    state.bind_timer != entry.expected_bind_timer)
 		{
+			snprintf(
+				detail, detail_size,
+				"site=%s:%d check=artifact_expected_state artifact_vnum=%d "
+				"expected_timer=%lld actual_timer=%lld expected_soul_pid=%d actual_soul_pid=%d "
+				"expected_bind_timer=%lld actual_bind_timer=%lld",
+				__FILE__, __LINE__, entry.vnum,
+				static_cast<long long>(entry.expected_timer),
+				static_cast<long long>(state.timer), entry.expected_bind_owner_pid,
+				state.bind_owner_pid,
+				static_cast<long long>(entry.expected_bind_timer),
+				static_cast<long long>(state.bind_timer));
 			errno = ESTALE;
 			return false;
 		}
@@ -177,6 +214,12 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 		return false;
 	if (payload.guild_id && guild_revision != payload.expected_guild_revision)
 	{
+		snprintf(
+			detail, detail_size,
+			"site=%s:%d check=guild_revision expected_revision=%llu actual_revision=%llu",
+			__FILE__, __LINE__,
+			static_cast<unsigned long long>(payload.expected_guild_revision),
+			static_cast<unsigned long long>(guild_revision));
 		errno = ESTALE;
 		return false;
 	}
@@ -190,8 +233,6 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 	const uint64_t final_guild_revision = payload.guild_id ? guild_revision + 1 : 0;
 	const std::string operation =
 		bytes_hex(command.operation_id.bytes.data(), command.operation_id.bytes.size());
-	const std::string parent = bytes_hex(payload.parent_operation_id.bytes.data(),
-					     payload.parent_operation_id.bytes.size());
 	if (!execute(
 		    connection,
 		    "INSERT INTO artifact_guild_outcome(operation_id,parent_operation_id,actor_pid,"
