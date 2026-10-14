@@ -284,6 +284,42 @@ static void check_parser_and_auth()
 	}
 }
 
+static void check_record_budget()
+{
+	const std::string auth = "{\"channel\":\"auth\",\"message\":\"secret\"}\n";
+	for (bool authenticated : { false, true })
+	{
+		configure("128", "secret");
+		int peer = connect_peer();
+		if (authenticated)
+		{
+			controls(peer, auth);
+			assert(discord_bridge_publish("A", "must be dropped on flooding"));
+		}
+		std::string burst;
+		for (unsigned i = 0; i < 32; ++i)
+			burst += "{}\n";
+		controls(peer, burst);
+		assert(discord_bridge_get_status().connected);
+		assert(discord_bridge_get_status().rejected_records == 32);
+		// The next pulse gets a fresh budget, but cannot parse a whole flood.
+		controls(peer, burst + burst + burst);
+		const auto flooded = discord_bridge_get_status();
+		assert(!flooded.connected && !flooded.authenticated);
+		assert(flooded.rejected_records == 65);
+		assert(flooded.queued_events == 0 && flooded.queued_bytes == 0);
+		assert(flooded.dropped_events == (authenticated ? 1u : 0u));
+		close(peer);
+		peer = connect_peer();
+		controls(peer, auth);
+		assert(discord_bridge_get_status().authenticated);
+		assert(drain(peer).empty());
+		assert(discord_bridge_publish("A", "after flood"));
+		verify_event(drain(peer), "A", "after flood");
+		close(peer);
+	}
+}
+
 static void check_connection_deadlines()
 {
 	const std::string auth = "{\"channel\":\"auth\",\"message\":\"secret\"}\n";
@@ -480,6 +516,7 @@ int main(int argc, char **argv)
 	}
 	check_configuration();
 	check_parser_and_auth();
+	check_record_budget();
 	check_connection_deadlines();
 	check_queues_and_faults();
 	check_high_descriptors();

@@ -55,6 +55,9 @@ input is discarded through the next LF before parsing resumes.
 
 The connection phase uses `poll(..., 0)` independently of the player readiness
 sets, with at most four accepts, 32 read attempts, and 64 KiB of reads per pulse.
+At most 32 incoming records are consumed per pulse, including empty or discarded
+records. A client exceeding this limit is disconnected before the next record is
+parsed; pending output is dropped. This bounds parsing work for tiny-record floods.
 No new descriptor is passed to `FD_SET`; high descriptors remain safe. Output
 runs in the output phase with at most 32 writes and 64 KiB per pulse. Both
 sockets are nonblocking and close-on-exec. Partial writes retain their offset;
