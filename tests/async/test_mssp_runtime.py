@@ -66,19 +66,30 @@ int main()
 	}
 	tests++;
 
-	// 2. The reply is one IAC SB MSSP ... IAC SE block that counts only playing mortals.
+	// 2. The reply is one IAC SB MSSP ... IAC SE block that counts only playing mortals,
+	//    judging switched or morphed players by their real character.
+	descriptor_data crawler = {};
 	{
-		char_data mortal = {}, immortal = {};
+		char_data mortal = {}, immortal = {}, low_mob = {}, high_mob = {};
 		mortal.player.level = 10;
 		immortal.player.level = MINLVLIMMORTAL;
-		descriptor_data playing = {}, imm = {}, logging_in = {}, crawler = {};
+		low_mob.player.level = 5;
+		high_mob.player.level = MINLVLIMMORTAL + 1;
+		descriptor_data playing = {}, imm = {}, logging_in = {}, switched_imm = {},
+				morphed_mortal = {};
 		playing.character = &mortal;
 		imm.character = &immortal;
 		logging_in.character = &mortal;
 		STATE(&logging_in) = CON_PLAYING + 1;
+		switched_imm.character = &low_mob;
+		switched_imm.original = &immortal;
+		morphed_mortal.character = &high_mob;
+		morphed_mortal.original = &mortal;
 		playing.next = &imm;
 		imm.next = &logging_in;
-		logging_in.next = &crawler;
+		logging_in.next = &switched_imm;
+		switched_imm.next = &morphed_mortal;
+		morphed_mortal.next = &crawler;
 		descriptor_list = &playing;
 
 		mssp_send(&crawler);
@@ -89,12 +100,22 @@ int main()
 		require((unsigned char)sent[sent.size() - 2] == IAC &&
 				(unsigned char)sent[sent.size() - 1] == SE,
 			5);
-		require(sent.find(mssp_pair("PLAYERS", "1")) != std::string::npos, 6);
+		require(sent.find(mssp_pair("PLAYERS", "2")) != std::string::npos, 6);
 		require(sent.find(mssp_pair("UPTIME", "1761631200")) != std::string::npos, 7);
 		require(sent.find(mssp_pair("NAME", "DurisMUD")) != std::string::npos, 8);
 
 		// No stray IAC inside the payload, which would end the block early.
 		require(sent.find(static_cast<char>(IAC), 1) == sent.size() - 2, 9);
+		descriptor_list = nullptr;
+	}
+	tests++;
+
+	// 3. Repeated DO MSSP on the same connection gets no further replies.
+	{
+		writes = 0;
+		mssp_send(&crawler);
+		mssp_send(&crawler);
+		require(writes == 0, 10);
 	}
 	tests++;
 

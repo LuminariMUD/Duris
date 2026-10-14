@@ -54,13 +54,18 @@ void mssp_send(P_desc d)
 	int players = 0;
 	std::string out;
 
-	if (!d || d->websocket)
+	/* One reply per connection, so repeated requests can't make us redo the work. */
+	if (!d || d->websocket || d->mssp_sent)
 		return;
+	d->mssp_sent = 1;
 
 	for (P_desc i = descriptor_list; i; i = i->next)
-		if (STATE(i) == CON_PLAYING && i->character &&
-		    GET_LEVEL(i->character) < MINLVLIMMORTAL)
+	{
+		/* A switched or morphed player is counted by who they really are. */
+		P_char player = i->original ? i->original : i->character;
+		if (STATE(i) == CON_PLAYING && player && GET_LEVEL(player) < MINLVLIMMORTAL)
 			players++;
+	}
 
 	out += (char)IAC;
 	out += (char)SB;
