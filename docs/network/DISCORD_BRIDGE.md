@@ -43,6 +43,13 @@ fields are `channel: "petition"`, `name`, `message`, and numeric `emoted: 0`.
 cJSON handles escaping. Incoming `auth` uses `message` as the token; a bad token
 closes the client. `heartbeat` with `message: "ping"` is consumed without a
 pong. No auth acknowledgment is required. Other records never reach gameplay.
+Clients must authenticate within 10 seconds when a token is configured. After
+authentication (or connection without a token), a valid heartbeat or auth record
+must arrive within 300 seconds; the Node bridge sends a heartbeat every 240
+seconds. Deadlines use monotonic time and expire even when no socket is readable.
+Partial, malformed, rejected, or unauthenticated heartbeat traffic and outgoing
+events do not extend the deadline. Expiry frees the client slot and drops pending
+output, so a reconnect starts with fresh parser, authentication, and queue state.
 Malformed/non-object/oversized records increment `rejected_records`; oversized
 input is discarded through the next LF before parsing resumes.
 
@@ -75,7 +82,9 @@ restart through the normal local procedure, or stop the Node bridge.
 
 Run `python3 tests/async/test_discord_bridge_runtime.py` for the real-socket
 native harness. It builds under `bin/` without game data or Discord credentials.
-Fault injection wraps individual syscalls to force short writes/EINTR/EAGAIN;
-the listener, parser, serializer, queue, and real socket I/O are production code.
+Fault injection wraps individual syscalls to force short writes/EINTR/EAGAIN.
+An injected monotonic clock checks authentication expiry, heartbeat renewal,
+idle expiry, and reconnect without real-time sleeps for the deadlines.
+The listener, parser, serializer, queue, and real socket I/O are production code.
 Full game command and isolated game-copyover journeys remain later integration
 gates, distinct from this transport's exec/descriptor tests.

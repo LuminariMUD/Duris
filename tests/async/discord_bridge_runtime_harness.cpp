@@ -15,18 +15,30 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 static int send_error = 0, recv_error = 0, poll_error = 0, accept_error = 0;
 static unsigned send_calls = 0, recv_calls = 0;
+static std::size_t received_bytes = 0;
 static std::size_t send_limit = 0;
 static bool endless_interrupt = false;
 static int accepted_fd = -1, listener_fd = -1;
+static time_t monotonic_seconds = 1000;
 
 extern "C" ssize_t __real_send(int, const void *, size_t, int);
 extern "C" ssize_t __real_recv(int, void *, size_t, int);
 extern "C" int __real_poll(pollfd *, nfds_t, int);
 extern "C" int __real_accept4(int, sockaddr *, socklen_t *, int);
+extern "C" int __real_clock_gettime(clockid_t, timespec *);
+
+extern "C" int __wrap_clock_gettime(clockid_t clock, timespec *now)
+{
+	if (clock != CLOCK_MONOTONIC)
+		return __real_clock_gettime(clock, now);
+	*now = { monotonic_seconds, 0 };
+	return 0;
+}
 
 extern "C" ssize_t __wrap_send(int fd, const void *data, size_t bytes, int flags)
 {
@@ -49,7 +61,10 @@ extern "C" ssize_t __wrap_recv(int fd, void *data, size_t bytes, int flags)
 		recv_error = 0;
 		return -1;
 	}
-	return __real_recv(fd, data, bytes, flags);
+	const auto result = __real_recv(fd, data, bytes, flags);
+	if (result > 0)
+		received_bytes += result;
+	return result;
 }
 
 extern "C" int __wrap_poll(pollfd *fds, nfds_t count, int timeout)
@@ -61,7 +76,9 @@ extern "C" int __wrap_poll(pollfd *fds, nfds_t count, int timeout)
 		poll_error = 0;
 		return -1;
 	}
-	return __real_poll(fds, count, timeout);
+	// Allow loopback connect/write/close transitions to become readable before
+	// assertions; the production call above must still request zero wait.
+	return __real_poll(fds, count, 10);
 }
 
 extern "C" int __wrap_accept4(int fd, sockaddr *address, socklen_t *size, int flags)
@@ -116,6 +133,7 @@ static int connect_peer()
 
 static void controls(int peer, const std::string &wire)
 {
+	const auto expected_bytes = received_bytes + wire.size();
 	std::size_t offset = 0;
 	while (offset < wire.size())
 	{
@@ -126,10 +144,18 @@ static void controls(int peer, const std::string &wire)
 			offset += bytes;
 		discord_bridge_poll();
 	}
+	// A successful local write does not mean the endpoint is readable yet.
+	for (unsigned attempt = 0; received_bytes < expected_bytes && attempt < 1000; ++attempt)
+	{
+		usleep(1000);
+		discord_bridge_poll();
+	}
+	assert(received_bytes == expected_bytes);
 }
 
 static std::string drain(int peer)
 {
+	const auto expected_bytes = discord_bridge_get_status().queued_bytes;
 	std::string result;
 	char buffer[16384];
 	for (unsigned iteration = 0; iteration < 20000; ++iteration)
@@ -138,10 +164,15 @@ static std::string drain(int peer)
 		ssize_t bytes = read(peer, buffer, sizeof(buffer));
 		if (bytes > 0)
 			result.append(buffer, bytes);
-		else if (!discord_bridge_get_status().queued_events)
+		else if (!discord_bridge_get_status().queued_events &&
+			 result.size() >= expected_bytes)
 			return result;
 		else
+		{
 			assert(bytes < 0 && (errno == EAGAIN || errno == EINTR));
+			pollfd descriptor{ peer, POLLIN, 0 };
+			assert(__real_poll(&descriptor, 1, 1000) > 0);
+		}
 	}
 	assert(!"endpoint failed to drain within its bounded test deadline");
 	return result;
@@ -221,6 +252,8 @@ static void check_parser_and_auth()
 	int extra = connect_peer();
 	assert(discord_bridge_get_status().rejected_clients == 1);
 	char byte;
+	pollfd closed_extra{ extra, POLLIN, 0 };
+	assert(__real_poll(&closed_extra, 1, 1000) > 0);
 	assert(read(extra, &byte, 1) == 0);
 	close(extra);
 	controls(peer, "{\"channel\":\"auth\",\"message\":\"wrong\"}\n");
@@ -248,6 +281,73 @@ static void check_parser_and_auth()
 		assert(discord_bridge_get_status().authenticated);
 		close(peer);
 		discord_bridge_poll();
+	}
+}
+
+static void check_connection_deadlines()
+{
+	const std::string auth = "{\"channel\":\"auth\",\"message\":\"secret\"}\n";
+	const std::string heartbeat = "{\"channel\":\"heartbeat\",\"message\":\"ping\"}\n";
+	// Silence, unauthenticated heartbeats, and partial/invalid records must not
+	// retain the only slot beyond the authentication deadline.
+	for (const std::string &traffic :
+	     { std::string(), heartbeat, std::string("{bad}\n{\"channel\":") })
+	{
+		configure("128", "secret");
+		int peer = connect_peer();
+		monotonic_seconds += 9;
+		controls(peer, traffic);
+		discord_bridge_poll();
+		assert(discord_bridge_get_status().connected);
+		++monotonic_seconds;
+		discord_bridge_poll(); // no readable descriptor is needed for expiry
+		assert(!discord_bridge_get_status().connected);
+		close(peer);
+		peer = connect_peer();
+		controls(peer, auth);
+		assert(discord_bridge_get_status().authenticated);
+		assert(discord_bridge_publish("A", "replacement"));
+		verify_event(drain(peer), "A", "replacement");
+		close(peer);
+	}
+
+	for (const char *secret : { "secret", "" })
+	{
+		configure("128", secret);
+		int peer = connect_peer();
+		if (*secret)
+		{
+			monotonic_seconds += 9;
+			controls(peer, auth);
+		}
+		// The companion Node bridge sends a heartbeat every 240 seconds.
+		for (unsigned i = 0; i < 3; ++i)
+		{
+			monotonic_seconds += 240;
+			controls(peer, heartbeat);
+			assert(discord_bridge_get_status().authenticated);
+		}
+		monotonic_seconds += 299;
+		controls(peer, "{bad}\n{\"channel\":\"petition\",\"message\":\"forged\"}\n{");
+		assert(discord_bridge_get_status().connected);
+		// Outbound traffic cannot demonstrate that this peer is still alive.
+		assert(discord_bridge_publish("A", "delivered before expiry"));
+		verify_event(drain(peer), "A", "delivered before expiry");
+		assert(discord_bridge_publish("A", "must be dropped on expiry"));
+		++monotonic_seconds;
+		discord_bridge_poll();
+		const auto expired = discord_bridge_get_status();
+		assert(!expired.connected && !expired.authenticated);
+		assert(expired.queued_events == 0 && expired.queued_bytes == 0);
+		assert(expired.dropped_events == 1);
+		close(peer);
+		peer = connect_peer();
+		if (*secret)
+			controls(peer, auth);
+		assert(drain(peer).empty());
+		assert(discord_bridge_publish("A", "fresh connection"));
+		verify_event(drain(peer), "A", "fresh connection");
+		close(peer);
 	}
 }
 
@@ -335,6 +435,8 @@ static void check_queues_and_faults()
 	assert(errno == ENOENT);
 	verify_event(drain(peer), "A", "failed exec retained");
 	discord_bridge_shutdown();
+	pollfd closed_peer{ peer, POLLIN, 0 };
+	assert(__real_poll(&closed_peer, 1, 1000) > 0);
 	assert(read(peer, &byte, 1) == 0);
 	close(peer);
 }
@@ -378,6 +480,7 @@ int main(int argc, char **argv)
 	}
 	check_configuration();
 	check_parser_and_auth();
+	check_connection_deadlines();
 	check_queues_and_faults();
 	check_high_descriptors();
 	pid_t child = fork();

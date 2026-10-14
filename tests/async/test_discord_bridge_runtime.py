@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="discord-bridge-", dir=build_root) as di
         str(ROOT / "tests/async/discord_bridge_runtime_harness.cpp"),
         str(SRC / "net/discord_bridge.c"), "-lcjson", "-lcrypto",
         "-Wl,--wrap=send", "-Wl,--wrap=recv", "-Wl,--wrap=poll",
-        "-Wl,--wrap=accept4", "-o", str(binary),
+        "-Wl,--wrap=accept4", "-Wl,--wrap=clock_gettime", "-o", str(binary),
     ], check=True, cwd=ROOT, timeout=120)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=30)
 
