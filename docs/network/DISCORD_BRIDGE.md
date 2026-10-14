@@ -5,11 +5,40 @@ GMCP, and WebSocket listeners. It accepts one bridge client and only consumes
 authentication and heartbeat records. Incoming chat is counted and discarded;
 there is no command interpreter or player broadcast path.
 
-This transport chunk exposes `discord_bridge_publish(name, message)` for plain
-UTF-8 petition events. **Command hooks are not implemented in this chunk**;
-enabling the listener alone does not export player petitions or staff replies.
+Accepted `petition` commands and staff `ptell` replies export once, outside the
+native recipient loops. A petition uses the petitioner name; a reply uses
+`Staff -> Player`. Both use `channel: "petition"`. Rejected commands, ordinary
+tells, other chat channels, and staff notifications do not export. Native echo,
+recipient toggles, logs, terminal output, and GMCP delivery are preserved. Zero
+online staff or disabled player echo does not suppress an accepted export.
+
+The Discord destination must be visible only to the intended staff and bot.
+Discord posts never become game replies. The feed is optional and best effort;
+native petition logs remain the audit record.
 The cross-repository plan is
 [`discord-mud-chat/docs/ongoing-projects/duris-petition-compatibility.md`](https://github.com/LuminariMUD/discord-mud-chat/blob/codex/duris-one-way-mappings/docs/ongoing-projects/duris-petition-compatibility.md).
+
+## Text and concealed identities
+
+The two accepted-command hooks call `discord_petition_export`, which uses native
+`AnsiString`/UTF-8 conversion and strips terminal escape sequences (CSI, OSC,
+DCS, SOS, PM, APC and single escape commands). LF/tab whitespace, punctuation,
+quotes, backslashes, literal `@`, and dollars are preserved; malformed UTF-8
+becomes U+FFFD. Native `act()` dollar escaping is separate and unchanged.
+Input names are bounded by `MAX_NAME_LENGTH + 1`; messages by
+`MAX_STRING_LENGTH`, both including the terminator. Conversion expands at most
+three bytes per source byte, then cJSON escapes the whole record. Overlong
+inputs or records exceeding the configured byte limit are dropped whole.
+
+Discord membership has no in-game visibility level. Conservatively replace a
+sender or reply target with `Someone` when the character has trusted wizard
+invisibility above zero, `AFF_INVISIBLE`, `AFF_HIDE`, `AFF_WRAITHFORM`,
+`AFF2_CONCEALMENT`, or `AFF3_ECTOPLASMIC_FORM`. These are target concealment
+predicates from `ac_can_see`/`WIZ_INVIS`; no synthetic observer or maximum staff
+privilege is assumed. Non-trusted reply senders (including staff using mortal
+fog) are also `Someone`, consistent with native player-facing reply output.
+Ordinary non-concealed names remain visible. Native per-recipient visibility
+and GMCP behavior are unchanged.
 
 ## Settings and local use
 
@@ -89,5 +118,11 @@ Fault injection wraps individual syscalls to force short writes/EINTR/EAGAIN.
 An injected monotonic clock checks authentication expiry, heartbeat renewal,
 idle expiry, and reconnect without real-time sleeps for the deadlines.
 The listener, parser, serializer, queue, and real socket I/O are production code.
-Full game command and isolated game-copyover journeys remain later integration
-gates, distinct from this transport's exec/descriptor tests.
+Run `python3 tests/async/test_discord_petition_export.py` for the exact production
+petition/ptell command bodies with production character types and parser,
+synthetic players, boundary output/log/visibility stubs, and the real conversion,
+serializer, and listener. Set `SANITIZE=1` to add ASan/UBSan. This tests accepted
+and rejected command paths, recipient/echo variations, concealment, text bounds,
+and native operation during endpoint outages/overflow. Existing output tests
+exercise native rendering separately. Full isolated game and copyover journeys
+remain later integration gates, distinct from these harnesses.

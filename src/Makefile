@@ -197,6 +197,7 @@ OBJS =  $(SHIP_OBJS) \
 				net/command_latency.o \
 				 net/comm.o \
 				 net/discord_bridge.o \
+				 net/discord_petition.o \
 				 persistence/copyover.o \
 				 core/common.o \
 				 world/condition.o \

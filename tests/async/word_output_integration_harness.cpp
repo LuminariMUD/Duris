@@ -10,6 +10,7 @@
 #include "net/chat_presentation.h"
 #include <cjson/cJSON.h>
 #include <cassert>
+#include <algorithm>
 #include <cstdarg>
 #include <cstring>
 #include <functional>
