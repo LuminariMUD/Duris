@@ -662,6 +662,59 @@ static void skill_class_mask_bounds()
 		"skill.class-mask: PASS (legacy secondary sentinel, primary normalization and NPC class masks)");
 }
 
+static void command_registration()
+{
+	auto mechanics = mechanic_connections();
+	const auto errors = validate_commands(mechanics);
+	for (const auto &error : errors)
+		std::fprintf(stderr, "%s\n", error.c_str());
+	assert(errors.empty());
+	size_t registrations = 0;
+	for (const auto &connection : mechanics)
+	{
+		if (const auto *table = std::get_if<CommandTable>(&connection.binding))
+		{
+			assert(table->slots.data() == cmd_info);
+			assert(!std::strcmp(table->names[CMD_INNATE - 1], "innate"));
+			auto missing_names = mechanics;
+			for (auto &candidate : missing_names)
+				if (candidate.id == MechanicId::command_table)
+					std::get<CommandTable>(candidate.binding).names = {};
+			assert(!validate_commands(missing_names).empty());
+		}
+		if (const auto *writes = std::get_if<CommandWrites>(&connection.binding))
+		{
+			registrations = writes->size();
+			for (const auto &write : *writes)
+				std::printf("COMMAND_SITE\t%s\t%u\t%u\n",
+					    write.declared_at.file_name(), write.declared_at.line(),
+					    write.declared_at.column());
+			auto conflicting =
+				std::vector<CommandWrite>(writes->begin(), writes->end());
+			auto changed = conflicting.front();
+			++changed.value.minimum_level;
+			conflicting.push_back(changed);
+			auto detached = mechanics;
+			for (auto &candidate : detached)
+				if (candidate.id == MechanicId::command_registration)
+					candidate.binding = CommandWrites{ conflicting };
+			assert(!validate_commands(detached).empty());
+		}
+	}
+	assert(registrations > 500);
+	const auto saved = cmd_info[CMD_INNATE];
+	cmd_info[CMD_INNATE].command_pointer = nullptr;
+	assert(!validate_commands(mechanics).empty());
+	cmd_info[CMD_INNATE] = saved;
+	++cmd_info[CMD_INNATE].minimum_level;
+	assert(!validate_commands(mechanics).empty());
+	cmd_info[CMD_INNATE] = saved;
+	assert(!validate_commands({}).empty());
+	std::printf(
+		"command.registration: PASS (%zu native writes; all guards compared, detached handler/changed guard/conflicting write rejected; command effects are separate)\n",
+		registrations);
+}
+
 static void guardian_bulwark()
 {
 	load_character_properties();
@@ -971,6 +1024,7 @@ int main()
 {
 	ability_registration();
 	specialization_transition();
+	command_registration();
 	creation_bindings();
 	guardian_bulwark();
 	unspecialization_transition();

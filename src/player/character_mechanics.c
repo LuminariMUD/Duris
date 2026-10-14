@@ -259,6 +259,10 @@ std::string_view mechanic_name(MechanicId id)
 		return "account.admission.commit";
 	case MechanicId::character_initialize:
 		return "character.initialize";
+	case MechanicId::command_table:
+		return "command.table";
+	case MechanicId::command_registration:
+		return "command.registration";
 	case MechanicId::count:
 		break;
 	}
@@ -465,6 +469,57 @@ std::vector<std::string> validate_grants(std::span<const MechanicConnection> con
 	return errors;
 }
 
+std::vector<std::string> validate_commands(std::span<const MechanicConnection> connections)
+{
+	CommandTable table;
+	CommandWrites writes;
+	for (const auto &connection : connections)
+	{
+		if (const auto *view = std::get_if<CommandTable>(&connection.binding))
+			table = *view;
+		if (const auto *view = std::get_if<CommandWrites>(&connection.binding))
+			writes = *view;
+	}
+	std::vector<std::string> errors;
+	if (table.slots.empty() || table.names.empty() || writes.empty())
+		return { "command registration: missing native table/provenance" };
+	if (table.names.size() > table.slots.size() || !table.names.back() ||
+	    std::strcmp(table.names.back(), "\n"))
+		return { "command registration: invalid native vocabulary" };
+	auto same = [](const command_info &a, const command_info &b)
+	{
+		return a.command_pointer == b.command_pointer &&
+		       a.minimum_position == b.minimum_position && a.in_battle == b.in_battle &&
+		       a.minimum_level == b.minimum_level && a.req_confirm == b.req_confirm &&
+		       a.grantable == b.grantable && a.check_aggro == b.check_aggro;
+	};
+	std::vector<const CommandWrite *> latest(table.slots.size());
+	for (const auto &write : writes)
+	{
+		const std::string site = std::string(write.declared_at.file_name()) + ":" +
+					 std::to_string(write.declared_at.line());
+		if (write.command < 1 || size_t(write.command) >= table.names.size() ||
+		    !write.value.command_pointer || write.handler_symbol.empty())
+		{
+			errors.push_back(site + ": invalid command registration");
+			continue;
+		}
+		if (latest[write.command] && !same(latest[write.command]->value, write.value))
+			errors.push_back(site + ": conflicting command registration " +
+					 std::to_string(write.command));
+		latest[write.command] = &write;
+	}
+	for (size_t command = 0; command < table.slots.size(); ++command)
+	{
+		if (!latest[command] && table.slots[command].command_pointer)
+			errors.push_back("unregistered command slot " + std::to_string(command));
+		else if (latest[command] && !same(latest[command]->value, table.slots[command]))
+			errors.push_back("command changed after registration " +
+					 std::to_string(command));
+	}
+	return errors;
+}
+
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections)
 {
 	std::vector<std::string> errors;
@@ -498,8 +553,13 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 						std::is_same_v<decltype(binding), StatusFields> ||
 						std::is_same_v<decltype(binding), SkillTable> ||
 						std::is_same_v<decltype(binding), GrantWrites> ||
-						std::is_same_v<decltype(binding), InnateCallbacks>)
+						std::is_same_v<decltype(binding), InnateCallbacks> ||
+						std::is_same_v<decltype(binding), CommandWrites>)
 						return !binding.empty();
+					else if constexpr (std::is_same_v<decltype(binding),
+									  CommandTable>)
+						return !binding.slots.empty() &&
+						       !binding.names.empty();
 					else if constexpr (std::is_same_v<decltype(binding),
 									  RoomRegistration>)
 						return binding.world && *binding.world &&
@@ -528,7 +588,9 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 		switch (connection.relation)
 		{
 		case Relation::identity:
-			compatible = std::holds_alternative<CharacterQuery>(connection.binding);
+			compatible = std::holds_alternative<CharacterQuery>(connection.binding) ||
+				     std::holds_alternative<CommandTable>(connection.binding) ||
+				     std::holds_alternative<CommandWrites>(connection.binding);
 			break;
 		case Relation::eligibility:
 			compatible =

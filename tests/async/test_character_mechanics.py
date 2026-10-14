@@ -30,12 +30,14 @@ def check_registration_sites(sources, observed):
     """
     names = (r"ADD_RACIAL_INNATE|ADD_CLASS_INNATE|SPELL_CREATE(?:_MSG|2)?|"
              r"SKILL_CREATE(?:_WITH_MESSAGES)?|SPEC_(?:SPELL|SKILL)_ADD|SPELL_ADD|"
-             r"SKILL_ADD|TAG_CREATE(?:_WITH_MESSAGES)?|POISON_CREATE")
+             r"SKILL_ADD|TAG_CREATE(?:_WITH_MESSAGES)?|POISON_CREATE|"
+             r"CMD_(?:N|Y|CNF_N|CNF_Y|GRT|SOC|TRIG)")
     token = re.compile(r"\b(?:" + names + r")\b")
     initializers = {
         "classes/skills.c": ("initialize_skills", "create_poisons", "create_tags"),
         "classes/epic_skills.c": ("create_epic_skills",),
         "classes/innates.c": ("assign_innates",),
+        "cmd/interp.c": ("assign_command_pointers",),
     }
     forwards = {
         "SPELL_CREATE": "SPELL_CREATE_MSG(Name,Index,Beats,Targets,Spell_pointer,NULL,site);",
@@ -63,7 +65,7 @@ def check_registration_sites(sources, observed):
         if path in ("classes/skills.c", "classes/skills.h", "classes/innates.c"):
             for declaration in re.finditer(r"\bvoid\s+(?:" + names + r")\s*\([^;{}]*\)\s*(?:;|\{)", code):
                 machinery.append(declaration.span())
-        if path in ("classes/skills.c", "classes/innates.c"):
+        if path in ("classes/skills.c", "classes/innates.c", "cmd/interp.c"):
             for macro in re.finditer(r"^#define\s+(\w+)\((?:[^\n]*\\\n)*[^\n]*", code, re.M):
                 if not token.fullmatch(macro[1]):
                     continue
@@ -73,6 +75,16 @@ def check_registration_sites(sources, observed):
                 if actual != expected and not (bare_tool_macro and actual == [macro[1]]):
                     errors.append(f"{path}: unsupported registration macro {macro[1]}")
                 machinery.append(macro.span())
+        if path == "cmd/interp.c":
+            machinery.extend(match.span() for match in re.finditer(
+                r"^#undef\s+CMD_(?:N|Y|CNF_N|CNF_Y|GRT|SOC|TRIG)\s*$", code, re.M))
+        for write in re.finditer(r"\bcmd_info\s*\[[^\]]+\]\s*\.\s*\w+\s*(?:=(?!=)|\+\+|--|\+=|-=)", code):
+            if any(begin <= write.start() < end for begin, end in machinery):
+                continue
+            reset = re.match(r"cmd_info\[position\]\.command_pointer\s*=\s*NULL;", code[write.start():])
+            if path == "cmd/interp.c" and reset and any(begin <= write.start() < end for begin, end in bodies):
+                continue
+            errors.append(f"{path}:{code.count(chr(10), 0, write.start())+1}: unobserved command write")
         if path == "classes/skills.c":
             # Exact existing disabled comprehension grants. A changed/removed
             # block needs review; no blanket preprocessor exclusion is used.
@@ -119,12 +131,33 @@ def native_definition_count(sources, symbol):
     for path, text in sources.items():
         if symbol not in text:
             continue
+        text = text.replace("[[maybe_unused]]", "")
         for body in function_bodies(text, rf"\b(?:int|bool|void|ClassSkillInfo|account_racewar_admission)\s+{symbol}\s*\("):
             # This exact offline stub deliberately has no gameplay refresh.
             if (path == "account/pfile-stubs.c" and symbol == "update_skills"
                     and re.fullmatch(r"\{\s*\}", body)):
                 continue
             count += 1
+    return count
+
+
+def command_definition_count(sources, symbol, no_mysql):
+    """Resolve native command signatures, including ACMD and three backend arms."""
+    count = 0
+    for path, text in sources.items():
+        if symbol not in text:
+            continue
+        text = text.replace("[[maybe_unused]]", "")
+        if path in ("sql/sql.c", "combat/ctf.c", "economy/auction_houses.c"):
+            # These existing owners select alternative implementations with the
+            # same outer __NO_MYSQL__ guard. Resolve both builds independently.
+            start = text.index("#ifdef __NO_MYSQL__\n")
+            alternate = text.index("\n#else\n", start)
+            finish = text.rindex("\n#endif")
+            text = text[:start] + (text[start:alternate] if no_mysql else text[alternate:finish])
+        signature = (rf"\bvoid\s+{symbol}\s*\(\s*(?:P_char|(?:struct\s+)?char_data\s*\*)[^,()]*,\s*char\s*\*[^,()]*,\s*int[^,()]*\)"
+                     rf"|\bACMD\s*\(\s*{symbol}\s*\)")
+        count += len(function_bodies(text, signature))
     return count
 
 
@@ -700,11 +733,27 @@ combat_bodies = (
     ])
 )
 interpreter = source("interp.c").read_text()
-registration = re.search(r"CHARACTER_MECHANIC_SITE\(specialization_entry\);\s*CMD_N\([^;]+;", interpreter).group()
-innate_registration = re.search(r"CHARACTER_MECHANIC_SITE\(innate_entry\);\s*CMD_Y\([^;]+;", interpreter).group()
-multiclass_registration = re.search(r"CHARACTER_MECHANIC_SITE\(multiclass_command\);\s*CMD_N\([^;]+;", interpreter).group()
-combat_bodies += "\n" + interpreter[interpreter.index("#define CMD_N("):interpreter.index("#define CMD_CNF_Y(")]
-combat_bodies += "\nvoid initialize_mechanic_commands() {\n" + registration + "\n" + innate_registration + "\n" + multiclass_registration + "\n}\n"
+command_initializer = production_function("interp.c", "void assign_command_pointers(void)")
+command_callbacks = set(re.findall(
+    r"\bCMD_(?:N|Y|CNF_N|CNF_Y|GRT)\([^,]+,[^,]+,\s*(\w+)",
+    strip_comments(command_initializer))) | {"do_action", "do_not_here"}
+command_machinery = (
+    "\nstatic std::vector<character_mechanics::CommandWrite> command_registration_writes;\n"
+    + production_function("interp.c", "const char *command[MAX_CMD] =") + ";\n"
+    + production_function("interp.c", "static void record_command(")
+    + interpreter[interpreter.index("#define CMD_N("):interpreter.index("void assign_command_pointers(void)")]
+)
+# All command IDs/guards and the real initializer run. Unexercised command bodies
+# abort; the production definition check below separately resolves their owners.
+existing_implementations = {str(path): path.read_text() for path in inputs}
+existing_implementations["fixture"] = combat_prelude + combat_bodies
+command_stubs = "\n".join(
+    f'void {name}(P_char, char *, int) {{ std::abort(); }}'
+    for name in sorted(command_callbacks)
+    if native_definition_count(existing_implementations, name) == 0)
+# Providers reference the journal before the initializer body appears.
+combat_bodies = command_machinery + "\n" + command_stubs + "\n" + combat_bodies
+combat_bodies += "\n" + command_initializer + "\nvoid initialize_mechanic_commands() { assign_command_pointers(); }\n"
 assignments = source("specs.assign.c").read_text()
 altar_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(unspecialization_entry_" + name +
                                 r"\);\s*obj_index\[[^;]+;", assignments).group()
@@ -870,16 +919,20 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
                for path in sorted((ROOT / "src").rglob("*"))
                if path.suffix in (".c", ".h", ".cpp", ".hpp", ".cc", ".hh", ".cxx", ".hxx")}
     observed = {tuple([row.split("\t")[1], *map(int, row.split("\t")[2:])])
-                for row in result.stdout.splitlines() if row.startswith("GRANT_SITE\t")}
+                for row in result.stdout.splitlines() if row.startswith(("GRANT_SITE\t", "COMMAND_SITE\t"))}
     registration_errors = check_registration_sites(sources, observed)
     assert not registration_errors, "\n".join(registration_errors)
     for name, snippet in (
         ("alias", "#define HIDDEN_GRANT SKILL_ADD\n"),
         ("uninvoked", "void uninvoked() { SKILL_ADD(CLASS_WARRIOR, 1, 100); }\n"),
+        ("command_alias", "#define HIDDEN_COMMAND CMD_N\n"),
+        ("uninvoked_command", "void uninvoked() { CMD_N(CMD_KICK, 0, do_kick, 1, TRUE); }\n"),
     ):
         changed = dict(sources, **{"classes/unregistered.h": snippet})
         assert any("unobserved registration/alias" in error
                    for error in check_registration_sites(changed, observed)), name
+    changed = dict(sources, **{"cmd/unregistered.c": "void overwrite() { cmd_info[CMD_KICK].minimum_level = 0; }\n"})
+    assert any("unobserved command write" in error for error in check_registration_sites(changed, observed))
     removed = dict(sources)
     removed["classes/skills.c"] = removed["classes/skills.c"].replace(
         'SKILL_CREATE("flame mastery", SKILL_FLAME_MASTERY, TAR_MENTAL);', ';', 1)
@@ -888,6 +941,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     print(f"ability.registration.reverse: PASS ({len(observed)} native caller sites; new alias/caller and stale call detected)")
     missing_callbacks = [name for name in skill_callbacks if native_definition_count(sources, name) != 1]
     assert not missing_callbacks, ("missing/conflicting registered callback implementations", missing_callbacks)
+    for no_mysql in (False, True):
+        missing = [name for name in sorted(command_callbacks) if command_definition_count(sources, name, no_mysql) != 1]
+        assert not missing, ("missing/conflicting command implementations", no_mysql, missing)
     missing_callback = dict(sources)
     callback_owner = "magic/magic.c"
     original_callback = "void spell_draconic_apotheosis("
@@ -895,7 +951,11 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     missing_callback[callback_owner] = missing_callback[callback_owner].replace(
         original_callback, "void unregistered_apotheosis(", 1)
     assert native_definition_count(missing_callback, "spell_draconic_apotheosis") == 0
-    print(f"ability.implementations: PASS ({len(skill_callbacks)} registered spell/poison callback symbols resolve to production definitions; removed implementation rejected; effect behavior is separate)")
+    missing_command = dict(sources)
+    missing_command["combat/training_dummy.c"] = missing_command["combat/training_dummy.c"].replace(
+        "ACMD(do_training_dummy)", "ACMD(unregistered_training_dummy)", 1)
+    assert command_definition_count(missing_command, "do_training_dummy", True) == 0
+    print(f"ability.implementations: PASS ({len(skill_callbacks)} spell/poison and {len(command_callbacks)} command callback symbols resolve to production definitions; removed implementation rejected; effect behavior is separate)")
     errors = check_mechanic_sites(sources, bindings)
     assert not errors, "\n".join(errors)
     fight = sources["combat/fight.c"]

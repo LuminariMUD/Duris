@@ -244,13 +244,42 @@ void check_aggro_from_command(P_char exec_char);
 /*=========================================================================*/
 
 struct command_info cmd_info[MAX_CMD_LIST];
+extern const char *command[MAX_CMD];
+
+static std::vector<character_mechanics::CommandWrite> command_registration_writes;
+
+static void record_command(int command, std::string_view handler,
+			   std::source_location site = std::source_location::current())
+{
+	command_registration_writes.push_back({ command, cmd_info[command], handler, site });
+}
 
 std::span<const character_mechanics::MechanicConnection> character_mechanics::command_connections()
 {
 	static constexpr MechanicId dependencies[] = { MechanicId::specialization_select };
 	static constexpr MechanicId innate_dependencies[] = { MechanicId::innate_dispatch };
 	static constexpr MechanicId multiclass_dependencies[] = { MechanicId::multiclass_list };
-	static const MechanicConnection connections[] = {
+	static MechanicConnection connections[] = {
+		{ MechanicId::command_table,
+		  Relation::identity,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((CommandTable{ cmd_info, command })),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Complete native command slots, handlers and position/level/battle/confirmation/grant/aggression guards; world procedures may intercept commands before these slots.",
+		  {} },
+		{ MechanicId::command_registration,
+		  Relation::identity,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(CommandWrites{ command_registration_writes }),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Observed writes from every existing command-assignment macro, including handler symbol and source caller, before overwrites disappear; handler effect ownership remains separate.",
+		  {} },
 		{ MechanicId::specialization_entry,
 		  Relation::entry,
 		  { OptionKind::shared, 0, 0 },
@@ -282,6 +311,7 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::co
 		  "Innate command slot; requires standing/normal status, permits combat and checks aggression.",
 		  {} }
 	};
+	connections[1].binding = CommandWrites{ command_registration_writes };
 	return connections;
 }
 
@@ -2922,6 +2952,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].grantable = 0;                \
 		cmd_info[(number)].req_confirm = FALSE;          \
 		cmd_info[(number)].check_aggro = chk_aggro;      \
+		record_command((number), #pointer);              \
 	}
 
 #define CMD_Y(number, min_pos, pointer, min_level, chk_aggro)    \
@@ -2933,6 +2964,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].grantable = 0;                \
 		cmd_info[(number)].req_confirm = FALSE;          \
 		cmd_info[(number)].check_aggro = chk_aggro;      \
+		record_command((number), #pointer);              \
 	}
 
 // Commands that need confirmation do not draw aggro, ever.
@@ -2945,6 +2977,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].grantable = 0;                \
 		cmd_info[(number)].req_confirm = TRUE;           \
 		cmd_info[(number)].check_aggro = FALSE;          \
+		record_command((number), #pointer);              \
 	}
 
 #define CMD_CNF_N(number, min_pos, pointer, min_level)           \
@@ -2956,6 +2989,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].grantable = 0;                \
 		cmd_info[(number)].req_confirm = TRUE;           \
 		cmd_info[(number)].check_aggro = FALSE;          \
+		record_command((number), #pointer);              \
 	}
 
 #define CMD_TRIG(number, min_level, chk_aggro)                               \
@@ -2967,6 +3001,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].grantable = 0;                            \
 		cmd_info[(number)].req_confirm = FALSE;                      \
 		cmd_info[(number)].check_aggro = chk_aggro;                  \
+		record_command((number), "do_not_here");                     \
 	}
 
 // Socials always draw aggro.
@@ -2979,6 +3014,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].grantable = 0;                     \
 		cmd_info[(number)].req_confirm = FALSE;               \
 		cmd_info[(number)].check_aggro = TRUE;                \
+		record_command((number), "do_action");                \
 	}
 
 #define CMD_GRT(number, min_pos, pointer, min_level)             \
@@ -2989,6 +3025,7 @@ bool special(P_char ch, int cmd, char *arg)
 		cmd_info[(number)].minimum_level = (min_level);  \
 		cmd_info[(number)].grantable = 1;                \
 		cmd_info[(number)].req_confirm = FALSE;          \
+		record_command((number), #pointer);              \
 	}
 /*
  * change the 0 back to -1 when replacing grant - or, 1!
@@ -2996,6 +3033,7 @@ bool special(P_char ch, int cmd, char *arg)
 
 void assign_command_pointers(void)
 {
+	command_registration_writes.clear();
 	int position;
 
 	for (position = 0; position < MAX_CMD_LIST; position++)

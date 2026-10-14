@@ -39,6 +39,17 @@ does not prove its effect, and a passive's null callback still requires consumer
 The same test resolves every registered spell/poison callback to a unique native
 implementation and rejects removal. This is implementation-location evidence only.
 
+Command connections expose the real vocabulary (`names[id - 1]`) and native slots
+from [interp.c](../../src/cmd/interp.c). The seven existing assignment macros retain
+each observed handler and its position, level, combat, confirmation, grant and
+aggression guards. `validate_commands()` compares every field against those writes
+and detects conflicting overwrites before they disappear. `COMMAND_SITE` rows use
+the same source-location check as grants. New macro aliases/callers and direct
+unobserved command writes fail it. Callback resolution accounts for exact command
+signatures, `ACMD`, overloads and the three owners with separate backend bodies.
+Registration fixtures abort on any unexercised callback; ordinary interpreter gates,
+world interception and individual effects remain separate proof obligations.
+
 Creation connections bind Telnet's actual login states and selection handlers,
 WebSocket's native command table, lookup and dispatcher, account admission policy,
 preflight/commit and `init_char`. Native assertions exercise dispatch and reject

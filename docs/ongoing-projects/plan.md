@@ -58,9 +58,10 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last committed checkpoint: `1abfef484` connects native ability registration tables
-and write provenance; `ff80bae30` connects generic race restoration and death
-cleanup. Their focused checks passed. Upstream `0e27ef1e8` was integrated through
+Last committed checkpoint: `4a11e79f6` connects character creation dispatch and
+account admission; `1abfef484` connects ability tables/provenance; `ff80bae30`
+connects generic race restoration and death cleanup. Their focused checks passed.
+Upstream `0e27ef1e8` was integrated through
 `f75e77b34`; these are reference points, not a later remote-head claim.
 
 The registration connections bind the complete initialized skill/spell/tag and
@@ -74,7 +75,7 @@ remaining ability acquisition, effects or lifecycle connections. All **632**
 registered spell/poison callback symbols resolve uniquely to production definitions;
 removing an implementation is a negative case. This proves location, not effects.
 
-The current creation batch binds the actual Telnet state/selection calls, WebSocket
+The creation connections bind the actual Telnet state/selection calls, WebSocket
 command table/lookup/dispatcher, shared creation predicates, account preflight/commit
 and character initialization. Native checks reject detached handlers, altered state
 bindings and new aliases, and exercise the actual JSON writer fence and unknown
@@ -83,6 +84,17 @@ starter skills and persistence. Human Necromancer remains explicitly transport
 dependent: Telnet accepts it; WebSocket lists it but rejects creation because Human
 receives good-faction alignment. Initialization's complete state/innate/body sites
 and starter-kit lifecycle ownership remain incomplete.
+
+The current command batch binds the complete native command vocabulary and slots.
+The seven existing assignment macros observe **845 writes** with handler symbols,
+native IDs, all seven handler/guard fields and production caller locations.
+Combined registration coverage is **4,235 source locations**. Native validation
+detects missing handlers, changed guards and conflicting overwrites; the reverse
+checker rejects new macro aliases/callers and direct unobserved command writes.
+All **437 command callback symbols** resolve independently in both backend source
+arms, including native overloads and `ACMD` declarations. Unexercised command bodies
+abort in the registration fixture; this is ownership/location evidence, not effect
+or interpreter reachability proof.
 
 One precise existing conflict remains incomplete: blindfighting's Rogue Assassin
 cap 100 is overwritten by the later class-wide cap 90. The test requires that exact
@@ -98,6 +110,12 @@ inferred from the final table.
 | Login/admission regressions | Focused login source/crash and admission policy/source tests passed; `bin/tests/character-mechanics-creation-admission.log`. |
 | Other build consumers | Editor, pfile and migration-tool checks passed at `1abfef484`; the final integration gate still includes them. |
 | Documentation/format/whitespace | Passed; `bin/tests/character-mechanics-creation-documentation.log` and `character-mechanics-creation-format.log`. |
+
+Command-batch native/mutation validation, server build, formatting, whitespace and
+documentation checks passed. Logs: `bin/tests/character-mechanics-command-native.log`,
+`character-mechanics-command-build.log`, `character-mechanics-command-format.log` and
+`character-mechanics-command-documentation.log`. Native fixture SHA256:
+`1256332313c56d235c35754ce8c6de13b05c75019d299e819bdcb0294ad37339`.
 
 Full reverse ownership beyond these tables and the existing Bulwark/altar/
 multiclass/crown/cleanup sites remains open. The candidate scan is investigation

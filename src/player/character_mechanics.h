@@ -118,6 +118,8 @@ enum class MechanicId
 	account_admission,
 	account_admission_commit,
 	character_initialize,
+	command_table,
+	command_registration,
 	count
 };
 
@@ -220,6 +222,20 @@ using GrantWrites = std::span<const GrantWrite>;
 using InnateCallbacks = std::span<const innate_data>;
 using RacialInnates = const char (*)[LAST_INNATE + 1][LAST_RACE + 1];
 using ClassInnates = const char (*)[LAST_INNATE + 2][CLASS_COUNT][MAX_SPEC + 1];
+struct CommandWrite
+{
+	int command;
+	command_info value;
+	std::string_view handler_symbol;
+	std::source_location declared_at;
+};
+struct CommandTable
+{
+	std::span<const command_info> slots;
+	// The existing command vocabulary is one-based; names[command - 1].
+	std::span<const char *const> names;
+};
+using CommandWrites = std::span<const CommandWrite>;
 struct IdentityConnections;
 using CreationRules = const IdentityConnections *;
 using DescriptorSelection = void (*)(descriptor_data *, char *);
@@ -245,17 +261,16 @@ struct JsonRegistration
 	void (*dispatcher)(descriptor_data *, const char *, cJSON *);
 	std::span<const JsonHandler> handlers;
 };
-using MechanicBinding =
-	std::variant<const char *, const float *, CharacterIntPredicate, CharacterIntFunction,
-		     CharacterQuery, MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate,
-		     CharacterAction, player_status_field, const innate_data *, ObjectRegistration,
-		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue,
-		     RoomRegistration, RoomProcedure, CharacterReset, SkillReset, SkillDataQuery,
-		     WalletSubmit, ClassHitpointFactors, RacialStatFactors, StatusFields,
-		     player_checkpoint_component, event_func_type, RacialAgeData, AffectRemoval,
-		     SkillTable, GrantWrites, InnateCallbacks, RacialInnates, ClassInnates,
-		     CreationRules, DescriptorSelection, JsonCommand, LoginRegistration,
-		     JsonRegistration, AdmissionPolicy, AdmissionCheck, AdmissionCommit>;
+using MechanicBinding = std::variant<
+	const char *, const float *, CharacterIntPredicate, CharacterIntFunction, CharacterQuery,
+	MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate, CharacterAction,
+	player_status_field, const innate_data *, ObjectRegistration, obj_proc_type, ObjectAction,
+	epic_completion_fn, EpicSubmit, ObjectProcValue, RoomRegistration, RoomProcedure,
+	CharacterReset, SkillReset, SkillDataQuery, WalletSubmit, ClassHitpointFactors,
+	RacialStatFactors, StatusFields, player_checkpoint_component, event_func_type, RacialAgeData,
+	AffectRemoval, SkillTable, GrantWrites, InnateCallbacks, RacialInnates, ClassInnates,
+	CreationRules, DescriptorSelection, JsonCommand, LoginRegistration, JsonRegistration,
+	AdmissionPolicy, AdmissionCheck, AdmissionCommit, CommandTable, CommandWrites>;
 
 struct MechanicConnection
 {
@@ -346,6 +361,7 @@ std::vector<TransitionConnection> transition_connections();
 std::vector<MechanicConnection> mechanic_connections();
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections);
 std::vector<std::string> validate_grants(std::span<const MechanicConnection> connections);
+std::vector<std::string> validate_commands(std::span<const MechanicConnection> connections);
 std::vector<std::string> validate_transitions(std::span<const TransitionConnection> transitions,
 					      std::span<const MechanicConnection> connections);
 
