@@ -10,11 +10,11 @@
     "mariadb10_11": "e0d811dab0125be50a148689dd4e2924ec1301542865c713057bd8143238c35d"
   },
   "migration_head": {
-    "id": "0040_combat_outcome_allies",
-    "sequence": 40,
-    "apply_checksum": "a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e",
-    "verify_checksum": "da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa",
-    "history_checksum": "dd995ce9e89ed15e8299c2e705fdf9647d1ada360abfcd9d57e535fa80d98106"
+    "id": "0041_pkill_log_capacity",
+    "sequence": 41,
+    "apply_checksum": "7c5300d246864439c408ff3a823827b2b43518db7a8e894e0ee326e38d6c4bda",
+    "verify_checksum": "85c971ffc757e04320134462bb91adc74d95a14052facc463d8d13ac4d100ce7",
+    "history_checksum": "8bf5c4466de09b6e080059a763aed4507d6280afc27f0f1d5cbb7fe75bb5cbeb"
   },
   "connection": {
     "character_set": "utf8mb4",

@@ -47,6 +47,14 @@ CREATE DATABASE $MIGRATED_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE $BOOTSTRAP_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" \
     < "$ROOT/migrations/bootstrap_legacy_baseline.sql"
+# A legacy table already on utf8mb4 retains TEXT during charset convergence.
+# Keep historical rows to prove the immutable widening preserves their contents.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e "
+ALTER TABLE pkill_info CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+ALTER TABLE pkill_info MODIFY COLUMN log TEXT NULL;
+INSERT INTO pkill_info(pid,pk_type,equip,log) VALUES
+    (4294000200,'legacy','',NULL),
+    (4294000200,'legacy','',REPEAT('x',65535));"
 MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e "
 CREATE TABLE imported_extension_probe (
     id INT NOT NULL PRIMARY KEY,
@@ -95,9 +103,61 @@ printf '%s\n' \
     'REDIS=FALSE' > "$CONFIG"
 
 MIGRATION_ENV_FILE="$CONFIG" "$ROOT/migrations/run_migration.sh"
+legacy_log_type=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    "SELECT data_type FROM information_schema.columns WHERE table_schema=DATABASE()
+     AND table_name='pkill_info' AND column_name='log';")
+[[ "$legacy_log_type" == text ]]
+# An unexpected wider type is preserved but cannot publish a successful head
+# that the canonical runtime fingerprint would subsequently reject.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
+    'ALTER TABLE pkill_info MODIFY COLUMN log LONGTEXT NULL;'
+if ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
+    DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
+    python3 "$ROOT/scripts/migration_runner.py" run; then
+    echo 'migration runner certified noncanonical LONGTEXT' >&2
+    exit 1
+fi
+refused_head=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    "SELECT CONCAT((SELECT applied_count FROM mud_schema_migration_state WHERE state_id=1),':',
+     (SELECT COUNT(*) FROM mud_schema_history WHERE sequence_number=41),':',
+     (SELECT data_type FROM information_schema.columns WHERE table_schema=DATABASE()
+      AND table_name='pkill_info' AND column_name='log'));")
+[[ "$refused_head" == '40:0:longtext' ]]
+# A MEDIUMTEXT column with different encoding must also be refused before
+# publishing 0041, rather than failing only at the later runtime boot gate.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
+    'ALTER TABLE pkill_info MODIFY COLUMN log MEDIUMTEXT CHARACTER SET latin1 COLLATE latin1_bin NULL;'
+if ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
+    DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
+    python3 "$ROOT/scripts/migration_runner.py" run; then
+    echo 'migration runner certified noncanonical MEDIUMTEXT' >&2
+    exit 1
+fi
+[[ "$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    'SELECT applied_count FROM mud_schema_migration_state WHERE state_id=1;')" == 40 ]]
+# Restore the supported legacy fixture and retry the still-pending migration.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
+    'ALTER TABLE pkill_info MODIFY COLUMN log TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL;'
 ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
     DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
     python3 "$ROOT/scripts/migration_runner.py" run
+
+log_state=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    "SELECT CONCAT(COUNT(*),':',SUM(log IS NULL),':',SUM(log=REPEAT('x',65535)))
+     FROM pkill_info WHERE pid=4294000200;")
+[[ "$log_state" == '2:1:1' ]]
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e "
+SET SESSION sql_mode='STRICT_ALL_TABLES';
+INSERT INTO pkill_info(pid,pk_type,equip,log) VALUES
+    (4294000200,'legacy','',REPEAT('x',65536)),
+    (4294000200,'legacy','',REPEAT('x',99999));"
+# Exercise history replay as well as the SQL-level reruns in the combat harness.
+ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
+    DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
+    python3 "$ROOT/scripts/migration_runner.py" run
+log_lengths=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    "SELECT GROUP_CONCAT(OCTET_LENGTH(log) ORDER BY id) FROM pkill_info WHERE pid=4294000200;")
+[[ "$log_lengths" == '65535,65536,99999' ]]
 
 extension_state=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
     "SELECT CONCAT(COUNT(*), ':', MIN(note)) FROM imported_extension_probe;")

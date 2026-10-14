@@ -13,6 +13,9 @@ VERIFIER = ROOT / "migrations/immutable/0014_telemetry_storage.sh"
 
 
 class TelemetryMigrationTlsTest(unittest.TestCase):
+    verifier = VERIFIER
+    failure_prefix = "FAILED: telemetry verifier"
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -45,7 +48,7 @@ sys.exit(88)
         for key in omit:
             environment.pop(key, None)
         self.log.unlink(missing_ok=True)
-        result = subprocess.run(["bash", str(VERIFIER)], env=environment,
+        result = subprocess.run(["bash", str(self.verifier)], env=environment,
                                 text=True, capture_output=True)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
         sql_calls = [args for args in calls if args != ["--help"]]
@@ -55,7 +58,7 @@ sys.exit(88)
         result, sql, _ = self.invoke(changes, omit)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(sql, [])
-        self.assertIn("FAILED: telemetry verifier", result.stderr)
+        self.assertIn(self.failure_prefix, result.stderr)
 
     def test_remote_mysql_requires_identity_verification_and_ca(self):
         result, sql, calls = self.invoke()

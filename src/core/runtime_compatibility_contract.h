@@ -96,15 +96,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * adds the learned flight stops mask to player status. Migration 0039 adds
  * level_cap.level_good and level_evil, the levels unlocked by each side.
  * Migration 0040 records the killer-side ally count on combat outcomes.
+ * Migration 0041 widens legacy pkill_info.log columns for full public combat logs.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0040_combat_outcome_allies";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 40;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0041_pkill_log_capacity";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 41;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e";
+	"7c5300d246864439c408ff3a823827b2b43518db7a8e894e0ee326e38d6c4bda";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa";
+	"85c971ffc757e04320134462bb91adc74d95a14052facc463d8d13ac4d100ce7";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"dd995ce9e89ed15e8299c2e705fdf9647d1ada360abfcd9d57e535fa80d98106";
+	"8bf5c4466de09b6e080059a763aed4507d6280afc27f0f1d5cbb7fe75bb5cbeb";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

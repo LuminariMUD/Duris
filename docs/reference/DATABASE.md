@@ -101,6 +101,16 @@ budget. Payload versions 1 and 2 remain decodable with empty equipment/log
 snapshots. This does not recover historical missing text or add a durable
 pre-commit queue: the in-memory crash-loss limitation above still applies.
 
+Immutable migration `0041_pkill_log_capacity` widens legacy `pkill_info.log`
+columns from `TEXT` to `MEDIUMTEXT` before the updated server can boot. The
+legacy baseline upgrade alone can retain `TEXT`; follow it with
+`python3 scripts/migration_runner.py run`. Existing logs and NULLs are preserved,
+and canonical `MEDIUMTEXT` columns are unchanged on replay. An unexpected
+`LONGTEXT` column or other noncanonical column metadata is preserved but rejected by verification before migration
+success is recorded, since runtime boot requires the canonical metadata shape.
+This prevents strict SQL mode
+from rejecting 65,536–99,999-byte logs and rolling back their entire outcome.
+
 The #58 implementation separates artifact/guild reward history from
 saved gameplay state. `artifacts`, `artifact_bind` and `artifact_domain_state`
 hold the artifact snapshot/mirror; `guilds` holds current guild totals.

@@ -12,6 +12,8 @@ Execute the five steps below in the existing production checkout. An explicit
 request to deploy authorizes the production migrations, content publication,
 build, and scheduled in-game reboot described here. Do not stop at a handoff or
 ask again for those actions. Editing this skill does not execute a deployment.
+When a pending migration requires stopped writers, the deployment includes the
+announced maintenance outage described below.
 
 Treat merged master as qualified. Do not create worktrees, temporary deployment
 environments, cloned databases, or containers. Do not run burn-in, regression
@@ -50,9 +52,9 @@ Consult subsystem documentation only for the operations that actually apply.
   does not query production. Export `.env` (`set -a; source .env; set +a`) and
   supply `--confirm-production-target "$DB_HOST/$DB_NAME"` and
   `--production-backup /absolute/path/to/database.sql.gz`, plus the supported
-  online option for the pending steps. Keep services running. If an online-safe
-  step lacks runner support, make the narrow runner fix while retaining its
-  target, backup, checksum, and ledger guards. Use
+  online option only when the exact pending manifest has already-reviewed online
+  support. Otherwise use the offline procedure below; never invent an online
+  exception or bypass the runner's quiescence guard. Use
   [the migration guide](../../../docs/persistence/IMMUTABLE_MIGRATIONS.md) for
   those mechanics, not as a requirement to create a test environment. Do not
   replay historical repair/wipe scripts as though they were pending migrations.
@@ -78,12 +80,43 @@ Consult subsystem documentation only for the operations that actually apply.
 A migration or required setup failure is a real blocker: resolve it or report
 its concrete error. Do not skip it and reboot an incompatible release.
 
+### Offline migrations, including 0041
+
+Before invoking the runner for an offline step, identify the game child, launcher,
+website workers and scheduled jobs that use this database, and record their service
+states. Preserve the running executable and stamp in the private recovery directory
+described in step 3 before stopping the game.
+
+Before announcing the outage, confirm the configured user-scope MUD service sends
+SIGTERM to the launcher (`KillMode=mixed`) and allows enough stop time for the child
+to drain. Resolve any mismatch before proceeding.
+
+Log in as Veridian using step 4's account/menu guidance and check `time` for another
+operator's schedule. Broadcast `echoa Maintenance begins in 180 seconds: Zusuk has new code incoming, brace for impact!`
+and keep Veridian connected for the full 180-second warning. Then request a stop of
+the configured user-scope MUD service, targeting the launcher while its child is
+still running. With that stop configuration, `cycle_mud.sh` sets
+`STOP_REQUESTED`, forwards SIGTERM, waits for the graceful child exit, and exits its
+restart loop. Do not use child-only `shutdown ok` here; without a launcher stop it
+restarts after ten seconds. Wait for the service stop to complete, then stop the
+website workers and database jobs, prevent their automatic restarts for the outage,
+and verify their processes and database sessions have ended. Keep the database and
+Redis available. The runner's
+own quiescence check must pass; do not kill unknown connections or weaken the check.
+
+Refresh the backup after writers stop, using the pre-migration runtime manifest.
+Apply pending migrations with the normal production target/backup arguments and no
+online option, then verify runtime compatibility. Keep these writers stopped through
+content updates, the clean build and atomic binary installation. If any step fails,
+keep the incompatible game stopped and report the actual service state.
+
 ## 3. Do a full clean rebuild
 
-Identify the running server child, its launcher, and its executable hash.
+If the game is still running, identify its child, launcher, and executable hash.
 Preserve the executable bytes (`cp -L /proc/<server-pid>/exe ...`) and production
 stamp in a private recovery directory outside `bin/`: `clean-all` removes that
-entire build tree. Keep the running game alive during the build.
+entire build tree. For an offline migration, use the executable already preserved
+before shutdown and keep writers stopped. Otherwise keep the game alive during the build.
 
 Run each command only after the previous command succeeds:
 
@@ -108,9 +141,14 @@ build by same-filesystem atomic rename from `dms_new` to `dms`, move its stamp
 to `.dms-backend`, and generate `lib/misc/event_names` with
 `scripts/event_names.sh bin/server/dms`. Never truncate or copy over a running
 executable inode. Record the new hash and confirm the current process still
-uses its original executable. Do not schedule a reboot after a failed build.
+uses its original executable when it is still running. Do not restart after a failed build.
 
 ## 4. Schedule the reboot as Veridian
+
+For the offline path, the warning and shutdown already occurred in step 2. Start
+following all journals and files listed in step 5 before restoring any service.
+Then restore the recorded service states with the newly installed server and
+continue step 5's startup verification; do not schedule a second shutdown.
 
 Use the account credentials in `.env` to log in over the configured game
 connection and select the Overlord character **Veridian**. Handle the account
@@ -158,5 +196,8 @@ means the rebuilt game is running and healthy, not merely that reboot was
 scheduled. Report the revision, migrations/content changed, build result, and
 restart/log/health result concisely.
 
-In case of disaster, restore the preserved executable and production stamp, then
-reboot with it.
+In case of disaster, use the preserved executable and stamp only when the current
+database passes that binary's matching runtime contract. After a migration advances
+the required head, keep the game stopped until a compatible binary is available or
+an authorized recovery restores the matching database backup. Do not blindly pair
+the old binary with the new migration history.
