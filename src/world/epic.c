@@ -100,6 +100,7 @@ struct epic_award_context
 	int amount;
 	bool blessing;
 	bool task_penalty;
+	bool *committed = nullptr;
 };
 
 struct epic_level_context
@@ -197,6 +198,8 @@ void epic_award_committed(P_char ch, bool committed, const epic_command_result &
 	}
 	epic_award_context context = {};
 	memcpy(&context, raw_context, sizeof(context));
+	if (context.committed)
+		*context.committed = true;
 	if (context.blessing)
 		send_to_char("You feel the &+cblessing&n of the &+WGods&n wash over you.\n", ch);
 	if (context.task_penalty)
@@ -588,35 +591,41 @@ static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool c
 	return amount > 0;
 }
 
-void gain_epic(P_char ch, int type, int data, int amount)
+bool gain_epic(P_char ch, int type, int data, int amount)
 {
 	epic_award_context context = {};
 	if (!prepare_epic_award(ch, type, data, amount, false, &context))
-		return;
+		return false;
 	amount = context.amount;
 	const epic_reason_type reason = epic_award_reason(type);
 	if (reason == epic_reason_type::unknown)
 	{
 		logit(LOG_DEBUG, "gain_epic: unsupported award type %d for %s", type, J_NAME(ch));
-		return;
+		return false;
 	}
 	critical_operation_id operation_id = {};
 	if (!critical_operation_id_generate(&operation_id))
 	{
 		send_to_char("The epic award service is busy. Please try again.\n", ch);
-		return;
+		return false;
 	}
+	// Epic transactions call their completion before returning.
+	bool committed = false;
+	context.committed = &committed;
 	if (!epic_transaction_submit_identified(ch, operation_id, amount, reason, data, 0,
 						epic_award_source(type),
 						critical_deadline_class::interactive,
 						epic_award_committed, &context, sizeof(context)))
 	{
 		send_to_char("The epic award service is busy. Please try again.\n", ch);
-		return;
+		return false;
 	}
+	if (!committed)
+		return false;
 	if (!artifact_guild_transaction_submit(ch, operation_id, amount, type))
 		logit(LOG_FILE,
 		      "artifact_guild: component=epic_capture outcome=deferred_effect_unavailable actor=redacted");
+	return true;
 }
 
 struct affected_type *get_epic_task(P_char ch)

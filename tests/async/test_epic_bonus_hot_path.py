@@ -34,7 +34,7 @@ record_body = function_body(bonus, "void epic_bonus_record_gain(P_char ch, int t
 nanny = (SRC / "nanny.c").read_text()
 entry_body = function_body(nanny, "void enter_game(P_desc d)")
 copyover = (SRC / "copyover.c").read_text()
-gain_body = function_body(epic, "void gain_epic(P_char ch, int type, int data, int amount)")
+gain_body = function_body(epic, "bool gain_epic(P_char ch, int type, int data, int amount)")
 award_ack_body = function_body(epic, "void epic_award_committed(")
 
 forbidden = ["qry(", "db_query(", "mysql_", "redis", "fopen", "open(", "malloc",

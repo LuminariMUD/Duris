@@ -87,7 +87,8 @@ void do_epic(P_char ch, char *arg, int cmd);
 void do_epic_trophy(P_char ch, char *arg, int cmd);
 void do_epic_zones(P_char ch, char *arg, int cmd);
 void do_epic_share(P_char ch, char *arg, int cmd);
-void gain_epic(P_char, int type, int data, int amount);
+// Returns whether the award was applied to the in-memory balance.
+bool gain_epic(P_char, int type, int data, int amount);
 // Epic skills are learned from epic.skills.minLevel (default 30) upward.
 int epic_skills_min_level();
 void group_gain_epic(P_char, int type, int data, int amount);
