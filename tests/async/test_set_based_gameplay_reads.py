@@ -69,10 +69,19 @@ int main()
     assert(!gameplay_read_state_finish_provisional(&state, committed, true));
 
     epic_task_catalog_reset_for_tests();
-    assert(epic_task_catalog_select(&state) == -1);
+    epic_task_selection_status status = epic_task_selection_status::selected;
+    assert(epic_task_catalog_select(&state, &status) == -1);
+    assert(status == epic_task_selection_status::unavailable);
+    assert(!epic_task_catalog_publish(nullptr, 0));
+    assert(!epic_task_catalog_ready());
     const int32_t zones[] = {10, 20, 30, 40};
     assert(epic_task_catalog_publish(zones, 4));
     assert(epic_task_catalog_ready() && epic_task_catalog_size() == 4);
+    assert(!epic_task_catalog_publish(nullptr, 0));
+    assert(epic_task_catalog_ready() && epic_task_catalog_size() == 4);
+    gameplay_read_state unavailable = {};
+    assert(epic_task_catalog_select(&unavailable, &status) == -1);
+    assert(status == epic_task_selection_status::unavailable);
     const int32_t invalid[] = {10, 999};
     assert(!epic_task_catalog_publish(invalid, 2));
     assert(epic_task_catalog_size() == 4);
@@ -81,7 +90,8 @@ int main()
     int selected_other = 0;
     for (int index = 0; index < 12000; ++index)
     {
-        const int selected = epic_task_catalog_select(&state);
+        const int selected = epic_task_catalog_select(&state, &status);
+        assert(status == epic_task_selection_status::selected);
         assert(selected == 10 || selected == 40);
         if (selected == 10)
             ++selected_10;
@@ -92,7 +102,8 @@ int main()
     assert(selected_other > 4800 && selected_other < 7200);
     assert(gameplay_read_state_add_completed_zone(&state, 10));
     assert(gameplay_read_state_add_completed_zone(&state, 40));
-    assert(epic_task_catalog_select(&state) == -1);
+    assert(epic_task_catalog_select(&state, &status) == -1);
+    assert(status == epic_task_selection_status::exhausted);
     return 0;
 }
 '''
