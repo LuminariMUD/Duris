@@ -7,6 +7,7 @@ provides the real socket client and server lifecycle, not mocked nanny handlers.
 """
 
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -348,6 +349,10 @@ def normal_after_hardcore(client, server):
     score = reply(client, "score", "Pos: standing >")
     require("HardCore pts:" not in score, "Normal choice retained the previous Hardcore flag")
     require("Taverek" in score, "score did not display the new character")
+    toggles = reply(client, "toggle", "Pos: standing >")
+    require(re.search(r"Web Info\s*:\s*ON\b", toggles),
+            "new character did not default to webinfo ON")
+    reply(client, "toggle webinfo off", "Pos: standing >")
     reply(client, "save", "Save complete for Taverek.")
     # A resident linkdead character reconnects immediately by design. Restart
     # the server to exercise disk reload and the saved-character confirmation.
@@ -370,6 +375,9 @@ def normal_after_hardcore(client, server):
         score = reply(other, "score", "Pos: standing >")
         require("Taverek" in score and "HardCore pts:" not in score,
                 "saved character did not reconnect with Normal mode")
+        toggles = reply(other, "toggle", "Pos: standing >")
+        require(re.search(r"Web Info\s*:\s*OFF\b", toggles),
+                "saved webinfo OFF preference was overwritten on reload")
     finally:
         other.close()
 

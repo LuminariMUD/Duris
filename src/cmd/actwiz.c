@@ -5820,6 +5820,7 @@ static void do_start_impl(P_char ch, int nomsg, bool grant_newbie_kit)
 		SET_BIT(ch->specials.act2, PLR2_QUICKCHANT);
 		SET_BIT(ch->specials.act2, PLR2_SPEC);
 		SET_BIT(ch->specials.act2, PLR2_HINT_CHANNEL);
+		SET_BIT(ch->specials.act2, PLR2_WEBINFO);
 		SET_BIT(ch->specials.act2, PLR2_SHOW_QUEST);
 		SET_BIT(ch->specials.act2, PLR2_BOON);
 		SET_BIT(ch->specials.act2, PLR2_SHIPMAP);
@@ -6552,41 +6553,44 @@ void do_vis(P_char ch, char *argument, int /*cmd*/)
 
 namespace
 {
-struct demote_context
-{
-	uint32_t administrator_pid;
-};
+	struct demote_context
+	{
+		uint32_t administrator_pid;
+	};
 
-void demote_committed(P_char victim, bool committed, const epic_command_result &, unsigned int,
-		      const uint8_t *raw_context, size_t context_size)
-{
-	if (!committed)
+	void demote_committed(P_char victim, bool committed, const epic_command_result &,
+			      unsigned int, const uint8_t *raw_context, size_t context_size)
 	{
-		send_to_char("The administrative epic reset failed; demotion was not applied.\n",
-			     victim);
-		return;
+		if (!committed)
+		{
+			send_to_char(
+				"The administrative epic reset failed; demotion was not applied.\n",
+				victim);
+			return;
+		}
+		for (int skill = 0; skill < MAX_SKILLS; ++skill)
+			victim->only.pc->skills[skill].learned = 0;
+		NewbySkillSet(victim, TRUE);
+		victim->points.max_mana = 0;
+		victim->points.max_vitality = 0;
+		victim->specials.conditions[0] = 24;
+		victim->specials.conditions[1] = 24;
+		victim->specials.conditions[2] = 0;
+		do_start(victim, 0);
+		send_to_char("You have just been demoted to level one... oh well.\n", victim);
+		logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset",
+		      GET_NAME(victim));
+		if (context_size == sizeof(demote_context))
+		{
+			demote_context context = {};
+			memcpy(&context, raw_context, sizeof(context));
+			P_char administrator = find_player_by_pid(context.administrator_pid);
+			if (administrator)
+				send_to_char(
+					"The demotion and epic reset committed successfully.\n",
+					administrator);
+		}
 	}
-	for (int skill = 0; skill < MAX_SKILLS; ++skill)
-		victim->only.pc->skills[skill].learned = 0;
-	NewbySkillSet(victim, TRUE);
-	victim->points.max_mana = 0;
-	victim->points.max_vitality = 0;
-	victim->specials.conditions[0] = 24;
-	victim->specials.conditions[1] = 24;
-	victim->specials.conditions[2] = 0;
-	do_start(victim, 0);
-	send_to_char("You have just been demoted to level one... oh well.\n", victim);
-	logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset", GET_NAME(victim));
-	if (context_size == sizeof(demote_context))
-	{
-		demote_context context = {};
-		memcpy(&context, raw_context, sizeof(context));
-		P_char administrator = find_player_by_pid(context.administrator_pid);
-		if (administrator)
-			send_to_char("The demotion and epic reset committed successfully.\n",
-				     administrator);
-	}
-}
 } // namespace
 
 void do_demote(P_char ch, char *argument, int /*cmd*/)

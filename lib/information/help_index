@@ -16944,7 +16944,7 @@ Battle Alert: OFF    |     Ship Map    : OFF
 Take        : ON     |     Terse Battle: OFF    |     QuickChant  : ON     
 Project     : OFF    |     AFK         : OFF    |     NChat       : ON     
 Hint Channel: OFF    |     Group Needed: OFF    |     Showspec    : ON
-Web Info    : OFF    |               
+Web Info    : ON     |
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 ===========================================================================
@@ -17257,8 +17257,8 @@ other such more specific character information.
 Please note, that any such information shown on the website has an 30
 minute delay before release.
 
-If you do not wish more specific information shown, please ensure that this
-option is set to OFF. It is by default OFF.
+This option is ON by default for new characters. To turn it off, use
+"toggle webinfo off". Existing characters keep their saved setting.
 ===========================================================================
 See also: TOGGLE, WEBSITE
 

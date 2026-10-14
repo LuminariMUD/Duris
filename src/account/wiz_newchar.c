@@ -306,6 +306,7 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 	SET_BIT(newch->specials.act2, PLR2_QUICKCHANT);
 	SET_BIT(newch->specials.act2, PLR2_SPEC);
 	SET_BIT(newch->specials.act2, PLR2_HINT_CHANNEL);
+	SET_BIT(newch->specials.act2, PLR2_WEBINFO);
 	SET_BIT(newch->specials.act2, PLR2_SHOW_QUEST);
 	SET_BIT(newch->specials.act2, PLR2_BOON);
 	SET_BIT(newch->specials.act2, PLR2_SHIPMAP);
