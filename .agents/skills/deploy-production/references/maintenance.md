@@ -1,10 +1,8 @@
-# Migration and activation prerequisites
+# Online migrations and activation prerequisites
 
-Read this when assessing a pending migration, stopped-server seed, incompatible
-recovery change, or new launcher/service requirement. Complete supported online
-work under the deployment authorization. Report only constraints that remain
-after that assessment; this reference does not authorize stopping services.
-The user owns the in-game reboot.
+Read this for pending migrations or a possible activation constraint. Apply
+required migrations with the database, MUD and website running under the existing
+deployment authorization. The user owns the in-game reboot.
 
 ## Finish the preparation that can be done now
 
@@ -19,23 +17,55 @@ pending prefix. Inspect its SQL and the candidate's runtime contract. Record the
 specific requirement that is unmet; do not infer a maintenance need merely from
 the presence of a migration file or an additive schema change.
 
-The production immutable runner normally requires zero other database connections.
-Before treating that as a blocker, check its supported online paths. The reviewed
-`run --online-level-cap-sides` path applies only the sealed `0039_level_cap_sides`
-addition on MariaDB 11.8/InnoDB. Follow its running-writer compatibility, fresh
-backup, advisory-lock and instant-DDL requirements in
-[IMMUTABLE_MIGRATIONS.md](../../../../docs/persistence/IMMUTABLE_MIGRATIONS.md).
-When those requirements hold, deployment authorization covers completing this
-online prerequisite with services running. Verify the new contract and finish
-publication before handing the user the reboot command.
-The option requires the manifest to end at that exact reviewed step; it is not a
-general online-migration switch for later releases. Inspect the current runner
-and live history rather than assuming 0039 is still pending.
+## Apply migrations online
 
-An arbitrary additive ALTER does not waive the default guard. Do not run individual
-SQL files, edit migration history, adopt a baseline, or stop clients to get past it.
-The production launcher verifies the schema but does not apply pending migrations,
-so the user's ordinary reboot cannot finish them automatically.
+Do not stop the database service or require all clients to disconnect as a default
+migration step. SQL migrations execute against the running database. A runner's
+blanket zero-connection guard is a tooling policy, not a property of every ALTER.
+Use the current runner and [migration guide](../../../../docs/persistence/IMMUTABLE_MIGRATIONS.md)
+for interfaces and ledger semantics; assess downtime from the actual operation.
+
+1. Review each pending step against the deployed writers and candidate readers,
+   including DurisWeb. Check column naming/order assumptions, defaults, queries,
+   constraints and any backfill's behavior under concurrent writes. An additive
+   column with a compatible default can be online; the word "additive" alone is
+   insufficient evidence. Account for the old binary's next-boot schema contract.
+2. Check the actual server version, engine and affected tables. Select supported
+   online DDL: require INSTANT where appropriate, or an explicitly supported
+   operation that permits concurrent reads/writes. Bound metadata/row lock waits
+   and reject fallback to a blocking table copy. Online DDL can briefly acquire
+   metadata locks; waiting connections alone do not prove an outage is necessary.
+3. Reuse an existing online runner path when it covers the exact pending steps.
+   If support is missing, implement the smallest scoped path in the release
+   workspace for the reviewed migration IDs/checksums and engine capabilities.
+   Preserve production target confirmation, allow-list, fresh backup, baseline,
+   immutable prefix checks, verification and success-last ledger recording. Hold
+   the migration advisory lock on one live connection through apply, verification
+   and history publication. Retain the default guard for unreviewed operations.
+   Validate this change with focused database-free checks; no production test DB,
+   full qualification suite or new test infrastructure is required.
+4. Take and verify the live backup, coordinate schema-aware backup jobs so none
+   overlaps DDL, then execute through the reviewed runner. Verify ordered history,
+   migration state and the candidate runtime contract before publication. Restore
+   held backup schedules using the new verified contract.
+
+Existing migration-specific options are not general online switches. For example,
+`--online-level-cap-sides` is scoped to 0039; a later compatible step needs its own
+reviewed support, not a declaration that all clients must stop. Do not fabricate
+an available flag, disable checks globally, impersonate a local environment,
+execute untracked SQL or edit ledger rows to bypass the runner.
+
+On lock timeout, inspect the holder and retry only when the observed contention
+has cleared. On apply/verification failure, inspect live schema and ledger state
+before any retry: DDL may already have committed. If an actual writer conflict,
+unsupported online operation or required service replacement prevents completion,
+retain the preparation and report that exact constraint once. A missing online
+flag or generic zero-client refusal by itself is not such a constraint.
+
+The production launcher verifies schema but does not apply pending migrations;
+finish the online migration before handing the user their reboot.
+
+## Other activation constraints
 
 An in-game reboot also does not replace the already-running launcher or restart
 systemd. Trace configuration and listener changes to the process that must read
@@ -56,15 +86,16 @@ no automatic down-migration. No restore drill, disposable database,
 Docker, special mount, namespace, or external test host is required here.
 
 For a pending migration, record the exact database host/port/socket/name and
-allow-list, IDs/checksums, shared clients, backup location and runner invocation
-for the operator's later work. The runner reads exported environment, not `.env`
-automatically. Its production flags are `--confirm-production-target HOST/DB` and
+allow-list, IDs/checksums, shared clients, backup location and runner invocation.
+The runner reads exported environment, not `.env` automatically. Its production
+flags are `--confirm-production-target HOST/DB` and
 `--production-backup /absolute/path/database.sql.gz`. The backup must be an
 owner-only regular gzip owned by the invoking user, no more than two hours old,
-with the configured database/core-table markers. A later operation may need a
-fresh backup after writers are quiescent; do not present a live snapshot as that
-final stopped-writer backup. Successful application must be followed by ordered
-history/state checks and `migrations/verify_runtime_compatibility.sh`.
+with the configured database/core-table markers. A verified transactional live
+backup is appropriate for the reviewed online path; stopped writers are not a
+blanket backup prerequisite. Refresh an expired backup before applying migrations.
+Successful application must be followed by ordered history/state checks and
+`migrations/verify_runtime_compatibility.sh`.
 
 For content, retain reviewed previews and prior rows. For a stopped-server seed,
 retain its scoped SQL and audit. For service changes, retain the reviewed unit or

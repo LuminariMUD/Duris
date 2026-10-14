@@ -2,8 +2,45 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: plan only; execution has not started. The unchecked items below track the
-remaining work in #56. Creating this plan does not close those findings.
+Status: LR-01 source repair and historical assessment are complete in
+[PR #66](https://github.com/LuminariMUD/Duris/pull/66). The remaining work continues
+separately on `fix/58-56-estale-log-review`. Unchecked items remain open until
+their required evidence is recorded; a source merge does not establish rollout.
+
+Current work: LR-01 is implemented and locally qualified: 727 regression checks,
+75 disposable database checks, and 15 site tests pass; the historical recovery
+proposal is prepared and unapplied. Other LR items remain open;
+`skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
+reproduction and partial artifact/guild implementation are recorded in the
+[work branch's plan-estale.md](https://github.com/LuminariMUD/Duris/blob/fix/58-56-estale-log-review/docs/ongoing-projects/plan-estale.md).
+That work is not qualified or included in PR #66.
+
+## Integration handoff — 2026-10-13
+
+PR #66 uses a squash merge to satisfy `master`'s linear-history rule. Its tested
+code tip is `66dbfc016e2ac9f59101a75e0b32ac9d7a7542a0`; subsequent handoff edits
+change documentation only. The merge-session evidence is recorded on the PR.
+
+The follow-on worktree `/home/aiwithapex/projects/duris-estale-log-review` contains
+committed descendants of that tip and uncommitted #58 implementation/tests. It
+was intentionally left intact. Before integrating that branch, preserve its
+current changes and recheck its live state. Once it is safely checkpointed and
+clean, rebase only the descendants after `66dbfc016` onto the freshly fetched
+`origin/master`; do not replay the four squashed PR #66 commits. Resolve plan
+collisions by retaining the newer #58 evidence and this integration record.
+Any rewritten published branch needs an exact remote-head lease.
+
+The next implementation step is to finish the existing #58 qualification from
+its worktree's `plan-estale.md`, then submit that work for separate review.
+Continue LR-02–LR-20 afterward; LR-03 already has the level-30 policy from #55
+and still needs teacher-command verification. #56 and #58 remain open.
+The character-mechanics project in [plan.md](plan.md), tracked by #52, is
+independent and was not advanced by this merge session.
+
+Preserve the private LR-01 validation and recovery inputs under the existing
+worktree's ignored `bin/analysis/` directories. Historical replacement and
+production rollout remain separate, specifically authorized operations.
+This session starts no follow-on implementation, deployment, or recovery.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -21,11 +58,10 @@ decision, or evidence that the investigated behavior is expected. Start with
 statistics loss. Keep an unresolved report or missing host access open with its
 specific next action; inability to reproduce once is not evidence of correctness.
 
-The planning change adds this file and an issue backlink. Later implementation
-uses the existing source owners, test harnesses, content import, and backup tools
-identified below. It does not need a new persistence framework, monitoring
-service, or test runner. Implementation, production repairs, imports, restarts,
-configuration changes, and test alerts are separate execution work.
+Implementation uses the existing source owners, test harnesses, content import,
+and backup tools identified below. It does not need a new persistence framework,
+monitoring service, or test runner. Production repairs, imports, restarts,
+configuration changes, and test alerts require their specific authorization.
 
 Scope relationships:
 
@@ -83,14 +119,63 @@ claims that host work has already been requested or performed.
 
 ### LR-01 — Restart-safe statistics output (medium; #56 §2)
 
-- [ ] Write each logical sample exactly once to SQL and its daily file across
+- [x] Write each logical sample exactly once to SQL and its daily file across
   retries/restarts; separately assess recovery of the 76 missing file samples.
+
+**Execution, 2026-10-13.** The scheduler now allocates random 64-bit identities
+outside the legacy low-byte namespace; its existing v4 state records them before
+effects. No layout change, second queue, or database schema is needed. Retries
+retain the entire capture; only cursor continuation prepares new values. Queue
+delay and durable-state sync no longer consume the repository execution deadline.
+The file append repairs
+only a matching partial row, checks the complete row on replay, and retries
+syncs. State rename and daily-file creation both sync their containing directory.
+See the [runtime/recovery contract](../operations/CONFIGURATION.md) and
+[regression evidence](../testing/REGRESSIONS.md#statistics-across-restarts-and-interrupted-output).
+
+Passed focused commands: `python3 tests/async/test_maintenance_scheduler.py` and
+`tests/async/with_disposable_mariadb.sh bash tests/async/run_statistics_mysql.sh`.
+The latter is registered in `tests/run_db_tests.sh`; it checks SQL/file agreement,
+all injected fault/restart cases, and actual legacy IDs in v2/v3/v4 state.
+The scheduler test fails before the fix on changed captured values.
+The server build and full-tree format check passed. The first broad regression
+run passed 725/727: its wrapper-permission failure is repaired, and its flight
+journey had completed gameplay before failing to count archived boot logs.
+`81b8350e1` separately fixes that evidence collector. The final
+`make test-all -j16 TEST_JOBS=16` passed all 727 checks in 700.33 seconds, including
+flight evidence collection. `scripts/check_tests_catch.sh 81b8350e1 1e735655e`
+confirms the scheduler regression passes after and fails before the repair.
+The slow-state-sync regression also failed before the deadline adjustment and
+passes after it. Output conflicts are refused with `EILSEQ`; first retry and
+terminal failures log the opaque work ID and error. All 15 site tests pass.
+`make test-db` passed all 75 isolated database checks in 459 seconds, including
+the statistics matrix and MariaDB flight journey. LR-01 implementation is
+`1e735655e`; `81b8350e1` is the separate flight-test correction. Validation logs
+are retained under the ignored, owner-only `bin/analysis/lr01-validation/`
+directory. No production rollout or historical replacement has been performed.
+Source integration: [PR #66](https://github.com/LuminariMUD/Duris/pull/66).
+
+**Historical assessment, 2026-10-13 16:47 UTC.** A bounded read-only production
+transaction and a private copy of the original daily file confirm 1,007 existing
+rows, all before hour 22, and all 76 reported SQL samples still present (28 in
+hour 22 and 48 in hour 23). Both source timezone and proposed output mapping are
+UTC. The private dry run under `bin/analysis/lr01-recovery/` retains `original`,
+`proposed`, `samples.json` (SQL primary keys, timestamps and all counters), and
+`assessment.json` (collection time and hashes), with owner-only permissions.
+The proposal preserves the original bytes and adds 76 legacy-format rows,
+bringing the total to 1,083. It invents no scheduler IDs: SQL primary keys identify
+the source samples, and the existing file consumer accepts rows without a work
+ID. An exact original-file hash is the application precondition; a changed or
+already-repaired file must be refused rather than appended again. Scheduler IDs
+cannot be reconstructed from SQL. This assesses only the reported interval,
+not other possible historical gaps. No production file or table was changed;
+replacement requires separate specific authorization and the retained original.
 
 **Evidence and files.** The review found 76 SQL samples from 22:25:20–23:59:11
 missing from the October 12 file, with all extrapolated work IDs already in that
 file's last 8 KiB. Current
 [maintenance_scheduler.c](../../src/persistence/maintenance_scheduler.c)
-still derives IDs as `(scheduled_tick << 8) | (job_id + 1)`.
+originally derived IDs as `(scheduled_tick << 8) | (job_id + 1)`.
 The instance seed in [comm.c](../../src/net/comm.c) comes from listener ports,
 so it does not supply a boot identity. The file check in
 [maintenance_repository.c](../../src/persistence/maintenance_repository.c)
@@ -260,8 +345,12 @@ otherwise retain this report's separate disposition and any needed owner decisio
 
 ### LR-08 — Missing help topics/aliases (low; #56 §3)
 
-- [ ] Resolve `web-spray`, `quickstep`, and `seadog` searches; establish what
-  `skeer` meant before deciding whether to add a topic.
+- [ ] Resolve `web-spray`, `quickstep`, and `seadog` searches.
+
+Owner decision, 2026-10-13: skip `skeer` for now because its meaning is unknown.
+Source/help searches found no matching ability or topic. Do not invent an alias;
+this term is excluded from the current implementation, while the three named
+topics above remain in scope.
 
 Inspect the real abilities and current titles in
 [help_index](../../lib/information/help_index) and
@@ -270,8 +359,7 @@ documents `innate web_spray` under Drider and mentions seadog; mentions inside a
 page do not make a title searchable. Add the smallest accurate topic or redirect
 using [HELP_SYSTEM.md](../content/HELP_SYSTEM.md) and
 [HELP_STYLE_GUIDE.md](../content/HELP_STYLE_GUIDE.md). Check importer precedence
-so a later source does not overwrite the entry. Keep `skeer` unresolved until
-the intended spelling/ability is established.
+so a later source does not overwrite the entry.
 
 Dry-run [import_help_to_prod.sh](../../scripts/import_help_to_prod.sh), then
 exercise the selected topics through `wiki_help()` after an isolated import and

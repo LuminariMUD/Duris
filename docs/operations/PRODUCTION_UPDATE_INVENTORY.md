@@ -241,11 +241,13 @@ migration supersedes.
 | `0039_level_cap_sides` | Independent good/evil unlocked level caps; pending at inspection |
 | `0040_combat_outcome_allies` | Record killer-side ally counts for level-cap eligibility; required before the updated server boots |
 
-Migration 0040 is additive and rerunnable. Apply it with the normal stopped-server
-migration procedure before installing the updated server. Existing outcomes keep
-count 0 (unknown) and cannot unlock a level; new outcomes retain the count so
-maintenance can apply the current share threshold. The narrowly authorized online
-0039 procedure does not cover 0040.
+Migration 0040 is additive and rerunnable. On MariaDB 11.8/InnoDB, apply it with
+`run --online-combat-outcome-allies` after reviewing active writers and satisfying
+the target, backup and locking requirements in
+[IMMUTABLE_MIGRATIONS.md](../persistence/IMMUTABLE_MIGRATIONS.md), before installing
+the updated server. Existing outcomes keep count 0 (unknown) and cannot unlock a
+level; new outcomes retain the count so maintenance can apply the current share
+threshold. The separate online 0039 option does not cover 0040.
 
 The two additional files `0031_economy_accounting_mariadb_11_8.sh` and
 `0032_economic_baseline_mariadb_11_8.sh` are engine-specific verifiers selected

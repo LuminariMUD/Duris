@@ -391,7 +391,7 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                 runner.replace(manifest.migrations[-1], apply_checksum="0" * 64),))
             with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
                 runner.MysqlExecutor(changed, "127.0.0.1/duris", backup, True)
-            # A later schema head must use the normal stopped-server procedure.
+            # A later schema head needs its own reviewed online mode.
             with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
                 runner.MysqlExecutor(runner.load_manifest(), "127.0.0.1/duris", backup, True)
             normal = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup)
@@ -402,9 +402,9 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
 
     def test_online_migration_keeps_lock_client_open_until_release(self):
         manifest = runner.load_manifest()
-        # This narrowly authorized mode is permanently pinned to migration 0039.
+        # Exercise the current online mode; older modes share this lock path.
         manifest = runner.replace(manifest, migrations=tuple(
-            step for step in manifest.migrations if step.sequence <= 39))
+            step for step in manifest.migrations if step.sequence <= 40))
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
@@ -419,7 +419,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                               "assert 'GET_LOCK' in sys.stdin.readline()\n"
                               "print('1', flush=True)\n"
                               "sys.stdin.read()\n")
-            executor = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup, True)
+            executor = runner.MysqlExecutor(
+                manifest, "127.0.0.1/duris", backup, online_combat_outcome_allies=True)
             executor.command = [sys.executable, str(client)]
             try:
                 executor.acquire_lock()
@@ -429,6 +430,88 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                 executor.release_lock()
             self.assertEqual(process.returncode, 0)
             self.assertIsNone(executor.lock_process)
+
+    def test_online_combat_allies_scope_and_authorization(self):
+        manifest = runner.load_manifest()
+        manifest = runner.replace(manifest, migrations=manifest.migrations[:40])
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.dict(os.environ, environment, clear=True):
+            backup = self.make_production_backup(Path(temporary))
+            for target, path in ((None, backup), ("127.0.0.1/other", backup),
+                                 ("127.0.0.1/duris", None)):
+                with self.assertRaises(runner.MigrationContractError):
+                    runner.MysqlExecutor(manifest, target, path,
+                                         online_combat_outcome_allies=True)
+            for changed in (
+                    runner.replace(manifest, migrations=manifest.migrations[:-1]),
+                    runner.replace(manifest, migrations=manifest.migrations +
+                                   (manifest.migrations[-1],)),
+                    runner.replace(manifest, migrations=manifest.migrations[:-1] + (
+                        runner.replace(manifest.migrations[-1], apply_checksum="0" * 64),)),
+                    runner.replace(manifest, migrations=manifest.migrations[:-1] + (
+                        runner.replace(manifest.migrations[-1], verify_checksum="0" * 64),))):
+                with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                    runner.MysqlExecutor(changed, "127.0.0.1/duris", backup,
+                                         online_combat_outcome_allies=True)
+            with mock.patch.dict(os.environ, DB_ALLOWED_TARGETS="127.0.0.1/other"), \
+                    self.assertRaisesRegex(runner.MigrationContractError, "allow-listed"):
+                runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup,
+                                     online_combat_outcome_allies=True)
+            with self.assertRaisesRegex(runner.MigrationContractError, "only one"):
+                runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup, True, True)
+            executor = runner.MysqlExecutor(
+                manifest, "127.0.0.1/duris", backup, online_combat_outcome_allies=True)
+            with mock.patch.object(executor, "sql", side_effect=[
+                    "11.8.6-MariaDB-5ubuntu0.1", "InnoDB", ""]) as sql:
+                executor.apply(manifest.migrations[-1])
+                self.assertIn("TABLE_NAME='combat_outcome'", sql.call_args_list[1].args[0])
+                self.assertEqual(sql.call_args.args[1],
+                                 b"SET SESSION alter_algorithm='INSTANT';\n"
+                                 b"SET SESSION lock_wait_timeout=1;\n"
+                                 b"SET SESSION innodb_lock_wait_timeout=1;\n" +
+                                 manifest.migrations[-1].apply_path.read_bytes())
+            with mock.patch.object(executor, "sql") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "only reviewed"):
+                    executor.apply(manifest.migrations[-2])
+                sql.assert_not_called()
+            with mock.patch.object(runner, "read_regular", return_value=b"SELECT 1;"), \
+                    mock.patch.object(executor, "sql", side_effect=[
+                        "11.8.6-MariaDB", "InnoDB"]) as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "checksum changed"):
+                    executor.apply(manifest.migrations[-1])
+                self.assertEqual(sql.call_count, 2)
+            executor.lock_process = mock.Mock()
+            executor.lock_process.poll.return_value = 1
+            with self.assertRaisesRegex(runner.MigrationContractError, "lock connection was lost"):
+                executor.sql("SELECT 1;")
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/migration_runner.py"),
+                                 "inspect", "--online-combat-outcome-allies"],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires run", result.stderr)
+
+    def test_online_combat_allies_records_only_after_apply_and_verify(self):
+        manifest = runner.load_manifest()
+        manifest = runner.replace(manifest, migrations=manifest.migrations[:40])
+        prior = [runner.AppliedMigration(
+            step.migration_id, step.sequence, step.description, step.apply_checksum,
+            step.verify_checksum, step.compatibility, manifest.runner_version)
+            for step in manifest.migrations[:-1]]
+        for failure in ("apply", "verify"):
+            executor = FakeExecutor(list(prior), **{f"fail_{failure}": True})
+            with self.assertRaises(runner.MigrationContractError):
+                runner.run_pending(manifest, executor)
+            self.assertEqual(executor.rows, prior)
+            self.assertFalse(any(event.startswith("record:") for event in executor.events))
+            self.assertEqual(executor.events[-1], "unlock")
+        executor = FakeExecutor(list(prior))
+        self.assertEqual(runner.run_pending(manifest, executor), ["0040_combat_outcome_allies"])
+        self.assertEqual(runner.run_pending(manifest, executor), [])
 
     def test_socket_adapter_keeps_no_defaults_first_and_overrides_routing(self):
         with tempfile.TemporaryDirectory() as temporary:

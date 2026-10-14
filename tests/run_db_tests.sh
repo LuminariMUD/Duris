@@ -96,6 +96,7 @@ player_replacement_state tests/async/run_player_replacement_state_mysql.sh
 epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
 auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
 artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh
+statistics $DB bash tests/async/run_statistics_mysql.sh
 session_audit $DB tests/async/run_session_audit_schema_mysql.sh
 artifact_mana tests/async/run_artifact_mana_mysql.sh
 player_load_repository $DB tests/async/run_player_load_repository_mysql.sh
