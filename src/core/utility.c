@@ -46,6 +46,7 @@ using namespace std;
 #include "world/map.h"
 #include "core/mm.h"
 #include "persistence/persistence_log.h"
+#include "persistence/critical_command_completion.h"
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -1130,6 +1131,89 @@ static void persistence_vreport(persistence_severity severity, int level, const 
 				wizlog(level, "&+R&-LPERSISTENCE:&n %s", alert);
 		}
 	}
+}
+
+static const char *critical_command_label(critical_command_type type)
+{
+	switch (type)
+	{
+	case critical_command_type::test:
+		return "test operation";
+	case critical_command_type::epic:
+		return "epic reward";
+	case critical_command_type::account_bank:
+		return "account bank transaction";
+	case critical_command_type::item_transfer:
+		return "item transfer";
+	case critical_command_type::auction:
+		return "auction transaction";
+	case critical_command_type::combat_outcome:
+		return "combat outcome";
+	case critical_command_type::artifact:
+		return "artifact/guild reward";
+	case critical_command_type::boon_reward:
+		return "boon reward";
+	case critical_command_type::zone:
+		return "zone reward";
+	case critical_command_type::session_audit:
+		return "session audit";
+	case critical_command_type::boon_shop:
+		return "boon shop purchase";
+	case critical_command_type::shop_trade:
+		return "shop trade";
+	case critical_command_type::collector:
+		return "collector transaction";
+	}
+	return "unknown operation";
+}
+
+void persistence_critical_failure(int level, const critical_completion &completion)
+{
+	if (completion.outcome != critical_apply_outcome::terminal_failure)
+		return;
+	char operation[CRITICAL_COMMAND_ID_HEX_SIZE] = {};
+	critical_operation_id_to_hex(completion.operation_id, operation, sizeof(operation));
+	const char *label = critical_command_label(completion.type);
+	// Small domain result codes overlap errno: do not pretend every refusal is an
+	// operating-system error. ESTALE and these MySQL errors have unambiguous meanings.
+	const char *reason = "operation refused";
+	switch (completion.error_code)
+	{
+	case ESTALE:
+		reason = "state mismatch (ESTALE)";
+		break;
+	case 1062:
+		reason = "duplicate database key";
+		break;
+	case 1146:
+		reason = "database table is missing";
+		break;
+	case 1452:
+		reason = "required database parent row is missing";
+		break;
+	}
+	char record[4096];
+	snprintf(record, sizeof(record),
+		 "domain=critical_command action=terminal_failure outcome=alert operation=%s "
+		 "command=\"%s\" type=%u error=%u reason=\"%s\" %s",
+		 operation, label, static_cast<unsigned int>(completion.type),
+		 completion.error_code, reason, completion.failure_detail.data());
+	const bool queued = persistence_log_submit(record);
+	char group[64];
+	snprintf(group, sizeof(group), "type_%u_error_%u",
+		 static_cast<unsigned int>(completion.type), completion.error_code);
+	const auto decision = persistence_alert_wizlog_decision("critical_command", group);
+	if (!decision.allowed)
+		return;
+	char repeats[128] = {};
+	if (decision.suppressed)
+		snprintf(repeats, sizeof(repeats),
+			 " (%u similar notices hidden over %llus; see server log)",
+			 decision.suppressed, decision.suppressed_age_secs);
+	wizlog(level, "&+R&-LPERSISTENCE:&n %s failed: %s [error %u]. Ref %s; %s %s.%s", label,
+	       reason, completion.error_code, operation,
+	       queued ? "details:" : "LOG QUEUE FAILED; check persistence log health:", LOG_FILE,
+	       repeats);
 }
 
 void persistence_report(persistence_severity severity, int level, const char *domain,

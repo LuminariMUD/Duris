@@ -157,8 +157,67 @@ int main()
 	const critical_apply_result rejected = critical_command_repository_apply(db, stale);
 	assert(rejected.outcome == critical_apply_outcome::terminal_failure);
 	assert(rejected.error_code == ESTALE);
+	const std::string diagnostic = rejected.failure_detail.data();
+	assert(diagnostic.find("parent_operation=" + hex_id(stale_parent)) != std::string::npos);
+	assert(diagnostic.find("actor_pid=" + std::to_string(ACTOR_PID)) != std::string::npos);
+	assert(diagnostic.find("guild_id=" + std::to_string(GUILD_ID)) != std::string::npos);
+	assert(diagnostic.find("site=src/guild/artifact_guild_repository.c:") != std::string::npos);
+	assert(diagnostic.find("check=artifact_expected_state artifact_vnum=" +
+			       std::to_string(ARTIFACT_VNUM)) != std::string::npos);
+	assert(diagnostic.find("expected_timer=2000000000 actual_timer=2000003600") !=
+	       std::string::npos);
 	assert(scalar(db, "SELECT COUNT(*) FROM artifact_guild_outcome WHERE actor_pid=" +
 				  std::to_string(ACTOR_PID)) == 1);
+
+	// Each ESTALE path must retain its actual comparison even though rollback removes
+	// the inbox row. No diagnostic is reconstructed from later database state.
+	auto reject_with =
+		[&](const artifact_guild_payload &captured, const std::string &comparison)
+	{
+		critical_command probe = {};
+		assert(artifact_guild_command_build(&probe, stale_child, captured));
+		probe.accepted_at_usec = 2;
+		const auto failure = critical_command_repository_apply(db, probe);
+		if (failure.error_code != ESTALE)
+			std::cerr << "Expected " << comparison << "; error=" << failure.error_code
+				  << " detail=" << failure.failure_detail.data() << '\n';
+		assert(failure.outcome == critical_apply_outcome::terminal_failure);
+		assert(failure.error_code == ESTALE);
+		assert(std::string(failure.failure_detail.data()).find(comparison) !=
+		       std::string::npos);
+		assert(scalar(db,
+			      "SELECT COUNT(*) FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
+				      hex_id(stale_child) + "')") == 0);
+	};
+	auto current = payload;
+	current.expected_guild_revision = 1;
+	current.artifacts[0].expected_timer = OPENING_TIMER + 3600;
+	current.artifacts[0].timer = OPENING_TIMER + 7200;
+	auto conflict = current;
+	conflict.artifacts[0].expected_bind_owner_pid = ACTOR_PID + 1;
+	reject_with(conflict, "expected_soul_pid=2147000203 actual_soul_pid=2147000202");
+	conflict = current;
+	conflict.artifacts[0].expected_bind_timer = 1;
+	reject_with(conflict, "expected_bind_timer=1 actual_bind_timer=0");
+	conflict = current;
+	conflict.expected_guild_revision = 0;
+	reject_with(conflict, "check=guild_revision expected_revision=0 actual_revision=1");
+	for (const auto &column : { "timer_epoch", "bind_owner_pid", "bind_timer_epoch" })
+	{
+		execute(db, "UPDATE artifact_domain_state SET " + std::string(column) + "=" +
+				    column + "+1 WHERE vnum=" + std::to_string(ARTIFACT_VNUM));
+		reject_with(current,
+			    "check=artifact_mirror artifact_vnum=" + std::to_string(ARTIFACT_VNUM));
+		const std::string values =
+			std::string(column) == "timer_epoch" ?
+				"domain_timer=2000003601 artifacts_timer=2000003600" :
+			std::string(column) == "bind_owner_pid" ?
+				"domain_soul_pid=2147000203 bind_soul_pid=2147000202" :
+				"domain_bind_timer=1 bind_timer=0";
+		reject_with(current, values);
+		execute(db, "UPDATE artifact_domain_state SET " + std::string(column) + "=" +
+				    column + "-1 WHERE vnum=" + std::to_string(ARTIFACT_VNUM));
+	}
 
 	// Another ledgered transaction advanced the artifact's revision without changing its
 	// timer or soul: a feed captured from those still applies, on top of that revision.

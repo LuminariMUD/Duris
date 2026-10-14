@@ -83,7 +83,12 @@ critical_apply_result apply(const critical_command &command, void *raw)
     if (tag == 4 && attempt == 1)
         return {critical_apply_outcome::ambiguous_commit, 0, 2013};
     if (tag == 18)
-        return {critical_apply_outcome::terminal_failure, 0, 1062};
+    {
+        critical_apply_result result = {critical_apply_outcome::terminal_failure, 0, 1062};
+        snprintf(result.failure_detail.data(), result.failure_detail.size(),
+                 "site=repository.c:42 check=duplicate_listing expected=1 actual=2");
+        return result;
+    }
     return {applied.already_applied ? critical_apply_outcome::already_applied :
             critical_apply_outcome::applied, 1, 0};
 }
@@ -231,6 +236,21 @@ int main()
     assert(completions[0].outcome == critical_apply_outcome::terminal_failure &&
            completions[0].type == critical_command_type::auction &&
            completions[0].error_code == 1062);
+    const std::string detail = completions[0].failure_detail.data();
+    assert(detail.find("site=repository.c:42 check=duplicate_listing expected=1 actual=2") == 0);
+    assert(detail.find("source=command key_count=1 keys=item:18") != std::string::npos);
+    assert(critical_operation_id_equal(refused.operation_id, completions[0].operation_id));
+
+    critical_command many_keys = make_command(18, {});
+    for (unsigned int key = 1; key <= 3000; ++key)
+        many_keys.keys.push_back({critical_entity_type::item, key});
+    assert(critical_command_coordinator_submit(many_keys) == critical_submit_result::accepted);
+    wait_until([&] { return critical_command_coordinator_pulse(completions, 16) == 1; });
+    const std::string bounded = completions[0].failure_detail.data();
+    assert(bounded.find("check=duplicate_listing") != std::string::npos);
+    assert(bounded.find("key_count=3000") != std::string::npos);
+    assert(bounded.find("omitted_keys=") != std::string::npos);
+    assert(bounded.size() < completions[0].failure_detail.size());
 
     critical_command_coordinator_quiesce();
     critical_command rejected = make_command(6, {{critical_entity_type::player, 6}});
