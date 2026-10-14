@@ -20,6 +20,8 @@
 #include "sql/sql_work.h"
 
 #include <functional>
+#include <atomic>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,11 +43,27 @@ std::string sql_format(const char *format, ...) __attribute__((format(printf, 1,
 
 bool sql_queue_at(struct persistence_query_site site, const char *format, ...)
 	__attribute__((format(printf, 2, 3)));
-// Statements applied in order, in one transaction.
+// A capture's receipt is allocated before submission and completed after COMMIT.
+// The writer owns only this metadata, never the entity it describes. Read ok/error
+// only after finished.load(acquire). Replacing an entity's receipt drops no writer
+// work and prevents an older capture from acknowledging its current state.
+struct sql_write_receipt
+{
+	std::atomic<bool> finished{ false };
+	bool ok = false;
+	unsigned int error_code = 0;
+};
+
+// Statements applied in order, in one transaction. Admission is not durability.
 bool sql_queue_statements_at(struct persistence_query_site site,
 			     std::vector<std::string> statements);
+bool sql_queue_statements_at(struct persistence_query_site site,
+			     std::vector<std::string> statements,
+			     std::shared_ptr<sql_write_receipt> receipt);
 // Writes that need the database's answer first (a lookup, then an update or an insert).
 bool sql_queue_work_at(struct persistence_query_site site, sql_work work);
+bool sql_queue_work_at(struct persistence_query_site site, sql_work work,
+		       std::shared_ptr<sql_write_receipt> receipt);
 // done(ok, rows) runs on the game thread; ok is false when the read failed.
 bool sql_read_at(struct persistence_query_site site, std::string query,
 		 std::function<void(bool ok, const sql_rows &rows)> done);

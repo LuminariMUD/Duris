@@ -13,6 +13,9 @@
 #include <stdio.h>
 #include <string>
 #include <vector>
+#include <memory>
+
+struct sql_write_receipt;
 
 /* DEFINES for assocs.c */
 
@@ -246,7 +249,8 @@ class Guild
 		prestige = prest;
 		save();
 	}
-	void add_points_from_epics(P_char ch, int epics, int epic_type);
+	bool save_pending(bool retry);
+	void report_unsaved();
 
 	unsigned long get_construction() { return construction; }
 	void publish_outcome_totals(unsigned long new_prestige, unsigned long new_construction)
@@ -342,9 +346,9 @@ class Guild
 
 	void name_title(P_char member, char *title_info);
 
-	/* Write the guild out, sql or flat file. True when the record is durable
-	 * (or unchanged); false when the write failed and was logged. Joins an
-	 * enclosing SQL transaction if the caller opened one. */
+	/* Flat-file returns durable success (or unchanged). MariaDB captures an
+	 * ordered snapshot and returns admission; save_pending() observes its commit.
+	 * A failed capture stays dirty and is reported. */
 	bool save();
 #ifdef __NO_MYSQL__
 	/* Commit this guild and a paid kingdom mutation through one recovery journal. */
@@ -384,8 +388,13 @@ class Guild
 	struct guild_frags frags;
 	P_member members;
 	P_Guild next_guild;
+	bool save_dirty = false;
+	std::shared_ptr<sql_write_receipt> save_receipt;
+	unsigned int save_error = 0;
 };
 
+size_t guild_save_pulse(bool retry);
+void guild_report_unsaved();
 void sql_update_assoc_table();
 void prestige_update();
 void show_prestige_list(P_char ch);

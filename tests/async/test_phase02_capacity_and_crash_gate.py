@@ -81,7 +81,8 @@ class Phase02CapacityCrashGateTests(unittest.TestCase):
         for result in ("reject before gameplay success", "same operation id",
                        "already_applied", "nothing is replayed"):
             self.assertIn(result.lower(), matrix)
-        self.assertIn("nothing executes sql text", pipeline.lower())
+        self.assertIn("critical envelopes carry typed payloads", pipeline.lower())
+        self.assertIn("snapshots can still queue owned sql statements", pipeline.lower())
 
 
 if __name__ == "__main__":

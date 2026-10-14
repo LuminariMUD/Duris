@@ -53,6 +53,7 @@ bool shop_save_succeeds = true;
 int shops_saved = 0;
 int saved_shop_rooms[7] = { -1, -1, -1, -1, -1, -1, -1 };
 bool fail_shop_placement = false;
+bool entry_hazard = false;
 persistence_mode persistence_mode_get()
 {
 	return PERSISTENCE_MODE_MARIADB_PRIMARY;
@@ -152,8 +153,14 @@ void char_from_room(P_char ch)
 	ch->in_room = -1;
 	ch->next_in_room = nullptr;
 }
-bool char_to_room(P_char ch, int room, int)
+bool char_to_room(P_char ch, int room, int direction)
 {
+	// Ordinary room entry can extract a mob; recovery must skip those effects.
+	if (entry_hazard && direction >= 0)
+	{
+		extract_char(ch);
+		return false;
+	}
 	assert(room >= 0 && room <= top_of_world);
 	if (fail_shop_placement)
 	{
@@ -511,7 +518,9 @@ int main()
 		assert(bytes > 0);
 		extract_char(keeper);
 		size_t consumed = 0;
+		entry_hazard = true;
 		keeper = copyover_restore_mob_from_buffer(snapshot, bytes, &consumed);
+		entry_hazard = false;
 		assert(keeper && consumed == static_cast<size_t>(bytes));
 		reconcile_shopkeepers(true);
 		assert(mob_index[2].number == 1 && obj_index[3].number == 1 &&

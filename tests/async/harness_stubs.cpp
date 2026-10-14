@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "persistence/persistence_log.h"
 
 #include <cstdlib>
 
@@ -14,6 +15,10 @@ HARNESS_STUB void logit(const char *, const char *, ...) {}
 HARNESS_STUB void debug(const char *, ...) {}
 HARNESS_STUB void wizlog(int, const char *, ...) {}
 HARNESS_STUB void statuslog(int, const char *, ...) {}
+HARNESS_STUB bool persistence_log_submit(const char *)
+{
+	return true;
+}
 HARNESS_STUB void sql_log(P_char, const char *, const char *, ...) {}
 HARNESS_STUB void persistence_alert(int, const char *, const char *, const char *, const char *,
 				    const char *, const char *, ...)

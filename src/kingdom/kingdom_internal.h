@@ -219,6 +219,10 @@ struct kingdom_realm
 	 * the guild has not durably made) and the sweep must not bill again; the
 	 * pair is retried by kingdom_upkeep_retry_pending(). Never persisted. */
 	bool payment_pending = false;
+#ifndef __NO_MYSQL__
+	// The latest paired guild capture, never serialized or read by the SQL worker.
+	std::shared_ptr<sql_write_receipt> payment_receipt;
+#endif
 };
 
 /* ------------------------------------------------------------------ *
@@ -387,7 +391,7 @@ bool kingdom_abandon_last(struct char_data *ch);
  * a guild-store purchase or its reversal, whose platinum comes from a
  * member's purse and goes nowhere. Keeps the pending rule -- a realm with a
  * paired payment still pending is left dirty for kingdom_upkeep_retry_pending()
- * and never published alone. True when the record is on disk; false has been
+ * and never published alone. True means accepted (queued on MariaDB); false has been
  * logged and leaves the realm dirty for the next flush. */
 bool kingdom_persist_realm(kingdom_realm &realm);
 
@@ -397,18 +401,16 @@ void kingdom_apply_arrears(kingdom_realm &realm);
 void kingdom_clear_arrears(kingdom_realm &realm);
 /* Make a money-bearing change durable as ONE unit: the guild whose treasury
  * moved and the realm record that explains why. One SQL transaction under
- * MariaDB; one recovery-journal transaction under the flat-file build. False marks
- * the realm payment_pending for kingdom_upkeep_retry_pending() and never
- * lets the generic flush publish the record alone. Used by upkeep, claim
+ * MariaDB; one recovery-journal transaction under the flat-file build. True means
+ * queued under MariaDB, committed under flat-file. payment_pending lasts until
+ * the paired commit succeeds; failures retry without another debit and never
+ * let the generic flush publish the record alone. Used by upkeep, claim
  * and convert -- any path that debits a treasury and records the result. */
 bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm);
 /* Retry every pending pair; called at the top of each sweep, before the
  * shutdown flush and before the copyover flush. */
 void kingdom_upkeep_retry_pending(void);
-/* A guild is going away: forget any pending retry keyed on its id, so a
- * reused association id never inherits it. */
-void kingdom_upkeep_forget_guild(int assoc_id);
-/* Drop all upkeep module state (pending lists, cycle stamp). Shutdown only. */
+/* Drop the upkeep cycle/grace state after realms are cleared. Shutdown only. */
 void kingdom_upkeep_reset(void);
 
 /* --- kingdom_guards.c : the garrison --- */
@@ -552,10 +554,6 @@ bool kingdom_db_save_realm(const kingdom_realm &realm);
 bool kingdom_db_save_payment_pair(const std::string &root,
 				  const flatfile_association_record &association,
 				  const kingdom_realm &realm, std::string *error);
-#else
-/* Queue a guild's statements and the realm's write as one writer job. */
-bool kingdom_db_save_payment_pair(std::vector<std::string> guild_statements,
-				  const kingdom_realm &realm);
 #endif
 bool kingdom_db_delete_realm(int assoc_id);
 void kingdom_db_flush_dirty(void);

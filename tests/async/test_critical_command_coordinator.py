@@ -23,6 +23,8 @@ HARNESS = r'''
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
+#include <new>
 #include <fcntl.h>
 #include <map>
 #include <mutex>
@@ -31,6 +33,17 @@ HARNESS = r'''
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+static thread_local int allocation_fail_after = -1;
+void *operator new(size_t bytes)
+{
+    if (allocation_fail_after >= 0 && allocation_fail_after-- == 0)
+        throw std::bad_alloc();
+    if (void *memory = std::malloc(bytes ? bytes : 1)) return memory;
+    throw std::bad_alloc();
+}
+void operator delete(void *memory) noexcept { std::free(memory); }
+void operator delete(void *memory, size_t) noexcept { std::free(memory); }
 
 struct apply_state
 {
@@ -135,8 +148,52 @@ void release(bool apply_state::*flag, bool value)
     state.changed.notify_all();
 }
 
+static void test_dispatch_allocation_failure()
+{
+    assert(player_save_worker_init(apply_save, nullptr));
+    assert(critical_command_coordinator_init(apply, &state));
+    // Warm the hash buckets before enumerating allocations, so a failed rehash
+    // cannot shift the next probe past a later allocation site.
+    assert(critical_command_coordinator_submit(make_command(66, {{critical_entity_type::guild, 99}})) == critical_submit_result::accepted);
+    assert(critical_command_coordinator_drain(5000));
+    assert(persistence_writer_wait_idle(5000));
+    bool accepted = false;
+    uint64_t accepted_count = 1;
+    unsigned int failures = 0;
+    for (int index = 0; index < 64; ++index)
+    {
+        critical_command command = make_command(66, {{critical_entity_type::guild, 99}});
+        allocation_fail_after = index;
+        critical_submit_result submitted = critical_submit_result::unavailable;
+        try { submitted = critical_command_coordinator_submit(std::move(command)); }
+        catch (const std::bad_alloc &) {} // the history adapter retains this command
+        const bool injected = allocation_fail_after < 0;
+        allocation_fail_after = -1;
+        if (submitted == critical_submit_result::accepted)
+        {
+            ++accepted_count;
+            assert(critical_command_coordinator_drain(5000));
+            assert(persistence_writer_wait_idle(5000));
+            if (!injected) { accepted = true; break; }
+            continue;
+        }
+        ++failures;
+        const auto health = critical_command_coordinator_health_copy();
+        assert(health.inflight == 0 && health.fenced_keys == 0);
+        assert(health.accepted == accepted_count);
+        assert(persistence_writer_pending_owners().empty());
+        assert(!critical_command_coordinator_is_fenced({critical_entity_type::guild, 99}, nullptr));
+    }
+    assert(accepted && failures > 5);
+    critical_command_coordinator_reset_for_tests();
+    player_save_worker_reset_for_tests();
+    state.order.clear();
+    state.attempts.clear();
+}
+
 int main()
 {
+    test_dispatch_allocation_failure();
     std::set<std::string> identities;
     for (unsigned int index = 0; index < 512; ++index)
     {
@@ -322,7 +379,9 @@ int main()
 '''
 
 
-with tempfile.TemporaryDirectory(prefix="duris-critical-command-") as temporary:
+outputs = ROOT / "bin/tests"
+outputs.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-critical-command-", dir=outputs) as temporary:
     temp = Path(temporary)
     source = temp / "critical_command_test.cpp"
     binary = temp / "critical_command_test"
@@ -339,6 +398,7 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-command-") as temporary:
         check=True,
     )
     subprocess.run([str(binary)], check=True, timeout=60)
+print("[PASS] dispatch allocation failure releases operation/fences and never counts a refused command as accepted")
 print("[PASS] commands run on the one writer, in capture order with the saves around them")
 print("[PASS] a fenced command stays fenced until its completion; attach and conflict hold")
 print("[PASS] the writer retries an ambiguous commit; an unknown outcome is named at shutdown")
@@ -363,7 +423,7 @@ for retired in (
     "critical_command_journal", "std::thread admission", "std::vector<std::thread>",
 ):
     assert retired not in COORDINATOR
-assert "persistence_writer_submit(persistence_job_kind::critical" in COORDINATOR
+assert "persistence_writer_submit(" in COORDINATOR and "persistence_job_kind::critical" in COORDINATOR
 assert "struct critical_completion" in COMPLETION
 assert "struct critical_completion" not in HEADER
 for forbidden in ("P_char", "P_obj", "MYSQL", "redis", "sql_"):

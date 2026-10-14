@@ -82,6 +82,8 @@ bool item_creation_grant_batches_pending() { return false; }
 void flush_pending_ship_saves() {}
 bool drain_pending_ship_saves() { return true; }
 int locker_async_drain(int) { return 1; }
+bool artifact_guild_transaction_drain(uint64_t) { return true; }
+void kingdom_flush_persistent_state() {}
 void maintenance_scheduler_quiesce() {}
 void maintenance_scheduler_resume() {}
 bool maintenance_scheduler_drain(uint64_t) { return true; }

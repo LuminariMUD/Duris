@@ -239,32 +239,43 @@ player_save_submit_result enqueue(queued_job job)
 {
 	std::lock_guard<std::mutex> lock(worker_mutex);
 	if (!health.running || stop_requested)
+	{
+		errno = ESHUTDOWN;
 		return player_save_submit_result::unavailable;
+	}
 	const persistence_job_owner key = { job.kind, job.owner };
 	bool replaced = false;
 	try
 	{
-		// The newer capture carries everything the queued one did, but it takes the
-		// queued one's place only while nothing is queued behind it. A job queued
-		// later may rely on this owner being written first (the owner money or an
-		// item leaves is saved before the one it reaches), so the newer save then
-		// waits behind that job.
+		// Replace only the tail, without erasing its old capture before a possible
+		// allocation failure. A new owner index and list entry are admitted together.
 		const auto found = queued_by_owner.find(key);
+		job.queued_at_usec = now_usec();
+		const size_t bytes = job.bytes;
 		if (found != queued_by_owner.end() && found->second == std::prev(queue.end()))
 		{
 			queued_bytes -= found->second->bytes;
-			queue.erase(found->second);
-			queued_by_owner.erase(found);
+			*found->second = std::move(job);
 			replaced = true;
 		}
-		job.queued_at_usec = now_usec();
-		const size_t bytes = job.bytes;
-		queue.push_back(std::move(job));
-		queued_by_owner.insert_or_assign(key, std::prev(queue.end()));
+		else
+		{
+			queue.push_back(std::move(job));
+			try
+			{
+				queued_by_owner.insert_or_assign(key, std::prev(queue.end()));
+			}
+			catch (...)
+			{
+				queue.pop_back();
+				throw;
+			}
+		}
 		queued_bytes += bytes;
 	}
 	catch (const std::bad_alloc &)
 	{
+		errno = ENOMEM;
 		return player_save_submit_result::unavailable;
 	}
 	saturating_increment(replaced ? health.replaced : health.submitted);

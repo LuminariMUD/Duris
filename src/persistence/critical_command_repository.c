@@ -702,7 +702,13 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	     !collector_command && !combat_command && !artifact_guild_command && !boon_command &&
 	     !zone_command && !audit_command) ||
 	    !critical_command_valid(command))
-		return { critical_apply_outcome::terminal_failure, 0, EINVAL };
+	{
+		auto rejected = failure(EINVAL);
+		if (command.type == critical_command_type::artifact)
+			rejected.failure_detail = artifact_guild_repository_diagnostic(
+				command, "malformed_payload", EINVAL);
+		return rejected;
+	}
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> command_hash = {}, keys_hash = {};
 	if (!command_hashes(command, &command_hash, &keys_hash))
 		return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
@@ -729,8 +735,13 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 			}
 			if (!identity_matches(stored, command, command_hash, keys_hash))
 			{
+				auto rejected = failure(EEXIST);
+				if (command.type == critical_command_type::artifact)
+					rejected.failure_detail =
+						artifact_guild_repository_diagnostic(
+							command, "identity_conflict", EEXIST);
 				rollback(connection);
-				return { critical_apply_outcome::terminal_failure, 0, EEXIST };
+				return rejected;
 			}
 			rollback(connection);
 			return stored_result(stored.result_code ?

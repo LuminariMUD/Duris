@@ -11,6 +11,8 @@
 #include "world/db.h"
 #include "core/utils.h"
 #include "persistence/copyover.h"
+#include "guild/artifact_guild_transaction.h"
+#include "kingdom/kingdom.h"
 #include "combat/training_dummy.h"
 #include "world/generated_npc_state.h"
 #include "item/item_movement_transaction.h"
@@ -810,7 +812,16 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			"\r\n*** Copyover cancelled: a pending locker save failed. ***\r\n");
 		return false;
 	}
+	if (!artifact_guild_transaction_drain(3000))
+	{
+		logit(LOG_STATUS, "copyover: artifact/guild drain failed, aborting copyover");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
 	copyover_worker_resume_guard resume_workers;
+	// The payment ACK can release a realm held by the pre-copyover flush.
+	// Capture any later resource changes before the writer drain below.
+	kingdom_flush_persistent_state();
 	maintenance_scheduler_quiesce();
 	critical_command_coordinator_quiesce();
 	critical_outbox_quiesce();
@@ -903,6 +914,14 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	{
 		critical_command_coordinator_resume();
 		logit(LOG_STATUS, "copyover: world recovery drain failed, aborting copyover");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
+
+	// Terminal player/shop/locker callbacks can have produced newer snapshots.
+	if (!artifact_guild_transaction_drain(3000))
+	{
+		logit(LOG_STATUS, "copyover: final artifact/guild drain failed; aborting copyover");
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}
@@ -1358,7 +1377,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 					save_room = 0;
 				}
 				ch->in_room = NOWHERE;
-				char_to_room(ch, save_room, FALSE);
+				// Recovery restores location without running movement hazards or procs.
+				char_to_room(ch, save_room, -1);
 				player_load_pets_place(ch);
 				epic_bonus_hydrate(ch);
 
@@ -1497,7 +1517,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		GET_IDNUM(mob) = mob_entry.idnum;
 
 		// place in saved room
-		char_to_room(mob, rnum, FALSE);
+		char_to_room(mob, rnum, -1);
 
 		// restore saved state
 		GET_HIT(mob) = mob_entry.hit;
@@ -1971,7 +1991,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 		return NULL;
 	}
 	GET_IDNUM(mob) = mob_entry.idnum;
-	char_to_room(mob, rnum, FALSE);
+	char_to_room(mob, rnum, -1);
 	GET_HIT(mob) = mob_entry.hit;
 	GET_MAX_HIT(mob) = mob_entry.max_hit;
 	GET_MANA(mob) = mob_entry.mana;

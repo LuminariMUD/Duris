@@ -37,6 +37,7 @@ using namespace std;
 #include "world/epic.h"
 #include "world/epic_bonus.h"
 #include "world/epic_transaction.h"
+#include "guild/artifact_guild_transaction.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "combat/grapple.h"
 #include "combat/guard.h"
@@ -4122,6 +4123,7 @@ static void show_world_persistence(P_char ch)
 	const critical_coordinator_health critical = critical_command_coordinator_health_copy();
 	const critical_outbox_health critical_outbox = critical_outbox_health_copy();
 	const epic_transaction_health epic_transactions = epic_transaction_health_copy();
+	const artifact_guild_health artifact_guild = artifact_guild_transaction_health_copy();
 	const currency_transaction_health currency_transactions =
 		currency_transaction_health_copy();
 	const world_recovery_health world_recovery = world_recovery_pipeline_health_copy();
@@ -4413,6 +4415,24 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)epic_transactions.committed,
 		 (unsigned long long)epic_transactions.rejected,
 		 (unsigned long long)epic_transactions.submission_failures);
+	send_to_char(line, ch);
+
+	snprintf(line, sizeof(line),
+		 "artifact_guild live_applied=%llu capture_failures=%llu "
+		 "dirty_artifacts=%llu dirty_guilds=%llu history_committed=%llu "
+		 "history_rejected=%llu history_lost=%llu history_pending=%llu "
+		 "admission_failures=%llu malformed_completions=%llu oldest_history_ms=%llu\n",
+		 (unsigned long long)artifact_guild.live_applied,
+		 (unsigned long long)artifact_guild.unavailable,
+		 (unsigned long long)artifact_guild.dirty_artifacts,
+		 (unsigned long long)artifact_guild.dirty_guilds,
+		 (unsigned long long)artifact_guild.committed,
+		 (unsigned long long)artifact_guild.rejected,
+		 (unsigned long long)artifact_guild.history_lost,
+		 (unsigned long long)artifact_guild.pending,
+		 (unsigned long long)artifact_guild.submission_failures,
+		 (unsigned long long)artifact_guild.malformed_completions,
+		 (unsigned long long)artifact_guild.oldest_age_msec);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

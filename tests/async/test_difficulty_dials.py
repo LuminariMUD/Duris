@@ -180,7 +180,7 @@ def test_every_dial_reaches_its_hook() -> None:
          "difficulty_multiplier(DIFFICULTY_LOOT_QUALITY));"),
         ("world/db.c", "void reset_zone(",
          "MAX(1, difficulty_scale_int(zone_table[zone].lifespan, 1.0 / repop_dial));"),
-        ("guild/artifact_guild_state.c", "int artifact_feed_seconds(",
+        ("guild/artifact_guild_state.c", "bool artifact_feed_seconds(",
          "seconds = difficulty_scale_int(seconds, "
          "difficulty_multiplier(DIFFICULTY_ARTIFACT_FEEDING));"),
         ("world_quest.c", "bool createQuestForGiverVnum(",

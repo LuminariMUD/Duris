@@ -52,6 +52,195 @@ reports that the changed scheduler regression catches the pre-fix behavior.
 `make test-db` passed all 75 isolated database checks in 459 seconds, including
 the statistics matrix and the MariaDB flight journey.
 
+## Kingdom persistence interface across SQL clients
+
+PR #70's hosted MySQL 8 build exposed a MariaDB-only forward declaration in
+`kingdom.h`: its `st_mysql *` callback could not be assigned to the public
+`MYSQL *` callback used by character deletion. The header now uses the existing
+`sql_work` type, matching the implementation. Flat-file mode still excludes
+the SQL interface. No payment, deletion or reward behavior changes.
+
+`python3 tests/async/test_compiler_warning_profile.py` compiles the actual header
+against the different public MySQL/MariaDB type declarations and a flat-file
+fixture that rejects any MySQL header inclusion. The MySQL case fails before
+the repair; all three pass afterward. Server and pfile builds also pass against
+the actual Ubuntu MySQL 8.0.46 headers/library, extracted under ignored
+`bin/analysis/review-final/mysql-client/` without replacing the installed MariaDB
+development package. The MariaDB server build, real guild snapshot/payment and
+character-deletion regressions, flat-file boot/shutdown preflight and
+`make security-check` pass. Logs are under `bin/analysis/review-final/`.
+These checks repair the build failure; they are not a new CodeQL or Trivy scan.
+
+## Guild member deletion capture failure
+
+Building a member-deletion snapshot temporarily removes that member and their
+frag totals. An allocation failure used to leave those temporary changes in
+live memory. `Guild::statements_without_member()` now restores membership and
+all frag fields before propagating an exception, just as it does after capture.
+
+`python3 tests/async/test_account_character_delete_runtime.py` executes the actual
+capture method with a failing SQL builder. It fails before the repair at the
+retained-membership assertion and passes afterward, alongside the existing
+MariaDB and flat-file account-menu deletion cases. This allocation case does
+not run a server or a real database.
+
+## Artifact and guild rewards
+
+Integration with master `67ca142ff` (PRs #69/#72/#76), 2026-10-14: all-level
+awards and deferred task recovery coexist with immediate memory rewards. History
+rejections carry their reason, full operation/parent identity and decoded entity
+context through the generic repository and coordinator. SQL vetoes of current
+artifact/guild state remain removed. The SQL harness checks diagnostics after
+rollback for malformed payload, both identity-conflict routes, missing parent
+and unsupported uncommitted v1 history; it retains v1 receipt/outbox compatibility
+and actual mirror/reload/order checks.
+
+Focused integration commands passed:
+
+```sh
+make -C src -j16
+./scripts/format.sh --all --check
+python3 scripts/epic_zone_seed.py check
+python3 tests/async/test_epic_gain_runtime.py
+python3 tests/async/test_epic_skill_level_gate.py
+python3 tests/async/test_epic_bonus_hot_path.py
+python3 tests/async/test_set_based_gameplay_reads.py
+python3 tests/async/test_persistence_severity.py
+python3 tests/async/test_persistence_log.py
+python3 tests/async/test_persistence_log_hygiene.py
+python3 tests/async/test_critical_command_coordinator.py
+python3 tests/async/test_critical_transaction_contract.py
+python3 tests/async/test_artifact_guild_transactional_cutover.py
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+python3 tests/async/test_combat_artifact_persistence.py
+python3 tests/async/test_artifact_cache_codec.py
+tests/async/with_disposable_mariadb.sh bash tests/async/run_artifact_guild_schema_mysql.sh
+python3 tests/async/test_documentation_contract.py
+npm test --prefix site
+```
+
+The regenerated manifest changes only `src/world/epic.h`'s source hash. No payout,
+group size or override policy changed. Build evidence is retained in the isolated
+integration worktree's `bin/analysis/integration/build.log`. This focused pass is
+not final combined-stack qualification or production rollout; full-server fault
+journeys and the broad gates remain due after #73–#75 integration.
+
+Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
+[qualification record](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
+maps the acceptance criteria to tests, records local logs and separates review
+readiness from production rollout.
+
+`python3 tests/async/test_artifact_guild_rewards_runtime.py` links real reward
+capture/application, transaction submission and codec code, with controlled writer
+and unrelated engine services. Three feeds change memory before any completion;
+same-guild awards accumulate prestige and cross construction thresholds. Caps,
+eligibility, invalid combined arithmetic, pending duplicates, late completions and
+bounded history refusal/retry do not revert current state. It passes in the worktree
+and fails against `0ccec836e` at the first pre-completion timer assertion.
+
+`python3 tests/async/test_artifact_guild_snapshots.py` uses real artifact storage,
+guild methods and SQL capture bodies with controlled commit receipts. It passes
+current-state retry, old-acknowledgement exclusion, allocation/admission failures,
+removal/recreation, bounded retry fairness, guild spending/settings and cache
+generation cases. A read started after failed admission could previously publish
+stale data after retry; the added case failed before retry invalidation and now
+passes. These tests do not boot a server or prove SQL restart durability.
+
+`tests/async/with_disposable_mariadb.sh bash tests/async/run_artifact_guild_schema_mysql.sh`
+passed captured-history bursts, immutable replay, preservation of newer gameplay
+snapshots, cap no-op, identity/malformed/missing-parent diagnostics, committed v1
+receipt/outbox delivery, and history after artifact removal. The actual reconciliation
+script accepts legitimate live/history divergence and detects mirror mismatches and
+missing rows. The fixture-only return-type/header correction also passes on rerun.
+
+The runtime fixture now also links the actual stone publication code to artifact
+capture/application, covering offline return, derived identity, duplicate completion
+and reconnect after child completion, and recovered claims without re-awarding.
+The snapshot fixture passes bulk soul-reset acknowledgement and failure recovery.
+`test_player_save_worker.py` injects every admission allocation failure and proves
+no partial job/index survives refusal. Against `0ccec836e`, it compiles and fails
+because a refused job remains queued; the repaired writer passes and replaces its
+tail without allocating. Commit `dfecafbda` passes the before/after check.
+The coordinator's allocation walk additionally exposed a reserved operation/fence
+with no writer job when callback construction failed. `532fe0653` releases it and
+counts acceptance only after dispatch; the native fault, identity, retry, ordering
+and capacity tests pass.
+
+`tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_artifact_guild_reward_journey.py`
+passes a full-world Summon Ghasts cast, three actual kills and epic boon awards.
+With the artifact row locked, all live rewards apply while SQL retains the original
+timer and 85/0 guild totals; health reports three pending histories. Copyover fails
+and the server remains live. Releasing the writer yields +10,800 seconds, 115/1
+and three consistent histories. A subsequent copyover and clean restart preserve
+state without re-awarding. This is registered in the database gate. The recorded
+binary predated the coordinator allocation fix; the final qualification below covers the later repairs.
+
+The journey now also passes crashes before the artifact save, between artifact
+and guild saves, and after a real history COMMIT before completion (a test-only
+library interposer holds that boundary). Only the persisted prefix loads after
+restart. Blocked shutdown exits in 36.65 seconds, names the unsaved artifact/guild
+and all three operation/parent pairs, and reloads without replaying rewards.
+The standard copyover/clean-restart leg passes again.
+
+The shutdown test caught diagnostic formats whose `%s` substitutions the actual
+persistence reporter intentionally suppresses. Transaction and snapshot categories
+now carry the controlled labels; numeric fields preserve both full opaque IDs.
+The severity and snapshot fixtures execute the real reporter and retain its privacy
+checks. Repository diagnostics go directly to the metadata worker. An independent
+native producer test drives the actual coordinator cache past 256 entries and
+proves the real boon/combat/stone handlers do not republish duplicate completions.
+
+The staff artifact sync callback also had a reproduced stale-state overwrite.
+Its generation/dirty check retains and resaves newer memory, and state publication
+no longer depends on the staff character staying online. Native cases and the
+normal full-server command/query journey pass.
+
+The real PvP death variant also passes: with a controlled 100-epic award and
+artifact write held, it applies the feed and guild reward immediately, then saves
++720,000 seconds and 105/1. One child references its type-8 combat parent; save and
+restart preserve that result. The fixture retains the genuine soul/ownership
+checks and uses a free soul for this positive case.
+
+The snapshot fixture now links the real kingdom payment/guild writers. It covers
+pending-through-commit behavior, later rewards/settings/spending, old receipts,
+failed admission/allocation, current-state retry, late resource changes and realm
+recreation. The disposable SQL wrapper also runs it with real transactions: a
+trigger fails the realm update after guild statements, both roll back, and retry
+captures the latest values without another treasury debit. The optional missing
+garrison table remains compatible. Writer scheduling/receipts are controlled;
+this payment matrix does not boot a full game.
+
+The expanded state-ordering fixture also runs transfer/soul changes, the actual
+staff timer command and artifact-war callback, corpse moves, expiry/removal and
+recreation around feeds. Real SQL drains and the production boot-row decoder
+retain the final state; the domain mirror agrees. Room/inventory movement and
+writer scheduling are fixture boundaries.
+
+Final production-source qualification passed all 731 regressions in 695.94 seconds
+and all six full-server artifact journey variants. The 76-leg database run passed
+68 and found eight harness linker failures for the metadata-log callback; those
+eight passed after the shared weak fixture adapter, as did the expanded artifact
+SQL leg. This is 76 distinct passing legs across the run and reruns, not a claim
+that the original make invocation exited successfully. Full-tree formatting,
+maintained builds and all 15 site tests pass.
+
+## Recovery placement and room-entry hazards
+
+A full-server artifact journey crashed after announcing copyover completion. The
+kernel address resolved to transport recovery reading an NPC whose room-entry
+hook had removed it. An unchanged rerun passed: the triggering world state was
+intermittent. File and buffer recovery now use the existing placement mode that
+skips movement hazards and procs for restored players and NPCs.
+
+`python3 tests/async/test_world_singletons.py` runs the production buffer restorer
+under ASan/UBSan. Its room-entry adapter extracts on ordinary movement; before
+the fix the next state write is a heap-use-after-free. With recovery placement,
+five restore cycles preserve the NPC, stock and equipment. File/player call-site
+checks accompany the native test. All six full-server artifact/database variants
+then passed on the repaired source. The native test controls entry effects and
+does not execute the entire room handler. `scripts/check_tests_catch.sh
+15ccfdd56 07d3e2835` reports 1/1 passing after and failing before the fix.
+
 ## Crumbling equipment removal
 
 PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`

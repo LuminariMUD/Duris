@@ -64,6 +64,7 @@ prelude = r'''
 #include <cctype>
 #include <cstdint>
 #include <functional>
+#include <new>
 #include <string>
 #include <vector>
 #define TRUE 1
@@ -147,6 +148,7 @@ flatfile_character_delete_result flatfile_character_delete(const std::string&, i
 // The writer: a queued job waits for the test's pulse, and runs its statements in one
 // staged transaction that commits only when every statement succeeded.
 struct MYSQL {};
+using sql_work = std::function<unsigned int(MYSQL *)>;
 using sql_row = std::vector<std::string>;
 using sql_rows = std::vector<sql_row>;
 static std::function<void()> pending;
@@ -155,6 +157,14 @@ static std::vector<std::string> executed;
 unsigned int sql_execute(MYSQL *, const std::string &statement) {
     if (++stage == fail_stage) return 1146;
     executed.push_back(statement); return 0;
+}
+// This fixture has no kingdom. The payment fixture exercises the real composed writer.
+sql_work kingdom_guild_save_work(int, std::vector<std::string> statements) {
+    return [statements](MYSQL *connection) {
+        for (const auto &statement : statements)
+            if (auto error = sql_execute(connection, statement)) return error;
+        return 0U;
+    };
 }
 #define sql_read_work(...) queue_job(__VA_ARGS__)
 bool queue_job(std::function<unsigned int(MYSQL*, sql_rows*)> work,
@@ -174,8 +184,10 @@ std::vector<std::string> remove_all_artifacts_sql(int) { return {"release artifa
 std::string sql_delete_locker_statement(int, int) { return "delete locker"; }
 std::string sql_delete_ship_statement(const char *) { return "delete ship"; }
 // The guild is saved as it will be: without the member, its frags and top fragger.
+static bool fail_guild_capture = false;
 std::vector<std::string> sql_save_guild_statements(Guild *g) {
     assert(!g->members && g->member_count==1 && g->frags.frags==0 && !g->frags.topfragger[0]);
+    if (fail_guild_capture) throw std::bad_alloc();
     ++guild_rows; return {"guild row", "guild members"};
 }
 bool sql_delete_ship(const char *) { assert(!durable_active); ++ship_rows; return true; }
@@ -236,6 +248,18 @@ static void dispose(Account &a) {
 int main() {
     Account a; Descriptor d;
 #ifndef __NO_MYSQL__
+    reset(a,d);
+    Character capture; capture.player={const_cast<char *>("Fixture"),10};
+    fail_guild_capture=true;
+    bool threw=false;
+    try { fixture_guild.statements_without_member(&capture); }
+    catch (const std::bad_alloc &) { threw=true; }
+    assert(threw);
+    kept(a);
+    assert(fixture_guild.frags.top_frags==7 &&
+           !strcmp(fixture_guild.frags.topfragger,"Fixture"));
+    fail_guild_capture=false;
+    dispose(a);
     // The job's statements: two tombstones, locker access, two artifact statements, two
     // guild statements, the locker, the ship and the player row.
     constexpr int statements = 10;

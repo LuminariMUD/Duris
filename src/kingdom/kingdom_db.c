@@ -408,11 +408,8 @@ static sql_work realm_work(const kingdom_realm &realm)
  * record_is_sane() or the job could not be queued; the caller's dirty flag is
  * untouched either way.
  *
- * THIS PRIMITIVE DOES NOT TEST payment_pending, deliberately: it is what
- * kingdom_persist_payment() pairs with the guild debit that justifies a pending
- * record, so a guard here would deadlock that pairing. The obligation is
- * therefore the CALLER's -- every call to this function from outside
- * kingdom_db.c and kingdom_persist_payment() must be guarded by
+ * THIS PRIMITIVE DOES NOT TEST payment_pending. Pending payments use the
+ * composed guild/realm writer instead. Every ordinary caller must be guarded by
  * !payment_pending and leave a pending record dirty for
  * kingdom_upkeep_retry_pending() to carry. */
 bool kingdom_db_save_realm(const kingdom_realm &realm)
@@ -428,30 +425,66 @@ bool kingdom_db_save_realm(const kingdom_realm &realm)
 	return sql_queue_work(realm_work(realm));
 }
 
-/* Queue the debited guild's statements and the realm's write as ONE writer job,
- * in one transaction, so a crash can never separate a treasury debit from the
- * realm record that explains it. */
-bool kingdom_db_save_payment_pair(std::vector<std::string> guild_statements,
-				  const kingdom_realm &realm)
+/* A guild write must carry a still-pending payment's realm image. This also
+ * composes with character deletion, whose transaction owns the surrounding work. */
+sql_work kingdom_guild_save_work(int assoc_id, std::vector<std::string> guild_statements)
 {
-	if (!record_is_sane(realm))
+	const kingdom_realm *realm = kingdom_find_realm(assoc_id);
+	sql_work realm_write;
+	if (realm && realm->payment_pending)
 	{
-		logit(LOG_KINGDOM,
-		      "kingdom_db_save_payment_pair: refusing to persist an invalid record for "
-		      "association %d (claim %d, arrears %d)",
-		      realm.assoc_id, realm.highest_claim, realm.arrears);
-		return false;
-	}
-	return sql_queue_work(
-		[guild_statements = std::move(guild_statements),
-		 realm_write = realm_work(realm)](MYSQL *connection) -> unsigned int
+		if (!record_is_sane(*realm))
 		{
-			for (const std::string &statement : guild_statements)
-				if (const unsigned int error_code =
-					    sql_execute(connection, statement))
-					return error_code;
-			return realm_write(connection);
-		});
+			errno = EINVAL;
+			logit(LOG_KINGDOM,
+			      "guild snapshot: invalid pending realm for association %d", assoc_id);
+			return {};
+		}
+		realm_write = realm_work(*realm);
+	}
+	return [guild_statements = std::move(guild_statements),
+		realm_write = std::move(realm_write)](MYSQL *connection) -> unsigned int
+	{
+		for (const std::string &statement : guild_statements)
+			if (const unsigned int error = sql_execute(connection, statement))
+				return error;
+		return realm_write ? realm_write(connection) : 0;
+	};
+}
+
+bool kingdom_queue_guild_save(int assoc_id, std::vector<std::string> statements,
+			      std::shared_ptr<sql_write_receipt> receipt)
+{
+	kingdom_realm *realm = kingdom_find_realm(assoc_id);
+	if (!realm || !realm->payment_pending)
+		return sql_queue_statements(std::move(statements), std::move(receipt));
+	// An older acknowledgement cannot settle the newer capture, even if this
+	// admission fails. Guild dirty-state retry will capture both current images.
+	realm->payment_receipt.reset();
+	realm->dirty = true;
+	sql_work work = kingdom_guild_save_work(assoc_id, std::move(statements));
+	if (!work || !sql_queue_work(std::move(work), receipt))
+		return false;
+	realm->payment_receipt = std::move(receipt);
+	realm->dirty = false;
+	return true;
+}
+
+void kingdom_guild_save_completed(int assoc_id, const std::shared_ptr<sql_write_receipt> &receipt)
+{
+	kingdom_realm *realm = kingdom_find_realm(assoc_id);
+	if (!realm || !receipt || realm->payment_receipt != receipt ||
+	    !receipt->finished.load(std::memory_order_acquire))
+		return;
+	if (receipt->ok)
+	{
+		realm->payment_pending = false;
+		logit(LOG_KINGDOM, "payment for realm %d (association %d) is now durable",
+		      realm->realm_id, assoc_id);
+	}
+	else
+		realm->dirty = true;
+	realm->payment_receipt.reset();
 }
 
 /* Validate persisted class bits against the same curated table commands use.

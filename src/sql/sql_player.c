@@ -47,6 +47,7 @@
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
+#include "kingdom/kingdom.h"
 #include "player/player_name.h"
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
@@ -4757,8 +4758,8 @@ std::vector<std::string> sql_save_guild_statements(Guild *guild)
 		"insert into guilds (id, name, racewar, bits, prestige, construction, "
 		"platinum, gold, silver, copper, frags, top_frags, topfragger) "
 		"values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s') "
-		"on duplicate key update name='%s', racewar=%u, bits=%u, prestige=prestige, "
-		"construction=construction, platinum=%u, gold=%u, silver=%u, copper=%u, "
+		"on duplicate key update name='%s', racewar=%u, bits=%u, prestige=VALUES(prestige), "
+		"construction=VALUES(construction), platinum=%u, gold=%u, silver=%u, copper=%u, "
 		"frags=%ld, top_frags=%ld, topfragger='%s'",
 		gid, name.c_str(), guild->racewar, guild->bits, guild->prestige,
 		guild->construction, guild->platinum, guild->gold, guild->silver, guild->copper,
@@ -4788,7 +4789,36 @@ std::vector<std::string> sql_save_guild_statements(Guild *guild)
 /* Save one guild: its statements are one writer job. */
 bool sql_save_guild(Guild *guild)
 {
-	return guild && sql_queue_statements(sql_save_guild_statements(guild));
+	if (!guild)
+		return false;
+	guild->save_dirty = true;
+	guild->save_receipt.reset();
+	unsigned int error = 0;
+	try
+	{
+		auto receipt = std::make_shared<sql_write_receipt>();
+		if (kingdom_queue_guild_save(static_cast<int>(guild->get_id()),
+					     sql_save_guild_statements(guild), receipt))
+		{
+			guild->save_receipt = std::move(receipt);
+			return true;
+		}
+		error = errno ? errno : EIO;
+	}
+	catch (const std::bad_alloc &)
+	{
+		error = ENOMEM;
+	}
+	if (guild->save_error != error)
+		persistence_alert(AVATAR, "guild_snapshot/admission_failed", "redacted", "none",
+				  "none",
+				  error == ENOMEM    ? "allocation_failure" :
+				  error == ESHUTDOWN ? "writer_stopped" :
+				  error == ENOTCONN  ? "unavailable" :
+						       "storage_failure",
+				  "guild_id=%u error=%u", guild->get_id(), error);
+	guild->save_error = error;
+	return false;
 }
 
 Guild *sql_load_guild(unsigned int guild_id)
