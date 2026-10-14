@@ -111,6 +111,17 @@ def run(binary, case):
                     assert time.monotonic() < deadline, label
                     time.sleep(.1)
 
+            def summon_ghasts():
+                for attempt in range(5):
+                    player.send("cast 'summon ghasts'")
+                    outcome, _ = player.expect_any(
+                        ('Deathly incorporeal ghasts', "You abort your spell before it's done!"),
+                        timeout=60)
+                    evidence['cast_attempts'] = attempt + 1
+                    if outcome == 'Deathly incorporeal ghasts':
+                        return
+                raise AssertionError('five casts aborted before summon completion')
+
             def hold_row(table, column, identity):
                 nonlocal locker
                 locker = subprocess.Popen(
@@ -199,7 +210,7 @@ def run(binary, case):
                     hold_row('artifacts', 'vnum', ARTIFACT)
                     began = len(player.transcript)
                     print('artifact journey: PvP participants ready; artifact writer held', flush=True)
-                    player.send("cast 'summon ghasts'")
+                    summon_ghasts()
                     player.expect('sense of satisfaction', timeout=60)
                     victim.expect('ACCOUNT MENU', timeout=60)
                     player.expect('You have gained 100 epic points.', timeout=30)
@@ -248,8 +259,7 @@ def run(binary, case):
                     hold_row(locked_table, column, locked_id)
                 cast_start = len(player.transcript)
                 evidence['cast_wall_usec'] = time.time_ns() // 1000
-                player.send("cast 'summon ghasts'")
-                player.expect('Deathly incorporeal ghasts', timeout=60)
+                summon_ghasts()
                 evidence['summoned_wall_usec'] = time.time_ns() // 1000
                 player.expect('Your creatures from beyond the grave', timeout=60)
                 evidence['attack_wall_usec'] = time.time_ns() // 1000

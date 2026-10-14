@@ -277,3 +277,32 @@ with tempfile.TemporaryDirectory(prefix='epic-gain-', dir=build_root) as directo
         '-o', str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
+
+
+def test_epic_boon_publication() -> None:
+    harness = (ROOT / 'tests/async/epic_boon_feedback.cpp').read_text()
+    epic = (ROOT / 'src/world/epic.c').read_text()
+    context = epic[epic.index('struct epic_award_context'):epic.index('struct epic_level_context')]
+    functions = '\n'.join(extract_function('epic.c', signature) for signature in (
+        'epic_reason_type epic_award_reason(', 'critical_source_site epic_award_source(',
+        'const char *epic_award_name(', 'void epic_award_committed(',
+        'static bool prepare_epic_award(', 'bool gain_epic(P_char ch, int type, int data, int amount)'))
+    harness = harness.replace('// EPIC_AWARD_FUNCTIONS',
+                              extract_function('utility.c', 'int BOUNDED(int a, int b, int c)') +
+                              '\n' + context + functions)
+    harness = harness.replace('// BOON_PUBLICATION', extract_function('boon.c', 'void boon_publish_transaction_result('))
+    out = ROOT / 'bin/tests'; out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='epic-boon-feedback-', dir=out) as directory:
+        cpp, binary = Path(directory) / 'fixture.cpp', Path(directory) / 'fixture'
+        cpp.write_text(harness)
+        subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
+                        '-ffunction-sections', '-fdata-sections', '-fsanitize=address,undefined',
+                        '-g', '-no-pie', '-Isrc', '-I/usr/include/mysql', str(cpp),
+                        'src/world/epic_transaction.c', 'src/world/epic_command.c',
+                        'src/economy/boon_reward_transaction.c', 'src/economy/boon_reward_command.c',
+                        'src/persistence/critical_command.c', str(HARNESS_STUBS),
+                        '-Wl,--gc-sections', '-Wl,--wrap=getrandom', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
+        subprocess.run([str(binary)], check=True, timeout=30)
+
+
+test_epic_boon_publication()
