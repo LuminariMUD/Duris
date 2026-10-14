@@ -4,6 +4,7 @@
 #include "net/gmcp.h"
 #include "net/discord_bridge.h"
 #include "net/discord_petition.h"
+#include "net/unicode.h"
 #include "net/output_style.h"
 #include "player/output_message.h"
 
@@ -345,6 +346,20 @@ static void concealment(int peer)
 	event(peer, "Staff -> Someone", "Reply to hidden staff");
 }
 
+static void input_dollars(int peer)
+{
+	player petitioner("Player"), staff("Staff", 64);
+	recipients({ &petitioner, &staff });
+	const std::string text = "Price $1; two $$; literal $n and $$n; trailing $";
+	char normalized[MAX_STRING_LENGTH];
+	assert(!validate_utf8_and_dollars(normalized, text.c_str()));
+	invoke(do_petition, petitioner, normalized);
+	event(peer, "Player", text);
+	upgrade_cp437_and_dollars(normalized, ("Player " + text).c_str());
+	invoke(do_ptell, staff, normalized);
+	event(peer, "Staff -> Player", text);
+}
+
 static void text_and_bounds(int peer)
 {
 	player sender("&+rZoë&n");
@@ -514,6 +529,7 @@ int main(int argc, char **argv)
 	accepted(peer);
 	rejected(peer);
 	concealment(peer);
+	input_dollars(peer);
 	text_and_bounds(peer);
 	unavailable(peer);
 	puts("Petition/ptell real-command export harness passed");

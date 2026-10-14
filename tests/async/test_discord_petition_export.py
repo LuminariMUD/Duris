@@ -20,6 +20,7 @@ functions = [extract_function(path, signature) for path, signature in [
     ("interp.c", "void half_chop("),
     ("handler.c", "bool isname(const char *str, const char *namelist)"),
     ("comm.c", "void escape_act_dollars("),
+    ("comm.c", "void delete_doubledollar("),
 ]]
 
 # Only these two accepted command paths may invoke the exporter. This prevents
