@@ -264,6 +264,11 @@ Human Warrior and Illithid Psionicist HP/GMCP/purchase/save/restart coverage aft
 the successful rerun and build are retained under `bin/analysis/integration/`
 in the integration worktree. Final combined-stack gates remain due.
 
+`scripts/check_tests_catch.sh 2ec958e83 5e75d025a` reports 2/4 catches: native
+boon/award and teacher regressions fail before and pass after. The two database
+journeys skip without explicit settings, so their catch-script status is not
+proof; the separately executed disposable training journey supplies that evidence.
+
 ## Paid epic training feedback and immediate HP
 
 LR-03–LR-05 qualify the existing level-30 teacher policy and fix two purchase
@@ -293,6 +298,50 @@ the artifact PvP caster aborted before spell completion. The fixture now retries
 only confirmed aborts, with a five-attempt bound, and the affected PvP rerun passes.
 The aggregate is 77 distinct passing database checks; the original make command
 exited nonzero. Server sources match the passing 733-regression gate.
+
+## Zone average sentinels and missing help searches
+
+Review repair after parent integration `b89150407`: a 65,500-byte name overflows
+basic `do_area()`'s old `strcat` under ASan. The response now caps the name only
+after reserving the complete average, optional staff zone ID and danger warning.
+`python3 tests/async/test_zone_average_display.py` passes ASan/UBSan for short and
+oversized plain/colored names, numeric/sentinel values, staff no-argument output
+and the +15/+16 warning boundary. Original failure output is retained in the top
+checkout's `bin/analysis/area-before.log`.
+
+Seadog help now distinguishes the aboard owner's persistent +2 speed from the
+panel actor's order/display maximum. An isolated native probe exercises actual
+order/max-speed/aboard-owner code and the tick clamp: a non-owner's bonus is lost,
+an aboard owner's persists, and a non-Seadog sailor cannot order that owner's
+full maximum. Display's actor selection, innate availability and seller's 10%
+bonus are traced in production source. No sailing mechanic changes.
+`python3 tests/async/test_flatfile_help_catalog.py` and
+`python3 tests/async/test_help_import_live_parser.py` pass. The disposable
+`test_information_cache_journey.py --backend mariadb --server bin/server/dms_new`
+passes corrected Seadog text through actual import/cache/player help alongside
+Web Spray and Quickstep. Its initial adapter error was corrected to inspect the
+client transcript, not the timing return. Server build and 14 documentation
+checks pass. Integration build/help/probe evidence is under
+`bin/analysis/integration/` in the isolated integration worktree. Final combined
+stack qualification remains due; the following broad results are historical.
+
+LR-06's display now preserves -2/-1 internally while rendering `unknown` and
+`not applicable`. `python3 tests/async/test_zone_average_display.py` executes the
+actual basic `do_area()` branch under ASan/UBSan, covering real averages, zero,
+empty/unknown sentinels, +15/+16 danger boundaries, subsequent value changes and
+staff no-argument output. It compiles before and fails on the negative display.
+Padding/morph adapters and omitted staff search subcommands bound this proof;
+original-zone attribution and its catalog investigation remain open.
+
+LR-08 supplies searchable Web Spray, Quickstep and Seadog topics. The existing
+flat-file help test proves rendering; the MariaDB information journey dry-runs
+and imports into its disposable schema before actual player help queries and
+cache publication. It retains the existing Quick Step title and adds no import
+or redirect mechanism. Both focused checks pass. PR #74 is ready with 734 regression and 77 database
+passes in single full runs. Direct base-data lookup fails specifically at the
+missing Web Spray topic and passes after; the before/after script also reports
+2/2 catches, with its information-journey summary ending in an unrelated runtime
+warning. The original zone attribution remains open.
 
 ## Crumbling equipment removal
 
