@@ -85,6 +85,22 @@ inbox. Delivery is at least once with `(consumer_id,outbox_id)` dedupe, bounded 
 and retained dead letters. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
+PvP combat outcomes capture presentation snapshots on the game thread before
+death changes equipment or level: the formatted level/class/name/guild/race
+description, equipment listing, and public `PlayerLog` text. Payload v3 owns
+those strings and carries them to the writer; the writer never reads live
+character pointers. The event and its participant snapshots commit with the
+existing outcome transaction, so rollback and operation-ID replay cannot leave
+a partially recorded battle or duplicate its participants.
+
+The bounds preserve the former capture limits: 255 description bytes, 65,535
+equipment bytes, and 99,999 public-log bytes per participant, with at most 15
+participants. The critical-command payload ceiling is 3 MiB, with another
+128 KiB allowed for encoded metadata; coordinator admission retains its 64 MiB
+budget. Payload versions 1 and 2 remain decodable with empty equipment/log
+snapshots. This does not recover historical missing text or add a durable
+pre-commit queue: the in-memory crash-loss limitation above still applies.
+
 The #58 implementation separates artifact/guild reward history from
 saved gameplay state. `artifacts`, `artifact_bind` and `artifact_domain_state`
 hold the artifact snapshot/mirror; `guilds` holds current guild totals.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bounded codec, mutation route, schema, and publication contracts for PvP outcomes."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 import subprocess
 import tempfile
@@ -44,6 +44,8 @@ int main()
     payload.participants[0].wallet_delta_copper = 10000;
     payload.participants[1] = participant(22, combat_participant_role::victim);
     payload.participants[1].frag_delta = -100;
+    payload.participants[0].equipment = "<wielded> a warrior's &+Rsword&n\n";
+    payload.participants[0].log = "You strike the victim.\r\nThe victim falls.\r\n";
 
     critical_operation_id id = {};
     assert(critical_operation_id_generate(&id));
@@ -55,7 +57,17 @@ int main()
     assert(combat_outcome_command_decode_payload(command, &decoded));
     assert(decoded.participant_count == 2);
     assert(decoded.killer_allies == 5);
+    assert(decoded.participants[0].equipment == payload.participants[0].equipment);
+    assert(decoded.participants[0].log == payload.participants[0].log);
     critical_command legacy = command;
+    legacy.payload_version = 2;
+    size_t snapshot_bytes = 0;
+    for (size_t i = 0; i < payload.participant_count; ++i)
+        snapshot_bytes += 8 + payload.participants[i].equipment.size() + payload.participants[i].log.size();
+    legacy.payload.resize(legacy.payload.size() - snapshot_bytes);
+    assert(combat_outcome_command_decode_payload(legacy, &decoded));
+    assert(decoded.killer_allies == 5);
+    assert(decoded.participants[0].log.empty() && decoded.participants[0].equipment.empty());
     legacy.payload_version = 1;
     legacy.payload.resize(legacy.payload.size() - sizeof(uint32_t));
     assert(combat_outcome_command_decode_payload(legacy, &decoded));
@@ -64,6 +76,43 @@ int main()
     assert(!combat_outcome_command_decode_payload(legacy, &decoded));
     assert(combat_outcome_command_decode_payload(command, &decoded));
     assert(decoded.participants[0].epic_delta == 500);
+
+    // Replay the outer serialized command, not just the in-memory payload.
+    std::vector<uint8_t> serialized;
+    command.accepted_at_usec = 1;
+    assert(critical_command_encode(command, &serialized) == critical_command_codec_result::ok);
+    critical_command restored = {};
+    assert(critical_command_decode(serialized.data(), serialized.size(), &restored) == critical_command_codec_result::ok);
+    assert(combat_outcome_command_decode_payload(restored, &decoded));
+    assert(decoded.participants[0].log == payload.participants[0].log);
+    auto broken = command;
+    broken.payload.pop_back();
+    assert(!combat_outcome_command_decode_payload(broken, &decoded));
+    broken = command;
+    broken.payload.push_back(0);
+    assert(!combat_outcome_command_decode_payload(broken, &decoded));
+
+    // All 15 participants can retain the full legacy limits, without truncation
+    // or rejecting their rewards just because their public logs are long.
+    auto full = payload;
+    full.participant_count = COMBAT_OUTCOME_MAX_PARTICIPANTS;
+    for (size_t i = 0; i < full.participant_count; ++i) {
+        full.participants[i] = participant(static_cast<uint32_t>(i + 22), combat_participant_role::killer_group);
+        full.participants[i].equipment.assign(COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES, 'e');
+        full.participants[i].log.assign(COMBAT_OUTCOME_LOG_MAX_BYTES, 'l');
+    }
+    critical_command maximum = {};
+    assert(combat_outcome_command_build(&maximum, id, full));
+    maximum.accepted_at_usec = 1;
+    assert(critical_command_encode(maximum, &serialized) == critical_command_codec_result::ok);
+    assert(critical_command_decode(serialized.data(), serialized.size(), &restored) == critical_command_codec_result::ok);
+    assert(combat_outcome_command_decode_payload(restored, &decoded));
+    assert(decoded.participants[14].equipment == full.participants[14].equipment);
+    assert(decoded.participants[14].log == full.participants[14].log);
+    full.participants[0].log.push_back('x');
+    assert(!combat_outcome_command_build(&maximum, id, full));
+    full.participants[0].log = std::string("a\0b", 3);
+    assert(!combat_outcome_command_build(&maximum, id, full));
 
     critical_command tampered = command;
     tampered.keys.pop_back();
@@ -95,6 +144,71 @@ int main()
 
 
 class CombatOutcomeCutoverTests(unittest.TestCase):
+    def test_capture_owns_public_snapshots_before_character_changes(self):
+        capture = extract_function("fight.c", "static combat_outcome_participant *combat_outcome_add_participant(")
+        harness = r'''
+#include "combat/combat_outcome_command.h"
+#include "player/player_log.h"
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <bsd/string.h>
+#define MAX_STRING_LENGTH 65536
+#define MAX_LOG_LEN 100000
+struct Association { std::string get_name() const { return "-Guild-"; } };
+struct Pc { uint64_t frag_revision{}, epic_revision{}, wallet_revision{}, bank_revision{}; PlayerLog log; };
+struct Character {
+    int pid{11}, level{56}, race{}, racewar{1}; bool npc{};
+    std::string name{"Fixture"}, equipment{"<wielded> a sword\n"};
+    struct { Pc *pc; } only;
+    Association *association{};
+};
+using P_char = Character *;
+#define IS_NPC(ch) ((ch)->npc)
+#define GET_PID(ch) ((ch)->pid)
+#define GET_LEVEL(ch) ((ch)->level)
+#define GET_RACEWAR(ch) ((ch)->racewar)
+#define GET_NAME(ch) ((ch)->name.c_str())
+#define GET_ASSOC(ch) ((ch)->association)
+#define GET_RACE(ch) ((ch)->race)
+#define GET_PLAYER_LOG(ch) (&(ch)->only.pc->log)
+static const struct { const char *ansi; } race_names_table[] = {{"&+WHuman&n"}};
+const char *get_account_name_safe(P_char) { return "fixture-account"; }
+const char *get_class_name(P_char, P_char) { return "&+RWarrior&n"; }
+void get_equipment_list(P_char ch, char *buffer, int list_only) {
+    assert(list_only == 1);
+    strlcpy(buffer, ch->equipment.c_str(), MAX_STRING_LENGTH);
+}
+'''
+        harness += capture
+        harness += r'''
+int main() {
+    Pc pc; Association association;
+    Character character; character.only.pc = &pc; character.association = &association;
+    pc.log.write(LOG_PUBLIC, "You strike.\r\n");
+    pc.log.write(LOG_PRIVATE, "private fixture message");
+    combat_outcome_payload payload{};
+    auto *entry = combat_outcome_add_participant(&payload, &character, combat_participant_role::killer, true, true);
+    assert(entry && entry->level == 56);
+    assert(std::string(entry->description.data()) == "[56 &+RWarrior&n&n] Fixture &n-Guild- &n(&+WHuman&n&n)");
+    assert(entry->equipment == "<wielded> a sword\n");
+    assert(entry->log == "You strike.\r\n");
+    character.name = "Changed"; character.equipment.clear(); pc.log.clear();
+    assert(entry->equipment == "<wielded> a sword\n" && entry->log == "You strike.\r\n");
+    assert(std::string(entry->description.data()).find("Fixture") != std::string::npos);
+    assert(combat_outcome_add_participant(&payload, &character, combat_participant_role::killer_group, true, false) == entry);
+    assert(payload.participant_count == 1 && entry->equipment == "<wielded> a sword\n");
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "capture.cpp"
+            binary = Path(directory) / "capture"
+            source.write_text(harness)
+            subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", f"-I{SRC}",
+                            str(source), "-lbsd", "-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_bounded_pointer_free_codec(self):
         with tempfile.TemporaryDirectory() as directory:
             harness = Path(directory) / "combat_codec.cpp"
@@ -119,8 +233,14 @@ class CombatOutcomeCutoverTests(unittest.TestCase):
             self.assertNotIn(forbidden, body)
         capture = fight[fight.index("static bool submit_pvp_outcome"):start]
         self.assertIn("combat_outcome_transaction_submit", capture)
-        self.assertNotIn("GET_PLAYER_LOG", capture)
-        self.assertNotIn("get_equipment_list", capture)
+        capture = fight[fight.index("static combat_outcome_participant *combat_outcome_add_participant"):start]
+        self.assertIn("get_equipment_list(ch, equipment, 1)", capture)
+        self.assertIn("GET_PLAYER_LOG(ch)->read(LOG_PUBLIC, MAX_LOG_LEN)", capture)
+        self.assertIn("get_class_name(ch, ch)", capture)
+        self.assertIn("race_names_table[GET_RACE(ch)].ansi", capture)
+        repository = (SRC / "combat_outcome_repository.c").read_text()
+        self.assertNotIn("GET_PLAYER_LOG", repository)
+        self.assertNotIn("get_equipment_list", repository)
 
     def test_repository_composes_all_authorities_before_outbox(self):
         repository = (SRC / "combat_outcome_repository.c").read_text()

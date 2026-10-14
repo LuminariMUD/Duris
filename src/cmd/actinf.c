@@ -8538,19 +8538,23 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 			if (((wear_order[j] >= WIELD) && (wear_order[j] <= HOLD)) &&
 			    (wield_item_size(ch, ch->equipment[wear_order[j]]) == 2))
 			{
-				strcat(buf, ((wear_order[j] >= WIELD) && (wear_order[j] <= HOLD) &&
-					     (t_obj->type != ITEM_WEAPON) &&
-					     t_obj->type != ITEM_FIREWEAPON) ?
-						    "<held in both hands> " :
-						    "<wielding twohanded> ");
+				strlcat(buf,
+					((wear_order[j] >= WIELD) && (wear_order[j] <= HOLD) &&
+					 (t_obj->type != ITEM_WEAPON) &&
+					 t_obj->type != ITEM_FIREWEAPON) ?
+						"<held in both hands> " :
+						"<wielding twohanded> ",
+					MAX_STRING_LENGTH);
 			}
 			else
 			{
-				strcat(buf, (wear_order[j] >= WIELD && wear_order[j] <= HOLD &&
-					     t_obj->type != ITEM_WEAPON &&
-					     t_obj->type != ITEM_FIREWEAPON) ?
-						    where[HOLD] :
-						    where[wear_order[j]]);
+				strlcat(buf,
+					(wear_order[j] >= WIELD && wear_order[j] <= HOLD &&
+					 t_obj->type != ITEM_WEAPON &&
+					 t_obj->type != ITEM_FIREWEAPON) ?
+						where[HOLD] :
+						where[wear_order[j]],
+					MAX_STRING_LENGTH);
 			}
 
 			if (CAN_SEE_OBJ(ch, t_obj) || list_only == 1)
@@ -8566,29 +8570,29 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 							  obj_index[t_obj->R_num].virtual_number :
 							  -1));
 				if (t_obj->short_description)
-					strcat(buf, t_obj->short_description);
+					strlcat(buf, t_obj->short_description, MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_INVISIBLE))
-					strcat(buf, " (&+Linvis&n)");
+					strlcat(buf, " (&+Linvis&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_SECRET))
-					strcat(buf, " (&+Lsecret&n)");
+					strlcat(buf, " (&+Lsecret&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_BURIED))
-					strcat(buf, " (&+Lburied&n)");
+					strlcat(buf, " (&+Lburied&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT2(t_obj, ITEM2_MAGIC) &&
 				    (IS_TRUSTED(ch) || IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ||
 				     (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
 				      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_PRIEST))))
-					strcat(buf, " (&+bmagic&n)");
+					strlcat(buf, " (&+bmagic&n)", MAX_STRING_LENGTH);
 				if (get_obj_affect(t_obj, SKILL_ENCHANT))
-					strcat(buf, " (&+mEnchanted&n)");
+					strlcat(buf, " (&+mEnchanted&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_GLOW))
-					strcat(buf, " (&+Mglowing&n)");
+					strlcat(buf, " (&+Mglowing&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_HUM))
-					strcat(buf, " (&+rhumming&N)");
+					strlcat(buf, " (&+rhumming&N)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_NOSHOW) && (IS_TRUSTED(ch)))
-					strcat(buf, " (&+LNOSHOW&N)");
+					strlcat(buf, " (&+LNOSHOW&N)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_LIT) ||
 				    ((t_obj->type == ITEM_LIGHT) && t_obj->value[2]))
-					strcat(buf, " (&+Willuminating&n)");
+					strlcat(buf, " (&+Willuminating&n)", MAX_STRING_LENGTH);
 
 				if (affected_by_spell(ch, SPELL_HOLY_SWORD))
 				{
@@ -8596,7 +8600,8 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 					{
 						if (ch->equipment[wear_order[j]]->value[3] == 3)
 						{
-							strcat(buf, " &+L(&+Wh&+wol&+Wy&+L)&N");
+							strlcat(buf, " &+L(&+Wh&+wol&+Wy&+L)&N",
+								MAX_STRING_LENGTH);
 						}
 					}
 				}
@@ -8607,8 +8612,9 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 					{
 						if (ch->equipment[wear_order[j]]->value[3] == 3)
 						{
-							strcat(buf,
-							       " &+L(&+rf&+Rl&+Ya&+Wm&+Yi&+Rn&+rg&+L)&N");
+							strlcat(buf,
+								" &+L(&+rf&+Rl&+Ya&+Wm&+Yi&+Rn&+rg&+L)&N",
+								MAX_STRING_LENGTH);
 						}
 					}
 				}
@@ -8617,8 +8623,8 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 				{
 					if (ch->equipment[wear_order[j]]->type == ITEM_WEAPON)
 					{
-						strcat(buf,
-						       " &+L(&+Cch&+Bill&+Cing&+L)&N"); // XXX zion
+						strlcat(buf, " &+L(&+Cch&+Bill&+Cing&+L)&N",
+							MAX_STRING_LENGTH); // XXX zion
 					}
 				}
 
@@ -8626,26 +8632,26 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 				{
 					if (ch->equipment[wear_order[j]]->type == ITEM_WEAPON)
 					{
-						strcat(buf,
-						       " &+L(&+Bele&+Wctri&+Bfied&+L)&N"); // XXX zion
+						strlcat(buf, " &+L(&+Bele&+Wctri&+Bfied&+L)&N",
+							MAX_STRING_LENGTH); // XXX zion
 					}
 				}
 
-				strcat(buf, item_condition(t_obj));
+				strlcat(buf, item_condition(t_obj), MAX_STRING_LENGTH);
 
 				snprintf(tempbuf, MAX_STRING_LENGTH, "Error");
 
 				if (IS_ARTIFACT(t_obj))
 				{
 					artifact_timer_sql(OBJ_VNUM(t_obj), tempbuf);
-					strcat(buf, tempbuf);
+					strlcat(buf, tempbuf, MAX_STRING_LENGTH);
 				}
 
-				strcat(buf, "\n");
+				strlcat(buf, "\n", MAX_STRING_LENGTH);
 			}
 			else
 			{
-				strcat(buf, "Something.\n");
+				strlcat(buf, "Something.\n", MAX_STRING_LENGTH);
 			}
 		}
 		else if (list_only == 2)
@@ -8657,8 +8663,8 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 			{
 				if (has_eq_slot(ch, wear_order[j]))
 				{
-					strcat(buf, where[wear_order[j]]);
-					strcat(buf, "\n");
+					strlcat(buf, where[wear_order[j]], MAX_STRING_LENGTH);
+					strlcat(buf, "\n", MAX_STRING_LENGTH);
 				}
 			}
 		}
@@ -8666,7 +8672,7 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 
 	if (affected_by_spell(ch, TAG_SET_MASTER))
 		if (ch->only.pc->master_set)
-			strcat(buf, set_master_text[ch->only.pc->master_set]);
+			strlcat(buf, set_master_text[ch->only.pc->master_set], MAX_STRING_LENGTH);
 	if (list_only == 2)
 	{
 		return TRUE;

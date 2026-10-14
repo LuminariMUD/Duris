@@ -68,6 +68,7 @@
 #include "world/world_quest.h"
 #include "net/ws_handlers.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/assocs.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_death_enrollment.h"
 #include "economy/collector_presence.h"
@@ -90,6 +91,7 @@ extern P_obj object_list;
 extern P_room world;
 extern char debug_mode;
 extern const struct race_names race_names_table[];
+bool get_equipment_list(P_char ch, char *buf, int list_only);
 extern void event_wait(P_char ch, P_char victim, P_obj obj, void *data);
 void release_mob_mem(P_char ch, P_char victim, P_obj obj, void *data);
 
@@ -850,7 +852,19 @@ static combat_outcome_participant *combat_outcome_add_participant(combat_outcome
 	entry.expected_wallet_revision = ch->only.pc->wallet_revision;
 	entry.expected_bank_revision = ch->only.pc->bank_revision;
 	strlcpy(entry.account_name.data(), get_account_name_safe(ch), entry.account_name.size());
-	strlcpy(entry.description.data(), GET_NAME(ch), entry.description.size());
+	// Capture while the character and equipment still belong to the game loop.
+	// The worker receives owned text, never character or PlayerLog pointers.
+	const std::string association = GET_ASSOC(ch) ? GET_ASSOC(ch)->get_name() : "";
+	snprintf(entry.description.data(), entry.description.size(), "[%2d %s&n] %s &n%s &n(%s&n)",
+		 GET_LEVEL(ch), get_class_name(ch, ch), GET_NAME(ch), association.c_str(),
+		 race_names_table[GET_RACE(ch)].ansi);
+	static_assert(MAX_STRING_LENGTH - 1 == COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES);
+	static_assert(MAX_LOG_LEN - 1 == COMBAT_OUTCOME_LOG_MAX_BYTES);
+	char equipment[MAX_STRING_LENGTH];
+	get_equipment_list(ch, equipment, 1);
+	entry.equipment = equipment;
+	if (GET_PLAYER_LOG(ch))
+		entry.log = GET_PLAYER_LOG(ch)->read(LOG_PUBLIC, MAX_LOG_LEN);
 	return &entry;
 }
 
