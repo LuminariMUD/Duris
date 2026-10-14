@@ -301,6 +301,12 @@ std::string_view mechanic_name(MechanicId id)
 		return "affect.apply";
 	case MechanicId::short_affect_expiry:
 		return "short.affect.expiry";
+	case MechanicId::item_race_mask:
+		return "item.race.mask";
+	case MechanicId::item_eligibility:
+		return "item.eligibility";
+	case MechanicId::item_primary_eligibility:
+		return "item.primary.eligibility";
 	case MechanicId::count:
 		break;
 	}
@@ -338,6 +344,7 @@ std::vector<MechanicConnection> mechanic_connections()
 				  item_load_connections(),
 				  racial_age_connections(),
 				  affect_cleanup_connections(),
+				  item_eligibility_connections(),
 				  death_connections(),
 				  skill_registration_connections(),
 				  innate_registration_connections(),
@@ -634,6 +641,8 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::eligibility:
 			compatible =
+				std::holds_alternative<ItemEligibility>(connection.binding) ||
+				std::holds_alternative<ItemRaceMask>(connection.binding) ||
 				std::holds_alternative<InnateCooldown>(connection.binding) ||
 				std::holds_alternative<CharacterIntPredicate>(connection.binding) ||
 				std::holds_alternative<CharacterIntFunction>(connection.binding) ||

@@ -626,6 +626,7 @@ static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *it
 		extract_obj(obj, FALSE);
 		return true;
 	}
+	CHARACTER_MECHANIC_SITE(item_eligibility);
 	if (!can_char_use_item(ch, obj) || !chaos_kit_fits_slot(obj, item->slot))
 	{
 		logit(LOG_FILE, "Invalid CHAOS kit item vnum %d in slot %d for pid %d", item->vnum,
@@ -880,6 +881,7 @@ static newbie_item_facts capture_newbie_item_facts(P_char ch, const newbie_kit_i
 		// Only used for diagnostics by required_weapon_skill().
 		view.short_description = const_cast<char *>(prototype->short_description.c_str());
 		const int skill_level = GET_LVL_FOR_SKILL(ch, required_weapon_skill(&view));
+		CHARACTER_MECHANIC_SITE(item_eligibility);
 		facts.weapon_admitted = skill_level && skill_level <= GET_LEVEL(ch) &&
 					can_char_use_item(ch, &view);
 	}

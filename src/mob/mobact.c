@@ -11,6 +11,7 @@
 #undef RILDEBUG
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -7060,6 +7061,7 @@ int IsBetterObject(P_char ch, P_obj obj, int foo)
 	int a, l;
 	P_obj foob = NULL, foo2 = NULL;
 
+	CHARACTER_MECHANIC_SITE(item_eligibility);
 	for (a = foo; a < CUR_MAX_WEAR; a++)
 		if (CAN_WEAR(obj, equipment_pos_table[a][0]) && can_char_use_item(ch, obj))
 		{

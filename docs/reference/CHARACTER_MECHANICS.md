@@ -4,6 +4,8 @@
 connection vocabulary. The [aggregator and validators](../../src/player/character_mechanics.c)
 enumerate references supplied beside the existing gameplay owners. They observe
 implementation and state; gameplay continues through its existing handlers.
+The migration is paused and incomplete; [the handoff](../ongoing-projects/plan.md#current-checkpoint)
+separates passing evidence from the draft item-restriction work.
 
 Start with `identity_connections()` for native race/class/spec tables and creation,
 specialization and ordered-multiclass predicates. `mechanic_connections()` links
@@ -87,6 +89,13 @@ full-world command and persistence cases. Staff-supplied items, levels and trans
 are fixture setup and do not prove ordinary acquisition. Native Bulwark cases
 currently record the amount delivered to raw damage; they do not prove actual HP
 loss. All fixture mode switches and backend/world conditions must accompany proof.
+
+The paused item draft binds the native race-mask helper and both general and
+primary-only eligibility predicates in [handler.c](../../src/world/handler.c),
+with call markers beside their consumers. The existing race-bit regression covers
+its finite mask domain. Class/spec/secondary-class/body characterization and the
+new marker's negative cases are still pending; these draft connections do not
+establish complete item or equipment coverage.
 
 Access (available/conditional/disabled/unresolved), implementation
 (connected/incomplete/legacy) and proof (named assertions/failing/unverified) are

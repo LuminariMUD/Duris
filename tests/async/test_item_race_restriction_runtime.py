@@ -16,6 +16,7 @@ from _paths import HARNESS_STUBS
 PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "player/character_mechanics.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>

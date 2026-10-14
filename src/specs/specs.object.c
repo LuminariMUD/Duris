@@ -3006,6 +3006,7 @@ int living_necroplasm(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	if (OBJ_CARRIED_BY(obj, ch))
 	{
 		// Only folks who are primary allowed class can use this item
+		CHARACTER_MECHANIC_SITE(item_primary_eligibility);
 		if (can_prime_class_use_item(ch, obj))
 		{
 			// verify that they have no other arti's before equip'ing

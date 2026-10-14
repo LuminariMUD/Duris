@@ -293,7 +293,14 @@ def check_mechanic_sites(sources, bindings):
                    for key, (owner, patterns) in obligations.items()}
     seen = set()
     errors = []
-    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904|revenant_helm|event_revenant_crown|REVENANT_CROWN_VNUM|22070|remove_death_affects)\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
+    item_sites = {key: bindings.get(key.replace("_", "."), ("", ""))[0]
+                  for key in ("item_race_mask", "item_eligibility", "item_primary_eligibility")}
+    item_symbols = set(item_sites.values()) - {""}
+    if not all(item_sites.values()):
+        errors.append("missing shared item predicate bindings")
+    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904|revenant_helm|event_revenant_crown|REVENANT_CROWN_VNUM|22070|remove_death_affects"
+                         + ("|" + "|".join(map(re.escape, sorted(item_symbols))) if item_symbols else "")
+                         + r")\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
     # Macro stringification makes these names the same native bindings the
     # executable used, rather than a second editable table of function names.
     for mechanic, (symbol, kind) in bindings.items():
@@ -324,6 +331,20 @@ def check_mechanic_sites(sources, bindings):
             covered.append(metadata.span())
         for marker in re.finditer(r"CHARACTER_MECHANIC_SITE\(\s*(\w+)\s*\)\s*;", code):
             site = marker[1]
+            if site in item_sites:
+                # Shared predicate consumers need a marker at every actual call;
+                # a new alias/caller in any file remains an unregistered token.
+                symbol = item_sites[site]
+                tail = code[marker.end():]
+                call = re.search(r"\b" + re.escape(symbol) + r"\s*\(", tail) if symbol else None
+                prefix = tail[:call.start()] if call else ""
+                # The NPC equipment loop has an unbraced conditional body.
+                prefix = re.sub(r"\bfor\s*\([^(){}]*\)", "", prefix, count=1)
+                if not call or any(character in prefix for character in ";{}"):
+                    errors.append(f"{path}: detached shared item site {site}")
+                else:
+                    covered.append((marker.end() + call.start(), marker.end() + call.end()))
+                continue
             if site not in obligations:
                 errors.append(f"{path}:{code.count(chr(10), 0, marker.start()) + 1}: unknown site {site}")
                 continue
@@ -366,6 +387,11 @@ def check_mechanic_sites(sources, bindings):
             line_start = code.rfind("\n", 0, token.start()) + 1
             # Exact existing numeric definitions are vocabulary, not effects.
             line = code[line_start:code.find("\n", token.end())]
+            if token.group() in item_symbols:
+                native_header = (r"(?:static bool|int)\s+" + re.escape(token.group())
+                                 + r"\(P_(?:char|obj)(?: ch| obj)?, (?:P_obj(?: obj)?|int race)\);?\s*")
+                if path in ("world/handler.c", "world/handler.h", "core/prototypes.h") and re.fullmatch(native_header, line):
+                    continue
             if ((path == "core/structs.h" and re.fullmatch(r"#define INNATE_GUARDIANS_BULWARK\s+\d+\s*", line)) or
                 (path == "combat/damage.h" and re.fullmatch(r"#define DF_GUARDIANS_BULWARK\s+\d+\s*", line)) or
                 (path == "core/defines.h" and re.fullmatch(r"#define REVENANT_CROWN_VNUM\s+22070\s*", line))):
@@ -500,6 +526,7 @@ extern const int race_hatred_data[][MAX_HATRED];
 #define PROPERTIES_FILE "lib/duris.properties"
 #define MAX_PROPERTIES 3000
 int properties_count;
+int real_mobile(const int vnum) { assert(vnum == 250); return 0; } // Image slot; prototype loading is separate.
 extern Skill skills[MAX_AFFECT_TYPES + 1];
 int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
@@ -710,6 +737,10 @@ combat_bodies = (
         ("interp.c", "void argument_interpreter("),
         ("guild.c", "void update_skills("),
         ("handler.c", "bool isname(const char *str, const char *namelist)"),
+        ("handler.c", "static bool obj_race_bit_set("),
+        ("handler.c", "int can_char_use_item(P_char ch, P_obj obj)"),
+        ("handler.c", "int can_prime_class_use_item(P_char ch, P_obj obj)"),
+        ("handler.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::item_eligibility_connections("),
         ("limits.c", "void clear_title("),
         ("limits.c", "int vitality_limit("),
         ("memorize.c", "bool praying_class("),
@@ -955,7 +986,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
                             "src/world/epic_transaction.c",
                             "src/economy/tradeskill.c",
                             "src/cmd/actoth.c", "src/cmd/actwiz.c", "src/specs/specs.room.c",
-                            "src/magic/affects.c", "src/world/db.c", "src/world/epic.c",
+                            "src/magic/affects.c", "src/world/db.c", "src/world/handler.c", "src/world/epic.c",
                             "src/core/utility.c", "src/core/constant.c", "src/item/trophy.c",
                             "src/economy/currency_transaction.c",
                             "src/player/player_snapshot_capture.c", "src/player/player_load_materialize.c",

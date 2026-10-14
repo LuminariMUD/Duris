@@ -8,6 +8,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "item/weapon_actions.h"
 #include "item/native_artifact_actions.h"
 #include "core/structs.h"
@@ -665,6 +666,7 @@ int orb_of_the_sea(P_obj obj, P_char ch, int cmd, char *arg)
 		else if (OBJ_WORN(obj) && (ch == obj->loc.wearing))
 		{
 			// Slippery when wet! 1% chance per hit after each 40 hits (Should drop after about 90 hits).
+			CHARACTER_MECHANIC_SITE(item_primary_eligibility);
 			if (!IS_NPC(ch) && !can_prime_class_use_item(ch, obj) &&
 			    number(1, 100) <= count++ / 40)
 			{

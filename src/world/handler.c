@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/item_actions.h"
 #include "core/structs.h"
@@ -4824,6 +4825,7 @@ int can_char_use_item(P_char ch, P_obj obj)
 
 	if (!IS_SET(obj->extra_flags, ITEM_ALLOWED_RACES))
 	{
+		CHARACTER_MECHANIC_SITE(item_race_mask);
 		if (obj_race_bit_set(obj, GET_RACE(ch)))
 		{
 			return FALSE;
@@ -4831,6 +4833,7 @@ int can_char_use_item(P_char ch, P_obj obj)
 	}
 	else
 	{
+		CHARACTER_MECHANIC_SITE(item_race_mask);
 		if (!obj_race_bit_set(obj, GET_RACE(ch)))
 		{
 			return FALSE;
@@ -4969,11 +4972,16 @@ int can_prime_class_use_item(P_char ch, P_obj obj)
 
 	if (!IS_SET(obj->extra_flags, ITEM_ALLOWED_RACES))
 	{
+		CHARACTER_MECHANIC_SITE(item_race_mask);
 		if (obj_race_bit_set(obj, GET_RACE(ch)))
 			return FALSE;
 	}
-	else if (!obj_race_bit_set(obj, GET_RACE(ch)))
-		return FALSE;
+	else
+	{
+		CHARACTER_MECHANIC_SITE(item_race_mask);
+		if (!obj_race_bit_set(obj, GET_RACE(ch)))
+			return FALSE;
+	}
 
 	if (!IS_SET(obj->extra_flags, ITEM_ALLOWED_CLASSES))
 	{
@@ -5092,4 +5100,43 @@ void add_weight(P_obj obj, int weight)
 			propagate_weight_delta(obj, carry_delta);
 		}
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::item_eligibility_connections()
+{
+	static constexpr MechanicId race_mask[] = { MechanicId::item_race_mask };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::item_race_mask,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(obj_race_bit_set),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native item anti2 race-mask domain is 1..32; other race IDs have no bit. Allow-list and deny-list consumers remain distinct.",
+		  {} },
+		{ MechanicId::item_eligibility,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(can_char_use_item),
+		  race_mask,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Existing-character item race/class eligibility: image denial, Illithid/Mindflayer bypass, secondary-class union and existing Blighter/Summoner/Dragoon exceptions. Body, wear-slot and other item gates are separate.",
+		  {} },
+		{ MechanicId::item_primary_eligibility,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(can_prime_class_use_item),
+		  race_mask,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Primary-only item consumers share the race mask and Illithid bypass, but do not inherit general secondary-class or class-sharing exceptions.",
+		  {} }
+	};
+	return connections;
 }

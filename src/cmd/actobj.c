@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -5796,6 +5797,7 @@ int wear(P_char ch, P_obj obj_object, int keyword, bool showit)
 	}
 
 	// Cannot use the item.  Return FALSE.
+	CHARACTER_MECHANIC_SITE(item_eligibility);
 	if (!can_char_use_item(ch, obj_object))
 	{
 		if (showit)

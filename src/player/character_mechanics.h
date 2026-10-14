@@ -136,6 +136,9 @@ enum class MechanicId
 	phantasmal_form,
 	affect_apply,
 	short_affect_expiry,
+	item_race_mask,
+	item_eligibility,
+	item_primary_eligibility,
 	count
 };
 
@@ -198,6 +201,8 @@ using AffectInsertion = affected_type *(*)(char_data *, affected_type *);
 using InnateCooldown = bool (*)(char_data *, int, int);
 using InnateProperty = int (*)(int, const char *, int);
 using ObjectAction = void (*)(char_data *, obj_data *);
+using ItemEligibility = int (*)(char_data *, obj_data *);
+using ItemRaceMask = bool (*)(obj_data *, int);
 using EpicSubmit = decltype(&epic_transaction_submit);
 using WalletSubmit = decltype(&currency_transaction_submit_wallet_value);
 using ObjectProcValue = int (*)(obj_proc_type);
@@ -288,11 +293,11 @@ using MechanicBinding = std::variant<
 	player_status_field, const innate_data *, ObjectRegistration, obj_proc_type, ObjectAction,
 	epic_completion_fn, EpicSubmit, ObjectProcValue, RoomRegistration, RoomProcedure,
 	CharacterReset, SkillReset, SkillDataQuery, WalletSubmit, ClassHitpointFactors,
-	RacialStatFactors, StatusFields, player_checkpoint_component, event_func_type,
-	RacialAgeData, AffectRemoval, SkillTable, GrantWrites, InnateCallbacks, RacialInnates,
-	ClassInnates, CreationRules, DescriptorSelection, JsonCommand, LoginRegistration,
-	JsonRegistration, AdmissionPolicy, AdmissionCheck, AdmissionCommit, CommandTable,
-	CommandWrites, SpellHandler, SpellSlot, AffectInsertion, InnateCooldown, InnateProperty>;
+	RacialStatFactors, StatusFields, player_checkpoint_component, event_func_type, RacialAgeData,
+	AffectRemoval, SkillTable, GrantWrites, InnateCallbacks, RacialInnates, ClassInnates,
+	CreationRules, DescriptorSelection, JsonCommand, LoginRegistration, JsonRegistration,
+	AdmissionPolicy, AdmissionCheck, AdmissionCommit, CommandTable, CommandWrites, SpellHandler,
+	SpellSlot, AffectInsertion, InnateCooldown, InnateProperty, ItemEligibility, ItemRaceMask>;
 
 struct MechanicConnection
 {
@@ -369,6 +374,7 @@ std::span<const MechanicConnection> object_periodic_connections();
 std::span<const MechanicConnection> item_load_connections();
 std::span<const MechanicConnection> racial_age_connections();
 std::span<const MechanicConnection> affect_cleanup_connections();
+std::span<const MechanicConnection> item_eligibility_connections();
 std::span<const MechanicConnection> death_connections();
 std::span<const MechanicConnection> skill_registration_connections();
 std::span<const MechanicConnection> innate_registration_connections();

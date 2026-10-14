@@ -1,7 +1,8 @@
 # Character mechanics: delivery plan
 
 Updated 2026-10-14. Tracking: [issue #52](https://github.com/LuminariMUD/Duris/issues/52).
-Branch: `feature/52-character-mechanics`. Implementation is **active and incomplete**.
+Branch: `feature/52-character-mechanics`. Implementation is **paused and incomplete**
+at the user's request. Resume from the checkpoint below.
 This revision replaces the accumulated checkpoints and the one-connection-at-a-time
 sequence. It changes the delivery method, not the required scope. Historical
 implementation detail remains in Git; fixed defects are in
@@ -27,8 +28,8 @@ functions alone is insufficient.
 **Non-goals:** balance changes, enabling disabled routes, storage changes, or
 moving all mechanics into one module. No JSON catalogue, exporter, new service,
 registry database, rules engine, generic dispatcher, general C++ parser, or new
-test framework. Gameplay defects require separate changes. Implementation resumed
-on the user's instruction after this plan revision; release operations remain separate.
+test framework. Gameplay defects require separate changes. The user requested a
+minimal documented checkpoint and branch push; release operations remain separate.
 
 **Files:** finish the existing [contract header](../../src/player/character_mechanics.h)
 and [implementation](../../src/player/character_mechanics.c), connections beside
@@ -58,13 +59,46 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
+**Pause handoff (2026-10-14):** preserve the unfinished shared item-restriction batch
+on this branch. It adds typed bindings for `obj_race_bit_set`, `can_char_use_item`
+and `can_prime_class_use_item`, four mask-call markers and eight consumer markers
+across creation kits, wearing, NPC equipment, auction information, object/world
+procedures and necroplasm. The observer's source checker now recognizes these
+shared call sites. The only predicate-body reshaping is an equivalent braced `else`
+to attach a marker; no item policy or balance change is intended.
+
+This is a **WIP checkpoint, not a completed restriction batch**. Class,
+specialization, secondary-class, NPC-image and body/wear behavior assertions are
+still missing from the new bindings. New item-specific alias/caller/detached-marker
+negative cases are also pending. The existing race-bit test now includes the
+contract header so its extracted native predicates compile with the markers.
+Pause checks passed: `make -C src -j8`, the existing race-bit runtime test, native
+positive/binding assertions, current source locations, formatting, whitespace and
+documentation checks. Logs are `bin/tests/character-mechanics-pause-*.log`.
+No full mutation/world/integration rerun is
+claimed for these draft item changes; prior evidence below retains its recorded scope.
+
+No PR has been opened. PR splitting was stopped before branch or PR changes when
+the user requested this pause. All implementation remains in this worktree and on
+`feature/52-character-mechanics`; no shared dev server, database or Redis was changed.
+On resumption, own commits/tests/pushes and focused PR creation as each chunk is
+ready, stacking dependencies instead of accumulating the entire project into one PR.
+
+**First work on resume:** finish the item batch in the existing native harness,
+using real primary/secondary/spec predicates; qualify all current shared callers
+and the new reverse-marker rules. Preserve the general predicate's existing
+class-sharing exceptions and the primary-only predicate's narrower behavior.
+Then continue body/wear/mount and progression owners. The existing race-bit test
+does not establish every class/specialization/body rule. Open a focused PR once
+this chunk is ready; the full issue and final integration gate remain unfinished.
+
 Implementation checkpoints pushed: `6060b7e86` fixes hatred traversal/bounds;
 `b8cbf9678` connects shared innate timer/affect lifecycle ownership;
 `41714f500` fixes phantasmal removal lifetime. Earlier passing batches are
 `2fe7f8d72` (disabled routes),
 `c926e427b` (commands), `4a11e79f6` (creation), `1abfef484` (ability tables), and
 `ff80bae30` (generic race/death cleanup). Upstream `0e27ef1e8` was integrated
-through `f75e77b34`; this is not a later remote-head claim. Work is active.
+through `f75e77b34`; this is not a later remote-head claim.
 
 The shared-owner batch connects innate property/cooldown, real affect application
 and short-event expiry, and the affect-only phantasmal transition. The native
@@ -96,7 +130,7 @@ are `innate-source.log`). The ASan/UBSan event-cancellation test also passed;
 connection. Affect-only transitions may omit changed status fields; transitions
 claiming the status component still reject a missing status-field declaration.
 
-**Current repair:** `event_hatred_check` accessed released nodes after bulk removal
+**Completed repair:** `event_hatred_check` accessed released nodes after bulk removal
 and scanned index `MAX_HATRED`, outside the native row. Both were reproduced
 independently with ASan/UBSan. The separate fix removes one affect at a
 time, emits its message before release and observes the native race-row sentinel
@@ -106,12 +140,6 @@ current reverse-location checks, both reintroduced defect variants, server build
 formatting and documentation passed (`hatred-*.log`; original repro is
 `hatred-before.log`). The seven unchanged behavior mutations retain their passing
 innate-batch evidence; the maintained default runner now includes all nine.
-
-**Next:** continue the broader owner groups, beginning with the shared
-`can_char_use_item` / `can_prime_class_use_item` restrictions and their callers,
-then body/wear/mount and progression consumers. The existing race-bit runtime test
-covers all race bits but not every class/specialization/body rule. Do not add
-another round of pilot-only coverage before this migration.
 
 | Connected scope | Current evidence and boundary |
 | --- | --- |

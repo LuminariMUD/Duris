@@ -4,6 +4,7 @@
 */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "world/db.h"
 #include "cmd/interp.h"
@@ -2017,6 +2018,7 @@ static void auction_info_show(P_char ch, int auction_id, const sql_row &row)
 
 	spell_identify(60, ch, NULL, 0, 0, tmp_obj);
 
+	CHARACTER_MECHANIC_SITE(item_eligibility);
 	if (can_char_use_item(ch, tmp_obj))
 	{
 		send_to_char("&+WYour race and class is permitted to use this item.\r\n", ch);

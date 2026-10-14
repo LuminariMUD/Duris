@@ -14,6 +14,7 @@
 
 #include "item/native_artifact_actions.h"
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/utils.h"
 #include "item/artifact_mana.h"
 #include "magic/spells.h"
@@ -42,6 +43,7 @@ class necroplasm_adapter final : public item_action_adapter
 	}
 	bool validate(const item_action_context &c) const noexcept override
 	{
+		CHARACTER_MECHANIC_SITE(item_primary_eligibility);
 		if (!native_artifact_actor(c.actor) || OBJ_VNUM(c.source) != NECROPLASM ||
 		    c.actor->equipment[HOLD] == c.source ||
 		    !can_prime_class_use_item(c.actor, c.source) ||
