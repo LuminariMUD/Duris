@@ -5,6 +5,7 @@
 #include "player/player_snapshot.h"
 #include "world/epic_transaction.h"
 #include "economy/currency_transaction.h"
+#include "account/racewar_admission.h"
 
 #include <span>
 #include <source_location>
@@ -17,6 +18,7 @@ struct char_data;
 struct allowed_race_spec_struct;
 struct damage_messages;
 struct innate_data;
+struct cJSON;
 
 namespace character_mechanics
 {
@@ -101,6 +103,21 @@ enum class MechanicId
 	class_innate_grants,
 	innate_registration,
 	innate_callbacks,
+	creation_rules,
+	telnet_race_entry,
+	telnet_race_select,
+	telnet_class_entry,
+	telnet_class_select,
+	telnet_alignment_entry,
+	telnet_alignment_select,
+	websocket_options_entry,
+	websocket_options,
+	websocket_creation_entry,
+	websocket_creation,
+	account_admission_policy,
+	account_admission,
+	account_admission_commit,
+	character_initialize,
 	count
 };
 
@@ -203,6 +220,31 @@ using GrantWrites = std::span<const GrantWrite>;
 using InnateCallbacks = std::span<const innate_data>;
 using RacialInnates = const char (*)[LAST_INNATE + 1][LAST_RACE + 1];
 using ClassInnates = const char (*)[LAST_INNATE + 2][CLASS_COUNT][MAX_SPEC + 1];
+struct IdentityConnections;
+using CreationRules = const IdentityConnections *;
+using DescriptorSelection = void (*)(descriptor_data *, char *);
+using JsonCommand = void (*)(descriptor_data *, cJSON *);
+using AdmissionPolicy = decltype(&account_racewar_evaluate);
+using AdmissionCheck = account_racewar_admission (*)(descriptor_data *, int, bool, bool);
+using AdmissionCommit = bool (*)(descriptor_data *, char_data *, bool, account_racewar_admission *);
+struct LoginRegistration
+{
+	int state;
+	DescriptorSelection dispatcher;
+	DescriptorSelection selection;
+};
+struct JsonHandler
+{
+	const char *name;
+	JsonCommand handler;
+};
+struct JsonRegistration
+{
+	const char *command;
+	JsonCommand (*lookup)(const char *);
+	void (*dispatcher)(descriptor_data *, const char *, cJSON *);
+	std::span<const JsonHandler> handlers;
+};
 using MechanicBinding =
 	std::variant<const char *, const float *, CharacterIntPredicate, CharacterIntFunction,
 		     CharacterQuery, MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate,
@@ -211,7 +253,9 @@ using MechanicBinding =
 		     RoomRegistration, RoomProcedure, CharacterReset, SkillReset, SkillDataQuery,
 		     WalletSubmit, ClassHitpointFactors, RacialStatFactors, StatusFields,
 		     player_checkpoint_component, event_func_type, RacialAgeData, AffectRemoval,
-		     SkillTable, GrantWrites, InnateCallbacks, RacialInnates, ClassInnates>;
+		     SkillTable, GrantWrites, InnateCallbacks, RacialInnates, ClassInnates,
+		     CreationRules, DescriptorSelection, JsonCommand, LoginRegistration,
+		     JsonRegistration, AdmissionPolicy, AdmissionCheck, AdmissionCommit>;
 
 struct MechanicConnection
 {
@@ -291,6 +335,10 @@ std::span<const MechanicConnection> affect_cleanup_connections();
 std::span<const MechanicConnection> death_connections();
 std::span<const MechanicConnection> skill_registration_connections();
 std::span<const MechanicConnection> innate_registration_connections();
+std::span<const MechanicConnection> creation_rule_connections();
+std::span<const MechanicConnection> telnet_creation_connections();
+std::span<const MechanicConnection> websocket_creation_connections();
+std::span<const MechanicConnection> admission_connections();
 std::span<const TransitionConnection> revenant_transitions();
 std::span<const TransitionConnection> multiclass_transitions();
 std::span<const TransitionConnection> specialization_transitions();

@@ -36,6 +36,7 @@
 #include "core/utils.h"
 #include "core/safe_format.h"
 #include "account/account.h"
+#include "player/character_mechanics.h"
 #include "account/account_recovery.h"
 #include "account/account_reward.h"
 #include "account/creation_availability_config.h"
@@ -3421,4 +3422,44 @@ const char *get_account_name_safe(P_char ch)
 	// Character not connected or no account - return "Unknown"
 	// This can happen when updating offline characters or during loading
 	return "Unknown";
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::admission_connections()
+{
+	static constexpr MechanicId policy[] = { MechanicId::account_admission_policy };
+	static constexpr MechanicId check[] = { MechanicId::account_admission };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::account_admission_policy,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(account_racewar_evaluate),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual pure blocked/side/cooldown evaluator used by this account admission owner; independent from character creation switches.",
+		  {} },
+		{ MechanicId::account_admission,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(account_check_racewar_admission),
+		  policy,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Reads the actual account's side timestamps, current clock and account.timer.racewarSwitch before applying the shared admission policy.",
+		  {} },
+		{ MechanicId::account_admission_commit,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(account_commit_character_admission),
+		  check,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Rechecks admission, records the side timestamp and requires account-write acceptance; restores the prior timestamp and reports failure when that write is rejected.",
+		  {} }
+	};
+	return connections;
 }

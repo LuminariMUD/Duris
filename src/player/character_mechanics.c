@@ -22,6 +22,21 @@ bool entry_registered(const MechanicConnection &entry,
 		{
 			if (target.id != id)
 				continue;
+			if (const auto *login = std::get_if<LoginRegistration>(&entry.binding))
+			{
+				const auto *handler =
+					std::get_if<DescriptorSelection>(&target.binding);
+				if (login->state >= 0 && login->dispatcher && login->selection &&
+				    handler && login->selection == *handler)
+					return true;
+			}
+			if (const auto *json = std::get_if<JsonRegistration>(&entry.binding))
+			{
+				const auto *handler = std::get_if<JsonCommand>(&target.binding);
+				if (json->command && json->lookup && json->dispatcher && handler &&
+				    json->lookup(json->command) == *handler && *handler)
+					return true;
+			}
 			if (const auto *slot = std::get_if<CommandSlot>(&entry.binding))
 			{
 				const auto *handler = std::get_if<CommandHandler>(&target.binding);
@@ -214,6 +229,36 @@ std::string_view mechanic_name(MechanicId id)
 		return "innate.registration";
 	case MechanicId::innate_callbacks:
 		return "innate.callbacks";
+	case MechanicId::creation_rules:
+		return "creation.rules";
+	case MechanicId::telnet_race_entry:
+		return "telnet.race.entry";
+	case MechanicId::telnet_race_select:
+		return "telnet.race.select";
+	case MechanicId::telnet_class_entry:
+		return "telnet.class.entry";
+	case MechanicId::telnet_class_select:
+		return "telnet.class.select";
+	case MechanicId::telnet_alignment_entry:
+		return "telnet.alignment.entry";
+	case MechanicId::telnet_alignment_select:
+		return "telnet.alignment.select";
+	case MechanicId::websocket_options_entry:
+		return "websocket.options.entry";
+	case MechanicId::websocket_options:
+		return "websocket.options";
+	case MechanicId::websocket_creation_entry:
+		return "websocket.creation.entry";
+	case MechanicId::websocket_creation:
+		return "websocket.creation";
+	case MechanicId::account_admission_policy:
+		return "account.admission.policy";
+	case MechanicId::account_admission:
+		return "account.admission";
+	case MechanicId::account_admission_commit:
+		return "account.admission.commit";
+	case MechanicId::character_initialize:
+		return "character.initialize";
 	case MechanicId::count:
 		break;
 	}
@@ -253,7 +298,11 @@ std::vector<MechanicConnection> mechanic_connections()
 				  affect_cleanup_connections(),
 				  death_connections(),
 				  skill_registration_connections(),
-				  innate_registration_connections() })
+				  innate_registration_connections(),
+				  creation_rule_connections(),
+				  telnet_creation_connections(),
+				  websocket_creation_connections(),
+				  admission_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -459,6 +508,15 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 									  ObjectRegistration>)
 						return binding.index && *binding.index &&
 						       binding.lookup;
+					else if constexpr (std::is_same_v<decltype(binding),
+									  LoginRegistration>)
+						return binding.state >= 0 && binding.dispatcher &&
+						       binding.selection;
+					else if constexpr (std::is_same_v<decltype(binding),
+									  JsonRegistration>)
+						return binding.command && *binding.command &&
+						       binding.lookup && binding.dispatcher &&
+						       !binding.handlers.empty();
 					else
 						return binding != nullptr;
 				},
@@ -476,7 +534,10 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			compatible =
 				std::holds_alternative<CharacterIntPredicate>(connection.binding) ||
 				std::holds_alternative<CharacterIntFunction>(connection.binding) ||
-				std::holds_alternative<RaceSpecPredicate>(connection.binding);
+				std::holds_alternative<RaceSpecPredicate>(connection.binding) ||
+				std::holds_alternative<CreationRules>(connection.binding) ||
+				std::holds_alternative<AdmissionPolicy>(connection.binding) ||
+				std::holds_alternative<AdmissionCheck>(connection.binding);
 			break;
 		case Relation::grant:
 			compatible = std::holds_alternative<const char *>(connection.binding) ||
@@ -507,6 +568,9 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::effect:
 			compatible =
+				std::holds_alternative<AdmissionCommit>(connection.binding) ||
+				std::holds_alternative<DescriptorSelection>(connection.binding) ||
+				std::holds_alternative<JsonCommand>(connection.binding) ||
 				std::holds_alternative<AffectRemoval>(connection.binding) ||
 				std::holds_alternative<event_func_type>(connection.binding) ||
 				std::holds_alternative<MeleeDamage>(connection.binding) ||
@@ -527,7 +591,9 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			compatible =
 				std::holds_alternative<CommandSlot>(connection.binding) ||
 				std::holds_alternative<ObjectRegistration>(connection.binding) ||
-				std::holds_alternative<RoomRegistration>(connection.binding);
+				std::holds_alternative<RoomRegistration>(connection.binding) ||
+				std::holds_alternative<LoginRegistration>(connection.binding) ||
+				std::holds_alternative<JsonRegistration>(connection.binding);
 			break;
 		case Relation::mutation:
 			compatible =
@@ -593,7 +659,49 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 					"room registration missing or different handler" :
 				std::holds_alternative<ObjectRegistration>(connection.binding) ?
 					"object registration missing or different handler" :
+				std::holds_alternative<JsonRegistration>(connection.binding) ?
+					"JSON registration missing or different handler" :
+				std::holds_alternative<LoginRegistration>(connection.binding) ?
+					"login state registration missing or different handler" :
 					"command registration missing or different handler");
+		if (const auto *json = std::get_if<JsonRegistration>(&connection.binding))
+		{
+			for (const auto &mapping : json->handlers)
+			{
+				if (!mapping.name || !*mapping.name)
+				{
+					require(false, "JSON mapping has no command name");
+					continue;
+				}
+				const bool scoped = std::any_of(
+					connections.begin(), connections.end(),
+					[&](const auto &target)
+					{
+						const auto *handler =
+							std::get_if<JsonCommand>(&target.binding);
+						return handler && *handler &&
+						       *handler == mapping.handler;
+					});
+				if (!scoped)
+					continue;
+				const bool registered = std::any_of(
+					connections.begin(), connections.end(),
+					[&](const auto &candidate)
+					{
+						const auto *entry = std::get_if<JsonRegistration>(
+							&candidate.binding);
+						return entry &&
+						       entry->handlers.data() ==
+							       json->handlers.data() &&
+						       entry->command &&
+						       !std::strcmp(entry->command, mapping.name) &&
+						       entry_registered(candidate, connections);
+					});
+				if (!registered)
+					errors.push_back(name + ": unregistered JSON alias " +
+							 mapping.name);
+			}
+		}
 		if (connection.relation == Relation::passive)
 		{
 			bool consumer = false;

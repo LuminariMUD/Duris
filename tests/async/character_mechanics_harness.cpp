@@ -782,6 +782,90 @@ static void expect_diagnostic(const IdentityConnections &connections, const char
 	std::abort();
 }
 
+extern int mechanic_login_selection, mechanic_json_selection, mechanic_json_fallback;
+
+static void creation_bindings()
+{
+	auto mechanics = mechanic_connections();
+	descriptor_data descriptor{};
+	char argument[] = "";
+	int login_entries = 0, json_entries = 0;
+	for (const auto &connection : mechanics)
+	{
+		if (const auto *rules = std::get_if<CreationRules>(&connection.binding))
+		{
+			assert((*rules)->race_enabled == creation_race_enabled);
+			assert((*rules)->class_alignment(RACE_HUMAN, flag2idx(CLASS_NECROMANCER)) ==
+			       -1);
+		}
+		if (const auto *login = std::get_if<LoginRegistration>(&connection.binding))
+		{
+			++login_entries;
+			mechanic_login_selection = 0;
+			login->selection(&descriptor, argument);
+			const auto expected = mechanic_login_selection;
+			assert(expected);
+			mechanic_login_selection = 0;
+			descriptor.connected = login->state;
+			login->dispatcher(&descriptor, argument);
+			assert(mechanic_login_selection == expected);
+			auto missing = mechanics;
+			for (auto &changed : missing)
+				if (changed.id == connection.id)
+					std::get<LoginRegistration>(changed.binding).selection =
+						nullptr;
+			assert(!validate_mechanics(missing).empty());
+		}
+		if (const auto *json = std::get_if<JsonRegistration>(&connection.binding))
+		{
+			++json_entries;
+			assert(!json->lookup("__not_registered__") && !json->lookup(nullptr));
+			mechanic_json_selection = 0;
+			descriptor.writer_wait_id = 1;
+			json->dispatcher(&descriptor, json->command, nullptr);
+			assert(!mechanic_json_selection);
+			descriptor.writer_wait_id = 0;
+			json->dispatcher(&descriptor, json->command, nullptr);
+			assert(mechanic_json_selection);
+			const auto expected = mechanic_json_selection;
+			mechanic_json_selection = 0;
+			json->lookup(json->command)(&descriptor, nullptr);
+			assert(mechanic_json_selection == expected);
+			auto missing = mechanics;
+			for (auto &changed : missing)
+				if (changed.id == connection.id)
+					std::get<JsonRegistration>(changed.binding).command =
+						"__not_registered__";
+			assert(!validate_mechanics(missing).empty());
+			std::vector<JsonHandler> aliases(json->handlers.begin(),
+							 json->handlers.end());
+			aliases.push_back(
+				{ "__new_creation_alias__", json->lookup(json->command) });
+			auto aliased = mechanics;
+			for (auto &changed : aliased)
+				if (auto *entry = std::get_if<JsonRegistration>(&changed.binding))
+					entry->handlers = aliases;
+			const auto alias_errors = validate_mechanics(aliased);
+			assert(std::any_of(
+				alias_errors.begin(), alias_errors.end(),
+				[](const auto &error) {
+					return error.find(
+						       "unregistered JSON alias __new_creation_alias__") !=
+					       std::string::npos;
+				}));
+			descriptor.connected = CON_PLAYING;
+			const int before = mechanic_json_fallback;
+			json->dispatcher(&descriptor, nullptr, nullptr);
+			assert(mechanic_json_fallback == before);
+			json->dispatcher(&descriptor, "__not_registered__", nullptr);
+			assert(mechanic_json_fallback == before + 1);
+		}
+	}
+	assert(login_entries == 3 && json_entries == 2);
+	std::puts(
+		"creation.bindings: PASS (actual login case excerpts, JSON table/dispatcher, missing slots and writer fence; selection/creation bodies and earlier login guards are separate world evidence)");
+}
+
 static void ability_registration()
 {
 	initialize_skills();
@@ -887,6 +971,7 @@ int main()
 {
 	ability_registration();
 	specialization_transition();
+	creation_bindings();
 	guardian_bulwark();
 	unspecialization_transition();
 	skill_class_mask_bounds();

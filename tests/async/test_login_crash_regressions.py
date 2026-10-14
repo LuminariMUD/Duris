@@ -62,7 +62,7 @@ check("pending login keeps telnet type-ahead queued",
       comm.index("select_session_input(point, t_ch, comm)"))
 dispatch = ws_handlers[ws_handlers.index("void ws_handle_command("):]
 check("pending login blocks websocket commands before dispatch",
-      dispatch.index("d->login_password_job") < dispatch.index("entry.handler(d, data)"))
+      dispatch.index("d->login_password_job") < dispatch.index("handler(d, data)"))
 close = comm[comm.index("void close_socket("):]
 check("disconnect cancels verification before releasing the account",
       close.index("password_login_release(d->login_password_job)") < close.index("free_account("))

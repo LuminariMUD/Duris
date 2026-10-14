@@ -58,19 +58,31 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last committed checkpoint: `ff80bae30` connects generic race restoration and death
-cleanup. Its focused ASan/UBSan mechanics and mutation test, snapshot regression,
-server build and formatting passed. Upstream `0e27ef1e8` was integrated through
+Last committed checkpoint: `1abfef484` connects native ability registration tables
+and write provenance; `ff80bae30` connects generic race restoration and death
+cleanup. Their focused checks passed. Upstream `0e27ef1e8` was integrated through
 `f75e77b34`; these are reference points, not a later remote-head claim.
 
-The current registration batch binds the complete initialized skill/spell/tag and
+The registration connections bind the complete initialized skill/spell/tag and
 innate tables. Startup provenance observes **8,807 skill/definition writes and 447
 innate grants at 3,390 caller locations**. Native checks compare final cells with
 observed writes, catch missing provenance and incompatible overwrites, and preserve
 specialization overrides of class-wide defaults. The reverse check matches actual
 initializer calls to those native locations; new aliases/callers and stale calls
 are deliberate negative cases. This completes table/provenance coverage, not the
-remaining ability acquisition, effects or lifecycle connections.
+remaining ability acquisition, effects or lifecycle connections. All **632**
+registered spell/poison callback symbols resolve uniquely to production definitions;
+removing an implementation is a negative case. This proves location, not effects.
+
+The current creation batch binds the actual Telnet state/selection calls, WebSocket
+command table/lookup/dispatcher, shared creation predicates, account preflight/commit
+and character initialization. Native checks reject detached handlers, altered state
+bindings and new aliases, and exercise the actual JSON writer fence and unknown
+command fallback. Full-server fixtures cover normal menus, forbidden submissions,
+starter skills and persistence. Human Necromancer remains explicitly transport
+dependent: Telnet accepts it; WebSocket lists it but rejects creation because Human
+receives good-faction alignment. Initialization's complete state/innate/body sites
+and starter-kit lifecycle ownership remain incomplete.
 
 One precise existing conflict remains incomplete: blindfighting's Rogue Assassin
 cap 100 is overwritten by the later class-wide cap 90. The test requires that exact
@@ -78,18 +90,19 @@ conflict and both original values, while rejecting additional conflicts. Preserv
 the current result pending a balance decision; it is not an intentional override
 inferred from the final table.
 
-| Evidence for the current batch | Scope/status |
+| Evidence for the current creation batch | Scope/status |
 | --- | --- |
-| `python3 tests/async/test_character_mechanics.py` | Passed, including 3,390 source/provenance locations and all native assertions. Compiled negative cases were reduced from 31 to six distinct mechanisms; the reduced default run passed in 74.97 seconds. Logs: `bin/tests/character-mechanics-registration.log` (prior full mutation set) and `character-mechanics-registration-reduced.log` (current default). |
-| `make -C src -j8` | Passed after the registration changes. |
-| Editor, pfile and migration tools | `make -j8 build-editor`, `make -C src -j4 pfile`, and `make -C migrations/tools -j4 all affects pfile_converter` passed. |
-| Reflection and race-help sync | Existing focused tests passed; Reflection still bounds its spell effect. |
-| Documentation/format/whitespace | Passed. Logs for this batch use `bin/tests/character-mechanics-registration-*.log`. |
+| `python3 tests/async/test_character_mechanics.py` | Passed for creation bindings, 3,390 source/provenance locations, 632 callback implementations, native assertions and six compiled negative cases. Log: `bin/tests/character-mechanics-creation-native.log`. |
+| `make -C src -j8` | Passed; `bin/tests/character-mechanics-creation-build.log`. |
+| `python3 tests/async/test_creation_prompt_journey.py` | All 15 private-server scenarios passed, including JSON admission cooldown after good-side creation, starter skill/save/restart and Telnet relog; flat-file minimal world, normal switches false except explicit override scenarios. Log: `bin/tests/character-mechanics-creation-prompts.log`. |
+| Login/admission regressions | Focused login source/crash and admission policy/source tests passed; `bin/tests/character-mechanics-creation-admission.log`. |
+| Other build consumers | Editor, pfile and migration-tool checks passed at `1abfef484`; the final integration gate still includes them. |
+| Documentation/format/whitespace | Passed; `bin/tests/character-mechanics-creation-documentation.log` and `character-mechanics-creation-format.log`. |
 
 Full reverse ownership beyond these tables and the existing Bulwark/altar/
 multiclass/crown/cleanup sites remains open. The candidate scan is investigation
 input, not classified coverage. Bulwark's native raw damage is still a recording
-stub. Creation/admission, other consumers and transitions, natural acquisition and
+stub. Complete creation state/lifecycle ownership, other consumers and transitions, natural acquisition and
 the required wider behavioral cases remain.
 
 Last full repository gate predates these batches: **729 passed, 1 failed**, 669.44

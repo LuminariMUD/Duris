@@ -114,6 +114,20 @@ def check_registration_sites(sources, observed):
     return errors
 
 
+def native_definition_count(sources, symbol):
+    count = 0
+    for path, text in sources.items():
+        if symbol not in text:
+            continue
+        for body in function_bodies(text, rf"\b(?:int|bool|void|ClassSkillInfo|account_racewar_admission)\s+{symbol}\s*\("):
+            # This exact offline stub deliberately has no gameplay refresh.
+            if (path == "account/pfile-stubs.c" and symbol == "update_skills"
+                    and re.fullmatch(r"\{\s*\}", body)):
+                continue
+            count += 1
+    return count
+
+
 def check_mechanic_sites(sources, bindings):
     """Migrated statements and bounded Bulwark/altar/multiclass/crown reverse checks.
 
@@ -122,6 +136,9 @@ def check_mechanic_sites(sources, bindings):
     The remainder of the option-site migration is still explicitly outstanding.
     """
     obligations = {
+        "telnet_race_entry": ("account/nanny.c", r"select_race\(d, arg\);"),
+        "telnet_class_entry": ("account/nanny.c", r"select_class\(d, arg\);"),
+        "telnet_alignment_entry": ("account/nanny.c", r"select_alignment\(d, arg\);"),
         "race_affect_cleanup": ("magic/affects.c", (
             r"GET_RACE\(ch\) = af->modifier;",
             r"if\s*\(af->type == TAG_RACE_CHANGE && IS_SET\(af->flags, AFFTYPE_NOSAVE\) &&\s*af->modifier >= RACE_NONE && af->modifier <= LAST_RACE\)\s*ch->player\.time\.birth =\s*time\(NULL\) - racial_data\[af->modifier\]\.base_age \* SECS_PER_MUD_YEAR;",
@@ -244,17 +261,7 @@ def check_mechanic_sites(sources, bindings):
     # executable used, rather than a second editable table of function names.
     for mechanic, (symbol, kind) in bindings.items():
         if kind == "callable" and re.fullmatch(r"[a-zA-Z_]\w*", symbol):
-            definitions = 0
-            for path, text in sources.items():
-                if symbol not in text:
-                    continue
-                for body in function_bodies(text, rf"\b(?:int|bool|void|ClassSkillInfo)\s+{symbol}\s*\("):
-                    # The offline pfile executable deliberately has no skill
-                    # refresh. Exclude only its exact empty stub, not the file.
-                    if (path == "account/pfile-stubs.c" and symbol == "update_skills"
-                            and re.fullmatch(r"\{\s*\}", body)):
-                        continue
-                    definitions += 1
+            definitions = native_definition_count(sources, symbol)
             if definitions != 1:
                 errors.append(f"{mechanic}: native definition missing/conflicting: {symbol}")
     for path, text in sources.items():
@@ -344,6 +351,14 @@ def check_mechanic_sites(sources, bindings):
                     and re.fullmatch(r"static void remove_death_affects\(P_char ch\)\s*", line)):
                 continue
             errors.append(f"{path}:{code.count(chr(10), 0, token.start()) + 1}: unregistered site/alias {token.group()}")
+    for stem, state, handler in (("race", "CON_GET_RACE", "select_race"),
+                                  ("class", "CON_GET_CLASS", "select_class"),
+                                  ("alignment", "CON_ALIGN", "select_alignment")):
+        code = strip_comments(sources["account/nanny.c"])
+        pattern = (rf"case\s+{state}:\s*CHARACTER_MECHANIC_SITE\(telnet_{stem}_entry\);"
+                   rf"\s*{handler}\(d, arg\);\s*break;")
+        if len(re.findall(pattern, code)) != 1:
+            errors.append(f"telnet.{stem}.entry: native login case changed")
     death = list(function_bodies(strip_comments(sources["combat/fight.c"]), r"\bvoid\s+die\s*\("))
     if len(death) != 1 or death[0].count("remove_death_affects(ch);") != 1:
         errors.append("death.affect.cleanup: missing death caller")
@@ -387,7 +402,7 @@ inputs = [
     source("chaos_config.c"),
     source("safe_format.c"),
     source("epic_transaction.c"), source("epic_command.c"), source("critical_command.c"),
-    source("hardcore_config.c"),
+    source("hardcore_config.c"), source("racewar_admission.c"),
     source("currency_transaction.c"), source("currency_command.c"),
     HARNESS_STUBS,
 ]
@@ -419,6 +434,8 @@ combat_prelude = r'''
 #include "classes/specializations.h"
 #include "account/creation_availability_config.h"
 #include "cmd/interp.h"
+#include "net/ws_handlers.h"
+#include "account/racewar_admission.h"
 #include "player/character_mechanics.h"
 #include "persistence/persistence_checkpoint.h"
 #include "guild/assocs.h"
@@ -697,6 +714,37 @@ combat_bodies += '\nvoid initialize_mechanic_objects() {\nobject_prototypes[1].v
 room_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(multiclass_room_" + name + r"\);\s*world\[[^;]+;", assignments).group()
                       for name in ("test", "temple")]
 combat_bodies += '\nvoid initialize_mechanic_rooms() {\nmechanic_rooms[1].number = 17;\nmechanic_rooms[2].number = 52904;\n' + "\n".join(room_registrations) + "\n}\n"
+# Only dispatch identity/fences are tested here. Actual Telnet selections and
+# JSON creation bodies remain world/command behavior obligations.
+nanny_source = source("nanny.c").read_text()
+ws_source = source("ws_handlers.c").read_text()
+login_cases = [re.search(r"case " + state + r":\s*CHARACTER_MECHANIC_SITE\(telnet_" + stem +
+                        r"_entry\);\s*" + handler + r"\(d, arg\);\s*break;", nanny_source).group()
+               for stem, state, handler in (("race", "CON_GET_RACE", "select_race"),
+                                             ("class", "CON_GET_CLASS", "select_class"),
+                                             ("alignment", "CON_ALIGN", "select_alignment"))]
+ws_table = re.search(r'static const character_mechanics::JsonHandler websocket_handlers\[\] = \{.*?\n\};', ws_source, re.S).group()
+ws_callbacks = sorted(set(re.findall(r'\{ "[^"\n]+", (ws_cmd_\w+) \}', ws_table)))
+combat_bodies += "\nint mechanic_login_selection, mechanic_json_selection, mechanic_json_fallback;\n"
+combat_bodies += 'account_racewar_admission account_check_racewar_admission(P_desc, int, bool, bool) { std::abort(); }\n'
+combat_bodies += 'bool account_commit_character_admission(P_desc, P_char, bool, account_racewar_admission *) { std::abort(); }\n'
+combat_bodies += 'void init_char(P_char) { std::abort(); }\n'
+combat_bodies += production_function("account.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::admission_connections(")
+
+for number, name in enumerate(("select_race", "select_class", "select_alignment"), 1):
+    combat_bodies += f"void {name}(P_desc, char *) {{ mechanic_login_selection = {number}; }}\n"
+for name in ws_callbacks:
+    body = ("mechanic_json_selection = 1;" if name == "ws_cmd_chargen_options" else
+            "mechanic_json_selection = 2;" if name == "ws_cmd_create_character" else "std::abort();")
+    combat_bodies += f"void {name}(P_desc, cJSON *) {{ {body} }}\n"
+combat_bodies += ("void write_to_q(const char *, struct txt_q *, const int) { ++mechanic_json_fallback; }\n"
+                  "void nanny(P_desc d, char *arg) { switch (STATE(d)) {\n" +
+                  "\n".join(login_cases) + "\ndefault: std::abort(); } }\n" + ws_table + "\n" +
+                  production_function("ws_handlers.c", "static ws_cmd_handler find_websocket_handler(") +
+                  production_function("ws_handlers.c", "void ws_handle_command(") +
+                  production_function("nanny.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::telnet_creation_connections(") +
+                  production_function("ws_handlers.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::websocket_creation_connections("))
+
 combat_driver = r'''
 void load_character_properties() {
     properties_count = load_properties(duris_properties);
@@ -806,6 +854,8 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
             path = str(Path(path).relative_to(ROOT)) if Path(path).is_absolute() else path
             assert path in ("src/classes/innates.c", "src/combat/fight.c", "src/cmd/interp.c",
                             "src/classes/specializations.c", "src/classes/skills.c", "src/guild/guild.c",
+                            "src/account/nanny.c", "src/net/ws_handlers.c", "src/account/creation_availability_config.c",
+                            "src/account/account.c", "src/account/racewar_admission.c",
                             "src/specs/specs.assign.c", "src/specs/specs.object.c", "src/classes/memorize.c",
                             "src/world/epic_transaction.c",
                             "src/economy/tradeskill.c",
@@ -836,6 +886,16 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     assert any("stale registration provenance" in error
                for error in check_registration_sites(removed, observed))
     print(f"ability.registration.reverse: PASS ({len(observed)} native caller sites; new alias/caller and stale call detected)")
+    missing_callbacks = [name for name in skill_callbacks if native_definition_count(sources, name) != 1]
+    assert not missing_callbacks, ("missing/conflicting registered callback implementations", missing_callbacks)
+    missing_callback = dict(sources)
+    callback_owner = "magic/magic.c"
+    original_callback = "void spell_draconic_apotheosis("
+    assert original_callback in missing_callback[callback_owner]
+    missing_callback[callback_owner] = missing_callback[callback_owner].replace(
+        original_callback, "void unregistered_apotheosis(", 1)
+    assert native_definition_count(missing_callback, "spell_draconic_apotheosis") == 0
+    print(f"ability.implementations: PASS ({len(skill_callbacks)} registered spell/poison callback symbols resolve to production definitions; removed implementation rejected; effect behavior is separate)")
     errors = check_mechanic_sites(sources, bindings)
     assert not errors, "\n".join(errors)
     fight = sources["combat/fight.c"]
@@ -869,6 +929,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     print("multiclass.reverse: PASS (new room overwrite, temple alias and caller rejected)")
     print("revenant.reverse: PASS (new crown alias, overwrite and lifecycle caller rejected)")
     for name, path, old, new, diagnostic in [
+        ("login_case_changed", "account/nanny.c", "case CON_GET_RACE:", "case CON_GET_CLASS:", "native login case changed"),
         ("death_call_removed", "combat/fight.c", "remove_death_affects(ch);", ";", "missing death caller"),
         ("death_call_guarded", "combat/fight.c", "CHARACTER_MECHANIC_SITE(death_affect_cleanup);\n\t\t\tremove_death_affects(ch);",
          "if (false) { CHARACTER_MECHANIC_SITE(death_affect_cleanup);\n\t\t\tremove_death_affects(ch); }", "death caller guards changed"),

@@ -29,6 +29,7 @@
 #include "world/db.h"
 #include "core/utils.h"
 #include "net/ws_handlers.h"
+#include "player/character_mechanics.h"
 #include <ctype.h>
 #include <math.h>
 #include <openssl/crypto.h>
@@ -3732,57 +3733,61 @@ void ws_cmd_poll_vote(struct descriptor_data *d, cJSON *data)
 	}
 }
 
+static const character_mechanics::JsonHandler websocket_handlers[] = {
+	{ "login", ws_cmd_login },
+	{ "durisweb_challenge", ws_cmd_durisweb_challenge },
+	{ "register", ws_cmd_register },
+	{ "request_reset", ws_cmd_request_reset },
+	{ "complete_reset", ws_cmd_complete_reset },
+	{ "enter", ws_cmd_enter },
+	{ "game", ws_cmd_game },
+	{ "chargen_options", ws_cmd_chargen_options },
+	{ "roll_stats", ws_cmd_roll_stats },
+	{ "add_bonus", ws_cmd_add_bonus },
+	{ "validate_name", ws_cmd_validate_name },
+	{ "get_hometowns", ws_cmd_get_hometowns },
+	{ "create_character", ws_cmd_create_character },
+	{ "swap_stats", ws_cmd_swap_stats },
+	{ "account_info", ws_cmd_account_info },
+	{ "change_email", ws_cmd_change_email },
+	{ "change_password", ws_cmd_change_password },
+	{ "delete_character", ws_cmd_delete_character },
+	{ "rested_bonus", ws_cmd_rested_bonus },
+	{ "logout", ws_cmd_logout },
+	{ "durisweb_auth", ws_cmd_durisweb_auth },
+	{ "admin_delete_character", ws_cmd_admin_delete_character },
+	{ "poll_list", ws_cmd_poll_list },
+	{ "poll_view", ws_cmd_poll_view },
+	{ "poll_vote", ws_cmd_poll_vote },
+	{ "request_wholist", ws_cmd_request_wholist },
+	{ "durisweb_hook_state", ws_cmd_durisweb_hook_state },
+	{ "durisweb_hook_set", ws_cmd_durisweb_hook_set },
+	{ "durisweb_auction_remove", ws_cmd_durisweb_auction_remove },
+};
+
+static ws_cmd_handler find_websocket_handler(const char *command)
+{
+	if (!command)
+		return nullptr;
+	for (const auto &entry : websocket_handlers)
+		if (!strcmp(command, entry.name))
+			return entry.handler;
+	return nullptr;
+}
+
 /* dispatch */
 void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 {
 	/* No account mutation or entry may overtake password verification. */
 	if (d && (d->login_password_job || d->password_request || d->writer_wait_id))
 		return;
-	static const struct
-	{
-		const char *name;
-		ws_cmd_handler handler;
-	} handlers[] = {
-		{ "login", ws_cmd_login },
-		{ "durisweb_challenge", ws_cmd_durisweb_challenge },
-		{ "register", ws_cmd_register },
-		{ "request_reset", ws_cmd_request_reset },
-		{ "complete_reset", ws_cmd_complete_reset },
-		{ "enter", ws_cmd_enter },
-		{ "game", ws_cmd_game },
-		{ "chargen_options", ws_cmd_chargen_options },
-		{ "roll_stats", ws_cmd_roll_stats },
-		{ "add_bonus", ws_cmd_add_bonus },
-		{ "validate_name", ws_cmd_validate_name },
-		{ "get_hometowns", ws_cmd_get_hometowns },
-		{ "create_character", ws_cmd_create_character },
-		{ "swap_stats", ws_cmd_swap_stats },
-		{ "account_info", ws_cmd_account_info },
-		{ "change_email", ws_cmd_change_email },
-		{ "change_password", ws_cmd_change_password },
-		{ "delete_character", ws_cmd_delete_character },
-		{ "rested_bonus", ws_cmd_rested_bonus },
-		{ "logout", ws_cmd_logout },
-		{ "durisweb_auth", ws_cmd_durisweb_auth },
-		{ "admin_delete_character", ws_cmd_admin_delete_character },
-		{ "poll_list", ws_cmd_poll_list },
-		{ "poll_view", ws_cmd_poll_view },
-		{ "poll_vote", ws_cmd_poll_vote },
-		{ "request_wholist", ws_cmd_request_wholist },
-		{ "durisweb_hook_state", ws_cmd_durisweb_hook_state },
-		{ "durisweb_hook_set", ws_cmd_durisweb_hook_set },
-		{ "durisweb_auction_remove", ws_cmd_durisweb_auction_remove },
-	};
 
 	if (!cmd)
 		return;
-	for (const auto &entry : handlers)
+	if (const auto handler = find_websocket_handler(cmd))
 	{
-		if (!strcmp(cmd, entry.name))
-		{
-			entry.handler(d, data);
-			return;
-		}
+		handler(d, data);
+		return;
 	}
 
 	/* Unknown messages remain raw game commands for authenticated players. */
@@ -3794,4 +3799,64 @@ void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 void ws_handlers_init(void)
 {
 	statuslog(56, "WebSocket command handlers initialized");
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::websocket_creation_connections()
+{
+	static constexpr MechanicId rules[] = { MechanicId::creation_rules };
+	static constexpr MechanicId options[] = { MechanicId::websocket_options };
+	static constexpr MechanicId creation[] = { MechanicId::websocket_creation };
+	static constexpr MechanicId creation_owners[] = {
+		MechanicId::creation_rules,	      MechanicId::account_admission,
+		MechanicId::account_admission_commit, MechanicId::character_initialize,
+		MechanicId::status_capture,	      MechanicId::status_load
+	};
+	static const MechanicConnection connections[] = {
+		{ MechanicId::websocket_options_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(
+			  (JsonRegistration{ "chargen_options", find_websocket_handler,
+					     ws_handle_command, websocket_handlers })),
+		  options,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual JSON command mapping; pending password/writer work fences dispatch before lookup.",
+		  {} },
+		{ MechanicId::websocket_options,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(ws_cmd_chargen_options),
+		  rules,
+		  Access::conditional,
+		  Implementation::connected,
+		  "WebSocket race/class menu uses existing roster, class availability and transport alignment names.",
+		  {} },
+		{ MechanicId::websocket_creation_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(
+			  (JsonRegistration{ "create_character", find_websocket_handler,
+					     ws_handle_command, websocket_handlers })),
+		  creation,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual JSON create_character mapping, independently bound from the chargen menu.",
+		  {} },
+		{ MechanicId::websocket_creation,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(ws_cmd_create_character),
+		  creation_owners,
+		  Access::conditional,
+		  Implementation::incomplete,
+		  "Actual creation handler checks fields, race/class eligibility, faction-derived alignment and account preflight before allocation; later commit and persistence remain in this handler.",
+		  "Complete changed-state/lifecycle declarations and starter-kit handoff still need explicit ownership; account preflight/commit and native initialization are connected." }
+	};
+	return connections;
 }

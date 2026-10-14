@@ -7,6 +7,8 @@ provides the real socket client and server lifecycle, not mocked nanny handlers.
 """
 
 from pathlib import Path
+import json
+import socket
 import subprocess
 import tempfile
 import time
@@ -284,6 +286,10 @@ def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=
     if exercise_retries:
         reply(client, "?", "Please choose a real hometown: ")
     reply(client, "p", "Press return to continue")
+    finish_stat_choices(client, exercise_retries=exercise_retries)
+
+
+def finish_stat_choices(client, *, exercise_retries=False):
     reply(client, "", "first bonus")
     for next_bonus in ("second bonus", "third bonus", "fourth bonus"):
         if exercise_retries:
@@ -374,7 +380,130 @@ def normal_after_hardcore(client, server):
         other.close()
 
 
+def human_necromancer_creation(client, server):
+    """Telnet accepts the evil-only Human cell that JSON faction alignment rejects."""
+    reach_race(client)
+    reply(client, "h", "Male or Female")
+    reply(client, "m", "H (for Hardcore), N (for Normal)")
+    reply(client, "n", "Class Selection")
+    client.expect(RACE_MENU)
+    selected = reply(client, "n", RACE_MENU)
+    require("Alignment only affects" not in selected, "evil-only class unexpectedly offered alignment choice")
+    reply(client, "p", "Press return to continue")
+    finish_stat_choices(client)
+    reply(client, "y", "PRESS RETURN")
+    reply(client, "", "Your starter kit is ready")
+    client.expect("Pos: standing >")
+    score = reply(client, "score", "Pos: standing >")
+    require("human" in score.lower() and "necromancer" in score.lower(),
+            "Telnet did not create the allowed Human Necromancer")
+
+
+def websocket_creation(client, server):
+    """Normal JSON menus/denials/creation, then a persisted Telnet relog."""
+    from test_connection_limit_journey import upgrade, send_frame, take_frame
+
+    create_account(client, OLD_PASSWORD)
+    client.close()
+    ws = socket.create_connection(("127.0.0.1", int(server.environment["DURIS_WEBSOCKET_PORT"])), timeout=5)
+    messages = []
+    buffer = bytearray(upgrade(ws, "127.0.0.1"))
+    ws.settimeout(.25)
+
+    def wait(predicate):
+        deadline = time.monotonic() + 35
+        while time.monotonic() < deadline:
+            for index, message in enumerate(messages):
+                if predicate(message):
+                    return messages.pop(index)
+            while (frame := take_frame(buffer)) is not None:
+                if frame[0] == 9:
+                    send_frame(ws, 10, frame[1])
+                elif frame[0] == 1:
+                    messages.append(json.loads(frame[1]))
+            try:
+                chunk = ws.recv(65536)
+            except socket.timeout:
+                continue
+            require(bool(chunk), "WebSocket creation connection closed")
+            buffer.extend(chunk)
+        raise AssertionError("WebSocket response missing: " + repr(messages[-8:]))
+
+    def request(command, data, predicate):
+        payload = json.dumps({"type": "cmd", "cmd": command, "data": data}, separators=(",", ":")).encode()
+        require(len(payload) < 126, "reuse of the small-frame helper exceeded its payload bound")
+        send_frame(ws, 1, payload)
+        return wait(predicate)
+
+    def text(needle):
+        return lambda message: needle in json.dumps(message)
+
+    selection = {"name": "Webhero", "race": 1, "class": 1, "sex": 1}
+    try:
+        request("create_character", selection, text("Not authenticated"))
+        options = request("chargen_options", {}, lambda m: m.get("type") == "chargen_options")
+        human = next(race for race in options["races"] if race["name"] == "Human")
+        require(not any(race["restricted"] for race in options["races"]), "normal menu exposed restricted races")
+        require(not any(cls["name"] == "Dragoon" for race in options["races"] for cls in race["classes"]),
+                "normal menu exposed disabled Dragoon")
+        necromancer = next(cls for cls in human["classes"] if cls["name"] == "Necromancer")
+        require(necromancer["alignment"] == "evil", "Human Necromancer menu alignment changed")
+        request("login", {"account": ACCOUNT, "password": OLD_PASSWORD},
+                lambda m: m.get("type") == "auth" and m.get("status") == "success")
+        request("create_character", dict(selection, race=21), text("Invalid race selection"))  # Lich.
+        request("create_character", dict(selection, **{"class": 30}),
+                text("That class is not available for your race"))  # Dragoon.
+        request("create_character", dict(selection, **{"class": necromancer["id"]}, alignment="evil"),
+                text("That class requires evil alignment"))
+        # Human is a good-faction race in this transport: the requested alignment
+        # does not override it. Telnet's class-cell alignment choice is separate.
+        rolled = request("roll_stats", {"race": 1}, lambda m: m.get("type") == "roll_stats")
+        remaining = rolled["bonusRemaining"]
+        require(remaining == 5, "initial roll did not supply five bonus points")
+        for stat in ("str", "dex", "agi", "con", "pow", "int", "wis", "cha", "luk"):
+            bonus = request("add_bonus", {"stat": stat},
+                            lambda m: m.get("type") == "bonus_added" or "Stat is already at maximum" in json.dumps(m))
+            if bonus.get("type") == "bonus_added":
+                require(bonus["bonusRemaining"] == remaining - 1, "bonus point was not consumed exactly once")
+                remaining -= 1
+            if not remaining:
+                break
+        require(not remaining, "five stat bonuses could not be allocated")
+        created = request("create_character", selection,
+                          lambda m: m.get("type") == "create_character" and m.get("status") == "created")
+        require(created["name"] == "Webhero" and created["race"] == "Human" and created["class"] == "Warrior",
+                "WebSocket created a different identity")
+        wait(text("Your starter kit is ready"))
+        request("create_character", dict(selection, name="Otherhero", race=13), text("You must wait"))
+        # The good-side admission was committed; the opposite-side request is
+        # denied before it can replace the resident character or consume its state.
+        request("game", {"command": "skills"}, text("kick"))
+        request("game", {"command": "save"}, text("Save complete for Webhero."))
+        server.shutdown()
+    finally:
+        ws.close()
+    reboot(server)
+    other = MudClient(server.plain_port)
+    try:
+        enter_account_name(other)
+        other.expect("Please enter your password:")
+        reply(other, OLD_PASSWORD, "PRESS RETURN")
+        reply(other, "", MENU)
+        reply(other, "1", "Webhero")
+        reply(other, "1", "(Y/N)")
+        reply(other, "y", "Pos: standing >")
+        score = reply(other, "score", "Pos: standing >")
+        require("Webhero" in score and "human" in score.lower() and "warrior" in score.lower(),
+                "WebSocket identity did not survive restart/Telnet relog")
+        skills = reply(other, "skills", "Pos: standing >")
+        require("kick" in skills.lower(), "starting class skill did not survive restart")
+    finally:
+        other.close()
+
+
 SCENARIOS = (
+    ("Telnet Human Necromancer transport characterization", human_necromancer_creation),
+    ("WebSocket normal menus, denials, creation and restart/Telnet relog", websocket_creation),
     ("account-name rejection", account_name_retry),
     ("email correction", email_retry),
     ("password mismatch and account-summary restart", password_and_summary_retry),
@@ -394,11 +523,14 @@ SCENARIOS = (
 def run_journeys(binary):
     failures = []
     for name, scenario in SCENARIOS:
-        environment = {"CREATION_ALL_RACES": "TRUE"} if scenario in (
-            creation_help_and_back, invitation_rejection, invitation_allowed,
-            sexless_chaos_menu) else None
+        environment = {"CHAOS_MUD": "FALSE", "CREATION_ALL_RACES": "FALSE", "CREATION_ALL_CLASSES": "FALSE"}
+        if scenario in (creation_help_and_back, invitation_rejection, invitation_allowed, sexless_chaos_menu):
+            environment["CREATION_ALL_RACES"] = "TRUE"
         if scenario is sexless_chaos_menu:
             environment["CHAOS_MUD"] = "TRUE"
+        if scenario is websocket_creation:
+            environment = {"DURIS_WEBSOCKET": "TRUE", "CHAOS_MUD": "FALSE",
+                           "CREATION_ALL_RACES": "FALSE", "CREATION_ALL_CLASSES": "FALSE"}
         with IsolatedServer(binary, environment) as server:
             client = MudClient(server.plain_port)
             try:

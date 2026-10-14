@@ -293,3 +293,22 @@ void character_mechanics::connect_creation_predicates(IdentityConnections &conne
 	connections.class_alignment = creation_class_align;
 	connections.class_normally_available = creation_class_normally_available;
 }
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::creation_rule_connections()
+{
+	static const IdentityConnections rules = identity_connections();
+	static const MechanicConnection connections[] = {
+		{ MechanicId::creation_rules,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&rules),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual race/class rosters, switch predicates, alignment cells and specialization/ordered-secondary definitions; transport and account admission remain separate.",
+		  {} }
+	};
+	return connections;
+}

@@ -36,6 +36,18 @@ uninvoked callers and removed calls. The exact four comprehension grants inside
 `#if 0` remain a reviewed disabled exclusion. Assertion output states the tested
 behavior and fixture boundaries. Registration of a callback
 does not prove its effect, and a passive's null callback still requires consumers.
+The same test resolves every registered spell/poison callback to a unique native
+implementation and rejects removal. This is implementation-location evidence only.
+
+Creation connections bind Telnet's actual login states and selection handlers,
+WebSocket's native command table, lookup and dispatcher, account admission policy,
+preflight/commit and `init_char`. Native assertions exercise dispatch and reject
+new aliases; the selection and initialization bodies are separate full-server
+evidence. `test_creation_prompt_journey.py` covers both transports with private
+flat-file servers, normal-mode menus/denials, starter skills, save/restart and
+Telnet relog. Human Necromancer is accepted by Telnet but rejected by WebSocket's
+faction-derived alignment despite appearing in its menu. Complete changed-state,
+body/innate-bit and starter-kit lifecycle ownership remains incomplete.
 
 The separate `python3 tests/async/test_character_mechanics_journey.py` drives private
 full-world command and persistence cases. Staff-supplied items, levels and transport

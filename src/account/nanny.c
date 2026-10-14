@@ -26,6 +26,7 @@
 #include "account/newbie_kit_plan.h"
 #include "world/object_template.h"
 #include "account/creation_availability_config.h"
+#include "player/character_mechanics.h"
 #include "combat/chaos_config.h"
 #include "combat/training_dummy.h"
 #include "account/chaos_eq_data.h"
@@ -4044,11 +4045,13 @@ void nanny(P_desc d, char *arg)
 
 		/* Select class for new player */
 	case CON_GET_CLASS:
+		CHARACTER_MECHANIC_SITE(telnet_class_entry);
 		select_class(d, arg);
 		break;
 
 		/* Choose race for new player */
 	case CON_GET_RACE:
+		CHARACTER_MECHANIC_SITE(telnet_race_entry);
 		select_race(d, arg);
 		break;
 
@@ -4103,6 +4106,7 @@ void nanny(P_desc d, char *arg)
 
 		/* Select alignment for new player, when appropriate */
 	case CON_ALIGN:
+		CHARACTER_MECHANIC_SITE(telnet_alignment_entry);
 		select_alignment(d, arg);
 		break;
 
@@ -4527,4 +4531,90 @@ void swapstats(P_char ch, int stat1, int stat2)
 	}
 
 	ch->curr_stats = ch->base_stats;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::telnet_creation_connections()
+{
+	static constexpr MechanicId rules[] = { MechanicId::creation_rules,
+						MechanicId::account_admission };
+	static constexpr MechanicId initialization[] = { MechanicId::multiclass_newbie_skills,
+							 MechanicId::innate_eligibility,
+							 MechanicId::racial_age_data };
+	static constexpr MechanicId race_target[] = { MechanicId::telnet_race_select };
+	static constexpr MechanicId class_target[] = { MechanicId::telnet_class_select };
+	static constexpr MechanicId alignment_target[] = { MechanicId::telnet_alignment_select };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::character_initialize,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(init_char),
+		  initialization,
+		  Access::conditional,
+		  Implementation::incomplete,
+		  "Actual new-character initialization: identity allocation, time/domain baselines, class skills, size and innate affect bits.",
+		  "Individual body/innate-bit sites, all changed state fields and starter-kit handoff still need complete reverse ownership and persistence connections." },
+		{ MechanicId::telnet_race_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((LoginRegistration{ CON_GET_RACE, nanny, select_race })),
+		  race_target,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native nanny CON_GET_RACE dispatch to select_race; the exact case/call is source-bound.",
+		  {} },
+		{ MechanicId::telnet_race_select,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(select_race),
+		  rules,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Telnet race selection uses the existing creation predicates and preserves its correction/help/state transitions.",
+		  {} },
+		{ MechanicId::telnet_class_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((LoginRegistration{ CON_GET_CLASS, nanny, select_class })),
+		  class_target,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native nanny CON_GET_CLASS dispatch to select_class; the exact case/call is source-bound.",
+		  {} },
+		{ MechanicId::telnet_class_select,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(select_class),
+		  rules,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Telnet class selection uses the existing creation predicates and preserves its correction/help/state transitions.",
+		  {} },
+		{ MechanicId::telnet_alignment_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((LoginRegistration{ CON_ALIGN, nanny, select_alignment })),
+		  alignment_target,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native nanny CON_ALIGN dispatch to select_alignment; the exact case/call is source-bound.",
+		  {} },
+		{ MechanicId::telnet_alignment_select,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(select_alignment),
+		  rules,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Telnet alignment selection uses the existing creation predicates and preserves its correction/help/state transitions.",
+		  {} },
+	};
+	return connections;
 }
