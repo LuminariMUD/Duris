@@ -37,7 +37,10 @@ MYSQL=(mysql "${MYSQL_CONNECTION[@]}" -u "$DB_USER" -N -B "$DB_NAME")
 columns=$("${MYSQL[@]}" -e "SELECT COUNT(*) FROM information_schema.columns
 WHERE table_schema=DATABASE() AND table_name='pkill_info'
   AND column_name='log' AND data_type='mediumtext'
-  AND character_octet_length>=99999;")
+  AND character_octet_length=16777215 AND ordinal_position=7
+  AND is_nullable='YES' AND character_set_name='utf8mb4'
+  AND collation_name='utf8mb4_unicode_ci' AND extra=''
+  AND (column_default IS NULL OR UPPER(column_default)='NULL');")
 [[ "$columns" == 1 ]] || {
     echo "FAILED: pkill_info.log must be canonical MEDIUMTEXT for public combat logs" >&2
     exit 1

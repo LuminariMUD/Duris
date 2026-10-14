@@ -87,12 +87,21 @@ website workers and scheduled jobs that use this database, and record their serv
 states. Preserve the running executable and stamp in the private recovery directory
 described in step 3 before stopping the game.
 
-Log in as Veridian using step 4's account/menu guidance, check `time` for another
-operator's schedule, and issue `shutdown ok 3 Zusuk has new code incoming, brace for impact!`.
-Confirm the 180-second countdown and stay connected until the graceful shutdown
-completes. Stop the configured user-scope launcher, website workers and database jobs;
-prevent their automatic restarts for the outage and verify their processes and
-database sessions have ended. Keep the database and Redis available. The runner's
+Before announcing the outage, confirm the configured user-scope MUD service sends
+SIGTERM to the launcher (`KillMode=mixed`) and allows enough stop time for the child
+to drain. Resolve any mismatch before proceeding.
+
+Log in as Veridian using step 4's account/menu guidance and check `time` for another
+operator's schedule. Broadcast `echoa Maintenance begins in 180 seconds: Zusuk has new code incoming, brace for impact!`
+and keep Veridian connected for the full 180-second warning. Then request a stop of
+the configured user-scope MUD service, targeting the launcher while its child is
+still running. With that stop configuration, `cycle_mud.sh` sets
+`STOP_REQUESTED`, forwards SIGTERM, waits for the graceful child exit, and exits its
+restart loop. Do not use child-only `shutdown ok` here; without a launcher stop it
+restarts after ten seconds. Wait for the service stop to complete, then stop the
+website workers and database jobs, prevent their automatic restarts for the outage,
+and verify their processes and database sessions have ended. Keep the database and
+Redis available. The runner's
 own quiescence check must pass; do not kill unknown connections or weaken the check.
 
 Refresh the backup after writers stop, using the pre-migration runtime manifest.
@@ -136,9 +145,10 @@ uses its original executable when it is still running. Do not restart after a fa
 
 ## 4. Schedule the reboot as Veridian
 
-For the offline path, the warning and shutdown already occurred in step 2. Restore
-the recorded service states with the newly installed server and continue directly
-to step 5; do not schedule a second shutdown. Observe logs before starting services.
+For the offline path, the warning and shutdown already occurred in step 2. Start
+following all journals and files listed in step 5 before restoring any service.
+Then restore the recorded service states with the newly installed server and
+continue step 5's startup verification; do not schedule a second shutdown.
 
 Use the account credentials in `.env` to log in over the configured game
 connection and select the Overlord character **Veridian**. Handle the account

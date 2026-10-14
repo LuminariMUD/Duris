@@ -77,4 +77,21 @@ if "$ROOT/migrations/immutable/0041_pkill_log_capacity.sh"; then
 fi
 [[ "$("${MYSQL[@]}" -e "SELECT data_type FROM information_schema.columns
     WHERE table_schema=DATABASE() AND table_name='pkill_info' AND column_name='log';")" == longtext ]]
+# MEDIUMTEXT alone is insufficient: the runtime metadata contract also fixes
+# nullability, encoding, default and column position. Use empty probe rows here
+# so a NOT NULL fixture does not itself fail while converting historical NULLs.
+"${MYSQL[@]}" -e 'DELETE FROM pkill_info WHERE pid=4294000200;'
+for definition in 'MEDIUMTEXT NOT NULL' \
+    'MEDIUMTEXT CHARACTER SET latin1 COLLATE latin1_bin NULL' \
+    "MEDIUMTEXT NULL DEFAULT ('fixture')" 'MEDIUMTEXT NULL AFTER leader'; do
+    "${MYSQL[@]}" -e "ALTER TABLE pkill_info MODIFY COLUMN log $definition;"
+    "${MYSQL[@]}" < "$ROOT/migrations/immutable/0041_pkill_log_capacity.sql"
+    if "$ROOT/migrations/immutable/0041_pkill_log_capacity.sh"; then
+        echo "log verifier accepted noncanonical metadata: $definition" >&2
+        exit 1
+    fi
+    "${MYSQL[@]}" -e 'ALTER TABLE pkill_info MODIFY COLUMN log MEDIUMTEXT
+        CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL AFTER equip;'
+    "$ROOT/migrations/immutable/0041_pkill_log_capacity.sh"
+done
 echo 'legacy combat log capacity, data preservation, strict limits and replay: ok'

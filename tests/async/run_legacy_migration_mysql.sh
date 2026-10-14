@@ -123,9 +123,21 @@ refused_head=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
      (SELECT data_type FROM information_schema.columns WHERE table_schema=DATABASE()
       AND table_name='pkill_info' AND column_name='log'));")
 [[ "$refused_head" == '40:0:longtext' ]]
+# A MEDIUMTEXT column with different encoding must also be refused before
+# publishing 0041, rather than failing only at the later runtime boot gate.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
+    'ALTER TABLE pkill_info MODIFY COLUMN log MEDIUMTEXT CHARACTER SET latin1 COLLATE latin1_bin NULL;'
+if ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
+    DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
+    python3 "$ROOT/scripts/migration_runner.py" run; then
+    echo 'migration runner certified noncanonical MEDIUMTEXT' >&2
+    exit 1
+fi
+[[ "$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    'SELECT applied_count FROM mud_schema_migration_state WHERE state_id=1;')" == 40 ]]
 # Restore the supported legacy fixture and retry the still-pending migration.
 MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
-    'ALTER TABLE pkill_info MODIFY COLUMN log TEXT NULL;'
+    'ALTER TABLE pkill_info MODIFY COLUMN log TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL;'
 ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
     DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
     python3 "$ROOT/scripts/migration_runner.py" run
