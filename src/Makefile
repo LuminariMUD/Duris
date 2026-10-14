@@ -261,6 +261,7 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/mail.o \
 				 world/map.o \
 				 net/mccp.o \
+				 net/mssp.o \
 				 net/mail_sender.o \
 				 classes/memorize.o \
 				 core/memory.o \

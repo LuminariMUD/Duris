@@ -82,6 +82,7 @@
 #include "core/lookup_process.h"
 #include "world/map.h"
 #include "net/mccp.h"
+#include "net/mssp.h"
 #include "core/mm.h"
 #include "economy/nexus_stones.h"
 #include "world/outposts.h"
@@ -4060,6 +4061,7 @@ static void greet(P_desc newd)
 
 	advertise_mccp(newd);
 	gmcp_negotiate(newd);
+	mssp_advertise(newd);
 	/* sga disabled - causes ^? ^M on raw telnet in character mode */
 	/* sga_negotiate(newd); */
 }
