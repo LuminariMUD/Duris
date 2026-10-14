@@ -52,6 +52,25 @@ reports that the changed scheduler regression catches the pre-fix behavior.
 `make test-db` passed all 75 isolated database checks in 459 seconds, including
 the statistics matrix and the MariaDB flight journey.
 
+## Kingdom persistence interface across SQL clients
+
+PR #70's hosted MySQL 8 build exposed a MariaDB-only forward declaration in
+`kingdom.h`: its `st_mysql *` callback could not be assigned to the public
+`MYSQL *` callback used by character deletion. The header now uses the existing
+`sql_work` type, matching the implementation. Flat-file mode still excludes
+the SQL interface. No payment, deletion or reward behavior changes.
+
+`python3 tests/async/test_compiler_warning_profile.py` compiles the actual header
+against the different public MySQL/MariaDB type declarations and a flat-file
+fixture that rejects any MySQL header inclusion. The MySQL case fails before
+the repair; all three pass afterward. Server and pfile builds also pass against
+the actual Ubuntu MySQL 8.0.46 headers/library, extracted under ignored
+`bin/analysis/review-final/mysql-client/` without replacing the installed MariaDB
+development package. The MariaDB server build, real guild snapshot/payment and
+character-deletion regressions, flat-file boot/shutdown preflight and
+`make security-check` pass. Logs are under `bin/analysis/review-final/`.
+These checks repair the build failure; they are not a new CodeQL or Trivy scan.
+
 ## Guild member deletion capture failure
 
 Building a member-deletion snapshot temporarily removes that member and their
