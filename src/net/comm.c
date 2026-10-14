@@ -1295,8 +1295,9 @@ static void prepare_descriptor_latency_event(command_latency_event *event,
 
 class scoped_command_latency
 {
-    public:
-	scoped_command_latency(command_latency_tracker *tracker, const command_latency_event *event)
+public:
+	scoped_command_latency(command_latency_tracker * tracker,
+			       const command_latency_event *event)
 		: tracker_(tracker)
 		, event_(event)
 		, started_us_(loop_monotonic_us())
@@ -1304,7 +1305,10 @@ class scoped_command_latency
 	{
 	}
 
-	~scoped_command_latency() { finish(); }
+	~scoped_command_latency()
+	{
+		finish();
+	}
 
 	void finish()
 	{
@@ -1316,9 +1320,9 @@ class scoped_command_latency
 	}
 
 	scoped_command_latency(const scoped_command_latency &) = delete;
-	scoped_command_latency &operator=(const scoped_command_latency &) = delete;
+	scoped_command_latency &operator = (const scoped_command_latency &) = delete;
 
-    private:
+private:
 	command_latency_tracker *tracker_;
 	const command_latency_event *event_;
 	uint64_t started_us_;
@@ -3495,7 +3499,7 @@ void close_socket(struct descriptor_data *d)
 		FREE(d->storage);
 
 #endif
-		/* I really don't wanna crash it  */
+	/* I really don't wanna crash it  */
 #ifdef USE_ACCOUNT
 	if (d->account)
 		d->account = free_account(d->account);
