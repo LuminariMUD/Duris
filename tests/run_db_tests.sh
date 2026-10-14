@@ -29,6 +29,7 @@ started=$SECONDS
 # Longest first.
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
 artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server $SERVER
+epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server $SERVER
 game_loop_budget $DB python3 tests/async/test_mysql_game_loop_budget_journey.py --server $SERVER
 world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py $SERVER crash

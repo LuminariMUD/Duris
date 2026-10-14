@@ -126,7 +126,7 @@ not final combined-stack qualification or production rollout; full-server fault
 journeys and the broad gates remain due after #73–#75 integration.
 
 Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
-[qualification record](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
+[qualification record](../ongoing-projects/plan-log_review.md#qualification-update-2026-10-14)
 maps the acceptance criteria to tests, records local logs and separates review
 readiness from production rollout.
 
@@ -240,6 +240,59 @@ checks accompany the native test. All six full-server artifact/database variants
 then passed on the repaired source. The native test controls entry effects and
 does not execute the entire room handler. `scripts/check_tests_catch.sh
 15ccfdd56 07d3e2835` reports 1/1 passing after and failing before the fix.
+
+## Epic boon completion and actual award result
+
+After #69 removed the gain-level gate, LR-02 follows `gain_epic()`'s synchronous
+result. Completed boons remain consumed, failed awards explicitly report no
+points, and successful awards retain their existing feedback at every level.
+
+`python3 tests/async/test_epic_gain_runtime.py` retains the actual boon completion,
+publication, award preparation and balance paths under ASan/UBSan. The boon
+fixture covers levels 1/29/30/49/50/56, ID-generation failure, balance overflow,
+ledger refusal after a successful live award, non-epic EXP and duplicate/replayed
+completion. Balance/revision, feedback, pending/completed state and companion
+artifact/guild publication count must agree. SQL results and unrelated engine
+services are controlled adapters; full-server persistence is covered separately.
+The original gain-level test and its policy are superseded; the separate
+`test_epic_skill_level_gate.py` still requires level 30 for skill purchases.
+The three focused epic gain/skill/training tests, server build, formatting and
+14 documentation checks pass on the integrated #73 tree. The disposable
+`test_mysql_epic_training_journey.py --server bin/server/dms_new` also passes
+Human Warrior and Illithid Psionicist HP/GMCP/purchase/save/restart coverage after
+`make world`. The first attempt lacked generated world files and failed at boot;
+the successful rerun and build are retained under `bin/analysis/integration/`
+in the integration worktree. Final combined-stack gates remain due.
+
+## Paid epic training feedback and immediate HP
+
+LR-03–LR-05 qualify the existing level-30 teacher policy and fix two purchase
+results: reaching 100 now announces mastery, and learned stats are rebuilt with
+`affect_total()` before GMCP vitals and the character save. Prices, increments,
+eligibility, missing-HP semantics and memory-first balance changes are retained.
+
+`python3 tests/async/test_epic_training.py` executes the actual teacher, purchase
+callback and epic transaction under ASan/UBSan. It covers 29/30/31, configured
+39/40/41, class/prerequisite/funds/cap refusals, intermediate and final purchases,
+repeat at mastery, and refresh/publication/save ordering. Cash, refresh, save
+and client output are adapters; they do not prove the HP formula. The old
+source compiles and fails at the missing mastery announcement.
+
+`tests/async/with_disposable_mariadb.sh python3
+tests/async/test_mysql_epic_training_journey.py` covers the actual paid command
+and persistence with teacher 80862 in an isolated world. Before the fix, learning
+Toughness 10 charged 150 epics and 1,000,000 copper but left HP at 233/263 instead
+of 243/273. After it, full and injured Human Warriors and Illithid Psionicists
+receive the proper bonus immediately in score/prompt and GMCP. Later pulses and
+repeated refreshes add nothing, refused purchases charge nothing, and both clean
+restarts preserve skills, balances, derived HP and injury. The journey is part
+of `make test-db`. Evidence and binary hash are retained under ignored
+`bin/analysis/epic-training/`. The server build and full-tree formatting pass;
+the batch is locally qualified in PR #73. Its full database run passed 76/77;
+the artifact PvP caster aborted before spell completion. The fixture now retries
+only confirmed aborts, with a five-attempt bound, and the affected PvP rerun passes.
+The aggregate is 77 distinct passing database checks; the original make command
+exited nonzero. Server sources match the passing 733-regression gate.
 
 ## Crumbling equipment removal
 

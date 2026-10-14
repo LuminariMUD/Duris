@@ -3061,7 +3061,9 @@ void boon_publish_transaction_result(P_char ch, double event_data, const boon_re
 			gain_exp(ch, nullptr, static_cast<int>(entry.bonus), EXP_BOON);
 			break;
 		case BTYPE_EPIC:
-			gain_epic(ch, EPIC_BOON, GET_PID(ch), static_cast<int>(entry.bonus));
+			if (!gain_epic(ch, EPIC_BOON, GET_PID(ch), static_cast<int>(entry.bonus)))
+				send_to_char("&+yNo epic points were awarded for this boon.&n\r\n",
+					     ch);
 			break;
 		case BTYPE_CASH:
 		{
