@@ -29,146 +29,148 @@
 
 namespace
 {
-// Frags, epic points and the wallet are memory's: the submit changed them and the
-// player's save writes them. The outcome records the kill and continues the frag and
-// epic ledgers from their last rows, advancing only the revisions the rows are keyed on.
-struct player_state
-{
-	size_t payload_index;
-	uint32_t pid;
-	int64_t frags;
-	int64_t epics;
-	uint64_t frag_revision;
-	uint64_t epic_revision;
-};
-
-bool execute(MYSQL *connection, const std::string &sql)
-{
-	return mysql_real_query(connection, sql.data(), sql.size()) == 0;
-}
-
-bool parse_i64(const char *text, int64_t *value)
-{
-	if (!text || !value)
-		return false;
-	char *end = nullptr;
-	errno = 0;
-	const long long parsed = strtoll(text, &end, 10);
-	if (errno || !end || *end)
-		return false;
-	*value = parsed;
-	return true;
-}
-
-bool parse_u64(const char *text, uint64_t *value)
-{
-	if (!text || !value)
-		return false;
-	char *end = nullptr;
-	errno = 0;
-	const unsigned long long parsed = strtoull(text, &end, 10);
-	if (errno || !end || *end)
-		return false;
-	*value = parsed;
-	return true;
-}
-
-std::string escape(MYSQL *connection, const char *value, size_t size)
-{
-	std::string escaped(size * 2 + 1, '\0');
-	const unsigned long length = mysql_real_escape_string(connection, escaped.data(),
-							      value ? value : "", value ? size : 0);
-	escaped.resize(length);
-	return escaped;
-}
-
-std::string bytes_hex(const uint8_t *bytes, size_t size)
-{
-	static const char HEX[] = "0123456789abcdef";
-	std::string result(size * 2, '0');
-	for (size_t index = 0; index < size; ++index)
+	// Frags, epic points and the wallet are memory's: the submit changed them and the
+	// player's save writes them. The outcome records the kill and continues the frag and
+	// epic ledgers from their last rows, advancing only the revisions the rows are keyed on.
+	struct player_state
 	{
-		result[index * 2] = HEX[bytes[index] >> 4];
-		result[index * 2 + 1] = HEX[bytes[index] & 15];
+		size_t payload_index;
+		uint32_t pid;
+		int64_t frags;
+		int64_t epics;
+		uint64_t frag_revision;
+		uint64_t epic_revision;
+	};
+
+	bool execute(MYSQL * connection, const std::string &sql)
+	{
+		return mysql_real_query(connection, sql.data(), sql.size()) == 0;
 	}
-	return result;
-}
 
-critical_operation_id child_operation(const critical_operation_id &parent, uint8_t domain,
-				      uint16_t index)
-{
-	std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES + 3> input = {};
-	std::copy(parent.bytes.begin(), parent.bytes.end(), input.begin());
-	input[CRITICAL_COMMAND_ID_BYTES] = domain;
-	input[CRITICAL_COMMAND_ID_BYTES + 1] = static_cast<uint8_t>(index);
-	input[CRITICAL_COMMAND_ID_BYTES + 2] = static_cast<uint8_t>(index >> 8);
-	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-	SHA256(input.data(), input.size(), digest.data());
-	critical_operation_id result = {};
-	std::copy_n(digest.begin(), result.bytes.size(), result.bytes.begin());
-	return result;
-}
+	bool parse_i64(const char *text, int64_t *value)
+	{
+		if (!text || !value)
+			return false;
+		char *end = nullptr;
+		errno = 0;
+		const long long parsed = strtoll(text, &end, 10);
+		if (errno || !end || *end)
+			return false;
+		*value = parsed;
+		return true;
+	}
 
-bool insert_child_inbox(MYSQL *connection, const critical_operation_id &child,
-			critical_command_type type, uint64_t revision)
-{
-	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-	SHA256(child.bytes.data(), child.bytes.size(), digest.data());
-	const std::string operation = bytes_hex(child.bytes.data(), child.bytes.size());
-	const std::string hash = bytes_hex(digest.data(), digest.size());
-	const std::string sql =
-		"INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,"
-		"command_type,schema_version,payload_version,status,result_code,durable_revision,"
-		"result_payload,committed_at) VALUES(UNHEX('" +
-		operation + "'),UNHEX('" + hash + "'),UNHEX('" + hash + "')," +
-		std::to_string(static_cast<uint16_t>(type)) + ",1,1,1,0," +
-		std::to_string(revision) + ",'',CURRENT_TIMESTAMP(6))";
-	return execute(connection, sql);
-}
+	bool parse_u64(const char *text, uint64_t *value)
+	{
+		if (!text || !value)
+			return false;
+		char *end = nullptr;
+		errno = 0;
+		const unsigned long long parsed = strtoull(text, &end, 10);
+		if (errno || !end || *end)
+			return false;
+		*value = parsed;
+		return true;
+	}
 
-// The value of a ledger's last row for the player, when the player has one.
-bool ledger_tail(MYSQL *connection, const std::string &sql, int64_t *value)
-{
-	if (!execute(connection, sql))
-		return false;
-	MYSQL_RES *result = mysql_store_result(connection);
-	if (!result)
-		return false;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	const bool ok = !row || parse_i64(row[0], value);
-	mysql_free_result(result);
-	return ok;
-}
+	std::string escape(MYSQL * connection, const char *value, size_t size)
+	{
+		std::string escaped(size * 2 + 1, '\0');
+		const unsigned long length = mysql_real_escape_string(
+			connection, escaped.data(), value ? value : "", value ? size : 0);
+		escaped.resize(length);
+		return escaped;
+	}
 
-bool load_player(MYSQL *connection, uint32_t pid, size_t payload_index, player_state *state)
-{
-	const std::string sql = "SELECT frags,frag_revision,epics,epic_revision FROM player_data "
-				"WHERE pid=" +
-				std::to_string(pid) + " FOR UPDATE";
-	if (!execute(connection, sql))
-		return false;
-	MYSQL_RES *result = mysql_store_result(connection);
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
-	const bool ok = row && parse_i64(row[0], &state->frags) &&
-			parse_u64(row[1], &state->frag_revision) &&
-			parse_i64(row[2], &state->epics) &&
-			parse_u64(row[3], &state->epic_revision);
-	if (result)
+	std::string bytes_hex(const uint8_t *bytes, size_t size)
+	{
+		static const char HEX[] = "0123456789abcdef";
+		std::string result(size * 2, '0');
+		for (size_t index = 0; index < size; ++index)
+		{
+			result[index * 2] = HEX[bytes[index] >> 4];
+			result[index * 2 + 1] = HEX[bytes[index] & 15];
+		}
+		return result;
+	}
+
+	critical_operation_id child_operation(const critical_operation_id &parent, uint8_t domain,
+					      uint16_t index)
+	{
+		std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES + 3> input = {};
+		std::copy(parent.bytes.begin(), parent.bytes.end(), input.begin());
+		input[CRITICAL_COMMAND_ID_BYTES] = domain;
+		input[CRITICAL_COMMAND_ID_BYTES + 1] = static_cast<uint8_t>(index);
+		input[CRITICAL_COMMAND_ID_BYTES + 2] = static_cast<uint8_t>(index >> 8);
+		std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
+		SHA256(input.data(), input.size(), digest.data());
+		critical_operation_id result = {};
+		std::copy_n(digest.begin(), result.bytes.size(), result.bytes.begin());
+		return result;
+	}
+
+	bool insert_child_inbox(MYSQL * connection, const critical_operation_id &child,
+				critical_command_type type, uint64_t revision)
+	{
+		std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
+		SHA256(child.bytes.data(), child.bytes.size(), digest.data());
+		const std::string operation = bytes_hex(child.bytes.data(), child.bytes.size());
+		const std::string hash = bytes_hex(digest.data(), digest.size());
+		const std::string sql =
+			"INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,"
+			"command_type,schema_version,payload_version,status,result_code,durable_revision,"
+			"result_payload,committed_at) VALUES(UNHEX('" +
+			operation + "'),UNHEX('" + hash + "'),UNHEX('" + hash + "')," +
+			std::to_string(static_cast<uint16_t>(type)) + ",1,1,1,0," +
+			std::to_string(revision) + ",'',CURRENT_TIMESTAMP(6))";
+		return execute(connection, sql);
+	}
+
+	// The value of a ledger's last row for the player, when the player has one.
+	bool ledger_tail(MYSQL * connection, const std::string &sql, int64_t *value)
+	{
+		if (!execute(connection, sql))
+			return false;
+		MYSQL_RES *result = mysql_store_result(connection);
+		if (!result)
+			return false;
+		MYSQL_ROW row = mysql_fetch_row(result);
+		const bool ok = !row || parse_i64(row[0], value);
 		mysql_free_result(result);
-	state->payload_index = payload_index;
-	state->pid = pid;
-	return ok &&
-	       ledger_tail(connection,
-			   "SELECT frags_after FROM combat_frag_ledger WHERE pid=" +
-				   std::to_string(pid) +
-				   " AND frag_revision=" + std::to_string(state->frag_revision),
-			   &state->frags) &&
-	       ledger_tail(
-		       connection,
-		       "SELECT balance_after FROM epic_ledger WHERE pid=" + std::to_string(pid) +
-			       " AND epic_revision=" + std::to_string(state->epic_revision),
-		       &state->epics);
-}
+		return ok;
+	}
+
+	bool load_player(MYSQL * connection, uint32_t pid, size_t payload_index,
+			 player_state *state)
+	{
+		const std::string sql =
+			"SELECT frags,frag_revision,epics,epic_revision FROM player_data "
+			"WHERE pid=" +
+			std::to_string(pid) + " FOR UPDATE";
+		if (!execute(connection, sql))
+			return false;
+		MYSQL_RES *result = mysql_store_result(connection);
+		MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
+		const bool ok = row && parse_i64(row[0], &state->frags) &&
+				parse_u64(row[1], &state->frag_revision) &&
+				parse_i64(row[2], &state->epics) &&
+				parse_u64(row[3], &state->epic_revision);
+		if (result)
+			mysql_free_result(result);
+		state->payload_index = payload_index;
+		state->pid = pid;
+		return ok &&
+		       ledger_tail(connection,
+				   "SELECT frags_after FROM combat_frag_ledger WHERE pid=" +
+					   std::to_string(pid) + " AND frag_revision=" +
+					   std::to_string(state->frag_revision),
+				   &state->frags) &&
+		       ledger_tail(connection,
+				   "SELECT balance_after FROM epic_ledger WHERE pid=" +
+					   std::to_string(pid) + " AND epic_revision=" +
+					   std::to_string(state->epic_revision),
+				   &state->epics);
+	}
 } // namespace
 
 bool combat_outcome_repository_execute(MYSQL *connection, const critical_command &command,
