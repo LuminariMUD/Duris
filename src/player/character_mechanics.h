@@ -95,6 +95,12 @@ enum class MechanicId
 	racial_age_data,
 	race_affect_cleanup,
 	death_affect_cleanup,
+	skill_table,
+	skill_registration,
+	racial_innate_grants,
+	class_innate_grants,
+	innate_registration,
+	innate_callbacks,
 	count
 };
 
@@ -179,6 +185,24 @@ struct RoomRegistration
 	room_data *const *world;
 	int (*lookup)(int);
 };
+
+// Startup write provenance. Values are observed at the existing registration
+// sites so an overwritten grant remains visible alongside the final native table.
+struct GrantWrite
+{
+	int ability;
+	Option owner;
+	int level;
+	int cap;
+	std::source_location declared_at;
+	// SPEC_*_ADD overrides a class-wide *_ADD default, never another specific grant.
+	bool replaces = false;
+};
+using SkillTable = std::span<const s_skill>;
+using GrantWrites = std::span<const GrantWrite>;
+using InnateCallbacks = std::span<const innate_data>;
+using RacialInnates = const char (*)[LAST_INNATE + 1][LAST_RACE + 1];
+using ClassInnates = const char (*)[LAST_INNATE + 2][CLASS_COUNT][MAX_SPEC + 1];
 using MechanicBinding =
 	std::variant<const char *, const float *, CharacterIntPredicate, CharacterIntFunction,
 		     CharacterQuery, MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate,
@@ -186,7 +210,8 @@ using MechanicBinding =
 		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue,
 		     RoomRegistration, RoomProcedure, CharacterReset, SkillReset, SkillDataQuery,
 		     WalletSubmit, ClassHitpointFactors, RacialStatFactors, StatusFields,
-		     player_checkpoint_component, event_func_type, RacialAgeData, AffectRemoval>;
+		     player_checkpoint_component, event_func_type, RacialAgeData, AffectRemoval,
+		     SkillTable, GrantWrites, InnateCallbacks, RacialInnates, ClassInnates>;
 
 struct MechanicConnection
 {
@@ -264,12 +289,15 @@ std::span<const MechanicConnection> item_load_connections();
 std::span<const MechanicConnection> racial_age_connections();
 std::span<const MechanicConnection> affect_cleanup_connections();
 std::span<const MechanicConnection> death_connections();
+std::span<const MechanicConnection> skill_registration_connections();
+std::span<const MechanicConnection> innate_registration_connections();
 std::span<const TransitionConnection> revenant_transitions();
 std::span<const TransitionConnection> multiclass_transitions();
 std::span<const TransitionConnection> specialization_transitions();
 std::vector<TransitionConnection> transition_connections();
 std::vector<MechanicConnection> mechanic_connections();
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections);
+std::vector<std::string> validate_grants(std::span<const MechanicConnection> connections);
 std::vector<std::string> validate_transitions(std::span<const TransitionConnection> transitions,
 					      std::span<const MechanicConnection> connections);
 

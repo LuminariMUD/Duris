@@ -15,6 +15,14 @@
 #ifndef __SKILLS_H__
 #define __SKILLS_H__
 
+#if defined(_DE_) || defined(_PFILE_)
 void SKILL_CREATE(const char *Name, int Index, unsigned int Type);
+#else
+#include <source_location>
+void SKILL_CREATE(const char *Name, int Index, unsigned int Type,
+		  std::source_location site = std::source_location::current());
+#endif
+
+void initialize_skills();
 
 #endif // __SKILLS_H__

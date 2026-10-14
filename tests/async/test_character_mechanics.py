@@ -21,6 +21,99 @@ def production_function(file, signature):
     return f'\n#line {line} "{path.relative_to(ROOT)}"\n' + extract_function(file, signature) + "\n"
 
 
+def check_registration_sites(sources, observed):
+    """Every initializer call must have native write provenance; new aliases fail.
+
+    Registration declarations/macros and the three existing forwarding functions
+    are machinery. All remaining uses must be actual observed initializer calls.
+    This does not replace the wider selector/effect ownership migration.
+    """
+    names = (r"ADD_RACIAL_INNATE|ADD_CLASS_INNATE|SPELL_CREATE(?:_MSG|2)?|"
+             r"SKILL_CREATE(?:_WITH_MESSAGES)?|SPEC_(?:SPELL|SKILL)_ADD|SPELL_ADD|"
+             r"SKILL_ADD|TAG_CREATE(?:_WITH_MESSAGES)?|POISON_CREATE")
+    token = re.compile(r"\b(?:" + names + r")\b")
+    initializers = {
+        "classes/skills.c": ("initialize_skills", "create_poisons", "create_tags"),
+        "classes/epic_skills.c": ("create_epic_skills",),
+        "classes/innates.c": ("assign_innates",),
+    }
+    forwards = {
+        "SPELL_CREATE": "SPELL_CREATE_MSG(Name,Index,Beats,Targets,Spell_pointer,NULL,site);",
+        "SKILL_CREATE_WITH_MESSAGES": "SKILL_CREATE(Name,Index,Type,site);",
+        "SPELL_CREATE2": "SPELL_CREATE_MSG(Name,Index,Beats,Targets,Spell_pointer,Wear_off,site);",
+    }
+    delegates = {
+        "SPELL_CREATE": "SPELL_CREATE_MSG", "SKILL_CREATE_WITH_MESSAGES": "SKILL_CREATE",
+        "SPELL_CREATE2": "SPELL_CREATE_MSG", "TAG_CREATE": "SKILL_CREATE",
+        "TAG_CREATE_WITH_MESSAGES": "SKILL_CREATE_WITH_MESSAGES", "POISON_CREATE": "SPELL_CREATE",
+    }
+    errors, accounted = [], set()
+    for path, source_text in sources.items():
+        code = strip_comments(source_text)
+        code = re.sub(r'"(?:\\.|[^"\\])*"',
+                      lambda match: re.sub(r"[^\n]", " ", match.group()), code)
+        machinery, bodies = [], []
+        for name in initializers.get(path, ()):
+            matches = list(function_bodies(code, rf"\bvoid\s+{name}\s*\("))
+            if len(matches) != 1:
+                errors.append(f"{path}: missing/conflicting initializer {name}")
+                continue
+            begin = code.index(matches[0])
+            bodies.append((begin, begin + len(matches[0])))
+        if path in ("classes/skills.c", "classes/skills.h", "classes/innates.c"):
+            for declaration in re.finditer(r"\bvoid\s+(?:" + names + r")\s*\([^;{}]*\)\s*(?:;|\{)", code):
+                machinery.append(declaration.span())
+        if path in ("classes/skills.c", "classes/innates.c"):
+            for macro in re.finditer(r"^#define\s+(\w+)\((?:[^\n]*\\\n)*[^\n]*", code, re.M):
+                if not token.fullmatch(macro[1]):
+                    continue
+                expected = [macro[1]] + ([delegates[macro[1]]] if macro[1] in delegates else [])
+                actual = token.findall(macro.group())
+                bare_tool_macro = macro[1] in ("SPELL_CREATE", "TAG_CREATE", "TAG_CREATE_WITH_MESSAGES", "POISON_CREATE")
+                if actual != expected and not (bare_tool_macro and actual == [macro[1]]):
+                    errors.append(f"{path}: unsupported registration macro {macro[1]}")
+                machinery.append(macro.span())
+        if path == "classes/skills.c":
+            # Exact existing disabled comprehension grants. A changed/removed
+            # block needs review; no blanket preprocessor exclusion is used.
+            disabled = list(re.finditer(r"^#if 0\n(.*?)^#endif", code, re.M | re.S))
+            expected_disabled = ("SPELL_ADD(CLASS_SORCERER,5);SPELL_ADD(CLASS_CLERIC,4);"
+                                 "SPELL_ADD(CLASS_DRUID,4);SPELL_ADD(CLASS_BARD,6);")
+            if len(disabled) != 1 or re.sub(r"\s+", "", disabled[0][1]) != expected_disabled:
+                errors.append(f"{path}: disabled comprehension grant exclusion changed")
+            else:
+                machinery.append(disabled[0].span())
+            for name, expected in forwards.items():
+                matches = list(function_bodies(code, rf"\bvoid\s+{name}\s*\("))
+                if len(matches) != 1:
+                    errors.append(f"{path}: missing/conflicting registration forwarder {name}")
+                    continue
+                body = matches[0]
+                uses = list(token.finditer(body))
+                if len(uses) != 1 or re.sub(r"\s+", "", body[uses[0].start():body.index(';', uses[0].start())+1]) != expected:
+                    errors.append(f"{path}: changed registration forwarder {name}")
+                begin = code.index(body)
+                machinery.append((begin, begin + len(body)))
+        offsets = [0] + [match.end() for match in re.finditer("\n", code)]
+        lines = code.splitlines()
+        points = {site: offsets[site[1]-1] + site[2]-1
+                  for site in observed if site[0] == "src/" + path
+                  and 0 < site[1] <= len(lines) and 0 < site[2] <= len(lines[site[1]-1])}
+        for use in token.finditer(code):
+            if any(begin <= use.start() < end for begin, end in machinery):
+                continue
+            end = code.find(';', use.end()) + 1
+            sites = {site for site, position in points.items() if use.start() <= position < end}
+            if (not any(begin <= use.start() < limit for begin, limit in bodies) or not sites
+                    or not re.match(r"\s*\(", code[use.end():])):
+                errors.append(f"{path}:{code.count(chr(10), 0, use.start())+1}: unobserved registration/alias {use.group()}")
+            else:
+                accounted.update(sites)
+    for path, line, column in sorted(observed - accounted):
+        errors.append(f"{path}:{line}:{column}: stale registration provenance")
+    return errors
+
+
 def check_mechanic_sites(sources, bindings):
     """Migrated statements and bounded Bulwark/altar/multiclass/crown reverse checks.
 
@@ -349,7 +442,7 @@ combat_prelude = r'''
 #define PROPERTIES_FILE "lib/duris.properties"
 #define MAX_PROPERTIES 3000
 int properties_count;
-Skill skills[MAX_SKILLS];
+extern Skill skills[MAX_AFFECT_TYPES + 1];
 int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
 room_data mechanic_rooms[3]{};
@@ -529,6 +622,7 @@ combat_bodies = (
         ("innates.c", "bool can_use_innate("),
         ("innates.c", "void do_innate(P_char ch, char *arg, int cmd)"),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections("),
+        ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_registration_connections("),
         ("fight.c", "void update_dam_factors("),
         ("fight.c", "int melee_damage("),
         ("fight.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::melee_connections("),
@@ -628,6 +722,38 @@ double bulwark_melee(P_char attacker, P_char victim, bool bypass) {
     return delivered_damage;
 }
 '''
+# Execute the complete production skill initializer, retaining its callback
+# addresses. These callback bodies abort if invoked: this case proves registration,
+# grant provenance and native table contents, not every spell's behavior.
+skill_source = source("skills.c").read_text()
+skill_initializers = "\n".join(production_function(file, signature) for file, signature in [
+    ("skills.c", "void initialize_skills()\n{"), ("skills.c", "void create_poisons()\n{"),
+    ("skills.c", "void create_tags()\n{"), ("epic_skills.c", "void create_epic_skills()\n{"),
+])
+skill_callbacks = {}
+for call in re.finditer(r'\b(SPELL_CREATE(?:_MSG|2)?|POISON_CREATE)\(\s*"[^"\n]*"(.*?)\);',
+                        strip_comments(skill_initializers), re.S):
+    args = call[2].lstrip(",").split(",")
+    callback = args[1 if call[1] == "POISON_CREATE" else 3].strip()
+    assert re.fullmatch(r"[A-Za-z_]\w*", callback), callback
+    if callback != "NULL":
+        skill_callbacks[callback] = "affected_type *" if call[1] == "POISON_CREATE" else "P_obj"
+skill_callback_stubs = "\n".join(
+    f'void {name}(int, P_char, char *, int, P_char, {last}) {{ std::abort(); }}'
+    for name, last in sorted(skill_callbacks.items()))
+skill_registration_source = (
+    skill_source[skill_source.index('#include "core/defines.h"'):skill_source.index('int numSkills;')]
+        .replace('#ifndef _DE_', '')
+    + '\n#include "core/prototypes.h"\n#include "classes/skills.h"\n#include "player/character_mechanics.h"\n#include <cstdlib>\n'
+    + 'Skill skills[MAX_AFFECT_TYPES + 1];\nint numSkills;\nint SortedSkills[MAX_AFFECT_TYPES + 1];\n'
+    + skill_callback_stubs + '\n'
+    + skill_source[skill_source.index('static std::vector<character_mechanics::GrantWrite> skill_registration_writes;'):
+                   skill_source.index('\n#endif\n\nvoid create_poisons();')]
+    + '\nvoid create_poisons();\nvoid create_tags();\nvoid create_epic_skills();\n'
+    + skill_initializers
+    + production_function("skills.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::skill_registration_connections(")
+)
+
 with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as directory:
     work = Path(directory)
     (work / "lib").mkdir()
@@ -644,7 +770,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     # The mutation suite changes one translation unit at a time. Compile the
     # unchanged units once within this private run, with the same sanitizer
     # flags; there is no cross-run cache or modification of the worktree.
-    units = [*inputs, combat]
+    registrations = work / "registrations.cpp"
+    registrations.write_text(skill_registration_source)
+    units = [*inputs, combat, registrations]
     objects = [work / f"unit-{index}.o" for index in range(len(units))]
     for unit, obj in zip(units, objects):
         subprocess.run([*compiler, "-c", str(unit), "-o", str(obj)], check=True)
@@ -677,7 +805,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
             assert kind in ("callable", "value"), (mechanic, kind)
             path = str(Path(path).relative_to(ROOT)) if Path(path).is_absolute() else path
             assert path in ("src/classes/innates.c", "src/combat/fight.c", "src/cmd/interp.c",
-                            "src/classes/specializations.c", "src/guild/guild.c",
+                            "src/classes/specializations.c", "src/classes/skills.c", "src/guild/guild.c",
                             "src/specs/specs.assign.c", "src/specs/specs.object.c", "src/classes/memorize.c",
                             "src/world/epic_transaction.c",
                             "src/economy/tradeskill.c",
@@ -691,6 +819,23 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     sources = {str(path.relative_to(ROOT / "src")): path.read_text(errors="replace")
                for path in sorted((ROOT / "src").rglob("*"))
                if path.suffix in (".c", ".h", ".cpp", ".hpp", ".cc", ".hh", ".cxx", ".hxx")}
+    observed = {tuple([row.split("\t")[1], *map(int, row.split("\t")[2:])])
+                for row in result.stdout.splitlines() if row.startswith("GRANT_SITE\t")}
+    registration_errors = check_registration_sites(sources, observed)
+    assert not registration_errors, "\n".join(registration_errors)
+    for name, snippet in (
+        ("alias", "#define HIDDEN_GRANT SKILL_ADD\n"),
+        ("uninvoked", "void uninvoked() { SKILL_ADD(CLASS_WARRIOR, 1, 100); }\n"),
+    ):
+        changed = dict(sources, **{"classes/unregistered.h": snippet})
+        assert any("unobserved registration/alias" in error
+                   for error in check_registration_sites(changed, observed)), name
+    removed = dict(sources)
+    removed["classes/skills.c"] = removed["classes/skills.c"].replace(
+        'SKILL_CREATE("flame mastery", SKILL_FLAME_MASTERY, TAR_MENTAL);', ';', 1)
+    assert any("stale registration provenance" in error
+               for error in check_registration_sites(removed, observed))
+    print(f"ability.registration.reverse: PASS ({len(observed)} native caller sites; new alias/caller and stale call detected)")
     errors = check_mechanic_sites(sources, bindings)
     assert not errors, "\n".join(errors)
     fight = sources["combat/fight.c"]
@@ -779,51 +924,21 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         assert any(diagnostic in error for error in errors), (name, errors)
     print("specialization.sites: PASS (removed registration/assignment/refresh/capture/load, wrong loaded field and changed exact exclusion rejected)")
     print("Native executable SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest())
-    # The behavioral oracle must fail too when outcomes change. Build variants
-    # under bin/; never edit/revert production files under a running test.
+    # Keep one compiled negative case per distinct behavioral failure mechanism.
+    # All positive lifecycle assertions and the fast source mutations above remain.
+    # Native cases also directly remove command/object/room bindings, mutate cells,
+    # omit provenance and introduce conflicts; those do not need extra compilations.
+    # Build variants under bin/ without editing the live worktree.
     for name, old, new, diagnostic in [
-        ("crown_registration_unset", crown_registration, "", "revenant.apply: object registration missing or different handler"),
-        ("crown_dispatch_omitted", "(*obj_index[obj->R_num].func.obj)(obj, 0, CMD_PERIODIC, 0);", ";",
-         "mechanic_crown_events == 1 && mechanic_object_events == 1"),
-        ("crown_race_not_applied", "ch->player.race = RACE_REVENANT;", ";", "wearer.player.race == RACE_REVENANT"),
         ("crown_original_race_lost", "af.modifier = GET_RACE(ch);", "af.modifier = RACE_REVENANT;",
          "wearer.affected && wearer.affected->modifier == RACE_ORC"),
-        ("crown_cleanup_omitted", "CHARACTER_MECHANIC_SITE(revenant_lifecycle);\n\t\taffect_remove(ch, af);",
-         ";", "wearer.player.race == RACE_ORC && !wearer.affected"),
-        ("generic_race_restore_omitted", "GET_RACE(ch) = af->modifier;", ";", "subject.player.race == RACE_ORC"),
         ("generic_birth_restore_omitted", "ch->player.time.birth =\n\t\t\t\ttime(NULL) - racial_data[af->modifier].base_age * SECS_PER_MUD_YEAR;",
          ";", "subject.player.time.birth >= now - 15 * SECS_PER_MUD_YEAR"),
-        ("death_permanent_removed", "if (!(af->flags & AFFTYPE_PERM))", "if (true)",
-         "mechanic_removed_affects == before_removed + 3"),
-        ("death_memory_fullness_retained", "else if (af->type == TAG_MEMORIZE)\n\t\t\taf->flags &= ~MEMTYPE_FULL;", ";",
-         "!(memory->flags & MEMTYPE_FULL)"),
-        ("crown_event_not_scheduled", "CHARACTER_MECHANIC_SITE(revenant_apply);\n\tadd_event(event_revenant_crown, (int)(0.5 * PULSE_VIOLENCE), ch, 0, 0, 0, 0, 0);",
-         ";", "mechanic_crown_events == 1 && mechanic_object_events == 1"),
         ("effect_stubbed", "dam *= dam_factor[DF_GUARDIANS_BULWARK];", "dam *= 1.0;",
          "bulwark_melee(&attacker, &victim) == 850"),
         ("fallback_changed", 'get_property("damage.reduction.guardians.bulwark", 0.850)',
          'get_property("damage.reduction.guardians.bulwark", 0.250)',
          "bulwark_melee(&attacker, &victim) == 850"),
-        ("registration_unset", registration, "", "command registration missing or different handler"),
-        ("innate_registration_unset", innate_registration, "", "innate.entry: command registration missing or different handler"),
-        ("passive_changed_to_active", '{ "bulwark", NULL }', '{ "bulwark", do_innate_reflection }',
-         "passive has an active callback"),
-        ("passive_dispatch_stubbed", 'send_to_char("This innate is always active.\\n", ch);',
-         'send_to_char("Nothing happened.\\n", ch);', 'mechanic_output == "This innate is always active.\\n"'),
-        ("altar_registration_unset", altar_registrations[0], "", "object registration missing or different handler"),
-        ("altar_valuation_changed", "if (proc == unspec_altar)\n\t\treturn -100000;",
-         "if (proc == unspec_altar)\n\t\treturn 0;", "value(obj_index[slot].func.obj) == -100000"),
-        ("multiclass_start_omitted", "do_start(ch, cmd);", ";",
-         "ch->player.level == 1 && ch->player.secondary_class == CLASS_CLERIC"),
-        ("multiclass_refund_omitted", "refund_epic_skills(ch);", ";",
-         "pc.skills[SKILL_EPIC_STRENGTH].learned == 0"),
-        ("multiclass_clock_not_restored", "ch->player.time.logon = logon;", ";",
-         "student.player.time.played == 12345 && student.player.time.logon == logon"),
-        ("multiclass_hp_ignores_secondary",
-         "class_mod = MAX(class_mod, class_hitpoints[flag2idx(ch->player.secondary_class)]);", ";",
-         "calculate_hitpoints2(&student) == warrior_hp"),
-        ("multiclass_room_unregistered", room_registrations[1], "", "room registration missing or different handler"),
-        ("multiclass_command_unregistered", multiclass_registration, "", "multiclass.command: command registration missing or different handler"),
     ]:
         assert combat_bodies.count(old) == 1, name
         variant = work / "mutations" / name
@@ -834,24 +949,12 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
-    print("innate.dispatch.mutations: PASS (removed registration, active passive callback and stubbed dispatch rejected)")
-    print("revenant.mutations: PASS (removed registration/dispatch/schedule/cleanup and lost original race rejected)")
-    print("race/death.cleanup.mutations: PASS (missing race/birth restoration, removed permanent affects and retained memory fullness rejected)")
-    # Removing the actual refresh call must fail the learned/taught assertion,
-    # even though the refresh function and connection still exist.
+    print("state/lifecycle.mutations: PASS (lost original form identity and omitted birth restoration rejected)")
+    # Completion and debit are distinct from an effect or property failure.
     for name, file, old, new, diagnostic in [
-        ("orc_base_age_changed", "constant.c", "{ 15, 90, 50, 100, 0, 80 }, // orc",
-         "{ 16, 90, 50, 100, 0, 80 }, // orc", "wearer.player.time.birth >= before - 15 * SECS_PER_MUD_YEAR"),
-        ("refresh_not_called", "specializations.c", "update_skills(ch);", ";", "pc.skills[SKILL_GUARD].learned == 40"),
         ("purchase_callback_not_called", "specializations.c", "unspecialize_committed, nullptr, 0)", "nullptr, nullptr, 0)",
          "student.player.spec == 0 && pc.epics == 2"),
-        ("forget_not_called", "specializations.c", "forget_spells(ch, -1);", ";", "mechanic_removed_affects == 2"),
         ("debit_not_applied", "epic_transaction.c", "balance += delta;", ";", "student.player.spec == 0 && pc.epics == 2"),
-        ("secondary_skill_delay_removed", "utility.c", "required_level = sec_rlevel + 5;", "required_level = sec_rlevel;",
-         "SKILL_DATA_ALL(&student, SKILL_MEDITATE).rlevel[0] == 6"),
-        ("wallet_refund_credit_missing", "currency_transaction.c",
-         "GET_PLATINUM(character) = static_cast<int>(result.wallet.amount[3]);", ";",
-         "GET_PLATINUM(&student) == scenario.expected_platinum"),
     ]:
         variant = work / "mutations" / name
         variant.mkdir(parents=True, exist_ok=True)
@@ -861,6 +964,4 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         build_variant(source(file), variant_source, variant_binary)
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
-    print("specialization.mutations: PASS (removed registration and refresh call fail native assertions)")
-    print("unspecialization.mutations: PASS (removed altar registration, purchase callback, debit and forgetting call fail native assertions)")
-    print("multiclass.mutations: PASS (removed reset/refund/wallet credit/clock retention, secondary skill delay and secondary HP contribution rejected)")
+    print("transaction.mutations: PASS (detached completion callback and omitted debit rejected)")

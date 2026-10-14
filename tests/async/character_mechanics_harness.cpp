@@ -2,6 +2,7 @@
 #include "core/utils.h"
 #include "account/creation_availability_config.h"
 #include "classes/specializations.h"
+#include "classes/skills.h"
 #include "player/character_mechanics.h"
 #include "combat/damage.h"
 #include "magic/spells.h"
@@ -9,11 +10,14 @@
 #include "guild/assocs.h"
 #include "item/trophy.h"
 
+#include <algorithm>
 #include <cassert>
+#include <tuple>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <type_traits>
 
 using namespace character_mechanics;
@@ -23,7 +27,7 @@ void set_character_property(const char *key, float value);
 void clear_character_properties();
 void update_dam_factors();
 double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
-extern Skill skills[MAX_SKILLS];
+extern Skill skills[MAX_AFFECT_TYPES + 1];
 extern command_info cmd_info[MAX_CMD_LIST];
 extern P_room world;
 extern std::string mechanic_output;
@@ -778,8 +782,110 @@ static void expect_diagnostic(const IdentityConnections &connections, const char
 	std::abort();
 }
 
+static void ability_registration()
+{
+	initialize_skills();
+	assign_innates();
+	auto mechanics = mechanic_connections();
+	const auto errors = validate_grants(mechanics);
+	// Preserve the existing last-write result while requiring its precise
+	// diagnostic. Any additional conflict or loss of this gap fails the test.
+	std::vector<GrantWrite> writes;
+	for (const auto &connection : mechanics)
+		if (connection.id == MechanicId::skill_registration)
+		{
+			const auto rows = std::get<GrantWrites>(connection.binding);
+			writes.assign(rows.begin(), rows.end());
+			assert(connection.implementation == Implementation::incomplete &&
+			       !connection.gap.empty());
+		}
+	const GrantWrite *specific = nullptr, *last = nullptr;
+	for (const auto &write : writes)
+		if (write.ability == SKILL_BLINDFIGHTING && write.owner.primary == CLASS_ROGUE &&
+		    write.owner.kind == OptionKind::specialization &&
+		    write.owner.secondary == SPEC_ASSASSIN)
+		{
+			if (write.replaces)
+				specific = &write;
+			else
+				last = &write;
+		}
+	assert(specific && last && specific->level == 1 && specific->cap == 100 &&
+	       last->level == 1 && last->cap == 90 &&
+	       last->declared_at.line() > specific->declared_at.line());
+	const auto known = std::string(last->declared_at.file_name()) + ":" +
+			   std::to_string(last->declared_at.line()) +
+			   ": conflicting registration without explicit precedence ability " +
+			   std::to_string(SKILL_BLINDFIGHTING);
+	for (const auto &error : errors)
+		std::fprintf(stderr, "%s\n", error.c_str());
+	assert(errors == std::vector<std::string>{ known });
+	size_t skill_writes = 0, innate_writes = 0;
+	std::set<std::tuple<std::string, unsigned int, unsigned int>> sites;
+	for (const auto &connection : mechanics)
+		if (const auto *writes = std::get_if<GrantWrites>(&connection.binding))
+		{
+			if (connection.id == MechanicId::skill_registration)
+				skill_writes = writes->size();
+			else
+				innate_writes = writes->size();
+			for (const auto &write : *writes)
+			{
+				sites.emplace(write.declared_at.file_name(),
+					      write.declared_at.line(), write.declared_at.column());
+				assert(write.declared_at.line() > 0);
+				assert(std::strstr(write.declared_at.file_name(), "src/classes/"));
+			}
+		}
+	for (const auto &[file, line, column] : sites)
+		std::printf("GRANT_SITE\t%s\t%u\t%u\n", file.c_str(), line, column);
+	assert(skill_writes > 1000 && innate_writes > 100);
+	assert(skills[SPELL_DRACONIC_APOTHEOSIS].spell_pointer != nullptr);
+	assert(skills[SPELL_DRACONIC_APOTHEOSIS].m_class[flag2idx(CLASS_DRAGOON) - 1].rlevel[0] ==
+	       12);
+	const auto before =
+		skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1].rlevel[SPEC_GUARDIAN];
+	++skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1].rlevel[SPEC_GUARDIAN];
+	assert(validate_grants(mechanics).size() > errors.size());
+	skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1].rlevel[SPEC_GUARDIAN] = before;
+	auto missing = mechanics;
+	for (auto &connection : missing)
+		if (connection.id == MechanicId::skill_registration)
+			connection.binding = GrantWrites{};
+	assert(validate_grants(missing).size() > errors.size());
+	assert(validate_grants({}).size() == 4);
+	// An incompatible specific write must fail even when the final table agrees
+	// with the overwrite: final-table inspection alone cannot detect this.
+	const auto specific_write =
+		std::find_if(writes.begin(), writes.end(),
+			     [](const auto &write)
+			     {
+				     return write.ability == SKILL_GUARD &&
+					    write.owner.primary == CLASS_WARRIOR &&
+					    write.owner.secondary == SPEC_GUARDIAN &&
+					    write.replaces;
+			     });
+	assert(specific_write != writes.end());
+	auto conflicting = *specific_write;
+	++conflicting.level;
+	writes.push_back(conflicting);
+	++skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1].rlevel[SPEC_GUARDIAN];
+	for (auto &connection : missing)
+		if (connection.id == MechanicId::skill_registration)
+			connection.binding = GrantWrites(writes);
+	const auto conflicts = validate_grants(missing);
+	assert(conflicts.size() == errors.size() + 1);
+	assert(conflicts.back().find("conflicting registration") != std::string::npos);
+	skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1].rlevel[SPEC_GUARDIAN] = before;
+
+	std::printf(
+		"ability.registration: PASS (%zu skill/definition writes, %zu innate grants; native tables, changed/missing provenance and one exact existing conflict checked; callback execution is separate)\n",
+		skill_writes, innate_writes);
+}
+
 int main()
 {
+	ability_registration();
 	specialization_transition();
 	guardian_bulwark();
 	unspecialization_transition();

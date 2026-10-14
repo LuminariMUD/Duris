@@ -6,6 +6,8 @@
 #include <array>
 #include <bit>
 #include <cstring>
+#include <map>
+#include <tuple>
 #include <type_traits>
 
 namespace character_mechanics
@@ -200,6 +202,18 @@ std::string_view mechanic_name(MechanicId id)
 		return "race.affect.cleanup";
 	case MechanicId::death_affect_cleanup:
 		return "death.affect.cleanup";
+	case MechanicId::skill_table:
+		return "skill.table";
+	case MechanicId::skill_registration:
+		return "skill.registration";
+	case MechanicId::racial_innate_grants:
+		return "racial.innate.grants";
+	case MechanicId::class_innate_grants:
+		return "class.innate.grants";
+	case MechanicId::innate_registration:
+		return "innate.registration";
+	case MechanicId::innate_callbacks:
+		return "innate.callbacks";
 	case MechanicId::count:
 		break;
 	}
@@ -237,7 +251,9 @@ std::vector<MechanicConnection> mechanic_connections()
 				  item_load_connections(),
 				  racial_age_connections(),
 				  affect_cleanup_connections(),
-				  death_connections() })
+				  death_connections(),
+				  skill_registration_connections(),
+				  innate_registration_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -249,6 +265,155 @@ std::vector<TransitionConnection> transition_connections()
 	     { specialization_transitions(), multiclass_transitions(), revenant_transitions() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
+}
+
+std::vector<std::string> validate_grants(std::span<const MechanicConnection> connections)
+{
+	SkillTable skills;
+	InnateCallbacks callbacks;
+	GrantWrites skill_writes, innate_writes;
+	RacialInnates racial = nullptr;
+	ClassInnates classes = nullptr;
+	for (const auto &connection : connections)
+	{
+		if (const auto *value = std::get_if<SkillTable>(&connection.binding))
+			skills = *value;
+		if (const auto *value = std::get_if<InnateCallbacks>(&connection.binding))
+			callbacks = *value;
+		if (const auto *value = std::get_if<RacialInnates>(&connection.binding))
+			racial = *value;
+		if (const auto *value = std::get_if<ClassInnates>(&connection.binding))
+			classes = *value;
+		if (const auto *value = std::get_if<GrantWrites>(&connection.binding))
+		{
+			if (connection.id == MechanicId::skill_registration)
+				skill_writes = *value;
+			if (connection.id == MechanicId::innate_registration)
+				innate_writes = *value;
+		}
+	}
+	std::vector<std::string> errors;
+	if (skills.empty())
+		errors.push_back("missing native skill table");
+	if (callbacks.empty())
+		errors.push_back("missing native innate callbacks");
+	if (!racial)
+		errors.push_back("missing native racial innate grants");
+	if (!classes)
+		errors.push_back("missing native class innate grants");
+	using Key = std::tuple<int, OptionKind, unsigned int, unsigned int>;
+	auto key = [](const GrantWrite &write) {
+		return Key{ write.ability, write.owner.kind, write.owner.primary,
+			    write.owner.secondary };
+	};
+	auto check = [&](GrantWrites writes, bool skill)
+	{
+		std::map<Key, const GrantWrite *> latest;
+		for (const auto &write : writes)
+		{
+			const auto &owner = write.owner;
+			auto error = [&](const char *message)
+			{
+				errors.push_back(std::string(write.declared_at.file_name()) + ":" +
+						 std::to_string(write.declared_at.line()) + ": " +
+						 message + " ability " +
+						 std::to_string(write.ability));
+			};
+			const auto previous = latest.find(key(write));
+			const bool specialization_override =
+				previous != latest.end() && skill &&
+				owner.kind == OptionKind::specialization && write.replaces &&
+				!previous->second->replaces;
+			if (previous != latest.end() && !specialization_override &&
+			    (owner.kind == OptionKind::shared ||
+			     previous->second->level != write.level ||
+			     previous->second->cap != write.cap))
+				error("conflicting registration without explicit precedence");
+			latest[key(write)] = &write;
+			if (write.ability < 0 ||
+			    (skill ? size_t(write.ability) >= skills.size() :
+				     size_t(write.ability) >= callbacks.size()))
+			{
+				error("undefined registration target");
+				continue;
+			}
+			if (owner.kind == OptionKind::shared)
+				continue; // Skill definition, not a grant cell.
+			if (owner.kind == OptionKind::race)
+			{
+				if (skill || owner.primary > LAST_RACE || owner.secondary ||
+				    !racial)
+					error("invalid racial grant owner");
+			}
+			else if ((owner.kind != OptionKind::character_class &&
+				  owner.kind != OptionKind::specialization) ||
+				 !std::has_single_bit(owner.primary) ||
+				 std::countr_zero(owner.primary) >= CLASS_COUNT ||
+				 owner.secondary > MAX_SPEC)
+				error("invalid class/spec grant owner");
+			if (!skill &&
+			    (!callbacks[write.ability].name || !*callbacks[write.ability].name))
+				error("grant has no innate definition");
+		}
+		// Compare the last observed write with the actual initialized cell, and
+		// visit every nonempty cell so a write bypassing registration cannot vanish.
+		auto cell = [&](int ability, Option owner, int level, int cap)
+		{
+			GrantWrite query{ ability, owner, level, cap, {} };
+			const auto found = latest.find(key(query));
+			if (found == latest.end())
+			{
+				if (level || cap)
+					errors.push_back("unregistered native grant: ability " +
+							 std::to_string(ability));
+			}
+			else if (found->second->level != level || found->second->cap != cap)
+				errors.push_back(
+					"native grant changed after registration: ability " +
+					std::to_string(ability));
+		};
+		if (skill)
+			for (size_t ability = 0; ability < skills.size(); ++ability)
+			{
+				const auto &row = skills[ability];
+				if (row.name && std::strcmp(row.name, "Undefined") &&
+				    std::strcmp(row.name, "\n") &&
+				    !latest.contains(Key{ int(ability), OptionKind::shared, 0, 0 }))
+					errors.push_back("unregistered skill definition: " +
+							 std::to_string(ability));
+				for (int cls = 0; cls < CLASS_COUNT; ++cls)
+					for (int spec = 0; spec <= MAX_SPEC; ++spec)
+						cell(ability,
+						     { spec ? OptionKind::specialization :
+							      OptionKind::character_class,
+						       1u << cls, unsigned(spec) },
+						     row.m_class[cls].rlevel[spec],
+						     row.m_class[cls].maxlearn[spec]);
+			}
+		else
+		{
+			if (racial)
+				for (int ability = 0; ability <= LAST_INNATE; ++ability)
+					for (int race = 0; race <= LAST_RACE; ++race)
+						cell(ability,
+						     { OptionKind::race, unsigned(race), 0 },
+						     (*racial)[ability][race], 0);
+			if (classes)
+				for (int ability = 0; ability <= LAST_INNATE + 1; ++ability)
+					for (int cls = 0; cls < CLASS_COUNT; ++cls)
+						for (int spec = 0; spec <= MAX_SPEC; ++spec)
+							cell(ability,
+							     { spec ? OptionKind::specialization :
+								      OptionKind::character_class,
+							       1u << cls, unsigned(spec) },
+							     (*classes)[ability][cls][spec], 0);
+		}
+	};
+	if (!skills.empty())
+		check(skill_writes, true);
+	if (!callbacks.empty())
+		check(innate_writes, false);
+	return errors;
 }
 
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections)
@@ -280,8 +445,11 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 						      std::is_same_v<decltype(binding),
 								     player_checkpoint_component>)
 						return true; // A typed field ID, not a nullable pointer.
-					else if constexpr (std::is_same_v<decltype(binding),
-									  StatusFields>)
+					else if constexpr (
+						std::is_same_v<decltype(binding), StatusFields> ||
+						std::is_same_v<decltype(binding), SkillTable> ||
+						std::is_same_v<decltype(binding), GrantWrites> ||
+						std::is_same_v<decltype(binding), InnateCallbacks>)
 						return !binding.empty();
 					else if constexpr (std::is_same_v<decltype(binding),
 									  RoomRegistration>)
@@ -311,7 +479,12 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 				std::holds_alternative<RaceSpecPredicate>(connection.binding);
 			break;
 		case Relation::grant:
-			compatible = std::holds_alternative<const char *>(connection.binding);
+			compatible = std::holds_alternative<const char *>(connection.binding) ||
+				     std::holds_alternative<SkillTable>(connection.binding) ||
+				     std::holds_alternative<GrantWrites>(connection.binding) ||
+				     std::holds_alternative<InnateCallbacks>(connection.binding) ||
+				     std::holds_alternative<RacialInnates>(connection.binding) ||
+				     std::holds_alternative<ClassInnates>(connection.binding);
 			break;
 		case Relation::passive:
 			compatible =

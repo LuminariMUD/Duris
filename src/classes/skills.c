@@ -38,6 +38,8 @@ extern void initialize_skills();
 int flag2idx(int);
 #else
 #include "core/prototypes.h"
+#include "classes/skills.h"
+#include "player/character_mechanics.h"
 extern int SortedSkills[];
 #endif
 
@@ -101,9 +103,26 @@ Skill skills[MAX_AFFECT_TYPES + 1];
 #endif
 
 #else
+static std::vector<character_mechanics::GrantWrite> skill_registration_writes;
+
+static void record_skill_grant(int Class, int Spec, std::source_location site, bool replaces)
+{
+	const auto &grant = skills[numSkills].m_class[flag2idx(Class) - 1];
+	skill_registration_writes.push_back(
+		{ numSkills,
+		  { Spec ? character_mechanics::OptionKind::specialization :
+			   character_mechanics::OptionKind::character_class,
+		    static_cast<unsigned int>(Class), static_cast<unsigned int>(Spec) },
+		  grant.rlevel[Spec],
+		  grant.maxlearn[Spec],
+		  site,
+		  replaces });
+}
+
 void SPELL_CREATE_MSG(const char *Name, int Index, int Beats, unsigned int Targets,
 		      void (*Spell_pointer)(int, P_char, char *, int, P_char, P_obj),
-		      const char *Wear_off)
+		      const char *Wear_off,
+		      std::source_location site = std::source_location::current())
 {
 	skills[Index].name = (Name);
 	skills[Index].wear_off_char[0] = (Wear_off);
@@ -112,20 +131,25 @@ void SPELL_CREATE_MSG(const char *Name, int Index, int Beats, unsigned int Targe
 	skills[Index].targets = Targets | TAR_SPELL;
 	SortedSkills[Index] = Index;
 	numSkills = Index;
+	skill_registration_writes.push_back(
+		{ Index, { character_mechanics::OptionKind::shared, 0, 0 }, 0, 0, site });
 }
 
 void SPELL_CREATE(const char *Name, int Index, int Beats, unsigned int Targets,
-		  void (*Spell_pointer)(int, P_char, char *, int, P_char, P_obj))
+		  void (*Spell_pointer)(int, P_char, char *, int, P_char, P_obj),
+		  std::source_location site = std::source_location::current())
 {
-	SPELL_CREATE_MSG(Name, Index, Beats, Targets, Spell_pointer, NULL);
+	SPELL_CREATE_MSG(Name, Index, Beats, Targets, Spell_pointer, NULL, site);
 }
 
-void SKILL_CREATE(const char *Name, int Index, unsigned int Type)
+void SKILL_CREATE(const char *Name, int Index, unsigned int Type, std::source_location site)
 {
 	skills[Index].name = (Name);
 	SortedSkills[Index] = Index;
 	skills[Index].targets = Type | TAR_SKILL;
 	numSkills = Index;
+	skill_registration_writes.push_back(
+		{ Index, { character_mechanics::OptionKind::shared, 0, 0 }, 0, 0, site });
 }
 
 #define TAG_CREATE(Name, Index) SKILL_CREATE(Name, Index, 0)
@@ -136,14 +160,16 @@ void SKILL_CREATE(const char *Name, int Index, unsigned int Type)
 		     (spell_func)Spell_pointer)
 
 void SKILL_CREATE_WITH_MESSAGES(const char *Name, int Index, unsigned int Type,
-				const char *wearoff_char, const char *wearoff_room)
+				const char *wearoff_char, const char *wearoff_room,
+				std::source_location site = std::source_location::current())
 {
-	SKILL_CREATE(Name, Index, Type);
+	SKILL_CREATE(Name, Index, Type, site);
 	skills[Index].wear_off_char[0] = wearoff_char;
 	skills[Index].wear_off_room[0] = wearoff_room;
 }
 
-void SPEC_SKILL_ADD(int Class, int Level, int MaxLearn, int Spec)
+void SPEC_SKILL_ADD(int Class, int Level, int MaxLearn, int Spec,
+		    std::source_location site = std::source_location::current())
 {
 	if (MaxLearn == 0 || Level == 0)
 	{
@@ -153,38 +179,45 @@ void SPEC_SKILL_ADD(int Class, int Level, int MaxLearn, int Spec)
 
 	skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].rlevel[Spec] = (::byte)(Level);
 	skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].maxlearn[Spec] = (ubyte)(MaxLearn);
+	record_skill_grant(Class, Spec, site, true);
 }
 
-void SKILL_ADD(int Class, int Level, int MaxLearn)
+void SKILL_ADD(int Class, int Level, int MaxLearn,
+	       std::source_location site = std::source_location::current())
 {
 	for (int i = 0; i < MAX_SPEC + 1; i++)
 	{
 		skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].rlevel[i] = (::byte)(Level);
 		skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].maxlearn[i] =
 			(ubyte)(MaxLearn);
+		record_skill_grant(Class, i, site, false);
 	}
 }
 
 void SPELL_CREATE2(const char *Name, int Index, int Beats, int Targets,
 		   void (*Spell_pointer)(int, P_char, char *, int, P_char, P_obj),
-		   const char *Wear_off, const char *wear_off_room)
+		   const char *Wear_off, const char *wear_off_room,
+		   std::source_location site = std::source_location::current())
 {
-	SPELL_CREATE_MSG(Name, Index, Beats, Targets, Spell_pointer, Wear_off);
+	SPELL_CREATE_MSG(Name, Index, Beats, Targets, Spell_pointer, Wear_off, site);
 	skills[Index].wear_off_room[0] = wear_off_room;
 }
 
-void SPEC_SPELL_ADD(int Class, int Level, int Spec)
+void SPEC_SPELL_ADD(int Class, int Level, int Spec,
+		    std::source_location site = std::source_location::current())
 {
 	skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].rlevel[Spec] = (::byte)(Level);
 	skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].maxlearn[Spec] = 100;
+	record_skill_grant(Class, Spec, site, true);
 }
 
-void SPELL_ADD(int Class, int Level)
+void SPELL_ADD(int Class, int Level, std::source_location site = std::source_location::current())
 {
 	for (int i = 0; i < MAX_SPEC + 1; i++)
 	{
 		skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].rlevel[i] = (::byte)(Level);
 		skills[numSkills].m_class[(int)(flag2idx(Class) - 1)].maxlearn[i] = 100;
+		record_skill_grant(Class, i, site, false);
 	}
 }
 
@@ -195,6 +228,9 @@ void create_tags();
 
 void initialize_skills()
 {
+#if !defined(_DE_) && !defined(_PFILE_)
+	skill_registration_writes.clear();
+#endif
 	int i;
 
 	for (i = 0; i <= MAX_AFFECT_TYPES; i++)
@@ -5356,5 +5392,38 @@ int flag2idx(int flag)
 	}
 
 	return i;
+}
+#endif
+
+#if !defined(_DE_) && !defined(_PFILE_)
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::skill_registration_connections()
+{
+	static const SkillTable table(skills, std::size(skills));
+	static constexpr MechanicId dependencies[] = { MechanicId::skill_table };
+	static MechanicConnection connections[] = {
+		{ MechanicId::skill_table,
+		  Relation::grant,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(table),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native initialized skill/spell/tag definitions, callbacks and per-class/spec levels and caps; availability is separate.",
+		  {} },
+		{ MechanicId::skill_registration,
+		  Relation::grant,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(GrantWrites(skill_registration_writes)),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::incomplete,
+		  "Observed definition and grant writes retain the production caller and precedence before overwritten cells disappear.",
+		  "Existing blindfighting Rogue/Assassin cap 100 is overwritten by the later class-wide cap 90; preserved pending a balance decision." }
+	};
+	connections[1].binding = GrantWrites(skill_registration_writes);
+	return connections;
 }
 #endif

@@ -26,6 +26,7 @@ docs/
 |----------|---------|
 | [ARCHITECTURE.md](reference/ARCHITECTURE.md) | Process model, boot gate, game loop, typed persistence, recovery, and networking. |
 | [CODEBASE.md](reference/CODEBASE.md) | Module-by-module map of the server sources. |
+| [CHARACTER_MECHANICS.md](reference/CHARACTER_MECHANICS.md) | Compiled character-option connections, native grant provenance, validators, and evidence boundaries. |
 | [DATABASE.md](reference/DATABASE.md) | Database authority, typed reads/writes, schema, reconciliation, and migrations. |
 | [EVENTS.md](reference/EVENTS.md) | The `nevent` deferred-work scheduler: the timer wheel, scheduling, cancellation, the per-pulse budget, and catch-up. |
 | [SHIPS.md](reference/SHIPS.md) | Ship subsystem engineering reference: lifecycle, heartbeat, movement, crews, combat, NPC ships, persistence, GMCP, and extending it. |

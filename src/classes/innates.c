@@ -41,12 +41,34 @@
 #include "core/safe_format.h"
 #include "player/character_mechanics.h"
 
-#define ADD_RACIAL_INNATE(innate, race, level) (racial_innates[(innate)][(race)] = (level))
-#define ADD_CLASS_INNATE(innate, ch_class, level, spec)                              \
-	{                                                                            \
-		(class_innates[(innate)][flag2idx(ch_class) - 1][(spec)] = (level)); \
-		SET_BIT(class_innates_at_all[(innate)], ch_class);                   \
-	}
+#define ADD_RACIAL_INNATE(innate, target_race, level)                                            \
+	do                                                                                       \
+	{                                                                                        \
+		racial_innates[(innate)][(target_race)] = (level);                               \
+		record_innate_grant((innate),                                                    \
+				    { character_mechanics::OptionKind::race, (target_race), 0 }, \
+				    racial_innates[(innate)][(target_race)],                     \
+				    std::source_location::current());                            \
+	} while (false)
+#define ADD_CLASS_INNATE(innate, ch_class, level, spec)                                          \
+	do                                                                                       \
+	{                                                                                        \
+		class_innates[(innate)][flag2idx(ch_class) - 1][(spec)] = (level);               \
+		SET_BIT(class_innates_at_all[(innate)], ch_class);                               \
+		record_innate_grant((innate),                                                    \
+				    { (spec) ? character_mechanics::OptionKind::specialization : \
+					       character_mechanics::OptionKind::character_class, \
+				      (ch_class), (spec) },                                      \
+				    class_innates[(innate)][flag2idx(ch_class) - 1][(spec)],     \
+				    std::source_location::current());                            \
+	} while (false)
+
+static std::vector<character_mechanics::GrantWrite> innate_registration_writes;
+static void record_innate_grant(int ability, character_mechanics::Option owner, int level,
+				std::source_location site)
+{
+	innate_registration_writes.push_back({ ability, owner, level, 0, site });
+}
 
 float regen_factor[REG_MAX + 1];
 
@@ -455,6 +477,7 @@ bool has_innate(P_char ch, int innate)
 
 void assign_innates()
 {
+	innate_registration_writes.clear();
 	memset(racial_innates, 0, sizeof(racial_innates));
 	memset(class_innates, 0, sizeof(class_innates));
 	memset(class_innates_at_all, 0, sizeof(class_innates_at_all));
@@ -5188,4 +5211,56 @@ int get_level_from_innate(P_char ch, int innate)
 		return level;
 
 	return 0;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::innate_registration_connections()
+{
+	static const InnateCallbacks callbacks(innates_data, std::size(innates_data));
+	static constexpr MechanicId dependencies[] = { MechanicId::innate_callbacks,
+						       MechanicId::innate_eligibility };
+	static MechanicConnection connections[] = {
+		{ MechanicId::racial_innate_grants,
+		  Relation::grant,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&racial_innates),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native racial innate unlock cells indexed by the effective race.",
+		  {} },
+		{ MechanicId::class_innate_grants,
+		  Relation::grant,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&class_innates),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native primary/secondary class and specialization innate unlock cells.",
+		  {} },
+		{ MechanicId::innate_registration,
+		  Relation::grant,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(GrantWrites(innate_registration_writes)),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Observed native innate grant writes with their caller locations.",
+		  {} },
+		{ MechanicId::innate_callbacks,
+		  Relation::grant,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(callbacks),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual innate names and active callbacks; null callbacks require passive consumer connections.",
+		  {} }
+	};
+	connections[2].binding = GrantWrites(innate_registration_writes);
+	return connections;
 }
