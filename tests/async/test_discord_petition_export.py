@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Execute production petition/ptell bodies, native conversion, and real sockets."""
 
+import argparse
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, SRC, SRC_ROOT, HARNESS_STUBS, extract_function
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--node-driver", type=Path,
+                    help="also run a Node bridge integration driver with the compiled harness path")
+args = parser.parse_args()
 
 functions = [extract_function(path, signature) for path, signature in [
     ("actcomm.c", "void do_petition("),
@@ -44,5 +50,8 @@ with tempfile.TemporaryDirectory(prefix="discord-petition-", dir=build) as direc
         "-o", str(binary),
     ], check=True, cwd=ROOT, timeout=120)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=60)
+    if args.node_driver:
+        subprocess.run(["node", str(args.node_driver.resolve()), str(binary)],
+                       check=True, cwd=ROOT, timeout=90)
 
 print("Accepted-command petition/ptell export and scope checks passed")
