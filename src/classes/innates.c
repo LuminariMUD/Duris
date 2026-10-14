@@ -4498,7 +4498,7 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 			if (!CAN_SEE(ch, tch))
 				continue;
 
-			for (z = 1; z < MAX_HATRED + 1 && !found; z++)
+			for (z = 1; z < MAX_HATRED && race_hatred_data[i][z] != -1 && !found; z++)
 			{
 				if (race_hatred_data[i][z] == GET_RACE(tch))
 				{
@@ -4532,17 +4532,14 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	}
 	if (!found)
 	{
-		x = 0;
 		for (afp = ch->affected; afp; afp = next_af)
 		{
 			next_af = afp->next;
 
 			if (afp->type == TAG_HATRED)
 			{
-				affect_from_char(ch, TAG_HATRED);
-				x++;
-				if (x > 1)
-					wear_off_message(ch, afp);
+				wear_off_message(ch, afp);
+				affect_remove(ch, afp);
 			}
 		}
 	}

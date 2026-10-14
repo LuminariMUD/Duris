@@ -58,13 +58,14 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last pushed checkpoint: `41714f500`, the separately scoped phantasmal removal
-lifetime repair. Earlier passing batches are `2fe7f8d72` (disabled routes),
+Last committed checkpoint: `b8cbf9678`, shared innate timer/affect lifecycle
+ownership. Last pushed checkpoint: `41714f500`, the separately scoped phantasmal
+removal lifetime repair. Earlier passing batches are `2fe7f8d72` (disabled routes),
 `c926e427b` (commands), `4a11e79f6` (creation), `1abfef484` (ability tables), and
 `ff80bae30` (generic race/death cleanup). Upstream `0e27ef1e8` was integrated
 through `f75e77b34`; this is not a later remote-head claim. Work is active.
 
-**Current batch:** connect shared innate property/cooldown, real affect application
+The shared-owner batch connects innate property/cooldown, real affect application
 and short-event expiry, and the affect-only phantasmal transition. The native
 fixture now executes `affect_to_char` and `event_short_affect`, replacing the old
 allocation stub. Phantom level 19/20, timer duration/default/override, remaining
@@ -94,10 +95,22 @@ are `innate-source.log`). The ASan/UBSan event-cancellation test also passed;
 connection. Affect-only transitions may omit changed status fields; transitions
 claiming the status component still reject a missing status-field declaration.
 
-**Next concrete repair:** `event_hatred_check` removes every hatred affect while
-iterating pointers into that same list, then accesses released nodes. Its hated-race
-loop also includes index `MAX_HATRED`, outside the native row. Qualify both in the
-existing native fixture and fix separately before continuing broader consumers.
+**Current repair:** `event_hatred_check` accessed released nodes after bulk removal
+and scanned index `MAX_HATRED`, outside the native row. Both were reproduced
+independently with ASan/UBSan. The separate fix removes one affect at a
+time, emits its message before release and observes the native race-row sentinel
+and bound. The existing fixture checks both pulse modifiers, refresh/no stacking,
+unrelated-affect retention, one wear-off message and rearm. Native positive and
+current reverse-location checks, both reintroduced defect variants, server build,
+formatting and documentation passed (`hatred-*.log`; original repro is
+`hatred-before.log`). The seven unchanged behavior mutations retain their passing
+innate-batch evidence; the maintained default runner now includes all nine.
+
+**Next:** continue the broader owner groups, beginning with the shared
+`can_char_use_item` / `can_prime_class_use_item` restrictions and their callers,
+then body/wear/mount and progression consumers. The existing race-bit runtime test
+covers all race bits but not every class/specialization/body rule. Do not add
+another round of pilot-only coverage before this migration.
 
 | Connected scope | Current evidence and boundary |
 | --- | --- |

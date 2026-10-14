@@ -495,6 +495,8 @@ combat_prelude = r'''
 #include <cstring>
 #include <string>
 void do_phantasmal_form(P_char, char *, int);
+void event_hatred_check(P_char, P_char, P_obj, void *);
+extern const int race_hatred_data[][MAX_HATRED];
 #define PROPERTIES_FILE "lib/duris.properties"
 #define MAX_PROPERTIES 3000
 int properties_count;
@@ -503,6 +505,9 @@ int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
 room_data mechanic_rooms[3]{};
 P_room world = mechanic_rooms;
+zone_data mechanic_zone{};
+zone_data *zone_table = &mechanic_zone;
+time_info_data time_info{};
 extern const int top_of_world = 2;
 extern const class_names class_names_table[];
 extern const race_names race_names_table[];
@@ -547,7 +552,7 @@ int revenant_helm(P_obj, P_char, int, char *);
 void event_revenant_crown(P_char, P_char, P_obj, void *);
 void event_object_proc(P_char, P_char, P_obj, void *);
 P_nevent current_nevent = nullptr;
-int mechanic_crown_events, mechanic_object_events, mechanic_wait;
+int mechanic_crown_events, mechanic_object_events, mechanic_wait, mechanic_hatred_events;
 std::vector<std::pair<int, event_short_affect_data>> mechanic_short_events;
 nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_char victim,
         P_obj obj, int flag, const void *data, int size) {
@@ -557,6 +562,10 @@ nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_ch
         return {nevent_schedule_status::scheduled, {nullptr, 0}};
     }
     assert(!victim && !flag && !data && !size);
+    if (callback == event_hatred_check) {
+        assert(ch && !obj && delay == 4); ++mechanic_hatred_events;
+        return {nevent_schedule_status::scheduled, {nullptr, 0}};
+    }
     if (callback == event_revenant_crown) {
         assert(ch && !obj && delay == PULSE_VIOLENCE / 2);
         ++mechanic_crown_events;
@@ -686,6 +695,7 @@ combat_bodies = (
         ("innates.c", "bool check_innate_time("),
         ("innates.c", "bool can_use_innate(P_char ch, int innate)"),
         ("innates.c", "void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)"),
+        ("innates.c", "void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)"),
         ("innates.c", "void do_innate(P_char ch, char *arg, int cmd)"),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections("),
         ("innates.c", "std::span<const character_mechanics::TransitionConnection> character_mechanics::phantasmal_transitions("),
@@ -1087,6 +1097,10 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     # omit provenance and introduce conflicts; those do not need extra compilations.
     # Build variants under bin/ without editing the live worktree.
     for name, old, new, diagnostic in [
+        ("hatred_bulk_remove", "wear_off_message(ch, afp);\n\t\t\t\taffect_remove(ch, afp);",
+         "affect_from_char(ch, TAG_HATRED);\n\t\t\t\tx++;\n\t\t\t\tif (x > 1)\n\t\t\t\t\twear_off_message(ch, afp);", "heap-use-after-free"),
+        ("hatred_race_overrun", "z < MAX_HATRED && race_hatred_data[i][z] != -1 && !found",
+         "z < MAX_HATRED + 1 && !found", "out of bounds"),
         ("phantasmal_released_message", "if (afp)\n\t\t\twear_off_message(ch, afp);\n\t\taffect_from_char(ch, TAG_PHANTASMAL_FORM);",
          "affect_from_char(ch, TAG_PHANTASMAL_FORM);\n\t\twear_off_message(ch, afp);", "heap-use-after-free"),
         ("crown_original_race_lost", "af.modifier = GET_RACE(ch);", "af.modifier = RACE_REVENANT;",
@@ -1108,7 +1122,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
-    print("state/lifecycle.mutations: PASS (phantasmal released-node read fails ASan; lost original form identity and omitted birth restoration rejected)")
+    print("state/lifecycle.mutations: PASS (phantasmal/hatred released-node reads fail ASan, hatred race overrun fails UBSan; lost original form identity and omitted birth restoration rejected)")
     # Completion and debit are distinct from an effect or property failure.
     for name, file, old, new, diagnostic in [
         ("purchase_callback_not_called", "specializations.c", "unspecialize_committed, nullptr, 0)", "nullptr, nullptr, 0)",

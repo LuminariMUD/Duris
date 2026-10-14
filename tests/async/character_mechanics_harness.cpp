@@ -24,6 +24,7 @@
 using namespace character_mechanics;
 
 void do_phantasmal_form(P_char, char *, int);
+void event_hatred_check(P_char, P_char, P_obj, void *);
 void load_character_properties();
 void set_character_property(const char *key, float value);
 void clear_character_properties();
@@ -48,6 +49,7 @@ extern P_nevent current_nevent;
 extern int mechanic_crown_events, mechanic_object_events, mechanic_wait;
 extern P_char character_list;
 extern std::vector<std::pair<int, event_short_affect_data>> mechanic_short_events;
+extern int mechanic_hatred_events;
 bool can_use_innate(P_char, int);
 int get_innate_property(int, const char *, int);
 
@@ -903,6 +905,69 @@ static void active_innate_lifecycle()
 		"innate.active/lifecycle: PASS (registered Phantom 19/20 dispatch, real timer/use/default/override, flag application, native short-event liveness/expiry, cooldown denial/reuse and death cleanup; scheduler delivery and derived-stat recalculation are world boundaries)");
 }
 
+static void racial_hatred_lifecycle()
+{
+	load_character_properties();
+	char_data dwarf{}, other{};
+	pc_only_data pc{}, other_pc{};
+	dwarf.only.pc = &pc;
+	other.only.pc = &other_pc;
+	dwarf.player.race = RACE_MOUNTAIN;
+	dwarf.player.m_class = CLASS_WARRIOR;
+	dwarf.player.level = 21;
+	other.player.race = RACE_HUMAN;
+	other.player.level = 1;
+	SET_POS(&dwarf, STAT_NORMAL + POS_STANDING);
+	SET_POS(&other, STAT_NORMAL + POS_STANDING);
+	const auto saved_room = world[0];
+	world[0].people = &dwarf;
+	world[0].light = 10;
+	dwarf.in_room = other.in_room = 0;
+	affected_type affect{};
+	affect.type = SKILL_GUARD;
+	affect.flags = AFFTYPE_PERM;
+	const auto retained = affect_to_char(&dwarf, &affect);
+	affect.type = TAG_HATRED;
+	affect.flags = 0;
+	affect.location = APPLY_COMBAT_PULSE;
+	affect.modifier = -1;
+	affect_to_char(&dwarf, &affect);
+	affect.location = APPLY_SPELL_PULSE;
+	affect_to_char(&dwarf, &affect);
+	mechanic_output.clear();
+	const auto removed = mechanic_removed_affects;
+	const auto events = mechanic_hatred_events;
+	event_hatred_check(&dwarf, nullptr, nullptr, nullptr);
+	assert(dwarf.affected == retained && !retained->next);
+	assert(mechanic_removed_affects == removed + 2 && mechanic_hatred_events == events + 1);
+	const std::string message = skills[TAG_HATRED].wear_off_char[0];
+	const auto first = mechanic_output.find(message);
+	assert(first != std::string::npos &&
+	       mechanic_output.find(message, first + message.size()) == std::string::npos);
+	// A visible, non-hated race must stop at the native row's sentinel/bound.
+	dwarf.next_in_room = &other;
+	assert(CAN_SEE(&dwarf, &other));
+	event_hatred_check(&dwarf, nullptr, nullptr, nullptr);
+	assert(dwarf.affected == retained && !retained->next);
+	other.player.race = RACE_ORC;
+	event_hatred_check(&dwarf, nullptr, nullptr, nullptr);
+	assert(dwarf.affected->type == TAG_HATRED && dwarf.affected->next->type == TAG_HATRED);
+	assert(dwarf.affected->location == APPLY_SPELL_PULSE && dwarf.affected->modifier == -1);
+	assert(dwarf.affected->next->location == APPLY_COMBAT_PULSE &&
+	       dwarf.affected->next->modifier == -1);
+	const auto existing = dwarf.affected;
+	event_hatred_check(&dwarf, nullptr, nullptr, nullptr);
+	assert(dwarf.affected == existing && existing->next->next == retained);
+	other.player.race = RACE_HUMAN;
+	event_hatred_check(&dwarf, nullptr, nullptr, nullptr);
+	assert(dwarf.affected == retained && !retained->next);
+	affect_remove(&dwarf, retained);
+	world[0] = saved_room;
+	clear_character_properties();
+	std::puts(
+		"hatred.lifecycle: PASS (real racial eligibility/table, visible neutral/enemy, paired pulse affects/refresh, safe removal preserving unrelated affect, single message and event rearm; derived pulse recalculation remains a fixture boundary)");
+}
+
 static void guardian_bulwark()
 {
 	load_character_properties();
@@ -1216,6 +1281,7 @@ int main()
 	disabled_transformations();
 	phantasmal_removal();
 	active_innate_lifecycle();
+	racial_hatred_lifecycle();
 	creation_bindings();
 	guardian_bulwark();
 	unspecialization_transition();

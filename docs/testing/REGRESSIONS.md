@@ -21,6 +21,21 @@ adjacent spaces, distinct single-space headings, duplicate suffixes and tabs,
 alongside the full maintained-document link scan. The linked heading and its
 existing link remain unchanged.
 
+## Racial hatred affect removal and race bounds
+
+The hatred event now removes each matching affect individually while traversing
+the list, emits the removal message before release, and stops scanning a hated-race
+row at its sentinel or bound. The old bulk removal released the next node before
+the loop visited it; the race loop also read index 5 of a five-element row.
+
+`test_character_mechanics.py` uses the real Mountain Dwarf grant, native hated-race
+table, visibility predicate, affect application/message/removal and event body.
+It checks paired combat/spell-pulse effects, refresh without stacking, safe cleanup
+with an unrelated affect retained, one message and event rearm. Separate variants
+restore the released-node traversal and row overrun; ASan and UBSan reject them.
+The fixture records scheduling and bounds derived pulse recalculation, so it does
+not claim full-world hatred acquisition or pulse-rate behavior.
+
 ## Phantasmal form removal message lifetime
 
 `do_phantasmal_form` now emits its removal message before `affect_from_char`
