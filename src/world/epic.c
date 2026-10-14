@@ -101,6 +101,7 @@ struct epic_award_context
 	int amount;
 	bool blessing;
 	bool task_penalty;
+	bool *committed = nullptr;
 };
 
 struct epic_level_context
@@ -198,6 +199,8 @@ void epic_award_committed(P_char ch, bool committed, const epic_command_result &
 	}
 	epic_award_context context = {};
 	memcpy(&context, raw_context, sizeof(context));
+	if (context.committed)
+		*context.committed = true;
 	if (context.blessing)
 		send_to_char("You feel the &+cblessing&n of the &+WGods&n wash over you.\n", ch);
 	if (context.task_penalty)
@@ -551,16 +554,6 @@ void group_gain_epic(P_char ch, int type, int data, int amount)
 	}
 }
 
-int epic_gain_min_level()
-{
-	return BOUNDED(1, static_cast<int>(get_property("epic.gain.minLevel", 50.000)), MAXLVL);
-}
-
-bool epic_level_can_gain(P_char ch)
-{
-	return ch && GET_LEVEL(ch) >= epic_gain_min_level();
-}
-
 int epic_skills_min_level()
 {
 	return BOUNDED(1, static_cast<int>(get_property("epic.skills.minLevel", 30.000)), MAXLVL);
@@ -582,10 +575,6 @@ static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool c
 	{
 		return false;
 	}
-
-	// No epic points below epic.gain.minLevel, whatever their source.
-	if (!epic_level_can_gain(ch))
-		return false;
 
 	// Epic bonus from witch potion.
 	bool blessing = IS_AFFECTED4(ch, AFF4_EPIC_INCREASE) && type != EPIC_BOTTLE;
@@ -631,35 +620,41 @@ static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool c
 	return amount > 0;
 }
 
-void gain_epic(P_char ch, int type, int data, int amount)
+bool gain_epic(P_char ch, int type, int data, int amount)
 {
 	epic_award_context context = {};
 	if (!prepare_epic_award(ch, type, data, amount, false, &context))
-		return;
+		return false;
 	amount = context.amount;
 	const epic_reason_type reason = epic_award_reason(type);
 	if (reason == epic_reason_type::unknown)
 	{
 		logit(LOG_DEBUG, "gain_epic: unsupported award type %d for %s", type, J_NAME(ch));
-		return;
+		return false;
 	}
 	critical_operation_id operation_id = {};
 	if (!critical_operation_id_generate(&operation_id))
 	{
 		send_to_char("The epic award service is busy. Please try again.\n", ch);
-		return;
+		return false;
 	}
+	// Epic transactions call their completion before returning.
+	bool committed = false;
+	context.committed = &committed;
 	if (!epic_transaction_submit_identified(ch, operation_id, amount, reason, data, 0,
 						epic_award_source(type),
 						critical_deadline_class::interactive,
 						epic_award_committed, &context, sizeof(context)))
 	{
 		send_to_char("The epic award service is busy. Please try again.\n", ch);
-		return;
+		return false;
 	}
+	if (!committed)
+		return false;
 	if (!artifact_guild_transaction_submit(ch, operation_id, amount, type))
 		logit(LOG_FILE,
 		      "artifact_guild: component=epic_capture outcome=deferred_effect_unavailable actor=redacted");
+	return true;
 }
 
 struct affected_type *get_epic_task(P_char ch)
@@ -704,7 +699,7 @@ void epic_frag(P_char ch, int victim_pid, int amount)
 
 int epic_calculate_pvp_award(P_char ch, int amount)
 {
-	if (!ch || IS_NPC(ch) || amount < 1 || errand_notch < 1 || !epic_level_can_gain(ch))
+	if (!ch || IS_NPC(ch) || amount < 1 || errand_notch < 1)
 		return 0;
 	if (IS_AFFECTED4(ch, AFF4_EPIC_INCREASE))
 		amount = static_cast<int>(amount * get_property("epic.witch.multiplier", 1.5));
@@ -1190,17 +1185,6 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 		} this mitigation is no longer necessary for wipe2011, as exp must be gained in zone before touch
 		  can reward player - Jexni */
 
-		// Only characters who can earn epic points draw on the stone; the touch-stone level
-		// costs themselves are unchanged. Group members below the level are left out of the
-		// award, because every award recipient must receive a positive amount.
-		if (!epic_level_can_gain(ch))
-		{
-			send_to_char_f(
-				ch, "The stone's power is beyond you until you reach level %d.\r\n",
-				epic_gain_min_level());
-			return TRUE;
-		}
-
 		/* calculate epic value */
 		int epic_value = epic_stone_payout(obj, ch);
 
@@ -1220,7 +1204,7 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			for (struct group_list *gl = ch->group; gl; gl = gl->next)
 				if (gl->ch != ch && IS_PC(gl->ch) && !IS_TRUSTED(gl->ch) &&
-				    gl->ch->in_room == ch->in_room && epic_level_can_gain(gl->ch))
+				    gl->ch->in_room == ch->in_room)
 					participants.push_back(gl->ch);
 		}
 		if (participants.size() > ZONE_TOUCH_MAX_PARTICIPANTS)

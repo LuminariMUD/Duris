@@ -97,6 +97,14 @@ class DocumentationContractTest(unittest.TestCase):
         # the corpus and turn every content assertion below into a no-op.
         self.assertGreater(len(GUIDES), len(ANCHORS))
 
+    def test_heading_punctuation_preserves_each_space(self) -> None:
+        # github-slugger (also used by site/build.mjs) replaces each space,
+        # including the two left when punctuation between words is removed.
+        self.assertEqual(github_anchors("## Integration handoff \u2014 2026-10-13\n"
+                                        "## Integration handoff \u2014 2026-10-13\n"),
+                         {"integration-handoff--2026-10-13",
+                          "integration-handoff--2026-10-13-1"})
+
     def test_readme_version_and_setup_contract(self) -> None:
         readme = self.text[ROOT / "README.md"]
         version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
