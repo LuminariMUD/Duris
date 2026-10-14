@@ -348,6 +348,7 @@ database = (SRC / "db.c").read_text(encoding="utf-8")
 object_event_harness = f'''
 #include "core/prototypes.h"
 #include "cmd/interp.h"
+#include "player/character_mechanics.h"
 
 #include <cstdlib>
 

@@ -204,6 +204,7 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		ch->player.spec = loaded;
 		break;
 	case player_status_field::race:
+		CHARACTER_MECHANIC_SITE(race_status_load);
 		GET_RACE(ch) = loaded;
 		break;
 	case player_status_field::racewar:
@@ -235,6 +236,7 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		GET_ORIG_BIRTHPLACE(ch) = loaded;
 		break;
 	case player_status_field::birth_time:
+		CHARACTER_MECHANIC_SITE(race_status_load);
 		ch->player.time.birth = loaded;
 		break;
 	case player_status_field::played_time:
@@ -754,6 +756,8 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 std::span<const character_mechanics::MechanicConnection>
 character_mechanics::status_load_connections()
 {
+	static constexpr player_status_field identity[] = { player_status_field::race,
+							    player_status_field::birth_time };
 	static constexpr player_status_field fields[] = { player_status_field::copper,
 							  player_status_field::silver,
 							  player_status_field::gold,
@@ -767,6 +771,16 @@ character_mechanics::status_load_connections()
 							  player_status_field::prestige,
 							  player_status_field::guild_status };
 	static const MechanicConnection connections[] = {
+		{ MechanicId::race_status_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(StatusFields{ identity }),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Loaded race and birth materialize before affects and saved equipment.",
+		  {} },
 		{ MechanicId::status_load,
 		  Relation::load,
 		  { OptionKind::shared, 0, 0 },

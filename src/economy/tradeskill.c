@@ -3088,6 +3088,7 @@ int get_ival_from_proc(obj_proc_type proc)
 		return 75;
 	}
 	// Makes ch a Revenant.
+	CHARACTER_MECHANIC_SITE(revenant_value);
 	if (proc == revenant_helm)
 	{
 		return 225;
@@ -3940,6 +3941,16 @@ std::span<const character_mechanics::MechanicConnection>
 character_mechanics::object_value_connections()
 {
 	static const MechanicConnection connections[] = {
+		{ MechanicId::revenant_value,
+		  Relation::configuration,
+		  { OptionKind::race, RACE_REVENANT, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(get_ival_from_proc),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Crown callback contributes 225 to object valuation; downstream price/load calculations are separate consumers.",
+		  {} },
 		{ MechanicId::unspecialization_value,
 		  Relation::configuration,
 		  { OptionKind::shared, 0, 0 },

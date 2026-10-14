@@ -11,6 +11,35 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Documentation heading anchors
+
+`e3a0b5b09` fixes the documentation checker's treatment of adjacent spaces.
+Punctuation removal can leave two spaces in a heading; GitHub maps each space
+to a hyphen. Collapsing them incorrectly rejected the valid integration-handoff
+link added upstream. `test_documentation_contract.py` now checks an em dash,
+adjacent spaces, distinct single-space headings, duplicate suffixes and tabs,
+alongside the full maintained-document link scan. The linked heading and its
+existing link remain unchanged.
+
+## Temporary race changes across a checkpoint and restart
+
+Snapshot capture saves the original race and the existing removal birth-date
+policy for a NOSAVE `TAG_RACE_CHANGE`, while leaving the resident transformation
+unchanged. Saving the transformed race without its reversal tag stranded an Orc
+as Revenant after restart and crown removal. Saveable race changes retain their
+current race and tag; no saved-data format changes or retroactive race inference
+are involved.
+
+`python3 tests/async/test_player_snapshot_capture.py` executes real capture/codec
+with the real racial table, including status-only saves, terminal-save intents,
+saveable/unrelated affects, invalid race bounds and cyclic affect lists. The
+private world case in `test_character_mechanics_journey.py --trace revenant`
+creates an Orc normally, supplies a crown and level through staff setup, then
+wears, saves, restarts and removes it. The default journey repeats that case after
+multiclassing. It proves item-handler and persistence behavior, not crown
+acquisition, actual death, or recovery of pre-transformation age (which the
+existing mechanic does not retain).
+
 ## Multiclass session playtime
 
 The multiclass room procedure preserves both accumulated playtime and the active

@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_items.h"
+#include "player/character_mechanics.h"
 
 #include "net/comm.h"
 #include "item/item_ownership_runtime.h"
@@ -342,6 +343,7 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 		const int slot = items[index].equipment_slot;
 		if (slot > 0)
 		{
+			CHARACTER_MECHANIC_SITE(equipment_load);
 			character->equipment[slot - 1] = object;
 			object->loc.wearing = character;
 			object->loc_p = LOC_WORN;
@@ -357,6 +359,7 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 			else
 				character->carrying = object;
 			carrying_tail = object;
+			CHARACTER_MECHANIC_SITE(inventory_load);
 			object->loc.carrying = character;
 			object->loc_p = LOC_CARRIED;
 			object->z_cord = 0;
@@ -907,4 +910,32 @@ void player_load_items_discard(P_char character)
 	}
 	GET_CARRYING_W(character) = 0;
 	IS_CARRYING_N(character) = 0;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::item_load_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::equipment_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_EQUIPMENT),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Validated saved item slots attach equipment to the character before stat recomputation.",
+		  {} },
+		{ MechanicId::inventory_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_INVENTORY),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Validated carried roots attach to the character; nested contents retain their item graph.",
+		  {} },
+	};
+	return connections;
 }

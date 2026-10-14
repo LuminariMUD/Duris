@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute identity, specialization and Bulwark links; wider migration remains open."""
+"""Execute migrated identity, specialization, multiclass and Revenant connections."""
 
 import hashlib
 import os
@@ -22,13 +22,50 @@ def production_function(file, signature):
 
 
 def check_mechanic_sites(sources, bindings):
-    """Migrated statements plus Bulwark/altar reverse checks, without baseline exemptions.
+    """Migrated statements and bounded Bulwark/altar/multiclass/crown reverse checks.
 
     This bounded tripwire accepts the actual marked statement forms. It rejects
     unsupported reshaping for review; executable assertions own the arithmetic.
     The remainder of the option-site migration is still explicitly outstanding.
     """
     obligations = {
+        "revenant_entry": ("specs/specs.assign.c", r"obj_index\[real_object0\(22070\)\]\.func\.obj\s*=\s*revenant_helm;"),
+        "revenant_value": ("economy/tradeskill.c", r"if\s*\(proc == revenant_helm\)\s*\{\s*return 225;\s*\}"),
+        "object_periodic": ("world/db.c", (
+            r"if\s*\(obj_index\[obj->R_num\]\.func\.obj\)\s*\(\*obj_index\[obj->R_num\]\.func\.obj\)\(obj, 0, CMD_PERIODIC, 0\);",
+            r"add_event\(event_object_proc, PULSE_MOBILE \+ number\(-4, 4\), 0, 0, obj, 0, 0,\s*0\);",
+        )),
+        "revenant_apply": ("specs/specs.object.c", (
+            r"af\.type = TAG_RACE_CHANGE;",
+            r"af\.flags = AFFTYPE_NOSAVE \| AFFTYPE_NODISPEL \| AFFTYPE_NOAPPLY;",
+            r"af\.modifier = GET_RACE\(ch\);",
+            r"add_event\(event_revenant_crown, \(int\)\(0\.5 \* PULSE_VIOLENCE\), ch, 0, 0, 0, 0, 0\);",
+            r"ch->player\.race = RACE_REVENANT;",
+            r"ch->player\.time\.birth -= \(racial_data\[RACE_REVENANT\]\.base_age\) \* SECS_PER_MUD_YEAR;",
+        )),
+        "revenant_lifecycle": ("specs/specs.object.c", (
+            r"add_event\(event_revenant_crown, \(int\)\(0\.5 \* PULSE_VIOLENCE\), ch, 0, 0, 0, 0, 0\);",
+            r"ch->player\.race = af->modifier;",
+            r"ch->player\.time\.birth -= \(racial_data\[GET_RACE\(ch\)\]\.base_age\) \* SECS_PER_MUD_YEAR;",
+            r"affect_remove\(ch, af\);",
+        )),
+        "race_status_capture": ("player/player_snapshot_capture.c", (
+            r"ADD_STATUS\(race, GET_RACE\(ch\)\);", r"ADD_STATUS\(birth_time, ch->player\.time\.birth\);",
+        )),
+        "race_status_load": ("player/player_load_materialize.c", (
+            r"GET_RACE\(ch\) = loaded;", r"ch->player\.time\.birth = loaded;",
+        )),
+        "transient_race_capture": ("player/player_snapshot_capture.c", (
+            r"if\s*\(affect->type == TAG_RACE_CHANGE &&\s*\(snapshot\.components & PLAYER_COMPONENT_STATUS\)\)",
+            r"const auto birth =\s*time\(nullptr\) -\s*racial_data\[affect->modifier\]\.base_age \* SECS_PER_MUD_YEAR;",
+            r"row\.unsigned_value = affect->modifier;",
+            r"row\.signed_value = birth;",
+            r"if\s*\(components & \(PLAYER_COMPONENT_STATUS \| PLAYER_COMPONENT_AFFECTS\)\)",
+        )),
+        "equipment_capture": ("player/player_snapshot_capture.c", r"const auto result = capture_items\(ch, snapshot\.items, budget,\s*components & PLAYER_COMPONENT_EQUIPMENT,\s*components & PLAYER_COMPONENT_INVENTORY,\s*true, true\);"),
+        "inventory_capture": ("player/player_snapshot_capture.c", r"for\s*\(const obj_data \*object = owner->carrying; object;\s*object = object->next_content\)"),
+        "equipment_load": ("player/player_load_items.c", r"character->equipment\[slot - 1\] = object;"),
+        "inventory_load": ("player/player_load_items.c", r"object->loc\.carrying = character;"),
         "guardian_bulwark_grant": ("classes/innates.c", r"ADD_CLASS_INNATE\(\s*INNATE_GUARDIANS_BULWARK\s*,\s*CLASS_WARRIOR\s*,\s*[^,;{}]+,\s*SPEC_GUARDIAN\s*\)\s*;"),
         "guardian_bulwark_factor": ("combat/fight.c", r'dam_factor\[DF_GUARDIANS_BULWARK\]\s*=\s*get_property\(\s*"damage\.reduction\.guardians\.bulwark"\s*,\s*[^;{}]+\)\s*;'),
         "guardian_bulwark_effect": ("combat/fight.c", r"if\s*\(\s*has_innate\(victim,\s*INNATE_GUARDIANS_BULWARK\)\s*&&\s*victim->equipment\[WEAR_SHIELD\]\s*\)\s*dam\s*\*=\s*dam_factor\[DF_GUARDIANS_BULWARK\]\s*;"),
@@ -101,7 +138,7 @@ def check_mechanic_sites(sources, bindings):
                    for key, (owner, patterns) in obligations.items()}
     seen = set()
     errors = []
-    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904)\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
+    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904|revenant_helm|event_revenant_crown|REVENANT_CROWN_VNUM|22070)\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
     # Macro stringification makes these names the same native bindings the
     # executable used, rather than a second editable table of function names.
     for mechanic, (symbol, kind) in bindings.items():
@@ -122,6 +159,17 @@ def check_mechanic_sites(sources, bindings):
     for path, text in sources.items():
         code = strip_comments(text)
         covered = []
+        if path == "specs/specs.mobile.c":
+            # Llyren's artifact locator hides this rareload object. It neither
+            # changes identity nor admits a character to a transformation.
+            # Exclude only this exact display filter; any policy change fails.
+            locator = r"if\s*\(!IS_ARTIFACT\(t_obj\) \|\| obj_index\[t_obj->R_num\]\.virtual_number == 22070\)\s*\{\s*continue;\s*\}"
+            matches = list(re.finditer(locator, code))
+            bodies = list(function_bodies(code, r"\bint\s+llyren\s*\("))
+            if len(matches) != 1 or len(bodies) != 1 or matches[0].group() not in bodies[0]:
+                errors.append(f"{path}: crown locator exclusion changed")
+            else:
+                covered.append(matches[0].span())
         # Only typed descriptor initializers are metadata. A new branch in a
         # provider is not swallowed by a whole-function exclusion.
         for metadata in re.finditer(r"static const MechanicConnection connections\[\]\s*=\s*\{.*?\n\s*\};", code, re.S):
@@ -145,6 +193,20 @@ def check_mechanic_sites(sources, bindings):
                 errors.append(f"{path}: duplicate site {site}")
             seen.add((site, index))
             covered.append((marker.end(), marker.end() + match.end()))
+            guard = None
+            if site == "revenant_lifecycle" and index == 0:
+                guard = r"else if\s*\(armor != NULL && obj_index\[armor->R_num\]\.virtual_number == REVENANT_CROWN_VNUM\)\s*\{\s*$"
+            if site == "object_periodic" and index == 1:
+                guard = r"if\s*\(\(\*obj_index\[nr\]\.func\.obj\)\(obj, 0, CMD_SET_PERIODIC, 0\)\)\s*\{\s*$"
+            if guard:
+                prefix = re.search(guard, code[:marker.start()])
+                if not prefix:
+                    errors.append(f"{path}: {site} callback guard changed")
+                else:
+                    covered.append((prefix.start(), marker.start()))
+            if site == "race_status_load" and not re.search(
+                    rf"case player_status_field::{('race', 'birth_time')[index]}:\s*$", code[:marker.start()]):
+                errors.append(f"{path}: race status load mapped from wrong field")
             if site == "specialization_load" and not re.search(
                     r"case player_status_field::specialization:\s*$", code[:marker.start()]):
                 errors.append(f"{path}: specialization load mapped from wrong field")
@@ -158,7 +220,8 @@ def check_mechanic_sites(sources, bindings):
             # Exact existing numeric definitions are vocabulary, not effects.
             line = code[line_start:code.find("\n", token.end())]
             if ((path == "core/structs.h" and re.fullmatch(r"#define INNATE_GUARDIANS_BULWARK\s+\d+\s*", line)) or
-                (path == "combat/damage.h" and re.fullmatch(r"#define DF_GUARDIANS_BULWARK\s+\d+\s*", line))):
+                (path == "combat/damage.h" and re.fullmatch(r"#define DF_GUARDIANS_BULWARK\s+\d+\s*", line)) or
+                (path == "core/defines.h" and re.fullmatch(r"#define REVENANT_CROWN_VNUM\s+22070\s*", line))):
                 continue
             # Only the exact native definition/prototype header is vocabulary;
             # the function body remains subject to the same use-site scan.
@@ -167,6 +230,12 @@ def check_mechanic_sites(sources, bindings):
                 continue
             if (token.group() == "multiclass_proc" and path in ("specs/specs.room.c", "world/specs.prototypes.h")
                     and re.fullmatch(r"int multiclass_proc\(int\s*(?:room)?, P_char(?: ch)?, int cmd, char \*arg\);?\s*", line)):
+                continue
+            if (token.group() == "revenant_helm" and path in ("specs/specs.object.c", "world/specs.prototypes.h")
+                    and re.fullmatch(r"int revenant_helm\(P_obj(?: obj)?, P_char(?: ch)?, int(?: cmd)?, char \*\s*\);?\s*", line)):
+                continue
+            if (token.group() == "event_revenant_crown" and path == "specs/specs.object.c"
+                    and re.fullmatch(r"void event_revenant_crown\(P_char ch, P_char\s*, P_obj obj, void \*\s*\)\s*", line)):
                 continue
             errors.append(f"{path}:{code.count(chr(10), 0, token.start()) + 1}: unregistered site/alias {token.group()}")
     for site, (_, statements) in obligations.items():
@@ -205,7 +274,7 @@ active_callbacks = sorted(set(re.findall(r'\{ "[^"]+", (\w+) \}', innate_table))
 innate_stubs = "\n".join(f'void {name}(P_char, char *, int) {{ assert(false && "unexpected active innate callback"); }}'
                          for name in active_callbacks)
 valuation_body = production_function("tradeskill.c", "int get_ival_from_proc(obj_proc_type proc)")
-valued_callbacks = sorted(set(re.findall(r"\bproc\s*==\s*(\w+)", strip_comments(valuation_body))) - {"unspec_altar"})
+valued_callbacks = sorted(set(re.findall(r"\bproc\s*==\s*(\w+)", strip_comments(valuation_body))) - {"unspec_altar", "revenant_helm"})
 valuation_stubs = "\n".join(f'int {name}(P_obj, P_char, int, char *) {{ assert(false && "valuation does not invoke object callbacks"); return 0; }}'
                             for name in valued_callbacks)
 combat_prelude = r'''
@@ -282,10 +351,48 @@ player_save_apply_result flatfile_bank_delta_apply(const std::string &, const st
 player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &) { std::abort(); }
 player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t, size_t, persistence_job_write_fn) { std::abort(); }
 player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int) { std::abort(); }
-index_data object_prototypes[3]{};
+index_data object_prototypes[4]{};
 P_index obj_index = object_prototypes;
-int top_of_objt = 2;
+int top_of_objt = 3;
 int unspec_altar(P_obj, P_char, int, char *);
+int revenant_helm(P_obj, P_char, int, char *);
+void event_revenant_crown(P_char, P_char, P_obj, void *);
+void event_object_proc(P_char, P_char, P_obj, void *);
+P_nevent current_nevent = nullptr;
+int mechanic_crown_events, mechanic_object_events, mechanic_wait;
+nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_char victim,
+        P_obj obj, int flag, const void *data, int size) {
+    assert(!victim && !flag && !data && !size);
+    if (callback == event_revenant_crown) {
+        assert(ch && !obj && delay == PULSE_VIOLENCE / 2);
+        ++mechanic_crown_events;
+    } else {
+        assert(callback == event_object_proc && !ch && obj && delay == PULSE_MOBILE + 4);
+        ++mechanic_object_events;
+    }
+    return {nevent_schedule_status::scheduled, {nullptr, 0}};
+}
+void CharWait(P_char, int delay) { mechanic_wait = delay; }
+affected_type *affect_to_char(P_char ch, affected_type *affect) {
+    assert(affect->type == TAG_RACE_CHANGE);
+    auto *copy = new affected_type(*affect);
+    copy->next = ch->affected;
+    ch->affected = copy;
+    return copy;
+}
+P_obj unequip_char(P_char ch, int slot, bool saving) {
+    assert(!saving && ch->equipment[slot]);
+    P_obj obj = ch->equipment[slot];
+    ch->equipment[slot] = nullptr;
+    obj->loc_p = 0;
+    return obj;
+}
+void obj_to_char(P_obj obj, P_char ch) {
+    obj->next_content = ch->carrying;
+    ch->carrying = obj;
+    obj->loc.carrying = ch;
+    obj->loc_p = LOC_CARRIED;
+}
 int mechanic_removed_affects, mechanic_stop_memorizing, mechanic_ledger_calls;
 void mark_player_dirty_components(int, player_component_mask_t) {}
 critical_submit_result critical_command_coordinator_submit(critical_command command) {
@@ -299,7 +406,7 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 void affect_remove(P_char ch, affected_type *removed) {
     auto **link = &ch->affected;
     while (*link && *link != removed) link = &(*link)->next;
-    assert(*link && removed->type == TAG_MEMORIZE);
+    assert(*link && (removed->type == TAG_MEMORIZE || removed->type == TAG_RACE_CHANGE));
     *link = removed->next; delete removed; ++mechanic_removed_affects;
 }
 void stop_memorizing(P_char, memorization_stop_reason) { ++mechanic_stop_memorizing; }
@@ -398,6 +505,14 @@ combat_bodies = (
         ("memorize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::memorization_connections("),
         ("db.c", "int real_object0("), ("db.c", "int real_object(const int"),
         ("specs.object.c", "int unspec_altar("),
+        ("specs.object.c", "void event_revenant_crown("),
+        ("specs.object.c", "int revenant_helm("),
+        ("specs.object.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::revenant_connections("),
+        ("specs.object.c", "std::span<const character_mechanics::TransitionConnection> character_mechanics::revenant_transitions("),
+        ("affects.c", "bool affected_by_spell("),
+        ("db.c", "void event_object_proc("),
+        ("db.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_periodic_connections("),
+        ("player_load_items.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::item_load_connections("),
         ("specs.object.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_action_connections("),
         ("specs.assign.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_registration_connections("),
         ("tradeskill.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_value_connections("),
@@ -425,7 +540,8 @@ assignments = source("specs.assign.c").read_text()
 altar_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(unspecialization_entry_" + name +
                                 r"\);\s*obj_index\[[^;]+;", assignments).group()
                        for name in ("coral", "blood")]
-combat_bodies += '\nvoid initialize_mechanic_objects() {\nobject_prototypes[1].virtual_number = 2203;\nobject_prototypes[2].virtual_number = 12016;\n' + "\n".join(altar_registrations) + "\n}\n"
+crown_registration = re.search(r"CHARACTER_MECHANIC_SITE\(revenant_entry\);\s*obj_index\[[^;]+;", assignments).group()
+combat_bodies += '\nvoid initialize_mechanic_objects() {\nobject_prototypes[1].virtual_number = 2203;\nobject_prototypes[2].virtual_number = 12016;\nobject_prototypes[3].virtual_number = 22070;\n' + "\n".join([*altar_registrations, crown_registration]) + "\n}\n"
 room_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(multiclass_room_" + name + r"\);\s*world\[[^;]+;", assignments).group()
                       for name in ("test", "temple")]
 combat_bodies += '\nvoid initialize_mechanic_rooms() {\nmechanic_rooms[1].number = 17;\nmechanic_rooms[2].number = 52904;\n' + "\n".join(room_registrations) + "\n}\n"
@@ -509,9 +625,10 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
                             "src/economy/tradeskill.c",
                             "src/cmd/actoth.c", "src/cmd/actwiz.c", "src/specs/specs.room.c",
                             "src/magic/affects.c", "src/world/db.c", "src/world/epic.c",
-                            "src/core/utility.c", "src/item/trophy.c",
+                            "src/core/utility.c", "src/core/constant.c", "src/item/trophy.c",
                             "src/economy/currency_transaction.c",
-                            "src/player/player_snapshot_capture.c", "src/player/player_load_materialize.c"), (mechanic, path)
+                            "src/player/player_snapshot_capture.c", "src/player/player_load_materialize.c",
+                            "src/player/player_load_items.c"), (mechanic, path)
             assert 0 < int(line) <= len((ROOT / path).read_text().splitlines()), (mechanic, line)
     sources = {str(path.relative_to(ROOT / "src")): path.read_text(errors="replace")
                for path in sorted((ROOT / "src").rglob("*"))
@@ -532,6 +649,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("multiclass_overwrite", "specs/unregistered.c", "void overwrite() { world[real_room0(17)].funct = different_room; }\n", "unregistered site/alias"),
         ("multiclass_alias", "specs/unregistered.h", "#define MY_MULTIROOM 52904\n", "unregistered site/alias"),
         ("multiclass_new_caller", "specs/unregistered.c", "int invoke(int room, P_char ch, int cmd, char *arg) { return multiclass_proc(room, ch, cmd, arg); }\n", "unregistered site/alias"),
+        ("crown_alias", "specs/unregistered.h", "#define MY_CROWN 22070\n", "unregistered site/alias"),
+        ("crown_overwrite", "specs/unregistered.c", "void overwrite() { obj_index[real_object0(22070)].func.obj = other; }\n", "unregistered site/alias"),
+        ("crown_new_caller", "specs/unregistered.c", "void invoke(P_char ch) { event_revenant_crown(ch, 0, 0, 0); }\n", "unregistered site/alias"),
     ]
     for name, path, changed, diagnostic in mutations:
         fixture = work / "mutations" / name / path
@@ -543,7 +663,22 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     print("guardian.bulwark.reverse: PASS (missing consumer/marker, new file/alias, nested branch mutations)")
     print("unspecialization.reverse: PASS (new overwrite, numeric alias and caller rejected)")
     print("multiclass.reverse: PASS (new room overwrite, temple alias and caller rejected)")
+    print("revenant.reverse: PASS (new crown alias, overwrite and lifecycle caller rejected)")
     for name, path, old, new, diagnostic in [
+        ("crown_locator_changed", "specs/specs.mobile.c", "virtual_number == 22070",
+         "virtual_number == 22071", "crown locator exclusion changed"),
+        ("crown_retention_guard", "specs/specs.object.c", "virtual_number == REVENANT_CROWN_VNUM",
+         "virtual_number != REVENANT_CROWN_VNUM", "callback guard changed"),
+        ("race_load_wrong_field", "player/player_load_materialize.c", "case player_status_field::race:",
+         "case player_status_field::racewar:", "race status load mapped from wrong field"),
+        ("birth_capture_removed", "player/player_snapshot_capture.c", "ADD_STATUS(birth_time, ch->player.time.birth);",
+         ";", "race_status_capture"),
+        ("transient_race_projection_removed", "player/player_snapshot_capture.c", "row.unsigned_value = affect->modifier;",
+         ";", "transient_race_capture"),
+        ("equipment_attachment_removed", "player/player_load_items.c", "character->equipment[slot - 1] = object;",
+         ";", "equipment_load"),
+        ("inventory_attachment_removed", "player/player_load_items.c", "object->loc.carrying = character;",
+         ";", "inventory_load"),
         ("registration_removed", "cmd/interp.c",
          "CMD_N(CMD_SPECIALIZE, STAT_SLEEPING + POS_PRONE, do_specialize, 0, FALSE);", ";", "specialization_entry"),
         ("assignment_removed", "classes/specializations.c", "ch->player.spec = i + 1;", ";", "specialization_select"),
@@ -581,6 +716,17 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     # The behavioral oracle must fail too when outcomes change. Build variants
     # under bin/; never edit/revert production files under a running test.
     for name, old, new, diagnostic in [
+        ("crown_registration_unset", crown_registration, "", "revenant.apply: object registration missing or different handler"),
+        ("crown_dispatch_omitted", "(*obj_index[obj->R_num].func.obj)(obj, 0, CMD_PERIODIC, 0);", ";",
+         "mechanic_crown_events == 1 && mechanic_object_events == 1"),
+        ("crown_race_not_applied", "ch->player.race = RACE_REVENANT;", ";", "wearer.player.race == RACE_REVENANT"),
+        ("crown_original_race_lost", "af.modifier = GET_RACE(ch);", "af.modifier = RACE_REVENANT;",
+         "wearer.affected && wearer.affected->modifier == RACE_ORC"),
+        ("crown_reversal_omitted", "ch->player.race = af->modifier;", ";", "wearer.player.race == RACE_ORC && !wearer.affected"),
+        ("crown_birth_reversal_omitted", "ch->player.time.birth -= (racial_data[GET_RACE(ch)].base_age) * SECS_PER_MUD_YEAR;",
+         ";", "wearer.player.time.birth <= time(nullptr) - 15 * SECS_PER_MUD_YEAR"),
+        ("crown_event_not_scheduled", "CHARACTER_MECHANIC_SITE(revenant_apply);\n\tadd_event(event_revenant_crown, (int)(0.5 * PULSE_VIOLENCE), ch, 0, 0, 0, 0, 0);",
+         ";", "mechanic_crown_events == 1 && mechanic_object_events == 1"),
         ("effect_stubbed", "dam *= dam_factor[DF_GUARDIANS_BULWARK];", "dam *= 1.0;",
          "bulwark_melee(&attacker, &victim) == 850"),
         ("fallback_changed", 'get_property("damage.reduction.guardians.bulwark", 0.850)',
@@ -617,9 +763,12 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
     print("innate.dispatch.mutations: PASS (removed registration, active passive callback and stubbed dispatch rejected)")
+    print("revenant.mutations: PASS (removed registration/dispatch/schedule, lost original race and omitted race/birth reversal rejected)")
     # Removing the actual refresh call must fail the learned/taught assertion,
     # even though the refresh function and connection still exist.
     for name, file, old, new, diagnostic in [
+        ("orc_base_age_changed", "constant.c", "{ 15, 90, 50, 100, 0, 80 }, // orc",
+         "{ 16, 90, 50, 100, 0, 80 }, // orc", "wearer.player.time.birth >= before - 15 * SECS_PER_MUD_YEAR"),
         ("refresh_not_called", "specializations.c", "update_skills(ch);", ";", "pc.skills[SKILL_GUARD].learned == 40"),
         ("purchase_callback_not_called", "specializations.c", "unspecialize_committed, nullptr, 0)", "nullptr, nullptr, 0)",
          "student.player.spec == 0 && pc.epics == 2"),

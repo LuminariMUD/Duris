@@ -1333,6 +1333,24 @@ struct racial_data_type racial_data[LAST_RACE + 1] = {
 	{ 100, 300, 800, 1000, 1, 300 } // Deva
 };
 
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::racial_age_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::racial_age_data,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&racial_data),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native racial table's base_age drives crown application/reversal and transient checkpoint birth projection.",
+		  {} }
+	};
+	return connections;
+}
+
 /*
  *    SAM 7-94, Minimum stats required to choose a class, player must
  *      get a value greater or equal to the value in this table.

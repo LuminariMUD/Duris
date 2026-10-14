@@ -136,6 +136,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(class_secondary, ch->player.secondary_class);
 	CHARACTER_MECHANIC_SITE(specialization_capture);
 	ADD_STATUS(specialization, ch->player.spec);
+	CHARACTER_MECHANIC_SITE(race_status_capture);
 	ADD_STATUS(race, GET_RACE(ch));
 	ADD_STATUS(racewar, GET_RACEWAR(ch));
 	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
@@ -147,6 +148,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(hometown, GET_HOME(ch));
 	ADD_STATUS(birthplace, GET_BIRTHPLACE(ch));
 	ADD_STATUS(original_birthplace, GET_ORIG_BIRTHPLACE(ch));
+	CHARACTER_MECHANIC_SITE(race_status_capture);
 	ADD_STATUS(birth_time, ch->player.time.birth);
 	// played is the loaded baseline; score adds the active session to it.
 	// Capture that same total without advancing logon or mutating the baseline:
@@ -321,20 +323,28 @@ player_snapshot_capture_result capture_affects(P_char ch, player_snapshot &snaps
 			// The crown and legacy Dragonlord form discard their reversal tag on
 			// save. Persist the identity their removal restores, without changing
 			// the resident character. Saveable race-change tags retain their form.
+			CHARACTER_MECHANIC_SITE(transient_race_capture);
 			if (affect->type == TAG_RACE_CHANGE &&
 			    (snapshot.components & PLAYER_COMPONENT_STATUS))
 			{
 				if (affect->modifier <= RACE_NONE || affect->modifier > LAST_RACE)
 					return player_snapshot_capture_result::malformed_source;
+				CHARACTER_MECHANIC_SITE(transient_race_capture);
 				const auto birth =
 					time(nullptr) -
 					racial_data[affect->modifier].base_age * SECS_PER_MUD_YEAR;
 				for (auto &row : snapshot.status_integers)
 				{
 					if (row.field == player_status_field::race)
+					{
+						CHARACTER_MECHANIC_SITE(transient_race_capture);
 						row.unsigned_value = affect->modifier;
+					}
 					else if (row.field == player_status_field::birth_time)
+					{
+						CHARACTER_MECHANIC_SITE(transient_race_capture);
 						row.signed_value = birth;
+					}
 				}
 			}
 			continue;
@@ -550,6 +560,7 @@ player_snapshot_capture_result capture_items(P_char owner,
 	}
 	if (inventory)
 	{
+		CHARACTER_MECHANIC_SITE(inventory_capture);
 		for (const obj_data *object = owner->carrying; object;
 		     object = object->next_content)
 		{
@@ -800,6 +811,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		}
 		if ((components & PLAYER_COMPONENT_SKILLS) && !capture_skills(ch, snapshot, budget))
 			return player_snapshot_capture_result::limit_exceeded;
+		CHARACTER_MECHANIC_SITE(transient_race_capture);
 		if (components & (PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS))
 		{
 			const auto result = capture_affects(ch, snapshot, budget);
@@ -808,6 +820,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		}
 		if (components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
 		{
+			CHARACTER_MECHANIC_SITE(equipment_capture);
 			const auto result = capture_items(ch, snapshot.items, budget,
 							  components & PLAYER_COMPONENT_EQUIPMENT,
 							  components & PLAYER_COMPONENT_INVENTORY,
@@ -841,6 +854,9 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 std::span<const character_mechanics::MechanicConnection>
 character_mechanics::status_capture_connections()
 {
+	static constexpr MechanicId age[] = { MechanicId::racial_age_data };
+	static constexpr player_status_field identity[] = { player_status_field::race,
+							    player_status_field::birth_time };
 	static constexpr player_status_field fields[] = { player_status_field::copper,
 							  player_status_field::silver,
 							  player_status_field::gold,
@@ -854,6 +870,46 @@ character_mechanics::status_capture_connections()
 							  player_status_field::prestige,
 							  player_status_field::guild_status };
 	static const MechanicConnection connections[] = {
+		{ MechanicId::race_status_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(StatusFields{ identity }),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Live race and birth capture; NOSAVE race-change projection runs before publishing the checkpoint.",
+		  {} },
+		{ MechanicId::transient_race_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(StatusFields{ identity }),
+		  age,
+		  Access::conditional,
+		  Implementation::connected,
+		  "NOSAVE race-change tags project original race and removal birth date into status-only or full checkpoints without modifying the resident form.",
+		  {} },
+		{ MechanicId::equipment_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_EQUIPMENT),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Saved item tree includes equipment slots and ownership.",
+		  {} },
+		{ MechanicId::inventory_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_INVENTORY),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Saved item tree includes carried roots and their nested contents.",
+		  {} },
 		{ MechanicId::status_capture,
 		  Relation::capture,
 		  { OptionKind::shared, 0, 0 },

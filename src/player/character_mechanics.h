@@ -80,6 +80,19 @@ enum class MechanicId
 	affects_load,
 	trophies_capture,
 	trophies_load,
+	revenant_entry,
+	object_periodic,
+	revenant_apply,
+	revenant_lifecycle,
+	revenant_value,
+	race_status_capture,
+	transient_race_capture,
+	race_status_load,
+	equipment_capture,
+	inventory_capture,
+	equipment_load,
+	inventory_load,
+	racial_age_data,
 	count
 };
 
@@ -145,6 +158,7 @@ using SkillReset = void (*)(char_data *, bool);
 using SkillDataQuery = ClassSkillInfo (*)(char_data *, int);
 using ClassHitpointFactors = const float (*)[CLASS_COUNT + 1];
 using RacialStatFactors = const stat_data (*)[LAST_RACE + 1];
+using RacialAgeData = const racial_data_type (*)[LAST_RACE + 1];
 using StatusFields = std::span<const player_status_field>;
 
 // Bind the vnum to the loaded native prototype table and its lookup. Missing
@@ -169,7 +183,7 @@ using MechanicBinding =
 		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue,
 		     RoomRegistration, RoomProcedure, CharacterReset, SkillReset, SkillDataQuery,
 		     WalletSubmit, ClassHitpointFactors, RacialStatFactors, StatusFields,
-		     player_checkpoint_component>;
+		     player_checkpoint_component, event_func_type, RacialAgeData>;
 
 struct MechanicConnection
 {
@@ -241,6 +255,11 @@ std::span<const MechanicConnection> racial_stat_connections();
 std::span<const MechanicConnection> epic_refund_connections();
 std::span<const MechanicConnection> trophy_connections();
 std::span<const MechanicConnection> currency_connections();
+std::span<const MechanicConnection> revenant_connections();
+std::span<const MechanicConnection> object_periodic_connections();
+std::span<const MechanicConnection> item_load_connections();
+std::span<const MechanicConnection> racial_age_connections();
+std::span<const TransitionConnection> revenant_transitions();
 std::span<const TransitionConnection> multiclass_transitions();
 std::span<const TransitionConnection> specialization_transitions();
 std::vector<TransitionConnection> transition_connections();

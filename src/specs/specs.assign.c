@@ -1472,6 +1472,7 @@ void assign_objects(void)
 	obj_index[real_object0(666)].func.obj = xmas_cap;
 	obj_index[real_object0(400)].func.obj = khaziddea_blade;
 
+	CHARACTER_MECHANIC_SITE(revenant_entry);
 	obj_index[real_object0(22070)].func.obj = revenant_helm;
 	/* Bahamut */
 	obj_index[real_object0(25723)].func.obj = dragonlord_plate;
@@ -2571,9 +2572,22 @@ void item_procs(void)
 std::span<const character_mechanics::MechanicConnection>
 character_mechanics::object_registration_connections()
 {
+	static constexpr MechanicId crown[] = { MechanicId::revenant_apply,
+						MechanicId::object_periodic,
+						MechanicId::revenant_value };
 	static constexpr MechanicId dependencies[] = { MechanicId::unspecialization_altar,
 						       MechanicId::unspecialization_value };
 	static const MechanicConnection connections[] = {
+		{ MechanicId::revenant_entry,
+		  Relation::entry,
+		  { OptionKind::race, RACE_REVENANT, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((ObjectRegistration{ 22070, &obj_index, real_object })),
+		  crown,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Crown prototype's assigned procedure; loaded ownership, wear and periodic dispatch are required.",
+		  {} },
 		{ MechanicId::unspecialization_entry_coral,
 		  Relation::entry,
 		  { OptionKind::shared, 0, 0 },

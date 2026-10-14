@@ -19,6 +19,7 @@ PRELUDE = r'''
 #include "core/mm.h"
 #include "cmd/interp.h"
 #include "world/object_template.h"
+#include "player/character_mechanics.h"
 #include "item/objmisc.h"
 #include <cassert>
 #include <cstdarg>

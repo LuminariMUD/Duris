@@ -2797,6 +2797,7 @@ P_char read_mobile_probe(int nr, int type)
 
 void event_object_proc(P_char /*ch*/, P_char /*victim*/, P_obj obj, void * /*data*/)
 {
+	CHARACTER_MECHANIC_SITE(object_periodic);
 	if (obj_index[obj->R_num].func.obj)
 		(*obj_index[obj->R_num].func.obj)(obj, 0, CMD_PERIODIC, 0);
 
@@ -2812,6 +2813,25 @@ void event_object_proc(P_char /*ch*/, P_char /*victim*/, P_obj obj, void * /*dat
 	{
 		add_event(event_object_proc, PULSE_MOBILE + number(-4, 4), 0, 0, obj, 0, 0, 0);
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::object_periodic_connections()
+{
+	static constexpr MechanicId callbacks[] = { MechanicId::revenant_apply };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::object_periodic,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(event_object_proc),
+		  callbacks,
+		  Access::conditional,
+		  Implementation::connected,
+		  "read_object asks the assigned procedure for periodic enrollment; the event invokes its current slot and rearms only while its owner survives. Crown is the migrated callback here.",
+		  {} }
+	};
+	return connections;
 }
 
 namespace
@@ -3142,8 +3162,11 @@ P_obj instantiate_object_template(const object_template &prototype)
 	if (obj_index[nr].func.obj)
 	{
 		if ((*obj_index[nr].func.obj)(obj, 0, CMD_SET_PERIODIC, 0))
+		{
+			CHARACTER_MECHANIC_SITE(object_periodic);
 			add_event(event_object_proc, PULSE_MOBILE + number(-4, 4), 0, 0, obj, 0, 0,
 				  0);
+		}
 	}
 
 	if (isname("random_exit", obj->name))

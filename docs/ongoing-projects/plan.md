@@ -16,10 +16,12 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   without stopping or modifying that instance or its database/Redis state.
 - Latest fetch on 2026-10-14: `origin/master` is now
   `0e27ef1e830e18ea648fa400bbc4ce6e8106b06f`, three commits beyond this branch's
-  merge base (statistics persistence and online migration support). Integrate
-  upstream separately after the verified Revenant repair checkpoint and verify
-  the affected builds and flight journey. The full-gate result below applies to
-  this feature branch before that upstream integration.
+  old merge base (statistics persistence and online migration support). Integrated
+  as `f75e77b34`, preserving both branches' regression entries at the sole merge
+  conflict. Development/production/editor builds, maintenance scheduler and
+  migration-runner tests, and the statistics test against a disposable MariaDB
+  passed (`bin/tests/character-mechanics-upstream-*.log`). The flight journey will
+  run in the next connection gate. The 730-test result below predates this merge.
 - Step 1 is active and incomplete; steps 2–4 remain required. The compiled identity foundation
   below is implemented; next complete Guardian/Bulwark, ordered multiclass, and
   Revenant traces. Do not treat an inventory as completion of these traces.
@@ -636,11 +638,17 @@ for this repair is flat-file, with shared capture/codec execution in the native
 regression. The Revenant structural connections and remaining acceptance scope
 are still incomplete.
 
-Next: checkpoint this repair, integrate the three upstream commits, then add the
-Revenant connections beside its actual object assignment, periodic dispatch,
-application/reversal callbacks and race/birth capture/load statements. Reuse the
-native mechanics harness and its real registration-slot checks; the world test
-now supplies restart/removal evidence, but does not prove death or conflicts.
+Repair checkpoint: `1fd3d4744`, published before upstream integration.
+Current slice: add Revenant connections beside its actual object assignment,
+periodic dispatch, application/reversal callbacks and race/birth/item capture/load
+statements. Outcome is a checked callback/transition chain with explicit state and
+persisted equipment dependencies. Files are the existing contract, item/world and
+persistence owners, plus the native mechanics fixture. Proof combines native
+handler cases, missing-registration/consumer/capture mutations, the existing
+world journey and affected builds. Keep gameplay rules and the save schema;
+reuse native pointer types, tables and the existing observer instead of adding a
+dispatcher or another rules store. The world test supplies restart/removal
+evidence, but death and conflicting-form behavior still need their own cases.
 Individual teacher/timer guards, creation, remaining persistence dependencies,
 real HP damage and complete coverage of all three initial traces remain open.
 The successful journey does not replace missing structural links. Ordinary
@@ -658,9 +666,85 @@ the race's base age, removes the affect and strips equipment. Generic
 `affect_remove` also restores the saved race, and the fatal-damage path restores
 race before death handling. The original capture saved `GET_RACE` while omitting
 NOSAVE affects; the reproduced restart failure and repair are recorded above.
-Application/reversal still need compiled connections, and actual death,
-conflicting-form and other lifecycle paths still need their own evidence. These
-source leads do not prove those paths or ordinary acquisition.
+The connection slice below binds application/reversal; actual death, authentic
+conflicting-form entry and other lifecycle paths still need their own evidence.
+These source leads do not prove those paths or ordinary acquisition.
+
+### Revenant registration, callback and persistence connections
+
+Thirteen new compiled IDs bind the crown's actual object slot, periodic dispatch,
+application, retention/reversal callback, valuation, race/birth capture and load,
+NOSAVE projection, equipment/inventory capture and load, and the native racial
+age table. The observer accepts the existing `event_func_type` and a typed pointer
+to the existing racial table; it does not invoke gameplay. The temporary
+transition declares race/birth changes, retained class/spec/level/XP/epics, and
+status/affect/equipment/inventory components. Existing validation requires their
+capture/load links and an actual registered route to the mutation.
+
+Exact markers bind the existing statements, including the periodic-enrollment
+guard in `read_object`, dispatch through the assigned slot, retained original
+race and NOSAVE flags, event scheduling, restoration, and field/item attachment.
+The reverse check now includes crown vnum/procedure/event symbols. Llyren's
+artifact locator has one exact exclusion: its rareload display filter makes no
+character identity or admission decision. Changing that filter loses the
+exclusion; it cannot absorb other branches. Wider race-symbol/helper/registration
+history coverage remains open.
+
+The native fixture runs the real crown and periodic callbacks, checks unworn,
+wrong-command, dead/NPC and existing-tag guards, original-race/tag flags, birth
+dates against the real table, other-equipment stripping, retained identity,
+reapplication prevention, worn retention, removal, wrong-race damage/wait, and
+missing-tag reporting. Scheduling, equipment transfer and affect allocation/
+unlinking are explicit fixture services. It does not claim actual scheduler
+execution, generic affect cleanup, removal-procedure death or fatal damage.
+Those boundaries matter: the unlink fixture does not restore race, so removing
+the crown callback's race restoration really fails its independent assertion.
+The full-world journey remains the actual enrollment/scheduler/restart proof.
+
+Source mutations remove attachment/capture/load statements, change load fields
+or callback guards and the exact locator exclusion, and introduce new crown
+aliases, overwrites and callers. Compiled variants remove registration, dispatch,
+scheduling or restoration, lose the original race, and alter the Orc base-age
+row. All older mutation cases remain required. The complete native sanitizer and
+mutation test passes; positive executable SHA256:
+`639fb45f1be937ac4fc04963b0804804323b89153ab7d5b8edf333f91aeef366`.
+Development, production, editor, pfile and maintained migration-tool builds pass,
+as do capture, load-pipeline and item-materialization tests. Logs use
+`bin/tests/character-mechanics-revenant-connections` (native) and the `-build`,
+`-consumers`, `-pfile`, `-migration-tools`, `-capture`, `-load` and `-items` suffixes.
+Formatting and whitespace checks pass. The full gate finished with **727 passed,
+3 failed**, no timeout or signal exits, in **689.96 seconds**. The mechanics world
+journey passed in 268.28 seconds and the upstream flight evidence fix passed in
+421.08 seconds. Log: `bin/tests/character-mechanics-revenant-connections-test-all.log`.
+All three failures were then repaired and their exact tests passed individually:
+the periodic rearm and newbie object-template extracted-code fixtures now include
+the marker header, and `e3a0b5b09` separately fixes the documentation checker's
+incorrect collapsing of adjacent spaces in heading anchors (including a new
+spacing/duplicate-anchor case). The existing documentation link was valid and
+was preserved. Logs have `-periodic`, `-template` and `-documentation` suffixes.
+No production changes followed the gate, and the whole gate was not repeated
+after these test-only repairs. The death-age defect below remains unresolved;
+these results do not complete the Revenant lifecycle or the overall plan.
+
+**Next separate defect repair: death cleanup retains the form's birth date.**
+A private normal-Orc/crown probe used the real staff bare-hand `kill` command
+(`do_kill` → `die`; this is not the normal fatal-`raw_damage` path). The terminal
+snapshot restored race 13 and removed `TAG_RACE_CHANGE`, but retained birth
+`1684838011`, versus the normal-removal checkpoint projection `1775873017`.
+That is approximately 85 MUD years of extra age. The game returned the player to
+the account menu and persisted the terminal snapshot; the assertion comparing
+death and normal-removal birth policies failed. Evidence:
+`bin/tests/character-mechanics-revenant-death-before.log`. The isolated probe is
+`bin/tests/revenant-death-probe.py`, adapting the existing focused world journey
+without changing maintained source. The shared game was untouched.
+
+Source path: `die` removes non-permanent affects before terminal capture;
+`affect_remove` restores the tag's original race but does not restore birth.
+By then the tag is gone, so checkpoint projection cannot normalize it. Repair
+this cleanup in a separately scoped gameplay commit, preserve saveable race-change
+semantics, and add native plus actual death/restart evidence. Also qualify normal
+combat death and the generic cleanup connection. Do not mark this lifecycle
+complete merely because the registered callback/removal tests pass.
 
 Continuation finding: `epic_transaction_submit_identified` currently changes
 the authoritative in-memory epic balance and calls its completion **before

@@ -38,6 +38,128 @@ void update_stat_data();
 void update_damage_data();
 int calculate_hitpoints2(P_char);
 int multiclass_proc(int, P_char, int, char *);
+extern P_nevent current_nevent;
+extern int mechanic_crown_events, mechanic_object_events, mechanic_wait;
+
+static void revenant_transition()
+{
+	const auto mechanics = mechanic_connections();
+	const auto transitions = transition_connections();
+	assert(transitions.back().kind == TransitionKind::temporary);
+	const int slot = real_object(22070);
+	assert(slot > 0);
+	const auto crown_proc = obj_index[slot].func.obj;
+	assert(crown_proc);
+	obj_index[slot].func.obj = nullptr;
+	assert(!validate_mechanics(mechanics).empty());
+	assert(!validate_transitions(transitions, mechanics).empty());
+	obj_index[slot].func.obj = crown_proc;
+	auto missing = mechanics;
+	for (auto &connection : missing)
+		if (connection.id == MechanicId::race_status_load)
+			connection.binding = player_status_field::level;
+	assert(!validate_transitions(transitions, missing).empty());
+	missing = mechanics;
+	for (auto &connection : missing)
+		if (connection.id == MechanicId::equipment_load)
+			connection.binding = PLAYER_COMPONENT_SKILLS;
+	assert(!validate_transitions(transitions, missing).empty());
+	event_func_type periodic = nullptr, lifecycle = nullptr;
+	for (const auto &connection : mechanics)
+	{
+		if (connection.id == MechanicId::object_periodic)
+			periodic = std::get<event_func_type>(connection.binding);
+		if (connection.id == MechanicId::revenant_lifecycle)
+			lifecycle = std::get<event_func_type>(connection.binding);
+		if (connection.id == MechanicId::revenant_value)
+			assert(std::get<ObjectProcValue>(connection.binding)(crown_proc) == 225);
+	}
+	assert(periodic && lifecycle);
+	char_data wearer{};
+	pc_only_data pc{};
+	wearer.only.pc = &pc;
+	wearer.player.race = RACE_ORC;
+	wearer.player.m_class = CLASS_WARRIOR;
+	wearer.player.secondary_class = CLASS_CLERIC;
+	wearer.player.level = 41;
+	SET_POS(&wearer, STAT_NORMAL + POS_STANDING);
+	obj_data crown{}, gear{};
+	crown.R_num = slot;
+	assert(crown_proc(&crown, nullptr, CMD_SET_PERIODIC, nullptr));
+	assert(!crown_proc(&crown, nullptr, CMD_PERIODIC, nullptr)); // Unworn.
+	crown.loc_p = LOC_WORN;
+	crown.loc.wearing = &wearer;
+	wearer.equipment[WEAR_HEAD] = &crown;
+	assert(!crown_proc(&crown, &wearer, CMD_WEAR, nullptr)); // Waits for periodic.
+	SET_BIT(wearer.specials.act, ACT_ISNPC);
+	assert(!crown_proc(&crown, nullptr, CMD_PERIODIC, nullptr));
+	REMOVE_BIT(wearer.specials.act, ACT_ISNPC);
+	SET_POS(&wearer, STAT_DEAD);
+	assert(!crown_proc(&crown, nullptr, CMD_PERIODIC, nullptr));
+	SET_POS(&wearer, STAT_NORMAL + POS_STANDING);
+	affected_type existing{};
+	existing.type = TAG_RACE_CHANGE;
+	wearer.affected = &existing;
+	assert(!crown_proc(&crown, nullptr, CMD_PERIODIC, nullptr));
+	assert(wearer.player.race == RACE_ORC && wearer.affected == &existing);
+	wearer.affected = nullptr;
+	static int gear_removals;
+	gear_removals = 0;
+	obj_index[0].func.obj = [](P_obj, P_char, int cmd, char *) -> int
+	{
+		assert(cmd == CMD_REMOVE);
+		++gear_removals;
+		return TRUE;
+	};
+	gear.loc_p = LOC_WORN;
+	gear.loc.wearing = &wearer;
+	wearer.equipment[WEAR_BODY] = &gear;
+	nevent_data active{};
+	active.obj = &crown;
+	current_nevent = &active;
+	mechanic_crown_events = mechanic_object_events = mechanic_wait = 0;
+	const auto before = time(nullptr);
+	periodic(nullptr, nullptr, &crown, nullptr);
+	assert(mechanic_crown_events == 1 && mechanic_object_events == 1);
+	assert(mechanic_wait == 5 * WAIT_SEC);
+	assert(wearer.player.race == RACE_REVENANT);
+	assert(wearer.player.time.birth >= before - 100 * SECS_PER_MUD_YEAR);
+	assert(wearer.player.time.birth <= time(nullptr) - 100 * SECS_PER_MUD_YEAR);
+	assert(wearer.player.m_class == CLASS_WARRIOR &&
+	       wearer.player.secondary_class == CLASS_CLERIC && wearer.player.level == 41);
+	assert(wearer.equipment[WEAR_HEAD] == &crown && !wearer.equipment[WEAR_BODY]);
+	assert(wearer.carrying == &gear && gear_removals == 1);
+	assert(wearer.affected && wearer.affected->modifier == RACE_ORC &&
+	       wearer.affected->duration == -1);
+	assert(wearer.affected->flags == (AFFTYPE_NOSAVE | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY));
+	periodic(nullptr, nullptr, &crown, nullptr); // Existing tag prevents reapplication.
+	assert(mechanic_crown_events == 1 && mechanic_object_events == 2 && gear_removals == 1);
+	lifecycle(&wearer, nullptr, nullptr, nullptr); // Worn crown retains/rearms.
+	assert(mechanic_crown_events == 2 && wearer.player.race == RACE_REVENANT);
+	wearer.player.race = RACE_HUMAN;
+	GET_HIT(&wearer) = 200;
+	lifecycle(&wearer, nullptr, nullptr, nullptr);
+	assert(GET_HIT(&wearer) == 100 && mechanic_wait == 2 * WAIT_SEC);
+	assert(mechanic_crown_events == 2 && wearer.affected);
+	wearer.player.race = RACE_REVENANT;
+	obj_to_char(unequip_char(&wearer, WEAR_HEAD), &wearer);
+	lifecycle(&wearer, nullptr, nullptr, nullptr);
+	assert(wearer.player.race == RACE_ORC && !wearer.affected);
+	assert(wearer.player.time.birth >= before - 15 * SECS_PER_MUD_YEAR);
+	assert(wearer.player.time.birth <= time(nullptr) - 15 * SECS_PER_MUD_YEAR);
+	assert(mechanic_crown_events == 2);
+	wearer.player.race = RACE_REVENANT;
+	mechanic_output.clear();
+	lifecycle(&wearer, nullptr, nullptr, nullptr);
+	assert(mechanic_output.find("Possible serious screwup") != std::string::npos);
+	assert(mechanic_crown_events == 2);
+	current_nevent = nullptr; // An extracted/detached object must not rearm.
+	periodic(nullptr, nullptr, &crown, nullptr);
+	assert(mechanic_object_events == 2);
+	obj_index[0].func.obj = nullptr;
+	std::puts(
+		"revenant.entry/lifecycle: PASS (registered periodic callback, guards, race/tag/birth, stripping, retention, removal and conflicts; scheduler, equipment transfer and generic affect cleanup are fixture boundaries)");
+}
 
 static void multiclass_denials()
 {
@@ -264,7 +386,7 @@ static void specialization_transition()
 	for (const auto &error : errors)
 		std::fprintf(stderr, "%s\n", error.c_str());
 	assert(errors.empty());
-	assert(transitions.size() == 3);
+	assert(transitions.size() == 4);
 	assert(transitions.front().kind == TransitionKind::permanent);
 
 	const auto handler = cmd_info[CMD_SPECIALIZE].command_pointer;
@@ -578,6 +700,7 @@ int main()
 	skill_class_mask_bounds();
 	multiclass_denials();
 	multiclass_reset_and_consumers();
+	revenant_transition();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));
 	const auto connections = identity_connections();

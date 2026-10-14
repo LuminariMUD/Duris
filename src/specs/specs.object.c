@@ -2365,17 +2365,21 @@ void event_revenant_crown(P_char ch, P_char /*victim*/, P_obj obj, void * /*data
 	}
 	else if (armor != NULL && obj_index[armor->R_num].virtual_number == REVENANT_CROWN_VNUM)
 	{
+		CHARACTER_MECHANIC_SITE(revenant_lifecycle);
 		add_event(event_revenant_crown, (int)(0.5 * PULSE_VIOLENCE), ch, 0, 0, 0, 0, 0);
 		return;
 	}
 	else
 	{
+		CHARACTER_MECHANIC_SITE(revenant_lifecycle);
 		ch->player.race = af->modifier;
 		//    GET_AGE(ch) = racial_data[(int) GET_RACE(ch)].base_age*2;
 		// Set birthdate + base_age + 5 years.
 		ch->player.time.birth = time(NULL);
 		// Add base_age to birthdate + base_age + 5 years.
+		CHARACTER_MECHANIC_SITE(revenant_lifecycle);
 		ch->player.time.birth -= (racial_data[GET_RACE(ch)].base_age) * SECS_PER_MUD_YEAR;
+		CHARACTER_MECHANIC_SITE(revenant_lifecycle);
 		affect_remove(ch, af);
 		send_to_char(
 			"The curse of the dark powers fade and your soul restores the body.\r\n",
@@ -2447,11 +2451,15 @@ int revenant_helm(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	send_to_char("Brr, you suddenly feel _almost_ naked.\r\n\n", ch);
 
 	memset(&af, 0, sizeof(af));
+	CHARACTER_MECHANIC_SITE(revenant_apply);
 	af.type = TAG_RACE_CHANGE;
+	CHARACTER_MECHANIC_SITE(revenant_apply);
 	af.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
 	af.duration = -1;
+	CHARACTER_MECHANIC_SITE(revenant_apply);
 	af.modifier = GET_RACE(ch);
 	affect_to_char(ch, &af);
+	CHARACTER_MECHANIC_SITE(revenant_apply);
 	add_event(event_revenant_crown, (int)(0.5 * PULSE_VIOLENCE), ch, 0, 0, 0, 0, 0);
 
 	act("&+LThe figure of $n &+Lgrows darker and darker as $e absorbs all surrounding\n"
@@ -2465,12 +2473,75 @@ int revenant_helm(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	    "&+Lbody transforming you into a creature of &+Bcold &+Land &N&+wdeath&+L!",
 	    FALSE, ch, obj, 0, TO_CHAR);
 
+	CHARACTER_MECHANIC_SITE(revenant_apply);
 	ch->player.race = RACE_REVENANT;
 	// Set birthdate + base_age + 5 years.
 	ch->player.time.birth = time(NULL);
 	// Add base_age to birthdate + base_age + 5 years.
+	CHARACTER_MECHANIC_SITE(revenant_apply);
 	ch->player.time.birth -= (racial_data[RACE_REVENANT].base_age) * SECS_PER_MUD_YEAR;
 	return TRUE;
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::revenant_connections()
+{
+	static constexpr MechanicId lifecycle[] = { MechanicId::revenant_lifecycle,
+						    MechanicId::transient_race_capture,
+						    MechanicId::racial_age_data };
+	static constexpr MechanicId age[] = { MechanicId::racial_age_data };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::revenant_apply,
+		  Relation::mutation,
+		  { OptionKind::race, RACE_REVENANT, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(revenant_helm),
+		  lifecycle,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Worn crown periodic callback: living PCs without another race-change tag; strips other equipment, retains original race in NOSAVE affect, changes race/birth and schedules reversal.",
+		  {} },
+		{ MechanicId::revenant_lifecycle,
+		  Relation::effect,
+		  { OptionKind::race, RACE_REVENANT, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(event_revenant_crown),
+		  age,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Retains form while the crown is on the head; removal restores race/base-age birth and strips equipment. A conflicting race halves HP and stops; missing tag reports an error.",
+		  {} }
+	};
+	return connections;
+}
+
+std::span<const character_mechanics::TransitionConnection>
+character_mechanics::revenant_transitions()
+{
+	static constexpr MechanicId entries[] = { MechanicId::revenant_entry };
+	static constexpr player_status_field changed[] = { player_status_field::race,
+							   player_status_field::birth_time };
+	static constexpr player_status_field retained[] = {
+		player_status_field::class_primary,  player_status_field::class_secondary,
+		player_status_field::specialization, player_status_field::level,
+		player_status_field::experience,     player_status_field::epics
+	};
+	static constexpr MechanicId lifecycle[] = {
+		MechanicId::object_periodic,	 MechanicId::revenant_lifecycle,
+		MechanicId::race_status_capture, MechanicId::transient_race_capture,
+		MechanicId::race_status_load,	 MechanicId::status_capture,
+		MechanicId::status_load,	 MechanicId::affects_capture,
+		MechanicId::affects_load,	 MechanicId::equipment_capture,
+		MechanicId::equipment_load,	 MechanicId::inventory_capture,
+		MechanicId::inventory_load
+	};
+	static const TransitionConnection transitions[] = {
+		{ MechanicId::revenant_apply, entries, TransitionKind::temporary, changed, retained,
+		  lifecycle,
+		  "Original race is the affect modifier; checkpoints project removal identity and omit the tag. Loaded worn crown reapplies through normal periodic dispatch. Actual death and generic affect cleanup still require separate qualification.",
+		  PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS | PLAYER_COMPONENT_EQUIPMENT |
+			  PLAYER_COMPONENT_INVENTORY }
+	};
+	return transitions;
 }
 
 void event_dragonlord_check(P_char ch, P_char /*victim*/, P_obj obj, void * /*data*/)

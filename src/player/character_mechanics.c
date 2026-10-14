@@ -170,6 +170,32 @@ std::string_view mechanic_name(MechanicId id)
 		return "trophies.capture";
 	case MechanicId::trophies_load:
 		return "trophies.load";
+	case MechanicId::revenant_entry:
+		return "revenant.entry";
+	case MechanicId::object_periodic:
+		return "object.periodic";
+	case MechanicId::revenant_apply:
+		return "revenant.apply";
+	case MechanicId::revenant_lifecycle:
+		return "revenant.lifecycle";
+	case MechanicId::revenant_value:
+		return "revenant.value";
+	case MechanicId::race_status_capture:
+		return "race.status.capture";
+	case MechanicId::transient_race_capture:
+		return "transient.race.capture";
+	case MechanicId::race_status_load:
+		return "race.status.load";
+	case MechanicId::equipment_capture:
+		return "equipment.capture";
+	case MechanicId::inventory_capture:
+		return "inventory.capture";
+	case MechanicId::equipment_load:
+		return "equipment.load";
+	case MechanicId::inventory_load:
+		return "inventory.load";
+	case MechanicId::racial_age_data:
+		return "racial.age.data";
 	case MechanicId::count:
 		break;
 	}
@@ -201,7 +227,11 @@ std::vector<MechanicConnection> mechanic_connections()
 				  racial_stat_connections(),
 				  epic_refund_connections(),
 				  trophy_connections(),
-				  currency_connections() })
+				  currency_connections(),
+				  revenant_connections(),
+				  object_periodic_connections(),
+				  item_load_connections(),
+				  racial_age_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -209,7 +239,8 @@ std::vector<MechanicConnection> mechanic_connections()
 std::vector<TransitionConnection> transition_connections()
 {
 	std::vector<TransitionConnection> result;
-	for (auto connections : { specialization_transitions(), multiclass_transitions() })
+	for (auto connections :
+	     { specialization_transitions(), multiclass_transitions(), revenant_transitions() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -292,10 +323,12 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 				std::holds_alternative<ObjectProcValue>(connection.binding) ||
 				std::holds_alternative<SkillDataQuery>(connection.binding) ||
 				std::holds_alternative<ClassHitpointFactors>(connection.binding) ||
-				std::holds_alternative<RacialStatFactors>(connection.binding);
+				std::holds_alternative<RacialStatFactors>(connection.binding) ||
+				std::holds_alternative<RacialAgeData>(connection.binding);
 			break;
 		case Relation::effect:
 			compatible =
+				std::holds_alternative<event_func_type>(connection.binding) ||
 				std::holds_alternative<MeleeDamage>(connection.binding) ||
 				std::holds_alternative<CharacterAction>(connection.binding) ||
 				std::holds_alternative<CommandHandler>(connection.binding) ||
@@ -318,6 +351,7 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::mutation:
 			compatible =
+				std::holds_alternative<obj_proc_type>(connection.binding) ||
 				std::holds_alternative<CommandHandler>(connection.binding) ||
 				std::holds_alternative<epic_completion_fn>(connection.binding) ||
 				std::holds_alternative<RoomProcedure>(connection.binding);
