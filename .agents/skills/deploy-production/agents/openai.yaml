@@ -1,4 +1,4 @@
 interface:
   display_name: "Deploy Production"
-  short_description: "Prepare Duris production for the user's in-game reboot"
-  default_prompt: "Use $deploy-production to finish production preparation, including backups, required migrations and content, then verify readiness and hand me the in-game REBOOT command with services still running."
+  short_description: "Pull, migrate, clean-build, reboot, and verify Duris"
+  default_prompt: "Use $deploy-production to pull master immediately, finish migrations and content updates, perform a full clean rebuild, schedule Veridian's reboot in 180 seconds with the message Zusuk has new code incoming, brace for impact!, and watch the logs until the rebuilt game is healthy."
