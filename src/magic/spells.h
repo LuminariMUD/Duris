@@ -1256,6 +1256,7 @@
 #define TAG_SUPPRESS_PERM_BITS 2125
 #define TAG_INFO_COOLDOWN 2126
 #define TAG_WEB_SPRAY 2127
+#define TAG_EPIC_TASK_PENDING 2128
 /* The studio-proc engine's per-instance state (src/mob/studioproc.h) takes the top of
  * the skills[] index space.  A new tag goes above TAG_INFO_COOLDOWN and below these;
  * tests/async/test_studioproc_tag_ids.py fails the gate on one that reaches them. */

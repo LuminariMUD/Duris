@@ -329,7 +329,8 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 				logit(LOG_STATUS,
 				      "Epic task catalog refresh rejected: candidate_zones=%zu "
 				      "retained_zones=%zu; check zones.task_zone.",
-				      maintenance_catalog_candidate.size(), epic_task_catalog_size());
+				      maintenance_catalog_candidate.size(),
+				      epic_task_catalog_size());
 			maintenance_catalog_candidate.clear();
 		}
 	}

@@ -49,6 +49,7 @@ using namespace std;
 #include "redis/redis_key_registry.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
+#include "persistence/persistence_checkpoint.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "world/timers.h"
@@ -414,35 +415,39 @@ void epic_choose_new_epic_task(P_char ch)
 	struct affected_type af;
 	int zone_number = -1;
 
-	if (!IS_ALIVE(ch))
+	if (!IS_ALIVE(ch) || IS_NPC(ch) || has_epic_task(ch))
 	{
 		return;
 	}
+
+	affected_type *pending = get_spell_from_char(ch, TAG_EPIC_TASK_PENDING);
 
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_EPIC_ERRAND;
 	af.flags = AFFTYPE_STORE | AFFTYPE_PERM;
 	af.duration = -1;
 
-	// An unavailable catalogue must not silently become a Spill Blood task.
-	if (!epic_task_catalog_ready() ||
-	    ch->only.pc->gameplay_reads.status != gameplay_read_status::ready)
-	{
-		logit(LOG_STATUS, "Epic task assignment unavailable: catalog_ready=%d zones=%zu",
-		      epic_task_catalog_ready(), epic_task_catalog_size());
-		send_to_char("The Gods cannot assign an epic task right now. Notify an immortal.\n",
-			     ch);
-		return;
-	}
-
-	// Preserve the intentional 5% non-zone task roll and exhausted-zone fallback.
-	if (number(0, 19))
+	// Roll once per assignment. A deferred zone roll must not reroll into Spill Blood.
+	if (pending || number(0, 19))
 	{
 		epic_task_selection_status status = epic_task_selection_status::unavailable;
 		zone_number = epic_random_task_zone(ch, &status);
 		if (status == epic_task_selection_status::unavailable)
 		{
-			logit(LOG_STATUS, "Epic task selection unavailable after readiness check.");
+			if (!pending)
+			{
+				af.type = TAG_EPIC_TASK_PENDING;
+				affect_to_char(ch, &af);
+				mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_AFFECTS);
+				logit(LOG_STATUS,
+				      "Epic task assignment deferred: catalog_ready=%d zones=%zu player_reads_ready=%d",
+				      epic_task_catalog_ready(), epic_task_catalog_size(),
+				      ch->only.pc->gameplay_reads.status ==
+					      gameplay_read_status::ready);
+				send_to_char(
+					"Your earned epic task is waiting for the Gods. It will be assigned automatically when task data is available.\n",
+					ch);
+			}
 			return;
 		}
 	}
@@ -479,6 +484,9 @@ void epic_choose_new_epic_task(P_char ch)
 	}
 
 	affect_to_char(ch, &af);
+	if (pending)
+		affect_remove(ch, pending);
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_AFFECTS);
 }
 
 // The zones of a character's epic zone awards (rows of zone, time, oldest first), newest

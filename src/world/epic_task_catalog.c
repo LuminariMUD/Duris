@@ -110,8 +110,7 @@ bool epic_task_catalog_refresh(void)
 #endif
 }
 
-int epic_task_catalog_select(const gameplay_read_state *state,
-			     epic_task_selection_status *status)
+int epic_task_catalog_select(const gameplay_read_state *state, epic_task_selection_status *status)
 {
 	if (status)
 		*status = epic_task_selection_status::unavailable;
@@ -127,8 +126,8 @@ int epic_task_catalog_select(const gameplay_read_state *state,
 				selected = zone_number;
 		}
 	if (status)
-		*status = selected < 0 ? epic_task_selection_status::exhausted
-				       : epic_task_selection_status::selected;
+		*status = selected < 0 ? epic_task_selection_status::exhausted :
+					 epic_task_selection_status::selected;
 	return selected;
 }
 
