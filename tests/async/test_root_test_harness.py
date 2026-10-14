@@ -76,6 +76,7 @@ expected_resource_intensive = {
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
+    "test_discord_game_journey.py",
     "test_mysql_playtime_journey.py",
     "test_playtime_mysql_repository.py",
 }
@@ -84,6 +85,7 @@ assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",
     "test_playtime_flatfile.py",
+    "test_discord_bridge_runtime.py", "test_discord_petition_export.py",
 } <= discovered
 sample_tests = [
     Path("test_fast.py"),
