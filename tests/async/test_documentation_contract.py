@@ -71,7 +71,10 @@ def github_anchors(markdown: str) -> set[str]:
         # GitHub and GitLab keep a heading's underscores in its anchor.
         heading = re.sub(r"[`*~]", "", heading).strip().lower()
         slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"\s+", "-", slug)
+        # GitHub replaces each space, including adjacent spaces left after
+        # punctuation removal; collapsing them rejects valid section links.
+        # https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#section-links
+        slug = slug.replace(" ", "-")
         suffix = counts.get(slug, 0)
         counts[slug] = suffix + 1
         anchors.add(slug if suffix == 0 else f"{slug}-{suffix}")
@@ -79,6 +82,13 @@ def github_anchors(markdown: str) -> set[str]:
 
 
 class DocumentationContractTest(unittest.TestCase):
+    def test_heading_spaces_and_duplicate_anchors(self) -> None:
+        self.assertEqual(
+            github_anchors("## Integration handoff \u2014 2026-10-13\n"
+                           "## A \u2014 B\n## A  B\n## A B\n## A\tB\n"),
+            {"integration-handoff--2026-10-13", "a--b", "a--b-1", "a-b", "ab"},
+        )
+
     def setUp(self) -> None:
         self.text = {path: path.read_text() for path in GUIDES}
 
