@@ -326,8 +326,11 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		{
 			if (!epic_task_catalog_publish(maintenance_catalog_candidate.data(),
 						       maintenance_catalog_candidate.size()))
-				logit(LOG_DEBUG,
-				      "maintenance job=epic_task_catalog outcome=publish_failed actor=redacted");
+				logit(LOG_STATUS,
+				      "Epic task catalog refresh rejected: candidate_zones=%zu "
+				      "retained_zones=%zu; check zones.task_zone.",
+				      maintenance_catalog_candidate.size(),
+				      epic_task_catalog_size());
 			maintenance_catalog_candidate.clear();
 		}
 	}
@@ -913,7 +916,7 @@ int run_the_game(int port, int sslport)
 		update_zone_db();
 		if (!epic_task_catalog_refresh())
 			logit(LOG_STATUS,
-			      "Epic task catalog unavailable; zone task selection uses safe fallback.");
+			      "Epic task catalog unavailable or invalid; new zone tasks cannot be assigned. Check zones.task_zone.");
 	}
 	else
 	{

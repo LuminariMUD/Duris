@@ -71,7 +71,7 @@ def github_anchors(markdown: str) -> set[str]:
         # GitHub and GitLab keep a heading's underscores in its anchor.
         heading = re.sub(r"[`*~]", "", heading).strip().lower()
         slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"\s+", "-", slug)
+        slug = slug.replace(" ", "-")
         suffix = counts.get(slug, 0)
         counts[slug] = suffix + 1
         anchors.add(slug if suffix == 0 else f"{slug}-{suffix}")
@@ -81,6 +81,13 @@ def github_anchors(markdown: str) -> set[str]:
 class DocumentationContractTest(unittest.TestCase):
     def setUp(self) -> None:
         self.text = {path: path.read_text() for path in GUIDES}
+
+    def test_heading_anchors_preserve_each_space_like_github_slugger(self) -> None:
+        self.assertEqual(
+            github_anchors("## Integration handoff \u2014 2026-10-13\n"
+                           "## Integration handoff \u2014 2026-10-13\n"),
+            {"integration-handoff--2026-10-13", "integration-handoff--2026-10-13-1"},
+        )
 
     def test_anchor_documents_exist_and_are_discovered(self) -> None:
         for path in ANCHORS:
