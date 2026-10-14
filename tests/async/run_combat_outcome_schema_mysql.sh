@@ -68,10 +68,13 @@ lengths=$("${MYSQL[@]}" -e "SELECT GROUP_CONCAT(OCTET_LENGTH(log) ORDER BY id)
 [[ "$("${MYSQL[@]}" -e "SELECT HEX(log)=CONCAT(REPEAT('F09F94A5',24999),'78797A')
     FROM pkill_info WHERE pid=4294000200 ORDER BY id DESC LIMIT 1;")" == 1 ]]
 
-# A wider existing installation must never be narrowed by this migration.
+# A noncanonical wider column must not be narrowed or certified for runtime boot.
 "${MYSQL[@]}" -e 'ALTER TABLE pkill_info MODIFY COLUMN log LONGTEXT NULL;'
 "${MYSQL[@]}" < "$ROOT/migrations/immutable/0041_pkill_log_capacity.sql"
-"$ROOT/migrations/immutable/0041_pkill_log_capacity.sh"
+if "$ROOT/migrations/immutable/0041_pkill_log_capacity.sh"; then
+    echo 'log verifier accepted LONGTEXT despite the canonical MEDIUMTEXT boot contract' >&2
+    exit 1
+fi
 [[ "$("${MYSQL[@]}" -e "SELECT data_type FROM information_schema.columns
     WHERE table_schema=DATABASE() AND table_name='pkill_info' AND column_name='log';")" == longtext ]]
 echo 'legacy combat log capacity, data preservation, strict limits and replay: ok'

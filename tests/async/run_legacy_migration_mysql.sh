@@ -107,6 +107,25 @@ legacy_log_type=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
     "SELECT data_type FROM information_schema.columns WHERE table_schema=DATABASE()
      AND table_name='pkill_info' AND column_name='log';")
 [[ "$legacy_log_type" == text ]]
+# An unexpected wider type is preserved but cannot publish a successful head
+# that the canonical runtime fingerprint would subsequently reject.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
+    'ALTER TABLE pkill_info MODIFY COLUMN log LONGTEXT NULL;'
+if ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
+    DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
+    python3 "$ROOT/scripts/migration_runner.py" run; then
+    echo 'migration runner certified noncanonical LONGTEXT' >&2
+    exit 1
+fi
+refused_head=$(MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" -N -B "$MIGRATED_DB" -e \
+    "SELECT CONCAT((SELECT applied_count FROM mud_schema_migration_state WHERE state_id=1),':',
+     (SELECT COUNT(*) FROM mud_schema_history WHERE sequence_number=41),':',
+     (SELECT data_type FROM information_schema.columns WHERE table_schema=DATABASE()
+      AND table_name='pkill_info' AND column_name='log'));")
+[[ "$refused_head" == '40:0:longtext' ]]
+# Restore the supported legacy fixture and retry the still-pending migration.
+MYSQL_PWD="$PASSWORD" "${MYSQL[@]}" "$MIGRATED_DB" -e \
+    'ALTER TABLE pkill_info MODIFY COLUMN log TEXT NULL;'
 ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="$DB_PORT" DB_USER=root \
     DB_PASSWD="$PASSWORD" DB_NAME="$MIGRATED_DB" \
     python3 "$ROOT/scripts/migration_runner.py" run

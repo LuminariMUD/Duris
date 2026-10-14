@@ -1,5 +1,7 @@
 -- Legacy upgrades can retain TEXT, which cannot hold a 99,999-byte PvP log.
--- Preserve existing rows and leave MEDIUMTEXT/LONGTEXT columns unchanged on replay.
+-- Preserve existing rows and leave MEDIUMTEXT unchanged on replay.
+-- Never narrow an unexpected LONGTEXT column; the verifier rejects that shape
+-- before the runner records success, matching the canonical runtime contract.
 SET @pkill_log_sql = IF(EXISTS(
     SELECT 1 FROM information_schema.columns
     WHERE table_schema=DATABASE() AND table_name='pkill_info'

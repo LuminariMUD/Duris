@@ -249,11 +249,11 @@ online option does not authorize it. Qualify the legacy upgrade on a disposable
 database, then apply 0041 with stopped writers and the usual production target and
 backup safeguards before installing the updated server.
 
-Migration 0040 is additive and rerunnable. On MariaDB 11.8/InnoDB, apply it with
-`run --online-combat-outcome-allies` after reviewing active writers and satisfying
-the target, backup and locking requirements in
-[IMMUTABLE_MIGRATIONS.md](../persistence/IMMUTABLE_MIGRATIONS.md), before installing
-the updated server. Existing outcomes keep count 0 (unknown) and cannot unlock a
+Migration 0040 is additive and rerunnable. Its reviewed
+`run --online-combat-outcome-allies` path applies only to a manifest ending at
+0040, not the current 0041 head. Use the offline path above for this release.
+See [IMMUTABLE_MIGRATIONS.md](../persistence/IMMUTABLE_MIGRATIONS.md).
+Existing outcomes keep count 0 (unknown) and cannot unlock a
 level; new outcomes retain the count so maintenance can apply the current share
 threshold. The separate online 0039 option does not cover 0040.
 

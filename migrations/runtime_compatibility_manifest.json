@@ -12,9 +12,9 @@
   "migration_head": {
     "id": "0041_pkill_log_capacity",
     "sequence": 41,
-    "apply_checksum": "1908a011cb2f7b08e27370a305ed2f092d6faa41e792b9e3f822707f985620e4",
-    "verify_checksum": "2a087ca5f9dafe94fc55384cb6cd21ef8783a3d225363746422e4647f7ab4f4a",
-    "history_checksum": "d6bf2f2e146cd7fb69e8021881841bc51c4c59413ad4ec057a3c125947685ce9"
+    "apply_checksum": "7c5300d246864439c408ff3a823827b2b43518db7a8e894e0ee326e38d6c4bda",
+    "verify_checksum": "6d51dfc8956d5ef1eee5f1cb86c3e96fde8a82f2b3da0bb0d7fd26e7939edf8a",
+    "history_checksum": "116cd36fd175c61317dc243774763c0186b72b38ad625197341733b913c69dbf"
   },
   "connection": {
     "character_set": "utf8mb4",

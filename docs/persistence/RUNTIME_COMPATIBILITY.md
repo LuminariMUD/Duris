@@ -42,7 +42,9 @@ migration 0035 gives every account bank the opening baseline boot requires. Migr
 beyond the level open to all.
 0040 records killer-side ally counts on combat outcomes. 0041 widens legacy
 `pkill_info.log` columns to `MEDIUMTEXT` for 99,999-byte public combat snapshots;
-existing rows are preserved and already-wide columns need no alteration.
+existing rows are preserved and canonical `MEDIUMTEXT` columns need no alteration.
+Unexpected `LONGTEXT` columns are preserved but refused before recording migration
+success; their metadata does not match the runtime contract.
 Fingerprints are measured on clean `mysql:8.0` and `mariadb:10.11` schemas with
 `tests/async/telemetry_rollup_schema_mysql.py --update-contract`; they must not be
 copied from a production-derived clone.

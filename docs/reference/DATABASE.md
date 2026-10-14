@@ -105,7 +105,10 @@ Immutable migration `0041_pkill_log_capacity` widens legacy `pkill_info.log`
 columns from `TEXT` to `MEDIUMTEXT` before the updated server can boot. The
 legacy baseline upgrade alone can retain `TEXT`; follow it with
 `python3 scripts/migration_runner.py run`. Existing logs and NULLs are preserved,
-and already-wide columns are unchanged on replay. This prevents strict SQL mode
+and canonical `MEDIUMTEXT` columns are unchanged on replay. An unexpected
+`LONGTEXT` column is preserved but rejected by verification before migration
+success is recorded, since runtime boot requires the canonical metadata shape.
+This prevents strict SQL mode
 from rejecting 65,536–99,999-byte logs and rolling back their entire outcome.
 
 The #58 implementation separates artifact/guild reward history from
