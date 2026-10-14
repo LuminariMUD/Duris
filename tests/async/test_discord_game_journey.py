@@ -135,10 +135,12 @@ def run(binary, driver):
 
         def shutdown():
             nonlocal output
+            before = output_path.read_text(errors="replace").count("Normal termination of game.")
             process.terminate()
             process.wait(timeout=30)
             assert process.returncode == 0, "ordinary game shutdown failed"
-            assert "Normal termination of game." in output_path.read_text(errors="replace")
+            assert output_path.read_text(errors="replace").count("Normal termination of game.") == before + 1, \
+                "shutdown did not write a fresh termination record"
             output.close()
             output = None
 
@@ -276,8 +278,11 @@ def run(binary, driver):
             shutdown()
             sink.expect_posts(expected)
             logs = (runtime / "logs/log/petition").read_text(errors="replace")
-            for text in ("GAME-REPLY", "OFFLINE-PETITION", "OFFLINE-REPLY", "DISABLED-PETITION", "DISABLED-REPLY"):
-                assert logs.count(text) == 1, "native audit entry missing or duplicated: " + text
+            for text in ("GAME-REPLY", "AFTER-FAILED-EXEC", "REPLY-AFTER-FAILED-EXEC",
+                         "OFFLINE-PETITION", "OFFLINE-REPLY", "DISABLED-PETITION", "DISABLED-REPLY"):
+                # Match the start of the parenthesized message, so the petition
+                # sentinel does not also match the longer reply sentinel.
+                assert logs.count("(" + text) == 1, "native audit entry missing or duplicated: " + text
             assert "REJECTED-PETITION" not in logs and "REJECTED-REPLY" not in logs
             assert "FATAL:" not in output_path.read_text(errors="replace")
             print("Full game: disconnect/disable rollback, save/reload and ordinary shutdown passed", flush=True)
