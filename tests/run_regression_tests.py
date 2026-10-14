@@ -56,8 +56,10 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
 # The MySQL playtime journey needs a disposable database and --server, and invokes its
 # repository probe with that database's environment. make test-db runs it; the generic
 # test-all runner invokes every discovered script with no arguments.
+# The Discord game journey similarly needs an external Node checkout via --node-driver.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
+        "test_discord_game_journey.py",
         "test_mysql_playtime_journey.py",
         "test_playtime_mysql_repository.py",
     }
