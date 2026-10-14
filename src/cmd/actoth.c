@@ -3339,7 +3339,7 @@ static bool trusted_steal_binding_allows_tree(P_char thief, P_obj object)
 			}
 		}
 	}
-	catch(const std::bad_alloc &)
+	catch (const std::bad_alloc &)
 	{
 		return false;
 	}
@@ -7055,67 +7055,66 @@ void do_blood_scent(P_char ch, char * /*argument*/, int /*cmd*/)
 
 namespace
 {
-	enum class ascend_kind : int
-	{
-		theurgist,
-		avenger_specialization,
-		paladin_transformation,
-	};
+enum class ascend_kind : int
+{
+	theurgist,
+	avenger_specialization,
+	paladin_transformation,
+};
 
-	struct ascend_context
-	{
-		ascend_kind kind;
-		int specialization;
-	};
+struct ascend_context
+{
+	ascend_kind kind;
+	int specialization;
+};
 
-	void ascend_committed(P_char ch, bool committed, const epic_command_result &, unsigned int,
-			      const uint8_t *raw_context, size_t context_size)
+void ascend_committed(P_char ch, bool committed, const epic_command_result &, unsigned int,
+		      const uint8_t *raw_context, size_t context_size)
+{
+	if (!committed || context_size != sizeof(ascend_context))
 	{
-		if (!committed || context_size != sizeof(ascend_context))
-		{
-			send_to_char("Your ascension offering was not accepted.\n", ch);
-			return;
-		}
-		ascend_context context = {};
-		memcpy(&context, raw_context, sizeof(context));
-		if (context.kind == ascend_kind::theurgist)
-		{
-			for (int skill = 0; skill < MAX_SKILLS; ++skill)
-				if (!IS_TRADESKILL(skill) && !IS_EPIC_SKILL(skill))
-					ch->only.pc->skills[skill].learned = 0;
-			NewbySkillSet(ch, FALSE);
-			ch->points.max_mana = 0;
-			do_start(ch, 1);
-			for (int wear = 0; wear < MAX_WEAR; ++wear)
-				if (ch->equipment[wear])
-					obj_to_char(unequip_char(ch, wear), ch);
-			GET_SIZE(ch) = SIZE_MEDIUM;
-			GET_RACE(ch) = RACE_ELADRIN;
-			ch->player.m_class = CLASS_THEURGIST;
-			GET_VITALITY(ch) = GET_MAX_VITALITY(ch) = 120;
-		}
-		else
-		{
-			ch->player.spec = context.specialization;
-			if (context.kind == ascend_kind::paladin_transformation)
-			{
-				forget_spells(ch, -1);
-				ch->player.secondary_class = 0;
-				GET_SIZE(ch) = SIZE_MEDIUM;
-				GET_RACE(ch) = RACE_AGATHINON;
-				ch->player.m_class = CLASS_AVENGER;
-				do_start(ch, 1);
-			}
-		}
-		generate_desc(ch);
-		ch->player.time.birth = time(NULL) - 500 * SECS_PER_MUD_YEAR;
-		forget_spells(ch, -1);
-		ch->player.spec = context.kind == ascend_kind::theurgist ? 0 :
-									   context.specialization;
-		if (context.kind == ascend_kind::theurgist)
-			ch->player.secondary_class = 0;
-		send_to_char("Your offering is accepted and your ascension is complete.\n", ch);
+		send_to_char("Your ascension offering was not accepted.\n", ch);
+		return;
 	}
+	ascend_context context = {};
+	memcpy(&context, raw_context, sizeof(context));
+	if (context.kind == ascend_kind::theurgist)
+	{
+		for (int skill = 0; skill < MAX_SKILLS; ++skill)
+			if (!IS_TRADESKILL(skill) && !IS_EPIC_SKILL(skill))
+				ch->only.pc->skills[skill].learned = 0;
+		NewbySkillSet(ch, FALSE);
+		ch->points.max_mana = 0;
+		do_start(ch, 1);
+		for (int wear = 0; wear < MAX_WEAR; ++wear)
+			if (ch->equipment[wear])
+				obj_to_char(unequip_char(ch, wear), ch);
+		GET_SIZE(ch) = SIZE_MEDIUM;
+		GET_RACE(ch) = RACE_ELADRIN;
+		ch->player.m_class = CLASS_THEURGIST;
+		GET_VITALITY(ch) = GET_MAX_VITALITY(ch) = 120;
+	}
+	else
+	{
+		ch->player.spec = context.specialization;
+		if (context.kind == ascend_kind::paladin_transformation)
+		{
+			forget_spells(ch, -1);
+			ch->player.secondary_class = 0;
+			GET_SIZE(ch) = SIZE_MEDIUM;
+			GET_RACE(ch) = RACE_AGATHINON;
+			ch->player.m_class = CLASS_AVENGER;
+			do_start(ch, 1);
+		}
+	}
+	generate_desc(ch);
+	ch->player.time.birth = time(NULL) - 500 * SECS_PER_MUD_YEAR;
+	forget_spells(ch, -1);
+	ch->player.spec = context.kind == ascend_kind::theurgist ? 0 : context.specialization;
+	if (context.kind == ascend_kind::theurgist)
+		ch->player.secondary_class = 0;
+	send_to_char("Your offering is accepted and your ascension is complete.\n", ch);
+}
 } // namespace
 
 void ascend_theurgist(P_char ch)
