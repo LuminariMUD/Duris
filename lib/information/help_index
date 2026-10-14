@@ -21377,6 +21377,14 @@ When a powerful blow comes crashing down, the quick-stepped fighter is simply el
 ===========================================================================
 See also: dodge, evade, parry, sidestep
 #
+"QUICKSTEP" (Skill Alias)
+===========================================================================
+Quickstep is the Quick Step skill. A nimble fighter can turn a powerful blow
+into a missed strike, and may even cause the attacker to fumble. This passive
+skill uses agility and mastery; see 'help quick step' for the full description.
+===========================================================================
+See also: Quick Step, dodge, evade
+#
 "RAGE" (Skill)
 ===========================================================================
 Beyond mere berserking lies the deep bloodlust of "rage", a red tide that thunders in the ears and hurls the warrior through combat in a blur of motion. The frenzy endures but a few heaving breaths, growing longer as mastery over it grows, and once it abates the body refuses to summon it again straight away. One must already be gripped by battle madness to tear loose this inner fury.
@@ -24063,3 +24071,29 @@ The release preserves existing caps. Future season resets start at shared
 level 30 with no waiting period before the first qualifying frag.
 ===========================================================================
 See also: FRAGS, HARDCORE
+#
+"WEB SPRAY WEB-SPRAY WEB_SPRAY" (Innate)
+===========================================================================
+Syntax: innate web_spray <victim>
+
+Driders gain Web Spray at level 31. Sticky webbing drains a foe's movement for
+30 seconds on a hit, with a five-minute cooldown between attempts. Freedom of
+movement and evade can stop the spray. Moving to another room gives a chance
+to tear free. Another hit refreshes the webbing; sprays do not stack.
+===========================================================================
+See also: Drider, innates, freedom of movement, evade
+#
+"SEADOG" (Innate)
+===========================================================================
+Seadog is a passive seafaring talent. A ship's owner with Seadog adds two to
+its maximum speed while anywhere aboard. The speed order and panel display
+use the person operating the panel, but each sailing tick uses the aboard
+owner: another sailor's Seadog bonus will not persist, and a sailor without
+Seadog cannot order the owner's full bonus speed.
+
+Seadog also grants 10% more proceeds to the person selling ship cargo. Humans
+and Orcs possess it from level 1; Warrior Swashbucklers gain it at level 30.
+It does not require an innate command to activate.
+===========================================================================
+See also: Human, Orc, Swashbuckler, ships
+#

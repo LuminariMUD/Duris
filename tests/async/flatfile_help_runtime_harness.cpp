@@ -40,6 +40,16 @@ int main()
 		require(no_locate.find("introduction system") != string::npos,
 			"No Locate help alias did not render the dedicated topic");
 	}
+	require(wiki_help("web-spray").find("innate web_spray") != string::npos,
+		"Web Spray alias did not render its innate topic");
+	require(wiki_help("quickstep").find("powerful blow") != string::npos,
+		"Quickstep alias did not render Quick Step");
+	const string seadog = wiki_help("seadog");
+	for (const char *meaning :
+	     { "passive seafaring", "owner with Seadog", "anywhere aboard",
+	       "person operating the panel", "bonus will not persist", "10% more proceeds" })
+		require(seadog.find(meaning) != string::npos,
+			"Seadog did not render its owner/panel and cargo-sale rules");
 	cout << "flat-file help runtime passed\n";
 	return 0;
 }

@@ -2,12 +2,32 @@
 
 ## Current integration checkpoint — 2026-10-14
 
-#70 was reconciled with `origin/master` at `67ca142ff` in merge `2ec958e83`.
-#73 now merges that parent without rewriting published history. The current full queue and retained archive are on
-the top review branch `fix/56-runtime-review`; the earlier qualification below
-does not prove this integration. Next propagate #70 through #73, #74 and #75,
-repair #73's obsolete boon gate and #74's area overflow/Seadog help, then qualify
-the stable combined batch. Leave all reviews unmerged.
+#70 incorporates master `67ca142ff` in `2ec958e83`; #73 incorporates that parent
+and the all-level boon fix in `5e75d025a`. #74 merged #73 in `b89150407` and now
+repairs the oversized basic area response and Seadog help. Published history is
+preserved. The current full queue and archive remain on `fix/56-runtime-review`.
+Next propagate #74 into #75 and qualify the stable combined batch. Leave the
+reviews unmerged. Earlier broad results below qualify their recorded snapshots.
+
+#74's area response reserves space for the average, staff ID and full warning
+before truncating an oversized name. The 65,500-byte original reproduction fails
+at `strcat` under ASan; the expanded native regression passes under ASan/UBSan
+for plain/colored/oversized names, numeric/sentinel averages and warning bounds.
+Seadog help now identifies the aboard owner as the persistent bonus source and
+explains the panel-actor limitation, retaining passive availability and sale rules.
+An isolated native probe executes the real max-speed/order/aboard-owner functions
+and tick clamp; display's actor selection was checked at its actual call site.
+No ship mechanic changed.
+
+`make -C src -j16`, the area regression, flat-file help catalog/runtime, help import
+parser and 14 documentation checks pass. The disposable MariaDB information
+journey imports the corrected help and verifies actual player queries for all
+three topics plus cache refresh. Its first attempt exposed a test adapter mistake
+(timing returned where transcript text was expected); the corrected transcript
+check passes. Evidence: `bin/analysis/integration/build-74.log`, `help-74.log` and
+`seadog-probe.log` in the integration worktree; original area failure evidence is
+in the top checkout's `bin/analysis/area-before.log`. Defect catch and final
+combined gates remain due.
 
 Outcome: retain all-level awards, pending task recovery and readable bounded
 diagnostics with memory-authoritative artifact/guild rewards. Files: the epic,
@@ -36,8 +56,20 @@ Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](h
 ## Execution plan — deadline correction, 2026-10-14
 
 **LR-02–LR-05 are locally qualified in [PR #73](https://github.com/LuminariMUD/Duris/pull/73).**
-The next delivery is the LR-06 display fix and LR-08 help coverage. Continue the
-remaining items in the order below; all acceptance requirements remain.
+The LR-06 display fix and LR-08 help coverage are now locally qualified in
+[PR #74](https://github.com/LuminariMUD/Duris/pull/74), ready and stacked on #73.
+All 734 regressions pass in 593.65 seconds; all 77 database checks pass in one
+743-second run. The before/after script reports 2/2 catches. A separate native
+lookup using the base help data fails specifically at the missing Web Spray
+entry and passes with the new data, removing ambiguity from the script's final
+runtime-warning line. Original zone attribution remains open.
+
+**Next delivery:** bundle the remaining confirmed repository repairs. Follow the
+owner's 2026-10-14 deadline reminder: use focused proof while implementing, reuse
+valid completed results and run one final set of required gates for that bundle.
+No per-item full-suite loop or added hardening pass is needed. Retain every
+acceptance requirement and keep evidence/access gaps explicit.
+
 
 **Execution checkpoint, 2026-10-14.** The gameplay implementation is `4a202c2fb`
 above LR-02's `55248b7ad`; `9551e64bb` repairs a confirmed fixture failure.
@@ -51,13 +83,15 @@ then success, and exhaustion at five attempts. It is fixture-boundary proof;
 the real PvP journey supplies gameplay/persistence proof. Server source is
 unchanged from the passing regression gate. No full green gate was repeated.
 
-The next batch is prepared separately on `fix/56-zone-help` at `baf93f70a`, in
-`bin/analysis/zone-help-worktree/`, while the #73 checkout was frozen. Native
+The next batch was prepared separately on `fix/56-zone-help` at `baf93f70a`, in
+`bin/analysis/zone-help-worktree/`, while the #73 checkout was frozen. It is now
+`884f1ceba` on `fix/56-zone-help-review`, above #73's `c404fc159`, in the main
+worktree. Focused evidence has been copied to `bin/analysis/zone-help/`. Native
 area display fails before and passes after; flat-file help and actual player
 help queries after disposable MariaDB import/cache refresh pass. It retains the
 existing Quick Step title and uses ordinary searchable topics; no importer or
-redirect framework is added. The main server build and broad gates for that
-batch remain due. Original zone attribution is still open.
+redirect framework is added. The main server build, full-tree formatting and final broad gates pass; #74
+is ready for review. Original zone attribution remains open. Original zone attribution is still open.
 
 Evidence: `bin/analysis/epic-training/` (including the preserved full database
 logs and PvP rerun), and the next worktree's `bin/analysis/zone-help/`.
@@ -430,6 +464,18 @@ reported delay cannot yet be reproduced.
 - [ ] Identify the reported zone, validate catalog population, and render
   unknown/not-applicable averages without displaying a negative mob level.
 
+**Display fix and focused proof, 2026-10-14.** `884f1ceba` renders -2 as
+`unknown` and -1 as `not applicable`, preserves numeric averages, and compares
+only real values for the hazard warning. `test_zone_average_display.py` executes
+the production basic `do_area()` branch under ASan/UBSan: populated/empty/unknown,
+zero, the exact +15/+16 warning boundary, a changed catalog value, and staff
+no-argument display pass. The unchanged source compiled and failed on the
+negative sentinel. Name padding and the unrelated morph check are adapters;
+staff search subcommands are outside this fixture. Catalog loading is unchanged.
+The original reported room/zone remains unidentified and its population check
+is still open; this display repair alone does not close that attribution.
+
+
 [db.c](../../src/world/db.c) initializes `avg_mob_level` to -2;
 [world_quest_policy.c](../../src/world/world_quest_policy.c) populates averages
 and uses -1 for some zones without a usable population;
@@ -466,7 +512,26 @@ otherwise retain this report's separate disposition and any needed owner decisio
 
 ### LR-08 — Missing help topics/aliases (low; #56 §3)
 
-- [ ] Resolve `web-spray`, `quickstep`, and `seadog` searches.
+- [x] Resolve `web-spray`, `quickstep`, and `seadog` searches.
+
+**Content fix and focused proof, 2026-10-14.** `884f1ceba` adds Web Spray with
+its hyphen/underscore search forms, a short Quickstep topic pointing to the
+unchanged Quick Step page, and passive Seadog help. Actual innate/skill/ship
+sources supply their behavior. The importer and parser retain their existing
+precedence and metadata; the first new entry gets an explicit separator after
+what was the final undelimited entry.
+
+The existing flat-file catalog/runtime test now proves all three searches.
+The information-cache journey dry-runs and imports the copied source through the
+maintained importer into a disposable schema, then exercises all three through
+actual player `help` commands and cached serving. Both focused checks pass. Its
+SQL run used #73's server: help behavior is unchanged code, with the new content
+in the isolated runtime. The zone code has separate native proof; the rebuilt
+server and final gates now pass. [PR #74](https://github.com/LuminariMUD/Duris/pull/74)
+is ready for review. Direct base-data lookup proves the missing topic before;
+updated data renders all three searches after. Evidence is under
+`bin/analysis/zone-help/`. No shared or production import occurred.
+
 
 Owner decision, 2026-10-13: skip `skeer` for now because its meaning is unknown.
 Source/help searches found no matching ability or topic. Do not invent an alias;
