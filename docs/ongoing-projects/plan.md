@@ -4,6 +4,7 @@ Status: **active, resumed at the user's request on 2026-10-13**. Work is on
 `feature/52-character-mechanics`, based on
 `7a2a6344727b3cdd63851bde37f6a5a2d67aeb8d`. The full acceptance scope below remains
 open. Original source inspection: 2026-10-12; implementation started 2026-10-13.
+Latest handoff update: 2026-10-14.
 
 Tracking issue: [#52 — Make character mechanics explicitly connected and mechanically traceable](https://github.com/LuminariMUD/Duris/issues/52).
 
@@ -13,6 +14,12 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   `origin/master`. Keep all implementation on this worktree. Another session may
   use the shared local/dev game; use isolated harnesses and disposable servers,
   without stopping or modifying that instance or its database/Redis state.
+- Latest fetch on 2026-10-14: `origin/master` is now
+  `0e27ef1e830e18ea648fa400bbc4ce6e8106b06f`, three commits beyond this branch's
+  merge base (statistics persistence and online migration support). Integrate
+  upstream separately after the verified Revenant repair checkpoint and verify
+  the affected builds and flight journey. The full-gate result below applies to
+  this feature branch before that upstream integration.
 - Step 1 is active and incomplete; steps 2–4 remain required. The compiled identity foundation
   below is implemented; next complete Guardian/Bulwark, ordered multiclass, and
   Revenant traces. Do not treat an inventory as completion of these traces.
@@ -562,9 +569,80 @@ No production changes followed that gate. Kit delivery, broader backend and
 cleanup dependencies, full acquisition and remaining option families still need
 their separate connections/proof; no complete-trace or whole-issue claim is made.
 
-Next: bind individual teacher/timer guards, creation and
-remaining persistence dependencies, then complete real HP damage and the other
-two initial traces.
+### Revenant lifecycle investigation
+
+The world fixture extends a normally created Orc with a staff-supplied crown
+(22070) and level 41, then exercises real wear/periodic application, save/restart,
+and removal. The inspector exposes birth time and saved affect rows. The focused
+`--trace revenant` case starts from a single-class Warrior; the default full
+journey applies the same case after the Orc's Warrior/Cleric multiclass story.
+This is an item-handler/persistence fixture, not acquisition from the crown's
+world holder. Starter equipment is dropped after restart to allow crown removal
+within the form's inventory limit.
+
+Outcome: qualify and connect application, scheduled retention/reversal, generic
+affect removal, death and checkpoint/reload without losing the original identity.
+Files are the existing native/world mechanics fixtures, snapshot inspector and
+actual item/event/affect/persistence owners. Proof must include observable race
+and age behavior, not just a registered callback. No storage-model replacement
+or enablement of legacy routes is authorized by this investigation.
+
+Additional source evidence: the active crown and unbound old Dragonlord body are
+the `TAG_RACE_CHANGE` producers using NOSAVE; both change birth time and reset it
+to the original race's base age on reversal. Yzar and Shaboath tags are saveable
+and have different lifecycles. A fix must preserve that distinction. Revenant
+base age is 100 versus Orc base/max ages 15/80, so race-only normalization could
+produce an invalid old-age combination. `age()` additionally adds five years and
+the current race's base age; this repair preserves existing reversal birth-date
+semantics, rather than recovering the pre-transformation age (which is not stored).
+
+**Reproduced defect, separately scoped repair:** the saved checkpoint had race 19
+and no race-change tag. After a clean private-server restart, crown removal
+succeeded but the character remained Revenant throughout the 90-second reversal
+window. Log: `bin/tests/character-mechanics-revenant-before.log`. The new native
+capture regression also failed on the original-race assertion before the repair
+(`character-mechanics-revenant-capture-before.log`).
+
+The repair reuses capture's cycle-aware affect traversal. For a NOSAVE
+`TAG_RACE_CHANGE`, it projects the original race and the existing removal
+birth-date policy into the snapshot, including status-only saves. Live race,
+birth and affects remain unchanged. Saveable Yzar/Shaboath tags and unrelated
+NOSAVE affects keep their behavior. Invalid original-race indices reject capture
+before table access, and a failed capture does not publish a partial snapshot.
+This prevents new identity loss; an already-written snapshot missing its original
+race cannot be repaired by inferring that race. No existing player data is edited.
+No schema change, generic transformation framework, or activation of old
+Dragonlord is needed. The existing capture test executes the real capture and
+codec against the real racial table; playtime and locker fixtures now link that
+table as well. The native capture, playtime, locker and load regressions pass.
+The connected-mechanics sanitizer/mutation test also passes (native SHA256
+`fc135c4bd4063b40f88fb85eaa7dd410d7dd31d60994f252c3c9416a551f853c`).
+Development, production, editor, pfile and maintained migration-tool builds pass.
+The focused private-world retest passes: a checkpoint retains the base race and
+omits the temporary tag while the live character stays Revenant; restart
+reapplies the worn crown, and removal restores Orc and the normal reversal birth
+date. Server SHA256:
+`a6dab7ab96e4b3f04c970e5925b0e7280f7ac64c7e50109096ac294d128713f2`.
+Logs use `bin/tests/character-mechanics-revenant-` with `capture`, `playtime`,
+`locker`, `load`, `native`, `build`, `consumers`, `pfile`, `migration-tools` and
+`journey` suffixes. Formatting, whitespace and all 57 local plan links pass.
+The full `make test-all -j8 TEST_JOBS=8` gate passed: **730 passed, 0 failed**,
+no timeouts or signal exits, in **668.07 seconds**. This includes the default
+journey's combined specialization, Human/Orc multiclass and crown case, which
+passed in 264.60 seconds. Log:
+`bin/tests/character-mechanics-revenant-test-all.log`. No source changes followed
+the gate. The separate Docker/database gate was not run; persisted world evidence
+for this repair is flat-file, with shared capture/codec execution in the native
+regression. The Revenant structural connections and remaining acceptance scope
+are still incomplete.
+
+Next: checkpoint this repair, integrate the three upstream commits, then add the
+Revenant connections beside its actual object assignment, periodic dispatch,
+application/reversal callbacks and race/birth capture/load statements. Reuse the
+native mechanics harness and its real registration-slot checks; the world test
+now supplies restart/removal evidence, but does not prove death or conflicts.
+Individual teacher/timer guards, creation, remaining persistence dependencies,
+real HP damage and complete coverage of all three initial traces remain open.
 The successful journey does not replace missing structural links. Ordinary
 travel, live progression caps and the broader acceptance matrix remain open.
 No completion or review-ready claim is made for the whole issue.
@@ -578,11 +656,11 @@ and birth time, and schedules `event_revenant_crown`. The event retains the form
 while the crown is on the head; otherwise it restores race, resets birth time to
 the race's base age, removes the affect and strips equipment. Generic
 `affect_remove` also restores the saved race, and the fatal-damage path restores
-race before death handling. Capture currently saves `GET_RACE` while omitting
-NOSAVE affects; neither that fact nor the old code's comments proves a safe
-relog. Reproduce application, removal, death, save/relog/restart and conflicting
-forms before choosing any repair. These are source leads, not lifecycle proof or
-ordinary acquisition evidence.
+race before death handling. The original capture saved `GET_RACE` while omitting
+NOSAVE affects; the reproduced restart failure and repair are recorded above.
+Application/reversal still need compiled connections, and actual death,
+conflicting-form and other lifecycle paths still need their own evidence. These
+source leads do not prove those paths or ordinary acquisition.
 
 Continuation finding: `epic_transaction_submit_identified` currently changes
 the authoritative in-memory epic balance and calls its completion **before

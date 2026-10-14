@@ -45,6 +45,7 @@ extern int top_of_objt;
 extern int top_of_mobt;
 extern int top_of_world;
 extern Skill skills[];
+extern const struct racial_data_type racial_data[];
 
 namespace
 {
@@ -316,6 +317,29 @@ player_snapshot_capture_result capture_affects(P_char ch, player_snapshot &snaps
 		if (!seen.insert(affect).second)
 			return player_snapshot_capture_result::object_cycle;
 		if (IS_SET(affect->flags, AFFTYPE_NOSAVE))
+		{
+			// The crown and legacy Dragonlord form discard their reversal tag on
+			// save. Persist the identity their removal restores, without changing
+			// the resident character. Saveable race-change tags retain their form.
+			if (affect->type == TAG_RACE_CHANGE &&
+			    (snapshot.components & PLAYER_COMPONENT_STATUS))
+			{
+				if (affect->modifier <= RACE_NONE || affect->modifier > LAST_RACE)
+					return player_snapshot_capture_result::malformed_source;
+				const auto birth =
+					time(nullptr) -
+					racial_data[affect->modifier].base_age * SECS_PER_MUD_YEAR;
+				for (auto &row : snapshot.status_integers)
+				{
+					if (row.field == player_status_field::race)
+						row.unsigned_value = affect->modifier;
+					else if (row.field == player_status_field::birth_time)
+						row.signed_value = birth;
+				}
+			}
+			continue;
+		}
+		if (!(snapshot.components & PLAYER_COMPONENT_AFFECTS))
 			continue;
 		if (!budget.add(sizeof(player_affect_snapshot), 1))
 			return player_snapshot_capture_result::limit_exceeded;
@@ -776,7 +800,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		}
 		if ((components & PLAYER_COMPONENT_SKILLS) && !capture_skills(ch, snapshot, budget))
 			return player_snapshot_capture_result::limit_exceeded;
-		if (components & PLAYER_COMPONENT_AFFECTS)
+		if (components & (PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS))
 		{
 			const auto result = capture_affects(ch, snapshot, budget);
 			if (result != player_snapshot_capture_result::ok)

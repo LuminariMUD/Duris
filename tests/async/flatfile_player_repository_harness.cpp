@@ -201,9 +201,10 @@ static void inspect_authority(const std::string &root, int32_t pid)
 			field.field == player_status_field::class_secondary ? "class_secondary" :
 			field.field == player_status_field::specialization  ? "specialization" :
 			field.field == player_status_field::race	    ? "race" :
+			field.field == player_status_field::birth_time	    ? "birth_time" :
 			field.field == player_status_field::learned_flight_stops ?
-								   "learned_flight_stops" :
-								   nullptr;
+									 "learned_flight_stops" :
+									 nullptr;
 		if (name)
 			std::cout << ",\"" << name << "\":"
 				  << (field.is_unsigned ? std::to_string(field.unsigned_value) :
@@ -223,6 +224,17 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	}
 	std::cout << '}';
 	std::cout << ",\"trophies\":" << snapshot.trophies.size();
+	std::cout << ",\"affects\":[";
+	bool first_affect = true;
+	for (const auto &affect : snapshot.affects)
+	{
+		if (!first_affect)
+			std::cout << ',';
+		first_affect = false;
+		std::cout << "{\"type\":" << affect.type << ",\"modifier\":" << affect.modifier
+			  << ",\"flags\":" << affect.flags << '}';
+	}
+	std::cout << ']';
 	for (const auto &owner :
 	     { item_owner_identity{ item_owner_type::player, static_cast<uint64_t>(pid), 0 },
 	       item_owner_identity{ item_owner_type::room,

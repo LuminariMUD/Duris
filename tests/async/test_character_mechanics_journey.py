@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mortal specialization/multiclass and persisted abilities in an isolated world.
+"""Mortal specialization, multiclass and Revenant lifecycle in an isolated world.
 
 Normal creation/Chaos switches are explicit. Staff supplies boundary state and
 transfers mortals to a loaded teacher, altar and multiclass temple. This proves
@@ -7,6 +7,7 @@ command and persistence paths, not travel from a hometown or level progression.
 No .env, shared listener, production database or staff account is used.
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -29,7 +30,7 @@ ORC, ORC_ACCOUNT = "Mechorc", "Mechorcacct"
 GUARD, SHIELD_PUNCH = "1120", "1145"
 
 
-def run(binary, build):
+def run(binary, build, trace="all"):
     inspector = build / "mechanics-inspector"
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
                     "--build-inspector", str(inspector)], cwd=ROOT, check=True, timeout=180)
@@ -162,6 +163,50 @@ def run(binary, build):
                 save(player, name)
                 return level_six
 
+            def revenant_case(orc, staff, orc_initial):
+                command(staff, "goto " + str(orc_initial["room"]))
+                command(staff, "setbit char " + ORC + " level 41")
+                loaded = command(staff, "load obj 22070")
+                assert "icecrown" in command(staff, "inventory").lower(), loaded
+                given = command(staff, "give icecrown " + ORC)
+                assert "Ok." in given, given
+                assert "icecrown" in command(orc, "inventory").lower()
+                command(orc, "remove all")
+                worn = command(orc, "wear icecrown")
+                assert "head" in worn.lower(), worn
+
+                def wait_for_race(expected):
+                    deadline = time.monotonic() + 90
+                    while time.monotonic() < deadline:
+                        report = command(orc, "score")
+                        if "Race: " + expected in report:
+                            return report
+                        time.sleep(.5)
+                    raise AssertionError("Revenant lifecycle did not reach " + expected + ": " + report)
+
+                wait_for_race("Revenant")
+                save(orc, ORC)
+                transformed = snapshot(3)
+                assert transformed["race"] == 13, transformed["race"]
+                assert all(affect["type"] != 2060 for affect in transformed["affects"])
+                assert "Race: Revenant" in command(orc, "score")  # Saving keeps the live form.
+                stop()
+                boot()
+                orc = login(ORC, ORC_ACCOUNT)
+                wait_for_race("Revenant")
+                # The crown unequips the starter kit; make room for removal.
+                command(orc, "drop all")
+                removed = command(orc, "remove icecrown")
+                assert "stop using" in removed.lower() or "remove" in removed.lower(), removed
+                wait_for_race("Orc")
+                save(orc, ORC)
+                restored = snapshot(3)
+                assert restored["race"] == 13
+                # Capture uses the existing removal birth-date policy. A
+                # race-only repair would leave the much older Revenant birth.
+                assert abs(restored["birth_time"] - transformed["birth_time"]) < 180
+                print("PASS revenant.reversal/persistence: worn crown applies, checkpoint/restart preserves reversible identity, removal restores Orc", flush=True)
+
             try:
                 boot()
                 for name, account in ((PLAYER, ACCOUNT), (STAFF, STAFF_ACCOUNT)):
@@ -176,6 +221,19 @@ def run(binary, build):
                 stop()
                 journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), STAFF)
                 boot()
+                if trace == "revenant":
+                    orc = journey.MudClient(ports[0])
+                    clients.append(orc)
+                    journey.create_character(orc, expected_room=None, account=ORC_ACCOUNT,
+                                             character=ORC, email="mechorc@example.invalid", race_name="o")
+                    save(orc, ORC)
+                    orc_initial = snapshot(3)
+                    command(orc, "toggle paging no")
+                    staff = login(STAFF, STAFF_ACCOUNT)
+                    revenant_case(orc, staff, orc_initial)
+                    print("Fixture: focused Revenant; normal Orc Warrior, staff level 41 and supplied crown; flatfile, camp.timer=1; acquisition unverified", flush=True)
+                    print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
+                    return
                 staff = login(STAFF, STAFF_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
                 denied = command(player, "specialize guardian")
@@ -317,6 +375,8 @@ def run(binary, build):
                 assert orc_reloaded["class_secondary"] == 32 and orc_reloaded["epics"] == 17
                 assert orc_reloaded["skills"]["1022"] == orc_multi["skills"]["1022"]
                 print("PASS multiclass.entry/persistence: normal Human/Orc creation, room 52904, denials, level/XP reset, playtime retention, no threshold charge, secondary skill 5/6 boundary/caps and restart", flush=True)
+                staff = login(STAFF, STAFF_ACCOUNT)
+                revenant_case(orc, staff, orc_initial)
                 print("Fixture: flatfile; normally created Human/Orc Warriors; staff levels 5/6/29/30/40/41/49/50, identity denial cases, epic balances -1/9/12/17, played=12 hours, prestige=9 and transfers; temple golem purged and restart saves returned to creation rooms; camp.timer=1; Arian 9432 in room 9725, altar 12016 in room 12116 and multiclass room 52904; acquisition travel/encounters and live caps unverified", flush=True)
                 print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
             except BaseException:
@@ -329,9 +389,12 @@ def run(binary, build):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--trace", choices=("all", "revenant"), default="all")
+    args = parser.parse_args()
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="character-mechanics-build-", dir=ROOT / "bin/tests") as temporary:
         build = Path(temporary)
         binary = journey.build_flatfile_server(build / "server")
-        run(binary, build)
+        run(binary, build, args.trace)

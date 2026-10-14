@@ -195,6 +195,7 @@ HELD_PETS_HARNESS = r"""
 #include "player/player_snapshot_codec.h"
 #include "player/pet_restore_runtime.h"
 #include "item/item_ownership_runtime.h"
+#include "magic/spells.h"
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -217,6 +218,11 @@ std::vector<std::string> logged;
 void logit(const char *, const char *format, ...) { logged.push_back(format); }
 bool trace = false;
 bool persistence_trace_enabled() { return trace; }
+static constexpr time_t capture_time = 1700000000;
+extern "C" time_t __wrap_time(time_t *out) {
+    if (out) *out = capture_time;
+    return capture_time;
+}
 P_char get_linked_char(P_char ch, ush_int type)
 {
     for (char_link_data *link = ch->linking; link; link = link->next_linking)
@@ -284,6 +290,78 @@ int main()
     assert(unowned_lines() == 2);
     ch.carrying = nullptr;
     std::cout << "[PASS] a held item with no ledger entry is reported only with the trace on\n";
+
+    affected_type form = {};
+    form.type = TAG_RACE_CHANGE;
+    form.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
+    form.modifier = RACE_ORC;
+    form.duration = -1;
+    ch.affected = &form;
+    ch.player.race = RACE_REVENANT;
+    ch.player.time.birth = capture_time - 100 * SECS_PER_MUD_YEAR;
+    const auto form_birth = ch.player.time.birth;
+    const auto capture = [&](player_component_mask_t components, int intent = RENT_CRASH) {
+        player_snapshot saved;
+        assert(player_snapshot_capture(&ch, 99, components, intent, 22800, &saved) == player_snapshot_capture_result::ok);
+        assert(ch.player.time.birth == form_birth && ch.affected == &form);
+        std::vector<uint8_t> bytes;
+        assert(player_snapshot_encode(saved, &bytes) == player_snapshot_codec_result::ok);
+        player_snapshot decoded;
+        assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) == player_snapshot_codec_result::ok);
+        return decoded;
+    };
+    const auto integer = [](const player_snapshot &saved, player_status_field field) -> int64_t {
+        for (const auto &row : saved.status_integers)
+            if (row.field == field)
+                return row.is_unsigned ? row.unsigned_value : row.signed_value;
+        std::abort();
+    };
+    for (int original : {RACE_ORC, RACE_HUMAN}) {
+        form.modifier = original;
+        const time_t restored_birth = capture_time - (original == RACE_ORC ? 15 : 17) * SECS_PER_MUD_YEAR;
+        for (int transformed : {RACE_REVENANT, RACE_DRAGONKIN}) {
+            ch.player.race = transformed;
+            for (int intent : {RENT_CRASH, RENT_QUIT, RENT_DEATH, RENT_LINKDEAD}) {
+                for (auto components : std::initializer_list<player_component_mask_t>{PLAYER_COMPONENT_STATUS, PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS}) {
+                    const auto saved = capture(components, intent);
+                    assert(integer(saved, player_status_field::race) == original);
+                    assert(integer(saved, player_status_field::birth_time) == restored_birth);
+                    assert(saved.affects.empty());
+                    assert(ch.player.race == transformed && form.modifier == original);
+                }
+            }
+        }
+    }
+    assert(capture(PLAYER_COMPONENT_AFFECTS).status_integers.empty());
+    // Saveable race changes (Yzar/Shaboath) retain both their form and reversal tag.
+    form.flags = AFFTYPE_NODISPEL;
+    ch.player.race = RACE_REVENANT;
+    const auto saveable = capture(PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS);
+    assert(integer(saveable, player_status_field::race) == RACE_REVENANT);
+    assert(integer(saveable, player_status_field::birth_time) == form_birth);
+    assert(saveable.affects.size() == 1 && saveable.affects[0].modifier == RACE_HUMAN);
+    // An unrelated NOSAVE affect must not change identity.
+    form.flags = AFFTYPE_NOSAVE;
+    form.type = SPELL_BLESS;
+    const auto unrelated = capture(PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS);
+    assert(integer(unrelated, player_status_field::race) == RACE_REVENANT);
+    assert(integer(unrelated, player_status_field::birth_time) == form_birth);
+    assert(unrelated.affects.empty());
+    form.type = TAG_RACE_CHANGE;
+    for (int invalid : {-1, LAST_RACE + 1}) {
+        form.modifier = invalid;
+        player_snapshot unchanged;
+        unchanged.pid = 123;
+        assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_STATUS, RENT_CRASH, 22800, &unchanged) == player_snapshot_capture_result::malformed_source);
+        assert(unchanged.pid == 123);
+    }
+    form.modifier = RACE_ORC;
+    form.next = &form;
+    player_snapshot unchanged;
+    unchanged.pid = 123;
+    assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_STATUS, RENT_CRASH, 22800, &unchanged) == player_snapshot_capture_result::object_cycle);
+    assert(unchanged.pid == 123);
+    std::cout << "[PASS] transient race/birth capture, saveable forms, component isolation, immutable source, malformed/cyclic affect rejection\n";
 }
 """
 
@@ -294,10 +372,10 @@ binary = build / "regression"
 source.write_text(HELD_PETS_HARNESS)
 subprocess.run([
     "g++", "-std=c++20", "-g", "-O1", "-ffunction-sections", "-fdata-sections",
-    "-Isrc", str(source), "src/player/player_snapshot_capture.c",
+    "-Isrc", str(source), "src/player/player_snapshot_capture.c", "src/core/constant.c",
     "src/player/player_snapshot_codec.c", "src/player/pet_restore_state.c",
     "src/player/pet_restore_runtime.c", "src/item/item_ownership_runtime.c",
     "src/item/item_transfer_command.c", "src/persistence/critical_command.c",
-    "-Wl,--gc-sections", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
+    "-Wl,--gc-sections", "-Wl,--wrap=time", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
 ], cwd=ROOT, check=True)
 subprocess.run([str(binary)], check=True)

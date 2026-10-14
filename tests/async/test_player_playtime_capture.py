@@ -173,7 +173,7 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-", dir=build) as tempora
     source.write_text(HARNESS)
     subprocess.run([
         "g++", "-std=c++20", "-g", "-O1", "-ffunction-sections", "-fdata-sections",
-        "-Isrc", str(source), "src/player/player_snapshot_capture.c",
+        "-Isrc", str(source), "src/player/player_snapshot_capture.c", "src/core/constant.c",
         "src/player/player_snapshot_codec.c", "src/player/pet_restore_state.c",
         "src/player/pet_restore_runtime.c", "src/item/item_ownership_runtime.c",
         "src/item/item_transfer_command.c", "src/persistence/critical_command.c",
