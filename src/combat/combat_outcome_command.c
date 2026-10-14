@@ -20,110 +20,105 @@
 
 namespace
 {
-	template<typename T> void append_le(std::vector<uint8_t> * output, T value)
-	{
-		for (size_t byte = 0; byte < sizeof(T); ++byte)
-			output->push_back(
-				static_cast<uint8_t>(static_cast<uint64_t>(value) >> (byte * 8)));
-	}
+template <typename T> void append_le(std::vector<uint8_t> *output, T value)
+{
+	for (size_t byte = 0; byte < sizeof(T); ++byte)
+		output->push_back(static_cast<uint8_t>(static_cast<uint64_t>(value) >> (byte * 8)));
+}
 
-	template<typename T> bool read_le(const uint8_t **cursor, const uint8_t *end, T *value)
+template <typename T> bool read_le(const uint8_t **cursor, const uint8_t *end, T *value)
+{
+	if (!cursor || !*cursor || !value || static_cast<size_t>(end - *cursor) < sizeof(T))
+		return false;
+	uint64_t decoded = 0;
+	for (size_t byte = 0; byte < sizeof(T); ++byte)
+		decoded |= static_cast<uint64_t>((*cursor)[byte]) << (byte * 8);
+	*cursor += sizeof(T);
+	*value = static_cast<T>(decoded);
+	return true;
+}
+
+template <size_t N> bool bounded(const std::array<char, N> &value)
+{
+	return memchr(value.data(), '\0', value.size()) != nullptr;
+}
+
+template <size_t N>
+void append_string(std::vector<uint8_t> *output, const std::array<char, N> &value)
+{
+	const size_t size = strnlen(value.data(), value.size());
+	append_le<uint16_t>(output, static_cast<uint16_t>(size));
+	output->insert(output->end(), value.data(), value.data() + size);
+}
+
+template <size_t N>
+bool read_string(const uint8_t **cursor, const uint8_t *end, std::array<char, N> *value)
+{
+	uint16_t size = 0;
+	if (!read_le(cursor, end, &size) || size >= N || static_cast<size_t>(end - *cursor) < size)
+		return false;
+	value->fill('\0');
+	memcpy(value->data(), *cursor, size);
+	*cursor += size;
+	return true;
+}
+
+void append_text(std::vector<uint8_t> *output, const std::string &value)
+{
+	append_le<uint32_t>(output, static_cast<uint32_t>(value.size()));
+	output->insert(output->end(), value.begin(), value.end());
+}
+
+bool read_text(const uint8_t **cursor, const uint8_t *end, size_t maximum, std::string *value)
+{
+	uint32_t size = 0;
+	if (!read_le(cursor, end, &size) || size > maximum ||
+	    static_cast<size_t>(end - *cursor) < size || memchr(*cursor, '\0', size))
+		return false;
+	value->assign(reinterpret_cast<const char *>(*cursor), size);
+	*cursor += size;
+	return true;
+}
+
+bool valid(const combat_outcome_payload &payload)
+{
+	if (!payload.victim_pid || !payload.participant_count ||
+	    payload.participant_count > payload.participants.size() || !bounded(payload.room_name))
+		return false;
+	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
-		if (!cursor || !*cursor || !value || static_cast<size_t>(end - *cursor) < sizeof(T))
+		const auto &entry = payload.participants[index];
+		if (!entry.pid || entry.role == combat_participant_role::unknown ||
+		    entry.role > combat_participant_role::victim_group ||
+		    !bounded(entry.account_name) || !bounded(entry.description) ||
+		    entry.equipment.size() > COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES ||
+		    entry.log.size() > COMBAT_OUTCOME_LOG_MAX_BYTES ||
+		    entry.equipment.find('\0') != std::string::npos ||
+		    entry.log.find('\0') != std::string::npos ||
+		    ((entry.wallet_delta_copper != 0) && !entry.account_name[0]))
 			return false;
-		uint64_t decoded = 0;
-		for (size_t byte = 0; byte < sizeof(T); ++byte)
-			decoded |= static_cast<uint64_t>((*cursor)[byte]) << (byte * 8);
-		*cursor += sizeof(T);
-		*value = static_cast<T>(decoded);
-		return true;
-	}
-
-	template<size_t N> bool bounded(const std::array<char, N> &value)
-	{
-		return memchr(value.data(), '\0', value.size()) != nullptr;
-	}
-
-	template<size_t N> void append_string(std::vector<uint8_t> * output,
-					      const std::array<char, N> &value)
-	{
-		const size_t size = strnlen(value.data(), value.size());
-		append_le<uint16_t>(output, static_cast<uint16_t>(size));
-		output->insert(output->end(), value.data(), value.data() + size);
-	}
-
-	template<size_t N> bool read_string(const uint8_t **cursor, const uint8_t *end,
-					    std::array<char, N> *value)
-	{
-		uint16_t size = 0;
-		if (!read_le(cursor, end, &size) || size >= N ||
-		    static_cast<size_t>(end - *cursor) < size)
-			return false;
-		value->fill('\0');
-		memcpy(value->data(), *cursor, size);
-		*cursor += size;
-		return true;
-	}
-
-	void append_text(std::vector<uint8_t> * output, const std::string &value)
-	{
-		append_le<uint32_t>(output, static_cast<uint32_t>(value.size()));
-		output->insert(output->end(), value.begin(), value.end());
-	}
-
-	bool read_text(const uint8_t **cursor, const uint8_t *end, size_t maximum,
-		       std::string *value)
-	{
-		uint32_t size = 0;
-		if (!read_le(cursor, end, &size) || size > maximum ||
-		    static_cast<size_t>(end - *cursor) < size || memchr(*cursor, '\0', size))
-			return false;
-		value->assign(reinterpret_cast<const char *>(*cursor), size);
-		*cursor += size;
-		return true;
-	}
-
-	bool valid(const combat_outcome_payload &payload)
-	{
-		if (!payload.victim_pid || !payload.participant_count ||
-		    payload.participant_count > payload.participants.size() ||
-		    !bounded(payload.room_name))
-			return false;
-		for (size_t index = 0; index < payload.participant_count; ++index)
-		{
-			const auto &entry = payload.participants[index];
-			if (!entry.pid || entry.role == combat_participant_role::unknown ||
-			    entry.role > combat_participant_role::victim_group ||
-			    !bounded(entry.account_name) || !bounded(entry.description) ||
-			    entry.equipment.size() > COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES ||
-			    entry.log.size() > COMBAT_OUTCOME_LOG_MAX_BYTES ||
-			    entry.equipment.find('\0') != std::string::npos ||
-			    entry.log.find('\0') != std::string::npos ||
-			    ((entry.wallet_delta_copper != 0) && !entry.account_name[0]))
+		for (size_t other = 0; other < index; ++other)
+			if (payload.participants[other].pid == entry.pid)
 				return false;
-			for (size_t other = 0; other < index; ++other)
-				if (payload.participants[other].pid == entry.pid)
-					return false;
-		}
-		return std::any_of(payload.participants.begin(),
-				   payload.participants.begin() + payload.participant_count,
-				   [&](const auto &entry)
-				   { return entry.pid == payload.victim_pid; });
 	}
+	return std::any_of(payload.participants.begin(),
+			   payload.participants.begin() + payload.participant_count,
+			   [&](const auto &entry) { return entry.pid == payload.victim_pid; });
+}
 
-	void put_u64(uint8_t *output, uint64_t value)
-	{
-		for (size_t byte = 0; byte < 8; ++byte)
-			output[byte] = static_cast<uint8_t>(value >> (byte * 8));
-	}
+void put_u64(uint8_t *output, uint64_t value)
+{
+	for (size_t byte = 0; byte < 8; ++byte)
+		output[byte] = static_cast<uint8_t>(value >> (byte * 8));
+}
 
-	uint64_t get_u64(const uint8_t *input)
-	{
-		uint64_t value = 0;
-		for (size_t byte = 0; byte < 8; ++byte)
-			value |= static_cast<uint64_t>(input[byte]) << (byte * 8);
-		return value;
-	}
+uint64_t get_u64(const uint8_t *input)
+{
+	uint64_t value = 0;
+	for (size_t byte = 0; byte < 8; ++byte)
+		value |= static_cast<uint64_t>(input[byte]) << (byte * 8);
+	return value;
+}
 } // namespace
 
 bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload,
@@ -221,8 +216,7 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 	       expected.expected_revisions.size() == command.expected_revisions.size() &&
 	       std::equal(expected.expected_revisions.begin(), expected.expected_revisions.end(),
 			  command.expected_revisions.begin(),
-			  [](const auto &left, const auto &right)
-			  {
+			  [](const auto &left, const auto &right) {
 				  return critical_entity_key_equal(left.key, right.key) &&
 					 left.revision == right.revision;
 			  });
