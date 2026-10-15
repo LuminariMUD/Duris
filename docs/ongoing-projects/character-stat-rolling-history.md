@@ -4,6 +4,10 @@ Research completed 2026-10-15 against
 `8f36a9a04f48e621b440d261a189eab0836c563d`.
 This is a source-history investigation; it changes no gameplay.
 
+Player review: [#107 — Choose a historical or hybrid character stat rolling system](https://github.com/LuminariMUD/Duris/issues/107).
+The issue collects player feedback on which system or combination to adopt;
+no replacement has been selected.
+
 The system has alternated between fixed starting attributes, a point-allocation
 experiment, constrained random totals, and independent dice rolls. The latest
 balance change, on 2026-07-07, narrowed ordinary rolls to **87–90 per attribute**
