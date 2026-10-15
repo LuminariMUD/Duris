@@ -432,16 +432,32 @@ void gmcp_flush_dirty_rooms(void)
  * players on ships
  */
 
+/* Build once per flush, so observers do not each scan every ship's rooms. */
+static std::unordered_map<int, struct ShipData *> gmcp_ship_bridges(void)
+{
+	std::unordered_map<int, struct ShipData *> bridges;
+	ShipVisitor svs;
+	for (bool found = shipObjHash.get_first(svs); found; found = shipObjHash.get_next(svs))
+	{
+		if (!SHIP_LOADED(svs))
+			continue;
+		int bridge = real_room(svs->bridge);
+		if (bridge >= 0)
+			bridges.emplace(bridge, svs.get_value());
+	}
+	return bridges;
+}
+
 /* Track bridge subscriptions per descriptor: a new observer needs a snapshot
  * even when the ship has not changed since another player last saw it. */
-static struct ShipData *gmcp_player_ship(struct descriptor_data *d)
+static struct ShipData *gmcp_player_ship(struct descriptor_data *d,
+					 const std::unordered_map<int, struct ShipData *> &bridges)
 {
 	if (!d || STATE(d) != CON_PLAYING || !GMCP_ENABLED(d->character))
 		return NULL;
 
-	struct ShipData *ship = get_ship_from_char(d->character);
-	if (ship && (!SHIP_LOADED(ship) || real_room(ship->bridge) != d->character->in_room))
-		ship = NULL;
+	auto entry = bridges.find(d->character->in_room);
+	struct ShipData *ship = entry == bridges.end() ? NULL : entry->second;
 
 	int bridge = ship ? d->character->in_room + 1 : 0;
 	if (bridge != d->gmcp_ship_bridge)
@@ -619,9 +635,10 @@ void gmcp_flush_dirty_ship_contacts(void)
 		unsigned long hash[2] = {};
 	};
 	std::unordered_map<struct ShipData *, snapshot> snapshots;
+	const auto bridges = gmcp_ship_bridges();
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
-		struct ShipData *ship = gmcp_player_ship(d);
+		struct ShipData *ship = gmcp_player_ship(d, bridges);
 		if (!ship)
 			continue;
 
@@ -659,9 +676,10 @@ void gmcp_flush_dirty_ship_contacts(void)
 /* Hash the personalized payload, including this observer's racial bonuses. */
 void gmcp_flush_dirty_ship_info(void)
 {
+	const auto bridges = gmcp_ship_bridges();
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
-		struct ShipData *ship = gmcp_player_ship(d);
+		struct ShipData *ship = gmcp_player_ship(d, bridges);
 		if (!ship)
 			continue;
 

@@ -30,6 +30,7 @@ const EquipmentData equipment_data[MAXEQUIPMENT] = {};
 static ShipData vessel, enemy, second_vessel;
 static bool second_ship_enabled;
 static std::map<P_desc, std::vector<std::string>> wire;
+static std::map<P_desc, std::map<std::string, std::string>> ws_wire;
 int top_of_zone_table = 0;
 index_data *mob_index, *obj_index;
 Skill skills[MAX_SKILLS];
@@ -89,16 +90,45 @@ int write_to_descriptor_binary(P_desc d, const unsigned char *bytes, size_t size
 	wire[d].emplace_back(reinterpret_cast<const char *>(bytes), size);
 	return 0;
 }
-int websocket_send_json(P_desc, const char *, const char *)
+int websocket_send_json(P_desc d, const char *package, const char *json)
 {
 	++websockets;
+	ws_wire[d][package] = json;
 	return 0;
 }
-P_ship get_ship_from_char(P_char ch)
+P_ship get_ship_from_char(P_char)
 {
-	if (second_ship_enabled && ch->in_room == 0)
-		return &second_vessel;
-	return ch->in_room == 1 ? &vessel : nullptr;
+	assert(false && "periodic GMCP must not scan all ship rooms per observer");
+	return nullptr;
+}
+ShipObjHash::ShipObjHash()
+	: table{}
+	, sz(0)
+{
+}
+ShipObjHash shipObjHash;
+static int ship_visits;
+bool ShipObjHash::get_first(visitor &vs)
+{
+	vs.curr = &vessel;
+	++ship_visits;
+	return true;
+}
+bool ShipObjHash::get_next(visitor &vs)
+{
+	if (vs.curr == &vessel && second_ship_enabled)
+	{
+		vs.curr = &second_vessel;
+		++ship_visits;
+		return true;
+	}
+	return false;
+}
+static int queued_looks;
+void write_to_q(const char *text, struct txt_q *, const int)
+{
+	assert(std::string(text) == "look");
+	++queued_looks;
 }
 int real_room(const int room)
 {
@@ -190,6 +220,11 @@ void display_map_room(P_char ch, int room, int radius, int mode, int package)
 
 static std::string payload(P_desc d, const char *package)
 {
+	if (d->websocket)
+	{
+		assert(ws_wire[d].contains(package) && "missing WebSocket GMCP package");
+		return ws_wire[d][package];
+	}
 	const std::string prefix = std::string("\xff\xfa\xc9", 3) + package + " ";
 	for (auto i = wire[d].rbegin(); i != wire[d].rend(); ++i)
 	{
@@ -267,6 +302,21 @@ int main()
 	wire.clear();
 	flush();
 	assert(wire.empty());
+	static descriptor_data land_descriptors[128];
+	static char_data land_players[128];
+	for (int i = 0; i < 128; ++i)
+	{
+		land_players[i].desc = &land_descriptors[i];
+		land_players[i].in_room = 0;
+		land_descriptors[i].character = &land_players[i];
+		land_descriptors[i].connected = CON_PLAYING;
+		land_descriptors[i].gmcp_enabled = 1;
+		land_descriptors[i].next = i < 127 ? &land_descriptors[i + 1] : nullptr;
+	}
+	ad.next = land_descriptors;
+	ship_visits = contact_scans = 0;
+	flush();
+	assert(ship_visits == 2 && contact_scans == 1 && wire.empty());
 	ad.next = &bd;
 	contact_scans = 0;
 	flush();
@@ -295,6 +345,13 @@ int main()
 	second_ship_enabled = false;
 	b.in_room = 1;
 	flush();
+	vessel.flags &= ~LOADED;
+	flush();
+	assert(payload(&ad, "Ship.Info") == "{}");
+	assert(payload(&bd, "Ship.Contacts") == "{\"contacts\":[]}");
+	vessel.flags |= LOADED;
+	flush();
+	assert(payload(&ad, "Ship.Info").find("Bronze Voyager") != std::string::npos);
 	wire.clear();
 	b.points.mana = 24;
 	flush();
@@ -457,6 +514,33 @@ int main()
 	group_list member_a = { &a, &member_b };
 	a.group = b.group = &member_a;
 	b.player.name = const_cast<char *>("Ally");
+	ad.websocket = 1;
+	ad.ws_handshake_done = 0;
+	ws_send_full_game_state(&ad);
+	assert(ws_wire.empty() && queued_looks == 1);
+	ad.ws_handshake_done = 1;
+	a.specials.fighting = &victim;
+	apc.quest_map_bought = ad.gmcp_quest_map_sent = 1;
+	ws_send_full_game_state(&ad);
+	assert(queued_looks == 2);
+	for (const char *pkg :
+	     { "Char.Status", "Char.Vitals", "Char.Affects", "Room.Info", "Quest.Status",
+	       "Quest.Map", "Group.Status", "Combat.Update", "Ship.Info", "Ship.Contacts" })
+		payload(&ad, pkg);
+	assert(payload(&ad, "Group.Status").find("Ally") != std::string::npos);
+	assert(payload(&ad, "Combat.Update").find("wolf") != std::string::npos);
+	assert(payload(&ad, "Ship.Info") == "{}");
+	flush();
+	assert(payload(&ad, "Ship.Info").find("Bronze Voyager") != std::string::npos);
+	a.specials.fighting = nullptr;
+	a.group = nullptr;
+	ws_wire.clear();
+	ws_send_full_game_state(&ad);
+	assert(payload(&ad, "Combat.Update") == "{\"target\":null}");
+	assert(payload(&ad, "Group.Status").find("\"members\":[]") != std::string::npos);
+	ad.websocket = 0;
+	apc.quest_map_bought = 0;
+	a.group = &member_a;
 	gmcp_send_group_status(&a);
 	emit(&ad, "Group.Status");
 	assert(payload(&ad, "Group.Status").find("\"maxSize\":13") != std::string::npos);

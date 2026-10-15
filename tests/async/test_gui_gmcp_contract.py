@@ -26,6 +26,7 @@ functions = [
     ('gmcp.c', 'void gmcp_handle_negotiation('),
     ('gmcp.c', 'void gmcp_flush_initial_states('),
     ('gmcp.c', 'void gmcp_send_initial_state('),
+    ('gmcp.c', 'static std::unordered_map<int, struct ShipData *> gmcp_ship_bridges('),
     ('gmcp.c', 'static struct ShipData *gmcp_player_ship('),
     ('gmcp.c', 'static unsigned long hash_string('),
     ('gmcp.c', 'static cJSON *json_build_ship_contacts('),
@@ -39,6 +40,7 @@ functions = [
     ('gmcp.c', 'void gmcp_quest_status('),
     ('gmcp.c', 'void gmcp_quest_map('),
     ('utility.c', 'int IS_MORPH('),
+    ('ws_handlers.c', 'void ws_send_full_game_state('),
 ]
 # MAP_AUTOMAP already suppresses text; mutating websocket would change framing.
 comm = source('comm.c').read_text()
@@ -48,6 +50,7 @@ assert 'MAP_AUTOMAP, 0' in passenger_map
 assert 'gmcp_send_initial_state(ch);' in source('nanny.c').read_text()
 assert 'gmcp_send_initial_state(send_ch);' in source('actoth.c').read_text()
 assert 'gmcp_send_initial_state(d->character);' in source('account.c').read_text()
+assert 'ws_send_full_game_state(d);' in extract_function('ws_handlers.c', 'void ws_finish_login(')
 periodic = extract_function('comm.c', 'static void run_recurring_persistence_phase(')
 assert periodic.index('if (!(pulse % 2))') < periodic.index('gmcp_flush_initial_states();')
 
