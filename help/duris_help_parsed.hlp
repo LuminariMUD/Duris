@@ -7854,6 +7854,76 @@ The following help topics also matched your search:
  Epic wisdom
 #0
 
+Epic skill cost
+Epic skill cost - Last Edited: 2026-10-15 18:50:00 by Claude
+============================================================
+Each epic skill is bought from its teacher in steps of 10%, from 0 up to
+100. Every step costs epics and platinum. The cost of each step rises as
+your skill goes up, so the later steps are more expensive.
+
+"First step" is the cost of going from 0 to 10%. "Total" is the cost of
+going from 0 to 100.
+
+  First step: 30 epics, 200 plat
+  Total:      741 epics, 4,999 plat, 9 gold, 9 silver, 4 copper
+  Shield Combat, Indomitable Rage
+
+  First step: 45 epics, 300 plat
+  Total:      1,119 epics, 7,499 plat, 9 gold, 9 silver, 6 copper
+  Scribe Mastery
+
+  First step: 75 epics, 500 plat
+  Total:      1,866 epics, 12,499 plat, 9 gold, 9 silver, 4 copper
+  Advanced Meditation, Anatomy, Two-Weapon
+
+  First step: 150 epics, 1,000 plat
+  Total:      3,741 epics, 24,999 plat, 9 gold, 9 silver, 4 copper
+  Empower Song, Fix, Improved Listen, Improved Shield Combat,
+  Improved Track, Infuse Life, Silent Spell, Summon Blizzard,
+  Summon Familiar, Toughness, and all nine epic stats: Epic Strength,
+  Epic Power, Epic Agility, Epic Intelligence, Epic Dexterity, Epic Wisdom,
+  Epic Constitution, Epic Charisma, Epic Luck
+
+  First step: 150 epics, 100 plat
+  Total:      3,741 epics, 2,499 plat, 9 gold, 9 silver, 4 copper
+  Smelt
+
+  First step: 225 epics, 1,500 plat
+  Total:      5,619 epics, 37,499 plat, 9 gold, 9 silver, 8 copper
+  Chant Mastery, Devastating Critical, Jin Touch, Nature's Ruin,
+  Nature's Sanctity, Totemic Mastery
+
+  First step: 240 epics, 16,000 plat
+  Total:      5,991 epics, 399,999 plat, 9 gold, 9 silver, 4 copper
+  Ship Damage Control
+
+  First step: 300 epics, 2,000 plat
+  Total:      7,491 epics, 49,999 plat, 9 gold, 9 silver, 4 copper
+  Devotion, Improved Endurance, Improved Two-Weapon, Infuse Magical Device,
+  Ki Strike, Sneaky Strike, Spatial Focus
+
+  First step: 300 epics, 40 plat
+  Total:      7,491 epics, 999 plat, 9 gold, 9 silver, 4 copper
+  Epic Warding Faith
+
+  First step: 600 epics, 4,000 plat
+  Total:      14,991 epics, 99,999 plat, 9 gold, 9 silver, 4 copper
+  Encrust, Expert Parry, Expert Riposte, Spell Penetration
+
+Notes:
+* Training starts at level 30.
+* The costs above are for a character whose class can learn the skill. If
+  only your secondary class can learn it, epics cost twice as much and
+  platinum costs three times as much.
+* Each step is rounded down, which is why some totals end in 9 gold,
+  9 silver, 4 copper.
+* Ask the teacher about a skill to see the exact cost of your next step.
+
+==See also==
+* Epic skills
+* Skills
+#0
+
 Epic skills
 Epic skills - Last Edited: 2015-01-22 20:31:43 by ashyel
 ========================================================
