@@ -43,6 +43,8 @@ fixture = fixture.replace("int main() {", "void foundation_regression_main() {")
 fixture = fixture.replace("// INSERT_PRODUCTION_ABORT",
                           function(ROOT / "src/net/sparser.c", "void do_abort(P_char ch,"))
 callbacks = "\n".join([
+    function(ROOT / "src/world/handler.c", "bool isname(const char *str, const char *namelist)"),
+    function(ROOT / "src/cmd/interp.c", "bool special(P_char ch, int cmd, char *arg)"),
     function(ROOT / "src/specs/specs.underworld.c", "void resolve_avernus_drain("),
     function(ROOT / "src/specs/specs.underworld.c", "int avernus("),
     function(ROOT / "src/combat/fight.c", "bool weapon_proc("),
@@ -59,6 +61,7 @@ DOUBLES = r'''
 #include "item/random_equipment.h"
 #include "item/weapon_actions.c"
 #include "item/native_artifact_actions.h"
+#include "world/buildings.h"
 bool native_artifact_owns(int) { return false; }
 #include "item/artifact_mana_model.c"
 #include "combat/damage.h"
@@ -101,7 +104,6 @@ int BOUNDED(int low, int value, int high) { return std::clamp(value, low, high);
 float BOUNDEDF(float low, float value, float high) { return std::clamp(value, low, high); }
 float get_property(const char *key, double fallback) { return get_property(key, fallback, false); }
 int GET_PRIME_CLASS(P_char, uint) { return 0; }
-bool isname(const char *a, const char *b) { return a && b && !strcmp(a, b); }
 bool affected_by_spell(P_char, int spell) { return spell == affected_spell; }
 int is_char_in_room(const P_char ch, int room) { return ch && ch->in_room == room; }
 void hummer(P_obj) { ++hum_calls; }
@@ -397,6 +399,7 @@ struct wind_scene : weapon_scene {
         obj_index[0].virtual_number = dagger ? 131616 : 24406;
         obj_index[0].func.obj = dagger ? dagger_of_wind : lightning;
         source->type = ITEM_WEAPON; source->extra_flags = ITEM_ARTIFACT;
+        source->name = const_cast<char *>("sphere wind");
         actor->in_room = target->in_room = 1;
         world[1] = {}; world[1].people = actor; actor->next_in_room = target;
         GET_OPPONENT(actor) = target; GET_OPPONENT(target) = actor;
@@ -406,6 +409,44 @@ struct wind_scene : weapon_scene {
     ~wind_scene() { world[1].people = nullptr; }
     int rub() { char argument[] = "sphere"; return lightning(source, actor, CMD_RUB, argument); }
 };
+
+static int carried_rubs = 0;
+static int carried_rub(P_obj source, P_char, int command, char *argument) {
+    if (command != CMD_RUB || !isname(argument, source->name)) return false;
+    ++carried_rubs;
+    return true;
+}
+
+static void wind_rub_dispatch() {
+    for (bool safe : {false, true}) {
+        wind_scene s;
+        index_data index[2]{};
+        index[0] = obj_index[0]; index[1].func.obj = carried_rub; obj_index = index;
+        obj_data carried{}; carried.R_num = 1;
+        carried.name = const_cast<char *>("amethyst orb"); s.actor->carrying = &carried;
+        world[1].room_flags = safe ? ROOM_SAFE : 0; carried_rubs = 0;
+        choices = {SIZE_GARGANTUAN + 2};
+        char argument[] = "amethyst";
+        assert(special(s.actor, CMD_RUB, argument) && carried_rubs == 1);
+        assert(!s.source->timer[0] && messages.empty() && rolls.empty() && !unrelated_wait_changes);
+        assert(GET_POS(s.target) == POS_STANDING && GET_OPPONENT(s.target) == s.actor);
+        s.actor->carrying = nullptr;
+    }
+    for (const char *name : {"", "   ", "amethyst", "sphereish", "amethyst sphere"}) {
+        wind_scene s; std::string argument(name);
+        assert(!special(s.actor, CMD_RUB, argument.data()));
+        assert(!s.source->timer[0] && messages.empty() && rolls.empty());
+    }
+    { wind_scene s;
+      assert(!lightning(s.source, s.actor, CMD_RUB, nullptr));
+      assert(!s.source->timer[0] && messages.empty() && rolls.empty()); }
+    for (const char *name : {"sphere", "wind", "sphere wind", "  SpHeRe"}) {
+        wind_scene s; std::string argument(name); choices = {SIZE_GARGANTUAN + 2};
+        assert(special(s.actor, CMD_RUB, argument.data()));
+        assert(s.source->timer[0] == wall_time && GET_POS(s.target) == POS_PRONE);
+        assert(choices.empty() && unrelated_wait_changes == 1);
+    }
+}
 
 static void wind_artifact_cases() {
     // Real weapon dispatch reaches the sphere callback on exactly one of 16 rolls.
@@ -495,9 +536,10 @@ int main() {
     nevent_bind_game_thread(); ne_dead_event_pool = &test_pool;
     fake_clock_ns = 1000000000ULL; ne_events();
     avernus_parity(); cancellation_and_payment(); packed_parity(); random_parity(); suppression_measurement();
-    wind_artifact_cases();
+    wind_artifact_cases(); wind_rub_dispatch();
     std::puts("Weapon actions: real selection callbacks, parity, payment, targets, cancellation and timing passed");
     std::puts("Wind artifacts: sphere melee/whirlwind policy and cooldown, NPC auto-wield and player escape passed");
+    std::puts("Wind rub dispatch: real command routing and name matching preserve other carried-item procs");
 }
 '''
 

@@ -490,7 +490,7 @@ int lightning(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 500 sec timer.
-	if (cmd == CMD_RUB && IS_ALIVE(ch) && OBJ_WORN_BY(obj, ch) &&
+	if (cmd == CMD_RUB && IS_ALIVE(ch) && OBJ_WORN_BY(obj, ch) && isname(arg, obj->name) &&
 	    obj->timer[0] + 500 <= current_time)
 	{
 		if (is_in_safe(ch))
