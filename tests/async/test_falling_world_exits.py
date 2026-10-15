@@ -68,32 +68,37 @@ def read_rooms(text: str) -> dict[int, tuple[int, int, dict[int, int]]]:
     return rooms
 
 
-rooms = {}
-for entry in (ROOT / "areas/AREA").read_text(encoding="latin-1").splitlines():
-    if entry.strip() and not entry.startswith("*"):
-        path = ROOT / "areas/wld" / f"{entry.split()[0]}.wld"
-        rooms.update(read_rooms(path.read_text(encoding="latin-1")))
+def main():
+    rooms = {}
+    for entry in (ROOT / "areas/AREA").read_text(encoding="latin-1").splitlines():
+        if entry.strip() and not entry.startswith("*"):
+            path = ROOT / "areas/wld" / f"{entry.split()[0]}.wld"
+            rooms.update(read_rooms(path.read_text(encoding="latin-1")))
 
-entries = [vnum for vnum, (sector, chance, _) in rooms.items()
-           if sector in NO_GROUND_SECTORS or chance > 0]
-assert len(rooms) > 200_000 and len(entries) > 1_000, (len(rooms), len(entries))
+    entries = [vnum for vnum, (sector, chance, _) in rooms.items()
+               if sector in NO_GROUND_SECTORS or chance > 0]
+    assert len(rooms) > 200_000 and len(entries) > 1_000, (len(rooms), len(entries))
 
-loops = {}
-longest = 0
-for start in entries:
-    path = [start]
-    while True:
-        below = rooms[path[-1]][2].get(DOWN, -1)
-        if below not in rooms or below == path[-1] or (len(path) > 1 and below == path[-2]):
-            break  # lands: no way down, or a down exit back onto this room or the last one
-        if below in path:
-            loop = path[path.index(below):]
-            loops.setdefault(min(loop), " -> ".join(map(str, loop + [below])))
-            break
-        path.append(below)
-    longest = max(longest, len(path))
+    loops = {}
+    longest = 0
+    for start in entries:
+        path = [start]
+        while True:
+            below = rooms[path[-1]][2].get(DOWN, -1)
+            if below not in rooms or below == path[-1] or (len(path) > 1 and below == path[-2]):
+                break  # lands: no way down, or a down exit back onto this room or the last one
+            if below in path:
+                loop = path[path.index(below):]
+                loops.setdefault(min(loop), " -> ".join(map(str, loop + [below])))
+                break
+            path.append(below)
+        longest = max(longest, len(path))
 
-assert not loops, "a fall through these rooms never lands:\n" + "\n".join(
-    f"  {text}" for _, text in sorted(loops.items()))
-assert longest >= 20, longest  # the walk saw the long real falls, so the parser read the exits
-print(f"{len(entries)} fall entries over {len(rooms)} rooms land; the longest fall is {longest} rooms")
+    assert not loops, "a fall through these rooms never lands:\n" + "\n".join(
+        f"  {text}" for _, text in sorted(loops.items()))
+    assert longest >= 20, longest  # the walk saw the long real falls, so the parser read the exits
+    print(f"{len(entries)} fall entries over {len(rooms)} rooms land; the longest fall is {longest} rooms")
+
+
+if __name__ == "__main__":
+    main()
