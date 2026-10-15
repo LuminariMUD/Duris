@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Runtime regressions for MUD Server Status Protocol (MSSP) negotiation."""
 
-from _paths import SRC
+from _paths import ROOT, SRC, extract_function
 import subprocess
 import tempfile
 from pathlib import Path
 
 
 COMM = (SRC / "comm.c").read_text()
-MCCP = (SRC / "mccp.c").read_text()
 assert "gmcp_negotiate(newd);\n\tmssp_advertise(newd);" in COMM
-assert "case TELOPT_MSSP:\n\t\t\tmssp_send(player);\n\t\t\treturn 3;" in MCCP
 
 HARNESS = r'''
 #include "net/mssp.h"
+#include "net/mccp.h"
+#include "net/gmcp.h"
 #include "net/telnet.h"
+#include "net/ttype.h"
 #include "core/utils.h"
 
 #include <cstdio>
@@ -26,6 +27,15 @@ long boot_time = 1761631200;
 
 static std::string sent;
 static int writes;
+
+// Unrelated options are stubbed; exercise the unchanged production parser.
+int compress_start(P_desc, int) { return 0; }
+void gmcp_handle_negotiation(P_desc, int) {}
+void gmcp_handle_input(P_desc, const char *, size_t) {}
+void ttype_handle_negotiation(P_desc, int) {}
+void ttype_handle_subnegotiation(P_desc, const unsigned char *, int) {}
+
+@TELNET_PARSER@
 
 int write_to_descriptor_binary(P_desc, const unsigned char *data, size_t len)
 {
@@ -48,6 +58,8 @@ static std::string mssp_pair(const char *var, const char *val)
 int main()
 {
 	int tests = 0;
+	char request[] = { (char)IAC, (char)DO, TELOPT_MSSP };
+	char decline[] = { (char)IAC, (char)DONT, TELOPT_MSSP };
 
 	// 1. Telnet clients are offered MSSP; WebSockets and null descriptors are not.
 	{
@@ -56,7 +68,7 @@ int main()
 		writes = 0;
 		mssp_advertise(nullptr);
 		mssp_advertise(&websocket);
-		mssp_send(&websocket);
+		require(parse_telnet_options(&websocket, request, sizeof request) == 3, 11);
 		require(writes == 0, 1);
 
 		descriptor_data d = {};
@@ -92,7 +104,12 @@ int main()
 		morphed_mortal.next = &crawler;
 		descriptor_list = &playing;
 
-		mssp_send(&crawler);
+		writes = 0;
+		require(parse_telnet_options(&crawler, request, 1) == 0, 12);
+		require(parse_telnet_options(&crawler, request, 2) == 0, 13);
+		require(writes == 0 && !crawler.mssp_sent, 14);
+		require(parse_telnet_options(&crawler, request, sizeof request) == 3, 15);
+		require(writes == 1, 16);
 		require(sent.size() > 5, 3);
 		require((unsigned char)sent[0] == IAC && (unsigned char)sent[1] == SB &&
 				(unsigned char)sent[2] == TELOPT_MSSP,
@@ -110,12 +127,28 @@ int main()
 	}
 	tests++;
 
-	// 3. Repeated DO MSSP on the same connection gets no further replies.
+	// 3. Neither repeated DO nor alternating DONT/DO can amplify one connection.
 	{
 		writes = 0;
-		mssp_send(&crawler);
-		mssp_send(&crawler);
+		for (int i = 0; i < 10000; i++)
+		{
+			require(parse_telnet_options(&crawler, request, sizeof request) == 3, 17);
+			require(parse_telnet_options(&crawler, decline, sizeof decline) == 3, 18);
+			require(parse_telnet_options(&crawler, request, sizeof request) == 3, 19);
+		}
 		require(writes == 0, 10);
+	}
+	tests++;
+
+	// 4. Declining initially does not consume a fresh connection's one reply.
+	{
+		descriptor_data fresh = {};
+		writes = 0;
+		require(parse_telnet_options(&fresh, decline, sizeof decline) == 3, 20);
+		require(writes == 0 && !fresh.mssp_sent, 21);
+		require(parse_telnet_options(&fresh, request, sizeof request) == 3, 22);
+		require(writes == 1 && fresh.mssp_sent, 23);
+		require(sent.find(mssp_pair("PLAYERS", "0")) != std::string::npos, 24);
 	}
 	tests++;
 
@@ -124,11 +157,15 @@ int main()
 }
 '''
 
-with tempfile.TemporaryDirectory(prefix="duris-mssp-runtime-") as directory:
+BUILD = ROOT / "bin/tests"
+BUILD.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-mssp-runtime-", dir=BUILD) as directory:
     temp = Path(directory)
     harness = temp / "harness.cpp"
     binary = temp / "harness"
-    harness.write_text(HARNESS)
+    harness.write_text(HARNESS.replace(
+        "@TELNET_PARSER@", extract_function("mccp.c", "int parse_telnet_options(")
+    ))
     subprocess.run(
         [
             "g++",
