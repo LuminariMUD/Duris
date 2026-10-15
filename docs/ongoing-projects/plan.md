@@ -1,11 +1,11 @@
 # Issue #37: zone placement and Underdark connection plan
 
-Status: all five requests resolved and locally verified; final stacked PR publication in progress.
+Status: all five requests resolved, locally verified, and published in three PRs ready for review.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
 Original branch: `branch/issue-37-zone-placements` (existing credits fix preserved).
 Review branch: `branch/issue-37-outcasts-tower`, [PR #103](https://github.com/LuminariMUD/Duris/pull/103).
 Second review branch: `branch/issue-37-arcium`, [PR #104](https://github.com/LuminariMUD/Duris/pull/104), stacked on #103.
-Active work: `branch/issue-37-misty-underdark`, based on Arcium head `0886ce19f`.
+Final review branch: `branch/issue-37-misty-underdark`, [PR #105](https://github.com/LuminariMUD/Duris/pull/105), stacked on #104.
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
 ## Implementation handoff, 2026-10-15
@@ -173,11 +173,15 @@ removed. All native source, AREA selection, zone/reset/mob/object/quest/trigger
 files, Homestead, Turolopolis ruins, and Zoo match master byte-for-byte. No
 generated world, binary, log, credential, or player/account data is committed.
 
-All implementation is complete. Remaining actions in this session are publication
-and readback: open the final PR stacked on #104, update #37 and the completed
-checklist below, and verify clean local/remote parity. Then synchronize the
-completed task files back to the original branch while preserving its credits
-fix. Review order is tower (#103), Arcium (#104), then Misty Chasm. Leave the
+All implementation is complete. Misty Chasm is published as PR #105, implementation
+commit `e089b0751`, stacked on #104. Issue #37 now records all five outcomes,
+exact endpoints, evidence, and links, with all request/completion boxes checked;
+it remains open for review. All three PRs are open, non-draft, and have the
+expected base/head refs and verified remote commit equality. The original branch
+is retained as the integration branch, including its pre-existing credits fix;
+the focused PRs exclude that unrelated change.
+
+Next action is review, in order tower (#103), Arcium (#104), then Misty Chasm. Leave the
 PRs/issue open and OpenSpec changes unarchived for review; do not deploy or merge
 into master. No release tag is appropriate for this content-review checkpoint.
 
@@ -214,7 +218,7 @@ into master. No release tag is appropriate for this content-review checkpoint.
   The planned pair is `546861 N -> 11300` and `11300 S -> 546861`. The footprint
   is seven rows south of Kimordril's southern approach `543661` `(61,109)`, on
   the same grid column. Keep the existing `11348 <-> 30172` Underworld route.
-  This is the selected implementation site; runtime validation is still pending.
+  This is the selected implementation site; runtime validation is complete above.
 
 All five owner decisions are settled. Remaining endpoint selection, source
 inspection, builds, and gameplay checks are implementation tasks, not unanswered
@@ -289,10 +293,11 @@ or make it a prerequisite for these placements.
   inspection, `zcheck <zone-vnum>`, and actual ordinary-player traversal. Neither
   a clean report nor missing static edges proves all dynamic routes absent.
 
-## Verified source inventory
+## Pre-change source inventory
 
-Directions below are actual authored exits: N/E/S/W/U/D correspond to D0..D5.
-Every stated reciprocal pair was checked in both authored files. The continent
+This inventory records the planning baseline, before the changes above; use the
+implementation handoff for final routes. Directions are N/E/S/W/U/D = D0..D5.
+Every stated reciprocal pair was checked in both baseline authored files. The continent
 labels below are **source-graph inferences**, obtained by following the current
 surface exits with `set_continent()`'s reciprocal/non-ocean restrictions and seed
 order; they are not observations from a running server. Grid coordinates are
@@ -412,28 +417,28 @@ Sources: [otower.zon](../../areas/zon/otower.zon),
   footprint and the surrounding NPC routes; do not merely replace one exit and
   leave the rest of the footprint inconsistent.
 
-## Implementation sequence
+## Completed implementation checklist
 
 ### 1. Record exact endpoints and verify the baseline
 
-- [ ] Refresh `master`, #37, and any intervening content changes; recheck this
+- [x] Refresh `master`, #37, and any intervening content changes; recheck this
   inventory against the exact implementation base. Confirm the test environment
   is local/dev without copying credentials into evidence.
-- [ ] Inspect a fresh development world's candidate zones and their approaches.
+- [x] Inspect a fresh development world's candidate zones and their approaches.
   Capture each zone's `zcheck` output, actual entrance directions, relevant
   door/reset state, and map views. Check relevant object/room/mob procs, triggers,
   and teleport references for affected vnums; ordinary exits are only the
   initial inventory. Exclude inactive files and disabled C++ blocks when deciding
   what actually runs.
 - [x] Record all five owner decisions in this document; no design questions remain.
-- [ ] Record exact implementation endpoints in this document and #37. For every
+- [x] Record exact implementation endpoints in this document and #37. For every
   changed route, specify area/zone identity; old and new endpoint vnums; directions; surface/UD
   grid coordinates and landmark; continent/map section; door/key/terrain
   requirements; reciprocal or intentionally asymmetric behavior; and affected
   authored files. Record the owner's decision source/date and old-link disposition.
 - [x] Arcium: owner accepted a separate GC site northwest of Evermeet woodland,
   preserving Homestead and its existing entrance.
-- [ ] Select and verify a free Arcium site northwest of the active Evermeet
+- [x] Select and verify a free Arcium site northwest of the active Evermeet
   woodland. Record the map reference used for the relative-position check and
   the exact endpoint vnums/directions. Do not select Homestead's footprint
   `517245` or repurpose its approaches `517246`/`517645`.
@@ -443,14 +448,14 @@ Sources: [otower.zon](../../areas/zon/otower.zon),
   placement, external entrance, ruins/Zoo connection, and other content unchanged.
 - [x] Misty Chasm: owner accepted the recommended area and two-way connection,
   retaining its current surface entrance.
-- [ ] Select and verify both Misty connector endpoints, including how an
+- [x] Select and verify both Misty connector endpoints, including how an
   ordinary player reaches and leaves them. Prefer existing rooms and an
   ordinary reciprocal passage. Add the minimum connector rooms only if the
   agreed geography needs them, using verified unused vnums within valid zone
   bounds rather than renumbering existing rooms.
 - [x] Outcasts Tower: owner delegated site selection; chose footprint 546461
   and southern approach 546861, retaining the secondary Underworld route.
-- [ ] Verify the selected tower site and the impact of retaining its secondary
+- [x] Verify the selected tower site and the impact of retaining its secondary
   Underworld route in the booted development world.
 
 **Implementation prerequisite:** select and validate the exact endpoints before
@@ -461,53 +466,53 @@ verified, with Homestead and Turolopolis recorded as accepted without changes.
 
 ### 2. Edit the authored connections as complete route changes
 
-- [ ] Change Arcium's entrance and both surface counterparts together. Change
+- [x] Change Arcium's entrance and both surface counterparts together. Change
   Outcasts Tower's surface pair together, preserving its secondary connection
   unless the recorded decision explicitly changes it.
-- [ ] For each vacated entrance, inspect the map cell that the old entrance
+- [x] For each vacated entrance, inspect the map cell that the old entrance
   displaced and its neighbors. Restore the intended terrain, description, and
   ordinary map connections; remove all superseded entrances and unintended
   one-way remnants. Do not blindly restore numerical grid neighbors: existing
   placeholder cells can have sector 0 and misleading names, such as the old
   cells beside Arcium and Outcasts Tower.
-- [ ] At each new site, check existing exits, terrain, area occupancy, and
+- [x] At each new site, check existing exits, terrain, area occupancy, and
   neighboring travel first. Change only the approach edges needed for the
   approved footprint; do not overwrite another area's entrance. Make entrance
   descriptions and relevant map labels agree with the final routes.
-- [ ] Keep Homestead and Turolopolis/Zoo unchanged, including their surface
+- [x] Keep Homestead and Turolopolis/Zoo unchanged, including their surface
   approaches, the Zoo link, the transit-room exits, and resets/quests. Record
   the accepted no-change outcomes without editing their authored content.
-- [ ] Add the agreed Misty connector in both directions. Preserve its existing
+- [x] Add the agreed Misty connector in both directions. Preserve its existing
   surface entrance and internal progression. If a door, switch, or connector
   room is required, update only the necessary corresponding authored reset,
   object, or trigger data; verify accessibility after reset. Avoid new native
   procs where an ordinary authored exit solves the request.
-- [ ] Review every incoming/outgoing reference to the changed endpoint rooms,
+- [x] Review every incoming/outgoing reference to the changed endpoint rooms,
   including teleport/proc references actually found during step 1. Preserve zone
   IDs and existing room IDs. Change zone bounds or `AREA` only if an agreed new
   connector cannot fit the existing active area, with explicit overlap checks.
 
 ### 3. Prove the source and generated-world contracts
 
-- [ ] Add a focused `tests/async/test_issue37_zone_routes.py` regression using
+- [x] Add a focused `tests/async/test_issue37_zone_routes.py` regression using
   the approved route decisions as expected results. Read active authored data
   rather than relying on pre-existing `areas/world.*` outputs. Check endpoint
   existence and zone ownership, expected directions/reciprocity, removal of
   superseded entrances, preservation of named secondary routes, and any new
   connector vnum uniqueness. Do not impose universal reciprocity on unrelated
   intentional one-way exits or build a general connectivity framework.
-- [ ] Run the focused regression against the old data where applicable to
+- [x] Run the focused regression against the old data where applicable to
   demonstrate it catches the requested relocation/missing connector, then run
   it on the changed data. Also demonstrate that breaking one required return
   edge fails the check, using a disposable test fixture.
-- [ ] Run `make world` in development. Verify the generated room records for
+- [x] Run `make world` in development. Verify the generated room records for
   all changed endpoints and their reverse exits, and inspect generator output
   for missing/ambiguous area files. Generated output is verification material,
   not committed source.
-- [ ] Build the development server with `make -C src`. If C/C++ changes prove
+- [x] Build the development server with `make -C src`. If C/C++ changes prove
   necessary, also run `./scripts/format.sh --check` and the smallest applicable
   executable regression; explain the concrete need before expanding scope.
-- [ ] Run `python3 tests/async/test_flatfile_full_world_boot.py` to exercise a
+- [x] Run `python3 tests/async/test_flatfile_full_world_boot.py` to exercise a
   fresh full-world boot/restart on disposable authority with current generated
   data. This existing test checks full-world boot and ferry route viability,
   but does **not** replace the route-specific journeys below.
@@ -522,21 +527,21 @@ provides existing setup patterns if automating these journeys. Do not build a
 second server launcher. Staff inspection or teleporting to a starting point is
 setup, not proof that an ordinary player can traverse the passage.
 
-- [ ] Walk from the surrounding surface map into each relocated area and back
+- [x] Walk from the surrounding surface map into each relocated area and back
   through every intended entrance. Check the old sites no longer enter the
   moved area and that their surrounding map routes remain usable.
-- [ ] Verify Arcium's final approach is GC and northwest of the chosen Evermeet
+- [x] Verify Arcium's final approach is GC and northwest of the chosen Evermeet
   landmark, and the tower's approach is GC and south of the chosen Kimordril
   landmark. Record actual vnums, grid coordinates, map views, and the loaded
   continent evidence; compare coordinates in one stated coordinate system.
-- [ ] Walk Misty's surface approach, internal path to the new connector,
+- [x] Walk Misty's surface approach, internal path to the new connector,
   connector into the Underdark, and return path. Test under the intended player
   movement/vision requirements without staff bypass; inspect falls, water,
   secret/blocked doors, and resets on the chosen route.
-- [ ] Recheck the tower's retained `11348 <-> 30172` route and confirm the
+- [x] Recheck the tower's retained `11348 <-> 30172` route and confirm the
   unchanged Homestead and Turolopolis/Zoo entrances remain intact. Check relevant
   existing quest/reset progression rather than assuming unchanged IDs suffice.
-- [ ] Repeat affected `zcheck` reports after a zone reset and a clean restart.
+- [x] Repeat affected `zcheck` reports after a zone reset and a clean restart.
   Compare with the pre-change baseline, investigate new dangling exits,
   unintended one-way traps, or inaccessible required endpoints, and distinguish
   existing unrelated findings. Inspect loaded endpoints explicitly because
@@ -544,19 +549,19 @@ setup, not proof that an ordinary player can traverse the passage.
 
 ### 5. Review and close out the implementation
 
-- [ ] Reread the diff and remove unrelated changes. Expected content files are
+- [x] Reread the diff and remove unrelated changes. Expected content files are
   `arcium.wld`, `mist_chasm.wld`, `otower.wld`, `surface.wld`, the selected UD
   endpoint's authored file, and only required companion `.zon`/`.obj`/`.trg`
   files. Homestead, the ruins, and the Zoo are excluded from content edits. Keep
   engine files unchanged unless a demonstrated blocker requires a narrow fix.
-- [ ] Run `git diff --check`, the focused route regression, and any required
+- [x] Run `git diff --check`, the focused route regression, and any required
   checks invalidated by the final edits. Inspect staged paths for generated
   areas, binaries, credentials, logs, or account/player data before committing.
-- [ ] Update this plan and #37 with a per-request outcome: exact old/new routes,
+- [x] Update this plan and #37 with a per-request outcome: exact old/new routes,
   the two blank-destination decisions, test commands/results, runtime evidence,
   and remaining blockers. Do not close #37 while an item is merely pending a
   destination, while a required walk is unperformed, or because #65 landed.
-- [ ] Publish the implementation for review under the repository's normal
+- [x] Publish the implementation for review under the repository's normal
   review requirements. Hosted CI is not a substitute for or prerequisite to
   the required local evidence. Production rollout remains a separate authorized
   operation; no production mutation is part of this planning task.
