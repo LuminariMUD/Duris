@@ -1,10 +1,10 @@
 # Issue #37: zone placement and Underdark connection plan
 
-Status: Outcasts Tower in review; Arcium locally verified and ready to publish; Misty Chasm pending.
+Status: Outcasts Tower and Arcium in review; Misty Chasm pending.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
 Original branch: `branch/issue-37-zone-placements` (preserved at `cd71ac1e8`).
 Review branch: `branch/issue-37-outcasts-tower`, [PR #103](https://github.com/LuminariMUD/Duris/pull/103).
-Active work: `branch/issue-37-arcium`, based on tower head `266c4e2f5`.
+Second review branch: `branch/issue-37-arcium`, [PR #104](https://github.com/LuminariMUD/Duris/pull/104), stacked on #103.
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
 ## Implementation handoff, 2026-10-15
@@ -79,7 +79,7 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
   hills/field, northwest of the active Evermeet approach 517246 (46,43), and do
   not use Homestead's footprint or entrances. Its loaded baseline passed, as below.
 
-### Arcium chunk in progress
+### Arcium chunk completed
 
 OpenSpec: `openspec/changes/relocate-arcium/`. Keep the two-entrance shape:
 `516444 W <-> 85700 E` and `516843 N <-> 85700 S`; remove both old UC pairs at
@@ -113,7 +113,16 @@ All seven normalized zcheck reports match baseline exactly in all four phases.
 The earlier tower and accepted no-change routes passed again. Strict OpenSpec,
 scoped diff review, and whitespace checks passed. No native or companion
 reset/object/quest/trigger changes were needed.
-Next: publish the Arcium PR stacked on #103, then validate Misty Chasm endpoints.
+Published as PR #104, implementation commit `4c74de53d`; 820 acceptance commands
+were recorded. Next: create `branch/issue-37-misty-underdark` from this PR and
+validate the source-selected candidate `15015 D <-> 834025 U`. Room 15015 is a
+grounded cliff trail before the rope bridge; 834025 is an existing low-ceiling
+Underdark tunnel at (25,335), with open northern/eastern continuation. No new
+room is needed, and this avoids changing falls, the bridge, shafts, or pyramid
+progression. The UD candidate belongs to a large connected tunnel component
+with multiple existing area entrances; it is not selected by matching map
+offsets. Confirm ordinary walking, vision/terrain constraints, and loaded exits
+before editing. Preserve `638825 W <-> 15000 E` on Khomani-Khan.
 
 ## Decisions from the owner discussion, 2026-10-15
 
