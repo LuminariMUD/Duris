@@ -25,6 +25,7 @@
 #include <zlib.h>
 #include "persistence/copyover.h"
 #include "net/gmcp.h"
+#include "net/mssp.h"
 #include "core/json_utils.h"
 #include "net/telnet.h"
 #include "net/ttype.h"
@@ -114,6 +115,9 @@ int parse_telnet_options(P_desc player, char *buf, int buflen)
 			return 3;
 		case TELOPT_GMCP:
 			gmcp_handle_negotiation(player, DO);
+			return 3;
+		case TELOPT_MSSP:
+			mssp_send(player);
 			return 3;
 		case TELOPT_SGA:
 			player->sga_disabled = 1;
