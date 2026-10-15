@@ -6,7 +6,7 @@ from pathlib import Path
 from test_falling_world_exits import read_rooms
 
 ROOT = Path(__file__).resolve().parents[2]
-FILES = ('surface', 'otower', 'underworld3', 'elvish', 'willem', 'turolzoo')
+FILES = ('surface', 'otower', 'underworld3', 'arcium', 'elvish', 'willem', 'turolzoo')
 
 
 def load_rooms(areas, generated=False):
@@ -31,6 +31,8 @@ def check_routes(rooms):
 
     pair(546861, 0, 11300, 2)
     pair(11348, 0, 30172, 2)
+    pair(516444, 3, 85700, 1)
+    pair(516843, 0, 85700, 2)
     # Restore the vacated footprint as hills with all reciprocal grid neighbors.
     assert rooms[615849][:2] == (4, 0), rooms[615849]
     for direction, neighbor, reverse in ((0, 615449, 2), (1, 615850, 3),
@@ -40,6 +42,14 @@ def check_routes(rooms):
                 for d, target in exits.items() if target == 546461], 'marker is walkable'
     assert [(v, d) for v, (_, _, exits) in rooms.items() for d, target in exits.items()
             if v >= 500000 and target == 11300] == [(546861, 0)], 'superseded entrance'
+    assert rooms[591772][:2] == (4, 0), rooms[591772]
+    for direction, neighbor, reverse in ((0, 591372, 2), (1, 591773, 3),
+                                         (2, 592172, 0), (3, 591771, 1)):
+        pair(591772, direction, neighbor, reverse)
+    assert not [(v, d) for v, (_, _, exits) in rooms.items()
+                for d, target in exits.items() if target == 516443], 'Arcium marker is walkable'
+    assert sorted((v, d) for v, (_, _, exits) in rooms.items() for d, target in exits.items()
+                  if v >= 500000 and target == 85700) == [(516444, 3), (516843, 0)], 'old Arcium entrance'
     # Explicit owner no-change decisions, including both Homestead approaches.
     for start, direction, end, reverse in ((517246, 3, 35800, 1), (517645, 0, 35800, 2),
                                           (548452, 0, 7102, 2), (7123, 3, 53000, 1)):
@@ -54,12 +64,15 @@ if __name__ == '__main__':
     rooms = load_rooms(args.areas, args.generated)
     check_routes(rooms)
     # Disposable in-memory fixture proves the return edge is an independent gate.
-    sector, fall, exits = rooms[11300]
-    rooms[11300] = (sector, fall, {d: v for d, v in exits.items() if d != 2})
-    try:
-        check_routes(rooms)
-    except AssertionError:
-        pass
-    else:
-        raise AssertionError('missing return edge was accepted')
-    print('Issue #37 route contracts passed; broken return edge rejected.')
+    for room, direction in ((11300, 2), (85700, 1), (85700, 2)):
+        original = rooms[room]
+        sector, fall, exits = original
+        rooms[room] = (sector, fall, {d: v for d, v in exits.items() if d != direction})
+        try:
+            check_routes(rooms)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError(f'missing return edge {room}/{direction} was accepted')
+        rooms[room] = original
+    print('Issue #37 route contracts passed; broken return edges rejected.')

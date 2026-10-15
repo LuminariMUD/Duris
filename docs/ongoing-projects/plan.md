@@ -1,9 +1,10 @@
 # Issue #37: zone placement and Underdark connection plan
 
-Status: Outcasts Tower implemented and locally verified; Arcium and Misty Chasm pending.
+Status: Outcasts Tower and Arcium in review; Misty Chasm pending.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
 Original branch: `branch/issue-37-zone-placements` (preserved at `cd71ac1e8`).
 Review branch: `branch/issue-37-outcasts-tower`, [PR #103](https://github.com/LuminariMUD/Duris/pull/103).
+Second review branch: `branch/issue-37-arcium`, [PR #104](https://github.com/LuminariMUD/Duris/pull/104), stacked on #103.
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
 ## Implementation handoff, 2026-10-15
@@ -72,12 +73,56 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
   `594a3151e`. Its source/test/spec/plan files exactly match the tested original
   branch checkpoint `cd71ac1e8`; only the unrelated credits fix is excluded.
   No tag is needed for this content PR. No merge or deployment was performed.
-- Next: create `branch/issue-37-arcium` from the tower PR, record/validate a free
-  GC site northwest of Evermeet, implement both relocated entrance pairs, and
-  publish a stacked PR. Source-only candidate: footprint 516443 (43,41), east
+- Arcium continues on `branch/issue-37-arcium` from the tower PR. Selected
+  footprint 516443 (43,41), east
   approach 516444 (44,41), south approach 516843 (43,42). These are unoccupied
   hills/field, northwest of the active Evermeet approach 517246 (46,43), and do
-  not use Homestead's footprint or entrances. Loaded validation remains required.
+  not use Homestead's footprint or entrances. Its loaded baseline passed, as below.
+
+### Arcium chunk completed
+
+OpenSpec: `openspec/changes/relocate-arcium/`. Keep the two-entrance shape:
+`516444 W <-> 85700 E` and `516843 N <-> 85700 S`; remove both old UC pairs at
+591773/592172. Marker 516443 must have no ordinary incoming map edges; remove
+the northern/western incoming edges from 516043/516442. Restore old footprint
+591772 to vine-covered hills, preserving its north/west mountain boundaries.
+The approaches are northwest of active Evermeet room 517246 (46,43) in the
+same zero-based surface grid, with Homestead's 517245/517246/517645 untouched.
+
+Source inspection found no direct native/reset/object/quest/trigger references
+to the selected map cells. The candidate rooms have zero flags and ordinary
+hills/field terrain. The pre-edit loaded-world baseline passed (including reset),
+confirming GC, `map 9` views, old Arcium pairs, and retained routes. Both entrance
+pairs and the two footprints are now edited; authored/generated checks pass,
+after the old-data check failed at `516444 W -> 85700`. Each Arcium return edge
+is independently removed in an in-memory fixture and rejected. Outcome/non-goals remain those above;
+files are `arcium.wld`, `surface.wld`, the existing route tests, OpenSpec, and
+this plan. Proof extends the already-used source/generated, ordinary walking,
+geography, reset, restart, and zcheck checks. No new parser, launcher, connector
+room, or native procedure is needed.
+
+The area's D resets do not target 85700; the existing hermit quest uses the
+unchanged lord item IDs, with no map-room dependency. Interior exits, room flags,
+the quest, and resets are byte-for-byte unchanged. `make world` and
+`make -C src -j2` passed. Cumulative ordinary walking and the existing full-world
+restart test passed; evidence prefixes are `routes-arcium-baseline`,
+`routes-arcium`, and `full-world-arcium` under `bin/analysis/issue37/`.
+Both approaches, both returns, restored old-site east/south travel and north/west
+mountain rejections, and surrounding map paths passed across boot/reset/restart/reset.
+All seven normalized zcheck reports match baseline exactly in all four phases.
+The earlier tower and accepted no-change routes passed again. Strict OpenSpec,
+scoped diff review, and whitespace checks passed. No native or companion
+reset/object/quest/trigger changes were needed.
+Published as PR #104, implementation commit `4c74de53d`; 820 acceptance commands
+were recorded. Next: create `branch/issue-37-misty-underdark` from this PR and
+validate the source-selected candidate `15015 D <-> 834025 U`. Room 15015 is a
+grounded cliff trail before the rope bridge; 834025 is an existing low-ceiling
+Underdark tunnel at (25,335), with open northern/eastern continuation. No new
+room is needed, and this avoids changing falls, the bridge, shafts, or pyramid
+progression. The UD candidate belongs to a large connected tunnel component
+with multiple existing area entrances; it is not selected by matching map
+offsets. Confirm ordinary walking, vision/terrain constraints, and loaded exits
+before editing. Preserve `638825 W <-> 15000 E` on Khomani-Khan.
 
 ## Decisions from the owner discussion, 2026-10-15
 
