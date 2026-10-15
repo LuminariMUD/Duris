@@ -221,8 +221,7 @@ static void accepted(int peer)
 			assert(delivered.front().text.find(echo ? "You petition" : "Ok.") !=
 			       std::string::npos);
 			assert(std::count_if(delivered.begin(), delivered.end(),
-					     [](auto &d)
-					     {
+					     [](auto &d) {
 						     return d.kind == "act" &&
 							    d.text.find("$$n") != std::string::npos;
 					     }) == staff_count);
