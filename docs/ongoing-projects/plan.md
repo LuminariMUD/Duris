@@ -5,6 +5,38 @@ Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Under
 Working branch: `branch/issue-37-zone-placements`.
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
+## Decisions from the owner discussion, 2026-10-15
+
+- **Homestead: retain its current placement and connections.** The owner accepts
+  it as it is for now. This resolves the blank Homestead request as no change;
+  Arcium's relocation must not displace it or repurpose its existing entrance.
+- **Turolopolis: keep the ruins and Zoo connected.** The question is their
+  connection to the rest of the world, not whether to keep that internal pair.
+  The current ordinary external approach is surface room **548452**, "Fertile
+  Grasslands of the Hearth Valley", on source-inferred GC, at `(52,121)`.
+  Walking north enters ruins room 7102; south returns to the surface. This is
+  southwest of Kimordril's southern approach `(61,109)` in grid terms. No
+  replacement location or explicit retain-current decision has yet been given.
+- **Misty Chasm: use the recommended direction.** Treat the request as zone 150,
+  retain the Khomani-Khan surface entrance, and add a usable two-way Underdark
+  passage. Selection of suitable endpoint rooms is implementation work, subject
+  to the source and gameplay checks below, not another request for the owner
+  to supply room IDs. Preserve the area's existing progression.
+- **Arcium: placement is still under discussion.** The owner's question is what
+  the nearby "Acrium" label means. It is a surface-room title, not the actual
+  Arcium entrance: `517246 W` and `517645 N` lead to Homestead room 35800.
+  Arcium room 85700 instead connects to 591773/592172 on source-inferred UC.
+  The recommendation remains a separate GC site northwest of the Evermeet
+  woodland, with Homestead left in place. The misleading title is not evidence
+  that either area should be swapped into the other's entrance.
+- **Outcasts Tower: site selection delegated; selected site recorded below.**
+  Use the open Hearth Valley hill cell **546461** `(61,116)` as the new tower
+  footprint, with the grassland approach **546861** `(61,117)` to its south.
+  The planned pair is `546861 N -> 11300` and `11300 S -> 546861`. The footprint
+  is seven rows south of Kimordril's southern approach `543661` `(61,109)`, on
+  the same grid column. Keep the existing `11348 <-> 30172` Underworld route.
+  This is the selected implementation site; runtime validation is still pending.
+
 ## Outcome and boundaries
 
 Resolve all five requests in #37: place Arcium on the Good Continent northwest
@@ -109,10 +141,10 @@ Sources: [elvish.zon](../../areas/zon/elvish.zon),
   entrance edges point to Homestead, not Arcium. Treat this as a label/route
   discrepancy to resolve with the intended placements, not permission to
   displace Homestead or declare Arcium already on GC.
-- The workbook destination is blank. Confirm whether the request means retain,
-  relocate, or correct an entrance/label; no relocation is justified yet.
+- The workbook destination was blank. The owner has now explicitly accepted
+  the current placement and connections; retain them.
 
-### "Turopolis" — unresolved choice of zone 71, zone 530, or both
+### Turolopolis — connected ruins (zone 71) and Zoo (zone 530)
 
 Sources: [willem.zon](../../areas/zon/willem.zon),
 [willem.wld](../../areas/wld/willem.wld),
@@ -120,26 +152,30 @@ Sources: [willem.zon](../../areas/zon/willem.zon),
 [turolzoo.wld](../../areas/wld/turolzoo.wld).
 
 - The Ruins of Turolopolis are zone 71, rooms 7100..7253.
-  `7102 S -> 548452` and `548452 N -> 7102` form its surface entrance.
+  `7102 S -> 548452` and `548452 N -> 7102` form its surface entrance in the
+  Hearth Valley on source-inferred GC, at surface grid `(52,121)`.
 - Turolopolis Zoo is zone 530, rooms 53000..53061. It is already joined to the
   ruins: `7123 W -> 53000`, `53000 E -> 7123`. Its sole authored external exit
   is this connection, not a separate surface entrance.
 - Ruins room 7198, "Lothrell's Start Spot", also has outbound exits N/E/S/W/U/D
   to 578047/532894/551641/550095/514897/524045 respectively. A scan of active
-  authored exits found no incoming ordinary exit to 7198. That does not rule
-  out scripted, administrative, or item access. Preserve these exits unless
-  the confirmed request requires changing them.
-- Both the intended identity and destination are unspecified. Do not infer
-  either from nearby workbook rows, and keep the Zoo/ruins relationship intact
-  if only their surface approach changes.
+  authored exits found no incoming ordinary exit to 7198. Its description
+  explicitly says it is not an explorable part of the zone and asks players
+  who reach it to petition. Do not present its six outbound exits as ordinary
+  entrances or as six normal travel connections. Dynamic access remains
+  unproven. Preserve this room unless the confirmed request requires a change.
+- The owner confirmed that the Zoo/ruins relationship must remain intact and
+  asked where they otherwise connect. The surface pair above answers that
+  question; a relocation destination or acceptance of that location remains open.
 
-### "Misty Chasm" — candidate zone 150, rooms 15000..15099
+### Misty Chasm — zone 150, rooms 15000..15099
 
 Sources: [mist_chasm.zon](../../areas/zon/mist_chasm.zon) and
 [mist_chasm.wld](../../areas/wld/mist_chasm.wld).
 
-- The authored name is "The Chasm of the Misty Vale"; owner confirmation of
-  the workbook identity is still required.
+- The authored name is "The Chasm of the Misty Vale". The owner accepted the
+  recommendation to use this area, retain its surface entrance, and add a
+  traversable return route for the new Underdark connection.
 - `15000 E -> 638825`, with `638825 W -> 15000`, is the area's only authored
   external exit. The surface approach is `(25,347)`, on inferred Khomani-Khan.
   Beyond that surface pair, there is no authored exit to zone 7000 or any other
@@ -173,8 +209,24 @@ Sources: [otower.zon](../../areas/zon/otower.zon),
   [authored exits](../../areas/wld/kimordril.wld) are reciprocal surface pairs
   `95502 W <-> 543256 E`, `95655 E <-> 542862 W`, and
   `95658 S <-> 543661 N`. These map approaches are `(56,108)`, `(62,107)`, and
-  `(61,109)`, all on inferred GC. Choose which landmark defines "south of
-  Kimordril" before choosing the tower's new map cell.
+  `(61,109)`, all on inferred GC. The selected new tower footprint is directly
+  south of the last of these, as recorded in the owner decisions above.
+- The selected footprint 546461 is ordinary hills, and approach 546861 is
+  ordinary grassland. Both have zero authored room flags, reciprocal cardinal
+  map exits, and no existing area entrance. A search of zone resets, objects,
+  quests, triggers, and native sources found no direct reference to either vnum.
+  A reciprocal route over road/field/hill/forest sectors exists from Kimordril's
+  western approach to this neighborhood; actual traversal remains to be tested.
+- Do not reuse the old surface label "Outcast Tower" at 551267 merely because
+  of its name: the southern approach 551667 currently enters room 9288, not
+  11300. Also leave the nearer hill cell 545661 alone: its surface reset loads
+  the named NPC Surak there. Neither existing location is needed for this move.
+- At the new site, `546861 N` currently reaches 546461. Apply the repository's
+  occupied-map-cell convention to the footprint and review the other incoming
+  edges (`546061 S`, `546460 E`, `546462 W`) so none becomes an accidental
+  one-way entry into the marker cell. Preserve ordinary movement around the
+  footprint and the surrounding NPC routes; do not merely replace one exit and
+  leave the rest of the footprint inconsistent.
 
 ## Implementation sequence
 
@@ -197,16 +249,21 @@ Sources: [otower.zon](../../areas/zon/otower.zon),
 - [ ] For Arcium, agree on the current Evermeet reference and a free GC site
   northwest of it. Resolve the `517245` label conflict together with Homestead;
   it is a discovery candidate, not a selected destination.
-- [ ] For Homestead, obtain a destination/change or an explicit retain-current
-  decision. For Turopolis, obtain both the exact zone identity/scope and a
-  destination/change or explicit retain-current decision.
-- [ ] Confirm Misty Chasm's identity and both connector endpoints, including how
-  an ordinary player reaches and leaves them. Prefer existing rooms and an
+- [x] Homestead: explicit owner decision received to retain current placement
+  and connections.
+- [ ] Turolopolis: current external location documented; obtain a relocation
+  destination or explicit retain-current decision, preserving the ruins/Zoo pair.
+- [x] Misty Chasm: owner accepted the recommended area and two-way connection,
+  retaining its current surface entrance.
+- [ ] Select and verify both Misty connector endpoints, including how an
+  ordinary player reaches and leaves them. Prefer existing rooms and an
   ordinary reciprocal passage. Add the minimum connector rooms only if the
   agreed geography needs them, using verified unused vnums within valid zone
   bounds rather than renumbering existing rooms.
-- [ ] Select Outcasts Tower's GC site south of the agreed Kimordril reference,
-  and resolve the secondary Underworld route's impact.
+- [x] Outcasts Tower: owner delegated site selection; chose footprint 546461
+  and southern approach 546861, retaining the secondary Underworld route.
+- [ ] Verify the selected tower site and the impact of retaining its secondary
+  Underworld route in the booted development world.
 
 **Gate:** no endpoint edits for a request whose behavior is still unspecified.
 Independent confirmed requests can proceed, but #37 remains incomplete while
@@ -228,7 +285,8 @@ Planning/publishing this document does not require inventing those decisions.
   neighboring travel first. Change only the approach edges needed for the
   approved footprint; do not overwrite another area's entrance. Make entrance
   descriptions and relevant map labels agree with the final routes.
-- [ ] Apply Homestead/Turopolis changes only as decided. Preserve the Zoo link,
+- [ ] Keep Homestead unchanged; apply any Turolopolis change only as decided.
+  Preserve the Zoo link,
   the transit-room exits, and unrelated resets/quests. A no-change decision
   requires evidence and documentation, not a gratuitous source edit.
 - [ ] Add the agreed Misty connector in both directions. Preserve its existing
