@@ -1,9 +1,74 @@
 # Issue #37: zone placement and Underdark connection plan
 
-Status: owner design decisions complete; implementation plan only; no area or server behavior changed.
+Status: Outcasts Tower implemented and locally verified; Arcium and Misty Chasm pending.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
 Working branch: `branch/issue-37-zone-placements`.
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
+
+## Implementation handoff, 2026-10-15
+
+- Refreshed #37 (open, no comments), `origin/master` at `34f3d8a62`, and the
+  clean working branch at `de7904ce8`. Merged master without rewriting existing
+  branch history; the pre-existing credits color fix is preserved.
+- `.env` identifies this checkout as local. All acceptance servers use disposable
+  flat-file authority and loopback ports; no production operations are authorized.
+- Using OpenSpec `spec-driven` changes, starting with
+  `openspec/changes/return-outcasts-tower/`. Subsequent focused PR chunks will
+  relocate Arcium and connect Misty Chasm, stacked if their test/plan work depends
+  on earlier chunks. Leave the issue and PRs open for review.
+- Ablation: outcome is the three approved route changes plus explicit preservation
+  of Homestead and Turolopolis. Non-goals remain engine changes, new tooling,
+  production rollout, and #65. Files are the affected authored `.wld` sources,
+  focused regression/journey tests, this plan, and OpenSpec. Proof is authored and
+  generated route checks, the existing build/full-world restart test, loaded map
+  inspection, reset checks, and ordinary-player traversal.
+- Tower discovery: vacated footprint `615849` is a sector-0 placeholder titled
+  Waters of the Abyss; its west/east neighbors `615848`/`615850` are DarkPeak hills
+  with their inward exits absent. Restore hill terrain and all four reciprocal
+  grid edges there. At new marker `546461`, remove the three non-entrance incoming
+  edges and redirect `546861 N` to `11300`, retaining the existing marker-cell
+  convention. The only native room-proc assignment of `11300` is disabled by
+  `#if 0`; mob/object IDs with the same number are separate identities.
+- Baseline `make world`, `make -C src -j2`, and the isolated full-world restart
+  passed. The mortal journey confirmed loaded GC at 546861/543661, old tower
+  access, secondary access, and unchanged Homestead/Turolopolis/Zoo pairs. Real
+  `zreset ok` and paged `zcheck` reports were captured before content regeneration.
+- Tower source changes are implemented. Authored and generated route tests pass;
+  the test failed first on old data at `546861 N -> 11300`, and a disposable
+  missing-return-edge fixture is rejected. All 1,315 existing falling paths still
+  land. Strict OpenSpec and whitespace checks pass. The changed-world
+  full-world restart passed. The changed-world walk exposed an incorrect test
+  expectation: the pre-existing mountain 615449 north of the restored footprint
+  rejects ordinary walking. Preserve that barrier and test its rejection; verify
+  east/west/south approaches by walking. The corrected journey passed. Evidence is under
+  `bin/analysis/issue37/`, especially `routes-baseline.json` and `routes-tower.json`.
+- Git publication will preserve the existing credits commit on the requested
+  branch and copy only the three planning commits plus this implementation onto
+  `branch/issue-37-outcasts-tower` from current master. That PR excludes the
+  unrelated credits change; later chunks will stack on its head without rewriting
+  the original branch.
+- Changed-world acceptance passed in four phases: initial boot, zone reset,
+  clean restart, and another zone reset (544 recorded commands). All seven
+  normalized zcheck reports match their baseline exactly in every phase:
+  zones 113/300/530/857 clean; 358 has the existing 1 high/2 low findings;
+  71 has 0 high/34 low; 150 has 0 high/13 low. These pre-existing findings do
+  not establish new defects; the owner explicitly excluded Homestead/Turolopolis
+  edits. No new dangling route, reciprocity gap, or inaccessible endpoint appeared.
+- Actual `map 9` views and loaded `stat room` reports confirm GC for 546861 and
+  543661. The coordinate comparison is the surface grid: (61,117) versus (61,109).
+  Both entrance directions, retained Underworld pair, all accepted no-change
+  entrance pairs, the eight-step ring around the new marker, and the old hill's
+  east/west/south pairs were walked by a level-one human without movement,
+  door, or vision bypass. Synthetic health/vitality reserves isolate combat and
+  exhaustion. The old northern peak's ordinary movement rejection is preserved.
+- Reproduction commands: `python3 tests/async/test_issue37_zone_routes.py`, the
+  same command with `--generated`, `python3 tests/async/test_falling_world_exits.py`,
+  `make world`, `make -C src -j2`, and
+  `DURIS_REGRESSION_BUILD_CACHE=bin/tests/issue37-cache python3 tests/async/test_flatfile_full_world_boot.py`.
+  Route acceptance: `DURIS_REGRESSION_BUILD_CACHE=bin/tests/issue37-cache python3 tests/async/run_issue37_zone_journey.py --evidence bin/analysis/issue37/routes-tower.json`.
+  OpenSpec: `openspec validate --all --strict`. All passed.
+- Next: commit/push the verified tower chunk and publish its focused PR; then
+  select and validate Arcium's exact endpoints before editing its sources.
 
 ## Decisions from the owner discussion, 2026-10-15
 
@@ -408,6 +473,6 @@ claimed for implementation by this branch. Verify the published plan blob and
 exact local/remote commit equality, ahead/behind `0 0`, a clean working tree,
 and the issue's linked-branch readback before reporting publication complete.
 
-No world generation, server build, boot, gameplay acceptance, area-data edit, or
-production operation was performed for this planning-only change. The unchecked
-items above are the implementation work, not claims of completed verification.
+During the historical planning pass, no world generation, server build, boot,
+gameplay acceptance, area-data edit, or production operation was performed.
+Current implementation evidence and remaining work are recorded at the top.
