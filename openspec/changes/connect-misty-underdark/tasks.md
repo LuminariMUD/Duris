@@ -10,6 +10,6 @@
 - [x] 2.5 Walk surface-to-UD and back through reset/restart and compare diagnostics.
 
 ## 3. Publish and finish
-- [ ] 3.1 Update all five outcomes and acceptance checkboxes in the plan and #37.
-- [ ] 3.2 Validate OpenSpec, review scope, commit/push, and open the final PR stacked on #104.
-- [ ] 3.3 Verify all PR bases/heads and remote parity; leave ready for review without merging/deploying.
+- [x] 3.1 Update all five outcomes and acceptance checkboxes in the plan and #37.
+- [x] 3.2 Validate OpenSpec, review scope, commit/push, and open the final PR stacked on #104.
+- [x] 3.3 Verify all PR bases/heads and remote parity; leave ready for review without merging/deploying.
