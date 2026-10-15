@@ -152,6 +152,9 @@ game, to refresh cached news. `page help` refreshes only help pages.
   `pages`). Update the source files and re-run the import script; editing the
   database directly would silently diverge from the flat-file sources. See the
   warning above before importing to a shared or remote database.
+- Keep the rules in `lib/information/rules`. The `LAWS RULES` entry in
+  `help_index` points there via `help rules`; do not add a duplicate `Rules`
+  entry to `duris_help_parsed.hlp`, which would override this source.
 - Command attribute changes go in
   `docs/lib/information/command_attributes.txt` and require a server restart
   (loaded once at boot).
