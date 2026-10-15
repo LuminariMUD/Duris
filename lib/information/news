@@ -1,12 +1,56 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 14, 2026&n
+&+WUpdated: October 15, 2026&n
 
-Welcome back! This update catches up September 15 to October 14, 2026.
-Petitions, racial powers and everyday adventuring all have news. The
-newest changes come first; later updates replace older rules. Earlier
-coverage, back to December 14, 2025, and the archive follow.
+Welcome back! Catch up on September 15 to October 15, 2026 below.
+The newest changes come first; later updates replace older rules.
+Earlier coverage, back to December 14, 2025, and the archive follow.
+
+&+R10/15/26&n &+L-&n &+YThe winds have changed their treasures&n
+&+W----------------------------------------------------------------------&n
+
+&+Y-&n Hunting wind artifacts? &+MYan-C-Bin&n now carries the &+Mdagger of Wind&n,
+  while &+MAkadi&n carries the &+Msphere of wind&n. Their rewards have traded places.
+&+Y-&n The dagger's wind escape no longer triggers for monsters wielding it.
+&+Y-&n To unleash the sphere's whirlwind, wear it and &+C'rub sphere'&n.
+  Rubbing another item no longer sets it off. The whirlwind respects safe
+  rooms and avoids friendly targets; its &+Y500-second&n reuse time remains.
+&+Y-&n Reavers using &+MThrym's Icerazor&n now receive its intended extra cold
+  damage while Coldshield is active. Slow no longer grants that bonus.
+
+&+CYour client keeps up with you&n
+&+Y-&n Supported client panels fill in your status, effects, group, room,
+  quest and combat target when you log in, reconnect or re-enable them.
+  Purchased quest maps return too, including while you are morphed.
+&+Y-&n Group panels update when members leave and when their health changes,
+  even if those members do not use panels. The displayed group limit now
+  follows your side's actual limit. Combat panels track starts, ends and
+  damage more accurately.
+&+Y-&n Ship panels refresh when you step onto a bridge and clear when you
+  leave it. Room and item names no longer show stray escape backslashes.
+
+&+CReaching staff and planning your training&n
+&+Y-&n The optional staff-only Discord petition feed now shows your actual
+  character name, even when hidden or invisible. Staff replies identify
+  both characters there too. In-game visibility rules stay the same.
+  This replaces the earlier news about concealed names showing as Someone.
+&+Y-&n &+C'help epic skill cost'&n lists first-step and full-training prices,
+  including the extra cost when only your secondary class can learn a skill.
+  Ask your teacher for the exact cost of your next lesson.
+&+Y-&n Website hints and &+C'credits'&n have refreshed links and information.
+&+Y-&n MUD listing services can now read Duris's live player count and uptime.
+  This count includes connected mortals in the game, not staff.
+
+&+R10/14/26&n &+L-&n &+YBattle records and your website presence&n
+&+W----------------------------------------------------------------------&n
+
+&+Y-&n New PvP battle records again retain each participant's level, class,
+  name, guild, race, equipment and public combat log as they were captured
+  before death. Long public logs now fit; older missing text is not restored.
+&+Y-&n New characters start with Web Info enabled. Use &+C'toggle webinfo off'&n
+  if you do not want the extra character details shown on the website.
+  Existing characters keep their saved setting.
 
 &+R10/14/26&n &+L-&n &+YPetitions can reach the Gods on Discord&n
 &+W----------------------------------------------------------------------&n

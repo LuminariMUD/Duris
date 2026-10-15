@@ -10339,6 +10339,13 @@ Syntax:  ptell <player> <text>
 This is exactly like tell, except that <text> is broadcast to all gods
 with petition toggled on, to let them know that you responded to a
 particular petition.
+
+When enabled, the optional staff-only Discord petition feed also receives one
+copy of an accepted ptell, labeled with the actual sender and target character
+names, including when hidden, invisible, or using mortal fog. Discord posts
+cannot become game replies. Native recipients, visibility, toggles, and logs
+are unchanged; delivery is best effort.
+
 Example:
         Oinkoink petitions "Why is the sky blue?"
 You reply:
