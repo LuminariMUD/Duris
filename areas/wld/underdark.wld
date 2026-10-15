@@ -241168,6 +241168,8 @@ D3
 S
 #834025
 &+LA &+mNarrow &+LTunnel in the &+mUnderdark&n~
+   Rough steps wind up through the bedrock toward a mist-shrouded cliff
+trail. Damp air drifts down from the surface into this narrow passage.
 ~
 7000 0 29 0
 D0
@@ -241186,6 +241188,11 @@ D3
 ~
 ~
 0 0 834024
+D4
+   A long stair climbs toward a trail above the Chasm of the Misty Vale.
+~
+~
+0 0 15015
 S
 #834026
 &+LA &+mNarrow &+LTunnel in the &+mUnderdark&n~

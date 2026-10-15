@@ -11,4 +11,4 @@
 
 ## 3. Publish
 - [x] 3.1 Update the plan, review scoped diff, and validate OpenSpec strictly.
-- [ ] 3.2 Commit, push, open a focused PR, and verify remote state.
+- [x] 3.2 Commit, push, open a focused PR, and verify remote state (PR #103).
