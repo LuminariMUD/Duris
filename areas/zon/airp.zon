@@ -392,7 +392,7 @@ E 1 131618 1 21 100 0 0 0          *   an earring of rainbows
 E 1 131658 15 25 100 0 0 0         *   a sword of air and lightning
 E 1 131658 15 26 100 0 0 0         *   a sword of air and lightning
 G 1 359 1 0 100 0 0 0              *    (object type not in this .obj file)
-G 1 131616 1 0 100 0 0 0           *    the dagger of Wind
+G 1 24406 1 0 100 0 0 0            *    the sphere of wind
 M 0 131641 8 131796 100 0 0 0      * a GIGANTIC air elemental
 M 0 131607 1 131797 100 0 0 0      * Veri'throck, the Ultraloth
 E 1 131626 1 16 100 0 0 0          *   a black barbed whip

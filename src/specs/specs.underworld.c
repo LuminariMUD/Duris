@@ -490,8 +490,12 @@ int lightning(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 500 sec timer.
-	if ((cmd == CMD_RUB) && OBJ_WORN(obj) && (obj->timer[0] + 500 <= current_time))
+	if (cmd == CMD_RUB && IS_ALIVE(ch) && OBJ_WORN_BY(obj, ch) && isname(arg, obj->name) &&
+	    obj->timer[0] + 500 <= current_time)
 	{
+		if (is_in_safe(ch))
+			return TRUE;
+
 		obj->timer[0] = current_time;
 		act("You rub your $q and begin to whirl around.", FALSE, obj->loc.wearing, obj, 0,
 		    TO_CHAR);
@@ -504,7 +508,7 @@ int lightning(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				continue;
 			}
-			if (IS_TRUSTED(ch) || (ch == vict))
+			if (IS_TRUSTED(ch) || !native_artifact_hostile(ch, vict))
 			{
 				continue;
 			}
@@ -521,8 +525,8 @@ int lightning(P_obj obj, P_char ch, int cmd, char *arg)
 				CharWait(vict, (int)(PULSE_VIOLENCE * 0.7));
 			}
 		}
+		return TRUE;
 	}
-	return FALSE;
 
 	vict = legacy_proc_arg<P_char>(arg);
 	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD) ||
@@ -4458,7 +4462,7 @@ int dagger_of_wind(P_obj /*obj*/, P_char ch, int cmd, char *arg)
 	P_char vict;
 	int room;
 
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch))
+	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || IS_NPC(ch))
 	{
 		return FALSE;
 	}
