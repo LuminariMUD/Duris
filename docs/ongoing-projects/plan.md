@@ -1,10 +1,11 @@
 # Issue #37: zone placement and Underdark connection plan
 
-Status: Outcasts Tower and Arcium in review; Misty Chasm pending.
+Status: all five requests resolved and locally verified; final stacked PR publication in progress.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
-Original branch: `branch/issue-37-zone-placements` (preserved at `cd71ac1e8`).
+Original branch: `branch/issue-37-zone-placements` (existing credits fix preserved).
 Review branch: `branch/issue-37-outcasts-tower`, [PR #103](https://github.com/LuminariMUD/Duris/pull/103).
 Second review branch: `branch/issue-37-arcium`, [PR #104](https://github.com/LuminariMUD/Duris/pull/104), stacked on #103.
+Active work: `branch/issue-37-misty-underdark`, based on Arcium head `0886ce19f`.
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
 ## Implementation handoff, 2026-10-15
@@ -123,6 +124,62 @@ progression. The UD candidate belongs to a large connected tunnel component
 with multiple existing area entrances; it is not selected by matching map
 offsets. Confirm ordinary walking, vision/terrain constraints, and loaded exits
 before editing. Preserve `638825 W <-> 15000 E` on Khomani-Khan.
+
+### Misty Chasm chunk completed
+
+OpenSpec: `openspec/changes/connect-misty-underdark/`. Outcome is a two-way,
+open stair passage `15015 D <-> 834025 U`; no keys, doors, new rooms, reset
+rows, native procs, or special movement are needed. Only the two authored room
+records and descriptions change, in `mist_chasm.wld` and `underdark.wld`.
+Existing surface access, bridge/fall/shaft/pyramid progression, room flags,
+resets, and quests remain intact. No direct native/room-reset/trigger reference
+was found for these endpoints; object/mob 15015 references are separate identities.
+
+The ordinary surface path to 15015 is `638825 W 15000 W 15001 S 15006 S 15007
+W 15008 W 15009 W 15010 N 15011 W 15012 N 15013 N 15014 W 15015`, with reverse
+exits throughout. Its UD continuations are `834025 N <-> 833625 S` and
+`834025 E <-> 834026 W`. An initial test's assumed square walk correctly failed
+at 833626, an existing impassable cavern wall; the test now follows the two
+verified tunnel branches and leaves that terrain intact. The pre-edit mortal
+journey passed before editing, including a reset, both zones' zcheck reports,
+endpoint stats, visible room titles, ordinary tunnel walking, and the return
+forest trail. No flight, swimming, special vision, or movement privilege was
+used. The source regression first rejected the absent `15015 D -> 834025` edge.
+
+The two exits and matching descriptions are implemented. Authored/generated
+contracts pass, including an independently removed UD return edge. `make world`,
+`make -C src -j2`, and all 1,315 falling paths pass. The existing `areas/m_slow`
+pipeline was also captured directly: no missing/ambiguous/error diagnostics,
+and generation completed normally. Logs are under `bin/analysis/issue37/`,
+with `routes-misty-baseline.json`, `world-generator-final.log`, and the successful
+`routes-final`/`full-world-final` acceptance outputs.
+
+Ablation retains prior relocation/reset evidence, rechecks those routes once,
+and repeats the newly affected Misty/UD route and zones through reset/restart.
+There is no reason to repeat unrelated old-site terrain four more times after
+changing only these two rooms. All source/generated route contracts still run.
+The final journey passed boot/reset/restart/reset (515 recorded commands), with
+visible mortal room titles, no special movement or vision, the complete forest
+trail in both directions, and both adjacent UD branches. Zone 150 retains
+0 high/13 low findings and zone 7000 retains 0 high/197 low findings. Their
+normalized reports differ only in the expected entrance list: 15015 added to
+zone 150, and one extra entrance (834025, inspected directly) to zone 7000.
+All other reports are unchanged; earlier relocation and accepted no-change
+routes passed again. The full-world restart test also passed with the final data.
+
+Final scope audit against `origin/master` (`34f3d8a62`): exactly 21 existing room
+records changed across five authored world files. No room IDs were added or
+removed. All native source, AREA selection, zone/reset/mob/object/quest/trigger
+files, Homestead, Turolopolis ruins, and Zoo match master byte-for-byte. No
+generated world, binary, log, credential, or player/account data is committed.
+
+All implementation is complete. Remaining actions in this session are publication
+and readback: open the final PR stacked on #104, update #37 and the completed
+checklist below, and verify clean local/remote parity. Then synchronize the
+completed task files back to the original branch while preserving its credits
+fix. Review order is tower (#103), Arcium (#104), then Misty Chasm. Leave the
+PRs/issue open and OpenSpec changes unarchived for review; do not deploy or merge
+into master. No release tag is appropriate for this content-review checkpoint.
 
 ## Decisions from the owner discussion, 2026-10-15
 
