@@ -54,6 +54,7 @@ extern P_room world;
 extern struct zone_data *zone_table;
 extern P_index mob_index;
 extern const char *dirs[];
+extern const char *planes_name[];
 // extern int rev_dir[];
 extern P_char character_list;
 extern struct time_info_data time_info;
@@ -2299,6 +2300,9 @@ void do_flurry(P_char ch, char * /*arg*/, int /*cmd*/)
 
 void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 {
+	char plane[MAX_INPUT_LENGTH];
+	int plane_id;
+
 	if (IS_FIGHTING(ch))
 	{
 		send_to_char("You're too busy fighting!\n", ch);
@@ -2316,6 +2320,17 @@ void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 	{
 		send_to_char("There is too much adrenaline pumping through your body to do that.\n",
 			     ch);
+		return;
+	}
+
+	// Reject a bad plane name before check_innate_time() spends the use.
+	one_argument(arg, plane);
+	plane_id = search_block(plane, planes_name, FALSE);
+	if (plane_id < 0 || plane_id > 8)
+	{
+		send_to_char(
+			"You may only travel to the Prime, Negative, Hell, Ethereal, Astral, Earth, Fire, Water or Air planes!\r\n",
+			ch);
 		return;
 	}
 
@@ -3509,7 +3524,21 @@ void do_innate(P_char ch, char *arg, int cmd)
 	{
 		if (innates_data[i].func)
 		{
-			(innates_data[i].func)(ch, innate_args, CMD_INNATE);
+			const char *name = innates_data[i].name;
+			size_t len = strlen(name);
+			char *rest = arg ? skip_spaces(arg) : NULL;
+
+			// For "innate plane shift air", innate_args holds "shift", so pass
+			// everything after the full multi-word name instead.
+			if (rest && strchr(name, ' ') && !strn_cmp(rest, name, len) &&
+			    (rest[len] == ' ' || rest[len] == '\0'))
+			{
+				(innates_data[i].func)(ch, skip_spaces(rest + len), CMD_INNATE);
+			}
+			else
+			{
+				(innates_data[i].func)(ch, innate_args, CMD_INNATE);
+			}
 		}
 		else
 		{
