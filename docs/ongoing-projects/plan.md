@@ -1,11 +1,11 @@
 # Issue #37: zone placement and Underdark connection plan
 
-Status: all five requests resolved, locally verified, and published in three PRs ready for review.
+Status: all five requests resolved and locally verified; owner accepted the three-PR stack for merge.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
 Original branch: `branch/issue-37-zone-placements` (existing credits fix preserved).
-Review branch: `branch/issue-37-outcasts-tower`, [PR #103](https://github.com/LuminariMUD/Duris/pull/103).
-Second review branch: `branch/issue-37-arcium`, [PR #104](https://github.com/LuminariMUD/Duris/pull/104), stacked on #103.
-Final review branch: `branch/issue-37-misty-underdark`, [PR #105](https://github.com/LuminariMUD/Duris/pull/105), stacked on #104.
+Tower: [PR #103](https://github.com/LuminariMUD/Duris/pull/103), squash `31de38db9`.
+Arcium: [PR #104](https://github.com/LuminariMUD/Duris/pull/104), squash `dbb48c013`.
+Misty and final closeout: [PR #105](https://github.com/LuminariMUD/Duris/pull/105).
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
 ## Implementation handoff, 2026-10-15
@@ -15,10 +15,9 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
   branch history; the pre-existing credits color fix is preserved.
 - `.env` identifies this checkout as local. All acceptance servers use disposable
   flat-file authority and loopback ports; no production operations are authorized.
-- Using OpenSpec `spec-driven` changes, starting with
-  `openspec/changes/return-outcasts-tower/`. Subsequent focused PR chunks will
-  relocate Arcium and connect Misty Chasm, stacked if their test/plan work depends
-  on earlier chunks. Leave the issue and PRs open for review.
+- Used three OpenSpec `spec-driven` changes for tower, Arcium, and Misty Chasm.
+  They are now archived under `openspec/changes/archive/2026-10-15-*`, with the
+  final requirements maintained in `openspec/specs/`.
 - Ablation: outcome is the three approved route changes plus explicit preservation
   of Homestead and Turolopolis. Non-goals remain engine changes, new tooling,
   production rollout, and #65. Files are the affected authored `.wld` sources,
@@ -73,7 +72,7 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
 - Tower implementation is published for review as PR #103, implementation commit
   `594a3151e`. Its source/test/spec/plan files exactly match the tested original
   branch checkpoint `cd71ac1e8`; only the unrelated credits fix is excluded.
-  No tag is needed for this content PR. No merge or deployment was performed.
+  No tag was needed at that review checkpoint. Production deployment remains separate.
 - Arcium continues on `branch/issue-37-arcium` from the tower PR. Selected
   footprint 516443 (43,41), east
   approach 516444 (44,41), south approach 516843 (43,42). These are unoccupied
@@ -82,7 +81,7 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
 
 ### Arcium chunk completed
 
-OpenSpec: `openspec/changes/relocate-arcium/`. Keep the two-entrance shape:
+OpenSpec: `openspec/changes/archive/2026-10-15-relocate-arcium/`. Keep the two-entrance shape:
 `516444 W <-> 85700 E` and `516843 N <-> 85700 S`; remove both old UC pairs at
 591773/592172. Marker 516443 must have no ordinary incoming map edges; remove
 the northern/western incoming edges from 516043/516442. Restore old footprint
@@ -127,7 +126,7 @@ before editing. Preserve `638825 W <-> 15000 E` on Khomani-Khan.
 
 ### Misty Chasm chunk completed
 
-OpenSpec: `openspec/changes/connect-misty-underdark/`. Outcome is a two-way,
+OpenSpec: `openspec/changes/archive/2026-10-15-connect-misty-underdark/`. Outcome is a two-way,
 open stair passage `15015 D <-> 834025 U`; no keys, doors, new rooms, reset
 rows, native procs, or special movement are needed. Only the two authored room
 records and descriptions change, in `mist_chasm.wld` and `underdark.wld`.
@@ -173,17 +172,20 @@ removed. All native source, AREA selection, zone/reset/mob/object/quest/trigger
 files, Homestead, Turolopolis ruins, and Zoo match master byte-for-byte. No
 generated world, binary, log, credential, or player/account data is committed.
 
-All implementation is complete. Misty Chasm is published as PR #105, implementation
-commit `e089b0751`, stacked on #104. Issue #37 now records all five outcomes,
-exact endpoints, evidence, and links, with all request/completion boxes checked;
-it remains open for review. All three PRs are open, non-draft, and have the
-expected base/head refs and verified remote commit equality. The original branch
-is retained as the integration branch, including its pre-existing credits fix;
-the focused PRs exclude that unrelated change.
+All implementation is complete. The owner authorized merging the stack on
+2026-10-15. It lands in tower (#103), Arcium (#104), then Misty Chasm (#105)
+order through squash merges, as required by master's linear-history rule.
+Each dependent branch is rebased onto the preceding squash without changing
+its verified content. Fresh source contracts pass; the unchanged world content
+retains the recorded build, generation, gameplay, reset, and restart evidence.
+Each landed tree and its single expected parent are checked against the PR head.
 
-Next action is review, in order tower (#103), Arcium (#104), then Misty Chasm. Leave the
-PRs/issue open and OpenSpec changes unarchived for review; do not deploy or merge
-into master. No release tag is appropriate for this content-review checkpoint.
+Issue #37 records all five outcomes and completed acceptance checks; close it
+after verifying the final merge. The three OpenSpec changes are archived and
+their canonical specifications validate strictly. There is no remaining
+implementation work. Production deployment remains a separate operation.
+The original integration branch retains its existing credits fix, which is
+excluded from these focused PRs. No release tag is appropriate for this content work.
 
 ## Decisions from the owner discussion, 2026-10-15
 
