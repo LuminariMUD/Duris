@@ -6,7 +6,13 @@ from pathlib import Path
 from test_falling_world_exits import read_rooms
 
 ROOT = Path(__file__).resolve().parents[2]
-FILES = ('surface', 'otower', 'underworld3', 'arcium', 'elvish', 'willem', 'turolzoo')
+FILES = ('surface', 'otower', 'underworld3', 'arcium', 'elvish', 'willem', 'turolzoo',
+         'mist_chasm', 'underdark')
+REVERSE = (2, 3, 0, 1, 5, 4)
+# Independent acceptance path from the retained surface approach to the cliff trail.
+MISTY_TRAIL = ((3, 15000), (3, 15001), (2, 15006), (2, 15007),
+               (3, 15008), (3, 15009), (3, 15010), (0, 15011),
+               (3, 15012), (0, 15013), (0, 15014), (3, 15015))
 
 
 def load_rooms(areas, generated=False):
@@ -33,6 +39,17 @@ def check_routes(rooms):
     pair(11348, 0, 30172, 2)
     pair(516444, 3, 85700, 1)
     pair(516843, 0, 85700, 2)
+    pair(15015, 5, 834025, 4)
+    current = 638825
+    for direction, target in MISTY_TRAIL:
+        pair(current, direction, target, REVERSE[direction])
+        assert rooms[target][0] in (2, 3, 4) and rooms[target][1] == 0, target
+        current = target
+    pair(15015, 2, 15016, 0)
+    for start, direction, target, reverse in ((834025, 0, 833625, 2),
+                                             (834025, 1, 834026, 3)):
+        pair(start, direction, target, reverse)
+        assert rooms[target][:2] == (29, 0), target
     # Restore the vacated footprint as hills with all reciprocal grid neighbors.
     assert rooms[615849][:2] == (4, 0), rooms[615849]
     for direction, neighbor, reverse in ((0, 615449, 2), (1, 615850, 3),
@@ -64,7 +81,7 @@ if __name__ == '__main__':
     rooms = load_rooms(args.areas, args.generated)
     check_routes(rooms)
     # Disposable in-memory fixture proves the return edge is an independent gate.
-    for room, direction in ((11300, 2), (85700, 1), (85700, 2)):
+    for room, direction in ((11300, 2), (85700, 1), (85700, 2), (834025, 4)):
         original = rooms[room]
         sector, fall, exits = original
         rooms[room] = (sector, fall, {d: v for d, v in exits.items() if d != direction})
