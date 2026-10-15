@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Selected weapon procs against the real item runtime and scheduler, ASan/UBSan.
 
-Compile the actual Avernus/packed/random callbacks, not copies of their routing.
+Compile the actual Avernus/packed/random/wind callbacks, not copies of their routing.
 Only world presentation, permission, RNG and effect endpoints are doubled here.
 Artifact persistence has its own game/worker/repository tests; this fixture uses
 the real resource arithmetic at the debit boundary and checks its call ordering.
@@ -37,6 +37,7 @@ def function(path, signature):
 platform = literal(ROOT / "tests/async/test_nevent_scheduler_runtime.py", "HARNESS")
 platform = platform.split("struct record_payload\n", 1)[0]
 platform = platform.replace("DEFINE_LABEL_CALLBACK(event_item_action_active)", "")
+platform = platform.replace("test_world[1]", "test_world[2]").replace("top_of_world = 0", "top_of_world = 1")
 fixture = literal(ROOT / "tests/async/test_item_actions_runtime.py", "HARNESS")
 fixture = fixture.replace("int main() {", "void foundation_regression_main() {")
 fixture = fixture.replace("// INSERT_PRODUCTION_ABORT",
@@ -46,6 +47,12 @@ callbacks = "\n".join([
     function(ROOT / "src/specs/specs.underworld.c", "int avernus("),
     function(ROOT / "src/combat/fight.c", "bool weapon_proc("),
     function(ROOT / "src/item/random_equipment.c", "int random_eq_proc("),
+    function(ROOT / "src/cmd/actoff.c", "bool is_in_safe("),
+    function(ROOT / "src/item/native_artifact_actions.c", "bool native_artifact_hostile("),
+    function(ROOT / "src/specs/specs.underworld.c", "int lightning("),
+    function(ROOT / "src/specs/specs.underworld.c", "int dagger_of_wind("),
+    function(ROOT / "src/mob/mobact.c", "int empty_slot_for_weapon(P_char ch)\n"),
+    function(ROOT / "src/mob/mobact.c", "void try_wield_weapon(P_char ch)\n"),
 ])
 
 DOUBLES = r'''
@@ -70,6 +77,9 @@ static std::vector<effect_call> effects;
 static bool can_fight = true, storage_ready = true;
 static int stone_calls = 0, hum_calls = 0, debit_calls = 0, mutation = 0;
 static int affected_spell = 0;
+static P_char protected_player = nullptr;
+static zone_data test_zones[1]{};
+zone_data *zone_table = test_zones;
 static artifact_mana_profile mana_profile;
 static std::map<uint64_t, artifact_mana_record> reserves;
 static std::map<uint64_t, uint64_t> tokens;
@@ -95,6 +105,15 @@ bool isname(const char *a, const char *b) { return a && b && !strcmp(a, b); }
 bool affected_by_spell(P_char, int spell) { return spell == affected_spell; }
 int is_char_in_room(const P_char ch, int room) { return ch && ch->in_room == room; }
 void hummer(P_obj) { ++hum_calls; }
+bool should_not_kill(P_char, P_char target) { return target == protected_player; }
+int GET_ALT_SIZE(P_char target) { return target->player.size; }
+void stop_fighting(P_char target) { GET_OPPONENT(target) = nullptr; }
+int wear(P_char actor, P_obj source, int slot, bool) {
+    assert(slot == 12 && !actor->equipment[WIELD]);
+    actor->carrying = source->next_content; source->next_content = nullptr;
+    actor->equipment[WIELD] = source; source->loc_p = LOC_WORN; source->loc.wearing = actor;
+    return 1;
+}
 void spell_stone_skin(int, P_char, char *, int, P_char, P_obj) { ++stone_calls; }
 int vamp(P_char ch, double amount, double cap) {
     effects.push_back({-1, static_cast<int>(amount), static_cast<int>(cap), ch->runtime_id, 0});
@@ -108,6 +127,16 @@ void spell_endpoint(int id, int power, int type, P_char target) {
     effects.push_back({id, power, type, target->runtime_id, 0});
     if (mutation == 1) depart(target);
     if (mutation == 2) remove_character(target);
+    if (mutation == 3) SET_POS(target, STAT_DEAD);
+}
+void spell_cyclone(int power, P_char, char *, int type, P_char target, P_obj) {
+    spell_endpoint(SPELL_CYCLONE, power, type, target);
+}
+void spell_lightning_bolt(int power, P_char, char *, int type, P_char target, P_obj) {
+    spell_endpoint(SPELL_LIGHTNING_BOLT, power, type, target);
+}
+void spell_deflect(int power, P_char, char *, int type, P_char target, P_obj) {
+    spell_endpoint(SPELL_DEFLECT, power, type, target);
 }
 void spell_one(int power, P_char, char *, int type, P_char target, P_obj) {
     spell_endpoint(1, power, type, target);
@@ -363,11 +392,112 @@ static void suppression_measurement() {
     advance(8); assert(effects.size() == 2);
 }
 
+struct wind_scene : weapon_scene {
+    explicit wind_scene(bool dagger = false) {
+        obj_index[0].virtual_number = dagger ? 131616 : 24406;
+        obj_index[0].func.obj = dagger ? dagger_of_wind : lightning;
+        source->type = ITEM_WEAPON; source->extra_flags = ITEM_ARTIFACT;
+        actor->in_room = target->in_room = 1;
+        world[1] = {}; world[1].people = actor; actor->next_in_room = target;
+        GET_OPPONENT(actor) = target; GET_OPPONENT(target) = actor;
+        protected_player = nullptr; test_zones[0] = {}; unrelated_wait_changes = 0;
+        wall_time = 1000; target->player.size = SIZE_MEDIUM;
+    }
+    ~wind_scene() { world[1].people = nullptr; }
+    int rub() { char argument[] = "sphere"; return lightning(source, actor, CMD_RUB, argument); }
+};
+
+static void wind_artifact_cases() {
+    // Real weapon dispatch reaches the sphere callback on exactly one of 16 rolls.
+    for (int roll = 0; roll < 16; ++roll) {
+        wind_scene s;
+        assert(s.hit(roll) == (roll == 0));
+        assert((rolls == std::vector<std::pair<int,int>>{{0,15}}));
+        assert(effects.size() == (roll ? 0 : 4));
+        for (size_t i = 0; i < effects.size(); ++i)
+            assert((effects[i] == effect_call{i ? SPELL_LIGHTNING_BOLT : SPELL_CYCLONE,
+                60, SPELL_TYPE_SPELL, s.target->runtime_id, 0}));
+        assert(choices.empty());
+    }
+    { wind_scene s; mutation = 3; assert(s.hit()); assert(effects.size() == 1); }
+    for (int invalid = 0; invalid < 4; ++invalid) {
+        wind_scene s;
+        if (invalid == 0) { s.actor->equipment[WIELD] = nullptr; s.actor->equipment[HOLD] = s.source; }
+        if (invalid == 1) s.source->loc.wearing = s.target;
+        if (invalid == 2) SET_POS(s.actor, STAT_DEAD);
+        if (invalid == 3) SET_POS(s.target, STAT_DEAD);
+        assert(!weapon_proc(s.source, s.actor, s.target) && rolls.empty() && effects.empty());
+    }
+    { wind_scene s;
+      assert(lightning(s.source, nullptr, CMD_SET_PERIODIC, nullptr));
+      assert(lightning(s.source, nullptr, CMD_PERIODIC, nullptr)); assert(hum_calls == 1);
+      assert(!lightning(s.source, s.actor, CMD_LOOK, nullptr)); assert(rolls.empty()); }
+
+    // Both room and zone safety reject the rub before cooldown, messages or effects.
+    for (bool zone : {false, true}) {
+        wind_scene s;
+        if (zone) test_zones[0].flags = ZONE_SAFE; else world[1].room_flags = ROOM_SAFE;
+        assert(s.rub());
+        assert(!s.source->timer[0] && rolls.empty() && !unrelated_wait_changes);
+        assert(GET_POS(s.target) == POS_STANDING && GET_OPPONENT(s.target) == s.actor);
+        assert(messages.size() == 1 && messages[0].audience == -1); // Safety explanation only.
+    }
+    // The existing hostile-target policy excludes protected players and ineligible attacks.
+    for (int denied = 0; denied < 7; ++denied) {
+        wind_scene s; group_list group{};
+        if (denied == 0) s.actor->group = s.target->group = &group;
+        if (denied == 1) protected_player = s.target;
+        if (denied == 2) can_fight = false;
+        if (denied == 3) s.actor->specials.affected_by5 = AFF5_NOT_OFFENSIVE;
+        if (denied == 4) affected_spell = SONG_PEACE;
+        if (denied == 5) affected_spell = SKILL_GAZE;
+        if (denied == 6) SET_POS(s.target, STAT_DEAD);
+        const auto position = s.target->specials.position;
+        assert(s.rub());
+        assert(rolls.empty() && !unrelated_wait_changes && effects.empty());
+        assert(s.target->specials.position == position && GET_OPPONENT(s.target) == s.actor);
+        assert(GET_POS(s.actor) == POS_STANDING && GET_OPPONENT(s.actor) == s.target);
+        s.actor->group = s.target->group = nullptr;
+    }
+    { wind_scene s; choices = {SIZE_GARGANTUAN + 2};
+      assert(s.rub() && s.source->timer[0] == wall_time);
+      assert(GET_POS(s.target) == POS_PRONE && !GET_OPPONENT(s.target) && unrelated_wait_changes == 1);
+      assert(GET_OPPONENT(s.actor) == s.target && GET_POS(s.actor) == POS_STANDING);
+      assert(choices.empty()); const auto calls = rolls.size();
+      wall_time += 499; assert(!s.rub() && rolls.size() == calls);
+      wall_time += 1; choices = {0}; assert(s.rub() && choices.empty()); }
+    { wind_scene s; s.source->loc.wearing = s.target;
+      assert(!s.rub() && !s.source->timer[0] && rolls.empty()); }
+
+    // Reproduce the reset carrier's inventory -> auto-wield -> melee callback path.
+    { wind_scene s(true); SET_BIT(s.actor->specials.act, ACT_ISNPC);
+      s.actor->equipment[WIELD] = nullptr; s.actor->carrying = s.source;
+      s.source->loc_p = LOC_CARRIED; s.source->loc.carrying = s.actor;
+      try_wield_weapon(s.actor); assert(OBJ_WORN_POS(s.source, WIELD));
+      for (int hit = 0; hit < 30; ++hit) assert(!weapon_proc(s.source, s.actor, s.target));
+      assert(GET_OPPONENT(s.actor) == s.target && GET_OPPONENT(s.target) == s.actor);
+      assert(rolls.empty() && effects.empty() && messages.empty()); }
+    // Players retain the 1/15 escape and its optional 1/4 self-deflection.
+    for (int roll = 0; roll < 15; ++roll) {
+        wind_scene s(true); choices = {roll}; if (!roll) choices.push_back(0);
+        assert(weapon_proc(s.source, s.actor, s.target) == (roll == 0));
+        assert(choices.empty() && rolls[0] == std::make_pair(0, 14));
+        assert((GET_OPPONENT(s.actor) == nullptr) == (roll == 0));
+        assert((GET_OPPONENT(s.target) == nullptr) == (roll == 0));
+        assert(effects.size() == (roll ? 0 : 1));
+        if (!roll) assert((effects[0] == effect_call{SPELL_DEFLECT, 60, SPELL_TYPE_SPELL, s.actor->runtime_id, 0}));
+    }
+    { wind_scene s(true); choices = {0, 3}; assert(weapon_proc(s.source, s.actor, s.target));
+      assert(effects.empty() && choices.empty()); }
+}
+
 int main() {
     nevent_bind_game_thread(); ne_dead_event_pool = &test_pool;
     fake_clock_ns = 1000000000ULL; ne_events();
     avernus_parity(); cancellation_and_payment(); packed_parity(); random_parity(); suppression_measurement();
+    wind_artifact_cases();
     std::puts("Weapon actions: real selection callbacks, parity, payment, targets, cancellation and timing passed");
+    std::puts("Wind artifacts: sphere melee/whirlwind policy and cooldown, NPC auto-wield and player escape passed");
 }
 '''
 
@@ -392,3 +522,18 @@ backstab = function(ROOT / "src/cmd/actoff.c", "bool single_stab(")
 assert "obj_index[weapon->R_num].func.obj" in backstab and "CMD_MELEE_HIT" in backstab
 assert "weapon_proc(" not in "\n".join(line.split("//", 1)[0] for line in backstab.splitlines())
 print("Backstab retains the direct callback route covered by the Avernus pilot")
+
+for area, boss, room, reward, previous in (
+    ("plane_air_one", 24440, 24450, 131616, 24406),
+    ("airp", 131648, 131792, 24406, 131616),
+):
+    holder = None
+    rewards = []
+    for line in (ROOT / f"areas/zon/{area}.zon").read_text().splitlines():
+        fields = line.split("*", 1)[0].split()
+        if fields and fields[0] == "M":
+            holder = (int(fields[2]), int(fields[4]))
+        elif fields and fields[0] == "G" and int(fields[2]) in (reward, previous):
+            rewards.append((holder, fields))
+    assert rewards == [((boss, room), ["G", "1", str(reward), "1", "0", "100", "0", "0", "0"])]
+print("Wind artifact resets: dagger on Yan-C-Bin, sphere on Akadi, limits/chances preserved")
