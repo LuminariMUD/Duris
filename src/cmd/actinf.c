@@ -10044,21 +10044,20 @@ void do_recall(P_char ch, char *argument, int /*cmd*/)
 
 namespace
 {
-	void unmulti_committed(P_char ch, bool committed, const epic_command_result &, unsigned int,
-			       const uint8_t *, size_t)
+void unmulti_committed(P_char ch, bool committed, const epic_command_result &, unsigned int,
+		       const uint8_t *, size_t)
+{
+	if (!committed)
 	{
-		if (!committed)
-		{
-			send_to_char("Your meditation fails to consume the required epic points.\n",
-				     ch);
-			return;
-		}
-		ch->player.secondary_class = 0;
-		ch->player.spec = 0;
-		forget_spells(ch, -1);
-		update_skills(ch);
-		send_to_char("Your recent knowledge falls away and your old ways return.\n", ch);
+		send_to_char("Your meditation fails to consume the required epic points.\n", ch);
+		return;
 	}
+	ch->player.secondary_class = 0;
+	ch->player.spec = 0;
+	forget_spells(ch, -1);
+	update_skills(ch);
+	send_to_char("Your recent knowledge falls away and your old ways return.\n", ch);
+}
 } // namespace
 
 void unmulti(P_char ch, P_obj obj)
