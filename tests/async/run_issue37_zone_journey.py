@@ -100,15 +100,16 @@ def run(binary, baseline, evidence_path):
                                                  'response': report})
                     assert 'please tog page' not in report, report
                     cmd(god, 'toggle paging no')
-                for room in (546861, 543661, 616249, 615849, 546461):
+                for room in (546861, 543661, 616249, 615849, 546461,
+                             516444, 516843, 517246, 591773, 592172):
                     response = inspect(room)
-                    if room in (546861, 543661):
+                    if room in (546861, 543661, 516444, 516843, 517246):
                         assert 'Good Continent' in response, response
                     view = cmd(god, 'map 9')
                     assert 'Invalid map size' not in view and 'not a map room' not in view, view
                 # Teleport only establishes a starting point. Every edge is walked
                 # by the level-one player, with no room flags or doors altered.
-                entrance = 616249 if baseline else 546861
+                entrance = 546861
                 visit(entrance)
                 walk('north', 11300)
                 walk('south', entrance)
@@ -123,6 +124,13 @@ def run(binary, baseline, evidence_path):
                 ):
                     visit(start)
                     walk(direction, target)
+                    walk(reverse, start)
+                for start, direction, reverse in (
+                    (591773 if baseline else 516444, 'west', 'east'),
+                    (592172 if baseline else 516843, 'north', 'south'),
+                ):
+                    visit(start)
+                    walk(direction, 85700)
                     walk(reverse, start)
                 if not baseline:
                     for neighbor, inward, outward in (
@@ -141,6 +149,24 @@ def run(binary, baseline, evidence_path):
                         ('east', 546862), ('north', 546462), ('north', 546062),
                         ('west', 546061), ('west', 546060), ('south', 546460),
                         ('south', 546860), ('east', 546861),
+                    ):
+                        walk(direction, target)
+                    for neighbor, inward, outward in (
+                        (591773, 'west', 'east'), (592172, 'north', 'south'),
+                    ):
+                        visit(neighbor)
+                        walk(inward, 591772)
+                        walk(outward, neighbor)
+                    visit(591772)
+                    for direction in ('north', 'west'):
+                        response = cmd(player, direction)
+                        assert 'mountains are too treacherous' in response, response
+                        assert location() == 591772
+                    visit(516444)
+                    for direction, target in (
+                        ('south', 516844), ('west', 516843), ('west', 516842),
+                        ('north', 516442), ('south', 516842), ('east', 516843),
+                        ('east', 516844), ('north', 516444),
                     ):
                         walk(direction, target)
 
