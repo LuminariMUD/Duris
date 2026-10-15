@@ -16850,8 +16850,10 @@ followed when petitioning:
 so they can come back to it later when they have time.
 When the optional Discord petition feed is enabled, accepted petitions and
 staff ptell replies may also appear in a staff-only Discord channel, even when
-no gods are online. Discord posts cannot reply into the game. Native petition
-recipients, toggles, and logs remain unchanged; the feed is best effort.
+no gods are online. The feed always identifies the petitioner and both reply
+participants by their character names, including when hidden or invisible.
+Discord posts cannot reply into the game. Native petition recipients, toggles,
+and logs remain unchanged; the feed is best effort.
 ==See also==
 gods, togglepetition, website, forums, bug, idea, typo, tell
 The following help topics also matched your search:
