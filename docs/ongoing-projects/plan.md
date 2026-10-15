@@ -2,7 +2,8 @@
 
 Status: Outcasts Tower implemented and locally verified; Arcium and Misty Chasm pending.
 Tracking: [#37 — Complete the workbook's zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
-Working branch: `branch/issue-37-zone-placements`.
+Original branch: `branch/issue-37-zone-placements` (preserved at `cd71ac1e8`).
+Review branch: `branch/issue-37-outcasts-tower`, [PR #103](https://github.com/LuminariMUD/Duris/pull/103).
 Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspected 2026-10-15.
 
 ## Implementation handoff, 2026-10-15
@@ -42,8 +43,8 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
   rejects ordinary walking. Preserve that barrier and test its rejection; verify
   east/west/south approaches by walking. The corrected journey passed. Evidence is under
   `bin/analysis/issue37/`, especially `routes-baseline.json` and `routes-tower.json`.
-- Git publication will preserve the existing credits commit on the requested
-  branch and copy only the three planning commits plus this implementation onto
+- Git publication preserved the existing credits commit on the requested
+  branch and copied only the three planning commits plus this implementation onto
   `branch/issue-37-outcasts-tower` from current master. That PR excludes the
   unrelated credits change; later chunks will stack on its head without rewriting
   the original branch.
@@ -67,8 +68,16 @@ Source baseline: `0882c71c0228efd3608087660a7c9aa84df91327` (`master`), inspecte
   `DURIS_REGRESSION_BUILD_CACHE=bin/tests/issue37-cache python3 tests/async/test_flatfile_full_world_boot.py`.
   Route acceptance: `DURIS_REGRESSION_BUILD_CACHE=bin/tests/issue37-cache python3 tests/async/run_issue37_zone_journey.py --evidence bin/analysis/issue37/routes-tower.json`.
   OpenSpec: `openspec validate --all --strict`. All passed.
-- Next: commit/push the verified tower chunk and publish its focused PR; then
-  select and validate Arcium's exact endpoints before editing its sources.
+- Tower implementation is published for review as PR #103, implementation commit
+  `594a3151e`. Its source/test/spec/plan files exactly match the tested original
+  branch checkpoint `cd71ac1e8`; only the unrelated credits fix is excluded.
+  No tag is needed for this content PR. No merge or deployment was performed.
+- Next: create `branch/issue-37-arcium` from the tower PR, record/validate a free
+  GC site northwest of Evermeet, implement both relocated entrance pairs, and
+  publish a stacked PR. Source-only candidate: footprint 516443 (43,41), east
+  approach 516444 (44,41), south approach 516843 (43,42). These are unoccupied
+  hills/field, northwest of the active Evermeet approach 517246 (46,43), and do
+  not use Homestead's footprint or entrances. Loaded validation remains required.
 
 ## Decisions from the owner discussion, 2026-10-15
 
