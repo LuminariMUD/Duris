@@ -11,4 +11,4 @@
 
 ## 3. Publish
 - [x] 3.1 Update the plan, inspect the diff, and validate OpenSpec.
-- [ ] 3.2 Commit/push and open a focused PR stacked on #103; verify publication.
+- [x] 3.2 Commit/push and open a focused PR stacked on #103; verify publication (PR #104).
