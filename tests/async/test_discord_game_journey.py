@@ -176,7 +176,7 @@ def run(binary, driver):
             received = clients[0].expect(text)
             assert ("Someone" if hidden else STAFF) + " responds to your petition" in received
             if exported:
-                expected.append(f"{'Someone' if hidden else STAFF} -> {PLAYER}: {text}")
+                expected.append(f"{STAFF} -> {PLAYER}: {text}")
                 sink.expect_posts(expected)
 
         try:
@@ -203,6 +203,9 @@ def run(binary, driver):
             reply("GAME-REPLY $1 $$n")
             command(clients[1], "vis 61", "You are now visible only to PCs with level > 61.")
             reply("CONCEALED-REPLY", hidden=True)
+            command(clients[1], "petition CONCEALED-STAFF-PETITION", "CONCEALED-STAFF-PETITION")
+            expected.append(f"{STAFF}: CONCEALED-STAFF-PETITION")
+            sink.expect_posts(expected)
             command(clients[1], "vis 0", "You are now visible only to PCs with level > 0.")
             command(clients[0], "toggle echo no", "You turn off Echoing.")
             petition("ECHO-OFF-PETITION", echo=False)

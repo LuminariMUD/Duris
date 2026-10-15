@@ -16,9 +16,9 @@ The Discord destination must be visible only to the intended staff and bot.
 Discord posts never become game replies. The feed is optional and best effort;
 native petition logs remain the audit record.
 The cross-repository plan is
-[`discord-mud-chat/docs/ongoing-projects/duris-petition-compatibility.md`](https://github.com/LuminariMUD/discord-mud-chat/blob/codex/duris-game-acceptance/docs/ongoing-projects/duris-petition-compatibility.md).
+[`discord-mud-chat/docs/ongoing-projects/duris-petition-compatibility.md`](https://github.com/LuminariMUD/discord-mud-chat/blob/main/docs/ongoing-projects/duris-petition-compatibility.md).
 
-## Text and concealed identities
+## Text and staff audit identities
 
 The two accepted-command hooks call `discord_petition_export`, which uses native
 `AnsiString`/UTF-8 conversion and strips terminal escape sequences (CSI, OSC,
@@ -33,15 +33,13 @@ Input names are bounded by `MAX_NAME_LENGTH + 1`; messages by
 three bytes per source byte, then cJSON escapes the whole record. Overlong
 inputs or records exceeding the configured byte limit are dropped whole.
 
-Discord membership has no in-game visibility level. Conservatively replace a
-sender or reply target with `Someone` when the character has trusted wizard
-invisibility above zero, `AFF_INVISIBLE`, `AFF_HIDE`, `AFF_WRAITHFORM`,
-`AFF2_CONCEALMENT`, or `AFF3_ECTOPLASMIC_FORM`. These are target concealment
-predicates from `ac_can_see`/`WIZ_INVIS`; no synthetic observer or maximum staff
-privilege is assumed. Non-trusted reply senders (including staff using mortal
-fog) are also `Someone`, consistent with native player-facing reply output.
-Ordinary non-concealed names remain visible. Native per-recipient visibility
-and GMCP behavior are unchanged.
+The staff-only Discord feed always identifies petitioners, reply senders, and
+reply targets by `GET_NAME(character)`, after the same bounded text conversion.
+Wizard invisibility, invisibility, hiding, wraithform, concealment, ectoplasmic
+form, and mortal fog do not redact names in this audit feed. This policy applies
+to ordinary players and staff alike. Discord permissions restrict the audience.
+Native per-recipient visibility and GMCP behavior are unchanged: an in-game
+player may still see a concealed staff reply as `Someone`.
 
 ## Settings and local use
 

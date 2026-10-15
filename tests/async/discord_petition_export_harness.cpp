@@ -221,7 +221,8 @@ static void accepted(int peer)
 			assert(delivered.front().text.find(echo ? "You petition" : "Ok.") !=
 			       std::string::npos);
 			assert(std::count_if(delivered.begin(), delivered.end(),
-					     [](auto &d) {
+					     [](auto &d)
+					     {
 						     return d.kind == "act" &&
 							    d.text.find("$$n") != std::string::npos;
 					     }) == staff_count);
@@ -315,35 +316,61 @@ static void rejected(int peer)
 
 static void concealment(int peer)
 {
+	// Every concealment effect must retain ordinary and staff petitioner names,
+	// and both identities in an accepted reply, including when both are hidden.
+	for (auto conceal :
+	     std::vector<std::function<void(player &)>>{
+		     [](player &p) { p.ch.specials.affected_by = AFF_INVISIBLE; },
+		     [](player &p) { p.ch.specials.affected_by = AFF_HIDE; },
+		     [](player &p) { p.ch.specials.affected_by = AFF_WRAITHFORM; },
+		     [](player &p) { p.ch.specials.affected_by2 = AFF2_CONCEALMENT; },
+		     [](player &p) { p.ch.specials.affected_by3 = AFF3_ECTOPLASMIC_FORM; } })
+	{
+		for (int level : { 10, 64 })
+		{
+			player petitioner("Petitioner", level), staff("Staff", 64);
+			recipients({ &petitioner, &staff });
+			conceal(petitioner);
+			invoke(do_petition, petitioner, "Hidden petition");
+			event(peer, "Petitioner", "Hidden petition");
+			assert(audit.size() == 1 &&
+			       audit[0].find("(Petitioner) petitioned") != std::string::npos);
+		}
+		for (int hidden : { 1, 2, 3 })
+		{
+			player staff("Staff", 64), target("Player");
+			recipients({ &target, &staff });
+			if (hidden & 1)
+				conceal(staff);
+			if (hidden & 2)
+				conceal(target);
+			invoke(do_ptell, staff, "Player Hidden reply");
+			event(peer, "Staff -> Player", "Hidden reply");
+		}
+	}
 	player staff("Staff", 64), target("Player");
 	recipients({ &target, &staff });
-	for (auto conceal :
-	     std::vector<std::function<void()>>{
-		     [&] { staff.pc.wiz_invis = 1; }, [&] { staff.pc.wiz_invis = 64; },
-		     [&] { staff.ch.specials.affected_by = AFF_INVISIBLE; },
-		     [&] { staff.ch.specials.affected_by = AFF_HIDE; },
-		     [&] { staff.ch.specials.affected_by = AFF_WRAITHFORM; },
-		     [&] { staff.ch.specials.affected_by2 = AFF2_CONCEALMENT; },
-		     [&] { staff.ch.specials.affected_by3 = AFF3_ECTOPLASMIC_FORM; } })
+	for (int invisibility : { 1, 64 })
 	{
-		conceal();
-		invoke(do_ptell, staff, "Player Hidden reply");
-		event(peer, "Someone -> Player", "Hidden reply");
-		invoke(do_petition, staff, "Hidden petition");
-		event(peer, "Someone", "Hidden petition");
-		staff.pc.wiz_invis = 0;
-		staff.ch.specials.affected_by = 0;
-		staff.ch.specials.affected_by2 = 0;
-		staff.ch.specials.affected_by3 = 0;
+		staff.pc.wiz_invis = invisibility;
+		invoke(do_petition, staff, "Wizard petition");
+		event(peer, "Staff", "Wizard petition");
+		invoke(do_ptell, staff, "Player Wizard reply");
+		event(peer, "Staff -> Player", "Wizard reply");
 	}
+	staff.pc.wiz_invis = 0;
 	staff.ch.specials.act |= PLR_MORTAL;
 	invoke(do_ptell, staff, "Player Fog reply");
-	event(peer, "Someone -> Player", "Fog reply");
+	event(peer, "Staff -> Player", "Fog reply");
 	staff.ch.specials.act &= ~PLR_MORTAL;
 	target.ch.player.level = 60;
 	target.pc.wiz_invis = 1;
-	invoke(do_ptell, staff, "Player Reply to hidden staff");
-	event(peer, "Staff -> Someone", "Reply to hidden staff");
+	for (int invisibility : { 0, 64 })
+	{
+		staff.pc.wiz_invis = invisibility;
+		invoke(do_ptell, staff, "Player Reply to hidden staff");
+		event(peer, "Staff -> Player", "Reply to hidden staff");
+	}
 }
 
 static void input_dollars(int peer)
@@ -465,19 +492,27 @@ static int node_peer()
 		assert(cJSON_IsString(action));
 		const std::string command = action->valuestring;
 		const std::string message = cJSON_IsString(text) ? text->valuestring : "";
-		if (command == "petition" || command == "rejected_petition")
+		if (command == "petition" || command == "rejected_petition" ||
+		    command == "hidden_petition")
 		{
 			++dispatches;
 			if (command == "rejected_petition")
 				petitioner.ch.specials.act |= PLR_SILENCE;
+			if (command == "hidden_petition")
+				petitioner.ch.specials.affected_by = AFF_HIDE;
 			invoke(do_petition, petitioner, message);
+			petitioner.ch.specials.affected_by = 0;
 			petitioner.ch.specials.act &= ~PLR_SILENCE;
 		}
-		else if (command == "reply" || command == "hidden_reply")
+		else if (command == "reply" || command == "hidden_reply" ||
+			 command == "hidden_target_reply")
 		{
 			++dispatches;
-			staff.pc.wiz_invis = command == "hidden_reply" ? 64 : 0;
+			staff.pc.wiz_invis = command == "reply" ? 0 : 64;
+			if (command == "hidden_target_reply")
+				petitioner.ch.specials.affected_by = AFF_INVISIBLE;
 			invoke(do_ptell, staff, "Player " + message);
+			petitioner.ch.specials.affected_by = 0;
 			staff.pc.wiz_invis = 0;
 		}
 		else if (command == "notice")
