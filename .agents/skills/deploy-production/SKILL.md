@@ -1,9 +1,10 @@
 ---
 name: deploy-production
 description: >-
-  Deploy native Duris production from master: pull immediately, apply pending
-  migrations and content updates, do a full clean rebuild, reboot as Veridian
-  after a 180-second warning, and watch the logs until the new game is healthy.
+  Deploy native Duris production from master while keeping players online during
+  preparation and the full clean build. Apply migrations online whenever safe;
+  stop writers only when live evidence proves it is absolutely necessary. Reboot
+  as Veridian after a 180-second warning and verify the running game.
 ---
 
 # Deploy Production
@@ -12,8 +13,18 @@ Execute the five steps below in the existing production checkout. An explicit
 request to deploy authorizes the production migrations, content publication,
 build, and scheduled in-game reboot described here. Do not stop at a handoff or
 ask again for those actions. Editing this skill does not execute a deployment.
-When a pending migration requires stopped writers, the deployment includes the
-announced maintenance outage described below.
+Keep the game and website running during preparation, compilation, world generation,
+content publication, and migrations that can safely run online. **An offline migration
+is a last resort, allowed only when evidence from the actual pending operation and
+live database proves that stopped writers are absolutely necessary.** Finish the
+entire build and all independent preparation before any migration outage. The normal
+announced reboot remains the final cutover; do not turn it into a build outage.
+
+A pending migration, migration number (including 0041), newer runtime contract,
+missing online flag, or runner quiescence refusal is **not** proof that downtime is
+necessary. Never automatically fall back to stopping services. If tooling lacks a
+safe online path, resolve that limitation while the game stays up, or report it and
+leave the game running. Do not bypass safeguards or claim an unproven outage is required.
 
 Treat merged master as qualified. Do not create worktrees, temporary deployment
 environments, cloned databases, or containers. Do not run burn-in, regression
@@ -34,7 +45,7 @@ settings. Do not reset, clean, or discard changes to force the pull through.
 Record the resulting revision; do not delay the pull for release inventories,
 backups, builds, or a separate integration workspace.
 
-## 2. Finish migrations, content, and related setup before building
+## 2. Prepare migrations, content, and setup while the game stays online
 
 Read the required `.env` settings without displaying credentials. Confirm
 `ENVIRONMENT=production` and the configured database target. This host uses
@@ -47,18 +58,26 @@ Consult subsystem documentation only for the operations that actually apply.
   If the pulled schema contract is newer than the live database, select the old
   matching manifest through `RUNTIME_COMPATIBILITY_MANIFEST`; retrieve it from
   pre-pull Git history or an existing backup. Keep recovery files outside `bin/`.
-- Apply **every pending migration**, in manifest order, with
-  `python3 scripts/migration_runner.py run`. Compare against live history; `inspect` alone
-  does not query production. Export `.env` (`set -a; source .env; set +a`) and
-  supply `--confirm-production-target "$DB_HOST/$DB_NAME"` and
-  `--production-backup /absolute/path/to/database.sql.gz`, plus the supported
-  online option only when the exact pending manifest has already-reviewed online
-  support. Otherwise use the offline procedure below; never invent an online
-  exception or bypass the runner's quiescence guard. Use
-  [the migration guide](../../../docs/persistence/IMMUTABLE_MIGRATIONS.md) for
-  those mechanics, not as a requirement to create a test environment. Do not
-  replay historical repair/wipe scripts as though they were pending migrations.
-  Finish with `migrations/verify_runtime_compatibility.sh`.
+- Determine pending migrations from the manifest and **live history**; `inspect`
+  alone does not query production. Read each pending apply file and verifier,
+  inspect the affected live schema/data and database engine, and check compatibility
+  with running writers. Distinguish work already satisfied by the live schema,
+  safe online changes, and operations that genuinely require stopped writers.
+  For 0041, inspect `pkill_info.log`: an already-canonical MEDIUMTEXT column makes
+  the guarded ALTER a no-op. Its migration ID alone never justifies an outage.
+- Prefer the exact migration's reviewed online runner path, retaining target,
+  backup, checksum, history, verification and bounded-lock safeguards. A no-op SQL
+  body still needs safe ledger completion through supported tooling; do not insert
+  history manually. A lock timeout is a failed attempt, not permission to shut down.
+- Before considering an offline path, identify the specific unavoidable blocking
+  operation or incompatible writer and explain why a safe online path cannot serve
+  it. Missing tooling or uncertainty is not that evidence. Keep services running
+  while resolving either. State the concrete reason and expected outage work to
+  the user before issuing a maintenance warning.
+- Prepare migration execution now; apply it after the successful build in step 4.
+  Use [the migration guide](../../../docs/persistence/IMMUTABLE_MIGRATIONS.md) for
+  mechanics, not as a requirement to create a test environment. Do not replay
+  historical repair/wipe scripts as though they were pending migrations.
 - Update help when the release changes it.
   The importer gives `help/duris_help_parsed.hlp` precedence over
   `lib/information/help_index`; correct colliding stale entries. Run the innate
@@ -77,51 +96,29 @@ Consult subsystem documentation only for the operations that actually apply.
   in-game reboot does not replace the existing launcher or systemd environment;
   account for an actual change to either, rather than assuming it takes effect.
 
-A migration or required setup failure is a real blocker: resolve it or report
-its concrete error. Do not skip it and reboot an incompatible release.
+A preparation failure leaves the current game running. Resolve or report the
+concrete error; do not stop services to work around it or reboot an incompatible release.
 
-### Offline migrations, including 0041
+## 3. Complete the full clean rebuild while the game stays online
 
-Before invoking the runner for an offline step, identify the game child, launcher,
-website workers and scheduled jobs that use this database, and record their service
-states. Preserve the running executable and stamp in the private recovery directory
-described in step 3 before stopping the game.
-
-Before announcing the outage, confirm the configured user-scope MUD service sends
-SIGTERM to the launcher (`KillMode=mixed`) and allows enough stop time for the child
-to drain. Resolve any mismatch before proceeding.
-
-Log in as Veridian using step 4's account/menu guidance and check `time` for another
-operator's schedule. Broadcast `echoa Maintenance begins in 180 seconds: Zusuk has new code incoming, brace for impact!`
-and keep Veridian connected for the full 180-second warning. Then request a stop of
-the configured user-scope MUD service, targeting the launcher while its child is
-still running. With that stop configuration, `cycle_mud.sh` sets
-`STOP_REQUESTED`, forwards SIGTERM, waits for the graceful child exit, and exits its
-restart loop. Do not use child-only `shutdown ok` here; without a launcher stop it
-restarts after ten seconds. Wait for the service stop to complete, then stop the
-website workers and database jobs, prevent their automatic restarts for the outage,
-and verify their processes and database sessions have ended. Keep the database and
-Redis available. The runner's
-own quiescence check must pass; do not kill unknown connections or weaken the check.
-
-Refresh the backup after writers stop, using the pre-migration runtime manifest.
-Apply pending migrations with the normal production target/backup arguments and no
-online option, then verify runtime compatibility. Keep these writers stopped through
-content updates, the clean build and atomic binary installation. If any step fails,
-keep the incompatible game stopped and report the actual service state.
-
-## 3. Do a full clean rebuild
-
-If the game is still running, identify its child, launcher, and executable hash.
+Identify the running game child, launcher, and executable hash.
 Preserve the executable bytes (`cp -L /proc/<server-pid>/exe ...`) and production
 stamp in a private recovery directory outside `bin/`: `clean-all` removes that
-entire build tree. For an offline migration, use the executable already preserved
-before shutdown and keep writers stopped. Otherwise keep the game alive during the build.
+entire build tree. Keep the game and website running for every build stage,
+even when an offline migration has been proven necessary. Do not announce or begin
+that outage until the complete build and world generation have passed.
 
 Run each command only after the previous command succeeds:
 
 ```bash
 make clean-all
+```
+
+Immediately restore the preserved current `dms` and `.dms-backend` into `bin/server/`
+using temporary files and atomic renames, so the launcher retains a usable current
+binary during compilation. Never write over a running executable inode. Then run:
+
+```bash
 make -j4 PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production
 make -C src pfile PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production
 make -C migrations/tools all affects pfile_converter
@@ -135,20 +132,71 @@ five lookup outputs listed in the root Makefile, and an executable
 `bin/server/dms_new` with `.dms_new-backend` equal to `mariadb/production`.
 Run `scripts/cycle_mud.sh --production --check-config`.
 
+A failed build leaves the current game running. Fix the build before any cutover.
+Keep the successful `dms_new` staged until step 4; the old binary must remain the
+launcher's target until required migrations have passed.
+
+## 4. Apply migrations, install, and restart with the shortest necessary interruption
+
+With the full build ready, apply **every pending migration**, in manifest order,
+using `python3 scripts/migration_runner.py run`. Export `.env`
+(`set -a; source .env; set +a`) and supply
+`--confirm-production-target "$DB_HOST/$DB_NAME"` and
+`--production-backup /absolute/path/to/database.sql.gz`. Refresh an expired backup
+while services remain online. Use only the exact manifest's reviewed online option;
+never invent an exception or bypass the runner's quiescence guard. Finish with
+`migrations/verify_runtime_compatibility.sh`. If the online path fails, keep the game
+running and resolve the failure; the evidence requirement in step 2 still applies.
+
+Use the offline procedure below only after satisfying that requirement. Otherwise,
+keep services running through migration and installation, then use the normal
+scheduled reboot below.
+
+### Offline migration only when proven unavoidable
+
+Before announcing any outage, require the completed build, generated world, checked
+configuration, recovery executable/stamp, and prepared content. No compilation,
+world generation, release research, or unrelated setup belongs inside the outage.
+Identify the game child, launcher, website workers and scheduled jobs using this
+database, and record their service states. Confirm the user-scope MUD service sends
+SIGTERM to the launcher (`KillMode=mixed`) and allows the child enough time to drain.
+
+Log in as Veridian using the account/menu guidance below and check `time` for
+another operator's schedule. Broadcast exactly:
+
+```text
+echoa Maintenance begins in 180 seconds: Zusuk has new code incoming, brace for impact!
+```
+
+Keep Veridian connected for the full warning. Then stop the configured user-scope
+MUD service, targeting the launcher while its child is running. The launcher forwards
+SIGTERM, waits for graceful exit, and leaves its restart loop. Do not use child-only
+`shutdown ok`, which lets the launcher restart after ten seconds. Stop only the other
+writers the migration actually requires, prevent their automatic restart, and verify
+their processes and database sessions have ended. Keep the database and Redis up.
+The runner's quiescence check must pass; do not kill unknown sessions or weaken it.
+
+Refresh the backup with writers stopped and the pre-migration runtime manifest.
+Apply the prepared migration with the production target/backup arguments and no
+online option, verify compatibility, and immediately install the already-built server
+as described below. Start the log observation in step 5 and restore recorded service
+states promptly. Do not schedule a second shutdown. If migration or compatibility
+verification fails, keep incompatible writers stopped and report the actual state;
+never restart an incompatible old binary.
+
+### Atomic installation
+
 Ordinary reboot exits with 52 and executes `bin/server/dms`; the launcher only
-promotes `dms_new` for 53/57. Before scheduling the reboot, install the successful
+promotes `dms_new` for 53/57. After required migrations pass, install the successful
 build by same-filesystem atomic rename from `dms_new` to `dms`, move its stamp
 to `.dms-backend`, and generate `lib/misc/event_names` with
 `scripts/event_names.sh bin/server/dms`. Never truncate or copy over a running
 executable inode. Record the new hash and confirm the current process still
-uses its original executable when it is still running. Do not restart after a failed build.
+uses its original executable when it is still running. For an offline migration,
+restore the recorded services immediately after installation; otherwise schedule
+the normal reboot below. Do not restart after a failed build.
 
-## 4. Schedule the reboot as Veridian
-
-For the offline path, the warning and shutdown already occurred in step 2. Start
-following all journals and files listed in step 5 before restoring any service.
-Then restore the recorded service states with the newly installed server and
-continue step 5's startup verification; do not schedule a second shutdown.
+### Normal reboot as Veridian (no offline migration)
 
 Use the account credentials in `.env` to log in over the configured game
 connection and select the Overlord character **Veridian**. Handle the account
