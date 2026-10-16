@@ -364,6 +364,8 @@ static void seed_blobs(const std::string &root, std::string *error)
 	collector_apply(root, collect, 21);
 	std::vector<artifact_payload_projection> rows;
 	assert(!artifact_population_read_flat_payloads(root, &rows, error));
+	for (const auto &row : rows)
+		assert(row.custody_examined);
 	assert(find(rows, 801, artifact_payload_domain::collector, 66).role ==
 	       artifact_payload_role::stored);
 	assert(find(rows, 801, artifact_payload_domain::collector, 66).source_operation.bytes ==

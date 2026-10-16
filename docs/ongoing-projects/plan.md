@@ -38,18 +38,17 @@ before custody reconciliation or any materialization, retaining the original
 Redis generation/floor for disposition. This repair is separate from adding the
 source projection API. Fully repeated valid trees retain existing behavior.
 
-Active recovery population chunk: `branch/issue-67-recovery-population`, based
-on PR #145. Outcome: project the pinned Redis ground graphs and retained NPC
-reconstruction evidence without constructing objects; reuse one pure object-tree
-validator in both projection and the actual recovery planner. Preserve generation
-versus floor provenance and repeated-UID evidence. Non-goals: treating NPC hints
-as physical item identity, choosing a conflict winner, copyover completeness or
-production operations. Files: population model/reader, existing recovery codec
-and planner, native recovery fixtures, build/test registration and this plan.
-Proof: actual encoded nested graphs, overridden flags, unsigned UIDs, overlapping
-floor/generation trees and malformed/conflicting trees; existing materialization
-controls, both builds and changed-line checks. Combined classification and early
-boot publication still require copyover/NPC qualification afterward.
+Current recovery population chunk: `branch/issue-67-recovery-population`, based
+on PR #145; implemented and validated, publication pending. Outcome: project the pinned
+Redis ground graphs and retained NPC reconstruction evidence without constructing
+objects. Reuse the same pure object-tree validator as the real recovery planner.
+Keep generation/floor provenance, repeated-UID history, partial-overlap conflicts
+and the distinction between unqueried versus missing custody. Non-goals: treating
+NPC reconstruction records as stable item identities, choosing a conflict winner,
+copyover completeness or production operations. Files: population model/reader,
+its native fixture, minimal custody-evidence annotations in existing readers,
+build registration and this plan. Combined classification and early boot
+publication still require copyover/NPC qualification afterward. Details below.
 
 Current recovery checkpoint: [PR #144](https://github.com/LuminariMUD/Duris/pull/144),
 `branch/issue-67-pinned-recovery-evidence`, based on PR #143 and ready for review.
@@ -932,6 +931,91 @@ identity or prove physical absence across stores. Canonical admission, selective
 hydration rollback, lifecycle/reward eligibility and the full AR-01–AR-07 matrix
 remain open. No production read, operational repair, migration, deployment, merge
 or release tag occurred.
+
+### Pinned recovery population projections — AR-01/AR-02 prerequisite
+
+Implemented on `branch/issue-67-recovery-population`, based on PR #145;
+publication pending. `artifact_population_read_recovery` consumes the immutable
+snapshot exposed by PR #144. It validates framing and decodes the actual codec,
+then uses PR #145's pure native-tree validator. It never reads templates, creates
+or extracts an object, assigns an identity, looks up runtime custody, or writes.
+Its successful output is raw source evidence, not permission to spawn or hydrate.
+
+Ground rows retain sequence/domain/ordinal provenance, room and expected owner,
+full-width UID, root/parent and parent-row IDs, effective vnum and explicit flags,
+quantity, and the authority-required bit. Ordinary ancestors and explicit zero
+flag overrides survive. The decoder retains every valid graph: fully repeated
+floor trees are history, matching actual recovery; partial floor overlaps and
+repeated generation UIDs remain visible with `restore_conflict` and quarantine on
+the conflicting incoming tree. No different UID is chosen or erased. A consumer
+must honor that conflict flag instead of treating success as a qualified world
+restore or absence result.
+
+NPC projections retain prototype, instance ID, room, birthplace and exact shop
+identity for later reset/NPC mapping. The maintained Redis wire codec explicitly
+rejects positive equipment vnums and carried items; these records therefore do
+not encode equipment UID identity. No placeholder item or UID is invented for
+them. Their G/E reconstruction remains an explicit open qualification step.
+Copyover's independent native file format is not covered by this reader.
+
+Recovery custody is deliberately **unqueried**. The shared model now distinguishes
+`custody_examined=false` from an examined-but-missing row. Existing SQL numeric/blob
+and flat catalog readers mark successful custody examination even when no row
+matches; recovery leaves it false. This prevents raw ground rows from being
+misreported as proved-unclaimed items. The combined boot consumer must fetch
+independent custody for recovery UIDs under the same durable-store cut, including
+UIDs represented only in recovery or metadata. A custody row alone still cannot
+become a physical payload candidate. Non-recovery sources leave the newly added
+payload-root field zero until their graph root has been qualified.
+
+The existing byte/record/tree limits bound decoding: generation plus floor bytes
+at most 256 MiB, encoded floor values at most 16 MiB/32,768 records, and at most 512
+items per graph. A malformed header/checksum/record/tree or exceeded bound leaves
+the previous output untouched. Inspection does not re-age an already sealed cut;
+the actual materializer retains its existing freshness check. No extra registry,
+recovery format, identity cache or configuration surface is introduced.
+
+Verification:
+
+```sh
+python3 tests/async/test_artifact_recovery_population.py
+python3 tests/run_regression_tests.py --match artifact_recovery_population
+python3 tests/async/test_world_recovery_pipeline.py
+python3 tests/async/test_world_recovery_codec.py
+python3 tests/async/test_flatfile_artifact_population.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_artifact_population_repository.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py bin/server/dms_new midcapture
+make -C src -j2
+```
+
+The new fixture passes ASan/terminating UBSan in the client-free mode and is
+automatically discovered by the established runner (one matched test passes).
+It exercises actual encoded nested graphs, unsigned-maximum UID/sequence,
+explicit-zero flags, ordinary ancestors, required/unqueried custody, repeated
+and partially overlapping floor trees, duplicate generation projections, NPC/shop
+provenance and atomic refusal of malformed or oversized evidence. Counters prove
+no template read, extraction or custody lookup. The actual planner regression
+in PR #145 remains red-before/green-after for unseen-child preservation. The
+real `midcapture` server journey passes: a generation with the banana in its
+basket restores it once and leaves the fully repeated journaled drop out.
+The native SQL and client-free flat builds, changed-line formatting/tidy and
+whitespace checks also pass. SQL and flat custody-examination controls pass;
+SQL queries/schema are unchanged, and this fresh database leg uses disposable
+MariaDB 10.11 through the maintained schema. Evidence is retained under ignored
+`bin/analysis/issue67/recovery-population-*` logs in `duris-issue67-plan`.
+
+Continuation: capture durable sources before `reap_unheld_player_items_at_boot`
+(currently near the main startup's `redis_init`, before `run_the_game`); do not
+move/permit cleanup on incomplete evidence. Pin and qualify copyover before its
+later file reader and preserve uncertain file/payload evidence. Complete NPC
+reconstruction identity rather than treating missing serialized equipment as
+absence. Combine raw sources and independent custody, resolve flags against
+loaded templates, then publish canonical/reserved vnums before `ne_init_events`
+forces population. Keep legacy ambiguity reserved without rejecting unrelated
+inventory or reducing the required availability of proved-absent artifacts.
+Canonical admission, hydration rollback, retirement/reward guards and the full
+AR-01–AR-07 acceptance matrix remain open. No production read, migration,
+cleanup, repair, deployment, merge or release tag occurred.
 
 ### Numeric SQL population source pages — AR-01/AR-02 prerequisite
 

@@ -123,7 +123,8 @@ int main(int argc, char **argv)
 					  "(2,NULL,1,901,268435456,43)");
 		artifact_population_sql_page page;
 		assert(!artifact_population_read_sql_page(connection, entry.domain, 0, &page));
-		assert(page.complete && page.next_row_id == 2 && page.rows.size() == 2);
+		assert(page.complete && page.next_row_id == 2 && page.rows.size() == 2 &&
+		       page.rows[0].custody_examined && page.rows[1].custody_examined);
 		assert(page.rows[0].item_uid == UINT64_MAX && page.rows[0].owner_reference == 42);
 		assert(page.rows[1].extra_flags == (1U << 28) && page.rows[1].extra_flags_present &&
 		       !page.rows[1].item_uid && page.rows[1].parent_row_id == 1 &&
@@ -382,7 +383,9 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	       page.rows[1].quantity == 2);
 	assert(!artifact_population_read_sql_blob_page(
 		connection, artifact_payload_domain::auction_pickup, 0, &page));
-	assert(page.rows.size() == 2 && !page.rows[0].item_uid && page.rows[0].quantity == 3 &&
+	assert(page.rows.size() == 2 && page.rows[0].custody_examined &&
+	       page.rows[1].custody_examined && !page.rows[0].item_uid &&
+	       page.rows[0].quantity == 3 &&
 	       page.rows[0].payload_owner.type == item_owner_type::player &&
 	       page.rows[0].payload_owner.id == 77 &&
 	       page.rows[1].role == artifact_payload_role::history && page.rows[1].custody_found);

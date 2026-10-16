@@ -174,6 +174,7 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 			item.parent_missing = missing;
 			item.extra_flags_present = row[7] != nullptr;
 			item.parent_owner_disagrees = disagreement;
+			item.custody_examined = true;
 			item.custody_found = row[11] != nullptr;
 			item.custody.owner.type = static_cast<item_owner_type>(owner_type);
 			item.custody.state = static_cast<item_custody_state>(state);
@@ -197,13 +198,16 @@ namespace
 unsigned int attach_blob_custody(MYSQL *connection, std::vector<artifact_payload_projection> *items)
 {
 	std::string uids;
-	for (const auto &item : *items)
+	for (auto &item : *items)
+	{
+		item.custody_examined = true;
 		if (item.item_uid)
 		{
 			if (!uids.empty())
 				uids += " UNION ";
 			uids += "SELECT " + std::to_string(item.item_uid) + " AS item_uid";
 		}
+	}
 	if (uids.empty())
 		return 0;
 	const std::string sql =

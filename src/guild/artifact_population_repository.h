@@ -23,6 +23,8 @@ enum class artifact_payload_domain : uint8_t
 	embedded,
 	auction_legacy,
 	auction_pickup,
+	redis_generation,
+	redis_floor,
 };
 
 enum class artifact_payload_role : uint8_t
@@ -47,6 +49,7 @@ struct artifact_payload_projection
 	uint64_t item_uid = 0;
 	uint64_t parent_row_id = 0;
 	uint64_t parent_item_uid = 0;
+	uint64_t payload_root_item_uid = 0; // 0 when the source has not qualified the root
 	int64_t owner_reference = 0;
 	uint64_t owner_context = 0;
 	int32_t vnum = 0;
@@ -57,6 +60,8 @@ struct artifact_payload_projection
 	bool parent_owner_disagrees = false;
 	item_owner_identity payload_owner = {};
 	bool source_quarantined = false;
+	bool custody_required = false;
+	bool custody_examined = false; // unqueried is distinct from a confirmed missing row
 	bool custody_found = false;
 	item_ownership_runtime_entry custody = {};
 };
@@ -70,6 +75,30 @@ struct artifact_payload_projection
 unsigned int artifact_population_read_flat_payloads(const std::string &root,
 						    std::vector<artifact_payload_projection> *items,
 						    std::string *error);
+
+struct redis_world_boot_snapshot;
+struct artifact_recovery_mob_projection
+{
+	int32_t vnum = 0;
+	int32_t instance_id = 0;
+	int32_t room_vnum = 0;
+	int32_t birthplace = 0;
+	int32_t shopkeeper_shop_id = -1;
+};
+struct artifact_recovery_population
+{
+	std::vector<artifact_payload_projection> items;
+	std::vector<artifact_recovery_mob_projection> mobs;
+	bool restore_conflict = false;
+};
+// Read a pinned Redis source cut, without templates, materialization or custody
+// lookup. Retain all valid raw graphs, including overlapping projections. Fully
+// repeated floor trees are history, matching recovery; partial overlap is retained
+// and quarantined, never silently discarded. NPCs require reset/identity mapping.
+// Success is source decoding, not complete recovery/population qualification.
+// Failure preserves output. Encoded record/aggregate limits apply.
+unsigned int artifact_population_read_recovery(const redis_world_boot_snapshot &snapshot,
+					       artifact_recovery_population *population);
 
 #ifndef __NO_MYSQL__
 #include <mysql/mysql.h>

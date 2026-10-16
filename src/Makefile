@@ -153,6 +153,7 @@ OBJS =  $(SHIP_OBJS) \
 				 guild/artifact.o \
 				 guild/artifact_population_repository.o \
 				 guild/artifact_population_flatfile.o \
+				 guild/artifact_population_recovery.o \
 				 guild/artifact_cache_codec.o \
 				 persistence/report_cache_codec.o \
 				 economy/donation_event.o \
