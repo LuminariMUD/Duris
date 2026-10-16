@@ -172,6 +172,34 @@ keeps the live cap unchanged until the next unlock. The migration guards each co
 separately and re-runs safely, and its verifier checks both shapes and that each side
 level lies in 0-56. An existing database must apply it before the updated binary boots.
 
+## Online player updates (0042/0043)
+
+`run --online-player-updates` accepts only the manifest ending at the exact sealed
+0042 and 0043 steps, with all earlier migrations already applied. It retains the
+production target, allow-list, fresh backup, checksums, persistent advisory lock,
+ordered ledger and success-last verification. It requires MariaDB 11.8 and InnoDB
+`player_data`; metadata and row-lock waits are bounded to one second.
+
+0042 widens ten signed TINYINT base stats to signed SMALLINT. This needs COPY,
+which MariaDB 11.8 supports online. After checking the sealed payload checksum,
+the runner strengthens its single generated `ALTER TABLE player_data` to
+`ALTER ONLINE TABLE player_data` (LOCK=NONE). It refuses unsupported online shapes,
+including outgoing cascading foreign keys, rather than falling back to blocked
+writers. The immutable file and ledger checksum remain unchanged. 0043 executes
+its sealed SQL unchanged under INSTANT-only DDL, adding the default-empty news
+acknowledgement column. Neither path disables foreign-key checks.
+
+Before use, inspect the live table and running writers: stat widening preserves
+old values, and named-column inserts/updates tolerate the added column. On the
+2026-10-16 deployment, `player_data` had 67 rows, ten nullable signed TINYINT stats
+with default 0, no outgoing foreign keys, and no news acknowledgement column.
+Its incoming cascading references do not modify the table being copied. Coordinate
+schema-aware backup jobs across both migrations and verify the new runtime contract
+before installing the server. A lock timeout or unsupported online operation leaves
+the game running for diagnosis.
+
+Reference: [MariaDB online schema change](https://mariadb.com/docs/server/reference/sql-statements/data-definition/alter/alter-table/online-schema-change).
+
 ## Post-baseline migration contract
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.

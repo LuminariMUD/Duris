@@ -1,11 +1,63 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 15, 2026&n
+&+WUpdated: October 16, 2026&n
 
-Welcome back! Catch up on September 15 to October 15, 2026 below.
+Welcome back! Catch up on September 15 to October 16, 2026 below.
 The newest changes come first; later updates replace older rules.
 Earlier coverage, back to December 14, 2025, and the archive follow.
+
+&+R10/16/26&n &+L-&n &+YNews at a glance, errands back on the road&n
+&+W----------------------------------------------------------------------&n
+
+&+Y-&n Your prompt now shows &+Y(news)&n when you have unread player news.
+  Turn paging on with &+C'toggle page on'&n and open &+C'news'&n to clear it.
+  Each character remembers which update you opened across logins;
+  a later update brings the reminder back. Refreshed news also stays
+  consistent when the game restarts.
+
+&+CEpic errands have destinations again&n
+&+Y-&n The restored roster gives epic tasks &+Y107&n eligible zones to choose
+  from. Already-completed zones remain excluded for your character;
+  this does not reset your history, epics or existing task.
+&+Y-&n New characters can receive earned epic tasks during their first
+  session. A task waiting for its destination can be assigned once its
+  zone choices and your history are ready, without earning it again.
+&+Y-&n A failed refresh keeps the last usable list of task zones. Restarting
+  during a refresh no longer leaves you with only part of that list.
+
+&+CTravel that follows your instructions&n
+&+Y-&n Teleport, Depart and Etheric Gust can now work in limited-teleport
+  zones when the destination is within the allowed five-room range.
+  Other travel restrictions still apply.
+&+Y-&n If you have Plane Shift, &+C'innate plane shift Air'&n now passes your
+  chosen plane correctly. A missing or invalid plane name no longer
+  spends that innate's use. Gate staves also keep your typed destination.
+&+Y-&n Full innate names choose the power you asked for: &+C'innate summon warg'&n
+  no longer selects Summon Horde when you have both powers.
+
+&+CTraps still bite, but looting knows when to stop&n
+&+Y-&n Bulk looting stops if a trap kills, moves, puts you to sleep or
+  immobilizes you, or takes away the container you were looting.
+  Rejected pickups no longer continue with success messages or follow-up
+  actions. These cases also avoid crashes from handling vanished targets.
+&+Y-&n Spent trap charges on items in player corpses now stay spent after
+  a restart. Saved carried items and pets' items also retain trap state.
+  This preserves newly saved state; it cannot recover old missing records.
+
+&+CCharacter saves, titles and the high seas&n
+&+Y-&n Base attributes above the old small-number limit can now save without
+  wrapping or rejecting the save. Staff stat edits write the complete
+  value and reject numbers that do not fit; gameplay stat caps still apply.
+&+Y-&n After a failed final save, logging in again can load your last saved
+  state once the old session's save attempts finish. This does not recover
+  changes that never saved.
+&+Y-&n Guild titles longer than &+Y512 bytes&n, including colors and the guild
+  name, are rejected before they can break your character save.
+&+Y-&n Sinking or removing an NPC ship no longer stalls ship activity or
+  leaves other ships following a vanished escort or boarding target.
+&+Y-&n The &+MTotem of Mastery&n and &+MCirclet of Light&n now name the item properly
+  in their whisper activation messages.
 
 &+R10/15/26&n &+L-&n &+YFamiliar roads and clearer rules&n
 &+W----------------------------------------------------------------------&n
