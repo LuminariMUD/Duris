@@ -3520,11 +3520,26 @@ void do_innate(P_char ch, char *arg, int cmd)
 	for (i = 0; i <= LAST_INNATE; i++)
 	{
 		const char *name = innates_data[i].name;
-		size_t len = strlen(name);
-		if (rest && strchr(name, ' ') && !strn_cmp(rest, name, len) &&
-		    (rest[len] == ' ' || rest[len] == '\0') && has_innate(ch, i))
+		if (!rest || !strchr(name, ' ') || !has_innate(ch, i))
+			continue;
+
+		char *input = rest;
+		while (*name)
 		{
-			handler_args = skip_spaces(rest + len);
+			size_t len = strcspn(name, " ");
+			if (strn_cmp(input, name, len) ||
+			    (input[len] && !isspace((unsigned char)input[len])))
+				break;
+			input += len;
+			while (isspace((unsigned char)*input))
+				input++;
+			name += len;
+			if (*name)
+				name++;
+		}
+		if (!*name)
+		{
+			handler_args = input;
 			break;
 		}
 	}

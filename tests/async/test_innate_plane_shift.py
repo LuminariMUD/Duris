@@ -79,6 +79,14 @@ int main() {
     assert(summon_handler == "horde" && summon_arg.empty());
     innate(&orc, "  SuMmOn WaRg   Target words");
     assert(summon_handler == "warg" && summon_arg == "Target words");
+    // Full names accept repeated spaces and tabs without changing trailing arguments.
+    for (const char *line : {"summon  warg Target  words", "summon\twarg\tTarget  words",
+                             "summon warg\t Target  words"}) {
+        innate(&orc, line);
+        assert(summon_handler == "warg" && summon_arg == "Target  words");
+    }
+    innate(&orc, "summon \t horde\t");
+    assert(summon_handler == "horde" && summon_arg.empty());
     // Partial names and first-word abbreviations retain their original fallback.
     innate(&orc, "summon wargling");
     assert(summon_handler == "horde" && summon_arg == "wargling");
@@ -110,6 +118,10 @@ int main() {
     // A mistyped plane is refused and does not start the cooldown.
     innate(&ch, "plane shift aiir");
     assert(casts == 0 && !ch.affected && output.find("Hell") != std::string::npos);
+    for (const char *line : {"plane  shift aiir", "plane\tshift\taiir"}) {
+        innate(&ch, line);
+        assert(casts == 0 && !ch.affected && output.find("Hell") != std::string::npos);
+    }
     // The full innate name passes the plane, not the name's second word, to the spell.
     innate(&ch, "plane shift Air");
     assert(casts == 1 && cast_arg == "Air" && ch.affected);
@@ -121,6 +133,14 @@ int main() {
     innate(&ch, "plane hell");
     assert(casts == 2 && cast_arg == "hell" && ch.affected);
     delete ch.affected;
+    ch.affected = nullptr;
+    for (const char *line : {"plane  shift Air", "plane\tshift\tAir", "plane shift\t Air"}) {
+        int previous_casts = casts;
+        innate(&ch, line);
+        assert(casts == previous_casts + 1 && cast_arg == "Air" && ch.affected);
+        delete ch.affected;
+        ch.affected = nullptr;
+    }
     puts("Innates: full-name selection, abbreviation/summon fallback, ownership and plane cooldown passed.");
 }
 '''
