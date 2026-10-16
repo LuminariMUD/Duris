@@ -1,7 +1,8 @@
 # Core dump investigation and repair plan — 2026-10-16
 
-Status: bulk cancellation implemented; direct/legacy pickup repair and real-server
-trap/persistence qualification remain open. Investigation source reviewed at `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
+Status: bulk and direct/legacy pickup cancellation implemented; the real-server
+trap/death/restart journey and any independently reproduced persistence repair remain
+open. Investigation source reviewed at `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
 
 **All three root-directory dumps expose the same fatal continuation after player
 extraction during `get all corpse`.** The bulk selector calls a trap function that
@@ -179,11 +180,43 @@ and a disposable loopback MariaDB: normal NPC/player corpse hauls, observer outp
 wallet, saved custody and reconnect. Count-cap qualification is running separately.
 
 [PR #129](https://github.com/LuminariMUD/Duris/pull/129) contains the first chunk.
-A second probe now executes real `get()` and finalizers with actual character/object
-structs and a trap/extraction fixture. It fails under ASan at `get()`'s post-trap
-debug log reading `world[NOWHERE]`; output is in
-`bin/analysis/core-dumps-2026-10-16/finalizer-probe.log`. This confirms the planned
-adjacent direct-pickup repair is required even after the bulk fix.
+A second probe executes real `get()` and finalizers with actual character/object
+structs and a trap/extraction fixture. Before the second chunk it failed under ASan at
+`get()`'s post-trap debug log reading `world[NOWHERE]`; output is in
+`bin/analysis/core-dumps-2026-10-16/finalizer-probe.log`.
+
+Second chunk implemented on `fix/get-trap-finalizers`:
+
+- Treat every `get()` attempt as rejected until an object or coins are actually
+  delivered. A triggered trap now returns without reaching post-trap logging, and the
+  caller stops counters, corpse/artifact logs, waits, lighting and dirty-state work
+  unless delivery succeeded.
+- Revalidate the actor, room and source after direct and legacy pickup calls. A lethal,
+  teleporting or sleeping trap returns from `do_get()` immediately; rejected legacy
+  loops resolve their saved sibling by UID and verify custody before continuing.
+- Publish corpse logs and cross-race artifact changes only after delivery. Exact and
+  limited coin transfers retain the amount before a consumed pile is extracted, so the
+  audit records the amount actually delivered. Crumble-on-loot objects no longer count
+  or log as inventory deliveries.
+- Add `test_get_trap_lifecycle.py`, which compiles the production `get()` and finalizers
+  with actual character/object structures under ASan/UBSan. It covers surviving,
+  lethal, teleport and sleep traps; container and floor pickup; ioun delivery;
+  crumble-on-loot; full, partial and capped coins; ownership/no-loot/hitched and wallet
+  refusals; and NPC pickup. Its extraction fixture releases PC data, clears the
+  descriptor and live runtime identity, and sets `NOWHERE`/`STAT_DEAD`.
+
+The new finalizer test and the following affected regressions pass outside the managed
+sandbox, where LeakSanitizer can run: `test_corpse_haul.py`,
+`test_bulk_get_publication.py`, `test_money_carry_count.py`, `test_take_coins.py`,
+`test_remove_crumbleloot.py`, `test_actobj_get_limits.py`, and
+`test_account_bound_reward_access.py`. `python3 -m py_compile` and
+`./scripts/format.sh --check` also pass. Both builds pass: the MariaDB executable has
+build ID `9069800cf320d2665c8ad9a1693e0a9129a7a597`, and the flatfile executable has
+build ID `8154c3a56c714e2d38f52b5a7b4daa0767a3f674`. Their logs are
+`build-finalizers.log` and `build-flatfile-final.log` in the ignored analysis directory.
+The pre-existing MariaDB three-player corpse journey and the count-cap journey on both
+MariaDB and flatfile also pass against these builds. Those journeys establish normal
+loot behavior; they do not replace the pending lethal real-server journey.
 
 Local resource notes: Docker access is unavailable to this user, so a dedicated
 MariaDB was initialized with `--no-defaults` in `/tmp/duris-core-repair-db-*`, bound
@@ -193,10 +226,10 @@ schemas and must be shut down after qualification. Journey environments explicit
 set `ENVIRONMENT=local` and never source `.env`. A separate flatfile build targets
 `bin/server/dms_core_repair_flatfile`; its output is in `build-flatfile.log`.
 
-Next: finish ordinary count-cap qualification and mark the bulk PR ready; stack direct/legacy pickup
-cancellation and truthful finalizers, then the real trap/death/reconnect/restart
-journeys and any independently reproduced persistence repair. Do not call this
-project complete based on the bulk harness alone.
+Next: commit and publish the focused finalizer chunk, then implement the real
+trap/death/reconnect/restart journey on both backends and make the smallest persistence
+repair if that journey reproduces one. Do not call this project complete based on the
+native harnesses alone.
 
 ## Implementation sequence
 
@@ -207,7 +240,7 @@ project complete based on the bulk harness alone.
   at least one ordinary/ioun item has already been selected. Assert that no
   previously selected item is transferred, no subsequent item is inspected, and
   no success report or PID lookup occurs after extraction.
-- [ ] Exercise the real `do_get` finalizers and the PC-data lifecycle in at
+- [x] Exercise the real `do_get` finalizers and the PC-data lifecycle in at
   least one test. Use actual extraction or a faithful fixture that releases PC
   data, clears the descriptor, removes the actor's runtime identity, and sets
   `NOWHERE`/`STAT_DEAD`. A new stub that merely skips the crash site is inadequate.
@@ -246,18 +279,18 @@ after establishing lifetime, not as a general check on an arbitrary freed pointe
 This is the same lifetime contract in adjacent paths, not a separate claim that
 the dumps crashed in all of them.
 
-- [ ] Audit `take_bulk_get_items()`, `get()`, `do_get_commit_pickup_core()`, the
+- [x] Audit `take_bulk_get_items()`, `get()`, `do_get_commit_pickup_core()`, the
   container/floor finalizers, and `do_get()` for continuation after trap effects.
   In the single-item path, `get()` returns when `checkgetput()` triggers, but its
   caller currently treats that as success unless `item_get_rejected` was set.
   Correct the rejected/terminal result and propagate it through these private
   helpers so counters, pickup logs, post-processing, and legacy loops stop
   correctly. Keep the public API changes limited to what this path needs.
-- [ ] Distinguish actual delivery from an attempted pickup. Do not report or
+- [x] Distinguish actual delivery from an attempted pickup. Do not report or
   log successful delivery after a lethal trap, or count a rejected item as
   acquired. Audit logs that need the actor's identity must use it while valid;
   cancellation must never format a name from extracted player storage.
-- [ ] Restore `item_get_ack_publication` on every exit from publication and
+- [x] Restore `item_get_ack_publication` on every exit from publication and
   remove any inserted `bulk_gets` entry using the saved PID. Separate cleanup
   from reporting: an extracted actor must not reach `report_bulk_get()`. Avoid
   erasing a map entry while another frame still uses its `bulk_get_state&`.
