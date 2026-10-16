@@ -255,8 +255,9 @@ int main()
                                                    "p3:1", "p2:3"};
         assert(state.order == expected);
     }
-    assert(!player_save_worker_pid_pending(1));
+    assert(player_save_worker_pid_pending(1)); // completion still belongs to the old session
     auto completions = drain();
+    assert(!player_save_worker_pid_pending(1));
     assert(completions.size() == 6);
     assert(completions[1].pid == 2 && completions[1].revision == 1);
     assert(completions[2].kind == persistence_job_kind::locker && completions[2].owner == 7);

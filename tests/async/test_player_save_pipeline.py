@@ -47,11 +47,28 @@ HARNESS = r'''
 
 P_char character_list = nullptr;
 int alerts = 0;
+std::string last_alert, last_log;
+void logit(const char *, const char *format, ...)
+{
+    char line[512];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(line, sizeof(line), format, args);
+    va_end(args);
+    last_log = line;
+}
 
 void collector_death_enrollment_saved(uint64_t, unsigned int) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *,
-                       const char *, const char *, ...)
+                       const char *, const char *format, ...)
 {
+    assert(!strstr(format, "%s")); // the production alert rejects string substitutions
+    char line[512];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(line, sizeof(line), format, args);
+    va_end(args);
+    last_alert = line;
     ++alerts;
 }
 
@@ -81,7 +98,10 @@ player_save_apply_result player_snapshot_repository_apply_from_pool(const player
     if (state.failures[snapshot.pid])
     {
         --state.failures[snapshot.pid];
-        return {player_save_apply_outcome::terminal_failure, 0, 1452};
+        player_save_apply_result result{player_save_apply_outcome::terminal_failure, 0, 1264};
+        strcpy(result.failed_field.data(), "base_str");
+        result.rolled_back = true;
+        return result;
     }
     return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
@@ -197,6 +217,8 @@ int main()
     const int alerts_before = alerts;
     player_save_pipeline_pulse();
     assert(alerts == alerts_before + 1);
+    assert(last_alert.find("ended=0 queued_revision=2 written_revision=1 rollback_confirmed=1") != std::string::npos);
+    assert(last_log == "PLAYER SAVE FIELD: pid=44 revision=2 field=base_str");
     assert(player_revision_snapshot_copy(44, &revision));
     assert(revision.unacknowledged_components == PLAYER_COMPONENT_TIMERS);
     assert(revision.written_revision == 1);
@@ -207,6 +229,48 @@ int main()
 
     assert(player_save_pipeline_drain(5000));
     assert((take_order() == std::vector<std::string>{"44:2", "44:3"}));
+
+    // Ended sessions cannot be forgotten while a save or its completion is pending.
+    player_save_pipeline_resume();
+    hold_writer(true);
+    state.failures[44] = 2;
+    assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    wait_until_held();
+    assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_TIMERS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    bob.ch.next = nullptr; // production extraction removes Carol from character_list
+    player_save_pipeline_end_session(44);
+    assert(player_save_pipeline_load_held(44));
+    assert(player_revision_snapshot_copy(44, &revision));
+    assert(!player_revision_hydrate(44, 3)); // previous persisted revision
+    hold_writer(false);
+    assert(persistence_writer_wait_idle(5000));
+    // Completed SQL must still be reconciled on the game thread before admission.
+    assert(player_save_pipeline_load_held(44));
+    player_save_pipeline_end_session(44);
+    assert(player_revision_snapshot_copy(44, &revision));
+    player_save_pipeline_pulse();
+    assert(!player_save_pipeline_load_held(44));
+    assert(last_alert.find("ended=1 queued_revision=5 written_revision=3 rollback_confirmed=1") != std::string::npos);
+    assert(!player_revision_snapshot_copy(44, &revision));
+    assert(player_revision_hydrate(44, 3)); // relog uses the actual committed state
+
+    // An online owner's dirty state survives even when no writer job is pending.
+    player_save_pipeline_end_session(41);
+    assert(player_revision_snapshot_copy(41, &revision));
+    assert(revision.unacknowledged_components);
+    // A save completed before logout is retired by extraction, including unsaved dirt.
+    player_save_pipeline_end_session(44);
+    assert(!player_revision_snapshot_copy(44, &revision));
+
+    // A new/offline character is not in character_list yet; its baseline save still
+    // needs a written acknowledgement and a revision entry for the session to use.
+    player newcomer(99);
+    assert(player_revision_hydrate(99, 0));
+    assert(player_save_pipeline_terminal(&newcomer.ch, 1, 3001, 100) ==
+           player_save_terminal_result::database_acknowledged);
+    assert(player_revision_snapshot_copy(99, &revision) && revision.written_revision == 1);
 
     // Shutdown reports a save that failed after its last pulse: the writer was still on
     // it when the drain ran out, and the interrupt made it fail.
@@ -260,8 +324,12 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_d
     subprocess.run([str(binary)], check=True, timeout=60)
 print("[PASS] a queued save leaves its owner clean; a newer save replaces the queued one")
 print("[PASS] a failed write is reported and marks its owner dirty again")
+print("[PASS] ended sessions retire only after pending writes/completions; live dirt and new baselines survive")
 print("[PASS] drain waits for the writer within its bound")
 print("[PASS] shutdown reports a save that failed after the last pulse")
+
+free_character = section((SRC / "db.c").read_text(), "void free_char(P_char ch)", "void free_obj(")
+assert "player_save_pipeline_end_session(GET_PID(ch));" in free_character
 
 assert "PLAYER_SAVE_PIPELINE_MAX_BYTES" not in HEADER
 assert "pending_append" not in PIPELINE and "durable_ready" not in PIPELINE

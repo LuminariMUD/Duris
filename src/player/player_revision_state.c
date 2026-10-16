@@ -32,6 +32,7 @@ struct player_revision_entry
 	player_component_mask_t unacknowledged_components = 0;
 	std::array<player_revision_t, CHECKPOINT_COMPONENT_COUNT> component_revisions = {};
 	bool overflowed = false;
+	bool session_ended = false;
 };
 
 std::unordered_map<int, player_revision_entry> revision_states;
@@ -75,6 +76,7 @@ bool player_revision_hydrate(int pid, player_revision_t durable_revision)
 		state->acknowledged_revision = durable_revision;
 		state->written_revision = durable_revision;
 		state->component_revisions.fill(durable_revision);
+		state->session_ended = false;
 		return true;
 	}
 
@@ -172,8 +174,15 @@ bool player_revision_snapshot_copy(int pid, struct player_revision_snapshot *sna
 		.written_revision = state->written_revision,
 		.unacknowledged_components = state->unacknowledged_components,
 		.overflowed = state->overflowed,
+		.session_ended = state->session_ended,
 	};
 	return true;
+}
+
+void player_revision_end_session(int pid)
+{
+	if (player_revision_entry *state = find_state(pid))
+		state->session_ended = true;
 }
 
 void player_revision_forget(int pid)
