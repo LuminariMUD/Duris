@@ -597,6 +597,8 @@ python3 tests/async/test_player_save_worker.py
 python3 tests/async/test_combat_artifact_persistence.py
 python3 tests/async/test_artifact_guild_snapshots.py
 python3 tests/async/test_flatfile_artifact_repository.py
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+python3 tests/async/test_player_save_pipeline.py
 python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/coin-death-inspector
 make -C src -j2
 ```
@@ -606,12 +608,19 @@ The maintained flat build passed with `PERSISTENCE_BACKEND=flatfile` and dedicat
 `bin/analysis/issue67/flat-memory-build`; it links without the SQL/Redis clients.
 Native fixture proof covers held writer, stopped/full admission, storage
 unavailability/corruption, late ACK/current-state retry, atomic multi-record
-capture, UID conflict refusal and shared-reset receipts. The direct-feed runtime
+capture, UID conflict refusal, shared-reset receipts and the actual clear handler's
+unresolved/present/retired refusal plus repeated proven-absent clear/reload. The direct-feed runtime
 fixture and SQL snapshot controls use terminating UBSan. The ordinary flat
 combat/death/save/reconnect/restart journey is the boot/lifecycle control, not
-full artifact admission or the AR-07 matrix. The initial run passed with flat binary
-`cb695c02e30af965322b003cecb2613db5e5a0b7e3f251a35fb349475f0ffb9c`;
-the combined lifecycle-drain build is being checked before publication.
+full artifact admission or the AR-07 matrix. The final combined lifecycle-drain
+build passed:
+
+```sh
+python3 tests/async/test_flatfile_combat_journey.py --variant default /home/aiwithapex/projects/duris-issue67-plan/bin/analysis/issue67/flat-memory-build/server/dms_new
+```
+
+Tested flat binary SHA-256:
+`a8de48d38e0b68dd2a423c30126d5d62f3cbd7fee16efc0070fbe45a134bed42`.
 
 Ignored evidence in `bin/analysis/issue67/`: `flat-memory-combined-flat.log`,
 `flat-memory-combined-snapshots.log`, `flat-memory-maria-build.log`,
@@ -622,6 +631,11 @@ runtime regression fail at the intended behavioral boundary. Changed-line
 formatting/clang-tidy and whitespace checks pass. No production operation,
 canonical population selection, universal new-object admission, or new flat
 reward-history capability is claimed.
+
+Next after this prerequisite: publish complete durable/recovery candidate
+evidence before any population, classify canonical versus unresolved state
+without first-traversal selection, then integrate creation/materialization and
+physical retirement. The unchecked AR-01–AR-07 acceptance work remains required.
 
 ### Canonical identity snapshots and hydration — AR-02 in progress
 

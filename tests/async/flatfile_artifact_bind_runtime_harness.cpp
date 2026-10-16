@@ -45,6 +45,20 @@ bool sql_async_booting()
 	return booting;
 }
 
+P_obj read_object(int, int)
+{
+	P_obj object = new obj_data{};
+	object->extra_flags = ITEM_ARTIFACT;
+	return object;
+}
+
+void extract_obj(P_obj object, int)
+{
+	delete object;
+}
+
+void send_to_char_f(P_char, const char *, ...) {}
+
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t, size_t,
 						    persistence_job_write_fn write)
 {
@@ -225,6 +239,37 @@ int main(int argc, char **argv)
 			stored.timer == 6000 && artifacts_load() &&
 			sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 55,
 		"flat shared reset lost unrelated identity/timer or later current state");
+	writes.clear();
+	char_data god = {};
+	god.player.level = FORGER;
+	char clear_arg[] = "600";
+	for (const auto state :
+	     { artifact_identity_state::unresolved, artifact_identity_state::present,
+	       artifact_identity_state::retired })
+	{
+		auto &row = artifact_rows.at(600);
+		row.identity_state = state;
+		row.canonical_item_uid = state == artifact_identity_state::unresolved ? 0 : 60001;
+		arti_clear_sql(&god, clear_arg);
+		require(writes.empty() && !row.removed && row.identity_state == state,
+			"flat clear erased unresolved/present/retired identity");
+	}
+	artifact_rows.at(600).identity_state = artifact_identity_state::absent;
+	artifact_rows.at(600).canonical_item_uid = 0;
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		arti_clear_sql(&god, clear_arg);
+		require(writes.size() == 1 && artifact_rows.at(600).removed &&
+				writes.back()().outcome == player_save_apply_outcome::applied &&
+				artifact_save_pulse(false) == 0 && artifacts_load() &&
+				artifact_rows.at(600).removed &&
+				flatfile_artifact_get(state_root, 600, &stored, &error) ==
+					flatfile_artifact_result::ok &&
+				stored.identity_state == artifact_identity_state::absent &&
+				!stored.canonical_item_uid && !stored.owned && !stored.timer,
+			"flat clear lost proven absence across its captured write/reload");
+		writes.clear();
+	}
 
 	std::cout << "flat-file artifact bind runtime passed\n";
 	return 0;
