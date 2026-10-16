@@ -463,6 +463,8 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 			   (void *)o_obj, (void *)s_obj, showit ? 1 : 0);
 		return;
 	}
+	if (s_obj && s_obj->type == ITEM_CORPSE && IS_SET(s_obj->value[1], PC_CORPSE))
+		corpse = s_obj;
 
 	if (account_bound_reward_owner(ch, o_obj) == false &&
 	    IS_OBJ_STAT2(o_obj, ITEM2_ACCOUNT_BOUND))
@@ -522,7 +524,11 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 
 	/* A triggered trap rejects pickup and may already have extracted ch. */
 	if (checkgetput(ch, o_obj))
+	{
+		if (corpse)
+			writeCorpse(corpse);
 		return;
+	}
 
 	/* Don't screw up my pointers! */
 	if (o_obj->hitched_to)
@@ -555,9 +561,6 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		OBJ_WORN(o_obj) ? 1 : 0, OBJ_INSIDE(o_obj) ? 1 : 0, OBJ_ROOM(o_obj) ? 1 : 0,
 		s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
 		s_obj ? OBJ_VNUM(s_obj) : -1);
-
-	if (s_obj && (s_obj->type == ITEM_CORPSE) && IS_SET(s_obj->value[1], PC_CORPSE))
-		corpse = s_obj;
 
 	if (s_obj && IS_OBJ_STAT(s_obj, ITEM_NOSHOW))
 		showit = TRUE;
@@ -1487,6 +1490,9 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 	const bool scrap = object->condition <= 0;
 	if (!scrap && checkgetput(actor, object))
 	{
+		if (container && container->type == ITEM_CORPSE &&
+		    IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE))
+			writeCorpse(container);
 		state.failed = true;
 		return false;
 	}

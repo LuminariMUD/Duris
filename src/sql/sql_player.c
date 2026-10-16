@@ -855,6 +855,24 @@ static void sql_add_item_extra_descr(P_obj obj, const char *keyword, const char 
 				     const char *table, int item_id,
 				     struct extra_descr_data **loaded_spellbook)
 {
+	int16_t trap_effect = 0, trap_damage = 0, trap_charges = 0, trap_level = 0;
+	const auto trap = sql_decode_item_trap_state(keyword, description, &trap_effect,
+						     &trap_damage, &trap_charges, &trap_level);
+	if (trap != sql_item_trap_state_decode_status::not_trap_state)
+	{
+		if (trap == sql_item_trap_state_decode_status::decoded)
+		{
+			obj->trap_eff = trap_effect;
+			obj->trap_dam = trap_damage;
+			obj->trap_charge = trap_charges;
+			obj->trap_level = trap_level;
+		}
+		else
+			persistence_alert(AVATAR, "item_extra_descr", table ? table : "unknown",
+					  "none", "none", "invalid_trap_state",
+					  "item_id=%d had invalid persisted trap state", item_id);
+		return;
+	}
 	struct extra_descr_data *ed;
 	CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
 

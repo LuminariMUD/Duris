@@ -97,7 +97,7 @@ static std::string output;
 static int coin_attempts=0;
 static P_char live_actor=nullptr;
 static uint64_t trapped_uid=0;
-static int trap_effect=0, trap_calls=0, checked_after_trap=0;
+static int trap_effect=0, trap_calls=0, checked_after_trap=0, corpse_writes=0;
 static P_char find_character_by_runtime_id(uint64_t id) {
  return live_actor && live_actor->runtime_id==id ? live_actor : nullptr;
 }
@@ -143,7 +143,7 @@ static int64_t total_carried_weight(P_char) { return 0; }
 static void checked_snprintf(char *b,size_t n,const char *f,...) { va_list a; va_start(a,f); vsnprintf(b,n,f,a); va_end(a); }
 static int scrap_attempts=0;
 static void MakeScrap(P_char,P_obj) { ++scrap_attempts; }
-static void writeCorpse(P_obj) {}
+static void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
 static int wallet=0;
 static bool credit_coins(P_char,int64_t value) { wallet+=static_cast<int>(value); return value>0; }
 static void extract_obj(P_obj o,int) { objects.erase(o->obj_uid); o->location=0; }
@@ -175,12 +175,13 @@ driver = r'''
 static void reset() {
  bulk_gets.clear(); objects.clear(); rooms.clear(); output.clear();
  coin_attempts=scrap_attempts=0; fail_delivery=false; wallet=0;
- trapped_uid=0; trap_effect=trap_calls=checked_after_trap=0; live_actor=nullptr;
+ trapped_uid=0; trap_effect=trap_calls=checked_after_trap=corpse_writes=0; live_actor=nullptr;
  die_on_delivery=throw_on_delivery=false;
 }
 static void setup(P_char ch,P_obj corpse,P_obj dagger,P_obj coins) {
  live_actor=ch; ch->in_room=1; corpse->obj_uid=50; corpse->type=ITEM_CORPSE;
  corpse->location=1; corpse->loc.room=1; corpse->short_description="the corpse of a frost giant";
+ corpse->value[CORPSE_FLAGS]=PC_CORPSE;
  corpse->contains=dagger; objects[50]=corpse;
  dagger->obj_uid=51; dagger->location=2; dagger->loc.inside=corpse; dagger->next_content=coins;
  objects[51]=dagger;
@@ -206,6 +207,7 @@ int main() {
   trapped_uid=51+position; trap_effect=effect;
   start_bulk_get(&actor,floor?nullptr:&corpse,filtered?"dagger":nullptr,true);
   assert(trap_calls==1 && checked_after_trap==(effect?0:count-position-1));
+  assert(corpse_writes==(floor?0:1));
   for(int i=0; i<count; ++i)
    assert(OBJ_CARRIED_BY(&items[i],&actor)==(!effect && i!=position));
   if(effect) assert(output.empty());

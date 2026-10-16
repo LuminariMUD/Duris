@@ -42,6 +42,9 @@ prelude = r'''
 #define LOWEST_MAT_VNUM 1000
 #define HIGHEST_MAT_VNUM 2000
 #define ITEM_MONEY 1
+#define ITEM_CORPSE 2
+#define CORPSE_FLAGS 1
+#define PC_CORPSE 1
 #define CURRENCY_DENOMINATION_COUNT 4
 #define ITEM2_ACCOUNT_BOUND 1
 #define ITEM2_NOLOOT 2
@@ -54,6 +57,7 @@ prelude = r'''
 #define GET_OBJ_WEIGHT(obj) ((obj)->weight)
 #define GET_ITEM_TYPE(obj) ((obj)->type)
 #define IS_OBJ_STAT2(obj,flag) ((obj)->flags & (flag))
+#define IS_SET(value,flag) ((value) & (flag))
 #define IS_TRUSTED(ch) false
 #define OBJS(obj,ch) ((obj)->short_description)
 #define PERS(victim,ch,hide) ((victim)->name)
@@ -83,6 +87,7 @@ static bool item_command_object_is_takeable(P_char, P_obj object)
     return object->weight >= 0;
 }
 static bool checkgetput(P_char, P_obj) { return false; }
+static void writeCorpse(P_obj) {}
 static void send_to_char(const char *message, P_char) { output += message; }
 '''
 
