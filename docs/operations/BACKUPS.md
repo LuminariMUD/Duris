@@ -129,6 +129,35 @@ hourly and runs a drill only when the policy's interval has elapsed, never when 
 catches missed invocations after host downtime. Test a deliberate invalid
 policy and verify that the failure reaches the responsible operator.
 
+`scripts/backup_alert.py` can be used as that existing alert target. It reuses
+the protected `.env` loader and `MAIL_HOST`, `MAIL_PORT`, `MAIL_TLS`,
+`MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_FROM` settings in `.env.example`.
+Use a sender verified with the configured SMTP account. Like account recovery,
+port 465 uses verified implicit TLS; other TLS-enabled ports require STARTTLS.
+Credentials are optional but must be supplied as a pair, and plaintext is allowed
+only for an unauthenticated loopback relay. SMTP authentication preserves UTF-8
+credential bytes using the relay's advertised CRAM-MD5, PLAIN, or LOGIN mechanism.
+The notifier does not use the host's shared sendmail relay or require a second
+password file. `MAIL_ENABLED` controls game account recovery only and does not
+disable an explicitly connected backup alert route.
+
+For a user service, the template's `ExecStart` can invoke:
+
+```ini
+ExecStart=/usr/bin/python3 /absolute/path/to/duris/scripts/backup_alert.py %i --recipient operator@example.com --env-file /absolute/path/to/duris/.env
+```
+
+The recovery command in the message uses the checkout containing `--env-file`,
+with shell quoting for paths containing spaces or apostrophes.
+It includes the unit's last 20 user-journal lines (or an explicit unavailable
+placeholder if journal collection fails, times out, or cannot be decoded).
+Quoted-printable encoding preserves non-ASCII text on relays without 8BITMIME.
+It suppresses repeats for one hour per unit under `~/.local/state/duris-backup-alert/`.
+Only an accepted SMTP submission creates/refreshes the stamp; rejected submission remains eligible to
+retry. Acceptance by the SMTP server is not proof of recipient receipt: verify
+that separately using the existing controlled-notification approval procedure.
+The focused executable check is `python3 tests/async/test_backup_alert_runtime.py`.
+
 stdout/stderr contain JSON with fixed result/error codes, generation IDs,
 aggregate age/bytes/counts, and separate replica status. When an unexpected
 exception stops a job, its code is operation_failed, `error` names the exception's
