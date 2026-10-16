@@ -127,6 +127,23 @@ staff command, level, death, and other player logs were also inspected; none
 supplies the missing complete sequences. Preserve this limit instead of adding
 unbounded command capture or claiming retrospective causality.
 
+### Database attribution cross-check — 2026-10-16
+
+The continuation also queried the deployed database through its existing
+allowlisted connection, using a read-only transaction and a five-second
+statement limit. Bounded `log_entries` reads around 02:50:05, 03:16:50, 02:22:26,
+04:32:03, and 03:11:02 UTC produced nearby staff actions and one unrelated player
+action, but no matching zone report, movement report, dead-owner producer,
+posture producer, or lookup query. Their room metadata belongs to those other
+actions and must not be assigned to the reports. The `telemetry_interval` query
+for the full original seven-hour window returned no records, so its potential
+zone/race/class/encounter fields supply no retrospective evidence here.
+
+Private query inputs and outputs are under `bin/analysis/issue106/private/`
+(`historical-audit.tsv` and `telemetry-attribution.sql/.tsv`); the read-only reader
+is `bin/analysis/issue106/read_historical_audit.py`. Connection values and player
+identities were not added to the repository. No database writes were performed.
+
 ### Host evidence and access boundary
 
 - **LR-12:** `systemctl show logrotate.service` now records `Result=success`,
@@ -235,6 +252,7 @@ no additional feature work. For the remaining original items:
    those conditions.
 3. Exact LR-06/LR-07/LR-09/LR-10/LR-17/LR-18 historical attribution needs an
    independently retained contemporaneous transcript/snapshot or the original
-   reporter's repeatable sequence. The inspected logs do not contain it. Current
+   reporter's repeatable sequence. The inspected text logs and database audit
+   records do not contain it. Current
    player files, nearby staff changes, or the new teleport repair are not proof
    of those historical causes. Keep each evidence gap explicit in #106.
