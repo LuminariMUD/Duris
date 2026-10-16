@@ -3512,11 +3512,30 @@ void do_innate(P_char ch, char *arg, int cmd)
 		return;
 	}
 
+	char *handler_args = innate_args;
+	char *rest = arg && cmd != CMD_SUMMON ? skip_spaces(arg) : NULL;
+
+	// Resolve an owned full name before abbreviations: "summon warg" must not
+	// select the earlier "summon horde" entry. Keep the arguments after that name.
 	for (i = 0; i <= LAST_INNATE; i++)
 	{
-		if (is_abbrev(innate_name, innates_data[i].name) && has_innate(ch, i))
+		const char *name = innates_data[i].name;
+		size_t len = strlen(name);
+		if (rest && strchr(name, ' ') && !strn_cmp(rest, name, len) &&
+		    (rest[len] == ' ' || rest[len] == '\0') && has_innate(ch, i))
 		{
+			handler_args = skip_spaces(rest + len);
 			break;
+		}
+	}
+	if (i > LAST_INNATE)
+	{
+		for (i = 0; i <= LAST_INNATE; i++)
+		{
+			if (is_abbrev(innate_name, innates_data[i].name) && has_innate(ch, i))
+			{
+				break;
+			}
 		}
 	}
 
@@ -3524,21 +3543,7 @@ void do_innate(P_char ch, char *arg, int cmd)
 	{
 		if (innates_data[i].func)
 		{
-			const char *name = innates_data[i].name;
-			size_t len = strlen(name);
-			char *rest = arg ? skip_spaces(arg) : NULL;
-
-			// For "innate plane shift air", innate_args holds "shift", so pass
-			// everything after the full multi-word name instead.
-			if (rest && strchr(name, ' ') && !strn_cmp(rest, name, len) &&
-			    (rest[len] == ' ' || rest[len] == '\0'))
-			{
-				(innates_data[i].func)(ch, skip_spaces(rest + len), CMD_INNATE);
-			}
-			else
-			{
-				(innates_data[i].func)(ch, innate_args, CMD_INNATE);
-			}
+			(innates_data[i].func)(ch, handler_args, CMD_INNATE);
 		}
 		else
 		{
