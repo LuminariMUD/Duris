@@ -17,8 +17,9 @@ aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready 
 population classification and admission remain open.
 No operational repair started.
 
-Focused repair ready for publication: `branch/issue-67-recovery-floor-overlap`,
-based on PR #144. Outcome: retain floor trees with unseen child UIDs instead of
+Focused repair ready for review in [PR #145](https://github.com/LuminariMUD/Duris/pull/145):
+`branch/issue-67-recovery-floor-overlap`, based on PR #144. Implementation commit:
+`b988dc7b5e794f5033cdbf41197f850926032291`. Outcome: retain floor trees with unseen child UIDs instead of
 consuming them as duplicates; validate even fully repeated trees before skipping.
 Non-goals: picking a newer tree or changing canonical identity. Files: recovery
 codec/planner, existing native fixture and this plan. Proof: the new actual
@@ -38,7 +39,7 @@ Redis generation/floor for disposition. This repair is separate from adding the
 source projection API. Fully repeated valid trees retain existing behavior.
 
 Active recovery population chunk: `branch/issue-67-recovery-population`, based
-on PR #144. Outcome: project the pinned Redis ground graphs and retained NPC
+on PR #145. Outcome: project the pinned Redis ground graphs and retained NPC
 reconstruction evidence without constructing objects; reuse one pure object-tree
 validator in both projection and the actual recovery planner. Preserve generation
 versus floor provenance and repeated-UID evidence. Non-goals: treating NPC hints
