@@ -116,12 +116,15 @@ incident details have not been independently verified.
    vnums. `clear`, `purge`, and `eat ... update` have distinct tracking semantics;
    none is an approved automatic duplicate repair.
 
-8. **The requested wording remains outstanding.**
-   `publish_messages()` still says “from your artifact(s)”; `artifact_feed_sql()`
-   retains separate deep/light “from somewhere” messages. Treat “from above” as
-   requested wording, not a verified historic quotation. Trace active direct
-   callers and the flat-file path before changing them. Existing capped feeds
-   can still produce feedback; a wording fix must not silently change that rule.
+8. **The requested wording is implemented in PR #133.**
+   `publish_messages()` and the active monolith direct-feed path through
+   `artifact_feed_sql()` now say “You feel a sense of satisfaction from above.”
+   The obsolete deep/light positive wording split is removed. Valid capped feeds
+   retain positive feedback; negative text and live/history publication timing
+   are unchanged. The direct path checks its existing tracked-owner restriction
+   before publishing feedback. Treat “from above” as requested wording, not a
+   verified historic quotation. Canonical UID eligibility and command-wide
+   monolith message coalescing remain outstanding in AR-05.
 
 ## Decisions that guide the implementation
 
@@ -281,11 +284,15 @@ Dependencies: AR-02/AR-04 identity semantics; can be tested alongside AR-03.
   both equipment orders, cross-player copies, unrelated valid artifacts, guild
   construction thresholds and a guild-only result when every artifact conflicts.
   Retain normal PvP soul checks, no-effect, arithmetic failure and cap behavior.
-- [ ] Update `publish_messages()` and every verified active positive direct-feed
-  path to the requested “from above” text. Preserve colors, negative feedback,
-  recipient eligibility and reward timing. No duplicate feedback for several
-  artifacts, history retry/completion, replay, or restart. Test successful one-
-  and several-artifact rewards, capped valid feed, no eligible reward, rejected
+- [x] Restore the requested “from above” text in `publish_messages()` and the
+  verified active monolith direct-feed path in PR #133. Preserve colors,
+  negative feedback, valid capped feedback and live/history publication timing.
+  Existing native reward and direct-feed fixtures cover the wording and the
+  direct tracked-owner rejection before feedback.
+- [ ] Complete command-wide monolith message coalescing and canonical recipient
+  eligibility. Verify no duplicate feedback for several artifacts, history
+  retry/completion, replay, or restart. Retain successful one- and
+  several-artifact rewards, capped valid feed, no eligible reward, rejected
   artifact-only reward, and guild-only rewards after artifact exclusion.
 - [ ] Keep live benefit/message publication immediate after valid apply; a later
   history failure must neither undo a reward nor publish another. Reuse the
