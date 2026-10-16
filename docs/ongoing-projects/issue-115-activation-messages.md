@@ -1,7 +1,9 @@
 # Issue #115: artifact activation message repair
 
 Tracking: https://github.com/LuminariMUD/Duris/issues/115
-Status: implemented and locally verified; ready for PR publication (2026-10-16).
+Status: implemented, locally verified, and published for review (2026-10-16).
+PR: https://github.com/LuminariMUD/Duris/pull/116 (open, not a draft).
+Implementation commit: `0fa0c3de94e9bce28e494b2033b4a5e2e921a56e`.
 Branch: `branch/issue-115-activation-messages`, based on `origin/master` at
 `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
 Worktree: `/home/aiwithapex/projects/duris-issue115`.
@@ -84,9 +86,11 @@ needed. No additional defect was established during focused verification.
 
 ## Review and rollout handoff
 
-Next: commit and push this branch, open a focused PR against `master`, and record
-its URL here. Keep the issue open: the remaining acceptance is a fresh public
-combat log and its HTTP API response after an authorized deployment.
+The implementation is committed and pushed in PR #116 against `master`. The
+pre-commit formatting and changed-line clang-tidy checks passed. No dependent
+PR or release tag is needed. Next: review the PR; keep the issue open for the
+remaining fresh public combat log and HTTP API comparison after an authorized
+deployment. Source and executable verification are complete.
 
 For that later acceptance, use disposable test characters, with an observer,
 activate the Totem words and Circlet `mystra` in their supported slots, and capture
