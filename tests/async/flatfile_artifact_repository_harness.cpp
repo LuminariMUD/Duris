@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <openssl/sha.h>
 #include <string>
 #include <vector>
 
@@ -54,9 +56,122 @@ static void set_transfer_item(item_transfer_payload *payload, int32_t vnum, bool
 	std::copy(encoded.begin(), encoded.end(), payload->item_blob.begin());
 }
 
+static void identity_storage(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	flatfile_artifact_record present = { 100,  false, FLATFILE_ARTIFACT_ON_NPC,
+					     81,   0,	  1,
+					     1000, -1,	  0,
+					     1,	   123,	  artifact_identity_state::present };
+	require(flatfile_artifact_establish(root.string(), { present }, &error) ==
+			flatfile_artifact_result::ok,
+		"unclaimed canonical artifact did not persist without a custody row");
+	flatfile_artifact_record loaded;
+	require(flatfile_artifact_get(root.string(), 100, &loaded, &error) ==
+				flatfile_artifact_result::ok &&
+			loaded == present,
+		"canonical UID/state did not round trip");
+	require(flatfile_artifact_gameplay_update(root.string(), 100, true,
+						  FLATFILE_ARTIFACT_ON_PLAYER, 42, 9000, 1, 1001,
+						  &error) == flatfile_artifact_result::ok &&
+			flatfile_artifact_bind_update(root.string(), 100, 42, 1002, &error) ==
+				flatfile_artifact_result::ok &&
+			flatfile_artifact_get(root.string(), 100, &loaded, &error) ==
+				flatfile_artifact_result::ok &&
+			loaded.canonical_item_uid == 123 &&
+			loaded.identity_state == present.identity_state,
+		"ordinary gameplay/bind writes erased canonical identity");
+
+	const fs::path invalid_root = root.parent_path() / "invalid-identity";
+	prepare_root(invalid_root);
+	for (const auto state :
+	     { artifact_identity_state::unresolved, artifact_identity_state::absent,
+	       static_cast<artifact_identity_state>(4) })
+	{
+		auto invalid = present;
+		invalid.identity_state = state;
+		require(flatfile_artifact_establish(invalid_root.string(), { invalid }, &error) ==
+				flatfile_artifact_result::invalid,
+			"inconsistent UID/state was accepted");
+	}
+	auto duplicate = present;
+	duplicate.vnum = 200;
+	duplicate.identity_state = artifact_identity_state::retired;
+	require(flatfile_artifact_establish(invalid_root.string(), { present, duplicate },
+					    &error) == flatfile_artifact_result::invalid,
+		"one physical UID became canonical for two artifact vnums");
+	present.canonical_item_uid = 0;
+	require(flatfile_artifact_establish(invalid_root.string(), { present }, &error) ==
+			flatfile_artifact_result::invalid,
+		"present artifact without a canonical UID was accepted");
+	std::vector<flatfile_artifact_record> states;
+	for (const auto state :
+	     { artifact_identity_state::unresolved, artifact_identity_state::present,
+	       artifact_identity_state::retired, artifact_identity_state::absent })
+	{
+		auto record = present;
+		record.vnum += static_cast<int>(states.size());
+		record.identity_state = state;
+		record.canonical_item_uid =
+			state == artifact_identity_state::present ||
+					state == artifact_identity_state::retired ?
+				record.vnum :
+				0;
+		states.push_back(record);
+	}
+	require(flatfile_artifact_establish(invalid_root.string(), states, &error) ==
+			flatfile_artifact_result::ok,
+		"valid unresolved/present/retired/absent states did not persist");
+	std::vector<flatfile_artifact_record> roundtrip;
+	require(flatfile_artifact_list(invalid_root.string(), &roundtrip, &error) ==
+				flatfile_artifact_result::ok &&
+			roundtrip == states,
+		"identity states changed on reload");
+
+	// Materialize the actual v1 wire shape: the v2 record adds only UID/state.
+	// Legacy bytes have no identity evidence and must never decode as absent.
+	std::ifstream input(root / "domains/artifact_catalog", std::ios::binary);
+	std::vector<uint8_t> legacy{ std::istreambuf_iterator<char>(input), {} };
+	require(legacy.size() == 56 + 4 + 62 && legacy[8] == 2,
+		"unexpected single-record artifact catalog wire shape");
+	legacy.resize(legacy.size() - 9);
+	legacy[8] = 1;
+	const uint32_t payload_size = legacy.size() - 56;
+	for (size_t byte = 0; byte < sizeof(payload_size); ++byte)
+		legacy[12 + byte] = static_cast<uint8_t>(payload_size >> (byte * 8));
+	SHA256(legacy.data() + 56, payload_size, legacy.data() + 24);
+	const fs::path legacy_root = root.parent_path() / "legacy-identity";
+	prepare_root(legacy_root);
+	const fs::path filename = legacy_root / "domains/artifact_catalog";
+	{
+		std::ofstream output(filename, std::ios::binary);
+		output.write(reinterpret_cast<const char *>(legacy.data()), legacy.size());
+		require(output.good(), "could not write v1 artifact fixture");
+	}
+	fs::permissions(filename, fs::perms::owner_read | fs::perms::owner_write,
+			fs::perm_options::replace);
+	require(flatfile_artifact_get(legacy_root.string(), 100, &present, &error) ==
+				flatfile_artifact_result::ok &&
+			!present.canonical_item_uid &&
+			present.identity_state == artifact_identity_state::unresolved &&
+			present.timer == loaded.timer &&
+			present.bind_owner_pid == loaded.bind_owner_pid,
+		"v1 catalog invented identity or lost timer/soul evidence");
+	require(flatfile_artifact_gameplay_update(legacy_root.string(), 100, true,
+						  FLATFILE_ARTIFACT_ON_PLAYER, 42, 9100, 1, 1002,
+						  &error) == flatfile_artifact_result::ok &&
+			flatfile_artifact_get(legacy_root.string(), 100, &present, &error) ==
+				flatfile_artifact_result::ok &&
+			present.timer == 9100 && !present.canonical_item_uid &&
+			present.identity_state == artifact_identity_state::unresolved,
+		"v1 rewrite lost state or promoted unresolved identity");
+}
+
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");
+	identity_storage(fs::path(argv[1]) / "identity");
 	const fs::path root = fs::path(argv[1]) / "release";
 	prepare_root(root);
 	std::string error;

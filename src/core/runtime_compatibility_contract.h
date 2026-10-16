@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"403c2a9941ce5746491919b2cc8cd91bed55b959adc681a66f0fceef04b90d23";
+	"51ffa6558483c80cb3dbcd169092a06bd17267c597760cd14e31926ffae810ab";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"995f0c9f1a726dc25e3ce1104627ebff02e0414e7d2e48595f94de7ce3b0e8e2";
+	"37613651c2177a539bbced1f6dc6db307a179b9f14eff1f9084e6c5d64a942e8";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -98,15 +98,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0040 records the killer-side ally count on combat outcomes.
  * Migration 0041 widens legacy pkill_info.log columns for full public combat logs.
  * Migration 0042 widens all ten player base stats to signed shorts.
+ * Migration 0044 adds canonical artifact UID/state without replacing the custody FK.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0043_news_acknowledgement";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 43;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0044_artifact_canonical_identity";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 44;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"fb6243dd098b4f017fbda8d9aeb422f606a3aa7c5a96969c2ed4d369a154ef60";
+	"1d64797c4ad6c448c4a771262fd08e0ee4e79b3db0f84ba3143db9856395afce";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"2cca57fdb73c604aecf44d3e75295510eddbbdadbf4b2da50ca74e2328faba6a";
+	"d008062231aaab96090ad593fb281bb7876a080948cfe5742b575b0f5697be84";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"eee4465185fd3952472dda8b40458a569b7906078ad05be21d96b957779ba2f5";
+	"a1d9050458e900713e8219c7065a8f21317902d2a2d525fc99b61eea7c9167a9";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

@@ -16,6 +16,7 @@
 #define DURIS_FLATFILE_ARTIFACT_REPOSITORY_H
 
 #include "flatfile/flatfile_authority_transaction.h"
+#include "guild/artifact_identity.h"
 #include "item/item_transfer_command.h"
 #include "player/player_snapshot.h"
 
@@ -42,6 +43,8 @@ struct flatfile_artifact_record
 	int32_t bind_owner_pid = -1;
 	int64_t bind_timer = 0;
 	uint64_t revision = 0;
+	uint64_t canonical_item_uid = 0;
+	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 	bool operator==(const flatfile_artifact_record &) const = default;
 };
 

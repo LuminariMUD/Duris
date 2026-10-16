@@ -31,7 +31,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'A', 'R', 'T', 'F', 0 };
-constexpr uint32_t catalog_version = 1;
+constexpr uint32_t catalog_version = 2;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
 constexpr size_t record_maximum = 1048576;
 constexpr const char *catalog_filename = "artifact_catalog";
@@ -118,7 +118,11 @@ bool valid_record(const flatfile_artifact_record &record)
 	return record.vnum > 0 && record.location_type >= FLATFILE_ARTIFACT_NOT_IN_GAME &&
 	       record.location_type <= FLATFILE_ARTIFACT_ON_CORPSE && record.timer >= 0 &&
 	       record.type >= 1 && record.type <= 3 && record.last_update >= 0 &&
-	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision;
+	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision &&
+	       record.identity_state <= artifact_identity_state::absent &&
+	       ((record.identity_state == artifact_identity_state::present ||
+		 record.identity_state == artifact_identity_state::retired) ==
+		(record.canonical_item_uid != 0));
 }
 
 bool valid_records(const std::vector<flatfile_artifact_record> &records)
@@ -126,11 +130,25 @@ bool valid_records(const std::vector<flatfile_artifact_record> &records)
 	if (records.size() > record_maximum ||
 	    !std::is_sorted(records.begin(), records.end(), record_less))
 		return false;
-	for (size_t index = 0; index < records.size(); ++index)
-		if (!valid_record(records[index]) ||
-		    (index && records[index - 1].vnum == records[index].vnum))
-			return false;
-	return true;
+	std::vector<uint64_t> identities;
+	try
+	{
+		identities.reserve(records.size());
+		for (size_t index = 0; index < records.size(); ++index)
+		{
+			if (!valid_record(records[index]) ||
+			    (index && records[index - 1].vnum == records[index].vnum))
+				return false;
+			if (records[index].canonical_item_uid)
+				identities.push_back(records[index].canonical_item_uid);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	std::sort(identities.begin(), identities.end());
+	return std::adjacent_find(identities.begin(), identities.end()) == identities.end();
 }
 
 bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes)
@@ -151,6 +169,8 @@ bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes
 		payload.number(record.bind_owner_pid);
 		payload.number(record.bind_timer);
 		payload.number(record.revision);
+		payload.number(record.canonical_item_uid);
+		payload.number(static_cast<uint8_t>(record.identity_state));
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -179,8 +199,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || version != catalog_version || !revision ||
-	    payload_size != bytes.size() - header_size)
+	    !header.number(&revision) || (version != 1 && version != catalog_version) ||
+	    !revision || payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
@@ -207,6 +227,14 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 			    !payload.number(&record.bind_timer) ||
 			    !payload.number(&record.revision))
 				return false;
+			if (version >= 2)
+			{
+				uint8_t state = 0;
+				if (!payload.number(&record.canonical_item_uid) ||
+				    !payload.number(&state))
+					return false;
+				record.identity_state = static_cast<artifact_identity_state>(state);
+			}
 			record.owned = owned != 0;
 		}
 	}

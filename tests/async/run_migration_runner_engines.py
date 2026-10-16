@@ -60,16 +60,94 @@ def check(image: str, expected_head: str) -> None:
             "COLLATE utf8mb4_unicode_ci;", None)
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
 
+        # Reproduce the real pre-0044 shape and an interrupted/incorrect partial
+        # apply. Existing evidence must survive; a failed verifier cannot advance
+        # the ledger. The fresh-bootstrap shape is checked by the runtime leg.
+        sql("ALTER TABLE artifact_domain_state DROP INDEX uq_artifact_canonical_uid, "
+            "DROP COLUMN identity_state, DROP COLUMN canonical_item_uid")
+        sql("INSERT INTO artifact_domain_state(vnum,owned,loc_type,location,timer_epoch,"
+            "artifact_type,bind_owner_pid,bind_timer_epoch) "
+            "VALUES(2147483000,0,2,81,1234,1,-1,17)")
+        sql("INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,"
+            "item_revision,vnum,state) VALUES(555,555,3,1200,8,2147482999,1)")
+        sql("INSERT INTO artifact_domain_state(vnum,owned,loc_type,location,timer_epoch,"
+            "artifact_type,bind_owner_pid,bind_timer_epoch,item_uid,item_revision) "
+            "VALUES(2147482999,1,4,1200,4321,2,42,71,555,8)")
+        sql("ALTER TABLE artifact_domain_state ADD canonical_item_uid BIGINT UNSIGNED NULL "
+            "AFTER updated_at, ADD identity_state SMALLINT UNSIGNED NOT NULL DEFAULT 0 "
+            "AFTER canonical_item_uid")
+
         def migrate(*arguments):
             return subprocess.run([sys.executable, "scripts/migration_runner.py", *arguments],
                                   cwd=ROOT, env=environment, capture_output=True, text=True)
 
-        for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-            result = migrate(*arguments)
-            assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
+        result = migrate("adopt", "--kind", "fresh_bootstrap")
+        assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
+        refused = migrate("run")
+        assert refused.returncode == 2 and 'artifact canonical identity schema differs' in refused.stderr, \
+            f"{image}: incompatible identity column was not refused: {refused.stderr}"
+        assert sql("SELECT applied_count FROM mud_schema_migration_state") == '43'
+        assert sql("SELECT timer_epoch,bind_timer_epoch,canonical_item_uid IS NULL,identity_state "
+                   "FROM artifact_domain_state WHERE vnum=2147483000") == '1234\t17\t1\t0'
+        sql("ALTER TABLE artifact_domain_state MODIFY identity_state "
+            "TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER canonical_item_uid")
+        result = migrate("run")
+        assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
         head = sql("SELECT applied_count, LOWER(HEX(history_checksum)) FROM "
                    "mud_schema_migration_state WHERE state_id=1;")
         assert head == expected_head, f"{image} ({version}) stopped at {head}"
+        assert sql('SELECT item_uid,item_revision,canonical_item_uid IS NULL,identity_state,'
+                   'timer_epoch,bind_owner_pid,bind_timer_epoch FROM artifact_domain_state '
+                   'WHERE vnum=2147482999') == '555\t8\t1\t0\t4321\t42\t71'
+
+        def refused_sql(statement, code):
+            result = subprocess.run(mysql + ['runner_engines'], input=statement, text=True,
+                                    env=environment, capture_output=True)
+            assert result.returncode != 0 and 'ERROR ' + str(code) in result.stderr, \
+                f'{image}: expected database refusal {code}'
+
+        # Canonical identity exists before custody (NPC/ground) and after physical
+        # retirement. Keep the existing nullable custody FK, without fake owners.
+        uid = 18446744073709551600
+        refused_sql(f'UPDATE artifact_domain_state SET item_uid={uid} WHERE vnum=2147483000', 1452)
+        sql(f'UPDATE artifact_domain_state SET canonical_item_uid={uid},identity_state=1 '
+            'WHERE vnum=2147483000')
+        assert sql('SELECT canonical_item_uid,identity_state,item_uid IS NULL FROM '
+                   'artifact_domain_state WHERE vnum=2147483000') == f'{uid}\t1\t1'
+        sql('INSERT INTO artifact_domain_state(vnum) VALUES(2147483001)')
+        refused_sql(f'UPDATE artifact_domain_state SET canonical_item_uid={uid},identity_state=1 '
+                    'WHERE vnum=2147483001', 1062)
+        sql('UPDATE artifact_domain_state SET identity_state=2 WHERE vnum=2147483000')
+        sql('UPDATE artifact_domain_state SET identity_state=3 WHERE vnum=2147483001')
+        assert sql('SELECT timer_epoch,bind_timer_epoch FROM artifact_domain_state '
+                   'WHERE vnum=2147483000') == '1234\t17'
+        result = migrate('run')  # exact replay preserves both identity states
+        assert result.returncode == 0, f'{image}: exact identity replay failed'
+        step = next(step for step in runner.load_manifest().migrations
+                    if step.migration_id == '0044_artifact_canonical_identity')
+
+        def verify():
+            return subprocess.run(['bash', str(step.verify_path)], cwd=ROOT,
+                                  env=environment, capture_output=True, text=True)
+
+        assert verify().returncode == 0
+        for state, canonical in ((0, str(uid)), (1, 'NULL'), (2, '0'), (4, 'NULL')):
+            sql(f'UPDATE artifact_domain_state SET identity_state={state},'
+                f'canonical_item_uid={canonical} WHERE vnum=2147483000')
+            assert verify().returncode != 0, f'{image}: inconsistent UID/state accepted'
+        sql(f'UPDATE artifact_domain_state SET identity_state=2,canonical_item_uid={uid} '
+            'WHERE vnum=2147483000')
+        for key in ('KEY uq_artifact_canonical_uid(canonical_item_uid)',
+                    'UNIQUE KEY uq_artifact_canonical_uid(canonical_item_uid,vnum)'):
+            sql('ALTER TABLE artifact_domain_state DROP INDEX uq_artifact_canonical_uid, ADD ' + key)
+            assert verify().returncode != 0, f'{image}: incorrect canonical UID key accepted'
+        sql('ALTER TABLE artifact_domain_state DROP INDEX uq_artifact_canonical_uid, '
+            'ADD UNIQUE KEY uq_artifact_canonical_uid(canonical_item_uid)')
+        assert verify().returncode == 0
+        assert sql('SELECT canonical_item_uid,identity_state,timer_epoch,bind_timer_epoch FROM '
+                   'artifact_domain_state WHERE vnum=2147483000') == f'{uid}\t2\t1234\t17'
+        print(f'[PASS] {image}: artifact UID FK/null/unknown/present/retired/absent, partial '
+              'apply, verifier refusal, replay and evidence preservation', flush=True)
         sql("UPDATE mud_schema_history SET description='edited' WHERE sequence_number=31;")
         refused = migrate("run")
         assert refused.returncode == 2 and "history" in refused.stderr, \

@@ -6,7 +6,9 @@ Status: AR-01 executable acceptance cases and source boundary mapped; identity
 implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-feeding-feedback`, with direct timer arithmetic repaired on
 `branch/issue-67-direct-feed-timers` and conservative reward conflict isolation on
-`branch/issue-67-reward-conflicts`. No operational repair started.
+`branch/issue-67-reward-conflicts`. AR-02 storage is implemented on
+`branch/issue-67-canonical-storage`; boot/admission integration remains open.
+No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
@@ -194,7 +196,7 @@ an implementation-ready boot/admission design consistent with memory authority.
 
 Dependencies: AR-01.
 
-- [ ] Qualify `artifact_domain_state.item_uid` and its FK for the selected design.
+- [x] Qualify `artifact_domain_state.item_uid` and its FK for the selected design.
   Distinguish an identified canonical UID from absent, unresolved legacy, retired,
   and temporarily unavailable evidence. Handle unclaimed NPC/ground artifacts
   whose UID has not yet acquired a persistent custody row; do not write dangling
@@ -212,7 +214,7 @@ Dependencies: AR-01.
 - [ ] Support the flat-file backend's equivalent identity/lifecycle contract and
   schema/version compatibility; its current vnum conflict check is insufficient
   for canonical-UID lifecycle protection.
-- [ ] Add schema only when the existing nullable link cannot express a proven
+- [x] Add schema only when the existing nullable link cannot express a proven
   requirement. Never edit sealed/applied migrations. Any new migration must
   include verification, manifest checksums, bootstrap/legacy convergence and
   runtime compatibility metadata/documentation under the current
@@ -469,9 +471,9 @@ and several artifacts, valid capped feed, guild-only/no-effect/rejected awards,
 duplicate completion, direct light/deep feeds, trusted/soul/cross-owner refusal,
 and the original negative text. The direct test links actual `artifact.c`,
 flat-file repository and bind lookup, with fixture placement and messaging.
-  Monolith still feeds per artifact; command-wide coalescing and canonical UID
-  eligibility remain in AR-05. The two AR-01 expected failures are resolved by
-  the conservative conflict-isolation checkpoint below.
+Monolith still feeds per artifact; command-wide coalescing and canonical UID
+eligibility remain in AR-05. The two AR-01 expected failures are resolved by
+the conservative conflict-isolation checkpoint below.
 
 The following pass for this chunk: reward runtime (baseline plus 2 expected
 failures), flat-file artifact repository/bind/gameplay harnesses, transactional
@@ -494,9 +496,103 @@ configured to terminate on a violation. Build, formatting, whitespace and
 changed-line clang-tidy pass. This fixes shared direct-feed arithmetic for both
 backends; it does not prove SQL storage through the flat-file fixture.
 
-Next: qualify canonical identity storage/boot candidate publication for AR-02.
+The next AR-02 checkpoint below qualifies canonical identity storage; boot
+candidate publication remains required after that storage foundation.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
+
+### Canonical identity storage — AR-02
+
+`branch/issue-67-canonical-storage` → `branch/issue-67-reward-conflicts` adds the
+durable representation, without selecting copies or enabling an admission rule.
+The existing nullable `artifact_domain_state.item_uid` remains a custody FK.
+Disposable engine tests prove it rejects a positive UID with no custody row
+(error 1452), while unclaimed NPC/ground artifacts must be identifiable before
+such a row exists. Add `canonical_item_uid` and `identity_state` to the **same
+record**, retain the original FK, and do not create fake ownership or another
+registry/table. A unique canonical UID key prevents one UID naming two vnums.
+
+State values are sealed in `src/guild/artifact_identity.h`: 0 unresolved,
+1 present, 2 retired, 3 proven absent. Present/retired carry a positive UID;
+unresolved/absent carry SQL NULL (zero in the flat-file record). A retired UID is
+retained so old payloads remain identifiable. All legacy rows stay unresolved;
+the migration never infers absence from `owned` or selects a winner from order.
+Read availability is separate from durable identity: a failed/partial evidence
+scan must preserve the last stored UID/state and reserve the vnum until it can
+be classified. It must not erase a known UID by storing unresolved/NULL.
+
+Files/outcome: immutable migration 0044 and its verifier, fresh bootstrap,
+migration/runtime manifests and compiled contract, shared state enum, existing
+flat-file record/codec, their established engine/native tests and the database
+contracts. Independent guards replay interrupted column/index DDL. The verifier
+refuses incompatible shapes, inconsistent UID/state or a missing original FK;
+no existing timer/soul/custody evidence is rewritten. Applied older immutable
+files are unchanged. Runtime table count remains 198.
+
+The flat-file artifact catalog writes v2, reads v1 as unresolved, rejects invalid
+UID/state pairs and a shared nonzero UID across vnums, and preserves identity
+through ordinary gameplay/bind updates. The existing fixture covers all four
+states, round-trip/reload, invalid data, duplicate UID, a real v1 byte layout,
+and v1→v2 rewrite without inventing identity. Older binaries refuse v2; this
+chunk has not upgraded any operational store.
+
+Ablation: reuse the existing artifact stores, nullable custody projection,
+transaction/file codec and test runners. The additional two fields are needed
+because custody cannot represent an unclaimed identity and a UID alone cannot
+distinguish unresolved, absence and retirement. No new worker, store, service,
+configuration, canonical selection or runtime UID map is introduced here.
+
+Validation passed:
+
+```sh
+python3 tests/async/test_flatfile_artifact_repository.py
+python3 tests/async/run_migration_runner_engines.py mariadb:10.11
+python3 tests/async/run_migration_runner_engines.py mysql:8.0 mariadb:11.8
+RUNTIME_DB_IMAGE=mysql:8.0 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+LEGACY_DB_IMAGE=mysql:8.0 tests/async/run_legacy_migration_mysql.sh
+LEGACY_DB_IMAGE=mariadb:10.11 tests/async/run_legacy_migration_mysql.sh
+python3 tests/async/run_news_migration.py --image mariadb:10.11
+python3 tests/async/test_immutable_migration_runner.py
+python3 tests/async/test_migration_runner_cli_safety.py
+python3 tests/async/test_migration_mysql_invocation.py
+python3 tests/async/test_persistence_migration_contract.py
+python3 scripts/validate_runtime_compatibility.py
+./scripts/format.sh --check
+./scripts/tidy.sh --rev origin/branch/issue-67-reward-conflicts
+make -C src
+git diff --check
+```
+
+The engine tests prove nullable FK refusal versus unclaimed canonical identity,
+full-width unsigned UIDs, present/retired/absent/unresolved storage, duplicate UID
+refusal, preservation of an existing non-null custody UID/revision, partial DDL,
+verifier refusal without ledger advancement, exact replay,
+index/state drift refusal and preservation of original timers/souls. Fresh and
+actual legacy upgrades converge on MySQL 8.0/MariaDB 10.11; MariaDB 11.8 passes
+the full runner and runtime compatibility leg. Historical news/online tests are
+pinned to their reviewed 0042/0043 prefix; the production runner itself is
+unchanged and still refuses the online player-update option at head 0044.
+
+Runtime metadata was measured on clean disposable schemas with the existing
+measurement/update helpers, not copied from a configured game. MySQL:
+`51ffa6558483c80cb3dbcd169092a06bd17267c597760cd14e31926ffae810ab`;
+MariaDB: `37613651c2177a539bbced1f6dc6db307a179b9f14eff1f9084e6c5d64a942e8`.
+Ignored command logs are `bin/analysis/issue67/identity-*.log`.
+An executable ablation probe compiles the same permanent flat-file fixture with
+each production UID/state or UID-uniqueness guard removed in an ignored source
+copy. Both variants fail at the intended assertion (not compilation), while the
+unchanged production implementation passes. See `identity-guard-proof.log`;
+the probe and generated binaries remain under ignored `bin/analysis/issue67/`.
+
+Still required next: hydrate/capture these fields in the existing artifact
+game-thread record and ordered writer; read complete durable/recovery candidate
+evidence before `ne_init_events` forces population; preserve same-UID staged-load
+rollback and retirement tombstones; then wire creation/lifecycle/reward admission.
+SQL snapshots and live gameplay do **not yet populate or enforce these fields**.
+The full AR-02 exit and later work items remain open; storage tests do not prove
+universal offline/admission/restart behavior. No production operation occurred.
 
 ### Conservative reward conflict isolation
 
@@ -554,9 +650,10 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135. All are open for review, with
-the displayed dependent PR bases; none has been merged or deployed. Resume from
-the tip of `branch/issue-67-reward-conflicts` in
+Current review order is #132 → #133 → #134 → #135, followed by the canonical
+storage chunk on its dependent branch. Published chunks are open for review,
+with the displayed dependent PR bases; none has been merged or deployed. Resume
+from the tip of `branch/issue-67-canonical-storage` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
 creating a dependent branch for the next storage/admission chunk. Fresh master
 remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.

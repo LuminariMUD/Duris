@@ -122,6 +122,22 @@ state snapshots committed. Existing schema and committed v1 receipts/outbox rema
 supported. See the [qualification evidence](../ongoing-projects/log-server-review.md#qualification-update-2026-10-14)
 and the pipeline's reconciliation contract before interpreting these tables.
 
+Artifact canonical identity storage is separate from the optional custody link
+within `artifact_domain_state`: `canonical_item_uid` has a unique key and no
+custody FK, while the existing `item_uid` FK remains intact. `identity_state`
+records unresolved (0), present (1), retired (2), or proven absent (3). Present and
+retired rows retain a positive canonical UID; unresolved and absent rows have
+NULL. Migration 0044 leaves legacy rows unresolved and preserves their existing
+timer, soul and ownership evidence. Storage alone establishes neither a canonical
+winner nor runtime uniqueness; follow the issue #67 implementation plan.
+
+The equivalent flat-file catalog is version 2, carrying canonical UID/state and
+rejecting one nonzero UID assigned to two vnums. Version 1 remains readable with
+unresolved identity; its next ordinary write emits version 2 without inventing a
+canonical copy. Older binaries refuse version 2 rather than silently dropping
+identity. Preserve an owner-controlled backup before any operational upgrade;
+none is authorized or performed by this storage implementation.
+
 ## External consumers and writers
 
 The server owns gameplay state even when another service presents or

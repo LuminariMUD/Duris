@@ -40,6 +40,8 @@ def run(image):
             return result.stdout.strip()
 
         manifest = runner.load_manifest()
+        manifest = replace(manifest, migrations=tuple(
+            step for step in manifest.migrations if step.sequence <= 43))
         assert manifest.migrations[-1].migration_id == '0043_news_acknowledgement'
         previous = replace(manifest, migrations=manifest.migrations[:-1])
         os.environ.update(ENVIRONMENT='test', DB_HOST='127.0.0.1', DB_PORT=port,

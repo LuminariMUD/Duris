@@ -202,6 +202,17 @@ Reference: [MariaDB online schema change](https://mariadb.com/docs/server/refere
 
 ## Post-baseline migration contract
 
+Migration 0044 adds canonical artifact UID/state fields to the existing
+`artifact_domain_state` store. It retains `item_uid` and its custody FK: the
+canonical physical UID must also represent unclaimed NPC/ground items without
+inventing custody. Old rows receive NULL/0 (unresolved), with no automatic
+canonical selection or data cleanup. A unique key prevents one non-null canonical
+UID from naming two vnums, and retired UIDs remain representable. Column/index
+guards replay partial DDL; the verifier checks their full shape, preserves the
+custody FK, and refuses inconsistent state/UID pairs. Apply it before starting
+the updated database-backed server. See the [artifact plan](../ongoing-projects/plan.md)
+for the separate runtime/admission/reconciliation acceptance work.
+
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size
 limits and rejects duplicate JSON keys, invalid paths, missing/duplicate/reordered IDs,
