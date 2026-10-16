@@ -29,7 +29,6 @@
 #include <array>
 #include <chrono>
 #include <charconv>
-#include <cerrno>
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>

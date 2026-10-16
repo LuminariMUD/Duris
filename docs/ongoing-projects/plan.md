@@ -14,13 +14,14 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
-Current work: `branch/issue-67-recovery-sequence`, based on PR #139.
+Current work: `branch/issue-67-recovery-numeric-evidence`, based on PR #139.
 **Outcome:** Redis boot-head and floor UID reads accept complete positive unsigned
 decimal values only; a genuine missing head is the only successful zero result.
 Malformed, negative, overflow, trailing or embedded-NUL input remains failed
 evidence. **Non-goals:** complete population classification, recovery-generation
 pinning or a recovery format change. Those remain required. **Files:** the existing
-Redis runtime, live Redis fixture/driver and this plan. **Proof:** exercise the
+Redis runtime, a native reader fixture in the existing live Redis driver, and
+this plan. **Proof:** exercise the
 actual readers on an isolated Redis server, including a negative floor field that
 previously matched unsigned-maximum UID bytes; retain the existing world-store
 and recovery controls, run the required builds and changed-line checks.
@@ -61,11 +62,10 @@ Current checkpoint: [PR #139](https://github.com/LuminariMUD/Duris/pull/139),
 `duris-issue67-plan`. The earlier unpublished `branch/issue-67-flat-artifact-memory` and
 `branch/issue-67-flat-artifact-authority` retain local checkpoints `5dd8be6cb` and
 `713c00c82`; their changes are carried forward here on the updated prerequisite.
-Before population/admission can use one authoritative record in both backends, replace
-the flat-file hot getters/direct writes with the existing artifact/soul memory
-maps and immutable captures on the same persistence writer. The flat backend
-currently bypasses those maps, so an additional identity-only map would create
-two competing authorities and still allow partial legacy writes.
+PR #139 replaces the flat-file hot getters/direct writes with the existing
+artifact/soul memory maps and immutable captures on the same persistence writer.
+The previous flat backend bypassed those maps; a separate identity-only map
+would have created two competing authorities and retained partial legacy writes.
 
 Outcome (implemented): complete flat artifact snapshots, current-state reads during storage
 failure, receipt-safe retry and boot hydration; no new worker or automatic
@@ -526,8 +526,8 @@ local fixture, or historical investigation as production completion.
 
 ### Review stack and current resume point
 
-The current continuation branch is `branch/issue-67-flat-artifact-cache` in
-`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #138. Earlier sections
+The current continuation branch is `branch/issue-67-recovery-numeric-evidence` in
+`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #139. Earlier sections
 record evidence at their own checkpoints; the current checkpoints below
 supersede their old next-step statements and flat repository APIs.
 
@@ -580,6 +580,41 @@ The next AR-02 checkpoint below qualifies canonical identity storage; boot
 candidate publication remains required after that storage foundation.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
+
+### Strict recovery numeric evidence — AR-01/AR-02 prerequisite
+
+`branch/issue-67-recovery-numeric-evidence` →
+`branch/issue-67-flat-artifact-cache` repairs the actual Redis boot-head and floor
+readers. Previously `strtoull` admitted numeric prefixes, signed input and
+embedded-NUL suffixes; it accepted `-1` as the unsigned-maximum floor UID, while
+boot treated some malformed values as a successful zero sequence. One bounded,
+allocation-free `from_chars` parser now validates the complete Redis byte length
+and positive unsigned range. The writer's current-sequence floor uses that same
+parser. Only a genuinely missing boot-head key succeeds with sequence zero;
+failed reads clear the output and remain failed evidence.
+
+The existing isolated live Redis test now compiles the actual runtime reader
+fixture as well as its established world-store fixture. Valid sequence 1 and
+unsigned maximum pass. Empty/zero, signed, whitespace, trailing, overflow,
+embedded-NUL and wrong-key-type heads fail. An actual encoded maximum-UID floor
+record accepts its decimal field and refuses signed/trailing/NUL variants, so
+refusal cannot be explained by a different embedded root UID. The native head
+regression fails on the parent at the intended invalid-head assertion and passes
+with the repair. Evidence is retained in ignored
+`bin/analysis/issue67/recovery-sequence-before.log` and
+`recovery-sequence-after.log`.
+
+Passed: `python3 tests/async/test_redis_world_store_live.py`,
+`test_world_recovery_transaction.py`, `test_redis_floor_world_gate.py`,
+`test_redis_failure_containment.py`, `test_world_recovery_pipeline.py`, native
+`make -C src -j2`, the maintained client-free flat build, changed-line formatting,
+clang-tidy and whitespace checks. The recovery pipeline fixture runs with
+ASan/UBSan; its obsolete SQL artifact seam was repaired separately in PR #139.
+Build/tidy/control logs use `recovery-sequence-*` under the same ignored directory.
+This supplies strict reader values; it does not make `redis_has_world_state()`'s
+boolean an absence proof, pin the generation/floor handoff, inventory every
+payload domain, or implement canonical selection/admission. Those required
+steps remain open next.
 
 ### Common flat artifact authority — AR-02 prerequisite
 
