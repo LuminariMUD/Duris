@@ -80,6 +80,8 @@ bool sql_read_work_for_at(struct persistence_query_site site, P_char ch, sql_rea
 			  std::function<void(P_char ch, const sql_rows &rows)> done);
 // Boot is over: called once, where the writer is started.
 void sql_async_boot_done(void);
+// Shared boot boundary for captures that use the writer without a database.
+bool sql_async_booting(void);
 // Runs the callbacks of the reads that finished. Returns how many ran.
 size_t sql_async_pulse(void);
 

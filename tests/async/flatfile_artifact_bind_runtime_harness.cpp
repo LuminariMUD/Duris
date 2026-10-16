@@ -1,17 +1,24 @@
-#include "flatfile/flatfile_artifact_repository.h"
+#include "guild/artifact.c"
 #include "sql/sql.h"
+#include "core/prototypes.h"
+#include "player/player_save_worker.h"
 
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <cerrno>
 
 namespace fs = std::filesystem;
 
 namespace
 {
 std::string state_root;
+bool booting = true;
+int admission_error = 0;
+std::vector<persistence_job_write_fn> writes;
 
 void require(bool condition, const std::string &message)
 {
@@ -26,6 +33,30 @@ void require(bool condition, const std::string &message)
 const char *persistence_mode_flatfile_root()
 {
 	return state_root.c_str();
+}
+
+bool redis_invalidate_artifact_cache()
+{
+	return true;
+}
+
+bool sql_async_booting()
+{
+	return booting;
+}
+
+player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t, size_t,
+						    persistence_job_write_fn write)
+{
+	require(kind == persistence_job_kind::artifact,
+		"flat artifact bypassed its writer job kind");
+	if (admission_error)
+	{
+		errno = admission_error;
+		return player_save_submit_result::unavailable;
+	}
+	writes.push_back(std::move(write));
+	return player_save_submit_result::accepted;
 }
 
 int main(int argc, char **argv)
@@ -47,12 +78,18 @@ int main(int argc, char **argv)
 	require(!sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 0 && timer == 0,
 		"missing flat artifact authority did not fail closed");
 	std::string error;
-	const flatfile_artifact_record artifact = {
-		600, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, 5000, 1, 1000, 42, 4000, 1
-	};
-	require(flatfile_artifact_establish(state_root, { artifact }, &error) ==
+	const flatfile_artifact_record artifact = { 600,  true,	 FLATFILE_ARTIFACT_ON_PLAYER,
+						    42,	  5000,	 1,
+						    1000, 42,	 4000,
+						    1,	  60001, artifact_identity_state::present };
+	const flatfile_artifact_record second = { 602,	true,  FLATFILE_ARTIFACT_ON_PLAYER,
+						  75,	6000,  2,
+						  1000, 84,    3000,
+						  1,	60201, artifact_identity_state::present };
+	require(flatfile_artifact_establish(state_root, { artifact, second }, &error) ==
 			flatfile_artifact_result::ok,
 		"could not establish runtime artifact authority: " + error);
+	require(artifacts_load(), "could not hydrate flat artifact memory");
 	require(sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 42 && timer == 4000,
 		"SQL-compatible bind lookup did not read flat authority");
 	owner_pid = 77;
@@ -62,8 +99,75 @@ int main(int argc, char **argv)
 		"SQL-compatible bind update did not persist flat authority");
 	require(!sql_get_bind_data(601, &owner_pid, &timer) && owner_pid == 0 && timer == 0,
 		"SQL-compatible bind lookup synthesized a missing artifact");
+	booting = false;
+	owner_pid = 88;
+	timer = 4200;
+	sql_update_bind_data(600, &owner_pid, &timer);
+	flatfile_artifact_record stored;
+	require(writes.size() == 1 && sql_get_bind_data(600, &owner_pid, &timer) &&
+			owner_pid == 88 &&
+			flatfile_artifact_get(state_root, 600, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.bind_owner_pid == 77,
+		"live binding waited for storage or wrote synchronously after boot");
+	owner_pid = 99;
+	timer = 4300;
+	sql_update_bind_data(600, &owner_pid, &timer);
+	require(writes.size() == 2 && writes[0]().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 1 &&
+			sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 99,
+		"old flat capture acknowledgement cleaned or changed newer live state");
+	require(writes[1]().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 0 &&
+			flatfile_artifact_get(state_root, 600, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.bind_owner_pid == 99 && stored.canonical_item_uid == 60001 &&
+			stored.timer == 5000,
+		"ordered flat captures lost UID/timer/soul coherence");
+	writes.clear();
+	int durable_owner = 99;
+	for (const int refused : { ESHUTDOWN, ENOSPC })
+	{
+		admission_error = refused;
+		const int next_owner = durable_owner - 1;
+		owner_pid = next_owner;
+		timer = 4400;
+		sql_update_bind_data(600, &owner_pid, &timer);
+		require(writes.empty() && artifact_save_pulse(false) == 1 &&
+				flatfile_artifact_get(state_root, 600, &stored, &error) ==
+					flatfile_artifact_result::ok &&
+				stored.bind_owner_pid == durable_owner &&
+				sql_get_bind_data(600, &owner_pid, &timer) &&
+				owner_pid == next_owner,
+			"writer refusal rolled back memory or used synchronous flat fallback");
+		admission_error = 0;
+		artifact_save_pulse(true);
+		require(writes.size() == 1 &&
+				writes.back()().outcome == player_save_apply_outcome::applied &&
+				artifact_save_pulse(false) == 0,
+			"flat admission retry did not save current state");
+		writes.clear();
+		durable_owner = next_owner;
+	}
+	fs::permissions(root / "domains", fs::perms::owner_read, fs::perm_options::replace);
+	owner_pid = 96;
+	timer = 4450;
+	sql_update_bind_data(600, &owner_pid, &timer);
+	require(sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 96 && writes.size() == 1,
+		"unavailable storage blocked a live flat binding change");
+	const auto unavailable = writes.back()();
+	fs::permissions(root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	require(unavailable.outcome == player_save_apply_outcome::retryable_failure &&
+			artifact_save_pulse(true) == 1 && writes.size() == 1,
+		"retryable flat failure lost the retained capture or queued another one");
+	require(writes.back()().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 0,
+		"retained flat capture could not recover after storage healed");
+	writes.clear();
 
 	const fs::path authority = root / "domains/artifact_catalog";
+	std::ifstream healthy_input(authority, std::ios::binary);
+	const std::string healthy{ std::istreambuf_iterator<char>(healthy_input), {} };
 	std::fstream corrupt(authority, std::ios::in | std::ios::out | std::ios::binary);
 	require(corrupt.good(), "could not open artifact authority for corruption test");
 	corrupt.seekg(-1, std::ios::end);
@@ -75,16 +179,52 @@ int main(int argc, char **argv)
 	corrupt.close();
 	owner_pid = 88;
 	timer = 88;
-	require(!sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 0 && timer == 0,
-		"SQL-compatible bind lookup exposed corrupt authority");
+	require(sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 96 && timer == 4450,
+		"storage corruption changed authoritative live binding state");
+	require(!artifacts_load() && sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 96,
+		"failed hydration replaced authoritative binding state");
 	owner_pid = 12;
 	timer = 4200;
 	sql_update_bind_data(600, &owner_pid, &timer);
-	int32_t stored_owner_pid = 0;
-	int64_t stored_timer = 0;
-	require(flatfile_artifact_bind_get(state_root, 600, &stored_owner_pid, &stored_timer,
-					   &error) == flatfile_artifact_result::invalid,
+	require(sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 12 && timer == 4200 &&
+			artifact_save_pulse(false) == 1,
+		"failed persistence undid the live binding update or lost its dirty state");
+	require(flatfile_artifact_get(state_root, 600, &stored, &error) ==
+			flatfile_artifact_result::invalid,
 		"SQL-compatible bind update overwrote corrupt authority");
+	require(writes.size() == 1 &&
+			writes.back()().outcome == player_save_apply_outcome::terminal_failure &&
+			artifact_save_pulse(false) == 1,
+		"terminal flat capture failure lost dirty state");
+	{
+		std::ofstream restored(authority, std::ios::binary | std::ios::trunc);
+		restored.write(healthy.data(), healthy.size());
+	}
+	artifact_save_pulse(true);
+	require(writes.size() == 2 &&
+			writes.back()().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 0 && artifacts_load() &&
+			sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 12 &&
+			timer == 4200,
+		"flat retry/reload did not preserve the current binding");
+	writes.clear();
+	require(artifact_binds_reset(-1) && writes.size() == 1 && artifact_save_pulse(false) == 2,
+		"flat all-souls reset did not share one captured batch/receipt");
+	owner_pid = 55;
+	timer = 5000;
+	sql_update_bind_data(600, &owner_pid, &timer);
+	require(writes.size() == 2 && writes[0]().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 1 &&
+			sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 55,
+		"shared reset acknowledgement cleaned a later binding capture");
+	require(writes[1]().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 0 &&
+			flatfile_artifact_get(state_root, 602, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.bind_owner_pid == -1 && stored.canonical_item_uid == 60201 &&
+			stored.timer == 6000 && artifacts_load() &&
+			sql_get_bind_data(600, &owner_pid, &timer) && owner_pid == 55,
+		"flat shared reset lost unrelated identity/timer or later current state");
 
 	std::cout << "flat-file artifact bind runtime passed\n";
 	return 0;

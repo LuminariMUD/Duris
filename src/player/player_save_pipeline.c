@@ -16,6 +16,7 @@
 #include "persistence/persistence_observability.h"
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 
 #include "core/prototypes.h"
 #include "core/files.h"
@@ -116,10 +117,12 @@ void finish_completion(const player_save_completion &completion)
 	}
 	if (completion.kind != persistence_job_kind::player)
 	{
-		persistence_alert(AVATAR, "persistence_writer",
-				  persistence_job_kind_name(completion.kind), "none", "none",
-				  "write_failed", "owner=%llu error=%u",
-				  (unsigned long long)completion.owner, completion.error_code);
+		char domain[64];
+		snprintf(domain, sizeof(domain), "persistence_writer/%s",
+			 persistence_job_kind_name(completion.kind));
+		persistence_alert(AVATAR, domain, "redacted", "none", "none", "write_failed",
+				  "owner=%llu error=%u", (unsigned long long)completion.owner,
+				  completion.error_code);
 		return;
 	}
 	// The job is gone. Mark the owner dirty so its next save carries the state again.

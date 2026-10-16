@@ -326,6 +326,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "shopkeeper";
 	case persistence_job_kind::sql:
 		return "sql";
+	case persistence_job_kind::artifact:
+		return "artifact";
 	}
 	return "unknown";
 }

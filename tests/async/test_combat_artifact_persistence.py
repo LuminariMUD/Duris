@@ -30,12 +30,8 @@ assert "bool sql_get_bind_data(int vnum, int *owner_pid, int *timer);" in sql_he
 # On MariaDB the souls are held in memory with the artifacts (artifact.c): read there,
 # changed there at once and queued on the writer, never queried on the game loop.
 assert "artifact_bind WHERE vnum" not in sql_text and "INTO artifact_bind" not in sql_text
-bind_lookup = function(
-    artifact_text,
-    "bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)\n{",
-    "void sql_update_bind_data",
-)
-bind_update = function(artifact_text, "void sql_update_bind_data", "#else")
+bind_lookup = extract_function("artifact.c", "bool sql_get_bind_data(")
+bind_update = extract_function("artifact.c", "void sql_update_bind_data(")
 store = extract_function("artifact.c", "void artifact_bind_store(")
 checks = {
     "reads memory": "artifact_binds.find(vnum)" in bind_lookup and "qry(" not in bind_lookup,
@@ -49,13 +45,10 @@ for label, passed in checks.items():
     print(f"[{'PASS' if passed else 'FAIL'}] bind data: {label}")
 assert all(checks.values())
 
-stub_start = sql_text.index("bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)\n{")
-stub_end = sql_text.index("bool sql_pwipe", stub_start)
-stub = sql_text[stub_start:stub_end]
-assert "*owner_pid = 0;" in stub
-assert "*timer = 0;" in stub
-assert "return false;" in stub
-print("[PASS] no-MySQL bind lookup initializes outputs and reports failure")
+assert "*owner_pid = 0;" in bind_lookup and "*timer = 0;" in bind_lookup
+assert "artifact_cache_loaded" in bind_lookup and "return false;" in bind_lookup
+assert "flatfile_artifact_" not in bind_lookup
+print("[PASS] flat bind lookup uses boot-hydrated memory and initializes failure outputs")
 
 assert artifact_text.count("if (!sql_get_bind_data(") == 2
 for caller, next_caller in (
@@ -70,7 +63,6 @@ print("[PASS] all artifact bind callers fail closed before ownership decisions")
 
 # The repair names each artifact it rebinds, so the display copy leaves only once, after that.
 fixit = function(artifact_text, "void arti_fixit_sql", "void arti_sync_sql")
-fixit = fixit[fixit.index("#else"):]
 assert fixit.count("extract_obj(") == 1
 assert fixit.index("OBJ_SHORT(") < fixit.index("extract_obj(")
 print("[PASS] the bind repair extracts each display copy once, after naming it")

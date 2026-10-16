@@ -293,6 +293,10 @@ int main()
     assert(player_save_worker_submit(snapshot_for(2, 1)) == player_save_submit_result::accepted);
     assert(persistence_writer_submit(persistence_job_kind::locker, 7, 64, locker_job(7)) ==
            player_save_submit_result::accepted);
+    // The artifact callback shares this writer and cannot overtake player/locker captures.
+    assert(persistence_writer_submit(persistence_job_kind::artifact, 8, 64, locker_job(8)) ==
+           player_save_submit_result::accepted);
+    assert(std::string(persistence_job_kind_name(persistence_job_kind::artifact)) == "artifact");
     // A newer save of an owner being written queues behind it; it replaces nothing.
     assert(player_save_worker_submit(snapshot_for(1, 2)) == player_save_submit_result::accepted);
     assert(player_save_worker_submit(snapshot_for(3, 1)) == player_save_submit_result::accepted);
@@ -307,10 +311,11 @@ int main()
     assert(player_save_worker_submit(snapshot_for(0, 1)) == player_save_submit_result::invalid);
 
     const auto owners = persistence_writer_pending_owners();
-    assert(owners.size() == 6);
+    assert(owners.size() == 7);
     assert(owners[0] == persistence_job_owner(persistence_job_kind::player, 1));
     assert(owners[1] == persistence_job_owner(persistence_job_kind::player, 2));
-    assert(owners[5] == persistence_job_owner(persistence_job_kind::player, 2));
+    assert(owners[3] == persistence_job_owner(persistence_job_kind::artifact, 8));
+    assert(owners[6] == persistence_job_owner(persistence_job_kind::player, 2));
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         state.release_first = true;
@@ -319,19 +324,20 @@ int main()
     assert(persistence_writer_wait_idle(5000));
     {
         std::lock_guard<std::mutex> lock(state.mutex);
-        const std::vector<std::string> expected = {"p1:1", "p2:1", "l7:0", "p1:2",
+        const std::vector<std::string> expected = {"p1:1", "p2:1", "l7:0", "l8:0", "p1:2",
                                                    "p3:1", "p2:3"};
         assert(state.order == expected);
     }
     assert(player_save_worker_pid_pending(1)); // completion still belongs to the old session
     auto completions = drain();
     assert(!player_save_worker_pid_pending(1));
-    assert(completions.size() == 6);
+    assert(completions.size() == 7);
     assert(completions[1].pid == 2 && completions[1].revision == 1);
     assert(completions[2].kind == persistence_job_kind::locker && completions[2].owner == 7);
-    assert(completions[5].pid == 2 && completions[5].revision == 3);
+    assert(completions[3].kind == persistence_job_kind::artifact && completions[3].owner == 8);
+    assert(completions[6].pid == 2 && completions[6].revision == 3);
     player_save_worker_health health = player_save_worker_health_copy();
-    assert(health.submitted == 6 && health.replaced == 1 && health.applied == 6);
+    assert(health.submitted == 7 && health.replaced == 1 && health.applied == 7);
     assert(health.queued_jobs == 0 && health.inflight_jobs == 0 && health.queued_bytes == 0);
     assert(health.high_water_jobs >= 5);
 

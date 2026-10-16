@@ -62,6 +62,8 @@ enum class persistence_job_kind : uint8_t
 	shopkeeper,
 	// Statements or a read the game thread queued (sql_async.c); each is its own owner.
 	sql,
+	// Complete flat-file artifact/soul captures, on the same ordered writer.
+	artifact,
 };
 
 enum class player_save_apply_outcome : uint8_t

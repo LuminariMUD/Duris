@@ -585,9 +585,18 @@ int main(int argc, char **argv)
 			"save seeded item: " + error);
 		if (item.extra_flags & (1U << 28))
 		{
-			const auto updated = flatfile_artifact_gameplay_update(
-				argv[1], item.vnum, true, FLATFILE_ARTIFACT_ON_PLAYER, 1,
-				time(nullptr) + 86400, 2, time(nullptr), &error);
+			const flatfile_artifact_record artifact = { item.vnum,
+								    true,
+								    FLATFILE_ARTIFACT_ON_PLAYER,
+								    1,
+								    time(nullptr) + 86400,
+								    2,
+								    time(nullptr),
+								    0,
+								    0,
+								    0 };
+			const auto updated =
+				flatfile_artifact_snapshot_apply(argv[1], { artifact }, &error);
 			require(updated == flatfile_artifact_result::ok,
 				"seed artifact catalog: " + error);
 		}

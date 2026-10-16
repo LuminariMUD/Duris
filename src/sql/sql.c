@@ -624,49 +624,6 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 
 void sql_mud_info_refresh(void) {}
 
-void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
-{
-	if (!owner_pid || !timer)
-	{
-		logit(LOG_DEBUG, "sql_update_bind_data: invalid input pointer");
-		return;
-	}
-	std::string error;
-	const auto updated = flatfile_artifact_bind_update(persistence_mode_flatfile_root(), vnum,
-							   *owner_pid, *timer, &error);
-	if (updated != flatfile_artifact_result::ok &&
-	    updated != flatfile_artifact_result::unchanged)
-		logit(LOG_DEBUG, "sql_update_bind_data: flat artifact update failed: %s",
-		      error.empty() ? "invalid or missing artifact authority" : error.c_str());
-}
-
-bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)
-{
-	if (owner_pid)
-		*owner_pid = 0;
-	if (timer)
-		*timer = 0;
-	if (!owner_pid || !timer)
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data: invalid output pointer");
-		return false;
-	}
-	int32_t flat_owner_pid = 0;
-	int64_t flat_timer = 0;
-	std::string error;
-	const auto loaded = flatfile_artifact_bind_get(persistence_mode_flatfile_root(), vnum,
-						       &flat_owner_pid, &flat_timer, &error);
-	if (loaded != flatfile_artifact_result::ok || flat_timer > INT_MAX)
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data: flat artifact lookup failed: %s",
-		      error.empty() ? "invalid or missing artifact authority" : error.c_str());
-		return false;
-	}
-	*owner_pid = flat_owner_pid;
-	*timer = static_cast<int>(flat_timer);
-	return true;
-}
-
 bool sql_pwipe(int code_verify)
 {
 	if (code_verify == 1723699)

@@ -258,6 +258,17 @@ absence remain in memory even after legacy tracking is removed. These storage
 boundaries do not perform complete population classification or universal
 duplicate admission; that work remains in the issue #67 plan.
 
+Flat-file mode hydrates the same artifact/soul maps from the catalog before world
+population. Gameplay getters and mutations use those maps; complete immutable
+captures reach `artifact_catalog` through the existing persistence writer.
+An all-souls reset is one atomic catalog capture. The repository assigns record
+revisions, preserves untouched records, rejects conflicting UIDs across the
+resulting catalog, and makes exact capture replay a no-op. Storage failure leaves
+current gameplay state readable and dirty for retry. Refused admission, including
+a full writer, never performs a synchronous fallback. Flat reports still read
+persisted catalog state and may lag live state. The obsolete direct file-backed
+gameplay mutators have been removed.
+
 Positive feeding feedback is `You feel a sense of satisfaction from above.`
 The live artifact/guild award publishes it once even when several artifacts feed;
 guild-only, ineligible, rejected and no-effect awards do not publish it. A valid
@@ -317,6 +328,9 @@ The staff `artifacts reset syncdb` repair keeps current memory if its asynchrono
 result overlaps a later artifact update or an unresolved snapshot failure. Existing
 dirty retries then capture fresh state. The result is processed after staff logout;
 only notification requires the same live staff character.
+Flat-file `syncdb` refuses live reconciliation pending a complete population
+audit: a player-only scan cannot select canonical physical identities across all
+storage domains. The audited repair workflow remains open in issue #67.
 
 History success and snapshot durability are distinct: either may fail independently.
 A crash may lose unsaved state, and restart loads persisted snapshots without

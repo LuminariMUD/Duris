@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-from _paths import SRC, rel
+from _paths import SRC, rel, extract_function
 import pathlib
 import subprocess
 import tempfile
+import re
 from _paths import HARNESS_STUBS
 
 
@@ -66,7 +67,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Isrc/no_mysql",
             "-Isrc",
             "tests/async/flatfile_artifact_bind_runtime_harness.cpp",
-            rel("sql.c"),
             rel("flatfile_artifact_repository.c"),
             rel("player_snapshot_codec.c"),
             rel("item_transfer_command.c"),
@@ -115,7 +115,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Isrc",
             "tests/async/flatfile_artifact_runtime_harness.cpp",
             rel("artifact.c"),
-            rel("sql.c"),
             rel("flatfile_artifact_repository.c"),
             rel("player_snapshot_codec.c"),
             rel("item_transfer_command.c"),
@@ -147,38 +146,21 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
     print(gameplay_result.stdout.strip())
 
     artifact_source = (SRC / "artifact.c").read_text()
-    expiry_start = artifact_source.index("void event_artifact_check_poof_sql(")
-    expiry_end = artifact_source.index("\nvoid event_artifact_wars_sql(", expiry_start)
-    expiry_body = artifact_source[expiry_start:expiry_end]
-    if "flatfile_artifact_find_next_expired(" not in expiry_body:
-        raise AssertionError("client-free expiry event does not select from flat authority")
-    expire_start = artifact_source.index("static bool artifact_expire(int vnum)")
-    expire_body = artifact_source[expire_start:expiry_start]
-    if "artifact_expire(page_last_vnum)" not in expiry_body or \
-            "flatfile_artifact_expire(" not in expire_body:
-        raise AssertionError("client-free expiry event does not clear flat authority")
-
-    wars_start = artifact_source.index("void event_artifact_wars_sql(")
-    wars_end = artifact_source.index("\nvoid event_arti_hunt_sql(", wars_start)
-    wars_body = artifact_source[wars_start:wars_end]
-    if "flatfile_artifact_war_owners(" not in wars_body:
-        raise AssertionError("client-free artifact-war event does not group flat authority")
-    if "flatfile_artifact_apply_war_burn(" not in wars_body:
-        raise AssertionError("client-free artifact-war event does not update flat timers")
-
-    binding_start = artifact_source.index("void event_artifact_check_bind_sql(")
-    binding_end = artifact_source.index("\nvoid arti_fixit_sql(", binding_start)
-    binding_body = artifact_source[binding_start:binding_end]
-    if "flatfile_artifact_list(" not in binding_body:
-        raise AssertionError("client-free binding maintenance does not page flat authority")
-    if binding_body.count("artifact_bind_maintenance_update(") != 3:
-        raise AssertionError("binding maintenance does not persist every binding outcome")
-
-    remove_start = artifact_source.index("bool remove_owned_artifact_sql(")
-    remove_end = artifact_source.index("\n// This is a wrapper function", remove_start)
-    remove_body = artifact_source[remove_start:remove_end]
-    if "flatfile_artifact_remove_owned(" not in remove_body:
-        raise AssertionError("client-free owned artifact removal bypasses flat authority")
+    # Gameplay decisions and maintenance share the game-thread cache. The native
+    # fixtures exercise values, writer refusal, retry and late acknowledgements;
+    # these boundaries keep direct filesystem operations out of the hot paths.
+    for signature in (
+        "bool get_artifact_data_sql(", "void artifact_feed_sql(",
+        "void artifact_feed_to_min_sql(", "bool remove_owned_artifact_sql(",
+        "void event_artifact_check_poof_sql(", "void event_artifact_wars_sql(",
+        "void event_artifact_check_bind_sql(", "void arti_fixit_sql(",
+        "void arti_reset_sql(", "void arti_clear_sql(",
+    ):
+        definition = re.search(re.escape(signature) + r"[^;{]*\{", artifact_source)
+        assert definition is not None, signature
+        body = extract_function("artifact.c", definition.group(0))
+        assert "flatfile_artifact_" not in body, signature + " reads or writes storage directly"
+        assert "db_query(" not in body and "qry(" not in body, signature + " waits for SQL"
 
     list_signature = "void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)\n{"
     list_start = artifact_source.index(list_signature)
@@ -196,46 +178,9 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
     if "requires MySQL support" in player_body:
         raise AssertionError("client-free per-player artifact list remains disabled")
 
-    reset_start = artifact_source.index("void arti_reset_sql(P_char ch, char *arg)\n{")
-    reset_end = artifact_source.index("\nP_char find_mob_in_game(", reset_start)
-    reset_body = artifact_source[reset_start:reset_end]
-    if "flatfile_artifact_bind_update(" not in reset_body:
-        raise AssertionError("client-free keyed soul reset bypasses flat authority")
-    if "flatfile_artifact_bind_reset_all(" not in reset_body:
-        raise AssertionError("client-free reset-all bypasses flat authority")
-
-    feed_min_start = artifact_source.index("void artifact_feed_to_min_sql(")
-    feed_min_end = artifact_source.index("\nvoid artifact_switch_check(", feed_min_start)
-    feed_min_body = artifact_source[feed_min_start:feed_min_end]
-    if "flatfile_artifact_extend_timer(" not in feed_min_body:
-        raise AssertionError("client-free minimum feed bypasses flat timer authority")
-
-    feed_start = artifact_source.index("void artifact_feed_sql(")
-    feed_end = artifact_source.index("\nstatic void release_offline_owner(", feed_start)
-    feed_body = artifact_source[feed_start:feed_end]
-    if "flatfile_artifact_gameplay_update(" not in feed_body:
-        raise AssertionError("client-free missing-row feed bypasses flat authority")
-
-    fix_start = artifact_source.index("void arti_fixit_sql(P_char ch)\n{")
-    fix_end = artifact_source.index("\nvoid arti_sync_sql(", fix_start)
-    fix_body = artifact_source[fix_start:fix_end]
-    if "flatfile_artifact_list(" not in fix_body:
-        raise AssertionError("client-free artifact fixit bypasses flat selection")
-    if "flatfile_artifact_repair_player_binding(" not in fix_body:
-        raise AssertionError("client-free artifact fixit bypasses atomic flat repair")
-
-    syncdb_start = artifact_source.index("void arti_syncdb_sql(P_char ch)\n{")
-    syncdb_end = artifact_source.index("\n// Resets the 'soul'", syncdb_start)
-    syncdb_body = artifact_source[syncdb_start:syncdb_end]
-    if "flatfile_item_repository_list_active_player_items(" not in syncdb_body:
-        raise AssertionError("client-free artifact syncdb bypasses saved item authority")
-    if "flatfile_artifact_reconcile_players(" not in syncdb_body:
-        raise AssertionError("client-free artifact syncdb bypasses artifact reconciliation")
-
-    clear_start = artifact_source.index("void arti_clear_sql(P_char ch, char *arg)\n{")
-    clear_end = artifact_source.index("\nvoid arti_poof_sql(", clear_start)
-    if "flatfile_artifact_erase(" not in artifact_source[clear_start:clear_end]:
-        raise AssertionError("client-free staff artifact clear bypasses catalog erase")
+    syncdb = extract_function("artifact.c", "void arti_syncdb_sql(P_char ch)\n{")
+    assert "flatfile_artifact_reconcile_players(" not in syncdb
+    assert "reconciliation requires a complete population audit" in syncdb
 
     boot_source = (SRC / "db.c").read_text()
     boot_start = boot_source.index("void boot_db(int mini_mode)\n{")
@@ -245,3 +190,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
         raise AssertionError("flat boot does not establish artifact authority")
     if boot_body.index("flatfile_artifact_ensure(") > boot_body.index("ne_init_events();"):
         raise AssertionError("artifact authority is established after boot zone resets")
+
+    if "artifacts_load()" not in boot_body or boot_body.index("artifacts_load()") > boot_body.index("ne_init_events();"):
+        raise AssertionError("flat artifact memory is not hydrated before world population")

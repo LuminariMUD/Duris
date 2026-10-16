@@ -441,6 +441,8 @@ void boot_db(int mini_mode)
 			fatal_boot_error("db", "Could not establish flat artifact catalog: %s",
 					 error.empty() ? "invalid artifact authority" :
 							 error.c_str());
+		if (!artifacts_load())
+			fatal_boot_error("db", "Could not hydrate flat artifact memory");
 	}
 
 	logit(LOG_STATUS, "Resetting the game time:");

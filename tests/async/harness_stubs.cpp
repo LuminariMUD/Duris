@@ -6,12 +6,24 @@
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
 #include "persistence/persistence_log.h"
+#include "player/player_save_worker.h"
 
 #include <cstdlib>
+#include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
 
 HARNESS_STUB void logit(const char *, const char *, ...) {}
+HARNESS_STUB bool sql_async_booting(void)
+{
+	return true;
+}
+HARNESS_STUB player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t,
+								 size_t, persistence_job_write_fn)
+{
+	errno = ESHUTDOWN;
+	return player_save_submit_result::unavailable;
+}
 HARNESS_STUB void debug(const char *, ...) {}
 HARNESS_STUB void wizlog(int, const char *, ...) {}
 HARNESS_STUB void statuslog(int, const char *, ...) {}

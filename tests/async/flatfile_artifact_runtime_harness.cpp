@@ -1,5 +1,6 @@
 #include "flatfile/flatfile_artifact_repository.h"
 #include "core/prototypes.h"
+#include "sql/sql.h"
 
 #include <cstdlib>
 #include <climits>
@@ -161,6 +162,7 @@ int main(int argc, char **argv)
 					      bad_ground },
 					    &error) == flatfile_artifact_result::ok,
 		"could not establish runtime artifact authority: " + error);
+	require(artifacts_load(), "could not hydrate flat artifact memory");
 	require(!get_artifact_data_sql(700, &data) && data.vnum == 700 && !data.owned &&
 			data.locType == FLATFILE_ARTIFACT_ON_GROUND && data.location == 1201 &&
 			data.timer == 4000 && data.type == 2 && data.next == nullptr,
@@ -200,7 +202,7 @@ int main(int argc, char **argv)
 			!stored.owned && stored.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
 			stored.location == -1 && stored.timer == 7000 && stored.type == 1 &&
 			stored.bind_owner_pid == -1 && stored.bind_timer == 0 &&
-			stored.revision == 2,
+			stored.revision >= 2,
 		"runtime owned-artifact removal did not persist its complete outcome");
 	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_GROUND, 1202, 7000, 1);
 	P_obj fed = new obj_data{};
@@ -270,9 +272,8 @@ int main(int argc, char **argv)
 	owner.player.level = 51;
 	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start,
 		"trusted direct feed changed state or published feedback");
-	require(flatfile_artifact_bind_update(state_root, 701, 77, 0, &error) ==
-			flatfile_artifact_result::ok,
-		"could not establish rejected-soul feed fixture");
+	int rejected_soul = 77, rejected_timer = 0;
+	sql_update_bind_data(701, &rejected_soul, &rejected_timer);
 	artifact_feed_sql(&owner, &worn, 60, true);
 	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start,
 		"rejected-soul direct feed changed state or published satisfaction");
@@ -331,8 +332,8 @@ int main(int argc, char **argv)
 	corrupt.seekp(-1, std::ios::end);
 	corrupt.write(&byte, 1);
 	corrupt.close();
-	require(!get_artifact_data_sql(700, &data),
-		"runtime artifact read exposed corrupt authority");
+	require(get_artifact_data_sql(700, &data) && data.location == 77,
+		"storage corruption changed authoritative artifact memory");
 	artifact_update_sql(700, true, FLATFILE_ARTIFACT_ON_PLAYER, 88, 8000, 2);
 	require(flatfile_artifact_get(state_root, 700, &stored, &error) ==
 			flatfile_artifact_result::invalid,

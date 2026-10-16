@@ -8,14 +8,14 @@ implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-direct-feed-timers` and conservative reward conflict isolation on
 `branch/issue-67-reward-conflicts`. AR-02 storage is implemented on
 `branch/issue-67-canonical-storage`. Canonical snapshot/hydration is implemented
-in PR #137 on `branch/issue-67-identity-snapshots`; complete population
-classification and admission remain open.
+in PR #137 on `branch/issue-67-identity-snapshots`; writer backpressure is ready
+in PR #138, and the common flat artifact authority is implemented on
+`branch/issue-67-flat-artifact-cache`. Complete population classification
+and admission remain open.
 No operational repair started.
 
-Current prerequisite: [PR #138](https://github.com/LuminariMUD/Duris/pull/138),
+Completed prerequisite: [PR #138](https://github.com/LuminariMUD/Duris/pull/138),
 `branch/issue-67-writer-backpressure`, based on PR #137 and ready for review.
-The flat artifact memory-cache implementation remains isolated on unpublished
-`branch/issue-67-flat-artifact-memory` in `duris-issue67-plan`; do not discard it.
 **Outcome (implemented):** bound the existing persistence writer during a storage outage before
 adding flat artifact captures. **Non-goals:** new queues, fallback writers,
 configuration, or production operation. **Files:** worker implementation/header,
@@ -35,9 +35,7 @@ ordering/refusal/fence controls), `make -C src -j2`, `scripts/format.sh`,
 `scripts/tidy.sh`, and `git diff --check`. Build/tidy/control output is retained
 under ignored `bin/analysis/issue67/writer-backpressure-*` in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
-This qualifies admission behavior, not production outage throughput. Next:
-stack the preserved flat-cache work on this published prerequisite, then
-continue population/classification and universal admission.
+This qualifies admission behavior, not production outage throughput.
 
 Combined lifecycle review found that the artifact/guild drain did not consume
 generic writer completions while retrying dirty captures. With bounded admission,
@@ -46,6 +44,34 @@ The existing drain now calls the game-thread completion consumer before retry.
 The new existing-runtime-fixture case `drain-capacity` fails at the drain assertion
 before this repair and passes afterward; the native writer fixture separately
 proves the actual completion-slot accounting. No new drain or queue is introduced.
+
+Current work: `branch/issue-67-flat-artifact-cache` builds on PR #138 in
+`duris-issue67-plan`. The earlier unpublished `branch/issue-67-flat-artifact-memory` and
+`branch/issue-67-flat-artifact-authority` retain local checkpoints `5dd8be6cb` and
+`713c00c82`; their changes are carried forward here on the updated prerequisite.
+Before population/admission can use one authoritative record in both backends, replace
+the flat-file hot getters/direct writes with the existing artifact/soul memory
+maps and immutable captures on the same persistence writer. The flat backend
+currently bypasses those maps, so an additional identity-only map would create
+two competing authorities and still allow partial legacy writes.
+
+Outcome (implemented): complete flat artifact snapshots, current-state reads during storage
+failure, receipt-safe retry and boot hydration; no new worker or automatic
+fallback. Non-goals for this prerequisite chunk: canonical population selection
+and new object admission. Files: artifact service, flat snapshot repository,
+writer job label/boot phase, flat SQL-compatible bind wrappers and focused
+fixtures. Proof must hold the writer, show memory changes before storage, keep
+live state through corrupt/unavailable storage, exercise retry/late ACK, and run
+the maintained flat build/journey plus SQL regression controls. Population and
+admission remain required after this common authority exists.
+
+Ablation removed the replaced file-backed gameplay repository APIs and their
+obsolete helper tests after a tracked caller audit found no remaining server or
+tool callers. The shared artifact service supplies those behaviors; fixtures now
+seed through complete captures. Boot catalog loading, player-deletion atomic
+release, persisted reports and room-transfer guards remain required consumers.
+The flat `syncdb` command explicitly refuses incomplete reconciliation pending
+the full population audit.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
@@ -488,6 +514,11 @@ local fixture, or historical investigation as production completion.
 
 ### Review stack and current resume point
 
+The current continuation branch is `branch/issue-67-flat-artifact-cache` in
+`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #138. Earlier sections
+record evidence at their own checkpoints; the current checkpoints below
+supersede their old next-step statements and flat repository APIs.
+
 - [PR #132](https://github.com/LuminariMUD/Duris/pull/132),
   `branch/issue-67-artifact-identity` → `master`: acceptance repros and admission
   map, published at `21bcc2754`. No identity behavior is fixed in that PR.
@@ -537,6 +568,60 @@ The next AR-02 checkpoint below qualifies canonical identity storage; boot
 candidate publication remains required after that storage foundation.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
+
+### Common flat artifact authority — AR-02 prerequisite
+
+`branch/issue-67-flat-artifact-cache` →
+`branch/issue-67-writer-backpressure` carries the existing artifact/soul memory
+authority into flat-file mode. Boot hydrates complete records before world
+population; hot reads, direct feeds, location changes and maintenance use the
+same maps as SQL. Captures seal current UID/state, timer and soul and are applied
+by the existing writer. The catalog merges a batch atomically, assigns revisions,
+rejects whole-result UID conflicts, and treats exact replay as unchanged.
+The legacy v1 catalog remains readable as unresolved identity.
+
+Receipt identity protects newer state from older acknowledgements, including a
+shared all-souls reset followed by a binding change. Stopped/full writer admission
+retains dirty live state; retryable storage errors retain the original queued
+capture, while terminal corruption preserves the file and lets later pulses
+capture fresh state after repair. There is no runtime synchronous fallback.
+Persisted reports can lag memory. Flat player-only `syncdb` is refused until the
+complete population audit, and the replaced direct file-backed gameplay APIs
+have been removed after a tracked caller audit. Player deletion's atomic release
+and room-transfer guard remain in the repository.
+
+Validation passed on the combined writer-bound/cache branch:
+
+```sh
+python3 tests/async/test_player_save_worker.py
+python3 tests/async/test_combat_artifact_persistence.py
+python3 tests/async/test_artifact_guild_snapshots.py
+python3 tests/async/test_flatfile_artifact_repository.py
+python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/coin-death-inspector
+make -C src -j2
+```
+
+The maintained flat build passed with `PERSISTENCE_BACKEND=flatfile` and dedicated
+`BIN_ROOT`, `OBJDIR`, `SERVER_BIN_DIR` and `DMS_BINARY` below
+`bin/analysis/issue67/flat-memory-build`; it links without the SQL/Redis clients.
+Native fixture proof covers held writer, stopped/full admission, storage
+unavailability/corruption, late ACK/current-state retry, atomic multi-record
+capture, UID conflict refusal and shared-reset receipts. The direct-feed runtime
+fixture and SQL snapshot controls use terminating UBSan. The ordinary flat
+combat/death/save/reconnect/restart journey is the boot/lifecycle control, not
+full artifact admission or the AR-07 matrix. The initial run passed with flat binary
+`cb695c02e30af965322b003cecb2613db5e5a0b7e3f251a35fb349475f0ffb9c`;
+the combined lifecycle-drain build is being checked before publication.
+
+Ignored evidence in `bin/analysis/issue67/`: `flat-memory-combined-flat.log`,
+`flat-memory-combined-snapshots.log`, `flat-memory-maria-build.log`,
+`flat-memory-flat-build.log`, `flat-memory-combat-journey.log` and
+`flat-memory-regression-proof.log`. The last probe restores synchronous runtime
+writing or a storage-backed getter in source copies; both make the permanent
+runtime regression fail at the intended behavioral boundary. Changed-line
+formatting/clang-tidy and whitespace checks pass. No production operation,
+canonical population selection, universal new-object admission, or new flat
+reward-history capability is claimed.
 
 ### Canonical identity snapshots and hydration — AR-02 in progress
 
@@ -794,9 +879,10 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136 → #137. All chunks are open for review,
+Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138,
+followed by the common flat artifact authority branch. All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
-from the tip of `branch/issue-67-identity-snapshots` in
+from the tip of `branch/issue-67-flat-artifact-cache` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
 creating a dependent branch for the next storage/admission chunk. Fresh master
 remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.
@@ -887,6 +973,11 @@ not gameplay creation seams.
   after a caller has already consumed a reward or source material.
 
 ### Identity evidence and boot design
+
+This is the retained AR-01 source map. PR #136 subsequently added the independent
+canonical UID/state fields, and PR #137 hydrates/captures them. The current flat
+authority checkpoint above supersedes this map's old no-UID description. The
+complete candidate reader, recovery proof and population ordering remain open.
 
 The supported custody types in [item_transfer_command.h](../../src/item/item_transfer_command.h)
 are player, container, room, corpse, locker, auction, system, destruction,

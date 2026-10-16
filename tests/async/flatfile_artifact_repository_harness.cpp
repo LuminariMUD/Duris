@@ -72,16 +72,20 @@ static void identity_storage(const fs::path &root)
 				flatfile_artifact_result::ok &&
 			loaded == present,
 		"canonical UID/state did not round trip");
-	require(flatfile_artifact_gameplay_update(root.string(), 100, true,
-						  FLATFILE_ARTIFACT_ON_PLAYER, 42, 9000, 1, 1001,
-						  &error) == flatfile_artifact_result::ok &&
-			flatfile_artifact_bind_update(root.string(), 100, 42, 1002, &error) ==
+	present.owned = true;
+	present.location_type = FLATFILE_ARTIFACT_ON_PLAYER;
+	present.location = 42;
+	present.timer = 9000;
+	present.last_update = 1001;
+	present.bind_owner_pid = 42;
+	present.bind_timer = 1002;
+	require(flatfile_artifact_snapshot_apply(root.string(), { present }, &error) ==
 				flatfile_artifact_result::ok &&
 			flatfile_artifact_get(root.string(), 100, &loaded, &error) ==
 				flatfile_artifact_result::ok &&
 			loaded.canonical_item_uid == 123 &&
 			loaded.identity_state == present.identity_state,
-		"ordinary gameplay/bind writes erased canonical identity");
+		"complete gameplay/soul capture erased canonical identity");
 
 	const fs::path invalid_root = root.parent_path() / "invalid-identity";
 	prepare_root(invalid_root);
@@ -128,15 +132,6 @@ static void identity_storage(const fs::path &root)
 				flatfile_artifact_result::ok &&
 			roundtrip == states,
 		"identity states changed on reload");
-	for (size_t index = 0; index < 3; ++index)
-		require(flatfile_artifact_erase(invalid_root.string(), states[index].vnum,
-						&error) == flatfile_artifact_result::conflict,
-			"clear erased unresolved/present/retired identity");
-	require(flatfile_artifact_erase(invalid_root.string(), states[3].vnum, &error) ==
-				flatfile_artifact_result::ok &&
-			flatfile_artifact_erase(invalid_root.string(), states[3].vnum, &error) ==
-				flatfile_artifact_result::not_found,
-		"proven absent identity could not be cleared idempotently");
 
 	// Materialize the actual v1 wire shape: the v2 record adds only UID/state.
 	// Legacy bytes have no identity evidence and must never decode as absent.
@@ -167,9 +162,9 @@ static void identity_storage(const fs::path &root)
 			present.timer == loaded.timer &&
 			present.bind_owner_pid == loaded.bind_owner_pid,
 		"v1 catalog invented identity or lost timer/soul evidence");
-	require(flatfile_artifact_gameplay_update(legacy_root.string(), 100, true,
-						  FLATFILE_ARTIFACT_ON_PLAYER, 42, 9100, 1, 1002,
-						  &error) == flatfile_artifact_result::ok &&
+	present.timer = 9100;
+	require(flatfile_artifact_snapshot_apply(legacy_root.string(), { present }, &error) ==
+				flatfile_artifact_result::ok &&
 			flatfile_artifact_get(legacy_root.string(), 100, &present, &error) ==
 				flatfile_artifact_result::ok &&
 			present.timer == 9100 && !present.canonical_item_uid &&
@@ -177,10 +172,79 @@ static void identity_storage(const fs::path &root)
 		"v1 rewrite lost state or promoted unresolved identity");
 }
 
+static void snapshot_captures(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	const flatfile_artifact_record first = { 100, true, FLATFILE_ARTIFACT_ON_PLAYER,
+						 42,  1000, 1,
+						 100, 42,   50,
+						 99,  111,  artifact_identity_state::present };
+	const flatfile_artifact_record other = { 300, true, FLATFILE_ARTIFACT_ON_PLAYER,
+						 77,  2000, 2,
+						 100, 77,   50,
+						 7,   222,  artifact_identity_state::present };
+	require(flatfile_artifact_snapshot_apply(root.string(), { first }, &error) ==
+			flatfile_artifact_result::not_found,
+		"capture synthesized a missing artifact catalog");
+	require(flatfile_artifact_establish(root.string(), { first, other }, &error) ==
+			flatfile_artifact_result::ok,
+		"capture fixture establishment failed");
+	auto changed = first;
+	changed.timer = 1600;
+	changed.location = changed.bind_owner_pid = 88;
+	changed.bind_timer = 90;
+	changed.revision = 0;
+	auto conflict = other;
+	conflict.vnum = 200;
+	require(flatfile_artifact_snapshot_apply(root.string(), { changed, conflict }, &error) ==
+			flatfile_artifact_result::conflict,
+		"capture reassigned an unchanged artifact's canonical UID");
+	flatfile_artifact_record stored;
+	require(flatfile_artifact_get(root.string(), 100, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored == first &&
+			flatfile_artifact_get(root.string(), 200, &stored, &error) ==
+				flatfile_artifact_result::not_found,
+		"refused multi-artifact capture partially changed the catalog");
+	require(flatfile_artifact_snapshot_apply(root.string(), { first, changed }, &error) ==
+			flatfile_artifact_result::invalid,
+		"capture chose between repeated vnum entries");
+	auto second = other;
+	second.timer = 2600;
+	require(flatfile_artifact_snapshot_apply(root.string(), { second, changed }, &error) ==
+			flatfile_artifact_result::ok,
+		"complete multi-artifact capture failed");
+	changed.revision = first.revision + 1;
+	second.revision = other.revision + 1;
+	std::vector<flatfile_artifact_record> records;
+	require(flatfile_artifact_list(root.string(), &records, &error) ==
+				flatfile_artifact_result::ok &&
+			records == std::vector<flatfile_artifact_record>{ changed, second },
+		"capture lost UID/timer/soul data or record revision ordering");
+	require(flatfile_artifact_snapshot_apply(root.string(), { changed, second }, &error) ==
+				flatfile_artifact_result::unchanged &&
+			flatfile_artifact_list(root.string(), &records, &error) ==
+				flatfile_artifact_result::ok &&
+			records[0] == changed && records[1] == second,
+		"capture replay changed stored state or revisions");
+	changed.owned = false;
+	changed.location_type = FLATFILE_ARTIFACT_NOT_IN_GAME;
+	changed.identity_state = artifact_identity_state::retired;
+	require(flatfile_artifact_snapshot_apply(root.string(), { changed }, &error) ==
+				flatfile_artifact_result::ok &&
+			flatfile_artifact_get(root.string(), 100, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.canonical_item_uid == 111 &&
+			stored.identity_state == artifact_identity_state::retired,
+		"capture lost a retired UID tombstone");
+}
+
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");
 	identity_storage(fs::path(argv[1]) / "identity");
+	snapshot_captures(fs::path(argv[1]) / "captures");
 	const fs::path root = fs::path(argv[1]) / "release";
 	prepare_root(root);
 	std::string error;
@@ -197,10 +261,11 @@ int main(int argc, char **argv)
 				flatfile_artifact_result::ok &&
 			records.empty(),
 		"fresh artifact catalog was not established empty");
-	require(flatfile_artifact_gameplay_update(ensure_root.string(), 99, true,
-						  FLATFILE_ARTIFACT_ON_GROUND, 1200, 5000, 1, 1000,
-						  &error) == flatfile_artifact_result::ok,
-		"ensured catalog did not accept its first gameplay artifact");
+	require(flatfile_artifact_snapshot_apply(
+			ensure_root.string(),
+			{ { 99, true, FLATFILE_ARTIFACT_ON_GROUND, 1200, 5000, 1, 1000, 0, 0, 0 } },
+			&error) == flatfile_artifact_result::ok,
+		"ensured catalog did not accept its first artifact capture");
 	require(flatfile_artifact_ensure(ensure_root.string(), &error) ==
 			flatfile_artifact_result::already_exists,
 		"existing artifact catalog was not recognized by ensure");
@@ -325,340 +390,6 @@ int main(int argc, char **argv)
 			records[0].revision == 2,
 		"corpse-held artifact was not released with player deletion semantics");
 
-	const fs::path reconcile_root = fs::path(argv[1]) / "reconcile";
-	prepare_root(reconcile_root);
-	const std::vector<flatfile_artifact_record> reconcile_records = {
-		{ 900, true, FLATFILE_ARTIFACT_ON_PLAYER, 1, 9000, 1, 1000, 1, 8000, 1 },
-		{ 901, true, FLATFILE_ARTIFACT_ON_CORPSE, 2, 8000, 2, 1001, 2, 7000, 2 },
-		{ 902, true, FLATFILE_ARTIFACT_ON_GROUND, 1200, 7000, 3, 1002, 7, 6000, 3 },
-		{ 903, false, FLATFILE_ARTIFACT_NOT_IN_GAME, 0, 6000, 1, 1003, -1, 0, 4 },
-	};
-	require(flatfile_artifact_establish(reconcile_root.string(), reconcile_records, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact reconciliation fixture establishment failed");
-	flatfile_artifact_reconcile_result reconcile_counts;
-	require(flatfile_artifact_reconcile_players(
-			reconcile_root.string(), { { 900, 42 }, { 900, 43 } }, 2000,
-			&reconcile_counts, &error) == flatfile_artifact_result::conflict,
-		"duplicate saved artifact ownership did not fail closed");
-	require(flatfile_artifact_list(reconcile_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records == reconcile_records,
-		"failed artifact reconciliation changed authority");
-	require(flatfile_artifact_reconcile_players(
-			reconcile_root.string(), { { 900, 42 }, { 903, 43 }, { 999, 44 } }, 2000,
-			&reconcile_counts, &error) == flatfile_artifact_result::ok &&
-			reconcile_counts.cleared == 2 && reconcile_counts.updated == 2,
-		"saved artifact ownership reconciliation failed: " + error);
-	require(flatfile_artifact_list(reconcile_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 4 && records[0].owned &&
-			records[0].location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			records[0].location == 42 && records[0].last_update == 2000 &&
-			records[0].bind_owner_pid == 42 && records[0].bind_timer == 2000 &&
-			records[0].revision == 2 && !records[1].owned &&
-			records[1].location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
-			records[1].location == 0 && records[1].last_update == 2000 &&
-			records[1].bind_owner_pid == -1 && records[1].bind_timer == 0 &&
-			records[1].revision == 3 && records[2].owned &&
-			records[2].location_type == FLATFILE_ARTIFACT_ON_GROUND &&
-			records[2].location == 1200 && records[2].last_update == 1002 &&
-			records[2].bind_owner_pid == -1 && records[2].bind_timer == 0 &&
-			records[2].revision == 4 && records[3].owned &&
-			records[3].location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			records[3].location == 43 && records[3].last_update == 2000 &&
-			records[3].bind_owner_pid == 43 && records[3].bind_timer == 2000 &&
-			records[3].revision == 5,
-		"saved artifact ownership reconciliation wrote incorrect authority");
-	require(flatfile_artifact_reconcile_players(
-			reconcile_root.string(), { { 900, 42 }, { 903, 43 }, { 999, 44 } }, 2000,
-			&reconcile_counts, &error) == flatfile_artifact_result::unchanged,
-		"identical artifact reconciliation was not idempotent");
-
-	const fs::path bind_root = fs::path(argv[1]) / "bind";
-	prepare_root(bind_root);
-	int32_t bind_owner = 99;
-	int64_t bind_timer = 99;
-	require(flatfile_artifact_bind_get(bind_root.string(), 500, &bind_owner, &bind_timer,
-					   &error) == flatfile_artifact_result::not_found &&
-			bind_owner == 0 && bind_timer == 0,
-		"missing bind authority did not fail closed with cleared outputs");
-	const flatfile_artifact_record bind_record = {
-		500, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, 5000, 1, 1000, 42, 4000, 3
-	};
-	require(flatfile_artifact_establish(bind_root.string(), { bind_record }, &error) ==
-			flatfile_artifact_result::ok,
-		"bind artifact establishment failed");
-	require(flatfile_artifact_bind_get(bind_root.string(), 500, &bind_owner, &bind_timer,
-					   &error) == flatfile_artifact_result::ok &&
-			bind_owner == 42 && bind_timer == 4000,
-		"artifact binding did not round trip");
-	require(flatfile_artifact_bind_update(bind_root.string(), 500, 77, 4100, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact binding update failed: " + error);
-	require(flatfile_artifact_bind_update(bind_root.string(), 500, 77, 4100, &error) ==
-			flatfile_artifact_result::unchanged,
-		"identical artifact binding update was not idempotent");
-	require(flatfile_artifact_bind_get(bind_root.string(), 500, &bind_owner, &bind_timer,
-					   &error) == flatfile_artifact_result::ok &&
-			bind_owner == 77 && bind_timer == 4100,
-		"updated artifact binding did not round trip");
-	require(flatfile_artifact_bind_update(bind_root.string(), 501, 77, 4100, &error) ==
-			flatfile_artifact_result::not_found,
-		"binding update synthesized a missing artifact");
-	require(flatfile_artifact_bind_update(bind_root.string(), 500, -2, 4100, &error) ==
-			flatfile_artifact_result::invalid,
-		"invalid binding owner was accepted");
-	require(flatfile_artifact_list(bind_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 && records[0].bind_owner_pid == 77 &&
-			records[0].bind_timer == 4100 && records[0].revision == 4,
-		"binding update did not preserve the canonical artifact record");
-	require(flatfile_artifact_bind_reset_all(bind_root.string(), &error) ==
-			flatfile_artifact_result::ok,
-		"binding reset-all failed: " + error);
-	require(flatfile_artifact_list(bind_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 && records[0].bind_owner_pid == -1 &&
-			records[0].bind_timer == 0 && records[0].owned &&
-			records[0].location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			records[0].location == 42 && records[0].timer == 5000 &&
-			records[0].revision == 5,
-		"binding reset-all did not preserve gameplay fields or advance revision");
-	require(flatfile_artifact_bind_reset_all(bind_root.string(), &error) ==
-			flatfile_artifact_result::unchanged,
-		"identical binding reset-all was not idempotent");
-	require(flatfile_artifact_repair_player_binding(bind_root.string(), 500, 9000, 2000, 2000,
-							&error) == flatfile_artifact_result::ok,
-		"player binding repair failed: " + error);
-	require(flatfile_artifact_list(bind_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 && records[0].owned &&
-			records[0].location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			records[0].location == 42 && records[0].timer == 9000 &&
-			records[0].last_update == 2000 && records[0].bind_owner_pid == 42 &&
-			records[0].bind_timer == 2000 && records[0].revision == 6,
-		"player binding repair did not persist its complete atomic outcome");
-	require(flatfile_artifact_repair_player_binding(bind_root.string(), 500, 10000, 3000, 3000,
-							&error) ==
-			flatfile_artifact_result::unchanged,
-		"already-correct player binding was unnecessarily rewritten");
-	require(flatfile_artifact_repair_player_binding(bind_root.string(), 501, 9000, 2000, 2000,
-							&error) ==
-			flatfile_artifact_result::not_found,
-		"player binding repair synthesized a missing artifact");
-
-	const fs::path gameplay_root = fs::path(argv[1]) / "gameplay";
-	prepare_root(gameplay_root);
-	flatfile_artifact_record gameplay_record;
-	require(flatfile_artifact_get(gameplay_root.string(), 700, &gameplay_record, &error) ==
-				flatfile_artifact_result::not_found &&
-			gameplay_record == flatfile_artifact_record{},
-		"missing gameplay authority did not fail closed with a cleared record");
-	const flatfile_artifact_record gameplay_original = {
-		700, false, FLATFILE_ARTIFACT_ON_GROUND, 1201, 5000, 2, 1000, 42, 4000, 5
-	};
-	require(flatfile_artifact_establish(gameplay_root.string(), { gameplay_original },
-					    &error) == flatfile_artifact_result::ok,
-		"gameplay artifact establishment failed");
-	require(flatfile_artifact_get(gameplay_root.string(), 700, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record == gameplay_original,
-		"gameplay artifact did not round trip");
-	require(flatfile_artifact_gameplay_update(gameplay_root.string(), 700, true,
-						  FLATFILE_ARTIFACT_ON_PLAYER, 77, 6000, 3, 1100,
-						  &error) == flatfile_artifact_result::ok,
-		"existing gameplay artifact update failed: " + error);
-	require(flatfile_artifact_gameplay_update(gameplay_root.string(), 700, true,
-						  FLATFILE_ARTIFACT_ON_PLAYER, 77, 6000, 3, 1100,
-						  &error) == flatfile_artifact_result::unchanged,
-		"identical gameplay artifact update was not idempotent");
-	require(flatfile_artifact_get(gameplay_root.string(), 700, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.owned &&
-			gameplay_record.location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			gameplay_record.location == 77 && gameplay_record.timer == 6000 &&
-			gameplay_record.type == 3 && gameplay_record.last_update == 1100 &&
-			gameplay_record.bind_owner_pid == 42 &&
-			gameplay_record.bind_timer == 4000 && gameplay_record.revision == 6,
-		"gameplay update did not preserve binding or advance its revision");
-	require(flatfile_artifact_gameplay_update(gameplay_root.string(), 701, true,
-						  FLATFILE_ARTIFACT_ON_GROUND, 1202, 7000, 1, 1200,
-						  &error) == flatfile_artifact_result::ok,
-		"new gameplay artifact upsert failed: " + error);
-	require(flatfile_artifact_get(gameplay_root.string(), 701, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.vnum == 701 && gameplay_record.bind_owner_pid == 0 &&
-			gameplay_record.bind_timer == 0 && gameplay_record.revision == 1,
-		"new gameplay artifact did not receive safe binding and revision defaults");
-	require(flatfile_artifact_gameplay_update(gameplay_root.string(), 701, true, 99, 1202, 7000,
-						  1, 1200,
-						  &error) == flatfile_artifact_result::invalid,
-		"invalid gameplay artifact location type was accepted");
-	require(flatfile_artifact_remove_owned(gameplay_root.string(), 701, -1, 1, 1300, &error) ==
-			flatfile_artifact_result::ok,
-		"owned artifact removal failed: " + error);
-	require(flatfile_artifact_get(gameplay_root.string(), 701, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			!gameplay_record.owned &&
-			gameplay_record.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
-			gameplay_record.location == -1 && gameplay_record.timer == 7000 &&
-			gameplay_record.type == 1 && gameplay_record.last_update == 1300 &&
-			gameplay_record.bind_owner_pid == -1 && gameplay_record.bind_timer == 0 &&
-			gameplay_record.revision == 2,
-		"owned artifact removal did not preserve gameplay data or clear binding");
-	require(flatfile_artifact_remove_owned(gameplay_root.string(), 701, -1, 1, 1300, &error) ==
-			flatfile_artifact_result::unchanged,
-		"identical owned artifact removal was not idempotent");
-	require(flatfile_artifact_remove_owned(gameplay_root.string(), 701, 77, 1, 1400, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact corpse ownership update failed: " + error);
-	require(flatfile_artifact_get(gameplay_root.string(), 701, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.owned &&
-			gameplay_record.location_type == FLATFILE_ARTIFACT_ON_CORPSE &&
-			gameplay_record.location == 77 && gameplay_record.timer == 7000 &&
-			gameplay_record.bind_owner_pid == -1 && gameplay_record.bind_timer == 0 &&
-			gameplay_record.revision == 3,
-		"artifact corpse ownership did not preserve timer/type or clear binding");
-	require(flatfile_artifact_remove_owned(gameplay_root.string(), 799, -1, 2, 1500, &error) ==
-			flatfile_artifact_result::unchanged,
-		"removing an untracked artifact synthesized a record");
-	require(flatfile_artifact_remove_owned(gameplay_root.string(), 799, 88, 2, 1500, &error) ==
-			flatfile_artifact_result::ok,
-		"missing corpse-held artifact was not recovered");
-	require(flatfile_artifact_get(gameplay_root.string(), 799, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.owned &&
-			gameplay_record.location_type == FLATFILE_ARTIFACT_ON_CORPSE &&
-			gameplay_record.location == 88 && gameplay_record.timer == 0 &&
-			gameplay_record.type == 2 && gameplay_record.bind_owner_pid == -1 &&
-			gameplay_record.revision == 1,
-		"missing corpse-held artifact recovery did not use safe defaults");
-	require(flatfile_artifact_remove_owned(gameplay_root.string(), 799, 88, 9, 1500, &error) ==
-			flatfile_artifact_result::invalid,
-		"owned artifact removal accepted an invalid type");
-	require(flatfile_artifact_extend_timer(gameplay_root.string(), 701, 8000, 1600, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact timer extension failed: " + error);
-	require(flatfile_artifact_extend_timer(gameplay_root.string(), 701, 7500, 1700, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact timer extension could not refresh last-update time");
-	require(flatfile_artifact_get(gameplay_root.string(), 701, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.timer == 8000 && gameplay_record.last_update == 1700 &&
-			gameplay_record.owned &&
-			gameplay_record.location_type == FLATFILE_ARTIFACT_ON_CORPSE &&
-			gameplay_record.location == 77 && gameplay_record.type == 1 &&
-			gameplay_record.bind_owner_pid == -1 && gameplay_record.bind_timer == 0 &&
-			gameplay_record.revision == 5,
-		"artifact timer extension lowered its timer or changed non-timer fields");
-	require(flatfile_artifact_extend_timer(gameplay_root.string(), 701, 7500, 1700, &error) ==
-			flatfile_artifact_result::unchanged,
-		"identical artifact timer extension was not idempotent");
-	require(flatfile_artifact_extend_timer(gameplay_root.string(), 798, 8000, 1700, &error) ==
-			flatfile_artifact_result::not_found,
-		"artifact timer extension synthesized a missing artifact");
-	require(flatfile_artifact_extend_timer(gameplay_root.string(), 701, 0, 1700, &error) ==
-			flatfile_artifact_result::invalid,
-		"artifact timer extension accepted a zero minimum");
-	require(flatfile_artifact_erase(gameplay_root.string(), 799, &error) ==
-			flatfile_artifact_result::conflict,
-		"artifact erase ignored unresolved identity");
-	require(flatfile_artifact_get(gameplay_root.string(), 799, &gameplay_record, &error) ==
-			flatfile_artifact_result::ok,
-		"refused erase lost artifact evidence");
-	require(flatfile_artifact_erase(gameplay_root.string(), 799, &error) ==
-			flatfile_artifact_result::conflict,
-		"repeated erase changed unresolved artifact evidence");
-	flatfile_artifact_record expired_record;
-	require(flatfile_artifact_find_next_expired(gameplay_root.string(), 0, 6500,
-						    &expired_record,
-						    &error) == flatfile_artifact_result::ok &&
-			expired_record.vnum == 700,
-		"first expired artifact was not selected in vnum order");
-	require(flatfile_artifact_find_next_expired(gameplay_root.string(), 700, 8001,
-						    &expired_record,
-						    &error) == flatfile_artifact_result::ok &&
-			expired_record.vnum == 701,
-		"expired artifact cursor did not advance by vnum");
-	require(flatfile_artifact_expire(gameplay_root.string(), 701, 6500, &error) ==
-			flatfile_artifact_result::unchanged,
-		"non-expired artifact was cleared");
-	require(flatfile_artifact_expire(gameplay_root.string(), 700, 6500, &error) ==
-			flatfile_artifact_result::ok,
-		"expired artifact was not cleared: " + error);
-	require(flatfile_artifact_expire(gameplay_root.string(), 700, 6500, &error) ==
-			flatfile_artifact_result::unchanged,
-		"expired artifact clear was not idempotent");
-	require(flatfile_artifact_get(gameplay_root.string(), 700, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			!gameplay_record.owned &&
-			gameplay_record.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
-			gameplay_record.location == -1 && gameplay_record.timer == 0 &&
-			gameplay_record.last_update == 6500 && gameplay_record.type == 3 &&
-			gameplay_record.bind_owner_pid == 42 &&
-			gameplay_record.bind_timer == 4000 && gameplay_record.revision == 7,
-		"expiry did not clear gameplay fields while preserving type and binding");
-	require(flatfile_artifact_find_next_expired(gameplay_root.string(), 0, 6500,
-						    &expired_record,
-						    &error) == flatfile_artifact_result::not_found,
-		"cleared or future artifact remained in the expired selection");
-
-	const fs::path wars_root = fs::path(argv[1]) / "wars";
-	prepare_root(wars_root);
-	const std::vector<flatfile_artifact_record> war_records = {
-		{ 800, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, 2000, 1, 1000, 42, 500, 1 },
-		{ 801, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, 3001, 1, 1000, 42, 500, 1 },
-		{ 802, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, 0, 2, 1000, 42, 500, 1 },
-		{ 803, true, FLATFILE_ARTIFACT_ON_PLAYER, 43, 5000, 1, 1000, 43, 500, 1 },
-		{ 804, true, FLATFILE_ARTIFACT_ON_PLAYER, 44, 4000, 3, 1000, 44, 500, 1 },
-		{ 805, true, FLATFILE_ARTIFACT_ON_PLAYER, 44, 5000, 3, 1000, 44, 500, 1 },
-		{ 806, false, FLATFILE_ARTIFACT_ON_PLAYER, 45, 4000, 2, 1000, 45, 500, 1 },
-		{ 807, true, FLATFILE_ARTIFACT_ON_PLAYER, 45, 5000, 2, 1000, 45, 500, 1 },
-	};
-	require(flatfile_artifact_establish(wars_root.string(), war_records, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact-war establishment failed: " + error);
-	std::vector<flatfile_artifact_war_owner> war_owners;
-	require(flatfile_artifact_war_owners(wars_root.string(), 0, 2, &war_owners, &error) ==
-				flatfile_artifact_result::ok &&
-			war_owners.size() == 2 && war_owners[0].pid == 42 &&
-			war_owners[0].total == 3 && war_owners[0].major == 2 &&
-			war_owners[0].unique == 1 && war_owners[0].ioun == 0 &&
-			war_owners[1].pid == 44,
-		"artifact-war owners were not grouped, filtered, or bounded by pid");
-	require(flatfile_artifact_war_owners(wars_root.string(), 42, 2, &war_owners, &error) ==
-				flatfile_artifact_result::ok &&
-			war_owners.size() == 2 && war_owners[0].pid == 44 &&
-			war_owners[0].ioun == 2 && war_owners[1].pid == 45 &&
-			war_owners[1].unique == 2,
-		"artifact-war owner cursor did not preserve database grouping semantics");
-	require(flatfile_artifact_apply_war_burn(wars_root.string(), 42, 1000, 0.5, 1100, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact-war timer burn failed: " + error);
-	require(flatfile_artifact_get(wars_root.string(), 800, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.timer == 1500 && gameplay_record.last_update == 1100 &&
-			gameplay_record.bind_owner_pid == 42 && gameplay_record.bind_timer == 500 &&
-			gameplay_record.revision == 2,
-		"artifact-war burn did not reduce the first future timer safely");
-	require(flatfile_artifact_get(wars_root.string(), 801, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.timer == 2000 && gameplay_record.revision == 2,
-		"artifact-war burn did not apply database floor semantics");
-	require(flatfile_artifact_get(wars_root.string(), 802, &gameplay_record, &error) ==
-				flatfile_artifact_result::ok &&
-			gameplay_record.timer == 0 && gameplay_record.last_update == 1000 &&
-			gameplay_record.revision == 1,
-		"artifact-war burn changed a null-equivalent timer");
-	require(flatfile_artifact_apply_war_burn(wars_root.string(), 99, 1000, 0.5, 1100, &error) ==
-			flatfile_artifact_result::unchanged,
-		"artifact-war burn changed an unreferenced owner");
-	require(flatfile_artifact_apply_war_burn(wars_root.string(), 42, 1000, -0.1, 1100,
-						 &error) == flatfile_artifact_result::invalid,
-		"artifact-war burn accepted an invalid retained fraction");
-
 	const fs::path catalog = root / "domains/artifact_catalog";
 	{
 		std::fstream file(catalog, std::ios::in | std::ios::out | std::ios::binary);
@@ -673,54 +404,17 @@ int main(int argc, char **argv)
 	require(flatfile_artifact_list(root.string(), &records, &error) ==
 			flatfile_artifact_result::invalid,
 		"corrupt artifact authority was exposed");
-	require(flatfile_artifact_bind_get(root.string(), 100, &bind_owner, &bind_timer, &error) ==
+	flatfile_artifact_record corrupt_record;
+	require(flatfile_artifact_get(root.string(), 100, &corrupt_record, &error) ==
 			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was exposed through binding lookup");
-	require(flatfile_artifact_bind_update(root.string(), 100, 42, 5000, &error) ==
+		"corrupt artifact authority was exposed through lookup");
+	require(flatfile_artifact_snapshot_apply(root.string(), { held }, &error) ==
 			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through binding update");
-	require(flatfile_artifact_bind_reset_all(root.string(), &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through binding reset-all");
-	require(flatfile_artifact_repair_player_binding(root.string(), 100, 9000, 2000, 2000,
-							&error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through binding repair");
-	require(flatfile_artifact_get(root.string(), 100, &gameplay_record, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was exposed through gameplay lookup");
-	require(flatfile_artifact_erase(root.string(), 100, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through erase");
-	require(flatfile_artifact_gameplay_update(root.string(), 100, true,
-						  FLATFILE_ARTIFACT_ON_PLAYER, 42, 5000, 1, 1200,
-						  &error) == flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through gameplay update");
-	require(flatfile_artifact_remove_owned(root.string(), 100, -1, 1, 1200, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through owned removal");
-	require(flatfile_artifact_extend_timer(root.string(), 100, 6000, 1200, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through timer extension");
-	require(flatfile_artifact_find_next_expired(root.string(), 0, 6000, &expired_record,
-						    &error) == flatfile_artifact_result::invalid,
-		"corrupt artifact authority was exposed through expiry selection");
-	require(flatfile_artifact_expire(root.string(), 100, 6000, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through expiry");
-	require(flatfile_artifact_war_owners(root.string(), 0, 4, &war_owners, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was exposed through war grouping");
-	require(flatfile_artifact_apply_war_burn(root.string(), 42, 1000, 0.5, 1100, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was overwritten through war timer burn");
+		"corrupt artifact authority was overwritten through capture");
 	require(flatfile_artifact_ensure(root.string(), &error) ==
 			flatfile_artifact_result::invalid,
 		"artifact ensure accepted or overwrote corrupt authority");
-	require(flatfile_artifact_reconcile_players(root.string(), { { 100, 42 } }, 2000,
-						    &reconcile_counts,
-						    &error) == flatfile_artifact_result::invalid,
-		"corrupt artifact authority was accepted for saved-item reconciliation");
+
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error),
