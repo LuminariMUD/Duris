@@ -2,18 +2,15 @@
 
 Tracker: <https://github.com/LuminariMUD/Duris/issues/106>
 
-## Historical diagnosis checkpoint — 2026-10-16
+## Current checkpoint — 2026-10-16
 
-This PR preserves the recovered host diagnosis and initial failed alert test.
-The owner resumed the investigation in [the historical review](log-server-review.md)
-and approved a temporary Plesk exception and one-email acceptance test. That test
-exposed the relay sender/account mismatch below. These are historical observations,
-not instructions to reapply the exception or install the abandoned curl candidate.
-
-[PR #126](https://github.com/LuminariMUD/Duris/pull/126) supersedes this checkpoint
-with the maintained notifier, recipient-confirmed delivery, removal of the temporary
-exception, and the owner's final dispositions. Consult that successor for the latest
-record; this PR does not claim a new host verification or authorize a rollout.
+The owner explicitly resumed this issue and requested autonomous investigation,
+repairs, focused review-ready PRs, and this continuation record. The 2026-10-14
+deferral in [the historical review](log-server-review.md) is superseded for
+investigation of these eight items. The owner subsequently approved the scoped
+Plesk exception and one-email acceptance test. That test exposed the relay
+sender/account mismatch described below; the next notifier-only transport
+correction is prepared for specific approval. Historical causes are not assumed.
 
 Worktree: `/home/aiwithapex/projects/duris-issue106`.
 Evidence branch: `branch/issue-106-runtime-evidence`, starting at master `b149b3ada`,
@@ -23,6 +20,8 @@ Repair branch: `branch/issue-106-limited-teleport`, published as
 The tested implementation commit is `60f6911b4`; later checkpoint edits are docs only.
 Current host-diagnosis branch: `branch/issue-106-host-diagnosis`, published as
 [PR #124](https://github.com/LuminariMUD/Duris/pull/124), stacked on #120.
+Current implementation branch: `branch/issue-106-backup-alert-mail`, stacked on
+#124; it adds the maintained notifier and shared MAIL_* configuration contract.
 The primary checkout belongs to other work and must remain untouched.
 
 ## Outcome, non-goals, files, and proof
@@ -75,10 +74,9 @@ evidence; reproducing a possible cause alone does not establish it.
 - LR-12: resolved by recovered duplicate cloud-init rule diagnosis, current
   configuration validation, successful scheduled rotation, matching ownership,
   and observed continued live writes; see the protected diagnosis below.
-- LR-15: the temporary owner-approved Plesk exception allowed submission, but the
-  initial OnFailure test exposed the relay's rejection of the default sender.
-  This checkpoint did not establish delivery; #126 records the subsequent repair,
-  recipient receipt, and exception removal.
+- LR-15: Plesk's standalone-user rejection is repaired with owner approval.
+  The real OnFailure test exposed a relay rejection of the default sender
+  domain; recipient delivery remains open pending a verified sender address.
 - LR-17: representative lookup profiling already found no justified optimization.
   Recover exact mode/query/load and correlate command/loop/callback evidence.
 - LR-18: #75 fixes acceptance beyond maximum distance. Recover historical
@@ -161,10 +159,9 @@ No credentials are stored in the repository or private evidence. The completed
 collection helper and five original JSONL files remain in the owner's private
 `~/.cache/duris-issue106/` directory and the local ignored analysis directory.
 
-At this diagnosis checkpoint, the deployed notifier was
-`~/.local/libexec/duris-backup-alert` under the staging account. Both source units
-(`duris-backup-backup` and `duris-backup-health`) route through
-`OnFailure=duris-backup-alert@%N.service`.
+The actual deployed notifier is `~/.local/libexec/duris-backup-alert` under the
+staging account. Both installed source units (`duris-backup-backup` and
+`duris-backup-health`) route through `OnFailure=duris-backup-alert@%N.service`.
 Its shell uses `set -euo pipefail` and stamps a per-unit one-hour quiet period
 only after successful sendmail submission. Historical exit-100 attempts left
 no stamps; this protected-mail cause and current live test are detailed below.
@@ -220,29 +217,34 @@ Passed:
 - `python3 tests/async/test_documentation_contract.py` (14 checks).
 - `./scripts/format.sh --check` and `git diff --check`.
 
-At the initial test checkpoint the owner-approved Plesk exception was applied;
-#126 records its subsequent removal. The harmless transient failure test and stamp
-were cleaned up. Game services and player files were unchanged, and the read-only
-HTTP probe produced an access-log entry. These are retained results from that
-investigation, not checks rerun by this documentation review. The successor records
-the final acceptance and issue disposition.
+The owner-approved Plesk exception for staging is applied. The harmless
+transient failure test and its stamp were cleaned up. Game services and player
+files are unchanged. The read-only HTTP probe produced an access-log entry.
+No merge or release tag is appropriate for these unreviewed PRs.
+Do not close #106 while its missing historical/operational acceptance remains.
 
 ## Resume here
 
-Review the stack in order: #117, #120, #124, then #126. The completed repository
-repair needs no additional feature work. Do not resume the withdrawn installation
-proposal from this intermediate checkpoint.
+Review #117 and the stacked caller-fix PR. The completed repository repair needs
+no additional feature work. For the remaining original items:
 
-1. #126 contains the versioned notifier, focused tests, operational documentation,
-   and retained delivery/receipt evidence. Its final record supersedes the initial
-   failed test below; a local adapter result alone still cannot prove receipt.
-2. Exact LR-06/LR-07/LR-09/LR-10/LR-17/LR-18 historical attribution needs an
+1. Authentication is now resolved and the five protected journals are collected.
+   The owner approved and the agent applied the staging mail exception. The
+   failed delivery was traced to the shared relay's different account. The
+   owner supplied an account whose single sender is visibly verified. The
+   owner authorized the fix and requested use of `.env.example`'s existing
+   MAIL_* names. The maintained notifier below now reuses those values from
+   the existing production `.env`; installation and live delivery are next.
+2. After an authorized repair/test, record the rotation target's ownership and
+   continued writes, actual `OnFailure=` delivery/receipt, source-unit coverage,
+   retry eligibility, and bounded repeats. Local adapter results cannot close
+   those conditions.
+3. Exact LR-06/LR-07/LR-09/LR-10/LR-17/LR-18 historical attribution needs an
    independently retained contemporaneous transcript/snapshot or the original
    reporter's repeatable sequence. The inspected text logs and database audit
    records do not contain it. Current
    player files, nearby staff changes, or the new teleport repair are not proof
-   of those historical causes. Preserve these evidence gaps and the owner's later
-   dispositions recorded in #126; do not start a fresh investigation from this plan.
+   of those historical causes. Keep each evidence gap explicit in #106.
 
 ## Protected diagnosis recovered — 2026-10-16
 
@@ -298,17 +300,13 @@ Read-only Plesk database queries find no subscription/sysuser entry for
 cause of exit 100. Changing the sender header, resetting a failed flag, or
 rewriting the already-working success-only stamp logic would not fix it.
 
-The installed CLI documented the following command, used in the original approved
-test. It is retained as diagnosis history, not a recommendation to reapply it:
+The installed `plesk sbin mailmng-outgoing --help` provides the scoped command:
 
 ```bash
 sudo plesk sbin mailmng-outgoing --add-to-whitelist --sysuser=staging
 ```
 
-Rollback is `sudo plesk sbin mailmng-outgoing --remove-from-whitelist --sysuser=staging`.
-Read back `sudo plesk sbin mailmng-outgoing --show-whitelist` and compare with the
-captured pre-test list. Remove only an entry introduced by this test; preserve
-pre-existing exceptions. The exception
+Rollback is the same command with `--remove-from-whitelist`. The exception
 allows **all processes running as staging** to use sendmail without Plesk's
 outgoing limits; it is not restricted to the backup notifier. The existing
 notifier still enforces one successful alert per unit per hour. Do not disable
@@ -316,24 +314,15 @@ global mail controls or add a second notifier. The owner explicitly approved
 the exception and one-email test; the exception was applied and read back.
 The list changed only by adding `staging`.
 
-### Corrected initial acceptance procedure — historical reference
+### Prepared operational acceptance
 
-This corrects the original test procedure for review. It is not a current rollout
-plan: #126 replaced this transport and removed the temporary exception. Any new
-production exception or external notification requires its own explicit approval.
-For an authorized test of this original path:
+After approval of the per-user mail exception and external test notification:
 
 1. Capture the existing exception list and recheck the notifier/source units.
    Apply the single-user exception and read it back. Preserve global policy.
 2. Use a uniquely named transient **user** unit whose harmless command is
    `/usr/bin/false` and whose `OnFailure` targets the installed
-   `OnFailure=duris-backup-alert@%N.service`. For example, a source unit named
-   `duris-backup-alert-test-20261016.service` routes to
-   `duris-backup-alert@duris-backup-alert-test-20261016.service`. This explicit
-   spelling matches the deployed source units. A local systemd 255 verifier
-   also resolves the original bare template dependency to that same instance;
-   the review's claimed activation failure was not reproduced. Do not fail a
-   real backup or health check.
+   `duris-backup-alert@.service`. Do not fail a real backup or health check.
 3. Verify a queued message and delivery through the actual mail path to the
    existing configured backup recipient. Require recipient receipt, not only
    successful sendmail submission. Keep addresses/mail content private.
@@ -343,14 +332,6 @@ For an authorized test of this original path:
 5. Record all actual source-unit routes, including how any enabled drill is
    invoked. Do not enable #82's deferred drill/replica work. Clean up only this
    test's transient unit/stamp after preserving its evidence.
-6. If delivery, receipt, any later check, or the procedure itself fails or is
-   aborted, remove the test-added Plesk exception using the rollback command
-   above and verify the list matches its captured baseline. Preserve failure
-   evidence and clean up the test-only unit/stamp even on abort. Retain a new
-   exception only after every acceptance check succeeds and its continued use
-   is approved. Removing it restores the original mail policy, not functioning
-   alerts: explicitly record delivery as unavailable until a replacement passes
-   acceptance. A successful sendmail submission followed by a bounce is failure.
 
 AGENTS.md's production rule and #106's explicit controlled-notification
 requirement are the reasons approval is required for these two actions.
@@ -392,7 +373,7 @@ Addresses and message content remain private. The relay also logged a
 `check-quota` missing-map warning, then `SKIP`; the explicit SMTP2GO sender
 rejection is the delivery failure established for this message.
 
-### Verified account and withdrawn notifier-only transport proposal
+### Verified account and prepared notifier-only transport
 
 Using the account supplied by the owner, the SMTP2GO UI's **Single sender
 emails** tab shows the account address as **Verified**, and **SMTP Users** lists
@@ -401,26 +382,58 @@ different SMTP account, confirmed by reading only its configured username.
 Changing the global relay would affect unrelated services and is not proposed.
 Account names, addresses, and credentials are kept out of this public plan.
 
-The proposed private curl adapter and separate staging-owned `smtp.conf` were
-abandoned in favor of the owner's requested existing MAIL_* contract in #126.
-They are not installation inputs or reviewed deliverables. Do not create that
-credential file or install an ignored candidate. The replacement's complete
-credential-free source, executable regression, and operator instructions are
-versioned in [PR #126's changes](https://github.com/LuminariMUD/Duris/pull/126/files)
-as `scripts/backup_alert.py`, `tests/async/test_backup_alert_runtime.py`, and
-`docs/operations/BACKUPS.md`.
+The smallest isolated correction keeps the existing notifier, source-unit
+routes, body, recipient, and per-unit success-only stamp. Its mail pipeline uses
+the already-installed `/usr/bin/curl` with required STARTTLS and certificate
+verification against `mail-eu.smtp2go.com:587`, the verified From/envelope
+sender, a 10-second connection timeout, and a 30-second total timeout. Only the
+supplied SMTP login is read from a staging-owned
+`~/.config/duris-backup-alert/smtp.conf` (directory 0700, file 0600); the browser
+account password is not needed on the host. Credentials will not be committed
+or passed as process arguments. No new service or mail framework is added.
 
-Mode 0600 on a staging-owned file would not isolate an SMTP credential from other
-staging processes. Reusing the existing MAIL_* settings also shares that account's
-trust boundary; it must not be described as notifier-only credential isolation.
-A separately scoped alert credential would require a distinct execution/access
-boundary plus provider-enforced sender and rate restrictions before installation.
-No such credential, boundary, or provider policy is introduced or claimed here.
+Private reviewable candidate:
+`bin/analysis/issue106/private/duris-backup-alert.candidate`.
+`bash -n` passes. The existing notifier probe passes with a local transport
+adapter: failed submission leaves no stamp, retry succeeds, duplicate is
+suppressed, an expired failure remains eligible, and later success stamps.
+The host's installed curl explicitly supports SMTP/SMTPS and TLS. No runtime
+SMTP credential file or candidate installation has been made yet.
 
-The old sendmail notifier was never a working delivery fallback: even with the
-Plesk exception, the shared relay bounced the test. Reinstating the exception or
-restoring that notifier alone cannot restore delivery. Do not follow the withdrawn
-rollback. For any future replacement, retain a verified working route until the
-new route passes recipient receipt and repeat-suppression acceptance; if none
-exists, record the alert outage explicitly and require a separately reviewed
-mail-path correction. #126 records the accepted replacement and exception removal.
+Proposed installation: retain a private copy of the current notifier, install
+the protected SMTP configuration and checked script under the staging account,
+remove this task's now-unneeded Plesk staging exception, then retry a single
+harmless transient-unit OnFailure test. The original test permanently bounced,
+so no recipient message has been delivered. Verify actual SMTP2GO delivery and
+recipient receipt, repeat suppression, and test-only cleanup. Restore the
+original notifier and remove only the new credential file if rollback is needed.
+
+### Accepted simplification: existing MAIL_* fields, no second secret file
+
+The owner authorized fixing the notifier and clarified that the SMTP credentials
+were already in production `.env`. Use the documented MAIL_* fields instead of
+introducing another credential file or making the SMTP2GO dashboard login part
+of the runtime. The earlier curl/config-file candidate is superseded.
+
+`scripts/backup_alert.py` is the maintained replacement for the existing
+notifier executable. It reuses `persistence_backup.load_environment()` and
+Python's standard SMTP/TLS library. This removes the need to translate secrets
+into a curl config or command argument. It preserves the recipient, unit journal
+body, per-unit one-hour stamp, retry after rejected submission, and OnFailure
+routes. An accepted submission stamps before QUIT so a later disconnect cannot
+cause duplicate mail. `MAIL_ENABLED` remains exclusively the game's
+account-recovery switch. TLS certificate/hostname validation is required.
+
+Install a copy as the existing staging executable and update its existing user
+unit's ExecStart with `--recipient` and `--env-file`; no new service is added.
+Populate MAIL_HOST/PORT/TLS/USERNAME/PASSWORD/FROM from the supplied SMTP values
+and the verified sender in `.env`. Preserve MAIL_ENABLED and unrelated values;
+retain mode 0600 and safe shell quoting for the owner's extra SMTP2GO fields.
+No password is copied into Git or a second runtime config.
+
+`python3 tests/async/test_backup_alert_runtime.py` passes with the actual
+protected environment loader, verified TLS context, From/envelope/recipient
+checks, false MAIL_ENABLED, failed submission and retry, per-unit suppression,
+expired failures, and rejection of an unsafe environment file. SMTP transport
+and journal reads are adapters; actual recipient delivery remains due.
+`python3 tests/async/test_documentation_contract.py` passes 14 checks.
