@@ -10,12 +10,12 @@ the workspace HEAD matched the remote master. Planning branch:
 
 Reference: Luminari-Source at
 `56fca2e452ce0c4186f827812ea8334d6546fb4e`. Its
-[prompt](../../../Luminari-Source/src/core/comm.c) compares `GET_LAST_NEWS` with
-`newsmod`; [the news command](../../../Luminari-Source/src/act/act.informative.c)
+[prompt](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/core/comm.c) compares `GET_LAST_NEWS` with
+`newsmod`; [the news command](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/act/act.informative.c)
 sets the character's last-read time when opening news.
-[Player saves](../../../Luminari-Source/src/player/players.c) persist that value,
-and [file loading](../../../Luminari-Source/src/core/db.c) and
-[text editing](../../../Luminari-Source/src/olc/tedit.c) update `newsmod`.
+[Player saves](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/player/players.c) persist that value,
+and [file loading](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/core/db.c) and
+[text editing](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/olc/tedit.c) update `newsmod`.
 
 ## Outcome and behavior
 
