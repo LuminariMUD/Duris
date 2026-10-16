@@ -387,6 +387,20 @@ warning. The original zone attribution remains open.
 
 ## Damage death results, healing posture and graph distance
 
+**Limited-zone spell callers, 2026-10-16 (#106).**
+`python3 tests/async/test_graph_distance_runtime.py` now also executes the actual
+Teleport, Depart, and Etheric Gust bodies with the real graph and room structs.
+Each previously returned unconditionally in virtual rooms 5700–5999, rejecting
+even an adjacent destination. Each now rejects only a negative distance result,
+retaining the five-room cap. Self/distinct targets, zero/one/five/six/far distances,
+unreachable destinations, ordinary zones, combat cleanup/preservation, wait, and
+queue reuse pass under ASan/UBSan. Restoring each original caller separately
+fails at the adjacent-room assertion. RNG, eligibility, presentation, movement
+endpoints, and wait are adapters; no live cast, production rollout, or historical
+attribution is claimed. The development server build and eight related focused
+zone/movement/lifecycle/latency tests pass. Evidence and remaining original
+acceptance are in [the continuation plan](../ongoing-projects/plan-issue-106.md).
+
 The legacy physical `damage()` wrapper now stops a skill after either
 participant dies, matching its spell branch. Previously simultaneous death
 fell through into fighting/counterattack setup and `cleave()` could request a
