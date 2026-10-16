@@ -954,8 +954,8 @@ python3 tests/async/test_money_carry_count.py
 python3 tests/async/test_take_coins.py
 python3 tests/async/test_get_trap_lifecycle.py
 python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/mariadb/server   # in make test-db
-python3 tests/async/run_corpse_trap_restart_journey.py /absolute/path/to/mariadb/server mariadb   # in make test-db
-python3 tests/async/run_corpse_trap_restart_journey.py /absolute/path/to/flatfile/server flatfile
+python3 tests/async/test_corpse_trap_restart_journey.py   # flat-file; in make test
+python3 tests/async/test_corpse_trap_restart_journey.py /absolute/path/to/mariadb/server mariadb   # in make test-db
 ```
 
 `test_corpse_haul.py` runs the production selection, pickup and reporting under

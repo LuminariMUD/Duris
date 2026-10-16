@@ -224,7 +224,7 @@ loot behavior; the lethal real-server journey below covers the invalidating trap
 
 Third chunk implemented on `fix/corpse-trap-persistence`:
 
-- Add `run_corpse_trap_restart_journey.py`, which constructs an isolated full-world
+- Add `test_corpse_trap_restart_journey.py`, which constructs an isolated full-world
   corpse with an ioun stone, ordinary item and deterministic lethal room-fire trap. It
   runs the actual command, death and account-menu path; checks that a same-room mortal
   bystander receives the room effect while a durable NPC, remote client and server stay
@@ -242,13 +242,24 @@ Third chunk implemented on `fix/corpse-trap-persistence`:
 - Save a player corpse immediately when a trap triggers during direct or bulk pickup,
   so the consumed charge reaches persistence even when the actor dies before normal
   command-end saving.
-- Register the MariaDB journey in `make test-db` and document both backend commands in
-  `REGRESSIONS.md`. The final MariaDB and flat-file journeys pass, including direct raw
+- Register the flat-file journey in `make test`, the MariaDB journey in `make test-db`,
+  and document both backend commands in `REGRESSIONS.md`. The final MariaDB and
+  flat-file journeys pass, including direct raw
   authority inspection of the three retained UIDs and the `6,2,0,100` spent state; after
   final pickup, exactly the trap UID moves and the other two remain. The completion audit
   also places a mortal bystander and durable NPC in the trap room: the bystander receives
   the fire effect and dies, the NPC survives, and neither outcome resumes the invalidated
   pickup; both backend journeys pass with these assertions.
+
+The completion audit registered the flat-file leg with the normal regression discovery
+and retained the MariaDB leg in `make test-db`. The exact dispatcher command
+`python3 tests/run_regression_tests.py --jobs 1 --match corpse_trap_restart` passed its
+single discovered flat-file journey in 278.67 seconds, including a verified server build.
+The renamed MariaDB entry also passed when invoked with the qualified MariaDB executable
+and disposable loopback database. The existing three-player and count-cap journeys
+assert inventory and wallet behavior; the lethal journey enumerates the target UIDs
+across all corpse authority, verifies the source corpse's visible contents, and on
+MariaDB explicitly confirms none of those UIDs entered the looter's death corpse.
 
 Focused codec, capture, load, routing, lifecycle and corpse-haul regressions pass, as do
 the affected pickup, coin, removal, limits and account-bound access tests. The MariaDB
@@ -402,8 +413,8 @@ python3 tests/async/test_player_load_items.py
 python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/test/server
 python3 tests/async/run_corpse_haul_count_cap_journey.py /absolute/path/to/test/server mariadb
 python3 tests/async/run_corpse_haul_count_cap_journey.py /absolute/path/to/test/server flatfile
-python3 tests/async/run_corpse_trap_restart_journey.py /absolute/path/to/test/server mariadb
-python3 tests/async/run_corpse_trap_restart_journey.py /absolute/path/to/test/server flatfile
+python3 tests/async/test_corpse_trap_restart_journey.py
+python3 tests/async/test_corpse_trap_restart_journey.py /absolute/path/to/test/server mariadb
 ```
 
 Journey commands require explicitly configured disposable test resources and the

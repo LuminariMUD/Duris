@@ -504,4 +504,15 @@ def run(binary, backend):
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv) > 2 else "mariadb")
+    if len(sys.argv) == 1:
+        (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="corpse-trap-build-", dir=ROOT / "bin/tests"
+        ) as build:
+            run(journey.build_flatfile_server(Path(build)), "flatfile")
+    elif len(sys.argv) in (2, 3):
+        run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv) == 3 else "mariadb")
+    else:
+        raise SystemExit(
+            "usage: test_corpse_trap_restart_journey.py [SERVER [mariadb|flatfile]]"
+        )
