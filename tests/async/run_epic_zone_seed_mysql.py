@@ -7,10 +7,13 @@ import importlib.util
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+import epic_task_seed as task_seed
 spec = importlib.util.spec_from_file_location("epic_zone_seed", ROOT / "scripts/epic_zone_seed.py")
 assert spec is not None and spec.loader is not None
 seed = importlib.util.module_from_spec(spec)
@@ -142,6 +145,52 @@ def run(image: str) -> None:
         assert result.returncode and "seed QA insertion fault" in result.stderr
         assert snapshot() == before
         print(f"{image}: late insertion failure rolls back earlier payout updates PASS")
+
+        # The independent task roster repairs only flags on existing, unique rows.
+        populated_defaults()
+        query("UPDATE zones SET task_zone=1 WHERE number IN (14,999999);")
+        numbers = task_seed.roster()
+        task_sql = task_seed.apply_sql(numbers, "epic_seed_qa")
+        task_protected = [c for c in re.findall(r"^  `([^`]+)`", ddl, re.M) if c != "task_zone"]
+        protected_sql = "SELECT " + ",".join(f"`{c}`" for c in task_protected) + " FROM zones ORDER BY id;"
+        before = query(protected_sql).stdout
+        query(task_sql)
+        assert query(protected_sql).stdout == before
+        enabled = {int(n) for n in query("SELECT number FROM zones WHERE task_zone=1;").stdout.split()}
+        assert enabled == set(numbers) | {999999}
+        first = snapshot()
+        query(task_sql)
+        assert snapshot() == first
+        assert "outside-roster-preserved" in query(task_seed.audit_sql(numbers)).stdout
+        print(f"{image}: 107 curated task flags, unrelated flags/fields preserved, replay PASS")
+
+        for defect in ("missing", "duplicate", "invalid-flag", "wrong-target", "nontransactional", "empty"):
+            populated_defaults()
+            if defect == "missing":
+                query("DELETE FROM zones WHERE number=14;")
+            elif defect == "duplicate":
+                query("INSERT INTO zones(number,name) VALUES(14,'duplicate');")
+            elif defect == "invalid-flag":
+                query("UPDATE zones SET task_zone=2 WHERE number=14;")
+            elif defect == "nontransactional":
+                query("ALTER TABLE zones ENGINE=MyISAM;")
+            elif defect == "empty":
+                query("DELETE FROM zones;")
+            before = snapshot()
+            sql_to_run = task_seed.apply_sql(numbers, "wrong_target") if defect == "wrong-target" else task_sql
+            assert query(sql_to_run, ok=False).returncode, defect
+            assert snapshot() == before, defect
+        print(f"{image}: task seed refuses missing/duplicate/invalid/empty rows, wrong target and engine PASS")
+
+        populated_defaults()
+        query("DELIMITER //\nCREATE TRIGGER reject_task_update BEFORE UPDATE ON zones FOR EACH ROW "
+              "BEGIN IF NEW.number=24 THEN SIGNAL SQLSTATE '45000' "
+              "SET MESSAGE_TEXT='task QA update fault'; END IF; END//\nDELIMITER ;\n")
+        before = snapshot()
+        result = query(task_sql, ok=False)
+        assert result.returncode and "task QA update fault" in result.stderr
+        assert snapshot() == before
+        print(f"{image}: task update failure rolls back all flag changes PASS")
     finally:
         subprocess.run(["docker", "rm", "--force", "--volumes", name], check=True,
                        capture_output=True, text=True)
@@ -151,5 +200,5 @@ def run(image: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--image", choices=["mysql:8.0", "mariadb:11.4"], default="mysql:8.0")
+    parser.add_argument("--image", choices=["mysql:8.0", "mariadb:11.4", "mariadb:11.8"], default="mysql:8.0")
     run(parser.parse_args().image)
