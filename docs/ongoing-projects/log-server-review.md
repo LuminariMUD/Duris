@@ -1,5 +1,10 @@
 # Log review and ESTALE: notes and history
 
+The eight runtime/host follow-ups in [issue #106](https://github.com/LuminariMUD/Duris/issues/106)
+were resumed on 2026-10-16. Their current evidence, disposition, and continuation
+steps are in [the issue #106 plan](plan-issue-106.md); the dated snapshot below
+remains historical.
+
 The last recorded work queue and release handoff are preserved in the
 [archived plan](https://github.com/LuminariMUD/Duris/blob/1dad54760c7f27a24881fd4a41fa59b600937875/docs/ongoing-projects/plan-log_review.md).
 This file preserves the completed work, acceptance contracts, evidence, decisions,
