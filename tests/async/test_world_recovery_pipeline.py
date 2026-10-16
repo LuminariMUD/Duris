@@ -670,6 +670,23 @@ int main()
         extract_obj(object_list, FALSE);
     }
 
+    // A floor tree can overlap the generation yet contain an unseen child.
+    // Ignoring the entire tree would silently consume the child's only body.
+    {
+        const world_recovery_object_record dropped = {200,2};
+        const world_recovery_item_snapshot dropped_items[] = {item(500,500,0),item(501,500,500)};
+        std::vector<unsigned char> drop(sizeof(dropped)+sizeof(dropped_items));
+        memcpy(drop.data(),&dropped,sizeof(dropped));
+        memcpy(drop.data()+sizeof(dropped),dropped_items,sizeof(dropped_items));
+        assert(world_recovery_encode_record(world_recovery_record_type::object,
+            drop.data(),drop.size(),captured_wire.data(),captured_wire.size(),&captured_wire_size));
+        const unsigned char *floor_records[] = {captured_wire.data()};
+        const int before = objects_read;
+        assert(!world_recovery_restore_with_floor(valid_objects.data(),valid_objects.size(),300,77,
+            floor_records,&captured_wire_size,1,nullptr));
+        assert(objects_read==before && !object_list && !materializing);
+    }
+
     // An item a player took after the capture and saved has an ownership record. The tree
     // it was captured in is left out, with the custody of the tree's other items; the
     // other trees are restored. A failed lookup restores nothing.

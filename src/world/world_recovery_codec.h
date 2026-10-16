@@ -52,6 +52,12 @@ bool world_recovery_record_native_size(world_recovery_record_type type,
 				       size_t *native_size);
 bool world_recovery_decode_record(world_recovery_record_type type, const unsigned char *wire_data,
 				  size_t wire_size, std::vector<unsigned char> *native_record);
+// Inspect a decoded native ground tree without templates, live objects or custody
+// mutation. Validate the same numeric/string/identity/tree contract as recovery.
+// Failure preserves both outputs.
+bool world_recovery_read_object_record(const unsigned char *native_data, size_t native_size,
+				       world_recovery_object_record *record,
+				       std::vector<world_recovery_item_snapshot> *items);
 bool world_recovery_encode_floor_object(const unsigned char *native_data, size_t native_size,
 					std::vector<unsigned char> *encoded);
 bool world_recovery_floor_object_root_uid(const unsigned char *encoded, size_t encoded_size,

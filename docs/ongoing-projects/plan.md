@@ -17,6 +17,39 @@ aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready 
 population classification and admission remain open.
 No operational repair started.
 
+Focused repair ready for publication: `branch/issue-67-recovery-floor-overlap`,
+based on PR #144. Outcome: retain floor trees with unseen child UIDs instead of
+consuming them as duplicates; validate even fully repeated trees before skipping.
+Non-goals: picking a newer tree or changing canonical identity. Files: recovery
+codec/planner, existing native fixture and this plan. Proof: the new actual
+planner regression fails before the repair and passes under ASan/UBSan after it;
+existing codec controls and the native build pass. The pure native-tree validator
+is shared with the source-reader work below so inspection and materialization use
+the same semantic boundary, without live template/custody calls in inspection.
+
+Finding while mapping recovery: the actual planner considered a whole floor tree
+redundant when any UID overlapped the generation. A generation with root 500 plus
+a journaled `{500, child 501}` restored successfully while discarding child 501.
+The new native pipeline case reproduces that failure before repair (assertion in
+`recovery-population-overlap-before.log`). Repair: validate the complete floor
+tree and skip it only if every UID is already held; partial overlap then refuses
+before custody reconciliation or any materialization, retaining the original
+Redis generation/floor for disposition. This repair is separate from adding the
+source projection API. Fully repeated valid trees retain existing behavior.
+
+Active recovery population chunk: `branch/issue-67-recovery-population`, based
+on PR #144. Outcome: project the pinned Redis ground graphs and retained NPC
+reconstruction evidence without constructing objects; reuse one pure object-tree
+validator in both projection and the actual recovery planner. Preserve generation
+versus floor provenance and repeated-UID evidence. Non-goals: treating NPC hints
+as physical item identity, choosing a conflict winner, copyover completeness or
+production operations. Files: population model/reader, existing recovery codec
+and planner, native recovery fixtures, build/test registration and this plan.
+Proof: actual encoded nested graphs, overridden flags, unsigned UIDs, overlapping
+floor/generation trees and malformed/conflicting trees; existing materialization
+controls, both builds and changed-line checks. Combined classification and early
+boot publication still require copyover/NPC qualification afterward.
+
 Current recovery checkpoint: [PR #144](https://github.com/LuminariMUD/Duris/pull/144),
 `branch/issue-67-pinned-recovery-evidence`, based on PR #143 and ready for review.
 Outcome: prepare and retain one coherent generation/floor cut before boot, expose

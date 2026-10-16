@@ -993,11 +993,6 @@ bool world_recovery_validate(const unsigned char *data, size_t size, int max_age
 
 namespace
 {
-bool terminated(const char *text, size_t size)
-{
-	return text && memchr(text, '\0', size);
-}
-
 P_obj find_object_uid(uint64_t item_uid)
 {
 	for (P_obj object = object_list; object; object = object->next)
@@ -1046,80 +1041,24 @@ bool existing_tree_matches(const planned_object &planned)
 
 bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t size)
 {
-	if (!plan || !data ||
-	    size < sizeof(world_recovery_object_record) + sizeof(world_recovery_item_snapshot))
+	if (!plan)
 		return false;
 	world_recovery_object_record record = {};
-	memcpy(&record, data, sizeof(record));
-	if (!record.item_count || record.item_count > WORLD_RECOVERY_MAX_ITEM_TREE ||
-	    size != sizeof(record) + static_cast<size_t>(record.item_count) *
-					     sizeof(world_recovery_item_snapshot))
-		return false;
 	planned_object planned;
+	if (!world_recovery_read_object_record(data, size, &record, &planned.items))
+		return false;
 	planned.room_vnum = record.room_vnum;
 	planned.room_rnum = real_room(record.room_vnum);
 	if (planned.room_rnum < 0 || planned.room_rnum > top_of_world)
 		return false;
-	try
+	const auto root_uid = planned.items[0].item_uid;
+	for (const auto &item : planned.items)
 	{
-		planned.items.resize(record.item_count);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	memcpy(planned.items.data(), data + sizeof(record),
-	       planned.items.size() * sizeof(world_recovery_item_snapshot));
-	std::unordered_set<uint64_t> parents;
-	try
-	{
-		parents.reserve(planned.items.size());
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	const uint64_t root_uid = planned.items[0].item_uid;
-	for (size_t index = 0; index < planned.items.size(); ++index)
-	{
-		const world_recovery_item_snapshot &item = planned.items[index];
-		for (int timer_index = 0; timer_index < 6; ++timer_index)
-			if (static_cast<int64_t>(static_cast<time_t>(item.timers[timer_index])) !=
-			    item.timers[timer_index])
-				return false;
-		for (int affect_index = 0; affect_index < MAX_OBJ_AFFECT; ++affect_index)
-			if (item.affect_locations[affect_index] < 0 ||
-			    item.affect_locations[affect_index] > SCHAR_MAX ||
-			    item.affect_modifiers[affect_index] < SCHAR_MIN ||
-			    item.affect_modifiers[affect_index] > SCHAR_MAX)
-				return false;
-		if (item.material < 0 || item.material > SCHAR_MAX || item.trap_eff < SHRT_MIN ||
-		    item.trap_eff > SHRT_MAX || item.trap_dam < SHRT_MIN ||
-		    item.trap_dam > SHRT_MAX || item.trap_charge < SHRT_MIN ||
-		    item.trap_charge > SHRT_MAX || item.trap_level < SHRT_MIN ||
-		    item.trap_level > SHRT_MAX || item.condition < SHRT_MIN ||
-		    item.condition > SHRT_MAX || item.craftsmanship < SHRT_MIN ||
-		    item.craftsmanship > SHRT_MAX || item.z_cord < SHRT_MIN ||
-		    item.z_cord > SHRT_MAX || item.bitvector > ULONG_MAX ||
-		    item.bitvector2 > ULONG_MAX || item.bitvector3 > ULONG_MAX ||
-		    item.bitvector4 > ULONG_MAX || item.bitvector5 > ULONG_MAX)
-			return false;
-		if (!item.item_uid || item.item_uid > ULONG_MAX || !item.root_item_uid ||
-		    item.root_item_uid != root_uid || item.vnum <= 0 || item.type < 0 ||
-		    item.type > ITEM_LAST ||
-		    (item.flags & ~WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED) ||
-		    real_object(item.vnum) < 0 || !terminated(item.name, sizeof(item.name)) ||
-		    !terminated(item.short_description, sizeof(item.short_description)) ||
-		    !terminated(item.description, sizeof(item.description)) ||
-		    !terminated(item.action_description, sizeof(item.action_description)) ||
-		    (index == 0 && item.parent_item_uid) ||
-		    (index != 0 && (!item.parent_item_uid ||
-				    parents.find(item.parent_item_uid) == parents.end())))
+		if (real_object(item.vnum) < 0)
 			return false;
 		try
 		{
-			if (!plan->item_uids.insert(item.item_uid).second ||
-			    !parents.insert(item.item_uid).second)
+			if (!plan->item_uids.insert(item.item_uid).second)
 				return false;
 			if (item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED)
 				plan->authority_items.push_back({ item.item_uid, item.root_item_uid,
@@ -1299,24 +1238,17 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 	return counts_match;
 }
 
-// A drop is journaled after the capture it was made in, and that capture may have written
-// the item as well, where it was dropped or where it lay before. A later drop of an item
-// the generation holds is journaled too. The generation's stays; boot refuses an item that
-// comes twice.
+// A journaled tree is redundant only when every valid item UID is already held.
+// A partial overlap contains unseen payload: let normal duplicate rejection stop
+// recovery before reconciliation/materialization instead of silently discarding it.
 bool floor_record_repeats(const recovery_plan &plan, const std::vector<unsigned char> &record)
 {
-	for (size_t offset = sizeof(world_recovery_object_record);
-	     offset + sizeof(world_recovery_item_snapshot) <= record.size();
-	     offset += sizeof(world_recovery_item_snapshot))
-	{
-		uint64_t item_uid = 0;
-		memcpy(&item_uid,
-		       record.data() + offset + offsetof(world_recovery_item_snapshot, item_uid),
-		       sizeof(item_uid));
-		if (plan.item_uids.count(item_uid))
-			return true;
-	}
-	return false;
+	world_recovery_object_record header = {};
+	std::vector<world_recovery_item_snapshot> items;
+	if (!world_recovery_read_object_record(record.data(), record.size(), &header, &items))
+		return false;
+	return std::all_of(items.begin(), items.end(), [&](const auto &item)
+			   { return plan.item_uids.count(item.item_uid) != 0; });
 }
 
 // An item the capture saw on the floor without an owner is held once its taker's save, or
