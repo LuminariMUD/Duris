@@ -639,6 +639,17 @@ evidence before any population, classify canonical versus unresolved state
 without first-traversal selection, then integrate creation/materialization and
 physical retirement. The unchecked AR-01–AR-07 acceptance work remains required.
 
+Subsequent recovery control found an obsolete fixture seam:
+`test_world_recovery_pipeline.py` still supplied SQL result stubs to the extracted
+ground-artifact loader, which now reads the shared memory map. Replace that seam
+with one tracked memory row and count loader calls at entry; retain all existing
+successful-recovery, rollback, forced-reset and single-fallback assertions. The
+full native recovery fixture passes with ASan/UBSan. Output is retained as
+`bin/analysis/issue67/flat-cache-recovery-control.log` in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure` (temporarily switched
+to this PR's branch for the repair). This is fixture compatibility, not new
+canonical admission coverage.
+
 ### Canonical identity snapshots and hydration — AR-02 in progress
 
 [PR #137](https://github.com/LuminariMUD/Duris/pull/137),

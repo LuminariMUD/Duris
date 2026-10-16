@@ -48,6 +48,7 @@ HARNESS = r'''
 #include <cstring>
 #include <ctime>
 #include <mutex>
+#include <map>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -730,7 +731,7 @@ int main()
     object_list = nullptr;
 
     // Failed Redis materialization rolls back before the forced O reset and
-    // SQL fallback. The reset's owned guard must leave only the SQL instance.
+    // memory fallback. The reset's owned guard must leave only the tracked instance.
     fallback_fixture = true;
     ground_artifact.vnum = 1000;
     ground_artifact.owned = true;
@@ -961,38 +962,17 @@ int main()
 
 
 FALLBACK_SUPPORT = r'''
-// The SQL fixture seeds one owned ground row shared by resets and the loader.
-static arti_data ground_artifact = {};
+// The memory fixture seeds one owned ground row shared by resets and the loader.
+struct fallback_artifact_row : arti_data { bool removed = false; };
+static std::map<int, fallback_artifact_row> artifact_rows;
+static fallback_artifact_row &ground_artifact = artifact_rows[1000];
 static int fallback_loads = 0;
 static int fallback_resets = 0;
 static int redis_loads = 0;
 static bool recovery_active = true;
 static bool clean_restart = false;
 static bool mini_mode = false;
-static int DB = 0;
 static constexpr int ARTIFACT_ONGROUND = 4;
-struct MYSQL_RES { bool read = false; };
-using MYSQL_ROW = char **;
-static MYSQL_RES sql_result;
-void qry(const char *, int location_type)
-{
-    assert(location_type == ARTIFACT_ONGROUND);
-    ++fallback_loads;
-    sql_result.read = false;
-}
-MYSQL_RES *mysql_store_result(int) { return &sql_result; }
-int mysql_num_rows(MYSQL_RES *) { return ground_artifact.owned ? 1 : 0; }
-MYSQL_ROW mysql_fetch_row(MYSQL_RES *result)
-{
-    static char vnum[] = "1000";
-    static char room[] = "100";
-    static char *row[] = {vnum, room};
-    if (result->read || !ground_artifact.owned)
-        return nullptr;
-    result->read = true;
-    return row;
-}
-void mysql_free_result(MYSQL_RES *) {}
 bool get_artifact_data_sql(int vnum, P_arti out)
 {
     assert(vnum == ground_artifact.vnum);
@@ -1063,7 +1043,8 @@ void run_recovery_boot()
 FALLBACK_SUPPORT = FALLBACK_SUPPORT.replace(
     "@RESET_OBJECT@", section(DB, "\t\t\tcase 'O': /* load an object to room */", "\t\t\tcase 'P':")
 ).replace(
-    "@GROUND_LOADER@", section(ARTIFACT, "void addOnGroundArtis_sql()", "// This function either finds")
+    "@GROUND_LOADER@", section(ARTIFACT, "void addOnGroundArtis_sql()", "// This function either finds").replace(
+        "void addOnGroundArtis_sql()\n{", "void addOnGroundArtis_sql()\n{\n    ++fallback_loads;", 1)
 ).replace(
     "@RECOVERY_BOOT@", section(COMM, "\t// redis crash recovery", "\tPROFILES(RESET);")
 ).replace(
