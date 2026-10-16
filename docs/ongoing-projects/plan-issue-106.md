@@ -11,7 +11,9 @@ investigation of these eight items. It does not authorize production changes or
 external test notifications. No new defect or historical attribution is assumed.
 
 Worktree: `/home/aiwithapex/projects/duris-issue106`.
-Branch: `branch/issue-106-runtime-evidence`, starting at master `b149b3ada`.
+Evidence branch: `branch/issue-106-runtime-evidence`, starting at master `b149b3ada`,
+published as [PR #117](https://github.com/LuminariMUD/Duris/pull/117), commit `ea9af99a4`.
+Current repair branch: `branch/issue-106-limited-teleport`, stacked on #117.
 The primary checkout belongs to other work and must remain untouched.
 
 ## Outcome, non-goals, files, and proof
@@ -147,6 +149,14 @@ unbounded command capture or claiming retrospective causality.
   correction. No message was sent by this investigation, and receipt, success
   suppression, and drill-route coverage remain unverified.
 
+The actual captured notifier was also executed locally with only synthetic
+state, journal, and sendmail adapters. Exit 100 leaves no stamp, successful retry
+creates one, immediate repeat is suppressed, an expired failed attempt does not
+refresh the stamp, and a subsequent successful retry does. This proves the
+installed script's control flow only: no real mail was submitted and no real
+`OnFailure=` transition or recipient receipt was tested. The private executable
+probe is `bin/analysis/issue106/check_installed_alert.py`.
+
 `id` and `sudo -n -l` confirm the existing account has neither system-journal
 membership nor sudo authorization. Do not use unrelated accounts or Docker to
 work around this boundary. Required next inputs are host-owner read access or
@@ -154,20 +164,70 @@ redacted extracts for the October 13 rotation failure and October 15 mail
 submissions, followed by review of a concrete correction and authorization for
 a harmless test notification through the actual route.
 
-## Demonstrated additional caller defect — implementation next
+## Demonstrated additional caller defect — implemented and qualified
 
 Tracing LR-18 consumers found `spell_teleport`, `spell_depart`, and
 `spell_etheric_gust` unconditionally return inside `LIMITED_TELEPORT_ZONE` even
 when `how_close()` reports a reachable destination within five rooms. Their
 truthiness check also treats a valid positive distance as failure. The zone
 restriction is virtual rooms 5700–5999. This is independent of attribution of
-the original 37 diagnostics. Reproduce it using the existing real-graph harness
-and actual spell bodies, then retain the five-room restriction while allowing
-successful in-range movement. Keep this repair in a separate focused PR.
+the original 37 diagnostics.
+
+The fix rejects only a negative `how_close()` result in those three callers.
+It adds no helper or option and preserves the existing five-room cap, destination
+selection, eligibility checks, and failure text. The existing graph regression
+now invokes all three actual spell bodies with real structs, edge macros,
+queue, and pathfinder. It covers self and distinct-target casts, same-room,
+adjacent, exact-five, six-room, far/unreachable destinations, unchanged ordinary
+zone travel, unchanged combat on rejection, success combat cleanup, wait timing,
+and empty-queue reuse. RNG, permission, presentation, movement endpoints and wait
+are controlled adapters; this is not a live player/server cast or persistence
+journey. Dispatch remains through the existing registered spell functions.
+
+Individually restoring each original caller makes the extended executable fail
+with `limited teleport target=1 stayed in room 0`; all three fixed callers pass
+under ASan/UBSan. The retained before/after and per-caller negative controls are
+under `bin/analysis/issue106/`. The unused commented-out teleport block elsewhere
+in `magic.c` is not a compiled caller and was left alone.
 
 ## Verification and publication
 
-Read-only evidence checks above are complete. No production configuration,
-services, logs, player files, or notification state were changed. C/C++ is
-unchanged at this checkpoint; build/runtime proof is due with the caller repair.
+Passed:
+
+- `make -C src -j4` (development/MariaDB server, `bin/server/dms_new`).
+- `python3 tests/async/test_graph_distance_runtime.py` (real graph plus three
+  spell bodies, ASan/UBSan; three separate original-caller failures confirmed).
+- `python3 tests/async/test_zone_average_display.py`
+- `python3 tests/async/test_world_quest_dynamic_policy.py`
+- `python3 tests/async/test_move_cost_runtime.py`
+- `python3 tests/async/test_damage_death_result.py`
+- `python3 tests/async/test_posture_state_regression.py`
+- `python3 tests/async/test_nevent_scheduler_runtime.py`
+- `python3 tests/async/test_nevent_cancellation_runtime.py`
+- `python3 tests/async/test_command_latency_runtime.py`
+- `python3 tests/async/test_documentation_contract.py` (14 checks).
+- `./scripts/format.sh --check` and `git diff --check`.
+
+No production configuration, services, logs, player files, or notification state
+were changed. No merge or release tag is appropriate for these unreviewed PRs.
 Do not close #106 while its missing historical/operational acceptance remains.
+
+## Resume here
+
+Review #117 and the stacked caller-fix PR. The completed repository repair needs
+no additional feature work. For the remaining original items:
+
+1. The owner was asked for a designated host-owner read-access path after the
+   existing account's journal/sudo limits were confirmed. With that access,
+   inspect the exact failed rotation journal and Plesk mail rejection, not just
+   the unit exit status. Prepare the diagnosed correction before requesting any
+   production action or harmless real-notification test. Keep one notifier.
+2. After an authorized repair/test, record the rotation target's ownership and
+   continued writes, actual `OnFailure=` delivery/receipt, source-unit coverage,
+   retry eligibility, and bounded repeats. Local adapter results cannot close
+   those conditions.
+3. Exact LR-06/LR-07/LR-09/LR-10/LR-17/LR-18 historical attribution needs an
+   independently retained contemporaneous transcript/snapshot or the original
+   reporter's repeatable sequence. The inspected logs do not contain it. Current
+   player files, nearby staff changes, or the new teleport repair are not proof
+   of those historical causes. Keep each evidence gap explicit in #106.
