@@ -2,112 +2,74 @@
 
 Tracking: https://github.com/LuminariMUD/Duris/issues/110
 
-## Current handoff (2026-10-16)
+## Review handoff (2026-10-16)
 
-Implementation and focused regression pass on `branch/issue-110-npc-ship-deletion`, based on
-`b149b3ada6e8c9c1e041ad864772195173fef7c6` (`origin/master` at start).
-The checkout was clean and `.env` reports `ENVIRONMENT=local`.
-No production deployment or restart is authorized by this task. Leave #110 open
-until its separately authorized live validation is recorded.
+[PR #118](https://github.com/LuminariMUD/Duris/pull/118) contains the NPC deletion
+and occupied-interior corrections on `branch/issue-110-npc-ship-deletion`.
+This review repair rebases it onto master
+`9625ffd7bdad335b5c683d16ee080e971a443a3d`, incorporating 13 intervening commits.
+[PR #121](https://github.com/LuminariMUD/Duris/pull/121) remains the dependent
+NPC escort/boarding-reference correction. Its occupied-interior work has been
+moved into #118 to address the review finding before #118 can be merged.
+
+Leave #110 open for separately authorized production deployment and live
+validation. No deployment, restart, migration, merge or release tag is part of
+this review repair. Publication checks and broader local validation results
+are recorded in the PR conversation; re-fetch refs before continuing.
 
 ## Outcome, non-goals, files, and proof
 
-Outcome: NPC sinking, staff hull purge, and normal unload remove the runtime ship
-once without attempting persistence. Preserve the 30-tick delay while a player
-is aboard, and allow later ships' timers, repairs and movement to resume on
-subsequent heartbeats. Failed player persistence and ownerless non-NPC state
-must preserve the ship and its references for investigation.
+NPC sinking, staff hull purge and normal unload remove the runtime ship once
+without attempting persistence. Preserve the 30-tick passenger delay and the
+iterator-safe return after sinking; subsequent heartbeats resume later ships'
+timers, repairs, movement and reload. Failed player persistence and ownerless
+non-NPC deletion preserve the ship, its passengers and its references.
 
-Non-goals: iterator/sweep redesign, malformed-state recovery policy, ship string
-ownership cleanup, deployment, restart, merge, or a release tag. A source fix
-does not establish which commit is currently deployed.
+Before a successfully deleted ship releases its loaded rooms, the existing
+`clear_ship_content` helper moves players and player corpses outside and removes
+NPC crew and other objects. Failed loads skip this traversal because their
+abstract room slots can be unassigned. Normal NPC unload uses this same deletion
+boundary. Sinking retains its earlier cleanup for cargo/insurance processing.
 
-Files: `src/ships/ship_base.c`, one focused executable regression under
-`tests/async/`, and this handoff. Add other files only for demonstrated needs.
+The changes use `src/ships/ship_base.c`, `src/ships/ship_npc.c`, the existing
+`tests/async/test_npc_ship_deletion.py` harness, and this handoff. No new helper,
+registry, recovery policy or sweep redesign is needed. NPC AI pointer cleanup
+remains in #121; ship-string ownership and malformed-state recovery are outside
+this correction.
 
-Proof: execute the production deletion, sinking, heartbeat, purge and unload
-paths with the real ship hash and runtime identities under ASan/UBSan, for both
-SQL and `__NO_MYSQL__` branches; demonstrate failures against the starting source.
-Run related ship regressions, `./scripts/format.sh --all --check`, and
-`make -C src` for MariaDB and flat-file backends. Record exact results below.
+Proof executes production heartbeat, sinking, purge, unload, hash, runtime
+identity, layout/content cleanup and shipyard-listing functions under ASan/UBSan
+for SQL and flat-file builds. External world/persistence services are controlled
+stubs, so these checks do not establish live-server behavior.
 
-## Findings and ablation decisions
+## Verified review regression
 
-- Confirmed both faulty callers and the persistence-failure reinsertion on the
-  current base. Keep the early return after `finish_sinking()`; advancing its
-  freed hash visitor would be unsafe.
-- Infer NPC identity from `race == NPCSHIP` inside `delete_ship`, and explicitly
-  identify the known sinking caller. Keep the ownerless-player guard before
-  persistence and teardown.
-- Existing callers use `npc=true` to release failed loads and runtime ships
-  after an owning transaction deletes persistence. Preserve that explicit
-  bypass contract rather than replacing the flag with a race-only decision.
-- The shared deletion boundary fixes staff purge without a duplicate check in
-  `actwiz.c`. No new runtime abstraction or sweep refactor is needed.
+`python3 tests/async/test_npc_ship_deletion.py` passes eight scenarios per backend:
+sinking, passenger delay, purge, unload, persistence failure/retry, ownerless
+players (positive and zero durable IDs), occupied purge and failed-load cleanup.
+The occupied case includes a player, NPC crew, loose loot and a player corpse,
+then reuses the released room for another ship and checks it is empty.
 
-## Work and evidence
+Before the review repair, occupied purge and successful player-deletion retries
+failed their evacuation assertions in both backends. Afterward all cases pass.
+A failed persistence attempt or ownerless guard retains the passenger in place;
+only successful deletion evacuates them. Failed-load cleanup never traverses
+unassigned rooms. No NPC deletion calls persistence, including stale positive
+NPC durable IDs.
 
-- [x] Read #110, all deletion call sites, hash iteration and existing tests.
-- [x] Add executable regression; capture failing-before results.
-- [x] Implement deletion guards and sinking correction.
-- [x] Verify both backends, cleanup, player safeguards and heartbeat recovery.
-- [x] Run formatting, full server builds and relevant existing regressions.
-- [ ] Review the final diff, commit, push and open a focused review-ready PR.
-- [ ] Record exact remote parity and final continuation instructions.
-- [ ] Separately authorized production deployment and live acceptance (pending;
-  not part of this source-change PR).
+The original heartbeat investigation also reproduced the SQL NPC sinking stall.
+Ordinary flat-file NPCs with `db_id == 0` already skipped persistence; do not
+claim that ordinary case reproduced the SQL failure. The regression checks
+later shipyard countdown display, repairs, movement and reload after removal.
 
-### Verified evidence so far
+## Continuation
 
-- `python3 tests/async/test_npc_ship_deletion.py`: passes both backend builds
-  under ASan/UBSan. Runs unmodified production `ship_activity`, `finish_sinking`,
-  `delete_ship`, `do_purge`, `try_unload_npc_ship`, `pc_is_aboard`, ship hash,
-  runtime identity, room/reference/autopilot cleanup, and `list_hulls` functions.
-  External persistence and unrelated world mechanics are controlled stubs.
-- The baseline failed SQL sinking, passenger disembark destruction, purge and
-  ownerless guard cases; flat-file failed purge with a stale positive NPC ID and
-  the ownerless guard. Ordinary flat-file NPC sinking already passed because
-  its `db_id == 0` skips removal. Do not claim the ordinary flat-file case
-  reproduced the SQL stall.
-- After the fix: no NPC persistence calls, one free per removed ship, stale
-  runtime references invalidated, other ships' target locks cleared, hull/panel
-  extracted and interior returned. A player aboard delays destruction 30 ticks;
-  disembarking permits removal at the next expiry.
-- Later ships resume maintenance countdown, undocking, sail repair, coordinate
-  movement and weapon reload. The real shipyard listing changes from 2.0 to
-  1.9 hours after five subsequent ticks (the passenger scenario also checks its
-  corresponding countdown). The intentional single skipped tick is preserved.
-- Player persistence failures preserve hash membership, runtime identity,
-  target references and interior objects; successful retry frees them. Null
-  owner guards are covered with both positive and zero durable IDs.
-- `./scripts/format.sh --check`: passed.
-- `./scripts/format.sh --all --check`: all 1061 tracked C/C++ files passed.
-- `make -C src -j4`: passed, including the MariaDB server link.
-- `make -C src -j4 PERSISTENCE_BACKEND=flatfile
-  DMS_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_issue110_flatfile`:
-  passed, including the flat-file server link. Both used existing object caches
-  with dependency tracking; these were not clean rebuilds.
-- Local evidence is in ignored `bin/analysis/issue110/`; the committed test and
-  commands above reproduce the checks without those logs.
-- Existing regressions passed individually with `python3 tests/async/<name>.py`:
-  `test_ship_owner_rename_failure`, `test_ship_save_guards`,
-  `test_nevent_ship_volley_runtime`, `test_flatfile_ship_repository`,
-  `test_ship_autopilot_group_safety`, `test_ship_boot_room_pool_full`,
-  `test_ship_documented_bugs`, and `test_account_character_delete_runtime`.
-  No pre-existing failure was found in these checks.
+Review #118 first, then #121. After integrating #118, rebase/retarget #121 onto
+the actual master result; do not replay the occupied-interior fix a second time.
+Use the existing local checks, formatting and server builds for any changed
+tree. Hosted CI latency is not a gate, and no review rule should be bypassed.
 
-### Separate cleanup follow-up discovered during the audit
-
-After publishing the core heartbeat correction, extend the regression to cover
-occupied interiors during staff purge and NPC AI `escort`/`did_board` references
-on other ships. `do_purge` does not clear contents before `delete_ship`, which
-releases the rooms, while `clear_references_to_ship` currently clears only
-`target`. Verify these gaps with executable failures and repair them as a
-separate stacked PR. Preserve all runtime state on player persistence failure.
-
-## Resume point
-
-Commit/push/open the verified heartbeat correction, then reproduce and repair
-the separate cleanup gaps above. The production live acceptance remains pending.
-Read the current branch and working diff first; do not restart from `master` or
-discard uncommitted work. Update this document at each verified checkpoint.
+After separately authorized deployment, record the running commit and controlled
+NPC sinking, the 30-tick passenger delay, staff purge cleanup and later shipyard
+timer progression before closing #110. Ownerless non-NPC ships remain preserved
+and logged for investigation.

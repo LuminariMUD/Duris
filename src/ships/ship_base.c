@@ -1259,6 +1259,9 @@ void delete_ship(P_ship ship, bool npc)
 #endif
 	}
 
+	// Failed loads have an abstract layout without assigned world rooms.
+	if (SHIP_LOADED(ship))
+		clear_ship_content(ship);
 	unregister_ship_runtime(ship);
 	clear_ship_layout(ship);
 	clear_references_to_ship(ship);

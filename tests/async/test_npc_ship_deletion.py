@@ -76,7 +76,7 @@ int davy_jones_locker_rnum = 1;
 const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._mxsail = 100, ._speedgain = 1 }};
 const ShipArcProperties ship_arc_properties[MAXSHIPCLASS] = {};
 const WeaponData weapon_data[MAXWEAPON] = {};
-static int persistence_calls, freed_ships, extracted_objects, invariant_logs;
+static int persistence_calls, freed_ships, extracted_objects, extracted_crew, invariant_logs;
 static bool persistence_ok = false;
 static std::set<void *> live_ships;
 static std::string output_text;
@@ -108,8 +108,9 @@ void extract_obj(P_obj obj, int) {
     ++extracted_objects; delete obj;
 }
 void char_from_room(P_char ch) {
-    assert(world[ch->in_room].people == ch);
-    world[ch->in_room].people = ch->next_in_room;
+    P_char *at = &world[ch->in_room].people;
+    while (*at && *at != ch) at = &(*at)->next_in_room;
+    assert(*at == ch); *at = ch->next_in_room;
     ch->next_in_room = nullptr; ch->in_room = NOWHERE;
 }
 bool char_to_room(P_char ch, int room, int) {
@@ -210,7 +211,9 @@ P_obj get_obj_in_list_vis(P_char, const char *, P_obj list, bool) {
     return nullptr;
 }
 int IS_MORPH(P_char) { return false; }
-void extract_char(P_char) { abort(); }
+void extract_char(P_char ch) {
+    assert(IS_NPC(ch)); char_from_room(ch); ++extracted_crew;
+}
 void update_ingame_racewar(int) { abort(); }
 int writeCharacter(P_char, int, int) { abort(); }
 void close_socket(P_desc) { abort(); }
@@ -311,11 +314,13 @@ static void check_delete(bool ownerless, int db_id = 42) {
     if (ownerless) ship->ownername = nullptr;
     ship->db_id = db_id;
     observer->target = ship;
+    char_data passenger = {}; char_to_room(&passenger, 2, 0);
     const auto ref = ship->runtime_ref;
     const int before = persistence_calls, before_freed = freed_ships, logs = invariant_logs;
     assert(shipObjHash.erase(ship)); delete_ship(ship);
     assert(find_ship_by_runtime_ref(ref) == ship && shipObjHash.find(ship->shipobj) == ship);
     assert(shipObjHash.size() == 2 && observer->target == ship);
+    assert(passenger.in_room == 2 && world[2].people == &passenger);
     assert(world[2].funct && world[2].contents == ship->panel);
     assert(freed_ships == before_freed);
     assert(persistence_calls == before + (ownerless ? 0 : 1));
@@ -324,6 +329,8 @@ static void check_delete(bool ownerless, int db_id = 42) {
     persistence_ok = true;
     assert(shipObjHash.erase(ship)); delete_ship(ship);
     assert(!find_ship_by_runtime_ref(ref) && !observer->target);
+    assert(passenger.in_room == 1 && !world[2].people);
+    char_from_room(&passenger);
     assert(freed_ships == before_freed + 1);
     persistence_ok = false;
     remove_runtime(observer);
@@ -354,6 +361,42 @@ static void check_npc_removal(bool purge) {
     puts(purge ? "PASS staff purge and reference cleanup" : "PASS normal NPC unload");
 }
 
+static void check_occupied_purge() {
+    P_ship ship = make_ship(NPCSHIP, 2);
+    char_data passenger = {}, crew = {}, staff = {};
+    crew.specials.act = ACT_ISNPC;
+    char_to_room(&passenger, 2, 0); char_to_room(&crew, 2, 0);
+    P_obj loot = new obj_data{}, corpse = new obj_data{};
+    corpse->type = ITEM_CORPSE; // Player corpses must be moved outside.
+    obj_to_room(loot, 2); obj_to_room(corpse, 2);
+    const int before = extracted_objects;
+    staff.player.level = 60; staff.player.name = const_cast<char *>("Staff"); staff.in_room = 1;
+    purge_hull = ship->shipobj;
+    char argument[] = "hull"; do_purge(&staff, argument, 0);
+    assert(!world[2].people && !world[2].contents && !world[2].funct);
+    assert(passenger.in_room == 1 && crew.in_room == NOWHERE && extracted_crew == 1);
+    assert(extracted_objects == before + 3); // loot, panel and hull
+    assert(OBJ_ROOM(corpse) && corpse->loc.room == 1);
+    P_ship replacement = make_ship(NPCSHIP, 2);
+    assert(!world[2].people && world[2].contents == replacement->panel);
+    remove_runtime(replacement);
+    extract_obj(corpse, true); char_from_room(&passenger);
+    puts("PASS occupied purge evacuates player/corpse, removes crew and loot");
+}
+
+static void check_unloaded_cleanup() {
+    P_ship ship = make_ship(0, 2);
+    // Failed load: the abstract layout remains, but no real rooms were claimed.
+    world[2].funct = nullptr;
+    obj_from_room(ship->panel); obj_to_room(ship->panel, 1);
+    ship->room[0].roomnum = -1;
+    ship->flags &= ~LOADED;
+    const int before = persistence_calls;
+    remove_runtime(ship);
+    assert(persistence_calls == before);
+    puts("PASS failed-load cleanup never traverses unassigned room numbers");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     objects[1].virtual_number = VOBJ_ALL_SHIPS;
@@ -363,6 +406,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[1], "unload")) check_npc_removal(false);
     else if (!strcmp(argv[1], "persistence")) check_delete(false);
     else if (!strcmp(argv[1], "ownerless")) { check_delete(true); check_delete(true, 0); }
+    else if (!strcmp(argv[1], "occupied")) check_occupied_purge();
+    else if (!strcmp(argv[1], "unloaded")) check_unloaded_cleanup();
     else abort();
     assert(shipObjHash.size() == 0 && live_ships.empty());
 }
@@ -383,7 +428,8 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("sinking", "passenger", "purge", "unload", "persistence", "ownerless"):
+        for case in ("sinking", "passenger", "purge", "unload", "persistence", "ownerless",
+                     "occupied", "unloaded"):
             print(f"{backend}: {case}", flush=True)
             result = subprocess.run([str(binary), case], timeout=30)
             if result.returncode:
