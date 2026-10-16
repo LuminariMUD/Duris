@@ -130,7 +130,6 @@ struct reboot_data
 
 /* global variables */
 extern unsigned long next_obj_uid;
-extern string news;
 extern char *projects;
 extern string motd;
 extern string wizmotd;

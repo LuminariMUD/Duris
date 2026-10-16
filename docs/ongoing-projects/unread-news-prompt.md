@@ -1,0 +1,386 @@
+# Unread news in player prompts
+
+Status: implementation in progress. No deployment or merge is authorized by this
+work; completed chunks will be published for review.
+
+Inspected 2026-10-16 against Duris master
+`277df52d82e5cfccc5689013c3310141a02aea43`, after fetching origin and verifying that
+the workspace HEAD matched the remote master. Planning branch:
+`branch/news-publication` (first implementation chunk).
+
+Reference: Luminari-Source at
+`56fca2e452ce0c4186f827812ea8334d6546fb4e`. Its
+[prompt](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/core/comm.c) compares `GET_LAST_NEWS` with
+`newsmod`; [the news command](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/act/act.informative.c)
+sets the character's last-read time when opening news.
+[Player saves](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/player/players.c) persist that value,
+and [file loading](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/core/db.c) and
+[text editing](https://github.com/LuminariMUD/Luminari-Source/blob/56fca2e452ce0c4186f827812ea8334d6546fb4e/src/olc/tedit.c) update `newsmod`.
+
+## Outcome and behavior
+
+Add the literal marker `(news)` to a player's ordinary game prompt while the
+current published news has not been acknowledged by that character. Opening
+`news` clears it; publishing different news makes it appear again.
+
+The implementation must satisfy these acceptance criteria:
+
+1. **Unread and read:** a character with no acknowledgement sees `(news)` when
+   nonempty news is available. Successful `news` output acknowledges exactly the
+   content opened. The next ordinary prompt omits the marker. Opening the pager
+   counts as reading; reaching its last page is not required.
+2. **Independent characters:** acknowledgement belongs to the character, matching
+   Luminari. Reading on one character does not dismiss another character's marker,
+   including two characters on the same account.
+3. **Changed content:** different published bytes make the marker return for
+   online and subsequently logged-in characters. Re-reading unchanged content,
+   reimporting it, reloading it, or rebooting does not create a new notification.
+   Color, whitespace, and typo edits count as changes. Reverting to content that
+   equals a character's last acknowledged content needs no acknowledgement again.
+4. **Persistence:** the acknowledged content survives a completed save, rapid
+   logout/login, clean restart, and copyover, in both MariaDB/MySQL and flat-file
+   modes. Older saves and existing database rows default to unread. An abrupt
+   crash before the normal asynchronous save completes may show the reminder
+   again; this feature does not introduce stronger durability than player saves.
+5. **Failed opening or save admission:** paging-disabled refusal, absent usable
+   news, no live recipient, or command-output capacity refusal must not mark news
+   read. If the status save cannot be admitted, retain the old acknowledgement
+   and give a brief retry message after displaying news. A later worker failure
+   follows the existing dirty/retry and persistence-reporting paths.
+6. **Prompt coverage:** render the marker once in normal and two-line prompts and
+   in the smart-prompt branch. Preserve existing prompt-off, old-smart-prompt
+   suppression, death, transaction deferral, login, confirmation, editor, and pager
+   behavior. Do not insert it into a pager's navigation prompt.
+7. **Correct owner:** switched staff and morphed players use the owning PC's
+   acknowledgement. Ordinary NPCs and missing descriptors never access PC data.
+8. **Consistent publication:** the text and its fingerprint change together on
+   the game thread. A refresh during an already-open pager cannot acknowledge the
+   new text; the pager retains its existing copy, and new news remains unread.
+9. **No prompt I/O:** prompt rendering only compares cached values. No hashing,
+   database access, file reads, save requests, or background work per prompt.
+
+The existing login notice remains a notice; displaying it does not acknowledge
+news. With no published news, show no marker and make `news` explain that news is
+unavailable without recording a read.
+
+### Non-goals
+
+Account-wide acknowledgement, MOTD or mail markers, unread entry counts, news
+history, a new notification framework, per-marker configuration, client UI or
+GMCP protocol additions, filesystem watchers, and changes to news authoring are
+outside this feature. Existing whole-prompt settings remain authoritative.
+
+## Inspected baseline and consequences
+
+- [News loading](../../src/world/db.c) assigns the global `news` string from
+  `get_mud_info("news")` at boot. [Staff `page`](../../src/cmd/actcomm.c) reloads
+  news/MOTD/wizMOTD. Its `page info` and `page help` branches are separate and must
+  remain separate.
+- [SQL mud-info publication](../../src/sql/sql.c), `mud_info_publish`, updates a
+  map at boot, on staff reload, and through the
+  [one-minute refresh](../../src/net/comm.c). The periodic path currently does
+  **not** update the separate global `news` string used by `do_news`. Fix this
+  specific disconnect as part of publishing news and its fingerprint together.
+- The client-free SQL branch reads tracked information through
+  [flatfile_information_read](../../src/flatfile/flatfile_help_catalog.c).
+  `sql_mud_info_refresh` is a no-op there. Flat-file publication therefore remains
+  boot or staff `page`; editing the source file alone is not publication into the
+  running server. Preserve its allow-list and bounded file reader.
+- [`do_news`](../../src/cmd/actinf.c) requires `PLR_PAGING_ON`, then calls
+  `send_to_char` with `LOG_NONE` for the body. It records no read state.
+  [Automatic command paging](../../src/net/comm.c), `process_with_paging` and
+  `send_to_char`, buffers command output; [page_string_real](../../src/net/modify.c)
+  duplicates it for the pager. The output buffer can refuse an oversized body,
+  so calling a void output function alone is not proof that news was accepted.
+- [`make_prompt`](../../src/net/prompt.c) has early returns for pager, editor,
+  connection/confirmation, smart prompt, and a zero prompt mask. The final prompt
+  append uses `pPrompt` and its remaining capacity. Cover the smart branch as well
+  as this final append; retain color resets and MSP framing.
+- [`GET_PLYR`](../../src/core/utils.h) already resolves morph/switched ownership.
+  [Output preferences](../../src/player/output_preferences.c) demonstrate guarded
+  PC resolution and status-save admission with restoration on queue failure.
+- Character state travels through [capture](../../src/player/player_snapshot_capture.c),
+  [snapshot/codec](../../src/player/player_snapshot.h),
+  [SQL write](../../src/player/player_snapshot_repository.c),
+  [SQL read](../../src/player/player_load_repository.c), and
+  [materialization](../../src/player/player_load_materialize.c).
+  [Flat-file merging](../../src/flatfile/flatfile_player_repository.c) replaces
+  `status_strings` only when `PLAYER_COMPONENT_STATUS` is included. Reuse that
+  vector rather than adding a second persistence path.
+- Snapshot schema is currently 8; the decoder also accepts 1, 3, 5, and 7.
+  Materialization requires exactly seven status strings and validates their IDs.
+  Adding an eighth string without upgrading old snapshots would refuse logins.
+- The authoritative migration head is **0042_player_base_stats**, in the
+  [manifest](../../migrations/migration_manifest.json) and
+  [compiled contract](../../src/core/runtime_compatibility_contract.h).
+  Some explanatory documents still mention 0041; use the manifests and actual
+  schema measurements when preparing the next migration.
+
+## Minimal implementation
+
+### 1. Publish one current news value
+
+Add a small `src/player/news.c` and `src/player/news.h` shared by publication,
+`do_news`, and prompt rendering. It owns the current text and content fingerprint;
+replace the old writable `news` global and direct assignments rather than keeping
+two authoritative copies. Expose only the operations these callers require.
+
+Use SHA-256 from the already-linked crypto library, represented as 64 lowercase
+hex characters. Hash the exact loaded source bytes, before recipient rendering,
+only when publishing changed content. Empty means no news; an empty saved
+fingerprint means never acknowledged. Do not use file mtime, a news-heading date,
+`std::hash`, an uptime counter, or a wall-clock read timestamp.
+
+Build the candidate text and fingerprint before replacing the current pair. SQL
+boot, successful `mud_info_publish`, and explicit staff reload all use that
+publication operation; successful periodic SQL refresh therefore updates both
+what `news` shows and what prompts compare. Keep the existing asynchronous SQL
+read and interval, with no second poller or per-player invalidation sweep.
+
+For flat-file mode, use the existing bounded information reader at boot and staff
+reload. Distinguish a failed read from a successfully read empty file instead of
+turning every failure into a new version. A failed query/read or invalid candidate
+retains the last good published pair and reports through the existing diagnostics.
+At boot with no good value, news is unavailable. A successful SQL read with no news
+row, or a successfully read empty file, publishes no news. Neither case changes
+characters' saved acknowledgements. A missing flat file is a read failure, so an
+already-running server retains its last good copy.
+
+After publication, the marker changes on each player's **next otherwise eligible
+prompt**. Do not force unsolicited prompts into editors, paging, or idle output.
+
+### 2. Save acknowledgement with character status
+
+Add `last_read_news_hash` as a zero-initialized, fixed-size `char[65]` in
+[`pc_only_data`](../../src/core/structs.h). This structure has C-style allocation
+and clearing sites; do not add a nontrivial string member to it.
+
+Append `last_read_news_hash` to `player_status_string_field`, preserving all
+existing numeric IDs. Capture it with `PLAYER_COMPONENT_STATUS`. Add its SQL
+column mapping, bounded load, and materialization; update the exact string count
+and field validation together. The allowed value is empty or 64 lowercase hex
+characters. Malformed acknowledgement text becomes unread, with a diagnostic,
+rather than preventing login; keep structural snapshot-corruption checks intact.
+
+Advance the snapshot wire version from 8 to the next free version at implementation
+time. Continue accepting all currently supported versions, including 8, and
+upgrade their status payloads with exactly one empty acknowledgement entry.
+Preserve existing legacy upgrades such as the learned-flight-stop default. Do not
+add status rows to snapshots that omit status, and reject duplicate IDs and new
+field IDs smuggled into an old wire version. Verify the normal capture size budget
+includes the additional row and value.
+
+The existing flat-file status merge already carries the string vector. Prove
+status updates replace the acknowledgement and item-only or other component saves
+retain it; no extra player sidecar file or flat-file merge member is needed.
+
+Add one guarded immutable migration for
+`player_data.last_read_news_hash VARBINARY(64) NOT NULL DEFAULT ''`. Existing
+characters receive the empty default without a backfill of invented read times.
+The verifier must check type, byte capacity, nullability, and default, and refuse
+an incompatible pre-existing shape without losing rows.
+
+Register the next available migration (0043 is next at this baseline, but do not
+reserve it across other work). Update apply/verifier checksums, history/head,
+measured MySQL and MariaDB metadata fingerprints, the runtime manifest and compiled
+header together. Do not edit a prior immutable migration or rewrite the sealed
+bootstrap to replace an upgrade. This adds a column, not a table: table inventory
+and lifecycle ownership remain unchanged. Update persistence documentation for
+the new field and format; use the existing player-data export/erasure paths.
+
+### 3. Acknowledge the content actually opened
+
+Resolve and validate the recipient's owning PC before touching acknowledgement
+state. Keep output addressed to the active descriptor/body so the real command
+pager still receives it. Preserve the existing paging-enabled requirement and
+test the actual dispatch/body flags for switched and morphed characters; resolving
+the owner alone does not establish that output will be paged.
+
+Capture the current text/fingerprint pair for the command. Check availability
+and that the complete header/body can enter the existing command-output buffer;
+reuse its capacity information rather than duplicating its numeric limit. Make
+any required output-capacity accessor narrow and reusable by this actual caller.
+An oversized or otherwise rejected body must leave the marker visible and give
+an explicit message. Keep authored news colors and `LOG_NONE`; do not change the
+pager architecture or clear the marker for only an error/header.
+
+After the body is accepted into command output, install the captured fingerprint
+on the owner and request `PLAYER_COMPONENT_STATUS` through
+`player_save_pipeline_request`, using the owner's normal save intent and room.
+Reuse the output-preference pattern: keep the new value for `queued`/`coalesced`,
+restore the old value on admission failure, and avoid a write when it is already
+equal. Do not issue a direct SQL update, block for a disk write, or add a private
+retry queue. Existing terminal saves and queued-load holds provide clean
+logout/copyover and rapid-relog ordering.
+
+The acknowledgement means the command accepted that news for display, not that
+the human finished reading or that a network client confirmed delivery. Quitting
+the pager does not undo it. Publishing version B while the pager shows version A
+leaves the acknowledgement at A until another `news` command opens B.
+
+### 4. Render the marker without changing prompt policy
+
+Use the same validated owner for the read check in `make_prompt`. Add one bounded
+`(news)` append alongside the existing prompt extras; include it once on the final
+line of a two-line prompt and before the smart branch's terminator. Reserve room
+for terminators, resets, and MSP closing markup. Follow current prompt coloring
+and preserve the literal visible text for plain clients.
+
+No new prompt bit is needed. A zero ordinary-prompt mask stays silent; the smart
+prompt still follows its existing branch. Preserve transaction deferral and other
+suppression in `process_output`. Telnet and WebSocket text should carry the same
+marker through their existing output routes, without new protocol messages.
+
+## Files and implementation order
+
+- [x] Add the small news owner/publication module; connect boot, SQL publication,
+  and staff reload in `world/db.c`, `world/db.h`, `sql/sql.c`, and `cmd/actcomm.c`.
+  Register the source in [src/Makefile](../../src/Makefile), whose server object
+  list is explicit, for both maintained backend builds.
+- [ ] Add the PC field, appended snapshot string ID, capture/codec upgrade,
+  SQL mappings, and materialization in the existing files cited above. Update
+  old-version fixtures and strict field-count fixtures together.
+- [ ] Add the immutable migration/verifier and synchronized runtime contracts;
+  measure schemas on disposable databases before compiling the final binary.
+- [ ] Wire `do_news`, the minimum command-output capacity check in `net/comm.c`
+  and its header if needed, and both relevant prompt branches. Queue the status
+  save only on a newly acknowledged version.
+- [ ] Extend focused production-linked tests and run the journeys below. Update
+  the existing news help entry where it is maintained and the relevant
+  persistence/prompt documentation; do not announce implementation before it lands.
+
+## Proof required before implementation is complete
+
+All items below are future implementation gates, not tests performed by writing
+this plan. Reuse existing test runners and production functions; source-string
+assertions alone do not prove behavior.
+
+1. **Publication and command:** extend
+   [the real output/pager harness](../../tests/async/test_word_output_integration.py)
+   to execute production `do_news` and `make_prompt`, with the actual news module.
+   Prove A unread -> open A -> read; unchanged reload remains read; B returns the
+   marker; same-account second character remains unread. Test empty/unavailable
+   news, failed reload preserving A, paging off, output refusal, no descriptor,
+   NPCs, switched/morphed ownership, and a rejected save submission. Test A in an
+   open pager while B publishes. Include current-size news and the exact command
+   output boundary, including its header. Preserve
+   [the login notice regression](../../tests/async/test_account_login_news.py),
+   updating its old global-string assertion to the actual new output path.
+   Exercise the real SQL refresh/staff-reload completion paths with controlled
+   returned rows and failures, plus flat-file boot/reload reads. Calling only the
+   new publication helper cannot prove the existing cache/text disconnect is fixed.
+2. **Prompt output:** extend
+   [combat_prompt_checks.inc](../../tests/async/combat_prompt_checks.inc) and
+   [the transport/prompt harness](../../tests/async/test_item_movement_prompt_runtime.py).
+   Cover normal/two-line/smart, prompt off, old-smart suppression, combat, colors,
+   MSP, Telnet GA, WebSocket text, pager/editor/confirmation, and deferred output.
+   Assert one marker and intact closing/reset bytes; retain existing no-news
+   fixtures so unrelated prompt expectations stay meaningful.
+3. **Persistence and compatibility:** extend the capture, codec, SQL repository,
+   materialization, and flat-file harnesses. Verify valid and malformed hash
+   handling, round trips, all supported old wire versions, duplicate/unknown IDs,
+   status-only saves, unrelated component saves, and a rapid reload held behind
+   an outstanding save. Use actual materialization, not just DTO equality. Extend
+   existing player-save admission/failure checks only where acknowledgement adds
+   a new assertion; reuse the established worker retry behavior.
+4. **Migration:** on disposable MySQL 8.0 and MariaDB 10.11 schemas, prove fresh
+   baseline-to-head and populated previous-head-to-new-head upgrades, a second
+   application with no data loss, empty defaults for existing rows, and verifier
+   rejection of an incompatible pre-existing column. Run the actual immutable
+   runner and verifiers; a hand-applied ALTER is insufficient. Derive both runtime
+   metadata fingerprints from the resulting clean schemas, never production.
+5. **Player journey:** in each backend, log in with a test PC, observe `(news)`,
+   type `news`, leave the pager, observe its removal, then logout/reconnect and
+   clean restart/copyover without it returning. Publish B using that backend's
+   normal path, observe `(news)` again on the next prompt, read B, and verify the
+   persisted acknowledgement. Include a second PC and verify that the login
+   notice does not dismiss the marker. Read only environment mode before local
+   operations; use the configured test account without printing credentials.
+
+Existing entry points to extend/run individually as applicable:
+
+```sh
+python3 tests/async/test_account_login_news.py
+python3 tests/async/test_word_output_integration.py
+python3 tests/async/test_item_movement_prompt_runtime.py
+python3 tests/async/test_gmcp_prompt_regressions.py
+python3 tests/async/test_flatfile_help_catalog.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_player_load_topology.py
+python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_flatfile_player_repository.py
+bash tests/async/run_player_load_repository_mysql.sh
+bash tests/async/run_output_preferences_mysql.sh
+python3 tests/async/test_immutable_migration_runner.py
+RUNTIME_DB_IMAGE=mysql:8.0 bash tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:10.11 bash tests/async/run_runtime_compatibility_mysql.sh
+python3 scripts/validate_runtime_compatibility.py
+./scripts/format.sh --check
+make -C src
+git diff --check
+```
+
+Also compile the flat-file backend in a separate `bin/` output location using
+the maintained [build instructions](../guides/BUILDING.md). Record exact commands
+and results with the implementation. Run any newly needed news-specific journey
+directly and report its name then; the list above is not a claim that those
+existing tests already cover this feature. No CI wait replaces local evidence.
+The existing output-preferences database harness already connects the real status
+writer and reader; extend it with the acknowledgement round trip rather than
+claiming the read-only player-load harness proves persistence.
+
+## Ablation and delivery boundary
+
+Keep a content fingerprint, one saved character field, the shared publication
+boundary, and tests of the real command/prompt/save paths: each is required by an
+acceptance criterion. Reuse `status_strings`, the existing writer, and the existing
+refresh workflow. Drop timestamps, per-account state, a version table, reset
+sweeps, a private save queue, a new poller, extra prompt toggles, and a generic
+notification system. No requirement depends on them.
+
+Publish two focused, dependent PRs as they are ready: (1) consistent cached news
+publication and reload, with its regression tests; (2) persisted acknowledgement,
+migration, command/prompt integration, and the full player journeys. The second
+PR will target the first until it lands. Before landing either, recheck current
+master, migration numbering, and the complete tested tree. For deployment, apply
+the additive migration before booting the new database-backed binary; the existing
+runtime gate should refuse an old schema. Preserve the previous binary and normal
+recovery backups, and document that an old decoder cannot read newly written
+snapshot versions. Production migration/restart requires the owner's deployment
+authorization and is outside this planning task.
+
+### Planning verification
+
+The plan was checked against the source paths above after refreshing master.
+Master advanced from `448ca4bcb` to `277df52d8` during the review; the workspace was
+fast-forwarded and the overlapping `actinf.c`/`comm.c` changes were inspected.
+Those changes concern epic-task refresh and do not alter the traced news paths.
+The review explicitly covered cache/text divergence, command-output rejection,
+save-admission failure, raw PC allocation, strict snapshot counts and legacy
+upgrades, migration-head drift, prompt suppression, and morph/switched ownership.
+Implementation checkboxes remain open. Documentation validation checks link
+targets, referenced existing commands, whitespace, and the final scoped diff;
+runtime, database, and gameplay acceptance remain unexecuted until implementation.
+
+### Implementation handoff - 2026-10-16
+
+- Latest master re-fetched at implementation start: `277df52d8`, no divergence.
+  Environment mode is local. Existing plan was the only untracked file.
+- Ablation retained one cached content/fingerprint pair and the existing status
+  writer. The `status_strings` vector avoids a separate flat-file member or store.
+  Two chunks allow the independently useful stale-news refresh fix to be reviewed
+  before persistence and UI work completes. No tags or deployment are needed.
+- Shared publication and boot/reload wiring are implemented. The SQL mud-info
+  cache now delegates its news value to the same published pair as `do_news`.
+  Native and flat-file publication regression tests pass, including unchanged
+  bytes, embedded-NUL rejection, failed reads, empty content, and real SQL refresh
+  and staff-reload callbacks. Login notice, flat-file help, information-cache, and
+  boot-log regressions pass. `make -C src -j8` passes (full native MariaDB build),
+  along with changed-file formatting and `git diff --check`. Build output is in
+  ignored `bin/analysis/news/build-publication.log`; focused test output was checked
+  directly. `test_news_publication.py` compiles the real SQL reload functions under
+  each backend and calls their completion callbacks; it does not contact a database.
+- Remaining: publish chunk 1, then every
+  acknowledgement/migration/prompt and full player-journey gate above. The unread
+  marker itself is not implemented yet.

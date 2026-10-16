@@ -40,7 +40,7 @@ assert prompt in pages
 assert pages.index(notice) < pages.index(motd) < pages.index(prompt)
 assert password.count("display_account_login_pages(d);") == 2
 assert new_account.count("display_account_login_pages(d);") == 1
-assert "send_to_char(news.c_str(), ch, LOG_NONE);" in function_body(
+assert "send_to_char(current_news().text.c_str(), ch, LOG_NONE);" in function_body(
     ACTINF, "void do_news("
 )
 
