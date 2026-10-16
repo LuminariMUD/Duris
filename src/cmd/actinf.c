@@ -23,6 +23,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "player/news.h"
 #include "cmd/information_cache.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -8788,7 +8789,7 @@ void do_news(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 	send_to_char("&+WDuris News\n\n", ch);
-	send_to_char(news.c_str(), ch, LOG_NONE);
+	send_to_char(current_news().text.c_str(), ch, LOG_NONE);
 }
 
 void do_projects(P_char ch, char * /*argument*/, int /*cmd*/)

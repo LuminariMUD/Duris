@@ -10,6 +10,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/news.h"
 #include "player/player_save_pipeline.h"
 #include "world/world_singletons.h"
 #include "world/difficulty.h"
@@ -113,8 +114,6 @@ static bool mobile_probe_mode = false;
 struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages  */
 
 char *guild_frags = NULL;
-// char    *news = NULL;           /* * the news                        */
-string news;
 char *projects = NULL; /* * Project information             */
 // char    *motd = NULL;           /* * ansi motd                       */
 string motd;
@@ -450,8 +449,11 @@ void boot_db(int mini_mode)
 
 	fprintf(stderr, "Reading files from lib directory. (motd, wizlist, etc)\n");
 	logit(LOG_STATUS, "Reading newsfile.");
-	//  news = file_to_string(NEWS_FILE);
-	news = get_mud_info("news");
+#ifdef __NO_MYSQL__
+	std::string news_error;
+	if (!load_news_file(".", &news_error))
+		logit(LOG_STATUS, "News unavailable: %s", news_error.c_str());
+#endif
 
 	logit(LOG_STATUS, "Reading projectsfile.");
 	projects = file_to_string(PROJECTS_FILE);

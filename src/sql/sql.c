@@ -7,6 +7,7 @@
  ************************************************************************/
 
 #include "core/prototypes.h"
+#include "player/news.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -611,6 +612,12 @@ string get_mud_info(const char *name)
 
 void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 {
+	std::string error;
+	if (!load_news_file(".", &error))
+	{
+		logit(LOG_STATUS, "News reload failed: %s; previous news retained.", error.c_str());
+		send_to_char("News reload failed; previous news retained.\r\n", ch);
+	}
 	done(ch);
 }
 
@@ -3777,9 +3784,17 @@ static std::unordered_map<std::string, std::string> mud_info;
 static void mud_info_publish(const sql_rows &rows)
 {
 	mud_info.clear();
+	std::string text;
 	for (const sql_row &row : rows)
 		if (row[0])
-			mud_info[row[0]] = row[1] ? row[1] : "";
+		{
+			if (std::string_view(row[0]) == "news")
+				text = row.fields[1].value_or("");
+			else
+				mud_info[row[0]] = row[1] ? row[1] : "";
+		}
+	if (!publish_news(text))
+		logit(LOG_STATUS, "News publication failed; previous news retained.");
 }
 
 // Boot only: the game loop is not running yet.
@@ -3794,8 +3809,10 @@ static void sql_load_mud_info(void)
 		sql_row copied;
 		copied.fields.emplace_back(row[0] ? std::optional<std::string>(row[0]) :
 						    std::nullopt);
-		copied.fields.emplace_back(row[1] ? std::optional<std::string>(row[1]) :
-						    std::nullopt);
+		const unsigned long *lengths = mysql_fetch_lengths(res);
+		copied.fields.emplace_back(
+			row[1] ? std::optional<std::string>(std::string(row[1], lengths[1])) :
+				 std::nullopt);
 		rows.push_back(std::move(copied));
 	}
 	mysql_free_result(res);
@@ -3825,6 +3842,8 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 string get_mud_info(const char *name)
 {
 	// An absent row is the normal state of an optional page, such as "lock".
+	if (name && !strcmp(name, "news"))
+		return current_news().text;
 	const auto found = mud_info.find(name ? name : "");
 	return found == mud_info.end() ? string() : found->second;
 }

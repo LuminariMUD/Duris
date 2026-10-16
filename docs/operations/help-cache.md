@@ -71,6 +71,16 @@ only `mud_info` needs to exist and use InnoDB. Missing or empty news and the
 combination with `--clean` are rejected. Reload news with plain `page`, as described
 in [Publishing news only](../content/HELP_SYSTEM.md#publishing-news-only).
 
+The database-backed news command also receives committed changes through the
+existing one-minute mud-info refresh, when its queued read completes. Boot,
+automatic refresh, and staff `page` publish the displayed text and its SHA-256
+content identity together. Unchanged content keeps the same identity. Invalid
+content or a failed refresh retains the last good news; a successfully read empty
+value or absent database row clears it. The flat-file build loads news at boot
+and on plain `page`, retaining its previous copy if the file cannot be read.
+Neither prompts nor `news` perform a database query. The publication regression is
+`python3 tests/async/test_news_publication.py`.
+
 `TEST_DB_HOST=<disposable-host> python3 tests/async/test_help_import_atomic.py`
 checks SQL-error rollback, reader visibility during a delayed three-section import,
 rejection of nontransactional tables, and news-only isolation and byte preservation.
