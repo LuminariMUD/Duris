@@ -97,9 +97,19 @@ void artifact_feed_published(int vnum, time_t before, time_t timer)
 	if (rows.count(vnum) && rows[vnum].timer == before)
 		artifact_feed_set_timer(vnum, timer);
 }
-size_t artifact_save_pulse(bool)
+static bool writer_completion_pending = false;
+void player_save_pipeline_pulse()
+{
+	writer_completion_pending = false;
+}
+size_t sql_async_pulse()
 {
 	return 0;
+}
+size_t artifact_save_pulse(bool)
+{
+	// Admission stays full until the game consumes the completed writer slot.
+	return writer_completion_pending ? 1 : 0;
 }
 void artifact_report_unsaved() {}
 bool sql_save_guild(Guild *guild)
@@ -302,6 +312,15 @@ int main(int argc, char **argv)
 {
 	if (argc == 2)
 	{
+		if (std::string(argv[1]) == "drain-capacity")
+		{
+			reset();
+			writer_completion_pending = true;
+			assert(artifact_guild_transaction_drain(50));
+			assert(!writer_completion_pending);
+			puts("artifact drain consumes writer completions before retrying admission");
+			return 0;
+		}
 		return identity_contract(argv[1]);
 	}
 	char_data ch = {}, second = {}, third = {};

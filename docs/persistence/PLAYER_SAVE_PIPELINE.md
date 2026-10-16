@@ -27,6 +27,8 @@ slot and only its net byte increase. Dirty-state callers retry a refused capture
 other callers retain their existing refusal behavior, including logged SQL drops.
 The byte limit bounds reported payload sizes, not total process memory. It allows
 one maximum artifact catalog capture; these limits are not throughput guarantees.
+The artifact/guild lifecycle drain consumes writer completions before retrying
+dirty captures, releasing admission slots while the normal game loop is stopped.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
 operation. Nothing is journaled. A crash loses whatever had not reached the database,

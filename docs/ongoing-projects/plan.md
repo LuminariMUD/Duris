@@ -38,6 +38,14 @@ under ignored `bin/analysis/issue67/writer-backpressure-*` in
 This qualifies admission behavior, not production outage throughput. Next:
 stack the preserved flat-cache work on this published prerequisite, then
 continue population/classification and universal admission.
+
+Combined lifecycle review found that the artifact/guild drain did not consume
+generic writer completions while retrying dirty captures. With bounded admission,
+a completed backlog could keep every slot occupied until the drain timed out.
+The existing drain now calls the game-thread completion consumer before retry.
+The new existing-runtime-fixture case `drain-capacity` fails at the drain assertion
+before this repair and passes afterward; the native writer fixture separately
+proves the actual completion-slot accounting. No new drain or queue is introduced.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 

@@ -19,6 +19,7 @@
 #include "core/prototypes.h"
 #include "redis/redis_report_cache.h"
 #include "core/utils.h"
+#include "player/player_save_pipeline.h"
 
 #include <algorithm>
 #include <chrono>
@@ -299,6 +300,9 @@ bool artifact_guild_transaction_drain(uint64_t timeout_msec)
 		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
 	do
 	{
+		// Completions retain writer admission slots. Consume them while the
+		// normal game loop is stopped so dirty snapshots can make progress.
+		player_save_pipeline_pulse();
 		critical_command_coordinator_drain(1);
 		// A committed character deletion must release its guild member before
 		// a fresh guild snapshot can retry without that deleted player's FK.
