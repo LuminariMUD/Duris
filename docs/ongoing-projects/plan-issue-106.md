@@ -13,7 +13,9 @@ external test notifications. No new defect or historical attribution is assumed.
 Worktree: `/home/aiwithapex/projects/duris-issue106`.
 Evidence branch: `branch/issue-106-runtime-evidence`, starting at master `b149b3ada`,
 published as [PR #117](https://github.com/LuminariMUD/Duris/pull/117), commit `ea9af99a4`.
-Current repair branch: `branch/issue-106-limited-teleport`, stacked on #117.
+Current repair branch: `branch/issue-106-limited-teleport`, published as
+[PR #120](https://github.com/LuminariMUD/Duris/pull/120), stacked on #117.
+The tested implementation commit is `60f6911b4`; later checkpoint edits are docs only.
 The primary checkout belongs to other work and must remain untouched.
 
 ## Outcome, non-goals, files, and proof
@@ -157,12 +159,17 @@ installed script's control flow only: no real mail was submitted and no real
 `OnFailure=` transition or recipient receipt was tested. The private executable
 probe is `bin/analysis/issue106/check_installed_alert.py`.
 
-`id` and `sudo -n -l` confirm the existing account has neither system-journal
-membership nor sudo authorization. Do not use unrelated accounts or Docker to
-work around this boundary. Required next inputs are host-owner read access or
-redacted extracts for the October 13 rotation failure and October 15 mail
-submissions, followed by review of a concrete correction and authorization for
-a harmless test notification through the actual route.
+`id` and `sudo -n -l` confirm the existing staging account has neither
+system-journal membership nor sudo authorization. The owner then explicitly
+designated **WSL `ssh lumi`** for protected read-only diagnosis. That alias
+connects as the sudo-group account, but `sudo -n -l` and the journal queries
+return `interactive authentication is required`. An interactive sudo prompt was
+prepared, but authentication is not yet complete. Do not put passwords in this
+document, Git, or chat, or use unrelated accounts/Docker to work around it.
+Private output is retained in `bin/analysis/issue106/private/owner-diagnostics.txt`.
+After authentication, read the October 13 rotation failure and October 15 mail
+submissions, prepare a concrete correction, and obtain authorization for any
+production change and harmless real notification through the existing route.
 
 ## Demonstrated additional caller defect — implemented and qualified
 
@@ -217,8 +224,8 @@ Do not close #106 while its missing historical/operational acceptance remains.
 Review #117 and the stacked caller-fix PR. The completed repository repair needs
 no additional feature work. For the remaining original items:
 
-1. The owner was asked for a designated host-owner read-access path after the
-   existing account's journal/sudo limits were confirmed. With that access,
+1. Use the owner-designated `ssh lumi` and complete local interactive sudo
+   authentication; the `staging` account cannot read these records. Then
    inspect the exact failed rotation journal and Plesk mail rejection, not just
    the unit exit status. Prepare the diagnosed correction before requesting any
    production action or harmless real-notification test. Keep one notifier.
