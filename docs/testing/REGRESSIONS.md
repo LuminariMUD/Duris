@@ -952,6 +952,7 @@ python3 tests/async/test_corpse_haul.py
 python3 tests/async/test_bulk_get_publication.py
 python3 tests/async/test_money_carry_count.py
 python3 tests/async/test_take_coins.py
+python3 tests/async/test_get_trap_lifecycle.py
 python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/mariadb/server   # in make test-db
 ```
 
@@ -964,7 +965,13 @@ removed/moved source and sibling cases cover first/middle/last/only traps, filte
 unfiltered corpse/floor selection, surviving traps, cancellation after insertion,
 allocation failure, and another get by a new runtime identity with the same PID.
 Finalizers and combat remain stubbed here; full command/death coverage requires the
-server journey. The MariaDB journey uses three real accounts: the looter kills
+server journey. `test_get_trap_lifecycle.py` compiles the production `get()` and
+finalizers with actual character/object structures. It verifies that lethal, teleport
+and sleep traps stop container and floor pickup before delivery, logs, waits or lighting;
+that surviving traps reject their item; and that ordinary/ioun, crumble-on-loot, full,
+partial and capped coin, refusal and NPC paths report only actual delivery. Its lethal
+fixture releases PC data and removes the actor's live runtime identity under ASan/UBSan.
+The MariaDB journey uses three real accounts: the looter kills
 Raoul in combat, a second player at the corpse sees the haul start, and a third in the
 next room sees nothing. After a real player death it repeats a mixed equipment-and-coin
 haul on the player's corpse. Each stage asserts the haul, observer output, and the saved
