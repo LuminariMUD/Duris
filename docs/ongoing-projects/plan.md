@@ -503,8 +503,10 @@ for these unmerged review chunks.
 
 ### Canonical identity storage — AR-02
 
+[PR #136](https://github.com/LuminariMUD/Duris/pull/136),
 `branch/issue-67-canonical-storage` → `branch/issue-67-reward-conflicts` adds the
 durable representation, without selecting copies or enabling an admission rule.
+The implementation checkpoint is `caca91293`.
 The existing nullable `artifact_domain_state.item_uid` remains a custody FK.
 Disposable engine tests prove it rejects a positive UID with no custody row
 (error 1452), while unclaimed NPC/ground artifacts must be identifiable before
@@ -650,8 +652,7 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135, followed by the canonical
-storage chunk on its dependent branch. Published chunks are open for review,
+Current review order is #132 → #133 → #134 → #135 → #136. All chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
 from the tip of `branch/issue-67-canonical-storage` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
