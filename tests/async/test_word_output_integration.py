@@ -35,6 +35,7 @@ for filename, signatures in [
                   "void show_exits_to_char(", "void display_room_auras("]),
     ("weather.c", ["void send_to_weather_sector("]),
     ("fight.c", ["void dam_message("]),
+    ("specs.object.c", ["int totem_of_mastery(", "int circlet_of_light("]),
     ("prompt.c", ["void make_prompt("]),
     ("json_utils.c", ["char *json_build_comm_channel("]),
     ("gmcp.c", ["void gmcp_broadcast_channel("])

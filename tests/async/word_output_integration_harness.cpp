@@ -8,6 +8,8 @@
 #include "player/player_save_pipeline.h"
 #include "net/gmcp.h"
 #include "net/chat_presentation.h"
+#include "world/specs.prototypes.h"
+#include "cmd/interp.h"
 #include <cjson/cJSON.h>
 #include <cassert>
 #include <algorithm>
@@ -57,9 +59,11 @@ int IS_MORPH(P_char)
 {
 	return 0;
 }
-void write_to_pc_log(P_char, const char *message, int policy)
+void write_to_pc_log(P_char ch, const char *message, int policy)
 {
 	logged.emplace_back(message, policy);
+	if (ch->only.pc && GET_PLAYER_LOG(ch))
+		GET_PLAYER_LOG(ch)->write(policy, message);
 }
 bool ac_can_see(P_char, P_char, bool)
 {
@@ -161,6 +165,7 @@ static std::string drain(P_desc d)
 #include "world_output_checks.inc"
 #include "combat_prompt_checks.inc"
 #include "chat_presentation_checks.inc"
+#include "artifact_activation_checks.inc"
 #ifdef COLORIZATION_BENCHMARK
 #include "colorization_benchmark.inc"
 #endif
@@ -704,5 +709,6 @@ int main()
 	tell_command_matrix();
 	world_output_matrix();
 	combat_prompt_matrix();
+	artifact_activation_matrix();
 	puts("Output integration: tell/reply, recipient profiles, sends, act, queue merging, privacy, paging and snoop passed");
 }
