@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -20,6 +21,7 @@ int read_count;
 int room_load_count;
 int mob_load_count;
 int extract_count;
+std::vector<std::string> feedback;
 
 void require(bool condition, const std::string &message)
 {
@@ -42,6 +44,17 @@ char_data boot_mob = {};
 npc_only_data boot_mob_data = {};
 P_char character_list = &boot_mob;
 bool redis_enabled = false;
+
+void send_to_char(const char *text, P_char)
+{
+	feedback.emplace_back(text);
+}
+
+char *get_player_name_from_pid(int)
+{
+	static char name[] = "Fixture";
+	return name;
+}
 
 bool redis_report_cache_enabled()
 {
@@ -214,6 +227,66 @@ int main(int argc, char **argv)
 	require(read_count == 5 && room_load_count == 2 && mob_load_count == 1 &&
 			extract_count == 2,
 		"boot restoration did not load exactly the owned ground and NPC artifacts");
+
+	char_data owner = {};
+	pc_only_data pc = {};
+	owner.only.pc = &pc;
+	owner.player.level = 51;
+	pc.pid = 42;
+	obj_data worn = {};
+	worn.extra_flags = ITEM_ARTIFACT;
+	worn.loc_p = LOC_WORN;
+	worn.loc.wearing = &owner;
+	worn.short_description = const_cast<char *>("fixture artifact");
+	const std::string satisfaction = "&+RYou feel a sense of satisfaction from above.&n\r\n";
+	const time_t feed_start = time(nullptr) + 100;
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
+	for (int seconds : { 60, 13 * 3600 })
+	{
+		feedback.clear();
+		artifact_feed_sql(&owner, &worn, seconds);
+		require(feedback == std::vector<std::string>{ satisfaction },
+			"direct light/deep feed did not publish the requested wording once");
+	}
+	require(get_artifact_data_sql(701, &data) && data.timer == feed_start + 60 + 13 * 3600,
+		"direct positive feed changed its timer calculation");
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42,
+			    time(nullptr) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY, 1);
+	feedback.clear();
+	artifact_feed_sql(&owner, &worn, 60);
+	require(feedback == std::vector<std::string>{ satisfaction },
+		"valid capped direct feed lost its positive feedback");
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 77, feed_start, 1);
+	feedback.clear();
+	artifact_feed_sql(&owner, &worn, 60);
+	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start &&
+			data.location == 77,
+		"rejected cross-owner direct feed changed state or published satisfaction");
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
+	feedback.clear();
+	owner.player.level = 62;
+	artifact_feed_sql(&owner, &worn, 60);
+	owner.player.level = 51;
+	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start,
+		"trusted direct feed changed state or published feedback");
+	require(flatfile_artifact_bind_update(state_root, 701, 77, 0, &error) ==
+			flatfile_artifact_result::ok,
+		"could not establish rejected-soul feed fixture");
+	artifact_feed_sql(&owner, &worn, 60, true);
+	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start,
+		"rejected-soul direct feed changed state or published satisfaction");
+	artifact_feed_sql(&owner, &worn, -60);
+	require(feedback ==
+			std::vector<std::string>{
+				"&+BYou hear a distant cry in the back of your mind...&n\n\r" },
+		"negative direct feed lost its existing feedback");
+	feedback.clear();
+	artifact_update_sql(701, false, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
+	artifact_feed_sql(&owner, &worn, 60);
+	require(feedback == std::vector<std::string>{ satisfaction } &&
+			get_artifact_data_sql(701, &data) && data.owned && data.location == 42,
+		"newly tracked direct feed did not publish the requested wording once");
+	std::cout << "direct feed wording and accepted/rejected feedback passed\n";
 
 	const fs::path authority = root / "domains/artifact_catalog";
 	// The corpse transaction still expects player custody during death's

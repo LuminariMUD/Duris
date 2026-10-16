@@ -2002,38 +2002,9 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 #else
 		artifact_row_store(vnum, { true, ARTIFACT_ON_PC, GET_PID(owner), poof_time, type });
 #endif
-		send_to_char("&+RYou feel a deep sense of satisfaction from somewhere...\r\n",
-			     owner);
+		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", owner);
 		return;
 	}
-
-	// If we're tyring to feed over the limit.
-	if (poof_time < artidata.timer + feed_seconds)
-	{
-		// Set it to feed to max
-		feed_seconds = poof_time - artidata.timer;
-	}
-
-	if (feed_seconds > (12 * 3600))
-	{
-		send_to_char("&+RYou feel a deep sense of satisfaction from somewhere...&n\r\n",
-			     owner);
-	}
-	else if (feed_seconds < 0)
-	{
-		negFeed = TRUE;
-		feed_seconds *= -1;
-		send_to_char("&+BYou hear a distant cry in the back of your mind...&n\n\r", owner);
-	}
-	else
-	{
-		send_to_char("&+RYou feel a light sense of satisfaction from somewhere...&n\r\n",
-			     owner);
-	}
-
-	statuslog(MINLVLIMMORTAL, "Artifact: %s [%d] on %s fed [&+G%c%d&+Lh &+G%d&+Lm &+G%d&+Ls&n]",
-		  arti->short_description, OBJ_VNUM(arti), GET_NAME(owner), negFeed ? '-' : ' ',
-		  feed_seconds / 3600, (feed_seconds / 60) % 60, feed_seconds % 60);
 
 	if (artidata.owned &&
 	    (artidata.locType == ARTIFACT_ON_PC || artidata.locType == ARTIFACT_ONCORPSE) &&
@@ -2045,6 +2016,29 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 			vnum, GET_NAME(owner), get_player_name_from_pid(artidata.location));
 		return;
 	}
+
+	// If we're tyring to feed over the limit.
+	if (poof_time < artidata.timer + feed_seconds)
+	{
+		// Set it to feed to max
+		feed_seconds = poof_time - artidata.timer;
+	}
+
+	if (feed_seconds < 0)
+	{
+		negFeed = TRUE;
+		feed_seconds *= -1;
+		send_to_char("&+BYou hear a distant cry in the back of your mind...&n\n\r", owner);
+	}
+	else
+	{
+		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", owner);
+	}
+
+	statuslog(MINLVLIMMORTAL, "Artifact: %s [%d] on %s fed [&+G%c%d&+Lh &+G%d&+Lm &+G%d&+Ls&n]",
+		  arti->short_description, OBJ_VNUM(arti), GET_NAME(owner), negFeed ? '-' : ' ',
+		  feed_seconds / 3600, (feed_seconds / 60) % 60, feed_seconds % 60);
+
 	artifact_update_sql(arti, 'Y', artidata.timer + feed_seconds);
 }
 

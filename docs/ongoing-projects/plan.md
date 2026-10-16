@@ -3,7 +3,8 @@
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
-implementation in progress. No operational repair started.
+implementation in progress; independent feeding feedback implemented on
+`branch/issue-67-feeding-feedback`. No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
@@ -436,6 +437,43 @@ local fixture, or historical investigation as production completion.
   remain visible until actually satisfied.
 
 ## Planning verification and handoff
+
+### Review stack and current resume point
+
+- [PR #132](https://github.com/LuminariMUD/Duris/pull/132),
+  `branch/issue-67-artifact-identity` → `master`: acceptance repros and admission
+  map, published at `21bcc2754`. No identity behavior is fixed in that PR.
+- `branch/issue-67-feeding-feedback` → `branch/issue-67-artifact-identity`:
+  independent AR-05 wording/feedback chunk. It uses the requested sentence for
+  live awards and the active monolith direct feeder, removes the obsolete
+  light/deep positive wording branch, and moves the direct path's existing
+  tracked-owner rejection before its positive/negative feedback. Negative text,
+  valid capped feedback and live/history publication timing are preserved.
+
+Ablation: wording and truthful direct rejection feedback do not require a schema
+or canonical selection, so publish this independent portion before the identity
+work. No shared message abstraction or new configuration is needed. Files:
+`artifact.c`, `artifact_guild_transaction.c`, existing native reward/flat-file
+fixtures and this plan/current reward contract. Proof: runtime tests cover one
+and several artifacts, valid capped feed, guild-only/no-effect/rejected awards,
+duplicate completion, direct light/deep feeds, trusted/soul/cross-owner refusal,
+and the original negative text. The direct test links actual `artifact.c`,
+flat-file repository and bind lookup, with fixture placement and messaging.
+Monolith still feeds per artifact; command-wide coalescing and canonical UID
+eligibility remain in AR-05. The two AR-01 expected failures remain unfixed.
+
+The following pass for this chunk: reward runtime (baseline plus 2 expected
+failures), flat-file artifact repository/bind/gameplay harnesses, transactional
+cutover (3/3), combat/artifact persistence contracts, changed-line formatting,
+clang-tidy and `make -C src`. This is no claim of full gameplay/restart, database
+matrix, production qualification or complete AR-05 acceptance.
+
+Next: qualify canonical identity storage/boot candidate publication for AR-02.
+While tracing direct feedback, an additional timer defect was found: negative
+feed is converted to an absolute value for logging then added to the timer, and
+an above-cap positive clamp can therefore increase it further. Repair this as
+its own focused chunk with direct executable timer assertions before resuming
+the larger identity work. No production state has been inspected or changed.
 
 ### Implementation checkpoint — 2026-10-16, AR-01
 

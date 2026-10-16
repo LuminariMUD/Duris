@@ -19,6 +19,7 @@ extern "C" time_t time(time_t *out)
 	return NOW;
 }
 static constexpr int64_t FEED_CAP = NOW + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+static constexpr char SATISFACTION[] = "&+RYou feel a sense of satisfaction from above.&n\r\n";
 struct row
 {
 	int64_t timer;
@@ -279,6 +280,8 @@ int main(int argc, char **argv)
 		award(&ch);
 		assert(rows.at(42001).timer == NOW + 100 + i * 3600);
 		assert(snapshots.size() == static_cast<size_t>(i));
+		assert(feedback.size() == static_cast<size_t>(i) &&
+		       feedback.back() == SATISFACTION);
 	}
 	assert(commands.size() == 3);
 	const auto messages = feedback.size();
@@ -300,6 +303,7 @@ int main(int argc, char **argv)
 	assert(snapshots.size() == 1 && commands.size() == 1 && feedback.size() == 1);
 	award(&ch);
 	assert(rows.at(42001).timer == FEED_CAP && commands.size() == 2);
+	assert(feedback.size() == 2 && feedback.back() == SATISFACTION);
 	rows.at(42001).timer = FEED_CAP + 200;
 	award(&ch);
 	assert(rows.at(42001).timer == FEED_CAP);
@@ -312,6 +316,26 @@ int main(int argc, char **argv)
 		complete(command);
 	assert(rows.at(42001).timer == NOW + 10 && rows.at(42001).soul == 44);
 	puts("PASS at/below/above cap, pending identity attachment, removal and recreation");
+
+	reset();
+	obj_data another = artifact;
+	another.R_num = 1;
+	indexes[1].virtual_number = 42002;
+	ch.equipment[1] = &another;
+	rows[42001] = { NOW + 100 };
+	rows[42002] = { NOW + 200 };
+	award(&ch);
+	assert(snapshots.size() == 2 && feedback.size() == 1 && feedback.back() == SATISFACTION);
+	complete(commands.front());
+	assert(feedback.size() == 1);
+	ch.equipment[1] = nullptr;
+	reset();
+	award(&ch); // missing state contributes no feed or feedback
+	assert(commands.empty() && feedback.empty());
+	rows[42001] = { NOW + 100 };
+	award(&ch, 4, -1); // unsupported epic type has no eligible feed
+	assert(commands.empty() && feedback.empty());
+	puts("PASS one positive message for several feeds; completion and no-effect awards stay silent");
 
 	reset();
 	char name[] = "Fixture";
@@ -336,6 +360,7 @@ int main(int argc, char **argv)
 		assert(guild_snapshots.back().second == guild->get_construction());
 	}
 	assert(snapshots.size() == 1); // worn artifact and guild eligibility are independent
+	assert(std::count(feedback.begin(), feedback.end(), SATISFACTION) == 1);
 	guild->sub_prestige(50);
 	guild->set_construction(7);
 	for (const auto &command : commands)
@@ -359,6 +384,7 @@ int main(int argc, char **argv)
 	rows[42001] = { NOW + 100, 99 };
 	award(&ch, 4, EPIC_PVP);
 	assert(commands.empty());
+	assert(feedback.empty());
 	rows.at(42001).soul = 42;
 	award(&ch, 4, EPIC_PVP);
 	assert(rows.at(42001).timer == NOW + 100 + 28800);
@@ -386,7 +412,7 @@ int main(int argc, char **argv)
 	const auto prestige = guild->get_prestige();
 	assert(!artifact_guild_transaction_submit(&ch, bad_parent, INT_MAX, EPIC_BOON));
 	assert(guild->get_prestige() == prestige && rows.at(42001).timer == NOW + 100 &&
-	       commands.empty());
+	       commands.empty() && feedback.empty());
 	ch.specials.guild = second.specials.guild = third.specials.guild = nullptr;
 #if !LEGACY_HYDRATION
 	admission = critical_submit_result::overloaded;

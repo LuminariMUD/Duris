@@ -239,6 +239,13 @@ snapshots on the existing writer before submitting type-9 reward history. Later
 transfers, soul changes, removal, spending and settings capture their current
 state independently; history completion never changes that state or repeats feedback.
 
+Positive feeding feedback is `You feel a sense of satisfaction from above.`
+The live artifact/guild award publishes it once even when several artifacts feed;
+guild-only, ineligible, rejected and no-effect awards do not publish it. A valid
+capped feed retains its positive feedback. The monolith's direct feeding path
+uses the same wording per accepted artifact and checks its existing tracked-owner
+restriction before publishing feedback; its negative feedback is unchanged.
+
 New history uses payload v2 with parent/actor identity and calculated before/after
 facts. The repository records outcome/delta ledgers with history revisions, not
 gameplay approval revisions. It never compares current SQL timer/soul/guild totals

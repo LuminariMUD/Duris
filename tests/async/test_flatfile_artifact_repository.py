@@ -113,6 +113,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Isrc",
             "tests/async/flatfile_artifact_runtime_harness.cpp",
             rel("artifact.c"),
+            rel("sql.c"),
             rel("flatfile_artifact_repository.c"),
             rel("player_snapshot_codec.c"),
             rel("item_transfer_command.c"),

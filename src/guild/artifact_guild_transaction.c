@@ -133,8 +133,7 @@ void publish_messages(P_char character, const artifact_guild_payload &payload)
 		}
 	}
 	if (payload.artifact_count)
-		send_to_char("&+RYou feel a sense of satisfaction from your artifact(s).&n\r\n",
-			     character);
+		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", character);
 }
 } // namespace
 
