@@ -10,6 +10,7 @@
 
 #include "core/prototypes.h"
 #include "player/output_preferences.h"
+#include "player/news.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -31,7 +32,7 @@ extern P_index mob_index;
 
 void make_prompt(P_desc point)
 {
-	P_char t_ch = NULL, t_ch_f = NULL, tank = NULL, orig = NULL;
+	P_char t_ch = NULL, t_ch_f = NULL, tank = NULL, owner = NULL;
 	char promptbuf[MAX_INPUT_LENGTH]; /*, pname[512]; */
 	char promptbuf2[MAX_INPUT_LENGTH], *pPrompt;
 	/* Space left from pPrompt onward.  pPrompt aliases one of two
@@ -43,7 +44,7 @@ void make_prompt(P_desc point)
 	struct affected_type *paf = NULL;
 
 	t_ch = point->character;
-	orig = point->original;
+	owner = t_ch ? GET_PLYR(t_ch) : nullptr;
 	if (t_ch)
 	{
 		t_ch_f = GET_OPPONENT(t_ch);
@@ -78,13 +79,15 @@ void make_prompt(P_desc point)
 		return;
 	}
 
-	if (t_ch)
+	if (!owner || !IS_PC(owner) || !owner->only.pc)
 	{
-		t_ch_p = orig ? orig->only.pc->prompt : t_ch->only.pc->prompt;
+		point->prompt_mode = FALSE;
+		return;
 	}
+	t_ch_p = owner->only.pc->prompt;
 
-	const auto prompt_profile = player_output_profile(orig ? orig : t_ch, OutputChannel::Prompt,
-							  OutputPolicy::Static);
+	const auto prompt_profile =
+		player_output_profile(owner, OutputChannel::Prompt, OutputPolicy::Static);
 	if (t_ch && t_ch->desc && t_ch->desc->term_type == TERM_MSP)
 		snprintf(promptbuf, sizeof promptbuf, "\n<prompt>\n%s<",
 			 output_role_markup(prompt_profile, OutputRole::None, "&+g", true));
@@ -93,10 +96,11 @@ void make_prompt(P_desc point)
 			 output_role_markup(prompt_profile, OutputRole::None, "&+g", true));
 
 	/* infobar prompt */
-	if (IS_SET((orig ? orig : t_ch)->specials.act, PLR_SMARTPROMPT))
+	if (IS_SET(owner->specials.act, PLR_SMARTPROMPT))
 	{
 		UpdateScreen(t_ch, 0);
-		snprintf(promptbuf, sizeof promptbuf, "&+R>&n");
+		snprintf(promptbuf, sizeof promptbuf, "%s&+R>&n",
+			 has_unread_news(owner) ? "(news) " : "");
 		send_to_char(promptbuf, t_ch);
 		point->prompt_mode = FALSE;
 		return;
@@ -264,9 +268,10 @@ void make_prompt(P_desc point)
 #endif
 	}
 
-	if (IS_SET(t_ch_p, PROMPT_TWOLINE) &&
-	    (t_ch_p & (PROMPT_HIT | PROMPT_MAX_HIT | PROMPT_MANA | PROMPT_MAX_MANA | PROMPT_MOVE |
-		       PROMPT_MAX_MOVE)))
+	const bool two_lines = IS_SET(t_ch_p, PROMPT_TWOLINE) &&
+			       (t_ch_p & (PROMPT_HIT | PROMPT_MAX_HIT | PROMPT_MANA |
+					  PROMPT_MAX_MANA | PROMPT_MOVE | PROMPT_MAX_MOVE));
+	if (two_lines)
 	{
 		APPENDF(promptbuf, "%s >\n",
 			output_role_markup(prompt_profile, OutputRole::None, "&+g", true));
@@ -280,6 +285,14 @@ void make_prompt(P_desc point)
 		pPrompt = promptbuf + strlen(promptbuf);
 		pPromptCap = sizeof(promptbuf) - strlen(promptbuf);
 	}
+
+	// Keep the notification and terminal framing even when a combat name is long.
+	char footer[64];
+	snprintf(footer, sizeof footer, "%s%s> %s", has_unread_news(owner) ? " (news)" : "",
+		 output_role_markup(prompt_profile, OutputRole::None, "&+g", true),
+		 t_ch->desc && t_ch->desc->term_type == TERM_MSP ? "&n\n</prompt>\n" : "");
+	const size_t footer_size = strlen(footer);
+	pPromptCap -= footer_size;
 
 	/* the prompt elements only active while fighting */
 	if (t_ch_f && (t_ch->in_room == t_ch_f->in_room))
@@ -298,19 +311,19 @@ void make_prompt(P_desc point)
 			}
 			if (IS_SET(t_ch_p, PROMPT_STATUS) && IS_SET(t_ch_p, PROMPT_TANK_COND))
 			{
-				strcat(pPrompt, " &+cTP:&n");
+				strlcat(pPrompt, " &+cTP:&n", pPromptCap);
 				if (GET_POS(tank) == POS_STANDING)
-					strcat(pPrompt, "&+g sta&n");
+					strlcat(pPrompt, "&+g sta&n", pPromptCap);
 				else if (GET_POS(tank) == POS_SITTING)
-					strcat(pPrompt, "&+g sit&n");
+					strlcat(pPrompt, "&+g sit&n", pPromptCap);
 				else if (GET_POS(tank) == POS_KNEELING)
-					strcat(pPrompt, "&+g kne&n");
+					strlcat(pPrompt, "&+g kne&n", pPromptCap);
 				else if (GET_POS(tank) == POS_PRONE)
-					strcat(pPrompt, "&+g ass&n");
+					strlcat(pPrompt, "&+g ass&n", pPromptCap);
 			}
 			if (IS_SET(t_ch_p, PROMPT_TANK_COND))
 			{
-				strcat(pPrompt, "&n TC:");
+				strlcat(pPrompt, "&n TC:", pPromptCap);
 
 				if (GET_MAX_HIT(tank) > 0)
 					percent = (100 * GET_HIT(tank)) / GET_MAX_HIT(tank);
@@ -318,24 +331,25 @@ void make_prompt(P_desc point)
 					percent = -1;
 
 				if (percent >= 100)
-					strcat(pPrompt, "&+g excellent");
+					strlcat(pPrompt, "&+g excellent", pPromptCap);
 				else if (percent >= 90)
-					strcat(pPrompt, "&+y few scratches");
+					strlcat(pPrompt, "&+y few scratches", pPromptCap);
 				else if (percent >= 75)
-					strcat(pPrompt, "&+Y small wounds");
+					strlcat(pPrompt, "&+Y small wounds", pPromptCap);
 				else if (percent >= 50)
-					strcat(pPrompt, "&+M few wounds");
+					strlcat(pPrompt, "&+M few wounds", pPromptCap);
 				else if (percent >= 30)
-					strcat(pPrompt, "&+m nasty wounds");
+					strlcat(pPrompt, "&+m nasty wounds", pPromptCap);
 				else if (percent >= 15)
-					strcat(pPrompt, "&+R pretty hurt");
+					strlcat(pPrompt, "&+R pretty hurt", pPromptCap);
 				else if (percent >= 0)
-					strcat(pPrompt, "&+r awful");
+					strlcat(pPrompt, "&+r awful", pPromptCap);
 				else
-					strcat(pPrompt, "&+r bleeding, close to death");
+					strlcat(pPrompt, "&+r bleeding, close to death",
+						pPromptCap);
 
 				if (IS_SET(t_ch_p, PROMPT_WARD) && GET_WARD(tank) > 0)
-					strcat(pPrompt, "&+C (warded)");
+					strlcat(pPrompt, "&+C (warded)", pPromptCap);
 			}
 		}
 
@@ -351,15 +365,15 @@ void make_prompt(P_desc point)
 
 		if (IS_SET(t_ch_p, PROMPT_STATUS) && IS_SET(t_ch_p, PROMPT_ENEMY_COND))
 		{
-			strcat(pPrompt, " &+cEP:&n");
+			strlcat(pPrompt, " &+cEP:&n", pPromptCap);
 			if (GET_POS(t_ch_f) == POS_STANDING)
-				strcat(pPrompt, "&+g sta&n");
+				strlcat(pPrompt, "&+g sta&n", pPromptCap);
 			else if (GET_POS(t_ch_f) == POS_SITTING)
-				strcat(pPrompt, "&+g sit&n");
+				strlcat(pPrompt, "&+g sit&n", pPromptCap);
 			else if (GET_POS(t_ch_f) == POS_KNEELING)
-				strcat(pPrompt, "&+g kne&n");
+				strlcat(pPrompt, "&+g kne&n", pPromptCap);
 			else if (GET_POS(t_ch_f) == POS_PRONE)
-				strcat(pPrompt, "&+g ass&n");
+				strlcat(pPrompt, "&+g ass&n", pPromptCap);
 		}
 
 		if (IS_SET(t_ch_p, PROMPT_ENEMY_COND))
@@ -368,41 +382,37 @@ void make_prompt(P_desc point)
 				percent = (100 * GET_HIT(t_ch_f)) / GET_MAX_HIT(t_ch_f);
 			else
 				percent = -1;
-			strcat(pPrompt, "&+c EC:");
+			strlcat(pPrompt, "&+c EC:", pPromptCap);
 			if (percent >= 100)
-				strcat(pPrompt, "&+g excellent");
+				strlcat(pPrompt, "&+g excellent", pPromptCap);
 			else if (percent >= 90)
-				strcat(pPrompt, "&+y few scratches");
+				strlcat(pPrompt, "&+y few scratches", pPromptCap);
 			else if (percent >= 75)
-				strcat(pPrompt, "&+Y small wounds");
+				strlcat(pPrompt, "&+Y small wounds", pPromptCap);
 			else if (percent >= 50)
-				strcat(pPrompt, "&+M few wounds");
+				strlcat(pPrompt, "&+M few wounds", pPromptCap);
 			else if (percent >= 30)
-				strcat(pPrompt, "&+m nasty wounds");
+				strlcat(pPrompt, "&+m nasty wounds", pPromptCap);
 			else if (percent >= 15)
-				strcat(pPrompt, "&+R pretty hurt");
+				strlcat(pPrompt, "&+R pretty hurt", pPromptCap);
 			else if (percent >= 0)
-				strcat(pPrompt, "&+r awful");
+				strlcat(pPrompt, "&+r awful", pPromptCap);
 			else
-				strcat(pPrompt, "&+r bleeding, close to death");
+				strlcat(pPrompt, "&+r bleeding, close to death", pPromptCap);
 
 			if (IS_SET(t_ch_p, PROMPT_WARD) && GET_WARD(t_ch_f) > 0)
-				strcat(pPrompt, "&+C (warded)");
+				strlcat(pPrompt, "&+C (warded)", pPromptCap);
 		}
 	}
 	if (IS_SET(t_ch_p, PROMPT_VIS) && IS_TRUSTED(t_ch))
 	{
-		strcat(pPrompt, "&+m");
-		checked_appendf(pPrompt, pPromptCap, " Vis: %d", t_ch->only.pc->wiz_invis);
+		strlcat(pPrompt, "&+m", pPromptCap);
+		checked_appendf(pPrompt, pPromptCap, " Vis: %d", owner->only.pc->wiz_invis);
 	}
 	if (IS_SET(t_ch->specials.act, PLR_AFK))
-		strcat(pPrompt, "&n (&+RAFK&n)");
+		strlcat(pPrompt, "&n (&+RAFK&n)", pPromptCap);
 
-	checked_appendf(pPrompt, pPromptCap, "%s> ",
-			output_role_markup(prompt_profile, OutputRole::None, "&+g", true));
-
-	if (t_ch && t_ch->desc && t_ch->desc->term_type == TERM_MSP)
-		strcat(pPrompt, "&n\n</prompt>\n");
+	strlcat(pPrompt, footer, pPromptCap + footer_size);
 
 	/* give the log some prompts */
 	prompt_buf[0] = '\0';
@@ -414,7 +424,7 @@ void make_prompt(P_desc point)
 	{
 		write_to_q("&+B%&n ", &snoop_by_ptr->snoop_by->desc->output, 1);
 		write_to_q(promptbuf, &snoop_by_ptr->snoop_by->desc->output, 1);
-		if (IS_SET(t_ch_p, PROMPT_TWOLINE))
+		if (two_lines)
 		{
 			write_to_q("&+B%&n ", &snoop_by_ptr->snoop_by->desc->output, 1);
 			write_to_q(promptbuf2, &snoop_by_ptr->snoop_by->desc->output, 1);
@@ -427,7 +437,7 @@ void make_prompt(P_desc point)
 
 	point->prompt_mode = FALSE;
 	write_to_q(promptbuf, &point->output, 1);
-	if (IS_SET(t_ch_p, PROMPT_TWOLINE))
+	if (two_lines)
 		write_to_q(promptbuf2, &point->output, 1);
 	if (point->character && point->character->desc &&
 	    !(point->character->desc->term_type == TERM_MSP))

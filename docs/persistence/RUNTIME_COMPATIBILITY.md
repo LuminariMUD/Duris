@@ -20,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0041_pkill_log_capacity`, and the contract
+The current head is `0043_news_acknowledgement`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -48,6 +48,13 @@ success; their metadata does not match the runtime contract.
 Fingerprints are measured on clean `mysql:8.0` and `mariadb:10.11` schemas with
 `tests/async/telemetry_rollup_schema_mysql.py --update-contract`; they must not be
 copied from a production-derived clone.
+
+0042 widens the ten base stats to signed shorts. 0043 adds
+`player_data.last_read_news_hash VARBINARY(64) NOT NULL DEFAULT ''` for the
+per-character unread-news marker. Both preserve existing player rows. The news
+migration is guarded, verifies the complete column shape and its position after
+`learned_flight_stops`, and refuses an incompatible pre-existing column. Apply it
+before starting the updated database-backed server; it adds no table.
 
 An existing populated database must first be upgraded only on a disposable clone.
 Run the legacy convergence, then the immutable runner against the same clone before

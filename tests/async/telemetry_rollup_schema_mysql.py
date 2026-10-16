@@ -34,8 +34,10 @@ RUNTIME_MANIFEST = ROOT / "migrations/runtime_compatibility_manifest.json"
 RUNTIME_VERIFY = ROOT / "migrations/verify_runtime_compatibility.sh"
 VALIDATOR = ROOT / "scripts/validate_runtime_compatibility.py"
 
-BOOTSTRAP_TABLE_COUNT = 186
-RUNTIME_TABLE_COUNT = 203
+BOOTSTRAP_TABLE_COUNT = len(set(re.findall(
+    r"(?im)^CREATE TABLE(?: IF NOT EXISTS)?\s+`?([A-Za-z_][A-Za-z0-9_]*)`?", BOOTSTRAP.read_text()
+)))
+RUNTIME_TABLE_COUNT = json.loads(RUNTIME_MANIFEST.read_text())["current_table_count"]
 
 NEW_TABLES = ("telemetry_cohort_member", "telemetry_rollup_session")
 SESSION_TABLE = "telemetry_rollup_session"

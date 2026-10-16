@@ -8783,13 +8783,33 @@ void do_cheaters(P_char ch, char * /*argument*/, int /*cmd*/)
 }
 void do_news(P_char ch, char * /*argument*/, int /*cmd*/)
 {
-	if (!IS_SET(ch->specials.act, PLR_PAGING_ON))
+	if (!ch || !ch->desc || !ch->desc->character)
+		return;
+	P_char recipient = ch->desc->character;
+	P_char owner = GET_PLYR(recipient);
+	if (!owner || !IS_PC(owner) || !owner->only.pc)
+		return;
+	if (!IS_SET(recipient->specials.act, PLR_PAGING_ON))
 	{
 		send_to_char("&+WNews file is to long, please tog page on, to read it\n", ch);
 		return;
 	}
-	send_to_char("&+WDuris News\n\n", ch);
-	send_to_char(current_news().text.c_str(), ch, LOG_NONE);
+	const auto &news = current_news();
+	if (news.text.empty())
+	{
+		send_to_char("News is currently unavailable.\r\n", recipient);
+		return;
+	}
+	if (!send_paged_text(recipient, "&+WDuris News\n\n" + news.text, LOG_NONE))
+	{
+		send_to_char("News could not fit in the command output; it remains unread.\r\n",
+			     recipient);
+		return;
+	}
+	if (!acknowledge_news(recipient, news.fingerprint))
+		send_to_char(
+			"Unable to save your news acknowledgement. Please try 'news' again.\r\n",
+			recipient);
 }
 
 void do_projects(P_char ch, char * /*argument*/, int /*cmd*/)

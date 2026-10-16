@@ -117,6 +117,8 @@ static player_snapshot make_full(player_revision_t revision)
 	snapshot.trophies.push_back({ 12, 300 });
 	snapshot.recipes_are_external = true;
 	snapshot.output_preferences = "v1;m=1;12=27";
+	snapshot.status_strings.push_back(
+		{ player_status_string_field::last_read_news_hash, std::string(64, 'a') });
 	return snapshot;
 }
 
@@ -134,6 +136,8 @@ static player_snapshot make_status(player_revision_t revision, int level, int ro
 	snapshot.status_integers.push_back({ player_status_field::level, level, 0, false });
 	snapshot.status_strings.push_back({ player_status_string_field::name, "Player" });
 	snapshot.recipes_are_external = true;
+	snapshot.status_strings.push_back(
+		{ player_status_string_field::last_read_news_hash, std::string(64, 'b') });
 	return snapshot;
 }
 
@@ -158,6 +162,19 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	require(lock.acquire(root, &error), "inspect authority lock: " + error);
 	std::cout << "{\"revision\":" << snapshot.revision << ",\"intent\":" << snapshot.save_intent
 		  << ",\"room\":" << snapshot.room_vnum;
+	for (const auto &entry : snapshot.status_strings)
+		if (entry.field == player_status_string_field::last_read_news_hash)
+		{
+			require(entry.value.empty() ||
+					(entry.value.size() == 64 &&
+					 std::all_of(entry.value.begin(), entry.value.end(),
+						     [](unsigned char c) {
+							     return (c >= '0' && c <= '9') ||
+								    (c >= 'a' && c <= 'f');
+						     })),
+				"invalid acknowledgement in inspection fixture");
+			std::cout << ",\"last_read_news_hash\":\"" << entry.value << '"';
+		}
 	std::cout << ",\"snapshot_uids\":[";
 	for (size_t i = 0; i < snapshot.items.size(); ++i)
 	{
@@ -597,6 +614,8 @@ int main(int argc, char **argv)
 			loaded.trophies[0].experience == 300 &&
 			loaded.output_preferences == full.output_preferences,
 		"full player snapshot did not round trip: " + error);
+	require(loaded.status_strings.back().value == std::string(64, 'a'),
+		"news acknowledgement did not round trip");
 	player_load_request load_request = {};
 	load_request.request_id = 1;
 	load_request.pid = 42;
@@ -668,6 +687,8 @@ int main(int argc, char **argv)
 			found_flights = field.is_unsigned &&
 					field.unsigned_value == ((uint64_t{ 1 } << 26) | 1);
 	require(found_flights, "unrelated component save erased flight discoveries");
+	require(loaded.status_strings.back().value == std::string(64, 'a'),
+		"unrelated component erased news acknowledgement");
 	player_snapshot trophy_checkpoint = make_status(2, 51, 1202);
 	trophy_checkpoint.status_integers.push_back(
 		{ player_status_field::learned_flight_stops, 0, 7, true });
@@ -687,6 +708,8 @@ int main(int argc, char **argv)
 			loaded.trophies[0].experience == 645 &&
 			loaded.trophies[1].experience == 678 && loaded.output_preferences.empty(),
 		"partial status merge discarded an untouched component");
+	require(loaded.status_strings.back().value == std::string(64, 'b'),
+		"status save did not replace news acknowledgement");
 
 	require(loaded.status_integers[1].unsigned_value == 7 &&
 			loaded.status_integers[2].signed_value == 12345,

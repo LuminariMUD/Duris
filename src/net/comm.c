@@ -4646,6 +4646,18 @@ static void process_line(P_desc t, char *in)
  */
 
 static char send_to_char_f_buf[MAX_STRING_LENGTH];
+bool send_paged_text(P_char ch, const std::string &text, int log)
+{
+	if (!ch || !ch->desc || executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON) ||
+	    strlen(command_output) != output_length ||
+	    text.size() >= MAX_COMMAND_OUTPUT - output_length)
+		return false;
+	const size_t before = output_length;
+	// Preserve authored text so the capacity check describes the bytes accepted.
+	send_to_char(text.c_str(), ch, log, OutputContext{});
+	return output_length == before + text.size();
+}
+
 void send_to_char_f(P_char ch, const char *fmt, ...)
 {
 	va_list args;

@@ -809,6 +809,7 @@ void parse_name(P_desc, char *);
 void perform_complex(P_char, P_char, P_obj, P_obj, char *, int, int);
 void perform_to_all(const char *, P_char);
 void send_to_all(const char *);
+bool send_paged_text(P_char ch, const std::string &text, int log);
 void send_to_char_f(P_char ch, const char *fmt, ...);
 void send_to_char_f(P_char ch, const OutputContext &context, const char *fmt, ...);
 void send_to_char(const char *, P_char);

@@ -213,7 +213,7 @@ int main()
 	assert(result.metrics.byte_count > 0 &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES);
 	assert(result.metrics.transaction_usec <= PLAYER_LOAD_TIMEOUT_USEC);
-	assert(result.snapshot.status_strings.size() == 7);
+	assert(result.snapshot.status_strings.size() == 8);
 	assert(result.snapshot.status_integers.size() == 64);
 	assert(strcasecmp(result.account_name.c_str(), required_env("GAME_ACCOUNT_NAME")) == 0);
 

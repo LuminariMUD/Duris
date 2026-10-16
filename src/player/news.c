@@ -1,5 +1,10 @@
 #include "player/news.h"
 #include "flatfile/flatfile_help_catalog.h"
+#include "core/prototypes.h"
+#include "core/files.h"
+#include "core/utils.h"
+#include "player/player_save_pipeline.h"
+#include "world/db.h"
 
 #include <new>
 #include <openssl/sha.h>
@@ -8,6 +13,14 @@
 namespace
 {
 news_content published;
+
+P_char news_owner(P_char recipient)
+{
+	if (!recipient)
+		return nullptr;
+	P_char owner = GET_PLYR(recipient);
+	return owner && IS_PC(owner) && owner->only.pc ? owner : nullptr;
+}
 }
 
 const news_content &current_news()
@@ -57,5 +70,32 @@ bool load_news_file(const std::string &root, std::string *error)
 		return true;
 	if (error)
 		*error = "could not publish news";
+	return false;
+}
+
+bool has_unread_news(P_char recipient)
+{
+	P_char owner = news_owner(recipient);
+	return owner && !published.fingerprint.empty() &&
+	       published.fingerprint != owner->only.pc->last_read_news_hash;
+}
+
+bool acknowledge_news(P_char recipient, const std::string &fingerprint)
+{
+	P_char owner = news_owner(recipient);
+	if (!owner || GET_PID(owner) <= 0 || fingerprint.size() != 64)
+		return false;
+	if (fingerprint == owner->only.pc->last_read_news_hash)
+		return true;
+	char before[65];
+	memcpy(before, owner->only.pc->last_read_news_hash, sizeof(before));
+	memcpy(owner->only.pc->last_read_news_hash, fingerprint.c_str(), fingerprint.size() + 1);
+	const int room = owner->in_room == NOWHERE ? NOWHERE : world[owner->in_room].number;
+	const auto result =
+		player_save_pipeline_request(owner, PLAYER_COMPONENT_STATUS, RENT_CRASH, room);
+	if (result == player_save_pipeline_result::queued ||
+	    result == player_save_pipeline_result::coalesced)
+		return true;
+	memcpy(owner->only.pc->last_read_news_hash, before, sizeof(before));
 	return false;
 }

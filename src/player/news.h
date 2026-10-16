@@ -14,4 +14,8 @@ const news_content &current_news();
 bool publish_news(const std::string &text);
 bool load_news_file(const std::string &root, std::string *error);
 
+struct char_data;
+bool has_unread_news(char_data *recipient);
+bool acknowledge_news(char_data *recipient, const std::string &fingerprint);
+
 #endif

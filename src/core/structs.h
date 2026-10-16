@@ -1241,6 +1241,7 @@ struct char_shapechange_data
 
 struct pc_only_data
 { /* values only used by PCs        */
+	char last_read_news_hash[65]; // empty or SHA-256 hex; saved with character status
 	OutputPreferenceState output_preferences;
 	player_held_pet_state *held_pets; // owned snapshots; never active followers
 	uint64_t unloaded_components; // checkpoint components its load did not read; not saved

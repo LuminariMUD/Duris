@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"61fa4fae2d478bf6009162b091ba06a1b82c22e3ab49e0e8b457ee8f70d47bf6";
+	"403c2a9941ce5746491919b2cc8cd91bed55b959adc681a66f0fceef04b90d23";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"2b0691fa08574d7fe66d1186d41819b491cb4a95191fbb4d762aefa55938321e";
+	"995f0c9f1a726dc25e3ce1104627ebff02e0414e7d2e48595f94de7ce3b0e8e2";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -99,14 +99,14 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0041 widens legacy pkill_info.log columns for full public combat logs.
  * Migration 0042 widens all ten player base stats to signed shorts.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0042_player_base_stats";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 42;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0043_news_acknowledgement";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 43;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"a5698a97f953e175fee3030fd7408fff5a7cdb53d15d6bd8bfb5136f203ec78f";
+	"fb6243dd098b4f017fbda8d9aeb422f606a3aa7c5a96969c2ed4d369a154ef60";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"5210ecad75bcd7948718ece18d6033cd34770c5091c6a7a24551f95d338f0533";
+	"2cca57fdb73c604aecf44d3e75295510eddbbdadbf4b2da50ca74e2328faba6a";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"88c5ac18de39bb8af98c54c355e43f14e14bad602c8e9e592fdbfbe14827eeb1";
+	"eee4465185fd3952472dda8b40458a569b7906078ad05be21d96b957779ba2f5";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

@@ -1,12 +1,13 @@
 # Unread news in player prompts
 
-Status: implementation in progress. No deployment or merge is authorized by this
-work; completed chunks will be published for review.
+Status: implementation and local acceptance are complete. PR #127 is open; the
+dependent feature PR is being published. No merge or deployment was performed.
 
 Inspected 2026-10-16 against Duris master
 `277df52d82e5cfccc5689013c3310141a02aea43`, after fetching origin and verifying that
 the workspace HEAD matched the remote master. Planning branch:
-`branch/news-publication` (first implementation chunk).
+`branch/news-publication` (first chunk) and `branch/unread-news-prompt` (dependent
+feature chunk).
 
 Reference: Luminari-Source at
 `56fca2e452ce0c4186f827812ea8334d6546fb4e`. Its
@@ -237,22 +238,22 @@ marker through their existing output routes, without new protocol messages.
   and staff reload in `world/db.c`, `world/db.h`, `sql/sql.c`, and `cmd/actcomm.c`.
   Register the source in [src/Makefile](../../src/Makefile), whose server object
   list is explicit, for both maintained backend builds.
-- [ ] Add the PC field, appended snapshot string ID, capture/codec upgrade,
+- [x] Add the PC field, appended snapshot string ID, capture/codec upgrade,
   SQL mappings, and materialization in the existing files cited above. Update
   old-version fixtures and strict field-count fixtures together.
-- [ ] Add the immutable migration/verifier and synchronized runtime contracts;
+- [x] Add the immutable migration/verifier and synchronized runtime contracts;
   measure schemas on disposable databases before compiling the final binary.
-- [ ] Wire `do_news`, the minimum command-output capacity check in `net/comm.c`
+- [x] Wire `do_news`, the minimum command-output capacity check in `net/comm.c`
   and its header if needed, and both relevant prompt branches. Queue the status
   save only on a newly acknowledged version.
-- [ ] Extend focused production-linked tests and run the journeys below. Update
+- [x] Extend focused production-linked tests and run the journeys below. Update
   the existing news help entry where it is maintained and the relevant
   persistence/prompt documentation; do not announce implementation before it lands.
 
 ## Proof required before implementation is complete
 
-All items below are future implementation gates, not tests performed by writing
-this plan. Reuse existing test runners and production functions; source-string
+These are the implementation acceptance gates; completed results and exact
+journey commands are recorded in the handoff below. Reuse existing test runners and production functions; source-string
 assertions alone do not prove behavior.
 
 1. **Publication and command:** extend
@@ -359,9 +360,9 @@ Those changes concern epic-task refresh and do not alter the traced news paths.
 The review explicitly covered cache/text divergence, command-output rejection,
 save-admission failure, raw PC allocation, strict snapshot counts and legacy
 upgrades, migration-head drift, prompt suppression, and morph/switched ownership.
-Implementation checkboxes remain open. Documentation validation checks link
-targets, referenced existing commands, whitespace, and the final scoped diff;
-runtime, database, and gameplay acceptance remain unexecuted until implementation.
+At the planning checkpoint, only documentation links, commands, and whitespace
+were checked. Runtime acceptance was performed during implementation, as recorded
+below; planning checks were never treated as feature proof.
 
 ### Implementation handoff - 2026-10-16
 
@@ -381,6 +382,77 @@ runtime, database, and gameplay acceptance remain unexecuted until implementatio
   ignored `bin/analysis/news/build-publication.log`; focused test output was checked
   directly. `test_news_publication.py` compiles the real SQL reload functions under
   each backend and calls their completion callbacks; it does not contact a database.
-- Remaining: publish chunk 1, then every
-  acknowledgement/migration/prompt and full player-journey gate above. The unread
-  marker itself is not implemented yet.
+- Chunk 1 is published for review as [PR #127](https://github.com/LuminariMUD/Duris/pull/127),
+  head `1041fd390`, base master. Local and remote heads matched with `0 0` parity
+  and a clean tree before starting the second branch.
+- Chunk 2 is complete locally: snapshot schema 9 with an appended status string,
+  migration `0043_news_acknowledgement`, saved acknowledgement through the existing
+  writer, and prompt/command integration. `send_paged_text` verifies actual
+  acceptance of the entire preserved message and rejects an existing overflow
+  warning, rather than trusting a void send or only a capacity estimate.
+- Final ablation retained the shared news module and normal status vector/writer;
+  no extra table, account state, polling service, notification framework, or save
+  queue was added. The prototype capacity accessor was replaced by a single
+  acceptance-returning send used by the command.
+- Validation found and repaired two prompt-tail defects: a long NPC name followed
+  by unchecked condition text could overflow the buffer (reproduced as a fortified
+  buffer-overflow abort), and two-line mode without resource fields could send an
+  uninitialized second buffer. Bounded tail appends now reserve the marker and
+  closing frame; only a constructed second line is sent. Sanitized tests cover
+  the long name, closing MSP tag, and the resource-free two-line modes.
+- The existing schema-measurement helper had stale hard-coded table counts (186
+  bootstrap / 203 runtime). It now takes the bootstrap count from the checked-in
+  CREATE TABLE declarations and the runtime count from the checked-in manifest.
+  Both complete schema measurements and drift matrices pass; no schema check was
+  disabled. The actual current counts are 183 bootstrap and 198 runtime tables.
+- Native and flat-file builds pass. The real SQL writer/reader and flat-file
+  repository tests prove independent character defaults, saved hashes, reconnect,
+  failure rollback, and unrelated component preservation. Capture tests execute
+  production capture; the output harness executes production `apply_string` for
+  valid/empty/malformed hashes. Codec tests cover versions 1/3/5/7/8, partial saves,
+  version-9 round trips, duplicate IDs, and old-version ID smuggling.
+- The production-linked output/pager harness passes under ASan/UBSan. It covers
+  successful opening, repeat reads without another save, paging refusal, empty
+  content, output boundary/refusal, save admission errors, a refresh while the
+  pager is open, normal/two-line/smart/off prompts, editor/confirmation, and NPC,
+  switched and morphed ownership. The transport harness passes unread markers
+  through real ANSI/Telnet/WebSocket output and proves old-smart suppression,
+  transaction deferral, death suppression, and no duplicate prompts.
+- The two-engine immutable migration runner tests pass on both fresh databases
+  and populated head-0042 databases. They prove failure before recording an
+  incompatible existing column, retained player rows, empty defaults, a harmless
+  second application, and rejection of length/type/nullability/default drift.
+  Both full runtime-compatibility scripts also pass their schema/drift matrices.
+- Both full-world journeys pass on disposable authorities and test accounts:
+  unread -> read, independent characters, unchanged reload, changed news,
+  logout/reconnect, copyover, and clean restart. The MariaDB journey additionally
+  proves automatic one-minute SQL refresh. Each reads back the stored hash and
+  compares it to the displayed version's SHA-256. The fixture uses the existing
+  shortened camp timer; an initial default-camp timeout was a fixture delay, not
+  a persistence failure. No checkout account, running server, or production data
+  was used. Final journeys were repeated after the prompt-tail repair.
+
+Reproduction commands for the completed additional gates (from repository root):
+
+```sh
+SANITIZE=1 python3 tests/async/test_word_output_integration.py
+python3 tests/async/test_player_load_pipeline.py
+python3 tests/async/test_news_publication.py
+python3 tests/async/run_news_migration.py --image mysql:8.0
+python3 tests/async/run_news_migration.py --image mariadb:10.11
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/analysis/news/flatfile-build"
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_news_prompt_journey.py --backend mariadb --server bin/server/dms_new
+python3 tests/async/run_news_prompt_journey.py --backend flatfile --server bin/analysis/news/flatfile-build/server/dms_new
+```
+
+Every existing entry point listed earlier was also run successfully. Local build,
+schema, migration, and journey outputs are retained under ignored
+`bin/analysis/news/`; the source tests and commands above are the portable proof
+recipe. `journey-mariadb.json` and `journey-flatfile.json` record the tested binary
+hashes and passed outcomes. No CI result was used as a completion gate.
+
+Remaining work is review/publication closeout only. The feature requires migration
+0043 before a database-backed deployment, and new schema-9 snapshots require the
+new decoder; deployment/rollback decisions belong to the later authorized rollout.
+No release tag is appropriate for an unmerged review stack.
