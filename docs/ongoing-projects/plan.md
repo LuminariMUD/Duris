@@ -14,8 +14,9 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
-Current source checkpoint: `branch/issue-67-flat-population-sources`, based on
-PR #141, implemented and being published for review. Outcome: stage flat-file
+Current source checkpoint: [PR #142](https://github.com/LuminariMUD/Duris/pull/142),
+`branch/issue-67-flat-population-sources`, based on PR #141 and ready for review.
+Outcome: stage flat-file
 payload projections, including offline player
 and pet files, private/account locker chests, corpses, legacy saved trees, current
 rooms and shop stock, retained auction/collector and delivery payloads, and
@@ -619,6 +620,7 @@ for these unmerged review chunks.
 
 ### Flat payload evidence — AR-01/AR-02 prerequisite, 2026-10-17
 
+[PR #142](https://github.com/LuminariMUD/Duris/pull/142),
 `branch/issue-67-flat-population-sources` → `branch/issue-67-population-evidence`
 adds `artifact_population_read_flat_payloads()` for boot/offline use while no
 writers mutate the selected store. It stages all offline player/pet snapshots,
@@ -1140,10 +1142,10 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140 → #141.
+Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140 → #141 → #142.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
-from the tip of `branch/issue-67-population-evidence` in
+from the tip of `branch/issue-67-flat-population-sources` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
 creating a dependent branch for the next storage/admission chunk. Fresh master
 remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.
