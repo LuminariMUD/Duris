@@ -82,7 +82,7 @@ enablement, or unrelated cleanup is planned.
 - [x] Recover historical curated roster (107 enabled zones); correction preparation
   and current-world validation completed; production application remains pending.
 - [x] Verify cold boot and scheduled refresh, including last-good retention.
-- [ ] Publish focused PRs as chunks pass local checks.
+- [x] Publish focused PRs as chunks pass local checks: #119 → #122 → #125.
 - [ ] Separately authorized production correction/deployment and already-pending
   recovery without another award; save/rent/relogin/restart acceptance.
 - [ ] Publish production acceptance before issue closure.
@@ -94,7 +94,16 @@ PR #119: <https://github.com/LuminariMUD/Duris/pull/119>, open/non-draft, head
 parity verified. PR #122: <https://github.com/LuminariMUD/Duris/pull/122>,
 open/non-draft, head `bb1c4ced7bbeaeabfd1ce354d11365aaf8ca6925`, branch
 `branch/issue-71-task-roster`, stacked on #119; local/remote parity verified.
-Chunk 3 is on `branch/issue-71-catalog-recovery`, stacked on #122.
+PR #125: <https://github.com/LuminariMUD/Duris/pull/125>, open/non-draft,
+implementation commit `f0d607b39`, branch `branch/issue-71-catalog-recovery`,
+stacked on #122. The final follow-up on this branch updates this handoff only.
+Review in order #119 → #122 → #125; refresh descendant bases as parents land.
+No merge, release tag, production mutation or restart was performed.
+
+All implementation and repair-preparation chunks are ready for review. The open
+checkboxes are separately authorized production operations and acceptance, not
+uncommitted code or a missing local test. Keep #71 open until the affected live
+character and production task variety have been verified.
 
 Chunk 1 initializes empty gameplay history in the shared `init_char()` used by
 telnet, WebSocket and staff creation. Existing logins still publish durable
