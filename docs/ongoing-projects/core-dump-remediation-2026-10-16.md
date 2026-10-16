@@ -131,8 +131,9 @@ observed.
 
 ## Implementation progress
 
-Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`, including master
-`98acafdf3`. The original dumps and matching `bin/server/dms` are preserved.
+Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`. Both repair branches
+now include the fetched `origin/master` tip `6d4d71e56`; the original dumps and
+matching `bin/server/dms` are preserved.
 
 **Outcome:** stop pickup at invalidating trap effects and retain correct ownership,
 reporting, cleanup and persistence across death/reconnect/restart. **Non-goals:**
@@ -210,10 +211,12 @@ sandbox, where LeakSanitizer can run: `test_corpse_haul.py`,
 `test_bulk_get_publication.py`, `test_money_carry_count.py`, `test_take_coins.py`,
 `test_remove_crumbleloot.py`, `test_actobj_get_limits.py`, and
 `test_account_bound_reward_access.py`. `python3 -m py_compile` and
-`./scripts/format.sh --check` also pass. Both builds pass: the MariaDB executable has
-build ID `9069800cf320d2665c8ad9a1693e0a9129a7a597`, and the flatfile executable has
-build ID `8154c3a56c714e2d38f52b5a7b4daa0767a3f674`. Their logs are
-`build-finalizers.log` and `build-flatfile-final.log` in the ignored analysis directory.
+`./scripts/format.sh --check` also pass. After merging current master, both builds pass:
+the MariaDB executable has build ID `bf29ffa939122bc0bfad01f6df7db733c4839990`,
+and the flatfile executable has build ID
+`1ff39fbd8635558ce62715ca8a85e76e06d95c5f`. Their logs are
+`build-latest-master.log` and `build-flatfile-latest-master.log` in the ignored analysis
+directory.
 The pre-existing MariaDB three-player corpse journey and the count-cap journey on both
 MariaDB and flatfile also pass against these builds. Those journeys establish normal
 loot behavior; they do not replace the pending lethal real-server journey.
