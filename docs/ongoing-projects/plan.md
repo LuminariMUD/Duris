@@ -12,7 +12,8 @@ in PR #137 on `branch/issue-67-identity-snapshots`; complete population
 classification and admission remain open.
 No operational repair started.
 
-Current prerequisite: `branch/issue-67-writer-backpressure`, based on PR #137.
+Current prerequisite: [PR #138](https://github.com/LuminariMUD/Duris/pull/138),
+`branch/issue-67-writer-backpressure`, based on PR #137 and ready for review.
 The flat artifact memory-cache implementation remains isolated on unpublished
 `branch/issue-67-flat-artifact-memory` in `duris-issue67-plan`; do not discard it.
 **Outcome (implemented):** bound the existing persistence writer during a storage outage before
@@ -35,7 +36,7 @@ ordering/refusal/fence controls), `make -C src -j2`, `scripts/format.sh`,
 under ignored `bin/analysis/issue67/writer-backpressure-*` in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
 This qualifies admission behavior, not production outage throughput. Next:
-publish this prerequisite, stack the preserved flat-cache work on it, then
+stack the preserved flat-cache work on this published prerequisite, then
 continue population/classification and universal admission.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
