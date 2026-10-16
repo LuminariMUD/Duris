@@ -192,12 +192,14 @@ Private rollback copies of the former notifier/unit remain in staging's
 `~/.cache/duris-issue106/`. Restoring that old notifier alone would restore the
 known delivery failure; do not do so without a separate mail-path correction.
 
-PR #126 review exposed four additional gaps, all repaired: port 465 now uses
+PR #126 review exposed five additional gaps, all repaired: port 465 now uses
 verified implicit TLS; optional SMTP credentials are accepted only as a pair;
 journal failure/timeout produces an explicit placeholder instead of suppressing
 the notification; the account-recovery comment contract matches the shared
 settings wording. Unauthenticated loopback plaintext also retains the documented
 shared-mail exception. Remote plaintext and partial credentials remain rejected.
+The production deployment runbook now describes the verified direct-SMTP notifier
+and removes its obsolete recommendation to add a Plesk account exception.
 The expanded six-test notifier suite fails against the original implementation
 (one failure, six subtest errors) and passes after these repairs. The existing
 account-recovery source contract also fails before and passes after. The reviewed
