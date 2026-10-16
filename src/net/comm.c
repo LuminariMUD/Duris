@@ -185,7 +185,6 @@ extern void checkpointing(void);
 long sentbytes = 0;
 long receivedbytes = 0;
 bool game_booted = FALSE;
-static std::vector<int32_t> maintenance_catalog_candidate;
 
 static bool hydrate_flatfile_system_item_owner(void)
 {
@@ -303,38 +302,7 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 					ctf_delete_flag(criteria);
 				boon_notify_snapshot(id, racewar, pid, reason);
 			}
-		if (result.job_id != maintenance_job_id::epic_task_catalog)
-			continue;
-		if (result.outcome != maintenance_outcome::complete &&
-		    result.outcome != maintenance_outcome::more)
-		{
-			maintenance_catalog_candidate.clear();
-			continue;
-		}
-		bool valid = maintenance_catalog_candidate.size() + result.value_count <=
-			     EPIC_TASK_CATALOG_MAX;
-		for (size_t value = 0; valid && value < result.value_count; ++value)
-			if (result.values[value] <= 0 || result.values[value] > INT32_MAX)
-				valid = false;
-			else
-				maintenance_catalog_candidate.push_back(
-					static_cast<int32_t>(result.values[value]));
-		if (!valid)
-		{
-			maintenance_catalog_candidate.clear();
-			continue;
-		}
-		if (result.outcome == maintenance_outcome::complete)
-		{
-			if (!epic_task_catalog_publish(maintenance_catalog_candidate.data(),
-						       maintenance_catalog_candidate.size()))
-				logit(LOG_STATUS,
-				      "Epic task catalog refresh rejected: candidate_zones=%zu "
-				      "retained_zones=%zu; check zones.task_zone.",
-				      maintenance_catalog_candidate.size(),
-				      epic_task_catalog_size());
-			maintenance_catalog_candidate.clear();
-		}
+		epic_task_catalog_complete(result);
 	}
 }
 
@@ -918,9 +886,7 @@ int run_the_game(int port, int sslport)
 	{
 		fprintf(stderr, "-- Updating zone database.\n");
 		update_zone_db();
-		if (!epic_task_catalog_refresh())
-			logit(LOG_STATUS,
-			      "Epic task catalog unavailable or invalid; new zone tasks cannot be assigned. Check zones.task_zone.");
+		epic_task_catalog_refresh();
 	}
 	else
 	{
@@ -4680,6 +4646,18 @@ static void process_line(P_desc t, char *in)
  */
 
 static char send_to_char_f_buf[MAX_STRING_LENGTH];
+bool send_paged_text(P_char ch, const std::string &text, int log)
+{
+	if (!ch || !ch->desc || executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON) ||
+	    strlen(command_output) != output_length ||
+	    text.size() >= MAX_COMMAND_OUTPUT - output_length)
+		return false;
+	const size_t before = output_length;
+	// Preserve authored text so the capacity check describes the bytes accepted.
+	send_to_char(text.c_str(), ch, log, OutputContext{});
+	return output_length == before + text.size();
+}
+
 void send_to_char_f(P_char ch, const char *fmt, ...)
 {
 	va_list args;

@@ -122,9 +122,11 @@ the public health checks below.
   `duris-backup-backup.timer` takes one an hour and `duris-backup-health.timer` checks
   them every minute. Both units are in `~/.config/systemd/user`, adapted from
   `deploy/systemd/duris-backup-*` without the sandboxing options a user unit can't use.
-  The 2026-10-10 follow-up records an `OnFailure=` alert through
-  `duris-backup-alert@.service`, but Plesk blocks its mail. An off-host replica and
-  restore drill also remain unverified; see the [host follow-ups](#host-follow-ups).
+  Both route failures through `duris-backup-alert@.service`. Its maintained
+  `scripts/backup_alert.py` is installed as `~/.local/libexec/duris-backup-alert`
+  and reads the existing protected MAIL_* settings. Direct SMTP delivery and
+  recipient receipt were verified on 2026-10-16. Off-host replica and restore
+  qualification remain separate; see the [host follow-ups](#host-follow-ups).
 - The website's own hourly dump of the shared database: `~/durisweb-backups`
 - One-off copies (pre-change dumps, configuration): `~/backups/duris/<date>-*`
 - Host AppArmor allowance for the MUD database: `/etc/apparmor.d/local/mariadbd`
@@ -137,21 +139,32 @@ the public health checks below.
 
 These items preserve the 2026-10-10 14:20 UTC observations recorded in commit
 `023179af6` before the separate host follow-up note was retired.
-They were reconciled into this tracker on 2026-10-14 without a new host inspection.
-Their completion has not been verified here.
+They were reconciled on 2026-10-14; the alert status below was subsequently
+verified on 2026-10-16. Other historical follow-ups retain their stated limits.
 
 ### Backup alerts and restore qualification
 
-A failed backup or health run starts `duris-backup-alert@.service`. Its helper,
-`~/.local/libexec/duris-backup-alert`, mails the operator through
-`/usr/sbin/sendmail` at most once an hour per unit. The recorded delivery attempt
-was refused by Plesk's outgoing mail control for the service account.
+A failed backup or health run starts `duris-backup-alert@.service`. Its existing
+helper path now contains the maintained [backup notifier](../../scripts/backup_alert.py),
+with `--recipient` and `--env-file` supplied by the user-unit template. It reads
+MAIL_HOST/PORT/TLS/USERNAME/PASSWORD/FROM from `~/duris/.env`, uses the configured
+SMTP account and verified sender directly, and retains one successful submission
+per unit per hour. MAIL_ENABLED still controls game account recovery only.
 
-The owner must allow that account to send mail, then run the deliberate invalid-policy
-test described in [Backup operations](BACKUPS.md) and confirm receipt. A connected
-failure unit alone does not prove that an operator receives an alert.
+The historical sendmail path was blocked first by Plesk and then by the shared
+relay's unverified sender. The corrected notifier was verified through a harmless
+transient-unit OnFailure test on 2026-10-16: the recipient server accepted delivery,
+the owner confirmed receipt, and a repeated failure sent no second message. The
+test unit/stamp were cleaned up. The temporary Plesk exception was removed; this
+notifier does not require a service-account exception or changes to the shared
+relay. Do not reinstate that obsolete workaround when diagnosing future alerts.
+Use [Backup operations](BACKUPS.md) and the
+[issue #106 evidence](../ongoing-projects/plan-issue-106.md) for current checks.
+The later PR #126 authentication, checkout-path, and journal corrections have local
+regression coverage only; they were not installed or sent through the live relay
+as part of that follow-up review.
 
-At that check there was no off-host replica or restore drill; the owner had deferred
+At the historical check there was no off-host replica or restore drill; the owner had deferred
 the off-host copy. Providing an SSHFS mount for `replica_root` and a dedicated restore
 filesystem for `restore_root`, then setting `drill_seconds`, remains separate work.
 Follow [separate/off-host storage](BACKUPS.md#separateoff-host-storage) and the restore

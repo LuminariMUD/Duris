@@ -213,7 +213,7 @@ int main()
 	assert(result.metrics.byte_count > 0 &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES);
 	assert(result.metrics.transaction_usec <= PLAYER_LOAD_TIMEOUT_USEC);
-	assert(result.snapshot.status_strings.size() == 7);
+	assert(result.snapshot.status_strings.size() == 8);
 	assert(result.snapshot.status_integers.size() == 64);
 	assert(strcasecmp(result.account_name.c_str(), required_env("GAME_ACCOUNT_NAME")) == 0);
 
@@ -245,6 +245,10 @@ int main()
 	player_load_result name_result = player_load_repository_execute(connection, by_name);
 	assert(name_result.outcome == player_load_outcome::applied);
 	assert(name_result.pid == pid && name_result.request_id == by_name.request_id);
+	assert(name_result.domains.wallet == result.domains.wallet);
+	assert(name_result.domains.epics == result.domains.epics);
+	assert(name_result.domains.frags == result.domains.frags);
+	assert(name_result.domains.old_frags == result.domains.old_frags);
 
 	player_load_request wrong_account = request;
 	wrong_account.request_id = 79;

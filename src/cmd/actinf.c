@@ -23,6 +23,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "player/news.h"
 #include "cmd/information_cache.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -58,6 +59,7 @@ using namespace std;
 #include "player/player_save_pipeline.h"
 #include "player/player_load_pipeline.h"
 #include "persistence/maintenance_scheduler.h"
+#include "world/epic_task_catalog.h"
 #include "world/world_recovery_pipeline.h"
 #include "redis/redis_cache_store.h"
 #include "redis/redis_command_observability.h"
@@ -4252,6 +4254,21 @@ static void show_world_persistence(P_char ch)
 				   world_recovery.publish_operations.calls ? "ready" :
 									     "empty",
 				   0, 0, &world_recovery.publish_operations);
+
+	size_t pending_tasks = 0, pending_reads_unavailable = 0;
+	for (P_char player = character_list; player; player = player->next)
+		if (!IS_NPC(player) && affected_by_spell(player, TAG_EPIC_TASK_PENDING))
+		{
+			++pending_tasks;
+			if (player->only.pc->gameplay_reads.status != gameplay_read_status::ready)
+				++pending_reads_unavailable;
+		}
+	snprintf(line, sizeof(line),
+		 "epic_tasks catalog_ready=%d zones=%zu last_refresh=%s pending=%zu "
+		 "pending_reads_unavailable=%zu\n",
+		 epic_task_catalog_ready(), epic_task_catalog_size(),
+		 epic_task_catalog_last_refresh(), pending_tasks, pending_reads_unavailable);
+	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
 		 "maintenance state=%s queued=%llu inflight=%llu completions=%llu "
@@ -8766,13 +8783,33 @@ void do_cheaters(P_char ch, char * /*argument*/, int /*cmd*/)
 }
 void do_news(P_char ch, char * /*argument*/, int /*cmd*/)
 {
-	if (!IS_SET(ch->specials.act, PLR_PAGING_ON))
+	if (!ch || !ch->desc || !ch->desc->character)
+		return;
+	P_char recipient = ch->desc->character;
+	P_char owner = GET_PLYR(recipient);
+	if (!owner || !IS_PC(owner) || !owner->only.pc)
+		return;
+	if (!IS_SET(recipient->specials.act, PLR_PAGING_ON))
 	{
 		send_to_char("&+WNews file is to long, please tog page on, to read it\n", ch);
 		return;
 	}
-	send_to_char("&+WDuris News\n\n", ch);
-	send_to_char(news.c_str(), ch, LOG_NONE);
+	const auto &news = current_news();
+	if (news.text.empty())
+	{
+		send_to_char("News is currently unavailable.\r\n", recipient);
+		return;
+	}
+	if (!send_paged_text(recipient, "&+WDuris News\n\n" + news.text, LOG_NONE))
+	{
+		send_to_char("News could not fit in the command output; it remains unread.\r\n",
+			     recipient);
+		return;
+	}
+	if (!acknowledge_news(recipient, news.fingerprint))
+		send_to_char(
+			"Unable to save your news acknowledgement. Please try 'news' again.\r\n",
+			recipient);
 }
 
 void do_projects(P_char ch, char * /*argument*/, int /*cmd*/)

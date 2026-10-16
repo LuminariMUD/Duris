@@ -17,6 +17,7 @@
 
 #include "player/player_snapshot.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -74,6 +75,9 @@ struct player_save_apply_result
 	player_save_apply_outcome outcome;
 	player_revision_t durable_revision;
 	unsigned int error_code;
+	// Identifier only, never SQL or values. Empty when the backend cannot name a field.
+	std::array<char, 64> failed_field = {};
+	bool rolled_back = false;
 };
 
 struct player_save_completion
@@ -89,6 +93,8 @@ struct player_save_completion
 	uint64_t queued_at_usec;
 	uint64_t started_at_usec;
 	uint64_t completed_at_usec;
+	std::array<char, 64> failed_field = {};
+	bool rolled_back = false;
 };
 
 enum class player_save_submit_result : uint8_t

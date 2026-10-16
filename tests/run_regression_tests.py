@@ -60,6 +60,8 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
         "test_discord_game_journey.py",
+        "test_epic_task_catalog_mysql.py",
+        "test_epic_task_recovery_journey.py",
         "test_mysql_playtime_journey.py",
         "test_playtime_mysql_repository.py",
     }

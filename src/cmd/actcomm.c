@@ -927,7 +927,6 @@ void do_page(P_char ch, char *argument, int /*cmd*/)
 	sql_mud_info_reload(ch,
 			    [](P_char live)
 			    {
-				    news = get_mud_info("news");
 				    motd = get_mud_info("motd");
 				    wizmotd = get_mud_info("wizmotd");
 				    send_to_char("&+WDone.&N\r\n", live);

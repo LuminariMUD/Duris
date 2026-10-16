@@ -49,8 +49,20 @@ runs on the first pulse. After the writer start, a job the writer refuses is log
 
 Flight discoveries (`learned_flight_stops`) and EXP share `PLAYER_COMPONENT_STATUS`.
 A checkpoint saves both together, and unrelated component saves preserve them.
-Snapshot schema 8 retains field IDs and reads versions 1, 3, 5 and 7 with an empty
-discovery mask; no transport recovery or reward journal is required.
+Snapshot schema 9 retains field IDs and reads versions 1, 3, 5, 7 and 8. Versions
+before 8 receive an empty discovery mask; no transport recovery or reward journal
+is required. The appended `last_read_news_hash` status string defaults to empty
+for all older versions and records the SHA-256 identity acknowledged by `news`.
+It shares the status checkpoint, SQL player row, and flat-file snapshot. Other
+component saves preserve it. Malformed hash text becomes unread during load;
+structural snapshot corruption still refuses the load. An old binary cannot
+decode newly written schema-9 snapshots.
+
+Opening news queues the acknowledgement through the normal save pipeline.
+Admission failure restores the previous hash and leaves `(news)` visible;
+accepted work follows the normal worker retry and terminal-save rules. A crash
+before that save lands can show the reminder again. No per-prompt save or direct
+SQL update is performed.
 
 A player save writes the wallet, epic points, frags and old frags with the rest of the
 character; a bank change is its own `bank` job (see

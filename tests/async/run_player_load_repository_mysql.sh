@@ -7,7 +7,11 @@ if [[ -z "${PLAYER_LOAD_ENV_FILE:-}" ]]; then
 	# it shadows the tables with connection-local fixtures.
 	source "$ROOT/tests/async/disposable_schema.sh"
 	"${disposable_mysql[@]}" "$DB_NAME" -e \
-		"INSERT INTO player_data SET pid=1, name='Loadtest', account_name='loadacct'"
+		"INSERT INTO player_data SET pid=1, name='Loadtest', account_name='loadacct',
+		 spells_memmed_extra=31, copper=101, silver=202, gold=303, platinum=404,
+		 exp=12345, epics=505, time_unspecced=FROM_UNIXTIME(1000000), frags=606,
+		 oldfrags=707, wallet_revision=11, epic_revision=12, frag_revision=13,
+		 last_read_news_hash=REPEAT('a',64)"
 	export GAME_ACCOUNT_NAME=loadacct GAME_ACCOUNT_CHARACTER_NAME=Loadtest
 else
 	# A configured clone, such as the materialization repair's (LEGACY_DUMP_IMPORT.md).

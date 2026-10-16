@@ -202,6 +202,8 @@ void writer_main()
 			.queued_at_usec = job.queued_at_usec,
 			.started_at_usec = started,
 			.completed_at_usec = completed,
+			.failed_field = applied.failed_field,
+			.rolled_back = applied.rolled_back,
 		};
 		update_max(health.max_capture_to_apply_usec, started - job.queued_at_usec);
 		update_max(health.max_apply_usec, completed - started);
@@ -428,7 +430,16 @@ bool player_save_worker_pid_pending(int pid)
 {
 	if (pid <= 0)
 		return false;
-	return persistence_writer_pending(persistence_job_kind::player, static_cast<uint64_t>(pid));
+	std::lock_guard<std::mutex> lock(worker_mutex);
+	if (inflight && inflight->kind == persistence_job_kind::player &&
+	    inflight->snapshot.pid == pid)
+		return true;
+	if (queued_by_owner.count({ persistence_job_kind::player, static_cast<uint64_t>(pid) }))
+		return true;
+	for (const auto &completion : results)
+		if (completion.kind == persistence_job_kind::player && completion.pid == pid)
+			return true;
+	return false;
 }
 
 bool persistence_writer_pending(persistence_job_kind kind, uint64_t owner)

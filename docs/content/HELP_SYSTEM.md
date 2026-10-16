@@ -99,10 +99,11 @@ lib/information/*          help/                      database
   `PURGE (Spell)` stores page title `PURGE`; quoted titles keep everything
   inside the quotes - `"ECHO (IMMORTAL)"` stores the full string. Use
   quoting whenever you need parentheses in a page title.
-- motd/news/wizmotd are cached into memory at boot (`src/world/db.c`) and re-read
-  only by the immortal `page` command (level 60+, `src/cmd/actcomm.c`). After
-  importing new copies, run `page` or restart; otherwise players keep
-  seeing the old text. Imported help pages reach players at the next automatic
+- motd/wizmotd are cached at boot and re-read by the immortal `page` command
+  (level 60+, `src/cmd/actcomm.c`). Database news also publishes on the existing
+  one-minute mud-info refresh; flat-file news uses boot and `page`. Its content
+  fingerprint drives the per-character `(news)` prompt marker, cleared by opening
+  the news with paging enabled. Imported help pages reach players at the next automatic
   refresh, or at once with `page help`; credits, FAQ and wizlist with `page info`
   ([information-cache.md](../operations/information-cache.md)).
 - Content is hex-encoded into `DELETE`+`INSERT` SQL so arbitrary text survives;

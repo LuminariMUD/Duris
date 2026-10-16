@@ -72,6 +72,11 @@ int main()
 	const int second_pid = static_cast<int>(mysql_insert_id(connection));
 	auto first = load(connection, first_pid), second = load(connection, second_pid);
 	assert(first.output_preferences.empty() && second.output_preferences.empty());
+	assert(first.status_strings.back().field ==
+	       player_status_string_field::last_read_news_hash);
+	assert(first.status_strings.back().value.empty() &&
+	       second.status_strings.back().value.empty());
+	first.status_strings.back().value = std::string(64, 'a');
 	first.components = second.components = PLAYER_COMPONENT_STATUS;
 	++first.revision;
 	++second.revision;
@@ -84,6 +89,8 @@ int main()
 	connection = connect();
 	assert(load(connection, first_pid).output_preferences == first.output_preferences);
 	assert(load(connection, second_pid).output_preferences == second.output_preferences);
+	assert(load(connection, first_pid).status_strings.back().value == std::string(64, 'a'));
+	assert(load(connection, second_pid).status_strings.back().value.empty());
 	// Writing the same save again is harmless: there is no revision fence.
 	assert(player_snapshot_repository_apply(connection, first).outcome ==
 	       player_save_apply_outcome::applied);
@@ -93,11 +100,21 @@ int main()
 	++failed.revision;
 	failed.components |= PLAYER_COMPONENT_TROPHIES;
 	failed.output_preferences.clear();
+	failed.status_strings.back().value = std::string(64, 'b');
 	failed.trophies = { { 12, 50 }, { 12, 60 } };
 	assert(player_snapshot_repository_apply(connection, failed).outcome ==
 	       player_save_apply_outcome::terminal_failure);
 	assert(load(connection, first_pid).output_preferences == first.output_preferences);
 	assert(load(connection, first_pid).revision == first.revision);
+	assert(load(connection, first_pid).status_strings.back().value == std::string(64, 'a'));
+	// A save of a different component cannot clear an acknowledged version.
+	auto unrelated = first;
+	++unrelated.revision;
+	unrelated.components = PLAYER_COMPONENT_LANGUAGES;
+	unrelated.status_strings.clear();
+	assert(player_snapshot_repository_apply(connection, unrelated).outcome ==
+	       player_save_apply_outcome::applied);
+	assert(load(connection, first_pid).status_strings.back().value == std::string(64, 'a'));
 
 	// Reset one retains other choices and motion; reset all restores empty defaults.
 	first.output_preferences = "v1;m=1;1=3";

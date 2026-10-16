@@ -17,7 +17,7 @@ for filename, signatures in [
     ("utility.c", ["bool is_ansi_char(", "void CAP(char *str)", "int BOUNDED(int a, int b, int c)"]),
     ("comm.c", ["int get_from_q(", "void write_to_q(", "void escape_act_dollars(", "void delete_doubledollar(",
                 "static void finalize_styled_command(", "void process_with_paging(",
-                "void send_to_char_f(P_char ch, const char *fmt, ...)",
+                "bool send_paged_text(", "void send_to_char_f(P_char ch, const char *fmt, ...)",
                 "void send_to_char_f(P_char ch, const OutputContext &context, const char *fmt, ...)",
                 "void send_to_char(const char *messg, P_char ch)",
                 "void send_to_char(const char *messg, P_char ch, const OutputContext &context)",
@@ -28,14 +28,16 @@ for filename, signatures in [
                 "void format_to_snoopers(char *from_string, char *to_string)\n{"]),
     ("modify.c", ["char *next_page(", "void free_paging_data(", "void show_string(", "void page_string_real("]),
     ("actcomm.c", ["void do_tell(", "void do_reply(", "int say(", "void do_gcc("]),
-    ("actinf.c", ["char *show_obj_to_char(P_obj object, P_char ch, int mode, bool print)",
+    ("actinf.c", ["void do_news(", "char *show_obj_to_char(P_obj object, P_char ch, int mode, bool print)",
                   "char *show_obj_to_char(P_obj object, P_char ch, int mode, bool print,",
                   "void list_obj_to_char(P_obj list, P_char ch, int mode, bool show)",
                   "void list_obj_to_char(P_obj list, P_char ch, int mode, bool show,",
                   "void show_exits_to_char(", "void display_room_auras("]),
     ("weather.c", ["void send_to_weather_sector("]),
     ("fight.c", ["void dam_message("]),
+    ("specs.object.c", ["int totem_of_mastery(", "int circlet_of_light("]),
     ("prompt.c", ["void make_prompt("]),
+    ("player_load_materialize.c", ["bool apply_string("]),
     ("json_utils.c", ["char *json_build_comm_channel("]),
     ("gmcp.c", ["void gmcp_broadcast_channel("])
 ]:
@@ -58,6 +60,7 @@ with tempfile.TemporaryDirectory(prefix="word-output-", dir=BUILD) as directory:
         str(ROOT / "src/net/chat_presentation.c"),
         str(ROOT / "src/net/output_style.c"), str(ROOT / "src/core/safe_format.c"),
         str(ROOT / "src/net/output_profiles.c"), str(ROOT / "src/player/output_preferences.c"),
-        str(ROOT / "src/player/output_message.c"), "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
+        str(ROOT / "src/player/output_message.c"), str(ROOT / "src/player/news.c"),
+        str(ROOT / "src/flatfile/flatfile_help_catalog.c"), "-lcrypto", "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, timeout=120)
     subprocess.run([str(binary)], check=True, timeout=120)

@@ -52,6 +52,7 @@ struct player_revision_snapshot
 	player_revision_t written_revision;
 	player_component_mask_t unacknowledged_components;
 	bool overflowed;
+	bool session_ended = false;
 };
 
 bool player_revision_hydrate(int pid, player_revision_t durable_revision);
@@ -64,6 +65,7 @@ bool player_revision_acknowledge_durable(int pid, player_revision_t revision,
 					 player_component_mask_t components);
 bool player_revision_record_written(int pid, player_revision_t revision);
 bool player_revision_snapshot_copy(int pid, struct player_revision_snapshot *snapshot_out);
+void player_revision_end_session(int pid);
 void player_revision_forget(int pid);
 void player_revision_reset_for_tests(void);
 size_t player_revision_state_count(void);

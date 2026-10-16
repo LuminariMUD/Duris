@@ -236,8 +236,9 @@ const char *status_column(player_status_field field)
 
 const char *status_string_column(player_status_string_field field)
 {
-	static constexpr std::array<const char *, 7> columns = {
-		"name", "short_descr", "long_descr", "description", "title", "poof_in", "poof_out",
+	static constexpr std::array<const char *, 8> columns = {
+		"name",	 "short_descr", "long_descr", "description",
+		"title", "poof_in",	"poof_out",   "last_read_news_hash",
 	};
 	const size_t index = static_cast<size_t>(field);
 	return index < columns.size() ? columns[index] : nullptr;
@@ -860,9 +861,24 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 						    " WHERE pid=" + std::to_string(snapshot.pid));
 	if (!query.ok)
 	{
+		player_save_apply_result result = failure(query.error_code);
+		// Numeric/truncation errors name the column. Copy only a bounded SQL identifier
+		// before ROLLBACK replaces mysql_error(); never publish SQL or player values.
+		const char *field = mysql_errno(connection) == query.error_code ?
+					    strstr(mysql_error(connection), " for column '") :
+					    nullptr;
+		if (field)
+		{
+			field += strlen(" for column '");
+			const size_t length = strspn(
+				field,
+				"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
+			if (length && length < result.failed_field.size() && field[length] == '\'')
+				memcpy(result.failed_field.data(), field, length);
+		}
 		if (!connection_error(query.error_code))
-			execute(connection, "ROLLBACK");
-		return failure(query.error_code);
+			result.rolled_back = execute(connection, "ROLLBACK").ok;
+		return result;
 	}
 	query = execute(connection, "COMMIT");
 	if (!query.ok)

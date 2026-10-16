@@ -614,7 +614,7 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			return in.failure();
 		const uint32_t wire_version = snapshot.schema_version;
 		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
-		    wire_version == 7)
+		    wire_version == 7 || wire_version == 8)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -628,6 +628,10 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		const auto last_status_field = wire_version < 8 ?
 						       player_status_field::last_ip :
 						       player_status_field::learned_flight_stops;
+		const auto last_string_field =
+			wire_version < 9 ? player_status_string_field::poof_out :
+					   player_status_string_field::last_read_news_hash;
+		unsigned seen_strings = 0;
 		if (!in.vector(snapshot.status_integers,
 			       [&](auto &row)
 			       {
@@ -646,10 +650,10 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			       {
 				       uint8_t field = 0;
 				       if (!in.number(field) ||
-					   field > static_cast<uint8_t>(
-							   player_status_string_field::poof_out) ||
-					   !in.string(row.value))
+					   field > static_cast<uint8_t>(last_string_field) ||
+					   (seen_strings & (1u << field)) || !in.string(row.value))
 					       return false;
+				       seen_strings |= 1u << field;
 				       row.field = static_cast<player_status_string_field>(field);
 				       return true;
 			       }))
@@ -739,6 +743,13 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 				return player_snapshot_codec_result::limit_exceeded;
 			snapshot.status_integers.push_back(
 				{ player_status_field::learned_flight_stops, 0, 0, true });
+		}
+		if (wire_version < 9 && (snapshot.components & PLAYER_COMPONENT_STATUS))
+		{
+			if (snapshot.status_strings.size() == PLAYER_SNAPSHOT_MAX_ROWS)
+				return player_snapshot_codec_result::limit_exceeded;
+			snapshot.status_strings.push_back(
+				{ player_status_string_field::last_read_news_hash, "" });
 		}
 		*snapshot_out = std::move(snapshot);
 	}

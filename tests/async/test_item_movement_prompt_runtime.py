@@ -15,6 +15,7 @@ from _paths import HARNESS_STUBS
 PRELUDE = r'''
 #include "core/prototypes.h"
 #include "player/output_preferences.h"
+#include "player/news.h"
 #include "core/utils.h"
 #include "net/comm.h"
 #include "net/mccp.h"
@@ -266,15 +267,25 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
     const auto bytes = output_bytes(websocket);
     assert(bytes.find(message[0] == 'Y' ? "You get" : "Unable to pick up") != std::string::npos);
     const bool expect_prompt = !(flags & PLR_OLDSMARTP) || fighting;
+    assert((bytes.find("(news)") != std::string::npos) == (expect_prompt && !current_news().text.empty()));
     assert(ga_count == (!websocket && expect_prompt ? 1 : 0));
     if (expect_prompt && !(flags & PLR_SMARTPROMPT))
         assert(bytes.find("100h") > bytes.find(message[0] == 'Y' ? "You get" : "Unable to pick up"));
     assert(process_output(&d) == 1);
     assert(output_bytes(websocket) == bytes); // no duplicate completion prompt
+    if (!delayed && !websocket && !flags && !two_line && !fighting) {
+        delivered.clear(); frames.clear(); ga_count = 0;
+        (d.original ? d.original : d.character)->specials.position = STAT_DEAD;
+        d.prompt_mode = true;
+        write_to_q("Death gate.\r\n", &d.output, 1);
+        assert(process_output(&d) == 1);
+        assert(output_bytes(websocket).find("(news)") == std::string::npos && ga_count == 0);
+    }
     return bytes;
 }
 int main()
 {
+    assert(publish_news("transport news\n"));
     for (bool ws : {false, true})
     for (bool compact : {false, true})
     for (unsigned smart : {0u, PLR_SMARTPROMPT, PLR_OLDSMARTP, PLR_SMARTPROMPT | PLR_OLDSMARTP})
@@ -326,7 +337,7 @@ def main():
                         *[str(SRC / name) for name in ['output_profiles.c', 'output_style.c', 'prompt.c', 'ansi.c', 'mccp.c', 'unicode.c', 'json_utils.c', 'safe_format.c',
                             'item_movement_transaction.c', 'item_ownership_runtime.c',
                             'item_transfer_command.c', 'critical_command.c',
-                            'player_snapshot_capture.c', 'player_snapshot_codec.c']],
+                            'player_snapshot_capture.c', 'player_snapshot_codec.c', 'news.c']],
                         '-Wl,--gc-sections', '-Wl,--wrap=write', '-lz', '-lcrypto', '-lcjson', str(HARNESS_STUBS), '-o', str(binary)],
                        cwd=ROOT, check=True, timeout=600)
         subprocess.run([str(binary)], check=True, timeout=30)
