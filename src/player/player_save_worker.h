@@ -40,6 +40,10 @@ constexpr unsigned int PLAYER_SAVE_WORKER_DEFAULT_THREADS = 1;
 constexpr uint64_t PLAYER_SAVE_WORKER_MAX_AGE_MSEC = 5 * 60 * 1000;
 constexpr uint64_t PLAYER_SAVE_WORKER_RETRY_INITIAL_MSEC = 100;
 constexpr uint64_t PLAYER_SAVE_WORKER_RETRY_MAX_MSEC = 5000;
+// Completed jobs retain a slot until the game consumes their completion. Payload
+// bytes count queued and in-flight captures; completions no longer own a payload.
+constexpr size_t PLAYER_SAVE_WORKER_MAX_PENDING_JOBS = 4096;
+constexpr size_t PLAYER_SAVE_WORKER_MAX_PENDING_BYTES = 128 * 1024 * 1024;
 // How long an interrupted writer gets to stop before shutdown goes on without it.
 constexpr uint64_t PLAYER_SAVE_WORKER_STOP_GRACE_MSEC = 1000;
 
@@ -139,6 +143,7 @@ bool player_save_worker_init(player_save_apply_fn apply, void *context);
 // still queued are not written: persistence_writer_pending_owners() names them all.
 void player_save_worker_shutdown(void (*interrupt)(void) = nullptr);
 player_save_submit_result player_save_worker_submit(player_snapshot snapshot);
+// Capacity refusal returns unavailable with errno=ENOSPC, preserving admitted jobs.
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
 						    size_t bytes, persistence_job_write_fn write);
 size_t player_save_worker_pulse(player_save_completion *completions_out, size_t capacity);

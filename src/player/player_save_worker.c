@@ -246,15 +246,27 @@ player_save_submit_result enqueue(queued_job job)
 		return player_save_submit_result::unavailable;
 	}
 	const persistence_job_owner key = { job.kind, job.owner };
+	const auto found = queued_by_owner.find(key);
+	const bool replace_tail = found != queued_by_owner.end() &&
+				  found->second == std::prev(queue.end());
+	const size_t retained_bytes = queued_bytes + (inflight ? inflight->bytes : 0) -
+				      (replace_tail ? found->second->bytes : 0);
+	const size_t pending_jobs = queue.size() + (inflight ? 1 : 0) + results.size();
+	if (job.bytes > PLAYER_SAVE_WORKER_MAX_PENDING_BYTES ||
+	    retained_bytes > PLAYER_SAVE_WORKER_MAX_PENDING_BYTES - job.bytes ||
+	    (!replace_tail && pending_jobs >= PLAYER_SAVE_WORKER_MAX_PENDING_JOBS))
+	{
+		errno = ENOSPC;
+		return player_save_submit_result::unavailable;
+	}
 	bool replaced = false;
 	try
 	{
 		// Replace only the tail, without erasing its old capture before a possible
 		// allocation failure. A new owner index and list entry are admitted together.
-		const auto found = queued_by_owner.find(key);
 		job.queued_at_usec = now_usec();
 		const size_t bytes = job.bytes;
-		if (found != queued_by_owner.end() && found->second == std::prev(queue.end()))
+		if (replace_tail)
 		{
 			queued_bytes -= found->second->bytes;
 			*found->second = std::move(job);

@@ -151,6 +151,73 @@ std::vector<player_save_completion> drain()
     return all;
 }
 
+static void test_admission_capacity()
+{
+    for (bool byte_limit : {true, false})
+    {
+        player_save_worker_reset_for_tests();
+        assert(player_save_worker_init(apply_snapshot, nullptr));
+        const auto first = snapshot_for(1, 1);
+        assert(player_save_worker_submit(first) == player_save_submit_result::accepted);
+        {
+            std::unique_lock<std::mutex> lock(state.mutex);
+            state.changed.wait(lock, [] { return state.first_started; });
+        }
+        const size_t queued = byte_limit ? 1 : PLAYER_SAVE_WORKER_MAX_PENDING_JOBS - 1;
+        const size_t bytes = byte_limit ?
+            PLAYER_SAVE_WORKER_MAX_PENDING_BYTES - first.encoded_size_bound : 0;
+        for (size_t index = 1; index <= queued; ++index)
+            assert(persistence_writer_submit(persistence_job_kind::locker, index, bytes,
+                                              locker_job(index)) == player_save_submit_result::accepted);
+        const auto before = player_save_worker_health_copy();
+        assert(before.queued_jobs == queued && before.inflight_jobs == 1);
+        errno = 0;
+        assert(persistence_writer_submit(persistence_job_kind::locker, queued + 1, 1,
+                                          locker_job(99999)) == player_save_submit_result::unavailable);
+        assert(errno == ENOSPC);
+        // Even a tail replacement must fit, including the in-flight payload.
+        errno = 0;
+        assert(persistence_writer_submit(persistence_job_kind::locker, queued,
+                                          PLAYER_SAVE_WORKER_MAX_PENDING_BYTES,
+                                          locker_job(99999)) == player_save_submit_result::unavailable);
+        assert(errno == ENOSPC);
+        assert(!persistence_writer_pending(persistence_job_kind::locker, queued + 1));
+        const auto after = player_save_worker_health_copy();
+        assert(after.queued_jobs == before.queued_jobs && after.queued_bytes == before.queued_bytes);
+        assert(after.submitted == before.submitted && after.replaced == 0);
+        // A fitting replacement consumes neither another slot nor both payloads.
+        assert(persistence_writer_submit(persistence_job_kind::locker, queued, bytes,
+                                          locker_job(77777)) == player_save_submit_result::replaced);
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            state.release_first = true;
+            state.changed.notify_all();
+        }
+        assert(persistence_writer_wait_idle(5000));
+        assert(state.order.size() == queued + 1);
+        assert(state.order.front() == "p1:1" && state.order.back() == "l77777:0");
+        for (size_t index = 1; index < queued; ++index)
+            assert(state.order[index] == label("l", index, 0));
+        if (!byte_limit)
+        {
+            // An undrained completion still owns its slot, even with no payload left.
+            errno = 0;
+            assert(persistence_writer_submit(persistence_job_kind::locker, 88888, 0,
+                                              locker_job(88888)) == player_save_submit_result::unavailable);
+            assert(errno == ENOSPC);
+        }
+        assert(drain().size() == queued + 1);
+        assert(persistence_writer_submit(persistence_job_kind::locker, 88888, 1,
+                                          locker_job(88888)) == player_save_submit_result::accepted);
+        assert(persistence_writer_wait_idle(5000));
+        assert(drain().size() == 1);
+        player_save_worker_reset_for_tests();
+        state.order.clear();
+        state.attempts.clear();
+        state.first_started = state.release_first = false;
+    }
+}
+
 static void test_admission_allocation_failure()
 {
     player_save_worker_reset_for_tests();
@@ -210,6 +277,7 @@ static void test_admission_allocation_failure()
 
 int main()
 {
+    test_admission_capacity();
     test_admission_allocation_failure();
     player_save_worker_reset_for_tests();
     assert(player_save_worker_init(apply_snapshot, nullptr));
@@ -394,6 +462,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-", dir=test_ou
         text=True,
     )
     subprocess.run([str(binary)], check=True, timeout=30)
+print("[PASS] byte/job limits include in-flight captures and undrained completions; refusal preserves order and fitting tail replacement")
 print("[PASS] allocation failures admit neither partial queue jobs nor owner entries; tail replacement allocates nothing")
 print("[PASS] one writer applies saves in capture order; a newer save replaces its queued one")
 print("[PASS] a lost connection is retried at the head; other failures are reported and dropped")

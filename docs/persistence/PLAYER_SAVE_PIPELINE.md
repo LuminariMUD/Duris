@@ -19,6 +19,15 @@ Memory is the authority. The database is a copy that catches up through one writ
    five seconds. Any other failure is reported once, the job is dropped, and the
    owner is marked dirty so its next save carries the state again.
 
+Admission is bounded to 4,096 outstanding jobs (queued, in flight, or awaiting
+completion consumption) and 128 MiB of declared queued/in-flight capture bytes.
+At capacity, submission returns `unavailable` with `errno=ENOSPC`; admitted work
+keeps its order and is never evicted. A tail replacement uses the old capture's
+slot and only its net byte increase. Dirty-state callers retry a refused capture;
+other callers retain their existing refusal behavior, including logged SQL drops.
+The byte limit bounds reported payload sizes, not total process memory. It allows
+one maximum artifact catalog capture; these limits are not throughput guarantees.
+
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
 operation. Nothing is journaled. A crash loses whatever had not reached the database,
 at most one 30-second `dirty-player-checkpoint`.

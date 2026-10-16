@@ -11,6 +11,32 @@ implementation in progress; independent feeding feedback implemented on
 in PR #137 on `branch/issue-67-identity-snapshots`; complete population
 classification and admission remain open.
 No operational repair started.
+
+Current prerequisite: `branch/issue-67-writer-backpressure`, based on PR #137.
+The flat artifact memory-cache implementation remains isolated on unpublished
+`branch/issue-67-flat-artifact-memory` in `duris-issue67-plan`; do not discard it.
+**Outcome (implemented):** bound the existing persistence writer during a storage outage before
+adding flat artifact captures. **Non-goals:** new queues, fallback writers,
+configuration, or production operation. **Files:** worker implementation/header,
+its existing executable test, pipeline contract, and this plan. **Proof:** hold
+the real writer, exhaust byte/job capacity, reject without changing admitted
+captures, allow fitting tail replacement, consume completions to release slots;
+run the focused test and required native build. Fixed limits reuse the existing
+`unavailable` result, so no new retry mechanism or state is needed.
+
+The writer now admits at most 4,096 jobs including undrained completions, and
+128 MiB of declared queued/in-flight payload. It rejects capacity with `ENOSPC`
+without evicting admitted captures; a fitting tail replacement remains allowed.
+Verification passed: `python3 tests/async/test_player_save_worker.py` (held-writer
+byte/job boundaries, old-capture preservation, tail replacement and completion
+slot release), `python3 tests/async/test_critical_command_coordinator.py` (existing
+ordering/refusal/fence controls), `make -C src -j2`, `scripts/format.sh`,
+`scripts/tidy.sh`, and `git diff --check`. Build/tidy/control output is retained
+under ignored `bin/analysis/issue67/writer-backpressure-*` in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+This qualifies admission behavior, not production outage throughput. Next:
+publish this prerequisite, stack the preserved flat-cache work on it, then
+continue population/classification and universal admission.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
