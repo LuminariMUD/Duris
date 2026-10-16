@@ -21,7 +21,8 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
         cls.binary = Path(directory.name) / 'runtime'
         subprocess.run([
             'g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-pthread',
-            '-fsanitize=undefined', '-ffunction-sections', '-fdata-sections',
+            '-fsanitize=undefined', '-fno-sanitize-recover=undefined',
+            '-ffunction-sections', '-fdata-sections',
             '-Isrc', '-I/usr/include/mysql', f'-DLEGACY_HYDRATION={int(legacy)}',
             'tests/async/artifact_guild_rewards_runtime.cpp',
             'src/guild/artifact_guild_transaction.c', 'src/guild/artifact_guild_command.c',
@@ -30,6 +31,16 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
             'src/world/epic_command.c',
             str(HARNESS_STUBS), '-Wl,--gc-sections', '-lcrypto', '-o', str(cls.binary),
         ], cwd=ROOT, check=True)
+        # Setup errors are never converted to expected failures. Only exit 2
+        # means the native harness completed with an unmet identity contract.
+        cls.identity_results = {}
+        for case in ('duplicate', 'cross-player'):
+            result = subprocess.run(
+                [str(cls.binary), case], stderr=subprocess.PIPE, text=True, timeout=30)
+            if result.returncode not in (0, 2) or result.stderr:
+                raise AssertionError(
+                    f'{case} harness failed (exit {result.returncode}):\n{result.stderr}')
+            cls.identity_results[case] = result.returncode
 
     def test_existing_live_rewards(self):
         subprocess.run([str(self.binary)], check=True, timeout=30)
@@ -39,11 +50,11 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
     # success fails this suite so the markers cannot silently survive a repair.
     @unittest.expectedFailure
     def test_duplicate_excludes_only_conflicting_artifact(self):
-        subprocess.run([str(self.binary), 'duplicate'], check=True, timeout=30)
+        self.assertEqual(self.identity_results['duplicate'], 0)
 
     @unittest.expectedFailure
     def test_cross_player_copy_preserves_unrelated_rewards(self):
-        subprocess.run([str(self.binary), 'cross-player'], check=True, timeout=30)
+        self.assertEqual(self.identity_results['cross-player'], 0)
 
 
 if __name__ == '__main__':

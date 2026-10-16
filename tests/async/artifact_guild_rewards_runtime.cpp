@@ -231,6 +231,12 @@ static int identity_contract(bool duplicate)
 	actor.equipment[1] = &unrelated;
 	if (duplicate)
 		actor.equipment[2] = &copy;
+	else
+	{
+		copy.loc.wearing = &member;
+		member.equipment[0] = &copy;
+	}
+	online = { &actor, &member, &last };
 	rows[42001] = { NOW + 100, -1, 0, duplicate ? 42 : 43 };
 	rows[42002] = { NOW + 200 };
 	critical_operation_id parent = {};
@@ -246,7 +252,8 @@ static int identity_contract(bool duplicate)
 	       static_cast<long long>(rows.at(42001).timer - NOW - 100),
 	       static_cast<long long>(rows.at(42002).timer - NOW - 200), guild->get_prestige(),
 	       guild->get_construction());
-	return isolated ? 0 : 1;
+	// Reserve 2 for a completed but unmet contract; harness failures stay fatal.
+	return isolated ? 0 : 2;
 }
 
 int main(int argc, char **argv)

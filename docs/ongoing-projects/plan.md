@@ -446,17 +446,22 @@ canonical selection and any data mutation. Files: this plan and the existing
 `artifact_guild_rewards_runtime.cpp`/Python driver. Proof:
 `python3 tests/async/test_artifact_guild_rewards_runtime.py` runs the existing
 passing journey plus **two explicitly expected failures**, not two repaired
-behaviors. Compilation happens outside the expected-failure tests, so a compiler
-failure remains a real error. Remove each marker when its contract is repaired;
+behaviors. Compilation and identity subprocess execution happen in class setup,
+outside the expected-failure tests. Only a normal exit 2 with no stderr denotes
+an unmet contract; crashes, timeouts, other exits and sanitizer diagnostics remain
+real errors. UBSan recovery is disabled. The decorated tests contain only the
+contract assertions. Remove each marker when its contract is repaired;
 unexpected success deliberately fails the suite.
 
 The duplicate fixture equips distinct UIDs 101/102 at vnum 42001 plus unrelated
 UID 103/vnum 42002 with a three-member eligible guild at prestige 95. Capture
 rejects the whole submission: both timers stay unchanged and prestige stays 95.
-The cross-player fixture equips only one 42001 copy whose stored location owner
-is another player: both timers incorrectly gain 3600 seconds. In both contracts
-the required result is no feed of the unresolved/conflicting artifact, one feed
-of 42002, and prestige 105/construction 1. These are synthetic storage/owner
+The cross-player fixture equips UID 101 on player 42 and UID 102 at the same vnum
+on player 43, with matching worn-location pointers and both players available to
+the player lookup. The stored location owner is player 43. Capture ignores the
+other player's equipped copy and both timers incorrectly gain 3600 seconds. In
+both contracts the required result is no feed of the unresolved/conflicting
+artifact, one feed of 42002, and prestige 105/construction 1. These are synthetic storage/owner
 boundaries with production capture/application/codec/transaction code, not a SQL
 or full-player-load proof. No production population conclusion follows.
 
@@ -591,6 +596,16 @@ expected failures; transactional cutover passes 3/3; source inventory matches al
 `make -C src` pass. `./scripts/tidy.sh --rev origin/master` reports no changed
 production C/C++ lines (only the native test harness changed). No full suite,
 database matrix or gameplay/restart journey is claimed for this diagnostic chunk.
+
+PR #132 review verification repaired the cross-player graph and the
+expected-failure boundary above. The native reward journey, both expected
+contracts, cutover 3/3, 169-template inventory, formatting, whitespace and server
+build pass. Eighteen mocked subprocess fault injections cover both identity
+modes: signals/assertion aborts, invalid exits, timeout, launch errors and UBSan
+stderr become setup errors; an unexpected contract success fails the suite.
+The original driver swallowed all seven injected runtime error classes that
+raised exceptions. This verifies the driver boundary, not a repaired identity
+implementation or live gameplay.
 
 ### Original planning baseline (before implementation)
 
