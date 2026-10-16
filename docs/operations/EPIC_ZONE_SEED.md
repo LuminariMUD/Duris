@@ -7,6 +7,9 @@ content. The generator **never connects to a database**. Its SQL output is an ex
 reviewable operator artifact, not a boot-time repair or an automatic migration.
 Applying it to production requires separate deployment/data-change authorization.
 
+This payout seed does not enable epic-task eligibility. Fresh setups and restored
+zone tables also need the separately reviewed [curated task-zone provisioning](EPIC_TASK_ZONES.md).
+
 ## Authority and coverage
 
 - `migrations/epic-zone-payout.sql` supplies the explicit historical payouts and
