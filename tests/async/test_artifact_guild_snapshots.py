@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory(prefix='artifact-snapshots-',dir=out) as direct
     cpp=Path(directory)/'snapshot.cpp'; binary=Path(directory)/'snapshot'
     cpp.write_text(source)
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
+        '-fsanitize=undefined','-fno-sanitize-recover=all',
         '-ffunction-sections','-fdata-sections','-Isrc','-I/usr/include/mysql',
         str(cpp),'src/guild/assocs.c','src/core/safe_format.c',
         'src/kingdom/kingdom.c','src/kingdom/kingdom_db.c','src/kingdom/kingdom_upkeep.c',

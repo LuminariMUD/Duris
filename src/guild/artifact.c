@@ -16,6 +16,8 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include <algorithm>
+#include <charconv>
+#include <memory>
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
@@ -116,6 +118,8 @@ struct artifact_row
 	int type;
 	artifact_save save = {};
 	bool removed = false;
+	uint64_t canonical_item_uid = 0;
+	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 };
 struct artifact_bind_row
 {
@@ -129,6 +133,9 @@ std::map<int, artifact_bind_row> artifact_binds;
 const char ARTIFACT_ROWS_QUERY[] =
 	"SELECT 'a', vnum, owned, locType, location, UNIX_TIMESTAMP(timer), type FROM artifacts";
 const char ARTIFACT_BINDS_QUERY[] = "SELECT 'b', vnum, owner_pid, timer FROM artifact_bind";
+const char ARTIFACT_IDENTITIES_QUERY[] =
+	"SELECT 'i',vnum,IF(owned,'Y','N'),loc_type,location,timer_epoch,artifact_type,"
+	"canonical_item_uid,identity_state FROM artifact_domain_state";
 
 /* artifact_domain_state repeats each artifact's row and soul for persistence
  * reconciliation and item ownership references, so every
@@ -148,18 +155,61 @@ std::string artifact_domain_mirror(int vnum)
 		vnum < 0 ? "" : sql_format(" WHERE a.vnum = %d", vnum).c_str());
 }
 
-// A row of ARTIFACT_ROWS_QUERY or ARTIFACT_BINDS_QUERY (a MYSQL_ROW or an sql_row).
-template <typename Row> void artifact_row_read(const Row &row)
+// Soul snapshots also update domain-only tombstones, without touching identity.
+std::string artifact_bind_domain_mirror(int vnum)
 {
+	return sql_format("UPDATE artifact_domain_state d JOIN artifact_bind b ON b.vnum=d.vnum "
+			  "SET d.bind_owner_pid=b.owner_pid,d.bind_timer_epoch=b.timer%s",
+			  vnum < 0 ? "" : sql_format(" WHERE d.vnum=%d", vnum).c_str());
+}
+
+// The destination maps are staged until every boot/refresh query succeeds.
+template <typename Row> bool artifact_row_read(const Row &row, std::map<int, artifact_row> &records,
+					       std::map<int, artifact_bind_row> &binds)
+{
+	if (!row[0])
+		return false;
 	const auto number = [&row](int index) { return row[index] ? atol(row[index]) : 0; };
-	if (!strcmp(row[0], "a"))
-		artifact_rows[number(1)] = { row[2] && !strcmp(row[2], "Y"),
-					     static_cast<int>(number(3)),
-					     static_cast<int>(number(4)), number(5),
-					     static_cast<int>(number(6)) };
-	else if (!strcmp(row[0], "b"))
-		artifact_binds[number(1)] = { static_cast<int>(number(2)),
-					      static_cast<int>(number(3)) };
+	const int vnum = static_cast<int>(number(1));
+	if (!strcmp(row[0], "b"))
+	{
+		binds[vnum] = { static_cast<int>(number(2)), static_cast<int>(number(3)) };
+		return binds.size() <= ARTIFACT_IDENTITY_MAX_RECORDS;
+	}
+	const bool identity = !strcmp(row[0], "i");
+	if (strcmp(row[0], "a") && !identity)
+		return false;
+	uint64_t uid = 0, state = 0;
+	if (identity)
+	{
+		const auto unsigned_value = [](const char *text, uint64_t *value)
+		{
+			if (!text)
+				return true;
+			const char *end = text + strlen(text);
+			const auto parsed = std::from_chars(text, end, *value);
+			return parsed.ec == std::errc{} && parsed.ptr == end;
+		};
+		if (vnum <= 0 || !row[8] || !unsigned_value(row[7], &uid) ||
+		    !unsigned_value(row[8], &state) || (row[7] && !uid) ||
+		    state > static_cast<unsigned>(artifact_identity_state::absent) ||
+		    !artifact_identity_valid(uid, static_cast<artifact_identity_state>(state)))
+			return false;
+	}
+	if (!identity || !records.count(vnum))
+	{
+		records[vnum] = { row[2] && !strcmp(row[2], "Y"), static_cast<int>(number(3)),
+				  static_cast<int>(number(4)), number(5),
+				  static_cast<int>(number(6)) };
+		// A domain-only row retains identity even after legacy tracking was removed.
+		records.at(vnum).removed = identity;
+	}
+	if (identity)
+	{
+		records.at(vnum).canonical_item_uid = uid;
+		records.at(vnum).identity_state = static_cast<artifact_identity_state>(state);
+	}
+	return records.size() <= ARTIFACT_IDENTITY_MAX_RECORDS;
 }
 
 // Owned and past its timer (a row with no timer never expires).
@@ -179,6 +229,7 @@ void artifact_save_error(int vnum, const char *kind, artifact_save &save, const 
 				  error == ENOMEM    ? "allocation_failure" :
 				  error == ESHUTDOWN ? "writer_stopped" :
 				  error == ENOTCONN  ? "unavailable" :
+				  error == EINVAL    ? "invalid_identity" :
 						       "storage_failure",
 				  "vnum=%d error=%u", vnum, error);
 	}
@@ -215,11 +266,35 @@ bool artifact_row_save(int vnum, artifact_row &row)
 {
 	try
 	{
+		if (!artifact_identity_valid(row.canonical_item_uid, row.identity_state))
+		{
+			artifact_save_error(vnum, "identity", row.save, "invalid_state", EINVAL);
+			return false;
+		}
+		const auto &bind = artifact_binds[vnum];
+		const std::string soul = sql_format(
+			"INSERT INTO artifact_bind (vnum,owner_pid,timer) VALUES(%d,%d,%d) "
+			"ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)",
+			vnum, bind.owner_pid, bind.timer);
+		// Capture the complete domain row from game memory. It must remain
+		// writable even when its legacy artifact projection no longer exists.
+		const std::string domain = sql_format(
+			"INSERT INTO artifact_domain_state (vnum,owned,loc_type,location,timer_epoch,"
+			"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state) "
+			"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u) ON DUPLICATE KEY UPDATE "
+			"owned=VALUES(owned),loc_type=VALUES(loc_type),location=VALUES(location),"
+			"timer_epoch=VALUES(timer_epoch),artifact_type=VALUES(artifact_type),"
+			"bind_owner_pid=VALUES(bind_owner_pid),bind_timer_epoch=VALUES(bind_timer_epoch),"
+			"canonical_item_uid=VALUES(canonical_item_uid),identity_state=VALUES(identity_state)",
+			vnum, row.owned ? 1u : 0u, row.locType, row.location,
+			static_cast<long long>(row.timer), row.type, bind.owner_pid, bind.timer,
+			row.canonical_item_uid ? std::to_string(row.canonical_item_uid).c_str() :
+						 "NULL",
+			static_cast<unsigned>(row.identity_state));
 		if (row.removed)
 			return artifact_queue_save(
 				vnum, "artifact", row.save,
-				{ sql_format("DELETE FROM artifact_domain_state WHERE vnum=%d",
-					     vnum),
+				{ soul, domain,
 				  sql_format("DELETE FROM artifacts WHERE vnum=%d", vnum),
 				  sql_format("DELETE FROM artifacts_mortal WHERE vnum=%d", vnum) });
 		return artifact_queue_save(
@@ -231,7 +306,7 @@ bool artifact_row_save(int vnum, artifact_row &row)
 				  "location=VALUES(location), timer=VALUES(timer), type=VALUES(type), lastUpdate=VALUES(lastUpdate)",
 				  vnum, row.owned ? 'Y' : 'N', row.locType, row.location,
 				  (long)row.timer, row.type),
-			  artifact_domain_mirror(vnum) });
+			  soul, domain });
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -241,11 +316,18 @@ bool artifact_row_save(int vnum, artifact_row &row)
 	}
 }
 
-// Mutate now. The receipt belongs only to this capture, not an older queued save.
+// Legacy gameplay updates retain canonical identity. The receipt belongs only
+// to this capture, not an older queued save.
 void artifact_row_store(int vnum, const artifact_row &row)
 {
-	artifact_rows[vnum] = { row.owned, row.locType, row.location, row.timer, row.type };
-	auto &current = artifact_rows.at(vnum);
+	auto &current = artifact_rows[vnum];
+	current.owned = row.owned;
+	current.locType = row.locType;
+	current.location = row.location;
+	current.timer = row.timer;
+	current.type = row.type;
+	current.removed = false;
+	current.save = {};
 	current.save.dirty = true;
 	artifact_row_save(vnum, current);
 	arti_cache_invalidate();
@@ -261,7 +343,7 @@ bool artifact_bind_save(int vnum, artifact_bind_row &bind)
 				  "INSERT INTO artifact_bind (vnum,owner_pid,timer) VALUES(%d,%d,%d) "
 				  "ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)",
 				  vnum, bind.owner_pid, bind.timer),
-			  artifact_domain_mirror(vnum) });
+			  artifact_bind_domain_mirror(vnum) });
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -300,7 +382,7 @@ bool artifact_binds_reset(int vnum)
 				  sql_format(
 					  "UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE vnum=%d",
 					  vnum),
-			  artifact_domain_mirror(vnum) },
+			  artifact_bind_domain_mirror(vnum) },
 			receipt);
 		for (auto &entry : artifact_binds)
 			if (vnum < 0 || entry.first == vnum)
@@ -328,19 +410,42 @@ bool artifact_binds_reset(int vnum)
 
 bool artifacts_load(void)
 {
-	artifact_rows.clear();
-	artifact_binds.clear();
-	for (const char *query : { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY })
+	try
 	{
-		MYSQL_RES *res = db_query("%s", query);
-		if (!res)
+		std::map<int, artifact_row> records;
+		std::map<int, artifact_bind_row> binds;
+		for (const char *query :
+		     { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY, ARTIFACT_IDENTITIES_QUERY })
+		{
+			std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> result(
+				db_query("%s LIMIT %zu", query, ARTIFACT_IDENTITY_MAX_RECORDS + 1),
+				mysql_free_result);
+			if (!result)
+				return false;
+			while (MYSQL_ROW row = mysql_fetch_row(result.get()))
+				if (!artifact_row_read(row, records, binds))
+				{
+					persistence_alert(AVATAR, "artifact_identity/boot",
+							  "redacted", "none", "none",
+							  "invalid_or_oversized_evidence",
+							  "vnum=%d", row[1] ? atoi(row[1]) : 0);
+					return false;
+				}
+		}
+		// All-row mirroring preserves existing identity and fills only missing
+		// legacy projections. Do not publish staged memory on mirror failure.
+		if (!qry("%s", artifact_domain_mirror(-1).c_str()))
 			return false;
-		while (MYSQL_ROW row = mysql_fetch_row(res))
-			artifact_row_read(row);
-		mysql_free_result(res);
+		artifact_rows.swap(records);
+		artifact_binds.swap(binds);
+		return true;
 	}
-	// Changes made before the game repeated them there (see artifact_domain_mirror()).
-	return qry("%s", artifact_domain_mirror(-1).c_str());
+	catch (const std::bad_alloc &)
+	{
+		logit(LOG_STATUS,
+		      "artifact identity boot: allocation failure before state publication");
+		return false;
+	}
 }
 
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer)
@@ -375,7 +480,13 @@ void artifacts_forget_deleted_account_character(int pid)
 	for (auto &entry : artifact_rows)
 		if (entry.second.location == pid && (entry.second.locType == ARTIFACT_ON_PC ||
 						     entry.second.locType == ARTIFACT_ONCORPSE))
-			entry.second = { false, ARTIFACT_NOTINGAME, 0, 0, entry.second.type };
+		{
+			entry.second.owned = false;
+			entry.second.locType = ARTIFACT_NOTINGAME;
+			entry.second.location = 0;
+			entry.second.timer = 0;
+			entry.second.save = {};
+		}
 	for (auto &entry : artifact_binds)
 		if (entry.second.owner_pid == pid)
 			entry.second = { -1, 0 };
@@ -397,16 +508,12 @@ void artifact_feed_set_timer(int vnum, time_t timer)
 size_t artifact_save_pulse(bool retry)
 {
 	size_t dirty = 0;
-	for (auto row = artifact_rows.begin(); row != artifact_rows.end();)
+	for (auto &[vnum, row] : artifact_rows)
 	{
-		artifact_save_complete(row->first, "artifact", row->second.save);
-		if (row->second.removed && !row->second.save.dirty)
-		{
-			row = artifact_rows.erase(row);
-			continue;
-		}
-		dirty += row->second.save.dirty;
-		++row;
+		artifact_save_complete(vnum, "artifact", row.save);
+		// Keep retired and proven-absent evidence for this vnum throughout the
+		// uptime. Removing legacy tracking does not make identity unknown again.
+		dirty += row.save.dirty;
 	}
 	for (auto &[vnum, bind] : artifact_binds)
 	{
@@ -3660,6 +3767,9 @@ void arti_clear_sql(P_char ch, char *arg)
 	if (!*arg || !strcmp(arg, "?") || !strcmp(arg, "help"))
 	{
 		send_to_char("This command clears the arti data for a specific arti vnum.\n\r", ch);
+		send_to_char(
+			"Only records marked physically absent can be cleared; current, retired and unverified identities are protected.\n\r",
+			ch);
 		send_to_char("It should only be used by those who know what they're doing.\n\r",
 			     ch);
 		send_to_char(
@@ -3678,6 +3788,29 @@ void arti_clear_sql(P_char ch, char *arg)
 		send_to_char(
 			"The proper argument for this is the vnum of the arti for which you want the data cleared.\n\r",
 			ch);
+		return;
+	}
+
+#ifdef __NO_MYSQL__
+	flatfile_artifact_record identity;
+	std::string identity_error;
+	const bool absent = flatfile_artifact_get(persistence_mode_flatfile_root(), vnum, &identity,
+						  &identity_error) ==
+				    flatfile_artifact_result::ok &&
+			    identity.identity_state == artifact_identity_state::absent;
+#else
+	const auto identity = artifact_rows.find(vnum);
+	const bool absent = identity != artifact_rows.end() &&
+			    identity->second.identity_state == artifact_identity_state::absent;
+#endif
+	if (!absent)
+	{
+		send_to_char_f(
+			ch,
+			"Artifact %d cannot be cleared until its physical identity proves absence.\n\r",
+			vnum);
+		persistence_alert(AVATAR, "artifact_identity/clear", "redacted", "none", "none",
+				  "absence_unproven", "vnum=%d", vnum);
 		return;
 	}
 
@@ -3710,7 +3843,8 @@ void arti_clear_sql(P_char ch, char *arg)
 #else
 	// Keep the deletion dirty until its current capture is acknowledged.
 	auto &removed = artifact_rows[vnum];
-	removed = { false, ARTIFACT_NOTINGAME, 0, 0, 0 };
+	removed = { false, ARTIFACT_NOTINGAME, 0, 0, removed.type };
+	removed.identity_state = artifact_identity_state::absent;
 	removed.removed = true;
 	removed.save.dirty = true;
 	artifact_row_save(vnum, removed);
@@ -4725,9 +4859,15 @@ void arti_syncdb_sql(P_char ch)
 		if (const unsigned int error = sql_execute(connection, artifact_domain_mirror(-1)))
 			return error;
 		rows->push_back(sql_row{ { cleared, updated } });
-		if (const unsigned int error = sql_select(connection, ARTIFACT_ROWS_QUERY, rows))
-			return error;
-		return sql_select(connection, ARTIFACT_BINDS_QUERY, rows);
+		for (const char *query :
+		     { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY, ARTIFACT_IDENTITIES_QUERY })
+			if (const unsigned int error =
+				    sql_select(connection,
+					       sql_format("%s LIMIT %zu", query,
+							  ARTIFACT_IDENTITY_MAX_RECORDS + 1),
+					       rows))
+				return error;
+		return 0;
 	};
 	const auto synced = [generation, staff_runtime_id](bool ok, const sql_rows &rows)
 	{
@@ -4741,7 +4881,42 @@ void arti_syncdb_sql(P_char ch)
 		// Earlier saves run before this repair on the writer. A later mutation, or
 		// an earlier save that failed, makes its returned state obsolete. Retain
 		// current memory and let ordinary fresh snapshots repair any SQL it changed.
-		if (generation != arti_cache_generation || artifact_save_pulse(false))
+		const bool superseded = generation != arti_cache_generation ||
+					artifact_save_pulse(false);
+		std::map<int, artifact_row> records;
+		std::map<int, artifact_bind_row> binds;
+		bool invalid = false, identity_changed = false;
+		if (!superseded)
+		{
+			try
+			{
+				for (size_t index = 1; index < rows.size(); ++index)
+					if (!artifact_row_read(rows[index], records, binds))
+					{
+						invalid = true;
+						break;
+					}
+				for (const auto &[vnum, row] : artifact_rows)
+				{
+					const auto found = records.find(vnum);
+					if (found == records.end() ||
+					    found->second.canonical_item_uid !=
+						    row.canonical_item_uid ||
+					    found->second.identity_state != row.identity_state)
+						identity_changed = true;
+				}
+				for (const auto &[vnum, row] : records)
+					if (!artifact_rows.count(vnum) &&
+					    row.identity_state !=
+						    artifact_identity_state::unresolved)
+						identity_changed = true;
+			}
+			catch (const std::bad_alloc &)
+			{
+				invalid = true;
+			}
+		}
+		if (superseded || invalid || identity_changed)
 		{
 			for (auto &[vnum, row] : artifact_rows)
 			{
@@ -4754,17 +4929,20 @@ void arti_syncdb_sql(P_char ch)
 				bind.save.pending.reset();
 			}
 			arti_cache_invalidate();
+			if (invalid || identity_changed)
+				persistence_alert(
+					AVATAR, "artifact_identity/sync", "redacted", "none",
+					"none", invalid ? "invalid_evidence" : "identity_conflict",
+					"records=%zu", rows.size());
 			if (staff)
 				send_to_char(
-					"Artifact updates superseded this synchronization. "
+					"Artifact updates or identity evidence refused this synchronization. "
 					"Current state retained; retry after pending saves complete.\n\r",
 					staff);
 			return;
 		}
-		artifact_rows.clear();
-		artifact_binds.clear();
-		for (size_t index = 1; index < rows.size(); ++index)
-			artifact_row_read(rows[index]);
+		artifact_rows.swap(records);
+		artifact_binds.swap(binds);
 		arti_cache_invalidate();
 		if (staff)
 			send_to_char_f(

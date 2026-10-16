@@ -128,8 +128,13 @@ custody FK, while the existing `item_uid` FK remains intact. `identity_state`
 records unresolved (0), present (1), retired (2), or proven absent (3). Present and
 retired rows retain a positive canonical UID; unresolved and absent rows have
 NULL. Migration 0044 leaves legacy rows unresolved and preserves their existing
-timer, soul and ownership evidence. Storage alone establishes neither a canonical
-winner nor runtime uniqueness; follow the issue #67 implementation plan.
+timer, soul and ownership evidence. Boot stages these identities with the
+existing artifact/soul maps before publication. Artifact snapshots preserve
+them on the ordered writer; binding and all-row mirrors leave them unchanged.
+A failed or inconsistent refresh keeps current memory and requeues its
+snapshots. Retired and proven-absent evidence remains in memory after legacy
+tracking removal. Staff clear requires proven absence. Complete payload
+classification, canonical selection and admission remain tracked in issue #67.
 
 The equivalent flat-file catalog is version 2, carrying canonical UID/state and
 rejecting one nonzero UID assigned to two vnums. Version 1 remains readable with

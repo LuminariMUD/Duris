@@ -266,6 +266,12 @@ Producer/restart qualification is recorded in the
 [evidence](../ongoing-projects/log-server-review.md#qualification-update-2026-10-14); the detailed
 contract is in [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md#artifact-and-guild-rewards-live-in-memory).
 
+Canonical artifact UID/state is held in the existing game-thread artifact record.
+Boot stages its metadata with artifact/soul reads before publishing memory, and
+ordered artifact snapshots capture UID, timer and soul together. Identity and
+proven-absence evidence survive legacy tracking removal and failed refreshes;
+complete population classification and universal admission remain in the #67 plan.
+
 Recurring database work uses `src/persistence/maintenance_scheduler.c`. Stable per-instance offsets
 replace aligned modulus spikes; every job has row and time budgets, continuation state,
 bounded retry, and game-thread completion. The lifecycle archive slot remains disabled

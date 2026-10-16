@@ -128,6 +128,15 @@ static void identity_storage(const fs::path &root)
 				flatfile_artifact_result::ok &&
 			roundtrip == states,
 		"identity states changed on reload");
+	for (size_t index = 0; index < 3; ++index)
+		require(flatfile_artifact_erase(invalid_root.string(), states[index].vnum,
+						&error) == flatfile_artifact_result::conflict,
+			"clear erased unresolved/present/retired identity");
+	require(flatfile_artifact_erase(invalid_root.string(), states[3].vnum, &error) ==
+				flatfile_artifact_result::ok &&
+			flatfile_artifact_erase(invalid_root.string(), states[3].vnum, &error) ==
+				flatfile_artifact_result::not_found,
+		"proven absent identity could not be cleared idempotently");
 
 	// Materialize the actual v1 wire shape: the v2 record adds only UID/state.
 	// Legacy bytes have no identity evidence and must never decode as absent.
@@ -554,14 +563,14 @@ int main(int argc, char **argv)
 			flatfile_artifact_result::invalid,
 		"artifact timer extension accepted a zero minimum");
 	require(flatfile_artifact_erase(gameplay_root.string(), 799, &error) ==
-			flatfile_artifact_result::ok,
-		"artifact erase failed: " + error);
+			flatfile_artifact_result::conflict,
+		"artifact erase ignored unresolved identity");
 	require(flatfile_artifact_get(gameplay_root.string(), 799, &gameplay_record, &error) ==
-			flatfile_artifact_result::not_found,
-		"erased artifact remained in canonical authority");
+			flatfile_artifact_result::ok,
+		"refused erase lost artifact evidence");
 	require(flatfile_artifact_erase(gameplay_root.string(), 799, &error) ==
-			flatfile_artifact_result::not_found,
-		"identical artifact erase was not safely reported as missing");
+			flatfile_artifact_result::conflict,
+		"repeated erase changed unresolved artifact evidence");
 	flatfile_artifact_record expired_record;
 	require(flatfile_artifact_find_next_expired(gameplay_root.string(), 0, 6500,
 						    &expired_record,

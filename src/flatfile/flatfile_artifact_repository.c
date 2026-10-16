@@ -33,7 +33,6 @@ namespace
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'A', 'R', 'T', 'F', 0 };
 constexpr uint32_t catalog_version = 2;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
-constexpr size_t record_maximum = 1048576;
 constexpr const char *catalog_filename = "artifact_catalog";
 constexpr uint32_t artifact_extra_flag = 1U << 28;
 
@@ -119,15 +118,12 @@ bool valid_record(const flatfile_artifact_record &record)
 	       record.location_type <= FLATFILE_ARTIFACT_ON_CORPSE && record.timer >= 0 &&
 	       record.type >= 1 && record.type <= 3 && record.last_update >= 0 &&
 	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision &&
-	       record.identity_state <= artifact_identity_state::absent &&
-	       ((record.identity_state == artifact_identity_state::present ||
-		 record.identity_state == artifact_identity_state::retired) ==
-		(record.canonical_item_uid != 0));
+	       artifact_identity_valid(record.canonical_item_uid, record.identity_state);
 }
 
 bool valid_records(const std::vector<flatfile_artifact_record> &records)
 {
-	if (records.size() > record_maximum ||
+	if (records.size() > ARTIFACT_IDENTITY_MAX_RECORDS ||
 	    !std::is_sorted(records.begin(), records.end(), record_less))
 		return false;
 	std::vector<uint64_t> identities;
@@ -211,7 +207,7 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 	artifact_catalog decoded;
 	decoded.revision = revision;
 	uint32_t count = 0;
-	if (!payload.number(&count) || count > record_maximum)
+	if (!payload.number(&count) || count > ARTIFACT_IDENTITY_MAX_RECORDS)
 		return false;
 	try
 	{
@@ -417,6 +413,8 @@ flatfile_artifact_result flatfile_artifact_erase(const std::string &root, int32_
 					       int32_t sought) { return candidate.vnum < sought; });
 	if (found == catalog.records.end() || found->vnum != vnum)
 		return flatfile_artifact_result::not_found;
+	if (found->identity_state != artifact_identity_state::absent)
+		return flatfile_artifact_result::conflict;
 	if (catalog.revision == std::numeric_limits<uint64_t>::max())
 		return flatfile_artifact_result::invalid;
 	catalog.records.erase(found);
@@ -683,7 +681,8 @@ flatfile_artifact_war_owners(const std::string &root, int32_t after_pid, size_t 
 {
 	if (owners)
 		owners->clear();
-	if (root.empty() || after_pid < 0 || !maximum || maximum > record_maximum || !owners)
+	if (root.empty() || after_pid < 0 || !maximum || maximum > ARTIFACT_IDENTITY_MAX_RECORDS ||
+	    !owners)
 		return flatfile_artifact_result::invalid;
 	flatfile_authority_lock lock;
 	if (!lock.acquire(root, error))

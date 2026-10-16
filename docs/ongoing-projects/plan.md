@@ -8,6 +8,8 @@ implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-direct-feed-timers` and conservative reward conflict isolation on
 `branch/issue-67-reward-conflicts`. AR-02 storage is implemented on
 `branch/issue-67-canonical-storage`; boot/admission integration remains open.
+Canonical snapshot/hydration integration is in progress on
+`branch/issue-67-identity-snapshots`.
 No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
@@ -501,6 +503,74 @@ candidate publication remains required after that storage foundation.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
 
+### Canonical identity snapshots and hydration — AR-02 in progress
+
+`branch/issue-67-identity-snapshots` → `branch/issue-67-canonical-storage` carries
+the stored identity into the existing artifact record and its immutable SQL
+captures. Outcome: existing canonical UID/state survives normal legacy row
+replacement, bindings, late acknowledgements, owner-deletion publication and
+boot/administrative refresh. Files: `artifact.c`, the shared identity contract,
+flat-file erase validation and the existing native snapshot/flat-file fixtures.
+Non-goals: choosing a legacy canonical copy, complete payload candidate inventory,
+new object admission or gameplay-wide lifecycle enforcement. Those remain open.
+
+Boot now stages legacy rows, souls and domain identity before swapping current
+memory, including canonical/retired domain rows with no legacy artifact row.
+UID/state parsing is strict and full-width. The existing flat-file one-million
+record ceiling is shared with these reads; queries request one extra row so
+overflow refuses publication instead of accepting a silent prefix. Query,
+mirror, allocation and malformed-identity failures preserve current memory.
+
+Artifact snapshots capture canonical UID/state, legacy timer/location and current
+soul in one owned job on the existing writer. The primary soul and domain record
+are written in the same transaction as the artifact row, preventing a newly
+captured UID from inheriting an old durable soul after a partial save. Soul-only
+and all-row mirrors preserve identity. A refresh whose staged
+identity differs from current memory is refused and current snapshots are
+requeued; no canonical UID is chosen by a live sync. Ordinary row replacement
+now changes only the legacy gameplay fields and retains identity by construction.
+
+`artifact clear` and flat-file erase require explicit proven absence. They refuse
+unresolved, present and retired identities, protecting canonical copies and
+retirement tombstones. Domain-only retired and absent records remain in memory
+after save polling. Clear retains domain absence evidence while removing legacy
+display/tracking rows, with the existing dirty retry
+and current-capture acknowledgement rules. This closes the concrete record-loss
+path exposed by adding real hydration, while other sync/lifecycle policy remains
+in AR-04.
+
+Ablation: keep one record and the existing writer/receipt protocol. Reuse a small
+UID/state validator because both actual backends and the SQL reader require the
+same invariant. Temporary staged maps are necessary for atomic publication; no
+second registry, worker, hot-path query or synchronous persistence fallback is
+introduced. The shared bound replaces the existing flat-file literal.
+
+Current proof:
+
+```sh
+python3 tests/async/test_artifact_guild_snapshots.py
+python3 tests/async/test_flatfile_artifact_repository.py
+tests/async/run_artifact_guild_schema_mysql.sh
+```
+
+The native and disposable MariaDB SQL cases pass immutable full-width UID
+captures, late ACKs, binding/owner preservation, all three clear refusals,
+malformed UID/state parsing, atomic sync conflict/malformed-result refusal, and
+same-identity refresh. The SQL leg invokes actual `artifacts_load`: success,
+each of its three failed reads, failed mirror, allocation failure during staged
+row construction, malformed stored UID, and domain-only retired/absent records,
+including retry and reload without recreating legacy tracking. It also checks
+UID/timer/soul agreement at the first individual capture, before later captures
+can hide a partial snapshot. Native snapshot tests run with terminating UBSan.
+The flat-file fixture proves the equivalent clear refusal and idempotent clear
+of a proven-absent row. Capacity has not been stress-qualified by these fixtures.
+
+Build/format/tidy and final publication are being completed. Next after this
+chunk: complete durable/recovery candidate evidence before population, choose
+canonical versus unresolved state without first-traversal selection, and wire
+creation/materialization/retirement. Stored metadata hydration is not a complete
+population inventory or proof of universal duplicate prevention.
+
 ### Canonical identity storage — AR-02
 
 [PR #136](https://github.com/LuminariMUD/Duris/pull/136),
@@ -639,7 +709,8 @@ fixed that prerequisite and the rerun passed.
 Tested binary SHA-256:
 `8e868a6e534bae467aad265f53f31db4386bf9cdf0da1c6dbd616cde96da5574`.
 Ignored evidence: `bin/analysis/issue67/conflicts-gameplay.log` and
-`bin/analysis/artifact-estale/gameplay-journey.json`. The code checkpoint is
+`bin/analysis/issue67/reward-conflicts-gameplay-journey.json` (preserved before
+the shared journey output is reused by later checkpoints). The code checkpoint is
 `00503a0eb`; later documentation-only commits reuse this evidence. The regression
 comparison passes here and fails on parent `7a6e5c5da` (all seven conflict cases).
 

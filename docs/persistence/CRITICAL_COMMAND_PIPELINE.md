@@ -243,9 +243,18 @@ Capture excludes all contributions from a repeated worn artifact vnum, and
 requires each other artifact to have a physical UID, match the live wearer and
 match the current memory record's tracked player. Exclusion preserves unrelated
 artifact and guild contributions and emits a rate-limited persistence alert with
-vnum/reason/source reference. Until canonical UID persistence is implemented,
+vnum/reason/source reference. Until canonical admission and reward validation are integrated,
 this is conservative conflict isolation: it does not establish the identity of
 a single copy whose legacy vnum record already names its wearer.
+
+Artifact snapshots include stored canonical UID/state, while soul and all-row
+mirrors preserve those fields. Boot stages all artifact, soul and identity reads
+before publishing memory; malformed or failed input cannot publish a prefix.
+Administrative refresh preserves current identity on conflict and retries current
+snapshots. Clear requires a proven-absent identity; retirement evidence and known
+absence remain in memory even after legacy tracking is removed. These storage
+boundaries do not perform complete population classification or universal
+duplicate admission; that work remains in the issue #67 plan.
 
 Positive feeding feedback is `You feel a sense of satisfaction from above.`
 The live artifact/guild award publishes it once even when several artifacts feed;

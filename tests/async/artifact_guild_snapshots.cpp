@@ -247,6 +247,8 @@ bool persistence_log_submit(const char *text)
 // scheduling/receipts remain controlled; each job's SQL runs in a real transaction.
 static MYSQL *payment_db = nullptr;
 static size_t database_next_job = 0;
+static size_t boot_query_count = 0, fail_boot_query = 0;
+static bool fail_boot_mirror = false, fail_boot_row_allocation = false;
 static void query(const char *statement)
 {
 	if (sql_execute(payment_db, statement))
@@ -254,6 +256,39 @@ static void query(const char *statement)
 		fprintf(stderr, "payment SQL failed: %s\n", mysql_error(payment_db));
 		std::abort();
 	}
+}
+MYSQL_RES *db_query_at(persistence_query_site, const char *format, ...)
+{
+	assert(payment_db);
+	if (++boot_query_count == fail_boot_query)
+		return nullptr;
+	char statement[8192];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(statement, sizeof(statement), format, args);
+	va_end(args);
+	query(statement);
+	MYSQL_RES *result = mysql_store_result(payment_db);
+	assert(result);
+	if (fail_boot_row_allocation)
+	{
+		fail_boot_row_allocation = false;
+		fail_allocation = true;
+	}
+	return result;
+}
+bool qry_at(persistence_query_site, const char *format, ...)
+{
+	assert(payment_db);
+	if (fail_boot_mirror)
+		return false;
+	char statement[8192];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(statement, sizeof(statement), format, args);
+	va_end(args);
+	query(statement);
+	return true;
 }
 static void open_disposable_database()
 {
@@ -478,6 +513,7 @@ static void artifact_ordering_cases()
 	assert(remove_owned_artifact_sql(&object, 0));
 	assert(!artifact_expired(artifact_rows.at(900)) && !artifact_rows.at(900).owned);
 	char number[] = "900";
+	artifact_rows.at(900).identity_state = artifact_identity_state::absent;
 	arti_clear_sql(&staff, number);
 	assert(artifact_rows.at(900).removed);
 	artifact_update_sql(900, true, ARTIFACT_ON_PC, 99, now + 9000, ARTIFACT_MAJOR);
@@ -489,13 +525,14 @@ static void artifact_ordering_cases()
 	{
 		artifact_rows.clear();
 		artifact_binds.clear();
-		for (const char *statement : { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY })
+		for (const char *statement :
+		     { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY, ARTIFACT_IDENTITIES_QUERY })
 		{
 			query(statement);
 			MYSQL_RES *result = mysql_store_result(payment_db);
 			assert(result);
 			while (MYSQL_ROW row = mysql_fetch_row(result))
-				artifact_row_read(row);
+				assert(artifact_row_read(row, artifact_rows, artifact_binds));
 			mysql_free_result(result);
 		}
 	}
@@ -522,6 +559,168 @@ static void artifact_ordering_cases()
 	puts("PASS artifact feed/transfer/soul/extension/wars/corpse/expiry/removal/recreation ordering");
 }
 
+static void identity_snapshot_cases()
+{
+	artifact_rows.clear();
+	artifact_binds.clear();
+	jobs.clear();
+	database_next_job = 0;
+	accepting = true;
+	indexes[0].virtual_number = 900;
+	artifact_rows[900] = { true, ARTIFACT_ON_PC, 42, 1000, ARTIFACT_MAJOR };
+	artifact_binds[900] = { 42, 9 };
+	const uint64_t first_uid = UINT64_MAX - 15, later_uid = UINT64_MAX - 10;
+	const sql_row identity{ { "i", "900", "Y", "3", "42", "555", "1", std::to_string(first_uid),
+				  "1" } };
+	assert(artifact_row_read(identity, artifact_rows, artifact_binds));
+	assert(artifact_rows.at(900).timer == 1000 &&
+	       artifact_rows.at(900).canonical_item_uid == first_uid &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::present);
+	char_data god = {};
+	pc_only_data pc = {};
+	god.only.pc = &pc;
+	god.player.level = FORGER;
+	god.runtime_id = 42;
+	pc.pid = 42;
+	sync_staff = &god;
+	staff_online = true;
+	char number[] = "900";
+	for (auto state : { artifact_identity_state::unresolved, artifact_identity_state::present,
+			    artifact_identity_state::retired })
+	{
+		artifact_rows.at(900).identity_state = state;
+		artifact_rows.at(900).canonical_item_uid =
+			state == artifact_identity_state::unresolved ? 0 : first_uid;
+		arti_clear_sql(&god, number);
+		assert(jobs.empty() && artifact_rows.at(900).timer == 1000 &&
+		       !artifact_rows.at(900).removed);
+	}
+	artifact_rows.at(900).identity_state = artifact_identity_state::present;
+	artifact_feed_set_timer(900, 1600);
+	assert(contains(jobs[0], std::to_string(first_uid)) &&
+	       contains(jobs[0], "canonical_item_uid"));
+	// A later identity capture must survive both the earlier SQL and its ACK.
+	artifact_rows.at(900).canonical_item_uid = later_uid;
+	artifact_rows.at(900).identity_state = artifact_identity_state::retired;
+	artifact_row_store(900, { true, ARTIFACT_ON_PC, 77, 1700, ARTIFACT_MAJOR });
+	artifact_bind_store(900, 77, 21);
+	assert(contains(jobs[1], std::to_string(later_uid)));
+	assert(!contains(jobs[2], "canonical_item_uid=")); // bind mirror preserves identity
+	finish(0);
+	assert(artifact_save_pulse(false) == 2 &&
+	       artifact_rows.at(900).canonical_item_uid == later_uid);
+	assert(contains(jobs[0], "INSERT INTO artifact_bind"));
+	if (payment_db)
+	{
+		query(sql_format(
+			      "SELECT COUNT(*) FROM artifact_domain_state d "
+			      "JOIN artifact_bind b ON b.vnum=d.vnum JOIN artifacts a ON a.vnum=d.vnum "
+			      "WHERE d.vnum=900 AND d.canonical_item_uid=%llu AND d.timer_epoch=1600 "
+			      "AND UNIX_TIMESTAMP(a.timer)=1600 AND d.bind_owner_pid=42 AND b.owner_pid=42",
+			      static_cast<unsigned long long>(first_uid))
+			      .c_str());
+		MYSQL_RES *result = mysql_store_result(payment_db);
+		assert(result);
+		MYSQL_ROW row = mysql_fetch_row(result);
+		assert(row && std::string(row[0]) == "1");
+		mysql_free_result(result);
+	}
+	finish(1);
+	finish(2);
+	assert(artifact_save_pulse(false) == 0 &&
+	       artifact_rows.at(900).canonical_item_uid == later_uid);
+	for (const auto &[uid, state] :
+	     std::vector<std::pair<std::string, std::string>>{ { "0", "0" },
+							       { "-1", "1" },
+							       { "18446744073709551616", "1" },
+							       { "12junk", "1" },
+							       { "12", "4" },
+							       { "12", "256" },
+							       { "12", "3" },
+							       { "12", "1junk" } })
+	{
+		const sql_row invalid{ { "i", "900", "Y", "3", "42", "1", "1", uid, state } };
+		assert(!artifact_row_read(invalid, artifact_rows, artifact_binds));
+		assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
+		       artifact_rows.at(900).timer == 1700);
+	}
+	const sql_rows conflict = { sql_row{ { "1", "1" } },
+				    sql_row{ { "a", "900", "Y", "3", "99", "1800", "1" } },
+				    sql_row{ { "b", "900", "99", "30" } }, identity };
+	arti_syncdb_sql(&god);
+	sync_done(true, conflict);
+	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
+	       artifact_rows.at(900).location == 77 && artifact_binds.at(900).owner_pid == 77 &&
+	       artifact_save_pulse(false) == 2);
+	artifact_save_pulse(true);
+	finish(jobs.size() - 2);
+	finish(jobs.size() - 1);
+	auto invalid_refresh = conflict;
+	invalid_refresh.back().fields[7] = "bad";
+	arti_syncdb_sql(&god);
+	sync_done(true, invalid_refresh);
+	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
+	       artifact_binds.at(900).owner_pid == 77);
+	artifact_save_pulse(true);
+	finish(jobs.size() - 2);
+	finish(jobs.size() - 1);
+	auto valid_refresh = conflict;
+	valid_refresh.back().fields[7] = std::to_string(later_uid);
+	valid_refresh.back().fields[8] = "2";
+	arti_syncdb_sql(&god);
+	sync_done(true, valid_refresh);
+	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
+	       artifact_rows.at(900).location == 99);
+	artifacts_forget_deleted_account_character(99);
+	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::retired);
+	if (payment_db)
+	{
+		for (size_t failure = 1; failure <= 3; ++failure)
+		{
+			boot_query_count = 0;
+			fail_boot_query = failure;
+			assert(!artifacts_load() && artifact_rows.at(900).location == 0 &&
+			       artifact_rows.at(900).canonical_item_uid == later_uid);
+		}
+		fail_boot_query = 0;
+		fail_boot_mirror = true;
+		assert(!artifacts_load() && artifact_rows.at(900).location == 0);
+		fail_boot_mirror = false;
+		fail_boot_row_allocation = true;
+		assert(!artifacts_load() && !fail_allocation &&
+		       artifact_rows.at(900).location == 0);
+		query("UPDATE artifact_domain_state SET canonical_item_uid=0 WHERE vnum=900");
+		assert(!artifacts_load() && artifact_rows.at(900).canonical_item_uid == later_uid);
+		query(sql_format(
+			      "UPDATE artifact_domain_state SET canonical_item_uid=%llu WHERE vnum=900",
+			      static_cast<unsigned long long>(later_uid))
+			      .c_str());
+		query("INSERT INTO artifact_domain_state(vnum,artifact_type,canonical_item_uid,identity_state) "
+		      "VALUES(991,1,777,2),(992,1,NULL,3)");
+		assert(artifacts_load() && artifact_rows.at(900).location == 77 &&
+		       artifact_rows.at(900).canonical_item_uid == later_uid &&
+		       artifact_rows.at(900).identity_state == artifact_identity_state::retired);
+		assert(artifact_rows.at(991).removed &&
+		       artifact_rows.at(991).canonical_item_uid == 777);
+		assert(artifact_save_pulse(false) == 0 &&
+		       artifact_rows.at(991).canonical_item_uid == 777 &&
+		       artifact_rows.at(992).identity_state == artifact_identity_state::absent);
+		artifact_rows.at(991).save.dirty = true;
+		artifact_rows.at(992).save.dirty = true;
+		artifact_save_pulse(true);
+		finish(jobs.size() - 2);
+		finish(jobs.size() - 1);
+		assert(artifact_save_pulse(false) == 0 && artifacts_load() &&
+		       artifact_rows.at(991).canonical_item_uid == 777 &&
+		       artifact_rows.at(991).removed &&
+		       artifact_rows.at(992).identity_state == artifact_identity_state::absent &&
+		       artifact_rows.at(992).removed);
+		puts("PASS actual SQL boot hydration: complete publication, three query failures, mirror failure, allocation failure, malformed UID and domain-only tombstone");
+	}
+	puts("PASS canonical identity hydration, immutable captures, late ACK, bind/owner preservation, clear refusal and atomic sync refusal");
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 2)
@@ -534,6 +733,7 @@ int main(int argc, char **argv)
 		payment_cases(guild);
 		indexes[0].virtual_number = 900;
 		artifact_ordering_cases();
+		identity_snapshot_cases();
 		mysql_close(payment_db);
 		return 0;
 	}
@@ -590,6 +790,7 @@ int main(int argc, char **argv)
 	god.only.pc = &pc;
 	god.player.level = FORGER;
 	char number[] = "900";
+	artifact_rows.at(900).identity_state = artifact_identity_state::absent;
 	accepting = false;
 	arti_clear_sql(&god, number);
 	int64_t timer = 0, bind = 0;
@@ -599,7 +800,8 @@ int main(int argc, char **argv)
 	accepting = true;
 	artifact_save_pulse(true);
 	const auto deletion = jobs.size() - 1;
-	assert(contains(jobs.back(), "DELETE FROM artifact_domain_state WHERE vnum=900"));
+	assert(contains(jobs.back(), "INSERT INTO artifact_domain_state") &&
+	       contains(jobs.back(), "DELETE FROM artifacts WHERE vnum=900"));
 	// Recreate before deletion ACK: that ACK belongs to the removed generation.
 	artifact_row_store(900, { true, ARTIFACT_ON_PC, 99, 1900, ARTIFACT_MAJOR });
 	finish(deletion);
@@ -608,7 +810,8 @@ int main(int argc, char **argv)
 	assert(artifact_save_pulse(false) == 0);
 	arti_clear_sql(&god, number);
 	finish(jobs.size() - 1);
-	assert(artifact_save_pulse(false) == 0 && !artifact_rows.count(900));
+	assert(artifact_save_pulse(false) == 0 && artifact_rows.at(900).removed &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::absent);
 	puts("PASS allocation failure, actual clear/retry, deletion ACK and recreation");
 
 	// The all-souls write shares one receipt, but a later binding owns a new one.
@@ -673,6 +876,7 @@ int main(int argc, char **argv)
 	}
 	assert(tried.size() == 12);
 	artifact_rows.clear();
+	artifact_binds.clear();
 	jobs.clear();
 	puts("PASS bounded round-robin snapshot retry without starvation");
 
@@ -725,12 +929,15 @@ int main(int argc, char **argv)
 	assert(artifact_save_pulse(false) == 0);
 	arti_syncdb_sql(&god);
 	assert(sync_done);
+	artifact_rows.at(900).identity_state = artifact_identity_state::absent;
 	arti_clear_sql(&god, number);
 	finish(jobs.size() - 1);
 	artifact_save_pulse(false);
-	assert(!artifact_rows.count(900));
+	assert(artifact_rows.at(900).removed &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::absent);
 	sync_done(true, fresh_sync);
-	assert(!artifact_rows.count(900));
+	assert(artifact_rows.at(900).removed &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::absent);
 	artifact_rows.clear();
 	artifact_binds.clear();
 	jobs.clear();
@@ -779,4 +986,5 @@ int main(int argc, char **argv)
 	puts("PASS real guild capture, spending/settings, current-state retry and exact-capture ACK; snapshot diagnostics survive the real reporter");
 	payment_cases(guild);
 	artifact_ordering_cases();
+	identity_snapshot_cases();
 }
