@@ -130,15 +130,16 @@ observed.
 
 ## Implementation progress
 
-Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`. Both repair branches
+Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`. All three repair branches
 now include the fetched `origin/master` tip `6d4d71e56`; the original dumps and
 matching `bin/server/dms` are preserved.
 
 **Outcome:** stop pickup at invalidating trap effects and retain correct ownership,
 reporting, cleanup and persistence across death/reconnect/restart. **Non-goals:**
 production rollout, global lifetime/GET_PID changes, unrelated object-command cleanup.
-**Files:** `src/cmd/actobj.c`, focused pickup tests and isolated journeys, this document
-and the regression catalogue/runners. **Proof:** failing-before sanitizer regression,
+**Files:** `src/cmd/actobj.c`, player snapshot capture/load, the shared SQL item-metadata
+codec and legacy loader, focused pickup tests and isolated journeys, this document and
+the regression catalogue/runners. **Proof:** failing-before sanitizer regression,
 normal-loot regressions, builds and actual command/persistence journeys on both backends.
 
 Ablation: keep the existing identity lookups and a private continuation check. Check
@@ -225,9 +226,10 @@ Third chunk implemented on `fix/corpse-trap-persistence`:
 
 - Add `run_corpse_trap_restart_journey.py`, which constructs an isolated full-world
   corpse with an ioun stone, ordinary item and deterministic lethal room-fire trap. It
-  runs the actual command, death and account-menu path; checks the observer and server;
-  reconnects and performs another get; restarts; and compares corpse custody and item
-  UIDs before and after restart on both maintained backends.
+  runs the actual command, death and account-menu path; checks that a same-room mortal
+  bystander receives the room effect while a durable NPC, remote client and server stay
+  live; reconnects and performs another get; restarts; and compares corpse custody and
+  item UIDs before and after restart on both maintained backends.
 - The journey failed before the persistence repair after the lethal trap had been
   consumed: the restored corpse had no persisted trap state, so it would reload the
   prototype's live charge. That failure is recorded in the ignored
@@ -243,7 +245,10 @@ Third chunk implemented on `fix/corpse-trap-persistence`:
 - Register the MariaDB journey in `make test-db` and document both backend commands in
   `REGRESSIONS.md`. The final MariaDB and flat-file journeys pass, including direct raw
   authority inspection of the three retained UIDs and the `6,2,0,100` spent state; after
-  final pickup, exactly the trap UID moves and the other two remain.
+  final pickup, exactly the trap UID moves and the other two remain. The completion audit
+  also places a mortal bystander and durable NPC in the trap room: the bystander receives
+  the fire effect and dies, the NPC survives, and neither outcome resumes the invalidated
+  pickup; both backend journeys pass with these assertions.
 
 Focused codec, capture, load, routing, lifecycle and corpse-haul regressions pass, as do
 the affected pickup, coin, removal, limits and account-bound access tests. The MariaDB

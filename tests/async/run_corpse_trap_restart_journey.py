@@ -360,6 +360,9 @@ def run(binary, backend):
                 builder.send(f"transfer {SOURCE}")
                 builder.expect("Ok.", timeout=30)
                 source.expect("demands your presence NOW!")
+                builder.send(f"transfer {OBSERVER}")
+                builder.expect("Ok.", timeout=30)
+                observer.expect("demands your presence NOW!")
                 for vnum, keyword, description in (
                     (TRAP_VNUM, "trapstone", "a trapped trapstone"),
                     (TARGET_VNUMS[0], "ruby", "a corpse-test ruby"),
@@ -397,10 +400,15 @@ def run(binary, backend):
                 assert "finish sorting your haul" not in death
                 assert "corpse-test ioun stone" not in death and "corpse-test ruby" not in death
                 assert process.poll() is None, "the lethal corpse trap stopped the server"
-                elsewhere = drain(observer)
-                assert "fireball" not in elsewhere and "begins pulling" not in elsewhere, elsewhere
-                observer.send("look")
-                observer.expect("Pos: standing >")
+                bystander = observer.expect("ACCOUNT MENU", timeout=45) + drain(observer)
+                assert "fireball" in bystander.lower(), bystander
+                builder.send("look")
+                builder.expect("Inside the Gates of Kimordril", timeout=30)
+                builder.send(f"goto {TRAP_ROOM}")
+                room = builder.expect("Guard Post", timeout=30) + drain(builder)
+                assert "regression executioner" in room, room
+                builder.send(f"goto {SAFE_ROOM}")
+                builder.expect("Inside the Gates of Kimordril", timeout=30)
 
                 actor.close()
                 clients.remove(actor)
@@ -473,8 +481,8 @@ def run(binary, backend):
                 after_uids = {row["uid"] for row in after_restart}
                 assert after_uids < before_uids and len(before_uids - after_uids) == 1
                 print(
-                    f"PASS: {backend} lethal corpse trap cancellation, server survival, "
-                    "reconnect, custody and spent state across restart",
+                    f"PASS: {backend} lethal corpse trap cancellation, bystander effect, "
+                    "server survival, reconnect, custody and spent state across restart",
                     flush=True,
                 )
             except Exception:

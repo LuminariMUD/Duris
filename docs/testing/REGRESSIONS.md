@@ -981,12 +981,13 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
 
 The trap restart journey creates a player corpse whose ordinary and ioun items precede
 a lethal object-triggered room-fire trap. It runs the real `get all corpse`, checks that
-the actor alone returns to the account menu while the server and observer remain live,
-and reconnects the actor to prove the abandoned batch does not replay. It then restarts
-the server and verifies that the original corpse retains the same item UIDs and the
-trap's consumed charge on MariaDB and flat-file authority. A final direct pickup proves
-the spent trap did not rearm. The journey uses only synthetic accounts and a private
-world; the MariaDB leg is registered in `make test-db`.
+the actor and a same-room mortal bystander receive the room effect and return to their
+account menus while a durable same-room NPC, a remote staff client and the server remain
+live, and reconnects the actor to prove the abandoned batch does not replay. It then
+restarts the server and verifies that the original corpse retains the same item UIDs and
+the trap's consumed charge on MariaDB and flat-file authority. A final direct pickup
+proves the spent trap did not rearm. The journey uses only synthetic accounts and a
+private world; the MariaDB leg is registered in `make test-db`.
 
 ## Falling: Safe Fall, Climb and breakable floors
 
