@@ -13,8 +13,8 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 `branch/issue-67-flat-artifact-cache`. Numeric/flat/SQL blob readers and the SQL snapshot
 aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready in
 [PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
-`branch/issue-67-pinned-recovery-evidence`. Complete recovery candidate projection,
-population classification and admission remain open.
+`branch/issue-67-pinned-recovery-evidence`. Pinned Redis item/NPC projections are ready in PR #146. Copyover and NPC item
+identity qualification, combined classification and admission remain open.
 No operational repair started.
 
 Focused repair ready for review in [PR #145](https://github.com/LuminariMUD/Duris/pull/145):
@@ -38,8 +38,9 @@ before custody reconciliation or any materialization, retaining the original
 Redis generation/floor for disposition. This repair is separate from adding the
 source projection API. Fully repeated valid trees retain existing behavior.
 
-Current recovery population chunk: `branch/issue-67-recovery-population`, based
-on PR #145; implemented and validated, publication pending. Outcome: project the pinned
+Current recovery population checkpoint:
+[PR #146](https://github.com/LuminariMUD/Duris/pull/146),
+`branch/issue-67-recovery-population`, based on PR #145 and ready for review. Outcome: project the pinned
 Redis ground graphs and retained NPC reconstruction evidence without constructing
 objects. Reuse the same pure object-tree validator as the real recovery planner.
 Keep generation/floor provenance, repeated-UID history, partial-overlap conflicts
@@ -934,8 +935,10 @@ or release tag occurred.
 
 ### Pinned recovery population projections — AR-01/AR-02 prerequisite
 
-Implemented on `branch/issue-67-recovery-population`, based on PR #145;
-publication pending. `artifact_population_read_recovery` consumes the immutable
+Ready for review in [PR #146](https://github.com/LuminariMUD/Duris/pull/146) on
+`branch/issue-67-recovery-population`, based on PR #145. Implementation commit:
+`a54995c84e259ebb60a3048a4e895095adccfefe`.
+`artifact_population_read_recovery` consumes the immutable
 snapshot exposed by PR #144. It validates framing and decodes the actual codec,
 then uses PR #145's pure native-tree validator. It never reads templates, creates
 or extracts an object, assigns an identity, looks up runtime custody, or writes.
