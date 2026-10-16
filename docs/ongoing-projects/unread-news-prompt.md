@@ -465,3 +465,56 @@ The feature requires migration
 0043 before a database-backed deployment, and new schema-9 snapshots require the
 new decoder; deployment/rollback decisions belong to the later authorized rollout.
 No release tag is appropriate for an unmerged review stack.
+
+### Review repairs - 2026-10-16
+
+Both review findings were reproduced before repair. PR #127's SQL reload called
+the success callback after rejecting embedded-NUL news; the flat-file failure
+path had the same defect. Both paths now report failure and return without the
+success callback, retaining the previous text and fingerprint. The existing
+publication harness verifies the failure message, callback suppression, and
+retained content for both backends.
+
+PR #128's extra status string shifted the separately materialized wallet, epic,
+and frag fields. The loader now records the first integer column after reading
+the strings. The existing database fixture uses distinct nonzero values and
+neighboring fields, and checks both PID and name loads. The real SQL player
+journey also verifies those balances after login, reconnect, copyover, news
+acknowledgement, and saving. Both backend journeys check that a refused staff
+reload displays no success message and keeps the old news usable.
+
+The review branches were rebased onto master `9625ffd7b`; #128 retains #127 as its
+base. The full local gate additionally exposed sibling-checkout source links in
+this plan and a stale migration-0042 test expectation. The links now pin the
+recorded upstream revision, and the boot test expects migration 0043, matching
+the independently verified manifests, compiled contract, and database schemas.
+The existing creation/session journeys now expect the unread-news second prompt
+line in their unread fixtures; the exact Telnet GA framing assertion is retained.
+
+Focused verification commands added to the reproduction recipe above:
+
+```sh
+bash tests/async/run_player_load_repository_mysql.sh
+COLOR_DB_IMAGE=mysql:8.0 bash tests/async/run_output_preferences_mysql.sh
+COLOR_DB_IMAGE=mariadb:10.11 bash tests/async/run_output_preferences_mysql.sh
+RUNTIME_DB_IMAGE=mysql:8.0 bash tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:10.11 bash tests/async/run_runtime_compatibility_mysql.sh
+python3 tests/async/test_documentation_contract.py
+python3 tests/async/test_runtime_boot_compatibility.py
+python3 tests/async/test_creation_prompt_journey.py
+python3 tests/async/test_game_loop_session_journey.py
+```
+
+Validation also includes fresh native/flat-file builds, sanitized output/prompt
+checks, both migration replays, both full-world news journeys, formatting, and
+`make security-check`. Current review logs are under ignored
+`bin/analysis/review/` in the review worktrees; journey reports remain under
+`bin/analysis/news/`. CodeQL and Trivy are unavailable locally and were not run.
+The PR comments record the full-suite outcome and published heads. The security
+summary on #128 advertises a finding but exposes no separate details in its
+reviews, inline threads, check runs, or code-scanning alerts; that summary is not
+treated as proof that a separate security review passed.
+
+Land #127 first using the repository's linear-history policy, then refresh
+master and carry #128's own commits onto that landed parent before retargeting.
+No tag, merge, production migration, or deployment is part of this review repair.

@@ -324,6 +324,7 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 			  row[column] ? std::string(row[column], length) : "" });
 		++column;
 	}
+	const int status_integer_start = column;
 	for (const status_column &spec : STATUS_COLUMNS)
 	{
 		player_snapshot_integer value = { spec.field, signed_value(row[column]),
@@ -349,14 +350,14 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 		quest = static_cast<int32_t>(signed_value(row[column++]));
 	result->snapshot.output_preferences = row[column] ? row[column] : "";
 	result->domains.wallet = {
-		unsigned_value(row[9 + 32]),
-		unsigned_value(row[9 + 33]),
-		unsigned_value(row[9 + 34]),
-		unsigned_value(row[9 + 35]),
+		unsigned_value(row[status_integer_start + 32]),
+		unsigned_value(row[status_integer_start + 33]),
+		unsigned_value(row[status_integer_start + 34]),
+		unsigned_value(row[status_integer_start + 35]),
 	};
-	result->domains.epics = signed_value(row[9 + 37]);
-	result->domains.frags = signed_value(row[9 + 52]);
-	result->domains.old_frags = signed_value(row[9 + 53]);
+	result->domains.epics = signed_value(row[status_integer_start + 37]);
+	result->domains.frags = signed_value(row[status_integer_start + 52]);
+	result->domains.old_frags = signed_value(row[status_integer_start + 53]);
 	mysql_free_result(rows);
 	return true;
 }

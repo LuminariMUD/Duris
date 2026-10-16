@@ -129,6 +129,11 @@ def run(binary, backend):
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")
+                    # Distinct neighbors expose shifted SQL domain columns on every reload.
+                    sql("UPDATE player_data SET spells_memmed_extra=31,copper=101,silver=202,"
+                        "gold=303,platinum=404,exp=12345,epics=505,"
+                        "time_unspecced=FROM_UNIXTIME(1000000),frags=606,oldfrags=707 "
+                        "WHERE name='" + PLAYER + "'")
                 else:
                     journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
                 boot()
@@ -144,6 +149,16 @@ def run(binary, backend):
                 player.expect('Copyover complete!', timeout=180)
                 assert '(news)' not in prompt(player)
                 evidence['restart_reconnect_copyover'] = 'passed'
+                if sql:
+                    sql("UPDATE mud_info SET content=CONVERT(0x4e4557532d5800626164 USING utf8mb4) WHERE name='news'")
+                else:
+                    news_file.write_bytes(b'NEWS-X\0bad')
+                god.send('page')
+                refused = god.expect('News reload failed; previous news retained.', timeout=30)
+                refused += god.expect('> ', timeout=30)
+                assert 'Done.' not in refused, 'failed publication reported success'
+                read_news(player, 'A')
+                evidence['failed_reload_retains_news'] = 'passed'
                 publish('B')
                 god.send('page')
                 god.expect('Done.', timeout=30)
@@ -163,6 +178,10 @@ def run(binary, backend):
                 save(player)
                 final = 'C' if sql else 'B'
                 assert stored() == hashlib.sha256(('NEWS-' + final + '\n').encode()).hexdigest()
+                if sql:
+                    assert sql("SELECT copper,silver,gold,platinum,epics,frags,oldfrags "
+                               "FROM player_data WHERE name='" + PLAYER + "'").strip() == '101\t202\t303\t404\t505\t606\t707'
+                    evidence['domain_balances_after_load_save'] = 'passed'
                 stop()
                 boot()
                 player = login()
