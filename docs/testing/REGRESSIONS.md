@@ -958,7 +958,13 @@ python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/mariadb/server 
 `test_corpse_haul.py` runs the production selection, pickup and reporting under
 ASan/UBSan: NPC and player presentation, coin-only and mixed loot, scrap, a later pile
 with nothing to take, the count cap, a malformed sibling cycle, failed live delivery and
-strict NPC publication. The MariaDB journey uses three real accounts: the looter kills
+strict NPC publication. Its extraction fixture releases PC data, clears the descriptor
+and live runtime identity, and moves the actor to NOWHERE. Lethal, sleep, teleport,
+removed/moved source and sibling cases cover first/middle/last/only traps, filtered and
+unfiltered corpse/floor selection, surviving traps, cancellation after insertion,
+allocation failure, and another get by a new runtime identity with the same PID.
+Finalizers and combat remain stubbed here; full command/death coverage requires the
+server journey. The MariaDB journey uses three real accounts: the looter kills
 Raoul in combat, a second player at the corpse sees the haul start, and a third in the
 next room sees nothing. After a real player death it repeats a mixed equipment-and-coin
 haul on the player's corpse. Each stage asserts the haul, observer output, and the saved

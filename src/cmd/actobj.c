@@ -374,6 +374,18 @@ P_obj find_live_item_uid(uint64_t item_uid)
 	return NULL;
 }
 
+// Trap effects can extract the actor, move it, or remove its source container.
+static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj container,
+			     uint64_t container_uid)
+{
+	if (find_character_by_runtime_id(runtime_id) != actor || !IS_ALIVE(actor) ||
+	    actor->in_room != room || !IS_AWAKE(actor) || IS_IMMOBILE(actor))
+		return false;
+	return !container || (find_live_item_uid(container_uid) == container &&
+			      (OBJ_CARRIED_BY(container, actor) || OBJ_WORN_BY(container, actor) ||
+			       (OBJ_ROOM(container) && container->loc.room == room)));
+}
+
 static void publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool slip)
 {
 	obj_from_obj(o_obj);
@@ -1341,11 +1353,15 @@ static P_obj resolve_synchronous_get_item(const synchronous_get_item &selected,
 }
 
 /** Take each selected item; an earlier pickup's side effects can move or destroy a later one. */
-static void take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj container)
+static bool take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj container)
 {
+	const uint64_t runtime_id = actor->runtime_id;
 	bool found_item = false;
 	while (!state.synchronous_items.empty())
 	{
+		if (!get_can_continue(actor, runtime_id, state.room, container,
+				      state.container_uid))
+			return false;
 		const synchronous_get_item selected = state.synchronous_items.front();
 		state.synchronous_items.erase(state.synchronous_items.begin());
 		P_obj object = resolve_synchronous_get_item(selected, state, container);
@@ -1382,11 +1398,15 @@ static void take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj conta
 		else
 			do_get_finalize_room_item(actor, object, found_item, state.total);
 		item_get_ack_publication = false;
+		if (!get_can_continue(actor, runtime_id, state.room, container,
+				      state.container_uid))
+			return false;
 		if (item_get_rejected)
 			state.failed = true;
 		else
 			announce_corpse_bulk_get(actor, state, container);
 	}
+	return get_can_continue(actor, runtime_id, state.room, container, state.container_uid);
 }
 
 /** Snapshot rejection text now; rejected objects can disappear before publication. */
@@ -1487,6 +1507,7 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 static void start_bulk_get(P_char actor, P_obj container, const char *filter, bool corpse)
 {
 	const uint32_t actor_pid = static_cast<uint32_t>(GET_PID(actor));
+	const uint64_t runtime_id = actor->runtime_id;
 	if (item_movement_transaction_player_busy(actor))
 	{
 		send_to_char("You are already moving an item; try again in a moment.\r\n", actor);
@@ -1511,17 +1532,32 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 		     object = next)
 		{
 			next = object->next_content;
+			const uint64_t next_uid = next ? next->obj_uid : 0;
 			bool stop = false;
-			select_bulk_get_item(actor, container, object, filter, container_local,
-					     carried_count, carried_weight, state, stop);
+			const bool selected = select_bulk_get_item(actor, container, object, filter,
+								   container_local, carried_count,
+								   carried_weight, state, stop);
+			// A rejected trap may have invalidated both the actor and the saved sibling.
+			if (!selected && !get_can_continue(actor, runtime_id, state.room, container,
+							   state.container_uid))
+				return;
 			if (stop)
 				break;
+			if (!selected && next)
+			{
+				next = resolve_synchronous_get_item({ next_uid, next, false },
+								    state, container);
+				if (!bulk_get_source_matches(state, container, next))
+					next = NULL;
+			}
 		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		send_to_char("You can't collect everything right now; please try again.\r\n",
-			     actor);
+		if (get_can_continue(actor, runtime_id, state.room, NULL, 0))
+			send_to_char(
+				"You can't collect everything right now; please try again.\r\n",
+				actor);
 		return;
 	}
 	if (container && !container->obj_uid)
@@ -1534,13 +1570,19 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 		auto [found, inserted] = bulk_gets.emplace(actor_pid, std::move(state));
 		if (!inserted)
 			return;
-		take_bulk_get_items(actor, found->second, container);
-		finish_bulk_get(actor, actor_pid);
+		if (take_bulk_get_items(actor, found->second, container))
+			finish_bulk_get(actor, actor_pid);
+		else
+			bulk_gets.erase(actor_pid);
 	}
 	catch (const std::bad_alloc &)
 	{
-		send_to_char("You can't collect everything right now; please try again.\r\n",
-			     actor);
+		item_get_ack_publication = false;
+		bulk_gets.erase(actor_pid);
+		if (get_can_continue(actor, runtime_id, state.room, NULL, 0))
+			send_to_char(
+				"You can't collect everything right now; please try again.\r\n",
+				actor);
 	}
 }
 

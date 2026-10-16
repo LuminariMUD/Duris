@@ -1,7 +1,7 @@
 # Core dump investigation and repair plan — 2026-10-16
 
-Status: investigation and implementation plan complete; runtime fixes remain to be
-implemented. Source reviewed at `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
+Status: bulk cancellation implemented; direct/legacy pickup repair and real-server
+trap/persistence qualification remain open. Investigation source reviewed at `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
 
 **All three root-directory dumps expose the same fatal continuation after player
 extraction during `get all corpse`.** The bulk selector calls a trap function that
@@ -128,11 +128,61 @@ observed.
   `bin/analysis/core-dumps-2026-10-16/` as `lethal_selection_probe.cpp`,
   `lethal_selection_probe`, and `lethal_selection_probe.txt`.
 
+## Implementation progress
+
+Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`, including master
+`98acafdf3`. The original dumps and matching `bin/server/dms` are preserved.
+
+**Outcome:** stop pickup at invalidating trap effects and retain correct ownership,
+reporting, cleanup and persistence across death/reconnect/restart. **Non-goals:**
+production rollout, global lifetime/GET_PID changes, unrelated object-command cleanup.
+**Files:** `src/cmd/actobj.c`, focused pickup tests and isolated journeys, this document
+and the regression catalogue/runners. **Proof:** failing-before sanitizer regression,
+normal-loot regressions, builds and actual command/persistence journeys on both backends.
+
+Ablation: keep the existing identity lookups and a private continuation check. Check
+selection cancellation in `start_bulk_get`, immediately after the selector returns a
+rejection, because it returns directly from a triggered trap without further actor or
+object accesses. This avoids new selection-result types and persistent cancellation
+state. The batch publisher returns whether reporting is still valid; its owner erases
+by the saved PID after references are no longer in use. No new registry or public API.
+
+First chunk implemented:
+
+- Capture the actor runtime ID and original room/source; abandon queued selection on
+  death/extraction, sleep, teleport, or removed/inaccessible container.
+- Resolve a rejected selection's saved sibling by UID (or the existing live-chain
+  fallback for UID zero), and verify custody before following it.
+- Recheck publication boundaries and suppress completion on cancellation; erase the
+  inserted batch by saved PID and reset publication state on allocation failure.
+- Extend `test_corpse_haul.py` with a PC-data lifecycle fixture and the bulk matrix.
+  The initial lethal test failed before the repair at the same `corpse_bulk_get`
+  PID boundary (SIGABRT from the strict null-PC assertion). The repaired matrix passes
+  under ASan/UBSan. This still stubs finalizers/combat: the real-finalizer and full
+  command requirements below remain open.
+
+Checks completed for this chunk: `python3 tests/async/test_corpse_haul.py`,
+`python3 tests/async/test_bulk_get_publication.py`,
+`python3 tests/async/test_money_carry_count.py`,
+`python3 tests/async/test_take_coins.py`,
+`python3 tests/async/test_actobj_get_limits.py`, and `./scripts/format.sh --check`.
+Formatting uses the repository-documented clang-format 18.1.8 installed in the
+ignored `bin/analysis/core-dumps-2026-10-16/format-env`; prepend its `bin` directory
+to `PATH` for formatting and commits. Host clang-format 21 changes untouched C++
+namespace layout in `.c` files, including the unmodified baseline.
+`make -C src` is in progress, with output under
+`bin/analysis/core-dumps-2026-10-16/build-mariadb.log`.
+
+Next: finish the build and open the bulk-fix PR, stack direct/legacy pickup
+cancellation and truthful finalizers, then the real trap/death/reconnect/restart
+journeys and any independently reproduced persistence repair. Do not call this
+project complete based on the bulk harness alone.
+
 ## Implementation sequence
 
 ### 1. Capture a failing regression at the actual boundary
 
-- [ ] Extend [test_corpse_haul.py](../../tests/async/test_corpse_haul.py), or add
+- [x] Extend [test_corpse_haul.py](../../tests/async/test_corpse_haul.py), or add
   one focused native test beside it, to run a lethal trap during selection after
   at least one ordinary/ioun item has already been selected. Assert that no
   previously selected item is transferred, no subsequent item is inspected, and
@@ -141,28 +191,28 @@ observed.
   least one test. Use actual extraction or a faithful fixture that releases PC
   data, clears the descriptor, removes the actor's runtime identity, and sets
   `NOWHERE`/`STAT_DEAD`. A new stub that merely skips the crash site is inadequate.
-- [ ] Demonstrate the test fails on the reviewed source for this defect. Keep the
+- [x] Demonstrate the test fails on the reviewed source for this defect. Keep the
   existing normal-haul tests as coverage of behavior that must remain intact.
 
 ### 2. Stop selection as soon as its actor or source becomes invalid
 
 Primary file: [src/cmd/actobj.c](../../src/cmd/actobj.c).
 
-- [ ] Capture the existing character runtime ID, PID, and source identity while
+- [x] Capture the existing character runtime ID, PID, and source identity while
   the actor is valid. Reuse
   [find_character_by_runtime_id()](../../src/account/character_identity.c) and
   `find_live_item_uid()`; no new lifetime registry is needed.
-- [ ] Immediately after `checkgetput()`, establish that the original actor is
+- [x] Immediately after `checkgetput()`, establish that the original actor is
   still present and alive before reading any further actor field or resuming
   the selection loop. Propagate a terminal stop out of selection and
   `start_bulk_get()` if it has died or been extracted. Do not insert or publish
   the partially selected batch in this case.
-- [ ] Stop if the trap teleported the actor away from the original room or made
+- [x] Stop if the trap teleported the actor away from the original room or made
   the actor unable to act. Revalidate the source container/location before using
   a saved sibling pointer or publishing selected items: a trap is permitted to
   change the world. `bulk_get_source_matches()` currently checks object custody
   without checking that the actor can still reach that source.
-- [ ] Preserve nonlethal trap behavior for an actor that remains able to act in
+- [x] Preserve nonlethal trap behavior for an actor that remains able to act in
   the original location: the triggered item is rejected and eligible untrapped
   items may still be collected. Preserve charge consumption, damage, carry
   limits, coin selection, and existing ownership restrictions.
@@ -306,8 +356,8 @@ gdb -nx -q -batch \
 Repeat for the other two filenames. Use the recorded matching build ID; a later
 replacement of `bin/server/dms` must not silently change the symbol source.
 
-This investigation changed documentation only, plus ignored local probe artifacts.
-The checkout identifies itself as `production`. No server was stopped, attached
-to, restarted, or deployed; no database, player data, logs, or core dumps were
-modified. Full builds and real gameplay/persistence journeys remain implementation
-work, not claimed validation of this plan.
+The original investigation changed documentation only, plus ignored local probe
+artifacts. The checkout identifies itself as `production`. Implementation progress
+and validation are recorded above. No production server has been stopped, attached
+to, restarted, or deployed; production databases, player data, logs and core dumps
+remain untouched. Test databases and runtimes are disposable and explicitly local.
