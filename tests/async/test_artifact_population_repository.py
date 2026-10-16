@@ -8,7 +8,7 @@ import sys
 import tempfile
 import uuid
 
-from _paths import ROOT
+from _paths import ROOT, HARNESS_STUBS
 
 if os.environ.get("TEST_DB_HOST") != "127.0.0.1" or not all(
         os.environ.get(key) for key in ("TEST_DB_PORT", "TEST_DB_USER", "TEST_DB_PASSWORD")):
@@ -21,8 +21,12 @@ with tempfile.TemporaryDirectory(prefix="artifact-population-", dir=output) as d
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=undefined", "-fno-sanitize-recover=all", "-Isrc", "-I/usr/include/mysql",
+        "-pthread", "-ffunction-sections", "-fdata-sections",
         "tests/async/artifact_population_repository_harness.cpp",
-        "src/guild/artifact_population_repository.c", "-lmysqlclient", "-o", str(binary),
+        "src/guild/artifact_population_repository.c", "src/item/legacy_object_identity.c",
+        "src/player/player_snapshot_codec.c", "src/economy/collector_codec.c",
+        "src/economy/collector_policy.c", "src/persistence/critical_command.c",
+        str(HARNESS_STUBS), "-Wl,--gc-sections", "-lmysqlclient", "-lcrypto", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True, timeout=30)
     # The small behavioral fixture deliberately admits contradictory legacy rows.

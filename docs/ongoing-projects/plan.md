@@ -14,6 +14,17 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
+Current SQL source chunk: `branch/issue-67-sql-population-blobs`, based on
+PR #142; implemented and validated, publication in progress. Outcome: bounded SQL
+auction, legacy pickup, collector and embedded-history pages, plus an atomic
+aggregate under one read-only repeatable-read snapshot. Preserve unknown
+identities, history roles and explicit quarantine; inspect bytes without
+materializing objects. Non-goals: canonical choice, recovery completeness, boot
+admission or production operations. Files: existing population reader/header,
+focused database fixture and this plan. Reuse the existing page interface and
+payload codecs; no delivery store is added because SQL delivery transactions
+already write `player_items`. Proof and continuation details follow below.
+
 Current source checkpoint: [PR #142](https://github.com/LuminariMUD/Duris/pull/142),
 `branch/issue-67-flat-population-sources`, based on PR #141 and ready for review.
 Outcome: stage flat-file
@@ -705,13 +716,91 @@ clang-tidy and whitespace checks pass. Ignored evidence uses
 `population-flat-{maria-build,build,tidy,sql-control,mysql8-control}.log` and
 `population-{auction,collector,shop}-control.log` under `bin/analysis/issue67/`.
 
-Next: finish SQL blob/delivery/history readers, pin and qualify recovery evidence,
-then publish a complete aggregate before early cleanup/population and implement
+SQL blob/history pages and their SQL aggregate are now implemented in the next
+checkpoint below. Next: pin and qualify recovery evidence, then publish complete
+combined evidence before early cleanup/population and implement
 canonical admission/materialization/retirement. Source snapshots are not full
 store backups; retain originals before any operational disposition or routine
 cleanup can remove historical evidence. All unchecked AR-01–AR-07 acceptance
 work remains required. No production read, migration, cleanup, deployment or
 release tag occurred.
+
+### SQL blob sources and snapshot aggregate — AR-01/AR-02 prerequisite
+
+Implemented on `branch/issue-67-sql-population-blobs`, based on PR #142. The existing
+population repository now reads five more source domains: per-slot auction
+custody, retained auction listing templates, legacy auction item pickups,
+collector item bodies and legacy `item_current_owner.coin_payload` history.
+Every page buffers at most 256 source rows plus one lookahead; binary lengths
+and bounded blob projections prevent unbounded body buffering. The aggregate
+limits all inspected source rows, including metadata-only collector records,
+to the existing 1,048,576-record bound. Packed auction cursors retain the full
+32-bit auction/16-bit slot key while queries seek/order by the real key columns.
+
+Per-slot auction binding UIDs override serialized template UIDs, matching the
+actual claim path. Claimed slots are history, and listing templates with bound
+slots are history rather than extra physical copies. Uncovered open legacy
+listings and unretrieved pickup bodies retain their quantity and optional UID;
+no identity is generated. Missing/mismatched listing coverage and open auction
+quarantine remain explicit. Collector metadata is decoded with the real codec
+and its identity/state/death-operation projections checked before reading a
+singleton body; metadata without bytes is not a physical candidate. Coin bytes
+are history regardless of custody state, with their payload holder unknown.
+
+All numeric and blob projections now retain open item quarantine independently
+of current custody, including quarantine for an item with no custody row. Missing
+custody and conflicting owner/vnum/state remain visible. Modern bodies preserve
+explicit zero flags, and legacy bodies preserve whether flags were encoded.
+SQL delivery transactions already persist their captured item bodies directly
+into `player_items` (`materialize_direct_player_items` and collector buyback's
+`insert_player_item`); their inbox/result history is not another physical copy.
+Auction claims retain their bound blob until player materialization/save and are
+therefore retained as history for the later existence classifier to correlate.
+
+`artifact_population_read_sql_payloads` requires a dedicated idle autocommit
+connection, starts its own read-only repeatable-read snapshot, reads all eight
+numeric and five blob domains, and publishes the staged vector only after a
+successful commit. A failed page, malformed body, allocation/size failure or
+commit cannot replace prior output; failed reads roll back. An already active
+transaction or disabled autocommit returns `EBUSY` without taking ownership of
+that transaction. This is a complete SQL-source cut, not combined recovery
+completeness, a canonical selection, a boot caller or gameplay admission.
+
+Passed with terminating UBSan through the existing native fixture/driver:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_artifact_population_repository.py
+python3 bin/analysis/issue67/run_mysql8_artifact_population.py
+make -C src -j2
+```
+
+Both database legs run against the maintained 198-table schema after all 44
+immutable migrations, alongside the existing permissive numeric contradiction
+fixture. The populated current-schema leg retains 13 mixed room/blob projections,
+ordinary parentage, shared UID evidence, unknown UID and quantity, unsigned-maximum
+binding UID, claimed/retrieved and collector terminal history, explicit-zero and
+missing flags, active/destroyed custody, foreign custody and orphan quarantine.
+It tests a 257-row continuation, five malformed/oversized/mismatched-body failures,
+a missing-table query failure, prior-output pointer preservation, metadata-only
+record accounting and existing-transaction/autocommit refusal. A real table lock
+blocks the aggregate at a later source while a second connection inserts a new
+pickup: even with session isolation initially READ COMMITTED, the concurrent row
+appears only in the next aggregate. No production/test hook is introduced.
+
+The client-free flat build with the existing dedicated `flat-memory-build`
+outputs, changed-line formatting, clang-tidy and whitespace checks also pass.
+The native pre-commit environment's default Clang 18 selected incompatible GCC
+16 headers; use the retained ignored `bin/analysis/issue67/clang-tidy-gcc13`
+wrapper (`clang-tidy-18 --extra-arg=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`)
+as `CLANG_TIDY` for the staged hook. No check is bypassed.
+Evidence is retained under ignored `bin/analysis/issue67/population-sql-blobs-*`
+logs in `/home/aiwithapex/projects/duris-issue67-plan`. These are actual source-reader
+and snapshot checks; this chunk adds no boot consumer and claims no fresh gameplay
+uniqueness/restart qualification. Next required work is the pinned recovery cut,
+combined classification before early reap/forced population, canonical admission
+and materialization/retirement, then the remaining AR-01–AR-07 runtime matrix.
+All existing unchecked acceptance items remain open. No production read,
+operational repair, migration, deployment, merge or release tag occurred.
 
 ### Numeric SQL population source pages — AR-01/AR-02 prerequisite
 
@@ -1262,7 +1351,9 @@ Continuation inspection after PR #139 confirmed two reader boundaries to retain:
   creating another registry or treating successful later ground restore as proof
   that earlier forced population was safe.
 
-No candidate-reader code or new recovery format has been implemented yet.
+The numeric, flat and SQL blob source readers above now implement the durable
+source prerequisites. Recovery pinning, the combined classifier and its boot
+consumer remain open; no new recovery format has been implemented.
 
 The supported custody types in [item_transfer_command.h](../../src/item/item_transfer_command.h)
 are player, container, room, corpse, locker, auction, system, destruction,

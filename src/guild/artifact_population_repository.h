@@ -21,6 +21,8 @@ enum class artifact_payload_domain : uint8_t
 	collector,
 	delivery,
 	embedded,
+	auction_legacy,
+	auction_pickup,
 };
 
 enum class artifact_payload_role : uint8_t
@@ -54,6 +56,7 @@ struct artifact_payload_projection
 	bool parent_missing = false;
 	bool parent_owner_disagrees = false;
 	item_owner_identity payload_owner = {};
+	bool source_quarantined = false;
 	bool custody_found = false;
 	item_ownership_runtime_entry custody = {};
 };
@@ -76,6 +79,7 @@ constexpr size_t ARTIFACT_POPULATION_SQL_PAGE_SIZE = 256;
 struct artifact_population_sql_page
 {
 	std::vector<artifact_payload_projection> rows;
+	size_t source_rows = 0; // includes metadata-only collector rows
 	uint64_t next_row_id = 0;
 	bool complete = false;
 };
@@ -86,6 +90,18 @@ struct artifact_population_sql_page
 unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_payload_domain domain,
 					       uint64_t after_row_id,
 					       artifact_population_sql_page *page);
+// Blob pages use auction (packed auction_id/slot cursor), auction_legacy,
+// auction_pickup, collector and embedded domains. History is retained as history.
+unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
+						    artifact_payload_domain domain,
+						    uint64_t after_row_id,
+						    artifact_population_sql_page *page);
+
+// Dedicated idle autocommit connection only. Owns a read-only repeatable-read
+// transaction across every numeric/blob page; commits before publishing output.
+// This is complete SQL source evidence, not complete recovery/population proof.
+unsigned int artifact_population_read_sql_payloads(MYSQL *connection,
+						   std::vector<artifact_payload_projection> *items);
 #endif
 
 #endif

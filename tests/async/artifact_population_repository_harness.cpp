@@ -1,6 +1,16 @@
 #include "guild/artifact_population_repository.h"
 
+#include "economy/collector_codec.h"
+#include "core/files.h"
+#include "player/player_snapshot_codec.h"
+
+#include <algorithm>
+#include <array>
 #include <cassert>
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <thread>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -25,6 +35,8 @@ static void query(MYSQL *connection, const std::string &sql)
 	}
 }
 
+static void blob_checks(MYSQL *connection, const std::string &database);
+
 int main(int argc, char **argv)
 {
 	MYSQL *connection = connect();
@@ -42,8 +54,10 @@ int main(int argc, char **argv)
 				&page));
 			assert(page.complete && page.rows.empty());
 		}
+		blob_checks(connection, database);
 		mysql_close(connection);
-		std::cout << "all numeric population readers accept the actual current schema\n";
+		std::cout
+			<< "numeric and blob population readers accept the actual current schema\n";
 		return 0;
 	}
 	assert(argc == 1);
@@ -55,6 +69,8 @@ int main(int argc, char **argv)
 	      "root_item_uid BIGINT UNSIGNED,parent_item_uid BIGINT UNSIGNED,"
 	      "owner_type TINYINT UNSIGNED,owner_id BIGINT UNSIGNED,"
 	      "owner_context_id BIGINT UNSIGNED,item_revision BIGINT UNSIGNED,vnum INT,state TINYINT UNSIGNED) ENGINE=InnoDB");
+	query(connection,
+	      "CREATE TABLE item_ownership_quarantine(item_uid BIGINT UNSIGNED,repaired_at TIMESTAMP NULL)");
 	query(connection,
 	      "CREATE TABLE item_owner_revision(owner_type TINYINT UNSIGNED,"
 	      "owner_id BIGINT UNSIGNED,owner_context_id BIGINT UNSIGNED,revision BIGINT UNSIGNED,"
@@ -214,4 +230,270 @@ int main(int argc, char **argv)
 	mysql_close(connection);
 	std::cout << "SQL physical payload pages preserve all eight sources, legacy/unknown UIDs, "
 		     "custody conflicts, stable continuations and failed-read atomicity\n";
+}
+
+static std::string hex(const uint8_t *data, size_t size)
+{
+	std::string result = "X'";
+	for (size_t index = 0; index < size; ++index)
+	{
+		result += "0123456789abcdef"[data[index] >> 4];
+		result += "0123456789abcdef"[data[index] & 15];
+	}
+	return result + "'";
+}
+
+static std::string legacy_blob(uint64_t uid)
+{
+	std::vector<uint8_t> data;
+	auto native = [&]<typename T>(T value)
+	{
+		const auto *first = reinterpret_cast<const uint8_t *>(&value);
+		data.insert(data.end(), first, first + sizeof(value));
+	};
+	native(uint8_t{ SAV_ITEMVERS });
+	native(uint32_t{ 1 });
+	native(static_cast<uint8_t>(O_F_UNIQUE | (uid ? O_F_UID : 0))); // UNIQUE, optional UID
+	native(int32_t{ 900 });
+	native(int16_t{ 0 });
+	native(int16_t{ 100 });
+	if (uid)
+		native(uid);
+	native(uint32_t{ O_U_EXTRA }); // explicit EXTRA override
+	native(uint32_t{ 1U << 28 });
+	native(uint8_t{ O_F_EOL }); // EOL
+	return hex(data.data(), data.size());
+}
+
+static std::string modern_blob(uint64_t uid)
+{
+	player_item_snapshot item = {};
+	item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	item.equipment_slot = -1;
+	item.vnum = 900;
+	item.object_uid = uid;
+	item.extra_flags = 0; // explicit zero must override an artifact prototype
+	std::vector<uint8_t> bytes;
+	assert(player_item_snapshot_list_encode({ item }, &bytes) ==
+	       player_snapshot_codec_result::ok);
+	return hex(bytes.data(), bytes.size());
+}
+
+static void blob_checks(MYSQL *connection, const std::string &database)
+{
+	std::vector<artifact_payload_projection> population;
+	assert(!artifact_population_read_sql_payloads(connection, &population) &&
+	       population.empty());
+	const auto legacy = legacy_blob(7), uidless = legacy_blob(0);
+	query(connection,
+	      "INSERT INTO saved_items(id,item_key,room_vnum,vnum,obj_uid,extra_flags) VALUES"
+	      "(1,'population-root',100,901,10001,0),(2,'population-child',100,900,801,NULL)");
+	query(connection, "UPDATE saved_items SET container_id=1 WHERE id=2");
+	query(connection,
+	      "INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,"
+	      "item_revision,vnum,state) VALUES(101,101,6,1,3,900,1),(102,102,1,99,4,901,3),"
+	      "(18446744073709551615,18446744073709551615,6,1,1,900,1),"
+	      "(903,903,1,77,1,900,1),(904,904,8,1,1,900,2),(999999,999999,1,77,1,900,1)");
+	query(connection,
+	      "INSERT INTO item_owner_revision(owner_type,owner_id,revision) VALUES(1,99,12)");
+	query(connection,
+	      "INSERT INTO item_ownership_quarantine(item_uid,source_table,source_row_id,conflict_code,evidence) "
+	      "VALUES(101,'auction_item_custody',1,1,'fixture'),(801,'collector_listings',2001,1,'orphan fixture')");
+	query(connection,
+	      "INSERT INTO auctions(id,obj_vnum,quantity,obj_blob_str,custody_state) VALUES"
+	      "(1,900,3," +
+		      legacy + ",1),(2,900,2," + uidless + ",0)");
+	query(connection,
+	      "INSERT INTO auction_item_custody(auction_id,slot,item_uid,item_revision,vnum,obj_blob) VALUES"
+	      "(1,0,101,3,900," +
+		      legacy + "),(1,1,102,4,900," + legacy +
+		      "),"
+		      "(1,65535,18446744073709551615,1,900," +
+		      legacy + ")");
+	query(connection,
+	      "UPDATE auction_item_custody SET claim_pid=77,claimed_at=CURRENT_TIMESTAMP(6),"
+	      "claim_operation_id=UNHEX('0123456789abcdef0123456789abcdef') WHERE slot=1");
+	query(connection,
+	      "INSERT INTO auction_item_pickups(id,pid,quantity,retrieved,obj_blob_str) VALUES"
+	      "(1,77,3,0," +
+		      uidless + "),(2,77,1,1," + legacy_blob(101) + ")");
+	query(connection,
+	      "INSERT INTO collector_deaths(death_operation_id,beneficiary_pid,death_time) "
+	      "VALUES(UNHEX('123456789abcdef0123456789abcdef0'),77,1000)");
+	for (uint64_t index = 1; index <= 3; ++index)
+	{
+		collector::rules rules;
+		rules.enabled = true;
+		collector::record record;
+		assert(collector::enroll(2000 + index, "123456789abcdef0123456789abcdef0", 77,
+					 800 + index, 1, 1000, rules,
+					 &record) == collector::outcome::applied);
+		if (index != 3)
+		{
+			assert(collector::collect(&record, record.revision, record.item_revision,
+						  record.item_revision, true, 100,
+						  record.collect_at) ==
+			       collector::outcome::applied);
+			if (index == 2)
+			{
+				assert(collector::activate(&record, record.revision,
+							   record.sale_at) ==
+				       collector::outcome::applied);
+				assert(collector::expire(&record, record.revision,
+							 record.expires_at) ==
+				       collector::outcome::applied);
+			}
+		}
+		std::array<uint8_t, collector::encoded_record_bytes> encoded;
+		assert(collector::record_encode(record, &encoded) == collector::codec_result::ok);
+		query(connection,
+		      "INSERT INTO collector_listings(listing_id,death_operation_id,beneficiary_pid,item_uid,"
+		      "status,listing_revision,item_revision,record_blob,item_blob) VALUES(" +
+			      std::to_string(record.listing) +
+			      ",UNHEX('123456789abcdef0123456789abcdef0'),77," +
+			      std::to_string(record.uid) + "," +
+			      std::to_string(static_cast<unsigned>(record.status)) + "," +
+			      std::to_string(record.revision) + "," +
+			      std::to_string(record.item_revision) + "," +
+			      hex(encoded.data(), encoded.size()) + "," +
+			      (index == 3 ? "NULL" : modern_blob(record.uid)) + ")");
+	}
+	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(903) +
+				  " WHERE item_uid=903");
+	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(904) +
+				  " WHERE item_uid=904");
+	artifact_population_sql_page page;
+	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
+						       0, &page));
+	assert(page.complete && page.rows.size() == 3 &&
+	       page.next_row_id == ((1ULL << 16) | 65535));
+	assert(page.rows[0].item_uid == 101 && page.rows[0].custody_found &&
+	       page.rows[0].source_quarantined);
+	assert(page.rows[1].item_uid == 102 &&
+	       page.rows[1].role == artifact_payload_role::history &&
+	       page.rows[1].payload_owner.id == 77 && page.rows[1].custody.owner.id == 99 &&
+	       page.rows[1].custody.vnum == 901 && page.rows[1].custody.owner_revision == 12);
+	assert(page.rows[2].item_uid == UINT64_MAX && page.rows[2].extra_flags_present);
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_legacy, 0, &page));
+	assert(page.rows.size() == 2 && page.rows[0].role == artifact_payload_role::history &&
+	       page.rows[1].role == artifact_payload_role::stored &&
+	       page.rows[1].source_quarantined && !page.rows[1].item_uid &&
+	       page.rows[1].quantity == 2);
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_pickup, 0, &page));
+	assert(page.rows.size() == 2 && !page.rows[0].item_uid && page.rows[0].quantity == 3 &&
+	       page.rows[0].payload_owner.type == item_owner_type::player &&
+	       page.rows[0].payload_owner.id == 77 &&
+	       page.rows[1].role == artifact_payload_role::history && page.rows[1].custody_found);
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::collector, 0, &page));
+	assert(page.complete && page.next_row_id == 2003 && page.source_rows == 3 &&
+	       page.rows.size() == 2 && page.rows[0].role == artifact_payload_role::stored &&
+	       page.rows[0].item_uid == 801 && !page.rows[0].custody_found &&
+	       page.rows[0].source_quarantined && page.rows[0].extra_flags_present &&
+	       !page.rows[0].extra_flags && page.rows[1].role == artifact_payload_role::history);
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::embedded, 0, &page));
+	assert(page.rows.size() == 2 && page.rows[0].role == artifact_payload_role::history &&
+	       page.rows[0].payload_owner.type == item_owner_type::unknown &&
+	       page.rows[0].custody.state == item_custody_state::active &&
+	       page.rows[1].custody.state == item_custody_state::destroyed);
+	assert(!artifact_population_read_sql_payloads(connection, &population));
+	assert(population.size() == 13);
+	assert(std::any_of(population.begin(), population.end(),
+			   [](const auto &item)
+			   {
+				   return item.domain == artifact_payload_domain::room &&
+					  item.item_uid == 801 && item.parent_item_uid == 10001 &&
+					  !item.extra_flags_present && item.source_quarantined;
+			   }));
+	const auto *retained = population.data();
+	query(connection, "START TRANSACTION");
+	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);
+	assert(connection->server_status & SERVER_STATUS_IN_TRANS);
+	query(connection, "ROLLBACK");
+	query(connection, "SET autocommit=0");
+	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);
+	query(connection, "SET autocommit=1");
+	for (const auto &fault : std::array<std::pair<std::string, std::string>, 5>{ {
+		     { "UPDATE auction_item_custody SET obj_blob=X'00' WHERE item_uid=101",
+		       "UPDATE auction_item_custody SET obj_blob=" + legacy +
+			       " WHERE item_uid=101" },
+		     { "UPDATE auctions SET obj_blob_str=REPEAT('x',32769) WHERE id=2",
+		       "UPDATE auctions SET obj_blob_str=" + uidless + " WHERE id=2" },
+		     { "UPDATE auction_item_pickups SET obj_blob_str=X'2400000000' WHERE id=1",
+		       "UPDATE auction_item_pickups SET obj_blob_str=" + uidless + " WHERE id=1" },
+		     { "UPDATE collector_listings SET item_blob=" + modern_blob(888) +
+			       " WHERE listing_id=2001",
+		       "UPDATE collector_listings SET item_blob=" + modern_blob(801) +
+			       " WHERE listing_id=2001" },
+		     { "UPDATE item_current_owner SET coin_payload=X'00' WHERE item_uid=904",
+		       "UPDATE item_current_owner SET coin_payload=" + modern_blob(904) +
+			       " WHERE item_uid=904" },
+	     } })
+	{
+		query(connection, fault.first);
+		assert(artifact_population_read_sql_payloads(connection, &population));
+		assert(population.data() == retained && population.size() == 13);
+		assert(!(connection->server_status & SERVER_STATUS_IN_TRANS));
+		query(connection, fault.second);
+	}
+	query(connection, "RENAME TABLE collector_listings TO collector_listings_held");
+	assert(artifact_population_read_sql_payloads(connection, &population));
+	assert(population.data() == retained && population.size() == 13);
+	query(connection, "RENAME TABLE collector_listings_held TO collector_listings");
+	for (uint64_t id = 3; id <= ARTIFACT_POPULATION_SQL_PAGE_SIZE + 1; ++id)
+		query(connection, "INSERT INTO auction_item_pickups(id,pid,obj_blob_str) VALUES(" +
+					  std::to_string(id) + ",77," + legacy_blob(id + 10000) +
+					  ")");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_pickup, 0, &page));
+	assert(!page.complete && page.rows.size() == ARTIFACT_POPULATION_SQL_PAGE_SIZE &&
+	       page.next_row_id == 256);
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_pickup, page.next_row_id, &page));
+	assert(page.complete && page.rows.size() == 1 && page.next_row_id == 257);
+
+	// Block a later source after the aggregate has opened its consistent cut.
+	// Insert into a source it has not yet read, then release it. No test hook.
+	MYSQL *reader = connect(), *writer = connect();
+	assert(!mysql_select_db(reader, database.c_str()) &&
+	       !mysql_select_db(writer, database.c_str()));
+	query(reader, "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
+	query(connection, "LOCK TABLES auction_item_custody WRITE");
+	unsigned int aggregate_result = EIO;
+	std::thread aggregate(
+		[&]
+		{ aggregate_result = artifact_population_read_sql_payloads(reader, &population); });
+	bool waiting = false;
+	for (int attempt = 0; attempt < 500 && !waiting; ++attempt)
+	{
+		query(writer, "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=" +
+				      std::to_string(mysql_thread_id(reader)) +
+				      " AND INFO LIKE '%FROM auction_item_custody i LEFT%' ");
+		MYSQL_RES *result = mysql_store_result(writer);
+		assert(result);
+		MYSQL_ROW row = mysql_fetch_row(result);
+		waiting = row && std::string(row[0]) == "1";
+		mysql_free_result(result);
+		if (!waiting)
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	assert(waiting);
+	query(writer, "INSERT INTO auction_item_pickups(id,pid,obj_blob_str) VALUES(1000,77," +
+			      legacy_blob(888) + ")");
+	query(connection, "UNLOCK TABLES");
+	aggregate.join();
+	assert(!aggregate_result &&
+	       std::none_of(population.begin(), population.end(),
+			    [](const auto &item) { return item.item_uid == 888; }));
+	assert(!artifact_population_read_sql_payloads(reader, &population));
+	assert(std::any_of(population.begin(), population.end(),
+			   [](const auto &item) { return item.item_uid == 888; }));
+	mysql_close(reader);
+	mysql_close(writer);
+	std::cout
+		<< "SQL blob evidence and aggregate preserve bindings, legacy/history, quarantine, "
+		   "continuations, snapshot isolation and failure atomicity on the actual schema\n";
 }
