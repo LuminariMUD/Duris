@@ -344,6 +344,16 @@ int main(int argc, char **argv)
             ],
             check=True,
         )
+        boot_binary = temp / "boot-readers"
+        subprocess.run([
+            "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pthread",
+            "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql",
+            "tests/async/redis_world_boot_harness.cpp", "tests/async/harness_stubs.cpp",
+            str(SRC / "redis_connection.c"), str(SRC / "redis_command_observability.c"),
+            str(SRC / "redis_namespace.c"), str(SRC / "world_recovery_codec.c"),
+            "-Wl,--gc-sections",
+            "-lhiredis", "-lhiredis_ssl", "-lssl", "-lcrypto", "-o", str(boot_binary),
+        ], cwd=ROOT, check=True)
         server = subprocess.Popen(
             [
                 "redis-server",
@@ -377,6 +387,7 @@ int main(int argc, char **argv)
             else:
                 raise AssertionError("isolated redis-server did not start")
             subprocess.run([str(binary), str(port)], check=True)
+            subprocess.run([str(boot_binary), str(port)], check=True)
         finally:
             server.terminate()
             server.wait(timeout=5)

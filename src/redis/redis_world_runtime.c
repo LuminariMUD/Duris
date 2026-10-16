@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <charconv>
 #include <cerrno>
 #include <cstdarg>
 #include <cstdlib>
@@ -276,9 +277,27 @@ template <typename Read> bool redis_world_boot_read(Read read)
 	return false;
 }
 
-// The current generation's sequence, 0 when there is none.
+// Redis strings have an explicit length: a numeric prefix or an embedded NUL is
+// not a complete identity. Failure leaves no previous value for a caller to use.
+bool redis_positive_u64(const redisReply *reply, uint64_t *value)
+{
+	*value = 0;
+	if (!reply || reply->type != REDIS_REPLY_STRING || !reply->str || !reply->len)
+		return false;
+	uint64_t parsed = 0;
+	const char *end = reply->str + reply->len;
+	const auto result = std::from_chars(reply->str, end, parsed);
+	if (result.ec != std::errc{} || result.ptr != end || !parsed)
+		return false;
+	*value = parsed;
+	return true;
+}
+
+// The current generation's sequence. Only a genuine missing key succeeds with 0;
+// malformed or unavailable evidence fails, rather than establishing absence.
 bool redis_world_boot_sequence(uint64_t *sequence)
 {
+	*sequence = 0;
 	char current_key[128];
 	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
 			     REDIS_WORLD_CURRENT_SUFFIX))
@@ -291,11 +310,10 @@ bool redis_world_boot_sequence(uint64_t *sequence)
 							  current_key);
 			if (!reply)
 				return false;
-			*sequence = reply->type == REDIS_REPLY_STRING && reply->str ?
-					    strtoull(reply->str, NULL, 10) :
-					    0;
+			const bool valid = reply->type == REDIS_REPLY_NIL ||
+					   redis_positive_u64(reply, sequence);
 			freeReplyObject(reply);
-			return true;
+			return valid;
 		});
 }
 
@@ -532,10 +550,9 @@ bool redis_world_recovery_ensure_initialized()
 				redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
 					      "GET %s", current_key) :
 				NULL;
-		if (sequence_reply && sequence_reply->type == REDIS_REPLY_STRING &&
-		    sequence_reply->str)
-			world_sequence_floor = std::max<uint64_t>(
-				world_sequence_floor, strtoull(sequence_reply->str, NULL, 10));
+		uint64_t sequence = 0;
+		if (redis_positive_u64(sequence_reply, &sequence))
+			world_sequence_floor = std::max(world_sequence_floor, sequence);
 		if (sequence_reply)
 			freeReplyObject(sequence_reply);
 	}
@@ -666,14 +683,7 @@ bool redis_read_floor_records(std::vector<std::vector<unsigned char>> *records,
 		for (size_t index = 0; index < count; ++index)
 		{
 			const redisReply *field = fields->element[index];
-			char *end = NULL;
-			errno = 0;
-			field_uids[index] = field && field->type == REDIS_REPLY_STRING &&
-							    field->str ?
-						    strtoull(field->str, &end, 10) :
-						    0;
-			valid = valid && field && field->type == REDIS_REPLY_STRING && field->str &&
-				!errno && end && !*end && field_uids[index];
+			valid = valid && redis_positive_u64(field, &field_uids[index]);
 			arguments[index + 2] = field ? field->str : nullptr;
 			lengths[index + 2] = field ? field->len : 0;
 		}

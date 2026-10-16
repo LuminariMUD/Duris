@@ -14,6 +14,17 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
+Current work: `branch/issue-67-recovery-sequence`, based on PR #139.
+**Outcome:** Redis boot-head and floor UID reads accept complete positive unsigned
+decimal values only; a genuine missing head is the only successful zero result.
+Malformed, negative, overflow, trailing or embedded-NUL input remains failed
+evidence. **Non-goals:** complete population classification, recovery-generation
+pinning or a recovery format change. Those remain required. **Files:** the existing
+Redis runtime, live Redis fixture/driver and this plan. **Proof:** exercise the
+actual readers on an isolated Redis server, including a negative floor field that
+previously matched unsigned-maximum UID bytes; retain the existing world-store
+and recovery controls, run the required builds and changed-line checks.
+
 Completed prerequisite: [PR #138](https://github.com/LuminariMUD/Duris/pull/138),
 `branch/issue-67-writer-backpressure`, based on PR #137 and ready for review.
 **Outcome (implemented):** bound the existing persistence writer during a storage outage before
