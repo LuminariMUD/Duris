@@ -150,9 +150,10 @@ ExecStart=/usr/bin/python3 /absolute/path/to/duris/scripts/backup_alert.py %i --
 The recovery command in the message uses the checkout containing `--env-file`,
 with shell quoting for paths containing spaces or apostrophes.
 It includes the unit's last 20 user-journal lines (or an explicit unavailable
-placeholder if journal collection fails or times out) and suppresses repeats for
-one hour per unit under `~/.local/state/duris-backup-alert/`. Only an accepted SMTP
-submission creates/refreshes the stamp; rejected submission remains eligible to
+placeholder if journal collection fails, times out, or cannot be decoded).
+Quoted-printable encoding preserves non-ASCII text on relays without 8BITMIME.
+It suppresses repeats for one hour per unit under `~/.local/state/duris-backup-alert/`.
+Only an accepted SMTP submission creates/refreshes the stamp; rejected submission remains eligible to
 retry. Acceptance by the SMTP server is not proof of recipient receipt: verify
 that separately using the existing controlled-notification approval procedure.
 The focused executable check is `python3 tests/async/test_backup_alert_runtime.py`.

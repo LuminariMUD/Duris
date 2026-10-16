@@ -2,6 +2,8 @@
 """Execute the notifier and real environment loader without delivering mail."""
 
 import base64
+from email import policy
+from email.parser import BytesParser
 import hmac
 import importlib.util
 import os
@@ -19,6 +21,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 spec = importlib.util.spec_from_file_location("backup_alert", ROOT / "scripts/backup_alert.py")
 alert = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(alert)
+RUN = subprocess.run
 
 
 class SMTP(smtplib.SMTP):
@@ -88,7 +91,11 @@ class SMTP(smtplib.SMTP):
         self.login_values = (username, password)
         return 235, b"Authentication accepted"
 
-    def send_message(self, message, from_addr, to_addrs):
+    def sendmail(self, from_addr, to_addrs, payload, mail_options=(), rcpt_options=()):
+        # Keep smtplib's real serialization and reject data a 7-bit relay cannot accept.
+        assert payload.isascii()
+        assert not mail_options and not rcpt_options
+        message = BytesParser(policy=policy.default).parsebytes(payload)
         assert from_addr == message["From"] == "sender@example.test"
         assert to_addrs == ["recipient@example.test"]
         assert message["To"] == "recipient@example.test"
@@ -264,6 +271,34 @@ class BackupAlertRuntime(unittest.TestCase):
                 self.assertIn("Recent journal unavailable", body)
                 self.assertIn(type(error).__name__, body)
                 self.assertTrue((self.stamp.parent / unit).exists())
+
+    def test_undecodable_journal_still_submits_notification(self):
+        for stream in ("stdout", "stderr"):
+            def malformed_journal(command, **kwargs):
+                self.assertEqual(command[:3], ["journalctl", "--user", "-u"])
+                return RUN([sys.executable, "-c",
+                            f"import sys; sys.{stream}.buffer.write(b'\\xff')"], **kwargs)
+
+            with self.subTest(stream=stream), \
+                    patch.object(alert.subprocess, "run", side_effect=malformed_journal):
+                unit = f"undecodable-journal-{stream}"
+                self.send(unit)
+                body = SMTP.attempts[-1].get_content()
+                self.assertIn(unit + " failed", body)
+                self.assertIn("Recent journal unavailable (UnicodeDecodeError)", body)
+                self.assertTrue((self.stamp.parent / unit).exists())
+
+    def test_utf8_journal_is_safe_for_seven_bit_relays(self):
+        from persistence_backup import load_environment
+        journal_text = "Backup failed: caf\u00e9 \u4e16\u754c\n"
+        # A short checkout avoids EmailMessage's incidental encoding of long lines.
+        # Load the real private fixture while exercising that configured path.
+        with patch("persistence_backup.load_environment", side_effect=lambda _: load_environment(self.env)), \
+                patch.object(alert.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=journal_text)):
+            alert.send_alert("test-backup", "recipient@example.test", Path("/opt/duris/.env"))
+        self.assertIn(journal_text.rstrip("\n"), SMTP.attempts[-1].get_content().splitlines())
+        self.assertTrue(self.stamp.exists())
 
     def test_unsafe_environment_file_is_rejected(self):
         from persistence_backup import BackupError

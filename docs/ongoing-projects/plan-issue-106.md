@@ -249,6 +249,15 @@ command from a fixture checkout with spaces and an apostrophe. The previous head
 fails the UTF-8 and recovery-path cases. These follow-up changes have local proof
 only: no host installation, live email, or renewed source-hash equality is claimed.
 
+Two later journal findings were also reproduced and repaired. Undecodable stdout
+or stderr now reaches the existing unavailable-context fallback; every message
+body uses quoted-printable encoding so non-ASCII journal text does not require
+8BITMIME. The suite now has eleven tests. Real subprocess decoding of invalid
+bytes and the real `smtplib.send_message()` serializer exercise both failures;
+the relay fixture rejects non-ASCII wire bytes and verifies the decoded text.
+Both regressions fail at `2f4805fd5` and pass with the fixes. These changes also
+remain locally tested and undeployed.
+
 ## Verification and retained evidence
 
 Passed:
@@ -260,12 +269,13 @@ Passed:
   `test_move_cost_runtime.py`, `test_damage_death_result.py`,
   `test_posture_state_regression.py`, `test_nevent_scheduler_runtime.py`,
   `test_nevent_cancellation_runtime.py`, and `test_command_latency_runtime.py`.
-- `python3 tests/async/test_backup_alert_runtime.py` (nine tests after follow-up): actual .env
+- `python3 tests/async/test_backup_alert_runtime.py` (eleven tests after follow-up): actual .env
   loader, verified STARTTLS/implicit TLS, optional paired auth, loopback-only
   plaintext, From/envelope/recipient, false MAIL_ENABLED, rejected submission/
   retry, per-unit suppression, expiry, unavailable journal, and unsafe-file
-  rejection, UTF-8 authentication, and checkout-specific recovery commands.
-  SMTP/journal are adapters.
+  rejection, UTF-8 authentication, checkout-specific recovery commands, journal
+  decoding failures, and ASCII-safe SMTP serialization. SMTP/journal use local
+  fixtures; environment loading, message serialization, and byte decoding are real.
 - `python3 tests/async/test_account_recovery_contract.py`.
 - `python3 tests/async/test_documentation_contract.py` (14 checks), formatting,
   applicable commit hooks, and `git diff --check`.

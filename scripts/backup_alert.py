@@ -87,7 +87,7 @@ def send_alert(unit, recipient, env_file):
         journal = subprocess.run(
             ["journalctl", "--user", "-u", unit, "-n", "20", "-o", "cat", "--no-pager"],
             capture_output=True, text=True, check=True, timeout=10).stdout
-    except (OSError, subprocess.SubprocessError) as error:
+    except (OSError, subprocess.SubprocessError, UnicodeError) as error:
         journal = f"Recent journal unavailable ({type(error).__name__}).\n"
     message = EmailMessage()
     message["From"] = os.environ["MAIL_FROM"]
@@ -98,7 +98,7 @@ def send_alert(unit, recipient, env_file):
         f"{unit} failed at {now}. Its last lines:\n\n{journal}\n"
         f"Check with: cd {shlex.quote(str(env_file.parent))} && "
         "scripts/backup_pfiles.sh status --require-drill\n"
-        "This alert is sent at most once an hour per unit.\n")
+        "This alert is sent at most once an hour per unit.\n", cte="quoted-printable")
     context = ssl.create_default_context() if tls or port == 465 else None
     # Match the existing account-recovery MAIL_PORT/TLS/authentication contract.
     host = host[1:-1] if host.startswith("[") and host.endswith("]") else host
