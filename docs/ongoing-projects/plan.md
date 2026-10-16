@@ -10,12 +10,13 @@ implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-canonical-storage`. Canonical snapshot/hydration is implemented
 in PR #137 on `branch/issue-67-identity-snapshots`; writer backpressure is ready
 in PR #138, and the common flat artifact authority is ready in PR #139 on
-`branch/issue-67-flat-artifact-cache`. Complete population classification
-and admission remain open.
+`branch/issue-67-flat-artifact-cache`. Numeric/flat/SQL blob readers and the SQL snapshot
+aggregate are ready in PRs #141–#143. Complete recovery evidence, population
+classification and admission remain open.
 No operational repair started.
 
-Current SQL source chunk: `branch/issue-67-sql-population-blobs`, based on
-PR #142; implemented and validated, publication in progress. Outcome: bounded SQL
+Current SQL source checkpoint: [PR #143](https://github.com/LuminariMUD/Duris/pull/143),
+`branch/issue-67-sql-population-blobs`, based on PR #142 and ready for review. Outcome: bounded SQL
 auction, legacy pickup, collector and embedded-history pages, plus an atomic
 aggregate under one read-only repeatable-read snapshot. Preserve unknown
 identities, history roles and explicit quarantine; inspect bytes without
@@ -25,7 +26,7 @@ focused database fixture and this plan. Reuse the existing page interface and
 payload codecs; no delivery store is added because SQL delivery transactions
 already write `player_items`. Proof and continuation details follow below.
 
-Current source checkpoint: [PR #142](https://github.com/LuminariMUD/Duris/pull/142),
+Preceding flat source checkpoint: [PR #142](https://github.com/LuminariMUD/Duris/pull/142),
 `branch/issue-67-flat-population-sources`, based on PR #141 and ready for review.
 Outcome: stage flat-file
 payload projections, including offline player
@@ -727,7 +728,9 @@ release tag occurred.
 
 ### SQL blob sources and snapshot aggregate — AR-01/AR-02 prerequisite
 
-Implemented on `branch/issue-67-sql-population-blobs`, based on PR #142. The existing
+Ready for review in [PR #143](https://github.com/LuminariMUD/Duris/pull/143) on
+`branch/issue-67-sql-population-blobs`, based on PR #142. Implementation commit:
+`12091c2c485bce9d43b36e042778a85f00a142ac`. The existing
 population repository now reads five more source domains: per-slot auction
 custody, retained auction listing templates, legacy auction item pickups,
 collector item bodies and legacy `item_current_owner.coin_payload` history.
