@@ -73,3 +73,19 @@ After separately authorized deployment, record the running commit and controlled
 NPC sinking, the 30-tick passenger delay, staff purge cleanup and later shipyard
 timer progression before closing #110. Ownerless non-NPC ships remain preserved
 and logged for investigation.
+
+## PR #121 carry-forward
+
+The remaining delta on `branch/issue-110-ship-removal-cleanup` clears matching
+NPC `escort` and `did_board` pointers when a ship is deleted. Docking clears
+only target locks and preserves relationships with the still-live ship. An
+explicit deletion flag on the existing reference-cleanup function distinguishes
+its two real callers; no new registry or sweep is needed.
+
+The original #121 implementation is preserved in `ship_base.c` and `ships.h`.
+Interior evacuation, the unload cleanup consolidation, occupied-purge tests and
+failed-load coverage are now inherited from #118. The regression additionally
+checks NPC reference deletion, unrelated pointers, docking semantics and
+reference preservation across a failed persistence attempt, making nine
+scenarios per backend. The room-reuse assertion added during #118 review is
+retained. Re-run this focused sanitizer test after any future stack rebase.

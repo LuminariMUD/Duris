@@ -23,9 +23,9 @@ FUNCTIONS = "\n\n".join(
             "bool pc_is_aboard(P_ship ship)", "void clear_ship_content(P_ship ship)",
         )),
         ("ship_base.c", (
-            "void clear_ship_layout(P_ship ship)", "void clear_references_to_ship(P_ship ship)",
+            "void clear_ship_layout(P_ship ship)", "void clear_references_to_ship(",
             "void delete_ship(P_ship ship, bool npc)", "void finish_sinking(P_ship ship)",
-            "void ship_activity()",
+            "void ship_activity()", "void dock_ship(P_ship ship, int to_room)",
         )),
         ("ship_auto.c", ("void clear_autopilot(P_ship ship)",)),
         ("ship_npc.c", ("bool try_unload_npc_ship(P_ship ship)",)),
@@ -150,7 +150,6 @@ void assignid(P_ship, const char *, bool) {}
 void jettison_all(P_ship) {}
 void queue_ship_save(P_ship, const char *) {}
 void reset_ship(P_ship, bool) { abort(); }
-void dock_ship(P_ship, int) { abort(); }
 P_char get_char2(char *) { return nullptr; }
 int get_player_pid_from_name(char *) { abort(); }
 bool insert_money_pickup(int, int) { abort(); }
@@ -310,16 +309,18 @@ static void check_sinking(bool passenger) {
 }
 
 static void check_delete(bool ownerless, int db_id = 42) {
-    P_ship ship = make_ship(0, 2), observer = make_ship(0, 3);
+    P_ship ship = make_ship(0, 2), observer = make_ship(NPCSHIP, 3);
     if (ownerless) ship->ownername = nullptr;
     ship->db_id = db_id;
     observer->target = ship;
+    observer->npc_ai->escort = observer->npc_ai->did_board = ship;
     char_data passenger = {}; char_to_room(&passenger, 2, 0);
     const auto ref = ship->runtime_ref;
     const int before = persistence_calls, before_freed = freed_ships, logs = invariant_logs;
     assert(shipObjHash.erase(ship)); delete_ship(ship);
     assert(find_ship_by_runtime_ref(ref) == ship && shipObjHash.find(ship->shipobj) == ship);
     assert(shipObjHash.size() == 2 && observer->target == ship);
+    assert(observer->npc_ai->escort == ship && observer->npc_ai->did_board == ship);
     assert(passenger.in_room == 2 && world[2].people == &passenger);
     assert(world[2].funct && world[2].contents == ship->panel);
     assert(freed_ships == before_freed);
@@ -329,6 +330,7 @@ static void check_delete(bool ownerless, int db_id = 42) {
     persistence_ok = true;
     assert(shipObjHash.erase(ship)); delete_ship(ship);
     assert(!find_ship_by_runtime_ref(ref) && !observer->target);
+    assert(!observer->npc_ai->escort && !observer->npc_ai->did_board);
     assert(passenger.in_room == 1 && !world[2].people);
     char_from_room(&passenger);
     assert(freed_ships == before_freed + 1);
@@ -384,6 +386,24 @@ static void check_occupied_purge() {
     puts("PASS occupied purge evacuates player/corpse, removes crew and loot");
 }
 
+static void check_ai_references() {
+    P_ship ship = make_ship(NPCSHIP, 2), observer = make_ship(NPCSHIP, 3);
+    P_ship unrelated = make_ship(NPCSHIP, 4);
+    observer->target = ship;
+    observer->npc_ai->escort = observer->npc_ai->did_board = ship;
+    unrelated->npc_ai->escort = unrelated->npc_ai->did_board = observer;
+    world[1].number = 1;
+    dock_ship(ship, 1);
+    assert(!observer->target);
+    assert(observer->npc_ai->escort == ship && observer->npc_ai->did_board == ship);
+    observer->target = ship;
+    remove_runtime(ship);
+    assert(!observer->target && !observer->npc_ai->escort && !observer->npc_ai->did_board);
+    assert(unrelated->npc_ai->escort == observer && unrelated->npc_ai->did_board == observer);
+    remove_runtime(observer); remove_runtime(unrelated);
+    puts("PASS destruction forgets NPC AI references; docking preserves them");
+}
+
 static void check_unloaded_cleanup() {
     P_ship ship = make_ship(0, 2);
     // Failed load: the abstract layout remains, but no real rooms were claimed.
@@ -407,6 +427,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[1], "persistence")) check_delete(false);
     else if (!strcmp(argv[1], "ownerless")) { check_delete(true); check_delete(true, 0); }
     else if (!strcmp(argv[1], "occupied")) check_occupied_purge();
+    else if (!strcmp(argv[1], "references")) check_ai_references();
     else if (!strcmp(argv[1], "unloaded")) check_unloaded_cleanup();
     else abort();
     assert(shipObjHash.size() == 0 && live_ships.empty());
@@ -429,7 +450,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
             cwd=ROOT, check=True,
         )
         for case in ("sinking", "passenger", "purge", "unload", "persistence", "ownerless",
-                     "occupied", "unloaded"):
+                     "occupied", "references", "unloaded"):
             print(f"{backend}: {case}", flush=True)
             result = subprocess.run([str(binary), case], timeout=30)
             if result.returncode:
