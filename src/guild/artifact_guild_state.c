@@ -32,6 +32,9 @@
 
 namespace
 {
+// Location value shared by the legacy artifact record and its domain mirror.
+constexpr int ARTIFACT_ON_PC = 3;
+
 bool checked_seconds(double value, int *seconds)
 {
 	if (!std::isfinite(value) || value < INT_MIN || value > INT_MAX)
@@ -165,6 +168,42 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 				continue;
 			// Current game-thread state, including every preceding award.
 			const int32_t vnum = OBJ_VNUM(object);
+			// Legacy tracking has no canonical UID yet. Never choose a winner
+			// by equipment order when several physical copies share its row.
+			bool duplicate = false;
+			for (int other = 0; other < MAX_WEAR; ++other)
+				if (other != slot && character->equipment[other] &&
+				    IS_ARTIFACT(character->equipment[other]) &&
+				    OBJ_VNUM(character->equipment[other]) == vnum)
+				{
+					duplicate = true;
+					break;
+				}
+			arti_data tracked = {};
+			const char *conflict = nullptr;
+			if (duplicate)
+				conflict = "duplicate_equipment";
+			else if (!object->obj_uid || !OBJ_WORN(object) ||
+				 object->loc.wearing != character)
+				conflict = "invalid_custody";
+			else if (!get_artifact_data_sql(vnum, &tracked) ||
+				 tracked.locType != ARTIFACT_ON_PC ||
+				 tracked.location != GET_PID(character))
+				conflict = "owner_mismatch";
+			if (conflict)
+			{
+				// The existing reporter bounds staff notices and retains searchable
+				// detail. An opaque source reference avoids logging player data.
+				uint64_t reference = 0;
+				for (size_t byte = 0; byte < sizeof(reference); ++byte)
+					reference = (reference << 8) |
+						    parent_operation_id.bytes[byte];
+				persistence_alert(AVATAR, "artifact_reward/capture", "redacted",
+						  "none", "none", conflict,
+						  "vnum=%d reference=%016llx", vnum,
+						  static_cast<unsigned long long>(reference));
+				continue;
+			}
 			int64_t timer = 0, bind_timer = 0;
 			int32_t bind_owner_pid = 0;
 			if (!artifact_feed_state(vnum, &timer, &bind_owner_pid, &bind_timer))

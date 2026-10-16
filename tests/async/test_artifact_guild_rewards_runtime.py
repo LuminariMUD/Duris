@@ -34,16 +34,15 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
     def test_existing_live_rewards(self):
         subprocess.run([str(self.binary)], check=True, timeout=30)
 
-    # AR-01 pins the desired behavior before the identity implementation. These
-    # must become normal passing regressions with AR-02/AR-05; an unexpected
-    # success fails this suite so the markers cannot silently survive a repair.
-    @unittest.expectedFailure
     def test_duplicate_excludes_only_conflicting_artifact(self):
-        subprocess.run([str(self.binary), 'duplicate'], check=True, timeout=30)
+        for scenario in ('duplicate', 'duplicate-reversed', 'same-uid', 'guild-only'):
+            with self.subTest(scenario=scenario):
+                subprocess.run([str(self.binary), scenario], check=True, timeout=30)
 
-    @unittest.expectedFailure
     def test_cross_player_copy_preserves_unrelated_rewards(self):
-        subprocess.run([str(self.binary), 'cross-player'], check=True, timeout=30)
+        for scenario in ('cross-player', 'wrong-custody', 'missing-uid'):
+            with self.subTest(scenario=scenario):
+                subprocess.run([str(self.binary), scenario], check=True, timeout=30)
 
 
 if __name__ == '__main__':

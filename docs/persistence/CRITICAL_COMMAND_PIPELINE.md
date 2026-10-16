@@ -239,6 +239,14 @@ snapshots on the existing writer before submitting type-9 reward history. Later
 transfers, soul changes, removal, spending and settings capture their current
 state independently; history completion never changes that state or repeats feedback.
 
+Capture excludes all contributions from a repeated worn artifact vnum, and
+requires each other artifact to have a physical UID, match the live wearer and
+match the current memory record's tracked player. Exclusion preserves unrelated
+artifact and guild contributions and emits a rate-limited persistence alert with
+vnum/reason/source reference. Until canonical UID persistence is implemented,
+this is conservative conflict isolation: it does not establish the identity of
+a single copy whose legacy vnum record already names its wearer.
+
 Positive feeding feedback is `You feel a sense of satisfaction from above.`
 The live artifact/guild award publishes it once even when several artifacts feed;
 guild-only, ineligible, rejected and no-effect awards do not publish it. A valid

@@ -6,6 +6,7 @@
 #include "world/zone_touch_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include <cassert>
+#include <cstdarg>
 #include <cstdio>
 #include <map>
 #include <string>
@@ -32,6 +33,7 @@ static std::vector<std::pair<int, row>> snapshots;
 static std::vector<std::pair<unsigned long, unsigned long>> guild_snapshots;
 static std::vector<critical_command> commands;
 static std::vector<std::string> feedback;
+static std::vector<std::string> diagnostics;
 static critical_submit_result admission = critical_submit_result::accepted;
 static bool recent_frag = false;
 static double difficulty = 1;
@@ -70,6 +72,18 @@ bool artifact_feed_state(int vnum, int64_t *timer, int32_t *owner, int64_t *bind
 	*timer = found->second.timer;
 	*owner = found->second.soul;
 	*bind = found->second.bind;
+	return true;
+}
+bool get_artifact_data_sql(int vnum, P_arti data)
+{
+	const auto found = rows.find(vnum);
+	if (found == rows.end())
+		return false;
+	data->vnum = vnum;
+	data->owned = true;
+	data->locType = 3; // ARTIFACT_ON_PC, matching the existing artifact record
+	data->location = found->second.owner;
+	data->timer = found->second.timer;
 	return true;
 }
 void artifact_feed_set_timer(int vnum, time_t timer)
@@ -122,6 +136,16 @@ void send_to_char(const char *text, P_char)
 {
 	feedback.emplace_back(text);
 }
+void persistence_alert(int, const char *domain, const char *, const char *, const char *,
+		       const char *reason, const char *format, ...)
+{
+	char detail[256];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(detail, sizeof(detail), format, args);
+	va_end(args);
+	diagnostics.emplace_back(std::string(domain) + " " + reason + " " + detail);
+}
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
 	if (admission != critical_submit_result::accepted)
@@ -149,6 +173,7 @@ static void reset()
 	guild_snapshots.clear();
 	commands.clear();
 	feedback.clear();
+	diagnostics.clear();
 	admission = critical_submit_result::accepted;
 	recent_frag = false;
 	difficulty = 1;
@@ -194,8 +219,11 @@ static void complete(const critical_command &command)
 // Issue #67 acceptance cases use real capture, application and history admission.
 // No canonical UID is established for the conflicting vnum: neither copy may
 // feed, but the unrelated artifact and independently eligible guild must survive.
-static int identity_contract(bool duplicate)
+static int identity_contract(const std::string &scenario)
 {
+	const bool duplicate = scenario == "duplicate" || scenario == "duplicate-reversed" ||
+			       scenario == "guild-only" || scenario == "same-uid";
+	const bool guild_only = scenario == "guild-only";
 	reset();
 	char_data actor = {}, member = {}, last = {};
 	pc_only_data pc = {}, pc2 = {}, pc3 = {};
@@ -229,21 +257,41 @@ static int identity_contract(bool duplicate)
 		object->loc.wearing = &actor;
 	}
 	actor.equipment[0] = &first;
-	actor.equipment[1] = &unrelated;
+	actor.equipment[1] = guild_only ? nullptr : &unrelated;
 	if (duplicate)
 		actor.equipment[2] = &copy;
-	rows[42001] = { NOW + 100, -1, 0, duplicate ? 42 : 43 };
+	if (scenario == "duplicate-reversed")
+		std::swap(actor.equipment[0], actor.equipment[2]);
+	if (scenario == "wrong-custody")
+		first.loc.wearing = &member;
+	if (scenario == "missing-uid")
+		first.obj_uid = 0;
+	if (scenario == "same-uid")
+		copy.obj_uid = first.obj_uid;
+	rows[42001] = { NOW + 100, -1, 0, scenario == "cross-player" ? 43 : 42 };
 	rows[42002] = { NOW + 200 };
 	critical_operation_id parent = {};
 	assert(critical_operation_id_generate(&parent));
 	const bool submitted = artifact_guild_transaction_submit(&actor, parent, 4, EPIC_BOON);
 	const bool isolated = submitted && rows.at(42001).timer == NOW + 100 &&
-			      rows.at(42002).timer == NOW + 3800 && guild->get_prestige() == 105 &&
-			      guild->get_construction() == 1 && snapshots.size() == 1 &&
+			      rows.at(42002).timer == NOW + 200 + (guild_only ? 0 : 3600) &&
+			      guild->get_prestige() == 105 && guild->get_construction() == 1 &&
+			      snapshots.size() == (guild_only ? 0u : 1u) &&
 			      guild_snapshots.size() == 1 && commands.size() == 1;
+	assert(std::count(feedback.begin(), feedback.end(), SATISFACTION) == (guild_only ? 0 : 1));
+	assert(diagnostics.size() == (duplicate ? 2u : 1u));
+	for (const auto &detail : diagnostics)
+	{
+		assert(detail.find("artifact_reward/capture") != std::string::npos);
+		assert(detail.find("vnum=42001 reference=") != std::string::npos);
+	}
+	const size_t messages = feedback.size();
+	if (!commands.empty())
+		complete(commands.front());
+	assert(feedback.size() == messages);
 	printf("%s identity contract: submitted=%d conflicted_feed=%lld unrelated_feed=%lld "
 	       "prestige=%lu construction=%lu\n",
-	       duplicate ? "duplicate" : "cross-player", submitted,
+	       scenario.c_str(), submitted,
 	       static_cast<long long>(rows.at(42001).timer - NOW - 100),
 	       static_cast<long long>(rows.at(42002).timer - NOW - 200), guild->get_prestige(),
 	       guild->get_construction());
@@ -254,9 +302,7 @@ int main(int argc, char **argv)
 {
 	if (argc == 2)
 	{
-		assert(std::string(argv[1]) == "duplicate" ||
-		       std::string(argv[1]) == "cross-player");
-		return identity_contract(std::string(argv[1]) == "duplicate");
+		return identity_contract(argv[1]);
 	}
 	char_data ch = {}, second = {}, third = {};
 	pc_only_data pc = {}, pc2 = {}, pc3 = {};
@@ -270,6 +316,9 @@ int main(int argc, char **argv)
 	obj_data artifact = {};
 	artifact.extra_flags = ITEM_ARTIFACT;
 	artifact.R_num = 0;
+	artifact.obj_uid = 101;
+	artifact.loc_p = LOC_WORN;
+	artifact.loc.wearing = &ch;
 	indexes[0].virtual_number = 42001;
 	ch.equipment[0] = &artifact;
 
@@ -320,6 +369,7 @@ int main(int argc, char **argv)
 	reset();
 	obj_data another = artifact;
 	another.R_num = 1;
+	another.obj_uid = 102;
 	indexes[1].virtual_number = 42002;
 	ch.equipment[1] = &another;
 	rows[42001] = { NOW + 100 };
@@ -442,10 +492,12 @@ int main(int argc, char **argv)
 	online = { &ch };
 	obj_data second_artifact = artifact;
 	second_artifact.R_num = 1;
+	second_artifact.obj_uid = 103;
+	second_artifact.loc.wearing = &second;
 	indexes[1].virtual_number = 42002;
 	second.equipment[0] = &second_artifact;
 	rows[42001] = { NOW + 100 };
-	rows[42002] = { NOW + 200 };
+	rows[42002] = { NOW + 200, -1, 0, 43 };
 	zone_touch_payload touch = {};
 	touch.zone_number = 77;
 	touch.toucher_pid = 42;

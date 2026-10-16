@@ -5,7 +5,8 @@ Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
 implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-feeding-feedback`, with direct timer arithmetic repaired on
-`branch/issue-67-direct-feed-timers`. No operational repair started.
+`branch/issue-67-direct-feed-timers` and conservative reward conflict isolation on
+`branch/issue-67-reward-conflicts`. No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
@@ -468,8 +469,9 @@ and several artifacts, valid capped feed, guild-only/no-effect/rejected awards,
 duplicate completion, direct light/deep feeds, trusted/soul/cross-owner refusal,
 and the original negative text. The direct test links actual `artifact.c`,
 flat-file repository and bind lookup, with fixture placement and messaging.
-Monolith still feeds per artifact; command-wide coalescing and canonical UID
-eligibility remain in AR-05. The two AR-01 expected failures remain unfixed.
+  Monolith still feeds per artifact; command-wide coalescing and canonical UID
+  eligibility remain in AR-05. The two AR-01 expected failures are resolved by
+  the conservative conflict-isolation checkpoint below.
 
 The following pass for this chunk: reward runtime (baseline plus 2 expected
 failures), flat-file artifact repository/bind/gameplay harnesses, transactional
@@ -480,7 +482,8 @@ matrix, production qualification or complete AR-05 acceptance.
 While tracing direct feedback, an additional timer defect was found: negative
 feed is converted to an absolute value for logging then added to the timer, and
 an above-cap positive clamp can therefore increase it further. Repair this as
-its own focused chunk, `branch/issue-67-direct-feed-timers` →
+its own focused chunk, [PR #134](https://github.com/LuminariMUD/Duris/pull/134),
+`branch/issue-67-direct-feed-timers` →
 `branch/issue-67-feeding-feedback`: compute a signed target once, clamp before
 positive addition to avoid overflow, retain an expired nonzero timer instead of
 restarting it, and calculate a separate magnitude only for the existing log.
@@ -494,6 +497,37 @@ backends; it does not prove SQL storage through the flat-file fixture.
 Next: qualify canonical identity storage/boot candidate publication for AR-02.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
+
+### Conservative reward conflict isolation
+
+`branch/issue-67-reward-conflicts` → `branch/issue-67-direct-feed-timers` fixes the
+AR-01 reward-loss contracts without waiting for durable canonical identity. A
+bounded scan of equipment rejects every contribution from a repeated worn vnum,
+in either slot order, instead of selecting the first copy. A single contribution
+must have a physical UID, be actually worn by the actor, and match the current
+in-memory artifact record's owned/player/location fields. Conflicting or unknown
+copies contribute no delta; unrelated artifacts and independently eligible guild
+prestige/construction still apply. The strict codec and live/history boundary
+are unchanged. Existing rate-limited persistence alerts report controlled reason,
+vnum and an opaque source reference; there is no new limiter or identity registry.
+
+Outcome/proof: the existing native capture/submission harness now passes all
+seven conflict scenarios as normal tests, with **no expected failures**: duplicate
+distinct UIDs, reversed equipment order, repeated same UID, guild-only after all
+artifacts conflict, cross-player tracked owner, wrong live wearer and missing
+UID. Each proves unchanged conflicting timer, correct unrelated timer/guild
+totals, exactly eligible feedback, diagnostic detail, and silent late completion.
+The single-copy/cap/PvP/history/source/stone controls remain passing. Transactional
+cutover (3/3), difficulty dial contracts, build and changed-line clang-tidy pass.
+
+Ablation: this independently useful guard needs only the already mapped reward
+boundary and existing memory getters, so it can precede AR-02. No hot-path SQL,
+new persistence or relaxed duplicate codec is introduced. This is deliberately
+conservative: without a canonical UID, two same-vnum worn copies are both
+excluded. It does **not** identify a noncanonical single copy whose shared legacy
+record already names that actor, protect shared lifecycle writes, or prevent
+creation. Full canonical validation and the boot/offline/recovery work remain
+required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
 ### Implementation checkpoint — 2026-10-16, AR-01
 
