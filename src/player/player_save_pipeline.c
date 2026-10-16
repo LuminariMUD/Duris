@@ -70,6 +70,14 @@ P_char live_player(int pid)
 	return nullptr;
 }
 
+void retire_ended_player(int pid)
+{
+	player_revision_snapshot revision = {};
+	if (player_revision_snapshot_copy(pid, &revision) && revision.session_ended &&
+	    !live_player(pid) && !player_save_worker_pid_pending(pid))
+		player_revision_forget(pid);
+}
+
 bool completion_succeeded(const player_save_completion &completion)
 {
 	return completion.outcome == player_save_apply_outcome::applied ||
@@ -124,10 +132,21 @@ void finish_completion(const player_save_completion &completion)
 #endif
 	const bool remarked = ch &&
 			      player_save_pipeline_mark(completion.pid, completion.components);
-	persistence_alert(AVATAR, "player_save", "redacted", "none", "none", "write_failed",
-			  "pid=%d revision=%llu error=%u remarked=%d", completion.pid,
-			  (unsigned long long)completion.revision, completion.error_code,
-			  remarked ? 1 : 0);
+	player_revision_snapshot revision = {};
+	player_revision_snapshot_copy(completion.pid, &revision);
+	// Persistence alerts accept numeric substitutions only. Keep the bounded field
+	// identifier in a separate diagnostic, correlated by PID and failed revision.
+	if (completion.failed_field[0])
+		logit(LOG_FILE, "PLAYER SAVE FIELD: pid=%d revision=%llu field=%.63s",
+		      completion.pid, (unsigned long long)completion.revision,
+		      completion.failed_field.data());
+	persistence_alert(
+		AVATAR, "player_save", "redacted", "none", "none", "write_failed",
+		"pid=%d revision=%llu error=%u remarked=%d ended=%d queued_revision=%llu written_revision=%llu rollback_confirmed=%d",
+		completion.pid, (unsigned long long)completion.revision, completion.error_code,
+		remarked ? 1 : 0, revision.session_ended ? 1 : 0,
+		(unsigned long long)revision.acknowledged_revision,
+		(unsigned long long)revision.written_revision, completion.rolled_back ? 1 : 0);
 }
 
 /** Hand a sealed capture to the writer. The owner is clean once it is queued. */
@@ -315,6 +334,10 @@ void player_save_pipeline_pulse(void)
 			player_save_worker_pulse(completions, PLAYER_SAVE_PIPELINE_PULSE_BUDGET);
 		for (size_t index = 0; index < completed; ++index)
 			finish_completion(completions[index]);
+		// Finish the entire batch before retiring any previous session's revision.
+		for (size_t index = 0; index < completed; ++index)
+			if (completions[index].kind == persistence_job_kind::player)
+				retire_ended_player(completions[index].pid);
 		if (completed < PLAYER_SAVE_PIPELINE_PULSE_BUDGET)
 			break;
 	}
@@ -389,6 +412,14 @@ bool player_save_pipeline_is_nonterminal_type(int save_intent)
 bool player_save_pipeline_load_held(int pid)
 {
 	return pid > 0 && player_save_worker_pid_pending(pid);
+}
+
+void player_save_pipeline_end_session(int pid)
+{
+	if (pid <= 0 || live_player(pid))
+		return;
+	player_revision_end_session(pid);
+	retire_ended_player(pid);
 }
 
 /** Stop the pipeline and clear writer, revision, and health state for an isolated test. */

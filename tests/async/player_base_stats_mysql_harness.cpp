@@ -60,6 +60,20 @@ int main(int argc, char **argv)
 			assert(row[i] && std::atoi(row[i]) == value);
 		mysql_free_result(rows);
 	}
+	// A backend failure still rolls back the checkpoint and names only the field.
+	++snapshot.revision;
+	snapshot.status_integers.back().signed_value = 32768;
+	const auto failure = player_snapshot_repository_apply(db, snapshot);
+	assert(failure.outcome == player_save_apply_outcome::terminal_failure);
+	assert(failure.error_code == 1264 && failure.rolled_back);
+	assert(std::string(failure.failed_field.data()) == "base_luk");
+	execute(db, "SELECT save_revision,base_luk FROM player_data WHERE pid=7");
+	MYSQL_RES *rows = mysql_store_result(db);
+	assert(rows);
+	MYSQL_ROW row = mysql_fetch_row(rows);
+	assert(row && std::strtoull(row[0], nullptr, 10) == snapshot.revision - 1);
+	assert(std::atoi(row[1]) == 32767);
+	mysql_free_result(rows);
 	mysql_close(db);
 	std::cout
 		<< "All ten stats: values above the former limit and signed-short boundaries persisted\n";
