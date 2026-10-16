@@ -11,12 +11,14 @@ implementation in progress; independent feeding feedback implemented on
 in PR #137 on `branch/issue-67-identity-snapshots`; writer backpressure is ready
 in PR #138, and the common flat artifact authority is ready in PR #139 on
 `branch/issue-67-flat-artifact-cache`. Numeric/flat/SQL blob readers and the SQL snapshot
-aggregate are ready in PRs #141–#143. Redis generation/floor pinning is now implemented on
+aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready in
+[PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
 `branch/issue-67-pinned-recovery-evidence`. Complete recovery candidate projection,
 population classification and admission remain open.
 No operational repair started.
 
-Current recovery chunk: `branch/issue-67-pinned-recovery-evidence`, based on PR #143.
+Current recovery checkpoint: [PR #144](https://github.com/LuminariMUD/Duris/pull/144),
+`branch/issue-67-pinned-recovery-evidence`, based on PR #143 and ready for review.
 Outcome: prepare and retain one coherent generation/floor cut before boot, expose
 ready/absent/disabled/failed evidence explicitly, restore exactly those bytes and
 consume only matching generation/floor data. Non-goals: canonical choice, NPC item
@@ -81,7 +83,8 @@ Current checkpoint: [PR #140](https://github.com/LuminariMUD/Duris/pull/140),
 decimal values only; a genuine missing head is the only successful zero result.
 Malformed, negative, overflow, trailing or embedded-NUL input remains failed
 evidence. **Non-goals:** complete population classification, recovery-generation
-pinning or a recovery format change. Those remain required. **Files:** the existing
+pinning or a recovery format change. PR #144 now implements pinning; complete
+classification still remains required. **Files:** the existing
 Redis runtime, a native reader fixture in the existing live Redis driver, and
 this plan. **Proof:** exercise the
 actual readers on an isolated Redis server, including a negative floor field that
@@ -731,8 +734,9 @@ clang-tidy and whitespace checks pass. Ignored evidence uses
 `population-{auction,collector,shop}-control.log` under `bin/analysis/issue67/`.
 
 SQL blob/history pages and their SQL aggregate are now implemented in the next
-checkpoint below. Next: pin and qualify recovery evidence, then publish complete
-combined evidence before early cleanup/population and implement
+checkpoint below. PR #144 now pins the Redis generation/floor cut. Next: project
+and qualify complete recovery candidates, publish combined evidence before early
+cleanup/population and implement
 canonical admission/materialization/retirement. Source snapshots are not full
 store backups; retain originals before any operational disposition or routine
 cleanup can remove historical evidence. All unchecked AR-01–AR-07 acceptance
@@ -812,16 +816,19 @@ as `CLANG_TIDY` for the staged hook. No check is bypassed.
 Evidence is retained under ignored `bin/analysis/issue67/population-sql-blobs-*`
 logs in `/home/aiwithapex/projects/duris-issue67-plan`. These are actual source-reader
 and snapshot checks; this chunk adds no boot consumer and claims no fresh gameplay
-uniqueness/restart qualification. Next required work is the pinned recovery cut,
-combined classification before early reap/forced population, canonical admission
+uniqueness/restart qualification. PR #144 now supplies a pinned Redis cut. Next
+required work is recovery candidate projection, combined classification before
+early reap/forced population, canonical admission
 and materialization/retirement, then the remaining AR-01–AR-07 runtime matrix.
 All existing unchecked acceptance items remain open. No production read,
 operational repair, migration, deployment, merge or release tag occurred.
 
 ### Pinned Redis boot evidence and guarded consume — AR-01/AR-02 prerequisite
 
-Implemented on `branch/issue-67-pinned-recovery-evidence`, based on PR #143;
-publication pending. The boot caller now prepares recovery once before `boot_db`.
+Ready for review in [PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
+`branch/issue-67-pinned-recovery-evidence`, based on PR #143. Implementation commit:
+`f14dbae85215c9b24087cad480b77f985a2e8127`. The boot caller now prepares recovery
+once before `boot_db`.
 Preparation distinguishes disabled configuration, a sealed missing head with an
 empty floor, a ready snapshot, and failed evidence. Requested recovery that cannot
 start its worker/authentication fails instead of appearing disabled. A failed
