@@ -75,6 +75,18 @@ action requiring production authorization and a verified fresh backup of `zones`
    catalogue maintenance publishes the flags; a restarted game also loads them
    at boot. No restart is necessary solely to refresh task eligibility. Use the
    observed refresh logs/timing rather than promising an immediate assignment.
+   Its 14,400-event-tick cadence is nominally **one hour** at four ticks/second,
+   not four hours. The initial offset depends on listener ports; busy loops and
+   retries can delay publication.
+
+Trusted staff can run `world persistence`. The `epic_tasks` line distinguishes
+`catalog_ready`, active `zones`, `last_refresh`, in-memory `pending` tasks and
+`pending_reads_unavailable`. `last_refresh=empty_task_flags` means no configured
+rows; `unloaded_zone` or `invalid_scheduled_rows` points to configuration
+validation; `database_query_failed` / `scheduled_read_failed` points to the read
+path. A failed refresh may coexist with `catalog_ready=1`: the last valid snapshot
+is deliberately retained. Logs report changed outcomes/counts without per-tick
+spam. No player identifiers are included in this health output.
 
 Rollback is a separately authorized correction of only flags proven changed by
 this application, by exact row identity and after checking intervening edits.

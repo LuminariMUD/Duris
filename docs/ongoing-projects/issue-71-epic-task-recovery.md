@@ -29,7 +29,8 @@ production recovery journey is proven.
   exact source revision; the live logs below prove the pending/catalogue paths run.
 - Live read-only SQL: 350 zone rows, **0 enabled task rows / 0 distinct task
   zones**, no enabled duplicates, empty enabled roster. This confirms missing
-  catalogue flags as a global blocker.
+  catalogue flags as a global blocker. Final readback remains zero enabled flags;
+  database version is `11.8.6-MariaDB-5ubuntu0.1 from Ubuntu`.
 - `lib/duris.properties`: `epic.errandStep=500.000` (compiled default is 200).
 - `logs/log/status` (host timestamps, retained without player identities):
   - 04:23:37: catalogue unavailable/invalid at boot.
@@ -80,7 +81,7 @@ enablement, or unrelated cleanup is planned.
   (not yet correlated to the original reporter).
 - [x] Recover historical curated roster (107 enabled zones); correction preparation
   and current-world validation completed; production application remains pending.
-- [ ] Verify cold boot and scheduled refresh, including last-good retention.
+- [x] Verify cold boot and scheduled refresh, including last-good retention.
 - [ ] Publish focused PRs as chunks pass local checks.
 - [ ] Separately authorized production correction/deployment and already-pending
   recovery without another award; save/rent/relogin/restart acceptance.
@@ -90,7 +91,10 @@ enablement, or unrelated cleanup is planned.
 
 PR #119: <https://github.com/LuminariMUD/Duris/pull/119>, open/non-draft, head
 `865b0a464e1007f083b03aa25d2fde25cd3a9dcf`, base `master`. Local/remote head
-parity verified. Chunk 2 is on `branch/issue-71-task-roster`, stacked on #119.
+parity verified. PR #122: <https://github.com/LuminariMUD/Duris/pull/122>,
+open/non-draft, head `bb1c4ced7bbeaeabfd1ce354d11365aaf8ca6925`, branch
+`branch/issue-71-task-roster`, stacked on #119; local/remote parity verified.
+Chunk 3 is on `branch/issue-71-catalog-recovery`, stacked on #122.
 
 Chunk 1 initializes empty gameplay history in the shared `init_char()` used by
 telnet, WebSocket and staff creation. Existing logins still publish durable
@@ -132,7 +136,7 @@ this local checkout). Read-only extraction confirmed SHA-256
 `prod.sql`, footer `Dump completed on 2026-06-23 23:24:20`, and 355 unique zone
 rows, of which 107 explicitly have `task_zone=1`. Only zone number/name/eligibility
 was extracted to ignored `bin/analysis/historical-task-zones.json`. Historical
-eligibility still needs comparison with the currently loaded world before use.
+eligibility was then compared with the currently loaded world as recorded below.
 
 Chunk 2 comparison completed: every one of the 107 IDs has a current source
 stone load, an existing single production zone row with `task_zone=0`, and an
@@ -160,3 +164,66 @@ Chunk 2 verification:
   failure. Containers and volumes are removed by the runner.
 - An initial test-trigger delimiter error was corrected before these successful
   complete reruns; it was test setup, not an observed data-repair failure.
+
+## Chunk 3: catalogue refresh and connected acceptance
+
+Executable old-code probes reproduce two partial-publication defects: a failed
+middle page clears the accumulated prefix, and an invalid prefix is discarded
+while a valid suffix can still publish. Both shrink a four-zone snapshot to two.
+The maintenance restart regression also fails against the old scheduler because
+it replays a saved catalogue page/cursor without its in-memory prefix.
+
+The catalogue now owns its temporary pages, retains them across a same-cursor
+retry, rejects a whole invalid refresh and keeps the last good snapshot. On
+restart only this read-only cache job starts over; durable jobs retain their
+existing replay behavior. A grouped SQL query detects duplicates spanning page
+boundaries and includes invalid/nonpositive IDs on the first page for rejection.
+Reason-specific logs fire on changes, and `world persistence` reports catalogue
+readiness, active zones, last refresh result, active pending characters and how
+many of those have unavailable player reads.
+
+Final local proof:
+
+- `python3 tests/async/test_set_based_gameplay_reads.py` — PASS, including
+  ASan/UBSan initialization/award/pending persistence and all 20 initial rolls.
+- `python3 tests/async/test_maintenance_scheduler.py` — PASS, including old
+  durable-job replay and both catalogue restart boundaries.
+- `tests/async/with_disposable_mariadb.sh python3 tests/async/test_epic_task_catalog_mysql.py`
+  — PASS: real SQL cold boot, paged retry, empty refresh, duplicate boundaries,
+  zero/negative/NULL/overflow/unloaded IDs and last-good retention.
+- `tests/async/with_disposable_mariadb.sh python3 -u tests/async/test_epic_task_recovery_journey.py`
+  — complete PASS on disposable MariaDB 10.11 with the real server, normal clock,
+  actual naturally loaded stone, command/session paths and SQL scheduler. The
+  player receives 400 epics, saves a pending task across camp/relogin/restart,
+  then receives zone 430 automatically after catalogue provisioning, without
+  another touch or award. Completed zone 14 is excluded. The active task and
+  original 400 epics survive another restart. Additional controlled saved-history
+  fixtures prove connected zero- and all-completed behavior (zone / Spill Blood).
+  The journey uses a 400-point threshold; the real-function regression separately
+  covers the production 500-point threshold with 100 + 400 earned epics.
+- `test_epic_gain_runtime.py`, `test_epic_stone_runtime.py`,
+  `test_epic_command_reads.py`, `test_persistence_status_contract.py`,
+  `test_zones_in_memory.py`, and `test_root_test_harness.py` — PASS.
+- `make -C src -j4 CC='ccache g++'`, `make world -j4 CC='ccache g++'`,
+  changed-line and whole-touched-file format checks, `git diff --check`, and the
+  14-test `test_documentation_contract.py` — PASS. All build outputs stay ignored.
+
+Evidence is retained under `bin/analysis/`: focused check logs,
+`connected-task-journey.log`, and `epic-task-journey/journey.json`. The successful
+journey binary SHA-256 is
+`accbd80319a7eb368155c37f8125025dacb37d118bafb27834d8d5ebadb4ba9b`.
+Earlier journey fixture failures (wrong carried/ground stone, unsafe restart
+location, Limbo's special save/camp semantics, an overlong test account name)
+were corrected before the complete passing run; their retained logs are not
+passing evidence. All temporary source probes have been removed. Test runtimes,
+databases, containers and volumes were cleaned up. Production remains unchanged.
+
+The operational guide corrects the issue's old four-hour refresh assumption:
+14,400 event ticks at the current 4 Hz loop is nominally one hour, corroborated
+by the hourly production refresh logs. Rechecks of production logs did not
+identify the original reported player's identity, and no such correlation is
+claimed.
+
+While this stack was being tested, `origin/master` advanced to `50de5a90e` with
+#108 and #116. Their changed files do not overlap this stack. No history rewrite,
+release tag, merge or deployment is needed for these review-ready chunks.
