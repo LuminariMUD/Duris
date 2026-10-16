@@ -500,6 +500,7 @@ for these unmerged review chunks.
 
 ### Conservative reward conflict isolation
 
+[PR #135](https://github.com/LuminariMUD/Duris/pull/135),
 `branch/issue-67-reward-conflicts` → `branch/issue-67-direct-feed-timers` fixes the
 AR-01 reward-loss contracts without waiting for durable canonical identity. A
 bounded scan of equipment rejects every contribution from a repeated worn vnum,
@@ -520,6 +521,30 @@ totals, exactly eligible feedback, diagnostic detail, and silent late completion
 The single-copy/cap/PvP/history/source/stone controls remain passing. Transactional
 cutover (3/3), difficulty dial contracts, build and changed-line clang-tidy pass.
 
+The disposable standard full-server journey also passes:
+
+```sh
+make world
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_artifact_guild_reward_journey.py --case standard
+```
+
+It uses synthetic accounts on a new loopback MariaDB container, never the checkout
+`.env` or shared game. Actual Summon Ghasts kills grant three immediate artifact
+feeds and cumulative guild rewards while snapshots/history are blocked; after
+writer recovery, stored timers, guild totals and history agree. Copyover after
+drain and save/logout/clean restart preserve equipment and persisted rewards;
+history does not grant again. This qualifies the valid reward path, not all
+duplicate creation/recovery cases or the full AR-07 matrix. The first attempt
+failed before gameplay because generated `world.mob` was absent; `make world`
+fixed that prerequisite and the rerun passed.
+
+Tested binary SHA-256:
+`8e868a6e534bae467aad265f53f31db4386bf9cdf0da1c6dbd616cde96da5574`.
+Ignored evidence: `bin/analysis/issue67/conflicts-gameplay.log` and
+`bin/analysis/artifact-estale/gameplay-journey.json`. The code checkpoint is
+`00503a0eb`; later documentation-only commits reuse this evidence. The regression
+comparison passes here and fails on parent `7a6e5c5da` (all seven conflict cases).
+
 Ablation: this independently useful guard needs only the already mapped reward
 boundary and existing memory getters, so it can precede AR-02. No hot-path SQL,
 new persistence or relaxed duplicate codec is introduced. This is deliberately
@@ -528,6 +553,13 @@ excluded. It does **not** identify a noncanonical single copy whose shared legac
 record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
+
+Current review order is #132 → #133 → #134 → #135. All are open for review, with
+the displayed dependent PR bases; none has been merged or deployed. Resume from
+the tip of `branch/issue-67-reward-conflicts` in
+`/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
+creating a dependent branch for the next storage/admission chunk. Fresh master
+remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.
 
 ### Implementation checkpoint — 2026-10-16, AR-01
 
