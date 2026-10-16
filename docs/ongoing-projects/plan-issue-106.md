@@ -166,11 +166,19 @@ backup notifier, leaving the shared relay unchanged:
 - Production `.env` now has MAIL_HOST/PORT/TLS/USERNAME/PASSWORD/FROM populated
   from the supplied account and verified sender. Mode 0600, MAIL_ENABLED, and
   unrelated values are preserved. The owner's extra SMTP2GO values retain safe
-  shell quoting. No second password file was created.
+  shell quoting. No second password file was created. These settings share
+  staging's existing trust boundary: mode 0600 does not isolate the credential
+  from other staging processes. A separately scoped alert credential would need
+  a distinct execution/access boundary and provider-enforced sender/rate limits;
+  no such isolation or provider policy is claimed by this change.
 - `scripts/backup_alert.py` is installed at the existing staging
   `~/.local/libexec/duris-backup-alert` path, mode 0700. Its existing user-unit
   template now supplies `--recipient` and `--env-file`. Unit verification and
-  user-manager daemon-reload passed; no game service was restarted.
+  user-manager daemon-reload passed; no game service was restarted. Source units
+  use `OnFailure=duris-backup-alert@%N.service`, explicitly naming the instance
+  for the failing source. Local systemd 255 verification also resolves the bare
+  template dependency to the same instance for the named non-template test unit;
+  #124's claimed activation failure was not reproduced.
 - The notifier reuses the protected literal `.env` loader and standard Python
   SMTP with verified STARTTLS, a 30-second socket timeout and a bounded 20-line
   user-journal read. Accepted submission stamps before QUIT; failed submission
@@ -197,7 +205,21 @@ Installed source SHA-256 equals repository `scripts/backup_alert.py`:
 `a7fc1007bb31c6d071e28314085245f04e7d939e1e51a69bed932a2fbeef2d73`.
 Private rollback copies of the former notifier/unit remain in staging's
 `~/.cache/duris-issue106/`. Restoring that old notifier alone would restore the
-known delivery failure; do not do so without a separate mail-path correction.
+known delivery failure; reinstating its Plesk exception would still leave the
+shared relay's sender rejection. Do not treat either action as restored delivery.
+For a future replacement, retain the verified working route until recipient
+receipt and repeat suppression pass; otherwise record the alert outage and require
+a separately reviewed mail-path correction. Do not revive the withdrawn private
+curl adapter or separate credential file; the maintained source and tests are in Git.
+
+If a separately approved future test introduces a temporary Plesk exception,
+failure or abort at any acceptance step requires removal of only that test-added
+entry (`--remove-from-whitelist --sysuser=staging`) and `--show-whitelist` readback
+against the captured baseline, preserving pre-existing entries. Preserve evidence
+and clean up the test-only unit/stamp on failure as well as success. Keep an exception
+only after full acceptance and approval of continued use. Submission followed by a
+bounce is failure, and restoring mail policy alone does not restore alert delivery.
+This review authorizes no new host change or external notification.
 
 PR #126 review exposed five additional gaps, all repaired: port 465 now uses
 verified implicit TLS; optional SMTP credentials are accepted only as a pair;
