@@ -170,10 +170,30 @@ Formatting uses the repository-documented clang-format 18.1.8 installed in the
 ignored `bin/analysis/core-dumps-2026-10-16/format-env`; prepend its `bin` directory
 to `PATH` for formatting and commits. Host clang-format 21 changes untouched C++
 namespace layout in `.c` files, including the unmodified baseline.
-`make -C src` is in progress, with output under
-`bin/analysis/core-dumps-2026-10-16/build-mariadb.log`.
+`make -C src` passed, including an incremental check after formatting. Source
+`76b1369852a5fb1d8c8ebdd85965b72e68176bcc` produced MariaDB development executable
+build ID `62fbc6bce12e61b687d4dc1fcf82ddbaad107d07`. Build output is under
+`bin/analysis/core-dumps-2026-10-16/build-mariadb{,-final}.log`.
+The existing three-player `run_corpse_haul_journey.py` passed against that executable
+and a disposable loopback MariaDB: normal NPC/player corpse hauls, observer output,
+wallet, saved custody and reconnect. Count-cap qualification is running separately.
 
-Next: finish the build and open the bulk-fix PR, stack direct/legacy pickup
+[PR #129](https://github.com/LuminariMUD/Duris/pull/129) contains the first chunk.
+A second probe now executes real `get()` and finalizers with actual character/object
+structs and a trap/extraction fixture. It fails under ASan at `get()`'s post-trap
+debug log reading `world[NOWHERE]`; output is in
+`bin/analysis/core-dumps-2026-10-16/finalizer-probe.log`. This confirms the planned
+adjacent direct-pickup repair is required even after the bulk fix.
+
+Local resource notes: Docker access is unavailable to this user, so a dedicated
+MariaDB was initialized with `--no-defaults` in `/tmp/duris-core-repair-db-*`, bound
+to loopback on an ephemeral port. Its path/port are recorded in ignored
+`bin/analysis/core-dumps-2026-10-16/test-db.json`; it contains only disposable test
+schemas and must be shut down after qualification. Journey environments explicitly
+set `ENVIRONMENT=local` and never source `.env`. A separate flatfile build targets
+`bin/server/dms_core_repair_flatfile`; its output is in `build-flatfile.log`.
+
+Next: finish ordinary count-cap qualification and mark the bulk PR ready; stack direct/legacy pickup
 cancellation and truthful finalizers, then the real trap/death/reconnect/restart
 journeys and any independently reproduced persistence repair. Do not call this
 project complete based on the bulk harness alone.
