@@ -187,10 +187,23 @@ routes. There is no installed drill service/timer; #82's deferred drill enableme
 was not started.
 
 Installed source SHA-256 equals repository `scripts/backup_alert.py`:
-`72c205dd6ea1dda1c74fc45b79e5679e7d906ae754c799a68bb2b64a6bcb4ebe`.
+`a7fc1007bb31c6d071e28314085245f04e7d939e1e51a69bed932a2fbeef2d73`.
 Private rollback copies of the former notifier/unit remain in staging's
 `~/.cache/duris-issue106/`. Restoring that old notifier alone would restore the
 known delivery failure; do not do so without a separate mail-path correction.
+
+PR #126 review exposed four additional gaps, all repaired: port 465 now uses
+verified implicit TLS; optional SMTP credentials are accepted only as a pair;
+journal failure/timeout produces an explicit placeholder instead of suppressing
+the notification; the account-recovery comment contract matches the shared
+settings wording. Unauthenticated loopback plaintext also retains the documented
+shared-mail exception. Remote plaintext and partial credentials remain rejected.
+The expanded six-test notifier suite fails against the original implementation
+(one failure, six subtest errors) and passes after these repairs. The existing
+account-recovery source contract also fails before and passes after. The reviewed
+script is installed and hash-matched. The successful live 587/authenticated path
+is unchanged; the added variants have local executable proof, with no extra test
+email sent.
 
 ## Verification and retained evidence
 
@@ -203,9 +216,12 @@ Passed:
   `test_move_cost_runtime.py`, `test_damage_death_result.py`,
   `test_posture_state_regression.py`, `test_nevent_scheduler_runtime.py`,
   `test_nevent_cancellation_runtime.py`, and `test_command_latency_runtime.py`.
-- `python3 tests/async/test_backup_alert_runtime.py`: actual .env loader, verified
-  TLS, From/envelope/recipient, false MAIL_ENABLED, rejected submission/retry,
-  per-unit suppression, expiry and unsafe-file rejection. SMTP/journal are adapters.
+- `python3 tests/async/test_backup_alert_runtime.py` (six tests): actual .env
+  loader, verified STARTTLS/implicit TLS, optional paired auth, loopback-only
+  plaintext, From/envelope/recipient, false MAIL_ENABLED, rejected submission/
+  retry, per-unit suppression, expiry, unavailable journal, and unsafe-file
+  rejection. SMTP/journal are adapters.
+- `python3 tests/async/test_account_recovery_contract.py`.
 - `python3 tests/async/test_documentation_contract.py` (14 checks), formatting,
   applicable commit hooks, and `git diff --check`.
 - Actual host checks and receipt described above; real repeat suppression/cleanup.
