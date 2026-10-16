@@ -201,7 +201,8 @@ not-found/inactive. Original backup and health services retain their OnFailure
 routes. There is no installed drill service/timer; #82's deferred drill enablement
 was not started.
 
-Installed source SHA-256 equals repository `scripts/backup_alert.py`:
+At that deployment checkpoint, installed source SHA-256 matched
+`scripts/backup_alert.py` before the later UTF-8/path review corrections:
 `a7fc1007bb31c6d071e28314085245f04e7d939e1e51a69bed932a2fbeef2d73`.
 Private rollback copies of the former notifier/unit remain in staging's
 `~/.cache/duris-issue106/`. Restoring that old notifier alone would restore the
@@ -231,10 +232,22 @@ The production deployment runbook now describes the verified direct-SMTP notifie
 and removes its obsolete recommendation to add a Plesk account exception.
 The expanded six-test notifier suite fails against the original implementation
 (one failure, six subtest errors) and passes after these repairs. The existing
-account-recovery source contract also fails before and passes after. The reviewed
-script is installed and hash-matched. The successful live 587/authenticated path
+account-recovery source contract also fails before and passes after. That reviewed
+script was installed and hash-matched. The successful live 587/authenticated path
 is unchanged; the added variants have local executable proof, with no extra test
 email sent.
+
+The subsequent PR #126 review found two more valid failures: `smtplib.login()`
+ASCII-encodes credentials accepted by the shared UTF-8 configuration, and the
+message's hard-coded `~/duris` command fails for other checkout paths. The follow-up
+preserves UTF-8 credential bytes for all three existing AUTH mechanisms
+(CRAM-MD5, PLAIN, LOGIN), including fallback after rejection and bounded challenge
+handling. The recovery command now uses the shell-quoted parent of `--env-file`.
+The nine-test notifier suite includes 18 UTF-8 transport/authentication cases,
+authentication failures without a submission stamp, and executing the recovery
+command from a fixture checkout with spaces and an apostrophe. The previous head
+fails the UTF-8 and recovery-path cases. These follow-up changes have local proof
+only: no host installation, live email, or renewed source-hash equality is claimed.
 
 ## Verification and retained evidence
 
@@ -247,11 +260,12 @@ Passed:
   `test_move_cost_runtime.py`, `test_damage_death_result.py`,
   `test_posture_state_regression.py`, `test_nevent_scheduler_runtime.py`,
   `test_nevent_cancellation_runtime.py`, and `test_command_latency_runtime.py`.
-- `python3 tests/async/test_backup_alert_runtime.py` (six tests): actual .env
+- `python3 tests/async/test_backup_alert_runtime.py` (nine tests after follow-up): actual .env
   loader, verified STARTTLS/implicit TLS, optional paired auth, loopback-only
   plaintext, From/envelope/recipient, false MAIL_ENABLED, rejected submission/
   retry, per-unit suppression, expiry, unavailable journal, and unsafe-file
-  rejection. SMTP/journal are adapters.
+  rejection, UTF-8 authentication, and checkout-specific recovery commands.
+  SMTP/journal are adapters.
 - `python3 tests/async/test_account_recovery_contract.py`.
 - `python3 tests/async/test_documentation_contract.py` (14 checks), formatting,
   applicable commit hooks, and `git diff --check`.

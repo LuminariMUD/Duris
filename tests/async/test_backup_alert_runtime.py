@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Execute the notifier and real environment loader without delivering mail."""
 
+import base64
+import hmac
 import importlib.util
 import os
 from pathlib import Path
@@ -19,10 +21,13 @@ alert = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(alert)
 
 
-class SMTP:
+class SMTP(smtplib.SMTP):
     attempts = []
     connections = []
     failure = None
+    auth_methods = "CRAM-MD5 PLAIN LOGIN"
+    auth_reject = ()
+    extra_challenge = False
 
     def __init__(self, host, port, timeout, context=None):
         assert timeout == 30
@@ -30,6 +35,10 @@ class SMTP:
         self.tls = context is not None
         self.login_values = None
         self.starttls_calls = 0
+        self.ehlo_resp = b"fixture relay"
+        self.esmtp_features = {"auth": SMTP.auth_methods} if SMTP.auth_methods else {}
+        self.auth_commands = []
+        self.auth_responses = []
         if context:
             assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
         SMTP.connections.append(self)
@@ -46,16 +55,46 @@ class SMTP:
         self.starttls_calls += 1
         self.tls = True
 
-    def login(self, username, password):
+    def docmd(self, command, args=""):
         assert self.tls
-        assert (username, password) == ("fixture-user", "fixture-secret")
+        assert (command + args).isascii()
+        if command == "*":
+            return 501, b"Authentication cancelled"
+        if command == "AUTH":
+            mechanism, _, initial = args.partition(" ")
+            assert mechanism in self.esmtp_features["auth"].split()
+            self.auth_commands.append(mechanism)
+            self.auth_responses = []
+            if mechanism in SMTP.auth_reject:
+                return 535, b"Synthetic authentication rejection"
+            if not initial:
+                return 334, base64.b64encode(b"fixture challenge")
+            command = initial
+        self.auth_responses.append(base64.b64decode(command, validate=True))
+        if SMTP.extra_challenge:
+            return 334, base64.b64encode(b"fixture challenge")
+        username = os.environ["MAIL_USERNAME"]
+        password = os.environ["MAIL_PASSWORD"]
+        if self.auth_commands[-1] == "CRAM-MD5":
+            digest = hmac.new(password.encode(), b"fixture challenge", "md5").hexdigest()
+            expected = [(username + " " + digest).encode()]
+        elif self.auth_commands[-1] == "PLAIN":
+            expected = [("\0" + username + "\0" + password).encode()]
+        else:
+            expected = [username.encode(), password.encode()]
+        assert self.auth_responses == expected[:len(self.auth_responses)]
+        if len(self.auth_responses) < len(expected):
+            return 334, base64.b64encode(b"fixture challenge")
         self.login_values = (username, password)
+        return 235, b"Authentication accepted"
 
     def send_message(self, message, from_addr, to_addrs):
         assert from_addr == message["From"] == "sender@example.test"
         assert to_addrs == ["recipient@example.test"]
         assert message["To"] == "recipient@example.test"
         assert "fixture-secret" not in message.as_string()
+        if os.environ.get("MAIL_PASSWORD"):
+            assert os.environ["MAIL_PASSWORD"] not in message.get_content()
         SMTP.attempts.append(message)
         if SMTP.failure:
             raise SMTP.failure
@@ -78,13 +117,15 @@ class BackupAlertRuntime(unittest.TestCase):
     def setUp(self):
         out = ROOT / "bin/tests"
         out.mkdir(parents=True, exist_ok=True)
-        temporary = tempfile.TemporaryDirectory(prefix="backup-alert-", dir=out)
+        temporary = tempfile.TemporaryDirectory(prefix="backup alert's-", dir=out)
         self.addCleanup(temporary.cleanup)
         self.home = Path(temporary.name).resolve()
         self.env = self.home / ".env"
         self.write_config()
         self.stamp = self.home / ".local/state/duris-backup-alert/test-backup"
         SMTP.attempts, SMTP.connections, SMTP.failure = [], [], None
+        SMTP.auth_methods = "CRAM-MD5 PLAIN LOGIN"
+        SMTP.auth_reject, SMTP.extra_challenge = (), False
         patches = [patch.dict(os.environ, {"HOME": str(self.home)}, clear=True),
                    patch.object(alert.smtplib, "SMTP", SMTP),
                    patch.object(alert.smtplib, "SMTP_SSL", SMTP_SSL),
@@ -164,6 +205,51 @@ class BackupAlertRuntime(unittest.TestCase):
                     self.send()
         self.assertFalse(SMTP.connections)
         self.assertFalse(self.stamp.exists())
+
+    def test_utf8_credentials_reach_each_auth_mechanism(self):
+        for port in (465, 587):
+            for method in ("CRAM-MD5", "PLAIN", "LOGIN"):
+                for username, password in (("utilisateur-é", "fixture-secret"),
+                                           ("fixture-user", "密碼-é"),
+                                           ("utilisateur-é", "密碼-é")):
+                    with self.subTest(port=port, method=method, username=username, password=password):
+                        SMTP.auth_methods = method
+                        self.write_config(MAIL_PORT=str(port), MAIL_USERNAME=username, MAIL_PASSWORD=password)
+                        self.send(f"auth-{port}-{method}-{len(SMTP.connections)}")
+                        self.assertEqual(SMTP.connections[-1].login_values, (username, password))
+
+    def test_auth_fallback_and_failure_leave_submission_retryable(self):
+        self.write_config(MAIL_USERNAME="utilisateur-é", MAIL_PASSWORD="密碼-é")
+        SMTP.auth_reject = ("CRAM-MD5",)
+        self.send("fallback")
+        self.assertEqual(SMTP.connections[-1].auth_commands, ["CRAM-MD5", "PLAIN"])
+        for methods, rejected, extra, error in (
+                ("CRAM-MD5 PLAIN LOGIN", ("CRAM-MD5", "PLAIN", "LOGIN"), False, smtplib.SMTPAuthenticationError),
+                ("", (), False, smtplib.SMTPNotSupportedError),
+                ("XOAUTH2", (), False, smtplib.SMTPException),
+                ("PLAIN", (), True, smtplib.SMTPException)):
+            with self.subTest(methods=methods, extra=extra):
+                SMTP.auth_methods, SMTP.auth_reject, SMTP.extra_challenge = methods, rejected, extra
+                with self.assertRaises(error):
+                    self.send()
+                self.assertFalse(self.stamp.exists())
+                self.assertEqual(len(SMTP.attempts), 1)
+
+    def test_recovery_command_uses_configured_checkout(self):
+        scripts = self.home / "scripts"
+        scripts.mkdir()
+        status = scripts / "backup_pfiles.sh"
+        status.write_text('#!/bin/sh\nprintf "%s\\n" "$PWD" "$@"\n')
+        status.chmod(0o700)
+        self.send()
+        command = next(line.removeprefix("Check with: ")
+                       for line in SMTP.attempts[-1].get_content().splitlines()
+                       if line.startswith("Check with: "))
+        with subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True) as process:
+            output, error = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, error)
+        self.assertEqual(output.splitlines(), [str(self.home), "status", "--require-drill"])
 
     def test_journal_failure_does_not_suppress_notification(self):
         errors = [subprocess.CalledProcessError(1, "journalctl", stderr="fixture-secret"),

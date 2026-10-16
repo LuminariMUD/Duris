@@ -2,16 +2,52 @@
 """Send one backup unit failure using the existing protected MAIL_* settings."""
 
 import argparse
+import base64
 from datetime import datetime, timezone
 from email.message import EmailMessage
+import hmac
 import os
 from pathlib import Path
+import shlex
 import smtplib
 import socket
 import ssl
 import subprocess
 import sys
 import time
+
+
+def authenticate(smtp, username, password):
+    # smtplib.login/auth force ASCII; the shared MAIL_* contract permits UTF-8.
+    # Keep login's three mechanisms and preference order, with bounded exchanges.
+    smtp.ehlo_or_helo_if_needed()
+    advertised = smtp.esmtp_features.get("auth", "").upper().split()
+    failure = smtplib.SMTPNotSupportedError("No supported SMTP AUTH mechanism")
+    username, password = username.encode("utf-8"), password.encode("utf-8")
+    for mechanism in ("CRAM-MD5", "PLAIN", "LOGIN"):
+        if mechanism not in advertised:
+            continue
+        code, reply = smtp.docmd("AUTH", mechanism)
+        if code == 334:
+            if mechanism == "CRAM-MD5":
+                challenge = base64.b64decode(reply, validate=True)
+                digest = hmac.new(password, challenge, "md5").hexdigest().encode("ascii")
+                responses = [username + b" " + digest]
+            elif mechanism == "PLAIN":
+                responses = [b"\0" + username + b"\0" + password]
+            else:
+                responses = [username, password]
+            for response in responses:
+                if code != 334:
+                    break
+                code, reply = smtp.docmd(base64.b64encode(response).decode("ascii"))
+        if code in (235, 503):
+            return
+        if code == 334:
+            smtp.docmd("*")
+            raise smtplib.SMTPException("Unexpected SMTP AUTH challenge")
+        failure = smtplib.SMTPAuthenticationError(code, reply)
+    raise failure
 
 
 def send_alert(unit, recipient, env_file):
@@ -60,7 +96,8 @@ def send_alert(unit, recipient, env_file):
     now = datetime.now(timezone.utc).strftime("%F %T UTC")
     message.set_content(
         f"{unit} failed at {now}. Its last lines:\n\n{journal}\n"
-        "Check with: cd ~/duris && scripts/backup_pfiles.sh status --require-drill\n"
+        f"Check with: cd {shlex.quote(str(env_file.parent))} && "
+        "scripts/backup_pfiles.sh status --require-drill\n"
         "This alert is sent at most once an hour per unit.\n")
     context = ssl.create_default_context() if tls or port == 465 else None
     # Match the existing account-recovery MAIL_PORT/TLS/authentication contract.
@@ -71,7 +108,7 @@ def send_alert(unit, recipient, env_file):
         if tls and port != 465:
             smtp.starttls(context=context)
         if username:
-            smtp.login(username, password)
+            authenticate(smtp, username, password)
         refused = smtp.send_message(message, from_addr=os.environ["MAIL_FROM"],
                                     to_addrs=[recipient])
         if refused:

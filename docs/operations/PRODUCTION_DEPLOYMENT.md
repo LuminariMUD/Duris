@@ -160,6 +160,9 @@ notifier does not require a service-account exception or changes to the shared
 relay. Do not reinstate that obsolete workaround when diagnosing future alerts.
 Use [Backup operations](BACKUPS.md) and the
 [issue #106 evidence](../ongoing-projects/plan-issue-106.md) for current checks.
+The later PR #126 UTF-8 authentication and checkout-path corrections have local
+regression coverage only; they were not installed or sent through the live relay
+as part of that follow-up review.
 
 At the historical check there was no off-host replica or restore drill; the owner had deferred
 the off-host copy. Providing an SSHFS mount for `replica_root` and a dedicated restore

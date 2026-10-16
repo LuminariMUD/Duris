@@ -135,10 +135,11 @@ the protected `.env` loader and `MAIL_HOST`, `MAIL_PORT`, `MAIL_TLS`,
 Use a sender verified with the configured SMTP account. Like account recovery,
 port 465 uses verified implicit TLS; other TLS-enabled ports require STARTTLS.
 Credentials are optional but must be supplied as a pair, and plaintext is allowed
-only for an unauthenticated loopback relay. The notifier does not use the host's
-shared sendmail relay or require a second password file. `MAIL_ENABLED` controls
-game account recovery only and does not disable an explicitly connected backup
-alert route.
+only for an unauthenticated loopback relay. SMTP authentication preserves UTF-8
+credential bytes using the relay's advertised CRAM-MD5, PLAIN, or LOGIN mechanism.
+The notifier does not use the host's shared sendmail relay or require a second
+password file. `MAIL_ENABLED` controls game account recovery only and does not
+disable an explicitly connected backup alert route.
 
 For a user service, the template's `ExecStart` can invoke:
 
@@ -146,6 +147,8 @@ For a user service, the template's `ExecStart` can invoke:
 ExecStart=/usr/bin/python3 /absolute/path/to/duris/scripts/backup_alert.py %i --recipient operator@example.com --env-file /absolute/path/to/duris/.env
 ```
 
+The recovery command in the message uses the checkout containing `--env-file`,
+with shell quoting for paths containing spaces or apostrophes.
 It includes the unit's last 20 user-journal lines (or an explicit unavailable
 placeholder if journal collection fails or times out) and suppresses repeats for
 one hour per unit under `~/.local/state/duris-backup-alert/`. Only an accepted SMTP
