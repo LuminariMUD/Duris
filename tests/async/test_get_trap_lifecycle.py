@@ -41,7 +41,7 @@ static index_data indexes[2]{};
 P_index obj_index=indexes;
 P_index mob_index=indexes;
 int top_of_objt=2;
-static int trap_effect=1, trap_calls=0, pickups=0, reports=0, waits=0;
+static int trap_effect=1, trap_calls=0, pickups=0, reports=0, waits=0, corpse_writes=0;
 static bool item_get_ack_publication=false, item_get_rejected=false;
 static bool crumble=false, refuse_coins=false;
 static std::string output, audit;
@@ -70,7 +70,7 @@ int checked_snprintf_at(const char *,int,char *buf,size_t size,const char *forma
 int real_mobile(int) { return -1; }
 void CharWait(P_char ch,int) { assert(IS_ALIVE(ch)); ++waits; }
 void MakeScrap(P_char,P_obj) {}
-void writeCorpse(P_obj) {}
+void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
 void redis_remove_floor_drop(unsigned long) {}
 void mark_player_dirty_components(int,player_component_mask_t) {}
 void gmcp_char_vitals(P_char) {}
@@ -128,7 +128,7 @@ int main() {
   if(npc && mode!=4) continue;
   if((mode==7 || mode==8) && !container) continue;
   trap_effect=mode; crumble=mode==5; refuse_coins=mode==12;
-  trap_calls=pickups=reports=waits=0; output.clear(); audit.clear();
+  trap_calls=pickups=reports=waits=corpse_writes=0; output.clear(); audit.clear();
   pc_only_data *pc=new pc_only_data{}; char_data actor{}; descriptor_data descriptor{};
   actor.only.pc=pc; actor.runtime_id=1; actor.in_room=1; actor.desc=&descriptor;
   actor.specials.position=POS_STANDING|STAT_NORMAL; character_list=&actor;
@@ -137,6 +137,7 @@ int main() {
   npc_only_data npc_data{};
   if(npc) { actor.specials.act=ACT_ISNPC; actor.only.npc=&npc_data; }
   obj_data corpse{}; corpse.type=ITEM_CORPSE; corpse.obj_uid=50;
+  corpse.value[CORPSE_FLAGS]=PC_CORPSE;
   corpse.loc_p=LOC_ROOM; corpse.loc.room=1;
   corpse.name=const_cast<char *>("corpse"); corpse.action_description=const_cast<char *>("Source");
   corpse.short_description=const_cast<char *>("the corpse of Source");
@@ -163,6 +164,7 @@ int main() {
   if(mode<4 || mode>=9) {
    assert(!found && total==0 && pickups==0 && reports==0 && waits==0);
    assert(item_get_rejected && trap_calls==(mode<4?1:0) && item->trap_charge==0);
+   if(mode<4) assert(corpse_writes==(container?1:0));
    if(mode==1) assert(!actor.only.pc && !actor.desc && !character_list && actor.in_room==NOWHERE);
   } else if(mode==5) {
    assert(item_get_rejected && !found && total==0 && pickups==1 && reports==0 && waits==0);

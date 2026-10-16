@@ -4,6 +4,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
+#include "flatfile/flatfile_world_item_repository.h"
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
@@ -248,6 +249,37 @@ static void inspect_authority(const std::string &root, int32_t pid)
 			<< revision;
 	}
 	std::cout << "}\n";
+}
+
+static void inspect_world_items(const std::string &root, int argc, char **argv)
+{
+	std::string error;
+	std::vector<flatfile_corpse_record> corpses;
+	std::vector<flatfile_saved_world_item_record> saved_items;
+	require(flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
+			flatfile_world_item_result::ok,
+		"inspect world items: " + error);
+	std::cout << "{\"items\":[";
+	bool first = true;
+	for (const auto &corpse : corpses)
+		for (const auto &item : corpse.items)
+		{
+			bool requested = false;
+			for (int index = 3; index < argc; ++index)
+				requested |= item.vnum == std::stoi(argv[index]);
+			if (!requested)
+				continue;
+			if (!first)
+				std::cout << ',';
+			first = false;
+			std::cout << "{\"uid\":" << item.object_uid << ",\"vnum\":" << item.vnum;
+			for (const auto &description : item.extra_descriptions)
+				if (description.keyword == "DURIS_TRAP_STATE_V1")
+					std::cout << ",\"trap_state\":\"" << description.description
+						  << '"';
+			std::cout << '}';
+		}
+	std::cout << "]}\n";
 }
 
 // A save claims what the player holds in the same authority transaction that writes
@@ -565,6 +597,11 @@ int main(int argc, char **argv)
 	if (argc == 4 && std::string(argv[2]) == "inspect")
 	{
 		inspect_authority(argv[1], std::stoi(argv[3]));
+		return 0;
+	}
+	if (argc >= 4 && std::string(argv[2]) == "inspect-world-items")
+	{
+		inspect_world_items(argv[1], argc, argv);
 		return 0;
 	}
 	require(argc == 2, "state root argument required");

@@ -1,8 +1,8 @@
 # Core dump investigation and repair plan — 2026-10-16
 
-Status: bulk and direct/legacy pickup cancellation implemented; the real-server
-trap/death/restart journey and any independently reproduced persistence repair remain
-open. Investigation source reviewed at `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
+Status: repaired and qualified locally on MariaDB and flat-file persistence. Production
+rollout remains a separate owner-authorized operation. Investigation source reviewed at
+`b149b3ada6e8c9c1e041ad864772195173fef7c6`.
 
 **All three root-directory dumps expose the same fatal continuation after player
 extraction during `get all corpse`.** The bulk selector calls a trap function that
@@ -12,10 +12,9 @@ actor. The immediate crash is a null player-data dereference in
 effect, including its callers and cleanup, rather than merely tolerate null in
 the reporting helper.
 
-The likely historical trigger is a fire trap on the eleventh item in the source
-corpse. Core state, death logs, source tracing, and a synthetic lethal-trap probe
-agree on this explanation. A real-server trap/death reproduction is still needed
-to qualify the complete repair.
+The historical trigger is a fire trap on the eleventh item in the source corpse.
+Core state, death logs, source tracing, synthetic probes, and the completed real-server
+trap/death reproduction agree on this explanation.
 
 ## Evidence and coverage
 
@@ -131,15 +130,16 @@ observed.
 
 ## Implementation progress
 
-Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`. Both repair branches
+Work started from `45b0a2119` on `fix/corpse-loot-core-dumps`. All three repair branches
 now include the fetched `origin/master` tip `6d4d71e56`; the original dumps and
 matching `bin/server/dms` are preserved.
 
 **Outcome:** stop pickup at invalidating trap effects and retain correct ownership,
 reporting, cleanup and persistence across death/reconnect/restart. **Non-goals:**
 production rollout, global lifetime/GET_PID changes, unrelated object-command cleanup.
-**Files:** `src/cmd/actobj.c`, focused pickup tests and isolated journeys, this document
-and the regression catalogue/runners. **Proof:** failing-before sanitizer regression,
+**Files:** `src/cmd/actobj.c`, player snapshot capture/load, the shared SQL item-metadata
+codec and legacy loader, focused pickup tests and isolated journeys, this document and
+the regression catalogue/runners. **Proof:** failing-before sanitizer regression,
 normal-loot regressions, builds and actual command/persistence journeys on both backends.
 
 Ablation: keep the existing identity lookups and a private continuation check. Check
@@ -160,8 +160,8 @@ First chunk implemented:
 - Extend `test_corpse_haul.py` with a PC-data lifecycle fixture and the bulk matrix.
   The initial lethal test failed before the repair at the same `corpse_bulk_get`
   PID boundary (SIGABRT from the strict null-PC assertion). The repaired matrix passes
-  under ASan/UBSan. This still stubs finalizers/combat: the real-finalizer and full
-  command requirements below remain open.
+  under ASan/UBSan. This still stubs finalizers/combat; the second chunk and real-server
+  journey below provide those additional boundaries.
 
 Checks completed for this chunk: `python3 tests/async/test_corpse_haul.py`,
 `python3 tests/async/test_bulk_get_publication.py`,
@@ -178,7 +178,8 @@ build ID `62fbc6bce12e61b687d4dc1fcf82ddbaad107d07`. Build output is under
 `bin/analysis/core-dumps-2026-10-16/build-mariadb{,-final}.log`.
 The existing three-player `run_corpse_haul_journey.py` passed against that executable
 and a disposable loopback MariaDB: normal NPC/player corpse hauls, observer output,
-wallet, saved custody and reconnect. Count-cap qualification is running separately.
+wallet, saved custody and reconnect. Count-cap qualification subsequently passed on
+both backends.
 
 [PR #129](https://github.com/LuminariMUD/Duris/pull/129) contains the first chunk.
 A second probe executes real `get()` and finalizers with actual character/object
@@ -219,20 +220,66 @@ and the flatfile executable has build ID
 directory.
 The pre-existing MariaDB three-player corpse journey and the count-cap journey on both
 MariaDB and flatfile also pass against these builds. Those journeys establish normal
-loot behavior; they do not replace the pending lethal real-server journey.
+loot behavior; the lethal real-server journey below covers the invalidating trap path.
+
+Third chunk implemented on `fix/corpse-trap-persistence`:
+
+- Add `test_corpse_trap_restart_journey.py`, which constructs an isolated full-world
+  corpse with an ioun stone, ordinary item and deterministic lethal room-fire trap. It
+  runs the actual command, death and account-menu path; checks that a same-room mortal
+  bystander receives the room effect while a durable NPC, remote client and server stay
+  live; reconnects and performs another get; restarts; and compares corpse custody and
+  item UIDs before and after restart on both maintained backends.
+- The journey failed before the persistence repair after the lethal trap had been
+  consumed: the restored corpse had no persisted trap state, so it would reload the
+  prototype's live charge. That failure is recorded in the ignored
+  `corpse-trap-mariadb-before.log`.
+- Persist nonzero runtime trap fields through the existing internal item
+  extra-description channel as `DURIS_TRAP_STATE_V1`. The shared codec accepts exactly
+  four bounded integer fields; capture emits one canonical record; both snapshot and
+  legacy SQL materializers restore it without exposing it as an in-game description.
+  Existing snapshots without the marker retain their prototype state.
+- Save a player corpse immediately when a trap triggers during direct or bulk pickup,
+  so the consumed charge reaches persistence even when the actor dies before normal
+  command-end saving.
+- Register the flat-file journey in `make test`, the MariaDB journey in `make test-db`,
+  and document both backend commands in `REGRESSIONS.md`. The final MariaDB and
+  flat-file journeys pass, including direct raw
+  authority inspection of the three retained UIDs and the `6,2,0,100` spent state; after
+  final pickup, exactly the trap UID moves and the other two remain. The completion audit
+  also places a mortal bystander and durable NPC in the trap room: the bystander receives
+  the fire effect and dies, the NPC survives, and neither outcome resumes the invalidated
+  pickup; both backend journeys pass with these assertions.
+
+The completion audit registered the flat-file leg with the normal regression discovery
+and retained the MariaDB leg in `make test-db`. The exact dispatcher command
+`python3 tests/run_regression_tests.py --jobs 1 --match corpse_trap_restart` passed its
+single discovered flat-file journey in 278.67 seconds, including a verified server build.
+The renamed MariaDB entry also passed when invoked with the qualified MariaDB executable
+and disposable loopback database. The existing three-player and count-cap journeys
+assert inventory and wallet behavior; the lethal journey enumerates the target UIDs
+across all corpse authority, verifies the source corpse's visible contents, and on
+MariaDB explicitly confirms none of those UIDs entered the looter's death corpse.
+
+Focused codec, capture, load, routing, lifecycle and corpse-haul regressions pass, as do
+the affected pickup, coin, removal, limits and account-bound access tests. The MariaDB
+build has ID `d0161cd00fe5ac599356e48151309a8c80d1a920`; the flat-file build has ID
+`8370195a339cd0efd9e4f19c6510c77add5b9871`.
+[PR #131](https://github.com/LuminariMUD/Duris/pull/131) contains this third chunk,
+whose qualified implementation commit is `c8a37fcc2` and whose base is the finalizer
+repair in PR #130. Completion-audit coverage and both-backend runner registration are
+in `f6dbe86b6`.
 
 Local resource notes: Docker access is unavailable to this user, so a dedicated
 MariaDB was initialized with `--no-defaults` in `/tmp/duris-core-repair-db-*`, bound
-to loopback on an ephemeral port. Its path/port are recorded in ignored
-`bin/analysis/core-dumps-2026-10-16/test-db.json`; it contains only disposable test
-schemas and must be shut down after qualification. Journey environments explicitly
-set `ENVIRONMENT=local` and never source `.env`. A separate flatfile build targets
-`bin/server/dms_core_repair_flatfile`; its output is in `build-flatfile.log`.
+to loopback on an ephemeral port. Its path/port were recorded during qualification in
+an ignored local file; the server was stopped and its directory removed afterward.
+Journey environments explicitly set `ENVIRONMENT=local` and never source `.env`. A
+separate flatfile build targets `bin/server/dms_core_repair_flatfile`; its output is in
+`build-flatfile.log`.
 
-Next: commit and publish the focused finalizer chunk, then implement the real
-trap/death/reconnect/restart journey on both backends and make the smallest persistence
-repair if that journey reproduces one. Do not call this project complete based on the
-native harnesses alone.
+The disposable database and all journey runtimes contained synthetic data and were
+removed after qualification; no production configuration was sourced.
 
 ## Implementation sequence
 
@@ -298,7 +345,7 @@ the dumps crashed in all of them.
   from reporting: an extracted actor must not reach `report_bulk_get()`. Avoid
   erasing a map entry while another frame still uses its `bulk_get_state&`.
   A later login/get by the same PID must not inherit an abandoned batch.
-- [ ] Confirm the floor bulk and filtered bulk entry points return safely, and
+- [x] Confirm the floor bulk and filtered bulk entry points return safely, and
   single-item/legacy paths cannot fall through into `do_get()`'s dirty marking,
   debug output, lighting, or wait updates after extraction. Verify the command
   interpreter's existing post-command death guard with a full command test.
@@ -328,22 +375,22 @@ remaining work, and state cleanup; an absence of SIGSEGV alone is not enough.
 
 ### 5. Verify with a real isolated server and persistence
 
-- [ ] Extend [run_corpse_haul_journey.py](../../tests/async/run_corpse_haul_journey.py)
+- [x] Extend [run_corpse_haul_journey.py](../../tests/async/run_corpse_haul_journey.py)
   or add one adjacent journey using its disposable runtime/database pattern.
   Create a corpse with ordinary/ioun items before an object-triggered room-fire
   trap and a mortal looter with deterministic lethal health/damage. Run the
   actual `get all corpse` command. The player returns to the account menu, an
   observer remains connected, and the server continues processing commands.
-- [ ] Inspect the original corpse, death corpse, inventory, wallet, and item UIDs:
+- [x] Inspect the original corpse, death corpse, inventory, wallet, and item UIDs:
   no selected item was duplicated, lost, or transferred after death. Reconnect
   and perform another get to prove stale batch state cannot block the player.
-- [ ] Save and restart the isolated server, then verify corpse contents, ownership,
+- [x] Save and restart the isolated server, then verify corpse contents, ownership,
   wallet, and the trap's expected spent state. Repeat the recovery/loot sequence
   that produced the three historical dumps. If trap consumption or custody
   fails persistence independently of the crash, add the smallest reproducible
   persistence repair before closing this plan; do not assume a database bug from
   these snapshots alone.
-- [ ] Run the applicable journey on both maintained persistence backends, reusing
+- [x] Run the applicable journey on both maintained persistence backends, reusing
   [run_corpse_haul_count_cap_journey.py](../../tests/async/run_corpse_haul_count_cap_journey.py)
   for the existing backend fixture pattern. Register new executable coverage in
   the existing regression/database runners and describe it in
@@ -361,9 +408,14 @@ python3 tests/async/test_corpse_haul.py
 python3 tests/async/test_bulk_get_publication.py
 python3 tests/async/test_money_carry_count.py
 python3 tests/async/test_take_coins.py
+python3 tests/async/test_get_trap_lifecycle.py
+python3 tests/async/test_item_extra_descr_codec.py
+python3 tests/async/test_player_load_items.py
 python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/test/server
 python3 tests/async/run_corpse_haul_count_cap_journey.py /absolute/path/to/test/server mariadb
 python3 tests/async/run_corpse_haul_count_cap_journey.py /absolute/path/to/test/server flatfile
+python3 tests/async/test_corpse_trap_restart_journey.py
+python3 tests/async/test_corpse_trap_restart_journey.py /absolute/path/to/test/server mariadb
 ```
 
 Journey commands require explicitly configured disposable test resources and the
@@ -375,20 +427,21 @@ include the existing single-item, carry-limit, and removal regressions affected
 by that change. Local executable and gameplay evidence is the completion gate;
 waiting for CI is not required.
 
-- [ ] Review the final diff for a narrow lifetime/cancellation repair and remove
+- [x] Review the final diff for a narrow lifetime/cancellation repair and remove
   unneeded abstractions or unrelated changes.
-- [ ] Record the qualified source revision and executable build ID. Preserve
+- [x] Record the qualified source revision and executable build ID. Preserve
   the original dumps and matching executable for comparison before replacing
   runtime artifacts.
-- [ ] Hand off the qualified fix for the existing deployment workflow. Production
+- [x] Hand off the qualified fix for the existing deployment workflow. Production
   rollout requires separate owner authorization. After an authorized rollout,
   observe the relevant get/death path and new cores/logs; lack of a new core
   without exercising the path is not sufficient validation.
 
-The implementation is complete when all three historical dumps have this common
-disposition, the regression fails before and passes after the repair, every
-variant above is covered, the real-server death/reconnect/restart journey passes,
-and formatting/build checks pass. Until then the runtime issue remains open.
+All three historical dumps now have this common disposition; the regression fails
+before and passes after the repair; the listed variants are covered; both real-server
+death/reconnect/restart journeys pass; and formatting/build checks pass. The runtime
+repair is qualified locally. Production rollout and observation remain operational work
+requiring separate owner authorization.
 
 ## Rechecking the dumps
 

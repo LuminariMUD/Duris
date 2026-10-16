@@ -954,6 +954,8 @@ python3 tests/async/test_money_carry_count.py
 python3 tests/async/test_take_coins.py
 python3 tests/async/test_get_trap_lifecycle.py
 python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/mariadb/server   # in make test-db
+python3 tests/async/test_corpse_trap_restart_journey.py   # flat-file; in make test
+python3 tests/async/test_corpse_trap_restart_journey.py /absolute/path/to/mariadb/server mariadb   # in make test-db
 ```
 
 `test_corpse_haul.py` runs the production selection, pickup and reporting under
@@ -976,6 +978,16 @@ Raoul in combat, a second player at the corpse sees the haul start, and a third 
 next room sees nothing. After a real player death it repeats a mixed equipment-and-coin
 haul on the player's corpse. Each stage asserts the haul, observer output, and the saved
 custody and wallet; a reconnect keeps the inventory without replaying the haul.
+
+The trap restart journey creates a player corpse whose ordinary and ioun items precede
+a lethal object-triggered room-fire trap. It runs the real `get all corpse`, checks that
+the actor and a same-room mortal bystander receive the room effect and return to their
+account menus while a durable same-room NPC, a remote staff client and the server remain
+live, and reconnects the actor to prove the abandoned batch does not replay. It then
+restarts the server and verifies that the original corpse retains the same item UIDs and
+the trap's consumed charge on MariaDB and flat-file authority. A final direct pickup
+proves the spent trap did not rearm. The journey uses only synthetic accounts and a
+private world; the MariaDB leg is registered in `make test-db`.
 
 ## Falling: Safe Fall, Climb and breakable floors
 
