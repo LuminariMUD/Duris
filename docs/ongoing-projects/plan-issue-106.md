@@ -2,20 +2,27 @@
 
 Tracker: <https://github.com/LuminariMUD/Duris/issues/106>
 
-## Current checkpoint — 2026-10-16
+## Historical diagnosis checkpoint — 2026-10-16
 
-The owner explicitly resumed this issue and requested autonomous investigation,
-repairs, focused review-ready PRs, and this continuation record. The 2026-10-14
-deferral in [the historical review](log-server-review.md) is superseded for
-investigation of these eight items. It does not authorize production changes or
-external test notifications. No new defect or historical attribution is assumed.
+This PR preserves the recovered host diagnosis and initial failed alert test.
+The owner resumed the investigation in [the historical review](log-server-review.md)
+and approved a temporary Plesk exception and one-email acceptance test. That test
+exposed the relay sender/account mismatch below. These are historical observations,
+not instructions to reapply the exception or install the abandoned curl candidate.
+
+[PR #126](https://github.com/LuminariMUD/Duris/pull/126) supersedes this checkpoint
+with the maintained notifier, recipient-confirmed delivery, removal of the temporary
+exception, and the owner's final dispositions. Consult that successor for the latest
+record; this PR does not claim a new host verification or authorize a rollout.
 
 Worktree: `/home/aiwithapex/projects/duris-issue106`.
 Evidence branch: `branch/issue-106-runtime-evidence`, starting at master `b149b3ada`,
 published as [PR #117](https://github.com/LuminariMUD/Duris/pull/117), commit `ea9af99a4`.
-Current repair branch: `branch/issue-106-limited-teleport`, published as
+Repair branch: `branch/issue-106-limited-teleport`, published as
 [PR #120](https://github.com/LuminariMUD/Duris/pull/120), stacked on #117.
 The tested implementation commit is `60f6911b4`; later checkpoint edits are docs only.
+Current host-diagnosis branch: `branch/issue-106-host-diagnosis`, published as
+[PR #124](https://github.com/LuminariMUD/Duris/pull/124), stacked on #120.
 The primary checkout belongs to other work and must remain untouched.
 
 ## Outcome, non-goals, files, and proof
@@ -65,11 +72,13 @@ evidence; reproducing a possible cause alone does not establish it.
   extraction and owner-reuse protections.
 - LR-10: #75 repairs demonstrated healing into standing/resting. Recover the
   04:32:03 producing transition; preserve legitimate posture/status combinations.
-- LR-12: historical logrotate exit 1 with a Plesk drop-in. Read current unit
-  state and available journal; identify the failing rule/hook before any repair.
-- LR-15: historical alert exit 100; actual installed notifier differs from
-  checkout templates. Inspect that implementation and mail failure evidence;
-  no controlled external notification has been authorized or sent.
+- LR-12: resolved by recovered duplicate cloud-init rule diagnosis, current
+  configuration validation, successful scheduled rotation, matching ownership,
+  and observed continued live writes; see the protected diagnosis below.
+- LR-15: the temporary owner-approved Plesk exception allowed submission, but the
+  initial OnFailure test exposed the relay's rejection of the default sender.
+  This checkpoint did not establish delivery; #126 records the subsequent repair,
+  recipient receipt, and exception removal.
 - LR-17: representative lookup profiling already found no justified optimization.
   Recover exact mode/query/load and correlate command/loop/callback evidence.
 - LR-18: #75 fixes acceptance beyond maximum distance. Recover historical
@@ -144,75 +153,28 @@ Private query inputs and outputs are under `bin/analysis/issue106/private/`
 is `bin/analysis/issue106/read_historical_audit.py`. Connection values and player
 identities were not added to the repository. No database writes were performed.
 
-### Host evidence and access boundary
+### Host access and notifier baseline
 
-- **LR-12:** `systemctl show logrotate.service` now records `Result=success`,
-  `ExecMainStatus=0`, start **2026-10-16 00:06:02 UTC**, exit **00:06:07 UTC**.
-  The Plesk drop-in is still installed. This is a real subsequent service
-  success, but does not identify the October 13 failing rule/hook. The account
-  cannot read the system journal, Plesk log directory, or logrotate state file.
-  `/var/log/syslog` metadata shows mode 0640, owner `syslog:adm`, and continued
-  writes, but does not prove the unidentified failed target's ownership/writes.
-  Keep root cause and target-specific acceptance open.
-- **LR-15:** inspected the actual `~/.local/libexec/duris-backup-alert` and
-  user-unit template. Both real instances (`duris-backup-backup` and
-  `duris-backup-health`) still failed with exit **100**, most recently at
-  **2026-10-15 16:37:17** and **16:32:35 UTC**, respectively. Both source units
-  have `OnFailure=duris-backup-alert@%N.service`. The installed script invokes
-  `/usr/sbin/sendmail -t`, inherits the service-account envelope sender, uses
-  `set -euo pipefail`, and touches its per-unit one-hour stamp only after
-  successful submission. Its state directory has no stamp files. Repeated
-  failed attempts remain eligible, as intended. The accessible journal proves
-  Plesk submission attempts and exit status, but omits the rejection reason.
-  Protected mail diagnostics are needed before choosing a sender/configuration
-  correction. No message was sent by this investigation, and receipt, success
-  suppression, and drill-route coverage remain unverified.
+Protected diagnosis now uses the owner-designated WSL `ssh lumi` account with
+sudo. Authentication is resolved; the earlier blocked attempts are superseded.
+No credentials are stored in the repository or private evidence. The completed
+collection helper and five original JSONL files remain in the owner's private
+`~/.cache/duris-issue106/` directory and the local ignored analysis directory.
 
-The actual captured notifier was also executed locally with only synthetic
-state, journal, and sendmail adapters. Exit 100 leaves no stamp, successful retry
-creates one, immediate repeat is suppressed, an expired failed attempt does not
-refresh the stamp, and a subsequent successful retry does. This proves the
-installed script's control flow only: no real mail was submitted and no real
-`OnFailure=` transition or recipient receipt was tested. The private executable
-probe is `bin/analysis/issue106/check_installed_alert.py`.
+At this diagnosis checkpoint, the deployed notifier was
+`~/.local/libexec/duris-backup-alert` under the staging account. Both source units
+(`duris-backup-backup` and `duris-backup-health`) route through
+`OnFailure=duris-backup-alert@%N.service`.
+Its shell uses `set -euo pipefail` and stamps a per-unit one-hour quiet period
+only after successful sendmail submission. Historical exit-100 attempts left
+no stamps; this protected-mail cause and current live test are detailed below.
 
-`id` and `sudo -n -l` confirm the existing staging account has neither
-system-journal membership nor sudo authorization. The owner then explicitly
-designated **WSL `ssh lumi`** for protected read-only diagnosis. That alias
-connects as the sudo-group account, but `sudo -n -l` and the journal queries
-return `interactive authentication is required`. The interactive sudo session
-timed out without authentication. Do not put passwords in this
-document, Git, or chat, or use unrelated accounts/Docker to work around it.
-Private output is retained in `bin/analysis/issue106/private/owner-diagnostics.txt`.
-After authentication, read the October 13 rotation failure and October 15 mail
-submissions, prepare a concrete correction, and obtain authorization for any
-production change and harmless real notification through the existing route.
-
-A checked read-only collection helper is now staged in the designated account's
-`~/.cache/duris-issue106/collect-host-journals.sh` (mode 0700; directory 0700).
-Its local copy is `bin/analysis/issue106/collect-host-journals.sh`; both SHA-256
-hashes are `78341ffdd5b0146114d1babcaafc2860002bb74fe464b811b2ef9a62e2b9918f`.
-The owner was asked to run this command in their own terminal and enter sudo's
-password locally:
-
-```powershell
-wsl ssh -t lumi "bash ~/.cache/duris-issue106/collect-host-journals.sh"
-```
-
-The helper reads only bounded rotation/mail journal windows and saves five
-private JSONL files in the same directory, with umask 077. It does not trigger
-jobs, rotate logs, change production configuration, restart services, or send
-mail. After it succeeds, retrieve those files through `ssh lumi` and inspect
-the actual failure messages. The helper itself is not proof that collection
-has run; no collected protected journals exist yet at this checkpoint.
-
-The owner subsequently supplied a sudo credential for this diagnostic. It was
-used only at the interactive sudo prompt, with no credential written to files
-or repository records. The designated host rejected both attempts; the session
-was then cancelled to avoid further failed logins. The five protected journal
-files remain absent. The remaining work is blocked on successful authentication
-or owner-run collection using the command above. Do not repeat the failed
-credential or guess alternatives.
+The captured notifier was executed locally with synthetic state, journal, and
+sendmail adapters. Exit 100 leaves no stamp; successful retry creates one;
+immediate repeat is suppressed; an expired failed attempt does not refresh the
+stamp; a subsequent successful retry does. This qualifies submission/stamp
+control flow, not recipient receipt. The executable probe is
+`bin/analysis/issue106/check_installed_alert.py`.
 
 ## Demonstrated additional caller defect — implemented and qualified
 
@@ -258,29 +220,207 @@ Passed:
 - `python3 tests/async/test_documentation_contract.py` (14 checks).
 - `./scripts/format.sh --check` and `git diff --check`.
 
-No production configuration, services, logs, player files, or notification state
-were changed. No merge or release tag is appropriate for these unreviewed PRs.
-Do not close #106 while its missing historical/operational acceptance remains.
+At the initial test checkpoint the owner-approved Plesk exception was applied;
+#126 records its subsequent removal. The harmless transient failure test and stamp
+were cleaned up. Game services and player files were unchanged, and the read-only
+HTTP probe produced an access-log entry. These are retained results from that
+investigation, not checks rerun by this documentation review. The successor records
+the final acceptance and issue disposition.
 
 ## Resume here
 
-Review #117 and the stacked caller-fix PR. The completed repository repair needs
-no additional feature work. For the remaining original items:
+Review the stack in order: #117, #120, #124, then #126. The completed repository
+repair needs no additional feature work. Do not resume the withdrawn installation
+proposal from this intermediate checkpoint.
 
-1. Await the owner's execution of the prepared read-only collection command
-   above (interactive sudo authentication is required), then retrieve its five
-   private journal files through the owner-designated `ssh lumi`. The `staging`
-   account cannot read the protected originals. Then
-   inspect the exact failed rotation journal and Plesk mail rejection, not just
-   the unit exit status. Prepare the diagnosed correction before requesting any
-   production action or harmless real-notification test. Keep one notifier.
-2. After an authorized repair/test, record the rotation target's ownership and
-   continued writes, actual `OnFailure=` delivery/receipt, source-unit coverage,
-   retry eligibility, and bounded repeats. Local adapter results cannot close
-   those conditions.
-3. Exact LR-06/LR-07/LR-09/LR-10/LR-17/LR-18 historical attribution needs an
+1. #126 contains the versioned notifier, focused tests, operational documentation,
+   and retained delivery/receipt evidence. Its final record supersedes the initial
+   failed test below; a local adapter result alone still cannot prove receipt.
+2. Exact LR-06/LR-07/LR-09/LR-10/LR-17/LR-18 historical attribution needs an
    independently retained contemporaneous transcript/snapshot or the original
    reporter's repeatable sequence. The inspected text logs and database audit
    records do not contain it. Current
    player files, nearby staff changes, or the new teleport repair are not proof
-   of those historical causes. Keep each evidence gap explicit in #106.
+   of those historical causes. Preserve these evidence gaps and the owner's later
+   dispositions recorded in #126; do not start a fresh investigation from this plan.
+
+## Protected diagnosis recovered — 2026-10-16
+
+The owner supplied the remote-server credential, authentication succeeded, and
+the prepared read-only collection completed. The five original JSONL journals
+are now under `bin/analysis/issue106/private/host-journals/`; credentials are not
+stored in the checkout or evidence files. This supersedes the earlier access
+blocker. `host-config.json`, the installed Plesk CLI help, and selected local
+log metadata retain the subsequent read-only investigation.
+
+### LR-12: resolved — duplicate cloud-init rule; correction already present
+
+The October 13 journal identifies `cloud-init-base:1` as a duplicate entry for
+`/var/log/cloud-init-output.log`; it is not a failure of the Plesk hook. The same
+duplicate recurred on October 14. Three subsequent executions completed
+successfully, including the scheduled October 16 00:06:02–00:06:07 UTC run.
+
+Current `/etc/logrotate.d/cloud-init-base` is the sole loaded match for
+`/var/log/cloud-init*.log`. Its policy is `su root root`, `nocreate`, `notifempty`,
+six rotations, compression/delayed compression, and a 1 MiB size threshold.
+`sudo logrotate --debug /etc/logrotate.conf` exits zero without duplicate-rule
+errors or state/log changes. Both cloud-init files are below that threshold
+(78,599 and 288,941 bytes), and have no activity since October 9; their absence
+of a fresh rotation is expected. Their owners/modes are `root:adm`/0640 and
+`syslog:adm`/0640; `nocreate` preserves them. No forced rotation or artificial
+write to these inactive boot logs is warranted.
+
+The same service's Apache rule uses `create 640 root adm`; the retained origin
+access `.log.1` and current `.log` have those owners/modes and different inodes.
+The current file's mtime is after the successful scheduled rotation. A harmless
+HTTP GET to a nonexistent ACME challenge path on the configured local origin
+vhost returned 404 and produced the expected access-log entry. The active file
+grew from 65,569 to 65,710 bytes at 08:55:48 UTC while retaining inode 335254 and
+`root:adm`/0640; rotated inode 273033 remained unchanged. This confirms the
+writer still uses the current file after rotation. No host
+configuration was changed by this investigation; the prior duplicate's removal
+actor/time is not inferred from the currently correct file set.
+
+LR-12's root cause, corrected rule set, successful scheduled service run, owner/
+mode checks, and continued live-write acceptance are now established. The
+cloud-init files themselves are inactive below-threshold boot logs; no claim is
+made that they required or received another rotation. Raw metadata and the
+matching probe entry are retained privately as `log-write-*.txt`.
+
+### LR-15: standalone system account rejected by Plesk policy
+
+The protected October 12 and October 15 journals consistently show Plesk's
+`py-limit-out` rejecting UID 10014 (`staging`) with SMTP 554/5.7.0 before queuing
+the alert. The deployed handler's actual rejection branch requires either a
+registered subscription system user or an explicit system-user exception.
+Read-only Plesk database queries find no subscription/sysuser entry for
+`staging`; `mailmng-outgoing --show-whitelist` also omits it. This establishes the
+cause of exit 100. Changing the sender header, resetting a failed flag, or
+rewriting the already-working success-only stamp logic would not fix it.
+
+The installed CLI documented the following command, used in the original approved
+test. It is retained as diagnosis history, not a recommendation to reapply it:
+
+```bash
+sudo plesk sbin mailmng-outgoing --add-to-whitelist --sysuser=staging
+```
+
+Rollback is `sudo plesk sbin mailmng-outgoing --remove-from-whitelist --sysuser=staging`.
+Read back `sudo plesk sbin mailmng-outgoing --show-whitelist` and compare with the
+captured pre-test list. Remove only an entry introduced by this test; preserve
+pre-existing exceptions. The exception
+allows **all processes running as staging** to use sendmail without Plesk's
+outgoing limits; it is not restricted to the backup notifier. The existing
+notifier still enforces one successful alert per unit per hour. Do not disable
+global mail controls or add a second notifier. The owner explicitly approved
+the exception and one-email test; the exception was applied and read back.
+The list changed only by adding `staging`.
+
+### Corrected initial acceptance procedure — historical reference
+
+This corrects the original test procedure for review. It is not a current rollout
+plan: #126 replaced this transport and removed the temporary exception. Any new
+production exception or external notification requires its own explicit approval.
+For an authorized test of this original path:
+
+1. Capture the existing exception list and recheck the notifier/source units.
+   Apply the single-user exception and read it back. Preserve global policy.
+2. Use a uniquely named transient **user** unit whose harmless command is
+   `/usr/bin/false` and whose `OnFailure` targets the installed
+   `OnFailure=duris-backup-alert@%N.service`. For example, a source unit named
+   `duris-backup-alert-test-20261016.service` routes to
+   `duris-backup-alert@duris-backup-alert-test-20261016.service`. This explicit
+   spelling matches the deployed source units. A local systemd 255 verifier
+   also resolves the original bare template dependency to that same instance;
+   the review's claimed activation failure was not reproduced. Do not fail a
+   real backup or health check.
+3. Verify a queued message and delivery through the actual mail path to the
+   existing configured backup recipient. Require recipient receipt, not only
+   successful sendmail submission. Keep addresses/mail content private.
+4. Repeat the same harmless unit failure once; verify the notifier's same-unit
+   quiet-period stamp suppresses a second message. Local adapter tests already
+   prove failed submission/no-stamp, retry, expiration, and success-only stamps.
+5. Record all actual source-unit routes, including how any enabled drill is
+   invoked. Do not enable #82's deferred drill/replica work. Clean up only this
+   test's transient unit/stamp after preserving its evidence.
+6. If delivery, receipt, any later check, or the procedure itself fails or is
+   aborted, remove the test-added Plesk exception using the rollback command
+   above and verify the list matches its captured baseline. Preserve failure
+   evidence and clean up the test-only unit/stamp even on abort. Retain a new
+   exception only after every acceptance check succeeds and its continued use
+   is approved. Removing it restores the original mail policy, not functioning
+   alerts: explicitly record delivery as unavailable until a replacement passes
+   acceptance. A successful sendmail submission followed by a bounce is failure.
+
+AGENTS.md's production rule and #106's explicit controlled-notification
+requirement are the reasons approval is required for these two actions.
+
+### Live OnFailure test: submission fixed, relay sender rejected
+
+At 08:58:55 UTC, transient user unit `duris-backup-alert-test-20261016.service`
+ran `/usr/bin/false` and failed as intended. Its explicit `OnFailure` dependency
+invoked the existing notifier template. The alert service returned zero and
+created its success-only quiet-period stamp. Plesk accepted UID 10014 and the
+message entered Postfix as queue `8BE6B81CF4`.
+
+The configured SMTP2GO relay then permanently rejected the message: the From
+header's `plesk.luminarimud.com` domain is not verified. Postfix recorded
+`status=bounced` and removed the queue entry. **No test message reached the
+recipient.** Current Postfix uses its hostname as origin and has no generic or
+sender-canonical rewrite. A bounded October 12–16 journal check found no prior
+successful SMTP2GO delivery establishing a usable sender domain. The required
+next correction is an explicit approved, verified From/envelope sender in the
+existing notifier; do not alter the global relay or register a guessed sender.
+
+Repeating the same harmless failure at 08:59:33 UTC invoked the notifier a second
+time, but produced no second sendmail attempt. The stamp remained at epoch
+1792141136. This proves live repeat suppression through OnFailure, while the
+local adapters prove failed-submission retry/expiry. It also demonstrates why
+submission success alone cannot establish recipient receipt. No second test
+email was submitted. The transient unit was reset/unloaded and its test-only
+stamp removed after evidence capture; final state is not-found/inactive.
+
+Route inventory has only backup and health services and their two enabled
+timers, plus the alert template. Both actual sources have the correct route.
+There is no installed drill service/timer; #82's deferred drill enablement is
+not part of this repair. The local backup schedule performs backups/status,
+not an implicitly enabled restore drill.
+
+Evidence: `private/alert-live-first.txt`, `alert-live-repeat.txt`,
+`alert-delivery.jsonl`, `alert-test-cleanup.txt`, and before/after Plesk lists.
+Addresses and message content remain private. The relay also logged a
+`check-quota` missing-map warning, then `SKIP`; the explicit SMTP2GO sender
+rejection is the delivery failure established for this message.
+
+### Verified account and withdrawn notifier-only transport proposal
+
+Using the account supplied by the owner, the SMTP2GO UI's **Single sender
+emails** tab shows the account address as **Verified**, and **SMTP Users** lists
+the supplied SMTP username. The existing server-wide Postfix relay uses a
+different SMTP account, confirmed by reading only its configured username.
+Changing the global relay would affect unrelated services and is not proposed.
+Account names, addresses, and credentials are kept out of this public plan.
+
+The proposed private curl adapter and separate staging-owned `smtp.conf` were
+abandoned in favor of the owner's requested existing MAIL_* contract in #126.
+They are not installation inputs or reviewed deliverables. Do not create that
+credential file or install an ignored candidate. The replacement's complete
+credential-free source, executable regression, and operator instructions are
+versioned in [PR #126's changes](https://github.com/LuminariMUD/Duris/pull/126/files)
+as `scripts/backup_alert.py`, `tests/async/test_backup_alert_runtime.py`, and
+`docs/operations/BACKUPS.md`.
+
+Mode 0600 on a staging-owned file would not isolate an SMTP credential from other
+staging processes. Reusing the existing MAIL_* settings also shares that account's
+trust boundary; it must not be described as notifier-only credential isolation.
+A separately scoped alert credential would require a distinct execution/access
+boundary plus provider-enforced sender and rate restrictions before installation.
+No such credential, boundary, or provider policy is introduced or claimed here.
+
+The old sendmail notifier was never a working delivery fallback: even with the
+Plesk exception, the shared relay bounced the test. Reinstating the exception or
+restoring that notifier alone cannot restore delivery. Do not follow the withdrawn
+rollback. For any future replacement, retain a verified working route until the
+new route passes recipient receipt and repeat-suppression acceptance; if none
+exists, record the alert outage explicitly and require a separately reviewed
+mail-path correction. #126 records the accepted replacement and exception removal.
