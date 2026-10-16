@@ -93,6 +93,20 @@ def login_journey(socket, work, server):
             assert sql(f"SELECT base_str,base_agi,base_int FROM player_data WHERE name='{journey.CHARACTER}'") == '128\t129\t255'
             print('Real setbit/save/logout/relog preserves widened stats: PASS', flush=True)
 
+            # Color codes consume storage even when the visible title stays short.
+            client.send(f'supervise found {journey.CHARACTER} n Journeyguild')
+            client.expect('new association is set up', timeout=30)
+            client.send('soc title self &+WOfficer')
+            client.expect('You are now known as', timeout=20)
+            save()
+            title = sql(f"SELECT title FROM player_data WHERE name='{journey.CHARACTER}'")
+            assert title == '&+WOfficer&N  Journeyguild', title
+            client.send('soc title self ' + '&+W' * 200)
+            client.expect('Title must fit within 512 bytes', timeout=20)
+            save()
+            assert sql(f"SELECT title FROM player_data WHERE name='{journey.CHARACTER}'") == title
+            print('Oversized guild title rejected; unchanged player snapshot saves successfully: PASS', flush=True)
+
             # Any terminal SQL failure must restore access to the last committed save.
             # A trigger gives a deterministic non-stat failure without changing production.
             sql("CREATE TRIGGER fail_checkpoint BEFORE UPDATE ON player_data FOR EACH ROW "
