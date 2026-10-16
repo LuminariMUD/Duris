@@ -190,8 +190,73 @@ static void complete(const critical_command &command)
 	artifact_guild_transaction_handle_completions(&completion, 1); // duplicate delivery
 }
 
-int main()
+// Issue #67 acceptance cases use real capture, application and history admission.
+// No canonical UID is established for the conflicting vnum: neither copy may
+// feed, but the unrelated artifact and independently eligible guild must survive.
+static int identity_contract(bool duplicate)
 {
+	reset();
+	char_data actor = {}, member = {}, last = {};
+	pc_only_data pc = {}, pc2 = {}, pc3 = {};
+	actor.only.pc = &pc;
+	member.only.pc = &pc2;
+	last.only.pc = &pc3;
+	pc.pid = 42;
+	pc2.pid = 43;
+	pc3.pid = 44;
+	char name[] = "Identity fixture";
+	auto *guild = new Guild(name, RACEWAR_GOOD, 7, 95, 0, 0, 0);
+	group_list group[3] = { { &actor, &group[1] }, { &member, &group[2] }, { &last, nullptr } };
+	for (P_char ch : { &actor, &member, &last })
+	{
+		ch->player.level = 51;
+		ch->in_room = 1;
+		ch->group = group;
+		ch->specials.guild = guild;
+	}
+	obj_data first = {}, copy = {}, unrelated = {};
+	indexes[0].virtual_number = 42001;
+	indexes[1].virtual_number = 42002;
+	first.obj_uid = 101;
+	copy.obj_uid = 102;
+	unrelated.obj_uid = 103;
+	unrelated.R_num = 1;
+	for (P_obj object : { &first, &copy, &unrelated })
+	{
+		object->extra_flags = ITEM_ARTIFACT;
+		object->loc_p = LOC_WORN;
+		object->loc.wearing = &actor;
+	}
+	actor.equipment[0] = &first;
+	actor.equipment[1] = &unrelated;
+	if (duplicate)
+		actor.equipment[2] = &copy;
+	rows[42001] = { NOW + 100, -1, 0, duplicate ? 42 : 43 };
+	rows[42002] = { NOW + 200 };
+	critical_operation_id parent = {};
+	assert(critical_operation_id_generate(&parent));
+	const bool submitted = artifact_guild_transaction_submit(&actor, parent, 4, EPIC_BOON);
+	const bool isolated = submitted && rows.at(42001).timer == NOW + 100 &&
+			      rows.at(42002).timer == NOW + 3800 && guild->get_prestige() == 105 &&
+			      guild->get_construction() == 1 && snapshots.size() == 1 &&
+			      guild_snapshots.size() == 1 && commands.size() == 1;
+	printf("%s identity contract: submitted=%d conflicted_feed=%lld unrelated_feed=%lld "
+	       "prestige=%lu construction=%lu\n",
+	       duplicate ? "duplicate" : "cross-player", submitted,
+	       static_cast<long long>(rows.at(42001).timer - NOW - 100),
+	       static_cast<long long>(rows.at(42002).timer - NOW - 200), guild->get_prestige(),
+	       guild->get_construction());
+	return isolated ? 0 : 1;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 2)
+	{
+		assert(std::string(argv[1]) == "duplicate" ||
+		       std::string(argv[1]) == "cross-player");
+		return identity_contract(std::string(argv[1]) == "duplicate");
+	}
 	char_data ch = {}, second = {}, third = {};
 	pc_only_data pc = {}, pc2 = {}, pc3 = {};
 	ch.only.pc = &pc;

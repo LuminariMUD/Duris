@@ -2,7 +2,8 @@
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
-Status: implementation planned; no implementation or operational repair started.
+Status: AR-01 executable acceptance cases and source boundary mapped; identity
+implementation in progress. No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
@@ -27,7 +28,8 @@ Mutable state stays on the game thread; the existing writer saves immutable
 captures in order. No SQL/Redis lookup in object movement, feeding, or reset hot
 paths, no second writer, and no synchronous persistence fallback.
 
-Keep this one issue branch with small dependent commits. The work items below
+Start on this issue branch with small dependent commits and publish focused PRs
+as chunks are ready; use dependent branches/PR bases for subsequent chunks. The work items below
 belong to #67; their IDs identify checkpoints, not additional uncreated issues.
 [#58](https://github.com/LuminariMUD/Duris/issues/58) is a **closed, merged
 dependency**, not outstanding work to reimplement or reopen. The merged
@@ -155,7 +157,7 @@ incident details have not been independently verified.
 
 Dependencies: none. Complete before choosing schema changes.
 
-- [ ] Extend the current probe into the existing reward harness as a permanent
+- [x] Extend the current probe into the existing reward harness as a permanent
   failing regression: duplicate worn vnums, unrelated artifact, eligible guild,
   and cross-player copy. Keep a valid single-copy control and cap control.
 - [ ] Inventory every `read_object`, `instantiate_object_template`, and `clone_obj`
@@ -435,6 +437,163 @@ local fixture, or historical investigation as production completion.
 
 ## Planning verification and handoff
 
+### Implementation checkpoint — 2026-10-16, AR-01
+
+Outcome: permanent executable acceptance cases expose duplicate and cross-player
+reward interference, while retaining the existing single-copy, cap, soul, source,
+history and guild controls. Non-goals for this chunk: gameplay behavior, schema,
+canonical selection and any data mutation. Files: this plan and the existing
+`artifact_guild_rewards_runtime.cpp`/Python driver. Proof:
+`python3 tests/async/test_artifact_guild_rewards_runtime.py` runs the existing
+passing journey plus **two explicitly expected failures**, not two repaired
+behaviors. Compilation happens outside the expected-failure tests, so a compiler
+failure remains a real error. Remove each marker when its contract is repaired;
+unexpected success deliberately fails the suite.
+
+The duplicate fixture equips distinct UIDs 101/102 at vnum 42001 plus unrelated
+UID 103/vnum 42002 with a three-member eligible guild at prestige 95. Capture
+rejects the whole submission: both timers stay unchanged and prestige stays 95.
+The cross-player fixture equips only one 42001 copy whose stored location owner
+is another player: both timers incorrectly gain 3600 seconds. In both contracts
+the required result is no feed of the unresolved/conflicting artifact, one feed
+of 42002, and prestige 105/construction 1. These are synthetic storage/owner
+boundaries with production capture/application/codec/transaction code, not a SQL
+or full-player-load proof. No production population conclusion follows.
+
+Ablation: reuse the existing reward fixture and runner; no second reward
+implementation or new test framework. Keep conflict cases visible until the
+canonical identity work can make them ordinary passing regressions.
+
+### Creation and restoration map for AR-02/AR-03
+
+Repository-wide search of `read_object`, `instantiate_object_template` and
+`clone_obj` identifies these boundaries. The two template constructors are in
+[db.c](../../src/world/db.c); the only direct constructor caller outside
+`read_object` is the starter-kit adapter in [nanny.c](../../src/account/nanny.c).
+Declarations, the pfile test stub, comments and the commented-out house flag are
+not gameplay creation seams.
+
+- **Fresh gameplay:** `reset_zone` O/P/G/E plus the M/F/R equipment paths use
+  prototypes and indirect object tables. [world_recovery_npc_items.c](../../src/world/world_recovery_npc_items.c)
+  reconstructs NPC equipment from those reset commands, allocating fresh UIDs.
+  Staff `do_load`, `clone_obj`, recursive `clone_container_obj`, and mob cloning
+  in [actwiz.c](../../src/cmd/actwiz.c) create transferable objects; cloning
+  copies instance flags after construction and currently dereferences an unchecked
+  constructor result. Studio `load obj` actions in
+  [studioproc.c](../../src/mob/studioproc.c), scripted callbacks under `src/specs/`,
+  random-zone tables, `mob/encounters.c`, quest/achievement and world singleton
+  producers also create objects. All must use the same fresh-admission decision;
+  changing only the four ordinary reset branches leaves reachable bypasses.
+- **Other fresh producers:** account/newbie rewards, crafting/tradeskill/mining,
+  shop-produced stock, salvage/enhancement/relic rewards, spell/class/forage
+  products, combat corpses/blood, guildhall fittings, kingdoms, ships/transports,
+  mail and staff/test commands all call the constructor. Most current literal
+  vnums are non-artifacts, but dynamic vnums and copied flags cannot be exempted
+  by assuming their caller family never creates an artifact. Preserve ordinary
+  non-artifact availability and each caller's null-result behavior.
+- **Stable-UID hydration:** [player_load_items.c](../../src/player/player_load_items.c)
+  materializes player and pet snapshots, replaces the constructor UID, then
+  reapplies saved flags/fields before placement. [sql_player.c](../../src/sql/sql_player.c)
+  does likewise for lockers/account chests, corpse contents, saved rooms and
+  shop stock. [world_recovery_pipeline.c](../../src/world/world_recovery_pipeline.c)
+  stages ground graphs and overwrites UIDs/flags; its whole-graph rollback and
+  custody publication must include artifact reservations. Distinguish saved
+  shop stock from missing produced equipment loaded afresh during keeper restore.
+- **Legacy reconstruction:** [copyover.c](../../src/persistence/copyover.c)
+  reconstructs legacy NPC equipment by vnum; legacy `readObjectlist` and
+  `read_one_object` in [files.c](../../src/core/files.c) parse saved instance
+  fields after construction. `addOnGroundArtis_sql`, `addOnMobArtis_sql`,
+  `arti_files_give`, `arti_player_sql`, swap and fixit in
+  [artifact.c](../../src/guild/artifact.c) have vnum-only restoration paths.
+  These cannot manufacture a new physical identity over an existing durable
+  candidate. A legacy record without a justified UID is unresolved, not absent.
+- **Temporary templates:** `writeObjectlist`/`write_one_object` in `files.c`,
+  `sql_item_diff_strings` in `sql_player.c`, artifact list/JSON/admin inspection,
+  `item/enhance.c` prototype-stat comparisons and staff inspection enumerate
+  prototypes with `read_object` then extract them. They must not reserve, feed,
+  clear, persist or release a canonical copy. Inspect administrative commands
+  individually: some begin with a template and intentionally mutate tracking.
+- **Post-construction changes:** clone overrides, saved flags and hydration can
+  turn a currently ordinary prototype into an artifact. Validate effective
+  flags after overrides, before circulation. Merely guarding the prototype
+  constructor misses this case. `obj_to_char`, `equip_char`, `obj_to_room` and
+  their end-placement variants in [handler.c](../../src/world/handler.c) call
+  location updates; nested `obj_to_obj` movement must be traced through the root.
+  These placement functions return void and cannot silently reject an object
+  after a caller has already consumed a reward or source material.
+
+### Identity evidence and boot design
+
+The supported custody types in [item_transfer_command.h](../../src/item/item_transfer_command.h)
+are player, container, room, corpse, locker, auction, system, destruction,
+shopkeeper, collector and pet. State is absent/active/destroyed/quarantined.
+For every artifact candidate retain UID, effective vnum/flags, root/parent,
+payload owner and custody owner/context/state; compare payload and custody before
+classifying existence. Two payload projections of one UID are not two physical
+UIDs, and a stale custody row alone proves neither presence nor absence.
+
+- The SQL topology classifier already joins player, corpse, locker, account
+  locker and saved-room trees. It **does not cover** `player_pet_items`, shop
+  inventory, auction/collector payloads, recovery generations or effective
+  artifact flags. Extend those actual stores, rather than treating the existing
+  classifier or runtime UID map as a complete population inventory.
+- [player_load_repository.c](../../src/player/player_load_repository.c) separately
+  joins player/pet payloads to custody. Offline owners remain candidates before
+  login. Locker/corpse/room/shop loaders in `sql_player.c` restore domains
+  separately; preserve their source rows and quarantine evidence on conflict.
+  Auction/collector and pending delivery ownership must be included through
+  their repositories, not through a live-object scan.
+- Flat-file [artifact records](../../src/flatfile/flatfile_artifact_repository.h)
+  contain vnum/state/timer/soul/revision but no UID. The item repository can load
+  UID records and list active player custody, but that list is not every payload
+  domain. Its boot reap already inspects player, pet, locker/corpse/room and
+  pending delivery payloads. Reuse those store readers when qualifying a full
+  artifact population, and retain the same missing/ambiguous-data semantics.
+- Redis/copyover ground graphs carry stable UIDs and effective flags. Redis NPC
+  equipment is rebuilt from resets and does **not** carry that stable item
+  identity. A canonical saved/custody/recovery candidate must block such fresh
+  reconstruction; a non-durable NPC predecessor may be replaced only after
+  proving it absent from every durable/recoverable domain. If that cannot be
+  proven, reserve the vnum until operator disposition instead of guessing.
+
+Boot ordering is material: `comm.c` reaps unheld custody before `boot_db`;
+`sql.c` hydrates artifact rows before world creation; `boot_db` calls
+`ne_init_events` **before** restoring corpses/rooms/shops and legacy artifacts.
+`ne_init_events` immediately calls forced `reset_zone` on a normal cold boot.
+Redis/copyover suppress that population, then `comm.c` restores recovery and may
+fall back to forced normal resets on failure. Thus installing an identity scan
+after the domain loaders is too late. Required order: read consistent durable
+candidate evidence and validated recovery metadata, publish reserved/canonical
+vnums on the game thread, then allow forced population and domain materialization.
+Any incomplete read/continuation leaves its affected vnums reserved; no hot-path
+SQL or Redis lookup is permitted. Enforce existing payload/tree limits, bounded
+query pages and an explicit terminal/partial result rather than a silent prefix.
+
+Runtime identity states needed by AR-02 are absent (complete evidence only),
+canonical UID, unresolved legacy/conflict/unavailable evidence, and retired
+identity. A pending fresh claim takes effect before placement, is released only
+on that failed admission, and cannot be released by inspection or logout.
+Same-UID hydration must not create a second live materialization. Physical
+retirement is separate from unloading; preserve the current single-writer order
+and do not let old completions release a newer identity.
+
+AR-02 must still qualify the existing nullable FK link against unclaimed
+NPC/ground objects that have no custody row. No schema choice has been made and
+no migration is justified merely by this map. The remaining AR-01 mapping
+checkboxes stay open until the complete boot candidate reader and the exact
+reconstruction/absence rule have executable coverage. Next implementation step:
+qualify those stores and identity publication, then remove the known-failure
+markers as their acceptance contracts become true.
+
+AR-01 checkpoint validation: the reward runtime baseline passes with two known
+expected failures; transactional cutover passes 3/3; source inventory matches all
+169 templates. `./scripts/format.sh --check`, `git diff --check` and
+`make -C src` pass. `./scripts/tidy.sh --rev origin/master` reports no changed
+production C/C++ lines (only the native test harness changed). No full suite,
+database matrix or gameplay/restart journey is claimed for this diagnostic chunk.
+
+### Original planning baseline (before implementation)
+
 The planning pass inspected current source, schema, callers, configuration,
 maintained architecture/persistence/testing contracts, issue #67 and its timeline,
 and the closed #58 delivery. It used a separate worktree based on the pinned
@@ -465,9 +624,9 @@ baseline recovery coverage, not qualification of the proposed identity changes.
 Document validation passed for 19 local links/anchors, 27 listed existing test
 paths, all eight work items, and the pinned base/publication branch.
 
-No C/C++ implementation, schema, world content or configuration changed. A full
+The original planning publication changed no C/C++ implementation, schema,
+world content or configuration. A full
 build, full regression/database suites, real gameplay/restart journeys,
 production operations and release news are not required for this plan-only
-publication and were not run. The next implementation action is AR-01, using
-fresh master and current issue state; this planning session stops after linking,
-committing, pushing and verifying the plan branch.
+publication and were not run during planning. The implementation checkpoints
+above supersede the old handoff; unchecked acceptance work remains outstanding.
