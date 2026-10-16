@@ -1196,12 +1196,14 @@ int load_ship(P_ship ship, int to_room)
  *
  * CALLER CONTRACT: the ship must already have been removed from
  * shipObjHash -- this routine does not do it, and re-adds the ship on the
- * error paths below on the assumption that it is currently out.  After this
- * returns, every P_ship pointing at it dangles; anything that needed to
- * outlive the ship should have been holding a ShipRuntimeRef instead (see
- * ship_identity.c).
+ * error paths below on the assumption that it is currently out.  After a
+ * successful removal, every P_ship pointing at it dangles; anything that
+ * needed to outlive the ship should have been holding a ShipRuntimeRef
+ * instead (see ship_identity.c).
  *
- * `npc` true skips the persistent delete, since NPC ships are never saved.
+ * NPC ships are never persisted, regardless of the caller's `npc` flag.
+ * Explicit `npc` true also skips persistence for failed loads and runtime
+ * cleanup after an owning transaction has already deleted the durable row.
  * For a player ship, a failed database delete ABORTS the removal -- the ship
  * is put back in the hash and left alive, rather than being destroyed in
  * memory while its row survives on disk.
@@ -1212,6 +1214,18 @@ int load_ship(P_ship ship, int to_room)
  */
 void delete_ship(P_ship ship, bool npc)
 {
+	if (IS_NPC_SHIP(ship))
+		npc = true;
+
+	if (!npc && !ship->ownername)
+	{
+		logit(LOG_FILE,
+		      "Refusing to delete ownerless non-NPC ship (db_id=%d); preserving runtime state.",
+		      ship->db_id);
+		shipObjHash.add(ship);
+		return;
+	}
+
 	if (!npc)
 	{
 #ifndef __NO_MYSQL__
@@ -3217,7 +3231,7 @@ void finish_sinking(P_ship ship)
 	else
 	{
 		shipObjHash.erase(ship);
-		delete_ship(ship);
+		delete_ship(ship, true);
 	}
 }
 
