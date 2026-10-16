@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"c5508712a74ade2cfd1bd34e36c050ff30a350a1549d9e291c46b9c95944bf09";
+	"61fa4fae2d478bf6009162b091ba06a1b82c22e3ab49e0e8b457ee8f70d47bf6";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"e0d811dab0125be50a148689dd4e2924ec1301542865c713057bd8143238c35d";
+	"2b0691fa08574d7fe66d1186d41819b491cb4a95191fbb4d762aefa55938321e";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -97,15 +97,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * level_cap.level_good and level_evil, the levels unlocked by each side.
  * Migration 0040 records the killer-side ally count on combat outcomes.
  * Migration 0041 widens legacy pkill_info.log columns for full public combat logs.
+ * Migration 0042 widens all ten player base stats to signed shorts.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0041_pkill_log_capacity";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 41;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0042_player_base_stats";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 42;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"7c5300d246864439c408ff3a823827b2b43518db7a8e894e0ee326e38d6c4bda";
+	"a5698a97f953e175fee3030fd7408fff5a7cdb53d15d6bd8bfb5136f203ec78f";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"85c971ffc757e04320134462bb91adc74d95a14052facc463d8d13ac4d100ce7";
+	"5210ecad75bcd7948718ece18d6033cd34770c5091c6a7a24551f95d338f0533";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"8bf5c4466de09b6e080059a763aed4507d6280afc27f0f1d5cbb7fe75bb5cbeb";
+	"88c5ac18de39bb8af98c54c355e43f14e14bad602c8e9e592fdbfbe14827eeb1";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";
