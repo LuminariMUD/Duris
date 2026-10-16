@@ -1,10 +1,10 @@
 # Issue #115: artifact activation message repair
 
 Tracking: https://github.com/LuminariMUD/Duris/issues/115
-Status: implemented, locally verified, and published for review (2026-10-16).
-PR: https://github.com/LuminariMUD/Duris/pull/116 (open, not a draft).
+Status: implementation and local verification complete; rollout acceptance pending (2026-10-16).
+PR: https://github.com/LuminariMUD/Duris/pull/116 (owner authorized merge on 2026-10-16).
 Implementation commit: `0fa0c3de94e9bce28e494b2033b4a5e2e921a56e`.
-Branch: `branch/issue-115-activation-messages`, based on `origin/master` at
+Implementation branch: `branch/issue-115-activation-messages`, based on `origin/master` at
 `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
 Worktree: `/home/aiwithapex/projects/duris-issue115`.
 
@@ -87,15 +87,24 @@ needed. No additional defect was established during focused verification.
 ## Review and rollout handoff
 
 The implementation is committed and pushed in PR #116 against `master`. The
-pre-commit formatting and changed-line clang-tidy checks passed. No dependent
-PR or release tag is needed. Next: review the PR; keep the issue open for the
-remaining fresh public combat log and HTTP API comparison after an authorized
-deployment. Source and executable verification are complete.
+pre-commit formatting and changed-line clang-tidy checks passed. The owner
+authorized merge on 2026-10-16. Fresh inspection found master unchanged at the
+base above, no conflicts or inline review threads, and completed code/security
+reviews with no findings on implementation commit `0fa0c3de9`. Later commits
+only update this document. The live Master rules require linear history and
+zero approving reviews; squash is the selected merge method. No dependent PR,
+rebase, or release tag is needed. PR #116 records the final merge state and SHA.
+Keep issue #115 open for the remaining fresh public combat log and HTTP API
+comparison after an authorized deployment. Source and executable verification
+are complete; the normal output integration suite also passed again during
+merge preparation. The unchanged source retains its earlier sanitizer,
+combat-outcome and full-build evidence.
 
 For that later acceptance, use disposable test characters, with an observer,
 activate the Totem words and Circlet `mystra` in their supported slots, and capture
 a new battle. Confirm both points of view contain the colored item names and no
 activation `(NULL)`, then compare their stored public logs with the event API
 response. `mystra` retains its self-targeted lightning effect. Existing event 3
-remains historical evidence and is not expected to change. No merge, deployment,
-production data change, historical rewrite, or release tag is part of this PR.
+remains historical evidence and is not expected to change. Deployment,
+production data changes, historical rewrites, and release tags remain outside
+this merge request.
