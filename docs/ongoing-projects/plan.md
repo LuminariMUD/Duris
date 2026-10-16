@@ -9,7 +9,7 @@ implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-reward-conflicts`. AR-02 storage is implemented on
 `branch/issue-67-canonical-storage`. Canonical snapshot/hydration is implemented
 in PR #137 on `branch/issue-67-identity-snapshots`; writer backpressure is ready
-in PR #138, and the common flat artifact authority is implemented on
+in PR #138, and the common flat artifact authority is ready in PR #139 on
 `branch/issue-67-flat-artifact-cache`. Complete population classification
 and admission remain open.
 No operational repair started.
@@ -45,7 +45,8 @@ The new existing-runtime-fixture case `drain-capacity` fails at the drain assert
 before this repair and passes afterward; the native writer fixture separately
 proves the actual completion-slot accounting. No new drain or queue is introduced.
 
-Current work: `branch/issue-67-flat-artifact-cache` builds on PR #138 in
+Current checkpoint: [PR #139](https://github.com/LuminariMUD/Duris/pull/139),
+`branch/issue-67-flat-artifact-cache`, builds on PR #138 and is ready for review in
 `duris-issue67-plan`. The earlier unpublished `branch/issue-67-flat-artifact-memory` and
 `branch/issue-67-flat-artifact-authority` retain local checkpoints `5dd8be6cb` and
 `713c00c82`; their changes are carried forward here on the updated prerequisite.
@@ -571,6 +572,7 @@ for these unmerged review chunks.
 
 ### Common flat artifact authority — AR-02 prerequisite
 
+[PR #139](https://github.com/LuminariMUD/Duris/pull/139),
 `branch/issue-67-flat-artifact-cache` →
 `branch/issue-67-writer-backpressure` carries the existing artifact/soul memory
 authority into flat-file mode. Boot hydrates complete records before world
@@ -893,8 +895,8 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138,
-followed by the common flat artifact authority branch. All published chunks are open for review,
+Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139.
+All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
 from the tip of `branch/issue-67-flat-artifact-cache` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
