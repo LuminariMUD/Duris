@@ -13,7 +13,11 @@ void logit(const char *, const char *, ...)
 {
 	++failures;
 }
-void send_to_char(const char *, P_char) {}
+static std::string output;
+void send_to_char(const char *message, P_char)
+{
+	output += message;
+}
 
 #ifndef __NO_MYSQL__
 static std::function<void(bool, const sql_rows &)> refresh;
@@ -77,7 +81,9 @@ int main(int argc, char **argv)
 	sql_mud_info_reload(nullptr, [&](P_char) { completed = true; });
 	assert(completed && current_news().text == "changed on disk");
 	std::filesystem::remove(file);
-	sql_mud_info_reload(nullptr, [](P_char) {});
+	completed = false;
+	sql_mud_info_reload(nullptr, [&](P_char) { completed = true; });
+	assert(!completed && output == "News reload failed; previous news retained.\r\n");
 	assert(failures == 1 && current_news().text == "changed on disk");
 #else
 	sql_mud_info_refresh();
@@ -97,6 +103,11 @@ int main(int argc, char **argv)
 	assert(reload);
 	reload(nullptr, rows("abc"));
 	assert(completed && current_news().fingerprint == hash);
+	completed = false;
+	reload(nullptr, rows(std::string("abc\0bad", 7)));
+	assert(!completed && output == "News reload failed; previous news retained.\r\n");
+	assert(failures == 2 && get_mud_info("news") == "abc" &&
+	       current_news().fingerprint == hash);
 	refresh(true, {});
 	assert(current_news().text.empty() && current_news().fingerprint.empty());
 	refresh(true, rows(""));

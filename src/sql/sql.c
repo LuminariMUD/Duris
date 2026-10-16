@@ -617,6 +617,7 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 	{
 		logit(LOG_STATUS, "News reload failed: %s; previous news retained.", error.c_str());
 		send_to_char("News reload failed; previous news retained.\r\n", ch);
+		return;
 	}
 	done(ch);
 }
@@ -3781,7 +3782,7 @@ void sql_set_zone_reset_perc(int zone_number, int reset_perc)
 // without waiting) and when staff reload it. Nothing waits to read it.
 static std::unordered_map<std::string, std::string> mud_info;
 
-static void mud_info_publish(const sql_rows &rows)
+static bool mud_info_publish(const sql_rows &rows)
 {
 	mud_info.clear();
 	std::string text;
@@ -3794,7 +3795,11 @@ static void mud_info_publish(const sql_rows &rows)
 				mud_info[row[0]] = row[1] ? row[1] : "";
 		}
 	if (!publish_news(text))
+	{
 		logit(LOG_STATUS, "News publication failed; previous news retained.");
+		return false;
+	}
+	return true;
 }
 
 // Boot only: the game loop is not running yet.
@@ -3834,7 +3839,12 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 	sql_read_for(ch, "SELECT name, content FROM mud_info",
 		     [done = std::move(done)](P_char live, const sql_rows &rows)
 		     {
-			     mud_info_publish(rows);
+			     if (!mud_info_publish(rows))
+			     {
+				     send_to_char("News reload failed; previous news retained.\r\n",
+						  live);
+				     return;
+			     }
 			     done(live);
 		     });
 }
