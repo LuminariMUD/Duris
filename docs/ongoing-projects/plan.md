@@ -33,7 +33,8 @@ real disposable-database pages/failures, all supported flat/recovery domains,
 atomic publication on complete success, and boot-before-population integration.
 Do not describe a source-reader prerequisite as completed population/admission
 work. The bounded numeric SQL page contract below is ready as a focused dependent
-review chunk; its aggregate consumer and remaining domain readers are still open.
+review chunk in [PR #141](https://github.com/LuminariMUD/Duris/pull/141); its
+aggregate consumer and remaining domain readers are still open.
 
 Current checkpoint: [PR #140](https://github.com/LuminariMUD/Duris/pull/140),
 `branch/issue-67-recovery-numeric-evidence`, based on PR #139 and ready for review.
@@ -605,6 +606,7 @@ for these unmerged review chunks.
 
 ### Numeric SQL population source pages — AR-01/AR-02 prerequisite
 
+[PR #141](https://github.com/LuminariMUD/Duris/pull/141),
 `branch/issue-67-population-evidence` →
 `branch/issue-67-recovery-numeric-evidence` implements one read-only page contract
 for all eight numeric payload stores: `player_items`, `player_pet_items`,
@@ -1031,7 +1033,7 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140.
+Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140 → #141.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
 from the tip of `branch/issue-67-population-evidence` in
