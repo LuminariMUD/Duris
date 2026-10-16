@@ -623,6 +623,9 @@ bool maintenance_scheduler_init(uint64_t instance_seed, maintenance_execute_fn e
 		return false;
 	if (!load_state())
 		return false;
+	// Catalogue pages accumulate only in memory. After restart, reread from the
+	// beginning instead of publishing a durable continuation without its prefix.
+	durable_state.jobs[index_of(maintenance_job_id::epic_task_catalog)] = {};
 	health = {};
 	instance = instance_seed;
 	execute_callback = execute;
