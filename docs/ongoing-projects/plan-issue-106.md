@@ -4,10 +4,11 @@ Tracker: <https://github.com/LuminariMUD/Duris/issues/106>
 
 ## Current checkpoint — 2026-10-16
 
-**LR-12 and LR-15 are resolved.** A separately demonstrated limited-zone teleport
-caller defect is implemented and tested. Six original gameplay/runtime reports
-remain open for missing historical attribution; do not label them fixed by the
-new repair or infer their causes from nearby events.
+**Delivery complete.** LR-12 and LR-15 are resolved, and a separately demonstrated
+limited-zone teleport caller defect is implemented and tested. The owner closed
+the six original gameplay/runtime reports on 2026-10-16 with the instruction to
+retain a note and perform fresh checks in the near future. Their historical
+causes remain unverified; they are not claimed fixed by the new repair.
 
 The owner resumed investigation, authorized the scoped host repair and controlled
 notification test, then directed reuse of `.env.example`'s MAIL_* fields. The
@@ -53,7 +54,13 @@ curl/credential-file candidate was replaced by the smaller existing MAIL_*/Pytho
 SMTP path. The temporary Plesk exception was removed after the notifier no longer
 needed the shared relay.
 
-## Six original reports: current evidence and exact gaps
+## Six historical reports closed by owner disposition
+
+LR-06/07/09/10/17/18 are closed as historical reports with insufficient original
+attribution, per the owner's explicit decision. The evidence and missing
+conditions below remain the starting reference for a future fresh-check session.
+This disposition does not convert missing evidence into a verified historical
+cause or authorize starting that future session now.
 
 - **LR-06 — zone/catalog attribution:** original `chat:56` contains the displayed
   `-2`, not the room/zone. `status:797` records successful boot catalog creation
@@ -235,16 +242,16 @@ first failed delivery records, `verified-alert-first.txt`,
 `verified-alert-repeat.txt`, `verified-alert-cleanup.txt`, and the before/final
 Plesk lists. Protected access is through the owner-designated WSL `ssh lumi`.
 
-## Resume here
+## Closeout and future reference
 
 1. Review the published stack; completed repairs need no new feature work. The
    installed notifier is explicitly authorized operational work and does not
    authorize merging or deploying the game changes.
-2. Keep #106 open for LR-06/07/09/10/17/18. Their next useful input is a retained
-   contemporaneous transcript/state snapshot or original reporter's repeatable
-   sequence with the conditions listed above. Current player files or nearby
-   events are not proof. Do not manufacture code changes or claim exact attribution
-   from representative tests.
-3. If new evidence establishes another defect, reproduce it with the closest
-   existing test and publish a separate focused repair. Keep #57/#82 ownership
-   boundaries and all private evidence constraints.
+2. Close #106 with LR-12/LR-15 verified and the other six reports closed by owner
+   disposition. The owner plans fresh checks in the near future; no automation,
+   new issue, or new testing phase was requested or started.
+3. In that future session, capture contemporary conditions and complete action
+   sequences. Treat those as fresh checks rather than inferred causes of the old
+   timestamps. If a defect is demonstrated, reproduce it with the closest existing
+   test and publish a focused repair. Preserve #57/#82 ownership boundaries and
+   all private evidence constraints.
