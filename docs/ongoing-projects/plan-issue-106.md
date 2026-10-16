@@ -206,6 +206,14 @@ mail. After it succeeds, retrieve those files through `ssh lumi` and inspect
 the actual failure messages. The helper itself is not proof that collection
 has run; no collected protected journals exist yet at this checkpoint.
 
+The owner subsequently supplied a sudo credential for this diagnostic. It was
+used only at the interactive sudo prompt, with no credential written to files
+or repository records. The designated host rejected both attempts; the session
+was then cancelled to avoid further failed logins. The five protected journal
+files remain absent. The remaining work is blocked on successful authentication
+or owner-run collection using the command above. Do not repeat the failed
+credential or guess alternatives.
+
 ## Demonstrated additional caller defect — implemented and qualified
 
 Tracing LR-18 consumers found `spell_teleport`, `spell_depart`, and
