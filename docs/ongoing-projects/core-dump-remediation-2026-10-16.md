@@ -267,7 +267,8 @@ build has ID `d0161cd00fe5ac599356e48151309a8c80d1a920`; the flat-file build has
 `8370195a339cd0efd9e4f19c6510c77add5b9871`.
 [PR #131](https://github.com/LuminariMUD/Duris/pull/131) contains this third chunk,
 whose qualified implementation commit is `c8a37fcc2` and whose base is the finalizer
-repair in PR #130.
+repair in PR #130. Completion-audit coverage and both-backend runner registration are
+in `f6dbe86b6`.
 
 Local resource notes: Docker access is unavailable to this user, so a dedicated
 MariaDB was initialized with `--no-defaults` in `/tmp/duris-core-repair-db-*`, bound
