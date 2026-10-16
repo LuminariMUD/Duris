@@ -7,9 +7,9 @@ implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-feeding-feedback`, with direct timer arithmetic repaired on
 `branch/issue-67-direct-feed-timers` and conservative reward conflict isolation on
 `branch/issue-67-reward-conflicts`. AR-02 storage is implemented on
-`branch/issue-67-canonical-storage`; boot/admission integration remains open.
-Canonical snapshot/hydration integration is in progress on
-`branch/issue-67-identity-snapshots`.
+`branch/issue-67-canonical-storage`. Canonical snapshot/hydration is implemented
+in PR #137 on `branch/issue-67-identity-snapshots`; complete population
+classification and admission remain open.
 No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
@@ -505,6 +505,7 @@ for these unmerged review chunks.
 
 ### Canonical identity snapshots and hydration — AR-02 in progress
 
+[PR #137](https://github.com/LuminariMUD/Duris/pull/137),
 `branch/issue-67-identity-snapshots` → `branch/issue-67-canonical-storage` carries
 the stored identity into the existing artifact record and its immutable SQL
 captures. Outcome: existing canonical UID/state survives normal legacy row
@@ -525,8 +526,8 @@ Artifact, soul and reset snapshots for a known artifact capture canonical
 UID/state, legacy timer/location and current soul in one owned job on the existing
 writer. The primary soul and domain record
 are written in the same transaction as the artifact row, preventing a newly
-captured UID from inheriting an old durable soul after a partial save. Soul-only
-and legacy all-row mirrors preserve identity. A refresh whose staged
+captured UID from inheriting an old durable soul after a partial save. Legacy
+soul-only and all-row mirrors preserve identity. A refresh whose staged
 identity differs from current memory is refused and current snapshots are
 requeued; no canonical UID is chosen by a live sync. Ordinary row replacement
 now changes only the legacy gameplay fields and retains identity by construction.
@@ -564,7 +565,7 @@ python3 tests/async/test_flatfile_artifact_repository.py
 tests/async/run_artifact_guild_schema_mysql.sh
 ```
 
-The native and disposable MariaDB SQL cases pass immutable full-width UID
+The native and disposable MariaDB/MySQL SQL cases pass immutable full-width UID
 captures, late ACKs, binding/owner preservation, all three clear refusals,
 malformed UID/state parsing, atomic sync conflict/malformed-result refusal, and
 same-identity refresh. The SQL leg invokes actual `artifacts_load`: success,
@@ -576,8 +577,30 @@ can hide a partial snapshot. Native snapshot tests run with terminating UBSan.
 The flat-file fixture proves the equivalent clear refusal and idempotent clear
 of a proven-absent row. Capacity has not been stress-qualified by these fixtures.
 
-PR #137 is temporarily draft while this fault repair receives final verification.
-Build/format/tidy and final publication are being completed. Next after this
+Final checks pass for code checkpoint `c09a7615e`: native terminating UBSan,
+the existing SQL leg on disposable MariaDB and MySQL 8.0, flat-file fixtures,
+combat/artifact contracts, `make -C src`, formatting, clang-tidy and whitespace.
+The real standard gameplay journey also passes on that binary: three immediate
+feeds and cumulative guild rewards while persistence is blocked, then stored
+timer/guild/history agreement, copyover after drain, save/logout and clean
+restart without re-award. This validates the normal reward workflow, not all
+identity admission/recovery cases. Tested binary SHA-256:
+`394572ede3429666d866eb72843aee7bdb21f83e6ffea05fbb62913f9dd6c28b`.
+
+Useful ignored evidence: `identity-snapshot-fault-before.log` (the reproduced
+failure), `identity-snapshot-fault-after.log` (MariaDB repair proof),
+`identity-snapshots-mysql8.log`, `identity-snapshots-gameplay.log` and
+`identity-snapshot-guard-proof.log`, all under `bin/analysis/issue67/`.
+The MySQL helper and guard-removal probes are retained there; they compile/run
+the existing permanent fixtures. Removing identity capture, clear proof or
+refresh identity checks fails the intended behavioral assertion. The latest
+gameplay receipt is `bin/analysis/artifact-estale/gameplay-journey.json`.
+
+The stack was rebased during this chunk. At this branch, comparing original
+`7ef7ed036` with published `47d0c7fc5` changes only the plan; source, tests and
+migrations are identical. Keep the plan corrections from that rebase. Older
+checkpoint hashes below are historical evidence; resume from the current branch
+tip. PR #137 is ready for review after this verified repair. Next after this
 chunk: complete durable/recovery candidate evidence before population, choose
 canonical versus unresolved state without first-traversal selection, and wire
 creation/materialization/retirement. Stored metadata hydration is not a complete
@@ -588,7 +611,8 @@ population inventory or proof of universal duplicate prevention.
 [PR #136](https://github.com/LuminariMUD/Duris/pull/136),
 `branch/issue-67-canonical-storage` → `branch/issue-67-reward-conflicts` adds the
 durable representation, without selecting copies or enabling an admission rule.
-The implementation checkpoint is `caca91293`.
+The published implementation checkpoint is `787b07cc7`, with the same source,
+tests and migrations as the original tested `caca91293`.
 The existing nullable `artifact_domain_state.item_uid` remains a custody FK.
 Disposable engine tests prove it rejects a positive UID with no custody row
 (error 1452), while unclaimed NPC/ground artifacts must be identifiable before
@@ -735,9 +759,9 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136. All chunks are open for review,
+Current review order is #132 → #133 → #134 → #135 → #136 → #137. All chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
-from the tip of `branch/issue-67-canonical-storage` in
+from the tip of `branch/issue-67-identity-snapshots` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
 creating a dependent branch for the next storage/admission chunk. Fresh master
 remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.
