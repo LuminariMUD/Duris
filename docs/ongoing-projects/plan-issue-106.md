@@ -180,13 +180,31 @@ probe is `bin/analysis/issue106/check_installed_alert.py`.
 system-journal membership nor sudo authorization. The owner then explicitly
 designated **WSL `ssh lumi`** for protected read-only diagnosis. That alias
 connects as the sudo-group account, but `sudo -n -l` and the journal queries
-return `interactive authentication is required`. An interactive sudo prompt was
-prepared, but authentication is not yet complete. Do not put passwords in this
+return `interactive authentication is required`. The interactive sudo session
+timed out without authentication. Do not put passwords in this
 document, Git, or chat, or use unrelated accounts/Docker to work around it.
 Private output is retained in `bin/analysis/issue106/private/owner-diagnostics.txt`.
 After authentication, read the October 13 rotation failure and October 15 mail
 submissions, prepare a concrete correction, and obtain authorization for any
 production change and harmless real notification through the existing route.
+
+A checked read-only collection helper is now staged in the designated account's
+`~/.cache/duris-issue106/collect-host-journals.sh` (mode 0700; directory 0700).
+Its local copy is `bin/analysis/issue106/collect-host-journals.sh`; both SHA-256
+hashes are `78341ffdd5b0146114d1babcaafc2860002bb74fe464b811b2ef9a62e2b9918f`.
+The owner was asked to run this command in their own terminal and enter sudo's
+password locally:
+
+```powershell
+wsl ssh -t lumi "bash ~/.cache/duris-issue106/collect-host-journals.sh"
+```
+
+The helper reads only bounded rotation/mail journal windows and saves five
+private JSONL files in the same directory, with umask 077. It does not trigger
+jobs, rotate logs, change production configuration, restart services, or send
+mail. After it succeeds, retrieve those files through `ssh lumi` and inspect
+the actual failure messages. The helper itself is not proof that collection
+has run; no collected protected journals exist yet at this checkpoint.
 
 ## Demonstrated additional caller defect — implemented and qualified
 
@@ -241,8 +259,10 @@ Do not close #106 while its missing historical/operational acceptance remains.
 Review #117 and the stacked caller-fix PR. The completed repository repair needs
 no additional feature work. For the remaining original items:
 
-1. Use the owner-designated `ssh lumi` and complete local interactive sudo
-   authentication; the `staging` account cannot read these records. Then
+1. Await the owner's execution of the prepared read-only collection command
+   above (interactive sudo authentication is required), then retrieve its five
+   private journal files through the owner-designated `ssh lumi`. The `staging`
+   account cannot read the protected originals. Then
    inspect the exact failed rotation journal and Plesk mail rejection, not just
    the unit exit status. Prepare the diagnosed correction before requesting any
    production action or harmless real-notification test. Keep one notifier.
