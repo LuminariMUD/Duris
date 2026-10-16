@@ -4,6 +4,7 @@
 #include "item/item_ownership_runtime.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 enum class artifact_payload_domain : uint8_t
@@ -16,13 +17,30 @@ enum class artifact_payload_domain : uint8_t
 	room,
 	shopkeeper,
 	siege,
+	auction,
+	collector,
+	delivery,
+	embedded,
+};
+
+enum class artifact_payload_role : uint8_t
+{
+	stored,
+	delivery,
+	history,
 };
 
 // Raw payload provenance is retained even when its UID/owner is missing or its
 // custody disagrees. A custody row alone is not a physical payload projection.
+// Roles describe the source, not the final existence decision: claimed/history
+// blobs must still be correlated with current payloads and custody. Flat row IDs
+// are local to (domain, owner_reference, owner_context, source_operation).
 struct artifact_payload_projection
 {
 	artifact_payload_domain domain;
+	artifact_payload_role role = artifact_payload_role::stored;
+	critical_operation_id source_operation = {};
+	uint64_t delivery_ordinal = 0; // capture order within the retained delivery catalog
 	uint64_t row_id = 0;
 	uint64_t item_uid = 0;
 	uint64_t parent_row_id = 0;
@@ -39,6 +57,16 @@ struct artifact_payload_projection
 	bool custody_found = false;
 	item_ownership_runtime_entry custody = {};
 };
+
+// Boot/offline inspection only: no writers may mutate the selected stores while
+// these catalog/file readers run. Includes retained auction/collector and
+// delivery payloads. Recovery evidence is separate. Output is atomic.
+// Ordinary store reads can complete committed authority journals; offline audit
+// callers must use a retained store copy if the original must remain untouched.
+// Flat custody owner_revision remains unknown (0); no runtime custody is published.
+unsigned int artifact_population_read_flat_payloads(const std::string &root,
+						    std::vector<artifact_payload_projection> *items,
+						    std::string *error);
 
 #ifndef __NO_MYSQL__
 #include <mysql/mysql.h>

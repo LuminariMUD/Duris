@@ -143,6 +143,12 @@ flatfile_item_repository_result
 flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
 				   std::vector<flatfile_item_ownership_record> *records,
 				   std::string *error);
+// One boot/offline evidence view, including inactive custody and legacy embedded
+// coin history. Custody metadata does not establish a physical copy.
+flatfile_item_repository_result
+flatfile_item_repository_read_population(const std::string &root,
+					 std::vector<flatfile_item_ownership_record> *records,
+					 std::string *error);
 flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,

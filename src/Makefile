@@ -99,6 +99,7 @@ SHIP_OBJS = $(SHIP_SRCS:%.c=ships/%.o)
 
 OBJS =  $(SHIP_OBJS) \
 				 item/item_actions.o \
+				 item/legacy_object_identity.o \
 				 item/native_artifact_actions.o \
 				 item/tsunami_actions.o \
 				 item/ioun_actions.o \
@@ -151,6 +152,7 @@ OBJS =  $(SHIP_OBJS) \
 				 combat/arena.o \
 				 guild/artifact.o \
 				 guild/artifact_population_repository.o \
+				 guild/artifact_population_flatfile.o \
 				 guild/artifact_cache_codec.o \
 				 persistence/report_cache_codec.o \
 				 economy/donation_event.o \

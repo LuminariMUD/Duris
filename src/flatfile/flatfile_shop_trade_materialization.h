@@ -47,6 +47,23 @@ struct flatfile_shop_trade_materialization_health
 	bool near_capacity = false;
 };
 
+struct flatfile_item_materialization_projection
+{
+	critical_operation_id operation_id = {};
+	uint32_t player_pid = 0;
+	item_owner_identity owner = {};
+	bool inbound = false;
+	std::vector<player_item_snapshot> items;
+};
+
+// Retain inbound and outbound evidence, including raised-pet payloads. Does not
+// reconcile or rewrite a player file and does not apply a historical event.
+// Events remain in catalog capture order, as used by load reconciliation.
+flatfile_shop_trade_materialization_result
+flatfile_item_materialization_read(const std::string &root, const flatfile_authority_lock &lock,
+				   std::vector<flatfile_item_materialization_projection> *events,
+				   std::string *error);
+
 flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_prepare(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const critical_operation_id &operation_id, const shop_trade_payload &payload,

@@ -155,6 +155,12 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 			    !number(row[21], &item.payload_owner.id) ||
 			    !number(row[22], &item.payload_owner.context_id))
 				return EINVAL;
+			// Legacy pets without a UID carry their player's custody, as the
+			// actual player load path does. Missing pet metadata stays unknown.
+			if (domain == artifact_payload_domain::pet && !item.payload_owner.id &&
+			    item.payload_owner.context_id)
+				item.payload_owner = { item_owner_type::player,
+						       item.payload_owner.context_id, 0 };
 			item.parent_missing = missing;
 			item.extra_flags_present = row[7] != nullptr;
 			item.parent_owner_disagrees = disagreement;

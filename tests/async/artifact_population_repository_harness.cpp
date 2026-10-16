@@ -136,6 +136,16 @@ int main(int argc, char **argv)
 		    entry.domain == artifact_payload_domain::siege)
 			assert(page.rows[0].payload_owner.type == item_owner_type::unknown);
 	}
+	query(connection, "INSERT INTO player_pets VALUES(44,NULL,78)");
+	query(connection,
+	      "INSERT INTO player_pet_items(id,obj_uid,vnum,extra_flags,pet_id) VALUES(3,444,900,268435456,44)");
+	artifact_population_sql_page legacy_pet;
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::pet, 0,
+						  &legacy_pet));
+	assert(legacy_pet.rows.size() == 3 &&
+	       legacy_pet.rows[2].payload_owner.type == item_owner_type::player &&
+	       legacy_pet.rows[2].payload_owner.id == 78 &&
+	       legacy_pet.rows[2].payload_owner.context_id == 0);
 	query(connection,
 	      "INSERT INTO saved_items(id,obj_uid,container_id,vnum,extra_flags,room_vnum) "
 	      "VALUES(3,333,999,900,NULL,42)");

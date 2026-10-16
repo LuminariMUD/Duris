@@ -14,6 +14,19 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
+Current source checkpoint: `branch/issue-67-flat-population-sources`, based on
+PR #141, implemented and being published for review. Outcome: stage flat-file
+payload projections, including offline player
+and pet files, private/account locker chests, corpses, legacy saved trees, current
+rooms and shop stock, retained auction/collector and delivery payloads, and
+embedded legacy coin history. Reuse existing bounded codecs
+and readers. Keep conflicting custody separate, retain ordinary ancestors and
+unknown UIDs, and publish no prefix after any failed read. Non-goals for this
+source chunk: canonical selection or new gameplay permission. Files: population
+reader, required real store readers, focused native fixture and this plan. Proof:
+seed actual flat stores, verify all projections and failures, and build both modes.
+Recovery evidence and the aggregate boot consumer remain required afterward.
+
 Population implementation in progress: `branch/issue-67-population-evidence`,
 based on PR #140, in `/home/aiwithapex/projects/duris-issue67-plan`. Build one staged
 population reader for the artifact service, using the real payload stores and
@@ -549,8 +562,8 @@ local fixture, or historical investigation as production completion.
 
 ### Review stack and current resume point
 
-The current continuation branch is `branch/issue-67-population-evidence` in
-`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #140. Earlier sections
+The current continuation branch is `branch/issue-67-flat-population-sources` in
+`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #141. Earlier sections
 record evidence at their own checkpoints; the current checkpoints below
 supersede their old next-step statements and flat repository APIs.
 
@@ -603,6 +616,100 @@ The next AR-02 checkpoint below qualifies canonical identity storage; boot
 candidate publication remains required after that storage foundation.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
+
+### Flat payload evidence — AR-01/AR-02 prerequisite, 2026-10-17
+
+`branch/issue-67-flat-population-sources` → `branch/issue-67-population-evidence`
+adds `artifact_population_read_flat_payloads()` for boot/offline use while no
+writers mutate the selected store. It stages all offline player/pet snapshots,
+private/public/account locker chests, corpses, retained saved-item graphs,
+current room graphs, shop stock, all retained auction/collector payloads,
+inbound/outbound materialization receipts including raised pets, and legacy
+embedded coin history. Ordinary ancestors, missing UIDs and conflicting custody
+remain visible. A metadata-only custody row never synthesizes a payload.
+
+Source roles distinguish stored data, deliveries and history; they do not decide
+current existence. Claimed auction blobs, terminal collector payloads, outbound
+receipts and legacy coin bytes remain evidence for later correlation. In
+particular, an active custody row does not make old coin compatibility bytes a
+pending delivery. Their independent payload holder remains unknown. Delivery
+operation IDs and catalog order are retained. Pet-receive receipts that never
+encoded a pet UID keep their player delivery-pool context without inventing a
+specific pet from custody. Legacy pets with no UID use player custody in both
+flat and SQL projections, matching actual load behavior.
+
+Existing bounded store codecs/readers remain the source of truth. Small bulk
+views expose retained auction claims, collector blobs and materialization
+envelopes without replaying rewards or creating objects. One custody inventory
+view supplies both embedded-history discovery and correlation, replacing a
+second UID lookup/temporary query list. Raw flat owner revisions remain unknown
+(zero), so these projections are not runtime custody hydration records.
+
+Auction metadata inspection uses a bounded `write_one_object()` frame reader
+instead of `read_one_object()` materialization. It preserves inherited versus
+explicit-zero flags and optional saved UID, consumes variable strings, effects,
+extra descriptions and native spellbook bitmaps, and validates the exact end.
+Its wire contract is the existing native-width/native-endian legacy format;
+there is no new serialized format or automatic conversion. No template lookup,
+UID assignment, object placement/extraction, timer or soul change occurs.
+
+The aggregate is sealed only after every selected read succeeds. Corruption,
+unavailability, noncanonical snapshot names, malformed opaque auction frames,
+allocation failure or the shared one-million-record limit cannot publish a
+prefix. Directory enumeration is bounded too. Ordinary store readers retain
+their existing committed-journal recovery behavior: a non-mutating offline
+audit must use a retained store copy. This API is not a live concurrent audit,
+world-recovery scan, canonical selector or admission decision. No boot caller is
+wired yet; the aggregate service must combine SQL/blob and pinned recovery
+evidence before granting any gameplay permission.
+
+Passed:
+
+```sh
+python3 tests/async/test_flatfile_artifact_population.py
+python3 tests/async/test_legacy_object_identity.py
+python3 tests/async/test_flatfile_auction_repository.py
+python3 tests/async/test_flatfile_collector_repository.py
+python3 tests/async/test_flatfile_shop_trade_repository.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_artifact_population_repository.py
+python3 bin/analysis/issue67/run_mysql8_artifact_population.py
+make -C src -j2
+```
+
+The client-free flat build also passes with the dedicated `flat-memory-build`
+outputs recorded above. The payload fixture uses real stores and transaction
+APIs, covers 23 raw projections including stored/history/delivery roles,
+conflicting/destroyed custody, UID-less legacy pets, ordinary ancestors, closed
+auction claims, collector collection/expiry and player/pet delivery envelopes.
+It rejects corruption in every selected catalog, a valid catalog containing a
+malformed legacy blob, unavailable storage and bad snapshot names without
+replacing prior output. The shared projection bound is exercised directly at
+the sealing helper. It runs with terminating UBSan.
+
+The legacy inspector fixture compiles the actual serializer bodies and checks
+stock/custom/explicit-zero flags, full-width UID, compatible v35 frames,
+ordinary and stock spellbooks, every truncation, trailing garbage and invalid
+single-object framing. ASan/UBSan pass, and template-read/extraction counters
+prove inspection itself performs no materialization. These are source-reader
+and format checks, not a gameplay uniqueness or complete restoration proof.
+When updating hydration, qualify the existing legacy materializer's stock-book
+bitmap path independently; serialized bitmap data without other unique fields
+must not be assumed preserved solely because metadata inspection passed.
+
+SQL compatibility controls pass on MariaDB 10.11 and MySQL 8.0, including the
+actual current schema after all 44 immutable migrations. Formatting, changed-line
+clang-tidy and whitespace checks pass. Ignored evidence uses
+`population-flat-payloads.log`, `population-legacy-identity.log`,
+`population-flat-{maria-build,build,tidy,sql-control,mysql8-control}.log` and
+`population-{auction,collector,shop}-control.log` under `bin/analysis/issue67/`.
+
+Next: finish SQL blob/delivery/history readers, pin and qualify recovery evidence,
+then publish a complete aggregate before early cleanup/population and implement
+canonical admission/materialization/retirement. Source snapshots are not full
+store backups; retain originals before any operational disposition or routine
+cleanup can remove historical evidence. All unchecked AR-01–AR-07 acceptance
+work remains required. No production read, migration, cleanup, deployment or
+release tag occurred.
 
 ### Numeric SQL population source pages — AR-01/AR-02 prerequisite
 

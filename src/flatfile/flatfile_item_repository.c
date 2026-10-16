@@ -911,6 +911,31 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 }
 
 flatfile_item_repository_result
+flatfile_item_repository_read_population(const std::string &root,
+					 std::vector<flatfile_item_ownership_record> *records,
+					 std::string *error)
+{
+	if (root.empty() || !records)
+		return flatfile_item_repository_result::invalid;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_item_repository_result::ok &&
+	    loaded != flatfile_item_repository_result::not_found)
+		return loaded;
+	*records = std::move(catalog.items);
+	return flatfile_item_repository_result::ok;
+}
+
+flatfile_item_repository_result
 flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
 				   std::vector<flatfile_item_ownership_record> *records,
 				   std::string *error)
