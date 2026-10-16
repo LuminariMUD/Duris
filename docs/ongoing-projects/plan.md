@@ -521,11 +521,12 @@ record ceiling is shared with these reads; queries request one extra row so
 overflow refuses publication instead of accepting a silent prefix. Query,
 mirror, allocation and malformed-identity failures preserve current memory.
 
-Artifact snapshots capture canonical UID/state, legacy timer/location and current
-soul in one owned job on the existing writer. The primary soul and domain record
+Artifact, soul and reset snapshots for a known artifact capture canonical
+UID/state, legacy timer/location and current soul in one owned job on the existing
+writer. The primary soul and domain record
 are written in the same transaction as the artifact row, preventing a newly
 captured UID from inheriting an old durable soul after a partial save. Soul-only
-and all-row mirrors preserve identity. A refresh whose staged
+and legacy all-row mirrors preserve identity. A refresh whose staged
 identity differs from current memory is refused and current snapshots are
 requeued; no canonical UID is chosen by a live sync. Ordinary row replacement
 now changes only the legacy gameplay fields and retains identity by construction.
@@ -538,6 +539,16 @@ display/tracking rows, with the existing dirty retry
 and current-capture acknowledgement rules. This closes the concrete record-loss
 path exposed by adding real hydration, while other sync/lifecycle policy remains
 in AR-04.
+
+Fault injection exposed an additional boundary: after a UID-changing snapshot
+failed, a subsequent partial soul write could still change the old durable UID's
+soul. The permanent SQL fixture reproduced this against `7ef7ed036`. The final
+implementation uses one complete snapshot builder for artifact, soul and shared
+all-souls-reset writes. All three refuse atomically under the injected UID write
+failure, retaining the old durable UID/timer/soul; fresh retries then save the
+current identity coherently. Legacy soul-only records without any artifact row
+retain their compatible binding path. Future live identity transitions must
+change both game-thread identity and binding before queueing a capture.
 
 Ablation: keep one record and the existing writer/receipt protocol. Reuse a small
 UID/state validator because both actual backends and the SQL reader require the
@@ -565,6 +576,7 @@ can hide a partial snapshot. Native snapshot tests run with terminating UBSan.
 The flat-file fixture proves the equivalent clear refusal and idempotent clear
 of a proven-absent row. Capacity has not been stress-qualified by these fixtures.
 
+PR #137 is temporarily draft while this fault repair receives final verification.
 Build/format/tidy and final publication are being completed. Next after this
 chunk: complete durable/recovery candidate evidence before population, choose
 canonical versus unresolved state without first-traversal selection, and wire

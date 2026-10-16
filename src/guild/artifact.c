@@ -155,7 +155,7 @@ std::string artifact_domain_mirror(int vnum)
 		vnum < 0 ? "" : sql_format(" WHERE a.vnum = %d", vnum).c_str());
 }
 
-// Soul snapshots also update domain-only tombstones, without touching identity.
+// Legacy soul-only mirrors leave canonical identity untouched.
 std::string artifact_bind_domain_mirror(int vnum)
 {
 	return sql_format("UPDATE artifact_domain_state d JOIN artifact_bind b ON b.vnum=d.vnum "
@@ -262,51 +262,60 @@ bool artifact_queue_save(int vnum, const char *kind, artifact_save &save,
 	return true;
 }
 
+// Every write for a known artifact captures the same complete memory state.
+// Otherwise a soul-only write after a failed UID change could modify the old UID.
+std::vector<std::string> artifact_snapshot_statements(int vnum, const artifact_row *row,
+						      const artifact_bind_row &bind)
+{
+	if (row && !artifact_identity_valid(row->canonical_item_uid, row->identity_state))
+		return {};
+	const std::string soul = sql_format(
+		"INSERT INTO artifact_bind (vnum,owner_pid,timer) VALUES(%d,%d,%d) "
+		"ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)",
+		vnum, bind.owner_pid, bind.timer);
+	// Legacy soul-only records have no artifact identity to overwrite.
+	if (!row)
+		return { soul, artifact_bind_domain_mirror(vnum) };
+	// Capture the complete domain row from game memory. It must remain
+	// writable even when its legacy artifact projection no longer exists.
+	const std::string domain = sql_format(
+		"INSERT INTO artifact_domain_state (vnum,owned,loc_type,location,timer_epoch,"
+		"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state) "
+		"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u) ON DUPLICATE KEY UPDATE "
+		"owned=VALUES(owned),loc_type=VALUES(loc_type),location=VALUES(location),"
+		"timer_epoch=VALUES(timer_epoch),artifact_type=VALUES(artifact_type),"
+		"bind_owner_pid=VALUES(bind_owner_pid),bind_timer_epoch=VALUES(bind_timer_epoch),"
+		"canonical_item_uid=VALUES(canonical_item_uid),identity_state=VALUES(identity_state)",
+		vnum, row->owned ? 1u : 0u, row->locType, row->location,
+		static_cast<long long>(row->timer), row->type, bind.owner_pid, bind.timer,
+		row->canonical_item_uid ? std::to_string(row->canonical_item_uid).c_str() : "NULL",
+		static_cast<unsigned>(row->identity_state));
+	if (row->removed)
+		return { soul, domain, sql_format("DELETE FROM artifacts WHERE vnum=%d", vnum),
+			 sql_format("DELETE FROM artifacts_mortal WHERE vnum=%d", vnum) };
+	return {
+		sql_format(
+			"INSERT INTO artifacts (vnum, owned, locType, location, timer, type, lastUpdate) "
+			"VALUES(%d, '%c', %d, %d, FROM_UNIXTIME(NULLIF(%ld, 0)), %d, SYSDATE()) "
+			"ON DUPLICATE KEY UPDATE owned=VALUES(owned), locType=VALUES(locType), "
+			"location=VALUES(location), timer=VALUES(timer), type=VALUES(type), lastUpdate=VALUES(lastUpdate)",
+			vnum, row->owned ? 'Y' : 'N', row->locType, row->location, (long)row->timer,
+			row->type),
+		soul, domain
+	};
+}
+
 bool artifact_row_save(int vnum, artifact_row &row)
 {
 	try
 	{
-		if (!artifact_identity_valid(row.canonical_item_uid, row.identity_state))
+		auto statements = artifact_snapshot_statements(vnum, &row, artifact_binds[vnum]);
+		if (statements.empty())
 		{
 			artifact_save_error(vnum, "identity", row.save, "invalid_state", EINVAL);
 			return false;
 		}
-		const auto &bind = artifact_binds[vnum];
-		const std::string soul = sql_format(
-			"INSERT INTO artifact_bind (vnum,owner_pid,timer) VALUES(%d,%d,%d) "
-			"ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)",
-			vnum, bind.owner_pid, bind.timer);
-		// Capture the complete domain row from game memory. It must remain
-		// writable even when its legacy artifact projection no longer exists.
-		const std::string domain = sql_format(
-			"INSERT INTO artifact_domain_state (vnum,owned,loc_type,location,timer_epoch,"
-			"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state) "
-			"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u) ON DUPLICATE KEY UPDATE "
-			"owned=VALUES(owned),loc_type=VALUES(loc_type),location=VALUES(location),"
-			"timer_epoch=VALUES(timer_epoch),artifact_type=VALUES(artifact_type),"
-			"bind_owner_pid=VALUES(bind_owner_pid),bind_timer_epoch=VALUES(bind_timer_epoch),"
-			"canonical_item_uid=VALUES(canonical_item_uid),identity_state=VALUES(identity_state)",
-			vnum, row.owned ? 1u : 0u, row.locType, row.location,
-			static_cast<long long>(row.timer), row.type, bind.owner_pid, bind.timer,
-			row.canonical_item_uid ? std::to_string(row.canonical_item_uid).c_str() :
-						 "NULL",
-			static_cast<unsigned>(row.identity_state));
-		if (row.removed)
-			return artifact_queue_save(
-				vnum, "artifact", row.save,
-				{ soul, domain,
-				  sql_format("DELETE FROM artifacts WHERE vnum=%d", vnum),
-				  sql_format("DELETE FROM artifacts_mortal WHERE vnum=%d", vnum) });
-		return artifact_queue_save(
-			vnum, "artifact", row.save,
-			{ sql_format(
-				  "INSERT INTO artifacts (vnum, owned, locType, location, timer, type, lastUpdate) "
-				  "VALUES(%d, '%c', %d, %d, FROM_UNIXTIME(NULLIF(%ld, 0)), %d, SYSDATE()) "
-				  "ON DUPLICATE KEY UPDATE owned=VALUES(owned), locType=VALUES(locType), "
-				  "location=VALUES(location), timer=VALUES(timer), type=VALUES(type), lastUpdate=VALUES(lastUpdate)",
-				  vnum, row.owned ? 'Y' : 'N', row.locType, row.location,
-				  (long)row.timer, row.type),
-			  soul, domain });
+		return artifact_queue_save(vnum, "artifact", row.save, std::move(statements));
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -337,13 +346,15 @@ bool artifact_bind_save(int vnum, artifact_bind_row &bind)
 {
 	try
 	{
-		return artifact_queue_save(
-			vnum, "soul", bind.save,
-			{ sql_format(
-				  "INSERT INTO artifact_bind (vnum,owner_pid,timer) VALUES(%d,%d,%d) "
-				  "ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)",
-				  vnum, bind.owner_pid, bind.timer),
-			  artifact_bind_domain_mirror(vnum) });
+		const auto row = artifact_rows.find(vnum);
+		auto statements = artifact_snapshot_statements(
+			vnum, row == artifact_rows.end() ? nullptr : &row->second, bind);
+		if (statements.empty())
+		{
+			artifact_save_error(vnum, "identity", bind.save, "invalid_state", EINVAL);
+			return false;
+		}
+		return artifact_queue_save(vnum, "soul", bind.save, std::move(statements));
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -375,15 +386,27 @@ bool artifact_binds_reset(int vnum)
 	arti_cache_invalidate();
 	try
 	{
+		std::vector<std::string> statements;
+		for (auto &[number, bind] : artifact_binds)
+			if (vnum < 0 || number == vnum)
+			{
+				const auto row = artifact_rows.find(number);
+				auto captured = artifact_snapshot_statements(
+					number, row == artifact_rows.end() ? nullptr : &row->second,
+					bind);
+				if (captured.empty())
+				{
+					artifact_save_error(number, "identity", bind.save,
+							    "invalid_state", EINVAL);
+					return false;
+				}
+				for (auto &statement : captured)
+					statements.push_back(std::move(statement));
+			}
+		if (statements.empty())
+			return true;
 		auto receipt = std::make_shared<sql_write_receipt>();
-		const bool queued = sql_queue_statements(
-			{ vnum < 0 ?
-				  "UPDATE artifact_bind SET owner_pid=-1,timer=0" :
-				  sql_format(
-					  "UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE vnum=%d",
-					  vnum),
-			  artifact_bind_domain_mirror(vnum) },
-			receipt);
+		const bool queued = sql_queue_statements(std::move(statements), receipt);
 		for (auto &entry : artifact_binds)
 			if (vnum < 0 || entry.first == vnum)
 			{

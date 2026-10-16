@@ -247,8 +247,10 @@ vnum/reason/source reference. Until canonical admission and reward validation ar
 this is conservative conflict isolation: it does not establish the identity of
 a single copy whose legacy vnum record already names its wearer.
 
-Artifact snapshots include stored canonical UID/state, while soul and all-row
-mirrors preserve those fields. Boot stages all artifact, soul and identity reads
+Artifact and soul snapshots for a known artifact capture its complete current
+UID/state, timer and soul in one transaction, including all-souls resets. A failed
+UID change cannot be followed by a partial soul write that changes the old UID.
+Legacy mirrors preserve identity. Boot stages all artifact, soul and identity reads
 before publishing memory; malformed or failed input cannot publish a prefix.
 Administrative refresh preserves current identity on conflict and retries current
 snapshots. Clear requires a proven-absent identity; retirement evidence and known

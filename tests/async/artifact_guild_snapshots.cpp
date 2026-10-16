@@ -338,6 +338,10 @@ static void finish(size_t index, bool ok = true)
 				for (const auto &statement : j.sql)
 					if ((error = sql_execute(payment_db, statement)))
 						break;
+			if (error != (fail ? 1644u : 0u))
+				fprintf(stderr,
+					"snapshot SQL outcome differs: expected=%u actual=%u\n",
+					fail ? 1644u : 0u, error);
 			assert(fail ? error == 1644 : error == 0);
 			query(error ? "ROLLBACK" : "COMMIT");
 			if (fail)
@@ -605,7 +609,7 @@ static void identity_snapshot_cases()
 	artifact_row_store(900, { true, ARTIFACT_ON_PC, 77, 1700, ARTIFACT_MAJOR });
 	artifact_bind_store(900, 77, 21);
 	assert(contains(jobs[1], std::to_string(later_uid)));
-	assert(!contains(jobs[2], "canonical_item_uid=")); // bind mirror preserves identity
+	assert(contains(jobs[2], std::to_string(later_uid))); // soul capture retains its UID
 	finish(0);
 	assert(artifact_save_pulse(false) == 2 &&
 	       artifact_rows.at(900).canonical_item_uid == later_uid);
@@ -625,8 +629,34 @@ static void identity_snapshot_cases()
 		assert(row && std::string(row[0]) == "1");
 		mysql_free_result(result);
 	}
-	finish(1);
-	finish(2);
+	if (payment_db)
+		query("CREATE TRIGGER refuse_artifact_identity BEFORE UPDATE ON artifact_domain_state "
+		      "FOR EACH ROW BEGIN IF NEW.vnum=900 AND NOT (NEW.canonical_item_uid <=> OLD.canonical_item_uid) "
+		      "THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture identity refusal'; END IF; END");
+	finish(1, !payment_db);
+	finish(2, !payment_db);
+	if (payment_db)
+	{
+		assert(artifact_binds_reset(-1));
+		finish(jobs.size() - 1, false);
+		query(sql_format(
+			      "SELECT COUNT(*) FROM artifact_domain_state d "
+			      "JOIN artifact_bind b ON b.vnum=d.vnum JOIN artifacts a ON a.vnum=d.vnum "
+			      "WHERE d.vnum=900 AND d.canonical_item_uid=%llu AND d.timer_epoch=1600 "
+			      "AND UNIX_TIMESTAMP(a.timer)=1600 AND d.bind_owner_pid=42 AND b.owner_pid=42",
+			      static_cast<unsigned long long>(first_uid))
+			      .c_str());
+		MYSQL_RES *result = mysql_store_result(payment_db);
+		assert(result);
+		MYSQL_ROW row = mysql_fetch_row(result);
+		assert(row && std::string(row[0]) == "1");
+		mysql_free_result(result);
+		query("DROP TRIGGER refuse_artifact_identity");
+		artifact_bind_store(900, 77, 21);
+		artifact_save_pulse(true);
+		finish(jobs.size() - 2);
+		finish(jobs.size() - 1);
+	}
 	assert(artifact_save_pulse(false) == 0 &&
 	       artifact_rows.at(900).canonical_item_uid == later_uid);
 	for (const auto &[uid, state] :
@@ -822,7 +852,7 @@ int main(int argc, char **argv)
 	artifact_binds[901] = { 43, 11 };
 	assert(artifact_binds_reset(-1));
 	assert(jobs.size() == 1 && artifact_save_pulse(false) == 2);
-	assert(contains(jobs[0], "UPDATE artifact_bind SET owner_pid=-1,timer=0"));
+	assert(contains(jobs[0], "VALUES(900,-1,0)") && contains(jobs[0], "VALUES(901,-1,0)"));
 	artifact_bind_store(900, 77, 20);
 	finish(0);
 	assert(artifact_save_pulse(false) == 1);

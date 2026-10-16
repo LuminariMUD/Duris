@@ -129,8 +129,9 @@ records unresolved (0), present (1), retired (2), or proven absent (3). Present 
 retired rows retain a positive canonical UID; unresolved and absent rows have
 NULL. Migration 0044 leaves legacy rows unresolved and preserves their existing
 timer, soul and ownership evidence. Boot stages these identities with the
-existing artifact/soul maps before publication. Artifact snapshots preserve
-them on the ordered writer; binding and all-row mirrors leave them unchanged.
+existing artifact/soul maps before publication. All known-artifact snapshots,
+including soul/reset writes, persist current UID/timer/soul together on the
+ordered writer. Legacy mirrors preserve identity.
 A failed or inconsistent refresh keeps current memory and requeues its
 snapshots. Retired and proven-absent evidence remains in memory after legacy
 tracking removal. Staff clear requires proven absence. Complete payload
