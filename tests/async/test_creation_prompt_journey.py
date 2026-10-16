@@ -223,15 +223,15 @@ def invitation_rejection(client, server, *, invited=False):
         reply(client, "", MENU)
         reply(client, "1", STAFF)
         reply(client, "1", "(Y/N)")
-        reply(client, "y", "<>")
-        response = reply(client, "invite on", "<>")
+        reply(client, "y", "< (news)>")
+        response = reply(client, "invite on", "< (news)>")
         require("Huh?" not in response, f"invitation command unavailable: {response}")
         if invited:
             # Invitation records use the legacy directory in this private runtime.
             invitation = server.run_root / "Players/Invited/t/taverek"
             invitation.parent.mkdir(parents=True)
             reply(client, "invite Taverek", "Invited.")
-            client.expect("<>")
+            client.expect("< (news)>")
             require(invitation.is_file(), "invitation command did not save its record")
         reply(client, "quit", "ACCOUNT MENU")
         client.expect(MENU)

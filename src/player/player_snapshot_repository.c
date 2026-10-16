@@ -236,8 +236,9 @@ const char *status_column(player_status_field field)
 
 const char *status_string_column(player_status_string_field field)
 {
-	static constexpr std::array<const char *, 7> columns = {
-		"name", "short_descr", "long_descr", "description", "title", "poof_in", "poof_out",
+	static constexpr std::array<const char *, 8> columns = {
+		"name",	 "short_descr", "long_descr", "description",
+		"title", "poof_in",	"poof_out",   "last_read_news_hash",
 	};
 	const size_t index = static_cast<size_t>(field);
 	return index < columns.size() ? columns[index] : nullptr;

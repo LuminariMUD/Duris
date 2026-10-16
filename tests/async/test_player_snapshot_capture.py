@@ -29,7 +29,7 @@ int main()
 {
     static_assert(std::is_move_constructible_v<player_snapshot>);
     static_assert(std::is_move_assignable_v<player_snapshot>);
-    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 8);
+    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 9);
     static_assert(PLAYER_SNAPSHOT_MAX_BYTES == 4 * 1024 * 1024);
     static_assert(PLAYER_SNAPSHOT_MAX_OBJECTS < PLAYER_SNAPSHOT_MAX_ROWS);
     static_assert(PLAYER_SNAPSHOT_MAX_DEPTH > 0);
@@ -230,6 +230,14 @@ int main()
     pc_only_data pc = {};
     ch.only.pc = &pc;
     pc.pid = 42;
+    const std::string read_hash(64, 'a');
+    std::memcpy(pc.last_read_news_hash, read_hash.c_str(), read_hash.size() + 1);
+    player_snapshot status;
+    assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_STATUS, RENT_CRASH, 22800, &status) == player_snapshot_capture_result::ok);
+    assert(status.status_strings.size() == 8);
+    assert(status.status_strings.back().field == player_status_string_field::last_read_news_hash);
+    pc.last_read_news_hash[0] = '\0';
+    assert(status.status_strings.back().value == read_hash);
     player_held_pet_state held;
     player_pet_snapshot retained = {};
     retained.mob_vnum = 1201; retained.hit = retained.max_hit = 10;

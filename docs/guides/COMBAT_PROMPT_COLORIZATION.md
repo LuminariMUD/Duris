@@ -65,6 +65,14 @@ WebSocket output use their original control flow. Prompt coloring never advances
 cosmetic sequences. Logs retain the existing separate prompt-log representation;
 snoop output receives the displayed prompt through its existing path.
 
+Unread published news adds `(news)` once to the ordinary prompt (the last line
+when using two lines), or before the smart prompt's terminator. Opening `news`
+with paging enabled acknowledges that content for the owning character. A
+different content fingerprint restores the marker; unchanged reloads do not.
+Prompt-off and old-smart suppression still apply, and pager/editor/confirmation
+prompts do not gain a marker. The prompt compares cached values and performs no
+I/O. Switched and morphed bodies use their original PC's read state.
+
 Tests in `test_word_output_integration.py` execute real `dam_message`, `make_prompt`,
 `act` and queue functions. They compare default/selected visible output, all three
 combat recipients, authored names, resource thresholds and values, RNG call counts,

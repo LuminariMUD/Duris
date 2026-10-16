@@ -6,6 +6,7 @@
 #include "player/output_preferences.h"
 #include "player/output_message.h"
 #include "player/player_save_pipeline.h"
+#include "player/news.h"
 #include "net/gmcp.h"
 #include "net/chat_presentation.h"
 #include "world/specs.prototypes.h"
@@ -47,23 +48,32 @@ static bool visible = true;
 static P_char hidden_recipient = nullptr;
 static std::vector<std::pair<std::string, int>> logged;
 static std::function<void(P_char)> command_action;
-player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int)
+static player_save_pipeline_result save_result = player_save_pipeline_result::queued;
+static P_char saved_owner;
+static int save_calls;
+player_save_pipeline_result
+player_save_pipeline_request(P_char owner, player_component_mask_t components, int, int)
 {
-	return player_save_pipeline_result::queued;
+	assert(components == PLAYER_COMPONENT_STATUS);
+	saved_owner = owner;
+	++save_calls;
+	return save_result;
 }
 void command_interpreter(P_char ch, char *)
 {
 	command_action(ch);
 }
-int IS_MORPH(P_char)
+static P_char morphed;
+int IS_MORPH(P_char ch)
 {
-	return 0;
+	return ch == morphed;
 }
 void write_to_pc_log(P_char ch, const char *message, int policy)
 {
 	logged.emplace_back(message, policy);
-	if (ch->only.pc && GET_PLAYER_LOG(ch))
-		GET_PLAYER_LOG(ch)->write(policy, message);
+	P_char owner = GET_PLYR(ch);
+	if (IS_PC(owner) && owner->only.pc && GET_PLAYER_LOG(owner))
+		GET_PLAYER_LOG(owner)->write(policy, message);
 }
 bool ac_can_see(P_char, P_char, bool)
 {
@@ -166,6 +176,7 @@ static std::string drain(P_desc d)
 #include "combat_prompt_checks.inc"
 #include "chat_presentation_checks.inc"
 #include "artifact_activation_checks.inc"
+#include "news_prompt_checks.inc"
 #ifdef COLORIZATION_BENCHMARK
 #include "colorization_benchmark.inc"
 #endif
@@ -710,5 +721,6 @@ int main()
 	world_output_matrix();
 	combat_prompt_matrix();
 	artifact_activation_matrix();
+	news_prompt_matrix();
 	puts("Output integration: tell/reply, recipient profiles, sends, act, queue merging, privacy, paging and snoop passed");
 }

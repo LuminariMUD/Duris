@@ -116,8 +116,9 @@ constexpr std::array<status_column, 64> STATUS_COLUMNS = { {
 	{ player_status_field::learned_flight_stops, "learned_flight_stops", false, true },
 } };
 
-constexpr std::array<const char *, 7> STATUS_STRINGS = {
-	"name", "short_descr", "long_descr", "description", "title", "poof_in", "poof_out",
+constexpr std::array<const char *, 8> STATUS_STRINGS = {
+	"name",	 "short_descr", "long_descr", "description",
+	"title", "poof_in",	"poof_out",   "last_read_news_hash",
 };
 
 constexpr std::array<const char *, 5> CONDITION_COLUMNS = {
@@ -311,7 +312,7 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 	}
 	for (size_t index = 0; index < STATUS_STRINGS.size(); ++index)
 	{
-		const size_t length = row[column] ? strlen(row[column]) : 0;
+		const size_t length = row[column] ? mysql_fetch_lengths(rows)[column] : 0;
 		if (length > PLAYER_SNAPSHOT_MAX_STRING_BYTES)
 		{
 			mysql_free_result(rows);
@@ -320,9 +321,10 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 		}
 		result->snapshot.status_strings.push_back(
 			{ static_cast<player_status_string_field>(index),
-			  row[column] ? row[column] : "" });
+			  row[column] ? std::string(row[column], length) : "" });
 		++column;
 	}
+	const int status_integer_start = column;
 	for (const status_column &spec : STATUS_COLUMNS)
 	{
 		player_snapshot_integer value = { spec.field, signed_value(row[column]),
@@ -348,14 +350,14 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 		quest = static_cast<int32_t>(signed_value(row[column++]));
 	result->snapshot.output_preferences = row[column] ? row[column] : "";
 	result->domains.wallet = {
-		unsigned_value(row[9 + 32]),
-		unsigned_value(row[9 + 33]),
-		unsigned_value(row[9 + 34]),
-		unsigned_value(row[9 + 35]),
+		unsigned_value(row[status_integer_start + 32]),
+		unsigned_value(row[status_integer_start + 33]),
+		unsigned_value(row[status_integer_start + 34]),
+		unsigned_value(row[status_integer_start + 35]),
 	};
-	result->domains.epics = signed_value(row[9 + 37]);
-	result->domains.frags = signed_value(row[9 + 52]);
-	result->domains.old_frags = signed_value(row[9 + 53]);
+	result->domains.epics = signed_value(row[status_integer_start + 37]);
+	result->domains.frags = signed_value(row[status_integer_start + 52]);
+	result->domains.old_frags = signed_value(row[status_integer_start + 53]);
 	mysql_free_result(rows);
 	return true;
 }

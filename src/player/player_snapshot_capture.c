@@ -121,7 +121,9 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	    !add_status_string(snapshot, budget, player_status_string_field::poof_in,
 			       ch->only.pc->poofIn) ||
 	    !add_status_string(snapshot, budget, player_status_string_field::poof_out,
-			       ch->only.pc->poofOut))
+			       ch->only.pc->poofOut) ||
+	    !add_status_string(snapshot, budget, player_status_string_field::last_read_news_hash,
+			       ch->only.pc->last_read_news_hash))
 		return false;
 
 	snapshot.output_preferences = encode_output_preferences(ch->only.pc->output_preferences);

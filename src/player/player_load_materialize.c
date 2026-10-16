@@ -24,6 +24,7 @@
 #include "core/files.h"
 #include "core/utils.h"
 
+#include <algorithm>
 #include <climits>
 #include <cstdlib>
 #include <cstring>
@@ -53,7 +54,7 @@ bool valid_snapshot(const player_load_result &result)
 	    (result.snapshot.components != PLAYER_LOAD_SESSION01_COMPONENTS &&
 	     result.snapshot.components != PLAYER_LOAD_SESSION02_COMPONENTS &&
 	     result.snapshot.components != PLAYER_LOAD_SESSION03_COMPONENTS) ||
-	    result.snapshot.status_strings.size() != 7 ||
+	    result.snapshot.status_strings.size() != 8 ||
 	    result.snapshot.status_integers.size() != 64)
 		return false;
 	std::unordered_set<unsigned int> integers;
@@ -70,7 +71,7 @@ bool valid_snapshot(const player_load_result &result)
 			return false;
 	for (const player_snapshot_string &entry : result.snapshot.status_strings)
 		if (entry.field < player_status_string_field::name ||
-		    entry.field > player_status_string_field::poof_out ||
+		    entry.field > player_status_string_field::last_read_news_hash ||
 		    entry.value.size() > PLAYER_SNAPSHOT_MAX_STRING_BYTES ||
 		    !strings.insert(static_cast<unsigned int>(entry.field)).second)
 			return false;
@@ -180,6 +181,20 @@ bool apply_string(P_char ch, const player_snapshot_string &entry)
 		break;
 	case player_status_string_field::poof_out:
 		ch->only.pc->poofOut = copy;
+		break;
+	case player_status_string_field::last_read_news_hash:
+		if (entry.value.empty() ||
+		    (entry.value.size() == 64 &&
+		     std::all_of(entry.value.begin(), entry.value.end(), [](unsigned char c)
+				 { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); })))
+			strlcpy(ch->only.pc->last_read_news_hash, entry.value.c_str(),
+				sizeof(ch->only.pc->last_read_news_hash));
+		else
+		{
+			ch->only.pc->last_read_news_hash[0] = '\0';
+			logit(LOG_STATUS, "Invalid news acknowledgement; marking news unread.");
+		}
+		FREE(copy);
 		break;
 	}
 	return true;

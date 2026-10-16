@@ -16056,8 +16056,11 @@ News
 News - Last Edited: 2007-04-22 22:12:53 by Unknown
 ==================================================
 This command will show you the current edition of the Duris News, a
-publication dedicated to news and useful information about this world. It"s
-a very good idea to check it out often.
+publication dedicated to news and useful information about this world.
+The (news) marker in your prompt means this character has unread news.
+Type news with paging enabled to dismiss it. Opening the news is enough;
+you do not have to read to the last page. The marker returns when the news
+content changes. Your other characters track their own reading separately.
 	See also:motd ,gmotd
 The following help topics also matched your search:
  Newsteal
