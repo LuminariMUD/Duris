@@ -1,7 +1,9 @@
 # Unread news in player prompts
 
-Status: implementation and local acceptance are complete. PR #127 is open; the
-dependent feature PR is being published. No merge or deployment was performed.
+Status: implementation and local acceptance are complete. Both PRs are open and
+ready for review: [#127](https://github.com/LuminariMUD/Duris/pull/127) (publication)
+and [#128](https://github.com/LuminariMUD/Duris/pull/128) (acknowledgement and prompt).
+No merge or deployment was performed.
 
 Inspected 2026-10-16 against Duris master
 `277df52d82e5cfccc5689013c3310141a02aea43`, after fetching origin and verifying that
@@ -452,7 +454,14 @@ schema, migration, and journey outputs are retained under ignored
 recipe. `journey-mariadb.json` and `journey-flatfile.json` record the tested binary
 hashes and passed outcomes. No CI result was used as a completion gate.
 
-Remaining work is review/publication closeout only. The feature requires migration
+Review order: #127 targets master; #128 targets `branch/news-publication`. After
+#127 lands, refresh master and retarget/rebase #128 as needed, preserving the
+reviewed source and rechecking any intervening migration/schema changes. The
+feature implementation commit is `351423297`; this final handoff update changes
+documentation only. Both branches were pushed and their exact remote heads read
+back; no implementation work remains outstanding.
+
+The feature requires migration
 0043 before a database-backed deployment, and new schema-9 snapshots require the
 new decoder; deployment/rollback decisions belong to the later authorized rollout.
 No release tag is appropriate for an unmerged review stack.
