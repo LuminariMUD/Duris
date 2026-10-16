@@ -14,6 +14,27 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
+Population implementation in progress: `branch/issue-67-population-evidence`,
+based on PR #140, in `/home/aiwithapex/projects/duris-issue67-plan`. Build one staged
+population reader for the artifact service, using the real payload stores and
+custody evidence before population. Start with bounded SQL pages across all
+eight numeric payload stores (player, pet, locker, legacy account locker, corpse,
+room, shopkeeper and siege), retaining effective flags, unknown UIDs, parentage
+and custody disagreements. Then cover auction/collector/delivery blobs, flat
+equivalents and recovery evidence before classifying canonical/absent/unresolved
+records or wiring admission. A numeric-table page is partial source evidence,
+never a completeness or absence claim.
+
+Outcome for this work: complete staged physical-candidate evidence for boot and
+audit; no first-traversal winner, destructive cleanup, production read or new
+writer. Files: artifact population reader/service and actual storage readers,
+their focused executable fixtures, boot order and this plan. Proof must include
+real disposable-database pages/failures, all supported flat/recovery domains,
+atomic publication on complete success, and boot-before-population integration.
+Do not describe a source-reader prerequisite as completed population/admission
+work. The bounded numeric SQL page contract below is ready as a focused dependent
+review chunk; its aggregate consumer and remaining domain readers are still open.
+
 Current checkpoint: [PR #140](https://github.com/LuminariMUD/Duris/pull/140),
 `branch/issue-67-recovery-numeric-evidence`, based on PR #139 and ready for review.
 **Outcome:** Redis boot-head and floor UID reads accept complete positive unsigned
@@ -527,8 +548,8 @@ local fixture, or historical investigation as production completion.
 
 ### Review stack and current resume point
 
-The current continuation branch is `branch/issue-67-recovery-numeric-evidence` in
-`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #139. Earlier sections
+The current continuation branch is `branch/issue-67-population-evidence` in
+`/home/aiwithapex/projects/duris-issue67-plan`, based on PR #140. Earlier sections
 record evidence at their own checkpoints; the current checkpoints below
 supersede their old next-step statements and flat repository APIs.
 
@@ -581,6 +602,62 @@ The next AR-02 checkpoint below qualifies canonical identity storage; boot
 candidate publication remains required after that storage foundation.
 No production state has been inspected or changed. No release tag is appropriate
 for these unmerged review chunks.
+
+### Numeric SQL population source pages — AR-01/AR-02 prerequisite
+
+`branch/issue-67-population-evidence` →
+`branch/issue-67-recovery-numeric-evidence` implements one read-only page contract
+for all eight numeric payload stores: `player_items`, `player_pet_items`,
+`locker_items`, retained `account_locker_items`, `corpse_items`, `saved_items`,
+`shopkeeper_items` and retained `siege_items`. It reads every payload row,
+including ordinary ancestors and zero/missing UIDs, rather than treating custody
+as physical existence or filtering out legacy uncertainty.
+
+Each projection retains its source row and owner reference, serialized parent,
+parent UID/missing/owner disagreement, vnum, quantity, flags and flag-presence
+bit, plus the independent full custody record and owner revision. A NULL flag
+remains distinguishable from an explicit zero override for later effective-flag
+classification. Pet metadata maps pet UID and player PID; corpse metadata maps
+player PID/save ID; lockers resolve the public chest; shops use the established
+shop-number-plus-one owner identity. Missing metadata leaves the source row
+present with an unknown owner. Retained account-locker/siege rows deliberately
+keep unknown normalized owners until their legacy disposition is qualified.
+
+Pages use a fixed 256-row bound plus one lookahead, stable source-ID continuation,
+and the caller's consistent snapshot. A terminal page applies only to that table.
+Failed SQL/parsing/allocation never replaces the caller's previous page. Joined
+metadata that repeats a source ID is refused, including a duplicate exactly in
+the lookahead row; no arbitrary metadata winner can disappear across the cursor.
+There is no aggregate completeness flag, canonical decision, boot invocation,
+new migration, hot-path query or operational inspection in this prerequisite.
+
+Validation passed with terminating UBSan on disposable MariaDB 10.11 and MySQL
+8.0. The executable fixture covers all eight sources, full-width UID, missing UID,
+NULL flags, broken/cross-owner/cross-chest parents, orphaned owner metadata,
+quarantined conflicting custody, absence of custody-only synthetic payloads,
+page-boundary continuation, a concurrent insert outside the caller's consistent
+snapshot, duplicate metadata at the lookahead boundary and failed-read atomicity.
+It also bootstraps the maintained schema through all 44 immutable migrations and
+runs every page query against that actual layout. Commands:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_artifact_population_repository.py
+python3 bin/analysis/issue67/run_mysql8_artifact_population.py
+make -C src -j2
+```
+
+The existing client-free flat build also passes (the SQL page API is excluded).
+Formatting, changed-line clang-tidy and whitespace checks pass. Ignored evidence
+is `population-sql-pages.log`, `population-sql-pages-mysql8.log`,
+`population-build.log`, `population-flat-build.log` and `population-tidy.log`
+under `bin/analysis/issue67/`. The MySQL helper uses its own loopback container
+and invokes the same permanent fixture; neither test reads the checkout `.env`.
+
+Next: assemble these pages under one consistent read, add auction/collector/
+delivery payloads and their effective flags, implement equivalent flat reads,
+then combine pinned recovery evidence before publication to the artifact service.
+No numeric-source-only result may authorize creation or absence. The complete
+population reader and all unchecked admission/lifecycle acceptance remain required.
 
 ### Strict recovery numeric evidence — AR-01/AR-02 prerequisite
 
@@ -957,7 +1034,7 @@ required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
-from the tip of `branch/issue-67-recovery-numeric-evidence` in
+from the tip of `branch/issue-67-population-evidence` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
 creating a dependent branch for the next storage/admission chunk. Fresh master
 remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.

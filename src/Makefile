@@ -150,6 +150,7 @@ OBJS =  $(SHIP_OBJS) \
 				 world/falling_policy.o \
 				 combat/arena.o \
 				 guild/artifact.o \
+				 guild/artifact_population_repository.o \
 				 guild/artifact_cache_codec.o \
 				 persistence/report_cache_codec.o \
 				 economy/donation_event.o \
