@@ -272,14 +272,14 @@ in `f6dbe86b6`.
 
 Local resource notes: Docker access is unavailable to this user, so a dedicated
 MariaDB was initialized with `--no-defaults` in `/tmp/duris-core-repair-db-*`, bound
-to loopback on an ephemeral port. Its path/port are recorded in ignored
-`bin/analysis/core-dumps-2026-10-16/test-db.json`; it contains only disposable test
-schemas and must be shut down after qualification. Journey environments explicitly
-set `ENVIRONMENT=local` and never source `.env`. A separate flatfile build targets
-`bin/server/dms_core_repair_flatfile`; its output is in `build-flatfile.log`.
+to loopback on an ephemeral port. Its path/port were recorded during qualification in
+an ignored local file; the server was stopped and its directory removed afterward.
+Journey environments explicitly set `ENVIRONMENT=local` and never source `.env`. A
+separate flatfile build targets `bin/server/dms_core_repair_flatfile`; its output is in
+`build-flatfile.log`.
 
-The disposable database and all journey runtimes contain synthetic data. They are shut
-down or removed after qualification; no production configuration is sourced.
+The disposable database and all journey runtimes contained synthetic data and were
+removed after qualification; no production configuration was sourced.
 
 ## Implementation sequence
 
