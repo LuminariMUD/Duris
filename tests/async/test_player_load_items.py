@@ -657,6 +657,9 @@ int main()
                                           sizeof(trap_state)));
         result.snapshot.items[1].extra_descriptions.push_back(
             {SQL_ITEM_TRAP_STATE_KEYWORD, trap_state, false, {}});
+        for (size_t index = 0; index < PLAYER_LOAD_ITEM_DESCRIPTION_MAX; ++index)
+            result.snapshot.items[1].extra_descriptions.push_back(
+                {"detail" + std::to_string(index), "fixture", false, {}});
         const item_owner_identity corpse = {
             item_owner_type::corpse, (static_cast<uint64_t>(42) << 32) | 20, 0
         };
@@ -675,8 +678,16 @@ int main()
                roots[0]->contains->trap_eff == 6 &&
                roots[0]->contains->trap_dam == 2 &&
                roots[0]->contains->trap_charge == 0 &&
-               roots[0]->contains->trap_level == 100 &&
-               !roots[0]->contains->ex_description);
+               roots[0]->contains->trap_level == 100);
+        size_t description_count = 0;
+        for (auto *description = roots[0]->contains->ex_description;
+             description; description = description->next, ++description_count)
+        {
+            assert(std::string(description->keyword) ==
+                   "detail" + std::to_string(description_count));
+            assert(std::string(description->description) == "fixture");
+        }
+        assert(description_count == PLAYER_LOAD_ITEM_DESCRIPTION_MAX);
         item_ownership_runtime_entry entry = {};
         assert(item_ownership_runtime_lookup(31, &entry));
         assert(item_owner_identity_equal(entry.owner, corpse));
