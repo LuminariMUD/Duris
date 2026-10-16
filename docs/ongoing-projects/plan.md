@@ -995,6 +995,28 @@ canonical UID/state fields, and PR #137 hydrates/captures them. The current flat
 authority checkpoint above supersedes this map's old no-UID description. The
 complete candidate reader, recovery proof and population ordering remain open.
 
+Continuation inspection after PR #139 confirmed two reader boundaries to retain:
+
+- `redis_has_world_state()` in `redis_world_runtime.c` returns false for disabled
+  recovery, no generation, a failed sequence/read, and invalid generation bytes.
+  That boolean cannot establish physical absence. It also reads generation bytes
+  before `boot_db`, while `redis_load_world_state()` reads the current sequence
+  and bytes again afterward. Candidate classification must distinguish a complete
+  absence result from unavailable/invalid evidence and pin the generation/floor
+  evidence it will later materialize; do not classify one generation and restore
+  a newer one without reconciling reservations.
+- `world_recovery_validate()` and the wire codec already validate bounded
+  generation envelopes. Ground records contain full stable-UID item snapshots;
+  `write_mob_record()` explicitly clears equipment vnums and carrying count, and
+  the recovered-NPC helper reconstructs G/E equipment from reset templates.
+  Preserve/qualify authoritative NPC artifact identity or keep it unresolved;
+  that reconstruction is fresh creation, not same-UID hydration. Reuse existing
+  codec/store readers and stage evidence before `ne_init_events`, rather than
+  creating another registry or treating successful later ground restore as proof
+  that earlier forced population was safe.
+
+No candidate-reader code or new recovery format has been implemented yet.
+
 The supported custody types in [item_transfer_command.h](../../src/item/item_transfer_command.h)
 are player, container, room, corpse, locker, auction, system, destruction,
 shopkeeper, collector and pet. State is absent/active/destroyed/quarantined.
