@@ -14,7 +14,8 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 and admission remain open.
 No operational repair started.
 
-Current work: `branch/issue-67-recovery-numeric-evidence`, based on PR #139.
+Current checkpoint: [PR #140](https://github.com/LuminariMUD/Duris/pull/140),
+`branch/issue-67-recovery-numeric-evidence`, based on PR #139 and ready for review.
 **Outcome:** Redis boot-head and floor UID reads accept complete positive unsigned
 decimal values only; a genuine missing head is the only successful zero result.
 Malformed, negative, overflow, trailing or embedded-NUL input remains failed
@@ -583,6 +584,7 @@ for these unmerged review chunks.
 
 ### Strict recovery numeric evidence — AR-01/AR-02 prerequisite
 
+[PR #140](https://github.com/LuminariMUD/Duris/pull/140),
 `branch/issue-67-recovery-numeric-evidence` →
 `branch/issue-67-flat-artifact-cache` repairs the actual Redis boot-head and floor
 readers. Previously `strtoull` admitted numeric prefixes, signed input and
@@ -952,10 +954,10 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139.
+Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
-from the tip of `branch/issue-67-flat-artifact-cache` in
+from the tip of `branch/issue-67-recovery-numeric-evidence` in
 `/home/aiwithapex/projects/duris-issue67-plan`, keeping that stack intact and
 creating a dependent branch for the next storage/admission chunk. Fresh master
 remains `9b4d7384825aa9a19a990e68f939fb6e6c04c011`. Re-fetch before publication.
