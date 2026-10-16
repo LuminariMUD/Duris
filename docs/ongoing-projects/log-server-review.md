@@ -1,6 +1,7 @@
 # Log review and ESTALE: notes and history
 
-The current unfinished work is in [plan-log_review.md](plan-log_review.md).
+The last recorded work queue and release handoff are preserved in the
+[archived plan](https://github.com/LuminariMUD/Duris/blob/1dad54760c7f27a24881fd4a41fa59b600937875/docs/ongoing-projects/plan-log_review.md).
 This file preserves the completed work, acceptance contracts, evidence, decisions,
 and earlier plans. The recorded snapshot below is historical: its completion
 claims and execution instructions do not define the current work queue.
@@ -11,7 +12,7 @@ The snapshot predates reconciliation with merged PRs
 [#76](https://github.com/LuminariMUD/Duris/pull/76), and does not resolve the two
 [#74 review findings](https://github.com/LuminariMUD/Duris/pull/74#pullrequestreview-5515105547).
 Its successful checks qualify the recorded branch revisions, not the combined
-release on current master. Follow the current plan for those unfinished tasks
+release on current master. See the archived plan for the later task decisions
 and the owner's skipped items.
 
 ## Current-master integration — qualified 2026-10-14
@@ -21,7 +22,8 @@ The requested repository delivery is ready for review in the unmerged stack
 `2a0b335e3`; combined merge `42b7afb17` includes master `67ca142ff`. Observer
 cleanup `d4fe27272` changes only the test and documentation; runtime/world/schema
 sources match the qualified merge. Later handoff commits are documentation only.
-The [current handoff](plan-log_review.md) retains conditional and skipped work.
+The [archived handoff](https://github.com/LuminariMUD/Duris/blob/1dad54760c7f27a24881fd4a41fa59b600937875/docs/ongoing-projects/plan-log_review.md)
+retains conditional and skipped work.
 
 Final combined proof: server and pfile builds; maintained migration tools
 (including a forced rebuild); all 1052 tracked C/C++ files formatted; **736/736
