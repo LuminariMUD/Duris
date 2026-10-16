@@ -517,8 +517,8 @@ def slowread(rig: Rig) -> None:
     rig.boot()
     rig.restored(first)
     rig.proxy.slow = False
-    # The boot's check, its restore and its consume each read the sequence: twice each.
-    assert rig.proxy.reads >= 6, rig.proxy.reads
+    # One pinned read retries the timed-out cut; restore/consume never reread the head.
+    assert rig.proxy.reads == 2, rig.proxy.reads
     print(f"slowread: the boot read the current sequence {rig.proxy.reads} times, every "
           f"other one answered past its deadline, and restored generation {first}",
           flush=True)

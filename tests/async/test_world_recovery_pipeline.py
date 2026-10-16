@@ -1157,9 +1157,9 @@ save = section(WORLD_RUNTIME, "bool redis_save_world_state(void)", "void redis_w
 assert "fork()" not in save and "redis_floor_store_request_barrier" in save
 generation_read = section(STORE, "bool redis_world_store_read_generation", "bool redis_world_store_publish")
 assert "bounded_string" in generation_read and "REDIS_WORLD_GENERATION_CHUNK_BYTES" in generation_read
-assert WORLD_RUNTIME.count("redis_world_store_read_generation") == 2
+assert WORLD_RUNTIME.count("redis_world_store_read_generation") == 1
 initialize = section(WORLD_RUNTIME, "bool redis_world_runtime_start", "void redis_world_runtime_shutdown")
-ensure = section(WORLD_RUNTIME, "bool redis_world_recovery_ensure_initialized", "void redis_clear_floor_pickups")
+ensure = section(WORLD_RUNTIME, "bool redis_world_recovery_ensure_initialized", "bool redis_read_floor_records")
 assert "redis_world_writer_fence_claim()" in initialize
 assert "redis_world_writer_fence_claim()" not in ensure
 assert "world_sequence_floor" in ensure
@@ -1197,7 +1197,7 @@ for token in ("redis_world_store_mark_clean_shutdown",
               "redis_world_store_consume_clean_shutdown"):
     assert token in STORE
 assert publisher.index("GET %s") < publisher.index("EVAL %b 9")
-assert "header.sequence == sequence" in section(WORLD_RUNTIME, "bool redis_has_world_state", "bool redis_consume_world_state")
+assert "header.sequence != staged.sequence" in section(WORLD_RUNTIME, "bool redis_capture_boot_snapshot", "redis_world_boot_result redis_world_prepare_boot")
 assert "world_recovery_restore" in section(WORLD_RUNTIME, "bool redis_load_world_state", "void event_save_world_state")
 consume = section(WORLD_RUNTIME, "bool redis_consume_world_state", "bool redis_load_world_state")
 assert "redis_world_recovery_quiesce" not in consume
@@ -1208,7 +1208,7 @@ store_consume = section(
     STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_read_generation"
 )
 assert "redis.call('GET',KEYS[1])~=ARGV[1]" in store_consume
-assert "keys.current, generation" in store_consume and "keys.fence" not in store_consume
+assert "keys.current" in store_consume and "generation_key_buffer" in store_consume and "keys.fence" not in store_consume
 assert "redis_consume_world_state()" in COMM
 assert "redis_clear_world_state();" not in section(
     COMM, "// redis crash recovery - restore world state from redis snapshot", "PROFILES(RESET)"
@@ -1265,7 +1265,7 @@ cancel = section(PIPELINE, "void world_recovery_pipeline_cancel", "bool world_re
 for token in ("stop_requested = true", "queued.clear()", "completions.clear()",
               "active_capture = {}", "publisher_worker.join()"):
     assert token in cancel
-quiesce = section(WORLD_RUNTIME, "bool redis_world_recovery_quiesce", "bool redis_has_world_state")
+quiesce = section(WORLD_RUNTIME, "bool redis_world_recovery_quiesce", "redis_world_boot_result redis_world_prepare_boot")
 assert "world_recovery_pipeline_cancel()" in quiesce
 assert "redis_floor_store_cancel()" in quiesce
 assert "redis_world_writer_fence_claim()" in quiesce

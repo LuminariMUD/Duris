@@ -847,14 +847,20 @@ int run_the_game(int port, int sslport)
 
 	SetSpellCircles(); /* spells circlewise done with pure math */
 
-	// check for redis crash recovery before boot_db (so ne_init_events skips zone resets)
-	if (!copyover_boot && redis_runtime_enabled() && redis_world_runtime_enabled() &&
-	    redis_has_world_state())
+	// Pin recovery before boot_db, so its later materialization uses this cut.
+	if (!copyover_boot)
 	{
-		redis_world_recovery_boot_set(true);
-		logit(LOG_STATUS,
-		      "%s recovery data found in redis; world state restores after boot",
-		      redis_world_clean_restart_boot() ? "Clean restart" : "Crash");
+		const auto recovery = redis_world_prepare_boot();
+		if (recovery == redis_world_boot_result::ready)
+		{
+			redis_world_recovery_boot_set(true);
+			logit(LOG_STATUS,
+			      "%s recovery data pinned in redis; world state restores after boot",
+			      redis_world_clean_restart_boot() ? "Clean restart" : "Crash");
+		}
+		else if (recovery == redis_world_boot_result::failed)
+			logit(LOG_STATUS,
+			      "Redis recovery evidence unavailable or invalid; physical absence is unresolved");
 	}
 	if (!mini_mode)
 	{

@@ -60,14 +60,12 @@ for symbol in ("redis_log_floor_drop", "redis_remove_floor_drop", "redis_flush_f
     assert symbol in FLOOR_HEADER
     assert symbol not in HEADER
 
-# Cleanup intentionally remains available for the retired pickup key and the
-# current season-scoped floor hash.
-assert "REDIS_LEGACY_FLOOR_PICKUPS" in WORLD
+# Retired pickups remain maintenance-owned; recovery never clears unrelated keys.
+assert "REDIS_LEGACY_FLOOR_PICKUPS" not in WORLD
 assert "redis_epoch_key(floor_key, sizeof floor_key" in WORLD
 assert "REDIS_FLOOR_DROP_INDEX_SUFFIX" in WORLD
-clear_floor = section("bool redis_clear_floor_drops", "bool redis_read_floor_records")
-assert "REDIS_SHARED_SCOPE_FLOOR" in clear_floor
-assert "REDIS_SHARED_COMMAND_WRITE" in clear_floor
-assert '"DEL %s %s"' in clear_floor
+store = (SRC / "redis_world_store.c").read_text(encoding="ascii")
+assert "redis.call('HGET',KEYS[8],uid)~=ARGV[5+2*i]" in store
+assert "keys.floor_drops" in store and "keys.floor_drop_index" in store
 
 print("Redis floor deltas are gated on world recovery")

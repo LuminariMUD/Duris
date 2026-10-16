@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from _paths import SRC
+from _paths import SRC, extract_function
 import shutil
 import socket
 import subprocess
@@ -153,8 +153,8 @@ int main(int argc, char **argv)
     assert(redis_world_store_consume_clean_shutdown(&config) == 0);
     // The boot that restored the current generation consumes it, whoever holds the lease:
     // here writer_b does.
-    assert(!redis_world_store_consume_generation(&config, 1));
-    assert(redis_world_store_consume_generation(&config, 2));
+    assert(!redis_world_store_consume_generation(&config, 1, loaded, {}));
+    assert(redis_world_store_consume_generation(&config, 2, loaded, {}));
     reply = run(context, "EXISTS mud:season:42:world_state:current mud:season:42:world_state:generation:2");
     assert(reply->type == REDIS_REPLY_INTEGER && reply->integer == 0);
     freeReplyObject(reply);
@@ -328,12 +328,14 @@ int main(int argc, char **argv)
                 "-Wall",
                 "-Wextra",
                 "-Werror",
+                "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                 "-I",
                 str(SRC),
                 str(SRC / "redis_connection.c"),
                 str(SRC / "redis_command_observability.c"),
                 str(SRC / "redis_namespace.c"),
                 str(SRC / "redis_world_store.c"),
+                str(SRC / "world_recovery_codec.c"),
                 str(source),
                 "-lhiredis",
                 "-lhiredis_ssl",
@@ -345,14 +347,20 @@ int main(int argc, char **argv)
             check=True,
         )
         boot_binary = temp / "boot-readers"
+        boot_source = temp / "boot-readers.cpp"
+        boot_source.write_text((ROOT / "tests/async/redis_world_boot_harness.cpp").read_text().replace(
+            "// REAL_GENERATION_VALIDATE", extract_function("world_recovery_pipeline.c", "bool world_recovery_validate(")))
         subprocess.run([
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pthread",
+            "-fsanitize=undefined", "-fno-sanitize-recover=all",
             "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql",
-            "tests/async/redis_world_boot_harness.cpp", "tests/async/harness_stubs.cpp",
+            str(boot_source), "tests/async/harness_stubs.cpp",
+            str(SRC / "redis_world_store.c"),
             str(SRC / "redis_connection.c"), str(SRC / "redis_command_observability.c"),
             str(SRC / "redis_namespace.c"), str(SRC / "world_recovery_codec.c"),
+            str(SRC / "generated_npc_state.c"), str(SRC / "pet_restore_state.c"),
             "-Wl,--gc-sections",
-            "-lhiredis", "-lhiredis_ssl", "-lssl", "-lcrypto", "-o", str(boot_binary),
+            "-lhiredis", "-lhiredis_ssl", "-lssl", "-lcrypto", "-lz", "-o", str(boot_binary),
         ], cwd=ROOT, check=True)
         server = subprocess.Popen(
             [

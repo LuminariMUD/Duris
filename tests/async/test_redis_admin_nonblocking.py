@@ -24,7 +24,7 @@ clear = section(WIZ, "static void redis_clear_cache", "void do_redis")
 
 for status in (simple, detailed):
     for forbidden in (
-        "redis_has_world_state",
+        "redis_world_prepare_boot",
         "redis_world_state_timestamp",
         "redis_key_exists",
         "redis_get_ttl",

@@ -11,9 +11,22 @@ implementation in progress; independent feeding feedback implemented on
 in PR #137 on `branch/issue-67-identity-snapshots`; writer backpressure is ready
 in PR #138, and the common flat artifact authority is ready in PR #139 on
 `branch/issue-67-flat-artifact-cache`. Numeric/flat/SQL blob readers and the SQL snapshot
-aggregate are ready in PRs #141–#143. Complete recovery evidence, population
-classification and admission remain open.
+aggregate are ready in PRs #141–#143. Redis generation/floor pinning is now implemented on
+`branch/issue-67-pinned-recovery-evidence`. Complete recovery candidate projection,
+population classification and admission remain open.
 No operational repair started.
+
+Current recovery chunk: `branch/issue-67-pinned-recovery-evidence`, based on PR #143.
+Outcome: prepare and retain one coherent generation/floor cut before boot, expose
+ready/absent/disabled/failed evidence explicitly, restore exactly those bytes and
+consume only matching generation/floor data. Non-goals: canonical choice, NPC item
+identity changes, copyover admission or production operations. Files: existing
+Redis runtime/store, boot caller, focused live Redis/runtime fixtures and this
+plan. Proof: real publication and same-count mutation/head-change cases, immutable
+restoration input, atomic consume refusal/preservation, failure vs absence, normal
+recovery controls and required builds. Redis WATCH seals the existing paged
+read and compare retained bytes during atomic consume; add no new key/version,
+lock service, retry queue or recovery format.
 
 Current SQL source checkpoint: [PR #143](https://github.com/LuminariMUD/Duris/pull/143),
 `branch/issue-67-sql-population-blobs`, based on PR #142 and ready for review. Outcome: bounded SQL
@@ -805,6 +818,80 @@ and materialization/retirement, then the remaining AR-01–AR-07 runtime matrix.
 All existing unchecked acceptance items remain open. No production read,
 operational repair, migration, deployment, merge or release tag occurred.
 
+### Pinned Redis boot evidence and guarded consume — AR-01/AR-02 prerequisite
+
+Implemented on `branch/issue-67-pinned-recovery-evidence`, based on PR #143;
+publication pending. The boot caller now prepares recovery once before `boot_db`.
+Preparation distinguishes disabled configuration, a sealed missing head with an
+empty floor, a ready snapshot, and failed evidence. Requested recovery that cannot
+start its worker/authentication fails instead of appearing disabled. A failed
+read stays failed for that boot; fixing storage later cannot silently change the
+cut already classified by a consumer.
+
+The existing authenticated/chunked generation reader and bounded 64-row floor
+reader are reused. WATCH covers the head, selected manifest, floor hash and index
+while the complete staged read is sealed with EXEC. A same-count value replacement
+or head rotation aborts the cut. A lost connection retries the entire read after
+reconnecting, never continues an old WATCH on a fresh connection. Every failure
+cleans up transaction state or closes an unusable connection. Only a complete
+successful seal publishes immutable bytes. Limits remain 256 MiB for generation
+plus encoded floor values, at most 16 MiB/32,768 floor records, including their
+wire prefix. Orphan floor evidence with no generation is failed/unresolved.
+
+`redis_world_boot_evidence` exposes the retained const snapshot until boot clear.
+It is source evidence, not a world-semantic plan, a cross-store exclusive cut or a
+canonical decision. The normal recovery loader uses exactly its generation and
+floor bytes with the existing semantic/materialization pipeline. It never rereads
+Redis, retries a successful materialization, or clears a key. The later consume
+requires a successful materialization, checks the current authenticated manifest
+against the retained generation digest, and atomically compares the head,
+manifest, complete floor count/index membership and every floor value before any
+delete. Duplicate expected roots are refused. Any mismatch leaves the generation
+and floor intact; chunk cleanup follows only the successful atomic consume.
+The obsolete blind floor/pickup clears are removed. Retired pickup cleanup remains
+owned by existing maintenance, not recovery.
+
+Passed (logs under ignored `bin/analysis/issue67/pinned-recovery-*`):
+
+```sh
+python3 tests/async/test_redis_world_store_live.py
+python3 tests/async/test_world_recovery_pipeline.py
+python3 tests/async/test_world_recovery_codec.py
+python3 tests/async/test_redis_floor_world_gate.py
+python3 tests/async/test_redis_failure_containment.py
+python3 tests/async/test_redis_admin_nonblocking.py
+python3 tests/async/test_redis_key_registry.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py bin/server/dms_new restart
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py bin/server/dms_new slowread
+make -C src -j2
+```
+
+The live fixture compiles the actual runtime, authenticated store/codec and
+production framing validator with terminating UBSan. It uses real publication,
+head advancement, same-count floor replacement after the real HMGET reply,
+connection kill and Redis ACL rejection of EXEC. It verifies no prefix or
+materialization on failed preparation, stable retained inputs after head/floor
+changes, one successful load, failed-materialization refusal, digest/root-duplicate
+consume refusal and exact-match deletion. Its materializer records input bytes;
+that boundary check does not claim gameplay materialization by itself. The real
+server journeys separately pass clean shutdown/player save/restart/restoration
+and a delayed Redis read/reconnect. The delayed-read boot now reads the head twice
+(one timeout and one successful pinned cut), with no restore/consume reread. The
+client-free flat build with existing dedicated outputs, formatting, compatible
+staged clang-tidy and whitespace checks also pass. Final build SHA-256 values are
+`de5f31754391359602e9b0361f6c55c52fc95e98c5754eb95cde781f4ffce8c6`
+(SQL) and `c17d9d64b03fab3e250a7d9bdd4aafe99031440300ad38145e52f5dfefaaa462`
+(flat); these identify retained build outputs, not a production deployment.
+
+Next: project actual ground item graphs from this pinned generation/floor cut and
+qualify copyover/NPC identity evidence, then combine all durable/recovery sources
+before early reap and forced population. Early startup custody reap has not been
+moved by this change. A ready framing snapshot does not settle NPC equipment
+identity or prove physical absence across stores. Canonical admission, selective
+hydration rollback, lifecycle/reward eligibility and the full AR-01–AR-07 matrix
+remain open. No production read, operational repair, migration, deployment, merge
+or release tag occurred.
+
 ### Numeric SQL population source pages — AR-01/AR-02 prerequisite
 
 [PR #141](https://github.com/LuminariMUD/Duris/pull/141),
@@ -1336,14 +1423,11 @@ complete candidate reader, recovery proof and population ordering remain open.
 
 Continuation inspection after PR #139 confirmed two reader boundaries to retain:
 
-- `redis_has_world_state()` in `redis_world_runtime.c` returns false for disabled
-  recovery, no generation, a failed sequence/read, and invalid generation bytes.
-  That boolean cannot establish physical absence. It also reads generation bytes
-  before `boot_db`, while `redis_load_world_state()` reads the current sequence
-  and bytes again afterward. Candidate classification must distinguish a complete
-  absence result from unavailable/invalid evidence and pin the generation/floor
-  evidence it will later materialize; do not classify one generation and restore
-  a newer one without reconciling reservations.
+- The old `redis_has_world_state()` boolean conflated disabled/absent/failed
+  evidence and the loader reread another head after `boot_db`. The pinned recovery
+  checkpoint above replaces that path with explicit results and retained bytes.
+  Candidate classification must still consume its actual ground graphs and
+  unresolved/disabled status before granting physical absence across stores.
 - `world_recovery_validate()` and the wire codec already validate bounded
   generation envelopes. Ground records contain full stable-UID item snapshots;
   `write_mob_record()` explicitly clears equipment vnums and carrying count, and
@@ -1355,7 +1439,7 @@ Continuation inspection after PR #139 confirmed two reader boundaries to retain:
   that earlier forced population was safe.
 
 The numeric, flat and SQL blob source readers above now implement the durable
-source prerequisites. Recovery pinning, the combined classifier and its boot
+source prerequisites. Recovery candidate projection, the combined classifier and its early boot
 consumer remain open; no new recovery format has been implemented.
 
 The supported custody types in [item_transfer_command.h](../../src/item/item_transfer_command.h)
