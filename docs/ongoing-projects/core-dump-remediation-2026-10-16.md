@@ -249,6 +249,9 @@ Focused codec, capture, load, routing, lifecycle and corpse-haul regressions pas
 the affected pickup, coin, removal, limits and account-bound access tests. The MariaDB
 build has ID `d0161cd00fe5ac599356e48151309a8c80d1a920`; the flat-file build has ID
 `8370195a339cd0efd9e4f19c6510c77add5b9871`.
+[PR #131](https://github.com/LuminariMUD/Duris/pull/131) contains this third chunk,
+whose qualified implementation commit is `c8a37fcc2` and whose base is the finalizer
+repair in PR #130.
 
 Local resource notes: Docker access is unavailable to this user, so a dedicated
 MariaDB was initialized with `--no-defaults` in `/tmp/duris-core-repair-db-*`, bound
@@ -412,7 +415,7 @@ waiting for CI is not required.
 - [x] Record the qualified source revision and executable build ID. Preserve
   the original dumps and matching executable for comparison before replacing
   runtime artifacts.
-- [ ] Hand off the qualified fix for the existing deployment workflow. Production
+- [x] Hand off the qualified fix for the existing deployment workflow. Production
   rollout requires separate owner authorization. After an authorized rollout,
   observe the relevant get/death path and new cores/logs; lack of a new core
   without exercising the path is not sufficient validation.
