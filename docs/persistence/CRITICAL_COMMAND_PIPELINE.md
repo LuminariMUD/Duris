@@ -245,6 +245,9 @@ guild-only, ineligible, rejected and no-effect awards do not publish it. A valid
 capped feed retains its positive feedback. The monolith's direct feeding path
 uses the same wording per accepted artifact and checks its existing tracked-owner
 restriction before publishing feedback; its negative feedback is unchanged.
+Direct feeding keeps signed timer arithmetic separate from its diagnostic
+magnitude: a negative feed reduces the timer, an above-cap timer clamps to the
+current cap, and depletion leaves an expired timer instead of restarting it.
 
 New history uses payload v2 with parent/actor identity and calculated before/after
 facts. The repository records outcome/delta ledgers with history revisions, not

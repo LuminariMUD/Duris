@@ -4,7 +4,8 @@ Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
 implementation in progress; independent feeding feedback implemented on
-`branch/issue-67-feeding-feedback`. No operational repair started.
+`branch/issue-67-feeding-feedback`, with direct timer arithmetic repaired on
+`branch/issue-67-direct-feed-timers`. No operational repair started.
 Prepared: 2026-10-16, against freshly fetched `origin/master`
 `9b4d7384825aa9a19a990e68f939fb6e6c04c011`.
 
@@ -450,7 +451,8 @@ local fixture, or historical investigation as production completion.
 - [PR #132](https://github.com/LuminariMUD/Duris/pull/132),
   `branch/issue-67-artifact-identity` → `master`: acceptance repros and admission
   map, published at `21bcc2754`. No identity behavior is fixed in that PR.
-- `branch/issue-67-feeding-feedback` → `branch/issue-67-artifact-identity`:
+- [PR #133](https://github.com/LuminariMUD/Duris/pull/133),
+  `branch/issue-67-feeding-feedback` → `branch/issue-67-artifact-identity`:
   independent AR-05 wording/feedback chunk. It uses the requested sentence for
   live awards and the active monolith direct feeder, removes the obsolete
   light/deep positive wording branch, and moves the direct path's existing
@@ -475,12 +477,23 @@ cutover (3/3), combat/artifact persistence contracts, changed-line formatting,
 clang-tidy and `make -C src`. This is no claim of full gameplay/restart, database
 matrix, production qualification or complete AR-05 acceptance.
 
-Next: qualify canonical identity storage/boot candidate publication for AR-02.
 While tracing direct feedback, an additional timer defect was found: negative
 feed is converted to an absolute value for logging then added to the timer, and
 an above-cap positive clamp can therefore increase it further. Repair this as
-its own focused chunk with direct executable timer assertions before resuming
-the larger identity work. No production state has been inspected or changed.
+its own focused chunk, `branch/issue-67-direct-feed-timers` →
+`branch/issue-67-feeding-feedback`: compute a signed target once, clamp before
+positive addition to avoid overflow, retain an expired nonzero timer instead of
+restarting it, and calculate a separate magnitude only for the existing log.
+No helper, backend or new state is needed. The direct flat-file harness first
+failed with `negative direct feed increased the timer instead of reducing it`;
+it now passes negative, above-cap, `INT_MIN` and `INT_MAX` assertions with UBSan
+configured to terminate on a violation. Build, formatting, whitespace and
+changed-line clang-tidy pass. This fixes shared direct-feed arithmetic for both
+backends; it does not prove SQL storage through the flat-file fixture.
+
+Next: qualify canonical identity storage/boot candidate publication for AR-02.
+No production state has been inspected or changed. No release tag is appropriate
+for these unmerged review chunks.
 
 ### Implementation checkpoint — 2026-10-16, AR-01
 

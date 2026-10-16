@@ -2,6 +2,7 @@
 #include "core/prototypes.h"
 
 #include <cstdlib>
+#include <climits>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -280,6 +281,20 @@ int main(int argc, char **argv)
 			std::vector<std::string>{
 				"&+BYou hear a distant cry in the back of your mind...&n\n\r" },
 		"negative direct feed lost its existing feedback");
+	require(get_artifact_data_sql(701, &data) && data.timer == feed_start - 60,
+		"negative direct feed increased the timer instead of reducing it");
+	const time_t cap = time(nullptr) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, cap + 200, 1);
+	artifact_feed_sql(&owner, &worn, 60);
+	require(get_artifact_data_sql(701, &data) && data.timer >= cap && data.timer <= cap + 2,
+		"direct feed above the cap increased the timer instead of clamping it");
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
+	artifact_feed_sql(&owner, &worn, INT_MIN);
+	require(get_artifact_data_sql(701, &data) && data.timer == 1,
+		"extreme negative feed overflowed or restarted an expired artifact timer");
+	artifact_feed_sql(&owner, &worn, INT_MAX);
+	require(get_artifact_data_sql(701, &data) && data.timer >= cap && data.timer <= cap + 2,
+		"extreme positive feed failed to clamp to the feed cap");
 	feedback.clear();
 	artifact_update_sql(701, false, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
 	artifact_feed_sql(&owner, &worn, 60);

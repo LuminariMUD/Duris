@@ -15,6 +15,7 @@
 #include "world/db.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include <algorithm>
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
@@ -1931,7 +1932,6 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 	int vnum, owner_pid, timer;
 	arti_data artidata;
 	time_t poof_time;
-	bool negFeed = FALSE;
 
 	if (!updateArtis)
 	{
@@ -2017,17 +2017,17 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 		return;
 	}
 
-	// If we're tyring to feed over the limit.
-	if (poof_time < artidata.timer + feed_seconds)
+	// Check the cap before adding so even an extreme positive feed cannot
+	// overflow. Timer 1 is expired; zero would restart it in artifact_update_sql.
+	time_t target = poof_time;
+	if (feed_seconds <= 0 || artidata.timer <= poof_time - feed_seconds)
+		target = artidata.timer + static_cast<time_t>(feed_seconds);
+	target = std::clamp<time_t>(target, 1, poof_time);
+	const bool negFeed = target < artidata.timer;
+	const time_t delta = target - artidata.timer;
+	const long long magnitude = static_cast<long long>(negFeed ? -delta : delta);
+	if (negFeed)
 	{
-		// Set it to feed to max
-		feed_seconds = poof_time - artidata.timer;
-	}
-
-	if (feed_seconds < 0)
-	{
-		negFeed = TRUE;
-		feed_seconds *= -1;
 		send_to_char("&+BYou hear a distant cry in the back of your mind...&n\n\r", owner);
 	}
 	else
@@ -2035,11 +2035,12 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", owner);
 	}
 
-	statuslog(MINLVLIMMORTAL, "Artifact: %s [%d] on %s fed [&+G%c%d&+Lh &+G%d&+Lm &+G%d&+Ls&n]",
+	statuslog(MINLVLIMMORTAL,
+		  "Artifact: %s [%d] on %s fed [&+G%c%lld&+Lh &+G%lld&+Lm &+G%lld&+Ls&n]",
 		  arti->short_description, OBJ_VNUM(arti), GET_NAME(owner), negFeed ? '-' : ' ',
-		  feed_seconds / 3600, (feed_seconds / 60) % 60, feed_seconds % 60);
+		  magnitude / 3600, (magnitude / 60) % 60, magnitude % 60);
 
-	artifact_update_sql(arti, 'Y', artidata.timer + feed_seconds);
+	artifact_update_sql(arti, 'Y', target);
 }
 
 // Lets go of an artifact owner loaded off the loop (player_load_offline()): its items leave

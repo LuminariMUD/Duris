@@ -106,6 +106,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Wextra",
             "-Wpedantic",
             "-Werror",
+            "-fsanitize=undefined",
+            "-fno-sanitize-recover=all",
             "-D__NO_MYSQL__",
             "-ffunction-sections",
             "-fdata-sections",
