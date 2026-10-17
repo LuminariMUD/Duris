@@ -41,6 +41,7 @@ static uint64_t expected_procedure_uid=0;
 static bool drop_swap_artifact_flag=false, renew_swap_source=false;
 static int swap_placement_fault=0;
 static size_t removed_wear_links=0;
+static std::map<uint64_t,size_t> removed_wear_links_by_uid;
 static std::vector<uint64_t> removed_floor_uids;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
@@ -195,7 +196,7 @@ int writeCharacter(P_char owner,int,int) {
  if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
  return offline_save_allowed ? 1 : 0;
 }
-void clear_links(P_char,P_obj,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; }
+void clear_links(P_char,P_obj object,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; ++removed_wear_links_by_uid[object->obj_uid]; }
 void writeCorpse(P_obj) { ++corpse_saves; }
 void do_shout(P_char,char *,int) {}
 void free_char(P_char owner) {
@@ -215,6 +216,7 @@ void balance_affects(P_char) {}
 // RECOVERY_CASES
 // MAINTENANCE_CASES
 // SWAP_CASES
+// CORPSE_BIND_CASES
 // MONOLITH_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
@@ -365,6 +367,7 @@ int main() {
  maintenance_inspection_cases();
  swap_admission_cases();
  monolith_cases();
+ corpse_bind_cases();
  // Legacy reconstruction keeps the canonical UID and registers one live body.
  auto &legacy=artifact_rows[900];
  legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
@@ -1103,7 +1106,7 @@ void swap_admission_cases() {
    obj_to_char(bag,&owner); obj_to_obj(source,bag);
   }
   const auto releases=offline_released;
-  const auto links_before=removed_wear_links;
+  const auto links_before=removed_wear_links_by_uid[80001];
   const auto target_before_refusal=artifact_rows.at(902);
   command_output.clear();
   offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
@@ -1113,7 +1116,7 @@ void swap_admission_cases() {
          artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
          artifact_rows.at(902).canonical_item_uid==target_before_refusal.canonical_item_uid &&
          artifact_rows.at(902).identity_state==target_before_refusal.identity_state &&
-         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links==links_before);
+         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links_by_uid[80001]==links_before);
   assert(command_output.find("original retained")!=std::string::npos && command_output.find("swapped with")==std::string::npos);
  }
  // The unchanged durable source remains admissible when snapshot capture recovers.
@@ -1198,6 +1201,48 @@ void monolith_cases() {
  artifact_save_pulse(true); drain();
  assert(!object_list && !pool.objs_used);
  std::cout<<"actual monolith: canonical recipients, charge admission, equal feeds and one feedback: PASS\n";
+}
+""")
+source=source.replace("// CORPSE_BIND_CASES", extract_function("actobj.c", "struct coin_get_submission_options")+";\n"+r"""
+static bool item_get_rejected=false, item_get_ack_publication=false;
+static bool take_coins(P_char,P_obj,P_obj,int,const coin_get_submission_options &) { return false; }
+static void report_coin_get_rejection(P_char,P_obj) {}
+static bool do_get_finalize_container_item(P_char,P_obj,P_obj,int &total,bool &found,const char *) {
+ ++total; found=true; return true;
+}
+static void do_get_log_container_artifact_pickup(P_char,P_char,P_obj,P_obj) {}
+static void *corpse_bulk_get(P_char,uint64_t) { return nullptr; }
+void CharWait(P_char,int) {}
+"""+extract_function("actobj.c", "static void\ndo_get_finalize_container_success(")+r"""
+void corpse_bind_cases() {
+ artifact_rows.clear(); artifact_binds.clear(); writes.clear(); captures.clear();
+ artifact_rows[900].identity_state=artifact_identity_state::absent;
+ artifact_rows.at(900).population_reason=artifact_population_reason::complete;
+ char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=77;
+ owner.player.name=const_cast<char *>("Looter"); owner.player.level=51;
+ owner.player.racewar=1; owner.specials.act=PLR_MORTAL; owner.in_room=0;
+ auto *canonical=read_object_for_creation(900,VIRTUAL); assert(canonical); obj_to_char(canonical,&owner);
+ auto *alias=read_object(0,REAL); assert(alias); obj_to_char(alias,&owner);
+ artifact_save_pulse(true); drain(); writes.clear(); captures.clear();
+ auto &row=artifact_rows.at(900); row.timer=time(nullptr)+60;
+ artifact_binds[900]={88,123};
+ obj_data corpse={}; corpse.type=ITEM_CORPSE; corpse.value[5]=2;
+ int total=0; bool found=false;
+ const auto timer=row.timer;
+ do_get_finalize_container_success(&owner,&owner,&corpse,alias,total,found,true,"fixture");
+ assert(total==1 && found && artifact_binds.at(900).owner_pid==88 &&
+        artifact_binds.at(900).timer==123 && row.timer==timer && writes.empty());
+ corpse.value[5]=owner.player.racewar;
+ do_get_finalize_container_success(&owner,&owner,&corpse,canonical,total,found,true,"fixture");
+ assert(artifact_binds.at(900).owner_pid==88 && row.timer==timer && writes.empty());
+ corpse.value[5]=2;
+ do_get_finalize_container_success(&owner,&owner,&corpse,canonical,total,found,true,"fixture");
+ assert(total==3 && artifact_binds.at(900).owner_pid==-1 && artifact_binds.at(900).timer>=timer-60 &&
+        row.timer>timer && !writes.empty());
+ alias->obj_uid=0; extract_obj(alias,FALSE); extract_obj(canonical,TRUE);
+ artifact_save_pulse(true); drain();
+ assert(!object_list && !pool.objs_used);
+ std::cout<<"actual corpse-loot binding preserves noncanonical souls and canonical controls: PASS\n";
 }
 """)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:

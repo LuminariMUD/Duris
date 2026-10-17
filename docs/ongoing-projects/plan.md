@@ -1,5 +1,20 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — canonical corpse-loot binding (#163)
+
+Outcome: an alias looted across racewar lines cannot reset the canonical artifact's
+soul. Guard the existing direct binding/feed block with the same canonical-identity
+decision used by the feed path. Files: `actobj.c`, existing admission fixture, plan.
+The regression executes the actual container-get success function and real artifact
+service; the alias corrupts the soul before repair. Canonical cross-racewar and
+same-racewar controls remain required. No replacement helper or new policy layer.
+All earlier review repairs are carried through #162 locally; its full swap fixture
+now counts source wear links by UID so cleanup of a discarded replacement does not
+masquerade as damage to the retained original. Full native admission/corpse
+controls, bulk-get runtime/limits, native build and format/tidy pass
+(`bin/analysis/pr163-corpse-*.log`).
+
+
 ## Current review checkpoint: final dependent branches
 
 Active branch: `branch/issue-67-delivery` (#163), in
