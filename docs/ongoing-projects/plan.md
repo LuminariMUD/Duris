@@ -23,8 +23,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current swap-placement work: `branch/issue-67-swap-placement-rollback`, based
-on #161. Outcome: confirm that the real admitted replacement reached the source's
+Current swap-placement checkpoint: [PR #162](https://github.com/LuminariMUD/Duris/pull/162),
+ready for review, `branch/issue-67-swap-placement-rollback`, based on #161. Outcome: confirm that the real admitted replacement reached the source's
 physical location before retiring the source. Failed, redirected or destructive
 placement leaves the original UID/body/contents/timer/binding intact and restores
 the prior replacement reservation. Keep carried/worn/nested/NPC/corpse paths.
@@ -39,7 +39,8 @@ The next durable commit still must span all affected owner payloads and metadata
 player/corpse dual captures and writeCharacter locker hooks preclude merely moving
 one save before extraction and pretending that provides failure atomicity.
 
-Swap-placement checkpoint (2026-10-17, publication pending):
+Swap-placement checkpoint (2026-10-17, PR #162):
+Implementation commit: `aeaf0006d73ee4945ec2e017467c2dec487eb370`.
 - The native before probe reproduced a worn source being destroyed when the void
   placement endpoint refused: `bin/analysis/issue67/swap-placement-before.log`.
 - Reuse `artifact_restore_scope` around real construction and placement. Keep the
@@ -78,6 +79,8 @@ Swap-placement checkpoint (2026-10-17, publication pending):
   accepting one independent job then refusing another cannot be called rollback.
   The full durable transition must keep the original recoverable until all required
   dispositions are admitted together, then qualify crash, retry and stale-ack cases.
+  Final diff reviewed, committed/pushed as open non-draft PR #162 based on #161
+  and attached to this chat. No merge, tag, deployment or production operation.
 
 Current swap-admission checkpoint: [PR #161](https://github.com/LuminariMUD/Duris/pull/161),
 ready for review, `branch/issue-67-canonical-swap-admission`, based on #160. Outcome: select only the established canonical source pointer/UID, carry
