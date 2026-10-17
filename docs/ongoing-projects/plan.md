@@ -1,6 +1,19 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
 ## Review repair — canonical corpse-loot binding (#163)
+## Review checkpoint — #162 integrated, 2026-10-17
+
+#161 now owns placement and offline-snapshot refusal rollback. This dependent
+chunk preserves pending item actions during temporary unequip, with ordinary
+unequip and successful replacement cancellation controls. Parent fixes through
+#160 and #161 `58ee0e022` are integrated. The actual swap fixture, item-action
+runtime suite and native build pass (`bin/analysis/pr162-hour-*.log`). Source
+wear-link assertions now distinguish the retained source UID from the discarded
+replacement. Remaining work: #163 corpse binding review repair and propagation
+through #164/#165/#167, followed by final integration and review inventory.
+
+
+## Current review checkpoint: #162 pending swap actions
 
 Outcome: an alias looted across racewar lines cannot reset the canonical artifact's
 soul. Guard the existing direct binding/feed block with the same canonical-identity
