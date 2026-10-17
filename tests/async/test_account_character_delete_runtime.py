@@ -46,6 +46,7 @@ bodies = '\n'.join([
     '#ifndef __NO_MYSQL__\n' + function(guild, 'std::vector<std::string> Guild::statements_without_member(') + '\n#endif',
     function(guild, 'void Guild::forget_deleted_member('),
     function(account, 'void remove_char_from_list('),
+    '#ifdef __NO_MYSQL__\n' + function(account, 'class account_deletion_drain_guard') + ';\n#endif',
     deletion,
     function(account, 'uint64_t wait_for_writer(P_desc d)'),
     function(account, 'P_desc writer_replied(uint64_t id)'),
@@ -137,9 +138,27 @@ void logit(int kind, const char*,...) { if(kind==LOG_PLAYER) { assert(!durable_a
 void statuslog(int, const char *fmt,...) { if(strstr(fmt,"deleted")) { assert(!durable_active); ++audits; } }
 void persistence_alert(int,const char*,const char*,const char*,const char*,const char*,const char*,...) {}
 #ifdef __NO_MYSQL__
+static bool artifact_drain_ready = true;
+static size_t artifact_drain_calls = 0;
+bool artifact_save_drain(uint64_t) { ++artifact_drain_calls; return artifact_drain_ready; }
+void maintenance_scheduler_quiesce() {}
+void maintenance_scheduler_resume() {}
+void critical_command_coordinator_quiesce() {}
+void critical_command_coordinator_resume() {}
+void critical_outbox_quiesce() {}
+void critical_outbox_resume() {}
+void player_save_pipeline_quiesce() {}
+void player_save_pipeline_resume() {}
+bool maintenance_scheduler_drain(uint64_t) { return true; }
+bool critical_command_coordinator_drain(uint64_t) { return true; }
+bool critical_outbox_drain(uint64_t) { return true; }
+bool persistence_flush_all_character_saves() { return true; }
+bool player_save_pipeline_drain(uint64_t) { return true; }
+bool locker_async_drain(uint64_t) { return true; }
 const char *persistence_mode_flatfile_root() { return "fixture"; }
 enum class flatfile_character_delete_result { ok, already_deleted, io_error };
 flatfile_character_delete_result flatfile_character_delete(const std::string&, int, const std::string&, std::string*) {
+    assert(artifact_drain_ready && artifact_drain_calls);
     ++backend_calls;
     if (fail_stage) return flatfile_character_delete_result::io_error;
     durable_active=false; return flatfile_character_delete_result::ok;
@@ -287,6 +306,14 @@ int main() {
         dispose(a);
     }
 #else
+    // Both actual flat deletion entry points must refuse while the artifact fence is held.
+    artifact_drain_ready=false;
+    { account_deletion_drain_guard guard; assert(!guard.drain()); }
+    reset(a,d); input(&d,"1"); input(&d,"yes"); released(d); kept(a);
+    assert(!backend_calls && artifact_drain_calls >= 2);
+    artifact_drain_ready=true;
+    { account_deletion_drain_guard guard; assert(guard.drain()); }
+    input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
     reset(a,d); fail_stage=1; input(&d,"1"); input(&d,"yes"); released(d); kept(a);
     fail_stage=0; input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
 #endif
