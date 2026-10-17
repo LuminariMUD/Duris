@@ -1,5 +1,19 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — atomic recovery-claim isolation (#147)
+
+Outcome: consuming the restored image cannot unlink a replacement at the public
+`.recovering` path. Move the claim atomically into a mode-0700 `.consuming`
+directory before verification/deletion; return a changed image without replacing
+another claim. A retained consuming directory blocks new boot/read/publication,
+including after interruption. Files: existing copyover service, actual save/exec/
+recover fixture, plan. No new recovery payload format or background cleanup.
+The regression injects replacement at the real syscall boundary. Existing normal,
+changed-image, independent-publication and late-claim cases pass, as do pinned
+evidence, save guards and the native build (`bin/analysis/pr147-consume-*.log`).
+A consuming-directory control verifies interrupted consumption blocks evidence reads.
+
+
 ## Later review checkpoint — SQL evidence contracts (#143)
 
 The latest review refresh adds 11 threads (64 total known findings). Earlier
