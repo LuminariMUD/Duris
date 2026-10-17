@@ -8,27 +8,26 @@ and all three threads are resolved. #151 carry-forward `bbea4f9f6` is published;
 offline cleanup, lifecycle tests and native build pass. Its test now links the
 existing shared lifecycle stubs. #152 and later have not received these repairs.
 
-The scan added three findings on #147, two on #148 and one on #149. Active work
-returns to #147 (`branch/issue-67-copyover-evidence`) in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`:
-- Route failed native recovery to the existing graceful shutdown, avoiding exit
-  while worker threads are joinable.
-- Recheck the recovery-claim name immediately after publication and before any
-  socket mutation/exec. On conflict, keep the live process and both evidence files.
-- Mark embedded native owner revisions present, backporting the already tested
-  #149 integration; this also addresses #148's duplicate flag finding once carried.
-Outcome/files/proof: existing comm startup and copyover publication paths, native
-projection reader and existing failure/custody/evidence harnesses; no new locking
-service or format. Actual startup-branch and late-claim regressions fail before
-repair; post-fix startup/thread-join, late-claim save/exec refusal, normal copyover
-custody, projection/format evidence, native build and tidy pass. Evidence:
-`bin/analysis/pr147-shutdown-*`, `pr147-claim-*`, `pr147-revision-after.log`,
-`pr147-followup-*`. Publication is next.
+#147's three additional findings are fixed in `d41067fba`, pushed and resolved.
+Active work is #148 (`branch/issue-67-population-classification`) in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`; that parent repair is
+merged locally. Twenty-seven findings are resolved, fourteen remain in inventory.
 
-Next: finish/publish these #147 repairs, carry to #148 and fix its foreign-vnum
-canonical-release finding, then fix #149's native NPC completeness finding.
-Carry through #150/#151, then #152/#153 and resume #154, #155, #156, #157, #162.
-The full latest inventory is `bin/analysis/review-refresh-after-150.json`.
+#148 outcome: a canonical UID observed under a foreign current vnum must not be
+released as absent. Reuse the classifier's existing conflicting-UID set to reserve
+its prior identity; no duplicate candidate index or new map is needed. Files:
+classifier, existing native harness, this plan. Proof: current and retired prior
+identities with artifact and ordinary foreign payloads, unchanged valid controls,
+copyover revision-presence evidence from #147, native build and formatting/tidy.
+The foreign-vnum regression fails before repair (`pr148-foreign-vnum-before.log`).
+The inherited native-custody flag repair also addresses #148's second new thread.
+Classifier and copyover evidence (ASan/UBSan), SQL snapshot capture, native build,
+formatting and tidy pass; publication is next. Logs: `bin/analysis/pr148-foreign-vnum-*`
+and `pr148-copyover-presence.log`.
+
+Next: publish #148, fix #149's native NPC completeness finding, carry through
+#150/#151, then #152/#153 and resume #154, #155, #156, #157, #162. The full latest
+inventory is `bin/analysis/review-refresh-after-150.json`.
 
 ## Additional #141 review: saved-room source keys
 
