@@ -217,6 +217,13 @@ void update_ingame_racewar(int) { abort(); }
 int writeCharacter(P_char, int, int) { abort(); }
 void close_socket(P_desc) { abort(); }
 void free_char(P_char) { abort(); }
+// These are only used by the player branch of do_purge(), not ship purges.
+P_obj unequip_char(P_char, int, bool) { abort(); }
+void obj_from_char(P_obj) { abort(); }
+void sql_log_player_login(P_char, const char *) { abort(); }
+void redis_player_offline(P_char) { abort(); }
+bool persistence_save_character_terminal(P_char, int) { abort(); }
+void extract_char_after_terminal_save(P_char) { abort(); }
 int checked_snprintf_at(const char *, int, char *, size_t, const char *, ...) { abort(); }
 void *_mm_get(mm_ds *, const char *, int) { abort(); }
 void ensure_pconly_pool() { abort(); }
