@@ -44,6 +44,10 @@ for signature in (
 ):
     support = remove_function(support, signature)
 
+support = support.replace("bool fallback_fixture = false;", "bool fallback_fixture = false;\nbool restoring_npc_items = false;")
+support = support.replace("return vnum == 2000 ? 0 : -1;", "return vnum == 2000 || vnum == 1255 ? 0 : -1;")
+support = support.replace("void obj_to_room(P_obj object, int room)\n{", "void obj_to_room(P_obj object, int room)\n{\n    assert(!(restoring_npc_items && object->obj_uid>=910 && object->obj_uid<=914));")
+
 HARNESS = r'''
 P_obj read_object_for_creation(int, int) { std::abort(); }
 
@@ -141,15 +145,15 @@ P_char read_mobile(int number, int mode) {
 int setup_pet(P_char, P_char, int, int) { std::abort(); }
 void add_follower(P_char, P_char) { std::abort(); }
 affected_type *affect_to_char(P_char, affected_type *) { std::abort(); }
-char affect_total(P_char, int) { std::abort(); }
+char affect_total(P_char mob, int) { GET_MAX_HIT(mob)=5; GET_MAX_MANA(mob)=6; GET_MAX_VITALITY(mob)=7; return 0; }
 void equip_char(P_char mob, P_obj object, int slot, int) {
  mob->equipment[slot]=object; object->loc_p=LOC_WORN; object->loc.wearing=mob;
+ GET_MAX_HIT(mob)=5; GET_MAX_MANA(mob)=6; GET_MAX_VITALITY(mob)=7;
 }
 void obj_to_char(P_obj object, P_char mob) {
  object->loc_p=LOC_CARRIED; object->loc.carrying=mob; object->next_content=mob->carrying; mob->carrying=object;
 }
 void obj_to_char_at_end(P_obj object,P_char mob) { obj_to_char(object,mob); }
-void obj_from_room(P_obj object) { object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; }
 P_obj find_live_object(P_obj expected,uint64_t uid) {
  for(P_obj object=object_list;object;object=object->next) if(object==expected && object->obj_uid==uid) return object;
  return nullptr;
@@ -195,7 +199,7 @@ extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
     copyover_header header = {};
     assert(std::fread(&header, sizeof(header), 1, file) == 1);
     const bool npc=!strcmp(getenv("COPYOVER_TEST_CASE"),"npc");
-    assert(header.version == COPYOVER_VERSION && header.num_objects == (npc ? 4 : 1));
+    assert(header.version == COPYOVER_VERSION && header.num_objects == (npc ? 5 : 1));
     assert(!header.num_descriptors && header.num_mobs==(npc ? 1 : 0));
     std::fclose(file);
     char executable[] = "/proc/self/exe", phase[] = "recover";
@@ -221,7 +225,7 @@ item_ownership_runtime_entry custody(uint64_t uid)
 int main(int argc, char **argv)
 {
     rooms[0].number = 100; rooms[1].number = 200;
-    object_indexes[0].virtual_number = 1000; mob_indexes[0].virtual_number=2000;
+    object_indexes[0].virtual_number = 1000; mob_indexes[0].virtual_number=!strcmp(getenv("COPYOVER_TEST_CASE"),"npc") ? 1255 : 2000;
     if (argc == 1) {
         P_obj corpse = read_object(1000, VIRTUAL);
         P_obj bag = read_object(1000, VIRTUAL);
@@ -252,6 +256,15 @@ int main(int argc, char **argv)
             auto *bag=read_object(1000,VIRTUAL); bag->obj_uid=912; bag->type=ITEM_CONTAINER; obj_to_char(bag,mob);
             auto *nested=read_object(1000,VIRTUAL); nested->obj_uid=913; nested->extra_flags=ITEM_ARTIFACT;
             nested->value[2]=75; obj_to_obj(nested,bag);
+            auto *money=read_object(1000,VIRTUAL); money->obj_uid=914; money->type=ITEM_MONEY; money->value[3]=9; obj_to_char(money,mob);
+            mob->player.name=str_dup("generated fixture"); mob->player.short_descr=str_dup("a generated fixture");
+            mob->player.long_descr=str_dup("A generated fixture stands here.");
+            mob->only.npc->str_mask=STRUNG_KEYS|STRUNG_DESC1|STRUNG_DESC2;
+            mob->player.level=61; mob->player.race=1; mob->player.sex=1; mob->player.size=2; mob->player.m_class=4;
+            for(size_t index=0;index<10;++index) mob->base_stats[index]=90;
+            mob->points.base_hit=300; mob->points.base_mana=200; mob->points.base_vitality=100;
+            GET_MAX_HIT(mob)=333; GET_HIT(mob)=222; GET_MAX_MANA(mob)=211; GET_MANA(mob)=111;
+            GET_MAX_VITALITY(mob)=123; GET_VITALITY(mob)=99;
         }
         if (!strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") || !strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race")) {
             assert(!copyover_save(-1,-1,-1));
@@ -268,6 +281,7 @@ int main(int argc, char **argv)
         assert(false && "copyover_save failed before process replacement");
     }
     assert(argc == 2 && !std::strcmp(argv[1], "recover"));
+    restoring_npc_items=true;
     assert(!object_list && item_ownership_runtime_size() == 0);
     // A newer in-memory custody revision must survive a rejected handoff;
     // all newly materialized objects must be rolled back atomically.
@@ -297,7 +311,7 @@ int main(int argc, char **argv)
     item_ownership_runtime_reset();
     assert(copyover_prepare_boot() == copyover_boot_result::ready);
     const auto *pinned = copyover_boot_evidence();
-    assert(pinned && pinned->objects.size() == (!strcmp(getenv("COPYOVER_TEST_CASE"),"npc") ? 4 : 1) && pinned->header.version == COPYOVER_VERSION);
+    assert(pinned && pinned->objects.size() == (!strcmp(getenv("COPYOVER_TEST_CASE"),"npc") ? 5 : 1) && pinned->header.version == COPYOVER_VERSION);
     const std::string claimed = std::string(COPYOVER_FILE) + ".recovering";
     const std::string interrupted = claimed + ".consuming";
     assert(!mkdir(interrupted.c_str(),0700));
@@ -359,15 +373,19 @@ int main(int argc, char **argv)
         assert(character_list==&npc_holder && npc_holder.in_room==1 && npc_holder.equipment[3] && npc_holder.equipment[3]->obj_uid==911);
         assert(npc_holder.equipment[3]->extra_flags & ITEM_ARTIFACT);
         assert(npc_holder.equipment[3]->value[1]==74);
-        bool carried=false,nested=false;
+        assert(GET_MAX_HIT(&npc_holder)==333 && GET_HIT(&npc_holder)==222 && GET_MAX_MANA(&npc_holder)==211 && GET_MANA(&npc_holder)==111 && GET_MAX_VITALITY(&npc_holder)==123 && GET_VITALITY(&npc_holder)==99);
+        bool carried=false,nested=false,money=false;
         for(auto *root=npc_holder.carrying;root;root=root->next_content) {
+            if(root->obj_uid==914) { money=true; assert(root->type==ITEM_MONEY && root->value[3]==9); }
             if(root->obj_uid==910) { carried=true; assert((root->extra_flags & ITEM_ARTIFACT) && root->value[0]==73); }
             if(root->obj_uid==912) { nested=true; assert(root->contains && root->contains->obj_uid==913 &&
                 (root->contains->extra_flags & ITEM_ARTIFACT) && root->contains->value[2]==75); }
         }
-        assert(carried && nested);
+        assert(carried && nested && money);
         extract_obj(npc_holder.equipment[3],FALSE); npc_holder.equipment[3]=nullptr;
         while(npc_holder.carrying) { auto *root=npc_holder.carrying; npc_holder.carrying=root->next_content; extract_obj(root,FALSE); }
+        str_free(npc_holder.player.name); str_free(npc_holder.player.short_descr); str_free(npc_holder.player.long_descr);
+        npc_holder.player.name=npc_holder.player.short_descr=npc_holder.player.long_descr=nullptr;
         character_list=nullptr;
     }
     extract_obj(corpse, FALSE);

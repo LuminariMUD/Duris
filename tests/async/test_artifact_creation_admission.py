@@ -528,7 +528,7 @@ struct recovery_plan {
  std::vector<planned_object> objects;
  world_recovery_header header={};
 };
-bool fail_materialization=false,materializing=false,native_fixture=false,native_existing_fixture=false;
+bool fail_materialization=false,materializing=false,native_fixture=false,native_existing_fixture=false,native_existing_late_fail=false;
 planned_object native_existing_plan;
 bool world_recovery_read_copyover_object_record(const char *,size_t,world_recovery_copyover_tree *tree) {
  *tree={}; if(native_existing_fixture) { tree->items=native_existing_plan.items; tree->record={2300,static_cast<uint32_t>(tree->items.size())}; }
@@ -548,7 +548,7 @@ bool world_recovery_decode_record(world_recovery_record_type,const unsigned char
 bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authority_item *,size_t,item_ownership_runtime_entry *,size_t) { return true; }
 void redis_floor_runtime_set_materializing(bool active) { materializing=active; }
 bool materialize_plan(const recovery_plan &,const std::vector<item_ownership_runtime_entry> &) {
- if(native_existing_fixture) return materialize_object(native_existing_plan)!=nullptr;
+ if(native_existing_fixture) return materialize_object(native_existing_plan)!=nullptr && !native_existing_late_fail;
  last_materialized=read_object_for_creation(902,VIRTUAL); assert(last_materialized);
  last_materialized->loc_p=LOC_ROOM; last_materialized->loc.room=0; artifact_object_placed(last_materialized);
  artifact_update_sql(902,true,ARTIFACT_ON_PC,88,9876,ARTIFACT_MAJOR); artifact_bind_store(902,88,123);
@@ -587,7 +587,11 @@ void native_existing_recovery_cases() {
  assert(!artifact_rows.at(900).live_object && artifact_rows.at(900).pending==artifact_pending::none &&
         artifact_rows.at(900).timer==5678 && artifact_binds.at(900).owner_pid==77 && object_list && pool.objs_used==3 && writes.empty());
  artifact_rows.at(902).canonical_item_uid=second->obj_uid;
- assert(world_recovery_restore_copyover_object_from_buffer("fixture",7,44)==bag);
+ native_existing_late_fail=true;
+ assert(!world_recovery_restore_copyover_object_from_buffer("fixture",7,44,true));
+ assert(OBJ_ROOM(bag) && bag->loc.room==0 && !artifact_rows.at(900).live_object && !artifact_rows.at(902).live_object);
+ native_existing_late_fail=false;
+ assert(world_recovery_restore_copyover_object_from_buffer("fixture",7,44,true)==bag && OBJ_NOWHERE(bag));
  assert(artifact_is_canonical(first) && artifact_is_canonical(second) && artifact_rows.at(900).timer==5678 && writes.empty());
  native_fixture=native_existing_fixture=false;
  extract_obj(bag,FALSE); assert(!object_list && !pool.objs_used);

@@ -204,6 +204,7 @@ int copyover_write_zone_age_to_buffer(int zone_rnum, char *buf, size_t max_len);
 
 // buffer-based restore helpers
 P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *bytes_read);
-P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read);
+P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read,
+				       bool detached = false);
 
 #endif /* _COPYOVER_H_ */

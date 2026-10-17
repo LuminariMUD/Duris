@@ -15,6 +15,21 @@ All nine owner-domain native controls pass, including saved UID before procedure
 source mismatch refusal and live-alias isolation. Actual shop/corpse graph
 materializers, SQL snapshots, flat artifact suites and both native builds pass
 (`bin/analysis/owned-admission-*.log`). Final integration follows the NPC boundary repair.
+## Active follow-up — native NPC restoration boundaries (#173)
+
+Branch `branch/issue-67-npc-restore-boundaries`, based on #176. New review found
+three integration boundaries: v17 shop stock must not replay both durable and
+native bodies; NPC item roots must remain detached instead of entering floor
+placement; generated resources must be restored after equipment recalculation.
+Reuse the existing tree materializer with an explicit detached destination and
+existing keeper-selection/version boundary. Keep old file/Redis selection rules.
+Proof requires actual NPC staging, generated resource/equipment controls, SQL and
+flat shop boot selection, existing copyover fixtures and backend builds/journeys.
+These pass: generated equipment/resource recalculation, detached NPC artifact/money
+roots with zero floor-placement calls, old/new SQL/flat keeper-selection matrix,
+existing-tree late-failure placement rollback, both builds, flat repeated generated
+NPC copyover and the full-world SQL NPC artifact/copyover/restart/swap journey.
+Evidence: `bin/analysis/npc-boundaries-*.log`.
 
 
 ## Active review repair — recovery qualification and rollback

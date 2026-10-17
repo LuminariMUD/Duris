@@ -967,7 +967,7 @@ static int write_obj_entry(FILE *fp, P_obj obj, std::vector<char> &buffer)
 	       fwrite(buffer.data(), record_size, 1, fp) == 1;
 }
 
-static P_obj read_obj_entry(FILE *fp)
+static P_obj read_obj_entry(FILE *fp, std::unordered_map<uint64_t, P_obj> *npc_roots = nullptr)
 {
 	uint32_t record_size = 0;
 	if (fread(&record_size, sizeof(record_size), 1, fp) != 1 ||
@@ -985,15 +985,21 @@ static P_obj read_obj_entry(FILE *fp)
 		      record_size);
 		return nullptr;
 	}
+	uint64_t root_uid = 0;
+	if (buffer.size() >=
+	    sizeof(world_recovery_object_record) + sizeof(world_recovery_item_snapshot))
+		memcpy(&root_uid, buffer.data() + sizeof(world_recovery_object_record),
+		       sizeof(root_uid));
+	const bool detached = npc_roots && npc_roots->count(root_uid);
 	size_t consumed = 0;
-	P_obj object = copyover_restore_obj_from_buffer(buffer.data(), buffer.size(), &consumed);
+	P_obj object =
+		copyover_restore_obj_from_buffer(buffer.data(), buffer.size(), &consumed, detached);
+	if (object && detached)
+		npc_roots->at(root_uid) = object;
 	if (!object || consumed != buffer.size())
 	{
 		world_recovery_object_record record = {};
 		memcpy(&record, buffer.data(), sizeof(record));
-		uint64_t root_uid = 0;
-		if (buffer.size() >= sizeof(record) + sizeof(world_recovery_item_snapshot))
-			memcpy(&root_uid, buffer.data() + sizeof(record), sizeof(root_uid));
 		logit(LOG_STATUS,
 		      "copyover_recover: ground object validation/materialization failed room=%d root_uid=%llu items=%u bytes=%u",
 		      record.room_vnum, (unsigned long long)root_uid, record.item_count,
@@ -2019,7 +2025,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 			}
 		}
 
-		if (!generated.empty())
+		if (!generated.empty() && header.version < 17)
 		{
 			affect_total(mob, FALSE);
 			GET_MAX_HIT(mob) = mob_entry.max_hit;
@@ -2044,19 +2050,24 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 			npc_items.emplace_back(mob, std::move(decoded));
 	}
 
+	for (const auto &[mob, saved] : npc_items)
+	{
+		(void)mob;
+		for (const auto uid : saved.equipment_uids)
+			if (uid)
+				npc_roots.emplace(uid, nullptr);
+		for (const auto &item : saved.inventory)
+			npc_roots.emplace(item.obj_uid, nullptr);
+	}
 	// Version 12 stores bounded trees and their live custody handoff.
 	for (i = 0; i < header.num_objects; ++i)
-		if (!read_obj_entry(fp))
+		if (!read_obj_entry(fp, &npc_roots))
 		{
 			logit(LOG_STATUS,
 			      "copyover_recover: failed ground object record %d/%d; aborting copyover",
 			      i + 1, header.num_objects);
 			goto copyover_recover_fail;
 		}
-
-	for (P_obj object = object_list; object; object = object->next)
-		if (OBJ_ROOM(object))
-			npc_roots.emplace(object->obj_uid, object);
 
 	for (const auto &[mob, saved] : npc_items)
 	{
@@ -2066,7 +2077,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 			P_obj object = found == npc_roots.end() ? nullptr : found->second;
 			// The pinned reader already matched this root to the saved NPC room.
 			// char_to_room may legitimately relocate the restored NPC.
-			if (!object || OBJ_VNUM(object) != vnum || !OBJ_ROOM(object))
+			if (!object || OBJ_VNUM(object) != vnum || !OBJ_NOWHERE(object))
 			{
 				logit(LOG_STATUS,
 				      "copyover_recover: NPC item source mismatch uid=%llu vnum=%d npc=%d expected_room=%d actual_room=%d",
@@ -2074,7 +2085,6 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				      object && OBJ_ROOM(object) ? object->loc.room : -1);
 				return false;
 			}
-			obj_from_room(object);
 			if (slot >= 0)
 				equip_char(mob, object, slot, 9);
 			else
@@ -2097,6 +2107,16 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		for (const auto &item : saved.inventory)
 			if (!attach(item.obj_uid, item.vnum, -1))
 				goto copyover_recover_fail;
+		if (!saved.generated.empty())
+		{
+			affect_total(mob, FALSE);
+			GET_MAX_HIT(mob) = saved.mob.max_hit;
+			GET_HIT(mob) = saved.mob.hit;
+			GET_MAX_MANA(mob) = saved.mob.max_mana;
+			GET_MANA(mob) = saved.mob.mana;
+			GET_MAX_VITALITY(mob) = saved.mob.max_vitality;
+			GET_VITALITY(mob) = saved.mob.vitality;
+		}
 	}
 
 	// restore door states
@@ -2590,14 +2610,15 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 	return mob;
 }
 
-P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read)
+P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read,
+				       bool detached)
 {
 	if (!bytes_read)
 		return nullptr;
 	*bytes_read = 0;
 	const auto *source = copyover_boot_evidence();
 	P_obj object = world_recovery_restore_copyover_object_from_buffer(
-		buf, len, source ? static_cast<uint64_t>(source->identity.st_ino) : 0);
+		buf, len, source ? static_cast<uint64_t>(source->identity.st_ino) : 0, detached);
 	if (object)
 		*bytes_read = len;
 	return object;

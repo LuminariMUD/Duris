@@ -137,6 +137,8 @@ void obj_to_room(P_obj object, int room)
     object->loc.room = room;
 }
 
+void obj_from_room(P_obj object) { object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; }
+
 void extract_obj(P_obj object, int)
 {
     while (object->contains)

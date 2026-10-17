@@ -45,7 +45,10 @@ strict; see [World recovery format](../persistence/WORLD_RECOVERY_FORMAT.md).
 
 Shop inventory has different authorities in each recovery mode:
 
-- New SQL copyovers commit each live keeper's complete shop snapshot after
+- Version 17 native copyover restores each keeper and its exact UID-bearing stock
+  from the native image; SQL and flat catalog replay is skipped for that boot.
+  Cold boots and older native files retain the durable-store selection below.
+- SQL copyovers commit each live keeper's complete shop snapshot after
   persistence drains and before publishing the copyover file. Any save failure
   cancels the copyover while the server remains live. Startup retains these
   durable keepers, preserving custom item state omitted by basic NPC records.
@@ -54,8 +57,8 @@ Shop inventory has different authorities in each recovery mode:
 - Redis restores NPC location/state without inventory. Its reconciliation
   retains the keeper already restored from the durable shop store and removes
   recovered duplicates and their regenerated template stock.
-- Flat-file trade records remain authoritative in both modes, including item
-  custody and shop revisions.
+- Flat-file trade records remain authoritative for item custody and shop revisions.
+  Version 17 restores their live bodies once, from the drained native image.
 - Without a durable incumbent, reconciliation selects the recovered keeper
   with the most stock/equipment, breaking ties by instance ID. File-recovered
   duplicates contribute their non-produced stock and equipment to the survivor.
