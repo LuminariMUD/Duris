@@ -11189,10 +11189,13 @@ group, say, shout, listen
 #0
 
 Guard
-Guard - Last Edited: 2007-04-19 19:17:12 by Unknown
-===================================================
+Guard - Last Edited: 2026-10-17 21:00:00 by duris
+=================================================
 Syntax:         guard <name> or guard off
 When guarding a person, you have a chance to jump in front of them to protect them from being attacked, or when a spell is casted at them. You must be standing in order to successfully guard.
+Most characters can guard one person at a time. Guardians, Cavaliers and
+Demonic Riders can guard two people at once; guarding a third person drops
+one of the others.
 ==See also==
 Rescue, guardian
 The following help topics also matched your search:
@@ -11204,14 +11207,15 @@ The following help topics also matched your search:
 #0
 
 Guardian
-Guardian - Last Edited: 2014-07-30 22:00:14 by lohrr
+Guardian - Last Edited: 2026-10-17 21:00:00 by duris
 ====================================================
 As their name suggests, the Guardian is a true savior to all. They are
 able to dive in and often rescue their entire group in the heat of battle.
 They can also use their shield as a weapon to cause extra damage by Shield
 Punching their opponent, then following up with extended riposte abilities.
-At level 51, they gain the ability to 'rescue <friend> all' to rescue their friend
-from all attackers at once.
+At level 46, they gain the ability to 'rescue <friend> all' to rescue their friend
+from all attackers at once, at the cost of 6 seconds before they can act again.
+Guardians can also guard two people at once.
 ==See also==
 * Warrior
 ==Allowed races==
@@ -19243,11 +19247,12 @@ The following help topics also matched your search:
 #0
 
 Rescueall
-Rescueall - Last Edited: 2007-04-19 19:17:14 by Unknown
-=======================================================
+Rescueall - Last Edited: 2026-10-17 21:00:00 by duris
+=====================================================
 Syntax:         rescue <playername> all
-Specialized Warriors possess the added ability to rescue someone from all
-mobs that are attacking it, rather than just one.
+Guardians of level 46 and above can rescue someone from all mobs that are
+attacking them at once, rather than just one. Rescuing all leaves you unable
+to act for 6 seconds; a normal rescue costs one combat round (4 seconds).
 	See also:guardian ,rescue
 #0
 

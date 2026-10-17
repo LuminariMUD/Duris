@@ -15,9 +15,10 @@
 #ifndef __GUARD_H__
 #define __GUARD_H__
 
-#define CAN_MULTI_GUARD(ch)                            \
-	(GET_SPEC(ch, CLASS_PALADIN, SPEC_CAVALIER) || \
-	 GET_SPEC(ch, CLASS_ANTIPALADIN, SPEC_DEMONIC))
+#define CAN_MULTI_GUARD(ch)                               \
+	(GET_SPEC(ch, CLASS_PALADIN, SPEC_CAVALIER) ||    \
+	 GET_SPEC(ch, CLASS_ANTIPALADIN, SPEC_DEMONIC) || \
+	 GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN))
 
 void do_guard(P_char ch, char *argument, int cmd);
 void guard_broken(struct char_link_data *cld);
