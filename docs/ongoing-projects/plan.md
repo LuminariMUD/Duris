@@ -1,5 +1,20 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active follow-up — flat shop metadata during native copyover (#177)
+
+Branch `branch/issue-67-copyover-shop-revisions`. Native v17 must skip duplicate
+keeper bodies while still validating/loading catalog revisions for flat buy/sell.
+Reuse the existing restore entrypoint with body restoration disabled: validate all
+shop bindings and duplicate IDs, then atomically replace runtime revisions without
+materializing/extracting NPCs or items. Cold and older-copyover behavior remains.
+Files: restore coordinator/repository, boot selection, focused shop tests, plan.
+Proof: actual catalog-to-revision-map loading, invalid-input preservation, zero
+body calls, and native/legacy SQL/flat selection. The actual catalog loader and
+real trade revision map pass together, preserving the prior map on invalid data.
+Trade runtime controls, version-selection controls and SQL/flat builds pass
+(`bin/analysis/shop-revision-*.log`).
+
+
 ## Active follow-up — complete auction operation validation (#175)
 
 Branch `branch/issue-67-auction-operation-evidence`. Outcome: provided operation

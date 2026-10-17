@@ -753,9 +753,11 @@ void boot_db(int mini_mode)
 		// catalog first would duplicate those bodies. Older file/Redis boots
 		// retain their existing durable-store selection.
 		const auto *native_items = copyover_boot ? copyover_boot_evidence() : nullptr;
-		if ((!native_items || native_items->header.version < 17) &&
-		    (!copyover_boot || copyover_has_durable_shopkeepers() ||
-		     persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY))
+		if (native_items && native_items->header.version >= 17)
+			restore_shopkeepers(
+				false); // Flat trades still need their catalog revisions.
+		else if (!copyover_boot || copyover_has_durable_shopkeepers() ||
+			 persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 			restore_shopkeepers();
 		remember_boot_shopkeepers();
 

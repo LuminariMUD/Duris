@@ -4029,13 +4029,14 @@ int writeShopKeeper(P_char ch, int shop_nr)
 	return 0;
 }
 
-void restore_shopkeepers(void)
+void restore_shopkeepers(bool restore_bodies)
 {
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 	{
 		std::string error;
 		const char *root = persistence_mode_flatfile_root();
-		const auto restored = flatfile_shopkeeper_restore_catalog(root ? root : "", &error);
+		const auto restored = flatfile_shopkeeper_restore_catalog(root ? root : "", &error,
+									  restore_bodies);
 		if (restored != flatfile_shopkeeper_restore_result::ok &&
 		    restored != flatfile_shopkeeper_restore_result::not_found)
 			fatal_boot_error("shopkeeper", "flat-file shopkeeper restore failed: %s",
@@ -4044,7 +4045,7 @@ void restore_shopkeepers(void)
 		return;
 	}
 #ifndef __NO_MYSQL__
-	if (!sql_restore_shopkeepers())
+	if (restore_bodies && !sql_restore_shopkeepers())
 		fatal_boot_error(
 			"shopkeeper",
 			"SQL shopkeeper restore incomplete; refusing to publish partial stock");

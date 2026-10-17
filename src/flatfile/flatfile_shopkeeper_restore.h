@@ -28,6 +28,7 @@ enum class flatfile_shopkeeper_restore_result
 };
 
 flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std::string &root,
-								       std::string *error);
+								       std::string *error,
+								       bool restore_bodies = true);
 
 #endif

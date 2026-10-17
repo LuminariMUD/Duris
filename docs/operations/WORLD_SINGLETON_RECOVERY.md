@@ -46,7 +46,9 @@ strict; see [World recovery format](../persistence/WORLD_RECOVERY_FORMAT.md).
 Shop inventory has different authorities in each recovery mode:
 
 - Version 17 native copyover restores each keeper and its exact UID-bearing stock
-  from the native image; SQL and flat catalog replay is skipped for that boot.
+  from the native image; durable keeper-body replay is skipped for that boot.
+  Flat catalog bindings and trade revisions are still validated and loaded before
+  the native bodies are restored, so buy/sell revision checks remain available.
   Cold boots and older native files retain the durable-store selection below.
 - SQL copyovers commit each live keeper's complete shop snapshot after
   persistence drains and before publishing the copyover file. Any save failure
