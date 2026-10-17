@@ -29,6 +29,12 @@ struct row
 	int owner = 42;
 };
 static std::map<int, row> rows;
+static std::map<int, P_obj> canonical_objects;
+bool artifact_is_canonical(P_obj object)
+{
+	const auto found = canonical_objects.find(OBJ_VNUM(object));
+	return object->obj_uid && found != canonical_objects.end() && found->second == object;
+}
 static std::vector<std::pair<int, row>> snapshots;
 static std::vector<std::pair<unsigned long, unsigned long>> guild_snapshots;
 static std::vector<critical_command> commands;
@@ -234,6 +240,10 @@ static int identity_contract(const std::string &scenario)
 	const bool duplicate = scenario == "duplicate" || scenario == "duplicate-reversed" ||
 			       scenario == "guild-only" || scenario == "same-uid";
 	const bool guild_only = scenario == "guild-only";
+	const bool canonical_copy = scenario == "canonical-copy" ||
+				    scenario == "canonical-copy-reversed" ||
+				    scenario == "canonical-alias-slot";
+	const bool rejected = scenario == "rejected-copy";
 	reset();
 	char_data actor = {}, member = {}, last = {};
 	pc_only_data pc = {}, pc2 = {}, pc3 = {};
@@ -268,10 +278,12 @@ static int identity_contract(const std::string &scenario)
 	}
 	actor.equipment[0] = &first;
 	actor.equipment[1] = guild_only ? nullptr : &unrelated;
-	if (duplicate)
+	if (duplicate || canonical_copy)
 		actor.equipment[2] = &copy;
-	if (scenario == "duplicate-reversed")
+	if (scenario == "duplicate-reversed" || scenario == "canonical-copy-reversed")
 		std::swap(actor.equipment[0], actor.equipment[2]);
+	if (scenario == "canonical-alias-slot")
+		actor.equipment[2] = &first;
 	if (scenario == "wrong-custody")
 		first.loc.wearing = &member;
 	if (scenario == "missing-uid")
@@ -280,16 +292,26 @@ static int identity_contract(const std::string &scenario)
 		copy.obj_uid = first.obj_uid;
 	rows[42001] = { NOW + 100, -1, 0, scenario == "cross-player" ? 43 : 42 };
 	rows[42002] = { NOW + 200 };
+	canonical_objects[42002] = &unrelated;
+	if (canonical_copy)
+		canonical_objects[42001] = &first;
+	if (rejected)
+		canonical_objects[42001] = &copy;
 	critical_operation_id parent = {};
 	assert(critical_operation_id_generate(&parent));
 	const bool submitted = artifact_guild_transaction_submit(&actor, parent, 4, EPIC_BOON);
-	const bool isolated = submitted && rows.at(42001).timer == NOW + 100 &&
+	const bool isolated = submitted &&
+			      rows.at(42001).timer == NOW + 100 + (canonical_copy ? 3600 : 0) &&
 			      rows.at(42002).timer == NOW + 200 + (guild_only ? 0 : 3600) &&
 			      guild->get_prestige() == 105 && guild->get_construction() == 1 &&
-			      snapshots.size() == (guild_only ? 0u : 1u) &&
+			      snapshots.size() == (guild_only	  ? 0u :
+						   canonical_copy ? 2u :
+								    1u) &&
 			      guild_snapshots.size() == 1 && commands.size() == 1;
 	assert(std::count(feedback.begin(), feedback.end(), SATISFACTION) == (guild_only ? 0 : 1));
-	assert(diagnostics.size() == (duplicate ? 2u : 1u));
+	assert(diagnostics.size() == (duplicate				 ? 2u :
+				      scenario == "canonical-alias-slot" ? 0u :
+									   1u));
 	for (const auto &detail : diagnostics)
 	{
 		assert(detail.find("artifact_reward/capture") != std::string::npos);
@@ -340,6 +362,7 @@ int main(int argc, char **argv)
 	artifact.loc.wearing = &ch;
 	indexes[0].virtual_number = 42001;
 	ch.equipment[0] = &artifact;
+	canonical_objects[42001] = &artifact;
 
 	reset();
 	rows[42001] = { NOW + 100 };
@@ -391,6 +414,7 @@ int main(int argc, char **argv)
 	another.obj_uid = 102;
 	indexes[1].virtual_number = 42002;
 	ch.equipment[1] = &another;
+	canonical_objects[42002] = &another;
 	rows[42001] = { NOW + 100 };
 	rows[42002] = { NOW + 200 };
 	award(&ch);
@@ -515,6 +539,7 @@ int main(int argc, char **argv)
 	second_artifact.loc.wearing = &second;
 	indexes[1].virtual_number = 42002;
 	second.equipment[0] = &second_artifact;
+	canonical_objects[42002] = &second_artifact;
 	rows[42001] = { NOW + 100 };
 	rows[42002] = { NOW + 200, -1, 0, 43 };
 	zone_touch_payload touch = {};

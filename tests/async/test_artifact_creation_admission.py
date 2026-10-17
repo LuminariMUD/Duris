@@ -202,6 +202,7 @@ void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_ret
 // RECOVERY_CASES
 // MAINTENANCE_CASES
 // SWAP_CASES
+// MONOLITH_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
@@ -244,6 +245,24 @@ int main() {
  artifact_save_pulse(true); drain();
  artifact_rows.at(900).timer=9999; artifact_binds[900]={55,666};
  auto *temporary=read_object(900,VIRTUAL); assert(temporary);
+ // Rejected physical copies cannot feed, bind, or emit positive feedback.
+ char_data feed_owner={}; pc_only_data feed_pc={}; feed_owner.only.pc=&feed_pc;
+ feed_pc.pid=55; feed_owner.player.level=51;
+ for(bool alias : {false,true}) {
+  if(alias) temporary->obj_uid=first->obj_uid;
+  temporary->loc_p=LOC_WORN; temporary->loc.wearing=&feed_owner;
+  const auto messages=command_output;
+  const auto unchanged=[&]() {
+   assert(artifact_rows.at(900).timer==9999 && artifact_binds.at(900).owner_pid==55 &&
+          artifact_binds.at(900).timer==666 && writes.empty() && command_output==messages &&
+          "rejected physical artifact changed canonical feed/bind state or feedback");
+  };
+  artifact_feed_sql(&feed_owner,temporary,60,false); unchanged();
+  artifact_feed_to_min_sql(temporary,1); unchanged();
+  artifact_switch_check(&feed_owner,temporary); unchanged();
+  artifact_update_sql(temporary,'Y',12345); unchanged();
+ }
+ temporary->loc_p=LOC_NOWHERE; temporary->loc.room=NOWHERE;
  assert(!remove_owned_artifact_sql(temporary) && writes.empty());
  const auto before=floors; temporary->obj_uid=first->obj_uid;
  extract_obj(temporary,TRUE);
@@ -332,6 +351,7 @@ int main() {
  offline_expiry_cases();
  maintenance_inspection_cases();
  swap_admission_cases();
+ monolith_cases();
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
@@ -987,6 +1007,63 @@ void swap_admission_cases() {
  extract_obj(replacement,TRUE); artifact_save_pulse(true); drain();
  assert(!object_list && !pool.objs_used && offline_callbacks.empty());
  std::cout<<"canonical swap admission and UID-pinned callbacks: PASS\n";
+}
+""")
+source=source.replace("// MONOLITH_CASES", r"""
+void artifact_monolith_update(P_obj) {}
+P_obj get_obj_in_list_vis(P_char,const char *,P_obj list,bool) { return list; }
+""" + extract_function("specs.object.c", "int artifact_monolith(P_obj monolith, P_char ch, int cmd, char *arg)") + r"""
+void monolith_cases() {
+ assert(!object_list && !pool.objs_used);
+ booting=true;
+ assert(artifacts_stage_population({},{{900,ITEM_ARTIFACT},{901,0},{902,ITEM_ARTIFACT}},true));
+ booting=false; artifact_save_pulse(true); drain();
+ char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=55;
+ owner.player.level=51; owner.in_room=0;
+ auto *first=read_object_for_creation(900,VIRTUAL);
+ auto *second=read_object_for_creation(902,VIRTUAL);
+ auto *copy=read_object(900,VIRTUAL); assert(first && second && copy);
+ equip_char(&owner,first,0,0); equip_char(&owner,second,1,0);
+ artifact_update_location_sql(first); artifact_update_location_sql(second);
+ const time_t initial=time(nullptr)+100;
+ artifact_rows.at(900).timer=initial; artifact_rows.at(902).timer=initial;
+ artifact_save_pulse(true); drain();
+ copy->loc_p=LOC_WORN; copy->loc.wearing=&owner;
+ obj_data monolith={}; monolith.R_num=3; monolith.loc_p=LOC_ROOM; monolith.loc.room=0;
+ monolith.value[0]=5; monolith.value[1]=CMD_SCRATCH; rooms[0].contents=&monolith;
+ char argument[]="monolith";
+ const auto use=[&]() { command_output.clear(); assert(artifact_monolith(&monolith,&owner,CMD_SCRATCH,argument)); };
+ owner.equipment[0]=copy; owner.equipment[1]=nullptr;
+ use(); assert(monolith.value[0]==5 && artifact_rows.at(900).timer==initial &&
+  command_output.find("satisfaction")==std::string::npos && "rejected-only equipment consumed a monolith charge");
+ owner.equipment[0]=first; owner.equipment[1]=second; owner.equipment[2]=copy;
+ use(); assert(monolith.value[0]==4 && artifact_rows.at(900).timer==initial+3600 &&
+  artifact_rows.at(902).timer==initial+3600 &&
+  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+ // Repeating a canonical pointer in another slot must not divide or apply twice.
+ owner.equipment[2]=first;
+ use(); assert(monolith.value[0]==3 && artifact_rows.at(900).timer==initial+7200 &&
+  artifact_rows.at(902).timer==initial+7200 &&
+  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+ owner.equipment[1]=nullptr; owner.equipment[2]=nullptr;
+ use(); assert(monolith.value[0]==2 && artifact_rows.at(900).timer==initial+14400 &&
+  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+ owner.player.level=62; use(); assert(monolith.value[0]==2 && artifact_rows.at(900).timer==initial+14400 &&
+  command_output.find("satisfaction")==std::string::npos); owner.player.level=51;
+ artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==2 &&
+  artifact_rows.at(900).timer==initial+14400 && command_output.find("satisfaction")==std::string::npos);
+ artifact_rows.at(900).location=55;
+ monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+14400 &&
+  command_output.find("satisfaction")==std::string::npos);
+ // Clamping an over-cap artifact keeps its negative feedback, without a false positive.
+ monolith.value[0]=1; artifact_rows.at(900).timer=time(nullptr)+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY+120;
+ use(); assert(monolith.value[0]==0 && command_output.find("satisfaction")==std::string::npos &&
+  command_output.find("distant cry")!=std::string::npos);
+ rooms[0].contents=nullptr; owner.equipment[0]=nullptr;
+ for(auto *object : {first,second,copy}) { object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; extract_obj(object,FALSE); }
+ artifact_save_pulse(true); drain();
+ assert(!object_list && !pool.objs_used);
+ std::cout<<"actual monolith: canonical recipients, charge admission, equal feeds and one feedback: PASS\n";
 }
 """)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:

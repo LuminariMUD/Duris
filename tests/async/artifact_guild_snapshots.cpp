@@ -692,34 +692,15 @@ static void identity_snapshot_cases()
 		assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
 		       artifact_rows.at(900).timer == 1700);
 	}
-	const sql_rows conflict = { sql_row{ { "1", "1" } },
-				    sql_row{ { "a", "900", "Y", "3", "99", "1800", "1" } },
-				    sql_row{ { "b", "900", "99", "30" } }, identity };
+	// A vnum-only repair cannot choose a physical owner or reset its binding.
+	sync_done = {};
+	const auto before_sync_jobs = jobs.size();
 	arti_syncdb_sql(&god);
-	sync_done(true, conflict);
-	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
+	assert(!sync_done && jobs.size() == before_sync_jobs &&
+	       artifact_rows.at(900).canonical_item_uid == later_uid &&
 	       artifact_rows.at(900).location == 77 && artifact_binds.at(900).owner_pid == 77 &&
-	       artifact_save_pulse(false) == 2);
-	artifact_save_pulse(true);
-	finish(jobs.size() - 2);
-	finish(jobs.size() - 1);
-	auto invalid_refresh = conflict;
-	invalid_refresh.back().fields[7] = "bad";
-	arti_syncdb_sql(&god);
-	sync_done(true, invalid_refresh);
-	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
-	       artifact_binds.at(900).owner_pid == 77);
-	artifact_save_pulse(true);
-	finish(jobs.size() - 2);
-	finish(jobs.size() - 1);
-	auto valid_refresh = conflict;
-	valid_refresh.back().fields[7] = std::to_string(later_uid);
-	valid_refresh.back().fields[8] = "2";
-	arti_syncdb_sql(&god);
-	sync_done(true, valid_refresh);
-	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
-	       artifact_rows.at(900).location == 99);
-	artifacts_forget_deleted_account_character(99);
+	       artifact_save_pulse(false) == 0);
+	artifacts_forget_deleted_account_character(77);
 	assert(artifact_rows.at(900).canonical_item_uid == later_uid &&
 	       artifact_rows.at(900).identity_state == artifact_identity_state::retired);
 	if (payment_db)
@@ -1059,68 +1040,19 @@ int main(int argc, char **argv)
 	jobs.clear();
 	puts("PASS bounded round-robin snapshot retry without starvation");
 
-	// Administrative SQL sync must not hydrate over a later feed/transfer, and
-	// its state publication must not depend on the staff connection staying up.
+	// The command must refuse before scheduling any SQL that clears ownership.
 	artifact_rows[900] = { true, ARTIFACT_ON_PC, 42, 1000, ARTIFACT_MAJOR };
 	artifact_binds[900] = { 42, 9 };
-	pc.pid = 42;
-	god.runtime_id = 42;
-	sync_staff = &god;
-	const sql_rows old_sync = { sql_row{ { "1", "1" } },
-				    sql_row{ { "a", "900", "Y", "3", "42", "1000", "1" } },
-				    sql_row{ { "b", "900", "42", "9" } } };
-	arti_syncdb_sql(&god);
-	assert(sync_done);
-	artifact_row_store(900, { true, ARTIFACT_ON_PC, 99, 2000, ARTIFACT_MAJOR });
-	artifact_bind_store(900, 99, 20);
-	finish(0);
-	finish(1);
-	assert(artifact_save_pulse(false) == 0);
-	sync_done(true, old_sync);
-	assert(artifact_rows.at(900).timer == 2000 && artifact_rows.at(900).location == 99);
-	assert(artifact_binds.at(900).owner_pid == 99 && artifact_save_pulse(false) == 2);
-	artifact_save_pulse(true);
-	assert(jobs.size() == 4);
-	finish(2);
-	finish(3);
-	assert(artifact_save_pulse(false) == 0);
-	const sql_rows fresh_sync = { sql_row{ { "1", "1" } },
-				      sql_row{ { "a", "900", "Y", "3", "42", "2000", "1" } },
-				      sql_row{ { "b", "900", "42", "21" } } };
-	arti_syncdb_sql(&god);
-	staff_online = false;
-	sync_done(true, fresh_sync);
-	assert(artifact_rows.at(900).location == 42 && artifact_rows.at(900).timer == 2000);
-	assert(artifact_binds.at(900).owner_pid == 42);
-	staff_online = true;
-	// A failed current snapshot must drain before SQL can be a repair input.
-	accepting = false;
-	artifact_feed_set_timer(900, 2100);
 	sync_done = {};
+	const auto sync_jobs = jobs.size();
 	arti_syncdb_sql(&god);
-	assert(sync_done);
-	sync_done(true, fresh_sync);
-	assert(artifact_rows.at(900).timer == 2100 && artifact_save_pulse(false) == 2);
-	accepting = true;
-	artifact_save_pulse(true);
-	finish(jobs.size() - 2);
-	finish(jobs.size() - 1);
-	assert(artifact_save_pulse(false) == 0);
-	arti_syncdb_sql(&god);
-	assert(sync_done);
-	artifact_rows.at(900).identity_state = artifact_identity_state::absent;
-	arti_clear_sql(&god, number);
-	finish(jobs.size() - 1);
-	artifact_save_pulse(false);
-	assert(artifact_rows.at(900).removed &&
-	       artifact_rows.at(900).identity_state == artifact_identity_state::absent);
-	sync_done(true, fresh_sync);
-	assert(artifact_rows.at(900).removed &&
-	       artifact_rows.at(900).identity_state == artifact_identity_state::absent);
+	assert(!sync_done && jobs.size() == sync_jobs && artifact_rows.at(900).location == 42 &&
+	       artifact_rows.at(900).timer == 1000 && artifact_binds.at(900).owner_pid == 42 &&
+	       artifact_binds.at(900).timer == 9);
 	artifact_rows.clear();
 	artifact_binds.clear();
 	jobs.clear();
-	puts("PASS administrative sync: newer state and deletion survive; disconnect does not discard publication; unsaved input retained");
+	puts("PASS ambiguous artifact sync refuses before SQL admission or state mutation");
 
 	char name[] = "Snapshot fixture";
 	auto *guild = new Guild(name, RACEWAR_GOOD, 7, 100, 11, 0, 0);

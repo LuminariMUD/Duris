@@ -1959,6 +1959,9 @@ void addOnGroundArtis_sql()
 //   the new time to poof.
 void artifact_feed_to_min_sql(P_obj arti, int min_minutes)
 {
+	if (!artifact_is_canonical(arti))
+		return;
+
 	int vnum = OBJ_VNUM(arti);
 	long unsigned to_time;
 	P_char owner;
@@ -2040,6 +2043,9 @@ void artifact_feed_to_min_sql(P_obj arti, int min_minutes)
 // This function handles the 'soul' of the artifact.
 void artifact_switch_check(P_char ch, P_obj arti)
 {
+	if (!ch || !artifact_is_canonical(arti))
+		return;
+
 	int owner_pid, timer, vnum;
 	bool update = FALSE;
 
@@ -2133,6 +2139,9 @@ void artifact_switch_check(P_char ch, P_obj arti)
 //   ascertain the true location of the arti (on a char / in a room / etc).
 void artifact_update_sql(P_obj arti, char owned, time_t timer)
 {
+	if (!artifact_is_canonical(arti))
+		return;
+
 	int type, locType, location, vnum = arti ? OBJ_VNUM(arti) : -1;
 	bool new_owned;
 	P_char owner;
@@ -2451,15 +2460,19 @@ bool get_artifact_data_sql(int vnum, P_arti adata)
 	return found->second.owned;
 }
 
-void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulCheck)
+artifact_feed_result artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulCheck,
+				       bool positive_feedback)
 {
+	if (!artifact_is_canonical(arti))
+		return artifact_feed_result::rejected;
+
 	int vnum, owner_pid, timer;
 	arti_data artidata;
 	time_t poof_time;
 
 	if (!updateArtis)
 	{
-		return;
+		return artifact_feed_result::rejected;
 	}
 
 	if (!owner || !arti || IS_NPC(owner))
@@ -2469,24 +2482,24 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 		debug("artifact_feed_sql: called with owner (%s) and arti (%s) %d.",
 		      owner ? J_NAME(owner) : "NULL", arti ? arti->short_description : "NULL",
 		      arti ? OBJ_VNUM(arti) : -1);
-		return;
+		return artifact_feed_result::rejected;
 	}
 	if (IS_TRUSTED(owner))
 	{
-		return;
+		return artifact_feed_result::rejected;
 	}
 
 	vnum = OBJ_VNUM(arti);
 	if (!sql_get_bind_data(vnum, &owner_pid, &timer))
 	{
-		return;
+		return artifact_feed_result::rejected;
 	}
 
 	// Anti artifact sharing for feeding check
 	if (soulCheck && IS_PC(owner) && (owner_pid != -1) && (owner_pid != GET_PID(owner)))
 	{
 		act("&+L$p &+Lhas yet to accept you as its owner.", FALSE, owner, arti, 0, TO_CHAR);
-		return;
+		return artifact_feed_result::rejected;
 	}
 
 	// Get data from DB.
@@ -2510,8 +2523,10 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 				 IS_UNIQUE(arti) ? ARTIFACT_UNIQUE :
 						   ARTIFACT_MAJOR;
 		artifact_row_store(vnum, { true, ARTIFACT_ON_PC, GET_PID(owner), poof_time, type });
-		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", owner);
-		return;
+		if (positive_feedback)
+			send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n",
+				     owner);
+		return artifact_feed_result::positive;
 	}
 
 	if (artidata.owned &&
@@ -2522,7 +2537,7 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 			MINLVLIMMORTAL,
 			"artifact_feed_sql: tried to track arti vnum %d on %s when already tracked on %s.",
 			vnum, GET_NAME(owner), get_player_name_from_pid(artidata.location));
-		return;
+		return artifact_feed_result::rejected;
 	}
 
 	// Check the cap before adding so even an extreme positive feed cannot
@@ -2538,7 +2553,7 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 	{
 		send_to_char("&+BYou hear a distant cry in the back of your mind...&n\n\r", owner);
 	}
-	else
+	else if (positive_feedback)
 	{
 		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", owner);
 	}
@@ -2549,6 +2564,7 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 		  magnitude / 3600, (magnitude / 60) % 60, magnitude % 60);
 
 	artifact_update_sql(arti, 'Y', target);
+	return negFeed ? artifact_feed_result::negative : artifact_feed_result::positive;
 }
 
 // Lets go of an artifact owner loaded off the loop (player_load_offline()): its items leave
@@ -4593,147 +4609,9 @@ void arti_sync_sql(P_char ch)
 // syncs artifact ownership from player_items table to artifacts_mortal
 void arti_syncdb_sql(P_char ch)
 {
-#ifdef __NO_MYSQL__
 	send_to_char(
 		"Artifact syncdb is unavailable: reconciliation requires a complete population audit.\n\r",
 		ch);
-#else
-
-	send_to_char("Syncing artifact ownership from player saves...\n\r", ch);
-	const unsigned int generation = arti_cache_generation;
-	const uint64_t staff_runtime_id = ch->runtime_id;
-	// On the writer: clear what players held, set what their saves hold, and read the
-	// tables back for memory. The first row holds the counts.
-	const auto sync = [](MYSQL *connection, sql_rows *rows) -> unsigned int
-	{
-		if (const unsigned int error = sql_execute(
-			    connection,
-			    "UPDATE artifacts SET location = 0, owned = 'N', locType = 1, lastUpdate = SYSDATE() "
-			    "WHERE locType = 3 OR locType = 5"))
-			return error;
-		const std::string cleared = std::to_string(mysql_affected_rows(connection));
-		for (const char *statement :
-		     { "UPDATE artifacts_mortal SET location = 0, owned = 'N', locType = 1",
-		       "UPDATE artifact_bind SET owner_pid = -1, timer = 0" })
-			if (const unsigned int error = sql_execute(connection, statement))
-				return error;
-		if (const unsigned int error = sql_execute(
-			    connection,
-			    "UPDATE artifacts a "
-			    "JOIN player_items pi ON pi.vnum = a.vnum "
-			    "JOIN player_data pd ON pd.pid = pi.pid AND pd.active = 1 "
-			    "SET a.location = pi.pid, a.owned = 'Y', a.locType = 3, a.lastUpdate = SYSDATE()"))
-			return error;
-		const std::string updated = std::to_string(mysql_affected_rows(connection));
-		for (const char *statement :
-		     { "UPDATE artifacts_mortal am "
-		       "JOIN player_items pi ON pi.vnum = am.vnum "
-		       "JOIN player_data pd ON pd.pid = pi.pid AND pd.active = 1 "
-		       "SET am.location = pi.pid, am.owned = 'Y', am.locType = 3",
-		       "UPDATE artifact_bind ab "
-		       "JOIN player_items pi ON pi.vnum = ab.vnum "
-		       "JOIN player_data pd ON pd.pid = pi.pid AND pd.active = 1 "
-		       "SET ab.owner_pid = pi.pid, ab.timer = UNIX_TIMESTAMP()" })
-			if (const unsigned int error = sql_execute(connection, statement))
-				return error;
-		if (const unsigned int error = sql_execute(connection, artifact_domain_mirror(-1)))
-			return error;
-		rows->push_back(sql_row{ { cleared, updated } });
-		for (const char *query :
-		     { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY, ARTIFACT_IDENTITIES_QUERY })
-			if (const unsigned int error =
-				    sql_select(connection,
-					       sql_format("%s LIMIT %zu", query,
-							  ARTIFACT_IDENTITY_MAX_RECORDS + 1),
-					       rows))
-				return error;
-		return 0;
-	};
-	const auto synced = [generation, staff_runtime_id](bool ok, const sql_rows &rows)
-	{
-		P_char staff = find_character_by_runtime_id(staff_runtime_id);
-		if (!ok)
-		{
-			if (staff)
-				send_to_char("Artifact synchronization failed.\n\r", staff);
-			return;
-		}
-		// Earlier saves run before this repair on the writer. A later mutation, or
-		// an earlier save that failed, makes its returned state obsolete. Retain
-		// current memory and let ordinary fresh snapshots repair any SQL it changed.
-		const bool superseded = generation != arti_cache_generation ||
-					artifact_save_pulse(false);
-		std::map<int, artifact_row> records;
-		std::map<int, artifact_bind_row> binds;
-		bool invalid = false, identity_changed = false;
-		if (!superseded)
-		{
-			try
-			{
-				for (size_t index = 1; index < rows.size(); ++index)
-					if (!artifact_row_read(rows[index], records, binds))
-					{
-						invalid = true;
-						break;
-					}
-				for (const auto &[vnum, row] : artifact_rows)
-				{
-					const auto found = records.find(vnum);
-					if (found == records.end() ||
-					    found->second.canonical_item_uid !=
-						    row.canonical_item_uid ||
-					    found->second.identity_state != row.identity_state)
-						identity_changed = true;
-				}
-				for (const auto &[vnum, row] : records)
-					if (!artifact_rows.count(vnum) &&
-					    row.identity_state !=
-						    artifact_identity_state::unresolved)
-						identity_changed = true;
-			}
-			catch (const std::bad_alloc &)
-			{
-				invalid = true;
-			}
-		}
-		if (superseded || invalid || identity_changed)
-		{
-			for (auto &[vnum, row] : artifact_rows)
-			{
-				row.save.dirty = true;
-				row.save.pending.reset();
-			}
-			for (auto &[vnum, bind] : artifact_binds)
-			{
-				bind.save.dirty = true;
-				bind.save.pending.reset();
-			}
-			arti_cache_invalidate();
-			if (invalid || identity_changed)
-				persistence_alert(
-					AVATAR, "artifact_identity/sync", "redacted", "none",
-					"none", invalid ? "invalid_evidence" : "identity_conflict",
-					"records=%zu", rows.size());
-			if (staff)
-				send_to_char(
-					"Artifact updates or identity evidence refused this synchronization. "
-					"Current state retained; retry after pending saves complete.\n\r",
-					staff);
-			return;
-		}
-		artifact_rows.swap(records);
-		artifact_binds.swap(binds);
-		arti_cache_invalidate();
-		if (staff)
-			send_to_char_f(
-				staff,
-				"Cleared %s, updated %s artifact ownerships from player saves.\n\r",
-				rows[0][0], rows[0][1]);
-	};
-	// State publication is required even if the issuing staff character logs out.
-	if (!sql_read_work(sync, synced))
-		send_to_char("That is not available right now.\r\n", ch);
-#endif
 }
 
 // Resets the 'soul' of the artifact of vnum == arg.

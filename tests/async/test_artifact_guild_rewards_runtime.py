@@ -43,7 +43,8 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
                 subprocess.run([str(self.binary), scenario], check=True, timeout=30)
 
     def test_cross_player_copy_preserves_unrelated_rewards(self):
-        for scenario in ('cross-player', 'wrong-custody', 'missing-uid'):
+        for scenario in ('cross-player', 'wrong-custody', 'missing-uid', 'rejected-copy',
+                         'canonical-copy', 'canonical-copy-reversed', 'canonical-alias-slot'):
             with self.subTest(scenario=scenario):
                 subprocess.run([str(self.binary), scenario], check=True, timeout=30)
 

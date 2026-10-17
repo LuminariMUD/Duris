@@ -702,7 +702,15 @@ char *food_modifiers(P_obj food);
 void addOnGroundArtis_sql();
 void addOnMobArtis_sql();
 void artifact_feed_blood_sql(P_char ch, P_obj arti, int frag_gain);
-void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulCheck = FALSE);
+enum class artifact_feed_result
+{
+	rejected,
+	positive,
+	negative
+};
+// Batch callers publish positive feedback once; negative feedback remains per item.
+artifact_feed_result artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds,
+				       bool soulCheck = FALSE, bool positive_feedback = true);
 void artifact_feed_to_min_sql(P_obj arti, int min_minutes);
 void artifact_timer_sql(int vnum, char *buffer);
 void artifact_update_location_sql(P_obj arti);

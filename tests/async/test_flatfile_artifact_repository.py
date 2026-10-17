@@ -154,7 +154,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
     # fixtures exercise values, writer refusal, retry and late acknowledgements;
     # these boundaries keep direct filesystem operations out of the hot paths.
     for signature in (
-        "bool get_artifact_data_sql(", "void artifact_feed_sql(",
+        "bool get_artifact_data_sql(", "artifact_feed_result artifact_feed_sql(",
         "void artifact_feed_to_min_sql(", "bool remove_owned_artifact_sql(",
         "void event_artifact_check_poof_sql(", "void event_artifact_wars_sql(",
         "void event_artifact_check_bind_sql(", "void arti_fixit_sql(",

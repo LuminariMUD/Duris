@@ -45,16 +45,16 @@ bool sql_async_booting()
 	return booting;
 }
 
-P_obj read_object(int, int)
+const object_template *find_object_template(int vnum)
 {
-	P_obj object = new obj_data{};
-	object->extra_flags = ITEM_ARTIFACT;
-	return object;
-}
-
-void extract_obj(P_obj object, int)
-{
-	delete object;
+	static const object_template prototype = []
+	{
+		object_template value;
+		value.extra_flags = ITEM_ARTIFACT;
+		value.short_description = "a fixture artifact";
+		return value;
+	}();
+	return vnum == 600 || vnum == 602 ? &prototype : nullptr;
 }
 
 void send_to_char_f(P_char, const char *, ...) {}

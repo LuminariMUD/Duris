@@ -53,12 +53,12 @@ print("[PASS] flat bind lookup uses boot-hydrated memory and initializes failure
 assert artifact_text.count("if (!sql_get_bind_data(") == 2
 for caller, next_caller in (
     ("void artifact_switch_check", "void artifact_update_sql"),
-    ("void artifact_feed_sql", "void poof_artifact"),
+    ("artifact_feed_result artifact_feed_sql", "void poof_artifact"),
 ):
     body = function(artifact_text, caller, next_caller)
     failure = body.index("if (!sql_get_bind_data(")
     failure_block = body[failure:body.index("}", failure) + 1]
-    assert "return;" in failure_block or "continue;" in failure_block
+    assert "return;" in failure_block or "return artifact_feed_result::rejected;" in failure_block or "continue;" in failure_block
 print("[PASS] all artifact bind callers fail closed before ownership decisions")
 
 # The repair names each artifact it rebinds, so the display copy leaves only once, after that.

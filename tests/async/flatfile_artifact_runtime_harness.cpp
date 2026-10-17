@@ -278,6 +278,7 @@ int main(int argc, char **argv)
 	owner.player.level = 51;
 	pc.pid = 42;
 	obj_data worn = {};
+	worn.obj_uid = 70101;
 	worn.extra_flags = ITEM_ARTIFACT;
 	worn.loc_p = LOC_WORN;
 	worn.loc.wearing = &owner;
@@ -354,6 +355,7 @@ int main(int argc, char **argv)
 	dying_pc.pid = 77;
 	dying.specials.position = STAT_DEAD;
 	obj_data held = {};
+	held.obj_uid = 70101;
 	held.R_num = 0;
 	held.extra_flags = ITEM_ARTIFACT;
 	held.loc_p = LOC_CARRIED;

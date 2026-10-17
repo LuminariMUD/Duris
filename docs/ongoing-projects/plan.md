@@ -2,6 +2,43 @@
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 
+## Active one-hour repair — 2026-10-17 11:26 IDT / 08:26 UTC
+
+The user authorized a fresh hour of implementation from this plan. Target cutoff:
+12:26 IDT / 09:26 UTC. Work in `duris-issue67-delivery`, now based on the #162
+handoff commit `383c632e1f5888e03bd110f4dc23eb6f63c9bb19`.
+Outcome: complete and prove canonical reward/feed/bind protection first; then take
+only additional complete fixes that fit the remaining verification/publication
+budget. Files: existing artifact service, reward capture, and existing regressions.
+Proof: the already-failing copy/alias and canonical-pair scenarios must pass with
+normal reward/lifecycle controls, both builds, and an applicable real SQL journey.
+Ablation: reuse `artifact_is_canonical`; remove obsolete vnum-only reward exclusion.
+The unused compound-capture experiment remains preserved in its original checkout.
+Implemented in the current working tree (publication pending):
+- Canonical UID/pointer checks now precede direct feed, minimum feed, soul binding,
+  and object-based location/timer mutation. The actual service fixture checks
+  each endpoint independently against both a distinct UID and a same-UID alias.
+- Reward capture uses canonical identity and deduplicates accepted vnums, retaining
+  the canonical contribution in either equipment order and keeping guild rewards.
+- SQL `syncdb` now uses the existing explicit audit-required refusal before any
+  writer admission. The destructive vnum-only repair workflow is removed.
+- Monolith feeding selects canonical worn recipients once, consumes a charge only
+  for an accepted feed, and publishes one positive message for the command.
+  Positive, rejected, and negative/cap-reduction outcomes are explicit so a
+  reduction preserves its negative feedback without a false satisfaction message.
+
+Before/after proof is under this checkout's `bin/analysis/issue67/`: reward,
+service, sync, monolith, and over-cap feedback probes reproduce the old failures.
+Current reward/runtime, actual constructor/service/monolith, snapshot, flat native,
+combat persistence, and reward-cutover checks pass. Changed-line format/tidy pass.
+Both final full builds passed. The disposable MariaDB standard journey also passed
+actual rewards, writer recovery, copyover, retained source payloads, successful
+online/offline swaps and clean restart. Frozen evidence is
+`bin/analysis/issue67/delivery-gameplay.{log,json}`. Earlier handoff blockers 1, 2,
+3 and 7 are implemented and their focused checks pass; publication follows. The
+remaining source-domain, producer, durable-retirement, audit/reconciliation, and
+whole-matrix requirements remain open.
+
 ## Current handoff — verified 2026-10-17, 11:16 IDT / 08:16 UTC
 
 **Issue #67 is unfinished.** There are **31 open, non-draft, unmerged PRs
