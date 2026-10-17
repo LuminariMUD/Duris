@@ -1234,7 +1234,7 @@ void fatal_boot_error(const char *component, const char *fmt, ...)
 	// Boot can fail with workers running and a partially restored world.
 	// Preserve diagnostics explicitly, then skip unsafe global destruction.
 #ifndef _DE_
-	write_cmdlog();
+	write_boot_cmdlog();
 #endif
 	fflush(stdout);
 	fflush(stderr);
