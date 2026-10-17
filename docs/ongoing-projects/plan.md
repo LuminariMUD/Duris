@@ -23,8 +23,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current swap-admission work: `branch/issue-67-canonical-swap-admission`, based
-on #160. Outcome: select only the established canonical source pointer/UID, carry
+Current swap-admission checkpoint: [PR #161](https://github.com/LuminariMUD/Duris/pull/161),
+ready for review, `branch/issue-67-canonical-swap-admission`, based on #160. Outcome: select only the established canonical source pointer/UID, carry
 that UID through offline completion, and use fresh replacement admission before
 placement or source retirement. Keep valid PC/NPC/room/corpse/nested paths.
 Non-goals for this chunk: declaring the existing placement/save finisher durable,
@@ -37,7 +37,8 @@ maze and the throwaway replacement preceding offline work; share real constructi
 The following durable-disposition chunk must still couple payload/custody and both
 artifact after-images before claiming AR-04 complete. Queue order alone is not proof.
 
-Swap-admission checkpoint (2026-10-17, publication pending):
+Swap-admission checkpoint (2026-10-17, PR #161):
+Implementation commit: `a096d84a5081ceab32788e2d9feb99a15319c1ca`.
 - Actual constructor/service before probe reproduced swap constructing/removing an
   already-present, unowned replacement: `bin/analysis/issue67/swap-admission-before.log`.
   The frontend now checks cached templates and source identity/timer first, follows
@@ -78,6 +79,8 @@ Swap-admission checkpoint (2026-10-17, publication pending):
   artifact/guild reward history as a swap command or mistake queue order for an
   atomic commit. Normal full player snapshots coalesce; a transition cannot be
   silently replaced by a later snapshot without its identity disposition.
+  Final diff reviewed, committed/pushed as open non-draft PR #161 based on #160
+  and attached to this chat. No merge, tag, deployment or production operation.
 
 Current maintenance-cache checkpoint: [PR #160](https://github.com/LuminariMUD/Duris/pull/160),
 ready for review, `branch/issue-67-maintenance-cache`, based on #159. Outcome: the existing boot template cache includes known artifact identities
