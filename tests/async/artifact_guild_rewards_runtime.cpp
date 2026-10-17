@@ -293,6 +293,15 @@ static int identity_contract(const std::string &scenario)
 	rows[42001] = { NOW + 100, -1, 0, scenario == "cross-player" ? 43 : 42 };
 	rows[42002] = { NOW + 200 };
 	canonical_objects[42002] = &unrelated;
+	if (scenario == "cross-player")
+	{
+		copy.loc.wearing = &member;
+		member.equipment[0] = &copy;
+		canonical_objects[42001] = &copy;
+	}
+	online = { &actor, &member, &last };
+	if (scenario == "wrong-custody")
+		canonical_objects[42001] = &first;
 	if (canonical_copy)
 		canonical_objects[42001] = &first;
 	if (rejected)

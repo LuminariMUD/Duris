@@ -21,7 +21,7 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
         cls.binary = Path(directory.name) / 'runtime'
         subprocess.run([
             'g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-pthread',
-            '-fsanitize=undefined', '-ffunction-sections', '-fdata-sections',
+            '-fsanitize=undefined', '-fno-sanitize-recover=undefined', '-ffunction-sections', '-fdata-sections',
             '-Isrc', '-I/usr/include/mysql', f'-DLEGACY_HYDRATION={int(legacy)}',
             'tests/async/artifact_guild_rewards_runtime.cpp',
             'src/guild/artifact_guild_transaction.c', 'src/guild/artifact_guild_command.c',
