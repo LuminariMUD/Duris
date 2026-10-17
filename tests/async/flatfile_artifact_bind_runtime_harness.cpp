@@ -12,13 +12,18 @@
 #include <cerrno>
 
 namespace fs = std::filesystem;
+index_data removal_indices[1] = {};
+P_index obj_index = removal_indices;
 
 namespace
 {
 std::string state_root;
 bool booting = true;
 int admission_error = 0;
+size_t maximum_writes = SIZE_MAX;
 std::vector<persistence_job_write_fn> writes;
+bool run_writer = false;
+size_t completed_writes = 0;
 
 void require(bool condition, const std::string &message)
 {
@@ -64,13 +69,27 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind kind, u
 {
 	require(kind == persistence_job_kind::artifact,
 		"flat artifact bypassed its writer job kind");
-	if (admission_error)
+	if (admission_error || writes.size() >= maximum_writes)
 	{
-		errno = admission_error;
+		errno = admission_error ? admission_error : ENOSPC;
 		return player_save_submit_result::unavailable;
 	}
 	writes.push_back(std::move(write));
 	return player_save_submit_result::accepted;
+}
+
+void player_save_pipeline_pulse()
+{
+	if (!run_writer)
+		return;
+	while (completed_writes < writes.size())
+		require(writes[completed_writes++]().outcome == player_save_apply_outcome::applied,
+			"held writer capture failed");
+}
+
+bool persistence_writer_wait_idle(uint64_t)
+{
+	return completed_writes == writes.size();
 }
 
 int main(int argc, char **argv)
@@ -298,7 +317,7 @@ int main(int argc, char **argv)
 		row.extra_flags = ITEM_ARTIFACT;
 		row.owner_reference = 88;
 		row.payload_owner = { item_owner_type::player, 88, 0 };
-		row.custody_examined = row.custody_found = true;
+		row.custody_examined = row.custody_found = row.custody_owner_revision_found = true;
 		row.custody = { uid, uid, 0,	row.payload_owner,
 				1,   1,	  vnum, item_custody_state::active };
 		population.push_back(row);
@@ -344,6 +363,120 @@ int main(int argc, char **argv)
 			artifact_rows.at(600).canonical_payloads.empty(),
 		"classified identity/timer/soul did not survive existing capture/reload");
 
+	writes.clear();
+	// Incomplete boot creates an identity-only reservation. Reload must not turn
+	// it into a legacy gameplay row that accepts feed operations.
+	booting = true;
+	require(artifacts_stage_population({}, { { 604, ITEM_ARTIFACT } }, false) &&
+			artifact_rows.at(604).removed,
+		"incomplete population did not capture its reservation");
+	booting = false;
+	require(artifact_save_pulse(true) == 2 && writes.size() == 2,
+		"reservation captures not queued");
+	for (auto &write : writes)
+		require(write().outcome == player_save_apply_outcome::applied,
+			"reservation capture failed");
+	require(!artifact_save_pulse(false) && artifacts_load() && artifact_rows.at(604).removed &&
+			artifact_rows.at(604).identity_state == artifact_identity_state::unresolved,
+		"unresolved identity-only marker lost across flat capture/reload");
+	int64_t feed_timer = -1, bind_timer = -1;
+	int32_t owner = -1;
+	require(!artifact_feed_state(604, &feed_timer, &owner, &bind_timer),
+		"identity-only reservation accepted gameplay feeding after reload");
+	writes.clear();
+	// A removal is one complete row/soul capture, including its first durable image.
+	for (int corpse_pid : { 0, 77 })
+	{
+		maximum_writes = 1;
+		require(flatfile_artifact_snapshot_apply(state_root, { artifact, second },
+							 &error) == flatfile_artifact_result::ok &&
+				artifacts_load(),
+			"removal fixture reset failed");
+		removal_indices[0].virtual_number = 600;
+		obj_data object = {};
+		object.R_num = 0;
+		object.obj_uid = 60001;
+		object.extra_flags = ITEM_ARTIFACT;
+		require(remove_owned_artifact_sql(&object, corpse_pid) && writes.size() == 1,
+			"artifact removal split ownership and soul into separate captures");
+		require(writes.front()().outcome == player_save_apply_outcome::applied &&
+				artifact_save_pulse(false) == 0 && artifacts_load(),
+			"compound removal did not finish");
+		require(flatfile_artifact_get(state_root, 600, &stored, &error) ==
+					flatfile_artifact_result::ok &&
+				stored.owned == (corpse_pid > 0) && stored.bind_owner_pid == -1 &&
+				stored.bind_timer == 0 &&
+				stored.location_type == (corpse_pid > 0 ?
+								 FLATFILE_ARTIFACT_ON_CORPSE :
+								 FLATFILE_ARTIFACT_NOT_IN_GAME),
+			"the first committed removal image retained an old soul");
+		writes.clear();
+	}
+	maximum_writes = SIZE_MAX;
+	// Deletion releases corpse ownership and bindings on somebody else's artifact too.
+	for (bool account : { false, true })
+	{
+		auto corpse = second;
+		corpse.location_type = FLATFILE_ARTIFACT_ON_CORPSE;
+		corpse.location = 42;
+		auto bound_elsewhere = second;
+		bound_elsewhere.vnum = 604;
+		bound_elsewhere.canonical_item_uid = 60401;
+		bound_elsewhere.bind_owner_pid = 42;
+		require(flatfile_artifact_snapshot_apply(state_root,
+							 { artifact, corpse, bound_elsewhere },
+							 &error) == flatfile_artifact_result::ok &&
+				artifacts_load(),
+			"deletion fixture reset failed");
+		// A queued old owner image must finish before the deletion release commits.
+		completed_writes = 0;
+		run_writer = false;
+		artifact_row_store(600, artifact_rows.at(600));
+		require(writes.size() == 1 && !artifact_save_drain(0),
+			"deletion fence passed a held artifact capture");
+		run_writer = true;
+		require(artifact_save_drain(1000) && completed_writes == writes.size(),
+			"deletion fence failed to finish the earlier owner capture");
+		writes.clear();
+		completed_writes = 0;
+		{
+			flatfile_authority_lock lock;
+			flatfile_authority_operation release;
+			require(lock.acquire(state_root, &error) &&
+					flatfile_artifact_prepare_player_release(
+						state_root, lock, 42, &release, &error) ==
+						flatfile_artifact_result::ok &&
+					flatfile_authority_transaction_commit_operations(
+						state_root, lock, { release }, &error) ==
+						flatfile_authority_transaction_result::ok,
+				"durable deletion release failed");
+		}
+		if (account)
+			artifacts_forget_deleted_account_character(42);
+		else
+			artifacts_forget_deleted_character(42);
+		for (int vnum : { 600, 602 })
+			require(!artifact_rows.at(vnum).owned &&
+					artifact_rows.at(vnum).location == 0 &&
+					artifact_rows.at(vnum).locType == ARTIFACT_NOTINGAME &&
+					artifact_rows.at(vnum).timer == 0,
+				"deletion retained player/corpse ownership in memory");
+		require(artifact_binds.at(600).owner_pid == -1 &&
+				artifact_binds.at(604).owner_pid == -1 &&
+				artifact_binds.at(602).owner_pid == 84 &&
+				artifact_rows.at(604).location == 75,
+			"deletion retained the deleted soul or changed unrelated custody/binding");
+		artifact_row_store(602, artifact_rows.at(602));
+		artifact_row_store(604, artifact_rows.at(604));
+		for (auto &write : writes)
+			require(write().outcome == player_save_apply_outcome::applied,
+				"post-delete capture failed");
+		require(!artifact_save_pulse(false) && artifacts_load() &&
+				artifact_rows.at(602).location == 0 &&
+				artifact_binds.at(604).owner_pid == -1,
+			"later capture resurrected deleted ownership or soul");
+		writes.clear();
+	}
 	std::cout << "flat-file artifact bind runtime passed\n";
 	return 0;
 }

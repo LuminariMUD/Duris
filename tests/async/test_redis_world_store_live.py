@@ -359,7 +359,7 @@ int main(int argc, char **argv)
             str(SRC / "redis_connection.c"), str(SRC / "redis_command_observability.c"),
             str(SRC / "redis_namespace.c"), str(SRC / "world_recovery_codec.c"),
             str(SRC / "generated_npc_state.c"), str(SRC / "pet_restore_state.c"),
-            "-Wl,--gc-sections",
+            "-Wl,--gc-sections", "-Wl,--wrap=redisvCommand",
             "-lhiredis", "-lhiredis_ssl", "-lssl", "-lcrypto", "-lz", "-o", str(boot_binary),
         ], cwd=ROOT, check=True)
         server = subprocess.Popen(
