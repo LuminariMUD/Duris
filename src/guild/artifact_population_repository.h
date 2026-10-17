@@ -58,6 +58,8 @@ struct artifact_payload_projection
 	item_owner_identity payload_owner = {};
 	bool source_quarantined = false;
 	bool custody_found = false;
+	// Revision zero is valid; a missing authority row remains distinct.
+	bool custody_owner_revision_found = false;
 	item_ownership_runtime_entry custody = {};
 };
 

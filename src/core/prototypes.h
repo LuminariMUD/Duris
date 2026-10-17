@@ -720,6 +720,7 @@ bool artifacts_load(void);
 void artifacts_forget_deleted_account_character(int pid);
 void artifact_feed_set_timer(int vnum, time_t timer);
 size_t artifact_save_pulse(bool retry);
+bool artifact_save_drain(uint64_t timeout_msec);
 void artifact_report_unsaved(void);
 // An artifact's timer and soul, as the game holds them; false for an unknown artifact.
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer);
