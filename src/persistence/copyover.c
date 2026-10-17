@@ -708,6 +708,9 @@ copyover_boot_result copyover_read_file(const std::string &path, copyover_boot_s
 		return copyover_boot_result::failed;
 	try
 	{
+		struct stat consuming = {};
+		if (!lstat((path + ".consuming").c_str(), &consuming) || errno != ENOENT)
+			return copyover_boot_result::failed;
 		const int descriptor =
 			open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK | O_NOFOLLOW);
 		if (descriptor < 0)
@@ -762,6 +765,9 @@ copyover_boot_result copyover_prepare_boot()
 		const std::string source = copyover_state_file();
 		pinned_copyover_path = source + ".recovering";
 		struct stat original = {}, retained = {};
+		if (!lstat((pinned_copyover_path + ".consuming").c_str(), &retained) ||
+		    errno != ENOENT)
+			return pinned_copyover_state;
 		if (lstat(source.c_str(), &original) == 0)
 		{
 			if (!S_ISREG(original.st_mode))
@@ -1050,7 +1056,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 
 	const std::string published_path = COPYOVER_FILE;
 	const std::string recovering_path = published_path + ".recovering";
-	for (const auto &pending : { published_path, recovering_path })
+	for (const auto &pending :
+	     { published_path, recovering_path, recovering_path + ".consuming" })
 	{
 		struct stat retained = {};
 		if (!lstat(pending.c_str(), &retained))
@@ -1404,7 +1411,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// created during the drains/write. Fence that second name before touching
 	// sockets or executing. Retain both images for disposition on refusal.
 	struct stat recovery_claim = {};
-	if (!lstat(recovering_path.c_str(), &recovery_claim) || errno != ENOENT)
+	if (!lstat(recovering_path.c_str(), &recovery_claim) || errno != ENOENT ||
+	    !lstat((recovering_path + ".consuming").c_str(), &recovery_claim) || errno != ENOENT)
 	{
 		logit(LOG_STATUS,
 		      "copyover: recovery claim appeared at publication; retaining live process");
@@ -1577,6 +1585,33 @@ static P_char copyover_load_player(const char *name, P_desc d, std::string *acco
 	return player;
 }
 
+// Move the public claim into a private directory before checking/removing it.
+// A crash or failed restoration leaves a visible barrier for later boot/save.
+static bool consume_copyover_claim()
+{
+	const std::string directory = pinned_copyover_path + ".consuming";
+	const std::string isolated = directory + "/image";
+	if (mkdir(directory.c_str(), 0700))
+		return false;
+	if (renameat2(AT_FDCWD, pinned_copyover_path.c_str(), AT_FDCWD, isolated.c_str(),
+		      RENAME_NOREPLACE))
+	{
+		rmdir(directory.c_str());
+		return false;
+	}
+	struct stat current = {};
+	if (lstat(isolated.c_str(), &current) ||
+	    !same_copyover_file(pinned_copyover.identity, current))
+	{
+		// Never overwrite another publication while returning the changed claim.
+		if (!renameat2(AT_FDCWD, isolated.c_str(), AT_FDCWD, pinned_copyover_path.c_str(),
+			       RENAME_NOREPLACE))
+			rmdir(directory.c_str());
+		return false;
+	}
+	return !unlink(isolated.c_str()) && !rmdir(directory.c_str());
+}
+
 int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 {
 	FILE *fp;
@@ -1588,7 +1623,6 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	int i, rnum, save_room;
 	int success = 0;
 	std::vector<telemetry_copyover_entry> telemetry_entries;
-	struct stat current = {};
 
 	copyover_in_progress = 1;
 
@@ -1965,11 +1999,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	fclose(fp);
 	artifacts.commit();
 	pinned_copyover_loaded = true;
-	if (stat(pinned_copyover_path.c_str(), &current) ||
-	    !same_copyover_file(pinned_copyover.identity, current) ||
-	    unlink(pinned_copyover_path.c_str()))
+	if (!consume_copyover_claim())
 		logit(LOG_STATUS,
-		      "copyover_recover: restored image retained because its claimed file changed or could not be consumed");
+		      "copyover_recover: claim changed or could not be consumed; inspect .recovering and .recovering.consuming");
 	logit(LOG_STATUS, "copyover_recover: complete");
 	return success;
 
