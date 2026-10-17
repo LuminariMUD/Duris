@@ -7,9 +7,14 @@
 // Refusal sets EEXIST (reserved), ENODATA (unresolved), or ENOMEM (unavailable).
 // No persistence is queued until successful placement commits the claim.
 bool artifact_begin_creation(P_obj object);
-// Placement commits a fresh claim. Saved-UID hydration has a separate boundary.
+struct artifact_payload_projection;
+// Pinned ground payload only: saved UID/effective flags precede procedures.
+// Matches the retained source-qualified boot projection, never UID alone.
+bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source);
+P_obj read_object_for_recovery(const artifact_payload_projection &source);
+// Placement commits the pending purpose; recovery preserves timer/soul state.
 void artifact_object_placed(P_obj object);
-// Pending creation rolls back. Committed physical retirement retains a UID
+// Pending admission rolls back. Committed physical retirement retains a UID
 // tombstone; unloading merely detaches the live pointer.
 void artifact_object_extracted(P_obj object, bool physical_retirement);
 bool artifact_is_canonical(P_obj object);

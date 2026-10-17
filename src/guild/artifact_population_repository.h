@@ -52,7 +52,8 @@ struct artifact_payload_projection
 	uint64_t item_uid = 0;
 	uint64_t parent_row_id = 0;
 	uint64_t parent_item_uid = 0;
-	uint64_t payload_root_item_uid = 0; // 0 when the source has not qualified the root
+	// Physical source root (0 when unqualified); native custody can start inside it.
+	uint64_t payload_root_item_uid = 0;
 	int64_t owner_reference = 0;
 	uint64_t owner_context = 0;
 	int32_t vnum = 0;

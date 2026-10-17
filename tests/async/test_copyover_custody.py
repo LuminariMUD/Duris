@@ -178,7 +178,7 @@ item_ownership_runtime_entry custody(uint64_t uid)
     entry.parent_item_uid = uid == 902 ? 901 : 0;
     entry.owner = {item_owner_type::corpse, 77, 12};
     entry.item_revision = uid;
-    entry.owner_revision = 31;
+    entry.owner_revision = !strcmp(getenv("COPYOVER_TEST_CASE"),"mixed-owner") ? uid-870 : 31;
     entry.vnum = 1000;
     entry.state = item_custody_state::active;
     return entry;
@@ -240,6 +240,8 @@ int main(int argc, char **argv)
     std::fclose(file);
     auto newer = custody(902); ++newer.item_revision;
     assert(item_ownership_runtime_hydrate(newer));
+    if (!strcmp(getenv("COPYOVER_TEST_CASE"),"newer-owner"))
+        assert(item_ownership_runtime_hydrate_owner(newer.owner, 99));
     size_t consumed = 99;
     assert(!copyover_restore_obj_from_buffer(buffer.data(), buffer.size(), &consumed));
     assert(!object_list && consumed == 0 && item_ownership_runtime_size() == 1);
@@ -261,6 +263,9 @@ int main(int argc, char **argv)
         assert(copyover_prepare_boot() == copyover_boot_result::ready && copyover_boot_evidence() == pinned);
         assert(copyover_has_durable_shopkeepers());
     }
+    const bool newer_owner = !strcmp(scenario,"newer-owner");
+    const bool mixed_owner = !strcmp(scenario,"mixed-owner");
+    if (newer_owner) assert(item_ownership_runtime_hydrate_owner(custody(900).owner, 99));
     int telnet = 0, tls = 0, websocket = 0;
     assert(copyover_recover(&telnet, &tls, &websocket) == 1);
     assert(telnet == -1 && tls == -1 && websocket == -1);
@@ -295,7 +300,7 @@ int main(int argc, char **argv)
         assert(restored.root_item_uid == expected.root_item_uid);
         assert(restored.parent_item_uid == expected.parent_item_uid);
         assert(item_owner_identity_equal(restored.owner, expected.owner));
-        assert(restored.item_revision == expected.item_revision && restored.owner_revision == 31);
+        assert(restored.item_revision == expected.item_revision && restored.owner_revision == (newer_owner ? 99 : mixed_owner ? 32 : 31));
         assert(restored.state == item_custody_state::active);
     }
     extract_obj(corpse, FALSE);
@@ -321,7 +326,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("normal", "newer", "changed", "publish-race"):
+    for scenario in ("normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
         state = temp / scenario
         state.mkdir()
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,

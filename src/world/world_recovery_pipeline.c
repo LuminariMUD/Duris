@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "guild/artifact_admission.h"
+#include "guild/artifact_population_repository.h"
 #include "world/world_recovery_pipeline.h"
 
 #include "persistence/copyover.h"
@@ -35,6 +36,8 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <map>
+#include <tuple>
 #include <new>
 #include <thread>
 #include <unordered_map>
@@ -130,6 +133,8 @@ struct planned_mob
 
 struct planned_object
 {
+	artifact_payload_domain source_domain = artifact_payload_domain::redis_generation;
+	uint64_t source_context = 0;
 	int room_rnum = NOWHERE;
 	int room_vnum = 0;
 	std::vector<world_recovery_item_snapshot> items;
@@ -1040,12 +1045,15 @@ bool existing_tree_matches(const planned_object &planned)
 	return live_count == planned.items.size();
 }
 
-bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t size)
+bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t size,
+		       artifact_payload_domain domain, uint64_t context)
 {
 	if (!plan)
 		return false;
 	world_recovery_object_record record = {};
 	planned_object planned;
+	planned.source_domain = domain;
+	planned.source_context = context;
 	if (!world_recovery_read_object_record(data, size, &record, &planned.items))
 		return false;
 	planned.room_vnum = record.room_vnum;
@@ -1163,7 +1171,9 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 			break;
 		}
 		case world_recovery_record_type::object:
-			if (!add_object_record(plan, record_data, native_record.size()))
+			if (!add_object_record(plan, record_data, native_record.size(),
+					       artifact_payload_domain::redis_generation,
+					       plan->header.sequence))
 			{
 				logit(LOG_SYS, "redis: world recovery object rejected index=%zu",
 				      record_index);
@@ -1328,8 +1338,31 @@ void replace_object_text(P_obj object, const world_recovery_item_snapshot &item)
 
 P_obj materialize_object(const planned_object &planned)
 {
+	const auto source_for = [&](const world_recovery_item_snapshot &item)
+	{
+		artifact_payload_projection source = {};
+		source.domain = planned.source_domain;
+		source.owner_reference = planned.room_vnum;
+		source.owner_context = planned.source_context;
+		source.item_uid = item.item_uid;
+		source.payload_root_item_uid = item.root_item_uid;
+		source.parent_item_uid = item.parent_item_uid;
+		source.vnum = item.vnum;
+		source.extra_flags = item.extra_flags;
+		source.extra_flags_present = true;
+		source.quantity = 1;
+		return source;
+	};
 	if (planned.existing_root)
+	{
+		for (const auto &item : planned.items)
+			if (!artifact_begin_recovery(find_object_uid(item.item_uid),
+						     source_for(item)))
+				return nullptr;
+		for (const auto &item : planned.items)
+			artifact_object_placed(find_object_uid(item.item_uid));
 		return planned.existing_root;
+	}
 	std::unordered_map<uint64_t, P_obj> objects;
 	P_obj root = nullptr;
 	try
@@ -1342,14 +1375,13 @@ P_obj materialize_object(const planned_object &planned)
 	}
 	for (const world_recovery_item_snapshot &item : planned.items)
 	{
-		P_obj object = read_object(item.vnum, VIRTUAL);
+		P_obj object = read_object_for_recovery(source_for(item));
 		if (!object)
 		{
 			if (root)
 				extract_obj(root, FALSE);
 			return nullptr;
 		}
-		object->obj_uid = static_cast<unsigned long>(item.item_uid);
 		object->type = item.type;
 		for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 			object->value[index] = item.values[index];
@@ -1545,7 +1577,8 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 			continue;
 		}
 		if (!decoded ||
-		    !add_object_record(&plan, native_record.data(), native_record.size()))
+		    !add_object_record(&plan, native_record.data(), native_record.size(),
+				       artifact_payload_domain::redis_floor, plan.header.sequence))
 		{
 			logit(LOG_SYS, "redis: world recovery floor record rejected index=%zu",
 			      index);
@@ -1680,14 +1713,38 @@ bool world_recovery_read_copyover_object_record(const char *buf, size_t len,
 	}
 }
 
-P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len)
+P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len,
+							 uint64_t source_context)
 {
 	world_recovery_copyover_tree tree;
 	if (!world_recovery_read_copyover_object_record(buf, len, &tree))
 		return nullptr;
+	try
+	{
+		// Per-item cache entries can predate later saves of their shared owner.
+		// Reconcile only the aggregate fence; the atomic ledger hydration below
+		// still rejects newer/conflicting per-item identity, state or topology.
+		const auto key = [](const item_owner_identity &owner)
+		{ return std::tuple{ owner.type, owner.id, owner.context_id }; };
+		std::map<std::tuple<item_owner_type, uint64_t, uint64_t>, uint64_t> revisions;
+		for (const auto &entry : tree.custody)
+		{
+			uint64_t current = 0;
+			item_ownership_runtime_owner_revision(entry.owner, &current);
+			auto &revision = revisions[key(entry.owner)];
+			revision = std::max({ revision, current, entry.owner_revision });
+		}
+		for (auto &entry : tree.custody)
+			entry.owner_revision = revisions.at(key(entry.owner));
+	}
+	catch (const std::bad_alloc &)
+	{
+		return nullptr;
+	}
 	recovery_plan plan;
 	const size_t tree_size = sizeof(tree.record) + tree.items.size() * sizeof(tree.items[0]);
-	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size))
+	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size,
+			       artifact_payload_domain::copyover_ground, source_context))
 		return nullptr;
 	redis_floor_runtime_set_materializing(true);
 	const bool restored = materialize_plan(plan, tree.custody);

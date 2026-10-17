@@ -388,11 +388,30 @@ def run(binary, case):
                 assert sql('SELECT guild_prestige_after,guild_construction_after FROM artifact_guild_outcome ORDER BY guild_prestige_after') == '95\t0\n105\t1\n115\t1'
                 evidence['outcome_deltas'] = deltas
                 print('artifact journey: writer recovered; timers, guild totals and history agree', flush=True)
+                # Keep the same canonical artifact on the ground through native copyover.
+                command(player, 'drop all') # free the normal starter inventory capacity
+                removed = command(player, 'remove stone')
+                assert 'You stop using' in removed, removed
+                dropped = command(player, 'drop stone')
+                assert 'You drop' in dropped, dropped
+                settle(lambda: sql(f'SELECT loc_type,location FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '4\t1', 'ground artifact location did not commit')
+                ground_state = saved_state()
+                assert ground_state['artifact'].split('\t')[-1] == after['artifact'].split('\t')[-1]
+                soul_before = sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
+                evidence['ground_state'] = ground_state
+                evidence['ground_custody'] = sql(f'SELECT c.item_uid,c.root_item_uid,c.parent_item_uid,c.owner_type,c.owner_id,c.owner_context_id,c.item_revision,c.state,r.revision FROM item_current_owner c LEFT JOIN item_owner_revision r ON r.owner_type=c.owner_type AND r.owner_id=c.owner_id AND r.owner_context_id=c.owner_context_id WHERE c.vnum={ARTIFACT}')
                 process.send_signal(signal.SIGUSR1)
                 player.expect('Copyover complete!', timeout=180)
                 god.expect('Copyover complete!', timeout=180)
-                assert saved_state() == after, 'copyover changed persisted reward state/history'
+                assert saved_state() == ground_state, 'copyover changed persisted ground artifact/reward state'
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
                 assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                recovered_ground = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', recovered_ground), recovered_ground
+                command(player, 'get stone')
+                command(player, 'wear stone')
+                settle(lambda: saved_state() == after, 'ground pickup changed artifact timer/reward history')
+                evidence['ground_copyover_preserved_uid_timer_soul'] = True
                 recovered_equipment = command(player, 'equipment')
                 assert 'ioun stone' in recovered_equipment, recovered_equipment
                 evidence['copyover_after_drain'] = True
@@ -422,6 +441,10 @@ def run(binary, case):
                 failure.mkdir(parents=True)
                 shutil.copy2(output_path, failure / 'server.out')
                 shutil.copytree(runtime / 'logs', failure / 'logs')
+                (failure / 'journey-state.json').write_text(json.dumps(evidence, indent=2) + '\n')
+                for source in (runtime / 'copyover.dat', runtime / 'copyover.dat.recovering'):
+                    if source.is_file():
+                        shutil.copy2(source, failure / source.name) # private synthetic handoff evidence
                 (failure / 'process.txt').write_text(f'pid={process.pid if process else None} returncode={process.poll() if process else None}\n')
                 print(f'artifact journey failure evidence: {failure}', flush=True)
                 traces = '\n'.join(bytes(c.transcript[-6000:]).decode(errors='replace') for c in clients)

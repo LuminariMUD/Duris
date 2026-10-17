@@ -118,6 +118,12 @@ struct artifact_save
 	unsigned int error = 0;
 };
 
+enum class artifact_pending : uint8_t
+{
+	none,
+	creation,
+	recovery,
+};
 struct artifact_row
 {
 	bool owned;
@@ -132,7 +138,7 @@ struct artifact_row
 	artifact_population_reason population_reason = artifact_population_reason::incomplete;
 	std::vector<artifact_payload_projection> canonical_payloads = {};
 	P_obj live_object = nullptr;
-	bool creation_pending = false;
+	artifact_pending pending = artifact_pending::none;
 	uint64_t previous_uid = 0;
 	artifact_identity_state previous_state = artifact_identity_state::unresolved;
 };
@@ -424,7 +430,7 @@ bool artifact_row_save(int vnum, artifact_row &row)
 {
 	if (artifact_restore_checkpoint)
 		return true;
-	if (row.creation_pending)
+	if (row.pending != artifact_pending::none)
 		return false;
 	try
 	{
@@ -791,7 +797,7 @@ bool artifact_begin_creation(P_obj object)
 			found = artifact_rows.find(vnum);
 		}
 		auto &row = found->second;
-		if (row.creation_pending && row.live_object == object &&
+		if (row.pending == artifact_pending::creation && row.live_object == object &&
 		    row.canonical_item_uid == object->obj_uid)
 			return true;
 		if (row.identity_state == artifact_identity_state::present || row.live_object)
@@ -815,7 +821,7 @@ bool artifact_begin_creation(P_obj object)
 		row.canonical_item_uid = object->obj_uid;
 		row.identity_state = artifact_identity_state::present;
 		row.live_object = object;
-		row.creation_pending = true;
+		row.pending = artifact_pending::creation;
 		return true;
 	}
 	catch (const std::bad_alloc &)
@@ -825,12 +831,101 @@ bool artifact_begin_creation(P_obj object)
 	}
 }
 
+bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source)
+{
+	const auto refuse = [&](int error, const char *reason)
+	{
+		const auto known = artifact_rows.find(source.vnum);
+		persistence_alert(
+			AVATAR, "artifact_identity/recovery", "redacted", "none", "none", reason,
+			"vnum=%d source_domain=%u qualified_sources=%zu", source.vnum,
+			static_cast<unsigned>(source.domain),
+			known == artifact_rows.end() ? 0 : known->second.canonical_payloads.size());
+		errno = error;
+		return false;
+	};
+	if (!object)
+		return false;
+	if (!IS_ARTIFACT(object))
+	{
+		// Ordinary items remain unrestricted, but clearing a known artifact's
+		// saved flag cannot make its UID bypass source qualification.
+		const auto known = object->R_num < 0 ? artifact_rows.end() :
+						       artifact_rows.find(OBJ_VNUM(object));
+		if (known == artifact_rows.end() ||
+		    known->second.canonical_item_uid != object->obj_uid)
+			return true;
+	}
+	if (!artifact_cache_loaded || object->R_num < 0 || !object->obj_uid ||
+	    !source.extra_flags_present || source.quantity != 1 ||
+	    source.role != artifact_payload_role::stored || source.source_quarantined ||
+	    source.item_uid != object->obj_uid || source.vnum != OBJ_VNUM(object) ||
+	    source.extra_flags != object->extra_flags || !source.owner_context ||
+	    !source.payload_root_item_uid ||
+	    (source.domain != artifact_payload_domain::redis_generation &&
+	     source.domain != artifact_payload_domain::redis_floor &&
+	     source.domain != artifact_payload_domain::copyover_ground))
+	{
+		return refuse(ENODATA, "invalid_source");
+	}
+	const auto found = artifact_rows.find(source.vnum);
+	if (found == artifact_rows.end() ||
+	    found->second.identity_state != artifact_identity_state::present ||
+	    found->second.canonical_item_uid != object->obj_uid)
+	{
+		return refuse(ENODATA, "canonical_identity_unavailable");
+	}
+	auto &row = found->second;
+	if ((row.live_object && row.live_object != object) ||
+	    row.pending == artifact_pending::creation)
+	{
+		return refuse(EEXIST, "physical_copy_exists");
+	}
+	// The pinned source supplies this locator; the boot classifier already
+	// checked its full graph, effective flags and independent/captured custody.
+	// A same-UID payload in another source or owner is not an interchangeable copy.
+	const bool qualified = std::any_of(
+		row.canonical_payloads.begin(), row.canonical_payloads.end(),
+		[&](const artifact_payload_projection &payload)
+		{
+			return payload.domain == source.domain &&
+			       payload.role == artifact_payload_role::stored &&
+			       payload.owner_context == source.owner_context &&
+			       payload.owner_reference == source.owner_reference &&
+			       payload.item_uid == source.item_uid && payload.vnum == source.vnum &&
+			       payload.payload_root_item_uid == source.payload_root_item_uid &&
+			       payload.parent_item_uid == source.parent_item_uid &&
+			       payload.extra_flags_present &&
+			       payload.extra_flags == source.extra_flags;
+		});
+	if (!qualified)
+	{
+		return refuse(ENODATA, "source_projection_mismatch");
+	}
+	if (row.live_object == object)
+		return true;
+	try
+	{
+		artifact_binds.try_emplace(source.vnum, artifact_bind_row{ 0, 0 });
+	}
+	catch (const std::bad_alloc &)
+	{
+		return refuse(ENOMEM, "binding_allocation_failed");
+	}
+	row.previous_uid = row.canonical_item_uid;
+	row.previous_state = row.identity_state;
+	row.live_object = object;
+	row.pending = artifact_pending::recovery;
+	++arti_cache_generation;
+	return true;
+}
+
 bool artifact_is_canonical(P_obj object)
 {
 	if (!object || !IS_ARTIFACT(object) || !object->obj_uid || object->R_num < 0)
 		return false;
 	const auto found = artifact_rows.find(OBJ_VNUM(object));
-	return found != artifact_rows.end() && !found->second.creation_pending &&
+	return found != artifact_rows.end() && found->second.pending == artifact_pending::none &&
 	       found->second.identity_state == artifact_identity_state::present &&
 	       found->second.canonical_item_uid == object->obj_uid &&
 	       (!found->second.live_object || found->second.live_object == object);
@@ -845,12 +940,18 @@ void artifact_object_placed(P_obj object)
 	if (found == artifact_rows.end())
 		return;
 	auto &row = found->second;
-	if (!row.creation_pending || row.live_object != object ||
+	if (row.pending == artifact_pending::none || row.live_object != object ||
 	    row.canonical_item_uid != object->obj_uid)
 		return;
-	row.creation_pending = false;
+	const bool recovery = row.pending == artifact_pending::recovery;
+	row.pending = artifact_pending::none;
 	row.previous_uid = 0;
 	row.previous_state = artifact_identity_state::unresolved;
+	if (recovery)
+	{
+		++arti_cache_generation;
+		return;
+	}
 	row.owned = false;
 	row.locType = ARTIFACT_NOTINGAME;
 	row.location = 0;
@@ -875,14 +976,14 @@ void artifact_object_extracted(P_obj object, bool physical_retirement)
 	if (row.live_object != object || row.canonical_item_uid != object->obj_uid)
 		return;
 	row.live_object = nullptr;
-	if (row.creation_pending)
+	if (row.pending != artifact_pending::none)
 	{
 		row.canonical_item_uid = row.previous_uid;
 		row.identity_state = row.previous_state;
 		row.previous_uid = 0;
 		row.previous_state = artifact_identity_state::unresolved;
-		row.creation_pending = false;
-		// The tentative UID was never captured. Rollback must not allocate
+		row.pending = artifact_pending::none;
+		// The pending admission was never captured. Rollback must not allocate
 		// report-cache work while releasing an abandoned constructor.
 		++arti_cache_generation;
 		return;
@@ -2133,14 +2234,12 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 	}
 	// An unowned artifact has no ticking timer, so 0 is its normal state; only an owned
 	// one with no timer is worth flagging.
-	if (timer <= 0)
+	if (timer <= 0 && new_owned)
 	{
-		timer = time(NULL) +
-			ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY; // 10 days, not 60 secs
-		if (new_owned)
-			logit(LOG_ARTIFACT,
-			      "arti_update_sql: WARNING: timer was %ld, resetting to 10 days for vnum %d",
-			      (long)0, vnum);
+		timer = time(NULL) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+		logit(LOG_ARTIFACT,
+		      "arti_update_sql: WARNING: timer was %ld, resetting to 10 days for vnum %d",
+		      (long)0, vnum);
 	}
 	artifact_row_store(vnum, { new_owned, locType, location, timer, type });
 }
@@ -2154,13 +2253,12 @@ void artifact_update_sql(int vnum, bool owned, int locType, int location, time_t
 	}
 
 	// Only an owned artifact has a ticking timer, so 0 is normal otherwise.
-	if (timer <= 0)
+	if (timer <= 0 && owned)
 	{
 		timer = time(NULL) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
-		if (owned)
-			logit(LOG_ARTIFACT,
-			      "artifact_update_sql: WARNING: timer was %ld, resetting to 10 days for vnum %d",
-			      (long)0, vnum);
+		logit(LOG_ARTIFACT,
+		      "artifact_update_sql: WARNING: timer was %ld, resetting to 10 days for vnum %d",
+		      (long)0, vnum);
 	}
 	artifact_row_store(vnum, { owned, locType, location, timer, type });
 }
@@ -2216,7 +2314,7 @@ bool remove_owned_artifact_sql(P_obj arti, int pid)
 void artifact_update_location_sql(P_obj arti)
 {
 	bool timerStarted;
-	arti_data artidata;
+	arti_data artidata = {};
 	P_obj cont = arti;
 	P_char owner;
 
@@ -2253,7 +2351,7 @@ void artifact_update_location_sql(P_obj arti)
 		if (IS_NPC(owner))
 		{
 			// NPCs don't start the timer.
-			artifact_update_sql(arti, '0', timerStarted ? artidata.timer : 0);
+			artifact_update_sql(arti, '0', artidata.timer);
 		}
 		// PCs get a new timer if it wasn't previously owned.
 		else
@@ -2272,7 +2370,7 @@ void artifact_update_location_sql(P_obj arti)
 	// It's in a room / container / corpse / nowhere: We don't change the timer.
 	else
 	{
-		artifact_update_sql(arti, '0', timerStarted ? artidata.timer : 0);
+		artifact_update_sql(arti, '0', artidata.timer);
 	}
 }
 

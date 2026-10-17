@@ -116,6 +116,60 @@ int main()
 	expect(classify({ bag, bag, artifact }), state::unresolved, 0, 0,
 	       reason::unqualified_payload);
 
+	// Native corpse wrappers and logical custody roots are distinct graphs.
+	// The same artifact can also project from corpse_items without the wrapper.
+	auto shell = item(200, 901);
+	auto contents = item(201, 901);
+	auto nested = item(202);
+	for (auto *row : { &shell, &contents, &nested })
+	{
+		row->domain = domain::copyover_ground;
+		row->owner_reference = 2300;
+		row->owner_context = 44;
+		row->payload_root_item_uid = shell.item_uid;
+		row->payload_owner = { item_owner_type::corpse, 77, 12 };
+		row->custody.owner = row->payload_owner;
+		row->custody_required = true;
+	}
+	contents.parent_row_id = contents.parent_item_uid = shell.item_uid;
+	nested.parent_row_id = nested.parent_item_uid = contents.item_uid;
+	nested.custody.root_item_uid = contents.item_uid;
+	nested.custody.parent_item_uid = contents.item_uid;
+	expect(classify({ shell, contents, nested }), state::present, 202, 1);
+	auto stored_contents = contents;
+	stored_contents.domain = domain::corpse;
+	stored_contents.owner_reference = 77;
+	stored_contents.owner_context = 0;
+	stored_contents.parent_row_id = stored_contents.parent_item_uid = 0;
+	stored_contents.payload_root_item_uid = contents.item_uid;
+	auto stored_nested = nested;
+	stored_nested.domain = domain::corpse;
+	stored_nested.owner_reference = 77;
+	stored_nested.owner_context = 0;
+	stored_nested.payload_root_item_uid = contents.item_uid;
+	expect(classify({ shell, contents, nested, stored_contents, stored_nested }),
+	       state::present, 202, 2);
+	for (int variant = 0; variant < 5; ++variant)
+	{
+		auto bad_contents = contents;
+		auto bad_nested = nested;
+		if (variant == 0)
+			bad_contents.custody.parent_item_uid = shell.item_uid;
+		if (variant == 1)
+			bad_nested.custody.root_item_uid = 999;
+		if (variant == 2)
+			bad_nested.custody.parent_item_uid = 0;
+		if (variant == 3)
+			bad_nested.payload_owner.id = bad_nested.custody.owner.id = 99;
+		if (variant == 4)
+			bad_nested.custody_required = false;
+		expect(classify({ shell, bad_contents, bad_nested }), state::unresolved, 0, 0,
+		       reason::unqualified_payload);
+	}
+	shell.domain = contents.domain = nested.domain = domain::redis_generation;
+	expect(classify({ shell, contents, nested }), state::unresolved, 0, 0,
+	       reason::unqualified_payload);
+
 	// One UID in two domains is one identity only with agreeing current custody.
 	auto current = item(111);
 	auto projection = current;

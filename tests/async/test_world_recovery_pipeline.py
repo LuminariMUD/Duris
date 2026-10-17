@@ -38,6 +38,7 @@ HARNESS = r'''
 #include <cstdio>
 #include "world/world_recovery_codec.h"
 #include "persistence/copyover.h"
+#include "guild/artifact_population_repository.h"
 #include "item/item_ownership_runtime.h"
 #include <array>
 #include <atomic>
@@ -259,6 +260,22 @@ int copyover_write_zone_age_to_buffer(int, char *, size_t)
 {
     return 0;
 }
+
+// The artifact authority is exercised with this pipeline's actual materializer
+// in test_artifact_creation_admission; ordinary codec controls use this boundary.
+bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &) { return object != nullptr; }
+void artifact_object_placed(P_obj) {}
+P_obj read_object_for_recovery(const artifact_payload_projection &source)
+{
+    assert(source.extra_flags_present && source.quantity == 1);
+    assert(source.payload_root_item_uid && source.item_uid && source.vnum == 1000);
+    P_obj object = read_object(source.vnum, VIRTUAL);
+    if (object) { object->obj_uid = source.item_uid; object->extra_flags = source.extra_flags; }
+    return object;
+}
+__attribute__((weak)) const copyover_boot_snapshot *copyover_boot_evidence() { return nullptr; }
+__attribute__((weak)) bool item_ownership_runtime_owner_revision(const item_owner_identity &, uint64_t *revision)
+{ *revision = 0; return false; }
 
 struct publish_gate
 {

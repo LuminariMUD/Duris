@@ -22,7 +22,8 @@ row_key key(const artifact_payload_projection &row, uint64_t id)
 		 row.delivery_ordinal, id };
 }
 
-bool qualified(const artifact_payload_projection &row, uint64_t root)
+bool qualified(const artifact_payload_projection &row, uint64_t root,
+	       const artifact_payload_projection *parent)
 {
 	if (!root || row.quantity != 1 || !row.extra_flags_present || row.source_quarantined ||
 	    !row.custody_examined || !item_owner_identity_valid(row.payload_owner) ||
@@ -32,10 +33,23 @@ bool qualified(const artifact_payload_projection &row, uint64_t root)
 		// A genuinely unclaimed ground tree may have no persistent owner yet.
 		return !row.custody_required && row.payload_owner.type == item_owner_type::room;
 	const auto &custody = row.custody;
-	return custody.state == item_custody_state::active && custody.item_uid == row.item_uid &&
-	       custody.vnum == row.vnum && custody.root_item_uid == root &&
-	       custody.parent_item_uid == row.parent_item_uid &&
-	       item_owner_identity_equal(custody.owner, row.payload_owner);
+	if (custody.state != item_custody_state::active || custody.item_uid != row.item_uid ||
+	    custody.vnum != row.vnum || !custody.root_item_uid ||
+	    !item_owner_identity_equal(custody.owner, row.payload_owner))
+		return false;
+	if (row.domain == artifact_payload_domain::copyover_ground && row.custody_required)
+	{
+		// A native physical corpse can wrap several logical custody roots.
+		// Each logical root starts at itself, or is inherited from its actual
+		// physical parent. Arbitrary root/parent substitutions remain invalid.
+		if (custody.root_item_uid == row.item_uid)
+			return custody.parent_item_uid == 0;
+		return parent && parent->custody_found &&
+		       custody.parent_item_uid == row.parent_item_uid &&
+		       custody.root_item_uid == parent->custody.root_item_uid &&
+		       item_owner_identity_equal(custody.owner, parent->payload_owner);
+	}
+	return custody.root_item_uid == root && custody.parent_item_uid == row.parent_item_uid;
 }
 
 std::vector<uint64_t> physical_roots(const std::vector<artifact_payload_projection> &items,
@@ -89,8 +103,15 @@ std::vector<uint64_t> physical_roots(const std::vector<artifact_payload_projecti
 		for (auto entry = path.rbegin(); entry != path.rend(); ++entry)
 		{
 			const auto &row = items[*entry];
+			const artifact_payload_projection *parent_row = nullptr;
+			if (row.parent_row_id)
+			{
+				const auto parent = rows.find(key(row, row.parent_row_id));
+				if (parent != rows.end() && parent->second < items.size())
+					parent_row = &items[parent->second];
+			}
 			if ((row.payload_root_item_uid && row.payload_root_item_uid != root) ||
-			    !qualified(row, root))
+			    !qualified(row, root, parent_row))
 				root = 0;
 			roots[*entry] = root;
 			visited[*entry] = 2;
@@ -248,11 +269,17 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 				candidates[row.item_uid].push_back(index);
 			}
 			// Two qualified projections may describe one identity, but they must
-			// agree about its current owner, topology and effective flags. Never
+			// agree about its current owner, logical topology and effective flags. Never
 			// pick between incompatible same-UID images by traversal order.
 			for (auto candidate = candidates.begin(); candidate != candidates.end();)
 			{
 				const auto &first = items[candidate->second.front()];
+				const uint64_t first_root =
+					first.custody_found ? first.custody.root_item_uid :
+							      roots[candidate->second.front()];
+				const uint64_t first_parent =
+					first.custody_found ? first.custody.parent_item_uid :
+							      first.parent_item_uid;
 				const bool conflict = std::any_of(
 					candidate->second.begin(), candidate->second.end(),
 					[&](size_t index)
@@ -261,10 +288,14 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 						return !item_owner_identity_equal(
 							       first.payload_owner,
 							       row.payload_owner) ||
-						       roots[candidate->second.front()] !=
-							       roots[index] ||
-						       first.parent_item_uid !=
-							       row.parent_item_uid ||
+						       first_root !=
+							       (row.custody_found ?
+									row.custody.root_item_uid :
+									roots[index]) ||
+						       first_parent !=
+							       (row.custody_found ?
+									row.custody.parent_item_uid :
+									row.parent_item_uid) ||
 						       (first.extra_flags_present &&
 							row.extra_flags_present &&
 							first.extra_flags != row.extra_flags);

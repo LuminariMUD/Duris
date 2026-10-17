@@ -30,6 +30,7 @@ mm_ds *dead_obj_pool = &pool;
 const int top_of_objt = 3;
 static unsigned long long next_uid=10000;
 static size_t procedures=0, floors=0;
+static uint64_t expected_procedure_uid=0;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
 static bool booting=false;
@@ -57,12 +58,16 @@ unsigned long long persistence_next_item_uid() { return next_uid++; }
 void *_mm_get(mm_ds *source,const char *,int) { ++source->objs_used; return calloc(1,sizeof(obj_data)); }
 void mm_release(mm_ds *source,void *object) { assert(source->objs_used); --source->objs_used; free(object); }
 char *str_dup(const char *text) { return strdup(text); }
+void str_free(const char *text) { free(const_cast<char *>(text)); }
 void *__malloc(size_t size,const char *,const char *,int) { return calloc(1,size); }
 void __free(void *memory,const char *,int) { free(memory); }
 int strn_cmp(const char *left,const char *right,unsigned int size) { return strncasecmp(left,right,size); }
 int number(int from,int) { return from; }
 int real_object(const int vnum) { return vnum>=900 && vnum<=903 ? vnum-900 : -1; }
-int periodic(P_obj,P_char,int,char *) { ++procedures; return 0; }
+int periodic(P_obj object,P_char,int,char *) {
+ if(expected_procedure_uid) assert(object->obj_uid==expected_procedure_uid && IS_ARTIFACT(object) && !artifact_is_canonical(object));
+ ++procedures; return 0;
+}
 int item_switch(P_obj,P_char,int,char *) { return 0; }
 void event_object_proc(P_char,P_char,P_obj,void *) {}
 void event_random_exit(P_char,P_char,P_obj,void *) {}
@@ -89,9 +94,13 @@ P_obj unequip_char(P_char mob,int slot,bool) {
  auto *object=mob->equipment[slot]; mob->equipment[slot]=nullptr;
  object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; return object;
 }
+void place_tree(P_obj object) {
+ for(P_obj child=object->contains;child;child=child->next_content) place_tree(child);
+ artifact_object_placed(object);
+}
 void obj_to_room(P_obj object,int room) {
  object->loc_p=LOC_ROOM; object->loc.room=room;
- object->next_content=rooms[room].contents; rooms[room].contents=object; artifact_object_placed(object);
+ object->next_content=rooms[room].contents; rooms[room].contents=object; place_tree(object);
 }
 void obj_to_char(P_obj object,P_char mob) {
  object->loc_p=LOC_CARRIED; object->loc.carrying=mob;
@@ -99,7 +108,9 @@ void obj_to_char(P_obj object,P_char mob) {
 }
 void obj_to_obj(P_obj object,P_obj parent) {
  object->loc_p=LOC_INSIDE; object->loc.inside=parent;
- object->next_content=parent->contains; parent->contains=object; artifact_object_placed(object);
+ object->next_content=parent->contains; parent->contains=object;
+ P_obj root=parent; while(OBJ_INSIDE(root)) root=root->loc.inside;
+ if(!OBJ_NOWHERE(root)) place_tree(object);
 }
 void equip_char(P_char mob,P_obj object,int slot,int) {
  mob->equipment[slot]=object; object->loc_p=LOC_WORN; object->loc.wearing=mob; artifact_object_placed(object);
@@ -112,6 +123,9 @@ P_obj get_obj_in_list_num(int number,P_obj list) {
  for(;list;list=list->next_content) if(list->R_num==number) return list;
  return nullptr;
 }
+float get_property(const char *,double fallback) { return fallback; }
+int get_property(const char *,int fallback) { return fallback; }
+int real_room0(const int) { return 0; }
 int itemvalue(P_obj) { return 1; }
 bool item_load_check(P_obj,int,int) { return true; }
 void enhance_on_npc_item_reset_skipped(P_char,P_obj) {}
@@ -123,10 +137,12 @@ object_template parse_object_template(int index) {
 }
 // CONSTRUCTORS
 // EXTRACTION
+// RECOVERY_TREE
 // CLONE
 // NEST_CHECK
 // RESET
 // RESTORE_WRAPPER
+// RECOVERY_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
@@ -144,11 +160,11 @@ int main() {
  artifact_binds[900]={42,777}; artifact_rows.at(900).timer=888;
  fail_invalidation=true;
  auto *probe=read_object_for_creation(900,VIRTUAL); assert(probe && fail_invalidation);
- extract_obj(probe,FALSE); assert(fail_invalidation && !artifact_rows.at(900).creation_pending && !pool.objs_used);
+ extract_obj(probe,FALSE); assert(fail_invalidation && artifact_rows.at(900).pending==artifact_pending::none && !pool.objs_used);
  fail_invalidation=false; procedures=0;
  auto *first=read_object_for_creation(900,VIRTUAL);
  assert(first && procedures==1 && pool.objs_used==1 && indexes[0].number==1);
- assert(artifact_rows.at(900).creation_pending && writes.empty());
+ assert(artifact_rows.at(900).pending==artifact_pending::creation && writes.empty());
  assert(!read_object_for_creation(900,VIRTUAL) && errno==EEXIST && procedures==1);
  assert(pool.objs_used==1 && indexes[0].number==1 && object_list==first);
  fail_invalidation=true;
@@ -164,7 +180,7 @@ int main() {
   artifact_rows.at(900).canonical_item_uid==123 && writes.empty());
  first=read_object_for_creation(900,VIRTUAL); assert(first);
  first->loc_p=LOC_ROOM; first->loc.room=0; artifact_object_placed(first);
- assert(artifact_is_canonical(first) && !artifact_rows.at(900).creation_pending &&
+ assert(artifact_is_canonical(first) && artifact_rows.at(900).pending==artifact_pending::none &&
   artifact_rows.at(900).live_object==first && artifact_binds.at(900).owner_pid==0);
  artifact_save_pulse(true); drain();
  artifact_rows.at(900).timer=9999; artifact_binds[900]={55,666};
@@ -253,13 +269,18 @@ int main() {
  assert(!materializing && last_materialized && artifact_is_canonical(last_materialized) &&
   artifact_rows.at(902).timer==9876 && artifact_binds.at(902).owner_pid==88 && header.sequence==123);
  artifact_save_pulse(true); drain(); extract_obj(last_materialized,FALSE); assert(!object_list && !pool.objs_used);
+ recovery_cases(prototypes);
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
 source=HARNESS.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
- "P_obj read_object_for_creation(","P_obj read_object(int nr, int type)")))
+ "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)"))
+source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
+ extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
+ extract_function("world_recovery_pipeline.c","P_obj materialize_object("))
+
 source=source.replace("// CLONE",extract_function("actwiz.c","struct obj_data *clone_obj(P_obj obj)")+"\n"+extract_function("actwiz.c","void clone_container_obj(P_obj to, P_obj obj)"))
 reset=extract_function("db.c","void reset_zone(int zone, int force_item_repop)")
 parts=[]
@@ -309,16 +330,16 @@ void reset_matrix(const std::vector<artifact_population_template> &original) {
  auto *wrong_parent=read_object_for_creation(901,VIRTUAL); assert(wrong_parent); obj_to_room(wrong_parent,0);
  reset_com refused={'P',false,0,3,1,100};
  for(int attempt=0;attempt<3;++attempt) reset_command(refused,nullptr,2,2);
- assert(!indexes[0].number && !artifact_rows.at(51005).creation_pending && artifact_rows.at(51005).canonical_item_uid==previous_uid);
+ assert(!indexes[0].number && artifact_rows.at(51005).pending==artifact_pending::none && artifact_rows.at(51005).canonical_item_uid==previous_uid);
  extract_obj(wrong_parent,FALSE);
  reset_com missing={'P',false,0,3,3,100};
  for(int attempt=0;attempt<3;++attempt) reset_command(missing,nullptr,2,2);
- assert(!object_list && !artifact_rows.at(51005).creation_pending &&
+ assert(!object_list && artifact_rows.at(51005).pending==artifact_pending::none &&
   artifact_rows.at(51005).identity_state==previous_state && artifact_rows.at(51005).canonical_item_uid==previous_uid && writes.empty());
  for(char kind: {'G','E'}) {
   reset_com absent={kind,false,0,3,12,100};
   for(int attempt=0;attempt<3;++attempt) reset_command(absent,nullptr,2,2);
-  assert(!object_list && !artifact_rows.at(51005).creation_pending &&
+  assert(!object_list && artifact_rows.at(51005).pending==artifact_pending::none &&
    artifact_rows.at(51005).canonical_item_uid==previous_uid && writes.empty());
  }
  indexes[0].virtual_number=900;
@@ -338,7 +359,7 @@ bool fail_materialization=false,materializing=false;
 P_obj last_materialized=nullptr;
 bool build_recovery_plan(const unsigned char *,size_t,int,uint64_t,recovery_plan *plan) { plan->header.sequence=123; return true; }
 bool floor_record_repeats(const recovery_plan &,const std::vector<unsigned char> &) { return false; }
-bool add_object_record(recovery_plan *,const unsigned char *,size_t) { return false; }
+bool add_object_record(recovery_plan *,const unsigned char *,size_t,artifact_payload_domain,uint64_t) { return false; }
 bool leave_out_owned_trees(recovery_plan *) { return true; }
 bool world_recovery_decode_record(world_recovery_record_type,const unsigned char *,size_t,std::vector<unsigned char> *) { return false; }
 bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authority_item *,size_t,item_ownership_runtime_entry *,size_t) { return true; }
@@ -356,6 +377,135 @@ source=source.replace("// RESTORE_WRAPPER",restore_support+extract_function("wor
 
 
 output=ROOT/"bin/tests"; output.mkdir(parents=True,exist_ok=True)
+recovery_cases=r"""
+void recovery_cases(const std::vector<artifact_population_template> &prototypes) {
+ assert(!object_list && !pool.objs_used); artifact_rows.clear(); artifact_binds.clear();
+ artifact_payload_projection saved={}; saved.domain=artifact_payload_domain::copyover_ground;
+ saved.owner_reference=2300; saved.owner_context=44; saved.row_id=1;
+ saved.item_uid=4242; saved.payload_root_item_uid=4242; saved.vnum=900;
+ saved.extra_flags=ITEM_ARTIFACT; saved.extra_flags_present=true; saved.quantity=1;
+ saved.payload_owner={item_owner_type::room,2300,0}; saved.custody_examined=true;
+ auto &prior=artifact_rows[900]; prior.canonical_item_uid=4242;
+ prior.identity_state=artifact_identity_state::present; prior.timer=4567;
+ prior.locType=ARTIFACT_ONGROUND; prior.location=2300; prior.owned=true;
+ artifact_binds[900]={77,88};
+ const auto stage_saved=[&](const std::vector<artifact_payload_projection> &items,bool complete) {
+  booting=true; const bool result=artifacts_stage_population(items,prototypes,complete); booting=false;
+  assert(result); artifact_save_pulse(true); drain();
+ };
+ stage_saved({saved},false); // known qualified UID survives unrelated incomplete sources
+ assert(artifact_rows.at(900).canonical_payloads.size()==1);
+ const auto uid_cursor=next_uid;
+ for(int variant=0;variant<11;++variant) {
+  auto wrong=saved;
+  switch(variant) {
+  case 0: wrong.domain=artifact_payload_domain::player; break;
+  case 1: ++wrong.owner_context; break;
+  case 2: ++wrong.owner_reference; break;
+  case 3: ++wrong.payload_root_item_uid; break;
+  case 4: ++wrong.parent_item_uid; break;
+  case 5: wrong.extra_flags |= ITEM_GLOW; break;
+  case 6: ++wrong.item_uid; break;
+  case 7: wrong.role=artifact_payload_role::history; break;
+  case 8: wrong.source_quarantined=true; break;
+  case 9: wrong.owner_context=0; break;
+  case 10: wrong.extra_flags=0; break;
+  }
+  const auto count=procedures;
+  assert(!read_object_for_recovery(wrong) && errno==ENODATA);
+  assert(procedures==count && !pool.objs_used && !object_list && next_uid==uid_cursor && writes.empty());
+ }
+ expected_procedure_uid=4242;
+ auto *first=read_object_for_recovery(saved); assert(first && first->obj_uid==4242 && next_uid==uid_cursor);
+ expected_procedure_uid=0;
+ assert(artifact_rows.at(900).pending==artifact_pending::recovery && !artifact_is_canonical(first));
+ const auto count=procedures;
+ assert(!read_object_for_recovery(saved) && errno==EEXIST && procedures==count);
+ assert(!read_object_for_creation(900,VIRTUAL) && errno==EEXIST);
+ extract_obj(first,FALSE);
+ assert(!object_list && !pool.objs_used && artifact_rows.at(900).timer==4567 &&
+  artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 && writes.empty());
+ first=read_object_for_recovery(saved); assert(first); obj_to_room(first,0);
+ assert(artifact_is_canonical(first) && artifact_rows.at(900).timer==4567 &&
+  artifact_rows.at(900).owned && artifact_binds.at(900).owner_pid==77 && writes.empty());
+ auto *copy=read_object(900,VIRTUAL); assert(copy); copy->obj_uid=4242;
+ const auto floor_count=floors; extract_obj(copy,TRUE);
+ assert(floors==floor_count && artifact_is_canonical(first) && artifact_rows.at(900).timer==4567);
+ extract_obj(first,FALSE);
+ assert(!artifact_rows.at(900).live_object && artifact_rows.at(900).canonical_item_uid==4242);
+ auto &row=artifact_rows.at(900); row.identity_state=artifact_identity_state::retired;
+ assert(!read_object_for_recovery(saved) && errno==ENODATA); row.identity_state=artifact_identity_state::present;
+ // Real location tracking must preserve an unowned recovered timer, including zero.
+ for(time_t timer:{time_t{0},time_t{4567}}) {
+  artifact_rows.at(900).owned=false; artifact_rows.at(900).timer=timer;
+  { artifact_restore_scope group; assert(group);
+    first=read_object_for_recovery(saved); assert(first); obj_to_room(first,0);
+    artifact_update_location_sql(first);
+    assert(artifact_rows.at(900).timer==timer && artifact_binds.at(900).owner_pid==77);
+    extract_obj(first,FALSE);
+    artifact_update_sql(900,false,ARTIFACT_ONGROUND,2300,timer,ARTIFACT_MAJOR);
+    assert(artifact_rows.at(900).timer==timer);
+  }
+  assert(writes.empty());
+ }
+ artifact_rows.at(900).owned=true; artifact_rows.at(900).timer=4567;
+ // All three pinned sources require their own exact qualified locator.
+ for(auto domain:{artifact_payload_domain::redis_generation,artifact_payload_domain::redis_floor,
+                  artifact_payload_domain::copyover_ground}) {
+  saved.domain=domain; stage_saved({saved},true);
+  first=read_object_for_recovery(saved); assert(first); obj_to_room(first,0); extract_obj(first,FALSE);
+  assert(artifact_rows.at(900).timer==4567 && artifact_binds.at(900).owner_pid==77);
+ }
+ // A saved artifact flag on an ordinary prototype is checked before its procedure too.
+ auto converted=saved; converted.row_id=2; converted.vnum=901; converted.item_uid=5151;
+ converted.payload_root_item_uid=5151;
+ stage_saved({saved,converted},true); indexes[1].func.obj=periodic;
+ first=read_object_for_recovery(converted); assert(first && IS_ARTIFACT(first));
+ assert(!read_object_for_recovery(converted) && errno==EEXIST); extract_obj(first,FALSE);
+ converted.extra_flags=0; converted.item_uid=6161; first=read_object_for_recovery(converted); assert(first && !IS_ARTIFACT(first));
+ obj_to_room(first,0); extract_obj(first,FALSE); indexes[1].func.obj=nullptr;
+ // The actual recovery tree body carries pinned provenance and commits descendants
+ // only when its ordinary ancestor is placed. A refused child releases the root.
+ auto parent=saved; parent.row_id=1; parent.vnum=901; parent.item_uid=70000;
+ parent.payload_root_item_uid=70000; parent.extra_flags=0;
+ saved.row_id=2; saved.parent_row_id=1; saved.parent_item_uid=70000; saved.payload_root_item_uid=70000;
+ stage_saved({parent,saved},true);
+ planned_object plan; plan.room_rnum=0; plan.room_vnum=2300;
+ plan.source_domain=saved.domain; plan.source_context=saved.owner_context;
+ world_recovery_item_snapshot outer={},inner={};
+ outer.item_uid=70000; outer.root_item_uid=70000; outer.vnum=901; outer.type=ITEM_CONTAINER;
+ inner.item_uid=4242; inner.root_item_uid=70000; inner.parent_item_uid=70000; inner.vnum=900;
+ inner.extra_flags=ITEM_ARTIFACT; plan.items={outer,inner};
+ ++plan.source_context; assert(!materialize_object(plan) && !object_list && !pool.objs_used);
+ assert(artifact_rows.at(900).timer==4567 && artifact_binds.at(900).owner_pid==77 && writes.empty());
+ --plan.source_context;
+ { artifact_restore_scope transaction; assert(transaction);
+   auto *tree=materialize_object(plan); assert(tree && tree->contains && artifact_is_canonical(tree->contains));
+   assert(artifact_rows.at(900).timer==4567 && artifact_binds.at(900).owner_pid==77);
+   extract_obj(tree,FALSE); // a later group step failed; all captures remain deferred
+ }
+ assert(!object_list && !pool.objs_used && !artifact_rows.at(900).live_object && writes.empty());
+ auto *tree=materialize_object(plan); assert(tree && artifact_is_canonical(tree->contains));
+ plan.existing_root=tree; const auto prior_procedures=procedures;
+ artifact_rows.at(900).live_object=nullptr; // a legacy materializer already placed this exact UID
+ assert(materialize_object(plan)==tree && artifact_is_canonical(tree->contains) && procedures==prior_procedures);
+ ++plan.source_context; assert(!materialize_object(plan) && artifact_is_canonical(tree->contains));
+ --plan.source_context;
+ extract_obj(tree,FALSE); assert(!object_list && !pool.objs_used && writes.empty());
+ // A captured corpse wrapper can contain a distinct logical custody root.
+ parent.payload_owner=saved.payload_owner={item_owner_type::corpse,77,12};
+ parent.custody_examined=parent.custody_found=parent.custody_required=true;
+ saved.custody_examined=saved.custody_found=saved.custody_required=true;
+ parent.custody={70000,70000,0,parent.payload_owner,1,1,901,item_custody_state::active};
+ saved.custody={4242,4242,0,saved.payload_owner,1,1,900,item_custody_state::active};
+ stage_saved({parent,saved},true); plan.existing_root=nullptr; plan.items[0].type=ITEM_CORPSE;
+ tree=materialize_object(plan); assert(tree && tree->contains && artifact_is_canonical(tree->contains));
+ assert(artifact_rows.at(900).timer==4567 && artifact_binds.at(900).owner_pid==77);
+ extract_obj(tree,FALSE); assert(!object_list && !pool.objs_used && writes.empty());
+ std::cout<<"source-qualified recovery factory and actual nested tree: PASS\n";
+}
+"""
+source=source.replace("// RECOVERY_CASES",recovery_cases)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:
  cpp=Path(directory)/"creation.cpp"; binary=Path(directory)/"creation"; cpp.write_text(source)
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",

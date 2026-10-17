@@ -172,7 +172,7 @@ int main()
 
 	// Native handoff authority supersedes an older durable owner. It is never
 	// overwritten by that older SQL/flat projection, nor confused with history.
-	for (int conflict = 0; conflict < 5; ++conflict)
+	for (int conflict = 0; conflict < 6; ++conflict)
 	{
 		reset();
 		auto live = item(700, domain::copyover_ground);
@@ -195,6 +195,12 @@ int main()
 			custody[700].state = item_custody_state::destroyed;
 		if (conflict == 4)
 			quarantined.insert(700);
+		if (conflict == 5)
+		{
+			custody[700] = live.custody;
+			custody[700].owner_revision =
+				9; // unrelated owner saves do not change this item
+		}
 		redis_result = redis_world_boot_result::ready;
 		redis_rows = { item(999, domain::redis_generation) };
 		const auto &warm = artifact_population_prepare_boot(true);
@@ -202,7 +208,7 @@ int main()
 		assert(warm.retained_uids == std::vector<uint64_t>{ 700 });
 		const auto decision = classify(warm);
 		assert(warm.items[1].role == artifact_payload_role::history);
-		if (conflict)
+		if (conflict && conflict != 5)
 			assert(decision.identity.state == state::unresolved &&
 			       decision.canonical_payloads.empty());
 		else
@@ -211,8 +217,56 @@ int main()
 			       decision.identity.canonical_item_uid == 700);
 			assert(decision.canonical_payloads == std::vector<size_t>{ 0 });
 			assert(warm.items[2].custody.owner.type == item_owner_type::corpse);
+			assert(warm.items[0].custody.owner_revision == (conflict == 5 ? 9 : 3));
 		}
 	}
+	// A newly saved legacy-created object may have durable custody without a
+	// live cache entry. Selected native ground is physical handoff, not a Redis
+	// floor claim: independent current custody supplies its logical owner.
+	for (int conflict = 0; conflict < 6; ++conflict)
+	{
+		reset();
+		native_rows[2] = { item(700, domain::copyover_ground) };
+		custody[700] = { 700, 700, 0,	{ item_owner_type::player, 55, 0 },
+				 3,   3,   900, item_custody_state::active };
+		if (conflict == 1)
+			custody[700].state = item_custody_state::destroyed;
+		if (conflict == 2)
+			quarantined.insert(700);
+		if (conflict == 3)
+			custody[700].vnum = 901;
+		if (conflict == 4)
+			custody[700].root_item_uid = 701;
+		if (conflict == 5)
+			custody[700].parent_item_uid = 701;
+		const auto &handoff = artifact_population_prepare_boot(true);
+		const auto decision = classify(handoff);
+		if (!conflict)
+		{
+			assert(decision.identity.state == state::present &&
+			       decision.identity.canonical_item_uid == 700 &&
+			       decision.canonical_payloads == std::vector<size_t>{ 0 });
+			assert(handoff.items[0].payload_owner.type == item_owner_type::player);
+		}
+		else
+			assert(decision.identity.state == state::unresolved &&
+			       decision.canonical_payloads.empty());
+	}
+	reset();
+	redis_result = redis_world_boot_result::ready;
+	redis_rows = { item(700, domain::redis_generation) };
+	custody[700] = { 700, 700, 0,	{ item_owner_type::player, 55, 0 },
+			 3,   3,   900, item_custody_state::active };
+	assert(classify(artifact_population_prepare_boot(false)).identity.state ==
+	       state::unresolved);
+	reset();
+	paths["copyover.dat.recovering"] = copyover_boot_result::ready;
+	native_rows[2] = { item(700, domain::copyover_ground) };
+	custody[700] = { 700, 700, 0,	{ item_owner_type::player, 55, 0 },
+			 3,   3,   900, item_custody_state::active };
+	assert(classify(artifact_population_prepare_boot(false)).identity.state ==
+	       state::unresolved);
+
 	reset();
 	auto live = item(700, domain::copyover_ground);
 	live.custody_examined = live.custody_found = live.custody_required = true;

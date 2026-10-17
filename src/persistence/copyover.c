@@ -2419,7 +2419,9 @@ P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *byte
 	if (!bytes_read)
 		return nullptr;
 	*bytes_read = 0;
-	P_obj object = world_recovery_restore_copyover_object_from_buffer(buf, len);
+	const auto *source = copyover_boot_evidence();
+	P_obj object = world_recovery_restore_copyover_object_from_buffer(
+		buf, len, source ? static_cast<uint64_t>(source->identity.st_ino) : 0);
 	if (object)
 		*bytes_read = len;
 	return object;

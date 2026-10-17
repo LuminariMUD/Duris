@@ -61,7 +61,6 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 		    (row.custody_found &&
 		     (stored.state != item_custody_state::active || stored.vnum != incoming.vnum ||
 		      stored.item_revision > incoming.item_revision ||
-		      (same_owner && stored.owner_revision > incoming.owner_revision) ||
 		      (stored.item_revision == incoming.item_revision &&
 		       (!same_owner || stored.root_item_uid != incoming.root_item_uid ||
 			stored.parent_item_uid != incoming.parent_item_uid)))))
@@ -76,10 +75,27 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 			row.source_quarantined = true;
 		else
 		{
+			// Owner-wide saves can advance without changing this item. Keep
+			// that newer fence while preserving the qualified per-item facts.
+			const uint64_t owner_revision =
+				item_owner_identity_equal(row.custody.owner, found->second.owner) ?
+					std::max(row.custody.owner_revision,
+						 found->second.owner_revision) :
+					found->second.owner_revision;
 			row.custody_examined = row.custody_found = true;
 			row.custody = found->second;
+			row.custody.owner_revision = owner_revision;
 		}
 	}
+	for (auto &row : *items)
+		if (row.domain == artifact_payload_domain::copyover_ground &&
+		    row.role == artifact_payload_role::stored && !row.source_quarantined &&
+		    !row.custody_required && row.custody_found)
+			// A legacy-created item can be durably claimed before its live
+			// custody cache is filled. The selected native handoff records its
+			// physical room; independent custody records its logical owner.
+			// Classification still verifies active state, UID/vnum and topology.
+			row.payload_owner = row.custody.owner;
 }
 } // namespace
 

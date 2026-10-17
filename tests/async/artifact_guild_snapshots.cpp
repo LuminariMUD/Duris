@@ -841,12 +841,33 @@ static void creation_allocation_cases()
 	artifact_binds.clear();
 	fail_allocation = true;
 	assert(!artifact_begin_creation(&object) && !fail_allocation && errno == ENOMEM &&
-	       !artifact_rows.at(900).creation_pending &&
+	       artifact_rows.at(900).pending == artifact_pending::none &&
 	       !artifact_rows.at(900).canonical_item_uid);
 	assert(artifact_begin_creation(&object));
 	artifact_object_extracted(&object, false);
 	assert(jobs.empty());
-	puts("PASS fresh creation allocation: row and soul-slot failures publish no claim; retry remains eligible");
+	artifact_payload_projection source = {};
+	source.domain = artifact_payload_domain::copyover_ground;
+	source.row_id = 1;
+	source.item_uid = source.payload_root_item_uid = object.obj_uid;
+	source.owner_reference = 2300;
+	source.owner_context = 44;
+	source.payload_owner = { item_owner_type::room, 2300, 0 };
+	source.vnum = 900;
+	source.extra_flags = ITEM_ARTIFACT;
+	source.extra_flags_present = source.custody_examined = true;
+	source.quantity = 1;
+	assert(artifacts_stage_population({ source }, { { 900, ITEM_ARTIFACT } }, true));
+	artifact_binds.clear();
+	fail_allocation = true;
+	assert(!artifact_begin_recovery(&object, source) && !fail_allocation && errno == ENOMEM &&
+	       !artifact_rows.at(900).live_object && artifact_binds.empty() && jobs.empty());
+	assert(artifact_begin_recovery(&object, source));
+	artifact_object_extracted(&object, false);
+	assert(artifact_rows.at(900).canonical_item_uid == object.obj_uid &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::present &&
+	       jobs.empty());
+	puts("PASS fresh/recovery allocation: row and soul-slot failures publish no claim; retry remains eligible");
 }
 
 static void report_inspection_cases()

@@ -18,9 +18,30 @@ and projections are ready in [PR #147](https://github.com/LuminariMUD/Duris/pull
 The pure canonical classifier and atomic cache staging are implemented in PR #148.
 Boot source assembly, custody lookup, reap protection and early publication are
 implemented on `branch/issue-67-boot-population`. Recovery/delivery normalization,
-Remaining saved-UID source/custody qualification, fresh producer families and
+saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
+
+Current saved-ground hydration work: `branch/issue-67-recovery-hydration`, based
+on PR #152. Outcome: admit saved artifact UIDs/effective flags before constructor
+procedures only from the exact qualified pinned Redis generation/floor or native
+copyover source, reserve one live physical pointer, and preserve timer/soul through
+placement, unload and whole-group rollback. Non-goals: UID-only admission, choosing
+a legacy conflict winner, or claiming mutable player/storage/delivery sources are
+already migrated. Files: existing artifact service/constructor, recovery planner
+provenance/native adapter, focused native and actual ground-copyover journey.
+Proof: wrong domain/generation/room/topology/flags, retired/conflicting/live copies
+refuse before procedures; known UID can hydrate from its qualified source even
+when unrelated evidence is incomplete; cancellation/retry preserve prior state;
+ordinary objects and valid complete restore remain available in both builds.
+
+Discovery for the following player-load chunk: `apply_items` in
+`player_snapshot_repository.c` deletes all `player_items` for the PID before
+inserting the saved graph. Simply skipping a conflicting artifact on load would
+erase its retained payload at the next save. The final player/source admission
+must include evidence retention/quarantine and independent valid inventory, not a
+whole-character refusal or a skip-only patch. Offline loading also includes the
+live `load char` path, so it cannot be given one blanket inspection purpose.
 
 Current inspection checkpoint: [PR #152](https://github.com/LuminariMUD/Duris/pull/152),
 ready for review, `branch/issue-67-artifact-report-inspection`, based on PR #151. Outcome: artifact lists/JSON/player reports read owned prototype values
@@ -1115,6 +1136,162 @@ inventory or reducing the required availability of proved-absent artifacts.
 Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
+
+### Pinned ground saved-UID admission — AR-03 in progress
+
+Working branch: `branch/issue-67-recovery-hydration`, based on PR #152; not yet
+published. Outcome/non-goals/files/proof are at the top of this plan. Current
+implementation and remaining validation are recorded here for takeover.
+
+`read_object_for_recovery` applies the saved UID and effective extra flags in the
+existing constructor before procedures, list publication or index counts. It does
+not allocate a throwaway UID. `artifact_begin_recovery` requires an established
+present canonical UID and an exact retained qualified ground projection: selected
+Redis generation/floor or native copyover domain, source context, physical room,
+root/parent UIDs and flags. A same UID in a different source/context is not a grant.
+Unrelated incomplete sources do not prevent a previously established UID from
+using its exact qualified source. Clearing the saved artifact flag on a known UID
+cannot bypass the check; unrelated ordinary objects retain their normal path.
+
+The existing pending flag is now one enum (none/creation/recovery). Recovery claims
+reserve one live pointer, preserve UID/timer/soul at placement, and roll back pending
+admission on abandonment. The existing whole-group map checkpoint covers later
+failure. Already materialized matching trees must pass the same source check and
+register their physical pointers; a valid repeated same-pointer handoff is
+idempotent. A different pointer with that UID refuses. `materialize_object` carries
+provenance for generation, floor and native ground records; the native adapter
+uses the pinned image's inode context. No new format, authority, writer or queue.
+
+A native location-tracking regression reproduced timer replacement on an unowned
+recovered artifact. `get_artifact_data_sql` fills its timer but returns ownership,
+so the caller discarded a valid unowned timer; the update overloads also replaced
+zero with a full duration. Ground/NPC tracking now uses the returned value, and
+only an owned missing timer is initialized. Actual location tracking plus both
+update overloads preserve unowned zero/nonzero timers and binding state. Retained
+failure: `bin/analysis/issue67/recovery-hydration-timer-before.log`.
+
+Source-qualification refusal now uses the existing bounded persistence alert with
+`artifact_identity/recovery`, a controlled reason, public vnum, source domain and
+qualification count. Raw UIDs and owner IDs are not added to these notices. The
+new invalid-flags control first reproduced an ordinary-flag bypass; its retained
+failure is `recovery-hydration-flags-before.log`. A compiled ignored source variant
+with only the exact-source refusal removed fails the wrong-source regression:
+`recovery-hydration-no-source-proof.log` (compilation succeeded).
+
+The real ground-copyover journey exposed a further prerequisite. Its retained
+native image contains the artifact's body but no live custody-cache entry, despite
+a prior player snapshot being able to claim that UID in durable custody. The boot
+projection then used its physical room as logical owner and retained zero qualified
+sources. Native handoff deliberately supports logical ownership independent of
+physical room. Boot assembly now uses independently read custody for a selected
+native ground payload lacking captured custody. It does not write or invent any
+custody. The classifier still checks active state, UID/vnum and full topology;
+quarantine/terminal/wrong-root/parent controls refuse. Redis images and unselected
+retained native files do not acquire this permission. The native boot fixture
+reproduces the positive failure before repair and passes all these controls after:
+`recovery-hydration-independent-custody-before.log` / `recovery-hydration-boot.log`.
+
+Full-server failure evidence is retained privately under ignored
+`bin/analysis/artifact-estale/failure-standard-1792207967337852625/`, including the
+original `copyover.dat.recovering`. An ignored inspector links the actual native
+reader/projector/classifier and confirms the missing live-cache custody projection;
+`bin/analysis/issue67/inspect-recovery-handoff.cpp` and its binary inspect that
+synthetic fixture only. Test failure handling now also retains the synthetic
+handoff and journey state instead of deleting the only reproduction with its
+TemporaryDirectory. No operational/player data is collected.
+
+The next full SQL run passed ground source qualification, then exposed stale
+owner-wide revisions on ordinary dropped starter items. The retained image's
+per-item entry had owner revision1, while the same owner's durable revision had
+already advanced to3 before copyover. Its item revision/state/owner/topology had
+not changed. Native replay now derives the maximum owner fence across that bounded
+custody batch and the current runtime owner baseline, then uses the existing
+atomic ledger hydration. Per-item revisions/owner/root/parent/state checks are
+unchanged. The immutable handoff bytes are not rewritten. Boot source assembly
+also preserves the newer independent owner fence when selecting matching live
+per-item facts. No revision is lowered and no ownership is published before the
+existing atomic commit. New actual save/exec/recover cases cover a newer runtime
+owner fence and mixed old fences for one owner; the original newer-item rejection
+still fails closed. Before logs: `recovery-hydration-owner-revision-boot-before.log`
+and `recovery-hydration-owner-revision-replay-before.log`. Private reproduction:
+`failure-standard-1792208383734127547` includes handoff and synthetic custody facts.
+
+Reviewing the existing native corpse fixture exposed a related classifier gap:
+its physical corpse wraps a bag that starts a separate logical custody root. The
+new pure classifier regression failed before repair. Native captured custody may
+now start a root at the node itself (logical parent0), or inherit its actual
+physical parent's logical root and owner. Physical source ancestry is still
+validated independently; arbitrary root/parent changes, cross-owner inheritance
+and the same exception for Redis refuse. Same-UID native/corpse-store projections
+compare logical custody topology, so a wrapper does not create a false conflict.
+The actual nested materializer/factory also covers this captured corpse case.
+Before log: `recovery-hydration-logical-corpse-before.log`. No fallback grants a
+UID without its qualified pinned source.
+
+Current verification:
+
+- `test_artifact_creation_admission.py` passes under ASan/terminating UBSan. It
+  executes the real factory/service, actual nested recovery tree materializer,
+  actual location tracking and existing reset/clone/extraction bodies. Eleven
+  source refusals precede procedures; valid procedures see the saved UID and
+  pending state. All three ground domains, converted effective flags, cancellation,
+  live pointer conflicts, unload/retry, zero/nonzero timers, nested rollback and
+  already materialized tree registration are covered.
+- `test_artifact_guild_snapshots.py` passes existing snapshots/ACK and new recovery
+  bind-slot allocation refusal/retry without a published claim or capture.
+- `test_artifact_population.py` and `test_artifact_population_boot.py` pass native
+  logical-corpse, independent custody, newer aggregate fence and all conflicting
+  state/topology/retained/Redis controls.
+- `test_world_recovery_pipeline.py` and flat artifact repository/runtime controls
+  pass. `test_copyover_custody.py` passes five actual save/exec/recover cases
+  (normal, newer/changed publication, newer owner baseline, mixed owner fences)
+  plus competing-publication refusal before exec. Newer per-item custody still
+  rejects and retains its original state.
+- Final SQL and client-free `make -C src` builds, changed-line format/compatible
+  clang-tidy and diff checks pass.
+- `tests/async/with_disposable_mariadb.sh python3
+  tests/async/test_mysql_artifact_guild_reward_journey.py --case standard` passes
+  on the final implementation: three feeds while snapshots/history are held,
+  eventual exact rewards, ground drop/native copyover with unchanged canonical
+  UID/timer/soul and one live artifact, pickup/wear/save and clean restart with
+  the offline-owner reservation. Frozen report/log:
+  `bin/analysis/issue67/recovery-hydration-gameplay.json` and
+  `recovery-hydration-gameplay-final.log`.
+- Final client-free `run_copyover_runtime_journey.py` passes compressed and
+  uncompressed actual exec, original socket, look, acknowledged save and account
+  menu, including failed-open preservation (`recovery-hydration-flat-journey-final.log`).
+  Native corpse/logical-root controls are executable fixtures, not a fresh full
+  death/loot/raise gameplay journey. Fault/PVP and full suites were not rerun.
+
+The SQL standard journey now removes/drops the artifact before native copyover,
+compares exact canonical UID/timer/soul and one live instance after recovery, then
+picks it up, wears/saves it and completes the existing offline-owner/restart checks.
+Its first attempt could not remove the stone because the normal starter inventory
+was full. The fixture now drops ordinary starter inventory first and asserts remove
+and drop success. A later failure showed real source qualification, not a fixture
+assumption; no source guard was weakened to obtain a green run. Only standard is
+being run; fault/PVP cases remain separate retained coverage.
+
+A separate reproducible failure-path finding remains after this chunk: the normal
+`fatal_boot_error` calls `exit(EXIT_FAILURE)` with worker threads active after
+copyover recovery fails. Static joinable-thread destruction changes that into
+`terminate called without an active exception`/SIGABRT. The failed handoff remains
+preserved and no game loop runs, but termination should retain its intended status
+and message without running unsafe global destructors or saving a partial world.
+The actual fatal handler plus an active static worker reproduces SIGABRT in
+`bin/analysis/issue67/fatal-boot-worker-before.log`; the ignored probe is
+`test_fatal_boot_worker_probe.py`. Repair as its own focused PR, preserving flushed
+diagnostics and the failure status without partial-world shutdown saves, then run
+its existing startup/error contracts and both builds.
+
+Immediate next steps: publish this tested source-qualified ground chunk. Repair
+the fatal boot termination separately, then
+implement mutable saved player/pet/storage/delivery source admission with explicit
+live/temporary roles and payload retention across later saves. The existing player
+save's wholesale delete is not compatible with skip-only conflict handling.
+Complete legacy metadata reconstruction, remaining fresh producers, lifecycle/
+custody/mana/action/reward guards and all unchecked AR-01–AR-07 acceptance afterward.
+No production operation, merge or release tag.
 
 ### Artifact report inspection without materialization — AR-03 prerequisite
 
