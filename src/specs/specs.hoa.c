@@ -395,7 +395,7 @@ int hoa_death(P_char ch, P_char /*vict*/, int cmd, char * /*arg*/)
 	return FALSE;
 }
 
-int hoa_sin(P_char ch, P_char vict, int cmd, char * /*arg*/)
+int hoa_sin(P_char ch, P_char /*vict*/, int cmd, char * /*arg*/)
 {
 	P_char victim;
 	struct affected_type af;
