@@ -226,7 +226,8 @@ int main(int argc, char **argv)
 			const auto &child = population.items.back();
 			assert(child.item_uid == 8888 && child.payload_root_item_uid == 7777 &&
 			       child.parent_item_uid == 7777 && child.custody_examined &&
-			       child.custody_found && child.custody.item_revision == 9 &&
+			       child.custody_found && child.custody_owner_revision_found &&
+			       child.custody.item_revision == 9 &&
 			       child.payload_owner.type == item_owner_type::corpse &&
 			       child.payload_owner.id == 77);
 			if (version == COPYOVER_VERSION)
