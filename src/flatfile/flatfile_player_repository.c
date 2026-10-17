@@ -245,10 +245,9 @@ bool build_item_identities(
 						  0 :
 						  static_cast<uint64_t>(item.parent_index) + 1,
 					  item.object_uid, 0, !item.object_uid || item.vnum <= 0 });
-				const auto owner_entry = catalog.find(item.object_uid);
-				if (item.object_uid &&
-				    (owner_entry == catalog.end() ||
-				     item_owner_identity_equal(owner_entry->second.owner, owner)))
+				// Duplicate raw UIDs are evidence even when custody names another
+				// owner. Retain every matching root so source selection is unambiguous.
+				if (item.object_uid)
 				{
 					const auto [previous, unique] =
 						seen.emplace(item.object_uid, index);

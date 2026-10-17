@@ -70,6 +70,34 @@ Implementation commit: `c8300925319975d438534a65ab56e948b01bc306`.
   admission, pet/storage/delivery roles, remaining producers and AR-04/AR-07
   lifecycle acceptance remain open; this prerequisite does not complete AR-02/03.
 
+Retention follow-up found while tracing the next admission seam:
+- A legacy flat player file can carry two roots with the same foreign UID, one
+  surrounding an unreadable child. The old duplicate prepass ignored foreign
+  custody, but retained-root selection correctly found both matching roots and
+  refused the load because only one had been marked. This blocked independent
+  valid inventory. Reproduced with a checksum-valid raw file; log:
+  `bin/analysis/issue67/player-retention-alias-before.log`.
+- Fix: detect duplicate raw UIDs before custody filtering, retaining all affected
+  source roots as evidence. No ownership change or canonical winner is selected.
+  The focused fixture now passes independent inventory load and repeated save of
+  both aliased roots; the existing flat repository suite and both backend builds
+  pass. Evidence: `bin/analysis/issue67/player-retention-alias.log`. This correction
+  is included in PR #155; publication verification follows its commit.
+
+Next saved-source admission seams confirmed in current code:
+- `player_load_items.c::materialize_item_graph` still uses generic `read_object`
+  before applying the saved UID/effective flags; constructor procedures therefore
+  precede mutable-source qualification. Do not mistake #155 for admission.
+- `artifact_begin_recovery` accepts only exact pinned native/Redis ground sources;
+  mutable player restoration must correlate its loaded source with current custody
+  and the established canonical UID, reserve one live pointer before procedures,
+  and retain a rejected complete source root without blocking independent roots.
+- Offline loads include live staff `load char`, mutative artifact maintenance and
+  inspection callers. Trace/classify their actual callbacks before assigning an
+  explicit purpose; no blanket temporary/live rule for `player_load_offline`.
+  Current SQL raw source descriptors are local to `load_items`; admission-time
+  retention will need the relevant immutable source selectors through the result.
+
 Current focused repair: [PR #154](https://github.com/LuminariMUD/Duris/pull/154),
 ready for review, `branch/issue-67-fatal-boot-exit`, based on PR #153.
 Outcome: a fatal boot error preserves its intended failure status and console

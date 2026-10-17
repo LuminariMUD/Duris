@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <openssl/sha.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -399,6 +400,54 @@ static void retained_roots_case(const fs::path &path, bool unknown_root)
 			custody.size() == 1 && custody[0].owner.type == item_owner_type::player &&
 			custody[0].owner.id == 43,
 		"saving retained payload stole foreign custody");
+	if (!unknown_root)
+	{
+		// Legacy files can contain two roots with the same foreign UID. Keep
+		// all matching evidence without making unrelated inventory unavailable.
+		stored.items.push_back(unknown);
+		std::vector<uint8_t> payload;
+		require(player_snapshot_encode(stored, &payload) ==
+				player_snapshot_codec_result::ok,
+			"encode duplicate-root fixture");
+		stored.encoded_size_bound = payload.size();
+		require(player_snapshot_encode(stored, &payload) ==
+				player_snapshot_codec_result::ok,
+			"normalize duplicate-root fixture");
+		unsigned char digest[SHA256_DIGEST_LENGTH];
+		SHA256(payload.data(), payload.size(), digest);
+		std::ofstream file(path / "players/42.snapshot",
+				   std::ios::binary | std::ios::trunc);
+		const auto number = [&](uint64_t value, size_t bytes)
+		{
+			for (size_t index = 0; index < bytes; ++index)
+				file.put(static_cast<char>(value >> (index * 8)));
+		};
+		const auto &magic = flatfile_player_snapshot_file::player_magic;
+		file.write(reinterpret_cast<const char *>(magic.data()), magic.size());
+		number(flatfile_player_snapshot_file::player_file_version, 4);
+		number(payload.size(), 4);
+		number(stored.pid, 4);
+		number(stored.revision, 8);
+		number(stored.components, 8);
+		file.write(reinterpret_cast<const char *>(digest), sizeof(digest));
+		file.write(reinterpret_cast<const char *>(payload.data()), payload.size());
+		file.close();
+		require(file.good(), "write duplicate-root fixture");
+		request.request_id = 3;
+		const auto aliased = flatfile_player_load_repository_execute(root, request);
+		require(aliased.outcome == player_load_outcome::applied &&
+				aliased.snapshot.items.size() == 1 &&
+				aliased.snapshot.retained_items.rows.size() == 3,
+			"foreign duplicate retained roots blocked unrelated inventory");
+		auto next = aliased.snapshot;
+		next.revision = 6;
+		require(flatfile_player_snapshot_apply(root, next, &error).outcome ==
+					player_save_apply_outcome::applied &&
+				flatfile_player_snapshot_load(root, 42, &stored, &error) ==
+					flatfile_player_load_result::ok &&
+				stored.items.size() == 4,
+			"save lost aliased retained roots");
+	}
 }
 
 // A save claims what the player holds in the same authority transaction that writes
