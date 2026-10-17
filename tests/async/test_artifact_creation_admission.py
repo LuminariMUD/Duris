@@ -323,7 +323,7 @@ int main() {
  maintenance_inspection_cases();
  swap_admission_cases();
  // Legacy reconstruction keeps the canonical UID and registers one live body.
- auto &legacy=artifact_rows.at(900);
+ auto &legacy=artifact_rows[900];
  legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
  legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80001;
  artifact_binds[900]={55,666};

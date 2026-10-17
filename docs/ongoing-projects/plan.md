@@ -16,14 +16,17 @@ outstanding thread. The capacity review is resolved with proof in `76d0d4e7c`. #
 
 ## Latest review checkpoint: #157 artifact hunt audit
 
-Current branch: `branch/issue-67-maintenance-inspection` (#159), in
+Current branch: `branch/issue-67-canonical-swap-admission` (#161), in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #156 repair `fdb7007fe`
 is published and all three threads are resolved. #157 is carried forward at `a78a52c36`;
 #158 merge `613f50675` retains raw-source qualification after its DTO policy removal.
 Offline/body-admission, capacity, real artifact/recovery lifecycle, flat repository
 and native build checks pass (`bin/analysis/pr158-*`); #158 is published at `eba0d359b`.
 #159 merge `6049af69a` passes maintenance/lifecycle admission, raw audit and native
-build (`bin/analysis/pr159-*`). Publish and continue through #160/#161 to #162.
+build (`bin/analysis/pr159-*`); published as `c57ea3f0d`. #160 is published as
+`dbde293b7` after template/admission/build checks. #161 carry-forward `21fb5d9a7`
+passes its build; the expanded native suite now seeds its legacy fixture independently
+after swap cases clear the catalog. Validate it, publish, then repair #162.
 The #157 repair is published as `d2cbe3d02`; all four threads are resolved.
 
 #157 outcome: include candidates known only through custody vnum or canonical UID;
