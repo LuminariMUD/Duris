@@ -25,6 +25,7 @@ HARNESS = r'''
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <cstdio>
 #include <new>
 #include <cerrno>
 #include <map>
@@ -151,6 +152,8 @@ std::vector<player_save_completion> drain()
     return all;
 }
 
+// WRITER_HEALTH_RENDERER
+
 static void test_admission_capacity()
 {
     for (bool byte_limit : {true, false})
@@ -171,6 +174,13 @@ static void test_admission_capacity()
                                               locker_job(index)) == player_save_submit_result::accepted);
         const auto before = player_save_worker_health_copy();
         assert(before.queued_jobs == queued && before.inflight_jobs == 1);
+        assert(before.completion_jobs == 0 && before.inflight_bytes == first.encoded_size_bound);
+        assert(before.high_water_jobs == queued + 1);
+        assert(before.high_water_bytes == queued * bytes + first.encoded_size_bound);
+        const auto status = writer_status();
+        const auto used_bytes = queued * bytes + first.encoded_size_bound;
+        assert(status.find("bytes=" + std::to_string(used_bytes) + " ") != std::string::npos &&
+               "writer status omitted in-flight payload bytes");
         errno = 0;
         assert(persistence_writer_submit(persistence_job_kind::locker, queued + 1, 1,
                                           locker_job(99999)) == player_save_submit_result::unavailable);
@@ -206,7 +216,17 @@ static void test_admission_capacity()
                                               locker_job(88888)) == player_save_submit_result::unavailable);
             assert(errno == ENOSPC);
         }
+        const auto completed_health = player_save_worker_health_copy();
+        assert(completed_health.queued_jobs == 0 && completed_health.inflight_jobs == 0 &&
+               completed_health.completion_jobs == queued + 1 &&
+               completed_health.queued_bytes == 0 && completed_health.inflight_bytes == 0);
+        const auto completed_status = writer_status();
+        assert(completed_status.find("writer state=pending ") != std::string::npos &&
+               completed_status.find("completions=" + std::to_string(queued + 1) + " ") != std::string::npos &&
+               "writer status hid capacity-consuming completions");
         assert(drain().size() == queued + 1);
+        assert(writer_status().find("writer state=empty ") != std::string::npos);
+        assert(player_save_worker_health_copy().completion_jobs == 0);
         assert(persistence_writer_submit(persistence_job_kind::locker, 88888, 1,
                                           locker_job(88888)) == player_save_submit_result::accepted);
         assert(persistence_writer_wait_idle(5000));
@@ -439,6 +459,15 @@ int main()
 '''
 
 
+# Execute the production writer-status formatter with the real worker snapshot.
+renderer_at = DIAGNOSTICS.index('"writer state=')
+renderer_start = DIAGNOSTICS.rfind('\tsnprintf(', 0, renderer_at)
+renderer_end = DIAGNOSTICS.index('\n\tsend_to_char(line, ch);', renderer_at)
+HARNESS = HARNESS.replace('// WRITER_HEALTH_RENDERER',
+    'std::string writer_status() { char line[2048]; '
+    'const auto player_saves = player_save_worker_health_copy();\n' +
+    DIAGNOSTICS[renderer_start:renderer_end] + '\nreturn line; }')
+
 test_outputs = ROOT / "bin/tests"
 test_outputs.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-", dir=test_outputs) as temp_dir:
@@ -493,7 +522,9 @@ print("[PASS] locker saves go through the one writer")
 for metric in (
     "queued_jobs",
     "inflight_jobs",
+    "completion_jobs",
     "queued_bytes",
+    "inflight_bytes",
     "oldest_age_msec",
     "age_limit_exceeded",
     "connection_retries",

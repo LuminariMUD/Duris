@@ -29,7 +29,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'A', 'R', 'T', 'F', 0 };
-constexpr uint32_t catalog_version = 2;
+constexpr uint32_t catalog_version = 3;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
 constexpr const char *catalog_filename = "artifact_catalog";
 constexpr uint32_t artifact_extra_flag = 1U << 28;
@@ -165,6 +165,7 @@ bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes
 		payload.number(record.revision);
 		payload.number(record.canonical_item_uid);
 		payload.number(static_cast<uint8_t>(record.identity_state));
+		payload.number<uint8_t>(record.identity_only ? 1 : 0);
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -193,8 +194,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || (version != 1 && version != catalog_version) ||
-	    !revision || payload_size != bytes.size() - header_size)
+	    !header.number(&revision) || (version < 1 || version > catalog_version) || !revision ||
+	    payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
@@ -230,6 +231,22 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 				record.identity_state = static_cast<artifact_identity_state>(state);
 			}
 			record.owned = owned != 0;
+			if (version >= 3)
+			{
+				uint8_t identity_only = 0;
+				if (!payload.number(&identity_only) || identity_only > 1)
+					return false;
+				record.identity_only = identity_only != 0;
+			}
+			else
+				// Preserve the v1/v2 load rule; unresolved legacy rows cannot be
+				// distinguished from old reservations without an explicit marker.
+				record.identity_only =
+					!record.owned &&
+					record.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
+					(record.identity_state ==
+						 artifact_identity_state::retired ||
+					 record.identity_state == artifact_identity_state::absent);
 		}
 	}
 	catch (const std::bad_alloc &)

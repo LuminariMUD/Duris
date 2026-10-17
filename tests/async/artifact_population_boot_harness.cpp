@@ -16,8 +16,9 @@ namespace
 std::map<std::string, copyover_boot_result> paths;
 std::map<uint64_t, std::vector<artifact_payload_projection>> native_rows;
 std::vector<artifact_payload_projection> redis_rows, durable_rows;
+std::vector<artifact_recovery_mob_projection> redis_mobs;
 std::map<uint64_t, item_ownership_runtime_entry> custody;
-std::set<uint64_t> quarantined;
+std::set<uint64_t> quarantined, missing_revisions;
 copyover_boot_snapshot selected_image;
 redis_world_boot_snapshot redis_image;
 redis_world_boot_result redis_result = redis_world_boot_result::disabled;
@@ -43,6 +44,8 @@ void reset()
 	paths.clear();
 	native_rows.clear();
 	redis_rows.clear();
+	redis_mobs.clear();
+	missing_revisions.clear();
 	durable_rows.clear();
 	custody.clear();
 	quarantined.clear();
@@ -104,6 +107,7 @@ unsigned int artifact_population_read_recovery(const redis_world_boot_snapshot &
 					       artifact_recovery_population *population)
 {
 	population->items = redis_rows;
+	population->mobs = redis_mobs;
 	return 0;
 }
 unsigned int artifact_population_read_flat_payloads(
@@ -119,6 +123,8 @@ unsigned int artifact_population_read_flat_payloads(
 	{
 		row.custody_examined = true;
 		row.custody_found = custody.contains(row.item_uid);
+		row.custody_owner_revision_found = row.custody_found &&
+						   !missing_revisions.contains(row.item_uid);
 		row.custody = row.custody_found ? custody.at(row.item_uid) :
 						  item_ownership_runtime_entry{};
 		row.source_quarantined = row.source_quarantined ||
@@ -170,6 +176,42 @@ int main()
 	assert(artifact_population_prepare_boot(false).complete);
 	assert(classify(artifact_population_boot_evidence()).identity.canonical_item_uid == 555);
 
+	// Redis mob records omit equipment identity. Source decoding alone cannot
+	// establish artifact absence while their reset reconstruction is unresolved.
+	reset();
+	redis_result = redis_world_boot_result::ready;
+	redis_mobs.push_back({ 2000, 42, 2300, 2300, -1 });
+	const auto &npc = artifact_population_prepare_boot(false);
+	assert(!npc.complete && npc.unavailable_sources.find("NPC") != std::string::npos &&
+	       classify(npc).identity.state == state::unresolved);
+	reset();
+	redis_result = redis_world_boot_result::ready;
+	assert(artifact_population_prepare_boot(false).complete &&
+	       classify(artifact_population_boot_evidence()).identity.state == state::absent);
+
+	// Native NPC hints carry vnums, not physical UIDs. Neither selected nor
+	// retained hints may release an established identity as proven absent.
+	for (const bool selected : { false, true })
+	{
+		reset();
+		auto hint = item(0, domain::copyover_reconstruction);
+		hint.role = artifact_payload_role::reconstruction;
+		hint.row_id = 1;
+		hint.extra_flags_present = false;
+		native_rows[selected ? 2 : 1] = { hint };
+		if (!selected)
+			paths["copyover.dat"] = copyover_boot_result::ready;
+		const auto &native = artifact_population_prepare_boot(selected);
+		assert(!native.complete && classify(native).identity.state == state::unresolved);
+		std::vector<artifact_population_decision> held;
+		assert(!artifact_population_classify(native.items, { { 900, ITEM_ARTIFACT } },
+						     { { 900, 111, state::present } },
+						     native.complete, &held));
+		assert(held.size() == 1 && held[0].identity.state == state::present &&
+		       held[0].identity.canonical_item_uid == 111 &&
+		       held[0].canonical_payloads.empty());
+	}
+
 	// Native handoff authority supersedes an older durable owner. It is never
 	// overwritten by that older SQL/flat projection, nor confused with history.
 	for (int conflict = 0; conflict < 6; ++conflict)
@@ -177,7 +219,8 @@ int main()
 		reset();
 		auto live = item(700, domain::copyover_ground);
 		live.payload_owner = { item_owner_type::corpse, (77ULL << 32) | 12, 0 };
-		live.custody_examined = live.custody_found = live.custody_required = true;
+		live.custody_examined = live.custody_found = live.custody_required =
+			live.custody_owner_revision_found = true;
 		live.custody = { 700, 700, 0,	live.payload_owner,
 				 3,   3,   900, item_custody_state::active };
 		native_rows[2] = { live };
@@ -203,6 +246,9 @@ int main()
 		}
 		redis_result = redis_world_boot_result::ready;
 		redis_rows = { item(999, domain::redis_generation) };
+		redis_mobs.push_back({ 2000, 42, 2300, 2300, -1 }); // superseded by selected native
+		if (conflict == 5)
+			missing_revisions.insert(700);
 		const auto &warm = artifact_population_prepare_boot(true);
 		assert(warm.complete && warm.items.size() == 3 && reads == 2);
 		assert(warm.retained_uids == std::vector<uint64_t>{ 700 });
@@ -269,7 +315,8 @@ int main()
 
 	reset();
 	auto live = item(700, domain::copyover_ground);
-	live.custody_examined = live.custody_found = live.custody_required = true;
+	live.custody_examined = live.custody_found = live.custody_required =
+		live.custody_owner_revision_found = true;
 	live.custody = { 700, 700, 0, live.payload_owner, 3, 3, 900, item_custody_state::active };
 	native_rows[2] = { live };
 	custody[700] = live.custody;
