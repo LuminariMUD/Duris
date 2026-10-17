@@ -586,23 +586,26 @@ void artifact_bind_store(int vnum, int owner_pid, int timer)
 	arti_cache_invalidate();
 }
 
-// Keep the existing all-souls transaction; each changed record retains its own
-// dirty indication and shares the receipt of this one captured write.
+// Admit the entire reset before changing live bindings. A refused batch must not
+// fall back to independent per-row retries. Accepted records share one receipt.
 bool artifact_binds_reset(int vnum)
 {
 #ifdef __NO_MYSQL__
 	if (!artifact_cache_loaded)
 		return false;
 #endif
-	for (auto &entry : artifact_binds)
-		if (vnum < 0 || entry.first == vnum)
-		{
-			entry.second = { -1, 0 };
-			entry.second.save.dirty = true;
-		}
-	arti_cache_invalidate();
 	if (artifact_restore_checkpoint)
+	{
+		for (auto &entry : artifact_binds)
+			if (vnum < 0 || entry.first == vnum)
+			{
+				entry.second = { -1, 0 };
+				entry.second.save.dirty = true;
+			}
+		arti_cache_invalidate();
 		return true;
+	}
+	const artifact_bind_row reset = { -1, 0 };
 	try
 	{
 #ifdef __NO_MYSQL__
@@ -610,7 +613,7 @@ bool artifact_binds_reset(int vnum)
 		for (const auto &[number, bind] : artifact_binds)
 			if (vnum < 0 || number == vnum)
 				records.push_back(artifact_flat_capture(
-					number, artifact_rows.at(number), bind));
+					number, artifact_rows.at(number), reset));
 		if (records.empty())
 			return true;
 		auto receipt = std::make_shared<sql_write_receipt>();
@@ -623,7 +626,7 @@ bool artifact_binds_reset(int vnum)
 				const auto row = artifact_rows.find(number);
 				auto captured = artifact_snapshot_statements(
 					number, row == artifact_rows.end() ? nullptr : &row->second,
-					bind);
+					reset);
 				if (captured.empty())
 				{
 					artifact_save_error(number, "identity", bind.save,
@@ -642,12 +645,18 @@ bool artifact_binds_reset(int vnum)
 			if (vnum < 0 || entry.first == vnum)
 			{
 				if (queued)
+				{
+					entry.second = reset;
+					entry.second.save.dirty = true;
 					entry.second.save.pending = receipt;
+				}
 				else
 					artifact_save_error(entry.first, "soul", entry.second.save,
 							    "admission_failed",
 							    errno ? errno : EIO);
 			}
+		if (queued)
+			arti_cache_invalidate();
 		return queued;
 	}
 	catch (const std::bad_alloc &)
