@@ -45,6 +45,7 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "persistence/persistence_mode.h"
+#include "redis/redis_presence_runtime.h"
 #include "player/player_load_offline.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
@@ -5356,20 +5357,37 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 			}
 			else
 			{
-				// If it's not an immortal.
-				if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+				if (GET_LEVEL(vict) < MINLVLIMMORTAL)
+					update_ingame_racewar(-GET_RACEWAR(vict));
+
+				// Drop the player's belongings before saving: capturing them first
+				// would let the player reclaim equipment left behind by the purge.
+				for (int slot = 0; slot < MAX_WEAR; ++slot)
 				{
-					update_ingame_racewar(-GET_RACEWAR(ch));
+					if (!vict->equipment[slot])
+						continue;
+					P_obj item = unequip_char(vict, slot);
+					if (IS_SET(item->extra_flags, ITEM_TRANSIENT))
+						extract_obj(item, TRUE);
+					else
+						obj_to_room(item, vict->in_room);
+				}
+				while (vict->carrying)
+				{
+					P_obj item = vict->carrying;
+					if (IS_SET(item->extra_flags, ITEM_TRANSIENT))
+						extract_obj(item, TRUE);
+					else
+					{
+						obj_from_char(item);
+						obj_to_room(item, vict->in_room);
+					}
 				}
 
-				/* player will lose all objects! */
-				extract_char(vict);
-				writeCharacter(vict, 2, NOWHERE);
-				if (vict->desc)
-					close_socket(vict->desc);
-				else
-					free_char(vict);
-				vict->desc = 0;
+				sql_log_player_login(vict, "logout");
+				redis_player_offline(vict);
+				persistence_save_character_terminal(vict, RENT_QUIT);
+				extract_char_after_terminal_save(vict);
 				vict = NULL;
 			}
 		}
