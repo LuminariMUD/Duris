@@ -248,6 +248,12 @@ int main()
     retained.items[0].object_uid = 700;
     retained.items[0].vnum = 100;
     held.pets.push_back(retained);
+    auto malformed = retained;
+    malformed.hold_reason = pet_hold_reason::invalid_state;
+    malformed.hit = -1;
+    malformed.max_hit = 0;
+    malformed.items[0].object_uid = 701;
+    held.pets.push_back(malformed);
     pc.held_pets = &held;
     for (int intent : {RENT_CRASH, RENT_QUIT, RENT_DEATH}) {
         player_snapshot saved;
@@ -260,6 +266,10 @@ int main()
         player_snapshot restored;
         assert(player_snapshot_decode(encoded.data(), encoded.size(), &restored) == player_snapshot_codec_result::ok);
         assert(restored.pets[0].items[0].object_uid == 700);
+        assert(restored.pets.size() == 2);
+        assert(restored.pets[1].hold_reason == pet_hold_reason::invalid_state);
+        assert(restored.pets[1].hit == -1 && restored.pets[1].max_hit == 0);
+        assert(restored.pets[1].items[0].object_uid == 701);
     }
     pc.held_pets = nullptr;
     std::cout << "[PASS] held pet assets survive crash, logout and death saves\n";
