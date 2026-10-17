@@ -21,6 +21,13 @@ implemented on `branch/issue-67-boot-population`. Recovery/delivery normalizatio
 NPC reconstruction qualification and gameplay admission remain open.
 No operational repair started.
 
+Current focused repair (publication being prepared):
+`branch/issue-67-offline-load-cleanup`, based on PR #150. Abandoned asynchronous
+offline loads now discard their temporary item trees before free. The actual
+callback/discard ASan/UBSan regression, player-item/session controls, both backend
+builds and changed-line format/tidy pass. This removes the cleanup blocker; explicit
+saved-UID source/owner qualification and inspection roles are the next main task.
+
 Current creation admission checkpoint: [PR #150](https://github.com/LuminariMUD/Duris/pull/150),
 ready for review, `branch/issue-67-creation-admission`, based on PR #149. Outcome: reserve a fresh artifact UID in the existing authority before
 constructor procedures/placement; protect an existing UID and roll back abandoned
@@ -1096,6 +1103,57 @@ Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
 
+### Abandoned offline-load item cleanup — focused AR-03 prerequisite
+
+Branch: `branch/issue-67-offline-load-cleanup`, based on PR #150; publication pending.
+Outcome: when an asynchronous offline requester's runtime ID no longer identifies
+a live character, dematerialize loaded equipment/inventory before freeing the
+temporary owner. Non-goals: a new extraction/session API, physical retirement,
+saved ownership writes or completion of saved-UID artifact admission. Files:
+`player_load_offline.c/.h`, one focused native fixture and this plan. Proof below.
+
+The actual `player_load_offline_for` completion used `free_char(loaded)` directly.
+That function only reports attached items and frees the character, leaving live
+item nodes and dangling owner pointers. The scratch native fixture reproduced this
+with one worn object, a carried container/child and another carried object; its
+free boundary asserts with inventory still attached. Evidence:
+`bin/analysis/issue67/offline-cleanup-before.log`. The permanent test links the
+actual offline-load implementation and actual `player_load_items_discard`, with
+controlled queue/materializer/pool/free boundaries.
+
+Repair: include the existing item-load interface and call
+`player_load_items_discard(loaded)` before free. Its existing behavior clears UID
+recursively, detaches equipment/roots, extracts with FALSE, and clears carrying
+counts. No character-list insertion, room extraction, save or new helper is
+needed. The header now states the caller's item-discard/free obligation. Existing
+`player_save_pipeline_end_session` already retains an online owner's revision and
+pending saves; this change does not add or replace session policy.
+
+Passed:
+
+- `python3 tests/async/test_player_load_offline.py`: ASan/leak detection and
+  terminating UBSan over actual callback and discard. Abandoned completion releases
+  all four nodes with UID0 and FALSE extraction, without delivering the command;
+  live completion preserves worn/nested UIDs until the caller releases them;
+  no-items, failed/missing loads, unknown/repeated completion and rejected-queue
+  controls pass. No database or server process is needed by this fixture.
+- `python3 tests/async/test_player_load_items.py` and
+  `python3 tests/async/test_player_save_pipeline.py`: actual graph controls and
+  existing online/pending-save revision protections pass.
+- `python3 tests/async/test_artifact_offline_owner_loads.py`: existing artifact
+  offline-owner contracts pass.
+- SQL and client-free `make -C src`, changed-line format and compatible clang-tidy,
+  and `git diff --check` pass. Logs: ignored `bin/analysis/issue67/offline-cleanup-*`.
+  The full-server journeys in PR #150 are retained evidence, not rerun coverage of
+  this cancellation path. No full suite or production operation is claimed.
+
+Next: explicit saved-UID source/owner qualification and inspection roles across
+materializers, preserving whole-group rollback. Register/detach a qualified live
+pointer before any existing temporary UID-clear cleanup could obscure its identity.
+Then migrate remaining fresh producers and complete canonical lifecycle, reward,
+action/mana, audit and full AR-01–AR-07 acceptance. The admission checkpoint below
+records the remaining call families and related findings.
+
 ### Fresh reset/staff/NPC admission and restoration rollback — AR-03 in progress
 
 Review: [PR #150](https://github.com/LuminariMUD/Duris/pull/150),
@@ -1213,7 +1271,8 @@ the script's injected fault/PVP cases are not fresh coverage here.
 
 Immediate continuation after this checkpoint:
 
-1. Repair the separately found offline-load cancellation cleanup: when the
+1. The separately found offline-load cancellation cleanup is now repaired in the
+   focused checkpoint above (publication pending): when the
    requesting actor disappears, `player_load_offline_for` calls `free_char` on a
    temporary character that may still carry/equip loaded items. `free_char` only
    logs these and frees the owner. A scratch native probe linked to the actual
@@ -1223,7 +1282,8 @@ Immediate continuation after this checkpoint:
    and extracts with FALSE. Promote the probe, prove worn/nested/carried cleanup
    and the live-callback controls, and publish as its own focused PR. Existing
    `player_save_pipeline_end_session` already protects a live owner's revision;
-   do not add another session abstraction.
+   do not add another session abstraction. The new permanent callback fixture and
+   existing player-item/session controls now pass.
 2. Implement explicit saved-UID materialization with source/owner qualification
    and inspection roles. Cover player/pet/storage/delivery/ground/copyover loaders
    and rollback; do not blanket-change every `read_object` to fresh creation.

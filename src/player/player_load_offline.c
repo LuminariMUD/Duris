@@ -18,6 +18,7 @@
 #include "core/structs.h"
 #include "core/mm.h"
 #include "persistence/persistence_observability.h"
+#include "player/player_load_items.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pipeline.h"
 #include "sql/sql_player.h"
@@ -89,7 +90,10 @@ bool player_load_offline_for(P_char ch, const char *name, bool include_items,
 					if (live)
 						done(live, loaded);
 					else if (loaded)
+					{
+						player_load_items_discard(loaded);
 						free_char(loaded);
+					}
 				}))
 		return true;
 	send_to_char("That is not available right now.\r\n", ch);
