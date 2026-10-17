@@ -26,6 +26,10 @@ HARNESS_STUB void artifact_restore_scope::commit()
 	active_ = false;
 }
 
+// Fixtures without artifact state still exercise their ordinary item lifecycle.
+HARNESS_STUB void artifact_object_placed(P_obj) {}
+HARNESS_STUB void artifact_object_extracted(P_obj, bool) {}
+
 HARNESS_STUB void logit(const char *, const char *, ...) {}
 HARNESS_STUB bool sql_async_booting(void)
 {

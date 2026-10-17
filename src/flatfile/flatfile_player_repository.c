@@ -247,6 +247,7 @@ bool build_item_identities(
 					  item.object_uid, 0, !item.object_uid || item.vnum <= 0 });
 				source.back().vnum = item.vnum;
 				source.back().quantity = 1;
+				source.back().quantity_present = true;
 				source.back().extra_flags = item.extra_flags;
 				source.back().extra_flags_present = true;
 				const auto custody = catalog.find(item.object_uid);
@@ -254,6 +255,8 @@ bool build_item_identities(
 				{
 					const auto &held = custody->second;
 					source.back().custody_found = true;
+					source.back().custody_owner_revision_found =
+						item_owner_identity_equal(held.owner, owner);
 					source.back().custody = { held.item_uid,
 								  held.root_item_uid,
 								  held.parent_item_uid,
@@ -312,6 +315,9 @@ bool build_item_identities(
 		identities->reserve(items->size());
 		for (size_t index = 0; index < items->size(); ++index)
 		{
+			if (*next_database_id > static_cast<uint64_t>(INT_MAX))
+				return false;
+			const uint64_t database_id = (*next_database_id)++;
 			if (held_rows.count(index + 1))
 			{
 				remap.push_back(skipped_index);
@@ -319,8 +325,6 @@ bool build_item_identities(
 				continue;
 			}
 			player_item_snapshot item = std::move((*items)[index]);
-			if (*next_database_id > static_cast<uint64_t>(INT_MAX))
-				return false;
 			size_t parent_new = skipped_index;
 			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
 			{
@@ -358,7 +362,6 @@ bool build_item_identities(
 			item.parent_index = parent_new == skipped_index ?
 						    PLAYER_SNAPSHOT_NO_PARENT :
 						    static_cast<int32_t>(parent_new);
-			const uint64_t database_id = (*next_database_id)++;
 			database_ids.push_back(database_id);
 			remap.push_back(kept.size());
 			identities->push_back(
@@ -1068,6 +1071,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		for (const auto &item : materialized.items)
 			if (item.object_uid)
 				active.insert(item.object_uid);
+		if (snapshot.components & PLAYER_COMPONENT_PETS)
+			for (const auto &pet : materialized.pets)
+				for (const auto &item : pet.items)
+					if (item.object_uid)
+						active.insert(item.object_uid);
 		const size_t offset = materialized.items.size();
 		for (auto &item : held_items)
 		{

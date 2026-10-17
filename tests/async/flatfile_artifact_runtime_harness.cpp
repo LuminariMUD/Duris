@@ -129,6 +129,8 @@ int real_room0(const int vnum)
 void obj_to_room(P_obj object, int room)
 {
 	require(object && room >= 0 && room <= top_of_world, "invalid boot room placement");
+	require(object->obj_uid == static_cast<unsigned long>(object->g_key * 100 + 1),
+		"ground canonical UID lost");
 	++room_load_count;
 	delete object;
 }
@@ -136,6 +138,8 @@ void obj_to_room(P_obj object, int room)
 void obj_to_char(P_obj object, P_char character)
 {
 	require(object && character == &boot_mob, "invalid boot NPC placement");
+	require(object->obj_uid == static_cast<unsigned long>(object->g_key * 100 + 1),
+		"NPC canonical UID lost");
 	++mob_load_count;
 	delete object;
 }
@@ -173,20 +177,24 @@ int main(int argc, char **argv)
 	const flatfile_artifact_record unowned = {
 		700, false, FLATFILE_ARTIFACT_ON_GROUND, 1201, 4000, 2, 1000, 42, 3000, 5
 	};
-	const flatfile_artifact_record ground = {
-		702, true, FLATFILE_ARTIFACT_ON_GROUND, 1201, 4100, 1, 1000, 0, 0, 1
-	};
+	const flatfile_artifact_record ground = { 702,	true,  FLATFILE_ARTIFACT_ON_GROUND,
+						  1201, 4100,  1,
+						  1000, 0,     0,
+						  1,	70201, artifact_identity_state::present };
 	const flatfile_artifact_record inactive_ground = {
 		703, false, FLATFILE_ARTIFACT_ON_GROUND, 1201, 4200, 1, 1000, 0, 0, 1
 	};
-	const flatfile_artifact_record npc = {
-		704, true, FLATFILE_ARTIFACT_ON_NPC, 8100, 4300, 1, 1000, 0, 0, 1
-	};
+	const flatfile_artifact_record npc = { 704,  true,  FLATFILE_ARTIFACT_ON_NPC,
+					       8100, 4300,  1,
+					       1000, 0,	    0,
+					       1,    70401, artifact_identity_state::present };
 	const flatfile_artifact_record missing_npc = {
-		705, true, FLATFILE_ARTIFACT_ON_NPC, 9999, 4400, 1, 1000, 0, 0, 1
+		705, true,  FLATFILE_ARTIFACT_ON_NPC,	     9999, 4400, 1, 1000, 0, 0,
+		1,   70501, artifact_identity_state::present
 	};
 	const flatfile_artifact_record bad_ground = {
-		706, true, FLATFILE_ARTIFACT_ON_GROUND, 9999, 4500, 1, 1000, 0, 0, 1
+		706, true,  FLATFILE_ARTIFACT_ON_GROUND,     9999, 4500, 1, 1000, 0, 0,
+		1,   70601, artifact_identity_state::present
 	};
 	require(flatfile_artifact_establish(state_root,
 					    { unowned, ground, inactive_ground, npc, missing_npc,
