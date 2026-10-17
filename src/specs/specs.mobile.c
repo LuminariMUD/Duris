@@ -6586,15 +6586,21 @@ int plant_attacks_paralysis(P_char ch, P_char pl, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
 
-	if (!ch || pl || cmd)
+	if (!ch)
 		return FALSE;
 
 	if (cmd == CMD_DEATH) /*
 	                       * unwrap vines upon death of vine
 	                       */
+	{
 		LOOP_THRU_PEOPLE(vict, ch)
 			if ((vict != ch) && affected_by_spell(vict, SPELL_MAJOR_PARALYSIS))
 				affect_from_char(vict, SPELL_MAJOR_PARALYSIS);
+		return FALSE;
+	}
+
+	if (pl || cmd)
+		return FALSE;
 
 	duration_factor = 10;
 

@@ -12339,7 +12339,10 @@ void spell_entangle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 			send_to_char(
 				"&+GThe vegetation closes tightly, completely entangling you!\n",
 				victim);
-			SET_BIT(victim->specials.affected_by, AFF_BOUND);
+			af.type = SPELL_ENTANGLE;
+			af.duration = -1; // Remains until unbound, cut free, or dispelled.
+			af.bitvector = AFF_BOUND;
+			affect_to_char(victim, &af);
 		}
 		else
 		{

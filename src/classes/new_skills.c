@@ -3160,6 +3160,9 @@ void do_unbind(P_char ch, char *arg, int /*cmd*/)
 		CharWait(t_char, 2 * PULSE_VIOLENCE);
 	}
 
+	if (auto *entangle = get_spell_from_char(t_char, SPELL_ENTANGLE);
+	    entangle && IS_SET(entangle->bitvector, AFF_BOUND))
+		affect_remove(t_char, entangle);
 	REMOVE_BIT(t_char->specials.affected_by, AFF_BOUND);
 	send_to_char("You're now free of your bindings.\r\n", t_char);
 	CharWait(ch, 1 * PULSE_VIOLENCE);
