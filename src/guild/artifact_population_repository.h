@@ -63,6 +63,8 @@ struct artifact_payload_projection
 	bool custody_required = false;
 	bool custody_examined = false; // unqueried is distinct from a confirmed missing row
 	bool custody_found = false;
+	// Revision zero is valid; a missing authority row remains distinct.
+	bool custody_owner_revision_found = false;
 	item_ownership_runtime_entry custody = {};
 };
 
