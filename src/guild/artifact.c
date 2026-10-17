@@ -474,6 +474,67 @@ void artifact_row_store(int vnum, const artifact_row &row)
 	arti_cache_invalidate();
 }
 
+// One owner's war penalty is one immutable writer job. Refused admission leaves
+// every live timer unchanged; the ordered writer retries the whole capture.
+bool artifact_wars_burn(int pid, time_t now, float retained)
+{
+	try
+	{
+		std::vector<std::pair<int, time_t>> timers;
+#ifdef __NO_MYSQL__
+		std::vector<flatfile_artifact_record> captures;
+#else
+		std::vector<std::string> captures;
+#endif
+		for (const auto &[vnum, current] : artifact_rows)
+		{
+			if (current.locType != ARTIFACT_ON_PC || current.location != pid ||
+			    current.timer <= now)
+				continue;
+			auto row = current;
+			row.timer = now + static_cast<time_t>(std::floor(
+						  static_cast<double>(row.timer - now) * retained));
+			const auto bound = artifact_binds.find(vnum);
+			const artifact_bind_row empty = {};
+			const auto &bind = bound == artifact_binds.end() ? empty : bound->second;
+#ifdef __NO_MYSQL__
+			captures.push_back(artifact_flat_capture(vnum, row, bind));
+#else
+			auto statements = artifact_snapshot_statements(vnum, &row, bind);
+			if (statements.empty())
+			{
+				errno = EINVAL;
+				return false;
+			}
+			for (auto &statement : statements)
+				captures.push_back(std::move(statement));
+#endif
+			timers.emplace_back(vnum, row.timer);
+		}
+		if (timers.empty())
+			return true;
+		artifact_save saved;
+		saved.dirty = true;
+		if (!artifact_queue_save(timers.front().first, "war", saved, std::move(captures)))
+			return false;
+		for (const auto &[vnum, timer] : timers)
+		{
+			auto &row = artifact_rows.at(vnum);
+			row.timer = timer;
+			row.save = saved;
+			const auto bind = artifact_binds.find(vnum);
+			if (bind != artifact_binds.end() && bind->second.save.dirty)
+				bind->second.save = saved;
+		}
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		errno = ENOMEM;
+		return false;
+	}
+}
+
 bool artifact_bind_save(int vnum, artifact_bind_row &bind)
 {
 	if (artifact_restore_checkpoint)
@@ -3633,18 +3694,11 @@ void event_artifact_wars_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/, void
 			if (burn > 1.0f)
 				burn = 1.0f;
 			const float retained = 1.0f - burn;
-			for (const auto &artifact : artifact_rows)
-				if (artifact.second.locType == ARTIFACT_ON_PC &&
-				    artifact.second.location == entry.pid &&
-				    artifact.second.timer > now)
-				{
-					artifact_row row = artifact.second;
-					row.timer =
-						now + static_cast<time_t>(std::floor(
-							      static_cast<double>(row.timer - now) *
-							      retained));
-					artifact_row_store(artifact.first, row);
-				}
+			if (!artifact_wars_burn(entry.pid, now, retained))
+			{
+				update_failed = true;
+				continue; // Retry the intact owner penalty on a later pass.
+			}
 			timers_updated = true;
 			logit(LOG_ARTIFACT,
 			      "artifact_wars: pid %d artifact timers cut by %d%% (punish_level=%d)",
@@ -4846,10 +4900,15 @@ void arti_fixit_sql(P_char ch)
 		// If the arti is on a different PC, its soul moves to that PC and its timer goes to max.
 		if (location == pid)
 			continue;
-		artifact_bind_store(vnum, location, static_cast<int>(time(NULL)));
+		auto &bind = artifact_binds[vnum];
+		bind.owner_pid = location;
+		bind.timer = static_cast<int>(time(NULL));
+		bind.save = {};
+		bind.save.dirty = true;
 		artifact_row row = entry.second;
 		row.timer = new_time;
 		artifact_row_store(vnum, row);
+		bind.save = artifact_rows.at(vnum).save;
 		P_obj arti = read_object(vnum, VIRTUAL);
 		send_to_char_f(ch, "%3d) '%s&n'%6d - timer reset and now owned by '%s' %d.\n\r",
 			       ++counter,
