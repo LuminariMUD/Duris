@@ -64,9 +64,16 @@ def run(binary, case):
         assert areas.is_symlink()
         areas.unlink(); areas.mkdir()
         for source in (ROOT / 'areas').iterdir():
-            if source.name != 'world.obj':
+            if source.name not in ('world.obj', 'world.trg'):
                 (areas / source.name).symlink_to(source, target_is_directory=source.is_dir())
         (areas / 'world.obj').write_text(objects[:position] + inserted + objects[position:], encoding='latin-1')
+        triggers = (ROOT / 'areas/world.trg').read_text(encoding='latin-1')
+        assert triggers.count('#~') == 1
+        private_trigger = (f'#{ARTIFACT} O\nT CMD scratch\noload {ARTIFACT}\ngive {ARTIFACT}\n'
+                           'echo artifact-identity-studio-duplicate\nblock\n~\n'
+                           f'T CMD use\ngive {SWAP_CRUMBLE}\n'
+                           'echo artifact-identity-studio-crumble\nblock\n~\nS\n')
+        (areas / 'world.trg').write_text(triggers.replace('#~', private_trigger + '#~'), encoding='latin-1')
         (runtime / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         (runtime / 'bin/server').mkdir(parents=True)
         executable = runtime / 'bin/server/dms'
@@ -265,6 +272,20 @@ def run(binary, case):
                 assert re.search(r'Number in game\s*:\s*1\b', report_population), report_population
                 assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
                 evidence['reports_preserved_population'] = True
+                scripted = command(player, 'scratch stone')
+                assert 'artifact-identity-studio-duplicate' in scripted, scripted
+                assert 'materializes in your hands' not in scripted, scripted
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {ARTIFACT}'))
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                destructive = command(player, 'use stone')
+                assert 'artifact-identity-studio-crumble' in destructive, destructive
+                assert 'materializes in your hands' not in destructive, destructive
+                assert re.search(r'Number in game\s*:\s*0\b', command(god, f'stat obj {SWAP_CRUMBLE}'))
+                evidence['studio_creation_admission'] = {
+                    'duplicate_load_and_give_refused': True,
+                    'canonical_live_count': 1,
+                    'destructive_give_no_false_success': True,
+                }
                 if case == 'pvp':
                     # Two synthetic mortal accounts may fight in this private fixture.
                     god.send('whitelist add Fixture 127.0.0.* isolated reward journey')

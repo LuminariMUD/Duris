@@ -2,6 +2,29 @@
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 
+## Current scripted-admission repair — same one-hour window
+
+Branch `branch/issue-67-scripted-admission`, stacked on #163 at
+`a53ca576c5801e1bf3565fb9f98b5aca6885e8f6`. Outcome: Studio `oload` and `give`
+use the existing fresh-artifact admission before constructor procedures; refused
+or destructive placement releases the pending claim, and success feedback names
+only an object that actually reached the actor. Valid redirected objects survive.
+Files: `src/mob/studioproc.c` and the existing actual constructor/service harness.
+Proof: the extracted production action cases reproduce a second physical artifact
+before the fix; cover both actions, ordinary objects, refused/destructive placement,
+and valid redirection with actual reservation/liveness code under ASan/UBSan.
+Ablation: reuse `read_object_for_creation` and `find_live_object`; no new loader,
+registry, transaction, or helper. The actual action harness passes for both actions,
+ordinary objects, admission refusal, placement refusal/destruction, redirection,
+and correct success-message suppression. SQL/flat builds and format/tidy pass.
+A private Studio trigger was added to the existing real SQL journey. The retained
+#163 binary reproduces the extra-artifact materialization through `scratch stone`.
+The fixed binary refuses both scripted duplicate paths, safely handles a real
+CRUMBLELOOT `give`, then passes the existing rewards/copyover/swaps/restart journey.
+Evidence: `bin/analysis/issue67/scripted-admission-gameplay-before.log`,
+`scripted-admission-native.log`, and `scripted-admission-gameplay.{log,json}`.
+Publication follows; other fresh-producer and saved-domain gaps remain open.
+
 ## Active one-hour repair — 2026-10-17 11:26 IDT / 08:26 UTC
 
 The user authorized a fresh hour of implementation from this plan. Target cutoff:

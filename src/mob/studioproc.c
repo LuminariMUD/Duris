@@ -1096,16 +1096,38 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 			break;
 
 		case SP_A_OLOAD:
-			if (real_object(a->num) >= 0 && (o = read_object(a->num, VIRTUAL)) != NULL)
+			if (real_object(a->num) >= 0 &&
+			    (o = read_object_for_creation(a->num, VIRTUAL)) != NULL)
+			{
+				const uint64_t uid = o->obj_uid;
 				obj_to_room(o, room);
+				o = find_live_object(o, uid);
+				if (o && OBJ_NOWHERE(o))
+					extract_obj(o, FALSE);
+			}
 			break;
 
 		case SP_A_GIVE:
-			if (real_object(a->num) >= 0 && (o = read_object(a->num, VIRTUAL)) != NULL)
+			if (real_object(a->num) >= 0 &&
+			    (o = read_object_for_creation(a->num, VIRTUAL)) != NULL)
 			{
+				const uint64_t uid = o->obj_uid;
 				obj_to_char(o, actor);
-				act("$p materializes in your hands.", FALSE, actor, o, 0, TO_CHAR);
-				act("$p materializes in $n's hands.", TRUE, actor, o, 0, TO_ROOM);
+				o = find_live_object(o, uid);
+				if (!o)
+					break;
+				if (OBJ_NOWHERE(o))
+				{
+					extract_obj(o, FALSE);
+					break;
+				}
+				if (OBJ_CARRIED(o) && o->loc.carrying == actor)
+				{
+					act("$p materializes in your hands.", FALSE, actor, o, 0,
+					    TO_CHAR);
+					act("$p materializes in $n's hands.", TRUE, actor, o, 0,
+					    TO_ROOM);
+				}
 			}
 			break;
 

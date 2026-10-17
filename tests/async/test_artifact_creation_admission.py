@@ -10,6 +10,7 @@ HARNESS = r"""
 #include "guild/artifact.c"
 #include "world/object_template.h"
 #include "cmd/interp.h"
+#include "mob/studioproc.h"
 #include "redis/redis_floor_runtime.h"
 #include "world/world_recovery_pipeline.h"
 #include "world/world_recovery_codec.h"
@@ -155,6 +156,10 @@ object_template parse_object_template(int index) {
  prototype.type=index==3 ? ITEM_CONTAINER : 0; prototype.wear_flags=ITEM_TAKE;
  return prototype;
 }
+static size_t studio_feedback=0;
+void act(const char *text,int,P_char,P_obj,void *,int) {
+ if(std::string(text).find("materializes")!=std::string::npos) ++studio_feedback;
+}
 static std::string command_output;
 void send_to_char(const char *text,P_char) { command_output+=text; }
 void send_to_char_f(P_char,const char *format,...) {
@@ -203,6 +208,7 @@ void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_ret
 // MAINTENANCE_CASES
 // SWAP_CASES
 // MONOLITH_CASES
+// STUDIO_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
@@ -352,6 +358,7 @@ int main() {
  maintenance_inspection_cases();
  swap_admission_cases();
  monolith_cases();
+ studio_cases();
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
@@ -1064,6 +1071,52 @@ void monolith_cases() {
  artifact_save_pulse(true); drain();
  assert(!object_list && !pool.objs_used);
  std::cout<<"actual monolith: canonical recipients, charge admission, equal feeds and one feedback: PASS\n";
+}
+""")
+studio=(ROOT/"src/mob/studioproc.c").read_text()
+studio_actions=studio[studio.index("case SP_A_OLOAD:"):studio.index("case SP_A_TRANSFER:")]
+source=source.replace("// STUDIO_CASES", r"""
+void run_studio_factory(bool give,int vnum,P_char actor) {
+ struct { int num; } action={vnum}; auto *a=&action;
+ P_obj o=nullptr; const int room=actor->in_room;
+ switch(give ? SP_A_GIVE : SP_A_OLOAD) {
+"""+studio_actions+r"""
+ }
+}
+void studio_cases() {
+ for(bool give : {false,true}) {
+  assert(!object_list && !pool.objs_used);
+  booting=true; assert(artifacts_stage_population({},{{900,ITEM_ARTIFACT},{901,0},{902,ITEM_ARTIFACT}},true));
+  booting=false; artifact_save_pulse(true); drain();
+  char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=55; owner.player.level=51; owner.in_room=0;
+  const auto before=procedures; const auto messages=studio_feedback;
+  run_studio_factory(give,900,&owner); run_studio_factory(give,900,&owner);
+  assert(pool.objs_used==1 && procedures==before+1 && "Studio load/give constructed another physical artifact");
+  assert(studio_feedback==messages+(give ? 2 : 0));
+  auto *first=object_list; assert(artifact_is_canonical(first));
+  assert(give ? (OBJ_CARRIED(first) && first->loc.carrying==&owner) : (OBJ_ROOM(first) && first->loc.room==0));
+  extract_obj(first,TRUE); artifact_save_pulse(true); drain();
+  run_studio_factory(give,901,&owner); run_studio_factory(give,901,&owner);
+  assert(pool.objs_used==2 && object_list && object_list->next);
+  while(object_list) extract_obj(object_list,FALSE);
+  assert(!pool.objs_used && !owner.carrying && !rooms[0].contents);
+  const auto failed_messages=studio_feedback;
+  for(int fault : {1,3}) {
+   const auto previous_uid=artifact_rows.at(902).canonical_item_uid;
+   const auto previous_state=artifact_rows.at(902).identity_state;
+   swap_placement_fault=fault; run_studio_factory(give,902,&owner); swap_placement_fault=0;
+   assert(!pool.objs_used && !object_list && writes.empty() &&
+          artifact_rows.at(902).canonical_item_uid==previous_uid &&
+          artifact_rows.at(902).identity_state==previous_state &&
+          artifact_rows.at(902).pending==artifact_pending::none && studio_feedback==failed_messages);
+  }
+  // A legitimate redirect stays in the world without claiming it reached the actor.
+  swap_placement_fault=2; run_studio_factory(give,902,&owner); swap_placement_fault=0;
+  assert(pool.objs_used==1 && object_list && OBJ_ROOM(object_list) && object_list->loc.room==1 &&
+         artifact_is_canonical(object_list) && !owner.carrying && studio_feedback==failed_messages);
+  extract_obj(object_list,TRUE); artifact_save_pulse(true); drain();
+ }
+ std::cout<<"actual Studio load/give actions: singular artifact and ordinary-object controls: PASS\n";
 }
 """)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:
