@@ -60,6 +60,7 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
 # The Discord game journey similarly needs an external Node checkout via --node-driver.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
+        "test_artifact_population_repository.py",
         "test_discord_game_journey.py",
         "test_epic_task_catalog_mysql.py",
         "test_epic_task_recovery_journey.py",

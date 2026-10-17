@@ -77,6 +77,7 @@ expected_resource_intensive = {
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
+    "test_artifact_population_repository.py",
     "test_discord_game_journey.py",
     "test_epic_task_catalog_mysql.py",
     "test_epic_task_recovery_journey.py",
