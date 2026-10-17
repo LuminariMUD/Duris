@@ -14,7 +14,9 @@ Proof: the already-failing copy/alias and canonical-pair scenarios must pass wit
 normal reward/lifecycle controls, both builds, and an applicable real SQL journey.
 Ablation: reuse `artifact_is_canonical`; remove obsolete vnum-only reward exclusion.
 The unused compound-capture experiment remains preserved in its original checkout.
-Implemented in the current working tree (publication pending):
+Published as [PR #163](https://github.com/LuminariMUD/Duris/pull/163), ready for review,
+branch `branch/issue-67-delivery`, based on #162. Implementation commit:
+`37069858709cac24d5dadc56be30493e779c412a`. The first completed repair is:
 - Canonical UID/pointer checks now precede direct feed, minimum feed, soul binding,
   and object-based location/timer mutation. The actual service fixture checks
   each endpoint independently against both a distinct UID and a same-UID alias.
@@ -35,7 +37,9 @@ Both final full builds passed. The disposable MariaDB standard journey also pass
 actual rewards, writer recovery, copyover, retained source payloads, successful
 online/offline swaps and clean restart. Frozen evidence is
 `bin/analysis/issue67/delivery-gameplay.{log,json}`. Earlier handoff blockers 1, 2,
-3 and 7 are implemented and their focused checks pass; publication follows. The
+3 and 7 are implemented and their focused checks pass. The exact SQL journey
+binary SHA-256 is `1300e1ce52c888ce726c324e908a281454c913b33546be50e0e170c33b2d4469`.
+PR #163 is open and non-draft; no merge or production operation occurred. The
 remaining source-domain, producer, durable-retirement, audit/reconciliation, and
 whole-matrix requirements remain open.
 
@@ -299,6 +303,11 @@ prototype fixture repair from the preserved experiment if that runner fails to
 link; copy that specific test repair, not the unused production helper.
 
 ### Complete PR and branch inventory
+
+New since the snapshot below: [PR #163](https://github.com/LuminariMUD/Duris/pull/163),
+`branch/issue-67-delivery` → `branch/issue-67-swap-placement-rollback` (#162),
+implementation `37069858709c`, Protect canonical artifact feeds, rewards and reconciliation.
+The branch is now published; its earlier local-only status below is historical.
 
 All rows below were verified live as **OPEN, non-draft, unmerged** at the snapshot.
 Each PR after #132 is based on the immediately preceding PR's branch. All 31
