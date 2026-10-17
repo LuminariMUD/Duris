@@ -54,6 +54,7 @@ P_obj read_object(int, int)
 {
 	P_obj object = new obj_data{};
 	object->extra_flags = ITEM_ARTIFACT;
+	object->short_description = const_cast<char *>("artifact");
 	return object;
 }
 
@@ -63,6 +64,15 @@ void extract_obj(P_obj object, int)
 }
 
 void send_to_char_f(P_char, const char *, ...) {}
+void send_to_char(const char *, P_char) {}
+char *get_player_name_from_pid(int)
+{
+	return const_cast<char *>("Fixture");
+}
+std::string pad_ansi(const char *text, int, bool)
+{
+	return text ? text : "";
+}
 
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t, size_t,
 						    persistence_job_write_fn write)
@@ -477,6 +487,89 @@ int main(int argc, char **argv)
 			"later capture resurrected deleted ownership or soul");
 		writes.clear();
 	}
+	// A fixit repair must fit one writer slot and its first committed image must
+	// contain both the new binding and timer, so a restart cannot strand half.
+	state_root = (root / "compound").string();
+	fs::create_directories(fs::path(state_root) / "domains");
+	fs::permissions(state_root, fs::perms::owner_all, fs::perm_options::replace);
+	fs::permissions(fs::path(state_root) / "domains", fs::perms::owner_all,
+			fs::perm_options::replace);
+	auto repair = artifact;
+	repair.bind_owner_pid = -1;
+	repair.bind_timer = 0;
+	require(flatfile_artifact_establish(state_root, { repair }, &error) ==
+				flatfile_artifact_result::ok &&
+			artifacts_load(),
+		"fixit fixture");
+	maximum_writes = 1;
+	const time_t fixed_after = time(nullptr) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+	arti_fixit_sql(&god);
+	require(writes.size() == 1 &&
+			writes.front()().outcome == player_save_apply_outcome::applied &&
+			flatfile_artifact_get(state_root, 600, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.bind_owner_pid == 42 && stored.bind_timer > 0 &&
+			stored.timer >= fixed_after,
+		"first fixit capture omitted its paired timer/binding");
+	require(artifact_save_pulse(false) == 0, "fixit pair did not share its completion");
+	writes.clear();
+	maximum_writes = SIZE_MAX;
+	// Every timer in a war burn shares one atomic image and one retry receipt.
+	const time_t burn_now = time(nullptr);
+	auto first_war = artifact;
+	first_war.timer = burn_now + 1000;
+	auto second_war = second;
+	second_war.location = 42;
+	second_war.type = ARTIFACT_MAJOR;
+	second_war.timer = burn_now + 2000;
+	auto unrelated = second;
+	unrelated.vnum = 604;
+	unrelated.canonical_item_uid = 60401;
+	unrelated.location = 99;
+	unrelated.timer = burn_now + 3000;
+	require(flatfile_artifact_snapshot_apply(state_root, { first_war, second_war, unrelated },
+						 &error) == flatfile_artifact_result::ok &&
+			artifacts_load(),
+		"war fixture");
+	maximum_writes = 0;
+	require(!artifact_wars_burn(42, burn_now, .5f) && writes.empty() &&
+			artifact_rows.at(600).timer == first_war.timer &&
+			artifact_rows.at(602).timer == second_war.timer &&
+			artifact_save_pulse(false) == 0,
+		"refused war capture partially changed live timers");
+	maximum_writes = 1;
+	require(artifact_wars_burn(42, burn_now, .5f) && writes.size() == 1 &&
+			artifact_rows.at(600).timer == burn_now + 500 &&
+			artifact_rows.at(602).timer == burn_now + 1000 &&
+			artifact_rows.at(600).save.pending == artifact_rows.at(602).save.pending,
+		"war burn was split across captures");
+	const auto domains = fs::path(state_root) / "domains";
+	fs::permissions(domains, fs::perms::owner_read, fs::perm_options::replace);
+	const auto retryable = writes.front()();
+	fs::permissions(domains, fs::perms::owner_all, fs::perm_options::replace);
+	require(retryable.outcome == player_save_apply_outcome::retryable_failure &&
+			artifact_save_pulse(true) > 0 && writes.size() == 1,
+		"retryable war failure lost its whole-owner capture");
+	require(flatfile_artifact_get(state_root, 600, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.timer == first_war.timer,
+		"failed war capture changed its first row");
+	require(flatfile_artifact_get(state_root, 602, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.timer == second_war.timer,
+		"failed war capture changed its second row");
+	require(writes.front()().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 0,
+		"whole war capture did not recover");
+	for (const auto &[vnum, timer] :
+	     { std::pair{ 600, burn_now + 500 }, std::pair{ 602, burn_now + 1000 },
+	       std::pair{ 604, burn_now + 3000 } })
+		require(flatfile_artifact_get(state_root, vnum, &stored, &error) ==
+					flatfile_artifact_result::ok &&
+				stored.timer == timer,
+			"war capture changed only a prefix or an unrelated owner");
+	writes.clear();
+	maximum_writes = SIZE_MAX;
 	std::cout << "flat-file artifact bind runtime passed\n";
 	return 0;
 }
