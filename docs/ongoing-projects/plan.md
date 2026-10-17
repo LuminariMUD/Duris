@@ -8,8 +8,12 @@ repair heads: #147 `d41067fba`, #148 `f27d4950a`, #149 `cd37a4288`, #150
 #150/#151, then #152/#153, in `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
 Published carry-forward heads: #150 `ff9e1599e`, #151 `cbfc324d1`, #152 `b9ba6f24e`.
 Current branch: `branch/issue-67-recovery-hydration` (#153). Resolve its pending-admission
-merge while retaining saved-player registration, revision presence, NPC incompleteness,
-and the existing logical-custody-root support. Focused integration checks precede push.
+merge retains saved-player registration, revision presence, NPC incompleteness,
+and the existing logical-custody-root support. Native build, classifier, boot assembly,
+creation/recovery/player lifecycle, copyover custody (including late claims and newer
+owner revisions), SQL snapshots and recovery pipeline pass. The boot fixture keeps
+missing revision and newer known revision as distinct cases. Logs: `bin/analysis/pr153-*`.
+Publish, then continue at #154.
 
 #147 now safely refuses raced symlinks/inodes and late recovery claims, bounds
 NPC vectors, recognizes captured revision authority, and routes failed restoration

@@ -214,7 +214,7 @@ int main()
 
 	// Native handoff authority supersedes an older durable owner. It is never
 	// overwritten by that older SQL/flat projection, nor confused with history.
-	for (int conflict = 0; conflict < 6; ++conflict)
+	for (int conflict = 0; conflict < 7; ++conflict)
 	{
 		reset();
 		auto live = item(700, domain::copyover_ground);
@@ -247,7 +247,7 @@ int main()
 		redis_result = redis_world_boot_result::ready;
 		redis_rows = { item(999, domain::redis_generation) };
 		redis_mobs.push_back({ 2000, 42, 2300, 2300, -1 }); // superseded by selected native
-		if (conflict == 5)
+		if (conflict == 6)
 			missing_revisions.insert(700);
 		const auto &warm = artifact_population_prepare_boot(true);
 		assert(warm.complete && warm.items.size() == 3 && reads == 2);
