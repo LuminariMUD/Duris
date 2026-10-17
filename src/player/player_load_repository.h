@@ -159,6 +159,8 @@ struct player_load_source_item
 	uint64_t quantity = 0;
 	uint32_t extra_flags = 0;
 	bool extra_flags_present = false;
+	bool custody_owner_revision_found = false;
+	bool quantity_present = false;
 };
 
 struct player_load_result

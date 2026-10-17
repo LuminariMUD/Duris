@@ -787,7 +787,7 @@ static void population_snapshot_cases()
 	row.extra_flags = ITEM_ARTIFACT;
 	row.extra_flags_present = true;
 	row.quantity = 1;
-	row.custody_examined = row.custody_found = true;
+	row.custody_examined = row.custody_found = row.custody_owner_revision_found = true;
 	row.custody = { 111, 111, 0, row.payload_owner, 1, 1, 900, item_custody_state::active };
 	const std::vector<artifact_payload_projection> rows = { row };
 	const std::vector<artifact_population_template> prototypes = { { 900, ITEM_ARTIFACT },
