@@ -82,7 +82,9 @@ Retention follow-up found while tracing the next admission seam:
   The focused fixture now passes independent inventory load and repeated save of
   both aliased roots; the existing flat repository suite and both backend builds
   pass. Evidence: `bin/analysis/issue67/player-retention-alias.log`. This correction
-  is included in PR #155; publication verification follows its commit.
+  is committed and pushed in PR #155 as
+  `3387d2c014842922999ce447bb2e646b27dd99b5`; its changed-line format/tidy hooks
+  pass. The PR remains open/non-draft with base #154. No merge or deployment.
 
 Next saved-source admission seams confirmed in current code:
 - `player_load_items.c::materialize_item_graph` still uses generic `read_object`
