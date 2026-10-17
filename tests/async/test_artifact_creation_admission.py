@@ -15,6 +15,7 @@ HARNESS = r"""
 #include "world/world_recovery_codec.h"
 #include "item/encumbrance_policy.h"
 #include "player/player_snapshot.h"
+#include "player/player_load_items.h"
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
@@ -313,7 +314,7 @@ int main() {
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
-source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(")))
+source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "unsigned int player_load_items_qualify(")))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
@@ -548,10 +549,12 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  player.owner_reference=77; player.owner_context=0; player.row_id=100;
  player.parent_row_id=0; player.parent_item_uid=0; player.payload_root_item_uid=4242;
  player.payload_owner={item_owner_type::player,77,0};
- player.custody_examined=player.custody_found=true;
+ player.custody_examined=player.custody_found=player.custody_owner_revision_found=true;
  player.custody={4242,4242,0,player.payload_owner,3,7,900,item_custody_state::active};
  stage_saved({player},true); item_ownership_runtime_reset();
  assert(!artifact_player_source_error(player));
+ auto zero_revision=player; zero_revision.custody.owner_revision=0;
+ assert(!artifact_player_source_error(zero_revision));
  const auto before_player_procedures=procedures;
  for(int kind=0;kind<12;++kind) {
   auto bad=player;
@@ -561,7 +564,7 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
    case 2: bad.custody.state=item_custody_state::absent; break;
    case 3: bad.custody.vnum=901; break;
    case 4: bad.custody.item_revision=0; break;
-   case 5: bad.custody.owner_revision=0; break;
+   case 5: bad.custody_owner_revision_found=false; break;
    case 6: bad.parent_item_uid=10; break;
    case 7: bad.payload_root_item_uid=10; break;
    case 8: bad.parent_missing=true; break;
@@ -594,9 +597,27 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  artifact_rows.at(900).identity_state=artifact_identity_state::retired;
  assert(artifact_player_source_error(player)==ENODATA && !read_object_for_recovery(player));
  artifact_rows.at(900).identity_state=artifact_identity_state::present;
+ // A canonical UID cannot become ordinary by changing its payload vnum.
+ auto foreign_vnum=player; foreign_vnum.vnum=901; foreign_vnum.extra_flags=0;
+ assert(artifact_player_source_error(foreign_vnum));
+ assert(!read_object_for_recovery(foreign_vnum) && !object_list && !pool.objs_used);
+ foreign_vnum.domain=artifact_payload_domain::copyover_ground; foreign_vnum.owner_context=44;
+ assert(!read_object_for_recovery(foreign_vnum) && !object_list && !pool.objs_used);
  auto ordinary=player; ordinary.extra_flags=0; ordinary.item_uid=99999;
  assert(!artifact_player_source_error(ordinary));
  first=read_object_for_recovery(ordinary); assert(first && !IS_ARTIFACT(first)); extract_obj(first,FALSE);
+ player_load_result foreign_only={}; foreign_only.pid=77; foreign_only.outcome=player_load_outcome::applied;
+ player_load_source_item raw={}; raw.row_id=100; raw.item_uid=raw.root_item_uid=4242; raw.bytes=50;
+ raw.vnum=900; raw.quantity=1; raw.extra_flags=ITEM_ARTIFACT; raw.extra_flags_present=true;
+ raw.custody_found=raw.custody_owner_revision_found=true; raw.custody=player.custody; raw.custody.owner.id=88;
+ foreign_only.item_sources={raw};
+ assert(!player_load_items_qualify(&foreign_only) && foreign_only.snapshot.items.empty() &&
+  foreign_only.snapshot.retained_items.rows.size()==1 && foreign_only.snapshot.retained_items.rows[0].source_row_id==100);
+ raw.vnum=901; raw.extra_flags=0; foreign_only.item_sources={raw}; foreign_only.snapshot.retained_items={};
+ assert(!player_load_items_qualify(&foreign_only) && foreign_only.snapshot.retained_items.rows.size()==1);
+ raw.item_uid=raw.root_item_uid=99999; raw.vnum=901; raw.extra_flags=0; raw.custody.item_uid=raw.custody.root_item_uid=99999; raw.custody.vnum=901;
+ foreign_only.item_sources={raw}; foreign_only.snapshot.retained_items={};
+ assert(!player_load_items_qualify(&foreign_only) && foreign_only.snapshot.retained_items.rows.empty());
  item_ownership_runtime_reset();
  std::cout<<"mutable player source/custody qualification, live reservation and cancellation: PASS\n";
  std::cout<<"source-qualified recovery factory and actual nested tree: PASS\n";
@@ -608,6 +629,6 @@ with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as dire
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
-  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/player/player_load_topology.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

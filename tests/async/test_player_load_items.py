@@ -395,6 +395,26 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 int main()
 {
     {
+        reset_test_state();
+        auto result=base_result(); result.pid=42; result.gameplay_items=true; result.outcome=player_load_outcome::applied;
+        player_load_source_item raw;
+        raw.row_id=15; raw.item_uid=555; raw.root_item_uid=555; raw.bytes=75;
+        raw.vnum=103; raw.quantity=1; raw.extra_flags=ITEM_ARTIFACT; raw.extra_flags_present=true;
+        raw.custody_found=raw.custody_owner_revision_found=true;
+        raw.custody={555,555,0,{item_owner_type::player,88,0},1,1,103,item_custody_state::active};
+        result.item_sources={raw}; // repository omitted the foreign payload
+        refused_artifact_vnum=103;
+        player_load_result qualified;
+        assert(qualify_materialization(result, &qualified));
+        assert(result.snapshot.retained_items.rows.empty());
+        result=std::move(qualified);
+        assert(result.snapshot.items.empty() &&
+            result.snapshot.retained_items.rows.size()==1 && result.snapshot.retained_items.rows[0].source_row_id==15);
+        refused_artifact_vnum=0;
+        result.item_sources[0].retain=false; result.snapshot.retained_items={};
+        assert(!player_load_items_qualify(&result) && result.snapshot.retained_items.rows.empty());
+    }
+    {
         reset_test_state(); test_character owner(42);
         auto result=base_result(); result.gameplay_items=true; result.outcome=player_load_outcome::applied;
         add_item(result,10,1000,100,-1,0); // raw container root
@@ -1163,6 +1183,15 @@ int main()
     return 0;
 }
 '''
+
+# Execute the production pre-materialization gate with otherwise valid input.
+entry = MATERIALIZE.index("bool player_load_materialize(")
+start = MATERIALIZE.index("\tplayer_load_result qualified;", entry)
+end = MATERIALIZE.index("\tconst auto &result = *selected;", start)
+prefix = ("bool valid_snapshot(const player_load_result &) { return true; }\n"
+          "bool qualify_materialization(const player_load_result &loaded, player_load_result *output) {\n"
+          + MATERIALIZE[start:end] + "*output=*selected; return true; }\n")
+HARNESS = HARNESS.replace("int main()\n{", prefix + "int main()\n{", 1)
 
 with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
     source = Path(temp_dir) / "player_load_items_test.cpp"

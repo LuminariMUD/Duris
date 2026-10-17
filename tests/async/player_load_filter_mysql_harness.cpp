@@ -207,6 +207,15 @@ int main()
 		"the giver loads its own items, the unrecorded one and the quarantined one, "
 		"but not the sword the taker now holds");
 	require(giver.stale_item_rows == 2, "the stale sword row is counted");
+	const auto foreign_source = std::find_if(giver.item_sources.begin(),
+						 giver.item_sources.end(), [](const auto &source)
+						 { return source.item_uid == 2003; });
+	require(foreign_source != giver.item_sources.end() && foreign_source->vnum == 603 &&
+			foreign_source->quantity == 1 && foreign_source->extra_flags_present &&
+			foreign_source->custody_found &&
+			foreign_source->custody_owner_revision_found &&
+			foreign_source->custody.owner.id == 12,
+		"filtered foreign source lost payload or revision evidence");
 	for (size_t index = 0; index < giver.snapshot.items.size(); ++index)
 		if (giver.snapshot.items[index].object_uid == 2002)
 			require(giver.snapshot.items[index].parent_index >= 0 &&

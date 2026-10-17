@@ -1,32 +1,37 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: #155 payload retention
+## Latest review checkpoint: #156 player artifact admission
 
-Current branch: `branch/issue-67-player-payload-retention`, in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #154 is published at
-`6f6f57fc8` and its thread is resolved. The refreshed inventory confirms no older
-outstanding threads: 41 findings total, 31 resolved, 10 remaining (#155:2,
-#156:3, #157:4, #162:1). Details: `bin/analysis/review-refresh-after-154.json`.
+Current branch: `branch/issue-67-player-artifact-admission`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #155 repair `79beb9eb4`
+is published and both threads are resolved. The latest inventory has 41 findings:
+33 resolved, 8 remaining (#156:3, #157:4, #162:1). Parent carry-forward merge here
+is `b92afeac3`; #156 repairs are under validation.
 
-#155 outcome: retain every raw source root sharing a nonzero UID with an unreadable
-row, regardless of parse order, while allowing independent inventory progress;
-reject a retained-inventory UID also present in an actively saved pet graph on
-SQL and flat storage. Files: existing SQL loader, SQL/flat save validation,
-existing disposable SQL/flat repository fixtures, this plan. Reuse the raw UID
-index and existing overlap sets; no new retention format or save path is needed.
-Proof: both invalid/valid row orders plus unrelated save/reload, pet/held collision
-with unchanged revision/custody, existing retained-row controls and backend builds.
-Both before-repair regressions failed in disposable storage. After repair, the
-SQL save/load claim suite passes both malformed/valid duplicate orders and pet
-collision refusal; the flat repository suite passes pet collision refusal with
-unchanged source revision and foreign custody. Unrelated inventory save/reload
-still succeeds with both duplicate roots retained. SQL and flat native builds,
-formatting and tidy pass. Evidence: `bin/analysis/pr155-*`. Publication is next.
+Outcome: retain original flat source IDs through filtering; reject a canonical UID
+under another vnum before the ordinary-item bypass; qualify and retain foreign raw
+artifact sources even when no accepted items remain. Reuse existing raw-source
+records, retention and admission. Add payload vnum/flags/quantity and explicit
+revision-presence evidence to the in-memory source record; no store format changes.
+The same canonical-UID check serves qualification and the recovery factory. SQL
+revision zero stays distinct from missing authority; flat foreign revision remains
+explicitly unavailable until fetched, rather than asserted as authoritative zero.
+Files: SQL/flat readers, source model, artifact admission, qualification/materializer
+gate, existing native and backend regression fixtures, this plan.
 
-The stack through #154 includes the prior copyover, classification, recovery,
-player lifecycle and diagnostic repairs. No production operations or PR merges
-have been performed. Publish #155 when verified, then continue through #156/#157
-and the no-finding intermediate PRs to #162; refresh before final closeout.
+All three regressions failed before repair (source-ID compaction, foreign-vnum
+bypass, foreign-only retention). Proof in progress: actual source qualification
+with the artifact authority/factory, empty accepted-list gate, backend raw metadata
+and save/load behavior, player graph controls, native SQL/flat builds and tidy.
+All checks pass: actual authority/factory plus raw-source qualification (ASan/UBSan),
+production pre-materialization gate with a foreign-only cut, player graph tests,
+disposable SQL save/load suite, flat repository/source-ID regression, SQL and flat
+native builds, formatting and tidy. Valid revision zero and ordinary foreign items
+remain supported. Logs: `bin/analysis/pr156-*`. Publication is next.
+
+Next: publish #156, repair #157 audit findings, carry through #158–#161 to #162's
+pending-action rollback finding, and through #163–#165/#167. Refresh live reviews
+before final closeout. No production operations or PR merges are authorized here.
 ## Additional #141 review: saved-room source keys
 
 A subsequent review identified cross-key parents inside the same room. The reader

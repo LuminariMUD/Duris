@@ -833,8 +833,19 @@ bool artifact_begin_creation(P_obj object)
 	}
 }
 
+static bool artifact_uid_has_other_vnum(uint64_t uid, int vnum)
+{
+	return uid && std::any_of(artifact_rows.begin(), artifact_rows.end(),
+				  [&](const auto &entry) {
+					  return entry.first != vnum &&
+						 entry.second.canonical_item_uid == uid;
+				  });
+}
+
 unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
 {
+	if (artifact_uid_has_other_vnum(source.item_uid, source.vnum))
+		return ESTALE;
 	const auto found = artifact_rows.find(source.vnum);
 	if (!(source.extra_flags & ITEM_ARTIFACT) &&
 	    (found == artifact_rows.end() || found->second.canonical_item_uid != source.item_uid))
@@ -847,12 +858,12 @@ unsigned int artifact_player_source_error(const artifact_payload_projection &sou
 	    source.payload_owner.type != item_owner_type::player || !source.payload_owner.id ||
 	    source.payload_owner.context_id || source.owner_reference <= 0 ||
 	    source.payload_owner.id != static_cast<uint64_t>(source.owner_reference) ||
-	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found)
+	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found ||
+	    !source.custody_owner_revision_found)
 		return ENODATA;
 	const auto &custody = source.custody;
 	if (custody.item_uid != source.item_uid || custody.vnum != source.vnum ||
 	    custody.state != item_custody_state::active || !custody.item_revision ||
-	    !custody.owner_revision ||
 	    !item_owner_identity_equal(custody.owner, source.payload_owner) ||
 	    custody.root_item_uid != source.payload_root_item_uid ||
 	    custody.parent_item_uid != source.parent_item_uid)
@@ -890,6 +901,8 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	};
 	if (!object)
 		return false;
+	if (object->R_num >= 0 && artifact_uid_has_other_vnum(object->obj_uid, OBJ_VNUM(object)))
+		return refuse(ESTALE, "canonical_vnum_mismatch");
 	if (!IS_ARTIFACT(object))
 	{
 		// Ordinary items remain unrestricted, but clearing a known artifact's

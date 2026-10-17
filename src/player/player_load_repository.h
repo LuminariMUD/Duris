@@ -157,6 +157,11 @@ struct player_load_source_item
 	uint64_t root_item_uid = 0;
 	bool custody_found = false;
 	item_ownership_runtime_entry custody = {};
+	int32_t vnum = 0;
+	uint64_t quantity = 0;
+	uint32_t extra_flags = 0;
+	bool extra_flags_present = false;
+	bool custody_owner_revision_found = false;
 };
 
 struct player_load_result

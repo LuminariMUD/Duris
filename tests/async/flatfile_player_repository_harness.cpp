@@ -283,6 +283,54 @@ static void inspect_world_items(const std::string &root, int argc, char **argv)
 	std::cout << "]}\n";
 }
 
+static void source_id_gap_case(const fs::path &path)
+{
+	const std::string root = path.string();
+	for (const auto &directory : { path, path / "players", path / "domains",
+				       path / "identities", path / "identities/names" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	int32_t allocated = 0;
+	for (int i = 0; i < 42; ++i)
+		require(flatfile_identity_allocate_pid(root, &allocated, &error) ==
+				flatfile_identity_result::ok,
+			"source-gap PID");
+	require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
+			flatfile_identity_result::ok,
+		"source-gap identity");
+	auto original = make_full(1);
+	for (auto &item : original.items)
+		if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+			++item.parent_index;
+	player_item_snapshot held = {};
+	held.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	held.vnum = 900;
+	original.items.insert(original.items.begin(), held);
+	require(flatfile_player_snapshot_apply(root, original, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"source-gap seed");
+	player_load_request request = {};
+	request.request_id = 1;
+	request.pid = 42;
+	request.account_name = "Account-One";
+	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+	const auto loaded = flatfile_player_load_repository_execute(root, request);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 2 &&
+			loaded.item_identities[0].database_id == 2 &&
+			loaded.item_identities[1].database_id == 3 &&
+			loaded.item_sources[1].item_uid == loaded.item_identities[0].item_uid &&
+			loaded.item_sources[2].item_uid == loaded.item_identities[1].item_uid &&
+			loaded.item_sources[1].vnum == loaded.snapshot.items[0].vnum &&
+			loaded.item_sources[1].extra_flags_present &&
+			loaded.item_sources[1].quantity == 1 &&
+			loaded.item_sources[1].custody_owner_revision_found,
+		"filtered flat rows compacted original source IDs");
+}
+
 static void retained_roots_case(const fs::path &path, bool unknown_root)
 {
 	const std::string root = path.string();
@@ -1010,6 +1058,7 @@ int main(int argc, char **argv)
 		"concurrent player writers left a torn player file");
 
 	item_consistency_matrix(root / "consistency");
+	source_id_gap_case(root / "source-gap");
 	retained_roots_case(root / "retention", true);
 	retained_roots_case(root / "retained-child", false);
 	require(flatfile_player_snapshot_apply(root.string(), make_full(10), &error).outcome ==
