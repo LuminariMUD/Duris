@@ -317,7 +317,7 @@ int main(int argc, char **argv)
 		row.extra_flags = ITEM_ARTIFACT;
 		row.owner_reference = 88;
 		row.payload_owner = { item_owner_type::player, 88, 0 };
-		row.custody_examined = row.custody_found = true;
+		row.custody_examined = row.custody_found = row.custody_owner_revision_found = true;
 		row.custody = { uid, uid, 0,	row.payload_owner,
 				1,   1,	  vnum, item_custody_state::active };
 		population.push_back(row);
@@ -363,6 +363,26 @@ int main(int argc, char **argv)
 			artifact_rows.at(600).canonical_payloads.empty(),
 		"classified identity/timer/soul did not survive existing capture/reload");
 
+	writes.clear();
+	// Incomplete boot creates an identity-only reservation. Reload must not turn
+	// it into a legacy gameplay row that accepts feed operations.
+	booting = true;
+	require(artifacts_stage_population({}, { { 604, ITEM_ARTIFACT } }, false) &&
+			artifact_rows.at(604).removed,
+		"incomplete population did not capture its reservation");
+	booting = false;
+	require(artifact_save_pulse(true) == 2 && writes.size() == 2,
+		"reservation captures not queued");
+	for (auto &write : writes)
+		require(write().outcome == player_save_apply_outcome::applied,
+			"reservation capture failed");
+	require(!artifact_save_pulse(false) && artifacts_load() && artifact_rows.at(604).removed &&
+			artifact_rows.at(604).identity_state == artifact_identity_state::unresolved,
+		"unresolved identity-only marker lost across flat capture/reload");
+	int64_t feed_timer = -1, bind_timer = -1;
+	int32_t owner = -1;
+	require(!artifact_feed_state(604, &feed_timer, &owner, &bind_timer),
+		"identity-only reservation accepted gameplay feeding after reload");
 	writes.clear();
 	// A removal is one complete row/soul capture, including its first durable image.
 	for (int corpse_pid : { 0, 77 })

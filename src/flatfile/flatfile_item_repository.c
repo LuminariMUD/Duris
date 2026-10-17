@@ -910,10 +910,9 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 	return flatfile_item_repository_result::ok;
 }
 
-flatfile_item_repository_result
-flatfile_item_repository_read_population(const std::string &root,
-					 std::vector<flatfile_item_ownership_record> *records,
-					 std::string *error)
+flatfile_item_repository_result flatfile_item_repository_read_population(
+	const std::string &root, std::vector<flatfile_item_ownership_record> *records,
+	std::string *error, std::map<uint64_t, uint64_t> *owner_revisions)
 {
 	if (root.empty() || !records)
 		return flatfile_item_repository_result::invalid;
@@ -931,6 +930,25 @@ flatfile_item_repository_read_population(const std::string &root,
 	if (loaded != flatfile_item_repository_result::ok &&
 	    loaded != flatfile_item_repository_result::not_found)
 		return loaded;
+	if (owner_revisions)
+	{
+		std::map<uint64_t, uint64_t> revisions;
+		try
+		{
+			for (const auto &entry : catalog.items)
+			{
+				const auto *owner = find_owner(&catalog, entry.owner);
+				if (!owner)
+					return flatfile_item_repository_result::invalid;
+				revisions.emplace(entry.item_uid, owner->revision);
+			}
+		}
+		catch (const std::bad_alloc &)
+		{
+			return flatfile_item_repository_result::io_error;
+		}
+		*owner_revisions = std::move(revisions);
+	}
 	*records = std::move(catalog.items);
 	return flatfile_item_repository_result::ok;
 }

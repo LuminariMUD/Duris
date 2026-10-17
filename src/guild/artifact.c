@@ -328,7 +328,8 @@ flatfile_artifact_record artifact_flat_capture(int vnum, const artifact_row &row
 		 bind.timer,
 		 0,
 		 row.canonical_item_uid,
-		 row.identity_state };
+		 row.identity_state,
+		 row.removed };
 }
 
 bool artifact_queue_flat(std::vector<flatfile_artifact_record> records,
@@ -586,9 +587,7 @@ bool artifacts_load(void)
 			auto &row = records.at(record.vnum);
 			row.canonical_item_uid = record.canonical_item_uid;
 			row.identity_state = record.identity_state;
-			row.removed = !record.owned && record.location_type == ARTIFACT_NOTINGAME &&
-				      (record.identity_state == artifact_identity_state::retired ||
-				       record.identity_state == artifact_identity_state::absent);
+			row.removed = record.identity_only;
 			binds[record.vnum] = { record.bind_owner_pid,
 					       static_cast<int>(record.bind_timer) };
 		}

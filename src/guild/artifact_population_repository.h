@@ -76,7 +76,7 @@ struct artifact_payload_projection
 // delivery payloads. Recovery evidence is separate. Output is atomic.
 // Ordinary store reads can complete committed authority journals; offline audit
 // callers must use a retained store copy if the original must remain untouched.
-// Flat custody owner_revision remains unknown (0); no runtime custody is published.
+// Flat custody revisions come from the same ownership catalog; no runtime custody is published.
 unsigned int artifact_population_read_flat_payloads(const std::string &root,
 						    std::vector<artifact_payload_projection> *items,
 						    std::string *error);

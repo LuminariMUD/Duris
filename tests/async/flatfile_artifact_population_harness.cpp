@@ -639,8 +639,15 @@ int main(int argc, char **argv)
 	       classified->canonical_payloads.empty());
 	for (const auto &row : rows)
 		if (row.custody_found)
-			assert(!row.custody_owner_revision_found &&
-			       row.custody.owner_revision == 0);
+		{
+			uint64_t revision = UINT64_MAX;
+			std::vector<flatfile_item_ownership_record> held;
+			assert(flatfile_item_repository_load_owner(root.string(), row.custody.owner,
+								   &revision, &held, &error) ==
+			       flatfile_item_repository_result::ok);
+			assert(row.custody_owner_revision_found &&
+			       row.custody.owner_revision == revision);
+		}
 	const size_t expected = rows.size();
 	for (const auto &path :
 	     { root / "players/42.snapshot", root / "domains/locker_catalog",

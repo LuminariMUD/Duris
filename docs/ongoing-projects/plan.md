@@ -9,9 +9,8 @@ old accepted cross-key link and retains a valid same-key control. The disposable
 SQL fixture, maintained-schema queries, native build and format/tidy pass. Evidence:
 `bin/analysis/pr141-room-key-*.log`. This is an additional finding beyond the initial
 32; fixed in `c3fae0f61`, pushed, and its thread is resolved.
-Carry this repair through the dependent branches, then resume the #145–#147 checks.
-The #145 transaction contract also needs its stale inline-ownership assertion
-updated to follow the shared overlap planner.
+This repair is published through #147. The #145 transaction contract now follows
+the shared overlap planner; native pipeline, recovery/SQL and copyover checks pass.
 
 ## Oldest-first code-review follow-up — 2026-10-17
 
@@ -20,26 +19,56 @@ The initial inventory contained 31 unresolved inline threads across 14 PRs plus 
 additional finding in #139's review body. #132/#133 repairs are already published
 and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
 
-Current work: carry-forward through #145–#147 in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+Current work: #148 classification review repair in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`, on
+`branch/issue-67-population-classification`. Parent carry-forward merge: `bb5e858a2`.
 Published repairs: #138 `ba2f3f79f`, #139 `5df732237`, #141 `1bf1d5986` plus
 `c3fae0f61`, #142 `e29ab3926`, #143 `d0845890f`, #144 `136b65c0f`.
 Their review threads are resolved, and #139's additional review-body finding is
-addressed. The newer saved-room fix has passed inherited SQL-reader/build checks
-through #144. Fourteen findings have been addressed, including the later #141 one.
+addressed. Fourteen findings have been addressed, including the later #141 one;
+nineteen findings remain in the latest inventory.
 
-#145's native pipeline checks pass. Its transaction source contract still expected
-inline parent validation after the overlap refactor moved that validation to
-`world_recovery_read_object_record`; the assertion now follows that real call and
-checks parent validation in the shared codec. Validate it, publish the carry-forward,
-then continue through #146/#147 to #148. These three PRs had no open review findings
-in the initial scan. Preserve all existing source-boundary regressions.
+Carry-forward is published through #145 `e89a19434`, #146 `85c5b0d64`, and
+#147 `7434758f7`. The #145 native pipeline/transaction tests, #146 recovery
+projections and disposable SQL suite, #147 copyover evidence/custody/save guards,
+and native builds passed. These PRs had no outstanding findings in the inventory.
+Evidence is retained in `bin/analysis/pr145-*`, `pr146-*`, and `pr147-*`.
 
-**Carry-forward requirement:** populate `custody_owner_revision_found` from actual
-revision authority in later readers and have the #148 classifier reject missing
-revision authority. Preserve legitimate flat recovery by obtaining its real owner
-revision evidence before enforcing this check. Do not drop the flag when later
-PRs move the shared projection type.
+#148 outcome: preserve identity-only reservations on flat reload, reject zero
+vnums atomically, reject repeated UIDs within one physical source, retain retired
+tombstones, and enforce actual owner-revision evidence without rejecting valid
+flat custody. Files: existing classifier, artifact capture/load, flat catalog and
+population reader, existing regression harnesses, this plan. Proof: executable
+classifier cases, capture/reload plus feeding refusal, flat authority revisions,
+backward-compatible codec controls, required native builds and formatting/tidy.
+Non-goals: unrelated cleanup, new authority services, operational repair or merge.
+
+Ablation: the flat schema currently cannot distinguish an unresolved identity-only
+reservation from a real legacy unowned row with identical fields. Persist the
+existing marker in the catalog rather than infer it and alter legitimate legacy
+rows. Read real flat owner revisions from the already-loaded custody catalog;
+avoid per-item store reads or a separate revision cache. Preserve old catalog
+readability. Later boot assembly must carry this evidence into recovery projections.
+
+#148 repairs implemented and locally verified: duplicate same-source rows now
+reserve the UID (including duplicate ordinary ancestors); cross-source matching
+projections remain valid. Only unresolved/absent states may adopt a UID. Zero and
+negative vnums fail without publishing a prefix. Flat v3 preserves the exact
+identity-only marker for every state and still reads v1/v2. Existing unmarked
+legacy rows keep their prior semantics; historical unresolved reservations in v2
+are inherently ambiguous and cannot be reconstructed uniquely from those bytes.
+Flat population revisions come from the same validated custody catalog and the
+classifier distinguishes missing revision authority from valid revision zero.
+
+Reproduced before repair: accepted two same-source rows as canonical, and lost
+an unresolved marker across the real flat capture/reload. Passed after repair:
+`test_artifact_population.py` (ASan/UBSan),
+`test_flatfile_artifact_repository.py` (codec, capture/reload, feeding refusal),
+`test_flatfile_artifact_population.py` (UBSan, real revision comparison),
+`test_artifact_cache_codec.py`, SQL and flat native builds, formatting and tidy.
+The SQL snapshot fixture explicitly supplies its existing revision authority;
+`test_artifact_guild_snapshots.py` also passes. Logs: `bin/analysis/pr148-*`.
+This is local verification; no production or full-server restart is claimed.
 
 Remaining review sequence (initial inventory, oldest first):
 - #139: all 3 findings addressed and published.
@@ -1624,7 +1653,8 @@ refuses incompatible shapes, inconsistent UID/state or a missing original FK;
 no existing timer/soul/custody evidence is rewritten. Applied older immutable
 files are unchanged. Runtime table count remains 198.
 
-The flat-file artifact catalog writes v2, reads v1 as unresolved, rejects invalid
+The flat-file artifact catalog now writes v3 with the identity-only marker, reads
+v1 as unresolved and v2 with its existing tombstone inference, and rejects invalid
 UID/state pairs and a shared nonzero UID across vnums, and preserves identity
 through ordinary gameplay/bind updates. The existing fixture covers all four
 states, round-trip/reload, invalid data, duplicate UID, a real v1 byte layout,
