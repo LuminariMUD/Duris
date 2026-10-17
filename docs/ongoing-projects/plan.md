@@ -38,6 +38,20 @@ Critical next sequence: publish #161, then address new findings oldest-first; me
 refresh every review thread AND review body. No force-push or release tag.
 
 The earlier checkpoints below are historical evidence, not the current status.
+## Review repair — templates for uncertain saved flags (#160)
+
+Outcome: maintenance can inspect identities inferred from legacy payloads with
+missing flags, without constructing gameplay objects. Extend the existing boot
+cache selection to unknown flags, matching the classifier's existing policy.
+Files: one predicate in `src/world/db.c`, existing real-parser/cache fixture, plan.
+Before repair the missing-flags control fails; explicit ordinary payloads remain
+uncached. #159's promoted-template finding is already implemented in this dependent
+PR and exercised by the same actual boot-cache fixture. No new cache or fallback.
+#139/#149 repairs are carried through #160 locally; validate the destination, then
+publish the parent merges and these final template checks. Actual cache/parser,
+full native admission, boot/classifier and server build pass; logs are
+`bin/analysis/pr160-missing-flags-*` and `pr160-hour-*`.
+
 
 ## Current follow-up: #158 trusted artifact holders
 
@@ -75,6 +89,31 @@ build, formatting and tidy (`bin/analysis/pr156-legacy-pet-*`). Publication is n
 branch's carry-forward merge is `0201e0cb2`. There are 48 known findings: 44
 addressed and four outstanding before this repair. After #156, continue to #158's
 trusted-holder exemption and #161's target-copy/offline-save safeguards.
+## Review repair — Redis restore conflicts (#149)
+
+Outcome: a cold Redis image that the real restore rejects cannot prove artifact
+presence or absence. Propagate the existing `restore_conflict` result into aggregate
+incompleteness; selected native handoffs still supersede historical Redis images.
+Files: existing boot assembler and its fixture, this plan. No new recovery state.
+The executable assembler/classifier regression fails before repair for both an
+empty and a populated conflicting image. Boot/classifier, real recovery-projection
+tests and native build pass (`bin/analysis/pr149-restore-*.log`); format/tidy pass.
+#139's all-souls repair is published as `f0022ff5f`, now carried locally through
+#149. Publish those parent merges after the destination validation.
+
+
+## Review repair — all-souls reset admission (#139)
+
+Outcome: reject a refused all-souls batch without changing live bindings or
+creating individual dirty retries. Build the existing atomic capture from a local
+reset value, then publish memory changes only after queue acceptance. Files:
+existing reset function, existing SQL/flat snapshot fixtures and this plan.
+No new retry registry or persistence format. Native SQL regression reproduces the
+partial-retry bug before repair. SQL and flat fixtures, both native backend builds,
+formatting and diff checks pass (`bin/analysis/pr139-reset-*.log`).
+This is a later review finding (`PRRT_kwDOVA3mlM6tguBO`) from the full 15:16 UTC
+inventory; #161 offline refusal is already published as `7920d0675`.
+
 
 ## Review follow-up: atomic maintenance captures (#139)
 
