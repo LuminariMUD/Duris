@@ -1,5 +1,25 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Later review checkpoint — SQL evidence contracts (#143)
+
+The latest review refresh adds 11 threads (64 total known findings). Earlier
+53 findings have repairs/coverage through #165; #167 integration validation is
+in progress. New work: #143 collector slots, source-keyed zero-UID quarantine,
+legacy pickup quarantine and auction claim markers; #147 claim-consume race;
+#148 active foreign-vnum history; #150 NPC copyover, cancelled offline requests
+(check #151 coverage), and restore registration; #161 journey wording and a
+crumble-on-rollback source. Do not describe the queue as clear.
+
+Current outcome: SQL evidence must obey the same collector/auction/source identity
+contracts as the writers. Extend existing queries/validation and the existing
+real disposable SQL fixture. No schema, persistence format, or repair engine.
+Tests include isolated zero-UID quarantine, UID-less and decoded-UID legacy pickup
+quarantine, invalid collector slots, all inconsistent auction claim markers, and
+a valid pending claimant. Prior output is preserved on rejected source images.
+The disposable MariaDB numeric and maintained-schema blob suites and native build
+pass (`bin/analysis/pr143-late-after.log`, `pr143-late-build.log`).
+
+
 ## Review repair — all-souls reset admission (#139)
 
 Outcome: reject a refused all-souls batch without changing live bindings or
