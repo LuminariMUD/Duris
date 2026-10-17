@@ -864,24 +864,22 @@ int main(int argc, char **argv)
 	assert(artifact_save_pulse(false) == 0);
 	accepting = false;
 	assert(!artifact_binds_reset(-1));
-	assert(artifact_save_pulse(false) == 2);
+	assert(artifact_save_pulse(false) == 0 && artifact_binds.at(900).owner_pid == 77 &&
+	       artifact_binds.at(901).owner_pid == -1);
 	accepting = true;
-	artifact_bind_store(900, 88, 30);
 	artifact_save_pulse(true);
-	assert(jobs.size() == 4 && contains(jobs[2], "VALUES(900,88,30)") &&
-	       contains(jobs[3], "VALUES(901,-1,0)"));
-	finish(2);
-	finish(3);
-	assert(artifact_save_pulse(false) == 0);
+	assert(jobs.size() == 2); // A refused batch must not become per-row retries.
 	fail_allocation = true;
 	assert(!artifact_binds_reset(-1));
-	assert(!fail_allocation && artifact_save_pulse(false) == 2);
+	assert(!fail_allocation && artifact_save_pulse(false) == 0 &&
+	       artifact_binds.at(900).owner_pid == 77);
 	artifact_save_pulse(true);
-	assert(jobs.size() == 6);
-	finish(4);
-	finish(5);
+	assert(jobs.size() == 2);
+	assert(artifact_binds_reset(-1) && jobs.size() == 3);
+	assert(contains(jobs[2], "VALUES(900,-1,0)") && contains(jobs[2], "VALUES(901,-1,0)"));
+	finish(2);
 	assert(artifact_save_pulse(false) == 0);
-	puts("PASS shared soul-reset receipt, later binding, admission and allocation recovery");
+	puts("PASS shared soul-reset receipt, later binding, unchanged admission/allocation refusal");
 
 	// Failed low-number rows must not starve higher-number rows indefinitely.
 	artifact_rows.clear();
