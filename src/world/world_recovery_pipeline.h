@@ -23,6 +23,9 @@
 #include <vector>
 #include "item/item_ownership_runtime.h"
 
+// Discard a partially restored NPC without normal teardown dropping its items.
+void world_recovery_discard_mob(P_char mob);
+
 constexpr uint32_t WORLD_RECOVERY_SCHEMA_VERSION = 13;
 constexpr uint32_t WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED = 1U << 0;
 // What one generation may take of the game's memory, and twice that of Redis's while the

@@ -846,8 +846,20 @@ void artifact_object_placed(P_obj object)
 	if (found == artifact_rows.end())
 		return;
 	auto &row = found->second;
-	if (!row.creation_pending || row.live_object != object ||
-	    row.canonical_item_uid != object->obj_uid)
+	if (!row.creation_pending)
+	{
+		// Saved player/recovery objects receive their UID before ordinary
+		// placement. Register that physical body without resetting legacy state.
+		if (IS_ARTIFACT(object) && !row.live_object && object->obj_uid &&
+		    row.identity_state == artifact_identity_state::present &&
+		    row.canonical_item_uid == object->obj_uid)
+		{
+			row.live_object = object;
+			++arti_cache_generation;
+		}
+		return;
+	}
+	if (row.live_object != object || row.canonical_item_uid != object->obj_uid)
 		return;
 	row.creation_pending = false;
 	row.previous_uid = 0;
@@ -901,7 +913,9 @@ void artifact_object_extracted(P_obj object, bool physical_retirement)
 		row.location = 0;
 		row.timer = 0;
 		row.removed = true;
-		artifact_binds.at(vnum) = { 0, 0 };
+		const auto bind = artifact_binds.find(vnum);
+		if (bind != artifact_binds.end())
+			bind->second = { 0, 0 };
 		row.population_reason = artifact_population_reason::complete;
 		row.canonical_payloads.clear();
 		row.save = {};
@@ -1810,6 +1824,10 @@ void addOnGroundArtis_sql()
 	{
 		if (row.removed || !row.owned || row.locType != ARTIFACT_ONGROUND)
 			continue;
+		// A legacy location is not permission to create another physical UID.
+		if (row.identity_state != artifact_identity_state::present ||
+		    !row.canonical_item_uid || row.live_object)
+			continue;
 		const int location = row.location;
 		P_obj artifact = read_object(vnum, VIRTUAL);
 		if (!artifact)
@@ -1825,6 +1843,7 @@ void addOnGroundArtis_sql()
 			extract_obj(artifact, FALSE);
 			continue;
 		}
+		artifact->obj_uid = static_cast<unsigned long>(row.canonical_item_uid);
 		obj_to_room(artifact, room);
 	}
 }
@@ -5129,6 +5148,10 @@ void addOnMobArtis_sql()
 	{
 		if (row.removed || !row.owned || row.locType != ARTIFACT_ON_NPC)
 			continue;
+		// A legacy location is not permission to create another physical UID.
+		if (row.identity_state != artifact_identity_state::present ||
+		    !row.canonical_item_uid || row.live_object)
+			continue;
 		const int location = row.location;
 		P_obj artifact = read_object(vnum, VIRTUAL);
 		if (!artifact)
@@ -5145,6 +5168,7 @@ void addOnMobArtis_sql()
 			extract_obj(artifact, FALSE);
 			continue;
 		}
+		artifact->obj_uid = static_cast<unsigned long>(row.canonical_item_uid);
 		obj_to_char(artifact, mob);
 	}
 }

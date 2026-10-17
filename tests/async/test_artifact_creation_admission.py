@@ -13,12 +13,16 @@ HARNESS = r"""
 #include "redis/redis_floor_runtime.h"
 #include "world/world_recovery_pipeline.h"
 #include "world/world_recovery_codec.h"
+#include "item/encumbrance_policy.h"
+#include "player/player_snapshot.h"
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
 index_data indexes[4] = {};
 index_data mob_indexes[1] = {};
 P_index mob_index=mob_indexes;
+P_char character_list=nullptr;
+int real_room(int vnum) { return vnum==2300 ? 0 : -1; }
 room_data rooms[1] = {};
 const char *equipment_types[CUR_MAX_WEAR+1] = {};
 P_room world=rooms;
@@ -121,6 +125,8 @@ object_template parse_object_template(int index) {
  prototype.type=index==3 ? ITEM_CONTAINER : 0; prototype.wear_flags=ITEM_TAKE;
  return prototype;
 }
+void balance_affects(P_char) {}
+// PLAYER_ATTACHMENT
 // CONSTRUCTORS
 // EXTRACTION
 // CLONE
@@ -253,10 +259,45 @@ int main() {
  assert(!materializing && last_materialized && artifact_is_canonical(last_materialized) &&
   artifact_rows.at(902).timer==9876 && artifact_binds.at(902).owner_pid==88 && header.sequence==123);
  artifact_save_pulse(true); drain(); extract_obj(last_materialized,FALSE); assert(!object_list && !pool.objs_used);
+ // Legacy reconstruction keeps the canonical UID and registers one live body.
+ auto &legacy=artifact_rows.at(900);
+ legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
+ legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80001;
+ artifact_binds[900]={55,666};
+ addOnGroundArtis_sql(); addOnGroundArtis_sql();
+ assert(object_list && !object_list->next && object_list->obj_uid==80001 && legacy.live_object==object_list);
+ assert(legacy.timer==7777 && artifact_binds.at(900).owner_pid==55);
+ extract_obj(object_list,TRUE); assert(legacy.identity_state==artifact_identity_state::retired);
+ artifact_save_pulse(true); drain();
+ char_data holder={}; npc_only_data npc={}; holder.only.npc=&npc;
+ holder.specials.act=ACT_ISNPC; npc.R_num=0; mob_indexes[0].virtual_number=2000; character_list=&holder;
+ legacy={true,ARTIFACT_ON_NPC,2000,7777,ARTIFACT_MAJOR};
+ legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80002;
+ addOnMobArtis_sql(); addOnMobArtis_sql();
+ assert(holder.carrying && !holder.carrying->next_content && holder.carrying->obj_uid==80002 && legacy.live_object==holder.carrying);
+ extract_obj(holder.carrying,FALSE); assert(!legacy.live_object && legacy.identity_state==artifact_identity_state::present);
+ // Player/recovery hydration assigns a saved UID before the normal placement hook.
+ auto *hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
+ player_item_snapshot saved={}; saved.equipment_slot=0;
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ assert(legacy.live_object==hydrated);
+ player_load_items_discard(&holder);
+ assert(!legacy.live_object && legacy.identity_state==artifact_identity_state::present && !object_list);
+ hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ assert(legacy.live_object==hydrated && !legacy.creation_pending && legacy.timer==7777);
+ auto *duplicate=read_object(900,VIRTUAL); duplicate->obj_uid=80002; obj_to_char(duplicate,&holder);
+ assert(legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
+ assert(legacy.identity_state==artifact_identity_state::present);
+ artifact_binds.erase(900); // a legacy canonical row need not have a soul row
+ extract_obj(hydrated,TRUE); assert(legacy.identity_state==artifact_identity_state::retired && !legacy.live_object);
+ artifact_save_pulse(true); drain(); character_list=nullptr;
+ assert(!object_list && !pool.objs_used);
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
-source=HARNESS.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
+source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(")))
+source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object(int nr, int type)")))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)"))

@@ -2368,7 +2368,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 			P_obj obj = read_object_for_creation(mob_entry.equipment_vnums[w], VIRTUAL);
 			if (!obj && errno == ENOMEM)
 			{
-				extract_char(mob);
+				world_recovery_discard_mob(mob);
 				return nullptr;
 			}
 			if (obj)
@@ -2390,7 +2390,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 			P_obj obj = read_object_for_creation(inv_entry.vnum, VIRTUAL);
 			if (!obj && errno == ENOMEM)
 			{
-				extract_char(mob);
+				world_recovery_discard_mob(mob);
 				return nullptr;
 			}
 			if (obj)
