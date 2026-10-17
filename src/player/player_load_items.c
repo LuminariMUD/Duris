@@ -905,6 +905,11 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		auto &sources = result->item_sources;
 		const auto &items = result->snapshot.items;
 		const auto &identities = result->item_identities;
+		if (result->authoritative_item_count < identities.size())
+			return EINVAL;
+		// Legacy-pet items share player custody and remain in this counter.
+		const size_t other_owned_items =
+			result->authoritative_item_count - identities.size();
 		std::unordered_map<uint64_t, size_t> source_by_id;
 		for (size_t index = 0; index < sources.size(); ++index)
 			if (!source_by_id.emplace(sources[index].row_id, index).second)
@@ -1066,7 +1071,8 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		result->snapshot.items = std::move(kept);
 		result->item_identities = std::move(kept_identities);
 		result->item_admission_sources = std::move(admitted);
-		result->authoritative_item_count = result->item_identities.size();
+		result->authoritative_item_count =
+			other_owned_items + result->item_identities.size();
 		return 0;
 	}
 	catch (const std::bad_alloc &)

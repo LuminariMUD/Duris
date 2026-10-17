@@ -397,7 +397,7 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 
 int main()
 {
-    {
+    for(const bool legacy_pet : {false,true}) {
         reset_test_state(); auto input=base_result(); input.gameplay_items=true; input.outcome=player_load_outcome::applied;
         player_load_source_item foreign;
         foreign.row_id=1; foreign.item_uid=foreign.root_item_uid=555; foreign.bytes=75;
@@ -405,21 +405,35 @@ int main()
         foreign.custody_found=foreign.custody_owner_revision_found=true;
         foreign.custody={555,555,0,{item_owner_type::player,88,0},1,1,103,item_custody_state::active};
         input.item_sources.push_back(foreign);
-        for(size_t index=0;index<PLAYER_LOAD_ITEM_MAX;++index) {
+        const size_t inventory_count=PLAYER_LOAD_ITEM_MAX-(legacy_pet ? 1 : 0);
+        for(size_t index=0;index<inventory_count;++index) {
             add_item(input,index+2,index+1000,101,-1,0);
             player_load_source_item raw; raw.row_id=index+2; raw.item_uid=raw.root_item_uid=index+1000;
             raw.vnum=101; raw.quantity=1; raw.extra_flags_present=true; input.item_sources.push_back(raw);
         }
-        prepare_valid_status(input); assert(valid_snapshot(input));
+        prepare_valid_status(input);
+        if(legacy_pet) {
+            input.snapshot.components=PLAYER_LOAD_SESSION03_COMPONENTS;
+            player_pet_snapshot pet={}; pet.mob_vnum=700; pet.room_vnum=2300;
+            auto pet_item=input.snapshot.items.front(); pet_item.object_uid=99999; pet.items={pet_item};
+            input.snapshot.pets={pet};
+            player_load_pet_identity identity={}; identity.database_id=1; identity.owner_revision=input.item_owner_revision;
+            auto pet_identity=input.item_identities.front(); pet_identity.database_id=50000;
+            pet_identity.item_uid=pet_identity.root_item_uid=99999;
+            identity.item_identities={pet_identity}; input.pet_identities={identity};
+            ++input.authoritative_item_count; // legacy pet items belong to the player
+        }
+        assert(valid_snapshot(input));
         refused_artifact_vnum=103; auto qualified=input;
         const auto capacity_result=player_load_items_qualify(&qualified);
-        if(capacity_result || qualified.snapshot.items.size()!=PLAYER_LOAD_ITEM_MAX || qualified.snapshot.retained_items.rows.size()!=1)
+        if(capacity_result || qualified.snapshot.items.size()!=inventory_count || qualified.snapshot.retained_items.rows.size()!=1)
             std::fprintf(stderr,"capacity result=%u active=%zu retained=%zu\n",capacity_result,qualified.snapshot.items.size(),qualified.snapshot.retained_items.rows.size());
-        assert(!capacity_result && qualified.snapshot.items.size()==PLAYER_LOAD_ITEM_MAX && qualified.snapshot.retained_items.rows.size()==1);
+        assert(!capacity_result && qualified.snapshot.items.size()==inventory_count && qualified.snapshot.retained_items.rows.size()==1);
+        assert(qualified.authoritative_item_count==PLAYER_LOAD_ITEM_MAX);
         // The production materializer repeats this actual validator after qualification.
         assert(!valid_snapshot(qualified));
         qualified.snapshot.items.pop_back(); qualified.item_identities.pop_back();
-        qualified.authoritative_item_count=qualified.snapshot.items.size();
+        --qualified.authoritative_item_count;
         assert(valid_snapshot(qualified)); // exact combined capacity remains valid
         assert(input.snapshot.retained_items.rows.empty()); refused_artifact_vnum=0;
     }
@@ -460,6 +474,7 @@ int main()
         // Reject one item, not every item of the fixture's ordinary vnum.
         result.snapshot.items[1].vnum=103;
         refused_artifact_vnum=103;
+        result.authoritative_item_count=result.item_identities.size();
         const auto original=result;
         assert(!player_load_items_qualify(&result));
         assert(result.snapshot.items.size()==1 && result.snapshot.items[0].object_uid==1003);
