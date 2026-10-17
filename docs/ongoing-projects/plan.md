@@ -22,7 +22,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current focused repair: `branch/issue-67-fatal-boot-exit`, based on PR #153.
+Current focused repair: [PR #154](https://github.com/LuminariMUD/Duris/pull/154),
+ready for review, `branch/issue-67-fatal-boot-exit`, based on PR #153.
 Outcome: a fatal boot error preserves its intended failure status and console
 message even when static worker threads are active. Non-goals: partial-world
 saves or new shutdown/worker orchestration. Files: the existing fatal handler,
@@ -33,7 +34,7 @@ must return EXIT_FAILURE and preserve buffered stdout plus its stderr diagnostic
 with/without that worker. Flush only console streams and leave through `_Exit`,
 so failed restoration does not run application/global destruction. Existing
 startup/error controls, both backend builds and the actual-worker regression
-now pass; this focused repair is being prepared for publication.
+now pass. Mutable saved-source admission and retention are next.
 
 Current saved-ground checkpoint: [PR #153](https://github.com/LuminariMUD/Duris/pull/153),
 ready for review, `branch/issue-67-recovery-hydration`, based on PR #152. Outcome: admit saved artifact UIDs/effective flags before constructor
@@ -1152,8 +1153,9 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Fatal boot status with active workers — focused recovery repair
 
-Working branch: `branch/issue-67-fatal-boot-exit`, based on PR #153; publication
-pending. Outcome/non-goals/files/proof are recorded at the top of the plan.
+Review: [PR #154](https://github.com/LuminariMUD/Duris/pull/154),
+`branch/issue-67-fatal-boot-exit`, based on PR #153. Implementation commit:
+`8a308e6dca67a910308bfbdbd4cc76d31f896df0`. Outcome/non-goals/files/proof are recorded at the top of the plan.
 The actual `fatal_boot_error`/message formatter reproduces SIGABRT with an active
 static `std::thread`: `exit` invokes its joinable destructor. The real failed
 copyover runs in the previous checkpoint showed the same termination message.
@@ -1340,8 +1342,8 @@ The actual fatal handler plus an active static worker reproduces SIGABRT in
 diagnostics and the failure status without partial-world shutdown saves, then run
 its existing startup/error contracts and both builds.
 
-Immediate next steps: the separate fatal-boot repair above is tested and awaiting
-publication; then implement mutable saved player/pet/storage/delivery source admission with explicit
+Immediate next steps: the fatal-boot repair above is published in PR #154;
+implement mutable saved player/pet/storage/delivery source admission with explicit
 live/temporary roles and payload retention across later saves. The existing player
 save's wholesale delete is not compatible with skip-only conflict handling.
 Complete legacy metadata reconstruction, remaining fresh producers, lifecycle/
@@ -2333,7 +2335,7 @@ required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
 Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 →
 #140 → #141 → #142 → #143 → #144 → #145 → #146 → #147 → #148 → #149 → #150 →
-#151 → #152 → #153. Each dependent PR targets its immediate predecessor; none of these
+#151 → #152 → #153 → #154. Each dependent PR targets its immediate predecessor; none of these
 issue-67 chunks has been merged or deployed by this goal.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
