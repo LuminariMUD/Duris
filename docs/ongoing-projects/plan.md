@@ -1,5 +1,19 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Capacity review verification — #156
+
+A later review claimed that qualification could admit 4096 active items plus a
+newly retained foreign row. Inspection found the materializer already calls
+`valid_snapshot(result)` **after** qualification; that validator checks the combined
+active/retained count. A focused regression executes the real qualification and
+validator with that exact input, verifies the over-capacity cut is rejected, and
+keeps the exact-capacity control valid. This is verification of an existing gate,
+not a production behavior change. The complete player-item regression passes,
+including both capacity boundaries and foreign-only materialization gating.
+Evidence: `bin/analysis/pr156-capacity-verification.log`.
+The latest inventory now has 42 findings, including this comment; #162 remains the
+other outstanding thread. #158 carry-forward is preserved locally at `1f4de82ae`.
+
 ## Latest review checkpoint: #156 player artifact admission
 
 Current branch: `branch/issue-67-player-artifact-admission`, in
