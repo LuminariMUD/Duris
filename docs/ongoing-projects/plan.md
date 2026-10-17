@@ -1,5 +1,53 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Oldest-first code-review follow-up — 2026-10-17
+
+The current goal is to address every existing review finding, in PR creation order.
+The initial inventory contained 31 unresolved inline threads across 14 PRs plus one
+additional finding in #139's review body. #132/#133 repairs are already published
+and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
+
+Current work: #141, `branch/issue-67-population-evidence`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+#138 is fixed in `ba2f3f79f`, pushed, and its thread is resolved. #139 is fixed in
+`5df732237`, pushed, with both inline threads resolved and its third review-body
+finding addressed. The fixes have been carried through #140 with isolated Redis,
+writer regression and native build checks passing; #140 had no outstanding findings.
+
+#141 outcome: derive corpse identity from stored PID/save ID, compare both locker
+rows after public-chest normalization, and retain whether the owner-revision row
+was found (valid revision zero remains distinguishable from NULL). Reuse the
+existing projection and bounded SQL reader; no new store or query framework.
+The disposable SQL regression reproduces rename failure and now covers rename,
+deleted players, NULL/private/public chest combinations, and missing versus zero
+owner revisions. The fixture and all eight reader queries pass against the full
+maintained schema after its real migration runner. Native build and changed-line
+format/tidy pass. Evidence: `bin/analysis/pr141-{owner-before,population-after,build,tidy}.log`.
+Publication follows.
+**Carry-forward requirement:** populate `custody_owner_revision_found` in later
+reader additions and have the #148 classifier reject missing revision authority.
+Do not discard the presence bit when later PRs move the shared projection type.
+
+Remaining review sequence (initial inventory, oldest first):
+- #139: all 3 findings addressed and published.
+- #141: 3 owner/revision evidence findings — implemented, final validation pending.
+- #142: 1 root-compatible unreadable-store regression finding.
+- #143: 2 collector quarantine/embedded-payload findings.
+- #144: 3 Redis retry/state/test-contract findings.
+- #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
+- #149: 1 recovered-NPC evidence completeness finding.
+- #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
+- #154: 1 fatal-boot diagnostic retention finding.
+- #155: 2 retained-row/pet overlap findings.
+- #156: 3 source-ID, foreign-vnum and foreign-owner qualification findings.
+- #157: 4 audit completeness/noise/quantity/revision findings.
+- #162: 1 pending-action preservation finding.
+
+Full fetched review/thread bodies and pagination evidence are retained privately in
+`duris-issue67-delivery/bin/analysis/open-review-details.json`. Every fetched page
+was complete. Refresh live reviews before final closeout. The implementation
+checkpoint below is historical context for this PR, not the current review status.
+
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
