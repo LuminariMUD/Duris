@@ -74,6 +74,23 @@ Prior review logs remain in
 After publishing #162, return there to carry through #163–#165 and #167, then run
 combined validation and refresh every open PR/thread before marking the review
 goal complete. Production operations and PR merges are outside this review pass.
+## Review repair — offline crumble source and journey expectation (#161)
+
+The user explicitly asked to continue and get the job done after challenging the
+six-hour duration. Continue the concrete remaining review blockers, with a current
+handoff and no completion claim while findings remain.
+
+Outcome: refused offline swaps restore a carried source through the existing
+load-time `obj_to_char_at_end`, avoiding loot-time CRUMBLELOOT destruction. The
+native regression adds the crumble source to the carried/worn/nested refusal
+matrix and executes the actual restoration helper. Update the disposable journey's
+occupied-target assertion to the physical-copy message emitted before construction.
+Files: swap rollback, existing admission/journey fixtures, plan. No new restore API.
+The native crumble refusal regression fails before repair and passes after;
+offline cancellation controls and native build pass (`pr161-crumble-*.log`,
+`pr150-cancel-existing-proof.log`). The final-stack real journey remains pending.
+
+
 ## Current checkpoint — 2026-10-17 15:15 UTC
 
 Active branch: `branch/issue-67-canonical-swap-admission` (#161), worktree
@@ -174,6 +191,54 @@ empty and a populated conflicting image. Boot/classifier, real recovery-projecti
 tests and native build pass (`bin/analysis/pr149-restore-*.log`); format/tidy pass.
 #139's all-souls repair is published as `f0022ff5f`, now carried locally through
 #149. Publish those parent merges after the destination validation.
+## Review repair — foreign-vnum historical custody (#148)
+
+Outcome: active, quarantined or unexamined historical evidence for an established
+UID cannot falsely release that UID under its prior vnum. Reuse the existing
+conflicting-UID set; history still never becomes a new physical candidate.
+Files: classifier, existing executable classifier fixture, this plan. The new
+active-history case fails before repair. Cover ordinary/artifact effective flags,
+quarantine and missing custody evidence, with terminal-history absence control.
+No new persisted identity state or query is needed. Classifier regressions,
+native build and formatting pass (`bin/analysis/pr148-history-*.log`).
+
+Closeout direction after the user challenged the six-hour overrun: finish and
+publish already-started repairs, propagate them, and record remaining release
+blockers. Do not treat the review queue or issue #67 as complete.
+
+
+## Review repair — atomic recovery-claim isolation (#147)
+
+Outcome: consuming the restored image cannot unlink a replacement at the public
+`.recovering` path. Move the claim atomically into a mode-0700 `.consuming`
+directory before verification/deletion; return a changed image without replacing
+another claim. A retained consuming directory blocks new boot/read/publication,
+including after interruption. Files: existing copyover service, actual save/exec/
+recover fixture, plan. No new recovery payload format or background cleanup.
+The regression injects replacement at the real syscall boundary. Existing normal,
+changed-image, independent-publication and late-claim cases pass, as do pinned
+evidence, save guards and the native build (`bin/analysis/pr147-consume-*.log`).
+A consuming-directory control verifies interrupted consumption blocks evidence reads.
+
+
+## Later review checkpoint — SQL evidence contracts (#143)
+
+The latest review refresh adds 11 threads (64 total known findings). Earlier
+53 findings have repairs/coverage through #165; #167 integration validation is
+in progress. New work: #143 collector slots, source-keyed zero-UID quarantine,
+legacy pickup quarantine and auction claim markers; #147 claim-consume race;
+#148 active foreign-vnum history; #150 NPC copyover, cancelled offline requests
+(check #151 coverage), and restore registration; #161 journey wording and a
+crumble-on-rollback source. Do not describe the queue as clear.
+
+Current outcome: SQL evidence must obey the same collector/auction/source identity
+contracts as the writers. Extend existing queries/validation and the existing
+real disposable SQL fixture. No schema, persistence format, or repair engine.
+Tests include isolated zero-UID quarantine, UID-less and decoded-UID legacy pickup
+quarantine, invalid collector slots, all inconsistent auction claim markers, and
+a valid pending claimant. Prior output is preserved on rejected source images.
+The disposable MariaDB numeric and maintained-schema blob suites and native build
+pass (`bin/analysis/pr143-late-after.log`, `pr143-late-build.log`).
 
 
 ## Review repair — all-souls reset admission (#139)
