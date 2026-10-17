@@ -400,7 +400,8 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 {
 	player_load_result qualified;
 	const player_load_result *selected = &loaded;
-	if (loaded.gameplay_items && valid_snapshot(loaded) && !loaded.snapshot.items.empty())
+	if (loaded.gameplay_items && valid_snapshot(loaded) &&
+	    (!loaded.snapshot.items.empty() || !loaded.item_sources.empty()))
 	{
 		unsigned int error = ENOMEM;
 		try

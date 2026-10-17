@@ -20,6 +20,8 @@
 #include "core/utils.h"
 #include <algorithm>
 #include <charconv>
+#include <chrono>
+#include <thread>
 #include <memory>
 #include <dirent.h>
 #include <stdio.h>
@@ -41,6 +43,7 @@
 #include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_save_worker.h"
+#include "player/player_save_pipeline.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -354,7 +357,8 @@ flatfile_artifact_record artifact_flat_capture(int vnum, const artifact_row &row
 		 bind.timer,
 		 0,
 		 row.canonical_item_uid,
-		 row.identity_state };
+		 row.identity_state,
+		 row.removed };
 }
 
 bool artifact_queue_flat(std::vector<flatfile_artifact_record> records,
@@ -662,9 +666,7 @@ bool artifacts_load(void)
 			auto &row = records.at(record.vnum);
 			row.canonical_item_uid = record.canonical_item_uid;
 			row.identity_state = record.identity_state;
-			row.removed = !record.owned && record.location_type == ARTIFACT_NOTINGAME &&
-				      (record.identity_state == artifact_identity_state::retired ||
-				       record.identity_state == artifact_identity_state::absent);
+			row.removed = record.identity_only;
 			binds[record.vnum] = { record.bind_owner_pid,
 					       static_cast<int>(record.bind_timer) };
 		}
@@ -832,8 +834,19 @@ bool artifact_begin_creation(P_obj object)
 	}
 }
 
+static bool artifact_uid_has_other_vnum(uint64_t uid, int vnum)
+{
+	return uid && std::any_of(artifact_rows.begin(), artifact_rows.end(),
+				  [&](const auto &entry) {
+					  return entry.first != vnum &&
+						 entry.second.canonical_item_uid == uid;
+				  });
+}
+
 unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
 {
+	if (artifact_uid_has_other_vnum(source.item_uid, source.vnum))
+		return ESTALE;
 	const auto found = artifact_rows.find(source.vnum);
 	if (!(source.extra_flags & ITEM_ARTIFACT) &&
 	    (found == artifact_rows.end() || found->second.canonical_item_uid != source.item_uid))
@@ -846,12 +859,12 @@ unsigned int artifact_player_source_error(const artifact_payload_projection &sou
 	    source.payload_owner.type != item_owner_type::player || !source.payload_owner.id ||
 	    source.payload_owner.context_id || source.owner_reference <= 0 ||
 	    source.payload_owner.id != static_cast<uint64_t>(source.owner_reference) ||
-	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found)
+	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found ||
+	    !source.custody_owner_revision_found)
 		return ENODATA;
 	const auto &custody = source.custody;
 	if (custody.item_uid != source.item_uid || custody.vnum != source.vnum ||
 	    custody.state != item_custody_state::active || !custody.item_revision ||
-	    !custody.owner_revision ||
 	    !item_owner_identity_equal(custody.owner, source.payload_owner) ||
 	    custody.root_item_uid != source.payload_root_item_uid ||
 	    custody.parent_item_uid != source.parent_item_uid)
@@ -889,6 +902,8 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	};
 	if (!object)
 		return false;
+	if (object->R_num >= 0 && artifact_uid_has_other_vnum(object->obj_uid, OBJ_VNUM(object)))
+		return refuse(ESTALE, "canonical_vnum_mismatch");
 	if (!IS_ARTIFACT(object))
 	{
 		// Ordinary items remain unrestricted, but clearing a known artifact's
@@ -993,8 +1008,20 @@ void artifact_object_placed(P_obj object)
 	if (found == artifact_rows.end())
 		return;
 	auto &row = found->second;
-	if (row.pending == artifact_pending::none || row.live_object != object ||
-	    row.canonical_item_uid != object->obj_uid)
+	if (row.pending == artifact_pending::none)
+	{
+		// Saved player/recovery objects receive their UID before ordinary
+		// placement. Register that physical body without resetting legacy state.
+		if (IS_ARTIFACT(object) && !row.live_object && object->obj_uid &&
+		    row.identity_state == artifact_identity_state::present &&
+		    row.canonical_item_uid == object->obj_uid)
+		{
+			row.live_object = object;
+			++arti_cache_generation;
+		}
+		return;
+	}
+	if (row.live_object != object || row.canonical_item_uid != object->obj_uid)
 		return;
 	const bool recovery = row.pending == artifact_pending::recovery;
 	row.pending = artifact_pending::none;
@@ -1054,7 +1081,9 @@ void artifact_object_extracted(P_obj object, bool physical_retirement)
 		row.location = 0;
 		row.timer = 0;
 		row.removed = true;
-		artifact_binds.at(vnum) = { 0, 0 };
+		const auto bind = artifact_binds.find(vnum);
+		if (bind != artifact_binds.end())
+			bind->second = { 0, 0 };
 		row.population_reason = artifact_population_reason::complete;
 		row.canonical_payloads.clear();
 		row.save = {};
@@ -1079,6 +1108,9 @@ bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int6
 
 void artifacts_forget_deleted_character(int pid)
 {
+#ifdef __NO_MYSQL__
+	artifacts_forget_deleted_account_character(pid);
+#else
 	// remove_all_artifacts_sql() released them.
 	for (auto &entry : artifact_rows)
 		if (entry.second.location == pid && entry.second.locType == ARTIFACT_ON_PC)
@@ -1088,6 +1120,7 @@ void artifacts_forget_deleted_character(int pid)
 			entry.second.save = {};
 		}
 	arti_cache_invalidate();
+#endif
 }
 
 void artifacts_forget_deleted_account_character(int pid)
@@ -1162,6 +1195,21 @@ size_t artifact_save_pulse(bool retry)
 		retry_rows(artifact_binds, bind_cursor, artifact_bind_save);
 	}
 	return dirty;
+}
+
+// Flat deletion is synchronous: finish every earlier capture before its release.
+bool artifact_save_drain(uint64_t timeout_msec)
+{
+	const auto deadline =
+		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
+	do
+	{
+		player_save_pipeline_pulse();
+		if (!artifact_save_pulse(true) && persistence_writer_wait_idle(0))
+			return true;
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	} while (std::chrono::steady_clock::now() < deadline);
+	return false;
 }
 
 void artifact_report_unsaved()
@@ -1930,6 +1978,10 @@ void addOnGroundArtis_sql()
 	{
 		if (row.removed || !row.owned || row.locType != ARTIFACT_ONGROUND)
 			continue;
+		// A legacy location is not permission to create another physical UID.
+		if (row.identity_state != artifact_identity_state::present ||
+		    !row.canonical_item_uid || row.live_object)
+			continue;
 		const int location = row.location;
 		P_obj artifact = read_object(vnum, VIRTUAL);
 		if (!artifact)
@@ -1945,6 +1997,7 @@ void addOnGroundArtis_sql()
 			extract_obj(artifact, FALSE);
 			continue;
 		}
+		artifact->obj_uid = static_cast<unsigned long>(row.canonical_item_uid);
 		obj_to_room(artifact, room);
 	}
 }
@@ -2344,21 +2397,24 @@ bool remove_owned_artifact_sql(P_obj arti, int pid)
 			 IS_UNIQUE(arti) ? ARTIFACT_UNIQUE :
 					   ARTIFACT_MAJOR;
 	const auto found = artifact_rows.find(vnum);
-	if (found != artifact_rows.end() && !found->second.removed)
+	if ((found != artifact_rows.end() && !found->second.removed) || pid > 0)
 	{
-		// Non-positive pid -> remove arti from game; otherwise it's on the corpse of pid.
-		artifact_row row = found->second;
+		artifact_row row = found != artifact_rows.end() && !found->second.removed ?
+					   found->second :
+					   artifact_row{ true, ARTIFACT_ONCORPSE, pid, 0, type };
 		row.owned = pid > 0;
 		row.locType = pid > 0 ? ARTIFACT_ONCORPSE : ARTIFACT_NOTINGAME;
 		row.location = pid > 0 ? pid : NOWHERE;
+		// Stage the soul before capturing the complete row. Both retain the same
+		// receipt; a rejected admission leaves the complete new state dirty.
+		auto &bind = artifact_binds[vnum];
+		bind = { -1, 0 };
+		bind.save.dirty = true;
 		artifact_row_store(vnum, row);
+		bind.save = artifact_rows.at(vnum).save;
 	}
-	// On a PC corpse without an entry (Yes, this would be a buggy situation).
-	else if (pid > 0)
-		artifact_row_store(vnum, { true, ARTIFACT_ONCORPSE, pid, 0, type });
-
-	// A poofed arti must not keep a pid in artifact_bind.
-	artifact_binds_reset(vnum);
+	else
+		artifact_binds_reset(vnum);
 	return TRUE;
 }
 
@@ -5138,6 +5194,10 @@ void addOnMobArtis_sql()
 	{
 		if (row.removed || !row.owned || row.locType != ARTIFACT_ON_NPC)
 			continue;
+		// A legacy location is not permission to create another physical UID.
+		if (row.identity_state != artifact_identity_state::present ||
+		    !row.canonical_item_uid || row.live_object)
+			continue;
 		const int location = row.location;
 		P_obj artifact = read_object(vnum, VIRTUAL);
 		if (!artifact)
@@ -5154,6 +5214,7 @@ void addOnMobArtis_sql()
 			extract_obj(artifact, FALSE);
 			continue;
 		}
+		artifact->obj_uid = static_cast<unsigned long>(row.canonical_item_uid);
 		obj_to_char(artifact, mob);
 	}
 }

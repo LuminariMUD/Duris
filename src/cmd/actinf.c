@@ -4528,28 +4528,32 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)player_pipeline.drain_failures);
 	send_to_char(line, ch);
 
-	snprintf(line, sizeof(line),
-		 "writer state=%s queued=%llu inflight=%llu bytes=%llu oldest_age_ms=%llu "
-		 "high_water_jobs=%llu high_water_bytes=%llu submitted=%llu replaced=%llu "
-		 "applied=%llu connection_retries=%llu failures=%llu age_limit_exceeded=%d "
-		 "stop_pending=%d max_capture_to_apply_us=%llu max_apply_us=%llu\n",
-		 !player_saves.running					? "stopped" :
-		 player_saves.queued_jobs || player_saves.inflight_jobs ? "pending" :
-									  "empty",
-		 (unsigned long long)player_saves.queued_jobs,
-		 (unsigned long long)player_saves.inflight_jobs,
-		 (unsigned long long)player_saves.queued_bytes,
-		 (unsigned long long)player_saves.oldest_age_msec,
-		 (unsigned long long)player_saves.high_water_jobs,
-		 (unsigned long long)player_saves.high_water_bytes,
-		 (unsigned long long)player_saves.submitted,
-		 (unsigned long long)player_saves.replaced,
-		 (unsigned long long)player_saves.applied,
-		 (unsigned long long)player_saves.connection_retries,
-		 (unsigned long long)player_saves.failures, player_saves.age_limit_exceeded,
-		 player_saves.stop_pending,
-		 (unsigned long long)player_saves.max_capture_to_apply_usec,
-		 (unsigned long long)player_saves.max_apply_usec);
+	snprintf(
+		line, sizeof(line),
+		"writer state=%s queued=%llu inflight=%llu completions=%llu bytes=%llu oldest_age_ms=%llu "
+		"high_water_jobs=%llu high_water_bytes=%llu submitted=%llu replaced=%llu "
+		"applied=%llu connection_retries=%llu failures=%llu age_limit_exceeded=%d "
+		"stop_pending=%d max_capture_to_apply_us=%llu max_apply_us=%llu\n",
+		!player_saves.running ? "stopped" :
+		player_saves.queued_jobs || player_saves.inflight_jobs ||
+				player_saves.completion_jobs ?
+					"pending" :
+					"empty",
+		(unsigned long long)player_saves.queued_jobs,
+		(unsigned long long)player_saves.inflight_jobs,
+		(unsigned long long)player_saves.completion_jobs,
+		(unsigned long long)player_saves.queued_bytes +
+			(unsigned long long)player_saves.inflight_bytes,
+		(unsigned long long)player_saves.oldest_age_msec,
+		(unsigned long long)player_saves.high_water_jobs,
+		(unsigned long long)player_saves.high_water_bytes,
+		(unsigned long long)player_saves.submitted,
+		(unsigned long long)player_saves.replaced, (unsigned long long)player_saves.applied,
+		(unsigned long long)player_saves.connection_retries,
+		(unsigned long long)player_saves.failures, player_saves.age_limit_exceeded,
+		player_saves.stop_pending,
+		(unsigned long long)player_saves.max_capture_to_apply_usec,
+		(unsigned long long)player_saves.max_apply_usec);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

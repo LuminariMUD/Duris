@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -173,7 +174,7 @@ with tempfile.TemporaryDirectory(prefix='duris-offline-cleanup-') as temporary:
     subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-Wall', '-Wextra', '-Werror',
                     '-ffunction-sections', '-fdata-sections', '-fsanitize=address,undefined',
                     '-fno-sanitize-recover=all', '-fno-pie', '-no-pie', '-Isrc', '-D__NO_MYSQL__', str(source),
-                    'src/player/player_load_offline.c', 'src/player/player_load_items.c',
+                    'src/player/player_load_offline.c', 'src/player/player_load_items.c', str(HARNESS_STUBS),
                     '-Wl,--gc-sections', '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=20,
                    env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=1'})

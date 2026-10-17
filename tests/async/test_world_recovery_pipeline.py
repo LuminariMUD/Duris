@@ -164,6 +164,7 @@ void extract_obj(P_obj object, int)
 void extract_char(P_char)
 {
 }
+P_obj unequip_char(P_char, int, bool) { std::abort(); }
 
 P_char copyover_restore_mob_from_buffer(const char *, size_t, size_t *)
 {
@@ -1005,7 +1006,13 @@ int main()
 
 FALLBACK_SUPPORT = r'''
 // The memory fixture seeds one owned ground row shared by resets and the loader.
-struct fallback_artifact_row : arti_data { bool removed = false; };
+#include "guild/artifact_identity.h"
+struct fallback_artifact_row : arti_data {
+ bool removed = false;
+ artifact_identity_state identity_state=artifact_identity_state::present;
+ uint64_t canonical_item_uid=500;
+ P_obj live_object=nullptr;
+};
 static std::map<int, fallback_artifact_row> artifact_rows;
 static fallback_artifact_row &ground_artifact = artifact_rows[1000];
 static int fallback_loads = 0;
@@ -1288,7 +1295,7 @@ for token in (
     "existing_tree_matches",
     "rollback_materialized",
     "extract_obj(*item, FALSE)",
-    "extract_char(*mob)",
+    "world_recovery_discard_mob(*mob)",
 ):
     assert token in PIPELINE
 mob_capture = section(PIPELINE, "int write_mob_record", "void publisher_main")
