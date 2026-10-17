@@ -749,10 +749,13 @@ void boot_db(int mini_mode)
 
 		fprintf(stderr, "-- Shopkeepers\n");
 		logit(LOG_STATUS, "Reloading Shopkeepers.");
-		// Current copyovers commit full shop stock before handoff. Legacy files
-		// only have their live NPC inventory; Redis never stores shop stock.
-		if (!copyover_boot || copyover_has_durable_shopkeepers() ||
-		    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		// Version 17 carries exact native stock UIDs. Replaying the durable
+		// catalog first would duplicate those bodies. Older file/Redis boots
+		// retain their existing durable-store selection.
+		const auto *native_items = copyover_boot ? copyover_boot_evidence() : nullptr;
+		if ((!native_items || native_items->header.version < 17) &&
+		    (!copyover_boot || copyover_has_durable_shopkeepers() ||
+		     persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY))
 			restore_shopkeepers();
 		remember_boot_shopkeepers();
 

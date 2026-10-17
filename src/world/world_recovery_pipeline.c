@@ -140,6 +140,7 @@ struct planned_object
 	int room_vnum = 0;
 	std::vector<world_recovery_item_snapshot> items;
 	P_obj existing_root = nullptr;
+	bool detached = false;
 };
 
 struct recovery_plan
@@ -1451,7 +1452,8 @@ P_obj materialize_object(const planned_object &planned)
 		for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 			object->value[index] = item.values[index];
 	}
-	obj_to_room(root, planned.room_rnum);
+	if (!planned.detached)
+		obj_to_room(root, planned.room_rnum);
 	return root;
 }
 
@@ -1747,7 +1749,7 @@ bool world_recovery_read_copyover_object_record(const char *buf, size_t len,
 }
 
 P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len,
-							 uint64_t source_context)
+							 uint64_t source_context, bool detached)
 {
 	world_recovery_copyover_tree tree;
 	if (!world_recovery_read_copyover_object_record(buf, len, &tree))
@@ -1779,6 +1781,7 @@ P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t
 	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size,
 			       artifact_payload_domain::copyover_ground, source_context))
 		return nullptr;
+	plan.objects.front().detached = detached;
 	std::optional<artifact_restore_scope> artifacts;
 	if (plan.objects.front().existing_root)
 	{
@@ -1793,6 +1796,8 @@ P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t
 	redis_floor_runtime_set_materializing(false);
 	P_obj root = restored ? find_object_uid(plan.objects.front().items.front().item_uid) :
 				nullptr;
+	if (root && detached && plan.objects.front().existing_root)
+		obj_from_room(root);
 	if (root && artifacts)
 		artifacts->commit();
 	return root;

@@ -205,7 +205,8 @@ int world_recovery_write_object_to_buffer(P_obj obj, int room_vnum, char *buf, s
 int world_recovery_write_copyover_object_to_buffer(P_obj obj, int room_vnum, char *buf,
 						   size_t max_len);
 P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len,
-							 uint64_t source_context);
+							 uint64_t source_context,
+							 bool detached = false);
 
 void world_recovery_capture_forget_character(P_char ch);
 void world_recovery_capture_forget_object(P_obj obj);
