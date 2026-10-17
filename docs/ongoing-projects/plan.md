@@ -21,7 +21,7 @@ implemented on `branch/issue-67-boot-population`. Recovery/delivery normalizatio
 NPC reconstruction qualification and gameplay admission remain open.
 No operational repair started.
 
-Current boot integration checkpoint (implemented; publication pending): `branch/issue-67-boot-population`, based on PR #148.
+Current boot integration checkpoint: [PR #149](https://github.com/LuminariMUD/Duris/pull/149), ready for review, `branch/issue-67-boot-population`, based on PR #148.
 Outcome: acquire durable plus selected/retained recovery sources and independent
 custody before the boot reap, preserve their UIDs through cleanup, then stage
 classification before forced event population. Non-goals: new ownership stores,
@@ -1072,7 +1072,9 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Boot source acquisition, reap protection and early staging — AR-01/AR-02
 
-Implemented on `branch/issue-67-boot-population`, based on PR #148.
+Ready for review in [PR #149](https://github.com/LuminariMUD/Duris/pull/149) on
+`branch/issue-67-boot-population`, based on PR #148. Implementation commit:
+`83a662f9cd454d0035667f917e3d61b80d3eff4f`.
 `main` now pins Redis before cleanup and invokes the boot source acquisition
 buffer. That buffer inspects both native publication/retained-claim paths on cold
 boots without moving or consuming them, projects the selected pinned native image
