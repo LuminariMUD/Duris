@@ -816,7 +816,8 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    uint64_t raw_flags = 0;
 			    parse_signed(row[1], INT32_MIN, INT32_MAX, &raw_vnum);
 			    raw.vnum = static_cast<int32_t>(raw_vnum);
-			    parse_unsigned(row[4], UINT32_MAX, &raw.quantity);
+			    raw.quantity_present =
+				    parse_unsigned(row[4], UINT32_MAX, &raw.quantity);
 			    raw.extra_flags_present =
 				    parse_unsigned(row[8], UINT32_MAX, &raw_flags);
 			    raw.extra_flags = static_cast<uint32_t>(raw_flags);

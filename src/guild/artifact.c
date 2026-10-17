@@ -834,18 +834,18 @@ bool artifact_begin_creation(P_obj object)
 	}
 }
 
-static bool artifact_uid_has_other_vnum(uint64_t uid, int vnum)
+static auto artifact_row_for_uid(uint64_t uid)
 {
-	return uid && std::any_of(artifact_rows.begin(), artifact_rows.end(),
-				  [&](const auto &entry) {
-					  return entry.first != vnum &&
-						 entry.second.canonical_item_uid == uid;
-				  });
+	if (!uid)
+		return artifact_rows.cend();
+	return std::find_if(artifact_rows.cbegin(), artifact_rows.cend(), [&](const auto &entry)
+			    { return entry.second.canonical_item_uid == uid; });
 }
 
 unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
 {
-	if (artifact_uid_has_other_vnum(source.item_uid, source.vnum))
+	const auto identity = artifact_row_for_uid(source.item_uid);
+	if (identity != artifact_rows.cend() && identity->first != source.vnum)
 		return ESTALE;
 	const auto found = artifact_rows.find(source.vnum);
 	if (!(source.extra_flags & ITEM_ARTIFACT) &&
@@ -902,7 +902,9 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	};
 	if (!object)
 		return false;
-	if (object->R_num >= 0 && artifact_uid_has_other_vnum(object->obj_uid, OBJ_VNUM(object)))
+	const auto identity = artifact_row_for_uid(object->obj_uid);
+	if (object->R_num >= 0 && identity != artifact_rows.cend() &&
+	    identity->first != OBJ_VNUM(object))
 		return refuse(ESTALE, "canonical_vnum_mismatch");
 	if (!IS_ARTIFACT(object))
 	{
@@ -3900,16 +3902,21 @@ static void arti_hunt_owner(P_char ch, const char *name, const player_load_resul
 			       name, static_cast<unsigned>(result.outcome), result.error_code);
 		return;
 	}
-	send_to_char_f(
-		ch,
-		"Artifact source audit for %s (pid=%d), read-only. First 16 rows shown; all candidates logged.\r\n",
-		name, result.pid);
 	size_t candidates = 0;
 	for (const auto &source : result.item_sources)
 	{
-		const auto tracked = artifact_rows.find(source.vnum);
+		auto tracked = artifact_row_for_uid(source.item_uid);
+		if (tracked == artifact_rows.cend())
+			tracked = artifact_rows.find(source.vnum);
+		if (tracked == artifact_rows.cend() && source.custody_found)
+			tracked = artifact_rows.find(source.custody.vnum);
 		if (!(source.extra_flags & ITEM_ARTIFACT) && tracked == artifact_rows.end())
 			continue;
+		if (!candidates)
+			send_to_char_f(
+				ch,
+				"Artifact source audit for %s (pid=%d), read-only. First 16 rows shown; all candidates logged.\r\n",
+				name, result.pid);
 		const uint64_t canonical_uid =
 			tracked == artifact_rows.end() ? 0 : tracked->second.canonical_item_uid;
 		const auto state = tracked == artifact_rows.end() ?
@@ -3929,32 +3936,38 @@ static void arti_hunt_owner(P_char ch, const char *name, const player_load_resul
 			custody.state == item_custody_state::destroyed	 ? "destroyed" :
 			custody.state == item_custody_state::quarantined ? "quarantined" :
 									   "absent";
+		const std::string quantity =
+			source.quantity_present ? std::to_string(source.quantity) : "missing";
+		const std::string owner_revision =
+			source.custody_found && source.custody_owner_revision_found ?
+				std::to_string(custody.owner_revision) :
+				"unavailable";
 		char row[MAX_STRING_LENGTH];
 		snprintf(
 			row, sizeof(row),
-			"vnum=%d uid=%llu row=%llu parent_row=%llu quantity=%llu flags=%s source_root=%llu canonical_uid=%llu state=%s uid_match=%s custody=%s owner_type=%s(%u) owner=%llu context=%llu custody_root=%llu custody_parent=%llu item_revision=%llu owner_revision=%llu",
+			"vnum=%d uid=%llu row=%llu parent_row=%llu quantity=%s flags=%s source_root=%llu canonical_vnum=%d canonical_uid=%llu state=%s uid_match=%s custody=%s custody_vnum=%d owner_type=%s(%u) owner=%llu context=%llu custody_root=%llu custody_parent=%llu item_revision=%llu owner_revision=%s",
 			source.vnum, (unsigned long long)source.item_uid,
 			(unsigned long long)source.row_id, (unsigned long long)source.parent_row_id,
-			(unsigned long long)source.quantity, flags,
-			(unsigned long long)source.root_item_uid, (unsigned long long)canonical_uid,
-			state_name,
+			quantity.c_str(), flags, (unsigned long long)source.root_item_uid,
+			tracked == artifact_rows.end() ? 0 : tracked->first,
+			(unsigned long long)canonical_uid, state_name,
 			source.item_uid && source.item_uid == canonical_uid ? "yes" : "no",
-			custody_state, item_owner_type_label(custody.owner.type),
+			custody_state, custody.vnum, item_owner_type_label(custody.owner.type),
 			static_cast<unsigned>(custody.owner.type),
 			(unsigned long long)custody.owner.id,
 			(unsigned long long)custody.owner.context_id,
 			(unsigned long long)custody.root_item_uid,
 			(unsigned long long)custody.parent_item_uid,
-			(unsigned long long)custody.item_revision,
-			(unsigned long long)custody.owner_revision);
+			(unsigned long long)custody.item_revision, owner_revision.c_str());
 		logit(LOG_ARTIFACT, "artifact_hunt/%d: %s", result.pid, row);
 		if (candidates++ < 16)
 			send_to_char_f(ch, "%s\r\n", row);
 	}
-	send_to_char_f(
-		ch,
-		"Artifact source audit complete pid=%d candidates=%zu displayed=%zu reference=artifact_hunt/%d. No repairs applied.\r\n",
-		result.pid, candidates, std::min<size_t>(candidates, 16), result.pid);
+	if (candidates)
+		send_to_char_f(
+			ch,
+			"Artifact source audit complete pid=%d candidates=%zu displayed=%zu reference=artifact_hunt/%d. No repairs applied.\r\n",
+			result.pid, candidates, std::min<size_t>(candidates, 16), result.pid);
 }
 
 // Searches through all pfiles with initial *arg for artis.

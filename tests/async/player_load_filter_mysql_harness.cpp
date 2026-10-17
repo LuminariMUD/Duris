@@ -184,6 +184,20 @@ int main()
 	execute("INSERT INTO player_items(pid,vnum,obj_uid,quantity,weight,wear_flags,extra_flags,short_descr) "
 		"VALUES(11,900,NULL,7,123,NULL,268435456,'retained legacy evidence')");
 	const auto legacy_id = mysql_insert_id(test_connection);
+	for (const auto &quantity : { std::string("NULL"), std::string("0") })
+	{
+		execute("UPDATE player_items SET quantity=" + quantity +
+			" WHERE id=" + std::to_string(legacy_id));
+		const auto raw_load = load(11, 9009);
+		const auto raw = std::find_if(raw_load.item_sources.begin(),
+					      raw_load.item_sources.end(), [&](const auto &source)
+					      { return source.row_id == legacy_id; });
+		require(raw_load.outcome == player_load_outcome::applied &&
+				raw != raw_load.item_sources.end() &&
+				raw->quantity_present == (quantity == "0") && raw->quantity == 0,
+			"raw quantity presence was lost or fabricated");
+	}
+	execute("UPDATE player_items SET quantity=7 WHERE id=" + std::to_string(legacy_id));
 	execute("INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES(11,901,2099," +
 		std::to_string(legacy_id) + ",1)");
 	execute("INSERT INTO player_item_affects(item_id,location,modifier) VALUES(" +
@@ -224,8 +238,8 @@ int main()
 						 giver.item_sources.end(), [](const auto &source)
 						 { return source.item_uid == 2003; });
 	require(foreign_source != giver.item_sources.end() && foreign_source->vnum == 603 &&
-			foreign_source->quantity == 1 && foreign_source->extra_flags_present &&
-			foreign_source->custody_found &&
+			foreign_source->quantity_present && foreign_source->quantity == 1 &&
+			foreign_source->extra_flags_present && foreign_source->custody_found &&
 			foreign_source->custody_owner_revision_found &&
 			foreign_source->custody.owner.id == 12,
 		"filtered foreign source lost payload or revision evidence");

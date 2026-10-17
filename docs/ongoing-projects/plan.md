@@ -1,37 +1,29 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: #156 player artifact admission
+## Latest review checkpoint: #157 artifact hunt audit
 
-Current branch: `branch/issue-67-player-artifact-admission`, in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #155 repair `79beb9eb4`
-is published and both threads are resolved. The latest inventory has 41 findings:
-33 resolved, 8 remaining (#156:3, #157:4, #162:1). Parent carry-forward merge here
-is `b92afeac3`; #156 repairs are under validation.
+Current branch: `branch/issue-67-artifact-hunt-inspection`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #156 repair `fdb7007fe`
+is published and all three threads are resolved; carry-forward merge is `40c3790b3`.
+Latest inventory: 41 findings, 36 resolved, 5 remaining (#157:4, #162:1).
 
-Outcome: retain original flat source IDs through filtering; reject a canonical UID
-under another vnum before the ordinary-item bypass; qualify and retain foreign raw
-artifact sources even when no accepted items remain. Reuse existing raw-source
-records, retention and admission. Add payload vnum/flags/quantity and explicit
-revision-presence evidence to the in-memory source record; no store format changes.
-The same canonical-UID check serves qualification and the recovery factory. SQL
-revision zero stays distinct from missing authority; flat foreign revision remains
-explicitly unavailable until fetched, rather than asserted as authoritative zero.
-Files: SQL/flat readers, source model, artifact admission, qualification/materializer
-gate, existing native and backend regression fixtures, this plan.
+#157 outcome: include candidates known only through custody vnum or canonical UID;
+show payload, custody and canonical vnums; remain silent for clean players; preserve
+missing quantity versus zero; label unavailable owner revisions explicitly. Reuse
+the existing UID lookup for admission and reporting, extend the raw source's
+presence metadata, and keep the existing 16-row display/all-candidate log limit.
+Files: existing audit formatter, SQL/flat raw readers and source model, existing
+audit/backend fixtures, this plan. No gameplay objects, repair operations or new
+reporting service are added. The clean-player regression fails before repair.
 
-All three regressions failed before repair (source-ID compaction, foreign-vnum
-bypass, foreign-only retention). Proof in progress: actual source qualification
-with the artifact authority/factory, empty accepted-list gate, backend raw metadata
-and save/load behavior, player graph controls, native SQL/flat builds and tidy.
-All checks pass: actual authority/factory plus raw-source qualification (ASan/UBSan),
-production pre-materialization gate with a foreign-only cut, player graph tests,
-disposable SQL save/load suite, flat repository/source-ID regression, SQL and flat
-native builds, formatting and tidy. Valid revision zero and ordinary foreign items
-remain supported. Logs: `bin/analysis/pr156-*`. Publication is next.
-
-Next: publish #156, repair #157 audit findings, carry through #158–#161 to #162's
-pending-action rollback finding, and through #163–#165/#167. Refresh live reviews
-before final closeout. No production operations or PR merges are authorized here.
+After-repair native audit checks pass for custody-only/UID-only candidates,
+missing versus zero quantity/revision, clean-player silence, output limits and no
+mutation/construction. Disposable SQL raw NULL/zero quantity checks, flat foreign
+revision availability, admission compatibility, offline inspection, SQL/flat builds,
+formatting and tidy all pass (`bin/analysis/pr157-*`). Publication is next.
+Next: publish #157, carry through #158–#161, address #162's pending-action rollback,
+then carry through #163–#165/#167 and refresh all open reviews before completion.
+No production operations or PR merges have been performed in this review pass.
 ## Additional #141 review: saved-room source keys
 
 A subsequent review identified cross-key parents inside the same room. The reader

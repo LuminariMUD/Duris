@@ -390,6 +390,13 @@ static void retained_roots_case(const fs::path &path, bool unknown_root)
 	const auto loaded = flatfile_player_load_repository_execute(root, request);
 	require(loaded.outcome == player_load_outcome::applied && loaded.snapshot.items.size() == 2,
 		"unidentified root and its descendants must be withheld together");
+	const auto foreign_source = std::find_if(
+		loaded.item_sources.begin(), loaded.item_sources.end(),
+		[&](const auto &source) { return source.item_uid == other.items[0].object_uid; });
+	require(foreign_source != loaded.item_sources.end() && foreign_source->custody_found &&
+			!foreign_source->custody_owner_revision_found &&
+			foreign_source->custody.owner_revision == 0,
+		"foreign flat revision was asserted as authoritative zero");
 	require(loaded.gameplay_items && loaded.item_sources.size() == 4 &&
 			loaded.item_sources[0].custody_found &&
 			loaded.item_sources[0].root_item_uid == 100 &&
