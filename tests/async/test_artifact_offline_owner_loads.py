@@ -52,9 +52,10 @@ poof = body("static void poof_loaded_owner(")
 not_loaded = poof[poof.index("if (!owner)") : poof.index("return;", poof.index("if (!owner)"))]
 assert "artifact_expire" not in not_loaded and "release_offline_owner" not in not_loaded
 missing = body("static bool poof_offline_artifact(")
-assert missing.index("if (!name)") < missing.index("artifact_expire(vnum);") < missing.index(
-    "player_load_offline(")
-assert "artifact_expire(vnum);" in body("static void poof_loaded_owner(")
+assert "owner_unavailable" in missing and "tracking_retained=1" in missing
+assert "artifact_expire(" not in artifact
+assert "retire_expired_artifact(arti)" in body("static void poof_loaded_owner(")
+assert "artifact_on_owner(owner, vnum)" in body("static void poof_loaded_owner(")
 # A loaded owner is in no room. poof_artifact() tells and shouts only for an owner in one:
 # do_shout() reads the shouter's room, which for a loaded owner was world[-1].
 poofed = body("void poof_artifact(P_obj arti)\n{")

@@ -396,11 +396,39 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 }
 } // namespace
 
+bool player_load_pid_busy(int pid, P_char initializing)
+{
+	if (is_pid_online(pid, TRUE))
+		return true;
+	extern P_desc descriptor_list;
+	for (P_desc descriptor = descriptor_list; descriptor; descriptor = descriptor->next)
+	{
+		P_char holder = GET_TRUE_CHAR_D(descriptor);
+		if (holder && holder != initializing && IS_PC(holder) && holder->only.pc &&
+		    GET_PID(holder) == pid)
+			return true;
+	}
+	return false;
+}
+
 bool player_load_materialize(P_char ch, const player_load_result &loaded)
 {
+	if (!ch || !ch->only.pc)
+		return false;
+	const bool source_valid = valid_snapshot(loaded);
+	if (source_valid &&
+	    (loaded.snapshot.components &
+	     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
+	    player_load_pid_busy(loaded.pid, ch))
+	{
+		logit(LOG_SYS,
+		      "player_load: pid=%d component=pid_admission outcome=body_already_exists",
+		      loaded.pid);
+		return false;
+	}
 	player_load_result qualified;
 	const player_load_result *selected = &loaded;
-	if (loaded.gameplay_items && valid_snapshot(loaded) && !loaded.snapshot.items.empty())
+	if (source_valid && !loaded.snapshot.items.empty())
 	{
 		unsigned int error = ENOMEM;
 		try
@@ -422,8 +450,6 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 		selected = &qualified;
 	}
 	const auto &result = *selected;
-	if (!ch || !ch->only.pc)
-		return false;
 	if (!valid_snapshot(result))
 	{
 		// The repository runs on a worker thread and cannot log, so this is the first
@@ -783,10 +809,7 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 		      "player_load: component=items outcome=source_retained pid=%d rows=%zu bytes=%zu reference=player_load/retained",
 		      result.pid, ch->only.pc->retained_items->rows.size(),
 		      ch->only.pc->retained_items->bytes);
-		if (ch->desc)
-			send_to_char(
-				"Some saved items need staff review and remain in storage. Reference: player_load/retained.\r\n",
-				ch);
+		player_load_items_notify_retained(ch);
 	}
 	// Resolve the saved HP difference after all base stats, affects and equipment
 	// have been materialized. enter_game() can then safely apply offline regen

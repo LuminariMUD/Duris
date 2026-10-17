@@ -33,6 +33,15 @@ namespace
 // Game thread only.
 std::unordered_map<uint64_t, std::function<void(const player_load_result &)>> offline_loads;
 
+// Full item loads are for an offline owner; status-only temporary reads and raw
+// inspections do not construct a second gameplay item graph.
+bool can_materialize_items(const player_load_result &result)
+{
+	return result.outcome != player_load_outcome::applied ||
+	       (!player_load_pid_busy(result.pid, nullptr) &&
+		!player_load_pipeline_pid_pending(result.pid));
+}
+
 P_char materialize(const player_load_result &result)
 {
 	if (result.outcome != player_load_outcome::applied)
@@ -69,7 +78,6 @@ bool submit_offline(const char *name, bool include_items,
 		request.pid = pid;
 	else
 		request.player_name = name;
-	request.gameplay_items = false;
 	request.include_items = include_items;
 	request.include_pets = false;
 	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
@@ -101,9 +109,12 @@ bool player_load_offline(const char *name, bool include_items, std::function<voi
 {
 	if (!done)
 		return false;
-	return submit_offline(name, include_items,
-			      [done = std::move(done)](const player_load_result &result)
-			      { done(materialize(result)); });
+	return submit_offline(
+		name, include_items,
+		[include_items, done = std::move(done)](const player_load_result &result) {
+			done(include_items && !can_materialize_items(result) ? nullptr :
+									       materialize(result));
+		});
 }
 
 bool player_load_offline_for(P_char ch, const char *name, bool include_items,
@@ -111,10 +122,21 @@ bool player_load_offline_for(P_char ch, const char *name, bool include_items,
 {
 	if (!done)
 		return false;
-	return submit_offline_for(ch, name, include_items,
-				  [done = std::move(done)](P_char live,
-							   const player_load_result &result)
-				  { done(live, materialize(result)); });
+	return submit_offline_for(
+		ch, name, include_items,
+		[include_items, done = std::move(done)](P_char live,
+							const player_load_result &result)
+		{
+			if (include_items && !can_materialize_items(result))
+			{
+				send_to_char_f(
+					live,
+					"Character pid %d is already active or loading; item load refused.\r\n",
+					result.pid);
+				return;
+			}
+			done(live, materialize(result));
+		});
 }
 
 bool player_load_offline_inspect_for(P_char ch, const char *name,

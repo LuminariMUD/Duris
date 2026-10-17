@@ -153,8 +153,7 @@ int main()
 	execute("INSERT INTO player_item_extra_descr(item_id,keyword,description) VALUES(" +
 		std::to_string(legacy_id) + ",'legacy','unchanged details')");
 	const player_load_result giver = load(11, 1);
-	require(giver.gameplay_items && !giver.item_sources.empty(),
-		"gameplay source cut was not retained");
+	require(!giver.item_sources.empty(), "gameplay source cut was not retained");
 	bool inactive_source_seen = false;
 	for (const auto &source : giver.item_sources)
 		if (source.item_uid == 2005)

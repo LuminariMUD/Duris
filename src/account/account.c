@@ -59,6 +59,7 @@
 #include "player/player_name.h"
 #include "player/player_playtime.h"
 #include "player/player_load_materialize.h"
+#include "player/player_load_items.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_revision_state.h"
 #include "player/player_save_pipeline.h"
@@ -2152,6 +2153,7 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	d->character = ch;
 	ch->specials.timer = 0;
 	STATE(d) = CON_PLAYING;
+	player_load_items_notify_retained(ch);
 	(void)telemetry_runtime_game_connection_transition(
 		ch, d, telemetry_connection_transition_kind::attached);
 	(void)telemetry_runtime_game_context(ch, d);

@@ -342,8 +342,7 @@ static void retained_roots_case(const fs::path &path, bool unknown_root)
 	const auto loaded = flatfile_player_load_repository_execute(root, request);
 	require(loaded.outcome == player_load_outcome::applied && loaded.snapshot.items.size() == 2,
 		"unidentified root and its descendants must be withheld together");
-	require(loaded.gameplay_items && loaded.item_sources.size() == 4 &&
-			loaded.item_sources[0].custody_found &&
+	require(loaded.item_sources.size() == 4 && loaded.item_sources[0].custody_found &&
 			loaded.item_sources[0].root_item_uid == 100 &&
 			loaded.item_sources[0].custody.owner.id == 42 &&
 			loaded.item_sources[0].custody.owner_revision ==

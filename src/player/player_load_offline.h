@@ -32,7 +32,8 @@ typedef struct char_data *P_char;
  */
 bool player_load_offline(const char *name, bool include_items, std::function<void(P_char)> done);
 // For a command of ch's: done and materialization run only while ch is still in the
-// game. A load that cannot be queued tells ch.
+// game. Item loads refuse an active/loading owner before construction, notifying
+// ch without calling done. A load that cannot be queued also tells ch.
 bool player_load_offline_for(P_char ch, const char *name, bool include_items,
 			     std::function<void(P_char ch, P_char loaded)> done);
 // Read-only inspection of the original item source cut, including retained/stale

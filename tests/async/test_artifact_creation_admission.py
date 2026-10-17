@@ -135,6 +135,22 @@ object_template parse_object_template(int index) {
  prototype.type=index==3 ? ITEM_CONTAINER : 0; prototype.wear_flags=ITEM_TAKE;
  return prototype;
 }
+static size_t offline_released=0, offline_saves=0, expiry_retries=0;
+static bool owner_online=false, owner_loading=false, offline_save_allowed=true;
+static std::vector<std::function<void(P_char)>> offline_callbacks;
+char *get_player_name_from_pid(int pid) { return pid==77 ? const_cast<char *>("Offline") : nullptr; }
+bool is_pid_online(int,bool) { return owner_online; }
+bool player_load_pipeline_pid_pending(int) { return owner_loading; }
+bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { offline_callbacks.push_back(std::move(done)); return true; }
+int writeCharacter(P_char,int,int) { ++offline_saves; return offline_save_allowed ? 1 : 0; }
+void writeCorpse(P_obj) {}
+void do_shout(P_char,char *,int) {}
+void free_char(P_char owner) {
+ assert(!owner->carrying); for(auto *object:owner->equipment) assert(!object); ++offline_released;
+}
+void nevent_periodic_continue_after(unsigned long long) {}
+void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_retries; }
+// ACTUAL_DISCARD
 // CONSTRUCTORS
 // EXTRACTION
 // RECOVERY_TREE
@@ -270,10 +286,12 @@ int main() {
   artifact_rows.at(902).timer==9876 && artifact_binds.at(902).owner_pid==88 && header.sequence==123);
  artifact_save_pulse(true); drain(); extract_obj(last_materialized,FALSE); assert(!object_list && !pool.objs_used);
  recovery_cases(prototypes);
+ offline_expiry_cases();
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
-source=HARNESS.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
+source=HARNESS.replace("// ACTUAL_DISCARD", extract_function("player_load_items.c", "void clear_item_uids(") + "\n" + extract_function("player_load_items.c", "void player_load_items_discard("))
+source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)"))
@@ -559,6 +577,102 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  item_ownership_runtime_reset();
  std::cout<<"mutable player source/custody qualification, live reservation and cancellation: PASS\n";
  std::cout<<"source-qualified recovery factory and actual nested tree: PASS\n";
+}
+"""
+recovery_cases += r"""
+void offline_expiry_cases() {
+ assert(!object_list && !pool.objs_used && writes.empty());
+ artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
+ artifact_population_complete=true; artifact_cache_loaded=true;
+ char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=77;
+ owner.player.name=const_cast<char *>("Offline"); owner.player.level=51; owner.specials.act=PLR_MORTAL; owner.in_room=NOWHERE;
+ auto &missing=artifact_rows[900]; missing.canonical_item_uid=70000;
+ missing.identity_state=artifact_identity_state::present; missing.type=ARTIFACT_MAJOR; missing.owned=true;
+ missing.locType=ARTIFACT_ON_PC; missing.location=77; missing.timer=1;
+ artifact_binds[900]={77,88};
+ auto before=offline_saves;
+ poof_loaded_owner(900,77,&owner);
+ assert(artifact_rows.at(900).owned && artifact_rows.at(900).timer==1 &&
+        artifact_rows.at(900).canonical_item_uid==70000 && artifact_rows.at(900).identity_state==artifact_identity_state::present &&
+        artifact_binds.at(900).owner_pid==77 && offline_saves==before && writes.empty());
+ const auto make_nested=[&]() {
+  assert(!object_list && !pool.objs_used && writes.empty());
+  artifact_rows.clear(); artifact_binds.clear();
+  auto &absent=artifact_rows[900]; absent.type=ARTIFACT_MAJOR; absent.identity_state=artifact_identity_state::absent;
+  absent.population_reason=artifact_population_reason::complete; absent.removed=true;
+  auto *object=read_object_for_creation(900,VIRTUAL); assert(object);
+  auto *bag=read_object_for_creation(903,VIRTUAL); assert(bag); bag->value[0]=1000;
+  obj_to_obj(object,bag); obj_to_char(bag,&owner); artifact_object_placed(object);
+  auto &row=artifact_rows.at(900); row.owned=true; row.removed=false; row.locType=ARTIFACT_ON_PC;
+  row.location=77; row.timer=1; artifact_binds[900]={77,88}; assert(artifact_expired(row));
+  return object;
+ };
+ auto *object=make_nested(); const uint64_t saved_uid=object->obj_uid;
+ assert(artifact_on_owner(&owner,900)==object);
+ auto *alias=read_object(0,REAL); assert(alias); alias->obj_uid=saved_uid; obj_to_char(alias,&owner);
+ const auto before_alias=pool.objs_used;
+ poof_artifact(alias); assert(pool.objs_used==before_alias && artifact_rows.at(900).live_object==object && artifact_is_canonical(object));
+ alias->obj_uid=0; extract_obj(alias,FALSE);
+ artifact_rows.at(900).timer=time(nullptr)+1000; before=offline_saves;
+ poof_loaded_owner(900,77,&owner); // a feed renewed the timer while the read was in flight
+ assert(!object_list && !pool.objs_used && offline_saves==before &&
+        artifact_rows.at(900).identity_state==artifact_identity_state::present &&
+        artifact_rows.at(900).canonical_item_uid==saved_uid && artifact_binds.at(900).owner_pid==77);
+ artifact_save_pulse(true); drain();
+ object=make_nested(); const uint64_t retired_uid=object->obj_uid;
+ poof_loaded_owner(900,77,&owner);
+ assert(!object_list && !pool.objs_used && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+        artifact_rows.at(900).canonical_item_uid==retired_uid && !artifact_rows.at(900).owned &&
+        !artifact_binds.at(900).owner_pid && offline_saves>before);
+ artifact_save_pulse(true); drain();
+ // A refused snapshot queue must not leak an unlisted temporary owner.
+ object=make_nested(); const auto before_release=offline_released;
+ offline_save_allowed=false; poof_loaded_owner(900,77,&owner); offline_save_allowed=true;
+ assert(!object_list && !pool.objs_used && offline_released==before_release+1 &&
+        artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+        "temporary offline owner leaked after snapshot queue failure");
+ artifact_save_pulse(true); drain();
+ // A missing owner cannot clear its UID or starve a healthy later page.
+ artifact_rows.clear(); artifact_binds.clear();
+ auto &lost=artifact_rows[900]; lost.type=ARTIFACT_MAJOR; lost.identity_state=artifact_identity_state::present;
+ lost.canonical_item_uid=80000; lost.owned=true; lost.locType=ARTIFACT_ON_PC; lost.location=99; lost.timer=1;
+ auto &available=artifact_rows[902]; available.type=ARTIFACT_MAJOR; available.identity_state=artifact_identity_state::absent;
+ available.population_reason=artifact_population_reason::complete; available.removed=true;
+ auto *healthy=read_object_for_creation(902,VIRTUAL); assert(healthy); obj_to_room(healthy,0);
+ artifact_rows.at(902).owned=true; artifact_rows.at(902).removed=false; artifact_rows.at(902).timer=1;
+ updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+ const auto retries=expiry_retries;
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(expiry_retries==retries+1 && artifact_rows.at(900).canonical_item_uid==80000 && artifact_rows.at(900).owned);
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(!object_list && !pool.objs_used && artifact_rows.at(902).identity_state==artifact_identity_state::retired &&
+        artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_rows.at(900).owned);
+ artifact_save_pulse(true); drain();
+ // A queued read stays singular; a failed result retains the canonical UID.
+ artifact_rows.clear(); artifact_binds.clear();
+ auto &offline=artifact_rows[900]; offline.type=ARTIFACT_MAJOR; offline.identity_state=artifact_identity_state::present;
+ offline.canonical_item_uid=81000; offline.owned=true; offline.locType=ARTIFACT_ON_PC; offline.location=77; offline.timer=1;
+ updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(offline_callbacks.size()==1);
+ owner_loading=true;
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); // wrap cursor
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(offline_callbacks.size()==1);
+ offline_callbacks.front()(nullptr); offline_callbacks.clear(); owner_loading=false;
+ assert(artifact_rows.at(900).owned && artifact_rows.at(900).canonical_item_uid==81000 && writes.empty());
+ // Qualified absence may clear obsolete timer tracking, preserving configured availability.
+ artifact_rows.clear(); artifact_binds.clear();
+ auto &absent=artifact_rows[900]; absent.type=ARTIFACT_MAJOR; absent.identity_state=artifact_identity_state::absent;
+ absent.population_reason=artifact_population_reason::complete; absent.owned=true; absent.timer=1;
+ updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(!artifact_rows.at(900).owned && !artifact_rows.at(900).canonical_item_uid && artifact_rows.at(900).identity_state==artifact_identity_state::absent);
+ artifact_save_pulse(true); drain();
+ auto *fresh=read_object_for_creation(900,VIRTUAL); assert(fresh); obj_to_room(fresh,0); extract_obj(fresh,FALSE);
+ artifact_save_pulse(true); drain();
+ assert(!object_list && !pool.objs_used && offline_callbacks.empty());
+ std::cout<<"offline canonical target, timer renewal, nested retirement and independent expiry pages: PASS\n";
 }
 """
 source=source.replace("// RECOVERY_CASES",recovery_cases)

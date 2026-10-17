@@ -151,10 +151,15 @@ player_load_result base_result(int pid = 42)
 {
     player_load_result result = {};
     result.pid = pid;
-    result.gameplay_items = false;
     result.item_owner_revision = 7;
     result.read_components = PLAYER_LOAD_SESSION04_READS;
     return result;
+}
+
+bool materialize_fixture_items(P_char owner, const player_load_result &result,
+                               player_load_item_materialize_metrics *metrics) {
+    return player_load_item_graph_materialize(owner, result.snapshot.items, result.item_identities,
+                                             result.pid, result.item_owner_revision, true, metrics);
 }
 
 void add_item(player_load_result &result, uint64_t database_id, uint64_t uid, int vnum,
@@ -396,7 +401,7 @@ int main()
 {
     {
         reset_test_state(); test_character owner(42);
-        auto result=base_result(); result.gameplay_items=true; result.outcome=player_load_outcome::applied;
+        auto result=base_result(); result.outcome=player_load_outcome::applied;
         add_item(result,10,1000,100,-1,0); // raw container root
         add_item(result,11,1001,101,0,0);  // rejected artifact
         add_item(result,12,1002,101,1,0);  // retained descendant
@@ -427,7 +432,7 @@ int main()
     }
     {
         reset_test_state(); test_character owner(42);
-        auto result=base_result(); result.gameplay_items=true;
+        auto result=base_result();
         add_item(result,10,1000,101,-1,0);
         add_item(result,11,1001,101,-1,0);
         for(const auto &item:result.snapshot.items) {
@@ -519,7 +524,7 @@ int main()
         result.snapshot.items[1].extra_descriptions.push_back(
             { "SPELLBOOK", "[1, 7, 31]", true, {} });
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::applied);
         assert(metrics.item_count == 3 && metrics.maximum_depth == 2);
         assert(metrics.operation_count <= PLAYER_LOAD_ITEM_OPERATIONS_PER_ITEM * 3);
@@ -556,7 +561,7 @@ int main()
         result.snapshot.items[0].extra_descriptions.push_back(
             {"SPELLBOOK", "[1,7,31]", true, {}});
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         size_t descriptions = 0;
         for (extra_descr_data *entry = owner.character.carrying->ex_description; entry;
              entry = entry->next)
@@ -603,7 +608,7 @@ int main()
         result.snapshot.items[0].extra_descriptions.push_back(
             {"SPELLBOOK", "", true, {31, 1, 7}});
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         size_t descriptions = 0, books = 0;
         const char marker[] = {3, 1, 3, 0};
         for (extra_descr_data *entry = owner.character.carrying->ex_description; entry;
@@ -624,7 +629,7 @@ int main()
         test_character owner(42);
         player_load_result result = base_result();
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         uint64_t revision = 0;
         assert(item_ownership_runtime_owner_revision(
             { item_owner_type::player, 42, 0 }, &revision));
@@ -639,7 +644,7 @@ int main()
         add_item(result, 2, 11, 101, 0, 0);
         fail_read_at = 1;
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::allocation_failure);
         assert(extracts == 1 && !owner.character.carrying &&
                item_ownership_runtime_size() == 0);
@@ -653,7 +658,7 @@ int main()
         player_load_result result = base_result();
         add_item(result, 1, 10, 101, PLAYER_SNAPSHOT_NO_PARENT, 0);
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::ownership_failure);
         assert(extracts == 1 && !owner.character.carrying &&
                item_ownership_runtime_size() == 0);
@@ -667,7 +672,7 @@ int main()
             add_item(result, index + 1, index + 10, 101,
                      PLAYER_SNAPSHOT_NO_PARENT, 0);
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.item_count == 200);
         assert(metrics.operation_count <= PLAYER_LOAD_ITEM_OPERATIONS_PER_ITEM * 200);
         release_tree(owner.character.carrying);
@@ -775,7 +780,7 @@ int main()
         result.snapshot.items[0].extra_descriptions.push_back(
             {"SPELLBOOK", "", true, duplicate ? std::vector<int>{7, 1} : std::vector<int>{31}});
         player_load_item_materialize_metrics metrics = {};
-        const bool applied = player_load_items_materialize(&owner.character, result, &metrics);
+        const bool applied = materialize_fixture_items(&owner.character, result, &metrics);
         if (duplicate) {
             assert(!applied && metrics.outcome == player_load_item_materialize_outcome::invalid_snapshot);
             assert(allocations == 0 && item_ownership_runtime_size() == 0);
@@ -818,7 +823,7 @@ int main()
         add_item(result, 1, 10, 101, PLAYER_SNAPSHOT_NO_PARENT, 0);
         result.snapshot.items[0].extra_descriptions.push_back(description);
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::invalid_snapshot);
         assert(allocations == 0 && item_ownership_runtime_size() == 0);
         assert(!owner.character.carrying && !owner.character.equipment[0]);
@@ -828,7 +833,7 @@ int main()
         reset_test_state();
         test_character owner(42);
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(!owner.character.carrying && !owner.character.equipment[0]);
     };
 
@@ -877,7 +882,7 @@ int main()
         reset_test_state();
         test_character owner(42);
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         release_tree(owner.character.carrying);
     }
     {

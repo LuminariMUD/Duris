@@ -118,8 +118,6 @@ struct player_load_request
 	std::string account_name;
 	uint64_t deadline_usec = 0;
 	std::string player_name;
-	// Offline commands are migrated separately from gameplay restoration.
-	bool gameplay_items = true;
 	bool include_items = true;
 	bool include_pets = true;
 };
@@ -169,7 +167,6 @@ struct player_load_result
 	int32_t pid = 0;
 	player_load_outcome outcome = player_load_outcome::component_failure;
 	unsigned int error_code = 0;
-	bool gameplay_items = true;
 	player_snapshot snapshot = {};
 	player_load_domain_state domains = {};
 	uint64_t item_owner_revision = 0;

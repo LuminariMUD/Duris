@@ -1509,7 +1509,6 @@ player_load_result player_load_repository_execute(MYSQL *connection,
 {
 	player_load_result result = {};
 	result.request_id = request.request_id;
-	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	const uint64_t started = persistence_observability_now_usec();
 	if (!connection || !player_load_request_valid(request, started))

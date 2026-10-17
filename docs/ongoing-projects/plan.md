@@ -22,6 +22,95 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current objectful-PC restoration work: `branch/issue-67-offline-player-admission`,
+based on #157. Outcome: every materialized PC inventory uses source-qualified
+saved-UID admission, including staff live loads and maintenance. Missing/withheld
+or stale targets cannot clear tracking; expiry retires only the current canonical
+pointer after rechecking its timer. Independent roots remain loadable/saveable.
+Non-goals: choosing a legacy conflict winner, completing remaining store/pet roles,
+or claiming the legacy import and remaining maintenance prototype inspections are
+already safe. Files: shared PC load mode, artifact lookup/expiry/callbacks, staff
+PID collision handling and focused native/repository/gameplay regressions.
+Proof: reproduce missing-target vnum clearing, retain wrong/stale targets, find a
+nested canonical target, recheck renewed timers, bound expiry work, refuse duplicate
+staff PC publication and preserve valid UID/timer/soul through live loading.
+Ablation: remove the temporary gameplay/offline restoration bypass and replace the
+tangled vnum/location expiry scans with the existing canonical pointer authority.
+Keep the generic owner-item lookup used by necromancy unchanged.
+
+Offline-PC restoration checkpoint (2026-10-17, verification complete):
+- Reproduced missing-target vnum-only expiry clearing with the original actual
+  callback/helper. Frozen ignored proof: `bin/analysis/issue67/offline-admission-before.cpp`
+  and `offline-admission-before.log` (compiled probe fails its no-write invariant).
+- Removed `gameplay_items` from request/result/readers. Every constructed PC graph
+  uses the existing qualified source factory. Raw inspection still never constructs
+  an owner. Item-load callbacks check active/loading PID before materialization;
+  status-only temporary reads retain their existing role.
+- Added a canonical-pointer owner lookup that follows actual ancestry; the generic
+  vnum lookup used by necromancy is unchanged. Manual poof refuses noncanonical or
+  unlocated objects before mutation. Offline expiry rechecks the current timer and
+  only accepts physical retirement of the same UID. Missing owner/target data retains
+  identity, timer and soul instead of clearing a vnum.
+- Reused current owned/timer state throughout expiry; no new trust-based exception
+  or duplicate ancestry scan is needed in the retirement helper.
+- Replaced the location/vnum scan maze with the existing bounded expiry cursor and
+  canonical pointers. Failed sources advance the cursor so healthy pages proceed.
+  Obsolete tracking clears only with complete, qualified `absent`/UID-zero proof;
+  existing canonical/tombstone UIDs are not replaced by a failed lookup. Unregistered
+  store/pet materializers are still migration work and retain tracking meanwhile.
+- The shared materialization fence refuses PID collisions before effects; the
+  obsolete log-only staff publication loop is removed.
+  Offline give/replacement constructors use fresh admission; remaining legacy import
+  reconciliation, online replacement and prototype inspection paths are still open.
+- Fresh ASan/UBSan actual service/constructor/expiry regression passes missing target,
+  nested retirement, timer renewal, stale same-UID pointer refusal, failed read/owner,
+  independent expiry pages, one pending load and proven-absence availability.
+  Actual offline completion, item mechanics, offline-owner and maintenance slicing
+  controls pass. Ordinary item mechanics fixtures call their generic graph API
+  explicitly; production PC entry points no longer have a fallback mode.
+- Both backend builds, format/tidy and SQL/flat repository regressions passed.
+  The first actual journey reached staff load, refused duplicate and successful
+  account reconnection; its test client incorrectly waited for fresh-login "Play as"
+  after the server had already sent "Reconnecting...". Retained failure evidence:
+  `bin/analysis/artifact-estale/failure-standard-1792216603025989510`. The shared
+  test client now accepts the actual confirmation/reconnection protocol.
+- A staff-loaded PC had no descriptor during materialization, so account reconnection
+  now emits the same retained-source notice as normal load/copyover. The message
+  stays in the existing item module and is reused at the two attachment paths;
+  the real journey explicitly checks that the owner receives it.
+- The corrected actual SQL journey passed staff live load, duplicate refusal,
+  account reconnection and the owner's retained-source notice, alongside existing
+  canonical UID/timer/soul, source retention, reward and hunt controls. Ordinary
+  flat compressed/uncompressed native-copyover controls also passed.
+- A final native failure probe reproduced an unlisted temporary-owner leak when
+  the offline expiry snapshot request was refused. The callback now discards that
+  reconstructed graph: admitted snapshots own immutable data and refused captures
+  leave source data stored; the retired canonical UID stays protected. Proof:
+  `offline-admission-queue-before.log` and retained before-source
+  `offline-admission-queue-before-artifact.c` in the same ignored evidence folder.
+  Verify the new queue-failure cleanup plus final builds/tidy before publication.
+- The item-load guard also covers a materialized body leased by a descriptor at
+  character confirmation, before it joins `character_list`, and switched originals.
+  A native before probe reproduced construction of that second body; the guard
+  now checks the existing descriptor list as well. Raw inspection remains available.
+  Before evidence: `offline-admission-selection-before.log` in the same folder.
+- The same PID/body guard now runs at the central PC materialization entry, before
+  qualification, reset or constructor effects. This also fences an account read
+  completing after a staff load published the PID. The caller's own initializing
+  descriptor body is allowed; other world/descriptor-held bodies refuse. Reuse that
+  query in offline callbacks instead of maintaining separate descriptor scans.
+  The native callback fixture executes the actual materialization entry gate and
+  query, with allocation counters proving refusal before construction.
+- Final verification passed on the shared-entry implementation: native failure/
+  leased-body tests, SQL/flat builds, format/tidy, repository controls, actual SQL
+  staff-load/reconnection and flat compressed/uncompressed native-copyover runs.
+  SQL proof includes one live canonical artifact, refused duplicate load, owner
+  notice, preserved UID/timer/soul, raw held roots and reward history. Frozen proof:
+  `bin/analysis/issue67/offline-admission-gameplay.{log,json}`. Flat runs remain
+  ordinary-PC controls, not the full-store/artifact AR-07 matrix.
+  Final diff reviewed; commit/push and open the focused PR based on #157 next.
+  Logs use `bin/analysis/issue67/offline-admission-*.log`; keep the full goal active.
+
 Current inspection-role checkpoint: [PR #157](https://github.com/LuminariMUD/Duris/pull/157),
 ready for review, `branch/issue-67-artifact-hunt-inspection`, based on #156. Outcome: artifact hunt reads the original bounded player source cut,
 including nested, retained and stale rows, without constructing characters/objects

@@ -112,10 +112,13 @@ def run(binary, case):
                 process.wait(timeout=60)
                 assert process.returncode == (-signal.SIGKILL if crash else 0)
 
-            def login(name, account):
+            def login(name, account, *, reconnect=False):
                 client = journey.reconnect_character(plain, expected_room=None, account=account, character=name)
                 clients.append(client)
-                client.expect('Welcome to Duris', timeout=60)
+                if reconnect:
+                    assert 'Reconnecting...' in client.transcript.decode(errors='replace')
+                else:
+                    client.expect('Welcome to Duris', timeout=60)
                 client.expect_any(('Pos: standing >', '<>'), timeout=20)
                 command(client, 'toggle paging no')
                 return client
@@ -442,9 +445,19 @@ def run(binary, case):
                 rejected_root = int(sql(f"SELECT id FROM player_items WHERE pid={source_pid} AND obj_uid=8888899"))
                 sql(f"INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES({source_pid},901,8888898,{rejected_root},1)")
                 sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,extra_flags,short_descr) VALUES({source_pid},901,8888897,1,0,'ordinary source control')")
-                player = login(PLAYER, ACCOUNT)
+                god.send('load char ' + PLAYER)
+                god.expect('greatly humbled by your power', timeout=60)
+                loaded_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', loaded_stat), loaded_stat
+                god.send('load char ' + PLAYER)
+                god.expect('item load refused.', timeout=60)
+                duplicate_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', duplicate_stat), duplicate_stat
+                player = login(PLAYER, ACCOUNT, reconnect=True)
+                assert 'Some saved items need staff review' in player.transcript.decode(errors='replace')
                 assert 'ioun stone' in command(player, 'equipment')
                 assert 'ordinary source control' in command(player, 'inventory')
+                evidence['staff_player_load_admission'] = {'canonical_live_count': 1, 'duplicate_refused': True, 'account_reconnected': True}
                 admitted_stat = command(god, f'stat obj {ARTIFACT}')
                 assert re.search(r'Number in game\s*:\s*1\b', admitted_stat), admitted_stat
                 player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)

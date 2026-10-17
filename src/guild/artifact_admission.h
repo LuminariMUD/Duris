@@ -8,12 +8,12 @@
 // No persistence is queued until successful placement commits the claim.
 bool artifact_begin_creation(P_obj object);
 struct artifact_payload_projection;
-// Gameplay player payloads use a consistent source cut plus current custody.
+// Materialized player payloads use a consistent source cut plus current custody.
 // Zero also covers ordinary objects; a known canonical UID cannot clear its flag.
 unsigned int artifact_player_source_error(const artifact_payload_projection &source,
 					  P_obj object = nullptr);
 // Qualified player or pinned ground payload: saved UID/flags precede procedures.
-// Matches the retained source-qualified boot projection, never UID alone.
+// Player payloads match current custody; ground payloads match a pinned boot projection.
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source);
 P_obj read_object_for_recovery(const artifact_payload_projection &source);
 // Placement commits the pending purpose; recovery preserves timer/soul state.

@@ -148,7 +148,6 @@ player_load_result identity_failure(const player_load_request &request,
 {
 	player_load_result result = {};
 	result.request_id = request.request_id;
-	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	result.failed_component = "identity";
 	switch (failure)
@@ -762,7 +761,6 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	const uint64_t started = persistence_observability_now_usec();
 	player_load_result result = {};
 	result.request_id = request.request_id;
-	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	if (!player_load_request_valid(request, started))
 	{
@@ -895,7 +893,6 @@ flatfile_player_load_repository_execute_selected(const player_load_request &requ
 		return flatfile_player_load_repository_execute(root, request);
 	player_load_result result = {};
 	result.request_id = request.request_id;
-	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	result.outcome = player_load_outcome::component_failure;
 	result.error_code = ENOENT;

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -24,6 +25,7 @@ namespace {
 mm_ds character_pool = {}, pc_pool = {};
 P_char actor = nullptr;
 bool online = false, submit_allowed = true, populate_items = false;
+bool target_online = false, target_loading = false;
 uint64_t request_id = 0;
 player_load_request submitted;
 size_t allocated = 0, released = 0, extracted = 0, completed = 0;
@@ -46,6 +48,7 @@ void release_tree(P_obj object) {
     std::free(object);
 }
 }
+P_desc descriptor_list = nullptr;
 mm_ds *dead_mob_pool = &character_pool;
 mm_ds *dead_pconly_pool = &pc_pool;
 void *_mm_get(mm_ds *pool, const char *, int) {
@@ -70,7 +73,11 @@ void extract_obj(P_obj object, int gone_for_good) {
     assert(OBJ_NOWHERE(object));
     release_tree(object);
 }
+// OWNER_BUSY
+bool valid_snapshot(const player_load_result &result) { return result.outcome==player_load_outcome::applied; }
 bool player_load_materialize(P_char character, const player_load_result &result) {
+    P_char ch=character; const auto &loaded=result;
+    // PRODUCTION_PID_GATE
     character->only.pc->pid = result.pid;
     if (populate_items) {
         P_obj worn = item(1001), bag = item(1002), child = item(1003), loose = item(1004);
@@ -97,16 +104,20 @@ uint64_t persistence_observability_now_usec() { return 100; }
 P_char find_character_by_runtime_id(uint64_t id) {
     return online && actor && id == actor->runtime_id ? actor : nullptr;
 }
+void logit(const char *,const char *,...) {}
 void send_to_char(const char *, P_char) {}
+void send_to_char_f(P_char,const char *,...) {}
+bool is_pid_online(int,bool) { return target_online; }
+bool player_load_pipeline_pid_pending(int) { return target_loading; }
 
 int main() {
     char_data staff = {}; staff.runtime_id = 77; actor = &staff;
     // The actor leaves before completion: no character or items may be constructed.
     populate_items = true;
     assert(player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
-    assert(submitted.pid == 42 && !submitted.gameplay_items && submitted.include_items && !submitted.include_pets);
+    assert(submitted.pid == 42 && submitted.include_items && !submitted.include_pets);
     player_load_result result = {}; result.request_id = request_id;
-    result.outcome = player_load_outcome::applied; result.pid = 42; result.gameplay_items = false;
+    result.outcome = player_load_outcome::applied; result.pid = 42;
     assert(player_load_offline_complete(result));
     assert(completed == 0 && released == 0 && allocated == 0 && extracted == 0);
     assert(!player_load_offline_complete(result));
@@ -159,6 +170,40 @@ int main() {
     assert(player_load_offline_complete(result) && inspected==2 && allocated==before_allocated);
     assert(!player_load_offline_inspect_for(nullptr,"Offline",[](P_char,const player_load_result &) {}));
     assert(!player_load_offline_inspect_for(actor,"Offline",{}));
+    // Another copy entered or began loading while this read was in flight.
+    result.outcome=player_load_outcome::applied;
+    for(bool loading: {false,true}) {
+        target_online=!loading; target_loading=loading;
+        assert(player_load_offline_for(actor,"Offline",true,[](P_char,P_char) { assert(false); }));
+        result.request_id=request_id;
+        assert(player_load_offline_complete(result) && allocated==before_allocated);
+        bool direct_refused=false;
+        assert(player_load_offline("Offline",true,[&](P_char loaded) { assert(!loaded); direct_refused=true; }));
+        result.request_id=request_id;
+        assert(player_load_offline_complete(result) && direct_refused && allocated==before_allocated);
+    }
+    target_online=target_loading=false;
+    // A fully loaded body waiting at character confirmation is not in the world
+    // list or read queue, but already owns the PID and its physical item graph.
+    char_data selected={}; pc_only_data selected_pc={}; selected.only.pc=&selected_pc; selected_pc.pid=42;
+    descriptor_data selection={}; selection.connected=CON_ACCT_SELECT_CHAR; selection.character=&selected;
+    descriptor_list=&selection;
+    char_data candidate={}; pc_only_data candidate_pc={}; candidate.only.pc=&candidate_pc;
+    result.snapshot.components=PLAYER_LOAD_SESSION02_COMPONENTS;
+    assert(!player_load_materialize(&candidate,result) && !candidate_pc.pid && allocated==before_allocated);
+    assert(player_load_pid_busy(42,nullptr) && !player_load_pid_busy(42,&selected));
+    for(bool switched: {false,true}) {
+        selection.character=switched ? nullptr : &selected;
+        selection.original=switched ? &selected : nullptr;
+        assert(player_load_offline_for(actor,"Offline",true,[](P_char,P_char) { assert(false && "leased character was materialized twice"); }));
+        result.request_id=request_id;
+        assert(player_load_offline_complete(result) && allocated==before_allocated);
+    }
+    bool leased_inspected=false;
+    assert(player_load_offline_inspect_for(actor,"Offline",[&](P_char,const player_load_result &) { leased_inspected=true; }));
+    result.request_id=request_id;
+    assert(player_load_offline_complete(result) && leased_inspected && allocated==before_allocated);
+    descriptor_list=nullptr;
     submit_allowed = false;
     assert(!player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
     result.request_id = request_id;
@@ -166,6 +211,11 @@ int main() {
     assert(completed == 1 && allocated == extracted);
 }
 '''
+owner_busy = extract_function("player_load_materialize.c", "bool player_load_pid_busy(")
+entry = extract_function("player_load_materialize.c", "bool player_load_materialize(")
+entry_gate = entry[entry.index("{\n") + 2 : entry.index("player_load_result qualified;")]
+HARNESS = HARNESS.replace("// OWNER_BUSY", owner_busy).replace("// PRODUCTION_PID_GATE", entry_gate)
+
 with tempfile.TemporaryDirectory(prefix='duris-offline-cleanup-') as temporary:
     source = Path(temporary) / 'test.cpp'
     binary = Path(temporary) / 'test'

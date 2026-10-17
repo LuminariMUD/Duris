@@ -895,7 +895,7 @@ bool player_load_item_graph_materialize(P_char character,
 
 unsigned int player_load_items_qualify(player_load_result *result)
 {
-	if (!result || !result->gameplay_items || result->outcome != player_load_outcome::applied ||
+	if (!result || result->outcome != player_load_outcome::applied ||
 	    result->snapshot.items.size() != result->item_identities.size())
 		return EINVAL;
 	try
@@ -1050,13 +1050,22 @@ bool player_load_item_graph_materialize_player(P_char character, const player_lo
 		character, nullptr, result.snapshot.items, result.item_identities,
 		{ item_owner_type::player, static_cast<uint64_t>(result.pid), 0 },
 		result.item_owner_revision, hydrate_ownership, false, metrics,
-		result.gameplay_items ? &result.item_admission_sources : nullptr);
+		&result.item_admission_sources);
 }
 
 bool player_load_items_materialize(P_char character, const player_load_result &result,
 				   player_load_item_materialize_metrics *metrics)
 {
 	return player_load_item_graph_materialize_player(character, result, true, metrics);
+}
+
+void player_load_items_notify_retained(P_char character)
+{
+	if (character && IS_PC(character) && character->only.pc && character->desc &&
+	    character->only.pc->retained_items)
+		send_to_char(
+			"Some saved items need staff review and remain in storage. Reference: player_load/retained.\r\n",
+			character);
 }
 
 void player_load_items_activate_equipment(P_char character)

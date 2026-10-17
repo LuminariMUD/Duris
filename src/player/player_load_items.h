@@ -72,6 +72,8 @@ bool player_load_item_graph_materialize_detached(
 bool player_load_item_graph_materialize_creation(const item_transfer_payload &payload,
 						 const item_transfer_result &result,
 						 std::vector<P_obj> *roots);
+// Notify an attached owner after restoration or account reconnection.
+void player_load_items_notify_retained(P_char character);
 void player_load_items_activate_equipment(P_char character);
 void player_load_items_discard(P_char character);
 

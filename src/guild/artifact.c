@@ -2581,6 +2581,23 @@ P_obj get_object_from_char(P_char owner, int vnum)
 	return NULL;
 }
 
+// Only the registered canonical pointer can be used for artifact maintenance.
+// Follow its actual ancestry so a nested artifact is not mistaken for absence.
+static P_obj artifact_on_owner(P_char owner, int vnum)
+{
+	const auto found = artifact_rows.find(vnum);
+	P_obj object = found == artifact_rows.end() ? nullptr : found->second.live_object;
+	if (!owner || !artifact_is_canonical(object))
+		return nullptr;
+	P_obj root = object;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	if ((OBJ_CARRIED(root) && root->loc.carrying == owner) ||
+	    (OBJ_WORN(root) && root->loc.wearing == owner))
+		return object;
+	return nullptr;
+}
+
 void poof_artifact(P_obj arti)
 {
 	P_char owner;
@@ -2591,9 +2608,11 @@ void poof_artifact(P_obj arti)
 		return;
 	}
 
-	if (!IS_ARTIFACT(arti))
+	if (!artifact_is_canonical(arti))
 	{
-		logit(LOG_ARTIFACT, "poof_artifact: Non-arti vnum %d!", OBJ_VNUM(arti));
+		persistence_alert(AVATAR, "artifact_identity/poof", "redacted", "none", "none",
+				  "canonical_pointer_required", "vnum=%d",
+				  arti && arti->R_num >= 0 ? OBJ_VNUM(arti) : 0);
 		return;
 	}
 
@@ -2603,6 +2622,12 @@ void poof_artifact(P_obj arti)
 		cont = cont->loc.inside;
 	}
 
+	if (!OBJ_ROOM(cont) && !OBJ_CARRIED(cont) && !OBJ_WORN(cont))
+	{
+		persistence_alert(AVATAR, "artifact_identity/poof", "redacted", "none", "none",
+				  "physical_location_unavailable", "vnum=%d", OBJ_VNUM(arti));
+		return;
+	}
 	owner = NULL;
 	// Pull artifact from wherever it is.
 	switch (cont->loc_p)
@@ -2976,7 +3001,7 @@ static void arti_files_give(P_char ch, P_char owner, int vnum)
 		release_offline_owner(owner);
 		return;
 	}
-	if (!get_object_from_char(owner, vnum) && (arti = read_object(vnum, VIRTUAL)))
+	if (!artifact_on_owner(owner, vnum) && (arti = read_object_for_creation(vnum, VIRTUAL)))
 	{
 		obj_to_char(arti, owner);
 		if (!writeCharacter(owner, RENT_CRASH, owner->in_room))
@@ -3183,13 +3208,21 @@ void arti_files_to_sql(P_char ch, char *arg)
 	closedir(dir);
 }
 
-// Clears vnum's row if it is still owned and past its timer. False when that failed.
-static bool artifact_expire(int vnum)
+// Recheck current identity and timer after an asynchronous load or earlier work.
+// Only physical retirement may clear tracking; missing source data is retained.
+static bool retire_expired_artifact(P_obj object)
 {
-	const auto row = artifact_rows.find(vnum);
-	if (row != artifact_rows.end() && artifact_expired(row->second))
-		artifact_row_store(vnum, { false, ARTIFACT_NOTINGAME, -1, 0, row->second.type });
-	return true;
+	if (!artifact_is_canonical(object))
+		return false;
+	const int vnum = OBJ_VNUM(object);
+	const uint64_t uid = object->obj_uid;
+	const auto current = artifact_rows.find(vnum);
+	if (current == artifact_rows.end() || !artifact_expired(current->second))
+		return false;
+	poof_artifact(object);
+	const auto retired = artifact_rows.find(vnum);
+	return retired != artifact_rows.end() && retired->second.canonical_item_uid == uid &&
+	       retired->second.identity_state == artifact_identity_state::retired;
 }
 
 // The expiry event's offline owner of vnum, loaded off the loop (null when it could not be):
@@ -3213,26 +3246,34 @@ static void poof_loaded_owner(int vnum, int pid, P_char owner)
 		release_offline_owner(owner);
 		return;
 	}
-	if (!(arti = get_object_from_char(owner, vnum)))
-		logit(LOG_ARTIFACT,
-		      "event_artifact_check_poof_sql: Could not find artifact vnum %d on pfile of '%s' %d.",
-		      vnum, get_player_name_from_pid(pid), pid);
-	else
+	arti = artifact_on_owner(owner, vnum);
+	if (!arti)
 	{
-		poof_artifact(arti);
-		if (!writeCharacter(owner, RENT_POOFARTI, owner->in_room))
-		{
-			// Kept, and its row too, as a character whose terminal save failed.
-			persistence_alert(AVATAR, "artifact", "offline_poof", "none", "none",
-					  "terminal_save_failed", "extract_refused=1");
-			return;
-		}
-		logit(LOG_ARTIFACT,
-		      "event_artifact_check_poof_sql: poofed vnum=%d for offline pid=%d ('%s')",
-		      vnum, pid, get_player_name_from_pid(pid));
+		persistence_alert(AVATAR, "artifact_identity/offline_expiry", "redacted", "none",
+				  "none", "canonical_target_unavailable",
+				  "vnum=%d pid=%d tracking_retained=1", vnum, pid);
+		release_offline_owner(owner);
+		return;
 	}
+	if (!retire_expired_artifact(arti))
+	{
+		release_offline_owner(owner);
+		return;
+	}
+	if (!writeCharacter(owner, RENT_POOFARTI, owner->in_room))
+	{
+		// Queued captures own their data; a refused capture leaves the stored
+		// source available. Neither case needs an unlisted temporary PC kept alive.
+		persistence_alert(AVATAR, "artifact", "offline_poof", "none", "none",
+				  "player_snapshot_not_queued",
+				  "vnum=%d pid=%d temporary_owner_discarded=1", vnum, pid);
+		release_offline_owner(owner);
+		return;
+	}
+	logit(LOG_ARTIFACT,
+	      "event_artifact_check_poof_sql: poofed vnum=%d for offline pid=%d ('%s')", vnum, pid,
+	      get_player_name_from_pid(pid));
 	release_offline_owner(owner);
-	artifact_expire(vnum);
 }
 
 // Loads vnum's offline owner pid to poof it there. False when the load could not be queued.
@@ -3242,11 +3283,13 @@ static bool poof_offline_artifact(int vnum, int pid)
 	logit(LOG_ARTIFACT,
 	      "event_artifact_check_poof_sql: poofing vnum=%d on offline pid=%d ('%s')", vnum, pid,
 	      name ? name : "unknown");
-	// No such character: nothing holds it.
+	// Missing owner metadata is not proof that the physical UID is absent.
 	if (!name)
 	{
-		artifact_expire(vnum);
-		return true;
+		persistence_alert(AVATAR, "artifact_identity/offline_expiry", "redacted", "none",
+				  "none", "owner_unavailable", "vnum=%d pid=%d tracking_retained=1",
+				  vnum, pid);
+		return false;
 	}
 	return player_load_offline(name, true, [vnum, pid](P_char owner)
 				   { poof_loaded_owner(vnum, pid, owner); });
@@ -3255,395 +3298,70 @@ static bool poof_offline_artifact(int vnum, int pid)
 void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/, void * /*arg*/)
 {
 	static int cursor_vnum = 0;
-	P_obj arti, cont, corpse;
-	P_char owner;
-	P_desc desc;
-	int vnum, locType, location;
-	bool found;
-	bool expired = FALSE;
-	bool save_failed = FALSE;
-	bool offline_pending = FALSE;
-	char *name;
-	std::vector<std::pair<int, artifact_row>> expired_rows;
-	size_t row_count;
-	int page_last_vnum = cursor_vnum;
-
 	if (!updateArtis)
 	{
 		cursor_vnum = 0;
 		return;
 	}
-
-	// Each expired artifact can require global object scans or an offline player save.
-	// Page by vnum so only a fixed amount of that work runs in one game pulse.
+	std::vector<int> expired_rows;
 	for (auto entry = artifact_rows.upper_bound(cursor_vnum);
 	     entry != artifact_rows.end() && expired_rows.size() < ARTIFACT_EXPIRY_BATCH_SIZE;
 	     ++entry)
 		if (artifact_expired(entry->second))
-			expired_rows.push_back(*entry);
-	row_count = expired_rows.size();
-
-	// If there were any artis to pull
-	if (row_count > 0)
+			expired_rows.push_back(entry->first);
+	bool retry = false;
+	for (int vnum : expired_rows)
 	{
-		expired = TRUE;
-		for (size_t row_index = 0; row_index < row_count; ++row_index)
+		const auto found = artifact_rows.find(vnum);
+		if (found == artifact_rows.end() || !artifact_expired(found->second))
+			continue;
+		const auto &row = found->second;
+		if (row.live_object)
 		{
-			vnum = expired_rows[row_index].first;
-			locType = expired_rows[row_index].second.locType;
-			location = expired_rows[row_index].second.location;
-			page_last_vnum = vnum;
-
-			// Not in game: nothing to find or poof, the UPDATE below clears the row.
-			if (locType == ARTIFACT_NOTINGAME)
-			{
-				continue;
-			}
-
-			arti = NULL;
-			if (locType == ARTIFACT_ONGROUND)
-			{
-				location = real_room(location);
-				if (location >= 0 && location <= top_of_world)
-				{
-					for (arti = world[location].contents; arti;
-					     arti = arti->next_content)
-					{
-						if (OBJ_VNUM(arti) == vnum)
-						{
-							break;
-						}
-					}
-				}
-				// Here things get hairy.  We need to find a copy of the arti that's on ground or in a container
-				//   that's not on an Immortal or in a bag possessed by an Immortal.  This case should never come
-				//   up, but just in case.
-				if (!arti || OBJ_VNUM(arti) != vnum)
-				{
-					// Find the artifact in game, if it is.
-					found = FALSE;
-					for (arti = object_list; arti && !found; arti = arti->next)
-					{
-						if (OBJ_VNUM(arti) == vnum)
-						{
-							cont = arti;
-							// Find outermost container.
-							while (OBJ_INSIDE(cont) && cont->loc.inside)
-							{
-								cont = cont->loc.inside;
-							}
-							switch (cont->loc_p)
-							{
-							// Score!
-							case LOC_ROOM:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad location on 'OnGround' arti(%d) - actual room v%d.",
-								      vnum,
-								      ROOM_VNUM(cont->loc.room));
-								found = TRUE;
-								break;
-							case LOC_CARRIED:
-							case LOC_WORN:
-								owner = OBJ_WORN(cont) ?
-										cont->loc.wearing :
-										cont->loc.carrying;
-								if (IS_NPC(owner))
-								{
-									logit(LOG_ARTIFACT,
-									      "event_artifact_check_poof_sql: Bad location on 'OnGround' arti(%d) - on mob v%d.",
-									      vnum,
-									      GET_VNUM(owner));
-									found = TRUE;
-								}
-								break;
-							case LOC_INSIDE:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad loc_p (%d) on 'OnGround' arti(%d)-container vnum %d inside nothing.",
-								      cont->loc_p, vnum,
-								      OBJ_VNUM(cont));
-								break;
-							// Lost artis. :(
-							case LOC_NOWHERE:
-							default:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad loc_p (%d) on 'OnGround' arti(%d)-container vnum %d.",
-								      cont->loc_p, vnum,
-								      OBJ_VNUM(cont));
-								break;
-							}
-						}
-					}
-					// Just to make sure.
-					if (!found)
-					{
-						arti = NULL;
-					}
-				}
-				if (!arti || OBJ_VNUM(arti) != vnum)
-				{
-					logit(LOG_ARTIFACT,
-					      "event_artifact_check_poof_sql: Could not find 'OnGround' artifact vnum %d anywhere.",
-					      vnum);
-					continue;
-				}
-				// If we found arti in game.
-				else
-				{
-					// Poof it!
-					poof_artifact(arti);
-				}
-			} // End if locType == ARTIFACT_ONGROUND.
-			else if (locType == ARTIFACT_ON_PC)
-			{
-				// An offline owner loads off the loop; its callback poofs and clears the row.
-				// One load of an owner at a time: two copies would each save back the
-				// artifact the other poofed.
-				if (!is_pid_online(location, TRUE))
-				{
-					offline_pending = TRUE;
-					if (!player_load_pipeline_pid_pending(location) &&
-					    !poof_offline_artifact(vnum, location))
-						save_failed = TRUE;
-				}
-				// PC online.
-				else
-				{
-					arti = NULL;
-					// First check descriptors (for speed).
-					for (desc = descriptor_list; desc; desc = desc->next)
-					{
-						// Char must be in game and exist.
-						if (desc->connected != CON_PLAYING ||
-						    !(owner = GET_TRUE_CHAR_D(desc)))
-						{
-							continue;
-						}
-						// Skip immortals.
-						if (IS_TRUSTED(owner))
-						{
-							continue;
-						}
-						if ((arti = get_object_from_char(owner, vnum)))
-						{
-							break;
-						}
-					}
-					// If we didn't find it on descriptor list, gotta check character list for ld chars :(
-					if (arti == NULL)
-					{
-						for (owner = character_list; owner;
-						     owner = owner->next)
-						{
-							// Found them ld! Hopefully, there's only one of them.
-							if (IS_PC(owner) &&
-							    GET_PID(owner) == location)
-							{
-								arti = get_object_from_char(owner,
-											    vnum);
-								break;
-							}
-						}
-					}
-					if (arti != NULL)
-					{
-						poof_artifact(arti);
-					}
-					else
-					{
-						logit(LOG_ARTIFACT,
-						      "event_artifact_check_poof_sql: Could not find artifact vnum %d on char '%s' %d.",
-						      vnum, get_player_name_from_pid(location),
-						      location);
-					}
-				}
-			}
-			else if (locType == ARTIFACT_ON_NPC)
-			{
-				for (owner = character_list; owner; owner = owner->next)
-				{
-					if (IS_NPC(owner) && GET_VNUM(owner) == location)
-					{
-						if ((arti = get_object_from_char(owner, vnum)))
-						{
-							break;
-						}
-					}
-				}
-				if (arti != NULL)
-				{
-					poof_artifact(arti);
-				}
-				else
-				{
-					logit(LOG_ARTIFACT,
-					      "event_artifact_check_poof_sql: Could not find artifact vnum %d on mob %d.",
-					      vnum, location);
-				}
-			}
-			else if (locType == ARTIFACT_ONCORPSE)
-			{
-				name = get_player_name_from_pid(location);
-				found = FALSE;
-				corpse = NULL;
-				for (arti = object_list; arti; arti = arti->next)
-				{
-					if (OBJ_VNUM(arti) == vnum)
-					{
-						cont = arti;
-						// Find outermost container.
-						while (OBJ_INSIDE(cont) && cont->loc.inside)
-						{
-							cont = cont->loc.inside;
-
-							if (OBJ_VNUM(cont) == VOBJ_CORPSE &&
-							    IS_SET(cont->value[CORPSE_FLAGS],
-								   PC_CORPSE) &&
-							    isname(name, cont->name))
-							{
-								corpse = cont;
-								// It's on a corpse of the right char (don't stop moving outward though).
-								found = TRUE;
-							}
-						}
-						if (found)
-						{
-							obj_from_obj(arti);
-							if (corpse != cont)
-							{
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Poofing arti from corpse inside a container. ugh.");
-							}
-							else
-							{
-								writeCorpse(corpse);
-							}
-							switch (cont->loc_p)
-							{
-							case LOC_ROOM:
-								obj_to_room(arti, cont->loc.room);
-								break;
-							case LOC_CARRIED:
-							case LOC_WORN:
-								owner = OBJ_WORN(cont) ?
-										cont->loc.wearing :
-										cont->loc.carrying;
-								obj_to_room(arti, owner->in_room);
-								break;
-							case LOC_INSIDE:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad loc_p (%d) on 'OnCorpse' arti(%d)-container vnum %d inside nothing.",
-								      cont->loc_p, vnum,
-								      OBJ_VNUM(cont));
-								break;
-							// Lost artis. :(
-							case LOC_NOWHERE:
-							default:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad loc_p (%d) on 'OnCorpse' arti(%d)-container vnum %d.",
-								      cont->loc_p, vnum,
-								      OBJ_VNUM(cont));
-								break;
-							}
-							break;
-						}
-					}
-				}
-				if (found)
-				{
-					poof_artifact(arti);
-					break;
-				}
-				else
-				{
-					// Check for arti in anyplace other than on an Immortal.
-					for (arti = object_list; arti && !found; arti = arti->next)
-					{
-						if (OBJ_VNUM(arti) == vnum)
-						{
-							cont = arti;
-							// Find outermost container.
-							while (OBJ_INSIDE(cont) && cont->loc.inside)
-							{
-								cont = cont->loc.inside;
-							}
-							switch (cont->loc_p)
-							{
-							case LOC_ROOM:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad location on 'OnCorpse' arti(%d) - in room v%d.",
-								      vnum,
-								      ROOM_VNUM(cont->loc.room));
-								found = TRUE;
-								break;
-							case LOC_CARRIED:
-							case LOC_WORN:
-								owner = OBJ_WORN(cont) ?
-										cont->loc.wearing :
-										cont->loc.carrying;
-								if (IS_NPC(owner))
-								{
-									logit(LOG_ARTIFACT,
-									      "event_artifact_check_poof_sql: Bad location on 'OnCorpse' arti(%d) - on mob v%d.",
-									      vnum,
-									      GET_VNUM(owner));
-									found = TRUE;
-								}
-								break;
-							case LOC_INSIDE:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad loc_p (%d) on 'OnCorpse' arti(%d)-container vnum %d inside nothing.",
-								      cont->loc_p, vnum,
-								      OBJ_VNUM(cont));
-								break;
-							// Lost artis. :(
-							case LOC_NOWHERE:
-							default:
-								logit(LOG_ARTIFACT,
-								      "event_artifact_check_poof_sql: Bad loc_p (%d) on 'OnCorpse' arti(%d)-container vnum %d.",
-								      cont->loc_p, vnum,
-								      OBJ_VNUM(cont));
-								break;
-							}
-						}
-					}
-					if (found)
-					{
-						poof_artifact(arti);
-					}
-					else
-					{
-						logit(LOG_ARTIFACT,
-						      "event_artifact_check_poof_sql: Could not find artifact vnum %d on PC corpse %s (%d).",
-						      vnum, name, location);
-					}
-				}
-			}
-			else
-			{
-				logit(LOG_ARTIFACT,
-				      "event_artifact_check_poof_sql: Could not find artifact vnum %d: bad locType: %d.",
-				      vnum, locType);
-			}
+			retire_expired_artifact(row.live_object);
+			continue;
 		}
+		// A complete qualified absence has no physical UID to retire. Keep the
+		// same absence proof used by creation, and clear only obsolete tracking.
+		if (artifact_population_complete &&
+		    row.population_reason == artifact_population_reason::complete &&
+		    row.identity_state == artifact_identity_state::absent &&
+		    !row.canonical_item_uid)
+		{
+			artifact_row_store(vnum, { false, ARTIFACT_NOTINGAME, 0, 0, row.type });
+			continue;
+		}
+		if (row.identity_state != artifact_identity_state::present)
+		{
+			persistence_alert(AVATAR, "artifact_identity/expiry", "redacted", "none",
+					  "none", "canonical_identity_unavailable",
+					  "vnum=%d tracking_retained=1", vnum);
+			continue;
+		}
+		if (row.locType == ARTIFACT_ON_PC && row.location > 0)
+		{
+			const int location = row.location;
+			if (!is_pid_online(location, TRUE) &&
+			    !player_load_pipeline_pid_pending(location) &&
+			    !poof_offline_artifact(vnum, location))
+				retry = true;
+		}
+		else
+			persistence_alert(AVATAR, "artifact_identity/expiry", "redacted", "none",
+					  "none", "canonical_target_unavailable",
+					  "vnum=%d location_type=%d tracking_retained=1", vnum,
+					  row.locType);
 	}
-
-	// Clear only the page that was processed, unless an offline owner's load will.
-	if (expired && !save_failed && !offline_pending && !artifact_expire(page_last_vnum))
+	// A refused source must not starve independent artifacts on later pages.
+	cursor_vnum = expired_rows.empty() ? 0 : expired_rows.back();
+	if (retry)
 	{
 		nevent_periodic_retry_after(ARTIFACT_MAINTENANCE_RETRY_DELAY,
-					    "artifact-expiry update failed");
+					    "artifact-expiry source unavailable");
 		return;
 	}
-	else if (save_failed)
+	if (expired_rows.size() == ARTIFACT_EXPIRY_BATCH_SIZE)
 	{
-		nevent_periodic_retry_after(ARTIFACT_MAINTENANCE_RETRY_DELAY,
-					    "artifact-expiry player save failed");
-		return;
-	}
-
-	if (row_count == ARTIFACT_EXPIRY_BATCH_SIZE)
-	{
-		cursor_vnum = page_last_vnum;
 		nevent_periodic_continue_after(1);
 		return;
 	}
@@ -4052,7 +3770,7 @@ static void arti_poof_loaded(P_char ch, P_char owner, int vnum, const char *arti
 		 player_load_pipeline_pid_pending(GET_PID(owner)))
 		send_to_char_f(ch, "%s is in the game now; poof %s there.\n\r", GET_NAME(owner),
 			       artishort);
-	else if (!(arti = get_object_from_char(owner, vnum)))
+	else if (!(arti = artifact_on_owner(owner, vnum)))
 		send_to_char_f(ch, "Strange, arti '%s' %d was not on %s's pfile!\n\r", artishort,
 			       vnum, GET_NAME(owner));
 	else
@@ -4469,8 +4187,7 @@ static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, cons
 		release_offline_owner(dummy);
 		return;
 	}
-	if (!get_artifact_data_sql(vnum1, &artidata) ||
-	    !(arti1 = get_object_from_char(dummy, vnum1)))
+	if (!get_artifact_data_sql(vnum1, &artidata) || !(arti1 = artifact_on_owner(dummy, vnum1)))
 	{
 		send_to_char_f(ch,
 			       "&+WCould not find '&+w%s&+W' &+w%d&+W on &+w%s&+W's pfile.&n\n\r",
@@ -4478,7 +4195,7 @@ static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, cons
 		release_offline_owner(dummy);
 		return;
 	}
-	if (!(arti2 = read_object(vnum2, VIRTUAL)))
+	if (!(arti2 = read_object_for_creation(vnum2, VIRTUAL)))
 	{
 		release_offline_owner(dummy);
 		return;
