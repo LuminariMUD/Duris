@@ -1,7 +1,8 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
-Implementation branch: `branch/issue-67-artifact-identity`.
+Implementation stack starts at `branch/issue-67-artifact-identity`; the current
+review branch and checkpoint are listed below.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
 implementation in progress; independent feeding feedback implemented on
 `branch/issue-67-feeding-feedback`, with direct timer arithmetic repaired on
@@ -22,8 +23,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current objectful-PC restoration work: `branch/issue-67-offline-player-admission`,
-based on #157. Outcome: every materialized PC inventory uses source-qualified
+Current objectful-PC restoration checkpoint: [PR #158](https://github.com/LuminariMUD/Duris/pull/158),
+ready for review, `branch/issue-67-offline-player-admission`, based on #157. Outcome: every materialized PC inventory uses source-qualified
 saved-UID admission, including staff live loads and maintenance. Missing/withheld
 or stale targets cannot clear tracking; expiry retires only the current canonical
 pointer after rechecking its timer. Independent roots remain loadable/saveable.
@@ -38,7 +39,8 @@ Ablation: remove the temporary gameplay/offline restoration bypass and replace t
 tangled vnum/location expiry scans with the existing canonical pointer authority.
 Keep the generic owner-item lookup used by necromancy unchanged.
 
-Offline-PC restoration checkpoint (2026-10-17, verification complete):
+Offline-PC restoration checkpoint (2026-10-17, PR #158):
+Implementation commit: `7cded856e16a8df11f3187a3df9dadbc0f5b5101`.
 - Reproduced missing-target vnum-only expiry clearing with the original actual
   callback/helper. Frozen ignored proof: `bin/analysis/issue67/offline-admission-before.cpp`
   and `offline-admission-before.log` (compiled probe fails its no-write invariant).
@@ -108,7 +110,8 @@ Offline-PC restoration checkpoint (2026-10-17, verification complete):
   notice, preserved UID/timer/soul, raw held roots and reward history. Frozen proof:
   `bin/analysis/issue67/offline-admission-gameplay.{log,json}`. Flat runs remain
   ordinary-PC controls, not the full-store/artifact AR-07 matrix.
-  Final diff reviewed; commit/push and open the focused PR based on #157 next.
+  Final diff reviewed; committed/pushed as open, non-draft PR #158 based on #157,
+  attached to this chat. No merge, deployment or production operation occurred.
   Logs use `bin/analysis/issue67/offline-admission-*.log`; keep the full goal active.
 
 Current inspection-role checkpoint: [PR #157](https://github.com/LuminariMUD/Duris/pull/157),
@@ -163,17 +166,23 @@ Implementation commit: `bfa360a99376cb5047018fd58ccc0d099ba669c0`.
   This is not the complete all-store AR-07 audit. Normal selected-store read/journal
   replay semantics are reused; forensic byte retention still needs a retained copy.
 
-Next objectful offline migration findings (not yet implemented):
-- With hunt now data-only, all objectful PC load paths can share admission and the
-  temporary `gameplay_items` bypass can be removed after the actual maintenance
-  callbacks are guarded; staff `load char` publishes a real PC.
-- `poof_loaded_owner` currently expires the vnum even when its loaded target was
-  absent. A withheld source or nested artifact must not be interpreted as absence;
-  target lookup/retirement must match the canonical UID and preserve refused data.
-- `arti_files_give` and both replacement paths still use generic fresh constructors;
-  migrate to creation admission, preserve source evidence and reject reserved vnums.
-  Prototype inspection in the remaining maintenance commands must be data-only.
-- Pet/storage/delivery roles and full lifecycle/AR-07 acceptance remain open.
+Next maintenance and saved-domain work:
+- PR #158 removed the PC restoration bypass and guarded missing/withheld expiry
+  targets. Keep the shared PID/descriptor fence and qualified PC construction;
+  the generic necromancy item lookup remains intentionally separate.
+- The legacy `arti_files_to_sql` parent reconciliation still pulls copies and writes
+  tracking by vnum before its offline callback. It needs source/UID-qualified
+  disposition, preserving original files and refusing ambiguous candidates.
+- The online `arti_swap_sql` frontend still constructs prototypes and can pull an
+  existing replacement by vnum. Migrate its read-only checks and fresh replacement
+  admission before placement/costs; the offline replacement constructor is migrated.
+- Remaining maintenance prototype inspections (`clear`, `poof`, `timer`, legacy
+  import and other mapped reports/helpers) must use cached values, not constructors.
+  Recheck `arti_syncdb_sql` and delayed/action source fences under AR-04 as planned.
+- Pet/storage/delivery materialization, a full-server flat artifact journey and the
+  complete lifecycle/AR-07 rehearsal remain required. Do not treat ordinary flat
+  copyover controls or this PC chunk as that acceptance evidence.
+
 
 Current gameplay-player admission checkpoint: [PR #156](https://github.com/LuminariMUD/Duris/pull/156),
 ready for review, `branch/issue-67-player-artifact-admission`, based on #155. Outcome: qualify a gameplay player's saved artifact source/UID/current
