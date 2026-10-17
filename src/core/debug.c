@@ -89,6 +89,9 @@ static char cmdlog_lines[CMDLOG_LINES][256];
 // Makes only calls a signal handler may make: a crash writes the log too.
 void write_cmdlog(void)
 {
+	// An early boot failure has no new commands; retain the previous context.
+	if (!logcount)
+		return;
 	const int fd = open("logs/log/cmd.debug", O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (fd < 0)
 		return;

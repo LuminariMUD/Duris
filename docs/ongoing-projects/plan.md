@@ -22,6 +22,19 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current focused repair: `branch/issue-67-fatal-boot-exit`, based on PR #153.
+Outcome: a fatal boot error preserves its intended failure status and console
+message even when static worker threads are active. Non-goals: partial-world
+saves or new shutdown/worker orchestration. Files: the existing fatal handler,
+command-ring writer, standalone tool stub, focused actual-handler/worker fixture
+and this plan.
+Proof: the active static worker reproduces SIGABRT before repair; fatal handling
+must return EXIT_FAILURE and preserve buffered stdout plus its stderr diagnostic
+with/without that worker. Flush only console streams and leave through `_Exit`,
+so failed restoration does not run application/global destruction. Existing
+startup/error controls, both backend builds and the actual-worker regression
+now pass; this focused repair is being prepared for publication.
+
 Current saved-ground checkpoint: [PR #153](https://github.com/LuminariMUD/Duris/pull/153),
 ready for review, `branch/issue-67-recovery-hydration`, based on PR #152. Outcome: admit saved artifact UIDs/effective flags before constructor
 procedures only from the exact qualified pinned Redis generation/floor or native
@@ -1137,6 +1150,48 @@ Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
 
+### Fatal boot status with active workers — focused recovery repair
+
+Working branch: `branch/issue-67-fatal-boot-exit`, based on PR #153; publication
+pending. Outcome/non-goals/files/proof are recorded at the top of the plan.
+The actual `fatal_boot_error`/message formatter reproduces SIGABRT with an active
+static `std::thread`: `exit` invokes its joinable destructor. The real failed
+copyover runs in the previous checkpoint showed the same termination message.
+Before proof: `bin/analysis/issue67/fatal-boot-worker-before.log`.
+
+The fatal handler explicitly writes the command ring, flushes stdout/stderr and
+calls `_Exit(EXIT_FAILURE)` after formatting/logging its message. It leaves the
+partially booted process without global application destruction. LOG_EXIT already
+flushes its queued predecessors and writes synchronously before returning; existing
+log-writer controls verify that contract. The first immediate-exit version skipped
+the registered command-ring hook: `fatal-boot-ring-before.log` reproduces that loss.
+The existing ring writer is now called directly, and an empty startup ring leaves
+previous diagnostic context intact. The standalone pfile tool supplies the same
+no-op diagnostic stub as its other engine hooks. No world-save, new drain or worker
+abstraction is needed; no handoff input is consumed by this handler.
+
+Passed:
+
+- `python3 tests/async/test_fatal_boot_worker.py`: the actual handler and formatter
+  exit1 with exact stderr and preceding buffered stdout, with/without an active
+  static worker and empty/populated command rings. Populated rings reach the file;
+  empty startup rings preserve prior context. Worker mode previously terminated
+  with SIGABRT. The fixture starts no server and uses only private temporary logs.
+- `python3 tests/async/test_file_to_string_eof.py` and
+  `python3 tests/async/test_runtime_connection_trust.py`: existing startup/error
+  call contracts remain green.
+- Existing `test_command_log_ring.py` and `test_log_writer_thread.py` pass their
+  exit/crash, privacy, ordering and synchronous-exit-log contracts.
+- SQL/client-free `make -C src -j2 all pfile`, changed-line format/compatible
+  clang-tidy and diff checks pass. Logs: ignored `bin/analysis/issue67/fatal-boot-*`.
+  The PR #153 successful gameplay journeys are retained evidence, not a rerun of
+  this fatal path. No full suite or production operation is claimed.
+
+Next: mutable saved player/pet/storage/delivery materialization with explicit
+source/current-custody and live/temporary roles, retaining held/conflict payloads
+across the existing wholesale player-item save. Then legacy metadata reconstruction,
+remaining fresh producers and all unchecked lifecycle/reward/audit/acceptance work.
+
 ### Pinned ground saved-UID admission — AR-03 in progress
 
 Review: [PR #153](https://github.com/LuminariMUD/Duris/pull/153),
@@ -1285,8 +1340,8 @@ The actual fatal handler plus an active static worker reproduces SIGABRT in
 diagnostics and the failure status without partial-world shutdown saves, then run
 its existing startup/error contracts and both builds.
 
-Immediate next steps: repair the fatal boot termination separately, then
-implement mutable saved player/pet/storage/delivery source admission with explicit
+Immediate next steps: the separate fatal-boot repair above is tested and awaiting
+publication; then implement mutable saved player/pet/storage/delivery source admission with explicit
 live/temporary roles and payload retention across later saves. The existing player
 save's wholesale delete is not compatible with skip-only conflict handling.
 Complete legacy metadata reconstruction, remaining fresh producers, lifecycle/
