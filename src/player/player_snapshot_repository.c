@@ -585,6 +585,11 @@ query_result retained_player_rows(MYSQL *connection, const player_snapshot &snap
 	for (const auto &item : snapshot.items)
 		if (item.object_uid)
 			active_uids.insert(item.object_uid);
+	if (snapshot.components & PLAYER_COMPONENT_PETS)
+		for (const auto &pet : snapshot.pets)
+			for (const auto &item : pet.items)
+				if (item.object_uid)
+					active_uids.insert(item.object_uid);
 	for (const auto &row : retained.rows)
 	{
 		if (!row.source_row_id || row.source_row_id > UINT32_MAX ||

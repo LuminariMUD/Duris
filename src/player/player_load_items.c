@@ -399,6 +399,8 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 				object->g_key = 1;
 		}
 	}
+	for (P_obj object : objects)
+		artifact_object_placed(object);
 	balance_affects(character);
 }
 }
@@ -903,6 +905,11 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		auto &sources = result->item_sources;
 		const auto &items = result->snapshot.items;
 		const auto &identities = result->item_identities;
+		if (result->authoritative_item_count < identities.size())
+			return EINVAL;
+		// Legacy-pet items share player custody and remain in this counter.
+		const size_t other_owned_items =
+			result->authoritative_item_count - identities.size();
 		std::unordered_map<uint64_t, size_t> source_by_id;
 		for (size_t index = 0; index < sources.size(); ++index)
 			if (!source_by_id.emplace(sources[index].row_id, index).second)
@@ -919,6 +926,35 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		};
 		for (const auto &source : sources)
 			connect(source.row_id, source.parent_row_id);
+		// Repository filtering omits foreign payloads before the materialized
+		// list exists. Qualify those raw sources too, preserving artifact roots.
+		const item_owner_identity player = { item_owner_type::player,
+						     static_cast<uint64_t>(result->pid), 0 };
+		for (auto &source : sources)
+		{
+			if (source.retain || !source.custody_found ||
+			    item_owner_identity_equal(source.custody.owner, player))
+				continue;
+			artifact_payload_projection projection = {};
+			projection.domain = artifact_payload_domain::player;
+			projection.row_id = source.row_id;
+			projection.parent_row_id = source.parent_row_id;
+			projection.item_uid = source.item_uid;
+			projection.vnum = source.vnum;
+			projection.extra_flags = source.extra_flags;
+			projection.extra_flags_present = source.extra_flags_present;
+			projection.quantity = source.quantity;
+			projection.payload_root_item_uid = source.root_item_uid;
+			projection.owner_reference = result->pid;
+			projection.payload_owner = player;
+			projection.custody_examined = true;
+			projection.custody_found = source.custody_found;
+			projection.custody_owner_revision_found =
+				source.custody_owner_revision_found;
+			projection.custody = source.custody;
+			if (artifact_player_source_error(projection))
+				source.retain = true;
+		}
 		std::vector<artifact_payload_projection> projections(items.size());
 		std::vector<size_t> withheld;
 		bool alerted = false;
@@ -952,6 +988,8 @@ unsigned int player_load_items_qualify(player_load_result *result)
 						sources[parent->second].item_uid;
 				projection.custody_examined = true;
 				projection.custody_found = source.custody_found;
+				projection.custody_owner_revision_found =
+					source.custody_owner_revision_found;
 				projection.custody = source.custody;
 				projection.parent_owner_disagrees =
 					source.item_uid != item.object_uid ||
@@ -1033,7 +1071,8 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		result->snapshot.items = std::move(kept);
 		result->item_identities = std::move(kept_identities);
 		result->item_admission_sources = std::move(admitted);
-		result->authoritative_item_count = result->item_identities.size();
+		result->authoritative_item_count =
+			other_owned_items + result->item_identities.size();
 		return 0;
 	}
 	catch (const std::bad_alloc &)

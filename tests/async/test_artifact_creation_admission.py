@@ -14,6 +14,9 @@ HARNESS = r"""
 #include "redis/redis_floor_runtime.h"
 #include "world/world_recovery_pipeline.h"
 #include "world/world_recovery_codec.h"
+#include "item/encumbrance_policy.h"
+#include "player/player_snapshot.h"
+#include "player/player_load_items.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -22,6 +25,8 @@ HARNESS = r"""
 index_data indexes[4] = {};
 index_data mob_indexes[1] = {};
 P_index mob_index=mob_indexes;
+P_char character_list=nullptr;
+int real_room(int vnum) { return vnum==2300 ? 0 : -1; }
 room_data rooms[2] = {};
 const char *equipment_types[CUR_MAX_WEAR+1] = {};
 P_room world=rooms;
@@ -37,6 +42,7 @@ static uint64_t expected_procedure_uid=0;
 static bool drop_swap_artifact_flag=false, renew_swap_source=false;
 static int swap_placement_fault=0;
 static size_t removed_wear_links=0;
+static std::map<uint64_t,size_t> removed_wear_links_by_uid;
 static std::vector<uint64_t> removed_floor_uids;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
@@ -85,7 +91,8 @@ int proclibObj_add(P_obj,char *,char *) { return 0; }
 int FillMasterSpellBook(P_obj) { return 0; }
 void convertObj(P_obj) {}
 void world_recovery_capture_forget_object(P_obj) {}
-void item_actions_source_leaving(P_obj) {}
+static std::map<P_obj,unsigned> pending_actions;
+void item_actions_source_leaving(P_obj object) { pending_actions.erase(object); }
 void ferry_forget_object(P_obj) {}
 void redis_remove_floor_drop(unsigned long uid) { ++floors; removed_floor_uids.push_back(uid); }
 void disarm_obj_nevents(P_obj,event_func_type) {}
@@ -96,13 +103,14 @@ void unlink_content(P_obj object,P_obj *head) {
  if(*head==object) *head=object->next_content;
  object->next_content=nullptr; object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE;
 }
-void obj_from_room(P_obj object) { unlink_content(object,&rooms[0].contents); }
+void obj_from_room(P_obj object) { unlink_content(object,&rooms[object->loc.room].contents); }
 void obj_from_char(P_obj object) { auto *owner=object->loc.carrying; unlink_content(object,&owner->carrying); }
 void obj_from_obj(P_obj object) { auto *parent=object->loc.inside; unlink_content(object,&parent->contains); }
-P_obj unequip_char(P_char mob,int slot,bool) {
- auto *object=mob->equipment[slot]; mob->equipment[slot]=nullptr;
- object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; return object;
-}
+void all_affects(P_char,int) {}
+static void mark_char_or_owner_dirty(P_char) {}
+int char_light(P_char) { return 0; }
+int room_light(int,int) { return 0; }
+// ACTUAL_UNEQUIP
 void place_tree(P_obj object) {
  for(P_obj child=object->contains;child;child=child->next_content) place_tree(child);
  artifact_object_placed(object);
@@ -189,16 +197,22 @@ bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { o
 bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done) {
  offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
 }
-int writeCharacter(P_char,int,int) { ++offline_saves; return offline_save_allowed ? 1 : 0; }
+static bool inspect_swap_snapshot=false;
+int writeCharacter(P_char owner,int,int) {
+ ++offline_saves;
+ if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
+ return offline_save_allowed ? 1 : 0;
+}
+void clear_links(P_char,P_obj object,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; ++removed_wear_links_by_uid[object->obj_uid]; }
 void writeCorpse(P_obj) { ++corpse_saves; }
-void clear_links(P_char,P_obj,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; }
 void do_shout(P_char,char *,int) {}
 void free_char(P_char owner) {
  assert(!owner->carrying); for(auto *object:owner->equipment) assert(!object); ++offline_released;
 }
 void nevent_periodic_continue_after(unsigned long long) {}
 void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_retries; }
-// ACTUAL_DISCARD
+void balance_affects(P_char) {}
+// PLAYER_ATTACHMENT
 // CONSTRUCTORS
 // EXTRACTION
 // RECOVERY_TREE
@@ -209,6 +223,7 @@ void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_ret
 // RECOVERY_CASES
 // MAINTENANCE_CASES
 // SWAP_CASES
+// CORPSE_BIND_CASES
 // MONOLITH_CASES
 // STUDIO_CASES
 // TRANSFORMATION_CASES
@@ -363,13 +378,49 @@ int main() {
  monolith_cases();
  studio_cases();
  transformation_cases();
+ corpse_bind_cases();
+ // Legacy reconstruction keeps the canonical UID and registers one live body.
+ auto &legacy=artifact_rows[900];
+ legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
+ legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80001;
+ artifact_binds[900]={55,666};
+ addOnGroundArtis_sql(); addOnGroundArtis_sql();
+ assert(object_list && !object_list->next && object_list->obj_uid==80001 && legacy.live_object==object_list);
+ assert(legacy.timer==7777 && artifact_binds.at(900).owner_pid==55);
+ extract_obj(object_list,TRUE); assert(legacy.identity_state==artifact_identity_state::retired);
+ artifact_save_pulse(true); drain();
+ char_data holder={}; npc_only_data npc={}; holder.only.npc=&npc;
+ holder.specials.act=ACT_ISNPC; npc.R_num=0; mob_indexes[0].virtual_number=2000; character_list=&holder;
+ legacy={true,ARTIFACT_ON_NPC,2000,7777,ARTIFACT_MAJOR};
+ legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80002;
+ addOnMobArtis_sql(); addOnMobArtis_sql();
+ assert(holder.carrying && !holder.carrying->next_content && holder.carrying->obj_uid==80002 && legacy.live_object==holder.carrying);
+ extract_obj(holder.carrying,FALSE); assert(!legacy.live_object && legacy.identity_state==artifact_identity_state::present);
+ // Player/recovery hydration assigns a saved UID before the normal placement hook.
+ auto *hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
+ player_item_snapshot saved={}; saved.equipment_slot=0;
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ assert(legacy.live_object==hydrated);
+ player_load_items_discard(&holder);
+ assert(!legacy.live_object && legacy.identity_state==artifact_identity_state::present && !object_list);
+ hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ assert(legacy.live_object==hydrated && legacy.pending==artifact_pending::none && legacy.timer==7777);
+ auto *duplicate=read_object(900,VIRTUAL); duplicate->obj_uid=80002; obj_to_char(duplicate,&holder);
+ assert(legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
+ assert(legacy.identity_state==artifact_identity_state::present);
+ artifact_binds.erase(900); // a legacy canonical row need not have a soul row
+ extract_obj(hydrated,TRUE); assert(legacy.identity_state==artifact_identity_state::retired && !legacy.live_object);
+ artifact_save_pulse(true); drain(); character_list=nullptr;
+ assert(!object_list && !pool.objs_used);
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
-source=HARNESS.replace("// ACTUAL_DISCARD", extract_function("player_load_items.c", "void clear_item_uids(") + "\n" + extract_function("player_load_items.c", "void player_load_items_discard("))
+source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "unsigned int player_load_items_qualify(")))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
+source=source.replace("// ACTUAL_UNEQUIP",extract_function("handler.c","P_obj unequip_char("))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
@@ -588,8 +639,8 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  extract_obj(tree,FALSE); assert(!object_list && !pool.objs_used && writes.empty());
  // A captured corpse wrapper can contain a distinct logical custody root.
  parent.payload_owner=saved.payload_owner={item_owner_type::corpse,77,12};
- parent.custody_examined=parent.custody_found=parent.custody_required=true;
- saved.custody_examined=saved.custody_found=saved.custody_required=true;
+ parent.custody_examined=parent.custody_found=parent.custody_required=parent.custody_owner_revision_found=true;
+ saved.custody_examined=saved.custody_found=saved.custody_required=saved.custody_owner_revision_found=true;
  parent.custody={70000,70000,0,parent.payload_owner,1,1,901,item_custody_state::active};
  saved.custody={4242,4242,0,saved.payload_owner,1,1,900,item_custody_state::active};
  stage_saved({parent,saved},true); plan.existing_root=nullptr; plan.items[0].type=ITEM_CORPSE;
@@ -601,10 +652,12 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  player.owner_reference=77; player.owner_context=0; player.row_id=100;
  player.parent_row_id=0; player.parent_item_uid=0; player.payload_root_item_uid=4242;
  player.payload_owner={item_owner_type::player,77,0};
- player.custody_examined=player.custody_found=true;
+ player.custody_examined=player.custody_found=player.custody_owner_revision_found=true;
  player.custody={4242,4242,0,player.payload_owner,3,7,900,item_custody_state::active};
  stage_saved({player},true); item_ownership_runtime_reset();
  assert(!artifact_player_source_error(player));
+ auto zero_revision=player; zero_revision.custody.owner_revision=0;
+ assert(!artifact_player_source_error(zero_revision));
  const auto before_player_procedures=procedures;
  for(int kind=0;kind<12;++kind) {
   auto bad=player;
@@ -614,7 +667,7 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
    case 2: bad.custody.state=item_custody_state::absent; break;
    case 3: bad.custody.vnum=901; break;
    case 4: bad.custody.item_revision=0; break;
-   case 5: bad.custody.owner_revision=0; break;
+   case 5: bad.custody_owner_revision_found=false; break;
    case 6: bad.parent_item_uid=10; break;
    case 7: bad.payload_root_item_uid=10; break;
    case 8: bad.parent_missing=true; break;
@@ -647,9 +700,27 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  artifact_rows.at(900).identity_state=artifact_identity_state::retired;
  assert(artifact_player_source_error(player)==ENODATA && !read_object_for_recovery(player));
  artifact_rows.at(900).identity_state=artifact_identity_state::present;
+ // A canonical UID cannot become ordinary by changing its payload vnum.
+ auto foreign_vnum=player; foreign_vnum.vnum=901; foreign_vnum.extra_flags=0;
+ assert(artifact_player_source_error(foreign_vnum));
+ assert(!read_object_for_recovery(foreign_vnum) && !object_list && !pool.objs_used);
+ foreign_vnum.domain=artifact_payload_domain::copyover_ground; foreign_vnum.owner_context=44;
+ assert(!read_object_for_recovery(foreign_vnum) && !object_list && !pool.objs_used);
  auto ordinary=player; ordinary.extra_flags=0; ordinary.item_uid=99999;
  assert(!artifact_player_source_error(ordinary));
  first=read_object_for_recovery(ordinary); assert(first && !IS_ARTIFACT(first)); extract_obj(first,FALSE);
+ player_load_result foreign_only={}; foreign_only.pid=77; foreign_only.outcome=player_load_outcome::applied;
+ player_load_source_item raw={}; raw.row_id=100; raw.item_uid=raw.root_item_uid=4242; raw.bytes=50;
+ raw.vnum=900; raw.quantity=1; raw.extra_flags=ITEM_ARTIFACT; raw.extra_flags_present=true;
+ raw.custody_found=raw.custody_owner_revision_found=true; raw.custody=player.custody; raw.custody.owner.id=88;
+ foreign_only.item_sources={raw};
+ assert(!player_load_items_qualify(&foreign_only) && foreign_only.snapshot.items.empty() &&
+  foreign_only.snapshot.retained_items.rows.size()==1 && foreign_only.snapshot.retained_items.rows[0].source_row_id==100);
+ raw.vnum=901; raw.extra_flags=0; foreign_only.item_sources={raw}; foreign_only.snapshot.retained_items={};
+ assert(!player_load_items_qualify(&foreign_only) && foreign_only.snapshot.retained_items.rows.size()==1);
+ raw.item_uid=raw.root_item_uid=99999; raw.vnum=901; raw.extra_flags=0; raw.custody.item_uid=raw.custody.root_item_uid=99999; raw.custody.vnum=901;
+ foreign_only.item_sources={raw}; foreign_only.snapshot.retained_items={};
+ assert(!player_load_items_qualify(&foreign_only) && foreign_only.snapshot.retained_items.rows.empty());
  item_ownership_runtime_reset();
  std::cout<<"mutable player source/custody qualification, live reservation and cancellation: PASS\n";
  std::cout<<"source-qualified recovery factory and actual nested tree: PASS\n";
@@ -683,6 +754,28 @@ void offline_expiry_cases() {
   row.location=77; row.timer=1; artifact_binds[900]={77,88}; assert(artifact_expired(row));
   return object;
  };
+ // Trusted holders are exempt even when legacy tracking still names another PID.
+ for(int location=0;location<3;++location) {
+  auto *held=make_nested(); auto *bag=held->loc.inside;
+  if(location<2) {
+   obj_from_obj(held); extract_obj(bag,FALSE); bag=nullptr;
+   if(location==0) obj_to_char(held,&owner); else equip_char(&owner,held,0,TRUE);
+  }
+  auto &tracked=artifact_rows.at(900); tracked.location=88;
+  artifact_save_pulse(true); drain();
+  const auto count=pool.objs_used; const auto uid=held->obj_uid;
+  owner.player.level=FORGER; owner.specials.act=0;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(tracked.identity_state==artifact_identity_state::present && tracked.live_object==held &&
+         tracked.canonical_item_uid==uid && tracked.timer==1 && pool.objs_used==count && writes.empty());
+  owner.player.level=51; owner.specials.act=PLR_MORTAL;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(tracked.identity_state==artifact_identity_state::retired && !tracked.live_object);
+  if(bag) extract_obj(bag,FALSE);
+  artifact_save_pulse(true); drain(); assert(!object_list && !pool.objs_used);
+ }
  auto *object=make_nested(); const uint64_t saved_uid=object->obj_uid;
  assert(artifact_on_owner(&owner,900)==object);
  auto *alias=read_object(0,REAL); assert(alias); alias->obj_uid=saved_uid; obj_to_char(alias,&owner);
@@ -811,7 +904,7 @@ void maintenance_inspection_cases() {
  restored.row_id=1; restored.item_uid=restored.payload_root_item_uid=70001; restored.owner_reference=77;
  restored.payload_owner={item_owner_type::player,77,0}; restored.vnum=900;
  restored.extra_flags=ITEM_ARTIFACT; restored.extra_flags_present=true; restored.quantity=1;
- restored.custody_examined=restored.custody_found=true;
+ restored.custody_examined=restored.custody_found=restored.custody_owner_revision_found=true;
  restored.custody={70001,70001,0,restored.payload_owner,1,1,900,item_custody_state::active};
  auto *replacement=read_object_for_recovery(restored); assert(replacement); obj_to_char(replacement,&owner);
  const auto restored_effects=procedures;
@@ -917,6 +1010,19 @@ void swap_admission_cases() {
  char unverified[]="900 902"; arti_swap_sql(&staff,unverified);
  assert(procedures==refused_effects && pool.objs_used==1 && artifact_is_canonical(source) && writes.empty());
  artifact_rows.at(902)=previous_target;
+ // Unregistered legacy target bodies must also block replacement creation.
+ for(const auto target_state : {artifact_identity_state::absent, artifact_identity_state::retired}) {
+  auto &target_row=artifact_rows.at(902); target_row.identity_state=target_state;
+  target_row.canonical_item_uid=target_state==artifact_identity_state::absent ? 0 : occupied_uid;
+  auto *legacy_target=read_object(902,VIRTUAL); assert(legacy_target && !artifact_is_canonical(legacy_target));
+  const auto uid_cursor=next_uid; const auto creation_effects=procedures; const auto live_count=pool.objs_used;
+  char duplicate_target[]="900 902"; arti_swap_sql(&staff,duplicate_target);
+  assert(next_uid==uid_cursor && procedures==creation_effects && pool.objs_used==live_count &&
+         artifact_rows.at(900).live_object==source && artifact_rows.at(900).canonical_item_uid==source_uid &&
+         artifact_rows.at(900).timer==source_timer && !target_row.live_object && writes.empty());
+  extract_obj(legacy_target,FALSE);
+ }
+ artifact_rows.at(902)=previous_target;
  drop_swap_artifact_flag=true;
  char lost_flag[]="900 902"; arti_swap_sql(&staff,lost_flag); drop_swap_artifact_flag=false;
  assert(pool.objs_used==1 && artifact_is_canonical(source) &&
@@ -958,6 +1064,11 @@ void swap_admission_cases() {
   }
   artifact_binds[900]={77,88}; artifact_save_pulse(true); drain();
   const auto original_uid=source->obj_uid; const auto original_population=pool.objs_used;
+  if(location==1) {
+   pending_actions[source]=3; // active and passive actions referencing the worn source
+   assert(unequip_char(&owner,0,FALSE)==source && !pending_actions.contains(source));
+   equip_char(&owner,source,0,TRUE); pending_actions[source]=3;
+  }
   for(int fault : {1,2,3}) {
    const auto before_target_uid=artifact_rows.at(902).canonical_item_uid;
    const auto before_links=removed_wear_links; const auto before_floor=removed_floor_uids.size();
@@ -965,6 +1076,8 @@ void swap_admission_cases() {
    swap_placement_fault=fault;
    char refused[]="900 902"; arti_swap_sql(&staff,refused);
    swap_placement_fault=0;
+   if(location==1) assert(pending_actions.contains(source) && pending_actions.at(source)==3);
+   assert(!rooms[1].contents && "failed redirection left a live object on the alternate floor");
    assert(artifact_rows.at(900).live_object==source && artifact_rows.at(900).canonical_item_uid==original_uid &&
           artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_is_canonical(source) &&
           artifact_rows.at(900).timer==source_timer && artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
@@ -980,6 +1093,7 @@ void swap_admission_cases() {
    for(size_t index=before_floor; index<removed_floor_uids.size(); ++index) assert(removed_floor_uids[index]!=original_uid);
   }
   char swap[]="900 902"; arti_swap_sql(&staff,swap);
+  assert(!pending_actions.contains(source)); // committed replacement cancels old-source actions
   replacement=artifact_rows.at(902).live_object;
   assert(replacement && artifact_is_canonical(replacement) && artifact_rows.at(902).timer==source_timer);
   if(location==0 || location==3) assert(OBJ_CARRIED(replacement) && replacement->loc.carrying==&owner);
@@ -1002,7 +1116,7 @@ void swap_admission_cases() {
  restored.row_id=1; restored.item_uid=restored.payload_root_item_uid=80001; restored.owner_reference=77;
  restored.payload_owner={item_owner_type::player,77,0}; restored.vnum=900;
  restored.extra_flags=ITEM_ARTIFACT; restored.extra_flags_present=true; restored.quantity=1;
- restored.custody_examined=restored.custody_found=true;
+ restored.custody_examined=restored.custody_found=restored.custody_owner_revision_found=true;
  restored.custody={80001,80001,0,restored.payload_owner,1,1,900,item_custody_state::active};
  source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
  const auto restored_effects=procedures;
@@ -1016,13 +1130,36 @@ void swap_admission_cases() {
  assert(artifact_rows.at(900).canonical_item_uid==80001 && !artifact_rows.at(900).live_object &&
         artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_rows.at(900).timer==source_timer &&
         artifact_binds.at(900).owner_pid==77 && !object_list && !pool.objs_used && writes.empty());
- // Queue-failure durability is still the next chunk; this legacy path releases its temporary graph.
- char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+ // Refused snapshots restore source identity before discarding the temporary graph.
+ inspect_swap_snapshot=true;
+ for(int refused_location=0;refused_location<3;++refused_location) {
+  char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+  source=read_object_for_recovery(restored); assert(source);
+  if(refused_location==0) obj_to_char(source,&owner);
+  else if(refused_location==1) equip_char(&owner,source,0,TRUE);
+  else {
+   auto *bag=read_object_for_creation(903,VIRTUAL); assert(bag); bag->value[0]=1000;
+   obj_to_char(bag,&owner); obj_to_obj(source,bag);
+  }
+  const auto releases=offline_released;
+  const auto links_before=removed_wear_links_by_uid[80001];
+  const auto target_before_refusal=artifact_rows.at(902);
+  command_output.clear();
+  offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
+  assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
+         artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::present &&
+         !artifact_rows.at(900).live_object && artifact_rows.at(900).timer==source_timer &&
+         artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
+         artifact_rows.at(902).canonical_item_uid==target_before_refusal.canonical_item_uid &&
+         artifact_rows.at(902).identity_state==target_before_refusal.identity_state &&
+         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links_by_uid[80001]==links_before);
+  assert(command_output.find("original retained")!=std::string::npos && command_output.find("swapped with")==std::string::npos);
+ }
+ // The unchanged durable source remains admissible when snapshot capture recovers.
+ char admitted_retry[]="900 902"; arti_swap_sql(&staff,admitted_retry); assert(offline_callbacks.size()==1);
  source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
- const auto releases=offline_released;
- offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
- assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
-        artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+ offline_callbacks.front()(&owner); offline_callbacks.clear(); inspect_swap_snapshot=false;
+ assert(!object_list && !pool.objs_used && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
         artifact_rows.at(902).identity_state==artifact_identity_state::present && artifact_rows.at(902).timer==source_timer);
  artifact_save_pulse(true); drain();
  // A saved artifact on an ordinary prototype is eligible through its actual UID/flags.
@@ -1217,11 +1354,53 @@ void transformation_cases() {
  std::cout<<"actual quest transformation: duplicate refusal, rollback and both alignment artifacts: PASS\n";
 }
 """)
+source=source.replace("// CORPSE_BIND_CASES", extract_function("actobj.c", "struct coin_get_submission_options")+";\n"+r"""
+static bool item_get_rejected=false, item_get_ack_publication=false;
+static bool take_coins(P_char,P_obj,P_obj,int,const coin_get_submission_options &) { return false; }
+static void report_coin_get_rejection(P_char,P_obj) {}
+static bool do_get_finalize_container_item(P_char,P_obj,P_obj,int &total,bool &found,const char *) {
+ ++total; found=true; return true;
+}
+static void do_get_log_container_artifact_pickup(P_char,P_char,P_obj,P_obj) {}
+static void *corpse_bulk_get(P_char,uint64_t) { return nullptr; }
+void CharWait(P_char,int) {}
+"""+extract_function("actobj.c", "static void\ndo_get_finalize_container_success(")+r"""
+void corpse_bind_cases() {
+ artifact_rows.clear(); artifact_binds.clear(); writes.clear(); captures.clear();
+ artifact_rows[900].identity_state=artifact_identity_state::absent;
+ artifact_rows.at(900).population_reason=artifact_population_reason::complete;
+ char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=77;
+ owner.player.name=const_cast<char *>("Looter"); owner.player.level=51;
+ owner.player.racewar=1; owner.specials.act=PLR_MORTAL; owner.in_room=0;
+ auto *canonical=read_object_for_creation(900,VIRTUAL); assert(canonical); obj_to_char(canonical,&owner);
+ auto *alias=read_object(0,REAL); assert(alias); obj_to_char(alias,&owner);
+ artifact_save_pulse(true); drain(); writes.clear(); captures.clear();
+ auto &row=artifact_rows.at(900); row.timer=time(nullptr)+60;
+ artifact_binds[900]={88,123};
+ obj_data corpse={}; corpse.type=ITEM_CORPSE; corpse.value[5]=2;
+ int total=0; bool found=false;
+ const auto timer=row.timer;
+ do_get_finalize_container_success(&owner,&owner,&corpse,alias,total,found,true,"fixture");
+ assert(total==1 && found && artifact_binds.at(900).owner_pid==88 &&
+        artifact_binds.at(900).timer==123 && row.timer==timer && writes.empty());
+ corpse.value[5]=owner.player.racewar;
+ do_get_finalize_container_success(&owner,&owner,&corpse,canonical,total,found,true,"fixture");
+ assert(artifact_binds.at(900).owner_pid==88 && row.timer==timer && writes.empty());
+ corpse.value[5]=2;
+ do_get_finalize_container_success(&owner,&owner,&corpse,canonical,total,found,true,"fixture");
+ assert(total==3 && artifact_binds.at(900).owner_pid==-1 && artifact_binds.at(900).timer>=timer-60 &&
+        row.timer>timer && !writes.empty());
+ alias->obj_uid=0; extract_obj(alias,FALSE); extract_obj(canonical,TRUE);
+ artifact_save_pulse(true); drain();
+ assert(!object_list && !pool.objs_used);
+ std::cout<<"actual corpse-loot binding preserves noncanonical souls and canonical controls: PASS\n";
+}
+""")
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:
  cpp=Path(directory)/"creation.cpp"; binary=Path(directory)/"creation"; cpp.write_text(source)
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
-  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/core/safe_format.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/core/safe_format.c","src/player/player_load_topology.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

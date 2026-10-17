@@ -12,13 +12,18 @@
 #include <cerrno>
 
 namespace fs = std::filesystem;
+index_data removal_indices[1] = {};
+P_index obj_index = removal_indices;
 
 namespace
 {
 std::string state_root;
 bool booting = true;
 int admission_error = 0;
+size_t maximum_writes = SIZE_MAX;
 std::vector<persistence_job_write_fn> writes;
+bool run_writer = false;
+size_t completed_writes = 0;
 
 void require(bool condition, const std::string &message)
 {
@@ -58,19 +63,42 @@ const object_template *find_object_template(int vnum)
 }
 
 void send_to_char_f(P_char, const char *, ...) {}
+void send_to_char(const char *, P_char) {}
+char *get_player_name_from_pid(int)
+{
+	return const_cast<char *>("Fixture");
+}
+std::string pad_ansi(const char *text, int, bool)
+{
+	return text ? text : "";
+}
 
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t, size_t,
 						    persistence_job_write_fn write)
 {
 	require(kind == persistence_job_kind::artifact,
 		"flat artifact bypassed its writer job kind");
-	if (admission_error)
+	if (admission_error || writes.size() >= maximum_writes)
 	{
-		errno = admission_error;
+		errno = admission_error ? admission_error : ENOSPC;
 		return player_save_submit_result::unavailable;
 	}
 	writes.push_back(std::move(write));
 	return player_save_submit_result::accepted;
+}
+
+void player_save_pipeline_pulse()
+{
+	if (!run_writer)
+		return;
+	while (completed_writes < writes.size())
+		require(writes[completed_writes++]().outcome == player_save_apply_outcome::applied,
+			"held writer capture failed");
+}
+
+bool persistence_writer_wait_idle(uint64_t)
+{
+	return completed_writes == writes.size();
 }
 
 int main(int argc, char **argv)
@@ -222,6 +250,19 @@ int main(int argc, char **argv)
 			timer == 4200,
 		"flat retry/reload did not preserve the current binding");
 	writes.clear();
+	const auto first_soul = artifact_binds.at(600);
+	const auto second_soul = artifact_binds.at(602);
+	admission_error = ENOSPC;
+	require(!artifact_binds_reset(-1) && writes.empty() &&
+			artifact_binds.at(600).owner_pid == first_soul.owner_pid &&
+			artifact_binds.at(600).timer == first_soul.timer &&
+			artifact_binds.at(602).owner_pid == second_soul.owner_pid &&
+			artifact_binds.at(602).timer == second_soul.timer &&
+			artifact_save_pulse(false) == 0,
+		"refused all-souls batch changed live bindings");
+	admission_error = 0;
+	artifact_save_pulse(true);
+	require(writes.empty(), "refused all-souls batch became partial retries");
 	require(artifact_binds_reset(-1) && writes.size() == 1 && artifact_save_pulse(false) == 2,
 		"flat all-souls reset did not share one captured batch/receipt");
 	owner_pid = 55;
@@ -298,7 +339,7 @@ int main(int argc, char **argv)
 		row.extra_flags = ITEM_ARTIFACT;
 		row.owner_reference = 88;
 		row.payload_owner = { item_owner_type::player, 88, 0 };
-		row.custody_examined = row.custody_found = true;
+		row.custody_examined = row.custody_found = row.custody_owner_revision_found = true;
 		row.custody = { uid, uid, 0,	row.payload_owner,
 				1,   1,	  vnum, item_custody_state::active };
 		population.push_back(row);
@@ -344,6 +385,203 @@ int main(int argc, char **argv)
 			artifact_rows.at(600).canonical_payloads.empty(),
 		"classified identity/timer/soul did not survive existing capture/reload");
 
+	writes.clear();
+	// Incomplete boot creates an identity-only reservation. Reload must not turn
+	// it into a legacy gameplay row that accepts feed operations.
+	booting = true;
+	require(artifacts_stage_population({}, { { 604, ITEM_ARTIFACT } }, false) &&
+			artifact_rows.at(604).removed,
+		"incomplete population did not capture its reservation");
+	booting = false;
+	require(artifact_save_pulse(true) == 2 && writes.size() == 2,
+		"reservation captures not queued");
+	for (auto &write : writes)
+		require(write().outcome == player_save_apply_outcome::applied,
+			"reservation capture failed");
+	require(!artifact_save_pulse(false) && artifacts_load() && artifact_rows.at(604).removed &&
+			artifact_rows.at(604).identity_state == artifact_identity_state::unresolved,
+		"unresolved identity-only marker lost across flat capture/reload");
+	int64_t feed_timer = -1, bind_timer = -1;
+	int32_t owner = -1;
+	require(!artifact_feed_state(604, &feed_timer, &owner, &bind_timer),
+		"identity-only reservation accepted gameplay feeding after reload");
+	writes.clear();
+	// A removal is one complete row/soul capture, including its first durable image.
+	for (int corpse_pid : { 0, 77 })
+	{
+		maximum_writes = 1;
+		require(flatfile_artifact_snapshot_apply(state_root, { artifact, second },
+							 &error) == flatfile_artifact_result::ok &&
+				artifacts_load(),
+			"removal fixture reset failed");
+		removal_indices[0].virtual_number = 600;
+		obj_data object = {};
+		object.R_num = 0;
+		object.obj_uid = 60001;
+		object.extra_flags = ITEM_ARTIFACT;
+		require(remove_owned_artifact_sql(&object, corpse_pid) && writes.size() == 1,
+			"artifact removal split ownership and soul into separate captures");
+		require(writes.front()().outcome == player_save_apply_outcome::applied &&
+				artifact_save_pulse(false) == 0 && artifacts_load(),
+			"compound removal did not finish");
+		require(flatfile_artifact_get(state_root, 600, &stored, &error) ==
+					flatfile_artifact_result::ok &&
+				stored.owned == (corpse_pid > 0) && stored.bind_owner_pid == -1 &&
+				stored.bind_timer == 0 &&
+				stored.location_type == (corpse_pid > 0 ?
+								 FLATFILE_ARTIFACT_ON_CORPSE :
+								 FLATFILE_ARTIFACT_NOT_IN_GAME),
+			"the first committed removal image retained an old soul");
+		writes.clear();
+	}
+	maximum_writes = SIZE_MAX;
+	// Deletion releases corpse ownership and bindings on somebody else's artifact too.
+	for (bool account : { false, true })
+	{
+		auto corpse = second;
+		corpse.location_type = FLATFILE_ARTIFACT_ON_CORPSE;
+		corpse.location = 42;
+		auto bound_elsewhere = second;
+		bound_elsewhere.vnum = 604;
+		bound_elsewhere.canonical_item_uid = 60401;
+		bound_elsewhere.bind_owner_pid = 42;
+		require(flatfile_artifact_snapshot_apply(state_root,
+							 { artifact, corpse, bound_elsewhere },
+							 &error) == flatfile_artifact_result::ok &&
+				artifacts_load(),
+			"deletion fixture reset failed");
+		// A queued old owner image must finish before the deletion release commits.
+		completed_writes = 0;
+		run_writer = false;
+		artifact_row_store(600, artifact_rows.at(600));
+		require(writes.size() == 1 && !artifact_save_drain(0),
+			"deletion fence passed a held artifact capture");
+		run_writer = true;
+		require(artifact_save_drain(1000) && completed_writes == writes.size(),
+			"deletion fence failed to finish the earlier owner capture");
+		writes.clear();
+		completed_writes = 0;
+		{
+			flatfile_authority_lock lock;
+			flatfile_authority_operation release;
+			require(lock.acquire(state_root, &error) &&
+					flatfile_artifact_prepare_player_release(
+						state_root, lock, 42, &release, &error) ==
+						flatfile_artifact_result::ok &&
+					flatfile_authority_transaction_commit_operations(
+						state_root, lock, { release }, &error) ==
+						flatfile_authority_transaction_result::ok,
+				"durable deletion release failed");
+		}
+		if (account)
+			artifacts_forget_deleted_account_character(42);
+		else
+			artifacts_forget_deleted_character(42);
+		for (int vnum : { 600, 602 })
+			require(!artifact_rows.at(vnum).owned &&
+					artifact_rows.at(vnum).location == 0 &&
+					artifact_rows.at(vnum).locType == ARTIFACT_NOTINGAME &&
+					artifact_rows.at(vnum).timer == 0,
+				"deletion retained player/corpse ownership in memory");
+		require(artifact_binds.at(600).owner_pid == -1 &&
+				artifact_binds.at(604).owner_pid == -1 &&
+				artifact_binds.at(602).owner_pid == 84 &&
+				artifact_rows.at(604).location == 75,
+			"deletion retained the deleted soul or changed unrelated custody/binding");
+		artifact_row_store(602, artifact_rows.at(602));
+		artifact_row_store(604, artifact_rows.at(604));
+		for (auto &write : writes)
+			require(write().outcome == player_save_apply_outcome::applied,
+				"post-delete capture failed");
+		require(!artifact_save_pulse(false) && artifacts_load() &&
+				artifact_rows.at(602).location == 0 &&
+				artifact_binds.at(604).owner_pid == -1,
+			"later capture resurrected deleted ownership or soul");
+		writes.clear();
+	}
+	// A fixit repair must fit one writer slot and its first committed image must
+	// contain both the new binding and timer, so a restart cannot strand half.
+	state_root = (root / "compound").string();
+	fs::create_directories(fs::path(state_root) / "domains");
+	fs::permissions(state_root, fs::perms::owner_all, fs::perm_options::replace);
+	fs::permissions(fs::path(state_root) / "domains", fs::perms::owner_all,
+			fs::perm_options::replace);
+	auto repair = artifact;
+	repair.bind_owner_pid = -1;
+	repair.bind_timer = 0;
+	require(flatfile_artifact_establish(state_root, { repair }, &error) ==
+				flatfile_artifact_result::ok &&
+			artifacts_load(),
+		"fixit fixture");
+	maximum_writes = 1;
+	const time_t fixed_after = time(nullptr) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+	arti_fixit_sql(&god);
+	require(writes.size() == 1 &&
+			writes.front()().outcome == player_save_apply_outcome::applied &&
+			flatfile_artifact_get(state_root, 600, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.bind_owner_pid == 42 && stored.bind_timer > 0 &&
+			stored.timer >= fixed_after,
+		"first fixit capture omitted its paired timer/binding");
+	require(artifact_save_pulse(false) == 0, "fixit pair did not share its completion");
+	writes.clear();
+	maximum_writes = SIZE_MAX;
+	// Every timer in a war burn shares one atomic image and one retry receipt.
+	const time_t burn_now = time(nullptr);
+	auto first_war = artifact;
+	first_war.timer = burn_now + 1000;
+	auto second_war = second;
+	second_war.location = 42;
+	second_war.type = ARTIFACT_MAJOR;
+	second_war.timer = burn_now + 2000;
+	auto unrelated = second;
+	unrelated.vnum = 604;
+	unrelated.canonical_item_uid = 60401;
+	unrelated.location = 99;
+	unrelated.timer = burn_now + 3000;
+	require(flatfile_artifact_snapshot_apply(state_root, { first_war, second_war, unrelated },
+						 &error) == flatfile_artifact_result::ok &&
+			artifacts_load(),
+		"war fixture");
+	maximum_writes = 0;
+	require(!artifact_wars_burn(42, burn_now, .5f) && writes.empty() &&
+			artifact_rows.at(600).timer == first_war.timer &&
+			artifact_rows.at(602).timer == second_war.timer &&
+			artifact_save_pulse(false) == 0,
+		"refused war capture partially changed live timers");
+	maximum_writes = 1;
+	require(artifact_wars_burn(42, burn_now, .5f) && writes.size() == 1 &&
+			artifact_rows.at(600).timer == burn_now + 500 &&
+			artifact_rows.at(602).timer == burn_now + 1000 &&
+			artifact_rows.at(600).save.pending == artifact_rows.at(602).save.pending,
+		"war burn was split across captures");
+	const auto domains = fs::path(state_root) / "domains";
+	fs::permissions(domains, fs::perms::owner_read, fs::perm_options::replace);
+	const auto retryable = writes.front()();
+	fs::permissions(domains, fs::perms::owner_all, fs::perm_options::replace);
+	require(retryable.outcome == player_save_apply_outcome::retryable_failure &&
+			artifact_save_pulse(true) > 0 && writes.size() == 1,
+		"retryable war failure lost its whole-owner capture");
+	require(flatfile_artifact_get(state_root, 600, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.timer == first_war.timer,
+		"failed war capture changed its first row");
+	require(flatfile_artifact_get(state_root, 602, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.timer == second_war.timer,
+		"failed war capture changed its second row");
+	require(writes.front()().outcome == player_save_apply_outcome::applied &&
+			artifact_save_pulse(false) == 0,
+		"whole war capture did not recover");
+	for (const auto &[vnum, timer] :
+	     { std::pair{ 600, burn_now + 500 }, std::pair{ 602, burn_now + 1000 },
+	       std::pair{ 604, burn_now + 3000 } })
+		require(flatfile_artifact_get(state_root, vnum, &stored, &error) ==
+					flatfile_artifact_result::ok &&
+				stored.timer == timer,
+			"war capture changed only a prefix or an unrelated owner");
+	writes.clear();
+	maximum_writes = SIZE_MAX;
 	std::cout << "flat-file artifact bind runtime passed\n";
 	return 0;
 }

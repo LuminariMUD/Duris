@@ -513,7 +513,10 @@ static void artifact_ordering_cases()
 	arti_timer_sql(&staff, extend);
 	assert(artifact_rows.at(900).timer == now + 8260);
 	artifact_update_sql(901, true, ARTIFACT_ON_PC, 77, now + 10000, ARTIFACT_MAJOR);
+	const auto before_war = jobs.size();
 	event_artifact_wars_sql(nullptr, nullptr, nullptr, nullptr);
+	assert(jobs.size() == before_war + 1 && contains(jobs.back(), "VALUES(900,") &&
+	       contains(jobs.back(), "VALUES(901,"));
 	// One excess major artifact burns one quarter of each remaining timer.
 	assert(artifact_rows.at(900).timer == now + 6195);
 	assert(artifact_rows.at(901).timer == now + 7500);
@@ -768,7 +771,7 @@ static void population_snapshot_cases()
 	row.extra_flags = ITEM_ARTIFACT;
 	row.extra_flags_present = true;
 	row.quantity = 1;
-	row.custody_examined = row.custody_found = true;
+	row.custody_examined = row.custody_found = row.custody_owner_revision_found = true;
 	row.custody = { 111, 111, 0, row.payload_owner, 1, 1, 900, item_custody_state::active };
 	const std::vector<artifact_payload_projection> rows = { row };
 	const std::vector<artifact_population_template> prototypes = { { 900, ITEM_ARTIFACT },
@@ -991,24 +994,22 @@ int main(int argc, char **argv)
 	assert(artifact_save_pulse(false) == 0);
 	accepting = false;
 	assert(!artifact_binds_reset(-1));
-	assert(artifact_save_pulse(false) == 2);
+	assert(artifact_save_pulse(false) == 0 && artifact_binds.at(900).owner_pid == 77 &&
+	       artifact_binds.at(901).owner_pid == -1);
 	accepting = true;
-	artifact_bind_store(900, 88, 30);
 	artifact_save_pulse(true);
-	assert(jobs.size() == 4 && contains(jobs[2], "VALUES(900,88,30)") &&
-	       contains(jobs[3], "VALUES(901,-1,0)"));
-	finish(2);
-	finish(3);
-	assert(artifact_save_pulse(false) == 0);
+	assert(jobs.size() == 2); // A refused batch must not become per-row retries.
 	fail_allocation = true;
 	assert(!artifact_binds_reset(-1));
-	assert(!fail_allocation && artifact_save_pulse(false) == 2);
+	assert(!fail_allocation && artifact_save_pulse(false) == 0 &&
+	       artifact_binds.at(900).owner_pid == 77);
 	artifact_save_pulse(true);
-	assert(jobs.size() == 6);
-	finish(4);
-	finish(5);
+	assert(jobs.size() == 2);
+	assert(artifact_binds_reset(-1) && jobs.size() == 3);
+	assert(contains(jobs[2], "VALUES(900,-1,0)") && contains(jobs[2], "VALUES(901,-1,0)"));
+	finish(2);
 	assert(artifact_save_pulse(false) == 0);
-	puts("PASS shared soul-reset receipt, later binding, admission and allocation recovery");
+	puts("PASS shared soul-reset receipt, later binding, unchanged admission/allocation refusal");
 
 	// Failed low-number rows must not starve higher-number rows indefinitely.
 	artifact_rows.clear();

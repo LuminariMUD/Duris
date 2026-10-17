@@ -19,9 +19,9 @@ with tempfile.TemporaryDirectory(prefix="copyover-evidence-", dir=output) as dir
         "tests/async/copyover_evidence_harness.cpp", "src/guild/artifact_population_recovery.c",
         *[rel(source) for source in ("world_recovery_pipeline.c", "world_recovery_codec.c",
             "generated_npc_state.c", "pet_restore_state.c", "item_transfer_command.c")],
-        str(HARNESS_STUBS), "-Wl,--gc-sections", "-lz", "-lbsd", "-lgnutls", "-o", str(binary),
+        str(HARNESS_STUBS), "-Wl,--gc-sections", "-Wl,--wrap=open", "-lz", "-lbsd", "-lgnutls", "-o", str(binary),
     ], cwd=ROOT, check=True)
-    for scenario in ("formats", "pin", "failed", "two", "nonregular", "symlink", "absent"):
+    for scenario in ("race-symlink", "race-inode", "race-claimed-inode", "limits", "formats", "pin", "failed", "two", "nonregular", "symlink", "absent"):
         state = folder / scenario
         state.mkdir()
         subprocess.run([str(binary), scenario], cwd=state, check=True, timeout=30,
