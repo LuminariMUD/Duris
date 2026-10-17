@@ -24,16 +24,56 @@ ROOT = journey.ROOT
 PLAYER, ACCOUNT = 'Articaster', 'Artiplayer'
 GOD, GOD_ACCOUNT = 'Artiwarden', 'Artistaff'
 VICTIM, VICTIM_ACCOUNT = 'Artivictim', 'Artienemy'
-ARTIFACT = 900
+ARTIFACT = 900000
+SWAP_LIVE, SWAP_OFFLINE, SWAP_CRUMBLE = ARTIFACT + 1, ARTIFACT + 2, ARTIFACT + 3
 
 
-CASES = ('standard', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
+CASES = ('standard', 'npc', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
 
 
 def run(binary, case):
     with tempfile.TemporaryDirectory(prefix='artifact-rewards-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
+        # The reward subject is a private prototype with no reset/script
+        # producers; natural world population is random and is not fixture state.
+        objects = (ROOT / 'areas/world.obj').read_text(encoding='latin-1')
+        original = re.search(r'(?ms)^#900\n.*?(?=^#\d+\n)', objects)
+        assert original and not re.search(rf'(?m)^#{ARTIFACT}$', objects)
+        assert not re.search(rf'(?m)^#({SWAP_LIVE}|{SWAP_OFFLINE}|{SWAP_CRUMBLE})$', objects)
+        private_records = []
+        for vnum in (ARTIFACT, SWAP_LIVE, SWAP_OFFLINE, SWAP_CRUMBLE):
+            record = original.group().replace('#900\n', f'#{vnum}\n', 1)
+            if vnum == SWAP_CRUMBLE:
+                # The real obj_to_char contract can destroy an artifact with this
+                # existing flag before returning to its caller. Keep it private.
+                strings = record.split('~', 4)
+                numeric = strings[4].splitlines(keepends=True)
+                header = next(index for index, line in enumerate(numeric) if line.strip())
+                fields = numeric[header].split()
+                assert len(fields) == 11
+                fields[8] = str(int(fields[8]) | 2048) # ITEM2_CRUMBLELOOT
+                numeric[header] = ' '.join(fields) + '\n'
+                strings[4] = ''.join(numeric)
+                record = '~'.join(strings)
+            private_records.append(record)
+        inserted = ''.join(private_records)
+        position = next(match.start() for match in re.finditer(r'(?m)^#(\d+)\n', objects)
+                        if int(match.group(1)) > ARTIFACT)
+        areas = runtime / 'areas'
+        assert areas.is_symlink()
+        areas.unlink(); areas.mkdir()
+        for source in (ROOT / 'areas').iterdir():
+            if source.name not in ('world.obj', 'world.trg'):
+                (areas / source.name).symlink_to(source, target_is_directory=source.is_dir())
+        (areas / 'world.obj').write_text(objects[:position] + inserted + objects[position:], encoding='latin-1')
+        triggers = (ROOT / 'areas/world.trg').read_text(encoding='latin-1')
+        assert triggers.count('#~') == 1
+        private_trigger = (f'#{ARTIFACT} O\nT CMD scratch\noload {ARTIFACT}\ngive {ARTIFACT}\n'
+                           'echo artifact-identity-studio-duplicate\nblock\n~\n'
+                           f'T CMD use\ngive {SWAP_CRUMBLE}\n'
+                           'echo artifact-identity-studio-crumble\nblock\n~\nS\n')
+        (areas / 'world.trg').write_text(triggers.replace('#~', private_trigger + '#~'), encoding='latin-1')
         (runtime / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         (runtime / 'bin/server').mkdir(parents=True)
         executable = runtime / 'bin/server/dms'
@@ -63,7 +103,7 @@ def run(binary, case):
         clients = []
         process = None
         locker = None
-        evidence = {'case': case, 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}
+        evidence = {'case': case, 'artifact_vnum': ARTIFACT, 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}
         barrier = runtime / 'history-commit.hold'
         preload = runtime / 'bin/tests/artifact-commit-barrier.so'
         if case == 'after_history':
@@ -97,10 +137,13 @@ def run(binary, case):
                 process.wait(timeout=60)
                 assert process.returncode == (-signal.SIGKILL if crash else 0)
 
-            def login(name, account):
+            def login(name, account, *, reconnect=False):
                 client = journey.reconnect_character(plain, expected_room=None, account=account, character=name)
                 clients.append(client)
-                client.expect('Welcome to Duris', timeout=60)
+                if reconnect:
+                    assert 'Reconnecting...' in client.transcript.decode(errors='replace')
+                else:
+                    client.expect('Welcome to Duris', timeout=60)
                 client.expect_any(('Pos: standing >', '<>'), timeout=20)
                 command(client, 'toggle paging no')
                 return client
@@ -158,6 +201,15 @@ def run(binary, case):
                     sql(f"UPDATE player_data SET level=51,highest_level=51,race=13,racewar=2 WHERE name='{VICTIM}'")
                     # The opposing-side fixture starts without a recent Good login.
                     sql(f"UPDATE accounts SET last_good_char=NULL WHERE account_name='{VICTIM_ACCOUNT}'")
+                # An undecodable source graph is data only: ordinary gameplay and
+                # repeated character saves must preserve the original rows/metadata.
+                source_pid = int(sql(f"SELECT pid FROM player_data WHERE name='{PLAYER}'"))
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,weight,extra_flags,short_descr) VALUES({source_pid},900,NULL,7,123,268435456,'held source evidence')")
+                retained_root = int(sql(f"SELECT id FROM player_items WHERE pid={source_pid} AND short_descr='held source evidence'"))
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES({source_pid},901,8888888,{retained_root},1)")
+                sql(f"INSERT INTO player_item_extra_descr(item_id,keyword,description) VALUES({retained_root},'retained','original source details')")
+                def retained_source_intact():
+                    return sql(f"SELECT COUNT(*) FROM player_items p JOIN player_items c ON c.container_id=p.id AND c.obj_uid=8888888 JOIN player_item_extra_descr d ON d.item_id=p.id AND d.keyword='retained' AND d.description='original source details' WHERE p.id={retained_root} AND p.obj_uid IS NULL AND p.quantity=7 AND p.weight=123 AND p.short_descr='held source evidence'") == '1' and sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=8888888") == '0'
                 # A prepared spell is initial fixture state; casting, delayed events,
                 # kills, boon publication and rewards all use the real game path.
                 sql(f"INSERT INTO player_skills(pid,skill_id,learned,taught) SELECT pid,571,100,100 FROM player_data WHERE name='{PLAYER}' ON DUPLICATE KEY UPDATE learned=100,taught=100")
@@ -166,6 +218,9 @@ def run(binary, case):
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
                 command(god, 'goto 1')
+                # Roaming world mobs must not join the three controlled boon targets.
+                command(god, 'setbit room here flag NO_MOB 1')
+                command(god, 'purge')
                 command(god, 'setbit room here flag SAFE 0')
                 command(god, 'setbit room here flag ROOM_NO_MAGIC 0')
                 command(god, 'setbit room here flag ROOM_MAGIC_LIGHT 1')
@@ -184,7 +239,18 @@ def run(binary, case):
                 command(player, 'consent ' + GOD)
                 grouped = command(god, 'group ' + PLAYER)
                 assert 'now a member' in grouped, grouped
-                command(god, f'load obj {ARTIFACT}')
+
+                created = command(god, f'load obj {ARTIFACT}')
+                assert 'You have created' in created, created
+                command(god, 'drop stone')
+                settle(lambda: sql(f'SELECT owned FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '0', 'unowned ground control missing')
+                ground = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', ground), ground
+                duplicate = command(god, f'load obj {ARTIFACT}')
+                assert 'creation refused: already present' in duplicate, duplicate
+                command(god, 'get stone')
+                cloned = command(god, 'clone obj stone 2')
+                assert 'Clone refused' in cloned and 'You make a clone' not in cloned, cloned
                 command(god, 'give stone ' + PLAYER)
                 equipped = command(player, 'wear stone')
                 assert 'stone' in equipped, equipped
@@ -195,6 +261,46 @@ def run(binary, case):
                 settle(lambda: int(sql(f'SELECT UNIX_TIMESTAMP(timer) FROM artifacts WHERE vnum={ARTIFACT}')) < time.time() + 1000, 'uncapped timer setup was not saved')
                 timer_before = int(sql(f'SELECT UNIX_TIMESTAMP(timer) FROM artifacts WHERE vnum={ARTIFACT}'))
                 evidence['timer_before'] = timer_before
+                identity_before = sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}')
+                assert identity_before.endswith('\t1') and int(identity_before.split('\t')[0]) > 0, identity_before
+                evidence['canonical_identity'] = identity_before
+                # Exercise actual async list/player reports after boot cached the private template.
+                for report in ('artifacts player ' + PLAYER, 'artifacts ioun'):
+                    god.send(report)
+                    god.expect(f'(#{ARTIFACT})', timeout=30)
+                report_population = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', report_population), report_population
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                evidence['reports_preserved_population'] = True
+                scripted = command(player, 'scratch stone')
+                assert 'artifact-identity-studio-duplicate' in scripted, scripted
+                assert 'materializes in your hands' not in scripted, scripted
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {ARTIFACT}'))
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                destructive = command(player, 'use stone')
+                assert 'artifact-identity-studio-crumble' in destructive, destructive
+                assert 'materializes in your hands' not in destructive, destructive
+                assert re.search(r'Number in game\s*:\s*0\b', command(god, f'stat obj {SWAP_CRUMBLE}'))
+                evidence['studio_creation_admission'] = {
+                    'duplicate_load_and_give_refused': True,
+                    'canonical_live_count': 1,
+                    'destructive_give_no_false_success': True,
+                }
+                # The native Black Pearl quest proc is a separate fresh producer.
+                # Reserve both alignment artifacts, then ensure its transform refuses
+                # before spawning a boss or replacing the original quest NPC.
+                for quest_vnum in (21, 22):
+                    command(god, f'load obj {quest_vnum}')
+                    assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {quest_vnum}'))
+                quest_npc = command(god, 'load mob 142212')
+                assert 'created' in quest_npc, quest_npc
+                transform = command(god, 'use transform')
+                assert 'artifact is unavailable; transformation cancelled' in transform, transform
+                assert 'removing his disguise' not in transform, transform
+                for quest_vnum in (21, 22):
+                    assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {quest_vnum}'))
+                command(god, 'purge')
+                evidence['quest_transformation_duplicate_refused'] = True
                 if case == 'pvp':
                     # Two synthetic mortal accounts may fight in this private fixture.
                     god.send('whitelist add Fixture 127.0.0.* isolated reward journey')
@@ -280,7 +386,7 @@ def run(binary, case):
                 evidence['cast_transcript'] = bytes(player.transcript[cast_start:]).decode(errors='replace')
                 assert evidence['cast_transcript'].count('Raoul convulses and dies') == 3
                 assert evidence['cast_transcript'].count('sense of satisfaction') == 3
-                if case != 'standard':
+                if case not in ('standard', 'npc'):
                     evidence['before_crash'] = held
                     stopped_at = time.monotonic()
                     stop(crash=case != 'shutdown')
@@ -348,32 +454,190 @@ def run(binary, case):
                 assert sql('SELECT guild_prestige_after,guild_construction_after FROM artifact_guild_outcome ORDER BY guild_prestige_after') == '95\t0\n105\t1\n115\t1'
                 evidence['outcome_deltas'] = deltas
                 print('artifact journey: writer recovered; timers, guild totals and history agree', flush=True)
+                # Keep the same canonical artifact on the ground through native copyover.
+                command(player, 'drop all') # free the normal starter inventory capacity
+                removed = command(player, 'remove stone')
+                assert 'You stop using' in removed, removed
+                dropped = command(player, 'drop stone')
+                assert 'You drop' in dropped, dropped
+                settle(lambda: sql(f'SELECT loc_type,location FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '4\t1', 'ground artifact location did not commit')
+                if case == 'npc':
+                    command(god, 'load mob 11')
+                    command(god, 'force raoul get stone')
+                    command(god, 'force raoul wear stone')
+                    settle(lambda: sql(f'SELECT location FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '11', 'NPC artifact placement did not commit')
+                ground_state = saved_state()
+                assert ground_state['artifact'].split('\t')[-1] == after['artifact'].split('\t')[-1]
+                soul_before = sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
+                evidence['ground_state'] = ground_state
+                evidence['ground_custody'] = sql(f'SELECT c.item_uid,c.root_item_uid,c.parent_item_uid,c.owner_type,c.owner_id,c.owner_context_id,c.item_revision,c.state,r.revision FROM item_current_owner c LEFT JOIN item_owner_revision r ON r.owner_type=c.owner_type AND r.owner_id=c.owner_id AND r.owner_context_id=c.owner_context_id WHERE c.vnum={ARTIFACT}')
                 process.send_signal(signal.SIGUSR1)
                 player.expect('Copyover complete!', timeout=180)
                 god.expect('Copyover complete!', timeout=180)
-                assert saved_state() == after, 'copyover changed persisted reward state/history'
-                assert 'ioun stone' in command(player, 'equipment')
+                assert saved_state() == ground_state, 'copyover changed persisted ground artifact/reward state'
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                recovered_ground = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', recovered_ground), recovered_ground
+                if case == 'npc':
+                    command(god, 'force raoul remove stone')
+                    command(god, 'force raoul drop stone')
+                    evidence['npc_copyover_preserved_uid_timer_soul'] = True
+                command(player, 'get stone')
+                command(player, 'wear stone')
+                settle(lambda: saved_state() == after, 'ground pickup changed artifact timer/reward history')
+                evidence['ground_copyover_preserved_uid_timer_soul'] = True
+                recovered_equipment = command(player, 'equipment')
+                assert 'ioun stone' in recovered_equipment, recovered_equipment
                 evidence['copyover_after_drain'] = True
                 player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
                 stop()
                 before_restart = saved_state()
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
-                player = login(PLAYER, ACCOUNT)
+                offline_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*0\b', offline_stat), offline_stat
+                offline_denied = command(god, f'load obj {ARTIFACT}')
+                assert 'creation refused: already present' in offline_denied, offline_denied
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                # Change mutable source data after boot classified the healthy canonical
+                # artifact. The wrong-UID root and child must stay raw, while that real
+                # artifact and independent ordinary inventory still enter gameplay.
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,extra_flags,short_descr) VALUES({source_pid},{ARTIFACT},8888899,1,268435456,'rejected mutable artifact')")
+                rejected_root = int(sql(f"SELECT id FROM player_items WHERE pid={source_pid} AND obj_uid=8888899"))
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES({source_pid},901,8888898,{rejected_root},1)")
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,extra_flags,short_descr) VALUES({source_pid},901,8888897,1,0,'ordinary source control')")
+                god.send('load char ' + PLAYER)
+                god.expect('greatly humbled by your power', timeout=60)
+                loaded_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', loaded_stat), loaded_stat
+                god.send('load char ' + PLAYER)
+                god.expect('item load refused.', timeout=60)
+                duplicate_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', duplicate_stat), duplicate_stat
+                player = login(PLAYER, ACCOUNT, reconnect=True)
+                assert 'Some saved items need staff review' in player.transcript.decode(errors='replace')
                 assert 'ioun stone' in command(player, 'equipment')
+                assert 'ordinary source control' in command(player, 'inventory')
+                evidence['staff_player_load_admission'] = {'canonical_live_count': 1, 'duplicate_refused': True, 'account_reconnected': True}
+                admitted_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', admitted_stat), admitted_stat
+                player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                assert sql(f"SELECT COUNT(*) FROM player_items p JOIN player_items c ON c.container_id=p.id AND c.obj_uid=8888898 WHERE p.id={rejected_root} AND p.obj_uid=8888899 AND p.short_descr='rejected mutable artifact'") == '1'
+                assert sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (8888899,8888898)") == '0'
+                assert sql(f"SELECT COUNT(*) FROM item_current_owner WHERE item_uid=8888897 AND owner_type=1 AND owner_id={source_pid} AND state=1") == '1'
+                evidence['mutable_player_admission'] = {'wrong_uid_root_retained': True, 'no_held_claim': True, 'canonical_live_count': 1, 'ordinary_inventory_saved': True}
+                # Hunt follows the established initial/filename discovery but reads
+                # the complete raw SQL source cut without creating a second owner.
+                discovery = runtime / 'Players/a'
+                discovery.mkdir(parents=True, exist_ok=True)
+                (discovery / PLAYER).touch()
+                # Compare logical source payloads: an unrelated autosave may replace
+                # valid rows' database IDs while this read is in flight.
+                audit_query = f"SELECT p.obj_uid,COALESCE(parent.obj_uid,0),p.vnum,p.quantity,p.extra_flags,p.short_descr FROM player_items p LEFT JOIN player_items parent ON parent.id=p.container_id WHERE p.pid={source_pid} ORDER BY p.obj_uid,p.id"
+                before_hunt = sql(audit_query)
+                god.send('artifacts hunt a')
+                god.expect('Artifact source audit for ' + PLAYER, timeout=60)
+                god.expect('No repairs applied.', timeout=60)
+                hunt_output = god.transcript.decode(errors='replace')
+                assert f'vnum={ARTIFACT} uid=8888899' in hunt_output
+                assert 'vnum=900 uid=0' in hunt_output and 'quantity=7' in hunt_output
+                assert sql(audit_query) == before_hunt
+                hunt_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', hunt_stat), hunt_stat
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                evidence['hunt_read_only_source_inspection'] = True
+                # Invalid maintenance input must leave the canonical artifact and
+                # raw held source graph untouched, including a vnum that used to wrap.
+                for invalid_timer in (f'artifacts timer set {ARTIFACT} not-a-number',
+                                      f'artifacts timer set {2**32 + ARTIFACT} 10'):
+                    refused = command(god, invalid_timer)
+                    assert 'timer changed' not in refused, refused
+                command(god, 'artifacts poof 900')
+                assert sql(audit_query) == before_hunt
+                maintenance_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', maintenance_stat), maintenance_stat
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                evidence['maintenance_query_preserves_identity_and_source'] = True
+                refused_swap = command(god, f'artifacts swap {ARTIFACT} {ARTIFACT}')
+                assert 'already has a physical target copy' in refused_swap, refused_swap
+                assert sql(audit_query) == before_hunt
+                still_one = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', still_one), still_one
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
+                assert 'You stop using' in command(player, 'remove stone')
+                failed_swap = command(god, f'artifacts swap {ARTIFACT} {SWAP_CRUMBLE}')
+                assert 'replacement placement failed; original retained' in failed_swap, failed_swap
+                assert 'ioun stone' in command(player, 'inventory')
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {ARTIFACT}'))
+                assert sql(f'SELECT canonical_item_uid,identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={SWAP_CRUMBLE}') == '0\t3'
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                assert saved_state() == before_restart, 'failed placement changed persisted artifact/reward state'
+                command(player, 'wear stone')
+                assert 'ioun stone' in command(player, 'equipment')
+                evidence['destructive_placement_preserves_original'] = True
+                # Real worn replacement, then an offline replacement after a clean
+                # restart. This proves admission/recovery, not atomic crash windows.
+                expected_timer = int(before_restart['artifact'].split('\t')[-1])
+                old_uid = int(identity_before.split('\t')[0])
+                live_swapped = command(god, f'artifacts swap {ARTIFACT} {SWAP_LIVE}')
+                assert 'swapped with artifact' in live_swapped, live_swapped
+                settle(lambda: sql(f'SELECT identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '2',
+                       'online swap did not retain its old UID tombstone')
+                settle(lambda: sql(f'SELECT timer_epoch FROM artifact_domain_state WHERE vnum={SWAP_LIVE}') == str(expected_timer),
+                       'online replacement lost its timer')
+                live_uid = int(sql(f'SELECT canonical_item_uid FROM artifact_domain_state WHERE vnum={SWAP_LIVE}'))
+                assert live_uid != old_uid
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {SWAP_LIVE}'))
+                assert re.search(r'Number in game\s*:\s*0\b', command(god, f'stat obj {ARTIFACT}'))
+                player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                settle(lambda: sql(f'SELECT COUNT(*) FROM player_items WHERE pid={source_pid} AND obj_uid={live_uid}') == '1',
+                       'online replacement payload did not save')
                 stop()
+                boot(); god = login(GOD, GOD_ACCOUNT)
+                god.send(f'artifacts swap {SWAP_LIVE} {SWAP_OFFLINE}')
+                god.expect('swapped with artifact', timeout=60)
+                settle(lambda: sql(f'SELECT identity_state FROM artifact_domain_state WHERE vnum={SWAP_LIVE}') == '2',
+                       'offline swap did not retire its requested UID')
+                settle(lambda: sql(f'SELECT timer_epoch FROM artifact_domain_state WHERE vnum={SWAP_OFFLINE}') == str(expected_timer),
+                       'offline replacement lost its timer')
+                final_uid = int(sql(f'SELECT canonical_item_uid FROM artifact_domain_state WHERE vnum={SWAP_OFFLINE}'))
+                assert final_uid not in (old_uid, live_uid)
+                settle(lambda: sql(f'SELECT COUNT(*) FROM player_items WHERE pid={source_pid} AND vnum={SWAP_OFFLINE} AND obj_uid={final_uid}') == '1',
+                       'offline replacement payload did not save')
+                assert sql(f'SELECT COUNT(*) FROM player_items WHERE pid={source_pid} AND obj_uid IN ({old_uid},{live_uid})') == '0'
+                assert re.search(r'Number in game\s*:\s*0\b', command(god, f'stat obj {SWAP_OFFLINE}'))
+                stop()
+                boot(); god = login(GOD, GOD_ACCOUNT); player = login(PLAYER, ACCOUNT)
+                assert 'ioun stone' in command(player, 'equipment')
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {SWAP_OFFLINE}'))
+                assert sql(f'SELECT canonical_item_uid,identity_state,timer_epoch FROM artifact_domain_state WHERE vnum={SWAP_OFFLINE}') == f'{final_uid}\t1\t{expected_timer}'
+                assert sql('SELECT COUNT(*) FROM artifact_guild_outcome') == before_restart['history']
+                evidence['canonical_online_offline_swap_admission'] = {
+                    'source_uid': old_uid, 'online_uid': live_uid, 'offline_uid': final_uid,
+                    'timer_preserved': True, 'final_live_count': 1,
+                    'atomic_crash_windows_qualified': False,
+                }
+                stop()
+                assert retained_source_intact(), 'load/save/copyover/restart lost or claimed retained source rows'
+                evidence['retained_source_survived_without_claim'] = True
                 evidence['clean_restart'] = True
                 target = ROOT / 'bin/analysis/artifact-estale'
                 target.mkdir(parents=True, exist_ok=True)
                 (target / 'gameplay-journey.json').write_text(json.dumps(evidence, indent=2) + '\n')
-                print('PASS Summon Ghasts -> actual kills/boons -> three feeds and cumulative guild threshold; clean restart', flush=True)
+                print('PASS Summon Ghasts -> three feeds/guild threshold -> copyover/restart -> canonical online/offline swaps', flush=True)
             except Exception as error:
                 failure = ROOT / 'bin/analysis/artifact-estale' / f'failure-{case}-{time.time_ns()}'
                 failure.mkdir(parents=True)
                 shutil.copy2(output_path, failure / 'server.out')
                 shutil.copytree(runtime / 'logs', failure / 'logs')
+                (failure / 'journey-state.json').write_text(json.dumps(evidence, indent=2) + '\n')
+                for source in (runtime / 'copyover.dat', runtime / 'copyover.dat.recovering'):
+                    if source.is_file():
+                        shutil.copy2(source, failure / source.name) # private synthetic handoff evidence
                 (failure / 'process.txt').write_text(f'pid={process.pid if process else None} returncode={process.poll() if process else None}\n')
                 print(f'artifact journey failure evidence: {failure}', flush=True)
                 traces = '\n'.join(bytes(c.transcript[-6000:]).decode(errors='replace') for c in clients)

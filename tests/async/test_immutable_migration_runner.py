@@ -496,7 +496,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertIn("requires run", result.stderr)
 
     def test_online_player_updates_scope_and_lock_mode(self):
-        manifest = runner.load_manifest()
+        current = runner.load_manifest()
+        manifest = runner.replace(current, migrations=current.migrations[:43])
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
@@ -514,7 +515,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                     with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
                         runner.MysqlExecutor(runner.replace(manifest, migrations=tuple(steps)),
                                              "127.0.0.1/duris", backup, online_player_updates=True)
-            for steps in (manifest.migrations[:-1], manifest.migrations + (manifest.migrations[-1],)):
+            for steps in (manifest.migrations[:-1], current.migrations,
+                          manifest.migrations + (manifest.migrations[-1],)):
                 with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
                     runner.MysqlExecutor(runner.replace(manifest, migrations=steps),
                                          "127.0.0.1/duris", backup, online_player_updates=True)

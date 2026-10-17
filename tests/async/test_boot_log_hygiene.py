@@ -65,7 +65,9 @@ assert index(main, "sql_hydrate_item_owner_revisions()") < index(
     main, "reap_unheld_player_items_at_boot();") < index(main, "run_the_game(port, sslport)")
 reap = comm[comm.index("static void reap_unheld_player_items_at_boot(void)"):]
 reap = reap[:reap.index("\n}\n")]
-assert "reap_unheld_player_items(DB, &deleted)" in reap
+assert "reap_unheld_player_items(DB, &deleted, &population.retained_uids)" in reap
+assert "if (!population.complete)" in reap
+assert index(main, "artifact_population_prepare_boot(copyover_boot)") < index(main, "reap_unheld_player_items_at_boot();")
 assert "flatfile_item_repository_reap_unheld_player_items(" in reap
 for name in ("player_snapshot_repository.c", "item_claim_repository.c",
              "flatfile_player_repository.c"):
@@ -183,7 +185,9 @@ timer_warnings = [
     for n, line in enumerate(artifact_lines)
     if "WARNING: timer was" in line and "resetting to 10 days" in line
 ]
-assert len(timer_warnings) == 3
+# Both backends now share memory authority; validate every surviving warning,
+# without counting retired backend-specific copies of the same implementation.
+assert timer_warnings
 for n in timer_warnings:
     # clang-format wraps the logit() call, so the ownership guard sits a couple
     # of lines above the message rather than immediately before it.

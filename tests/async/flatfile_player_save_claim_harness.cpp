@@ -626,6 +626,21 @@ int main(int argc, char **argv)
 	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error);
 	require(reap == flatfile_item_repository_result::unchanged && reaped == 0,
 		"a second reap finds nothing");
+	const item_owner_identity recovery_owner = { item_owner_type::player, 99, 0 };
+	establish(root, recovery_owner,
+		  { { 9001, 9001, 0, 900 }, { 9002, 9001, 9001, 900 }, { 9003, 9003, 0, 900 } });
+	const std::vector<uint64_t> retained = { 9002 };
+	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error, &retained);
+	require(reap == flatfile_item_repository_result::ok && reaped == 1 &&
+			(remaining(recovery_owner) == std::vector<uint64_t>{ 9001, 9002 }),
+		"recovery-only child and its parent custody were reaped: " + error);
+	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error, &retained);
+	require(reap == flatfile_item_repository_result::unchanged && !reaped,
+		"retained recovery custody did not stay stable");
+	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error);
+	require(reap == flatfile_item_repository_result::ok && reaped == 2 &&
+			held_by(root, recovery_owner).empty(),
+		"released recovery evidence prevented a later genuine reap");
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

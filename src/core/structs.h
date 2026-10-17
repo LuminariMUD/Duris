@@ -63,6 +63,7 @@ typedef signed short int sh_int;
 typedef struct AC_Memory Memory;
 typedef struct char_data *P_char;
 struct player_held_pet_state;
+struct player_item_retention;
 typedef struct Guild *P_Guild;
 typedef struct Alliance *P_Alliance;
 typedef struct descriptor_data *P_desc;
@@ -1244,6 +1245,7 @@ struct pc_only_data
 	char last_read_news_hash[65]; // empty or SHA-256 hex; saved with character status
 	OutputPreferenceState output_preferences;
 	player_held_pet_state *held_pets; // owned snapshots; never active followers
+	player_item_retention *retained_items; // owned source selectors; never live objects
 	uint64_t unloaded_components; // checkpoint components its load did not read; not saved
 	uint64_t learned_flight_stops; // permanent catalog bits; saved with experience
 	int pid; // replacement for PC's ->nr

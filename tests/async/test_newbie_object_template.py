@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic runtime regression for boot-only newbie object-template parsing.
+"""Synthetic runtime regression for boot-only starter/artifact template caching.
 
 Executes extracted production db.c parser/cache/publisher, fread_string,
 strn_cmp, isname, and the default proc parser against a temporary object file.
@@ -19,6 +19,10 @@ PRELUDE = r'''
 #include "core/mm.h"
 #include "cmd/interp.h"
 #include "world/object_template.h"
+#include "guild/artifact_admission.h"
+#include "guild/artifact_population.h"
+#include "guild/artifact_population_boot.h"
+#include "redis/redis_world_runtime.h"
 #include "item/objmisc.h"
 #include <cassert>
 #include <cstdarg>
@@ -40,7 +44,27 @@ static unsigned periodic_calls, event_calls, duplicate_strings;
 static unsigned empty_proc_rejections, noarg_proc_calls;
 char *proclibobj_parse_default(char *);
 static std::unordered_set<void *> allocations;
-static std::unordered_map<int, object_template> starter_object_templates;
+static std::unordered_map<int, object_template> object_templates;
+static artifact_population_boot_snapshot population;
+static bool classified = false;
+int copyover_boot=0;
+static bool semantic_valid=true, expected_complete=true;
+redis_world_boot_result redis_world_prepare_boot() { return redis_world_boot_result::ready; }
+bool redis_world_validate_boot() { return semantic_valid; }
+const artifact_population_boot_snapshot &artifact_population_boot_evidence() { return population; }
+void artifact_population_boot_clear() { assert(classified); population = {}; }
+bool artifact_tracks_vnum(int vnum) { return vnum == 102; }
+bool artifacts_stage_population(const std::vector<artifact_payload_projection> &items,
+                                const std::vector<artifact_population_template> &prototypes,
+                                bool complete) {
+    assert(complete==expected_complete && items.size() == 3 && items.front().vnum == 101 && prototypes.size() == 9);
+    classified = true; return true;
+}
+void fatal_boot_error(const char *, const char *, ...) { abort(); }
+bool artifact_begin_creation(P_obj) { abort(); }
+bool artifact_begin_recovery(P_obj, const artifact_payload_projection &) { abort(); }
+bool artifact_begin_creation_repair(P_obj,const artifact_payload_projection &) { abort(); }
+void mm_release(mm_ds *, void *) { abort(); }
 void *__malloc(size_t size, const char *, const char *, int)
 {
     assert(size > 0);
@@ -127,13 +151,14 @@ void convertObj(P_obj obj) { assert_published(obj); ++conversion_calls; }
 
 DRIVER = r'''
 static void write_record(int nr, const char *name, int type, int first_value,
-                         unsigned long wear, bool rich, const char *extra = "")
+                         unsigned long wear, bool rich, const char *extra = "",
+                         unsigned long flags = ITEM_PROCLIB)
 {
     indexes[nr].virtual_number = 100 + nr;
     indexes[nr].pos = ftell(obj_f);
     std::ostringstream record;
     record << name << "~\nA &+Csynthetic item~\nA synthetic item lies here.~\n~\n";
-    record << type << " 3 0 0 6 0 " << ITEM_PROCLIB << ' ' << wear << " 19 "
+    record << type << " 3 0 0 6 0 " << flags << ' ' << wear << " 19 "
            << CLASS_NECROMANCER << " 23\n";
     record << first_value << " 2 3 4 5 6 7 8\n17 1234 88\n1 2 4 8\n";
     if (rich)
@@ -180,7 +205,8 @@ static void cleanup()
 int main()
 {
     obj_f = tmpfile(); assert(obj_f);
-    write_record(0, "BAG random_exit", ITEM_CONTAINER, 12, ITEM_TAKE, true);
+    write_record(0, "BAG random_exit", ITEM_CONTAINER, 12, ITEM_TAKE, true, "",
+                 ITEM_PROCLIB | ITEM_ARTIFACT);
     write_record(1, "BOOMERANG", ITEM_WEAPON, WEAPON_2HANDSWORD, ITEM_HOLD, false);
     write_record(2, "ARMOR", ITEM_ARMOR, 0, ITEM_TAKE, false);
     write_record(3, "SWITCH", ITEM_SWITCH, 0, 0, false);
@@ -195,6 +221,30 @@ int main()
     write_record(8, "NOARG_PROC", ITEM_CONTAINER, 0, ITEM_TAKE, false,
                  "E\n_proclib_hummer~\n~\n");
     fflush(obj_f);
+    // Boot caches flagged prototypes, saved-flag promotions and previously
+    // tracked ordinary vnums, while leaving unrelated ordinary templates uncached.
+    population.complete = true;
+    artifact_payload_projection promoted = {};
+    promoted.vnum = 101; promoted.extra_flags = ITEM_ARTIFACT; promoted.extra_flags_present = true;
+    population.items.push_back(promoted);
+    artifact_payload_projection legacy = {};
+    legacy.vnum = 103; legacy.extra_flags_present = false;
+    population.items.push_back(legacy);
+    legacy.vnum = 104; legacy.extra_flags_present = true;
+    population.items.push_back(legacy);
+    stage_artifact_population();
+    assert(classified && population.items.empty());
+    assert(find_object_template(100));
+    assert(find_object_template(101) && "saved-flag artifact promotion was not cached");
+    assert(find_object_template(102) && "previous artifact identity was not cached");
+    assert(find_object_template(103) && "unknown saved flags must retain the inferred identity template");
+    assert(!find_object_template(104) && object_templates.size() == 4);
+    semantic_valid=false; expected_complete=false; population.complete=true;
+    auto unknown=legacy; unknown.vnum=103; unknown.extra_flags_present=false;
+    population.items={promoted,unknown,legacy};
+    stage_artifact_population(); assert(classified);
+    semantic_valid=true; expected_complete=true;
+    assert_inert();
     for (int nr = 0; nr <= top_of_objt; ++nr) assert(cache_object_template(100 + nr));
     assert(!cache_object_template(999) && !find_object_template(999));
     assert_inert();
@@ -316,7 +366,7 @@ int main()
     assert(empty_proc_rejections == 1 && noarg_proc_calls == 1);
     assert(proc_calls == 4 && periodic_calls == 5 && event_calls == 7);
     assert(pool_allocations == 10 && uid_allocations == 10 && conversion_calls == 10);
-    cleanup(); starter_object_templates.clear();
+    cleanup(); object_templates.clear();
     puts("newbie object template runtime: ok");
 }
 '''
@@ -333,6 +383,8 @@ def main() -> int:
         extract_function("db.c", "object_template parse_object_template(int nr)"),
         extract_function("db.c", "bool cache_object_template(int vnum)"),
         extract_function("db.c", "const object_template *find_object_template(int vnum)"),
+        extract_function("db.c", "static void stage_artifact_population()\n{"),
+        extract_function("db.c", "static P_obj instantiate_object_template_impl("),
         extract_function("db.c", "P_obj instantiate_object_template(const object_template &prototype)"),
     ]
     with tempfile.TemporaryDirectory() as directory:

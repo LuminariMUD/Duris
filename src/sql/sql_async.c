@@ -296,6 +296,11 @@ void sql_async_boot_done(void)
 	booting = false;
 }
 
+bool sql_async_booting(void)
+{
+	return booting;
+}
+
 size_t sql_async_pulse(void)
 {
 	std::deque<finished_read> ready;

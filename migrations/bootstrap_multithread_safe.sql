@@ -2140,8 +2140,11 @@ CREATE TABLE `artifact_domain_state` (
   `item_uid` bigint unsigned DEFAULT NULL, `item_revision` bigint unsigned DEFAULT NULL,
   `revision` bigint unsigned NOT NULL DEFAULT '0',
   `updated_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `canonical_item_uid` bigint unsigned DEFAULT NULL,
+  `identity_state` tinyint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`vnum`), KEY `idx_artifact_domain_owner` (`loc_type`,`location`,`vnum`),
   KEY `idx_artifact_domain_item` (`item_uid`),
+  UNIQUE KEY `uq_artifact_canonical_uid` (`canonical_item_uid`),
   CONSTRAINT `artifact_domain_item_fk` FOREIGN KEY (`item_uid`) REFERENCES `item_current_owner` (`item_uid`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `artifact_domain_baseline` (

@@ -6,7 +6,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +28,9 @@ HARNESS = r'''
 #include "magic/spells.h"
 #include "core/structs.h"
 #include "core/utils.h"
+#include "item/trophy.h"
+#include "core/files.h"
+#include <unordered_set>
 
 bool training_dummy_capture_target_allowed(P_char) { return true; }
 
@@ -156,6 +159,12 @@ player_load_result base_result(int pid = 42)
     return result;
 }
 
+bool materialize_fixture_items(P_char owner, const player_load_result &result,
+                               player_load_item_materialize_metrics *metrics) {
+    return player_load_item_graph_materialize(owner, result.snapshot.items, result.item_identities,
+                                             result.pid, result.item_owner_revision, true, metrics);
+}
+
 void add_item(player_load_result &result, uint64_t database_id, uint64_t uid, int vnum,
               int32_t parent_index, int16_t equipment_slot)
 {
@@ -236,10 +245,30 @@ int real_object(int vnum)
     return vnum == 999 ? -1 : vnum;
 }
 
+static int refused_artifact_vnum = 0;
+static int refused_artifact_errno=EEXIST;
+static size_t creation_repair_reads=0;
+static artifact_payload_projection last_recovery_source;
+static std::vector<uint64_t> released_artifact_uids;
+void artifact_object_extracted(P_obj object, bool) { if(object->obj_uid) released_artifact_uids.push_back(object->obj_uid); }
+void artifact_object_placed(P_obj) {}
+P_obj read_object(int, int);
+P_obj read_object_for_recovery(const artifact_payload_projection &source) {
+    last_recovery_source=source;
+    if(refused_artifact_vnum && source.vnum==refused_artifact_vnum) { errno=refused_artifact_errno; return nullptr; }
+    auto *object=read_object(source.vnum,REAL);
+    if(object) { object->obj_uid=source.item_uid; object->extra_flags=source.extra_flags; }
+    return object;
+}
+P_obj read_object_for_creation_repair(const artifact_payload_projection &source) {
+    ++creation_repair_reads; return read_object_for_recovery(source);
+}
+unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj) {
+    return refused_artifact_vnum && source.vnum==refused_artifact_vnum ? EEXIST : 0;
+}
 P_obj read_object(int rnum, int)
 {
-    if (allocations++ == fail_read_at)
-        return nullptr;
+    if (allocations++ == fail_read_at) { errno=ENOMEM; return nullptr; }
     P_obj object = static_cast<P_obj>(std::calloc(1, sizeof(obj_data)));
     assert(object);
     object->R_num = rnum;
@@ -380,6 +409,115 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 
 int main()
 {
+    for(const bool legacy_pet : {false,true}) {
+        reset_test_state(); auto input=base_result(); input.outcome=player_load_outcome::applied;
+        player_load_source_item foreign;
+        foreign.row_id=1; foreign.item_uid=foreign.root_item_uid=555; foreign.bytes=75;
+        foreign.vnum=103; foreign.quantity=1; foreign.extra_flags=ITEM_ARTIFACT; foreign.extra_flags_present=true;
+        foreign.custody_found=foreign.custody_owner_revision_found=true;
+        foreign.custody={555,555,0,{item_owner_type::player,88,0},1,1,103,item_custody_state::active};
+        input.item_sources.push_back(foreign);
+        const size_t inventory_count=PLAYER_LOAD_ITEM_MAX-(legacy_pet ? 1 : 0);
+        for(size_t index=0;index<inventory_count;++index) {
+            add_item(input,index+2,index+1000,101,-1,0);
+            player_load_source_item raw; raw.row_id=index+2; raw.item_uid=raw.root_item_uid=index+1000;
+            raw.vnum=101; raw.quantity=1; raw.extra_flags_present=true; input.item_sources.push_back(raw);
+        }
+        prepare_valid_status(input);
+        if(legacy_pet) {
+            input.snapshot.components=PLAYER_LOAD_SESSION03_COMPONENTS;
+            player_pet_snapshot pet={}; pet.mob_vnum=700; pet.room_vnum=2300;
+            auto pet_item=input.snapshot.items.front(); pet_item.object_uid=99999; pet.items={pet_item};
+            input.snapshot.pets={pet};
+            player_load_pet_identity identity={}; identity.database_id=1; identity.owner_revision=input.item_owner_revision;
+            auto pet_identity=input.item_identities.front(); pet_identity.database_id=50000;
+            pet_identity.item_uid=pet_identity.root_item_uid=99999;
+            identity.item_identities={pet_identity}; input.pet_identities={identity};
+            ++input.authoritative_item_count; // legacy pet items belong to the player
+        }
+        assert(valid_snapshot(input));
+        refused_artifact_vnum=103; auto qualified=input;
+        const auto capacity_result=player_load_items_qualify(&qualified);
+        if(capacity_result || qualified.snapshot.items.size()!=inventory_count || qualified.snapshot.retained_items.rows.size()!=1)
+            std::fprintf(stderr,"capacity result=%u active=%zu retained=%zu\n",capacity_result,qualified.snapshot.items.size(),qualified.snapshot.retained_items.rows.size());
+        assert(!capacity_result && qualified.snapshot.items.size()==inventory_count && qualified.snapshot.retained_items.rows.size()==1);
+        assert(qualified.authoritative_item_count==PLAYER_LOAD_ITEM_MAX);
+        // The production materializer repeats this actual validator after qualification.
+        assert(!valid_snapshot(qualified));
+        qualified.snapshot.items.pop_back(); qualified.item_identities.pop_back();
+        --qualified.authoritative_item_count;
+        assert(valid_snapshot(qualified)); // exact combined capacity remains valid
+        assert(input.snapshot.retained_items.rows.empty()); refused_artifact_vnum=0;
+    }
+    {
+        reset_test_state();
+        auto result=base_result(); result.pid=42; result.outcome=player_load_outcome::applied;
+        player_load_source_item raw;
+        raw.row_id=15; raw.item_uid=555; raw.root_item_uid=555; raw.bytes=75;
+        raw.vnum=103; raw.quantity=1; raw.extra_flags=ITEM_ARTIFACT; raw.extra_flags_present=true;
+        raw.custody_found=raw.custody_owner_revision_found=true;
+        raw.custody={555,555,0,{item_owner_type::player,88,0},1,1,103,item_custody_state::active};
+        result.item_sources={raw}; // repository omitted the foreign payload
+        refused_artifact_vnum=103;
+        prepare_valid_status(result);
+        player_load_result qualified;
+        assert(qualify_materialization(result, &qualified));
+        assert(result.snapshot.retained_items.rows.empty());
+        result=std::move(qualified);
+        assert(result.snapshot.items.empty() &&
+            result.snapshot.retained_items.rows.size()==1 && result.snapshot.retained_items.rows[0].source_row_id==15);
+        refused_artifact_vnum=0;
+        result.item_sources[0].retain=false; result.snapshot.retained_items={};
+        assert(!player_load_items_qualify(&result) && result.snapshot.retained_items.rows.empty());
+    }
+    {
+        reset_test_state(); test_character owner(42);
+        auto result=base_result(); result.outcome=player_load_outcome::applied;
+        add_item(result,10,1000,100,-1,0); // raw container root
+        add_item(result,11,1001,101,0,0);  // rejected artifact
+        add_item(result,12,1002,101,1,0);  // retained descendant
+        add_item(result,13,1003,101,-1,0); // independent valid root
+        for(const auto &identity:result.item_identities) {
+            player_load_source_item raw;
+            raw.row_id=identity.database_id; raw.parent_row_id=identity.serialized_parent_id;
+            raw.item_uid=identity.item_uid; raw.bytes=50;
+            result.item_sources.push_back(raw);
+        }
+        // Reject one item, not every item of the fixture's ordinary vnum.
+        result.snapshot.items[1].vnum=103;
+        refused_artifact_vnum=103;
+        result.authoritative_item_count=result.item_identities.size();
+        const auto original=result;
+        assert(!player_load_items_qualify(&result));
+        assert(result.snapshot.items.size()==1 && result.snapshot.items[0].object_uid==1003);
+        assert(result.snapshot.retained_items.rows.size()==3 && result.snapshot.retained_items.bytes==150);
+        assert(original.snapshot.items.size()==4 && original.snapshot.retained_items.rows.empty());
+        assert(result.item_admission_sources.size()==1 && result.item_admission_sources[0].item_uid==1003);
+        player_load_item_materialize_metrics metrics;
+        assert(player_load_items_materialize(&owner.character,result,&metrics));
+        assert(owner.character.carrying && owner.character.carrying->obj_uid==1003 && !owner.character.carrying->next_content);
+        player_load_items_discard(&owner.character);
+        // Raw and repaired ancestry can connect otherwise separate source roots.
+        result=original; result.item_sources[2].parent_row_id=0;
+        assert(!player_load_items_qualify(&result) && result.snapshot.retained_items.rows.size()==3 && result.snapshot.items.size()==1);
+        refused_artifact_vnum=0;
+    }
+    {
+        reset_test_state(); test_character owner(42);
+        auto result=base_result();
+        add_item(result,10,1000,101,-1,0);
+        add_item(result,11,1001,101,-1,0);
+        for(const auto &item:result.snapshot.items) {
+            artifact_payload_projection source={}; source.domain=artifact_payload_domain::player;
+            source.item_uid=item.object_uid; source.vnum=item.vnum; result.item_admission_sources.push_back(source);
+        }
+        released_artifact_uids.clear(); fail_read_at=1;
+        player_load_item_materialize_metrics metrics;
+        assert(!player_load_items_materialize(&owner.character,result,&metrics));
+        assert(released_artifact_uids==std::vector<uint64_t>{1000});
+        assert(!owner.character.carrying && !owner.character.equipment[0]);
+    }
+
     {
         reset_test_state();
         std::vector<player_item_snapshot> snapshots(3);
@@ -423,7 +561,9 @@ int main()
         std::copy(encoded.begin(), encoded.end(), payload.item_blob.begin());
         const item_transfer_result committed = { 40, 3, 1, 1, 1, 0 };
         std::vector<P_obj> roots;
+        const auto repair_reads_before=creation_repair_reads;
         assert(player_load_item_graph_materialize_creation(payload, committed, &roots));
+        assert(creation_repair_reads==repair_reads_before+3);
         assert(roots.size() == 2 && roots[0]->obj_uid == 40 && roots[1]->obj_uid == 42);
         assert(roots[0]->contains && roots[0]->contains->obj_uid == 41);
         for (P_obj root : roots)
@@ -458,7 +598,7 @@ int main()
         result.snapshot.items[1].extra_descriptions.push_back(
             { "SPELLBOOK", "[1, 7, 31]", true, {} });
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::applied);
         assert(metrics.item_count == 3 && metrics.maximum_depth == 2);
         assert(metrics.operation_count <= PLAYER_LOAD_ITEM_OPERATIONS_PER_ITEM * 3);
@@ -495,7 +635,7 @@ int main()
         result.snapshot.items[0].extra_descriptions.push_back(
             {"SPELLBOOK", "[1,7,31]", true, {}});
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         size_t descriptions = 0;
         for (extra_descr_data *entry = owner.character.carrying->ex_description; entry;
              entry = entry->next)
@@ -542,7 +682,7 @@ int main()
         result.snapshot.items[0].extra_descriptions.push_back(
             {"SPELLBOOK", "", true, {31, 1, 7}});
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         size_t descriptions = 0, books = 0;
         const char marker[] = {3, 1, 3, 0};
         for (extra_descr_data *entry = owner.character.carrying->ex_description; entry;
@@ -563,7 +703,7 @@ int main()
         test_character owner(42);
         player_load_result result = base_result();
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         uint64_t revision = 0;
         assert(item_ownership_runtime_owner_revision(
             { item_owner_type::player, 42, 0 }, &revision));
@@ -578,7 +718,7 @@ int main()
         add_item(result, 2, 11, 101, 0, 0);
         fail_read_at = 1;
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::allocation_failure);
         assert(extracts == 1 && !owner.character.carrying &&
                item_ownership_runtime_size() == 0);
@@ -592,7 +732,7 @@ int main()
         player_load_result result = base_result();
         add_item(result, 1, 10, 101, PLAYER_SNAPSHOT_NO_PARENT, 0);
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::ownership_failure);
         assert(extracts == 1 && !owner.character.carrying &&
                item_ownership_runtime_size() == 0);
@@ -606,13 +746,26 @@ int main()
             add_item(result, index + 1, index + 10, 101,
                      PLAYER_SNAPSHOT_NO_PARENT, 0);
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.item_count == 200);
         assert(metrics.operation_count <= PLAYER_LOAD_ITEM_OPERATIONS_PER_ITEM * 200);
         release_tree(owner.character.carrying);
         owner.character.carrying = nullptr;
     }
 
+    {
+        reset_test_state(); test_character owner(42); auto result=base_result();
+        add_item(result,1,10,101,PLAYER_SNAPSHOT_NO_PARENT,0);
+        const item_owner_identity corpse={item_owner_type::corpse,77,12};
+        result.item_identities[0].owner=corpse;
+        refused_artifact_vnum=101; player_load_item_materialize_metrics metrics={};
+        for(int error : {EEXIST,ESTALE,ENODATA}) {
+            refused_artifact_errno=error;
+            assert(!player_load_item_graph_materialize_for_owner(&owner.character,result.snapshot.items,result.item_identities,corpse,result.item_owner_revision,true,true,&metrics));
+            assert(metrics.outcome==player_load_item_materialize_outcome::ownership_failure && !owner.character.carrying);
+        }
+        refused_artifact_vnum=0; refused_artifact_errno=EEXIST;
+    }
     {
         reset_test_state();
         test_character owner(42);
@@ -630,6 +783,9 @@ int main()
         assert(player_load_item_graph_materialize_for_owner(
             &owner.character, result.snapshot.items, result.item_identities, shopkeeper,
             result.item_owner_revision, true, true, &metrics));
+        assert(last_recovery_source.domain==artifact_payload_domain::shopkeeper &&
+               item_owner_identity_equal(last_recovery_source.custody.owner,shopkeeper) &&
+               last_recovery_source.item_uid==10 && last_recovery_source.custody_owner_revision_found);
         assert(owner.character.carrying->timer[1] == 44);
         assert(owner.character.carrying->anti_flags == 5);
         assert(owner.character.carrying->anti2_flags == 6);
@@ -670,6 +826,9 @@ int main()
         assert(player_load_item_graph_materialize_detached(
             result.snapshot.items, result.item_identities, corpse,
             result.item_owner_revision, true, true, &roots, &metrics));
+        assert(last_recovery_source.domain==artifact_payload_domain::corpse &&
+               item_owner_identity_equal(last_recovery_source.custody.owner,corpse) &&
+               last_recovery_source.item_uid==31 && last_recovery_source.parent_item_uid==30);
         assert(roots.size() == 1 && roots[0]->obj_uid == 30 &&
                roots[0]->loc_p == LOC_NOWHERE && roots[0]->contains &&
                roots[0]->contains->obj_uid == 31 && roots[0]->contains->affects &&
@@ -714,7 +873,7 @@ int main()
         result.snapshot.items[0].extra_descriptions.push_back(
             {"SPELLBOOK", "", true, duplicate ? std::vector<int>{7, 1} : std::vector<int>{31}});
         player_load_item_materialize_metrics metrics = {};
-        const bool applied = player_load_items_materialize(&owner.character, result, &metrics);
+        const bool applied = materialize_fixture_items(&owner.character, result, &metrics);
         if (duplicate) {
             assert(!applied && metrics.outcome == player_load_item_materialize_outcome::invalid_snapshot);
             assert(allocations == 0 && item_ownership_runtime_size() == 0);
@@ -757,7 +916,7 @@ int main()
         add_item(result, 1, 10, 101, PLAYER_SNAPSHOT_NO_PARENT, 0);
         result.snapshot.items[0].extra_descriptions.push_back(description);
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(metrics.outcome == player_load_item_materialize_outcome::invalid_snapshot);
         assert(allocations == 0 && item_ownership_runtime_size() == 0);
         assert(!owner.character.carrying && !owner.character.equipment[0]);
@@ -767,7 +926,7 @@ int main()
         reset_test_state();
         test_character owner(42);
         player_load_item_materialize_metrics metrics = {};
-        assert(!player_load_items_materialize(&owner.character, result, &metrics));
+        assert(!materialize_fixture_items(&owner.character, result, &metrics));
         assert(!owner.character.carrying && !owner.character.equipment[0]);
     };
 
@@ -816,7 +975,7 @@ int main()
         reset_test_state();
         test_character owner(42);
         player_load_item_materialize_metrics metrics = {};
-        assert(player_load_items_materialize(&owner.character, result, &metrics));
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
         release_tree(owner.character.carrying);
     }
     {
@@ -1141,6 +1300,28 @@ int main()
 }
 '''
 
+# Execute the production pre-materialization gate with otherwise valid input.
+entry = MATERIALIZE.index("bool player_load_materialize(")
+start = MATERIALIZE.index("\tplayer_load_result qualified;", entry)
+end = MATERIALIZE.index("\tconst auto &result = *selected;", start)
+valid_status = r"""
+void prepare_valid_status(player_load_result &result) {
+ result.snapshot.schema_version=PLAYER_SNAPSHOT_SCHEMA_VERSION; result.snapshot.pid=result.pid;
+ result.snapshot.components=PLAYER_LOAD_SESSION02_COMPONENTS;
+ result.snapshot.status_integers.clear(); result.snapshot.status_strings.clear();
+ for(unsigned field=0;field<=static_cast<unsigned>(player_status_field::learned_flight_stops);++field)
+  result.snapshot.status_integers.push_back({static_cast<player_status_field>(field),0,0,true});
+ for(unsigned field=0;field<=static_cast<unsigned>(player_status_string_field::last_read_news_hash);++field)
+  result.snapshot.status_strings.push_back({static_cast<player_status_string_field>(field),""});
+ result.authoritative_item_count=result.item_identities.size();
+}
+"""
+prefix = (extract_function("player_load_materialize.c", "bool valid_snapshot(") + "\n" + valid_status +
+          "bool qualify_materialization(const player_load_result &loaded, player_load_result *output) {\n"
+          + ("const bool source_valid=valid_snapshot(loaded);\n" if "source_valid" in MATERIALIZE[start:end] else "")
+          + MATERIALIZE[start:end] + "*output=*selected; return true; }\n")
+HARNESS = HARNESS.replace("int main()\n{", prefix + "int main()\n{", 1)
+
 with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
     source = Path(temp_dir) / "player_load_items_test.cpp"
     binary = Path(temp_dir) / "player_load_items_test"
@@ -1156,6 +1337,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
             "-Isrc",
             str(source),
             rel("player_load_items.c"),
+            rel("player_load_topology.c"),
             rel("player_load_pets.c"),
             "src/player/pet_restore_state.c",
             "src/player/pet_restore_runtime.c",

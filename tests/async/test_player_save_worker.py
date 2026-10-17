@@ -25,6 +25,7 @@ HARNESS = r'''
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <cstdio>
 #include <new>
 #include <cerrno>
 #include <map>
@@ -151,6 +152,92 @@ std::vector<player_save_completion> drain()
     return all;
 }
 
+// WRITER_HEALTH_RENDERER
+
+static void test_admission_capacity()
+{
+    for (bool byte_limit : {true, false})
+    {
+        player_save_worker_reset_for_tests();
+        assert(player_save_worker_init(apply_snapshot, nullptr));
+        const auto first = snapshot_for(1, 1);
+        assert(player_save_worker_submit(first) == player_save_submit_result::accepted);
+        {
+            std::unique_lock<std::mutex> lock(state.mutex);
+            state.changed.wait(lock, [] { return state.first_started; });
+        }
+        const size_t queued = byte_limit ? 1 : PLAYER_SAVE_WORKER_MAX_PENDING_JOBS - 1;
+        const size_t bytes = byte_limit ?
+            PLAYER_SAVE_WORKER_MAX_PENDING_BYTES - first.encoded_size_bound : 0;
+        for (size_t index = 1; index <= queued; ++index)
+            assert(persistence_writer_submit(persistence_job_kind::locker, index, bytes,
+                                              locker_job(index)) == player_save_submit_result::accepted);
+        const auto before = player_save_worker_health_copy();
+        assert(before.queued_jobs == queued && before.inflight_jobs == 1);
+        assert(before.completion_jobs == 0 && before.inflight_bytes == first.encoded_size_bound);
+        assert(before.high_water_jobs == queued + 1);
+        assert(before.high_water_bytes == queued * bytes + first.encoded_size_bound);
+        const auto status = writer_status();
+        const auto used_bytes = queued * bytes + first.encoded_size_bound;
+        assert(status.find("bytes=" + std::to_string(used_bytes) + " ") != std::string::npos &&
+               "writer status omitted in-flight payload bytes");
+        errno = 0;
+        assert(persistence_writer_submit(persistence_job_kind::locker, queued + 1, 1,
+                                          locker_job(99999)) == player_save_submit_result::unavailable);
+        assert(errno == ENOSPC);
+        // Even a tail replacement must fit, including the in-flight payload.
+        errno = 0;
+        assert(persistence_writer_submit(persistence_job_kind::locker, queued,
+                                          PLAYER_SAVE_WORKER_MAX_PENDING_BYTES,
+                                          locker_job(99999)) == player_save_submit_result::unavailable);
+        assert(errno == ENOSPC);
+        assert(!persistence_writer_pending(persistence_job_kind::locker, queued + 1));
+        const auto after = player_save_worker_health_copy();
+        assert(after.queued_jobs == before.queued_jobs && after.queued_bytes == before.queued_bytes);
+        assert(after.submitted == before.submitted && after.replaced == 0);
+        // A fitting replacement consumes neither another slot nor both payloads.
+        assert(persistence_writer_submit(persistence_job_kind::locker, queued, bytes,
+                                          locker_job(77777)) == player_save_submit_result::replaced);
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            state.release_first = true;
+            state.changed.notify_all();
+        }
+        assert(persistence_writer_wait_idle(5000));
+        assert(state.order.size() == queued + 1);
+        assert(state.order.front() == "p1:1" && state.order.back() == "l77777:0");
+        for (size_t index = 1; index < queued; ++index)
+            assert(state.order[index] == label("l", index, 0));
+        if (!byte_limit)
+        {
+            // An undrained completion still owns its slot, even with no payload left.
+            errno = 0;
+            assert(persistence_writer_submit(persistence_job_kind::locker, 88888, 0,
+                                              locker_job(88888)) == player_save_submit_result::unavailable);
+            assert(errno == ENOSPC);
+        }
+        const auto completed_health = player_save_worker_health_copy();
+        assert(completed_health.queued_jobs == 0 && completed_health.inflight_jobs == 0 &&
+               completed_health.completion_jobs == queued + 1 &&
+               completed_health.queued_bytes == 0 && completed_health.inflight_bytes == 0);
+        const auto completed_status = writer_status();
+        assert(completed_status.find("writer state=pending ") != std::string::npos &&
+               completed_status.find("completions=" + std::to_string(queued + 1) + " ") != std::string::npos &&
+               "writer status hid capacity-consuming completions");
+        assert(drain().size() == queued + 1);
+        assert(writer_status().find("writer state=empty ") != std::string::npos);
+        assert(player_save_worker_health_copy().completion_jobs == 0);
+        assert(persistence_writer_submit(persistence_job_kind::locker, 88888, 1,
+                                          locker_job(88888)) == player_save_submit_result::accepted);
+        assert(persistence_writer_wait_idle(5000));
+        assert(drain().size() == 1);
+        player_save_worker_reset_for_tests();
+        state.order.clear();
+        state.attempts.clear();
+        state.first_started = state.release_first = false;
+    }
+}
+
 static void test_admission_allocation_failure()
 {
     player_save_worker_reset_for_tests();
@@ -210,6 +297,7 @@ static void test_admission_allocation_failure()
 
 int main()
 {
+    test_admission_capacity();
     test_admission_allocation_failure();
     player_save_worker_reset_for_tests();
     assert(player_save_worker_init(apply_snapshot, nullptr));
@@ -225,6 +313,10 @@ int main()
     assert(player_save_worker_submit(snapshot_for(2, 1)) == player_save_submit_result::accepted);
     assert(persistence_writer_submit(persistence_job_kind::locker, 7, 64, locker_job(7)) ==
            player_save_submit_result::accepted);
+    // The artifact callback shares this writer and cannot overtake player/locker captures.
+    assert(persistence_writer_submit(persistence_job_kind::artifact, 8, 64, locker_job(8)) ==
+           player_save_submit_result::accepted);
+    assert(std::string(persistence_job_kind_name(persistence_job_kind::artifact)) == "artifact");
     // A newer save of an owner being written queues behind it; it replaces nothing.
     assert(player_save_worker_submit(snapshot_for(1, 2)) == player_save_submit_result::accepted);
     assert(player_save_worker_submit(snapshot_for(3, 1)) == player_save_submit_result::accepted);
@@ -239,10 +331,11 @@ int main()
     assert(player_save_worker_submit(snapshot_for(0, 1)) == player_save_submit_result::invalid);
 
     const auto owners = persistence_writer_pending_owners();
-    assert(owners.size() == 6);
+    assert(owners.size() == 7);
     assert(owners[0] == persistence_job_owner(persistence_job_kind::player, 1));
     assert(owners[1] == persistence_job_owner(persistence_job_kind::player, 2));
-    assert(owners[5] == persistence_job_owner(persistence_job_kind::player, 2));
+    assert(owners[3] == persistence_job_owner(persistence_job_kind::artifact, 8));
+    assert(owners[6] == persistence_job_owner(persistence_job_kind::player, 2));
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         state.release_first = true;
@@ -251,19 +344,20 @@ int main()
     assert(persistence_writer_wait_idle(5000));
     {
         std::lock_guard<std::mutex> lock(state.mutex);
-        const std::vector<std::string> expected = {"p1:1", "p2:1", "l7:0", "p1:2",
+        const std::vector<std::string> expected = {"p1:1", "p2:1", "l7:0", "l8:0", "p1:2",
                                                    "p3:1", "p2:3"};
         assert(state.order == expected);
     }
     assert(player_save_worker_pid_pending(1)); // completion still belongs to the old session
     auto completions = drain();
     assert(!player_save_worker_pid_pending(1));
-    assert(completions.size() == 6);
+    assert(completions.size() == 7);
     assert(completions[1].pid == 2 && completions[1].revision == 1);
     assert(completions[2].kind == persistence_job_kind::locker && completions[2].owner == 7);
-    assert(completions[5].pid == 2 && completions[5].revision == 3);
+    assert(completions[3].kind == persistence_job_kind::artifact && completions[3].owner == 8);
+    assert(completions[6].pid == 2 && completions[6].revision == 3);
     player_save_worker_health health = player_save_worker_health_copy();
-    assert(health.submitted == 6 && health.replaced == 1 && health.applied == 6);
+    assert(health.submitted == 7 && health.replaced == 1 && health.applied == 7);
     assert(health.queued_jobs == 0 && health.inflight_jobs == 0 && health.queued_bytes == 0);
     assert(health.high_water_jobs >= 5);
 
@@ -365,6 +459,15 @@ int main()
 '''
 
 
+# Execute the production writer-status formatter with the real worker snapshot.
+renderer_at = DIAGNOSTICS.index('"writer state=')
+renderer_start = DIAGNOSTICS.rfind('\tsnprintf(', 0, renderer_at)
+renderer_end = DIAGNOSTICS.index('\n\tsend_to_char(line, ch);', renderer_at)
+HARNESS = HARNESS.replace('// WRITER_HEALTH_RENDERER',
+    'std::string writer_status() { char line[2048]; '
+    'const auto player_saves = player_save_worker_health_copy();\n' +
+    DIAGNOSTICS[renderer_start:renderer_end] + '\nreturn line; }')
+
 test_outputs = ROOT / "bin/tests"
 test_outputs.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-", dir=test_outputs) as temp_dir:
@@ -394,6 +497,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-", dir=test_ou
         text=True,
     )
     subprocess.run([str(binary)], check=True, timeout=30)
+print("[PASS] byte/job limits include in-flight captures and undrained completions; refusal preserves order and fitting tail replacement")
 print("[PASS] allocation failures admit neither partial queue jobs nor owner entries; tail replacement allocates nothing")
 print("[PASS] one writer applies saves in capture order; a newer save replaces its queued one")
 print("[PASS] a lost connection is retried at the head; other failures are reported and dropped")
@@ -418,7 +522,9 @@ print("[PASS] locker saves go through the one writer")
 for metric in (
     "queued_jobs",
     "inflight_jobs",
+    "completion_jobs",
     "queued_bytes",
+    "inflight_bytes",
     "oldest_age_msec",
     "age_limit_exceeded",
     "connection_retries",

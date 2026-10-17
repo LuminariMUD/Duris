@@ -44,6 +44,12 @@ struct player_load_item_materialize_metrics
 	size_t maximum_depth = 0;
 };
 
+// Game-thread qualification of the immutable gameplay load. Rejected components
+// remain in the original store; accepted sources are sealed for construction.
+unsigned int player_load_items_qualify(player_load_result *result);
+bool player_load_item_graph_materialize_player(P_char character, const player_load_result &result,
+					       bool hydrate_ownership,
+					       player_load_item_materialize_metrics *metrics);
 bool player_load_items_materialize(P_char character, const player_load_result &result,
 				   player_load_item_materialize_metrics *metrics);
 bool player_load_item_graph_materialize(P_char character,
@@ -66,6 +72,8 @@ bool player_load_item_graph_materialize_detached(
 bool player_load_item_graph_materialize_creation(const item_transfer_payload &payload,
 						 const item_transfer_result &result,
 						 std::vector<P_obj> *roots);
+// Notify an attached owner after restoration or account reconnection.
+void player_load_items_notify_retained(P_char character);
 void player_load_items_activate_equipment(P_char character);
 void player_load_items_discard(P_char character);
 

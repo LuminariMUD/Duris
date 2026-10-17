@@ -20,6 +20,9 @@
 struct char_data;
 typedef struct char_data *P_char;
 
+// Game thread: a PID is busy in the world or in another descriptor-held body.
+// initializing may be the caller's own not-yet-published character, or nullptr.
+bool player_load_pid_busy(int pid, P_char initializing);
 bool player_load_materialize(P_char character, const player_load_result &result);
 
 #endif

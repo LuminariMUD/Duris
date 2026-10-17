@@ -742,6 +742,60 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 	return flatfile_shop_trade_materialization_result::ok;
 }
 
+flatfile_shop_trade_materialization_result
+flatfile_item_materialization_read(const std::string &root, const flatfile_authority_lock &lock,
+				   std::vector<flatfile_item_materialization_projection> *events,
+				   std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !events)
+		return flatfile_shop_trade_materialization_result::invalid;
+	const auto recovered = flatfile_authority_transaction_recover(root, lock, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_shop_trade_materialization_result::io_error :
+			       flatfile_shop_trade_materialization_result::invalid;
+	materialization_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_shop_trade_materialization_result::ok)
+		return loaded;
+	std::vector<flatfile_item_materialization_projection> staged;
+	try
+	{
+		for (const auto &event : catalog.events)
+		{
+			flatfile_item_materialization_projection row;
+			row.operation_id = event.operation_id;
+			row.player_pid = event.player_pid;
+			row.inbound = inbound(event.action);
+			row.owner = { item_owner_type::player, event.player_pid, 0 };
+			if (event.action == pet_raise_action)
+			{
+				player_pet_snapshot pet = {};
+				if (!decode_pet_event(event, &pet, &row.items))
+					return flatfile_shop_trade_materialization_result::invalid;
+				row.owner = { item_owner_type::pet, pet.pet_uid, event.player_pid };
+			}
+			else
+			{
+				if (!decode_items(event, &row.items))
+					return flatfile_shop_trade_materialization_result::invalid;
+				// This old event names the player's delivery pool, not a pet UID.
+				// Preserve that uncertainty; custody alone must not invent one.
+				if (event.action == pet_receive_action)
+					row.owner = { item_owner_type::unknown, 0,
+						      event.player_pid };
+			}
+			staged.push_back(std::move(row));
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_shop_trade_materialization_result::io_error;
+	}
+	*events = std::move(staged);
+	return flatfile_shop_trade_materialization_result::ok;
+}
+
 flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_read_health(
 	const std::string &root, const flatfile_authority_lock &lock,
 	flatfile_shop_trade_materialization_health *health, std::string *error)

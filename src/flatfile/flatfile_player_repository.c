@@ -76,7 +76,10 @@ bool valid_snapshot(const player_snapshot &snapshot)
 	       snapshot.revision && snapshot.components &&
 	       !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
 	       snapshot.encoded_size_bound &&
-	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES;
+	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES &&
+	       snapshot.retained_items.rows.size() <= PLAYER_SNAPSHOT_MAX_OBJECTS &&
+	       snapshot.retained_items.bytes <= PLAYER_SNAPSHOT_MAX_BYTES &&
+	       (!snapshot.retained_items.rows.empty() || !snapshot.retained_items.bytes);
 }
 
 bool same_authority_key(const std::string &left, const std::string &right)
@@ -169,6 +172,43 @@ player_load_result identity_failure(const player_load_request &request,
 	return result;
 }
 
+// Copy retained source roots without interpreting or claiming their contents.
+unsigned int retained_item_payloads(const std::vector<player_item_snapshot> &items,
+				    const player_item_retention &retained,
+				    std::vector<player_item_snapshot> *output)
+{
+	try
+	{
+		std::unordered_set<uint64_t> roots;
+		for (const auto &row : retained.rows)
+			roots.insert(row.root_item_uid);
+		std::vector<size_t> root(items.size()), remap(items.size());
+		std::vector<player_item_snapshot> selected;
+		for (size_t index = 0; index < items.size(); ++index)
+		{
+			const int32_t parent = items[index].parent_index;
+			if (parent < PLAYER_SNAPSHOT_NO_PARENT ||
+			    parent >= static_cast<int32_t>(index))
+				return EINVAL;
+			root[index] = parent == PLAYER_SNAPSHOT_NO_PARENT ? index : root[parent];
+			if (!roots.count(items[root[index]].object_uid))
+				continue;
+			remap[index] = selected.size();
+			selected.push_back(items[index]);
+			if (parent != PLAYER_SNAPSHOT_NO_PARENT)
+				selected.back().parent_index = static_cast<int32_t>(remap[parent]);
+		}
+		if (selected.size() != retained.rows.size())
+			return ESTALE;
+		*output = std::move(selected);
+		return 0;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return ENOMEM;
+	}
+}
+
 // A load takes a payload item when the ownership catalog has no record for it or
 // names this owner, whatever the record's state. A record naming anyone else makes
 // the item a stale or duplicate copy: it is skipped, logged to logs/log/dupes, and
@@ -178,7 +218,7 @@ bool build_item_identities(
 	const std::unordered_map<uint64_t, flatfile_item_ownership_record> &catalog,
 	const item_owner_identity &owner, uint64_t owner_revision, uint64_t *next_database_id,
 	std::unordered_set<uint64_t> *consumed, std::vector<player_load_item_identity> *identities,
-	player_load_result *result)
+	player_load_result *result, player_item_retention *retained)
 {
 	if (!items || !next_database_id || !consumed || !identities || !result)
 		return false;
@@ -188,15 +228,103 @@ bool build_item_identities(
 	std::vector<player_item_snapshot> kept;
 	try
 	{
+		std::unordered_set<uint64_t> held_rows;
+		if (retained)
+		{
+			std::vector<player_load_source_item> source;
+			std::unordered_map<uint64_t, size_t> seen;
+			for (size_t index = 0; index < items->size(); ++index)
+			{
+				const auto &item = (*items)[index];
+				if (item.parent_index < PLAYER_SNAPSHOT_NO_PARENT ||
+				    item.parent_index >= static_cast<int32_t>(index))
+					return false;
+				source.push_back(
+					{ index + 1,
+					  item.parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
+						  0 :
+						  static_cast<uint64_t>(item.parent_index) + 1,
+					  item.object_uid, 0, !item.object_uid || item.vnum <= 0 });
+				source.back().vnum = item.vnum;
+				source.back().quantity = 1;
+				source.back().quantity_present = true;
+				source.back().extra_flags = item.extra_flags;
+				source.back().extra_flags_present = true;
+				const auto custody = catalog.find(item.object_uid);
+				if (custody != catalog.end())
+				{
+					const auto &held = custody->second;
+					source.back().custody_found = true;
+					source.back().custody_owner_revision_found =
+						item_owner_identity_equal(held.owner, owner);
+					source.back().custody = { held.item_uid,
+								  held.root_item_uid,
+								  held.parent_item_uid,
+								  held.owner,
+								  held.item_revision,
+								  item_owner_identity_equal(
+									  held.owner, owner) ?
+									  owner_revision :
+									  0,
+								  held.vnum,
+								  held.state };
+				}
+				// Normalize a single node only to measure its complete raw bytes. The
+				// extra list framing conservatively bounds retained capture capacity.
+				auto measured = item;
+				measured.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+				std::vector<uint8_t> encoded;
+				const auto encoded_result =
+					player_item_snapshot_list_encode({ measured }, &encoded);
+				if (encoded_result != player_snapshot_codec_result::ok)
+				{
+					result->error_code =
+						encoded_result == player_snapshot_codec_result::
+									  allocation_failure ?
+							ENOMEM :
+							EILSEQ;
+					return false;
+				}
+				source.back().bytes = encoded.size();
+				// Duplicate raw UIDs are evidence even when custody names another
+				// owner. Retain every matching root so source selection is unambiguous.
+				if (item.object_uid)
+				{
+					const auto [previous, unique] =
+						seen.emplace(item.object_uid, index);
+					if (!unique)
+					{
+						source[index].retain = true;
+						source[previous->second].retain = true;
+					}
+				}
+			}
+			const auto error = player_load_retain_item_roots(source, retained);
+			if (error)
+			{
+				result->error_code = error;
+				return false;
+			}
+			for (const auto &row : retained->rows)
+				held_rows.insert(row.source_row_id);
+			result->item_sources = std::move(source);
+		}
 		database_ids.reserve(items->size());
 		remap.reserve(items->size());
 		kept.reserve(items->size());
 		identities->reserve(items->size());
 		for (size_t index = 0; index < items->size(); ++index)
 		{
-			player_item_snapshot item = std::move((*items)[index]);
 			if (*next_database_id > static_cast<uint64_t>(INT_MAX))
 				return false;
+			const uint64_t database_id = (*next_database_id)++;
+			if (held_rows.count(index + 1))
+			{
+				remap.push_back(skipped_index);
+				++result->stale_item_rows;
+				continue;
+			}
+			player_item_snapshot item = std::move((*items)[index]);
 			size_t parent_new = skipped_index;
 			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
 			{
@@ -234,7 +362,6 @@ bool build_item_identities(
 			item.parent_index = parent_new == skipped_index ?
 						    PLAYER_SNAPSHOT_NO_PARENT :
 						    static_cast<int32_t>(parent_new);
-			const uint64_t database_id = (*next_database_id)++;
 			database_ids.push_back(database_id);
 			remap.push_back(kept.size());
 			identities->push_back(
@@ -252,6 +379,7 @@ bool build_item_identities(
 	}
 	catch (const std::bad_alloc &)
 	{
+		result->error_code = ENOMEM;
 		return false;
 	}
 	return player_load_reconcile_item_topology(items, identities, &result->promoted_item_rows,
@@ -359,7 +487,8 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 	size_t pet_materialized_count = 0;
 	size_t legacy_pet_item_count = 0;
 	if (!build_item_identities(&result->snapshot.items, catalog, owner, owner_revision,
-				   &next_database_id, &consumed, &result->item_identities, result))
+				   &next_database_id, &consumed, &result->item_identities, result,
+				   &result->snapshot.retained_items))
 		goto invalid;
 	for (size_t index = 0; index < result->snapshot.pets.size(); ++index)
 	{
@@ -407,7 +536,7 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		identity.owner_revision = pet_revision;
 		if (!build_item_identities(&result->snapshot.pets[index].items, catalog, pet_owner,
 					   pet_revision, &next_database_id, &consumed,
-					   &identity.item_identities, result))
+					   &identity.item_identities, result, nullptr))
 			goto invalid;
 		// A legacy pet without a UID carries items its owner holds.
 		if (pet_uid)
@@ -427,8 +556,11 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 	return true;
 
 invalid:
-	result->outcome = player_load_outcome::component_failure;
-	result->error_code = EILSEQ;
+	result->outcome = result->error_code == ENOMEM ? player_load_outcome::retryable_failure :
+			  result->error_code == E2BIG  ? player_load_outcome::limit_exceeded :
+							 player_load_outcome::component_failure;
+	if (result->outcome == player_load_outcome::component_failure)
+		result->error_code = EILSEQ;
 	result->failed_component = "item_ownership";
 	return false;
 }
@@ -831,6 +963,22 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	std::vector<player_item_snapshot> held_items;
+	if ((snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
+	    !snapshot.retained_items.rows.empty())
+	{
+		if (loaded == flatfile_player_load_result::not_found ||
+		    snapshot.retained_items.rows.size() > PLAYER_SNAPSHOT_MAX_OBJECTS ||
+		    snapshot.retained_items.bytes > PLAYER_SNAPSHOT_MAX_BYTES)
+			return { player_save_apply_outcome::terminal_failure, 0, ESTALE };
+		const auto retained_error = retained_item_payloads(
+			materialized.items, snapshot.retained_items, &held_items);
+		if (retained_error)
+			return { retained_error == ENOMEM ?
+					 player_save_apply_outcome::retryable_failure :
+					 player_save_apply_outcome::terminal_failure,
+				 0, retained_error };
+	}
 	if (loaded == flatfile_player_load_result::not_found)
 	{
 		if (snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
@@ -914,6 +1062,30 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 					pet.items, claims[claim++].outcome.left_out);
 	}
 
+	if (!held_items.empty())
+	{
+		if (materialized.items.size() > PLAYER_SNAPSHOT_MAX_OBJECTS ||
+		    held_items.size() > PLAYER_SNAPSHOT_MAX_OBJECTS - materialized.items.size())
+			return { player_save_apply_outcome::terminal_failure, 0, E2BIG };
+		std::unordered_set<uint64_t> active;
+		for (const auto &item : materialized.items)
+			if (item.object_uid)
+				active.insert(item.object_uid);
+		if (snapshot.components & PLAYER_COMPONENT_PETS)
+			for (const auto &pet : materialized.pets)
+				for (const auto &item : pet.items)
+					if (item.object_uid)
+						active.insert(item.object_uid);
+		const size_t offset = materialized.items.size();
+		for (auto &item : held_items)
+		{
+			if (item.object_uid && active.count(item.object_uid))
+				return { player_save_apply_outcome::terminal_failure, 0, ESTALE };
+			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+				item.parent_index += static_cast<int32_t>(offset);
+			materialized.items.push_back(std::move(item));
+		}
+	}
 	std::vector<uint8_t> bytes;
 	if (!encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };

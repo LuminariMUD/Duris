@@ -44,6 +44,8 @@ struct flatfile_auction_item_projection
 	uint64_t item_uid = 0;
 	uint64_t item_revision = 0;
 	int32_t vnum = 0;
+	uint32_t claim_pid = 0;
+	bool claimed = false;
 };
 
 struct flatfile_auction_listing_projection
@@ -51,6 +53,7 @@ struct flatfile_auction_listing_projection
 	uint32_t auction_id = 0;
 	uint32_t seller_pid = 0;
 	uint32_t winner_pid = 0;
+	uint32_t status = 0;
 	int64_t current_price = 0;
 	int64_t buy_price = 0;
 	uint64_t revision = 0;
@@ -84,6 +87,11 @@ flatfile_auction_query_result
 flatfile_auction_list_open(const std::string &root,
 			   std::vector<flatfile_auction_listing_projection> *listings,
 			   std::string *error);
+// Includes closed/removed listings and their retained claimed-item evidence.
+flatfile_auction_query_result
+flatfile_auction_list_retained(const std::string &root,
+			       std::vector<flatfile_auction_listing_projection> *listings,
+			       std::string *error);
 flatfile_auction_query_result
 flatfile_auction_find_open(const std::string &root, uint32_t auction_id,
 			   flatfile_auction_listing_projection *listing, std::string *error);

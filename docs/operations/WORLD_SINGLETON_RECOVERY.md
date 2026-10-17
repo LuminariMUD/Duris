@@ -33,7 +33,10 @@ multiple occupied dragons, one flight survives and extra passengers are landed
 at that service's origin before their extra dragon is removed. Carried and worn
 items on retired dragons are transferred to the survivor.
 
-Current file copyover version 16 accepts versions 12 through 16. Version 13
+Current file copyover version 17 accepts versions 12 through 17. Version 17
+preserves complete NPC item trees and their stable root UIDs, including worn and
+nested artifacts; native restore attaches those qualified roots to the restored
+NPC even when transport rules relocate it. Version 13
 introduced the transport endpoints and rider state; version 12 flights lack that
 state and return home. Current Redis world generations use schema 13, while the
 NPC codec accepts the original record and its bounded optional `TRN1` transport
@@ -42,7 +45,10 @@ strict; see [World recovery format](../persistence/WORLD_RECOVERY_FORMAT.md).
 
 Shop inventory has different authorities in each recovery mode:
 
-- New SQL copyovers commit each live keeper's complete shop snapshot after
+- Native copyover reuses UID-matching stock already restored from the authoritative
+  catalog. Singleton reconciliation keeps that catalog keeper, preserving complete
+  item properties and trade revisions without replaying its stock a second time.
+- SQL copyovers commit each live keeper's complete shop snapshot after
   persistence drains and before publishing the copyover file. Any save failure
   cancels the copyover while the server remains live. Startup retains these
   durable keepers, preserving custom item state omitted by basic NPC records.
@@ -51,8 +57,8 @@ Shop inventory has different authorities in each recovery mode:
 - Redis restores NPC location/state without inventory. Its reconciliation
   retains the keeper already restored from the durable shop store and removes
   recovered duplicates and their regenerated template stock.
-- Flat-file trade records remain authoritative in both modes, including item
-  custody and shop revisions.
+- Flat-file trade records remain authoritative for item custody and shop revisions.
+  Native recovery reuses their restored live bodies when their shop and UID agree.
 - Without a durable incumbent, reconciliation selects the recovered keeper
   with the most stock/equipment, breaking ties by instance ID. File-recovered
   duplicates contribute their non-produced stock and equipment to the survivor.

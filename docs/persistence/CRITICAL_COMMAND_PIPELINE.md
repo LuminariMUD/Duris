@@ -239,6 +239,46 @@ snapshots on the existing writer before submitting type-9 reward history. Later
 transfers, soul changes, removal, spending and settings capture their current
 state independently; history completion never changes that state or repeats feedback.
 
+Capture excludes all contributions from a repeated worn artifact vnum, and
+requires each other artifact to have a physical UID, match the live wearer and
+match the current memory record's tracked player. Exclusion preserves unrelated
+artifact and guild contributions and emits a rate-limited persistence alert with
+vnum/reason/source reference. Until canonical admission and reward validation are integrated,
+this is conservative conflict isolation: it does not establish the identity of
+a single copy whose legacy vnum record already names its wearer.
+
+Artifact and soul snapshots for a known artifact capture its complete current
+UID/state, timer and soul in one transaction, including all-souls resets. A failed
+UID change cannot be followed by a partial soul write that changes the old UID.
+Legacy mirrors preserve identity. Boot stages all artifact, soul and identity reads
+before publishing memory; malformed or failed input cannot publish a prefix.
+Administrative refresh preserves current identity on conflict and retries current
+snapshots. Clear requires a proven-absent identity; retirement evidence and known
+absence remain in memory even after legacy tracking is removed. These storage
+boundaries do not perform complete population classification or universal
+duplicate admission; that work remains in the issue #67 plan.
+
+Flat-file mode hydrates the same artifact/soul maps from the catalog before world
+population. Gameplay getters and mutations use those maps; complete immutable
+captures reach `artifact_catalog` through the existing persistence writer.
+An all-souls reset is one atomic catalog capture. The repository assigns record
+revisions, preserves untouched records, rejects conflicting UIDs across the
+resulting catalog, and makes exact capture replay a no-op. Storage failure leaves
+current gameplay state readable and dirty for retry. Refused admission, including
+a full writer, never performs a synchronous fallback. Flat reports still read
+persisted catalog state and may lag live state. The obsolete direct file-backed
+gameplay mutators have been removed.
+
+Positive feeding feedback is `You feel a sense of satisfaction from above.`
+The live artifact/guild award publishes it once even when several artifacts feed;
+guild-only, ineligible, rejected and no-effect awards do not publish it. A valid
+capped feed retains its positive feedback. The monolith's direct feeding path
+uses the same wording per accepted artifact and checks its existing tracked-owner
+restriction before publishing feedback; its negative feedback is unchanged.
+Direct feeding keeps signed timer arithmetic separate from its diagnostic
+magnitude: a negative feed reduces the timer, an above-cap timer clamps to the
+current cap, and depletion leaves an expired timer instead of restarting it.
+
 New history uses payload v2 with parent/actor identity and calculated before/after
 facts. The repository records outcome/delta ledgers with history revisions, not
 gameplay approval revisions. It never compares current SQL timer/soul/guild totals
@@ -288,6 +328,9 @@ The staff `artifacts reset syncdb` repair keeps current memory if its asynchrono
 result overlaps a later artifact update or an unresolved snapshot failure. Existing
 dirty retries then capture fresh state. The result is processed after staff logout;
 only notification requires the same live staff character.
+Flat-file `syncdb` refuses live reconciliation pending a complete population
+audit: a player-only scan cannot select canonical physical identities across all
+storage domains. The audited repair workflow remains open in issue #67.
 
 History success and snapshot durability are distinct: either may fail independently.
 A crash may lose unsaved state, and restart loads persisted snapshots without

@@ -7,6 +7,7 @@
  ***************************************************************************
  */
 
+#include <algorithm>
 #include <ctype.h>
 #include <list>
 #include <stdio.h>
@@ -26,6 +27,7 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include "guild/assocs.h"
+#include "guild/artifact_admission.h"
 #include "magic/blispells.h"
 #include "combat/ctf.h"
 #include "economy/currency_transaction.h"
@@ -219,38 +221,42 @@ int artifact_monolith(P_obj monolith, P_char ch, int cmd, char *arg)
 
 		if (monolith == get_obj_in_list_vis(ch, buf, world[ch->in_room].contents))
 		{
-			// check if the person even has any arti's.
-			int i, nArtiCount = 0;
-			for (i = 0; i < MAX_WEAR; i++)
+			P_obj artifacts[MAX_WEAR] = {};
+			int count = 0;
+			if (!IS_TRUSTED(ch))
+				for (int slot = 0; slot < MAX_WEAR; ++slot)
+				{
+					P_obj candidate = ch->equipment[slot];
+					if (artifact_is_canonical(candidate) &&
+					    OBJ_WORN(candidate) && candidate->loc.wearing == ch &&
+					    std::find(artifacts, artifacts + count, candidate) ==
+						    artifacts + count)
+						artifacts[count++] = candidate;
+				}
+			bool fed = false, positive = false;
+			if (count && monolith->value[0] > 0)
 			{
-				if (ch->equipment[i] && IS_ARTIFACT(ch->equipment[i]))
-					nArtiCount++;
+				const int seconds = (HOURS_PER_CHARGE * 3600) / count;
+				for (int index = 0; index < count; ++index)
+				{
+					const auto result = artifact_feed_sql(
+						ch, artifacts[index], seconds, false, false);
+					fed = fed || result != artifact_feed_result::rejected;
+					positive = positive ||
+						   result == artifact_feed_result::positive;
+				}
 			}
-			// if no arti's, or no charges in the monolith, do nothing
-			if (!nArtiCount || !(monolith->value[0]))
+			if (fed)
 			{
-				send_to_char("Nothing seems to happen.\n", ch);
+				--monolith->value[0];
+				artifact_monolith_update(monolith);
+				if (positive)
+					send_to_char(
+						"&+RYou feel a sense of satisfaction from above.&n\r\n",
+						ch);
 			}
 			else
-			{
-				// okay, each "charge" is worth X hours (or X * 3600 seconds).  Divide
-				// that between all artifacts EQUALLY (regardless of how full they may
-				// already be)
-				int nFeedSeconds = (HOURS_PER_CHARGE * 3600) / nArtiCount;
-				// now feed up them arti's!
-				for (i = 0; i < MAX_WEAR; i++)
-				{
-					if (ch->equipment[i] && IS_ARTIFACT(ch->equipment[i]))
-					{
-						obj = ch->equipment[i];
-						artifact_feed_sql(ch, ch->equipment[i],
-								  nFeedSeconds);
-					}
-				}
-				// update the feeder object to have one less charge..
-				monolith->value[0]--;
-				artifact_monolith_update(monolith);
-			}
+				send_to_char("Nothing seems to happen.\n", ch);
 			return TRUE;
 		}
 	}

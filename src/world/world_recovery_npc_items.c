@@ -18,6 +18,7 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
 
+#include <cerrno>
 #include <new>
 #include <unordered_map>
 #include <utility>
@@ -78,14 +79,11 @@ P_obj load_recovery_object(P_char mob, const reset_com &command, int artifact_re
 	if (!mob || command.arg1 < 0 || command.arg1 > top_of_objt || command.arg2 <= 0 ||
 	    obj_index[command.arg1].number >= command.arg2)
 		return nullptr;
-	P_obj object = read_object(command.arg1, REAL);
+	P_obj object = read_object_for_creation(command.arg1, REAL);
 	if (!object)
-		return nullptr;
-	arti_data artifact = {};
-	if (IS_ARTIFACT(object) && get_artifact_data_sql(OBJ_VNUM(object), &artifact) &&
-	    artifact.owned)
 	{
-		extract_obj(object);
+		if (errno == ENOMEM)
+			throw std::bad_alloc();
 		return nullptr;
 	}
 	if (IS_ARTIFACT(object) && artifact_respawn == 0)

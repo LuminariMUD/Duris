@@ -8,11 +8,17 @@
 
 #include "core/structs.h" // for P_char, P_desc, etc
 #include "world/transport.h"
+#include <cstddef>
+#include <array>
+#include <cstdio>
+#include <string>
+#include <vector>
+#include <sys/stat.h>
 
 const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
-#define COPYOVER_VERSION 16 // shopkeeper identity + telemetry; reads versions 12-15 too
+#define COPYOVER_VERSION 17 // full NPC item trees and equipment UIDs; reads versions 12-16 too
 
 // copyover file header
 struct copyover_header
@@ -132,6 +138,48 @@ struct copyover_obj_content
 	int vnum;
 };
 
+// Versions before 17 request NPC item reconstruction. Version 17 references
+// complete item trees by UID; older inventory UID bytes are never authority.
+struct copyover_mob_record
+{
+	copyover_mob mob = {};
+	std::vector<copyover_affect> affects;
+	std::vector<copyover_obj_content> inventory;
+	std::string generated;
+	std::array<uint64_t, 43> equipment_uids = {};
+};
+struct copyover_record_span
+{
+	size_t offset = 0;
+	size_t size = 0;
+};
+struct copyover_boot_snapshot
+{
+	copyover_header header = {};
+	std::vector<char> bytes;
+	std::vector<copyover_record_span> mobs;
+	std::vector<copyover_record_span> objects;
+	struct stat identity = {};
+};
+enum class copyover_boot_result
+{
+	unprepared,
+	absent,
+	ready,
+	failed
+};
+// Read-only inspection leaves previous output intact on failure. No player, NPC,
+// template, socket or runtime-custody operation occurs.
+copyover_boot_result copyover_read_file(const std::string &path, copyover_boot_snapshot *snapshot);
+bool copyover_decode_mob(const char *data, size_t size, int version, copyover_mob_record *record,
+			 size_t *consumed);
+// Actual hotboot validates then claims the source once, before boot_db. Invalid
+// originals remain in place; a valid claimed image stays at <path>.recovering on
+// failure. Never select between two images. Evidence lives until clear_boot.
+copyover_boot_result copyover_prepare_boot();
+copyover_boot_result copyover_boot_state();
+const copyover_boot_snapshot *copyover_boot_evidence();
+
 // alias for clarity
 typedef struct copyover_obj_content copyover_carried_item;
 
@@ -156,6 +204,7 @@ int copyover_write_zone_age_to_buffer(int zone_rnum, char *buf, size_t max_len);
 
 // buffer-based restore helpers
 P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *bytes_read);
-P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read);
+P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read,
+				       bool detached = false);
 
 #endif /* _COPYOVER_H_ */

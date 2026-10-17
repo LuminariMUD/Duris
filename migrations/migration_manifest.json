@@ -608,6 +608,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "fb6243dd098b4f017fbda8d9aeb422f606a3aa7c5a96969c2ed4d369a154ef60",
       "verify_checksum": "2cca57fdb73c604aecf44d3e75295510eddbbdadbf4b2da50ca74e2328faba6a"
+    },
+    {
+      "id": "0044_artifact_canonical_identity",
+      "sequence": 44,
+      "description": "Persist canonical artifact identity separately from nullable custody projection",
+      "apply": "immutable/0044_artifact_canonical_identity.sql",
+      "verify": "immutable/0044_artifact_canonical_identity.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "1d64797c4ad6c448c4a771262fd08e0ee4e79b3db0f84ba3143db9856395afce",
+      "verify_checksum": "d008062231aaab96090ad593fb281bb7876a080948cfe5742b575b0f5697be84"
     }
   ],
   "engine_verifiers": [

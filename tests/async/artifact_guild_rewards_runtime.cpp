@@ -6,6 +6,7 @@
 #include "world/zone_touch_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include <cassert>
+#include <cstdarg>
 #include <cstdio>
 #include <map>
 #include <string>
@@ -19,6 +20,7 @@ extern "C" time_t time(time_t *out)
 	return NOW;
 }
 static constexpr int64_t FEED_CAP = NOW + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+static constexpr char SATISFACTION[] = "&+RYou feel a sense of satisfaction from above.&n\r\n";
 struct row
 {
 	int64_t timer;
@@ -27,10 +29,17 @@ struct row
 	int owner = 42;
 };
 static std::map<int, row> rows;
+static std::map<int, P_obj> canonical_objects;
+bool artifact_is_canonical(P_obj object)
+{
+	const auto found = canonical_objects.find(OBJ_VNUM(object));
+	return object->obj_uid && found != canonical_objects.end() && found->second == object;
+}
 static std::vector<std::pair<int, row>> snapshots;
 static std::vector<std::pair<unsigned long, unsigned long>> guild_snapshots;
 static std::vector<critical_command> commands;
 static std::vector<std::string> feedback;
+static std::vector<std::string> diagnostics;
 static critical_submit_result admission = critical_submit_result::accepted;
 static bool recent_frag = false;
 static double difficulty = 1;
@@ -71,6 +80,18 @@ bool artifact_feed_state(int vnum, int64_t *timer, int32_t *owner, int64_t *bind
 	*bind = found->second.bind;
 	return true;
 }
+bool get_artifact_data_sql(int vnum, P_arti data)
+{
+	const auto found = rows.find(vnum);
+	if (found == rows.end())
+		return false;
+	data->vnum = vnum;
+	data->owned = true;
+	data->locType = 3; // ARTIFACT_ON_PC, matching the existing artifact record
+	data->location = found->second.owner;
+	data->timer = found->second.timer;
+	return true;
+}
 void artifact_feed_set_timer(int vnum, time_t timer)
 {
 	assert(rows.count(vnum));
@@ -82,9 +103,19 @@ void artifact_feed_published(int vnum, time_t before, time_t timer)
 	if (rows.count(vnum) && rows[vnum].timer == before)
 		artifact_feed_set_timer(vnum, timer);
 }
-size_t artifact_save_pulse(bool)
+static bool writer_completion_pending = false;
+void player_save_pipeline_pulse()
+{
+	writer_completion_pending = false;
+}
+size_t sql_async_pulse()
 {
 	return 0;
+}
+size_t artifact_save_pulse(bool)
+{
+	// Admission stays full until the game consumes the completed writer slot.
+	return writer_completion_pending ? 1 : 0;
 }
 void artifact_report_unsaved() {}
 bool sql_save_guild(Guild *guild)
@@ -121,6 +152,16 @@ void send_to_char(const char *text, P_char)
 {
 	feedback.emplace_back(text);
 }
+void persistence_alert(int, const char *domain, const char *, const char *, const char *,
+		       const char *reason, const char *format, ...)
+{
+	char detail[256];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(detail, sizeof(detail), format, args);
+	va_end(args);
+	diagnostics.emplace_back(std::string(domain) + " " + reason + " " + detail);
+}
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
 	if (admission != critical_submit_result::accepted)
@@ -148,6 +189,7 @@ static void reset()
 	guild_snapshots.clear();
 	commands.clear();
 	feedback.clear();
+	diagnostics.clear();
 	admission = critical_submit_result::accepted;
 	recent_frag = false;
 	difficulty = 1;
@@ -190,8 +232,128 @@ static void complete(const critical_command &command)
 	artifact_guild_transaction_handle_completions(&completion, 1); // duplicate delivery
 }
 
-int main()
+// Issue #67 acceptance cases use real capture, application and history admission.
+// No canonical UID is established for the conflicting vnum: neither copy may
+// feed, but the unrelated artifact and independently eligible guild must survive.
+static int identity_contract(const std::string &scenario)
 {
+	const bool duplicate = scenario == "duplicate" || scenario == "duplicate-reversed" ||
+			       scenario == "guild-only" || scenario == "same-uid";
+	const bool guild_only = scenario == "guild-only";
+	const bool canonical_copy = scenario == "canonical-copy" ||
+				    scenario == "canonical-copy-reversed" ||
+				    scenario == "canonical-alias-slot";
+	const bool rejected = scenario == "rejected-copy";
+	reset();
+	char_data actor = {}, member = {}, last = {};
+	pc_only_data pc = {}, pc2 = {}, pc3 = {};
+	actor.only.pc = &pc;
+	member.only.pc = &pc2;
+	last.only.pc = &pc3;
+	pc.pid = 42;
+	pc2.pid = 43;
+	pc3.pid = 44;
+	char name[] = "Identity fixture";
+	auto *guild = new Guild(name, RACEWAR_GOOD, 7, 95, 0, 0, 0);
+	group_list group[3] = { { &actor, &group[1] }, { &member, &group[2] }, { &last, nullptr } };
+	for (P_char ch : { &actor, &member, &last })
+	{
+		ch->player.level = 51;
+		ch->in_room = 1;
+		ch->group = group;
+		ch->specials.guild = guild;
+	}
+	obj_data first = {}, copy = {}, unrelated = {};
+	indexes[0].virtual_number = 42001;
+	indexes[1].virtual_number = 42002;
+	first.obj_uid = 101;
+	copy.obj_uid = 102;
+	unrelated.obj_uid = 103;
+	unrelated.R_num = 1;
+	for (P_obj object : { &first, &copy, &unrelated })
+	{
+		object->extra_flags = ITEM_ARTIFACT;
+		object->loc_p = LOC_WORN;
+		object->loc.wearing = &actor;
+	}
+	actor.equipment[0] = &first;
+	actor.equipment[1] = guild_only ? nullptr : &unrelated;
+	if (duplicate || canonical_copy)
+		actor.equipment[2] = &copy;
+	if (scenario == "duplicate-reversed" || scenario == "canonical-copy-reversed")
+		std::swap(actor.equipment[0], actor.equipment[2]);
+	if (scenario == "canonical-alias-slot")
+		actor.equipment[2] = &first;
+	if (scenario == "wrong-custody")
+		first.loc.wearing = &member;
+	if (scenario == "missing-uid")
+		first.obj_uid = 0;
+	if (scenario == "same-uid")
+		copy.obj_uid = first.obj_uid;
+	rows[42001] = { NOW + 100, -1, 0, scenario == "cross-player" ? 43 : 42 };
+	rows[42002] = { NOW + 200 };
+	canonical_objects[42002] = &unrelated;
+	if (scenario == "cross-player")
+	{
+		copy.loc.wearing = &member;
+		member.equipment[0] = &copy;
+		canonical_objects[42001] = &copy;
+	}
+	online = { &actor, &member, &last };
+	if (scenario == "wrong-custody")
+		canonical_objects[42001] = &first;
+	if (canonical_copy)
+		canonical_objects[42001] = &first;
+	if (rejected)
+		canonical_objects[42001] = &copy;
+	critical_operation_id parent = {};
+	assert(critical_operation_id_generate(&parent));
+	const bool submitted = artifact_guild_transaction_submit(&actor, parent, 4, EPIC_BOON);
+	const bool isolated = submitted &&
+			      rows.at(42001).timer == NOW + 100 + (canonical_copy ? 3600 : 0) &&
+			      rows.at(42002).timer == NOW + 200 + (guild_only ? 0 : 3600) &&
+			      guild->get_prestige() == 105 && guild->get_construction() == 1 &&
+			      snapshots.size() == (guild_only	  ? 0u :
+						   canonical_copy ? 2u :
+								    1u) &&
+			      guild_snapshots.size() == 1 && commands.size() == 1;
+	assert(std::count(feedback.begin(), feedback.end(), SATISFACTION) == (guild_only ? 0 : 1));
+	assert(diagnostics.size() == (duplicate				 ? 2u :
+				      scenario == "canonical-alias-slot" ? 0u :
+									   1u));
+	for (const auto &detail : diagnostics)
+	{
+		assert(detail.find("artifact_reward/capture") != std::string::npos);
+		assert(detail.find("vnum=42001 reference=") != std::string::npos);
+	}
+	const size_t messages = feedback.size();
+	if (!commands.empty())
+		complete(commands.front());
+	assert(feedback.size() == messages);
+	printf("%s identity contract: submitted=%d conflicted_feed=%lld unrelated_feed=%lld "
+	       "prestige=%lu construction=%lu\n",
+	       scenario.c_str(), submitted,
+	       static_cast<long long>(rows.at(42001).timer - NOW - 100),
+	       static_cast<long long>(rows.at(42002).timer - NOW - 200), guild->get_prestige(),
+	       guild->get_construction());
+	return isolated ? 0 : 1;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 2)
+	{
+		if (std::string(argv[1]) == "drain-capacity")
+		{
+			reset();
+			writer_completion_pending = true;
+			assert(artifact_guild_transaction_drain(50));
+			assert(!writer_completion_pending);
+			puts("artifact drain consumes writer completions before retrying admission");
+			return 0;
+		}
+		return identity_contract(argv[1]);
+	}
 	char_data ch = {}, second = {}, third = {};
 	pc_only_data pc = {}, pc2 = {}, pc3 = {};
 	ch.only.pc = &pc;
@@ -204,8 +366,12 @@ int main()
 	obj_data artifact = {};
 	artifact.extra_flags = ITEM_ARTIFACT;
 	artifact.R_num = 0;
+	artifact.obj_uid = 101;
+	artifact.loc_p = LOC_WORN;
+	artifact.loc.wearing = &ch;
 	indexes[0].virtual_number = 42001;
 	ch.equipment[0] = &artifact;
+	canonical_objects[42001] = &artifact;
 
 	reset();
 	rows[42001] = { NOW + 100 };
@@ -214,6 +380,8 @@ int main()
 		award(&ch);
 		assert(rows.at(42001).timer == NOW + 100 + i * 3600);
 		assert(snapshots.size() == static_cast<size_t>(i));
+		assert(feedback.size() == static_cast<size_t>(i) &&
+		       feedback.back() == SATISFACTION);
 	}
 	assert(commands.size() == 3);
 	const auto messages = feedback.size();
@@ -235,6 +403,7 @@ int main()
 	assert(snapshots.size() == 1 && commands.size() == 1 && feedback.size() == 1);
 	award(&ch);
 	assert(rows.at(42001).timer == FEED_CAP && commands.size() == 2);
+	assert(feedback.size() == 2 && feedback.back() == SATISFACTION);
 	rows.at(42001).timer = FEED_CAP + 200;
 	award(&ch);
 	assert(rows.at(42001).timer == FEED_CAP);
@@ -247,6 +416,28 @@ int main()
 		complete(command);
 	assert(rows.at(42001).timer == NOW + 10 && rows.at(42001).soul == 44);
 	puts("PASS at/below/above cap, pending identity attachment, removal and recreation");
+
+	reset();
+	obj_data another = artifact;
+	another.R_num = 1;
+	another.obj_uid = 102;
+	indexes[1].virtual_number = 42002;
+	ch.equipment[1] = &another;
+	canonical_objects[42002] = &another;
+	rows[42001] = { NOW + 100 };
+	rows[42002] = { NOW + 200 };
+	award(&ch);
+	assert(snapshots.size() == 2 && feedback.size() == 1 && feedback.back() == SATISFACTION);
+	complete(commands.front());
+	assert(feedback.size() == 1);
+	ch.equipment[1] = nullptr;
+	reset();
+	award(&ch); // missing state contributes no feed or feedback
+	assert(commands.empty() && feedback.empty());
+	rows[42001] = { NOW + 100 };
+	award(&ch, 4, -1); // unsupported epic type has no eligible feed
+	assert(commands.empty() && feedback.empty());
+	puts("PASS one positive message for several feeds; completion and no-effect awards stay silent");
 
 	reset();
 	char name[] = "Fixture";
@@ -271,6 +462,7 @@ int main()
 		assert(guild_snapshots.back().second == guild->get_construction());
 	}
 	assert(snapshots.size() == 1); // worn artifact and guild eligibility are independent
+	assert(std::count(feedback.begin(), feedback.end(), SATISFACTION) == 1);
 	guild->sub_prestige(50);
 	guild->set_construction(7);
 	for (const auto &command : commands)
@@ -294,6 +486,7 @@ int main()
 	rows[42001] = { NOW + 100, 99 };
 	award(&ch, 4, EPIC_PVP);
 	assert(commands.empty());
+	assert(feedback.empty());
 	rows.at(42001).soul = 42;
 	award(&ch, 4, EPIC_PVP);
 	assert(rows.at(42001).timer == NOW + 100 + 28800);
@@ -321,7 +514,7 @@ int main()
 	const auto prestige = guild->get_prestige();
 	assert(!artifact_guild_transaction_submit(&ch, bad_parent, INT_MAX, EPIC_BOON));
 	assert(guild->get_prestige() == prestige && rows.at(42001).timer == NOW + 100 &&
-	       commands.empty());
+	       commands.empty() && feedback.empty());
 	ch.specials.guild = second.specials.guild = third.specials.guild = nullptr;
 #if !LEGACY_HYDRATION
 	admission = critical_submit_result::overloaded;
@@ -351,10 +544,13 @@ int main()
 	online = { &ch };
 	obj_data second_artifact = artifact;
 	second_artifact.R_num = 1;
+	second_artifact.obj_uid = 103;
+	second_artifact.loc.wearing = &second;
 	indexes[1].virtual_number = 42002;
 	second.equipment[0] = &second_artifact;
+	canonical_objects[42002] = &second_artifact;
 	rows[42001] = { NOW + 100 };
-	rows[42002] = { NOW + 200 };
+	rows[42002] = { NOW + 200, -1, 0, 43 };
 	zone_touch_payload touch = {};
 	touch.zone_number = 77;
 	touch.toucher_pid = 42;

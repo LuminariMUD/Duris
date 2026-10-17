@@ -702,7 +702,15 @@ char *food_modifiers(P_obj food);
 void addOnGroundArtis_sql();
 void addOnMobArtis_sql();
 void artifact_feed_blood_sql(P_char ch, P_obj arti, int frag_gain);
-void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulCheck = FALSE);
+enum class artifact_feed_result
+{
+	rejected,
+	positive,
+	negative
+};
+// Batch callers publish positive feedback once; negative feedback remains per item.
+artifact_feed_result artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds,
+				       bool soulCheck = FALSE, bool positive_feedback = true);
 void artifact_feed_to_min_sql(P_obj arti, int min_minutes);
 void artifact_timer_sql(int vnum, char *buffer);
 void artifact_update_location_sql(P_obj arti);
@@ -720,6 +728,7 @@ bool artifacts_load(void);
 void artifacts_forget_deleted_account_character(int pid);
 void artifact_feed_set_timer(int vnum, time_t timer);
 size_t artifact_save_pulse(bool retry);
+bool artifact_save_drain(uint64_t timeout_msec);
 void artifact_report_unsaved(void);
 // An artifact's timer and soul, as the game holds them; false for an unknown artifact.
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer);
@@ -846,6 +855,8 @@ P_char read_mobile(int, int);
 P_char read_mobile(int, int, bool apply_mob_gold);
 P_char read_mobile_probe(int, int);
 P_obj read_object(int, int);
+// Fresh creation can be refused by canonical identity; handle a null result.
+P_obj read_object_for_creation(int, int);
 char *file_to_string(const char *);
 char *fread_string(FILE *);
 int is_empty(int);
@@ -894,6 +905,7 @@ void do_mreport(P_char, char *, int);
 void hour_debug(void);
 void init_cmdlog(void);
 void write_cmdlog(void);
+void write_boot_cmdlog(void);
 void loop_debug(void);
 
 /* drannak.c */

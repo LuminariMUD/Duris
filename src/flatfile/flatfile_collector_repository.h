@@ -45,6 +45,11 @@ struct flatfile_collector_enrollment_mutation
 
 flatfile_collector_repository_result flatfile_collector_repository_read_bootstrap(
 	const std::string &root, collector_bootstrap_snapshot *snapshot, std::string *error);
+// Raw retained payloads include terminal listings; custody is correlated separately.
+flatfile_collector_repository_result
+flatfile_collector_repository_read_payloads(const std::string &root,
+					    std::vector<collector_listing_detail> *listings,
+					    std::string *error);
 flatfile_collector_repository_result
 flatfile_collector_repository_read_listing(const std::string &root, uint64_t listing,
 					   collector_listing_detail *detail, bool *found,

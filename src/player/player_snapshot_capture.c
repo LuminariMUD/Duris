@@ -785,6 +785,20 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		}
 		if (components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
 		{
+			if (ch->only.pc->retained_items)
+			{
+				const auto &retained = *ch->only.pc->retained_items;
+				if (retained.rows.size() >
+					    PLAYER_SNAPSHOT_MAX_OBJECTS - budget.objects ||
+				    retained.bytes > PLAYER_SNAPSHOT_MAX_BYTES ||
+				    !budget.add(retained.bytes +
+							retained.rows.size() *
+								sizeof(player_retained_item_row),
+						retained.rows.size()))
+					return player_snapshot_capture_result::limit_exceeded;
+				budget.objects += retained.rows.size();
+				snapshot.retained_items = retained;
+			}
 			const auto result = capture_items(ch, snapshot.items, budget,
 							  components & PLAYER_COMPONENT_EQUIPMENT,
 							  components & PLAYER_COMPONENT_INVENTORY,

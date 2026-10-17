@@ -10764,31 +10764,30 @@ int fooquest_mob(P_char ch, P_char pl, int cmd, char *arg)
 		if (!isname(arg, "transform"))
 			return FALSE;
 
-		/*
-		 * load agthrodos
-		 */
+		// Reserve the artifact before replacing the quest NPC or running boss setup.
+		item = read_object_for_creation(IS_RACEWAR_EVIL(ch) ? 21 : 22, VIRTUAL);
+		if (!item)
+		{
+			send_to_char("The artifact is unavailable; transformation cancelled.\r\n",
+				     pl);
+			return TRUE;
+		}
 		tempchar = read_mobile(142213, VIRTUAL);
 
 		if (!tempchar)
 		{
+			extract_obj(item, FALSE);
 			logit(LOG_EXIT, "assert: mob load failed in xexos()");
 			return FALSE;
 		}
-		/*
-		 * stick agthrodos in same room
-		 */
-		char_to_room(tempchar, ch->in_room, 0);
-
-		/*
-		 * transfer inventory to agthrodos
-		 */
-		if (IS_RACEWAR_EVIL(ch))
+		const uint64_t replacement_id = tempchar->runtime_id;
+		if (!char_to_room(tempchar, ch->in_room, 0))
 		{
-			item = read_object(21, VIRTUAL);
-		}
-		else
-		{
-			item = read_object(22, VIRTUAL);
+			// Room entry may destroy the new NPC before returning.
+			if (P_char remaining = find_character_by_runtime_id(replacement_id))
+				extract_char(remaining);
+			extract_obj(item, FALSE);
+			return TRUE;
 		}
 		obj_to_char(item, tempchar);
 

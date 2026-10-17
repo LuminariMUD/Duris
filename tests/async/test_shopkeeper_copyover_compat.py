@@ -27,6 +27,9 @@ program = r'''
 #include <cstdio>
 #include <cstring>
 const char *copyover_state_file() { return "compat-copyover.dat"; }
+static const copyover_boot_snapshot *selected=nullptr;
+const copyover_boot_snapshot *copyover_boot_evidence() { return selected; }
+copyover_boot_result copyover_boot_state() { return selected ? copyover_boot_result::ready : copyover_boot_result::unprepared; }
 '''+legacy+"\n"+"\n".join(function(s) for s in (
     "static bool copyover_version_supported(",
     "static size_t copyover_mob_bytes_for_version(",
@@ -48,9 +51,36 @@ int main() {
         assert(copyover_has_durable_shopkeepers() == (version>=13));
     }
     assert(remove(COPYOVER_FILE)==0);
-    puts("copyover versions 12-16: record widths and durable shopkeeper provenance PASS");
+    puts("copyover versions 12-17: record widths and durable shopkeeper provenance PASS");
 }
 '''
+db = (ROOT / "src/world/db.c").read_text()
+selection_start = db.index("if (!copyover_boot || copyover_has_durable_shopkeepers() ||")
+selection = db[selection_start:db.index("remember_boot_shopkeepers();", selection_start)]
+setup = r"""
+int copyover_boot=0, backend=0, restored_shops=0;
+constexpr int PERSISTENCE_MODE_FLATFILE_PRIMARY=1;
+int persistence_mode_get() { return backend; }
+void restore_shopkeepers() { ++restored_shops; }
+void restore_selected_stock() {
+"""+selection+r"""
+}
+"""
+checks = r"""
+    for(backend=0;backend<2;++backend) {
+        copyover_boot=0; selected=nullptr; restored_shops=0;
+        restore_selected_stock(); assert(restored_shops==1);
+        copyover_boot=1;
+        for(int version=12;version<=COPYOVER_VERSION;++version) {
+            copyover_boot_snapshot snapshot; snapshot.header.version=version; selected=&snapshot;
+            restored_shops=0; restore_selected_stock();
+            assert(restored_shops==(backend==PERSISTENCE_MODE_FLATFILE_PRIMARY || version>=13));
+        }
+    }
+    selected=nullptr;
+"""
+program=program.replace("int main() {",setup+"\nint main() {")
+program=program.replace('    puts("copyover versions',checks+'    puts("copyover versions')
 with tempfile.TemporaryDirectory(prefix="duris-shop-copyover-") as tmp:
     p=Path(tmp); (p/"test.cpp").write_text(program)
     subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-I",str(ROOT/"src"),str(p/"test.cpp"),"-o",str(p/"test")],check=True)

@@ -9,7 +9,8 @@ Memory is the authority. The database is a copy that catches up through one writ
 3. The writer is a single background thread (`src/player/player_save_worker.c`). It
    applies every queued save in capture order: player saves (with their pets),
    corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas,
-   critical commands and the game thread's SQL (see below).
+   critical commands, flat artifact/soul captures, and the game thread's SQL
+   (see below).
    A newer save of the same owner replaces its queued one only when that is the last
    job queued. Otherwise it is queued behind, because a job queued after the owner's
    save may rely on it being written first (the owner money or an item leaves is
@@ -18,6 +19,17 @@ Memory is the authority. The database is a copy that catches up through one writ
    the writer retries that job at the head of the queue, with a backoff capped at
    five seconds. Any other failure is reported once, the job is dropped, and the
    owner is marked dirty so its next save carries the state again.
+
+Admission is bounded to 4,096 outstanding jobs (queued, in flight, or awaiting
+completion consumption) and 128 MiB of declared queued/in-flight capture bytes.
+At capacity, submission returns `unavailable` with `errno=ENOSPC`; admitted work
+keeps its order and is never evicted. A tail replacement uses the old capture's
+slot and only its net byte increase. Dirty-state callers retry a refused capture;
+other callers retain their existing refusal behavior, including logged SQL drops.
+The byte limit bounds reported payload sizes, not total process memory. It allows
+one maximum artifact catalog capture; these limits are not throughput guarantees.
+The artifact/guild lifecycle drain consumes writer completions before retrying
+dirty captures, releasing admission slots while the normal game loop is stopped.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
 operation. Nothing is journaled. A crash loses whatever had not reached the database,

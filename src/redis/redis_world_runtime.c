@@ -28,7 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <cerrno>
+#include <charconv>
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
@@ -59,6 +59,18 @@ constexpr uint64_t FLOOR_DRAIN_TIMEOUT_MSEC = 1000;
 redisContext *world_context = NULL;
 const redis_connection_settings *world_connection = NULL;
 bool world_enabled = false;
+#ifndef __NO_REDIS__
+bool world_recovery_requested()
+{
+	const char *redis = getenv("REDIS");
+	const char *world = getenv("REDIS_WORLD_STATE");
+	return redis && strcasecmp(redis, "TRUE") == 0 && world && strcasecmp(world, "TRUE") == 0;
+}
+#endif
+bool world_boot_prepared = false;
+bool world_boot_restored = false;
+redis_world_boot_result world_boot_result = redis_world_boot_result::failed;
+redis_world_boot_snapshot world_boot_snapshot;
 bool recovery_boot = false;
 bool clean_restart_boot = false;
 int world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
@@ -257,9 +269,8 @@ bool redis_reconnect()
 	return true;
 }
 
-// The boot's reads share the game loop's connection and its 100 ms deadline. On a busy host
-// a reply misses it, and that is not an answer: the read is made again on a new connection.
-// False when Redis did not answer, or when its answer made the read fail.
+// Retry a whole capture on fresh connections after transport failure. Invalid
+// evidence fails immediately; a missed reply is not evidence of absence.
 template <typename Read> bool redis_world_boot_read(Read read)
 {
 	for (int attempt = 0; attempt < WORLD_BOOT_READ_ATTEMPTS; ++attempt)
@@ -270,33 +281,44 @@ template <typename Read> bool redis_world_boot_read(Read read)
 			continue;
 		if (read())
 			return true;
-		if (!world_context->err)
+		if (world_context && !world_context->err)
 			return false;
 	}
 	return false;
 }
 
-// The current generation's sequence, 0 when there is none.
+// Redis strings have an explicit length: a numeric prefix or an embedded NUL is
+// not a complete identity. Failure leaves no previous value for a caller to use.
+bool redis_positive_u64(const redisReply *reply, uint64_t *value)
+{
+	*value = 0;
+	if (!reply || reply->type != REDIS_REPLY_STRING || !reply->str || !reply->len)
+		return false;
+	uint64_t parsed = 0;
+	const char *end = reply->str + reply->len;
+	const auto result = std::from_chars(reply->str, end, parsed);
+	if (result.ec != std::errc{} || result.ptr != end || !parsed)
+		return false;
+	*value = parsed;
+	return true;
+}
+
+// The current generation's sequence. Only a genuine missing key succeeds with 0;
+// malformed or unavailable evidence fails, rather than establishing absence.
 bool redis_world_boot_sequence(uint64_t *sequence)
 {
+	*sequence = 0;
 	char current_key[128];
 	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
 			     REDIS_WORLD_CURRENT_SUFFIX))
 		return false;
-	return redis_world_boot_read(
-		[&]()
-		{
-			redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD,
-							  REDIS_SHARED_COMMAND_READ, "GET %s",
-							  current_key);
-			if (!reply)
-				return false;
-			*sequence = reply->type == REDIS_REPLY_STRING && reply->str ?
-					    strtoull(reply->str, NULL, 10) :
-					    0;
-			freeReplyObject(reply);
-			return true;
-		});
+	redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
+					  "GET %s", current_key);
+	if (!reply)
+		return false;
+	const bool valid = reply->type == REDIS_REPLY_NIL || redis_positive_u64(reply, sequence);
+	freeReplyObject(reply);
+	return valid;
 }
 
 bool redis_world_writer_token_create(std::string *token)
@@ -532,54 +554,15 @@ bool redis_world_recovery_ensure_initialized()
 				redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
 					      "GET %s", current_key) :
 				NULL;
-		if (sequence_reply && sequence_reply->type == REDIS_REPLY_STRING &&
-		    sequence_reply->str)
-			world_sequence_floor = std::max<uint64_t>(
-				world_sequence_floor, strtoull(sequence_reply->str, NULL, 10));
+		uint64_t sequence = 0;
+		if (redis_positive_u64(sequence_reply, &sequence))
+			world_sequence_floor = std::max(world_sequence_floor, sequence);
 		if (sequence_reply)
 			freeReplyObject(sequence_reply);
 	}
 	if (world_sequence_floor)
 		world_recovery_pipeline_set_sequence_floor(world_sequence_floor);
 	return true;
-}
-
-void redis_clear_floor_pickups()
-{
-	if (!world_context)
-		return;
-	redisReply *reply = redis_command(REDIS_SHARED_SCOPE_FLOOR, REDIS_SHARED_COMMAND_WRITE,
-					  "DEL %s", REDIS_LEGACY_FLOOR_PICKUPS);
-	if (reply)
-		freeReplyObject(reply);
-}
-
-bool redis_clear_floor_drops()
-{
-	if (!world_context)
-		return false;
-	char floor_key[128];
-	char floor_index_key[128];
-	const uint64_t epoch = world_writer_epoch ? world_writer_epoch : world_runtime_epoch;
-	if (!redis_epoch_key(floor_key, sizeof floor_key, epoch, REDIS_FLOOR_DROPS_SUFFIX) ||
-	    !redis_epoch_key(floor_index_key, sizeof floor_index_key, epoch,
-			     REDIS_FLOOR_DROP_INDEX_SUFFIX))
-		return false;
-	redisReply *reply = redis_command(REDIS_SHARED_SCOPE_FLOOR, REDIS_SHARED_COMMAND_WRITE,
-					  "DEL %s %s", floor_key, floor_index_key);
-	if (!reply || reply->type != REDIS_REPLY_INTEGER)
-	{
-		if (reply)
-			freeReplyObject(reply);
-		return false;
-	}
-	freeReplyObject(reply);
-	reply = redis_command(REDIS_SHARED_SCOPE_FLOOR, REDIS_SHARED_COMMAND_READ, "EXISTS %s %s",
-			      floor_key, floor_index_key);
-	const bool absent = reply && reply->type == REDIS_REPLY_INTEGER && reply->integer == 0;
-	if (reply)
-		freeReplyObject(reply);
-	return absent;
 }
 
 bool redis_read_floor_records(std::vector<std::vector<unsigned char>> *records,
@@ -666,14 +649,7 @@ bool redis_read_floor_records(std::vector<std::vector<unsigned char>> *records,
 		for (size_t index = 0; index < count; ++index)
 		{
 			const redisReply *field = fields->element[index];
-			char *end = NULL;
-			errno = 0;
-			field_uids[index] = field && field->type == REDIS_REPLY_STRING &&
-							    field->str ?
-						    strtoull(field->str, &end, 10) :
-						    0;
-			valid = valid && field && field->type == REDIS_REPLY_STRING && field->str &&
-				!errno && end && !*end && field_uids[index];
+			valid = valid && redis_positive_u64(field, &field_uids[index]);
 			arguments[index + 2] = field ? field->str : nullptr;
 			lengths[index + 2] = field ? field->len : 0;
 		}
@@ -711,7 +687,7 @@ bool redis_read_floor_records(std::vector<std::vector<unsigned char>> *records,
 				      (unsigned long long)root_uid);
 				break;
 			}
-			const size_t record_size = value->len - WORLD_RECOVERY_FLOOR_PREFIX_BYTES;
+			const size_t record_size = value->len;
 			if (record_size > maximum_bytes - aggregate_size)
 			{
 				logit(LOG_SYS,
@@ -730,8 +706,7 @@ bool redis_read_floor_records(std::vector<std::vector<unsigned char>> *records,
 				valid = false;
 				break;
 			}
-			memcpy(record.data(), value->str + WORLD_RECOVERY_FLOOR_PREFIX_BYTES,
-			       record_size);
+			memcpy(record.data(), value->str, record_size);
 			aggregate_size += record_size;
 			records->push_back(std::move(record));
 		}
@@ -798,6 +773,10 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 		return false;
 	}
 	world_enabled = false;
+	world_boot_prepared = false;
+	world_boot_restored = false;
+	world_boot_result = redis_world_boot_result::failed;
+	world_boot_snapshot = {};
 	recovery_boot = false;
 	clean_restart_boot = false;
 	world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
@@ -834,8 +813,7 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 		logit(LOG_SYS, "redis connected to %s:%d", config->host, config->port);
 	redis_shared_connection_observability_record(false, world_context != NULL);
 
-	const char *world_state_env = getenv("REDIS_WORLD_STATE");
-	if (world_state_env && strcasecmp(world_state_env, "TRUE") == 0)
+	if (world_recovery_requested())
 	{
 		world_enabled = true;
 		if (!redis_configure_world_authentication())
@@ -959,6 +937,10 @@ void redis_world_runtime_shutdown(bool pwipe)
 	world_connection = NULL;
 	world_runtime_epoch = 0;
 	world_enabled = false;
+	world_boot_prepared = false;
+	world_boot_restored = false;
+	world_boot_result = redis_world_boot_result::failed;
+	world_boot_snapshot = {};
 #else
 	(void)pwipe;
 #endif
@@ -986,6 +968,9 @@ bool redis_world_clean_restart_boot(void)
 
 void redis_world_recovery_boot_clear(void)
 {
+	world_boot_snapshot = {};
+	world_boot_result = redis_world_boot_result::failed;
+	world_boot_restored = false;
 	recovery_boot = false;
 	clean_restart_boot = false;
 }
@@ -1144,35 +1129,155 @@ bool redis_world_recovery_quiesce(void)
 #endif
 }
 
-bool redis_has_world_state(void)
+namespace
+{
+#ifndef __NO_REDIS__
+bool redis_status(redisReply *reply, const char *expected)
+{
+	const bool ok = reply && reply->type == REDIS_REPLY_STATUS && reply->str &&
+			reply->len == strlen(expected) && !memcmp(reply->str, expected, reply->len);
+	if (reply)
+		freeReplyObject(reply);
+	return ok;
+}
+
+bool redis_capture_boot_snapshot(redis_world_boot_snapshot *snapshot)
+{
+	char current[128], floor[128], index[128];
+	if (!redis_epoch_key(current, sizeof current, world_runtime_epoch,
+			     REDIS_WORLD_CURRENT_SUFFIX) ||
+	    !redis_epoch_key(floor, sizeof floor, world_runtime_epoch, REDIS_FLOOR_DROPS_SUFFIX) ||
+	    !redis_epoch_key(index, sizeof index, world_runtime_epoch,
+			     REDIS_FLOOR_DROP_INDEX_SUFFIX) ||
+	    !redis_status(redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
+					"WATCH %s %s %s", current, floor, index),
+			  "OK"))
+		return false;
+	// On every early return, including allocation failure, clear the transaction.
+	struct watch_scope
+	{
+		bool multi = false;
+		~watch_scope()
+		{
+			if (world_context && !world_context->err)
+			{
+				redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD,
+								  REDIS_SHARED_COMMAND_READ,
+								  multi ? "DISCARD" : "UNWATCH");
+				if (!redis_status(reply, "OK"))
+				{
+					redisFree(world_context);
+					world_context = nullptr;
+				}
+			}
+		}
+	} watch;
+	redis_world_boot_snapshot staged;
+	if (!redis_world_boot_sequence(&staged.sequence))
+		return false;
+	if (staged.sequence)
+	{
+		char suffix[96], manifest[160];
+		snprintf(suffix, sizeof suffix, REDIS_WORLD_GENERATION_FORMAT,
+			 static_cast<unsigned long long>(staged.sequence));
+		if (!redis_epoch_key(manifest, sizeof manifest, world_runtime_epoch, suffix) ||
+		    !redis_status(redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
+						"WATCH %s", manifest),
+				  "OK"))
+			return false;
+		const auto config = redis_world_store_config_copy();
+		bool transport_failure = false;
+		if (!redis_world_store_read_generation(&config, staged.sequence, &staged.generation,
+						       &transport_failure))
+		{
+			if (transport_failure)
+			{
+				// Drop WATCH too, so the existing retry path restarts the entire cut.
+				redisFree(world_context);
+				world_context = nullptr;
+			}
+			return false;
+		}
+		world_recovery_header header = {};
+		if (!world_recovery_validate(staged.generation.data(), staged.generation.size(),
+					     world_state_max_age, staged.sequence, &header) ||
+		    header.sequence != staged.sequence)
+			return false;
+	}
+	const size_t floor_budget = std::min(WORLD_RECOVERY_MAX_FLOOR_BYTES,
+					     WORLD_RECOVERY_MAX_BYTES - staged.generation.size());
+	if (!redis_read_floor_records(&staged.floor_records, floor_budget) ||
+	    (!staged.sequence && !staged.floor_records.empty()))
+		return false; // orphan floor evidence is unresolved, never absent
+	if (!redis_status(redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
+					"MULTI"),
+			  "OK"))
+		return false;
+	watch.multi = true;
+	if (!redis_status(redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
+					"PING"),
+			  "QUEUED"))
+		return false;
+	redisReply *sealed =
+		redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ, "EXEC");
+	// EXEC clears MULTI even when WATCH aborts. A transport failure is retried
+	// only by restarting the entire capture on a new connection.
+	watch.multi = !sealed;
+	const bool stable = sealed && sealed->type == REDIS_REPLY_ARRAY && sealed->elements == 1 &&
+			    sealed->element[0] && sealed->element[0]->type == REDIS_REPLY_STATUS &&
+			    sealed->element[0]->len == 4 &&
+			    !memcmp(sealed->element[0]->str, "PONG", 4);
+	if (sealed)
+		freeReplyObject(sealed);
+	if (!stable)
+		return false;
+	*snapshot = std::move(staged);
+	return true;
+}
+#endif
+} // namespace
+
+redis_world_boot_result redis_world_prepare_boot(void)
 {
 #ifdef __NO_REDIS__
-	return false;
+	return redis_world_boot_result::disabled;
 #else
-	if (!world_enabled)
-	{
-		clean_restart_boot = false;
-		return false;
-	}
-	const uint64_t candidate_clean_sequence = clean_shutdown_sequence;
-	clean_shutdown_sequence = 0;
+	if (world_boot_prepared)
+		return world_boot_result;
+	world_boot_prepared = true;
+	const bool requested = world_recovery_requested();
+	world_boot_result = requested ? redis_world_boot_result::failed :
+					redis_world_boot_result::disabled;
 	clean_restart_boot = false;
-	uint64_t sequence = 0;
-	if (!redis_world_boot_sequence(&sequence) || !sequence)
-		return false;
-	std::vector<unsigned char> generation;
-	const redis_world_store_config config = redis_world_store_config_copy();
-	if (!redis_world_store_read_generation(&config, sequence, &generation))
-		return false;
-	world_recovery_header header = {};
-	const bool exists = world_recovery_validate(generation.data(), generation.size(),
-						    world_state_max_age, sequence, &header) &&
-			    header.sequence == sequence;
-	if (exists)
-		world_sequence_floor = std::max(world_sequence_floor, sequence);
-	clean_restart_boot = exists && candidate_clean_sequence == sequence;
-	return exists;
+	if (!requested || !world_enabled)
+		return world_boot_result;
+	try
+	{
+		redis_world_boot_snapshot staged;
+		if (!redis_world_boot_read([&] { return redis_capture_boot_snapshot(&staged); }))
+			return world_boot_result;
+		world_boot_snapshot = std::move(staged);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return world_boot_result;
+	}
+	const auto sequence = world_boot_snapshot.sequence;
+	world_boot_result = sequence ? redis_world_boot_result::ready :
+				       redis_world_boot_result::absent;
+	world_sequence_floor = std::max(world_sequence_floor, sequence);
+	clean_restart_boot = sequence && clean_shutdown_sequence == sequence;
+	clean_shutdown_sequence = 0;
+	return world_boot_result;
 #endif
+}
+
+const redis_world_boot_snapshot *redis_world_boot_evidence(void)
+{
+	return world_boot_result == redis_world_boot_result::ready ||
+			       world_boot_result == redis_world_boot_result::absent ?
+		       &world_boot_snapshot :
+		       nullptr;
 }
 
 bool redis_consume_world_state(void)
@@ -1180,11 +1285,47 @@ bool redis_consume_world_state(void)
 #ifdef __NO_REDIS__
 	return false;
 #else
-	uint64_t sequence = 0;
-	if (!world_enabled || !redis_world_boot_sequence(&sequence) || !sequence)
+	if (!world_enabled || !world_boot_restored ||
+	    world_boot_result != redis_world_boot_result::ready)
 		return false;
-	const redis_world_store_config config = redis_world_store_config_copy();
-	return redis_world_store_consume_generation(&config, sequence);
+	const auto config = redis_world_store_config_copy();
+	if (!redis_world_store_consume_generation(&config, world_boot_snapshot.sequence,
+						  world_boot_snapshot.generation,
+						  world_boot_snapshot.floor_records))
+		return false;
+	world_boot_restored = false;
+	return true;
+#endif
+}
+
+bool redis_world_validate_boot(void)
+{
+#ifdef __NO_REDIS__
+	return false;
+#else
+	if (world_boot_result != redis_world_boot_result::ready)
+		return false;
+	std::vector<const unsigned char *> floor_data;
+	std::vector<size_t> floor_sizes;
+	try
+	{
+		floor_data.reserve(world_boot_snapshot.floor_records.size());
+		floor_sizes.reserve(world_boot_snapshot.floor_records.size());
+		for (const auto &record : world_boot_snapshot.floor_records)
+		{
+			floor_data.push_back(record.data() + WORLD_RECOVERY_FLOOR_PREFIX_BYTES);
+			floor_sizes.push_back(record.size() - WORLD_RECOVERY_FLOOR_PREFIX_BYTES);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	return world_recovery_validate_with_floor(world_boot_snapshot.generation.data(),
+						  world_boot_snapshot.generation.size(),
+						  world_state_max_age, world_boot_snapshot.sequence,
+						  floor_data.data(), floor_sizes.data(),
+						  floor_data.size());
 #endif
 }
 
@@ -1193,64 +1334,37 @@ bool redis_load_world_state(void)
 #ifdef __NO_REDIS__
 	return false;
 #else
-	uint64_t expected_sequence = 0;
-	if (!world_enabled || !redis_world_boot_sequence(&expected_sequence) || !expected_sequence)
-	{
-		logit(LOG_SYS, "redis: world recovery current sequence read failed");
+	if (!world_enabled || world_boot_result != redis_world_boot_result::ready ||
+	    world_boot_restored)
 		return false;
-	}
-	std::vector<unsigned char> generation;
-	const redis_world_store_config config = redis_world_store_config_copy();
-	if (!redis_world_store_read_generation(&config, expected_sequence, &generation))
-	{
-		logit(LOG_SYS, "redis: world recovery generation read failed sequence=%llu",
-		      (unsigned long long)expected_sequence);
-		return false;
-	}
-	std::vector<std::vector<unsigned char>> floor_records;
-	const size_t floor_budget = generation.size() <= WORLD_RECOVERY_MAX_BYTES ?
-					    std::min(WORLD_RECOVERY_MAX_FLOOR_BYTES,
-						     WORLD_RECOVERY_MAX_BYTES - generation.size()) :
-					    0;
-	if (!redis_world_boot_read(
-		    [&]() { return redis_read_floor_records(&floor_records, floor_budget); }))
-	{
-		logit(LOG_SYS, "redis: world recovery floor read failed sequence=%llu budget=%zu",
-		      (unsigned long long)expected_sequence, floor_budget);
-		return false;
-	}
-	std::vector<const unsigned char *> floor_record_data;
-	std::vector<size_t> floor_record_sizes;
+	std::vector<const unsigned char *> floor_data;
+	std::vector<size_t> floor_sizes;
 	try
 	{
-		floor_record_data.reserve(floor_records.size());
-		floor_record_sizes.reserve(floor_records.size());
-		for (const std::vector<unsigned char> &record : floor_records)
+		floor_data.reserve(world_boot_snapshot.floor_records.size());
+		floor_sizes.reserve(world_boot_snapshot.floor_records.size());
+		for (const auto &record : world_boot_snapshot.floor_records)
 		{
-			floor_record_data.push_back(record.data());
-			floor_record_sizes.push_back(record.size());
+			floor_data.push_back(record.data() + WORLD_RECOVERY_FLOOR_PREFIX_BYTES);
+			floor_sizes.push_back(record.size() - WORLD_RECOVERY_FLOOR_PREFIX_BYTES);
 		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		logit(LOG_SYS, "redis: world recovery floor metadata allocation failed");
 		return false;
 	}
 	world_recovery_header header = {};
-	const bool result = world_recovery_restore_with_floor(
-		generation.data(), generation.size(), world_state_max_age, expected_sequence,
-		floor_record_data.data(), floor_record_sizes.data(), floor_records.size(), &header);
-	if (!result || header.sequence != expected_sequence)
-	{
-		logit(LOG_SYS, "redis: rejected invalid world recovery generation");
+	if (!world_recovery_restore_with_floor(
+		    world_boot_snapshot.generation.data(), world_boot_snapshot.generation.size(),
+		    world_state_max_age, world_boot_snapshot.sequence, floor_data.data(),
+		    floor_sizes.data(), floor_data.size(), &header) ||
+	    header.sequence != world_boot_snapshot.sequence)
 		return false;
-	}
-	redis_clear_floor_pickups();
-	redis_clear_floor_drops();
+	world_boot_restored = true;
 	logit(LOG_SYS,
 	      "redis: restored world recovery generation sequence=%llu mobs=%u objs=%u doors=%u zones=%u",
-	      (unsigned long long)header.sequence, header.mob_count, header.object_count,
-	      header.door_count, header.zone_count);
+	      static_cast<unsigned long long>(header.sequence), header.mob_count,
+	      header.object_count, header.door_count, header.zone_count);
 	return true;
 #endif
 }

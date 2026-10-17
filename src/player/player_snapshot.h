@@ -241,6 +241,20 @@ struct player_trophy_snapshot
 	int32_t experience;
 };
 
+struct player_retained_item_row
+{
+	uint64_t source_row_id = 0;
+	uint64_t root_item_uid = 0;
+};
+
+// Owned in-process save intent, not encoded in player files. SQL keeps these
+// source rows in place; flat saves retain the matching stored roots after claims.
+struct player_item_retention
+{
+	std::vector<player_retained_item_row> rows;
+	size_t bytes = 0;
+};
+
 struct player_snapshot
 {
 	uint32_t schema_version;
@@ -263,6 +277,7 @@ struct player_snapshot
 	std::vector<player_skill_snapshot> skills;
 	std::vector<player_affect_snapshot> affects;
 	std::vector<player_item_snapshot> items;
+	player_item_retention retained_items;
 	std::vector<player_pet_snapshot> pets;
 	std::vector<player_shape_snapshot> shapes;
 	std::vector<player_trophy_snapshot> trophies;

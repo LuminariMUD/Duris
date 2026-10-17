@@ -27,7 +27,7 @@ for signature, loader in (
     ("static bool poof_offline_artifact(", "player_load_offline("),
     ("void arti_poof_sql(P_char ch, char *arg)\n{", "player_load_offline_for("),
     ("void arti_swap_sql(P_char ch, char *arg)\n{", "player_load_offline_for("),
-    ("void arti_hunt_sql(P_char ch, const char *arg)\n{", "player_load_offline_for("),
+    ("void arti_hunt_sql(P_char ch, const char *arg)\n{", "player_load_offline_inspect_for("),
     ("void arti_files_to_sql(P_char ch, char *arg)\n{", "player_load_offline_for("),
 ):
     assert loader in body(signature), signature
@@ -52,9 +52,10 @@ poof = body("static void poof_loaded_owner(")
 not_loaded = poof[poof.index("if (!owner)") : poof.index("return;", poof.index("if (!owner)"))]
 assert "artifact_expire" not in not_loaded and "release_offline_owner" not in not_loaded
 missing = body("static bool poof_offline_artifact(")
-assert missing.index("if (!name)") < missing.index("artifact_expire(vnum);") < missing.index(
-    "player_load_offline(")
-assert "artifact_expire(vnum);" in body("static void poof_loaded_owner(")
+assert "owner_unavailable" in missing and "tracking_retained=1" in missing
+assert "artifact_expire(" not in artifact
+assert "retire_expired_artifact(arti)" in body("static void poof_loaded_owner(")
+assert "artifact_on_owner(owner, vnum)" in body("static void poof_loaded_owner(")
 # A loaded owner is in no room. poof_artifact() tells and shouts only for an owner in one:
 # do_shout() reads the shouter's room, which for a loaded owner was world[-1].
 poofed = body("void poof_artifact(P_obj arti)\n{")
@@ -67,3 +68,10 @@ assert "flatfile_identity_lookup_pid(" in body(
     "void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)\n{")
 
 print("artifact offline owner load contracts passed")
+
+# Hunt is an inspection of the original bounded source cut, including withheld rows.
+hunt = body("static void arti_hunt_owner(")
+assert "const player_load_result &" in hunt and "result.item_sources" in hunt
+for mutation in ("read_object(", "read_mobile(", "extract_obj(", "artifact_update_sql(", "artifact_update_location_sql(", "release_offline_owner("):
+    assert mutation not in hunt, mutation
+assert "No repairs applied" in hunt

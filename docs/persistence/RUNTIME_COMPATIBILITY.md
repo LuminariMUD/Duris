@@ -20,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0043_news_acknowledgement`, and the contract
+The current head is `0044_artifact_canonical_identity`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -55,6 +55,17 @@ per-character unread-news marker. Both preserve existing player rows. The news
 migration is guarded, verifies the complete column shape and its position after
 `learned_flight_stops`, and refuses an incompatible pre-existing column. Apply it
 before starting the updated database-backed server; it adds no table.
+
+0044 adds nullable `artifact_domain_state.canonical_item_uid`, a unique UID key,
+and default-zero `identity_state` without replacing the existing nullable custody
+FK. An unclaimed NPC/ground item can have a physical identity before it has a
+custody row. States are 0 unresolved, 1 present, 2 retired and 3 proven absent;
+present/retired require a positive UID, while unresolved/absent have NULL. Legacy
+rows remain unresolved, with all timer/soul/custody evidence unchanged. Separate
+column/index guards permit interrupted DDL replay, and the verifier refuses
+incompatible shapes or inconsistent UID/state rather than rewriting evidence.
+This storage migration does not itself choose canonical copies or enforce
+admission; those runtime changes remain tracked in issue #67's plan.
 
 An existing populated database must first be upgraded only on a disposable clone.
 Run the legacy convergence, then the immutable runner against the same clone before

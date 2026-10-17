@@ -1230,7 +1230,15 @@ void fatal_boot_error(const char *component, const char *fmt, ...)
 	va_start(ap, fmt);
 	fatal_message_v(component, fmt, ap);
 	va_end(ap);
-	exit(EXIT_FAILURE);
+
+	// Boot can fail with workers running and a partially restored world.
+	// Preserve diagnostics explicitly, then skip unsafe global destruction.
+#ifndef _DE_
+	write_boot_cmdlog();
+#endif
+	fflush(stdout);
+	fflush(stderr);
+	_Exit(EXIT_FAILURE);
 }
 
 void panic_corruption(const char *component, const char *fmt, ...)

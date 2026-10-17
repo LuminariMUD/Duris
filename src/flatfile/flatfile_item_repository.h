@@ -27,6 +27,7 @@
 #include "economy/shop_trade_command.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -143,6 +144,12 @@ flatfile_item_repository_result
 flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
 				   std::vector<flatfile_item_ownership_record> *records,
 				   std::string *error);
+// One boot/offline evidence view, including inactive custody and legacy embedded
+// coin history. Optional revisions are keyed by UID and read from the same catalog.
+// Custody metadata does not establish a physical copy.
+flatfile_item_repository_result flatfile_item_repository_read_population(
+	const std::string &root, std::vector<flatfile_item_ownership_record> *records,
+	std::string *error, std::map<uint64_t, uint64_t> *owner_revisions = nullptr);
 flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,
@@ -163,10 +170,12 @@ flatfile_item_repository_result flatfile_item_repository_list_active_player_item
 // boot reap, see reap_unheld_player_items() in item/item_claim_repository.h. A record
 // another record names as its parent is kept. A player file or store that cannot be
 // read stops the reap with nothing deleted. Returns unchanged when nothing was deleted.
-// *deleted counts the records.
+// *deleted counts the records. Optional retained UIDs come from the complete boot
+// population cut, including recovery and other payload domains.
 flatfile_item_repository_result
 flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
-						  std::string *error);
+						  std::string *error,
+						  const std::vector<uint64_t> *retained = nullptr);
 // World recovery: add to *owned each of uids that has an owner. A player's active
 // record counts only when the player's next load holds the item (its file, its pets, or
 // a delivery still pending), as MariaDB asks player_items; any other record counts.

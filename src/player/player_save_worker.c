@@ -109,9 +109,12 @@ void update_depth_health_locked()
 {
 	health.queued_jobs = queue.size();
 	health.inflight_jobs = inflight ? 1 : 0;
+	health.completion_jobs = results.size();
 	health.queued_bytes = queued_bytes;
-	update_max(health.high_water_jobs, health.queued_jobs + health.inflight_jobs);
-	update_max(health.high_water_bytes, queued_bytes);
+	health.inflight_bytes = inflight ? inflight->bytes : 0;
+	update_max(health.high_water_jobs,
+		   health.queued_jobs + health.inflight_jobs + health.completion_jobs);
+	update_max(health.high_water_bytes, queued_bytes + health.inflight_bytes);
 }
 
 player_save_apply_result write_job(const queued_job &job)
@@ -246,15 +249,27 @@ player_save_submit_result enqueue(queued_job job)
 		return player_save_submit_result::unavailable;
 	}
 	const persistence_job_owner key = { job.kind, job.owner };
+	const auto found = queued_by_owner.find(key);
+	const bool replace_tail = found != queued_by_owner.end() &&
+				  found->second == std::prev(queue.end());
+	const size_t retained_bytes = queued_bytes + (inflight ? inflight->bytes : 0) -
+				      (replace_tail ? found->second->bytes : 0);
+	const size_t pending_jobs = queue.size() + (inflight ? 1 : 0) + results.size();
+	if (job.bytes > PLAYER_SAVE_WORKER_MAX_PENDING_BYTES ||
+	    retained_bytes > PLAYER_SAVE_WORKER_MAX_PENDING_BYTES - job.bytes ||
+	    (!replace_tail && pending_jobs >= PLAYER_SAVE_WORKER_MAX_PENDING_JOBS))
+	{
+		errno = ENOSPC;
+		return player_save_submit_result::unavailable;
+	}
 	bool replaced = false;
 	try
 	{
 		// Replace only the tail, without erasing its old capture before a possible
 		// allocation failure. A new owner index and list entry are admitted together.
-		const auto found = queued_by_owner.find(key);
 		job.queued_at_usec = now_usec();
 		const size_t bytes = job.bytes;
-		if (found != queued_by_owner.end() && found->second == std::prev(queue.end()))
+		if (replace_tail)
 		{
 			queued_bytes -= found->second->bytes;
 			*found->second = std::move(job);
@@ -314,6 +329,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "shopkeeper";
 	case persistence_job_kind::sql:
 		return "sql";
+	case persistence_job_kind::artifact:
+		return "artifact";
 	}
 	return "unknown";
 }
@@ -423,6 +440,7 @@ size_t player_save_worker_pulse(player_save_completion *completions_out, size_t 
 		completions_out[consumed++] = results.front();
 		results.pop_front();
 	}
+	update_depth_health_locked();
 	return consumed;
 }
 

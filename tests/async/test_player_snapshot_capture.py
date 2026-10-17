@@ -302,6 +302,24 @@ int main()
     assert(unowned_lines() == 2);
     ch.carrying = nullptr;
     std::cout << "[PASS] a held item with no ledger entry is reported only with the trace on\n";
+    player_item_retention retained_items;
+    retained_items.rows={{10,0},{11,0}}; retained_items.bytes=128;
+    pc.retained_items=&retained_items; ch.carrying=&picked_up;
+    player_snapshot sealed;
+    assert(player_snapshot_capture(&ch,100,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&sealed)==player_snapshot_capture_result::ok);
+    retained_items.rows[0].source_row_id=90;
+    assert(sealed.retained_items.rows[0].source_row_id==10 && sealed.retained_items.bytes==128);
+    auto without_retention=sealed; without_retention.retained_items={};
+    std::vector<uint8_t> encoded,plain;
+    assert(player_snapshot_encode(sealed,&encoded)==player_snapshot_codec_result::ok &&
+           player_snapshot_encode(without_retention,&plain)==player_snapshot_codec_result::ok && encoded==plain);
+    player_snapshot decoded;
+    assert(player_snapshot_decode(encoded.data(),encoded.size(),&decoded)==player_snapshot_codec_result::ok && decoded.retained_items.rows.empty());
+    retained_items.bytes=PLAYER_SNAPSHOT_MAX_BYTES;
+    player_snapshot untouched; untouched.pid=123;
+    assert(player_snapshot_capture(&ch,101,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&untouched)==player_snapshot_capture_result::limit_exceeded && untouched.pid==123);
+    pc.retained_items=nullptr; ch.carrying=nullptr;
+    std::cout << "[PASS] immutable retained-source capture, byte bound and unchanged wire format\n";
 }
 """
 
