@@ -2,7 +2,9 @@
 
 **One delivery branch. Finish the gaps. Verify the complete result. Merge once.**
 This replaces the checkpoint log without dropping any acceptance requirement.
-This revision changes the plan only; implementation and merging follow it.
+Latest owner instruction: merge the accumulated work immediately without additional
+tests or review loops. Current master integrated without conflicts. Remaining
+acceptance items below are explicitly unfinished; this merge does not close #67.
 
 ## Starting point
 
