@@ -41,6 +41,7 @@ static uint64_t expected_procedure_uid=0;
 static bool drop_swap_artifact_flag=false, renew_swap_source=false;
 static int swap_placement_fault=0;
 static size_t removed_wear_links=0;
+static std::map<uint64_t,size_t> removed_wear_links_by_uid;
 static std::vector<uint64_t> removed_floor_uids;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
@@ -195,7 +196,7 @@ int writeCharacter(P_char owner,int,int) {
  if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
  return offline_save_allowed ? 1 : 0;
 }
-void clear_links(P_char,P_obj,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; }
+void clear_links(P_char,P_obj object,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; ++removed_wear_links_by_uid[object->obj_uid]; }
 void writeCorpse(P_obj) { ++corpse_saves; }
 void do_shout(P_char,char *,int) {}
 void free_char(P_char owner) {
@@ -1083,7 +1084,7 @@ void swap_admission_cases() {
    obj_to_char(bag,&owner); obj_to_obj(source,bag);
   }
   const auto releases=offline_released;
-  const auto links_before=removed_wear_links;
+  const auto links_before=removed_wear_links_by_uid[80001];
   const auto target_before_refusal=artifact_rows.at(902);
   command_output.clear();
   offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
@@ -1093,7 +1094,7 @@ void swap_admission_cases() {
          artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
          artifact_rows.at(902).canonical_item_uid==target_before_refusal.canonical_item_uid &&
          artifact_rows.at(902).identity_state==target_before_refusal.identity_state &&
-         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links==links_before);
+         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links_by_uid[80001]==links_before);
   assert(command_output.find("original retained")!=std::string::npos && command_output.find("swapped with")==std::string::npos);
  }
  // The unchanged durable source remains admissible when snapshot capture recovers.
