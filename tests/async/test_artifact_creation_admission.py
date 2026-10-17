@@ -70,7 +70,7 @@ void *__malloc(size_t size,const char *,const char *,int) { return calloc(1,size
 void __free(void *memory,const char *,int) { free(memory); }
 int strn_cmp(const char *left,const char *right,unsigned int size) { return strncasecmp(left,right,size); }
 int number(int from,int) { return from; }
-int real_object(const int vnum) { return vnum>=900 && vnum<=903 ? vnum-900 : -1; }
+int real_object(const int vnum) { return vnum==21 ? 0 : vnum==22 ? 2 : vnum>=900 && vnum<=903 ? vnum-900 : -1; }
 int periodic(P_obj object,P_char,int,char *) {
  if(expected_procedure_uid) assert(object->obj_uid==expected_procedure_uid && IS_ARTIFACT(object) && !artifact_is_canonical(object));
  if(OBJ_VNUM(object)==902 && drop_swap_artifact_flag) object->extra_flags&=~ITEM_ARTIFACT;
@@ -209,6 +209,7 @@ void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_ret
 // SWAP_CASES
 // MONOLITH_CASES
 // STUDIO_CASES
+// TRANSFORMATION_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
@@ -359,6 +360,7 @@ int main() {
  swap_admission_cases();
  monolith_cases();
  studio_cases();
+ transformation_cases();
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
@@ -1117,6 +1119,75 @@ void studio_cases() {
   extract_obj(object_list,TRUE); artifact_save_pulse(true); drain();
  }
  std::cout<<"actual Studio load/give actions: singular artifact and ordinary-object controls: PASS\n";
+}
+""")
+source=source.replace("// TRANSFORMATION_CASES", r"""
+void mobsay(P_char,const char *) {}
+static char_data transformed_mob;
+static npc_only_data transformed_data;
+static P_char transformation_source;
+static size_t transformation_loads=0, transformation_removals=0;
+static bool transformation_load_fails=false, transformed_live=false;
+static int transformation_room_failure=0;
+bool isname(const char *name,const char *keys) { return name && keys && !strcmp(name,keys); }
+P_char read_mobile(int vnum,int) {
+ assert(vnum==142213); ++transformation_loads;
+ if(transformation_load_fails) return nullptr;
+ transformed_mob={}; transformed_data={}; transformed_mob.only.npc=&transformed_data;
+ transformed_mob.specials.act=ACT_ISNPC; transformed_mob.specials.position=STAT_NORMAL;
+ transformed_mob.runtime_id=876543; transformed_mob.in_room=NOWHERE; transformed_live=true;
+ return &transformed_mob;
+}
+bool char_to_room(P_char ch,int room,int) {
+ assert(ch==&transformed_mob);
+ if(transformation_room_failure) { if(transformation_room_failure==2) transformed_live=false; return false; }
+ ch->in_room=room; return true;
+}
+P_char find_character_by_runtime_id(uint64_t id) { return transformed_live && id==transformed_mob.runtime_id ? &transformed_mob : nullptr; }
+void extract_char(P_char ch) {
+ if(ch==transformation_source) ++transformation_removals;
+ else { assert(ch==&transformed_mob && transformed_live && !ch->carrying); transformed_live=false; }
+}
+"""+extract_function("specs.mobile.c","int fooquest_mob(P_char ch, P_char pl, int cmd, char *arg)")+r"""
+void transformation_cases() {
+ indexes[0].virtual_number=21; indexes[2].virtual_number=22;
+ for(bool evil : {false,true}) {
+  assert(!object_list && !pool.objs_used);
+  booting=true; assert(artifacts_stage_population({},{{21,ITEM_ARTIFACT},{22,ITEM_ARTIFACT}},true));
+  booting=false; artifact_save_pulse(true); drain();
+  char_data source={},staff={}; npc_only_data npc={}; pc_only_data pc={};
+  source.only.npc=&npc; source.specials.act=ACT_ISNPC; source.specials.position=STAT_NORMAL;
+  source.player.racewar=evil ? RACEWAR_EVIL : RACEWAR_GOOD; source.in_room=0;
+  staff.only.pc=&pc; staff.player.level=62; transformation_source=&source;
+  transformation_loads=transformation_removals=0;
+  const int vnum=evil ? 21 : 22; char argument[]="transform";
+  auto *existing=read_object_for_creation(vnum,VIRTUAL); assert(existing); obj_to_room(existing,0);
+  assert(fooquest_mob(&source,&staff,CMD_USE,argument));
+  assert(pool.objs_used==1 && transformation_loads==0 && transformation_removals==0 &&
+         artifact_is_canonical(existing) && "quest transformation duplicated an artifact or replaced its source after refusal");
+  extract_obj(existing,TRUE); artifact_save_pulse(true); drain();
+  const auto prior_uid=artifact_rows.at(vnum).canonical_item_uid;
+  const auto prior_state=artifact_rows.at(vnum).identity_state;
+  transformation_load_fails=true;
+  fooquest_mob(&source,&staff,CMD_USE,argument);
+  transformation_load_fails=false;
+  assert(!object_list && !pool.objs_used && !transformation_removals &&
+         artifact_rows.at(vnum).canonical_item_uid==prior_uid && artifact_rows.at(vnum).identity_state==prior_state);
+  for(int failure : {1,2}) {
+   transformation_room_failure=failure;
+   fooquest_mob(&source,&staff,CMD_USE,argument);
+   transformation_room_failure=0;
+   assert(!object_list && !pool.objs_used && !transformed_live && !transformation_removals &&
+          artifact_rows.at(vnum).canonical_item_uid==prior_uid && artifact_rows.at(vnum).identity_state==prior_state);
+  }
+  assert(fooquest_mob(&source,&staff,CMD_USE,argument));
+  assert(pool.objs_used==1 && transformed_live && transformation_removals==1 &&
+         object_list && artifact_is_canonical(object_list) && OBJ_CARRIED(object_list) &&
+         object_list->loc.carrying==&transformed_mob);
+  extract_obj(object_list,TRUE); extract_char(&transformed_mob); artifact_save_pulse(true); drain();
+ }
+ indexes[0].virtual_number=900; indexes[2].virtual_number=902;
+ std::cout<<"actual quest transformation: duplicate refusal, rollback and both alignment artifacts: PASS\n";
 }
 """)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:

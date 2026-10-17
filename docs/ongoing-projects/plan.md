@@ -2,6 +2,35 @@
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 
+## Current quest-transformation repair — same one-hour window
+
+Branch `branch/issue-67-quest-transformation`, based on #164 at
+`0bb643d45fa1a872b52fbfe7f7caf0e029e885cb`. Outcome: the reachable Black Pearl
+`fooquest_mob` transformation reserves artifact 21/22 before creating its boss or
+removing the original NPC. Duplicate refusal leaves the original untouched; failed
+boss construction or room entry releases the new reservation. Room-entry cleanup
+uses the existing runtime-ID lookup because the room handler can destroy the NPC.
+Files: `src/specs/specs.mobile.c` and the existing actual-service harness.
+Proof: reproduce two physical artifacts and source replacement after refusal, then
+verify both alignments, load/entry rollback and a valid single-copy transformation.
+Ablation: use existing admission/extraction and runtime liveness; no new lifecycle
+framework. The native before probe reproduces duplicate creation/source replacement;
+the repaired actual function passes both alignments, load failure, live/dead
+replacement room-entry refusal, and normal single-copy transformation under
+ASan/UBSan. SQL/flat builds, format and tidy pass.
+The real server before probe runs the old transformation despite an occupied
+artifact; the fixed server refuses it and passes the existing Studio, reward,
+copyover, online/offline swap and restart journey. The initial new journey fixture
+was placed before login; that test setup error was corrected before the successful
+rerun. Evidence: `bin/analysis/issue67/quest-transformation-{before,native}.log` and
+`quest-transformation-gameplay-before.log`, `quest-transformation-gameplay.{log,json}`.
+Publication follows.
+
+The separate legacy `give_reward` factory still needs work. Its asynchronous grant
+queue may rematerialize committed objects; that recovery path currently conflicts
+with a pending creation reservation. A one-line constructor substitution would
+leave that integration unqualified, so it is not included in this bounded fix.
+
 ## Current scripted-admission repair — same one-hour window
 
 Branch `branch/issue-67-scripted-admission`, stacked on #163 at

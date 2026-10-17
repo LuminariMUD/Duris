@@ -286,6 +286,21 @@ def run(binary, case):
                     'canonical_live_count': 1,
                     'destructive_give_no_false_success': True,
                 }
+                # The native Black Pearl quest proc is a separate fresh producer.
+                # Reserve both alignment artifacts, then ensure its transform refuses
+                # before spawning a boss or replacing the original quest NPC.
+                for quest_vnum in (21, 22):
+                    command(god, f'load obj {quest_vnum}')
+                    assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {quest_vnum}'))
+                quest_npc = command(god, 'load mob 142212')
+                assert 'created' in quest_npc, quest_npc
+                transform = command(god, 'use transform')
+                assert 'artifact is unavailable; transformation cancelled' in transform, transform
+                assert 'removing his disguise' not in transform, transform
+                for quest_vnum in (21, 22):
+                    assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {quest_vnum}'))
+                command(god, 'purge')
+                evidence['quest_transformation_duplicate_refused'] = True
                 if case == 'pvp':
                     # Two synthetic mortal accounts may fight in this private fixture.
                     god.send('whitelist add Fixture 127.0.0.* isolated reward journey')
