@@ -1,11 +1,25 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Capacity review verification — #156
+
+A later review claimed that qualification could admit 4096 active items plus a
+newly retained foreign row. Inspection found the materializer already calls
+`valid_snapshot(result)` **after** qualification; that validator checks the combined
+active/retained count. A focused regression executes the real qualification and
+validator with that exact input, verifies the over-capacity cut is rejected, and
+keeps the exact-capacity control valid. This is verification of an existing gate,
+not a production behavior change. The complete player-item regression passes,
+including both capacity boundaries and foreign-only materialization gating.
+Evidence: `bin/analysis/pr156-capacity-verification.log`.
+The latest inventory now has 42 findings, with 41 resolved; #162 is the remaining
+outstanding thread. The capacity review is resolved with proof in `76d0d4e7c`. #158 carry-forward is preserved locally at `1f4de82ae`.
+
 ## Latest review checkpoint: #157 artifact hunt audit
 
 Current branch: `branch/issue-67-artifact-hunt-inspection`, in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #156 repair `fdb7007fe`
 is published and all three threads are resolved; carry-forward merge is `40c3790b3`.
-Latest inventory: 41 findings, 36 resolved, 5 remaining (#157:4, #162:1).
+The #157 repair is published as `d2cbe3d02`; all four threads are resolved.
 
 #157 outcome: include candidates known only through custody vnum or canonical UID;
 show payload, custody and canonical vnums; remain silent for clean players; preserve
@@ -20,8 +34,8 @@ After-repair native audit checks pass for custody-only/UID-only candidates,
 missing versus zero quantity/revision, clean-player silence, output limits and no
 mutation/construction. Disposable SQL raw NULL/zero quantity checks, flat foreign
 revision availability, admission compatibility, offline inspection, SQL/flat builds,
-formatting and tidy all pass (`bin/analysis/pr157-*`). Publication is next.
-Next: publish #157, carry through #158–#161, address #162's pending-action rollback,
+formatting and tidy all pass (`bin/analysis/pr157-*`).
+Next: carry through #158–#161, address #162's pending-action rollback,
 then carry through #163–#165/#167 and refresh all open reviews before completion.
 No production operations or PR merges have been performed in this review pass.
 ## Additional #141 review: saved-room source keys
