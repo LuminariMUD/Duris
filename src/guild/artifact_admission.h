@@ -16,7 +16,8 @@ unsigned int artifact_player_source_error(const artifact_payload_projection &sou
 // Matches the retained source-qualified boot projection, never UID alone.
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source);
 P_obj read_object_for_recovery(const artifact_payload_projection &source);
-// Placement commits the pending purpose; recovery preserves timer/soul state.
+// Placement commits the pending purpose or registers a canonical saved UID.
+// Recovery and registration preserve timer/soul state.
 void artifact_object_placed(P_obj object);
 // Pending admission rolls back. Committed physical retirement retains a UID
 // tombstone; unloading merely detaches the live pointer.

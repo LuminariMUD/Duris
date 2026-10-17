@@ -118,6 +118,44 @@ int main()
 	execute("INSERT INTO player_data(pid,name,account_name) VALUES "
 		"(11,'Giver','claim_probe'),(12,'Taker','claim_probe')");
 
+	// Raw UID collisions must retain both roots regardless of which payload
+	// parses first, while unrelated inventory remains writable.
+	for (const int pid : { 31, 32 })
+	{
+		execute("INSERT INTO player_data(pid,name,account_name) VALUES(" +
+			std::to_string(pid) + ",'Duplicate" + std::to_string(pid) +
+			"','claim_probe')");
+		const uint64_t stable_uid = 30000 + pid, duplicate_uid = 40000 + pid;
+		require(player_snapshot_repository_apply(
+				test_connection,
+				save_holding(pid, 1,
+					     { item(stable_uid, 601, PLAYER_SNAPSHOT_NO_PARENT) }))
+					.outcome == player_save_apply_outcome::applied,
+			"duplicate fixture seed");
+		for (const int quantity : (pid == 31 ? std::vector{ 7, 1 } : std::vector{ 1, 7 }))
+			execute("INSERT INTO player_items(pid,vnum,obj_uid,quantity) VALUES(" +
+				std::to_string(pid) + ",900," + std::to_string(duplicate_uid) +
+				"," + std::to_string(quantity) + ")");
+		const auto duplicate_load = load(pid, pid);
+		require(duplicate_load.outcome == player_load_outcome::applied &&
+				loaded_uids(duplicate_load) ==
+					std::vector<uint64_t>{ stable_uid } &&
+				duplicate_load.snapshot.retained_items.rows.size() == 2,
+			"valid/unreadable duplicate roots were not both retained");
+		auto independent = save_holding(pid, 2, duplicate_load.snapshot.items);
+		independent.retained_items = duplicate_load.snapshot.retained_items;
+		independent.items[0].values[0] = 37;
+		require(player_snapshot_repository_apply(test_connection, independent).outcome ==
+				player_save_apply_outcome::applied,
+			"duplicate evidence blocked unrelated inventory save");
+		const auto reloaded = load(pid, 1000 + pid);
+		require(reloaded.outcome == player_load_outcome::applied &&
+				reloaded.snapshot.retained_items.rows.size() == 2 &&
+				loaded_uids(reloaded) == std::vector<uint64_t>{ stable_uid } &&
+				reloaded.snapshot.items[0].values[0] == 37,
+			"duplicate evidence or unrelated update lost on reload");
+	}
+
 	// The giver saves holding a bag with a gem in it, and a sword.
 	require(player_snapshot_repository_apply(
 			test_connection,
@@ -210,6 +248,25 @@ int main()
 	require(retained && mysql_num_rows(retained) == 1,
 		"a successful unrelated save erased the undecodable legacy payload");
 	mysql_free_result(retained);
+	// A pet graph is also active payload; it cannot claim a UID retained in
+	// inventory while leaving the original source row intact.
+	auto pet_overlap = next_save;
+	pet_overlap.revision = 3;
+	pet_overlap.components |= PLAYER_COMPONENT_PETS;
+	player_pet_snapshot conflicting_pet = {};
+	conflicting_pet.pet_uid = 22001;
+	conflicting_pet.mob_vnum = 700;
+	conflicting_pet.items = { item(2099, 901, PLAYER_SNAPSHOT_NO_PARENT) };
+	pet_overlap.pets = { conflicting_pet };
+	const auto pet_refused = player_snapshot_repository_apply(test_connection, pet_overlap);
+	require(pet_refused.outcome == player_save_apply_outcome::terminal_failure &&
+			pet_refused.error_code == ESTALE,
+		"active pet/retained inventory overlap was accepted");
+	execute("SELECT item_uid FROM item_current_owner WHERE item_uid=2099");
+	MYSQL_RES *unclaimed = mysql_store_result(test_connection);
+	require(unclaimed && mysql_num_rows(unclaimed) == 0,
+		"refused pet save claimed retained UID");
+	mysql_free_result(unclaimed);
 	// A stale/overlapping capture must fail before it can claim held descendants.
 	auto overlapping = next_save;
 	overlapping.revision = 3;

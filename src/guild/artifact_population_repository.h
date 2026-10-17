@@ -67,6 +67,8 @@ struct artifact_payload_projection
 	bool custody_required = false;
 	bool custody_examined = false; // unqueried is distinct from a confirmed missing row
 	bool custody_found = false;
+	// Revision zero is valid; a missing authority row remains distinct.
+	bool custody_owner_revision_found = false;
 	item_ownership_runtime_entry custody = {};
 };
 
@@ -76,7 +78,7 @@ struct artifact_payload_projection
 // Ordinary store reads can complete committed authority journals; offline audit
 // callers must use a retained store copy if the original must remain untouched.
 // Additional recovery rows receive independent custody in the same source cut.
-// Flat custody owner_revision remains unknown (0); no runtime custody is published.
+// Flat custody revisions come from the same ownership catalog; no runtime custody is published.
 unsigned int artifact_population_read_flat_payloads(
 	const std::string &root, std::vector<artifact_payload_projection> *items,
 	std::string *error, const std::vector<artifact_payload_projection> *additional = nullptr);

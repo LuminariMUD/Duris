@@ -115,7 +115,9 @@ struct player_save_worker_health
 {
 	uint64_t queued_jobs;
 	uint64_t inflight_jobs;
+	uint64_t completion_jobs;
 	uint64_t queued_bytes;
+	uint64_t inflight_bytes;
 	uint64_t high_water_jobs;
 	uint64_t high_water_bytes;
 	uint64_t oldest_age_msec;

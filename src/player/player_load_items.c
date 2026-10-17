@@ -399,6 +399,8 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 				object->g_key = 1;
 		}
 	}
+	for (P_obj object : objects)
+		artifact_object_placed(object);
 	balance_affects(character);
 }
 }

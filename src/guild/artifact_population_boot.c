@@ -27,7 +27,9 @@ bool append_recovery(artifact_recovery_population &source,
 		for (auto &row : source.items)
 			row.source_quarantined = true; // inspected, but not selected for restore
 	items->insert(items->end(), source.items.begin(), source.items.end());
-	return true;
+	// Preserve the hints, but they cannot establish physical identity or absence.
+	return std::none_of(source.items.begin(), source.items.end(), [](const auto &row)
+			    { return row.role == artifact_payload_role::reconstruction; });
 }
 
 bool inspect_native(const std::string &path, std::vector<artifact_payload_projection> *items)
@@ -59,7 +61,8 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 		const bool same_owner = item_owner_identity_equal(incoming.owner, stored.owner);
 		if (row.source_quarantined ||
 		    (row.custody_found &&
-		     (stored.state != item_custody_state::active || stored.vnum != incoming.vnum ||
+		     (!row.custody_owner_revision_found ||
+		      stored.state != item_custody_state::active || stored.vnum != incoming.vnum ||
 		      stored.item_revision > incoming.item_revision ||
 		      (stored.item_revision == incoming.item_revision &&
 		       (!same_owner || stored.root_item_uid != incoming.root_item_uid ||
@@ -82,7 +85,8 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 					std::max(row.custody.owner_revision,
 						 found->second.owner_revision) :
 					found->second.owner_revision;
-			row.custody_examined = row.custody_found = true;
+			row.custody_examined = row.custody_found =
+				row.custody_owner_revision_found = true;
 			row.custody = found->second;
 			row.custody.owner_revision = owner_revision;
 		}
@@ -127,7 +131,8 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 						selected.emplace(row.item_uid, row.custody);
 				complete = append_recovery(population, &recovery, false);
 				if (!complete)
-					staged.unavailable_sources += "native projection limit; ";
+					staged.unavailable_sources +=
+						"native reconstruction or projection limit; ";
 			}
 		}
 		else if (!inspect_native(native_path + ".recovering", &recovery))
@@ -160,6 +165,13 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 			}
 			else
 			{
+				// Redis mobs have no stable equipment identities. Until their
+				// reconstruction is qualified, they cannot prove artifact absence.
+				if (!native_copyover && !population.mobs.empty())
+				{
+					complete = false;
+					staged.unavailable_sources += "Redis NPC reconstruction; ";
+				}
 				// -C selects the claimed native handoff. Its preceding Redis
 				// generation is history, not a competing selected world image.
 				if (native_copyover)

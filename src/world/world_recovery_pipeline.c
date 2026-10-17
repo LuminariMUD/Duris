@@ -1461,7 +1461,7 @@ void rollback_materialized(std::vector<P_char> *mobs, std::vector<P_obj> *object
 			extract_obj(*item, FALSE);
 	if (mobs)
 		for (auto mob = mobs->rbegin(); mob != mobs->rend(); ++mob)
-			extract_char(*mob);
+			world_recovery_discard_mob(*mob);
 }
 
 bool materialize_plan(const recovery_plan &plan,
@@ -1549,6 +1549,16 @@ bool materialize_plan(const recovery_plan &plan,
 	return true;
 }
 } // namespace
+
+void world_recovery_discard_mob(P_char mob)
+{
+	for (int slot = 0; slot < MAX_WEAR; ++slot)
+		if (mob->equipment[slot])
+			extract_obj(unequip_char(mob, slot), FALSE);
+	while (mob->carrying)
+		extract_obj(mob->carrying, FALSE);
+	extract_char(mob);
+}
 
 bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
 				       uint64_t minimum_sequence,

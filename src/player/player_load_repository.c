@@ -834,10 +834,22 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    }
 			    raw.bytes = result->metrics.byte_count - previous_bytes;
 			    previous_bytes = result->metrics.byte_count;
+			    bool duplicate_uid = false;
 			    try
 			    {
 				    source.push_back(raw);
 				    source_by_id.emplace(raw.row_id, source.size() - 1);
+				    if (raw.item_uid)
+				    {
+					    const auto [prior, inserted] = source_by_uid.emplace(
+						    raw.item_uid, source.size() - 1);
+					    duplicate_uid = !inserted;
+					    if (duplicate_uid)
+					    {
+						    source[prior->second].retain = true;
+						    source.back().retain = true;
+					    }
+				    }
 			    }
 			    catch (const std::bad_alloc &)
 			    {
@@ -864,16 +876,14 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    // Foreign rows are omitted. Unreadable or duplicate rows seed
 			    // retention of their complete source root before materialization.
 			    const bool duplicate =
-				    parsed == item_row_outcome::accepted &&
-				    (item_by_database_id.count(identity.database_id) ||
-				     item_by_uid.count(identity.item_uid));
+				    duplicate_uid ||
+				    (parsed == item_row_outcome::accepted &&
+				     (item_by_database_id.count(identity.database_id) ||
+				      item_by_uid.count(identity.item_uid)));
 			    if (parsed != item_row_outcome::accepted || duplicate)
 			    {
 				    if (parsed != item_row_outcome::foreign)
 					    source.back().retain = true;
-				    if (duplicate && source_by_uid.count(identity.item_uid))
-					    source[source_by_uid.at(identity.item_uid)].retain =
-						    true;
 				    if (parsed == item_row_outcome::foreign)
 					    dupe_log_item("load_skipped", item.object_uid,
 							  item.vnum,
@@ -888,7 +898,6 @@ bool load_items(MYSQL *connection, player_load_result *result)
 				    const size_t index = result->snapshot.items.size();
 				    item_by_database_id.emplace(identity.database_id, index);
 				    item_by_uid.emplace(identity.item_uid, index);
-				    source_by_uid.emplace(identity.item_uid, source.size() - 1);
 				    if (!row[31])
 					    unrecorded.push_back(identity.database_id);
 				    result->snapshot.items.push_back(std::move(item));
