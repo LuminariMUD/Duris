@@ -22,6 +22,9 @@ void artifact_object_placed(P_obj object);
 // tombstone; unloading merely detaches the live pointer.
 void artifact_object_extracted(P_obj object, bool physical_retirement);
 bool artifact_is_canonical(P_obj object);
+// Read-only catalog membership, including unresolved/absent known identities.
+// Boot uses this to retain prototype values for later constructor-free queries.
+bool artifact_tracks_vnum(int vnum);
 
 // Native/Redis restoration is a group: defer artifact captures and restore the
 // existing maps if any later world step fails. One game-thread scope at a time.

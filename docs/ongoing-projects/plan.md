@@ -23,6 +23,40 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current maintenance-cache work: `branch/issue-67-maintenance-cache`, based on
+#159. Outcome: the existing boot template cache includes known artifact identities
+and effective saved artifact flags on ordinary prototypes, keeping runtime queries
+free of file parsing and gameplay constructors. Non-goals: caching every ordinary
+prototype, changing canonical selection or completing swap's durable transition.
+Files: boot cache selection, the artifact cache's read-only tracked-vnum query,
+and existing template/service regressions. Proof: actual boot adapter/parser/cache
+reproduces the missing promoted template, then includes promoted/prior-known vnums
+while excluding unrelated ordinary templates without UID/procedure/index effects.
+Ablation: retain only relevant parsed values; reuse the current boot pass and cache.
+
+Maintenance-cache checkpoint (2026-10-17, publication pending):
+- The existing actual parser/cache harness had stale cache naming and omitted the
+  now-shared constructor implementation. Updated it to execute current production
+  functions, then extended it with the actual boot adapter. The before run fails
+  because a saved artifact flag on an ordinary prototype is not cached:
+  `bin/analysis/issue67/maintenance-cache-before.log`.
+- Reuse the existing boot parse pass and template cache. Retain values for flagged
+  prototypes, explicit saved artifact flags and previously tracked vnums, including
+  unresolved/absent rows. The shared tracked-vnum query reads the existing map only;
+  it does not choose an identity or grant admission. Unrelated ordinary prototypes
+  remain uncached. No runtime file-parsing fallback was introduced.
+- ASan/UBSan actual boot/parser/cache coverage passes promoted/prior-known vnums,
+  unrelated exclusion and no pool/UID/index/procedure/events. Existing inert-cache,
+  independent instantiation, malformed/empty procedure and no-argument procedure
+  controls now execute the current constructor implementation again and pass.
+- Both SQL/flat builds, actual artifact service/constructor regressions, boot source
+  assembly/classifier controls and changed-line format/tidy pass. Evidence is under
+  `bin/analysis/issue67/maintenance-cache-*.log`. The prior #159 full SQL journey
+  remains command-path evidence; no new full-server promoted-item journey is claimed.
+- The durable swap replacement/retirement transaction is still the next required
+  AR-04 work. Preserve all existing room/corpse/NPC/offline-PC paths and treat memory
+  rollback, accepted queueing and durable atomic publication as distinct stages.
+
 Current maintenance-inspection checkpoint: [PR #159](https://github.com/LuminariMUD/Duris/pull/159),
 ready for review, `branch/issue-67-maintenance-inspection`, based on #158. Outcome: clear/poof/timer and swap's source-template inspection read
 cached values without creating gameplay objects, consuming UIDs or running procedures.
@@ -229,11 +263,9 @@ Next maintenance and saved-domain work:
   original physical state until the durable disposition is accepted. Separate
   artifact/player captures are not an atomic transition; memory-only rollback
   cannot restore an already freed source. Preserve existing room/corpse/NPC paths.
-- The boot report cache currently includes artifact-flagged prototypes and starter
-  items. Saved-flag promotion of another ordinary prototype can therefore refuse
-  maintenance with "prototype unavailable" even when identity is established.
-  Extend boot cache coverage from classified artifact vnums before claiming all
-  promoted artifacts are inspectable; keep runtime queries free of file parsing.
+- The maintenance-cache chunk now retains known artifact and saved-flag promoted
+  prototype values at boot. Keep runtime queries free of file parsing; do not
+  reintroduce constructors when migrating the remaining inspections.
 - Remaining maintenance prototype inspections (legacy import, binding and other
   mapped reports/helpers) must use cached values, not constructors. Recheck
   `arti_syncdb_sql` and delayed/action source fences under AR-04 as planned.

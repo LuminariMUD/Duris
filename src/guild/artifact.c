@@ -973,6 +973,11 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	return true;
 }
 
+bool artifact_tracks_vnum(int vnum)
+{
+	return artifact_rows.count(vnum) != 0;
+}
+
 bool artifact_is_canonical(P_obj object)
 {
 	if (!object || !IS_ARTIFACT(object) || !object->obj_uid || object->R_num < 0)
@@ -3720,7 +3725,7 @@ static const object_template *artifact_command_template(P_char ch, int vnum)
 		send_to_char_f(ch, "Artifact %d prototype is unavailable.\r\n", vnum);
 		return nullptr;
 	}
-	if (!(prototype->extra_flags & ITEM_ARTIFACT) && !artifact_rows.count(vnum))
+	if (!(prototype->extra_flags & ITEM_ARTIFACT) && !artifact_tracks_vnum(vnum))
 	{
 		send_to_char_f(ch, "%s (%d) is not an artifact.\r\n",
 			       prototype->short_description.c_str(), vnum);

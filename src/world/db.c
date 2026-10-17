@@ -3070,6 +3070,11 @@ static void stage_artifact_population()
 		    static_cast<size_t>(top_of_objt) >= ARTIFACT_IDENTITY_MAX_RECORDS)
 			fatal_boot_error("artifact_identity",
 					 "Object prototype catalog exceeds population limit");
+		const auto &population = artifact_population_boot_evidence();
+		std::unordered_set<int> saved_artifacts;
+		for (const auto &item : population.items)
+			if (item.extra_flags_present && (item.extra_flags & ITEM_ARTIFACT))
+				saved_artifacts.insert(item.vnum);
 		std::vector<artifact_population_template> prototypes;
 		prototypes.reserve(static_cast<size_t>(top_of_objt) + 1);
 		for (int index = 0; index <= top_of_objt; ++index)
@@ -3078,10 +3083,10 @@ static void stage_artifact_population()
 			const int vnum = obj_index[index].virtual_number;
 			prototypes.push_back({ vnum, prototype.extra_flags });
 			// Reports need prototype values, never a temporary gameplay object.
-			if (prototype.extra_flags & ITEM_ARTIFACT)
+			if ((prototype.extra_flags & ITEM_ARTIFACT) ||
+			    saved_artifacts.count(vnum) || artifact_tracks_vnum(vnum))
 				object_templates.try_emplace(vnum, std::move(prototype));
 		}
-		const auto &population = artifact_population_boot_evidence();
 		if (!artifacts_stage_population(population.items, prototypes, population.complete))
 			fatal_boot_error("artifact_identity",
 					 "Could not stage canonical population evidence");
