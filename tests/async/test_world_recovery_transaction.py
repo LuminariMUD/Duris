@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Contracts for authority-first, rollback-capable Redis world recovery."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 
 
@@ -47,13 +47,15 @@ for token in (
     "real_room(record.room_vnum)",
     "real_object(item.vnum)",
     "plan->item_uids.insert",
-    "parents.find(item.parent_item_uid)",
+    "world_recovery_read_object_record",
     "existing_tree_matches",
     "plan->authority_items.push_back",
     "WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED",
 ):
     assert token in plan
 assert "item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED" in plan
+object_reader = extract_function("world_recovery_codec.c", "bool world_recovery_read_object_record(")
+assert "parents.find(item.parent_item_uid)" in object_reader
 
 reconcile_start = SQL.rindex("bool sql_persistence_reconcile_world_recovery_items")
 reconcile = SQL[reconcile_start : SQL.index("bool sql_hydrate_item_owner_revisions", reconcile_start)]

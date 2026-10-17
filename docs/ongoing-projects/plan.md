@@ -8,7 +8,7 @@ saved-item loader's source boundary. A disposable SQL regression reproduces the
 old accepted cross-key link and retains a valid same-key control. The disposable
 SQL fixture, maintained-schema queries, native build and format/tidy pass. Evidence:
 `bin/analysis/pr141-room-key-*.log`. This is an additional finding beyond the initial
-32; publication follows.
+32; fixed in `c3fae0f61`, pushed, and its thread is resolved.
 Carry this repair through the dependent branches, then resume the #145–#147 checks.
 The #145 transaction contract also needs its stale inline-ownership assertion
 updated to follow the shared overlap planner.
@@ -20,27 +20,20 @@ The initial inventory contained 31 unresolved inline threads across 14 PRs plus 
 additional finding in #139's review body. #132/#133 repairs are already published
 and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
 
-Current work: #144, `branch/issue-67-pinned-recovery-evidence`, in
+Current work: carry-forward through #145–#147 in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
-#138 (`ba2f3f79f`), #139 (`5df732237`), #141 (`1bf1d5986`), #142
-(`e29ab3926`) and #143 (`d0845890f`) are pushed with their inline threads resolved;
-#139's additional review-body finding is addressed. Parent fixes are carried forward.
+Published repairs: #138 `ba2f3f79f`, #139 `5df732237`, #141 `1bf1d5986` plus
+`c3fae0f61`, #142 `e29ab3926`, #143 `d0845890f`, #144 `136b65c0f`.
+Their review threads are resolved, and #139's additional review-body finding is
+addressed. The newer saved-room fix has passed inherited SQL-reader/build checks
+through #144. Fourteen findings have been addressed, including the later #141 one.
 
-#144 outcome: report effective Redis/world recovery request state independently of
-successful startup; propagate transport failures from the dedicated generation
-reader into the existing five-attempt whole-capture retry; update the stale floor
-read contract to assert preparation before sealing and loading from pinned bytes.
-Ablation: remove the redundant requested-state latch, reuse the existing reconnect
-loop, and expose one transport-failure result from the existing reader. The real
-Redis harness disconnects the dedicated manifest/chunk read socket while WATCH
-stays healthy; no second recovery path or production fault switch is introduced.
-Before probes reproduce requested-as-disabled startup, the stale assertion, and
-the missed generation-read retry. Live isolated Redis now passes transient manifest
-and chunk failures, five-attempt exhaustion, invalid-evidence no-retry controls,
-effective enable/disable state, pinning and exact-byte consume. Recovery transaction,
-failure-containment and module-boundary checks, native build and format/tidy pass.
-Evidence: `bin/analysis/pr144-*.log`. Publication follows; carry through #145–#147
-then address #148, including the pending owner-revision evidence integration.
+#145's native pipeline checks pass. Its transaction source contract still expected
+inline parent validation after the overlap refactor moved that validation to
+`world_recovery_read_object_record`; the assertion now follows that real call and
+checks parent validation in the shared codec. Validate it, publish the carry-forward,
+then continue through #146/#147 to #148. These three PRs had no open review findings
+in the initial scan. Preserve all existing source-boundary regressions.
 
 **Carry-forward requirement:** populate `custody_owner_revision_found` from actual
 revision authority in later readers and have the #148 classifier reject missing
@@ -53,7 +46,7 @@ Remaining review sequence (initial inventory, oldest first):
 - #141: all 3 owner/revision evidence findings addressed and published.
 - #142: root-compatible unreadable-store regression addressed and published.
 - #143: both blob-reader findings addressed and published.
-- #144: 3 Redis retry/state/test-contract findings — in progress.
+- #144: all 3 Redis retry/state/test-contract findings addressed and published.
 - #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
 - #149: 1 recovered-NPC evidence completeness finding.
 - #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
