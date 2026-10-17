@@ -1,5 +1,26 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Current follow-up: #161 swap safeguards
+
+Active branch: `branch/issue-67-canonical-swap-admission`, worktree
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #158's trusted-holder
+repair is published as `df8acbf76` and resolved; carried through #159 `adb35c2b2`
+and #160 `947950018`. This branch's carry-forward merge is `5c307fb74`.
+Known inventory: 48 findings, 46 addressed, two remaining on this PR.
+
+First outcome: refuse a swap when an effective artifact target body already exists,
+even if the target row is absent/retired and has no registered live pointer. Scan
+the existing live list immediately before construction; do not destroy a conflicting
+copy or consume another UID. Files: existing swap constructor, native command fixture,
+this plan. Both absent/retired controls reproduce the duplicate before repair.
+Second outcome: retain the original when an offline player snapshot is refused.
+That requires keeping its physical body until snapshot admission and reusing the
+existing metadata checkpoint/placement rollback; do not add a retry-owner registry.
+The target-copy regression passes for absent and retired rows, with unchanged
+source state, no extra UID/procedure and no writes. Native admission, build, format
+and tidy pass (`bin/analysis/pr161-target-copy-*`). Publish this first fix, then
+address snapshot refusal.
+
 ## Current follow-up: #158 trusted artifact holders
 
 #156's legacy-pet count repair is published as `74fcd4156` and resolved; #157

@@ -927,6 +927,19 @@ void swap_admission_cases() {
  char unverified[]="900 902"; arti_swap_sql(&staff,unverified);
  assert(procedures==refused_effects && pool.objs_used==1 && artifact_is_canonical(source) && writes.empty());
  artifact_rows.at(902)=previous_target;
+ // Unregistered legacy target bodies must also block replacement creation.
+ for(const auto target_state : {artifact_identity_state::absent, artifact_identity_state::retired}) {
+  auto &target_row=artifact_rows.at(902); target_row.identity_state=target_state;
+  target_row.canonical_item_uid=target_state==artifact_identity_state::absent ? 0 : occupied_uid;
+  auto *legacy_target=read_object(902,VIRTUAL); assert(legacy_target && !artifact_is_canonical(legacy_target));
+  const auto uid_cursor=next_uid; const auto creation_effects=procedures; const auto live_count=pool.objs_used;
+  char duplicate_target[]="900 902"; arti_swap_sql(&staff,duplicate_target);
+  assert(next_uid==uid_cursor && procedures==creation_effects && pool.objs_used==live_count &&
+         artifact_rows.at(900).live_object==source && artifact_rows.at(900).canonical_item_uid==source_uid &&
+         artifact_rows.at(900).timer==source_timer && !target_row.live_object && writes.empty());
+  extract_obj(legacy_target,FALSE);
+ }
+ artifact_rows.at(902)=previous_target;
  drop_swap_artifact_flag=true;
  char lost_flag[]="900 902"; arti_swap_sql(&staff,lost_flag); drop_swap_artifact_flag=false;
  assert(pool.objs_used==1 && artifact_is_canonical(source) &&

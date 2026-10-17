@@ -4337,6 +4337,21 @@ static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
 			release_offline_owner(dummy);
 		return;
 	}
+	for (P_obj existing = object_list; existing; existing = existing->next)
+		if (existing->R_num >= 0 && IS_ARTIFACT(existing) && OBJ_VNUM(existing) == vnum2)
+		{
+			send_to_char_f(
+				ch,
+				"Artifact %d already has a physical target copy; swap refused. Reference: artifact_identity/swap.\r\n",
+				vnum2);
+			persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none",
+					  "none", "target_copy_present",
+					  "vnum=%d existing_uid=%llu", vnum2,
+					  (unsigned long long)existing->obj_uid);
+			if (dummy)
+				release_offline_owner(dummy);
+			return;
+		}
 	P_obj replacement = read_object_for_creation(vnum2, VIRTUAL);
 	if (!replacement)
 	{
