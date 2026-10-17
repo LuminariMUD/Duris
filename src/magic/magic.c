@@ -12332,7 +12332,8 @@ void spell_entangle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		}
 		StopMercifulAttackers(victim);
 
-		if (world[ch->in_room].sector_type == SECT_FOREST && number(1, 100) < chance)
+		if (world[ch->in_room].sector_type == SECT_FOREST && number(1, 100) < chance &&
+		    !IS_AFFECTED(victim, AFF_BOUND))
 		{
 			act("&+GThe vegetation closes tightly, completely entangling $n!", TRUE,
 			    victim, 0, 0, TO_ROOM);

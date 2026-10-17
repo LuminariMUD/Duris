@@ -248,6 +248,13 @@ static void entangle() {
     reset(); SET_BIT(target.specials.affected_by, AFF_BOUND);
     freedom(&target);
     assert(IS_AFFECTED(&target, AFF_BOUND));
+    reset(); SET_BIT(target.specials.affected_by, AFF_BOUND);
+    spell_entangle(50, &caster, nullptr, 0, &target, nullptr);
+    assert(affected_by_spell(&target, SPELL_ENTANGLE));
+    assert(!IS_SET(target.affected->bitvector, AFF_BOUND));
+    freedom(&target);
+    assert(IS_AFFECTED(&target, AFF_BOUND));
+    assert(!affected_by_spell(&target, SPELL_ENTANGLE));
     // Freeing a rope must not also cure the ordinary, non-binding entangle.
     for (bool damage : {false, true}) {
         reset(); roll = 100;
