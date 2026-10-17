@@ -99,6 +99,9 @@ int main(int argc, char **argv)
 									      ",quantity INT") +
 			      (entry.domain == artifact_payload_domain::locker ? ",chest_id INT" :
 										 "") +
+			      (entry.domain == artifact_payload_domain::room ?
+				       ",item_key VARCHAR(64) NOT NULL DEFAULT 'fixture'" :
+				       "") +
 			      ") ENGINE=InnoDB");
 		query(connection, "INSERT INTO " + std::string(entry.table) +
 					  "(id,obj_uid,container_id,vnum,extra_flags," +
@@ -146,6 +149,18 @@ int main(int argc, char **argv)
 	       legacy_pet.rows[2].payload_owner.type == item_owner_type::player &&
 	       legacy_pet.rows[2].payload_owner.id == 78 &&
 	       legacy_pet.rows[2].payload_owner.context_id == 0);
+	query(connection,
+	      "UPDATE saved_items SET room_vnum=42,item_key='different-source' WHERE id=2");
+	artifact_population_sql_page room_keys;
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::room, 0,
+						  &room_keys));
+	assert(room_keys.rows[1].parent_owner_disagrees &&
+	       "saved-room parent from another item key was treated as the same source");
+	query(connection, "UPDATE saved_items SET item_key='fixture' WHERE id=2");
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::room, 0,
+						  &room_keys));
+	assert(!room_keys.rows[1].parent_owner_disagrees);
+	query(connection, "UPDATE saved_items SET room_vnum=43 WHERE id=2");
 	// A corpse's stable owner survives both a display-name change and character deletion.
 	for (const char *change : { "UPDATE player_data SET name='Renamed' WHERE pid=77",
 				    "DELETE FROM player_data WHERE pid=77" })
