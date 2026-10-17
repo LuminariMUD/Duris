@@ -1,5 +1,29 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Latest review checkpoint: #147 follow-up and #148 completion
+
+#148's four findings are fixed in `7e3bc3837`, pushed and resolved. SQL and flat
+builds, classifier ASan/UBSan, flat catalog/runtime/population, SQL snapshot and
+cache checks passed. Its plan has the detailed marker/revision compatibility notes.
+That repair is preserved in local #149 merge `42a49c1ab`, not yet published.
+
+A fresh scan found two new #147 findings, so the active branch is again
+`branch/issue-67-copyover-evidence`: refuse raced symlinks/replaced inodes, and bound
+NPC arrays before materialization. Outcome: pin the original regular inode and
+cap NPC effects/carried items at the existing 512-entry recovery-tree budget.
+The complete 80-effect/300-item compatibility case remains supported. Files:
+copyover reader, existing executable evidence harness, this plan. Proof: injected
+replacements at first and claimed-file open, exact/over-limit framed records,
+existing real copyover custody/save guards and native build. No new format,
+configuration, service or production operation is needed.
+
+The symlink-race regression fails before repair. All three race scenarios,
+exact/over-limit vectors, format/pinning controls (ASan/UBSan), real custody
+save/exec/recover, save guards, native build and format/tidy pass after repair.
+Evidence: `bin/analysis/pr147-review-*`. Eighteen findings are resolved;
+seventeen remain including these two newly arrived findings. Continue #147,
+carry it through #148 and the local #149 merge, then resume the remaining list.
+
 ## Additional #141 review: saved-room source keys
 
 A subsequent review identified cross-key parents inside the same room. The reader
