@@ -2,6 +2,27 @@
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 
+## Final binding-inspection repair — remaining time in the same hour
+
+Branch `branch/issue-67-binding-inspection`, based on #165 at `5dad651ec`.
+Outcome: `artifacts fixit` reads the already-cached prototype label while retaining
+its existing owner/soul/timer repair. Files: the command handler and existing native
+regressions. Proof: actual command execution must allocate no UID, run no object
+procedure, preserve canonical identities, handle promoted and missing prototypes,
+and remain a no-op when repeated after the repair.
+Ablation: replace the throwaway `read_object`/`extract_obj` pair with the existing
+`find_object_template` lookup; remove the obsolete source-text assertion requiring
+that throwaway object. The constructor/service regression reproduces the old side
+effects. The fixed actual handler passes under ASan/UBSan, including cached labels,
+promoted/missing templates, intended owner/soul/timer updates, canonical UID
+preservation and a repeated no-op. SQL snapshots, flat artifact native tests,
+combat persistence contracts, both builds and format/tidy pass. Evidence is under
+`bin/analysis/issue67/binding-inspection-*.log`. The latest full-server journey is
+the retained #165 run; this template-lookup-only change was qualified through the
+actual command/service harness and both backend builds. Publication follows.
+The periodic bind event
+still has a separate constructor-based display/act path and remains unfinished.
+
 ## One-hour delivery result — 2026-10-17
 
 The user authorized work at **11:26 IDT / 08:26 UTC** with a one-hour limit.

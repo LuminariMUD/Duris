@@ -4569,13 +4569,13 @@ void arti_fixit_sql(P_char ch)
 		artifact_row row = entry.second;
 		row.timer = new_time;
 		artifact_row_store(vnum, row);
-		P_obj arti = read_object(vnum, VIRTUAL);
+		const auto *prototype = find_object_template(vnum);
 		send_to_char_f(ch, "%3d) '%s&n'%6d - timer reset and now owned by '%s' %d.\n\r",
 			       ++counter,
-			       pad_ansi(arti ? OBJ_SHORT(arti) : "NULL", 35, TRUE).c_str(), vnum,
-			       get_player_name_from_pid(location), location);
-		if (arti)
-			extract_obj(arti);
+			       pad_ansi(prototype ? prototype->short_description.c_str() : "NULL",
+					35, TRUE)
+				       .c_str(),
+			       vnum, get_player_name_from_pid(location), location);
 	}
 	if (!found_player_artifact)
 		send_to_char("Empty set; no artifacts on PC in table artifacts.\n\r", ch);

@@ -154,12 +154,14 @@ int shop_keeper(P_char,P_char,int,char *) { return 0; }
 object_template parse_object_template(int index) {
  object_template prototype; prototype.R_num=index; prototype.extra_flags=(index==1 || index==3) ? 0 : ITEM_ARTIFACT;
  prototype.type=index==3 ? ITEM_CONTAINER : 0; prototype.wear_flags=ITEM_TAKE;
+ prototype.short_description="cached fixture artifact";
  return prototype;
 }
 static size_t studio_feedback=0;
 void act(const char *text,int,P_char,P_obj,void *,int) {
  if(std::string(text).find("materializes")!=std::string::npos) ++studio_feedback;
 }
+std::string pad_ansi(const char *text,int,bool) { return text ? text : ""; }
 static std::string command_output;
 void send_to_char(const char *text,P_char) { command_output+=text; }
 void send_to_char_f(P_char,const char *format,...) {
@@ -847,6 +849,31 @@ void maintenance_inspection_cases() {
  assert(row.identity_state==artifact_identity_state::absent && row.removed && !row.canonical_item_uid &&
         next_uid==clear_cursor && procedures==clear_effects && !pool.objs_used);
  artifact_save_pulse(true); drain();
+ // Binding repair reads labels without allocating gameplay specimens.
+ artifact_rows.clear(); artifact_binds.clear();
+ for(int vnum : {900,901,999}) {
+  artifact_rows[vnum]={true,ARTIFACT_ON_PC,77,100,ARTIFACT_MAJOR};
+  artifact_rows[vnum].identity_state=artifact_identity_state::present;
+  artifact_rows[vnum].canonical_item_uid=80000+vnum;
+  artifact_binds[vnum]={55,66};
+ }
+ const auto fixit_uid=next_uid; const auto fixit_procedures=procedures;
+ const auto fixit_time=time(nullptr); command_output.clear();
+ arti_fixit_sql(&staff);
+ assert(next_uid==fixit_uid && procedures==fixit_procedures && !pool.objs_used && !object_list &&
+        "binding repair constructed a gameplay object for its label");
+ assert(command_output.find("cached fixture artifact")!=std::string::npos && command_output.find("NULL")!=std::string::npos);
+ for(int vnum : {900,901,999}) {
+  assert(artifact_rows.at(vnum).canonical_item_uid==static_cast<uint64_t>(80000+vnum) &&
+         artifact_rows.at(vnum).identity_state==artifact_identity_state::present &&
+         artifact_rows.at(vnum).location==77 && artifact_binds.at(vnum).owner_pid==77 &&
+         artifact_rows.at(vnum).timer>=fixit_time+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY);
+ }
+ artifact_save_pulse(true); drain(); command_output.clear();
+ arti_fixit_sql(&staff);
+ assert(writes.empty() && next_uid==fixit_uid && procedures==fixit_procedures &&
+        command_output.find("up to date")!=std::string::npos);
+ artifact_rows.clear(); artifact_binds.clear();
  std::cout<<"cached maintenance inspection and bounded canonical timer editing: PASS\n";
 }
 """)

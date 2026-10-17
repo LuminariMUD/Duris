@@ -61,10 +61,4 @@ for caller, next_caller in (
     assert "return;" in failure_block or "return artifact_feed_result::rejected;" in failure_block or "continue;" in failure_block
 print("[PASS] all artifact bind callers fail closed before ownership decisions")
 
-# The repair names each artifact it rebinds, so the display copy leaves only once, after that.
-fixit = function(artifact_text, "void arti_fixit_sql", "void arti_sync_sql")
-assert fixit.count("extract_obj(") == 1
-assert fixit.index("OBJ_SHORT(") < fixit.index("extract_obj(")
-print("[PASS] the bind repair extracts each display copy once, after naming it")
-
 print("combat and artifact persistence source contracts passed")
