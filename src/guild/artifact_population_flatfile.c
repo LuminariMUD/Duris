@@ -358,6 +358,8 @@ unsigned int artifact_population_read_flat_payloads(
 		for (auto &row : staged)
 		{
 			row.custody_examined = true;
+			row.custody_found = row.custody_owner_revision_found = false;
+			row.custody = {};
 			const auto found = std::lower_bound(custody.begin(), custody.end(),
 							    row.item_uid,
 							    [](const auto &entry, uint64_t uid)

@@ -59,7 +59,8 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 		const bool same_owner = item_owner_identity_equal(incoming.owner, stored.owner);
 		if (row.source_quarantined ||
 		    (row.custody_found &&
-		     (stored.state != item_custody_state::active || stored.vnum != incoming.vnum ||
+		     (!row.custody_owner_revision_found ||
+		      stored.state != item_custody_state::active || stored.vnum != incoming.vnum ||
 		      stored.item_revision > incoming.item_revision ||
 		      (same_owner && stored.owner_revision > incoming.owner_revision) ||
 		      (stored.item_revision == incoming.item_revision &&
@@ -76,7 +77,8 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 			row.source_quarantined = true;
 		else
 		{
-			row.custody_examined = row.custody_found = true;
+			row.custody_examined = row.custody_found =
+				row.custody_owner_revision_found = true;
 			row.custody = found->second;
 		}
 	}
@@ -144,6 +146,13 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 			}
 			else
 			{
+				// Redis mobs have no stable equipment identities. Until their
+				// reconstruction is qualified, they cannot prove artifact absence.
+				if (!native_copyover && !population.mobs.empty())
+				{
+					complete = false;
+					staged.unavailable_sources += "Redis NPC reconstruction; ";
+				}
 				// -C selects the claimed native handoff. Its preceding Redis
 				// generation is history, not a competing selected world image.
 				if (native_copyover)

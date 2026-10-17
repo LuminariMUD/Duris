@@ -97,17 +97,11 @@ assert materialize.index("created_objects.push_back") < materialize.index(
 ) < materialize.index("for (const copyover_room &door")
 
 load = section(WORLD_RUNTIME, "bool redis_load_world_state", "void event_save_world_state")
-<<<<<<< HEAD
-assert "redis_read_floor_records" not in load
-assert load.index("world_boot_snapshot.floor_records") < load.index("world_recovery_restore_with_floor")
-assert "world_boot_snapshot.generation.data()" in load
-capture = section(WORLD_RUNTIME, "bool redis_capture_boot_snapshot", "redis_world_boot_result redis_world_prepare_boot")
-assert "redis_read_floor_records" in capture
-=======
 capture = section(WORLD_RUNTIME, "bool redis_capture_boot_snapshot", "redis_world_boot_result redis_world_prepare_boot")
 assert capture.index("redis_read_floor_records") < capture.index('"MULTI"')
 assert "redis_read_floor_records" not in load
 assert load.index("world_boot_snapshot.floor_records") < load.index("world_recovery_restore_with_floor")
+assert "world_boot_snapshot.generation.data()" in load
 assert "redis_restore_floor_drops" not in load
 reader = section(WORLD_RUNTIME, "bool redis_read_floor_records", "bool redis_world_runtime_start")
 assert "world_recovery_floor_object_root_uid" in reader

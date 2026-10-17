@@ -208,6 +208,8 @@ unsigned int attach_blob_custody(MYSQL *connection, std::vector<artifact_payload
 	for (auto &item : *items)
 	{
 		item.custody_examined = true;
+		item.custody_found = item.custody_owner_revision_found = false;
+		item.custody = {};
 		if (item.item_uid)
 		{
 			if (!uids.empty())

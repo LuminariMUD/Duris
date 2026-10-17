@@ -641,14 +641,19 @@ int main(int argc, char **argv)
 	recovery[0].domain = recovery[1].domain = artifact_payload_domain::redis_generation;
 	recovery[0].item_uid = 102;
 	recovery[1].item_uid = UINT64_MAX;
+	recovery[1].custody_found = recovery[1].custody_owner_revision_found = true;
+	recovery[1].custody.owner_revision = 99;
 	std::vector<artifact_payload_projection> combined;
 	assert(!artifact_population_read_flat_payloads(root.string(), &combined, &error,
 						       &recovery));
 	assert(combined.size() == rows.size() + recovery.size());
 	assert(combined[combined.size() - 2].custody_examined &&
 	       combined[combined.size() - 2].custody_found &&
-	       combined[combined.size() - 2].custody.vnum == 999);
-	assert(combined.back().custody_examined && !combined.back().custody_found);
+	       combined[combined.size() - 2].custody.vnum == 999 &&
+	       combined[combined.size() - 2].custody_owner_revision_found);
+	assert(combined.back().custody_examined && !combined.back().custody_found &&
+	       !combined.back().custody_owner_revision_found &&
+	       !combined.back().custody.owner_revision);
 	assert(!recovery[0].custody_examined);
 	for (const auto &row : rows)
 		if (row.custody_found)

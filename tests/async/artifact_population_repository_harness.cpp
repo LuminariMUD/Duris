@@ -507,13 +507,17 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 		recovery[index].vnum = 900;
 	}
 	recovery.front().item_uid = 102;
+	recovery[1].custody_found = recovery[1].custody_owner_revision_found = true;
+	recovery[1].custody.owner_revision = 99;
 	recovery.back().item_uid = 801; // open quarantine without a custody row
 	std::vector<artifact_payload_projection> combined;
 	assert(!artifact_population_read_sql_payloads(connection, &combined, &recovery) &&
 	       combined.size() == population.size() + recovery.size());
 	assert(combined.front().custody_examined && combined.front().custody_found &&
-	       combined.front().custody.owner.id == 99 && combined.front().custody.vnum == 901);
-	assert(combined[1].custody_examined && !combined[1].custody_found);
+	       combined.front().custody.owner.id == 99 && combined.front().custody.vnum == 901 &&
+	       combined.front().custody_owner_revision_found);
+	assert(combined[1].custody_examined && !combined[1].custody_found &&
+	       !combined[1].custody_owner_revision_found && !combined[1].custody.owner_revision);
 	assert(combined[299].custody_examined && !combined[299].custody_found &&
 	       combined[299].source_quarantined);
 	assert(!recovery.front().custody_examined); // caller's pinned input remains immutable
