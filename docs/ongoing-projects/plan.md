@@ -1,5 +1,60 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Oldest-first code-review follow-up — 2026-10-17
+
+The current goal is to address every existing review finding, in PR creation order.
+The initial inventory contained 31 unresolved inline threads across 14 PRs plus one
+additional finding in #139's review body. #132/#133 repairs are already published
+and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
+
+Current work: #144, `branch/issue-67-pinned-recovery-evidence`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+#138 (`ba2f3f79f`), #139 (`5df732237`), #141 (`1bf1d5986`), #142
+(`e29ab3926`) and #143 (`d0845890f`) are pushed with their inline threads resolved;
+#139's additional review-body finding is addressed. Parent fixes are carried forward.
+
+#144 outcome: report effective Redis/world recovery request state independently of
+successful startup; propagate transport failures from the dedicated generation
+reader into the existing five-attempt whole-capture retry; update the stale floor
+read contract to assert preparation before sealing and loading from pinned bytes.
+Ablation: remove the redundant requested-state latch, reuse the existing reconnect
+loop, and expose one transport-failure result from the existing reader. The real
+Redis harness disconnects the dedicated manifest/chunk read socket while WATCH
+stays healthy; no second recovery path or production fault switch is introduced.
+Before probes reproduce requested-as-disabled startup, the stale assertion, and
+the missed generation-read retry. Live isolated Redis now passes transient manifest
+and chunk failures, five-attempt exhaustion, invalid-evidence no-retry controls,
+effective enable/disable state, pinning and exact-byte consume. Recovery transaction,
+failure-containment and module-boundary checks, native build and format/tidy pass.
+Evidence: `bin/analysis/pr144-*.log`. Publication follows; carry through #145–#147
+then address #148, including the pending owner-revision evidence integration.
+
+**Carry-forward requirement:** populate `custody_owner_revision_found` from actual
+revision authority in later readers and have the #148 classifier reject missing
+revision authority. Preserve legitimate flat recovery by obtaining its real owner
+revision evidence before enforcing this check. Do not drop the flag when later
+PRs move the shared projection type.
+
+Remaining review sequence (initial inventory, oldest first):
+- #139: all 3 findings addressed and published.
+- #141: all 3 owner/revision evidence findings addressed and published.
+- #142: root-compatible unreadable-store regression addressed and published.
+- #143: both blob-reader findings addressed and published.
+- #144: 3 Redis retry/state/test-contract findings — in progress.
+- #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
+- #149: 1 recovered-NPC evidence completeness finding.
+- #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
+- #154: 1 fatal-boot diagnostic retention finding.
+- #155: 2 retained-row/pet overlap findings.
+- #156: 3 source-ID, foreign-vnum and foreign-owner qualification findings.
+- #157: 4 audit completeness/noise/quantity/revision findings.
+- #162: 1 pending-action preservation finding.
+
+Full fetched review/thread bodies and pagination evidence are retained privately in
+`duris-issue67-delivery/bin/analysis/open-review-details.json`. Every fetched page
+was complete. Refresh live reviews before final closeout. The implementation
+checkpoint below is historical context for this PR, not the current review status.
+
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity

@@ -1539,7 +1539,7 @@ void delete_character(P_char ch, bool delete_locker,
 		GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) : 0, GET_FRAGS(ch)
 	};
 #ifdef __NO_MYSQL__
-	if (!delete_locker)
+	if (!delete_locker || !artifact_save_drain(3000))
 	{
 		done(character_delete_result::refused);
 		return;
