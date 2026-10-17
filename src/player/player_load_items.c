@@ -15,6 +15,7 @@
 #include "player/player_load_items.h"
 
 #include "net/comm.h"
+#include "guild/artifact_admission.h"
 #include "item/item_ownership_runtime.h"
 #include "item/encumbrance_policy.h"
 #include "player/player_snapshot_codec.h"
@@ -78,6 +79,7 @@ void clear_item_uids(P_obj object)
 {
 	if (!object)
 		return;
+	artifact_object_extracted(object, false);
 	object->obj_uid = 0;
 	for (P_obj child = object->contains; child; child = child->next_content)
 		clear_item_uids(child);
@@ -393,6 +395,8 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 				object->g_key = 1;
 		}
 	}
+	for (P_obj object : objects)
+		artifact_object_placed(object);
 	balance_affects(character);
 }
 }

@@ -561,7 +561,11 @@ bool copyover_decode_mob(const char *data, size_t size, int version, copyover_mo
 		if (version < 16)
 			staged.mob.shopkeeper_shop_id = -1;
 		size_t offset = mob_bytes;
+		// Apply the existing per-tree restoration budget to both NPC vectors
+		// before allocating them; file bytes alone do not bound live objects.
 		if (staged.mob.num_affects < 0 || staged.mob.num_carrying < 0 ||
+		    static_cast<size_t>(staged.mob.num_affects) > WORLD_RECOVERY_MAX_ITEM_TREE ||
+		    static_cast<size_t>(staged.mob.num_carrying) > WORLD_RECOVERY_MAX_ITEM_TREE ||
 		    static_cast<size_t>(staged.mob.num_affects) >
 			    (size - offset) / sizeof(copyover_affect))
 			return false;
@@ -704,7 +708,8 @@ copyover_boot_result copyover_read_file(const std::string &path, copyover_boot_s
 		return copyover_boot_result::failed;
 	try
 	{
-		const int descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+		const int descriptor =
+			open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK | O_NOFOLLOW);
 		if (descriptor < 0)
 		{
 			if (errno != ENOENT)
@@ -772,6 +777,9 @@ copyover_boot_result copyover_prepare_boot()
 		{
 			copyover_boot_snapshot candidate;
 			inspected = copyover_read_file(source, &candidate);
+			if (inspected == copyover_boot_result::ready &&
+			    !same_copyover_file(original, candidate.identity))
+				return pinned_copyover_state;
 		}
 		if (inspected != copyover_boot_result::ready)
 		{
@@ -787,7 +795,9 @@ copyover_boot_result copyover_prepare_boot()
 		// so a replacement during the earlier inspection cannot be consumed as
 		// though it contained the earlier bytes.
 		pinned_copyover_state = copyover_read_file(pinned_copyover_path, &pinned_copyover);
-		if (pinned_copyover_state != copyover_boot_result::ready)
+		if (pinned_copyover_state != copyover_boot_result::ready ||
+		    pinned_copyover.identity.st_dev != original.st_dev ||
+		    pinned_copyover.identity.st_ino != original.st_ino)
 			pinned_copyover_state = copyover_boot_result::failed;
 		return pinned_copyover_state;
 	}
@@ -2358,7 +2368,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 			P_obj obj = read_object_for_creation(mob_entry.equipment_vnums[w], VIRTUAL);
 			if (!obj && errno == ENOMEM)
 			{
-				extract_char(mob);
+				world_recovery_discard_mob(mob);
 				return nullptr;
 			}
 			if (obj)
@@ -2380,7 +2390,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 			P_obj obj = read_object_for_creation(inv_entry.vnum, VIRTUAL);
 			if (!obj && errno == ENOMEM)
 			{
-				extract_char(mob);
+				world_recovery_discard_mob(mob);
 				return nullptr;
 			}
 			if (obj)
