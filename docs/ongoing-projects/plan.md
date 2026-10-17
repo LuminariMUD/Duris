@@ -22,6 +22,52 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current player-retention work: `branch/issue-67-player-payload-retention`, based
+on PR #154. Outcome: withheld player payload roots survive later saves while
+independent valid roots remain loadable and saveable. Keep SQL raw rows/nullable
+values/auxiliary metadata in place; merge retained flat roots after active-item
+claims without claiming held data. Reuse current stores and ordered writer.
+Non-goals: selecting a canonical conflict winner, new ownership stores/schema, or
+claiming every mutable source role is already migrated. Files: owned snapshot/load
+metadata, current root topology/reader/capture/lifetime paths and both repositories.
+Proof: current read/save erasure on real SQL/flat repositories, complete affected
+root retention, no held custody claim, repeated reload/save, independent valid
+updates, bounded capture and failure rollback. Snapshot-codec consumers were traced:
+regular SQL jobs own the structured capture; full snapshot encoding is used for
+flat files. Retention selectors can remain in-process metadata, with preserved
+payloads staying in the existing source and no file-format version change.
+
+Retention implementation checkpoint (2026-10-17, publication pending):
+- Reproduced the old SQL NULL-UID artifact/auxiliary-row erasure and flat missing-UID
+  root/child promotion and loss before repair. Logs: ignored
+  `bin/analysis/issue67/player-retention-{sql,flat}-before.log`.
+- SQL load retains complete connected raw source roots (original IDs, nullable
+  values and auxiliary records); later transactional saves lock/validate closure
+  before claims or deletion and replace only independent active roots. Flat load
+  withholds complete affected roots; locked saves reselect and append original
+  roots with parent indices rebased after independent active claims. Source drift
+  or active/held overlap refuses atomically. Neither path claims held contents.
+- Owned selectors follow load -> PC lifetime -> bounded immutable capture -> writer;
+  character free releases them. Save coalescing captures the union of unacknowledged
+  components. No selector encoding, new store, schema or snapshot-version change.
+- Fresh SQL repository (disposable MariaDB 10.11), flat repository, root topology,
+  capture/unchanged codec, worker, pipeline and item hydration regressions pass.
+  Both complete SQL and flat builds pass with the new PC/snapshot layouts; changed
+  lines pass format/tidy. Logs use the `player-retention-` prefix in the same folder.
+- The actual SQL standard reward/copyover/restart journey passed with an injected
+  raw NULL-UID artifact root, unclaimed child and description: original rows survive
+  real materialize/capture/free/save/copyover/restart, with no child custody claim.
+  Evidence: `bin/analysis/issue67/player-retention-gameplay.{log,json}`.
+  The flat repository regression also passed with a held UID belonging to another
+  player: repeated saves preserve raw payload and leave foreign custody untouched.
+  Ordinary flat copyover journeys passed with both compressed and uncompressed
+  sockets, acknowledged saves, retained connections and account-menu return.
+  This is not a held-payload full-server flat journey or the final AR-07 matrix.
+- Remaining before PR: commit/push and open a non-draft PR based on #154.
+  Focused review, final builds and changed-line format/tidy are complete. Full mutable artifact source
+  admission, pet/storage/delivery roles, remaining producers and AR-04/AR-07
+  lifecycle acceptance remain open; this prerequisite does not complete AR-02/03.
+
 Current focused repair: [PR #154](https://github.com/LuminariMUD/Duris/pull/154),
 ready for review, `branch/issue-67-fatal-boot-exit`, based on PR #153.
 Outcome: a fatal boot error preserves its intended failure status and console

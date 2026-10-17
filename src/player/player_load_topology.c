@@ -15,6 +15,8 @@
 #include "player/player_load_repository.h"
 
 #include <new>
+#include <cerrno>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
@@ -146,4 +148,65 @@ bool player_load_reconcile_item_topology(std::vector<player_item_snapshot> *item
 		}
 	}
 	return true;
+}
+
+unsigned int player_load_retain_item_roots(const std::vector<player_load_source_item> &source,
+					   player_item_retention *retained)
+{
+	if (!retained)
+		return EINVAL;
+	try
+	{
+		std::unordered_map<uint64_t, size_t> indices;
+		std::vector<size_t> groups(source.size());
+		std::iota(groups.begin(), groups.end(), 0);
+		indices.reserve(source.size());
+		for (size_t index = 0; index < source.size(); ++index)
+			if (!source[index].row_id ||
+			    !indices.emplace(source[index].row_id, index).second)
+				return EINVAL;
+		const auto group = [&](size_t index)
+		{
+			while (groups[index] != index)
+			{
+				groups[index] = groups[groups[index]];
+				index = groups[index];
+			}
+			return index;
+		};
+		for (size_t index = 0; index < source.size(); ++index)
+		{
+			const auto parent = indices.find(source[index].parent_row_id);
+			if (parent != indices.end())
+				groups[group(index)] = group(parent->second);
+		}
+		std::vector<bool> keep(source.size(), false);
+		std::vector<uint64_t> root_uids(source.size(), 0);
+		for (size_t index = 0; index < source.size(); ++index)
+		{
+			const size_t root = group(index);
+			if (source[index].retain)
+				keep[root] = true;
+			if (!source[index].parent_row_id ||
+			    !indices.count(source[index].parent_row_id))
+				root_uids[root] = source[index].item_uid;
+		}
+		player_item_retention staged;
+		for (size_t index = 0; index < source.size(); ++index)
+			if (keep[group(index)])
+			{
+				if (staged.rows.size() >= PLAYER_LOAD_ITEM_MAX ||
+				    source[index].bytes > PLAYER_SNAPSHOT_MAX_BYTES - staged.bytes)
+					return E2BIG;
+				staged.rows.push_back(
+					{ source[index].row_id, root_uids[group(index)] });
+				staged.bytes += source[index].bytes;
+			}
+		*retained = std::move(staged);
+		return 0;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return ENOMEM;
+	}
 }

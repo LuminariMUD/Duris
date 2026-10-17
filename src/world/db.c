@@ -16,6 +16,7 @@
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "player/pet_restore_runtime.h"
+#include "player/player_snapshot.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -4290,6 +4291,8 @@ void free_char(P_char ch)
 		delete_knownShapes(ch);
 		delete ch->only.pc->held_pets;
 		ch->only.pc->held_pets = nullptr;
+		delete ch->only.pc->retained_items;
+		ch->only.pc->retained_items = nullptr;
 		delete ch->only.pc->zone_trophy;
 		ch->only.pc->zone_trophy = nullptr;
 	}

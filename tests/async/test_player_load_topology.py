@@ -13,6 +13,7 @@ HARNESS = r'''
 #include "player/player_load_repository.h"
 
 #include <cassert>
+#include <cerrno>
 #include <vector>
 
 namespace
@@ -50,6 +51,20 @@ void reconcile(std::vector<player_item_snapshot> *items,
 
 int main()
 {
+    player_item_retention held;
+    assert(!player_load_retain_item_roots({{3,2,30,3,false},{1,0,0,5,true},{2,1,20,7,false},{4,0,40,11,false}}, &held));
+    assert(held.rows.size()==3 && held.bytes==15);
+    for(const auto &row:held.rows) assert(row.root_item_uid==0 && row.source_row_id!=4);
+    assert(!player_load_retain_item_roots({{1,2,0,5,true},{2,1,20,7,false}}, &held));
+    assert(held.rows.size()==2 && held.bytes==12);
+    const auto prior=held;
+    assert(player_load_retain_item_roots({{1,0,1,0,true},{1,0,1,0,true}},&held)==EINVAL);
+    assert(held.rows.size()==prior.rows.size() && held.bytes==prior.bytes);
+    std::vector<player_load_source_item> oversized(PLAYER_LOAD_ITEM_MAX+1);
+    for(size_t i=0;i<oversized.size();++i) oversized[i]={i+1,0,0,0,true};
+    assert(player_load_retain_item_roots(oversized,&held)==E2BIG && held.rows.size()==prior.rows.size());
+    assert(player_load_retain_item_roots({{1,0,0,PLAYER_SNAPSHOT_MAX_BYTES+1,true}},&held)==E2BIG && held.bytes==prior.bytes);
+
     // Exact historical failure: the projection says the consumable is in a bag,
     // while authoritative custody says it is top-level. Loading must un-nest it.
     {

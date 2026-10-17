@@ -770,7 +770,10 @@ bool load_items(MYSQL *connection, player_load_result *result)
 	std::unordered_map<uint64_t, size_t> item_by_database_id;
 	std::unordered_map<uint64_t, size_t> item_by_uid;
 	// Rows with no ownership row, placed from the payload once every row is read.
-	std::vector<size_t> unrecorded;
+	std::vector<uint64_t> unrecorded;
+	std::vector<player_load_source_item> source;
+	std::unordered_map<uint64_t, size_t> source_by_uid;
+	std::unordered_set<uint64_t> retained;
 	try
 	{
 		item_by_database_id.reserve(PLAYER_LOAD_ITEM_MAX);
@@ -798,65 +801,132 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		"AND owner_revision.owner_id=own.owner_id AND "
 		"owner_revision.owner_context_id=own.owner_context_id WHERE pi.pid=" +
 		pid + " ORDER BY pi.id";
-	if (!load_rows(connection, item_sql, result,
-		       [&](MYSQL_ROW row)
-		       {
-			       // A pile an older server's coin transaction spent stays spent. Any
-			       // other pile is an ordinary item: the save wrote its amount.
-			       if (row[41] && !strcmp(row[41], "1"))
-				       return true;
-			       if (result->snapshot.items.size() >= PLAYER_LOAD_ITEM_MAX)
-			       {
-				       result->outcome = player_load_outcome::limit_exceeded;
-				       return false;
-			       }
-			       player_item_snapshot item = {};
-			       player_load_item_identity identity = {};
-			       const item_row_outcome parsed =
-				       parse_item_payload(row, result, &item, &identity);
-			       if (parsed == item_row_outcome::invalid &&
-				   result->outcome == player_load_outcome::limit_exceeded)
-				       return false;
-			       // A row another owner holds, or one that cannot be read, is left
-			       // behind; the character's next save no longer writes it.
-			       const bool duplicate =
-				       parsed == item_row_outcome::accepted &&
-				       (item_by_database_id.count(identity.database_id) ||
-					item_by_uid.count(identity.item_uid));
-			       if (parsed != item_row_outcome::accepted || duplicate)
-			       {
-				       if (parsed == item_row_outcome::foreign)
-					       dupe_log_item(
-						       "load_skipped", item.object_uid, item.vnum,
-						       { item_owner_type::player,
-							 static_cast<uint64_t>(result->pid), 0 },
-						       identity.owner);
-				       ++result->stale_item_rows;
-				       return true;
-			       }
-			       try
-			       {
-				       const size_t index = result->snapshot.items.size();
-				       item_by_database_id.emplace(identity.database_id, index);
-				       item_by_uid.emplace(identity.item_uid, index);
-				       if (!row[31])
-					       unrecorded.push_back(index);
-				       result->snapshot.items.push_back(std::move(item));
-				       result->item_identities.push_back(identity);
-			       }
-			       catch (const std::bad_alloc &)
-			       {
-				       result->outcome = player_load_outcome::retryable_failure;
-				       return false;
-			       }
-			       return true;
-		       }))
+	uint64_t previous_bytes = result->metrics.byte_count;
+	if (!load_rows(
+		    connection, item_sql, result,
+		    [&](MYSQL_ROW row)
+		    {
+			    player_load_source_item raw;
+			    if (!parse_unsigned(row[0], UINT32_MAX, &raw.row_id) || !raw.row_id ||
+				(row[3] && !parse_unsigned(row[3], UINT32_MAX, &raw.parent_row_id)))
+				    return false;
+			    parse_unsigned(row[29], UINT64_MAX, &raw.item_uid);
+			    raw.bytes = result->metrics.byte_count - previous_bytes;
+			    previous_bytes = result->metrics.byte_count;
+			    try
+			    {
+				    source.push_back(raw);
+			    }
+			    catch (const std::bad_alloc &)
+			    {
+				    result->error_code = ENOMEM;
+				    result->outcome = player_load_outcome::retryable_failure;
+				    return false;
+			    }
+			    // A pile an older server's coin transaction spent stays spent. Any
+			    // other pile is an ordinary item: the save wrote its amount.
+			    if (row[41] && !strcmp(row[41], "1"))
+				    return true;
+			    if (result->snapshot.items.size() >= PLAYER_LOAD_ITEM_MAX)
+			    {
+				    result->outcome = player_load_outcome::limit_exceeded;
+				    return false;
+			    }
+			    player_item_snapshot item = {};
+			    player_load_item_identity identity = {};
+			    const item_row_outcome parsed =
+				    parse_item_payload(row, result, &item, &identity);
+			    if (parsed == item_row_outcome::invalid &&
+				result->outcome == player_load_outcome::limit_exceeded)
+				    return false;
+			    // Foreign rows are omitted. Unreadable or duplicate rows seed
+			    // retention of their complete source root before materialization.
+			    const bool duplicate =
+				    parsed == item_row_outcome::accepted &&
+				    (item_by_database_id.count(identity.database_id) ||
+				     item_by_uid.count(identity.item_uid));
+			    if (parsed != item_row_outcome::accepted || duplicate)
+			    {
+				    if (parsed != item_row_outcome::foreign)
+					    source.back().retain = true;
+				    if (duplicate && source_by_uid.count(identity.item_uid))
+					    source[source_by_uid.at(identity.item_uid)].retain =
+						    true;
+				    if (parsed == item_row_outcome::foreign)
+					    dupe_log_item("load_skipped", item.object_uid,
+							  item.vnum,
+							  { item_owner_type::player,
+							    static_cast<uint64_t>(result->pid), 0 },
+							  identity.owner);
+				    ++result->stale_item_rows;
+				    return true;
+			    }
+			    try
+			    {
+				    const size_t index = result->snapshot.items.size();
+				    item_by_database_id.emplace(identity.database_id, index);
+				    item_by_uid.emplace(identity.item_uid, index);
+				    source_by_uid.emplace(identity.item_uid, source.size() - 1);
+				    if (!row[31])
+					    unrecorded.push_back(identity.database_id);
+				    result->snapshot.items.push_back(std::move(item));
+				    result->item_identities.push_back(identity);
+			    }
+			    catch (const std::bad_alloc &)
+			    {
+				    result->outcome = player_load_outcome::retryable_failure;
+				    return false;
+			    }
+			    return true;
+		    }))
 		return false;
 
-	// An item nobody has recorded sits where its payload row puts it.
-	for (size_t index : unrecorded)
+	const unsigned int retained_error =
+		player_load_retain_item_roots(source, &result->snapshot.retained_items);
+	if (retained_error)
 	{
-		player_load_item_identity &identity = result->item_identities[index];
+		result->error_code = retained_error;
+		result->outcome = retained_error == ENOMEM ?
+					  player_load_outcome::retryable_failure :
+				  retained_error == E2BIG ? player_load_outcome::limit_exceeded :
+							    player_load_outcome::component_failure;
+		return false;
+	}
+	try
+	{
+		for (const auto &entry : result->snapshot.retained_items.rows)
+			retained.insert(entry.source_row_id);
+		std::vector<player_item_snapshot> kept_items;
+		std::vector<player_load_item_identity> kept_identities;
+		for (size_t index = 0; index < result->snapshot.items.size(); ++index)
+			if (!retained.count(result->item_identities[index].database_id))
+			{
+				kept_items.push_back(std::move(result->snapshot.items[index]));
+				kept_identities.push_back(result->item_identities[index]);
+			}
+		result->snapshot.items = std::move(kept_items);
+		result->item_identities = std::move(kept_identities);
+		item_by_database_id.clear();
+		item_by_uid.clear();
+		for (size_t index = 0; index < result->item_identities.size(); ++index)
+		{
+			item_by_database_id.emplace(result->item_identities[index].database_id,
+						    index);
+			item_by_uid.emplace(result->item_identities[index].item_uid, index);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		result->outcome = player_load_outcome::retryable_failure;
+		return false;
+	}
+	// An item nobody has recorded sits where its payload row puts it.
+	for (uint64_t id : unrecorded)
+	{
+		const auto kept = item_by_database_id.find(id);
+		if (kept == item_by_database_id.end())
+			continue;
+		player_load_item_identity &identity = result->item_identities[kept->second];
 		const auto parent = item_by_database_id.find(identity.serialized_parent_id);
 		identity.parent_item_uid = parent == item_by_database_id.end() ?
 						   0 :
@@ -924,10 +994,13 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		"player_item_extra_descr ed JOIN player_items pi ON pi.id=ed.item_id WHERE "
 		"pi.pid=" +
 		pid + " ORDER BY row_kind,metadata_id,item_id";
+	previous_bytes = result->metrics.byte_count;
 	if (!load_rows(
 		    connection, metadata_sql, result,
 		    [&](MYSQL_ROW row)
 		    {
+			    const size_t source_bytes = result->metrics.byte_count - previous_bytes;
+			    previous_bytes = result->metrics.byte_count;
 			    uint64_t row_kind = 0;
 			    uint64_t database_id = 0;
 			    if (!parse_unsigned(row[0], 1, &row_kind) ||
@@ -936,7 +1009,11 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    // Metadata of a row that was not loaded goes with it.
 			    const auto found = item_by_database_id.find(database_id);
 			    if (found == item_by_database_id.end())
+			    {
+				    if (retained.count(database_id))
+					    result->snapshot.retained_items.bytes += source_bytes;
 				    return true;
+			    }
 			    const size_t index = found->second;
 			    player_item_snapshot &item = result->snapshot.items[index];
 			    player_load_item_identity &identity = result->item_identities[index];

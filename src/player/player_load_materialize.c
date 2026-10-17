@@ -113,10 +113,16 @@ bool valid_snapshot(const player_load_result &result)
 	for (int16_t stat : result.domains.base_stats)
 		if (stat < 0 || stat > 100)
 			return false;
+	if (result.snapshot.items.size() > PLAYER_LOAD_ITEM_MAX ||
+	    result.snapshot.retained_items.rows.size() >
+		    PLAYER_LOAD_ITEM_MAX - result.snapshot.items.size() ||
+	    result.snapshot.retained_items.bytes > PLAYER_SNAPSHOT_MAX_BYTES ||
+	    (result.snapshot.retained_items.rows.empty() && result.snapshot.retained_items.bytes))
+		return false;
 	if (result.snapshot.components == PLAYER_LOAD_SESSION01_COMPONENTS &&
-	    (!result.snapshot.items.empty() || !result.item_identities.empty() ||
-	     result.item_owner_revision || !result.snapshot.pets.empty() ||
-	     !result.pet_identities.empty()))
+	    (!result.snapshot.items.empty() || !result.snapshot.retained_items.rows.empty() ||
+	     !result.item_identities.empty() || result.item_owner_revision ||
+	     !result.snapshot.pets.empty() || !result.pet_identities.empty()))
 		return false;
 	if (result.snapshot.components == PLAYER_LOAD_SESSION02_COMPONENTS &&
 	    (result.snapshot.items.size() != result.item_identities.size() ||
@@ -126,12 +132,14 @@ bool valid_snapshot(const player_load_result &result)
 	if (result.snapshot.components == PLAYER_LOAD_SESSION03_COMPONENTS &&
 	    (result.snapshot.items.size() != result.item_identities.size() ||
 	     result.snapshot.pets.size() != result.pet_identities.size() ||
-	     result.authoritative_item_count > PLAYER_LOAD_ITEM_MAX ||
+	     result.authoritative_item_count >
+		     PLAYER_LOAD_ITEM_MAX - result.snapshot.retained_items.rows.size() ||
 	     result.authoritative_pet_item_count >
-		     PLAYER_LOAD_ITEM_MAX - result.authoritative_item_count))
+		     PLAYER_LOAD_ITEM_MAX - result.snapshot.retained_items.rows.size() -
+			     result.authoritative_item_count))
 		return false;
-	// Skipped rows are other owners' items; the next save rightly leaves them out. A
-	// load is never refused over them.
+	// Foreign stale rows do not count against materialized capacity. Retained
+	// source rows do: they remain part of this player's next saved item graph.
 	if (result.read_components != PLAYER_LOAD_SESSION04_READS ||
 	    result.recent_pvp_deaths.size() > PLAYER_LOAD_RECENT_PVP_MAX ||
 	    result.completed_epic_zones.size() > PLAYER_LOAD_COMPLETED_ZONE_MAX)
@@ -431,6 +439,17 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 		      result.pid, component, outcome);
 		return false;
 	};
+	std::unique_ptr<player_item_retention> retained;
+	try
+	{
+		if (!result.snapshot.retained_items.rows.empty())
+			retained = std::make_unique<player_item_retention>(
+				result.snapshot.retained_items);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return refuse("retained_items", "allocation_failure");
+	}
 	std::unique_ptr<std::vector<zone_trophy_data>> zone_trophies;
 	if (ZONE_TROPHY(ch))
 		return refuse("trophies", "already_materialized");
@@ -450,7 +469,7 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	if (result.stale_item_rows)
 		logit(LOG_DEBUG,
 		      "player_load_materialize: component=items pid=%d outcome=stale_rows_skipped "
-		      "count=%zu recovery=next_full_save",
+		      "count=%zu",
 		      result.pid, result.stale_item_rows);
 	if (result.promoted_item_rows)
 		logit(LOG_SYS,
@@ -733,6 +752,19 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 			item_ownership_runtime_forget_player_domain(result.pid);
 		}
 		player_load_pets_commit(ch, &pets, result);
+	}
+	delete ch->only.pc->retained_items;
+	ch->only.pc->retained_items = retained.release();
+	if (ch->only.pc->retained_items)
+	{
+		logit(LOG_FILE,
+		      "player_load: component=items outcome=source_retained pid=%d rows=%zu bytes=%zu reference=player_load/retained",
+		      result.pid, ch->only.pc->retained_items->rows.size(),
+		      ch->only.pc->retained_items->bytes);
+		if (ch->desc)
+			send_to_char(
+				"Some saved items need staff review and remain in storage. Reference: player_load/retained.\r\n",
+				ch);
 	}
 	// Resolve the saved HP difference after all base stats, affects and equipment
 	// have been materialized. enter_game() can then safely apply offline regen

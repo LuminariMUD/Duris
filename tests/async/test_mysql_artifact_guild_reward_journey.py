@@ -173,6 +173,15 @@ def run(binary, case):
                     sql(f"UPDATE player_data SET level=51,highest_level=51,race=13,racewar=2 WHERE name='{VICTIM}'")
                     # The opposing-side fixture starts without a recent Good login.
                     sql(f"UPDATE accounts SET last_good_char=NULL WHERE account_name='{VICTIM_ACCOUNT}'")
+                # An undecodable source graph is data only: ordinary gameplay and
+                # repeated character saves must preserve the original rows/metadata.
+                source_pid = int(sql(f"SELECT pid FROM player_data WHERE name='{PLAYER}'"))
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,weight,extra_flags,short_descr) VALUES({source_pid},900,NULL,7,123,268435456,'held source evidence')")
+                retained_root = int(sql(f"SELECT id FROM player_items WHERE pid={source_pid} AND short_descr='held source evidence'"))
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES({source_pid},901,8888888,{retained_root},1)")
+                sql(f"INSERT INTO player_item_extra_descr(item_id,keyword,description) VALUES({retained_root},'retained','original source details')")
+                def retained_source_intact():
+                    return sql(f"SELECT COUNT(*) FROM player_items p JOIN player_items c ON c.container_id=p.id AND c.obj_uid=8888888 JOIN player_item_extra_descr d ON d.item_id=p.id AND d.keyword='retained' AND d.description='original source details' WHERE p.id={retained_root} AND p.obj_uid IS NULL AND p.quantity=7 AND p.weight=123 AND p.short_descr='held source evidence'") == '1' and sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=8888888") == '0'
                 # A prepared spell is initial fixture state; casting, delayed events,
                 # kills, boon publication and rewards all use the real game path.
                 sql(f"INSERT INTO player_skills(pid,skill_id,learned,taught) SELECT pid,571,100,100 FROM player_data WHERE name='{PLAYER}' ON DUPLICATE KEY UPDATE learned=100,taught=100")
@@ -431,6 +440,8 @@ def run(binary, case):
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
                 stop()
+                assert retained_source_intact(), 'load/save/copyover/restart lost or claimed retained source rows'
+                evidence['retained_source_survived_without_claim'] = True
                 evidence['clean_restart'] = True
                 target = ROOT / 'bin/analysis/artifact-estale'
                 target.mkdir(parents=True, exist_ok=True)

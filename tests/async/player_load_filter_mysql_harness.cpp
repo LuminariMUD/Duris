@@ -141,6 +141,17 @@ int main()
 		"owner_id,owner_context_id,item_revision,vnum,state) VALUES "
 		"(2005,2005,NULL,1,11,0,1,605,3)");
 
+	// A legacy artifact without an identity cannot be decoded/materialized, but
+	// its original row and metadata must survive an unrelated successful save.
+	execute("INSERT INTO player_items(pid,vnum,obj_uid,quantity,weight,wear_flags,extra_flags,short_descr) "
+		"VALUES(11,900,NULL,7,123,NULL,268435456,'retained legacy evidence')");
+	const auto legacy_id = mysql_insert_id(test_connection);
+	execute("INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES(11,901,2099," +
+		std::to_string(legacy_id) + ",1)");
+	execute("INSERT INTO player_item_affects(item_id,location,modifier) VALUES(" +
+		std::to_string(legacy_id) + ",1,77)");
+	execute("INSERT INTO player_item_extra_descr(item_id,keyword,description) VALUES(" +
+		std::to_string(legacy_id) + ",'legacy','unchanged details')");
 	const player_load_result giver = load(11, 1);
 	require(giver.outcome == player_load_outcome::applied,
 		"the giver's load must succeed: outcome=" +
@@ -149,7 +160,7 @@ int main()
 	require((loaded_uids(giver) == std::vector<uint64_t>{ 2001, 2002, 2004, 2005 }),
 		"the giver loads its own items, the unrecorded one and the quarantined one, "
 		"but not the sword the taker now holds");
-	require(giver.stale_item_rows == 1, "the stale sword row is counted");
+	require(giver.stale_item_rows == 2, "the stale sword row is counted");
 	for (size_t index = 0; index < giver.snapshot.items.size(); ++index)
 		if (giver.snapshot.items[index].object_uid == 2002)
 			require(giver.snapshot.items[index].parent_index >= 0 &&
@@ -170,14 +181,50 @@ int main()
 		"the dupe log names the skipped sword: " + lines.str());
 
 	// The giver's next save removes the stale row for good.
-	require(player_snapshot_repository_apply(
-			test_connection, save_holding(11, 2,
-						      { item(2001, 601, PLAYER_SNAPSHOT_NO_PARENT),
-							item(2002, 602, 0) }))
-				.outcome == player_save_apply_outcome::applied,
+	auto next_save = giver.snapshot;
+	next_save.revision = 2;
+	next_save.components = PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY;
+	next_save.encoded_size_bound = 4096;
+	next_save.items = { item(2001, 601, PLAYER_SNAPSHOT_NO_PARENT), item(2002, 602, 0) };
+	require(player_snapshot_repository_apply(test_connection, next_save).outcome ==
+			player_save_apply_outcome::applied,
 		"the giver's next save");
+	const std::string retention_query =
+		"SELECT p.id FROM player_items p JOIN player_item_affects a ON a.item_id=p.id AND a.location=1 AND a.modifier=77 "
+		"JOIN player_item_extra_descr d ON d.item_id=p.id AND d.keyword='legacy' AND d.description='unchanged details' "
+		"JOIN player_items child ON child.container_id=p.id AND child.obj_uid=2099 "
+		"LEFT JOIN item_current_owner held ON held.item_uid=2099 WHERE p.id=" +
+		std::to_string(legacy_id) +
+		" AND p.obj_uid IS NULL AND p.quantity=7 AND p.weight=123 AND p.wear_flags IS NULL AND p.extra_flags=268435456 "
+		"AND p.short_descr='retained legacy evidence' AND held.item_uid IS NULL";
+	execute(retention_query);
+	MYSQL_RES *retained = mysql_store_result(test_connection);
+	require(retained && mysql_num_rows(retained) == 1,
+		"a successful unrelated save erased the undecodable legacy payload");
+	mysql_free_result(retained);
+	// A stale/overlapping capture must fail before it can claim held descendants.
+	auto overlapping = next_save;
+	overlapping.revision = 3;
+	overlapping.items.push_back(item(2099, 901, PLAYER_SNAPSHOT_NO_PARENT));
+	require(player_snapshot_repository_apply(test_connection, overlapping).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"active/held overlap was accepted");
+	execute("INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES(11,902,NULL," +
+		std::to_string(legacy_id) + ",1)");
+	const auto new_child = mysql_insert_id(test_connection);
+	auto stale_source = next_save;
+	stale_source.revision = 3;
+	require(player_snapshot_repository_apply(test_connection, stale_source).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"a changed retained component was silently overwritten");
+	execute("DELETE FROM player_items WHERE id=" + std::to_string(new_child));
+	execute(retention_query);
+	retained = mysql_store_result(test_connection);
+	require(retained && mysql_num_rows(retained) == 1,
+		"failed saves changed retained evidence or custody");
+	mysql_free_result(retained);
 	const player_load_result again = load(11, 3);
-	require(again.outcome == player_load_outcome::applied && again.stale_item_rows == 0 &&
+	require(again.outcome == player_load_outcome::applied && again.stale_item_rows == 1 &&
 			(loaded_uids(again) == std::vector<uint64_t>{ 2001, 2002 }),
 		"after its next save the giver has no stale rows left");
 

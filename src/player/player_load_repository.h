@@ -179,6 +179,20 @@ struct player_load_result
 	std::string account_name;
 };
 
+struct player_load_source_item
+{
+	uint64_t row_id = 0;
+	uint64_t parent_row_id = 0;
+	uint64_t item_uid = 0;
+	size_t bytes = 0;
+	bool retain = false;
+};
+
+// Retain the complete source component around each withheld row. No payload is
+// decoded, claimed or rewritten here; output is atomic and source IDs stay local.
+unsigned int player_load_retain_item_roots(const std::vector<player_load_source_item> &source,
+					   player_item_retention *retained);
+
 bool player_load_reconcile_item_topology(std::vector<player_item_snapshot> *items,
 					 std::vector<player_load_item_identity> *identities,
 					 size_t *promoted_item_rows, size_t *repaired_item_rows);
