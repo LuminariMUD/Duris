@@ -12,7 +12,8 @@ Proof: actual catalog-to-revision-map loading, invalid-input preservation, zero
 body calls, and native/legacy SQL/flat selection. The actual catalog loader and
 real trade revision map pass together, preserving the prior map on invalid data.
 Trade runtime controls, version-selection controls and SQL/flat builds pass
-(`bin/analysis/shop-revision-*.log`).
+(`bin/analysis/shop-revision-*.log`). The integrated native admission suite
+and repeated flat-file generated-NPC copyover journey also pass.
 ## Active follow-up — reuse the native copyover checkpoint (#176)
 
 Branch `branch/issue-67-copyover-checkpoint-reuse`. The standalone existing-tree
