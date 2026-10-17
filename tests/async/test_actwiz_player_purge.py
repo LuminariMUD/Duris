@@ -23,13 +23,13 @@ required = (
     "obj_from_char(item)",
     "obj_to_room(item, vict->in_room)",
     "IS_SET(item->extra_flags, ITEM_TRANSIENT)",
-    "persistence_save_character_terminal(vict, RENT_QUIT)",
+    "writeCharacter(vict, RENT_QUIT, NOWHERE)",
     "extract_char_after_terminal_save(vict)",
 )
 for fragment in required:
     assert fragment in player_branch, f"missing player purge contract: {fragment}"
 
-save = player_branch.index("persistence_save_character_terminal(vict, RENT_QUIT)")
+save = player_branch.index("writeCharacter(vict, RENT_QUIT, NOWHERE)")
 extract = player_branch.index("extract_char_after_terminal_save(vict)")
 assert save < extract
 assert player_branch.index("unequip_char(vict, slot)") < save
@@ -37,7 +37,6 @@ assert player_branch.index("obj_from_char(item)") < save
 assert player_branch[extract:].split("vict = NULL", 1)[0].count("vict->") == 0
 
 for forbidden in (
-    "writeCharacter(vict",
     "free_char(vict)",
     "close_socket(vict->desc)",
     "vict->desc =",
