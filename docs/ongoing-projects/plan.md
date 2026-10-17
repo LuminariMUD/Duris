@@ -1,5 +1,25 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Oldest-first code-review follow-up — 2026-10-17
+
+The current goal is to address every existing review finding, in PR creation order.
+The initial inventory contained 31 unresolved inline threads across 14 PRs plus one
+additional finding in #139's review body. #132/#133 repairs are already published
+and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
+
+Current work: #138, `branch/issue-67-writer-backpressure`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+Outcome: expose completion slots and in-flight payload bytes that consume writer
+admission capacity, including when no database work remains queued. Reuse the
+existing health snapshot and `world persistence` output. The native regression
+executes the production formatter against actual blocked/in-flight and undrained
+completion states; the before run reproduces omitted payload bytes. Verification
+passed, including 4,096 retained completions, full in-flight byte accounting,
+completion drain, and production formatter output. Persistence-status/shutdown
+controls, changed-line format/tidy, and `make -C src -j8` passed.
+Evidence: `bin/analysis/pr138-health-{before,after-final,build-final,tidy-final}.log`.
+Next: all three #139 findings, including its non-inline deletion callback finding. Preserve and carry parent repairs through the existing stack.
+
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
