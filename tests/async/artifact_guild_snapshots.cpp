@@ -496,7 +496,10 @@ static void artifact_ordering_cases()
 	arti_timer_sql(&staff, extend);
 	assert(artifact_rows.at(900).timer == now + 8260);
 	artifact_update_sql(901, true, ARTIFACT_ON_PC, 77, now + 10000, ARTIFACT_MAJOR);
+	const auto before_war = jobs.size();
 	event_artifact_wars_sql(nullptr, nullptr, nullptr, nullptr);
+	assert(jobs.size() == before_war + 1 && contains(jobs.back(), "VALUES(900,") &&
+	       contains(jobs.back(), "VALUES(901,"));
 	// One excess major artifact burns one quarter of each remaining timer.
 	assert(artifact_rows.at(900).timer == now + 6195);
 	assert(artifact_rows.at(901).timer == now + 7500);
