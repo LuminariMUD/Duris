@@ -189,9 +189,14 @@ bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { o
 bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done) {
  offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
 }
-int writeCharacter(P_char,int,int) { ++offline_saves; return offline_save_allowed ? 1 : 0; }
-void writeCorpse(P_obj) { ++corpse_saves; }
+static bool inspect_swap_snapshot=false;
+int writeCharacter(P_char owner,int,int) {
+ ++offline_saves;
+ if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
+ return offline_save_allowed ? 1 : 0;
+}
 void clear_links(P_char,P_obj,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; }
+void writeCorpse(P_obj) { ++corpse_saves; }
 void do_shout(P_char,char *,int) {}
 void free_char(P_char owner) {
  assert(!owner->carrying); for(auto *object:owner->equipment) assert(!object); ++offline_released;
@@ -715,6 +720,28 @@ void offline_expiry_cases() {
   row.location=77; row.timer=1; artifact_binds[900]={77,88}; assert(artifact_expired(row));
   return object;
  };
+ // Trusted holders are exempt even when legacy tracking still names another PID.
+ for(int location=0;location<3;++location) {
+  auto *held=make_nested(); auto *bag=held->loc.inside;
+  if(location<2) {
+   obj_from_obj(held); extract_obj(bag,FALSE); bag=nullptr;
+   if(location==0) obj_to_char(held,&owner); else equip_char(&owner,held,0,TRUE);
+  }
+  auto &tracked=artifact_rows.at(900); tracked.location=88;
+  artifact_save_pulse(true); drain();
+  const auto count=pool.objs_used; const auto uid=held->obj_uid;
+  owner.player.level=FORGER; owner.specials.act=0;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(tracked.identity_state==artifact_identity_state::present && tracked.live_object==held &&
+         tracked.canonical_item_uid==uid && tracked.timer==1 && pool.objs_used==count && writes.empty());
+  owner.player.level=51; owner.specials.act=PLR_MORTAL;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(tracked.identity_state==artifact_identity_state::retired && !tracked.live_object);
+  if(bag) extract_obj(bag,FALSE);
+  artifact_save_pulse(true); drain(); assert(!object_list && !pool.objs_used);
+ }
  auto *object=make_nested(); const uint64_t saved_uid=object->obj_uid;
  assert(artifact_on_owner(&owner,900)==object);
  auto *alias=read_object(0,REAL); assert(alias); alias->obj_uid=saved_uid; obj_to_char(alias,&owner);
@@ -924,6 +951,19 @@ void swap_admission_cases() {
  char unverified[]="900 902"; arti_swap_sql(&staff,unverified);
  assert(procedures==refused_effects && pool.objs_used==1 && artifact_is_canonical(source) && writes.empty());
  artifact_rows.at(902)=previous_target;
+ // Unregistered legacy target bodies must also block replacement creation.
+ for(const auto target_state : {artifact_identity_state::absent, artifact_identity_state::retired}) {
+  auto &target_row=artifact_rows.at(902); target_row.identity_state=target_state;
+  target_row.canonical_item_uid=target_state==artifact_identity_state::absent ? 0 : occupied_uid;
+  auto *legacy_target=read_object(902,VIRTUAL); assert(legacy_target && !artifact_is_canonical(legacy_target));
+  const auto uid_cursor=next_uid; const auto creation_effects=procedures; const auto live_count=pool.objs_used;
+  char duplicate_target[]="900 902"; arti_swap_sql(&staff,duplicate_target);
+  assert(next_uid==uid_cursor && procedures==creation_effects && pool.objs_used==live_count &&
+         artifact_rows.at(900).live_object==source && artifact_rows.at(900).canonical_item_uid==source_uid &&
+         artifact_rows.at(900).timer==source_timer && !target_row.live_object && writes.empty());
+  extract_obj(legacy_target,FALSE);
+ }
+ artifact_rows.at(902)=previous_target;
  drop_swap_artifact_flag=true;
  char lost_flag[]="900 902"; arti_swap_sql(&staff,lost_flag); drop_swap_artifact_flag=false;
  assert(pool.objs_used==1 && artifact_is_canonical(source) &&
@@ -1031,13 +1071,36 @@ void swap_admission_cases() {
  assert(artifact_rows.at(900).canonical_item_uid==80001 && !artifact_rows.at(900).live_object &&
         artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_rows.at(900).timer==source_timer &&
         artifact_binds.at(900).owner_pid==77 && !object_list && !pool.objs_used && writes.empty());
- // Queue-failure durability is still the next chunk; this legacy path releases its temporary graph.
- char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+ // Refused snapshots restore source identity before discarding the temporary graph.
+ inspect_swap_snapshot=true;
+ for(int refused_location=0;refused_location<3;++refused_location) {
+  char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+  source=read_object_for_recovery(restored); assert(source);
+  if(refused_location==0) obj_to_char(source,&owner);
+  else if(refused_location==1) equip_char(&owner,source,0,TRUE);
+  else {
+   auto *bag=read_object_for_creation(903,VIRTUAL); assert(bag); bag->value[0]=1000;
+   obj_to_char(bag,&owner); obj_to_obj(source,bag);
+  }
+  const auto releases=offline_released;
+  const auto links_before=removed_wear_links;
+  const auto target_before_refusal=artifact_rows.at(902);
+  command_output.clear();
+  offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
+  assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
+         artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::present &&
+         !artifact_rows.at(900).live_object && artifact_rows.at(900).timer==source_timer &&
+         artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
+         artifact_rows.at(902).canonical_item_uid==target_before_refusal.canonical_item_uid &&
+         artifact_rows.at(902).identity_state==target_before_refusal.identity_state &&
+         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links==links_before);
+  assert(command_output.find("original retained")!=std::string::npos && command_output.find("swapped with")==std::string::npos);
+ }
+ // The unchanged durable source remains admissible when snapshot capture recovers.
+ char admitted_retry[]="900 902"; arti_swap_sql(&staff,admitted_retry); assert(offline_callbacks.size()==1);
  source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
- const auto releases=offline_released;
- offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
- assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
-        artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+ offline_callbacks.front()(&owner); offline_callbacks.clear(); inspect_swap_snapshot=false;
+ assert(!object_list && !pool.objs_used && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
         artifact_rows.at(902).identity_state==artifact_identity_state::present && artifact_rows.at(902).timer==source_timer);
  artifact_save_pulse(true); drain();
  // A saved artifact on an ordinary prototype is eligible through its actual UID/flags.

@@ -482,6 +482,67 @@ void artifact_row_store(int vnum, const artifact_row &row)
 	arti_cache_invalidate();
 }
 
+// One owner's war penalty is one immutable writer job. Refused admission leaves
+// every live timer unchanged; the ordered writer retries the whole capture.
+bool artifact_wars_burn(int pid, time_t now, float retained)
+{
+	try
+	{
+		std::vector<std::pair<int, time_t>> timers;
+#ifdef __NO_MYSQL__
+		std::vector<flatfile_artifact_record> captures;
+#else
+		std::vector<std::string> captures;
+#endif
+		for (const auto &[vnum, current] : artifact_rows)
+		{
+			if (current.locType != ARTIFACT_ON_PC || current.location != pid ||
+			    current.timer <= now)
+				continue;
+			auto row = current;
+			row.timer = now + static_cast<time_t>(std::floor(
+						  static_cast<double>(row.timer - now) * retained));
+			const auto bound = artifact_binds.find(vnum);
+			const artifact_bind_row empty = {};
+			const auto &bind = bound == artifact_binds.end() ? empty : bound->second;
+#ifdef __NO_MYSQL__
+			captures.push_back(artifact_flat_capture(vnum, row, bind));
+#else
+			auto statements = artifact_snapshot_statements(vnum, &row, bind);
+			if (statements.empty())
+			{
+				errno = EINVAL;
+				return false;
+			}
+			for (auto &statement : statements)
+				captures.push_back(std::move(statement));
+#endif
+			timers.emplace_back(vnum, row.timer);
+		}
+		if (timers.empty())
+			return true;
+		artifact_save saved;
+		saved.dirty = true;
+		if (!artifact_queue_save(timers.front().first, "war", saved, std::move(captures)))
+			return false;
+		for (const auto &[vnum, timer] : timers)
+		{
+			auto &row = artifact_rows.at(vnum);
+			row.timer = timer;
+			row.save = saved;
+			const auto bind = artifact_binds.find(vnum);
+			if (bind != artifact_binds.end() && bind->second.save.dirty)
+				bind->second.save = saved;
+		}
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		errno = ENOMEM;
+		return false;
+	}
+}
+
 bool artifact_bind_save(int vnum, artifact_bind_row &bind)
 {
 	if (artifact_restore_checkpoint)
@@ -526,23 +587,26 @@ void artifact_bind_store(int vnum, int owner_pid, int timer)
 	arti_cache_invalidate();
 }
 
-// Keep the existing all-souls transaction; each changed record retains its own
-// dirty indication and shares the receipt of this one captured write.
+// Admit the entire reset before changing live bindings. A refused batch must not
+// fall back to independent per-row retries. Accepted records share one receipt.
 bool artifact_binds_reset(int vnum)
 {
 #ifdef __NO_MYSQL__
 	if (!artifact_cache_loaded)
 		return false;
 #endif
-	for (auto &entry : artifact_binds)
-		if (vnum < 0 || entry.first == vnum)
-		{
-			entry.second = { -1, 0 };
-			entry.second.save.dirty = true;
-		}
-	arti_cache_invalidate();
 	if (artifact_restore_checkpoint)
+	{
+		for (auto &entry : artifact_binds)
+			if (vnum < 0 || entry.first == vnum)
+			{
+				entry.second = { -1, 0 };
+				entry.second.save.dirty = true;
+			}
+		arti_cache_invalidate();
 		return true;
+	}
+	const artifact_bind_row reset = { -1, 0 };
 	try
 	{
 #ifdef __NO_MYSQL__
@@ -550,7 +614,7 @@ bool artifact_binds_reset(int vnum)
 		for (const auto &[number, bind] : artifact_binds)
 			if (vnum < 0 || number == vnum)
 				records.push_back(artifact_flat_capture(
-					number, artifact_rows.at(number), bind));
+					number, artifact_rows.at(number), reset));
 		if (records.empty())
 			return true;
 		auto receipt = std::make_shared<sql_write_receipt>();
@@ -563,7 +627,7 @@ bool artifact_binds_reset(int vnum)
 				const auto row = artifact_rows.find(number);
 				auto captured = artifact_snapshot_statements(
 					number, row == artifact_rows.end() ? nullptr : &row->second,
-					bind);
+					reset);
 				if (captured.empty())
 				{
 					artifact_save_error(number, "identity", bind.save,
@@ -582,12 +646,18 @@ bool artifact_binds_reset(int vnum)
 			if (vnum < 0 || entry.first == vnum)
 			{
 				if (queued)
+				{
+					entry.second = reset;
+					entry.second.save.dirty = true;
 					entry.second.save.pending = receipt;
+				}
 				else
 					artifact_save_error(entry.first, "soul", entry.second.save,
 							    "admission_failed",
 							    errno ? errno : EIO);
 			}
+		if (queued)
+			arti_cache_invalidate();
 		return queued;
 	}
 	catch (const std::bad_alloc &)
@@ -3291,6 +3361,14 @@ static bool retire_expired_artifact(P_obj object)
 	const auto current = artifact_rows.find(vnum);
 	if (current == artifact_rows.end() || !artifact_expired(current->second))
 		return false;
+	P_obj root = object;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	P_char holder = OBJ_WORN(root)	  ? root->loc.wearing :
+			OBJ_CARRIED(root) ? root->loc.carrying :
+					    nullptr;
+	if (holder && IS_TRUSTED(holder))
+		return false;
 	poof_artifact(object);
 	const auto retired = artifact_rows.find(vnum);
 	return retired != artifact_rows.end() && retired->second.canonical_item_uid == uid &&
@@ -3518,18 +3596,11 @@ void event_artifact_wars_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/, void
 			if (burn > 1.0f)
 				burn = 1.0f;
 			const float retained = 1.0f - burn;
-			for (const auto &artifact : artifact_rows)
-				if (artifact.second.locType == ARTIFACT_ON_PC &&
-				    artifact.second.location == entry.pid &&
-				    artifact.second.timer > now)
-				{
-					artifact_row row = artifact.second;
-					row.timer =
-						now + static_cast<time_t>(std::floor(
-							      static_cast<double>(row.timer - now) *
-							      retained));
-					artifact_row_store(artifact.first, row);
-				}
+			if (!artifact_wars_burn(entry.pid, now, retained))
+			{
+				update_failed = true;
+				continue; // Retry the intact owner penalty on a later pass.
+			}
 			timers_updated = true;
 			logit(LOG_ARTIFACT,
 			      "artifact_wars: pid %d artifact timers cut by %d%% (punish_level=%d)",
@@ -4157,6 +4228,7 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 	const uint64_t source_uid = arti1->obj_uid;
 	const uint64_t replacement_uid = arti2->obj_uid;
 	int wearloc = 0;
+	bool source_detached = false;
 	if (location == LOC_WORN)
 		while (wearloc < MAX_WEAR && owner1->equipment[wearloc] != arti1)
 			++wearloc;
@@ -4171,6 +4243,7 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 		{
 			// Hold the original body intact, without breaking its links on a failed attempt.
 			unequip_char(owner1, wearloc, TRUE);
+			source_detached = true;
 			equip_char(owner1, arti2, wearloc, TRUE);
 		}
 		break;
@@ -4207,20 +4280,50 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 		case LOC_NOWHERE:
 			break;
 		}
-	if (!positioned)
+	bool snapshot_queued = true;
+	if (positioned && dummy)
+	{
+		// Keep the old body alive, but exclude it from the replacement snapshot.
+		if (OBJ_CARRIED(arti1))
+			obj_from_char(arti1);
+		else if (OBJ_INSIDE(arti1))
+			obj_from_obj(arti1);
+		else if (OBJ_ROOM(arti1))
+			obj_from_room(arti1);
+		source_detached = true;
+		snapshot_queued = writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room);
+	}
+	if (!positioned || !snapshot_queued)
 	{
 		if (placed)
 			extract_obj(placed, FALSE);
-		if (location == LOC_WORN && wearloc < MAX_WEAR &&
-		    find_live_object(arti1, source_uid) && OBJ_NOWHERE(arti1))
-			equip_char(owner1, arti1, wearloc,
-				   9); // Restore, without recasting its enchantment.
+		if (source_detached && find_live_object(arti1, source_uid))
+			switch (location)
+			{
+			case LOC_CARRIED:
+				obj_to_char(arti1, original.carrying);
+				break;
+			case LOC_WORN:
+				if (wearloc < MAX_WEAR)
+					equip_char(owner1, arti1, wearloc,
+						   9); // Restore without recasting enchantments.
+				break;
+			case LOC_INSIDE:
+				obj_to_obj(arti1, original.inside);
+				break;
+			case LOC_ROOM:
+				obj_to_room(arti1, original.room);
+				break;
+			case LOC_NOWHERE:
+				break;
+			}
 		send_to_char_f(
 			ch,
-			"Artifact %d replacement placement failed; original retained. Reference: artifact_identity/swap.\r\n",
-			vnum1);
+			"Artifact %d replacement %s; original retained. Reference: artifact_identity/swap.\r\n",
+			vnum1, positioned ? "snapshot was not queued" : "placement failed");
 		persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none", "none",
-				  "replacement_placement_failed",
+				  positioned ? "player_snapshot_not_queued" :
+					       "replacement_placement_failed",
 				  "vnum=%d replacement_vnum=%d source_uid=%llu", vnum1, vnum2,
 				  (unsigned long long)source_uid);
 		return;
@@ -4241,14 +4344,6 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 	if (owner1 == dummy)
 	{
 		owner1 = NULL;
-	}
-	// Save pfile if applies.
-	if (dummy)
-	{
-		if (!writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room))
-			persistence_alert(AVATAR, "artifact", "offline_swap", "none", "none",
-					  "player_snapshot_not_queued",
-					  "vnum=%d temporary_owner_discarded=1", vnum2);
 	}
 	// Save in-game owner if applies.
 	if (owner1)
@@ -4310,6 +4405,19 @@ static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
 			       vnum1);
 		return;
 	}
+	for (P_obj existing = object_list; existing; existing = existing->next)
+		if (existing->R_num >= 0 && IS_ARTIFACT(existing) && OBJ_VNUM(existing) == vnum2)
+		{
+			send_to_char_f(
+				ch,
+				"Artifact %d already has a physical target copy; swap refused. Reference: artifact_identity/swap.\r\n",
+				vnum2);
+			persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none",
+					  "none", "target_copy_present",
+					  "vnum=%d existing_uid=%llu", vnum2,
+					  (unsigned long long)existing->obj_uid);
+			return;
+		}
 	artifact_restore_scope checkpoint;
 	if (!checkpoint)
 	{
@@ -4618,10 +4726,15 @@ void arti_fixit_sql(P_char ch)
 		// If the arti is on a different PC, its soul moves to that PC and its timer goes to max.
 		if (location == pid)
 			continue;
-		artifact_bind_store(vnum, location, static_cast<int>(time(NULL)));
+		auto &bind = artifact_binds[vnum];
+		bind.owner_pid = location;
+		bind.timer = static_cast<int>(time(NULL));
+		bind.save = {};
+		bind.save.dirty = true;
 		artifact_row row = entry.second;
 		row.timer = new_time;
 		artifact_row_store(vnum, row);
+		bind.save = artifact_rows.at(vnum).save;
 		P_obj arti = read_object(vnum, VIRTUAL);
 		send_to_char_f(ch, "%3d) '%s&n'%6d - timer reset and now owned by '%s' %d.\n\r",
 			       ++counter,
