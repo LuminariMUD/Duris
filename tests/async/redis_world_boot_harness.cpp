@@ -23,6 +23,39 @@ static void *observed_argv(redisContext *context, int argc, const char **argv,
 #include <iostream>
 #include <limits>
 #include <zlib.h>
+#include <sys/socket.h>
+
+static int generation_failure_phase = 0;
+static int generation_failures_left = 0;
+static int generation_read_attempts = 0;
+extern "C" void *__real_redisvCommand(redisContext *, const char *, va_list);
+extern "C" void *__wrap_redisvCommand(redisContext *context, const char *format, va_list arguments)
+{
+	bool injected = false;
+	if (context != world_context && (!strcmp(format, "GET %s") || !strcmp(format, "STRLEN %s")))
+	{
+		va_list inspected;
+		va_copy(inspected, arguments);
+		const char *key = va_arg(inspected, const char *);
+		va_end(inspected);
+		const bool manifest = !strcmp(key, "mud:season:42:world_state:generation:1");
+		if (manifest && !strcmp(format, "STRLEN %s"))
+			++generation_read_attempts;
+		if (generation_failures_left && !strcmp(format, "GET %s") &&
+		    ((generation_failure_phase == 1 && manifest) ||
+		     (generation_failure_phase == 2 && !manifest)))
+		{
+			--generation_failures_left;
+			assert(world_context && !world_context->err && !context->err);
+			assert(shutdown(context->fd, SHUT_RD) == 0);
+			injected = true;
+		}
+	}
+	void *reply = __real_redisvCommand(context, format, arguments);
+	if (injected)
+		assert(!reply && context->err && world_context && !world_context->err);
+	return reply;
+}
 
 static void command(const char *format, const std::string &value = {})
 {
@@ -125,7 +158,7 @@ static void reset_boot()
 static void pinning_checks(redisContext *other, int port)
 {
 	world_authentication_secret = "world-recovery-authentication-secret-0001";
-	world_requested = true;
+	setenv("REDIS_WORLD_STATE", "TRUE", 1);
 	const auto config = redis_world_store_config_copy();
 	constexpr const char *writer = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	const auto first = generation_value(1), second = generation_value(2);
@@ -142,11 +175,32 @@ static void pinning_checks(redisContext *other, int port)
 	auto seeded = [&]
 	{
 		reset_boot();
+		if (!world_context || world_context->err)
+			assert(redis_reconnect());
 		command("FLUSHDB");
 		assert(redis_world_store_claim_fence(&config, writer, 600000));
 		publish(first, 1);
 		put_floor(other, 202, floor);
 	};
+	for (int phase : { 1, 2 })
+	{
+		seeded();
+		generation_read_attempts = 0;
+		generation_failure_phase = phase;
+		generation_failures_left = 1;
+		assert(redis_world_prepare_boot() == redis_world_boot_result::ready &&
+		       "a dedicated generation read failure bypassed boot retry");
+		assert(generation_read_attempts == 2 && !generation_failures_left &&
+		       redis_world_boot_evidence()->generation == first);
+	}
+	seeded();
+	generation_read_attempts = 0;
+	generation_failure_phase = 1;
+	generation_failures_left = WORLD_BOOT_READ_ATTEMPTS;
+	assert(redis_world_prepare_boot() == redis_world_boot_result::failed &&
+	       generation_read_attempts == WORLD_BOOT_READ_ATTEMPTS &&
+	       !redis_world_boot_evidence());
+	generation_failure_phase = 0;
 	seeded();
 	clean_shutdown_sequence = 1;
 	assert(redis_world_prepare_boot() == redis_world_boot_result::ready);
@@ -290,7 +344,9 @@ static void pinning_checks(redisContext *other, int port)
 	assert(redis_world_prepare_boot() == redis_world_boot_result::failed);
 	seeded();
 	command("SET mud:season:42:world_state:generation:1 %b", "bad manifest");
-	assert(redis_world_prepare_boot() == redis_world_boot_result::failed);
+	generation_read_attempts = 0;
+	assert(redis_world_prepare_boot() == redis_world_boot_result::failed &&
+	       generation_read_attempts == 1);
 	seeded();
 	command("HSET mud:season:42:floor_drops 202 %b", "bad floor");
 	assert(redis_world_prepare_boot() == redis_world_boot_result::failed);
@@ -298,10 +354,11 @@ static void pinning_checks(redisContext *other, int port)
 	world_enabled = false;
 	assert(redis_world_prepare_boot() == redis_world_boot_result::failed);
 	reset_boot();
-	world_requested = false;
+	setenv("REDIS_WORLD_STATE", "FALSE", 1);
 	assert(redis_world_prepare_boot() == redis_world_boot_result::disabled &&
 	       !redis_world_boot_evidence());
-	world_enabled = world_requested = true;
+	world_enabled = true;
+	setenv("REDIS_WORLD_STATE", "TRUE", 1);
 	command("FLUSHDB");
 	std::cout
 		<< "pinned boot evidence, real concurrent changes, exact-byte load and atomic consume passed\n";
@@ -320,6 +377,18 @@ int main(int argc, char **argv)
 	assert(world_context && !world_context->err);
 	world_runtime_epoch = 42;
 	world_key_namespace = "mud";
+	// Startup configuration can fail before the world runtime starts.
+	setenv("REDIS", "TRUE", 1);
+	setenv("REDIS_WORLD_STATE", "TRUE", 1);
+	world_enabled = false;
+	reset_boot();
+	assert(redis_world_prepare_boot() == redis_world_boot_result::failed &&
+	       "requested recovery was reported disabled after startup failure");
+	reset_boot();
+	setenv("REDIS", "FALSE", 1);
+	assert(redis_world_prepare_boot() == redis_world_boot_result::disabled);
+	setenv("REDIS", "TRUE", 1);
+	reset_boot();
 	world_enabled = true;
 	command("DEL mud:season:42:world_state:current");
 	uint64_t sequence = 99;
