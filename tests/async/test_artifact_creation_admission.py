@@ -130,6 +130,7 @@ void obj_to_room(P_obj object,int room) {
 }
 void obj_to_char(P_obj object,P_char mob) {
  if(intercept_swap_placement(object)) return;
+ if(IS_OBJ_STAT2(object,ITEM2_CRUMBLELOOT) && IS_PC(mob) && !IS_TRUSTED(mob)) { extract_obj(object,TRUE); return; }
  object->loc_p=LOC_CARRIED; object->loc.carrying=mob;
  object->next_content=mob->carrying; mob->carrying=object; artifact_object_placed(object);
 }
@@ -210,6 +211,8 @@ void free_char(P_char owner) {
 void nevent_periodic_continue_after(unsigned long long) {}
 void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_retries; }
 void balance_affects(P_char) {}
+bool training_dummy_is(P_char) { return false; }
+// RESTORE_CARRIED
 // PLAYER_ATTACHMENT
 // CONSTRUCTORS
 // EXTRACTION
@@ -413,6 +416,7 @@ int main() {
 }
 """
 source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "unsigned int player_load_items_qualify(")))
+source=source.replace("// RESTORE_CARRIED",extract_function("handler.c","static void append_obj_to_list(")+"\n"+extract_function("handler.c","void obj_to_char_at_end("))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
@@ -1103,15 +1107,16 @@ void swap_admission_cases() {
         artifact_binds.at(900).owner_pid==77 && !object_list && !pool.objs_used && writes.empty());
  // Refused snapshots restore source identity before discarding the temporary graph.
  inspect_swap_snapshot=true;
- for(int refused_location=0;refused_location<3;++refused_location) {
+ for(int refused_location=0;refused_location<4;++refused_location) {
   char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
   source=read_object_for_recovery(restored); assert(source);
-  if(refused_location==0) obj_to_char(source,&owner);
+  if(refused_location==0 || refused_location==3) obj_to_char(source,&owner);
   else if(refused_location==1) equip_char(&owner,source,0,TRUE);
   else {
    auto *bag=read_object_for_creation(903,VIRTUAL); assert(bag); bag->value[0]=1000;
    obj_to_char(bag,&owner); obj_to_obj(source,bag);
   }
+  if(refused_location==3) source->extra2_flags|=ITEM2_CRUMBLELOOT;
   const auto releases=offline_released;
   const auto links_before=removed_wear_links_by_uid[80001];
   const auto target_before_refusal=artifact_rows.at(902);
