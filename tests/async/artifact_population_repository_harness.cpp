@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 	      "owner_type TINYINT UNSIGNED,owner_id BIGINT UNSIGNED,"
 	      "owner_context_id BIGINT UNSIGNED,item_revision BIGINT UNSIGNED,vnum INT,state TINYINT UNSIGNED) ENGINE=InnoDB");
 	query(connection,
-	      "CREATE TABLE item_ownership_quarantine(item_uid BIGINT UNSIGNED,repaired_at TIMESTAMP NULL)");
+	      "CREATE TABLE item_ownership_quarantine(item_uid BIGINT UNSIGNED,source_table VARCHAR(64),source_row_id BIGINT UNSIGNED,repaired_at TIMESTAMP NULL)");
 	query(connection,
 	      "CREATE TABLE item_owner_revision(owner_type TINYINT UNSIGNED,"
 	      "owner_id BIGINT UNSIGNED,owner_context_id BIGINT UNSIGNED,revision BIGINT UNSIGNED,"
@@ -156,6 +156,20 @@ int main(int argc, char **argv)
 		    entry.domain == artifact_payload_domain::siege)
 			assert(page.rows[0].payload_owner.type == item_owner_type::unknown);
 	}
+	query(connection, "UPDATE player_pet_items SET obj_uid=0 WHERE id=2");
+	query(connection, "UPDATE shopkeeper_items SET obj_uid=0 WHERE id=2");
+	query(connection,
+	      "INSERT INTO item_ownership_quarantine(item_uid,source_table,source_row_id) VALUES(0,'player_pet_items',2)");
+	artifact_population_sql_page zero_uid_page;
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::pet, 0,
+						  &zero_uid_page));
+	assert(zero_uid_page.rows[1].source_quarantined);
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::shopkeeper,
+						  0, &zero_uid_page));
+	assert(!zero_uid_page.rows[1].source_quarantined &&
+	       "zero UID quarantine leaked across sources");
+	query(connection, "DELETE FROM item_ownership_quarantine WHERE item_uid=0");
+
 	query(connection, "INSERT INTO player_pets VALUES(44,NULL,78)");
 	query(connection,
 	      "INSERT INTO player_pet_items(id,obj_uid,vnum,extra_flags,pet_id) VALUES(3,444,900,268435456,44)");
@@ -319,11 +333,12 @@ static std::string legacy_blob(uint64_t uid)
 	return hex(data.data(), data.size());
 }
 
-static std::string modern_blob(uint64_t uid, bool money = false, int negative_value = -1)
+static std::string modern_blob(uint64_t uid, bool money = false, int negative_value = -1,
+			       int slot = 0)
 {
 	player_item_snapshot item = {};
 	item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-	item.equipment_slot = -1;
+	item.equipment_slot = slot;
 	item.vnum = 900;
 	item.object_uid = uid;
 	item.extra_flags = 0; // explicit zero must override an artifact prototype
@@ -461,6 +476,20 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	       page.rows[0].payload_owner.type == item_owner_type::player &&
 	       page.rows[0].payload_owner.id == 77 &&
 	       page.rows[1].role == artifact_payload_role::history && page.rows[1].custody_found);
+	query(connection,
+	      "INSERT INTO item_ownership_quarantine(item_uid,source_table,source_row_id,conflict_code,evidence) VALUES(0,'auction_item_pickups',1,1,'uidless pickup')");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_pickup, 0, &page));
+	assert(page.rows[0].source_quarantined &&
+	       page.rows[1].source_quarantined); // UID 101 already quarantined.
+	query(connection,
+	      "UPDATE auction_item_pickups SET obj_blob_str=" + legacy_blob(777) + " WHERE id=1");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_pickup, 0, &page));
+	assert(page.rows[0].item_uid == 777 && page.rows[0].source_quarantined);
+	query(connection,
+	      "UPDATE auction_item_pickups SET obj_blob_str=" + uidless + " WHERE id=1");
+
 	assert(!artifact_population_read_sql_blob_page(
 		connection, artifact_payload_domain::collector, 0, &page));
 	assert(page.complete && page.next_row_id == 2003 && page.source_rows == 3 &&
@@ -503,7 +532,7 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	query(connection, "SET autocommit=0");
 	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);
 	query(connection, "SET autocommit=1");
-	for (const auto &fault : std::array<std::pair<std::string, std::string>, 5>{ {
+	for (const auto &fault : std::array<std::pair<std::string, std::string>, 9>{ {
 		     { "UPDATE auction_item_custody SET obj_blob=X'00' WHERE item_uid=101",
 		       "UPDATE auction_item_custody SET obj_blob=" + legacy +
 			       " WHERE item_uid=101" },
@@ -515,6 +544,17 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 			       " WHERE listing_id=2001",
 		       "UPDATE collector_listings SET item_blob=" + modern_blob(801) +
 			       " WHERE listing_id=2001" },
+		     { "UPDATE collector_listings SET item_blob=" +
+			       modern_blob(801, false, -1, -1) + " WHERE listing_id=2001",
+		       "UPDATE collector_listings SET item_blob=" + modern_blob(801) +
+			       " WHERE listing_id=2001" },
+		     { "UPDATE auction_item_custody SET claim_pid=NULL WHERE slot=1",
+		       "UPDATE auction_item_custody SET claim_pid=77 WHERE slot=1" },
+		     { "UPDATE auction_item_custody SET claim_operation_id=NULL WHERE slot=1",
+		       "UPDATE auction_item_custody SET claim_operation_id=UNHEX('0123456789abcdef0123456789abcdef') WHERE slot=1" },
+		     { "UPDATE auction_item_custody SET claimed_at=NULL WHERE slot=1",
+		       "UPDATE auction_item_custody SET claimed_at=CURRENT_TIMESTAMP(6) WHERE slot=1" },
+
 		     { "UPDATE item_current_owner SET coin_payload=X'00' WHERE item_uid=904",
 		       "UPDATE item_current_owner SET coin_payload=" + modern_blob(904, true) +
 			       " WHERE item_uid=904" },
@@ -526,6 +566,13 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 		assert(!(connection->server_status & SERVER_STATUS_IN_TRANS));
 		query(connection, fault.second);
 	}
+	query(connection, "UPDATE auction_item_custody SET claim_pid=77 WHERE slot=0");
+	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
+						       0, &page));
+	assert(page.rows[0].role == artifact_payload_role::stored &&
+	       page.rows[0].payload_owner.type == item_owner_type::auction);
+	query(connection, "UPDATE auction_item_custody SET claim_pid=NULL WHERE slot=0");
+
 	for (int invalid = -1; invalid < 4; ++invalid)
 	{
 		query(connection, "UPDATE item_current_owner SET coin_payload=" +
