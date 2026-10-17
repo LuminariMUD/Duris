@@ -3073,7 +3073,7 @@ static void stage_artifact_population()
 		const auto &population = artifact_population_boot_evidence();
 		std::unordered_set<int> saved_artifacts;
 		for (const auto &item : population.items)
-			if (item.extra_flags_present && (item.extra_flags & ITEM_ARTIFACT))
+			if (!item.extra_flags_present || (item.extra_flags & ITEM_ARTIFACT))
 				saved_artifacts.insert(item.vnum);
 		std::vector<artifact_population_template> prototypes;
 		prototypes.reserve(static_cast<size_t>(top_of_objt) + 1);
