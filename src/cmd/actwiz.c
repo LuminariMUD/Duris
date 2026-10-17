@@ -5388,7 +5388,8 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 				redis_player_offline(vict);
 				// NOWHERE preserves the original purge's fallback save location.
 				if (!writeCharacter(vict, RENT_QUIT, NOWHERE))
-					logit(LOG_WIZ, "Failed to save %s after staff purge.", GET_NAME(vict));
+					logit(LOG_WIZ, "Failed to save %s after staff purge.",
+					      GET_NAME(vict));
 				extract_char_after_terminal_save(vict);
 				vict = NULL;
 			}
