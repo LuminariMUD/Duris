@@ -912,7 +912,35 @@ static auto artifact_row_for_uid(uint64_t uid)
 			    { return entry.second.canonical_item_uid == uid; });
 }
 
-unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
+static item_owner_type artifact_source_owner_type(artifact_payload_domain domain)
+{
+	switch (domain)
+	{
+	case artifact_payload_domain::player:
+		return item_owner_type::player;
+	case artifact_payload_domain::pet:
+		return item_owner_type::pet;
+	case artifact_payload_domain::corpse:
+		return item_owner_type::corpse;
+	case artifact_payload_domain::locker:
+		return item_owner_type::locker;
+	case artifact_payload_domain::room:
+		return item_owner_type::room;
+	case artifact_payload_domain::shopkeeper:
+		return item_owner_type::shopkeeper;
+	case artifact_payload_domain::auction:
+		return item_owner_type::auction;
+	case artifact_payload_domain::collector:
+		return item_owner_type::collector;
+	case artifact_payload_domain::embedded:
+		return item_owner_type::container;
+	default:
+		return item_owner_type::unknown;
+	}
+}
+
+static unsigned int artifact_owned_source_error(const artifact_payload_projection &source,
+						P_obj object)
 {
 	const auto identity = artifact_row_for_uid(source.item_uid);
 	if (identity != artifact_rows.cend() && identity->first != source.vnum)
@@ -921,13 +949,14 @@ unsigned int artifact_player_source_error(const artifact_payload_projection &sou
 	if (!(source.extra_flags & ITEM_ARTIFACT) &&
 	    (found == artifact_rows.end() || found->second.canonical_item_uid != source.item_uid))
 		return 0;
-	if (!artifact_cache_loaded || source.domain != artifact_payload_domain::player ||
+	if (!artifact_cache_loaded ||
+	    artifact_source_owner_type(source.domain) == item_owner_type::unknown ||
 	    source.role != artifact_payload_role::stored || !source.row_id || !source.item_uid ||
 	    !source.extra_flags_present || !(source.extra_flags & ITEM_ARTIFACT) ||
 	    source.quantity != 1 || source.source_quarantined || source.parent_missing ||
-	    source.parent_owner_disagrees || source.owner_context ||
-	    source.payload_owner.type != item_owner_type::player || !source.payload_owner.id ||
-	    source.payload_owner.context_id || source.owner_reference <= 0 ||
+	    source.parent_owner_disagrees || !item_owner_identity_valid(source.payload_owner) ||
+	    source.payload_owner.type != artifact_source_owner_type(source.domain) ||
+	    source.owner_context != source.payload_owner.context_id ||
 	    source.payload_owner.id != static_cast<uint64_t>(source.owner_reference) ||
 	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found ||
 	    !source.custody_owner_revision_found)
@@ -955,6 +984,13 @@ unsigned int artifact_player_source_error(const artifact_payload_projection &sou
 	    found->second.pending == artifact_pending::creation)
 		return EEXIST;
 	return 0;
+}
+
+unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
+{
+	return source.domain == artifact_payload_domain::player ?
+		       artifact_owned_source_error(source, object) :
+		       ENODATA;
 }
 
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source)
@@ -986,20 +1022,21 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 		    known->second.canonical_item_uid != object->obj_uid)
 			return true;
 	}
-	const bool player = source.domain == artifact_payload_domain::player;
-	if (player)
+	const bool owned_source = artifact_source_owner_type(source.domain) !=
+				  item_owner_type::unknown;
+	if (owned_source)
 	{
-		const unsigned int error = artifact_player_source_error(source, object);
+		const unsigned int error = artifact_owned_source_error(source, object);
 		if (error)
-			return refuse(error, "player_source_unqualified");
+			return refuse(error, "owned_source_unqualified");
 	}
 	if (!artifact_cache_loaded || object->R_num < 0 || !object->obj_uid ||
 	    !source.extra_flags_present || source.quantity != 1 ||
 	    source.role != artifact_payload_role::stored || source.source_quarantined ||
 	    source.item_uid != object->obj_uid || source.vnum != OBJ_VNUM(object) ||
-	    source.extra_flags != object->extra_flags || (!player && !source.owner_context) ||
+	    source.extra_flags != object->extra_flags || (!owned_source && !source.owner_context) ||
 	    !source.payload_root_item_uid ||
-	    (!player && source.domain != artifact_payload_domain::redis_generation &&
+	    (!owned_source && source.domain != artifact_payload_domain::redis_generation &&
 	     source.domain != artifact_payload_domain::redis_floor &&
 	     source.domain != artifact_payload_domain::copyover_ground))
 	{
@@ -1022,7 +1059,7 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	// checked its full graph, effective flags and independent/captured custody.
 	// A same-UID payload in another source or owner is not an interchangeable copy.
 	const bool qualified =
-		player ||
+		owned_source ||
 		std::any_of(row.canonical_payloads.begin(), row.canonical_payloads.end(),
 			    [&](const artifact_payload_projection &payload)
 			    {
@@ -1038,7 +1075,7 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 					   payload.extra_flags_present &&
 					   payload.extra_flags == source.extra_flags;
 			    });
-	if (!player && !qualified)
+	if (!owned_source && !qualified)
 	{
 		return refuse(ENODATA, "source_projection_mismatch");
 	}

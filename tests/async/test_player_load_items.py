@@ -246,11 +246,13 @@ int real_object(int vnum)
 }
 
 static int refused_artifact_vnum = 0;
+static artifact_payload_projection last_recovery_source;
 static std::vector<uint64_t> released_artifact_uids;
 void artifact_object_extracted(P_obj object, bool) { if(object->obj_uid) released_artifact_uids.push_back(object->obj_uid); }
 void artifact_object_placed(P_obj) {}
 P_obj read_object(int, int);
 P_obj read_object_for_recovery(const artifact_payload_projection &source) {
+    last_recovery_source=source;
     auto *object=read_object(source.vnum,REAL);
     if(object) { object->obj_uid=source.item_uid; object->extra_flags=source.extra_flags; }
     return object;
@@ -761,6 +763,9 @@ int main()
         assert(player_load_item_graph_materialize_for_owner(
             &owner.character, result.snapshot.items, result.item_identities, shopkeeper,
             result.item_owner_revision, true, true, &metrics));
+        assert(last_recovery_source.domain==artifact_payload_domain::shopkeeper &&
+               item_owner_identity_equal(last_recovery_source.custody.owner,shopkeeper) &&
+               last_recovery_source.item_uid==10 && last_recovery_source.custody_owner_revision_found);
         assert(owner.character.carrying->timer[1] == 44);
         assert(owner.character.carrying->anti_flags == 5);
         assert(owner.character.carrying->anti2_flags == 6);
@@ -801,6 +806,9 @@ int main()
         assert(player_load_item_graph_materialize_detached(
             result.snapshot.items, result.item_identities, corpse,
             result.item_owner_revision, true, true, &roots, &metrics));
+        assert(last_recovery_source.domain==artifact_payload_domain::corpse &&
+               item_owner_identity_equal(last_recovery_source.custody.owner,corpse) &&
+               last_recovery_source.item_uid==31 && last_recovery_source.parent_item_uid==30);
         assert(roots.size() == 1 && roots[0]->obj_uid == 30 &&
                roots[0]->loc_p == LOC_NOWHERE && roots[0]->contains &&
                roots[0]->contains->obj_uid == 31 && roots[0]->contains->affects &&

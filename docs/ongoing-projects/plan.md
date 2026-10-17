@@ -1,5 +1,22 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active follow-up — qualified owned payload loaders (#174)
+
+Branch `branch/issue-67-owned-payload-admission`. Valid non-player loaders already
+check owner, revisions and complete topology, but their construction bypassed
+artifact recovery admission. Feed those verified identities into the existing
+saved-UID factory, extending its current mutable-owner check to the supported
+custody domains. Detached roots also commit their qualified reservation before
+handoff; failed construction retains the existing staged-graph cleanup.
+Files: artifact source validation, existing owner-graph materializer and tests,
+plan. No new source registry or persistence format. Proof must cover canonical
+corpse/locker/pet/shop/room/collector sources and mismatched/current-live controls.
+All nine owner-domain native controls pass, including saved UID before procedures,
+source mismatch refusal and live-alias isolation. Actual shop/corpse graph
+materializers, SQL snapshots, flat artifact suites and both native builds pass
+(`bin/analysis/owned-admission-*.log`). Final integration follows the NPC boundary repair.
+
+
 ## Active review repair — recovery qualification and rollback
 
 Branch `branch/issue-67-recovery-validation`, based on #175. Four later findings:

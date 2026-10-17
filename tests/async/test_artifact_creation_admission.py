@@ -225,6 +225,7 @@ bool training_dummy_is(P_char) { return false; }
 // RESET
 // RESTORE_WRAPPER
 // NATIVE_EXISTING_CASES
+// OWNED_RECOVERY_CASES
 // RECOVERY_CASES
 // MAINTENANCE_CASES
 // SWAP_CASES
@@ -390,6 +391,7 @@ int main() {
  transformation_cases();
  corpse_bind_cases();
  native_existing_recovery_cases();
+ owned_recovery_cases();
  // Tracking metadata alone is not a physical restore source, even with a known UID.
  auto &legacy=artifact_rows[900];
  legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
@@ -590,6 +592,39 @@ void native_existing_recovery_cases() {
  native_fixture=native_existing_fixture=false;
  extract_obj(bag,FALSE); assert(!object_list && !pool.objs_used);
  std::cout<<"actual existing native tree: later refusal rolls back earlier admissions, successful retry registers both: PASS\n";
+}
+""")
+
+source=source.replace("// OWNED_RECOVERY_CASES",r"""
+void owned_recovery_cases() {
+ const std::pair<artifact_payload_domain,item_owner_type> domains[]={
+  {artifact_payload_domain::player,item_owner_type::player}, {artifact_payload_domain::pet,item_owner_type::pet},
+  {artifact_payload_domain::corpse,item_owner_type::corpse}, {artifact_payload_domain::locker,item_owner_type::locker},
+  {artifact_payload_domain::room,item_owner_type::room}, {artifact_payload_domain::shopkeeper,item_owner_type::shopkeeper},
+  {artifact_payload_domain::auction,item_owner_type::auction}, {artifact_payload_domain::collector,item_owner_type::collector},
+  {artifact_payload_domain::embedded,item_owner_type::container}};
+ uint64_t uid=9000000;
+ for(const auto &[domain,type]:domains) {
+  assert(!object_list && !pool.objs_used); artifact_rows.clear(); artifact_binds.clear(); writes.clear();
+  artifact_payload_projection source={}; source.domain=domain; source.row_id=1;
+  source.item_uid=source.payload_root_item_uid=++uid; source.vnum=900;
+  source.extra_flags=ITEM_ARTIFACT; source.extra_flags_present=true; source.quantity=1;
+  source.payload_owner={type,77,type==item_owner_type::pet ? 42ULL : 0ULL};
+  source.owner_reference=77; source.owner_context=source.payload_owner.context_id;
+  source.custody_examined=source.custody_found=source.custody_owner_revision_found=true;
+  source.custody={uid,uid,0,source.payload_owner,7,5,900,item_custody_state::active};
+  auto &row=artifact_rows[900]; row.canonical_item_uid=uid; row.identity_state=artifact_identity_state::present;
+  row.timer=4567; artifact_binds[900]={77,88};
+  auto wrong=source; ++wrong.custody.owner.context_id;
+  assert(!read_object_for_recovery(wrong) && errno==ESTALE && !row.live_object);
+  expected_procedure_uid=uid; auto *body=read_object_for_recovery(source); expected_procedure_uid=0;
+  assert(body && row.live_object==body && row.pending==artifact_pending::recovery && body->obj_uid==uid);
+  artifact_object_placed(body); assert(artifact_is_canonical(body) && row.timer==4567 && artifact_binds.at(900).owner_pid==77);
+  const auto effects=procedures; assert(!read_object_for_recovery(source) && errno==EEXIST && procedures==effects);
+  extract_obj(body,FALSE);
+  assert(!row.live_object && row.identity_state==artifact_identity_state::present && row.timer==4567 && writes.empty());
+ }
+ std::cout<<"qualified owner domains: saved UID before procedures, source mismatch refusal, live alias isolation and unload: PASS\n";
 }
 """)
 

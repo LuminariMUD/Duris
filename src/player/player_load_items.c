@@ -615,8 +615,65 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 		if (object_number < 0)
 			return fail(metrics,
 				    player_load_item_materialize_outcome::unknown_prototype);
-		P_obj object = admission ? read_object_for_recovery((*admission)[index]) :
-					   read_object(object_number, REAL);
+		artifact_payload_projection owned_source = {};
+		if (!admission)
+		{
+			// These identities have already passed the owner/revision/topology
+			// checks above. Reserve their saved artifact UID before construction.
+			switch (expected_owner.type)
+			{
+			case item_owner_type::player:
+				owned_source.domain = artifact_payload_domain::player;
+				break;
+			case item_owner_type::pet:
+				owned_source.domain = artifact_payload_domain::pet;
+				break;
+			case item_owner_type::corpse:
+				owned_source.domain = artifact_payload_domain::corpse;
+				break;
+			case item_owner_type::locker:
+				owned_source.domain = artifact_payload_domain::locker;
+				break;
+			case item_owner_type::room:
+				owned_source.domain = artifact_payload_domain::room;
+				break;
+			case item_owner_type::shopkeeper:
+				owned_source.domain = artifact_payload_domain::shopkeeper;
+				break;
+			case item_owner_type::auction:
+				owned_source.domain = artifact_payload_domain::auction;
+				break;
+			case item_owner_type::collector:
+				owned_source.domain = artifact_payload_domain::collector;
+				break;
+			case item_owner_type::container:
+				owned_source.domain = artifact_payload_domain::embedded;
+				break;
+			default:
+				return fail(metrics,
+					    player_load_item_materialize_outcome::invalid_snapshot);
+			}
+			owned_source.row_id = identity.database_id;
+			owned_source.item_uid = identity.item_uid;
+			owned_source.payload_root_item_uid = identity.root_item_uid;
+			owned_source.parent_item_uid = identity.parent_item_uid;
+			owned_source.owner_reference = static_cast<int64_t>(expected_owner.id);
+			owned_source.owner_context = expected_owner.context_id;
+			owned_source.payload_owner = expected_owner;
+			owned_source.vnum = item.vnum;
+			owned_source.extra_flags = item.extra_flags;
+			owned_source.extra_flags_present = true;
+			owned_source.quantity = identity.quantity;
+			owned_source.custody_examined = owned_source.custody_found =
+				owned_source.custody_owner_revision_found = true;
+			owned_source.custody = {
+				identity.item_uid, identity.root_item_uid, identity.parent_item_uid,
+				expected_owner,	   identity.item_revision, owner_revision,
+				item.vnum,	   identity.state
+			};
+		}
+		P_obj object =
+			read_object_for_recovery(admission ? (*admission)[index] : owned_source);
 		if (!object)
 			return fail(metrics,
 				    player_load_item_materialize_outcome::allocation_failure);
@@ -756,9 +813,8 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 			detached_roots->push_back(staged.objects[root]);
 	else
 		attach_loaded_inventory(character, staged.objects, roots, items);
-	if (admission)
-		for (P_obj object : staged.objects)
-			artifact_object_placed(object);
+	for (P_obj object : staged.objects)
+		artifact_object_placed(object);
 	staged.published = true;
 	metrics->outcome = player_load_item_materialize_outcome::applied;
 	return true;
