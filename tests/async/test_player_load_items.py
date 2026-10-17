@@ -403,7 +403,7 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 int main()
 {
     {
-        reset_test_state(); auto input=base_result(); input.gameplay_items=true; input.outcome=player_load_outcome::applied;
+        reset_test_state(); auto input=base_result(); input.outcome=player_load_outcome::applied;
         player_load_source_item foreign;
         foreign.row_id=1; foreign.item_uid=foreign.root_item_uid=555; foreign.bytes=75;
         foreign.vnum=103; foreign.quantity=1; foreign.extra_flags=ITEM_ARTIFACT; foreign.extra_flags_present=true;

@@ -16,9 +16,12 @@ outstanding thread. The capacity review is resolved with proof in `76d0d4e7c`. #
 
 ## Latest review checkpoint: #157 artifact hunt audit
 
-Current branch: `branch/issue-67-artifact-hunt-inspection`, in
+Current branch: `branch/issue-67-offline-player-admission` (#158), in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #156 repair `fdb7007fe`
-is published and all three threads are resolved; carry-forward merge is `40c3790b3`.
+is published and all three threads are resolved. #157 is carried forward at `a78a52c36`;
+#158 merge `613f50675` retains raw-source qualification after its DTO policy removal.
+Offline/body-admission, capacity, real artifact/recovery lifecycle, flat repository
+and native build checks pass (`bin/analysis/pr158-*`); publish this carry-forward.
 The #157 repair is published as `d2cbe3d02`; all four threads are resolved.
 
 #157 outcome: include candidates known only through custody vnum or canonical UID;
