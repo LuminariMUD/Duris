@@ -453,11 +453,15 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 	}
 }
 
-unsigned int artifact_population_read_sql_payloads(MYSQL *connection,
-						   std::vector<artifact_payload_projection> *items)
+unsigned int
+artifact_population_read_sql_payloads(MYSQL *connection,
+				      std::vector<artifact_payload_projection> *items,
+				      const std::vector<artifact_payload_projection> *additional)
 {
 	if (!connection || !items)
 		return EINVAL;
+	if (additional && additional->size() > ARTIFACT_IDENTITY_MAX_RECORDS)
+		return E2BIG;
 	if ((connection->server_status & SERVER_STATUS_IN_TRANS) ||
 	    !(connection->server_status & SERVER_STATUS_AUTOCOMMIT))
 		return EBUSY;
@@ -471,6 +475,22 @@ unsigned int artifact_population_read_sql_payloads(MYSQL *connection,
 	std::vector<artifact_payload_projection> staged;
 	try
 	{
+		if (additional)
+		{
+			staged = *additional;
+			source_rows = staged.size();
+			for (size_t first = 0; first < staged.size();
+			     first += ARTIFACT_POPULATION_SQL_PAGE_SIZE)
+			{
+				const size_t last = std::min(
+					staged.size(), first + ARTIFACT_POPULATION_SQL_PAGE_SIZE);
+				std::vector<artifact_payload_projection> batch(
+					staged.begin() + first, staged.begin() + last);
+				if ((failed = attach_blob_custody(connection, &batch)))
+					break;
+				std::copy(batch.begin(), batch.end(), staged.begin() + first);
+			}
+		}
 		const artifact_payload_domain sources[] = {
 			artifact_payload_domain::player,
 			artifact_payload_domain::pet,
@@ -488,6 +508,8 @@ unsigned int artifact_population_read_sql_payloads(MYSQL *connection,
 		};
 		for (const auto domain : sources)
 		{
+			if (failed)
+				break;
 			uint64_t cursor = 0;
 			do
 			{

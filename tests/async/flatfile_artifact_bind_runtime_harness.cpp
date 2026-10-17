@@ -307,8 +307,8 @@ int main(int argc, char **argv)
 			artifact_rows.at(600).identity_state ==
 				artifact_identity_state::unresolved &&
 			artifact_rows.at(602).canonical_item_uid == 60201 &&
-			artifact_rows.at(602).canonical_payloads.empty(),
-		"partial population granted identity");
+			artifact_rows.at(602).canonical_payloads.size() == 1,
+		"partial population erased established qualification or granted a new identity");
 	require(artifacts_stage_population(population, prototypes, true) && writes.empty() &&
 			artifact_rows.at(600).canonical_item_uid == 60001 &&
 			artifact_rows.at(600).canonical_payloads.size() == 1 &&

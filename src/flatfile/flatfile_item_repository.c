@@ -1297,7 +1297,8 @@ bool active_player_record(const flatfile_item_ownership_record &record)
 
 flatfile_item_repository_result
 flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
-						  std::string *error)
+						  std::string *error,
+						  const std::vector<uint64_t> *retained)
 {
 	if (root.empty() || !deleted)
 		return flatfile_item_repository_result::invalid;
@@ -1342,6 +1343,8 @@ flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint6
 	try
 	{
 		std::unordered_set<uint64_t> carried;
+		if (retained)
+			carried.insert(retained->begin(), retained->end());
 		for (const auto &locker : lockers)
 			for (const auto &chest : locker.chests)
 				for (const auto &item : chest.items)

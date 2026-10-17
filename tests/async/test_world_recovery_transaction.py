@@ -13,6 +13,7 @@ WORLD_RUNTIME = (SRC / "redis_world_runtime.c").read_text(encoding="ascii")
 SQL = (SRC / "sql.c").read_text(encoding="ascii")
 COMM = (SRC / "comm.c").read_text(encoding="ascii")
 DB = (SRC / "db.c").read_text(encoding="ascii")
+CODEC = (SRC / "world_recovery_codec.c").read_text(encoding="ascii")
 
 
 def section(text: str, start: str, end: str) -> str:
@@ -47,13 +48,14 @@ for token in (
     "real_room(record.room_vnum)",
     "real_object(item.vnum)",
     "plan->item_uids.insert",
-    "parents.find(item.parent_item_uid)",
     "existing_tree_matches",
     "plan->authority_items.push_back",
     "WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED",
 ):
     assert token in plan
 assert "item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED" in plan
+assert "world_recovery_read_object_record(data, size, &record, &planned.items)" in plan
+assert "parents.find(item.parent_item_uid)" in CODEC[CODEC.index("bool world_recovery_read_object_record("):]
 
 reconcile_start = SQL.rindex("bool sql_persistence_reconcile_world_recovery_items")
 reconcile = SQL[reconcile_start : SQL.index("bool sql_hydrate_item_owner_revisions", reconcile_start)]
@@ -94,7 +96,11 @@ assert materialize.index("created_objects.push_back") < materialize.index(
 ) < materialize.index("for (const copyover_room &door")
 
 load = section(WORLD_RUNTIME, "bool redis_load_world_state", "void event_save_world_state")
-assert load.index("redis_read_floor_records") < load.index("world_recovery_restore_with_floor")
+assert "redis_read_floor_records" not in load
+assert load.index("world_boot_snapshot.floor_records") < load.index("world_recovery_restore_with_floor")
+assert "world_boot_snapshot.generation.data()" in load
+capture = section(WORLD_RUNTIME, "bool redis_capture_boot_snapshot", "redis_world_boot_result redis_world_prepare_boot")
+assert "redis_read_floor_records" in capture
 assert "redis_restore_floor_drops" not in load
 reader = section(WORLD_RUNTIME, "bool redis_read_floor_records", "bool redis_world_runtime_start")
 assert "world_recovery_floor_object_root_uid" in reader

@@ -66,6 +66,7 @@
 #include <vector>
 #include <zlib.h>
 #include "guild/assocs.h"
+#include "guild/artifact_population_boot.h"
 #include "economy/auction_houses.h"
 #include "economy/boon.h"
 #include "persistence/copyover.h"
@@ -208,10 +209,18 @@ static bool hydrate_flatfile_system_item_owner(void)
 // leaves them for the next boot.
 static void reap_unheld_player_items_at_boot(void)
 {
+	const auto &population = artifact_population_boot_evidence();
+	if (!population.complete)
+	{
+		logit(LOG_STATUS,
+		      "Item ownership reap skipped: artifact population evidence is incomplete.");
+		return;
+	}
 	uint64_t deleted = 0;
 	if (persistence_mode_requires_mysql())
 	{
-		if (const unsigned int failed = reap_unheld_player_items(DB, &deleted))
+		if (const unsigned int failed =
+			    reap_unheld_player_items(DB, &deleted, &population.retained_uids))
 			logit(LOG_STATUS, "Item ownership reap failed: error=%u", failed);
 	}
 	else
@@ -219,7 +228,7 @@ static void reap_unheld_player_items_at_boot(void)
 		const char *root = persistence_mode_flatfile_root();
 		std::string error;
 		const auto result = flatfile_item_repository_reap_unheld_player_items(
-			root ? root : "", &deleted, &error);
+			root ? root : "", &deleted, &error, &population.retained_uids);
 		if (result != flatfile_item_repository_result::ok &&
 		    result != flatfile_item_repository_result::unchanged &&
 		    result != flatfile_item_repository_result::not_found)
@@ -695,9 +704,33 @@ int main(int argc, char **argv)
 		fatal_boot_error(
 			"copyover",
 			"No validated copyover image is available; inspect the publication and .recovering paths before retrying");
-	reap_unheld_player_items_at_boot();
-
 	redis_init();
+
+	// Pin recovery before any custody cleanup, including ordinary cold boots.
+	if (!copyover_boot)
+	{
+		const auto recovery = redis_world_prepare_boot();
+		if (recovery == redis_world_boot_result::ready)
+		{
+			redis_world_recovery_boot_set(true);
+			logit(LOG_STATUS,
+			      "%s recovery data pinned in redis; world state restores after boot",
+			      redis_world_clean_restart_boot() ? "Clean restart" : "Crash");
+		}
+		else if (recovery == redis_world_boot_result::failed)
+			logit(LOG_STATUS,
+			      "Redis recovery evidence unavailable or invalid; physical absence is unresolved");
+	}
+	const auto &population = artifact_population_prepare_boot(copyover_boot);
+	logit(LOG_STATUS, "Artifact population evidence: %s rows=%zu retained_uids=%zu.",
+	      population.complete ? "complete" : "incomplete", population.items.size(),
+	      population.retained_uids.size());
+	if (!population.complete)
+		logit(LOG_STATUS, "Artifact population unavailable sources: %s",
+		      population.unavailable_sources.empty() ?
+			      "allocation or unprepared input" :
+			      population.unavailable_sources.c_str());
+	reap_unheld_player_items_at_boot();
 
 	// Property hooks now also own main-thread item-action cancellation. Bind
 	// before loading them; the event pool is initialized later during world boot.
@@ -851,21 +884,7 @@ int run_the_game(int port, int sslport)
 
 	SetSpellCircles(); /* spells circlewise done with pure math */
 
-	// Redis pins here; native copyover was pinned before early custody cleanup.
-	if (!copyover_boot)
-	{
-		const auto recovery = redis_world_prepare_boot();
-		if (recovery == redis_world_boot_result::ready)
-		{
-			redis_world_recovery_boot_set(true);
-			logit(LOG_STATUS,
-			      "%s recovery data pinned in redis; world state restores after boot",
-			      redis_world_clean_restart_boot() ? "Clean restart" : "Crash");
-		}
-		else if (recovery == redis_world_boot_result::failed)
-			logit(LOG_STATUS,
-			      "Redis recovery evidence unavailable or invalid; physical absence is unresolved");
-	}
+	// Durable and recovery population evidence was pinned before custody cleanup.
 	if (!mini_mode)
 	{
 		/* Legacy raw event queues are retired. Historical fallback records are

@@ -28,6 +28,8 @@
 #include <time.h>
 #include "account/account.h"
 #include "guild/assocs.h"
+#include "guild/artifact_population.h"
+#include "guild/artifact_population_boot.h"
 #include "persistence/copyover.h"
 #include "world/epic.h"
 #include "item/enhance.h"
@@ -89,6 +91,7 @@ extern void event_mob_skin_spell(P_char, P_char, P_obj, void *);
 extern struct social_messg *soc_mess_list;
 void recalc_zone_numbers();
 void ne_init_events();
+static void stage_artifact_population();
 void ne_init_event_pool();
 extern void event_reset_zone(P_char, P_char, P_obj, void *);
 
@@ -571,6 +574,7 @@ void boot_db(int mini_mode)
 	fprintf(stderr, "Generating index table for objects.\n");
 	logit(LOG_STATUS, "Generating index table for objects.");
 	obj_index = generate_indices(obj_f, &top_of_objt);
+	stage_artifact_population();
 
 	/*
 	 * load_obj_limits();
@@ -3054,6 +3058,35 @@ const object_template *find_object_template(int vnum)
 {
 	const auto found = starter_object_templates.find(vnum);
 	return found == starter_object_templates.end() ? nullptr : &found->second;
+}
+
+static void stage_artifact_population()
+{
+	try
+	{
+		if (top_of_objt < 0 ||
+		    static_cast<size_t>(top_of_objt) >= ARTIFACT_IDENTITY_MAX_RECORDS)
+			fatal_boot_error("artifact_identity",
+					 "Object prototype catalog exceeds population limit");
+		std::vector<artifact_population_template> prototypes;
+		prototypes.reserve(static_cast<size_t>(top_of_objt) + 1);
+		for (int index = 0; index <= top_of_objt; ++index)
+		{
+			const auto prototype = parse_object_template(index);
+			prototypes.push_back(
+				{ obj_index[index].virtual_number, prototype.extra_flags });
+		}
+		const auto &population = artifact_population_boot_evidence();
+		if (!artifacts_stage_population(population.items, prototypes, population.complete))
+			fatal_boot_error("artifact_identity",
+					 "Could not stage canonical population evidence");
+		artifact_population_boot_clear();
+	}
+	catch (const std::bad_alloc &)
+	{
+		fatal_boot_error("artifact_identity",
+				 "Allocation failed before population publication");
+	}
 }
 
 P_obj instantiate_object_template(const object_template &prototype)

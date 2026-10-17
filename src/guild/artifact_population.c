@@ -202,16 +202,6 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 		{
 			artifact_population_decision decision;
 			decision.identity = entry.previous;
-			if (!complete)
-			{
-				// Preserve an established UID/tombstone; incomplete evidence may
-				// reserve it, but cannot erase it or grant hydration/absence.
-				if (!decision.identity.canonical_item_uid)
-					decision.identity.state =
-						artifact_identity_state::unresolved;
-				staged.push_back(std::move(decision));
-				continue;
-			}
 			std::map<uint64_t, std::vector<size_t>> candidates;
 			bool uncertain = false, retired_payload = false;
 			std::set<uint64_t> unqualified_uids;
@@ -305,8 +295,17 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			if (entry.previous.state == artifact_identity_state::present &&
 			    known != candidates.end())
 			{
-				decision.reason = artifact_population_reason::complete;
+				decision.reason = complete ? artifact_population_reason::complete :
+							     artifact_population_reason::incomplete;
 				decision.canonical_payloads = known->second;
+			}
+			else if (!complete)
+			{
+				// Unknown sources block absence and new selection. A qualified
+				// established UID above can still hydrate from its exact source.
+				if (!decision.identity.canonical_item_uid)
+					decision.identity.state =
+						artifact_identity_state::unresolved;
 			}
 			else if (!uncertain && candidates.size() == 1 && !retired_payload &&
 				 entry.previous.state != artifact_identity_state::present)

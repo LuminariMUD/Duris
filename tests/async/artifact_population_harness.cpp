@@ -156,7 +156,11 @@ int main()
 	// Missing evidence never becomes absence; retained identities are not erased.
 	expect(classify({}, {}, false), state::unresolved, 0, 0, reason::incomplete);
 	expect(classify({ current }, { { 900, 111, state::present } }, false), state::present, 111,
-	       0, reason::incomplete);
+	       1, reason::incomplete);
+	expect(classify({}, { { 900, 111, state::present } }, false), state::present, 111, 0,
+	       reason::incomplete);
+	expect(classify({ current, extra }, { { 900, 111, state::present } }, false),
+	       state::present, 111, 1, reason::incomplete);
 	expect(classify({}, { { 900, 111, state::retired } }, false), state::retired, 111, 0,
 	       reason::incomplete);
 	for (int variant = 0; variant < 7; ++variant)

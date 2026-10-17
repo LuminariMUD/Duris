@@ -637,6 +637,19 @@ int main(int argc, char **argv)
 	assert(classified != decisions.end() &&
 	       classified->identity.state == artifact_identity_state::unresolved &&
 	       classified->canonical_payloads.empty());
+	std::vector<artifact_payload_projection> recovery(2);
+	recovery[0].domain = recovery[1].domain = artifact_payload_domain::redis_generation;
+	recovery[0].item_uid = 102;
+	recovery[1].item_uid = UINT64_MAX;
+	std::vector<artifact_payload_projection> combined;
+	assert(!artifact_population_read_flat_payloads(root.string(), &combined, &error,
+						       &recovery));
+	assert(combined.size() == rows.size() + recovery.size());
+	assert(combined[combined.size() - 2].custody_examined &&
+	       combined[combined.size() - 2].custody_found &&
+	       combined[combined.size() - 2].custody.vnum == 999);
+	assert(combined.back().custody_examined && !combined.back().custody_found);
+	assert(!recovery[0].custody_examined);
 	const size_t expected = rows.size();
 	for (const auto &path :
 	     { root / "players/42.snapshot", root / "domains/locker_catalog",

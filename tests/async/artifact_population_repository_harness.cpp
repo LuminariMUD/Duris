@@ -411,6 +411,25 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 					  item.item_uid == 801 && item.parent_item_uid == 10001 &&
 					  !item.extra_flags_present && item.source_quarantined;
 			   }));
+	std::vector<artifact_payload_projection> recovery(300);
+	for (size_t index = 0; index < recovery.size(); ++index)
+	{
+		recovery[index].domain = artifact_payload_domain::redis_generation;
+		recovery[index].row_id = index + 1;
+		recovery[index].item_uid = 100000 + index;
+		recovery[index].vnum = 900;
+	}
+	recovery.front().item_uid = 102;
+	recovery.back().item_uid = 801; // open quarantine without a custody row
+	std::vector<artifact_payload_projection> combined;
+	assert(!artifact_population_read_sql_payloads(connection, &combined, &recovery) &&
+	       combined.size() == population.size() + recovery.size());
+	assert(combined.front().custody_examined && combined.front().custody_found &&
+	       combined.front().custody.owner.id == 99 && combined.front().custody.vnum == 901);
+	assert(combined[1].custody_examined && !combined[1].custody_found);
+	assert(combined[299].custody_examined && !combined[299].custody_found &&
+	       combined[299].source_quarantined);
+	assert(!recovery.front().custody_examined); // caller's pinned input remains immutable
 	const auto *retained = population.data();
 	query(connection, "START TRANSACTION");
 	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);

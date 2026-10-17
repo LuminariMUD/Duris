@@ -169,10 +169,12 @@ flatfile_item_repository_result flatfile_item_repository_list_active_player_item
 // boot reap, see reap_unheld_player_items() in item/item_claim_repository.h. A record
 // another record names as its parent is kept. A player file or store that cannot be
 // read stops the reap with nothing deleted. Returns unchanged when nothing was deleted.
-// *deleted counts the records.
+// *deleted counts the records. Optional retained UIDs come from the complete boot
+// population cut, including recovery and other payload domains.
 flatfile_item_repository_result
 flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
-						  std::string *error);
+						  std::string *error,
+						  const std::vector<uint64_t> *retained = nullptr);
 // World recovery: add to *owned each of uids that has an owner. A player's active
 // record counts only when the player's next load holds the item (its file, its pets, or
 // a delivery still pending), as MariaDB asks player_items; any other record counts.

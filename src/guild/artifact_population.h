@@ -31,7 +31,9 @@ struct artifact_population_decision
 	artifact_population_identity identity;
 	artifact_population_reason reason = artifact_population_reason::incomplete;
 	// Same-UID hydration must match one of these exact source projections, not
-	// just the UID. Indices refer to the input vector; no physical object exists.
+	// just the UID. A qualified previously established UID can hydrate even when
+	// unrelated sources are incomplete; that never permits new selection/absence.
+	// Indices refer to the input vector; no physical object exists.
 	std::vector<size_t> canonical_payloads;
 };
 

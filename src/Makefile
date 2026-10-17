@@ -152,6 +152,7 @@ OBJS =  $(SHIP_OBJS) \
 				 combat/arena.o \
 				 guild/artifact.o \
 				 guild/artifact_population.o \
+				 guild/artifact_population_boot.o \
 				 guild/artifact_population_repository.o \
 				 guild/artifact_population_flatfile.o \
 				 guild/artifact_population_recovery.o \

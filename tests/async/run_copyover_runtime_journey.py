@@ -159,6 +159,11 @@ def run(binary, compressed, nonroot=False):
             client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
             assert not path.exists() and not claimed.exists() and process.poll() is None
             assert (runtime / 'server.out').read_text().count('Entering game loop.') == 2
+            boot_log = (runtime / 'logs/log/status').read_text(errors='replace')
+            assert 'Artifact population evidence: incomplete' in boot_log
+            assert 'Item ownership reap skipped: artifact population evidence is incomplete.' in boot_log
+            assert 'Artifact population evidence: complete' in boot_log
+            assert boot_log.rindex('Artifact population evidence: complete') < boot_log.rindex('Initializing event driver.')
             # The session keeps its account across the exec, so quit returns to its menu.
             client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
             print(f'{compressed=}, {nonroot=}: actual exec recovered the original socket, look, acknowledged save and the account menu', flush=True)

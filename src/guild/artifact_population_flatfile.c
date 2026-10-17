@@ -236,9 +236,9 @@ unsigned int read_blob_payloads(const std::string &root,
 }
 } // namespace
 
-unsigned int artifact_population_read_flat_payloads(const std::string &root,
-						    std::vector<artifact_payload_projection> *items,
-						    std::string *error)
+unsigned int artifact_population_read_flat_payloads(
+	const std::string &root, std::vector<artifact_payload_projection> *items,
+	std::string *error, const std::vector<artifact_payload_projection> *additional)
 {
 	if (root.empty() || !items)
 		return EINVAL;
@@ -346,6 +346,12 @@ unsigned int artifact_population_read_flat_payloads(const std::string &root,
 			// record does not turn its retained historical bytes into a live copy.
 			for (size_t index = first; index < staged.size(); ++index)
 				staged[index].role = artifact_payload_role::history;
+		}
+		if (additional)
+		{
+			if (additional->size() > ARTIFACT_IDENTITY_MAX_RECORDS - staged.size())
+				return E2BIG;
+			staged.insert(staged.end(), additional->begin(), additional->end());
 		}
 		for (auto &row : staged)
 		{

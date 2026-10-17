@@ -15,11 +15,22 @@ aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready 
 [PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
 `branch/issue-67-pinned-recovery-evidence`. Pinned Redis item/NPC projections are ready in PR #146; native copyover pinning
 and projections are ready in [PR #147](https://github.com/LuminariMUD/Duris/pull/147).
-The pure canonical classifier and atomic cache staging are implemented on
-`branch/issue-67-population-classification`. Combined source assembly/custody
-correlation, early boot publication, NPC reconstruction qualification and
-gameplay admission remain open.
+The pure canonical classifier and atomic cache staging are implemented in PR #148.
+Boot source assembly, custody lookup, reap protection and early publication are
+implemented on `branch/issue-67-boot-population`. Recovery/delivery normalization,
+NPC reconstruction qualification and gameplay admission remain open.
 No operational repair started.
+
+Current boot integration checkpoint (implemented; publication pending): `branch/issue-67-boot-population`, based on PR #148.
+Outcome: acquire durable plus selected/retained recovery sources and independent
+custody before the boot reap, preserve their UIDs through cleanup, then stage
+classification before forced event population. Non-goals: new ownership stores,
+recovery formats, conflict repair, deployment or claiming admission guards are
+already complete. Files: existing population/store readers, a boot acquisition
+buffer, boot callers, template inspection, existing reap implementations and
+focused source/reap/runtime fixtures. Proof: read failures never grant absence or
+run destructive cleanup; retained recovery UIDs survive; current source/owner
+qualification reaches cache staging before population; backend builds/journeys.
 
 Current classification checkpoint: [PR #148](https://github.com/LuminariMUD/Duris/pull/148), ready for review, `branch/issue-67-population-classification`, based on
 PR #147. Outcome: classify the assembled raw payloads without choosing a legacy
@@ -1059,6 +1070,96 @@ Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
 
+### Boot source acquisition, reap protection and early staging — AR-01/AR-02
+
+Implemented on `branch/issue-67-boot-population`, based on PR #148.
+`main` now pins Redis before cleanup and invokes the boot source acquisition
+buffer. That buffer inspects both native publication/retained-claim paths on cold
+boots without moving or consuming them, projects the selected pinned native image
+on `-C`, and includes the pinned Redis cut. Explicitly disabled Redis is a policy
+exclusion; configured read failure is unknown. Retained unselected native bodies
+remain quarantined evidence, never a first/newest file winner. The selected
+native handoff makes its preceding Redis generation history, matching the boot's
+actual restoration protocol; it never silently selects a canonical UID by age.
+
+Existing durable aggregate readers accept additional recovery projections and
+attach independent custody for all their UIDs, including ordinary ancestors. SQL
+looks these up in bounded 256-row batches inside the same read-only repeatable
+read transaction as all payload pages. Flat uses its already captured ownership
+catalog. A failure preserves reader output; the boot buffer marks the aggregate
+incomplete and retains other decoded components without granting absence. It
+logs controlled source names/error codes without payload/account details.
+
+Selected native live custody can be ahead of older durable custody. Correlation
+uses the captured active owner/root/parent/revision for all projections of that
+UID, while newer, equal-revision conflicting, terminal or quarantined durable
+facts keep it unresolved. This projection does not mutate or hydrate custody.
+Incomplete unrelated sources cannot erase an established canonical UID or stop
+its independently qualified same-UID hydration; they still prevent new canonical
+selection and absence. The classifier retains `reason=incomplete` alongside those
+positive exact-source qualifications. A missing/unqualified canonical source still
+has no hydration permission.
+
+The boot reap receives the sorted physical/pending UID set from this evidence.
+SQL keeps its original stale/FK predicates, scans eligible UIDs in bounded pages,
+filters the retained set, and rechecks predicates during deletion. It still loops
+for stale containers after their children. Flat seeds the existing carried set,
+which already preserves ancestors. Incomplete acquisition skips the reap entirely;
+historical receipts alone are not retained physical payloads. No temporary DB
+table, new item authority or writer is introduced.
+
+After object indexing, `boot_db` parses owned prototype values without constructing
+objects and stages the classifier result into existing artifact rows **before**
+`ne_init_events`, ordinary domain materialization and forced population. It then
+releases only the temporary acquisition buffer. Redis/native restoration still
+uses their own pinned bytes and guarded consume paths. No migration or recovery
+format change is needed.
+
+Verification passed:
+
+```text
+python3 tests/async/test_artifact_population_boot.py
+python3 tests/async/test_artifact_population.py
+python3 tests/async/test_flatfile_artifact_repository.py
+python3 tests/async/test_player_save_claim.py
+tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_flatfile_artifact_population.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_artifact_population_repository.py
+python3 tests/async/test_boot_log_hygiene.py
+python3 tests/async/test_world_recovery_transaction.py
+python3 tests/async/run_copyover_runtime_journey.py <flat binary>
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py <SQL binary> midcapture
+make -C src -j2
+make -C src -j2 PERSISTENCE_BACKEND=flatfile BIN_ROOT=.../bin/analysis/issue67/flat-memory-build
+./scripts/format.sh --check
+./scripts/tidy.sh  (retained compatible clang-tidy wrapper)
+git diff --check
+```
+
+Native boot policy/classification runs under ASan and terminating UBSan. Real
+SQL/flat source fixtures attach recovery-only custody, including missing and
+quarantined rows, immutable input and more than one SQL batch. Real reap fixtures
+retain recovery-only UIDs while removing unrelated stale rows; flat also proves
+retained children preserve parents. The Telnet/MCCP save/exec/recover journey
+proves incomplete cold evidence skips cleanup, a valid native boot becomes
+complete, original sockets/save/account state survive, and acquisition precedes
+event initialization. The SQL/Redis mid-capture journey preserves the selected
+banana/basket cut and excludes the later journaled drop. Existing source-contract
+checks were updated for the already shared timer warnings/pure tree validator and
+pinned Redis restore; their old assertions were stale on the preceding stack.
+Ignored evidence: `bin/analysis/issue67/boot-population-*`.
+
+Next is the actual admission path, not another source-reader framework. Add shared
+creation/hydration/inspection purpose and tentative game-thread claims at the
+mapped seams, with exact same-UID source/owner qualification and rollback. Keep
+pending flat delivery reparenting and recovery reconciliation consistent with the
+actual loaders; raw undecidable cases currently stay reserved. Qualify existing
+legacy ground fallback and non-durable NPC reconstruction with real journeys.
+Then complete canonical movement/retirement/mana and reward guards and AR-06–AR-08.
+No duplicate prevention, lifecycle completion or full acceptance matrix is inferred
+from boot classification alone. No production read, migration, cleanup, repair,
+deployment, merge or release tag occurred.
+
 ### Canonical population classification and cache staging — AR-01/AR-02
 
 Ready for review in [PR #148](https://github.com/LuminariMUD/Duris/pull/148) on
@@ -1105,8 +1206,8 @@ captures on the existing writer. It makes no store/template/materialization call
 Invalid input or allocation failure publishes no prefix. Newly reserved catalog
 rows use the existing valid type default without claiming a physical variant.
 These transient source qualifications must be rebuilt at each boot; the UID/state
-alone persists. Nothing currently calls this boundary from server startup, so
-this PR does not yet change gameplay creation or recovery permission.
+alone persists. PR #148 provided the boundary; the subsequent boot integration
+checkpoint now calls it from server startup. Gameplay admission remains required.
 
 Verification passed:
 

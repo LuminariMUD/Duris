@@ -74,10 +74,11 @@ struct artifact_payload_projection
 // delivery payloads. Recovery evidence is separate. Output is atomic.
 // Ordinary store reads can complete committed authority journals; offline audit
 // callers must use a retained store copy if the original must remain untouched.
+// Additional recovery rows receive independent custody in the same source cut.
 // Flat custody owner_revision remains unknown (0); no runtime custody is published.
-unsigned int artifact_population_read_flat_payloads(const std::string &root,
-						    std::vector<artifact_payload_projection> *items,
-						    std::string *error);
+unsigned int artifact_population_read_flat_payloads(
+	const std::string &root, std::vector<artifact_payload_projection> *items,
+	std::string *error, const std::vector<artifact_payload_projection> *additional = nullptr);
 
 struct redis_world_boot_snapshot;
 struct artifact_recovery_mob_projection
@@ -138,9 +139,11 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 
 // Dedicated idle autocommit connection only. Owns a read-only repeatable-read
 // transaction across every numeric/blob page; commits before publishing output.
+// Additional recovery rows receive independent custody inside this transaction.
 // This is complete SQL source evidence, not complete recovery/population proof.
-unsigned int artifact_population_read_sql_payloads(MYSQL *connection,
-						   std::vector<artifact_payload_projection> *items);
+unsigned int artifact_population_read_sql_payloads(
+	MYSQL *connection, std::vector<artifact_payload_projection> *items,
+	const std::vector<artifact_payload_projection> *additional = nullptr);
 #endif
 
 #endif
