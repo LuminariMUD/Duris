@@ -216,7 +216,8 @@ class account_deletion_drain_guard
 			return false;
 		player_save_pipeline_quiesce();
 		player_quiesced_ = true;
-		return player_save_pipeline_drain(3000) && locker_async_drain(3000);
+		return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
+		       artifact_save_drain(3000);
 	}
 
     private:
@@ -3028,6 +3029,8 @@ void verify_delete_account(P_desc d, char *arg)
 	if (deleted)
 	{
 		forget_deleted_account_characters(identities);
+		for (const auto &identity : identities)
+			artifacts_forget_deleted_account_character(identity.pid);
 		remove_deleted_account_characters(d, identities);
 		account_recovery_forget(account_name.c_str());
 	}
