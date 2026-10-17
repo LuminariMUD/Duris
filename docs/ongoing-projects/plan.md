@@ -1,5 +1,24 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Current follow-up: #156 legacy-pet capacity
+
+The newer capacity finding is distinct from the earlier verified inventory-only
+gate: qualification overwrote the owner count and lost legacy-pet items that share
+player custody. Preserve the non-inventory portion of the existing count while
+removing only withheld inventory. Reject inconsistent input counts before any
+subtraction. Files: existing qualifier, existing player-item regression, this plan;
+no new capacity limit or data format. The regression now covers SESSION02 and
+SESSION03 at and over combined capacity, and the legacy-pet case fails before
+repair (`bin/analysis/pr156-legacy-pet-before.log`). Both session variants now
+pass at/over capacity, as do real admission/qualification controls, the native
+build, formatting and tidy (`bin/analysis/pr156-legacy-pet-*`). Publication is next.
+
+#139's two atomic-capture repairs are published as `10897d620` and carried through
+#155 `3443c6fbc`, with builds on each branch and snapshot regressions at #155. This
+branch's carry-forward merge is `0201e0cb2`. There are 48 known findings: 44
+addressed and four outstanding before this repair. After #156, continue to #158's
+trusted-holder exemption and #161's target-copy/offline-save safeguards.
+
 ## Review follow-up: atomic maintenance captures (#139)
 
 Repair branch: `branch/issue-67-flat-artifact-cache`, published as `10897d620`; worktree
