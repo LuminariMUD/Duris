@@ -4301,7 +4301,8 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 			switch (location)
 			{
 			case LOC_CARRIED:
-				obj_to_char(arti1, original.carrying);
+				// Restoration must not trigger loot-time destruction.
+				obj_to_char_at_end(arti1, original.carrying);
 				break;
 			case LOC_WORN:
 				if (wearloc < MAX_WEAR)

@@ -501,7 +501,7 @@ def run(binary, case):
                 assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
                 evidence['maintenance_query_preserves_identity_and_source'] = True
                 refused_swap = command(god, f'artifacts swap {ARTIFACT} {ARTIFACT}')
-                assert 'already present or reserved' in refused_swap, refused_swap
+                assert 'already has a physical target copy' in refused_swap, refused_swap
                 assert sql(audit_query) == before_hunt
                 still_one = command(god, f'stat obj {ARTIFACT}')
                 assert re.search(r'Number in game\s*:\s*1\b', still_one), still_one

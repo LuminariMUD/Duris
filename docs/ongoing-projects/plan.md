@@ -1,5 +1,22 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — offline crumble source and journey expectation (#161)
+
+The user explicitly asked to continue and get the job done after challenging the
+six-hour duration. Continue the concrete remaining review blockers, with a current
+handoff and no completion claim while findings remain.
+
+Outcome: refused offline swaps restore a carried source through the existing
+load-time `obj_to_char_at_end`, avoiding loot-time CRUMBLELOOT destruction. The
+native regression adds the crumble source to the carried/worn/nested refusal
+matrix and executes the actual restoration helper. Update the disposable journey's
+occupied-target assertion to the physical-copy message emitted before construction.
+Files: swap rollback, existing admission/journey fixtures, plan. No new restore API.
+The native crumble refusal regression fails before repair and passes after;
+offline cancellation controls and native build pass (`pr161-crumble-*.log`,
+`pr150-cancel-existing-proof.log`). The final-stack real journey remains pending.
+
+
 ## Current checkpoint — 2026-10-17 15:15 UTC
 
 Active branch: `branch/issue-67-canonical-swap-admission` (#161), worktree
