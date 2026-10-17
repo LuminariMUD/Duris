@@ -59,7 +59,14 @@ constexpr uint64_t FLOOR_DRAIN_TIMEOUT_MSEC = 1000;
 redisContext *world_context = NULL;
 const redis_connection_settings *world_connection = NULL;
 bool world_enabled = false;
-bool world_requested = false;
+#ifndef __NO_REDIS__
+bool world_recovery_requested()
+{
+	const char *redis = getenv("REDIS");
+	const char *world = getenv("REDIS_WORLD_STATE");
+	return redis && strcasecmp(redis, "TRUE") == 0 && world && strcasecmp(world, "TRUE") == 0;
+}
+#endif
 bool world_boot_prepared = false;
 bool world_boot_restored = false;
 redis_world_boot_result world_boot_result = redis_world_boot_result::failed;
@@ -262,9 +269,8 @@ bool redis_reconnect()
 	return true;
 }
 
-// The boot's reads share the game loop's connection and its 100 ms deadline. On a busy host
-// a reply misses it, and that is not an answer: the read is made again on a new connection.
-// False when Redis did not answer, or when its answer made the read fail.
+// Retry a whole capture on fresh connections after transport failure. Invalid
+// evidence fails immediately; a missed reply is not evidence of absence.
 template <typename Read> bool redis_world_boot_read(Read read)
 {
 	for (int attempt = 0; attempt < WORLD_BOOT_READ_ATTEMPTS; ++attempt)
@@ -767,7 +773,6 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 		return false;
 	}
 	world_enabled = false;
-	world_requested = false;
 	world_boot_prepared = false;
 	world_boot_restored = false;
 	world_boot_result = redis_world_boot_result::failed;
@@ -808,10 +813,8 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 		logit(LOG_SYS, "redis connected to %s:%d", config->host, config->port);
 	redis_shared_connection_observability_record(false, world_context != NULL);
 
-	const char *world_state_env = getenv("REDIS_WORLD_STATE");
-	if (world_state_env && strcasecmp(world_state_env, "TRUE") == 0)
+	if (world_recovery_requested())
 	{
-		world_requested = true;
 		world_enabled = true;
 		if (!redis_configure_world_authentication())
 		{
@@ -934,7 +937,6 @@ void redis_world_runtime_shutdown(bool pwipe)
 	world_connection = NULL;
 	world_runtime_epoch = 0;
 	world_enabled = false;
-	world_requested = false;
 	world_boot_prepared = false;
 	world_boot_restored = false;
 	world_boot_result = redis_world_boot_result::failed;
@@ -1184,9 +1186,18 @@ bool redis_capture_boot_snapshot(redis_world_boot_snapshot *snapshot)
 				  "OK"))
 			return false;
 		const auto config = redis_world_store_config_copy();
-		if (!redis_world_store_read_generation(&config, staged.sequence,
-						       &staged.generation))
+		bool transport_failure = false;
+		if (!redis_world_store_read_generation(&config, staged.sequence, &staged.generation,
+						       &transport_failure))
+		{
+			if (transport_failure)
+			{
+				// Drop WATCH too, so the existing retry path restarts the entire cut.
+				redisFree(world_context);
+				world_context = nullptr;
+			}
 			return false;
+		}
 		world_recovery_header header = {};
 		if (!world_recovery_validate(staged.generation.data(), staged.generation.size(),
 					     world_state_max_age, staged.sequence, &header) ||
@@ -1234,10 +1245,11 @@ redis_world_boot_result redis_world_prepare_boot(void)
 	if (world_boot_prepared)
 		return world_boot_result;
 	world_boot_prepared = true;
-	world_boot_result = !world_requested ? redis_world_boot_result::disabled :
-					       redis_world_boot_result::failed;
+	const bool requested = world_recovery_requested();
+	world_boot_result = requested ? redis_world_boot_result::failed :
+					redis_world_boot_result::disabled;
 	clean_restart_boot = false;
-	if (!world_enabled)
+	if (!requested || !world_enabled)
 		return world_boot_result;
 	try
 	{
