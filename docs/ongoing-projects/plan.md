@@ -22,8 +22,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current gameplay-player admission work: `branch/issue-67-player-artifact-admission`,
-based on #155. Outcome: qualify a gameplay player's saved artifact source/UID/current
+Current gameplay-player admission checkpoint: [PR #156](https://github.com/LuminariMUD/Duris/pull/156),
+ready for review, `branch/issue-67-player-artifact-admission`, based on #155. Outcome: qualify a gameplay player's saved artifact source/UID/current
 custody before constructor procedures, reserve its physical pointer, and withhold
 rejected complete raw roots while independent valid roots still load/save. Reuse
 existing artifact recovery admission, source retention and object rollback hooks.
@@ -37,7 +37,8 @@ rollback releases only tentative pointers, and ordinary inventory remains availa
 Offline commands keep their existing explicit unmigrated path until their individual
 callbacks are migrated; they are not classified wholesale as inspection.
 
-Gameplay-player implementation checkpoint (2026-10-17, verification complete):
+Gameplay-player implementation checkpoint (2026-10-17, PR #156):
+Implementation commit: `8c5253ba696c653ed5d63d784f6e827d3296581c`.
 - The gameplay/offline-command request distinction follows the actual caller into
   both repositories. Existing offline commands remain unmigrated, explicitly false;
   staff live `load char` must be migrated with its callback in a later chunk.
@@ -74,8 +75,9 @@ Gameplay-player implementation checkpoint (2026-10-17, verification complete):
   `bin/analysis/issue67/player-admission-gameplay.json`. SQL/flat builds pass after
   the encoding simplification. The final flat repository regression verifies the
   raw source custody, owner fence, ancestry and byte bound consumed by admission.
-- Remaining for publication: commit/push and open a non-draft PR based on #155.
-  Focused review, executable regressions, format/tidy and both builds passed. Offline maintenance/inspection, pet/storage/delivery
+- Publication: committed/pushed as open, non-draft PR #156 based on #155 and
+  attached to this chat. Focused review, executable regressions, format/tidy and
+  both builds passed. No merge, deployment or production operation occurred. Offline maintenance/inspection, pet/storage/delivery
   admission, remaining fresh producers and full AR-04/AR-07 acceptance stay open.
 
 Current player-retention checkpoint: [PR #155](https://github.com/LuminariMUD/Duris/pull/155),
@@ -142,19 +144,22 @@ Retention follow-up found while tracing the next admission seam:
   `3387d2c014842922999ce447bb2e646b27dd99b5`; its changed-line format/tidy hooks
   pass. The PR remains open/non-draft with base #154. No merge or deployment.
 
-Next saved-source admission seams confirmed in current code:
-- `player_load_items.c::materialize_item_graph` still uses generic `read_object`
-  before applying the saved UID/effective flags; constructor procedures therefore
-  precede mutable-source qualification. Do not mistake #155 for admission.
-- `artifact_begin_recovery` accepts only exact pinned native/Redis ground sources;
-  mutable player restoration must correlate its loaded source with current custody
-  and the established canonical UID, reserve one live pointer before procedures,
-  and retain a rejected complete source root without blocking independent roots.
+Saved-source discovery and remaining migration seams:
+- PR #156 migrated gameplay PC inventory/equipment away from generic construction,
+  qualifying the mutable source/current custody/canonical UID before procedures.
+  Generic constructors remain in the explicitly unmigrated offline command and
+  pet/storage/delivery paths. Do not treat #155 retention alone as admission.
+- `artifact_begin_recovery` now accepts qualified gameplay PC sources alongside
+  exact pinned native/Redis ground sources. Remaining saved domains must supply
+  their own trusted source/current custody and preserve rejected complete roots.
 - Offline loads include live staff `load char`, mutative artifact maintenance and
   inspection callers. Trace/classify their actual callbacks before assigning an
   explicit purpose; no blanket temporary/live rule for `player_load_offline`.
-  Current SQL raw source descriptors are local to `load_items`; admission-time
-  retention will need the relevant immutable source selectors through the result.
+  Raw PC source descriptors now travel through the immutable result. Next migrate
+  staff live `load char` and the individual maintenance callbacks, make inspection
+  data-only, then extend the same custody/retention contract to pets/stores/deliveries.
+  A full-server flat artifact admission journey and the full AR-07 matrix remain
+  required; ordinary flat copyover controls are not that acceptance evidence.
 
 Current focused repair: [PR #154](https://github.com/LuminariMUD/Duris/pull/154),
 ready for review, `branch/issue-67-fatal-boot-exit`, based on PR #153.
