@@ -2,6 +2,7 @@
 
 #include "economy/collector_codec.h"
 #include "core/files.h"
+#include "core/defines.h"
 #include "player/player_snapshot_codec.h"
 
 #include <algorithm>
@@ -79,9 +80,9 @@ int main(int argc, char **argv)
 	      "CREATE TABLE player_pets(id INT PRIMARY KEY,pet_uid BIGINT UNSIGNED,owner_pid INT)");
 	query(connection, "INSERT INTO player_pets VALUES(42,420042,77)");
 	query(connection,
-	      "CREATE TABLE corpses(id INT PRIMARY KEY,player_name VARCHAR(50),save_id BIGINT)");
+	      "CREATE TABLE corpses(id INT PRIMARY KEY,player_name VARCHAR(50),save_id BIGINT,value3 INT)");
 	query(connection, "CREATE TABLE player_data(pid INT PRIMARY KEY,name VARCHAR(50))");
-	query(connection, "INSERT INTO corpses VALUES(42,'Fixture',9)");
+	query(connection, "INSERT INTO corpses VALUES(42,'Fixture',9,77)");
 	query(connection, "INSERT INTO player_data VALUES(77,'Fixture')");
 	query(connection,
 	      "CREATE TABLE private_chests(id INT PRIMARY KEY,locker_id INT,is_public TINYINT)");
@@ -115,6 +116,9 @@ int main(int argc, char **argv)
 									      ",quantity INT") +
 			      (entry.domain == artifact_payload_domain::locker ? ",chest_id INT" :
 										 "") +
+			      (entry.domain == artifact_payload_domain::room ?
+				       ",item_key VARCHAR(64) NOT NULL DEFAULT 'fixture'" :
+				       "") +
 			      ") ENGINE=InnoDB");
 		query(connection, "INSERT INTO " + std::string(entry.table) +
 					  "(id,obj_uid,container_id,vnum,extra_flags," +
@@ -164,6 +168,29 @@ int main(int argc, char **argv)
 	       legacy_pet.rows[2].payload_owner.id == 78 &&
 	       legacy_pet.rows[2].payload_owner.context_id == 0);
 	query(connection,
+	      "UPDATE saved_items SET room_vnum=42,item_key='different-source' WHERE id=2");
+	artifact_population_sql_page room_keys;
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::room, 0,
+						  &room_keys));
+	assert(room_keys.rows[1].parent_owner_disagrees &&
+	       "saved-room parent from another item key was treated as the same source");
+	query(connection, "UPDATE saved_items SET item_key='fixture' WHERE id=2");
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::room, 0,
+						  &room_keys));
+	assert(!room_keys.rows[1].parent_owner_disagrees);
+	query(connection, "UPDATE saved_items SET room_vnum=43 WHERE id=2");
+	// A corpse's stable owner survives both a display-name change and character deletion.
+	for (const char *change : { "UPDATE player_data SET name='Renamed' WHERE pid=77",
+				    "DELETE FROM player_data WHERE pid=77" })
+	{
+		query(connection, change);
+		artifact_population_sql_page corpses;
+		assert(!artifact_population_read_sql_page(
+			connection, artifact_payload_domain::corpse, 0, &corpses));
+		assert(corpses.rows[0].payload_owner.id == ((77ULL << 32) | 9) &&
+		       "corpse owner identity depended on the current player display name");
+	}
+	query(connection,
 	      "INSERT INTO saved_items(id,obj_uid,container_id,vnum,extra_flags,room_vnum) "
 	      "VALUES(3,333,999,900,NULL,42)");
 	artifact_population_sql_page page;
@@ -176,6 +203,21 @@ int main(int argc, char **argv)
 	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::locker, 0,
 						  &page));
 	assert(page.rows[1].parent_owner_disagrees && page.rows[1].owner_context == 102);
+	for (const auto &contexts :
+	     { std::pair{ "101", "NULL" }, std::pair{ "NULL", "102" }, std::pair{ "NULL", "NULL" },
+	       std::pair{ "1042", "NULL" }, std::pair{ "NULL", "1042" } })
+	{
+		query(connection, std::string("UPDATE locker_items SET chest_id=") +
+					  contexts.first + " WHERE id=1");
+		query(connection, std::string("UPDATE locker_items SET chest_id=") +
+					  contexts.second + " WHERE id=2");
+		assert(!artifact_population_read_sql_page(
+			connection, artifact_payload_domain::locker, 0, &page));
+		const bool conflict = std::string(contexts.first) == "101" ||
+				      std::string(contexts.second) == "102";
+		assert(page.rows[1].parent_owner_disagrees == conflict &&
+		       "legacy NULL chest context was not normalized before parent comparison");
+	}
 	query(connection, "INSERT INTO item_current_owner VALUES"
 			  "(18446744073709551615,18446744073709551615,NULL,1,77,0,9,902,3),"
 			  "(999999,999999,NULL,1,42,0,1,900,1)");
@@ -185,8 +227,20 @@ int main(int argc, char **argv)
 	assert(page.rows.size() == 2 && page.rows[0].custody_found &&
 	       page.rows[0].custody.item_uid == UINT64_MAX && page.rows[0].custody.owner.id == 77 &&
 	       page.rows[0].custody.item_revision == 9 &&
-	       page.rows[0].custody.owner_revision == 12 && page.rows[0].custody.vnum == 902 &&
+	       page.rows[0].custody.owner_revision == 12 &&
+	       page.rows[0].custody_owner_revision_found && page.rows[0].custody.vnum == 902 &&
 	       page.rows[0].custody.state == item_custody_state::quarantined);
+	query(connection, "UPDATE item_owner_revision SET revision=0 WHERE owner_id=77");
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::player, 0,
+						  &page));
+	assert(page.rows[0].custody_found && page.rows[0].custody_owner_revision_found &&
+	       page.rows[0].custody.owner_revision == 0);
+	query(connection, "DELETE FROM item_owner_revision WHERE owner_id=77");
+	assert(!artifact_population_read_sql_page(connection, artifact_payload_domain::player, 0,
+						  &page));
+	assert(page.rows[0].custody_found && !page.rows[0].custody_owner_revision_found &&
+	       page.rows[0].custody.owner_revision == 0);
+	query(connection, "INSERT INTO item_owner_revision VALUES(1,77,0,12)");
 	for (size_t id = 3; id <= ARTIFACT_POPULATION_SQL_PAGE_SIZE + 1; ++id)
 		query(connection,
 		      "INSERT INTO player_items(id,obj_uid,vnum,extra_flags,pid) VALUES(" +
@@ -266,7 +320,7 @@ static std::string legacy_blob(uint64_t uid)
 	return hex(data.data(), data.size());
 }
 
-static std::string modern_blob(uint64_t uid)
+static std::string modern_blob(uint64_t uid, bool money = false, int negative_value = -1)
 {
 	player_item_snapshot item = {};
 	item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
@@ -274,6 +328,13 @@ static std::string modern_blob(uint64_t uid)
 	item.vnum = 900;
 	item.object_uid = uid;
 	item.extra_flags = 0; // explicit zero must override an artifact prototype
+	if (money)
+	{
+		item.type = ITEM_MONEY;
+		item.values.fill(0);
+	}
+	if (negative_value >= 0)
+		item.values[negative_value] = -1;
 	std::vector<uint8_t> bytes;
 	assert(player_item_snapshot_list_encode({ item }, &bytes) ==
 	       player_snapshot_codec_result::ok);
@@ -359,9 +420,9 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 			      hex(encoded.data(), encoded.size()) + "," +
 			      (index == 3 ? "NULL" : modern_blob(record.uid)) + ")");
 	}
-	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(903) +
+	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(903, true) +
 				  " WHERE item_uid=903");
-	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(904) +
+	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(904, true) +
 				  " WHERE item_uid=904");
 	artifact_population_sql_page page;
 	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
@@ -375,6 +436,20 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	       page.rows[1].payload_owner.id == 77 && page.rows[1].custody.owner.id == 99 &&
 	       page.rows[1].custody.vnum == 901 && page.rows[1].custody.owner_revision == 12);
 	assert(page.rows[2].item_uid == UINT64_MAX && page.rows[2].extra_flags_present);
+	assert(page.rows[1].custody_owner_revision_found);
+	query(connection, "UPDATE item_owner_revision SET revision=0 WHERE owner_id=99");
+	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
+						       0, &page));
+	assert(page.rows[1].custody_owner_revision_found &&
+	       page.rows[1].custody.owner_revision == 0);
+	query(connection, "DELETE FROM item_owner_revision WHERE owner_id=99");
+	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
+						       0, &page));
+	assert(!page.rows[1].custody_owner_revision_found &&
+	       page.rows[1].custody.owner_revision == 0);
+	query(connection,
+	      "INSERT INTO item_owner_revision(owner_type,owner_id,revision) VALUES(1,99,12)");
+
 	assert(!artifact_population_read_sql_blob_page(
 		connection, artifact_payload_domain::auction_legacy, 0, &page));
 	assert(page.rows.size() == 2 && page.rows[0].role == artifact_payload_role::history &&
@@ -396,6 +471,18 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	       page.rows[0].item_uid == 801 && !page.rows[0].custody_found &&
 	       page.rows[0].source_quarantined && page.rows[0].extra_flags_present &&
 	       !page.rows[0].extra_flags && page.rows[1].role == artifact_payload_role::history);
+	assert(!page.rows[1].source_quarantined);
+	query(connection,
+	      "INSERT INTO collector_reconciliation_quarantine(listing_id,item_uid,conflict_code,evidence) VALUES(2002,802,1,'collector-only fixture')");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::collector, 0, &page));
+	assert(page.rows[1].source_quarantined &&
+	       "collector quarantine was lost without an item-level quarantine row");
+	query(connection,
+	      "UPDATE collector_reconciliation_quarantine SET repaired_at=CURRENT_TIMESTAMP(6) WHERE listing_id=2002");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::collector, 0, &page));
+	assert(!page.rows[1].source_quarantined);
 	assert(!artifact_population_read_sql_blob_page(
 		connection, artifact_payload_domain::embedded, 0, &page));
 	assert(page.rows.size() == 2 && page.rows[0].role == artifact_payload_role::history &&
@@ -451,7 +538,7 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 		       "UPDATE collector_listings SET item_blob=" + modern_blob(801) +
 			       " WHERE listing_id=2001" },
 		     { "UPDATE item_current_owner SET coin_payload=X'00' WHERE item_uid=904",
-		       "UPDATE item_current_owner SET coin_payload=" + modern_blob(904) +
+		       "UPDATE item_current_owner SET coin_payload=" + modern_blob(904, true) +
 			       " WHERE item_uid=904" },
 	     } })
 	{
@@ -461,6 +548,18 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 		assert(!(connection->server_status & SERVER_STATUS_IN_TRANS));
 		query(connection, fault.second);
 	}
+	for (int invalid = -1; invalid < 4; ++invalid)
+	{
+		query(connection, "UPDATE item_current_owner SET coin_payload=" +
+					  modern_blob(904, invalid >= 0, invalid) +
+					  " WHERE item_uid=904");
+		assert(artifact_population_read_sql_payloads(connection, &population) == EINVAL &&
+		       "embedded history accepted a non-money type or negative coin value");
+		assert(population.data() == retained && population.size() == 13 &&
+		       !(connection->server_status & SERVER_STATUS_IN_TRANS));
+	}
+	query(connection, "UPDATE item_current_owner SET coin_payload=" + modern_blob(904, true) +
+				  " WHERE item_uid=904");
 	query(connection, "RENAME TABLE collector_listings TO collector_listings_held");
 	assert(artifact_population_read_sql_payloads(connection, &population));
 	assert(population.data() == retained && population.size() == 13);

@@ -18,6 +18,8 @@
 #include "core/utils.h"
 #include <algorithm>
 #include <charconv>
+#include <chrono>
+#include <thread>
 #include <memory>
 #include <dirent.h>
 #include <stdio.h>
@@ -38,6 +40,7 @@
 #include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_save_worker.h"
+#include "player/player_save_pipeline.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -325,7 +328,8 @@ flatfile_artifact_record artifact_flat_capture(int vnum, const artifact_row &row
 		 bind.timer,
 		 0,
 		 row.canonical_item_uid,
-		 row.identity_state };
+		 row.identity_state,
+		 row.removed };
 }
 
 bool artifact_queue_flat(std::vector<flatfile_artifact_record> records,
@@ -583,9 +587,7 @@ bool artifacts_load(void)
 			auto &row = records.at(record.vnum);
 			row.canonical_item_uid = record.canonical_item_uid;
 			row.identity_state = record.identity_state;
-			row.removed = !record.owned && record.location_type == ARTIFACT_NOTINGAME &&
-				      (record.identity_state == artifact_identity_state::retired ||
-				       record.identity_state == artifact_identity_state::absent);
+			row.removed = record.identity_only;
 			binds[record.vnum] = { record.bind_owner_pid,
 					       static_cast<int>(record.bind_timer) };
 		}
@@ -697,6 +699,9 @@ bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int6
 
 void artifacts_forget_deleted_character(int pid)
 {
+#ifdef __NO_MYSQL__
+	artifacts_forget_deleted_account_character(pid);
+#else
 	// remove_all_artifacts_sql() released them.
 	for (auto &entry : artifact_rows)
 		if (entry.second.location == pid && entry.second.locType == ARTIFACT_ON_PC)
@@ -706,6 +711,7 @@ void artifacts_forget_deleted_character(int pid)
 			entry.second.save = {};
 		}
 	arti_cache_invalidate();
+#endif
 }
 
 void artifacts_forget_deleted_account_character(int pid)
@@ -780,6 +786,21 @@ size_t artifact_save_pulse(bool retry)
 		retry_rows(artifact_binds, bind_cursor, artifact_bind_save);
 	}
 	return dirty;
+}
+
+// Flat deletion is synchronous: finish every earlier capture before its release.
+bool artifact_save_drain(uint64_t timeout_msec)
+{
+	const auto deadline =
+		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
+	do
+	{
+		player_save_pipeline_pulse();
+		if (!artifact_save_pulse(true) && persistence_writer_wait_idle(0))
+			return true;
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	} while (std::chrono::steady_clock::now() < deadline);
+	return false;
 }
 
 void artifact_report_unsaved()
@@ -1976,21 +1997,24 @@ bool remove_owned_artifact_sql(P_obj arti, int pid)
 			 IS_UNIQUE(arti) ? ARTIFACT_UNIQUE :
 					   ARTIFACT_MAJOR;
 	const auto found = artifact_rows.find(vnum);
-	if (found != artifact_rows.end() && !found->second.removed)
+	if ((found != artifact_rows.end() && !found->second.removed) || pid > 0)
 	{
-		// Non-positive pid -> remove arti from game; otherwise it's on the corpse of pid.
-		artifact_row row = found->second;
+		artifact_row row = found != artifact_rows.end() && !found->second.removed ?
+					   found->second :
+					   artifact_row{ true, ARTIFACT_ONCORPSE, pid, 0, type };
 		row.owned = pid > 0;
 		row.locType = pid > 0 ? ARTIFACT_ONCORPSE : ARTIFACT_NOTINGAME;
 		row.location = pid > 0 ? pid : NOWHERE;
+		// Stage the soul before capturing the complete row. Both retain the same
+		// receipt; a rejected admission leaves the complete new state dirty.
+		auto &bind = artifact_binds[vnum];
+		bind = { -1, 0 };
+		bind.save.dirty = true;
 		artifact_row_store(vnum, row);
+		bind.save = artifact_rows.at(vnum).save;
 	}
-	// On a PC corpse without an entry (Yes, this would be a buggy situation).
-	else if (pid > 0)
-		artifact_row_store(vnum, { true, ARTIFACT_ONCORPSE, pid, 0, type });
-
-	// A poofed arti must not keep a pid in artifact_bind.
-	artifact_binds_reset(vnum);
+	else
+		artifact_binds_reset(vnum);
 	return TRUE;
 }
 

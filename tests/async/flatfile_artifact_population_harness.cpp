@@ -650,6 +650,17 @@ int main(int argc, char **argv)
 	       combined[combined.size() - 2].custody.vnum == 999);
 	assert(combined.back().custody_examined && !combined.back().custody_found);
 	assert(!recovery[0].custody_examined);
+	for (const auto &row : rows)
+		if (row.custody_found)
+		{
+			uint64_t revision = UINT64_MAX;
+			std::vector<flatfile_item_ownership_record> held;
+			assert(flatfile_item_repository_load_owner(root.string(), row.custody.owner,
+								   &revision, &held, &error) ==
+			       flatfile_item_repository_result::ok);
+			assert(row.custody_owner_revision_found &&
+			       row.custody.owner_revision == revision);
+		}
 	const size_t expected = rows.size();
 	for (const auto &path :
 	     { root / "players/42.snapshot", root / "domains/locker_catalog",
@@ -676,10 +687,16 @@ int main(int argc, char **argv)
 	assert(artifact_population_read_flat_payloads(root.string(), &rows, &error) == EINVAL);
 	assert(rows.data() == before && rows.size() == expected);
 	fs::remove(root / "players/042.snapshot");
-	fs::permissions(root / "domains", fs::perms::owner_read, fs::perm_options::replace);
+	// A non-directory store is inaccessible even to root, which bypasses chmod.
+	fs::rename(root / "domains", root / "domains.saved");
+	{
+		std::ofstream blocked(root / "domains");
+		blocked << "not a store directory";
+	}
 	const auto unavailable =
 		artifact_population_read_flat_payloads(root.string(), &rows, &error);
-	fs::permissions(root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	assert(fs::remove(root / "domains"));
+	fs::rename(root / "domains.saved", root / "domains");
 	assert(unavailable == EIO && rows.data() == before && rows.size() == expected);
 	assert(!artifact_population_read_flat_payloads(root.string(), &rows, &error) &&
 	       rows.size() == expected);

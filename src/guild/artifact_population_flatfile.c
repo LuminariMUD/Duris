@@ -323,7 +323,9 @@ unsigned int artifact_population_read_flat_payloads(
 		if (const auto failed = read_blob_payloads(root, &staged, error))
 			return failed;
 		std::vector<flatfile_item_ownership_record> custody;
-		const auto read = flatfile_item_repository_read_population(root, &custody, error);
+		std::map<uint64_t, uint64_t> owner_revisions;
+		const auto read = flatfile_item_repository_read_population(root, &custody, error,
+									   &owner_revisions);
 		if (read != flatfile_item_repository_result::ok)
 			return read == flatfile_item_repository_result::io_error ? EIO : EINVAL;
 		for (const auto &record : custody)
@@ -363,11 +365,16 @@ unsigned int artifact_population_read_flat_payloads(
 			if (found == custody.end() || found->item_uid != row.item_uid)
 				continue;
 			row.custody_found = true;
-			row.custody = {
-				found->item_uid, found->root_item_uid, found->parent_item_uid,
-				found->owner,	 found->item_revision, 0,
-				found->vnum,	 found->state
-			};
+			const auto revision = owner_revisions.find(row.item_uid);
+			row.custody_owner_revision_found = revision != owner_revisions.end();
+			row.custody = { found->item_uid,
+					found->root_item_uid,
+					found->parent_item_uid,
+					found->owner,
+					found->item_revision,
+					revision == owner_revisions.end() ? 0 : revision->second,
+					found->vnum,
+					found->state };
 		}
 		*items = std::move(staged);
 		return 0;
