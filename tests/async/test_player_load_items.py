@@ -6,7 +6,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +28,9 @@ HARNESS = r'''
 #include "magic/spells.h"
 #include "core/structs.h"
 #include "core/utils.h"
+#include "item/trophy.h"
+#include "core/files.h"
+#include <unordered_set>
 
 bool training_dummy_capture_target_allowed(P_char) { return true; }
 
@@ -399,6 +402,53 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 
 int main()
 {
+    {
+        reset_test_state(); auto input=base_result(); input.outcome=player_load_outcome::applied;
+        player_load_source_item foreign;
+        foreign.row_id=1; foreign.item_uid=foreign.root_item_uid=555; foreign.bytes=75;
+        foreign.vnum=103; foreign.quantity=1; foreign.extra_flags=ITEM_ARTIFACT; foreign.extra_flags_present=true;
+        foreign.custody_found=foreign.custody_owner_revision_found=true;
+        foreign.custody={555,555,0,{item_owner_type::player,88,0},1,1,103,item_custody_state::active};
+        input.item_sources.push_back(foreign);
+        for(size_t index=0;index<PLAYER_LOAD_ITEM_MAX;++index) {
+            add_item(input,index+2,index+1000,101,-1,0);
+            player_load_source_item raw; raw.row_id=index+2; raw.item_uid=raw.root_item_uid=index+1000;
+            raw.vnum=101; raw.quantity=1; raw.extra_flags_present=true; input.item_sources.push_back(raw);
+        }
+        prepare_valid_status(input); assert(valid_snapshot(input));
+        refused_artifact_vnum=103; auto qualified=input;
+        const auto capacity_result=player_load_items_qualify(&qualified);
+        if(capacity_result || qualified.snapshot.items.size()!=PLAYER_LOAD_ITEM_MAX || qualified.snapshot.retained_items.rows.size()!=1)
+            std::fprintf(stderr,"capacity result=%u active=%zu retained=%zu\n",capacity_result,qualified.snapshot.items.size(),qualified.snapshot.retained_items.rows.size());
+        assert(!capacity_result && qualified.snapshot.items.size()==PLAYER_LOAD_ITEM_MAX && qualified.snapshot.retained_items.rows.size()==1);
+        // The production materializer repeats this actual validator after qualification.
+        assert(!valid_snapshot(qualified));
+        qualified.snapshot.items.pop_back(); qualified.item_identities.pop_back();
+        qualified.authoritative_item_count=qualified.snapshot.items.size();
+        assert(valid_snapshot(qualified)); // exact combined capacity remains valid
+        assert(input.snapshot.retained_items.rows.empty()); refused_artifact_vnum=0;
+    }
+    {
+        reset_test_state();
+        auto result=base_result(); result.pid=42; result.outcome=player_load_outcome::applied;
+        player_load_source_item raw;
+        raw.row_id=15; raw.item_uid=555; raw.root_item_uid=555; raw.bytes=75;
+        raw.vnum=103; raw.quantity=1; raw.extra_flags=ITEM_ARTIFACT; raw.extra_flags_present=true;
+        raw.custody_found=raw.custody_owner_revision_found=true;
+        raw.custody={555,555,0,{item_owner_type::player,88,0},1,1,103,item_custody_state::active};
+        result.item_sources={raw}; // repository omitted the foreign payload
+        refused_artifact_vnum=103;
+        prepare_valid_status(result);
+        player_load_result qualified;
+        assert(qualify_materialization(result, &qualified));
+        assert(result.snapshot.retained_items.rows.empty());
+        result=std::move(qualified);
+        assert(result.snapshot.items.empty() &&
+            result.snapshot.retained_items.rows.size()==1 && result.snapshot.retained_items.rows[0].source_row_id==15);
+        refused_artifact_vnum=0;
+        result.item_sources[0].retain=false; result.snapshot.retained_items={};
+        assert(!player_load_items_qualify(&result) && result.snapshot.retained_items.rows.empty());
+    }
     {
         reset_test_state(); test_character owner(42);
         auto result=base_result(); result.outcome=player_load_outcome::applied;
@@ -1168,6 +1218,28 @@ int main()
     return 0;
 }
 '''
+
+# Execute the production pre-materialization gate with otherwise valid input.
+entry = MATERIALIZE.index("bool player_load_materialize(")
+start = MATERIALIZE.index("\tplayer_load_result qualified;", entry)
+end = MATERIALIZE.index("\tconst auto &result = *selected;", start)
+valid_status = r"""
+void prepare_valid_status(player_load_result &result) {
+ result.snapshot.schema_version=PLAYER_SNAPSHOT_SCHEMA_VERSION; result.snapshot.pid=result.pid;
+ result.snapshot.components=PLAYER_LOAD_SESSION02_COMPONENTS;
+ result.snapshot.status_integers.clear(); result.snapshot.status_strings.clear();
+ for(unsigned field=0;field<=static_cast<unsigned>(player_status_field::learned_flight_stops);++field)
+  result.snapshot.status_integers.push_back({static_cast<player_status_field>(field),0,0,true});
+ for(unsigned field=0;field<=static_cast<unsigned>(player_status_string_field::last_read_news_hash);++field)
+  result.snapshot.status_strings.push_back({static_cast<player_status_string_field>(field),""});
+ result.authoritative_item_count=result.item_identities.size();
+}
+"""
+prefix = (extract_function("player_load_materialize.c", "bool valid_snapshot(") + "\n" + valid_status +
+          "bool qualify_materialization(const player_load_result &loaded, player_load_result *output) {\n"
+          + ("const bool source_valid=valid_snapshot(loaded);\n" if "source_valid" in MATERIALIZE[start:end] else "")
+          + MATERIALIZE[start:end] + "*output=*selected; return true; }\n")
+HARNESS = HARNESS.replace("int main()\n{", prefix + "int main()\n{", 1)
 
 with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
     source = Path(temp_dir) / "player_load_items_test.cpp"
