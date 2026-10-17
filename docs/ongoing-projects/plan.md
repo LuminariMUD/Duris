@@ -23,8 +23,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current maintenance-inspection work: `branch/issue-67-maintenance-inspection`,
-based on #158. Outcome: clear/poof/timer and swap's source-template inspection read
+Current maintenance-inspection checkpoint: [PR #159](https://github.com/LuminariMUD/Duris/pull/159),
+ready for review, `branch/issue-67-maintenance-inspection`, based on #158. Outcome: clear/poof/timer and swap's source-template inspection read
 cached values without creating gameplay objects, consuming UIDs or running procedures.
 Timer edits require an established canonical UID and use bounded arithmetic for
 positive integer input. Non-goals: calling the legacy swap state transition durable,
@@ -37,7 +37,8 @@ Ablation: reuse the existing template cache; do not add an inspection object mod
 The swap source query can be separated now. Its real replacement constructor and
 retirement/save ordering remain a required durable-transition chunk under AR-04.
 
-Maintenance-inspection checkpoint (2026-10-17, publication pending):
+Maintenance-inspection checkpoint (2026-10-17, PR #159):
+Implementation commit: `1377a9b1a67b4e9f3037d30041b2afbe8f9f1225`.
 - Native before probes reproduced procedures/UID consumption for invalid timer
   input, UBSan overflow when displaying an extreme saved epoch, and an oversized
   vnum wrapping to edit artifact 900. Retained ignored logs:
@@ -68,6 +69,8 @@ Maintenance-inspection checkpoint (2026-10-17, publication pending):
   inspection mode, fallback constructor, alternate store or command framework.
   The real swap replacement and durable retirement/save ordering remain open;
   do not treat this command-query chunk as completion of AR-04 or the full goal.
+  Final diff reviewed, committed/pushed as open non-draft PR #159 based on #158
+  and attached to this chat. No merge, tag, deployment or production operation.
 
 Current objectful-PC restoration checkpoint: [PR #158](https://github.com/LuminariMUD/Duris/pull/158),
 ready for review, `branch/issue-67-offline-player-admission`, based on #157. Outcome: every materialized PC inventory uses source-qualified
