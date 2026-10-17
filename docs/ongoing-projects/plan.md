@@ -1,5 +1,18 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active follow-up — reuse the native copyover checkpoint (#176)
+
+Branch `branch/issue-67-copyover-checkpoint-reuse`. The standalone existing-tree
+checkpoint must reuse the transaction already owned by `copyover_recover`.
+Treat only the existing `EBUSY` ownership result as a borrowed outer checkpoint;
+allocation failures still refuse. Keep standalone rollback. The real native
+coordinator fixture now covers both failure/rollback and successful commit inside
+an outer scope; it fails before repair. Files: native wrapper, existing fixture,
+plan. No new checkpoint state/API or nested snapshot stack. The before case
+fails; outer/standalone failure and success cases, actual save/exec/recover,
+SQL/flat builds and format/tidy pass (`bin/analysis/checkpoint-reuse-*.log`).
+
+
 ## Active follow-up — complete auction operation validation (#175)
 
 Branch `branch/issue-67-auction-operation-evidence`. Outcome: provided operation
