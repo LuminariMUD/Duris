@@ -27,7 +27,9 @@ bool append_recovery(artifact_recovery_population &source,
 		for (auto &row : source.items)
 			row.source_quarantined = true; // inspected, but not selected for restore
 	items->insert(items->end(), source.items.begin(), source.items.end());
-	return true;
+	// Preserve the hints, but they cannot establish physical identity or absence.
+	return std::none_of(source.items.begin(), source.items.end(), [](const auto &row)
+			    { return row.role == artifact_payload_role::reconstruction; });
 }
 
 bool inspect_native(const std::string &path, std::vector<artifact_payload_projection> *items)
@@ -113,7 +115,8 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 						selected.emplace(row.item_uid, row.custody);
 				complete = append_recovery(population, &recovery, false);
 				if (!complete)
-					staged.unavailable_sources += "native projection limit; ";
+					staged.unavailable_sources +=
+						"native reconstruction or projection limit; ";
 			}
 		}
 		else if (!inspect_native(native_path + ".recovering", &recovery))

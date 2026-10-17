@@ -145,8 +145,9 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
     unsigned int flags) noexcept
 {
     const char *scenario=getenv("COPYOVER_TEST_CASE");
-    if (scenario && !strcmp(scenario,"publish-race") && !strcmp(to,COPYOVER_FILE)) {
-        FILE *other=fopen(to,"wb");
+    if (scenario && (!strcmp(scenario,"publish-race") || !strcmp(scenario,"claim-race")) && !strcmp(to,COPYOVER_FILE)) {
+        const std::string competing=!strcmp(scenario,"claim-race") ? std::string(to)+".recovering" : to;
+        FILE *other=fopen(competing.c_str(),"wb");
         assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
     }
     return static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
@@ -156,7 +157,7 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
 // the production save, publication, counting and recovery functions are intact.
 extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
 {
-    assert(strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") && "a competing publication must refuse before exec");
+    assert(strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") && strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race") && "a competing publication must refuse before exec");
     assert(!std::strcmp(path, "bin/server/dms"));
     FILE *file = std::fopen(COPYOVER_FILE, "rb"); assert(file);
     copyover_header header = {};
@@ -208,9 +209,10 @@ int main(int argc, char **argv)
             assert(item_ownership_runtime_hydrate(custody(uid)));
         std::vector<char> buffer(WORLD_RECOVERY_MAX_RECORD_BYTES);
         assert(world_recovery_write_object_to_buffer(corpse, 100, buffer.data(), buffer.size()) == 0);
-        if (!strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race")) {
+        if (!strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") || !strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race")) {
             assert(!copyover_save(-1,-1,-1));
-            FILE *other=fopen(COPYOVER_FILE,"rb"); char bytes[11];
+            const std::string competing=!strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race") ? std::string(COPYOVER_FILE)+".recovering" : COPYOVER_FILE;
+            FILE *other=fopen(competing.c_str(),"rb"); char bytes[11];
             assert(other && fread(bytes,sizeof(bytes),1,other)==1 && fclose(other)==0);
             assert(!memcmp(bytes,"replacement",11) && object_list && item_ownership_runtime_size()==3);
             extract_obj(corpse,FALSE); item_ownership_runtime_reset();
@@ -321,7 +323,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("normal", "newer", "changed", "publish-race"):
+    for scenario in ("claim-race", "normal", "newer", "changed", "publish-race"):
         state = temp / scenario
         state.mkdir()
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
