@@ -109,9 +109,12 @@ void update_depth_health_locked()
 {
 	health.queued_jobs = queue.size();
 	health.inflight_jobs = inflight ? 1 : 0;
+	health.completion_jobs = results.size();
 	health.queued_bytes = queued_bytes;
-	update_max(health.high_water_jobs, health.queued_jobs + health.inflight_jobs);
-	update_max(health.high_water_bytes, queued_bytes);
+	health.inflight_bytes = inflight ? inflight->bytes : 0;
+	update_max(health.high_water_jobs,
+		   health.queued_jobs + health.inflight_jobs + health.completion_jobs);
+	update_max(health.high_water_bytes, queued_bytes + health.inflight_bytes);
 }
 
 player_save_apply_result write_job(const queued_job &job)
@@ -437,6 +440,7 @@ size_t player_save_worker_pulse(player_save_completion *completions_out, size_t 
 		completions_out[consumed++] = results.front();
 		results.pop_front();
 	}
+	update_depth_health_locked();
 	return consumed;
 }
 
