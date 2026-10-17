@@ -1,5 +1,66 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Additional #141 review: saved-room source keys
+
+A subsequent review identified cross-key parents inside the same room. The reader
+now compares `saved_items.item_key` as well as room ownership, matching the real
+saved-item loader's source boundary. A disposable SQL regression reproduces the
+old accepted cross-key link and retains a valid same-key control. The disposable
+SQL fixture, maintained-schema queries, native build and format/tidy pass. Evidence:
+`bin/analysis/pr141-room-key-*.log`. This is an additional finding beyond the initial
+32; fixed in `c3fae0f61`, pushed, and its thread is resolved.
+Carry this repair through the dependent branches, then resume the #145–#147 checks.
+The #145 transaction contract also needs its stale inline-ownership assertion
+updated to follow the shared overlap planner.
+
+## Oldest-first code-review follow-up — 2026-10-17
+
+The current goal is to address every existing review finding, in PR creation order.
+The initial inventory contained 31 unresolved inline threads across 14 PRs plus one
+additional finding in #139's review body. #132/#133 repairs are already published
+and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
+
+Current work: carry-forward through #145–#147 in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+Published repairs: #138 `ba2f3f79f`, #139 `5df732237`, #141 `1bf1d5986` plus
+`c3fae0f61`, #142 `e29ab3926`, #143 `d0845890f`, #144 `136b65c0f`.
+Their review threads are resolved, and #139's additional review-body finding is
+addressed. The newer saved-room fix has passed inherited SQL-reader/build checks
+through #144. Fourteen findings have been addressed, including the later #141 one.
+
+#145's native pipeline checks pass. Its transaction source contract still expected
+inline parent validation after the overlap refactor moved that validation to
+`world_recovery_read_object_record`; the assertion now follows that real call and
+checks parent validation in the shared codec. Validate it, publish the carry-forward,
+then continue through #146/#147 to #148. These three PRs had no open review findings
+in the initial scan. Preserve all existing source-boundary regressions.
+
+**Carry-forward requirement:** populate `custody_owner_revision_found` from actual
+revision authority in later readers and have the #148 classifier reject missing
+revision authority. Preserve legitimate flat recovery by obtaining its real owner
+revision evidence before enforcing this check. Do not drop the flag when later
+PRs move the shared projection type.
+
+Remaining review sequence (initial inventory, oldest first):
+- #139: all 3 findings addressed and published.
+- #141: all 3 owner/revision evidence findings addressed and published.
+- #142: root-compatible unreadable-store regression addressed and published.
+- #143: both blob-reader findings addressed and published.
+- #144: all 3 Redis retry/state/test-contract findings addressed and published.
+- #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
+- #149: 1 recovered-NPC evidence completeness finding.
+- #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
+- #154: 1 fatal-boot diagnostic retention finding.
+- #155: 2 retained-row/pet overlap findings.
+- #156: 3 source-ID, foreign-vnum and foreign-owner qualification findings.
+- #157: 4 audit completeness/noise/quantity/revision findings.
+- #162: 1 pending-action preservation finding.
+
+Full fetched review/thread bodies and pagination evidence are retained privately in
+`duris-issue67-delivery/bin/analysis/open-review-details.json`. Every fetched page
+was complete. Refresh live reviews before final closeout. The implementation
+checkpoint below is historical context for this PR, not the current review status.
+
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
