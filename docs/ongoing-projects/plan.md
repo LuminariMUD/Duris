@@ -1,5 +1,18 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Additional #141 review: saved-room source keys
+
+A subsequent review identified cross-key parents inside the same room. The reader
+now compares `saved_items.item_key` as well as room ownership, matching the real
+saved-item loader's source boundary. A disposable SQL regression reproduces the
+old accepted cross-key link and retains a valid same-key control. The disposable
+SQL fixture, maintained-schema queries, native build and format/tidy pass. Evidence:
+`bin/analysis/pr141-room-key-*.log`. This is an additional finding beyond the initial
+32; publication follows.
+Carry this repair through the dependent branches, then resume the #145–#147 checks.
+The #145 transaction contract also needs its stale inline-ownership assertion
+updated to follow the shared overlap planner.
+
 ## Oldest-first code-review follow-up — 2026-10-17
 
 The current goal is to address every existing review finding, in PR creation order.
