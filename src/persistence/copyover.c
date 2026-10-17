@@ -51,6 +51,8 @@
 #include "world/epic_bonus.h"
 #include "telemetry/telemetry_runtime.h"
 #include <new>
+#include <memory>
+#include <unordered_set>
 #include <type_traits>
 #include <vector>
 
@@ -127,6 +129,18 @@ struct copyover_worker_resume_guard
 	}
 };
 
+copyover_boot_snapshot pinned_copyover;
+copyover_boot_result pinned_copyover_state = copyover_boot_result::unprepared;
+std::string pinned_copyover_path;
+bool pinned_copyover_loaded = false;
+
+bool same_copyover_file(const struct stat &a, const struct stat &b)
+{
+	return a.st_dev == b.st_dev && a.st_ino == b.st_ino && a.st_size == b.st_size &&
+	       a.st_mtim.tv_sec == b.st_mtim.tv_sec && a.st_mtim.tv_nsec == b.st_mtim.tv_nsec &&
+	       a.st_ctim.tv_sec == b.st_ctim.tv_sec && a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
+}
+
 constexpr char TELEMETRY_COPYOVER_MAGIC[4] = { 'T', 'L', 'M', 'Y' };
 constexpr std::uint32_t TELEMETRY_COPYOVER_VERSION = 1U;
 struct telemetry_copyover_header
@@ -151,6 +165,12 @@ static_assert(std::is_trivially_copyable_v<telemetry_copyover_entry>);
 
 bool copyover_has_durable_shopkeepers()
 {
+	if (copyover_boot_state() != copyover_boot_result::unprepared)
+	{
+		const auto *snapshot = copyover_boot_evidence();
+		return snapshot && snapshot->header.version >= 13 &&
+		       copyover_version_supported(snapshot->header.version);
+	}
 	FILE *file = fopen(COPYOVER_FILE, "rb");
 	if (!file)
 		return false;
@@ -170,6 +190,8 @@ int is_copyover_boot(void)
 void copyover_clear_boot(void)
 {
 	copyover_in_progress = 0;
+	pinned_copyover = {};
+	pinned_copyover_state = copyover_boot_result::failed;
 }
 
 void copyover_prepare_socket(int fd)
@@ -447,6 +469,7 @@ restore_telemetry_copyover_sessions(const std::vector<telemetry_copyover_entry> 
 
 static int write_mob_entry(FILE *fp, P_char mob)
 {
+	updateShortAffects(mob);
 	struct copyover_mob entry;
 
 	memset(&entry, 0, sizeof(entry));
@@ -520,27 +543,270 @@ static bool write_generated_npc_state(FILE *fp, P_char mob)
 	       fwrite(extension.data(), extension.size(), 1, fp) == 1;
 }
 
-static bool read_generated_npc_state(FILE *fp, int vnum, std::string *generated)
+bool copyover_decode_mob(const char *data, size_t size, int version, copyover_mob_record *record,
+			 size_t *consumed)
 {
-	char header[GENERATED_NPC_EXTENSION_HEADER_BYTES];
-	if (fread(header, sizeof(header), 1, fp) != 1 || memcmp(header, "GNP1", 4))
+	if (consumed)
+		*consumed = 0;
+	if (!data || !record || !consumed || !copyover_version_supported(version))
 		return false;
-	uint32_t length = 0;
-	for (size_t i = 0; i < 4; ++i)
-		length |= static_cast<uint32_t>(static_cast<unsigned char>(header[4 + i]))
-			  << (i * 8);
-	if (length > GENERATED_NPC_STATE_WALLET_BYTES + PET_RESTORE_STATE_MAX_BYTES)
+	const auto mob_bytes = copyover_mob_bytes_for_version(version);
+	if (size < mob_bytes)
 		return false;
-	std::string extension(header, sizeof(header));
-	extension.resize(sizeof(header) + length);
-	if (length && fread(extension.data() + sizeof(header), length, 1, fp) != 1)
+	try
+	{
+		copyover_mob_record staged;
+		memcpy(&staged.mob, data, mob_bytes);
+		if (version < 16)
+			staged.mob.shopkeeper_shop_id = -1;
+		size_t offset = mob_bytes;
+		if (staged.mob.num_affects < 0 || staged.mob.num_carrying < 0 ||
+		    static_cast<size_t>(staged.mob.num_affects) >
+			    (size - offset) / sizeof(copyover_affect))
+			return false;
+		staged.affects.resize(staged.mob.num_affects);
+		const size_t affect_bytes = staged.affects.size() * sizeof(copyover_affect);
+		if (affect_bytes)
+			memcpy(staged.affects.data(), data + offset, affect_bytes);
+		offset += affect_bytes;
+		if (static_cast<size_t>(staged.mob.num_carrying) >
+		    (size - offset) / sizeof(copyover_carried_item))
+			return false;
+		staged.inventory.resize(staged.mob.num_carrying);
+		const size_t inventory_bytes =
+			staged.inventory.size() * sizeof(copyover_carried_item);
+		if (inventory_bytes)
+			memcpy(staged.inventory.data(), data + offset, inventory_bytes);
+		offset += inventory_bytes;
+		if (version >= 14)
+		{
+			if (size - offset < GENERATED_NPC_EXTENSION_HEADER_BYTES ||
+			    memcmp(data + offset, "GNP1", 4))
+				return false;
+			uint32_t length = 0;
+			for (size_t index = 0; index < 4; ++index)
+				length |= static_cast<uint32_t>(static_cast<unsigned char>(
+						  data[offset + 4 + index]))
+					  << (index * 8);
+			if (length > GENERATED_NPC_STATE_WALLET_BYTES +
+					     PET_RESTORE_STATE_MAX_BYTES ||
+			    length > size - offset - GENERATED_NPC_EXTENSION_HEADER_BYTES)
+				return false;
+			const size_t extension = GENERATED_NPC_EXTENSION_HEADER_BYTES + length;
+			if (!generated_npc_extension_decode(staged.mob.vnum, data + offset,
+							    extension, &staged.generated))
+				return false;
+			offset += extension;
+		}
+		*record = std::move(staged);
+		*consumed = offset;
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
 		return false;
-	return generated_npc_extension_decode(vnum, extension.data(), extension.size(), generated);
+	}
+}
+
+namespace
+{
+bool inspect_copyover(copyover_boot_snapshot *snapshot)
+{
+	if (snapshot->bytes.size() < sizeof(copyover_header) + 3 * sizeof(int))
+		return false;
+	memcpy(&snapshot->header, snapshot->bytes.data(), sizeof(snapshot->header));
+	const auto &header = snapshot->header;
+	if (memcmp(header.magic, COPYOVER_MAGIC, 4) ||
+	    !copyover_version_supported(header.version) || header.num_descriptors < 0 ||
+	    header.num_mobs < 0 || header.num_objects < 0 || header.num_rooms < 0 ||
+	    header.num_combat || header.num_zones ||
+	    static_cast<size_t>(header.num_descriptors) >
+		    snapshot->bytes.size() / sizeof(copyover_desc) ||
+	    static_cast<size_t>(header.num_mobs) >
+		    snapshot->bytes.size() / copyover_mob_bytes_for_version(header.version) ||
+	    static_cast<size_t>(header.num_objects) >
+		    snapshot->bytes.size() / sizeof(world_recovery_object_record) ||
+	    static_cast<size_t>(header.num_rooms) > snapshot->bytes.size() / sizeof(copyover_room))
+		return false;
+	size_t offset = sizeof(header) + 3 * sizeof(int);
+	for (int index = 0; index < header.num_descriptors; ++index)
+	{
+		if (sizeof(copyover_desc) > snapshot->bytes.size() - offset)
+			return false;
+		copyover_desc desc = {};
+		memcpy(&desc, snapshot->bytes.data() + offset, sizeof(desc));
+		if (!memchr(desc.player_name, 0, sizeof(desc.player_name)) ||
+		    !memchr(desc.host, 0, sizeof(desc.host)) ||
+		    !memchr(desc.host2, 0, sizeof(desc.host2)) ||
+		    !memchr(desc.ttype_client, 0, sizeof(desc.ttype_client)) ||
+		    !memchr(desc.ttype_terminal, 0, sizeof(desc.ttype_terminal)) ||
+		    desc.num_pets < 0 || desc.num_pets > 10)
+			return false;
+		offset += sizeof(desc);
+	}
+	if (header.version >= 15)
+	{
+		std::unique_ptr<FILE, int (*)(FILE *)> stream(
+			fmemopen(snapshot->bytes.data(), snapshot->bytes.size(), "rb"), fclose);
+		std::vector<telemetry_copyover_entry> entries;
+		if (!stream || fseek(stream.get(), static_cast<long>(offset), SEEK_SET) ||
+		    !read_telemetry_copyover_state(stream.get(), header.num_descriptors, &entries))
+			return false;
+		const long position = ftell(stream.get());
+		if (position < 0)
+			return false;
+		offset = position;
+	}
+	snapshot->mobs.reserve(header.num_mobs);
+	for (int index = 0; index < header.num_mobs; ++index)
+	{
+		copyover_mob_record mob;
+		size_t consumed = 0;
+		if (!copyover_decode_mob(snapshot->bytes.data() + offset,
+					 snapshot->bytes.size() - offset, header.version, &mob,
+					 &consumed))
+			return false;
+		snapshot->mobs.push_back({ offset, consumed });
+		offset += consumed;
+	}
+	snapshot->objects.reserve(header.num_objects);
+	std::unordered_set<uint64_t> seen;
+	for (int index = 0; index < header.num_objects; ++index)
+	{
+		uint32_t size = 0;
+		if (sizeof(size) > snapshot->bytes.size() - offset)
+			return false;
+		memcpy(&size, snapshot->bytes.data() + offset, sizeof(size));
+		offset += sizeof(size);
+		world_recovery_copyover_tree tree;
+		if (size > snapshot->bytes.size() - offset ||
+		    !world_recovery_read_copyover_object_record(snapshot->bytes.data() + offset,
+								size, &tree))
+			return false;
+		for (const auto &item : tree.items)
+			if (!seen.insert(item.item_uid).second)
+				return false;
+		snapshot->objects.push_back({ offset, size });
+		offset += size;
+	}
+	if (static_cast<size_t>(header.num_rooms) >
+	    (snapshot->bytes.size() - offset) / sizeof(copyover_room))
+		return false;
+	offset += static_cast<size_t>(header.num_rooms) * sizeof(copyover_room);
+	return offset == snapshot->bytes.size();
+}
+} // namespace
+
+copyover_boot_result copyover_read_file(const std::string &path, copyover_boot_snapshot *snapshot)
+{
+	if (path.empty() || !snapshot)
+		return copyover_boot_result::failed;
+	try
+	{
+		const int descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+		if (descriptor < 0)
+		{
+			if (errno != ENOENT)
+				return copyover_boot_result::failed;
+			const auto separator = path.find_last_of('/');
+			const auto parent = separator == std::string::npos ? "." :
+					    separator == 0		   ? "/" :
+							     path.substr(0, separator);
+			struct stat directory = {};
+			if (stat(parent.c_str(), &directory) || !S_ISDIR(directory.st_mode))
+				return copyover_boot_result::failed;
+			*snapshot = {};
+			return copyover_boot_result::absent;
+		}
+		std::unique_ptr<FILE, int (*)(FILE *)> stream(fdopen(descriptor, "rb"), fclose);
+		if (!stream)
+		{
+			close(descriptor);
+			return copyover_boot_result::failed;
+		}
+		copyover_boot_snapshot staged;
+		if (fstat(fileno(stream.get()), &staged.identity) ||
+		    !S_ISREG(staged.identity.st_mode) || staged.identity.st_size <= 0 ||
+		    static_cast<uint64_t>(staged.identity.st_size) > WORLD_RECOVERY_MAX_BYTES)
+			return copyover_boot_result::failed;
+		staged.bytes.resize(staged.identity.st_size);
+		if (fread(staged.bytes.data(), staged.bytes.size(), 1, stream.get()) != 1 ||
+		    fgetc(stream.get()) != EOF || ferror(stream.get()))
+			return copyover_boot_result::failed;
+		struct stat after = {};
+		if (fstat(fileno(stream.get()), &after) ||
+		    !same_copyover_file(staged.identity, after) || !inspect_copyover(&staged))
+			return copyover_boot_result::failed;
+		*snapshot = std::move(staged);
+		return copyover_boot_result::ready;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return copyover_boot_result::failed;
+	}
+}
+
+copyover_boot_result copyover_prepare_boot()
+{
+	if (pinned_copyover_state != copyover_boot_result::unprepared)
+		return pinned_copyover_state;
+	pinned_copyover_state = copyover_boot_result::failed;
+	try
+	{
+		const std::string source = copyover_state_file();
+		pinned_copyover_path = source + ".recovering";
+		struct stat original = {}, retained = {};
+		if (lstat(source.c_str(), &original) == 0)
+		{
+			if (!S_ISREG(original.st_mode))
+				return pinned_copyover_state;
+		}
+		else if (errno != ENOENT)
+			return pinned_copyover_state;
+		if (!lstat(pinned_copyover_path.c_str(), &retained) || errno != ENOENT)
+			return pinned_copyover_state;
+		// Confirm this is actually a complete native image before moving an
+		// owner-selected path. Invalid originals stay exactly where they were.
+		copyover_boot_result inspected;
+		{
+			copyover_boot_snapshot candidate;
+			inspected = copyover_read_file(source, &candidate);
+		}
+		if (inspected != copyover_boot_result::ready)
+		{
+			if (inspected == copyover_boot_result::absent &&
+			    lstat(pinned_copyover_path.c_str(), &retained) && errno == ENOENT)
+				pinned_copyover_state = copyover_boot_result::absent;
+			return pinned_copyover_state;
+		}
+		if (renameat2(AT_FDCWD, source.c_str(), AT_FDCWD, pinned_copyover_path.c_str(),
+			      RENAME_NOREPLACE))
+			return pinned_copyover_state;
+		// The claimed name is exclusive. Re-read it before publishing the cut,
+		// so a replacement during the earlier inspection cannot be consumed as
+		// though it contained the earlier bytes.
+		pinned_copyover_state = copyover_read_file(pinned_copyover_path, &pinned_copyover);
+		if (pinned_copyover_state != copyover_boot_result::ready)
+			pinned_copyover_state = copyover_boot_result::failed;
+		return pinned_copyover_state;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return pinned_copyover_state;
+	}
+}
+
+copyover_boot_result copyover_boot_state()
+{
+	return pinned_copyover_state;
+}
+const copyover_boot_snapshot *copyover_boot_evidence()
+{
+	return pinned_copyover_state == copyover_boot_result::ready ? &pinned_copyover : nullptr;
 }
 
 static int write_mob_affects(FILE *fp, P_char mob)
 {
-	updateShortAffects(mob);
 	struct copyover_affect entry;
 	struct affected_type *af;
 
@@ -572,6 +838,7 @@ static int write_mob_affects(FILE *fp, P_char mob)
 static int write_mob_inventory(FILE *fp, P_char mob)
 {
 	copyover_carried_item entry;
+	memset(&entry, 0, sizeof(entry));
 	P_obj obj;
 
 	for (obj = mob->carrying; obj; obj = obj->next_content)
@@ -767,8 +1034,32 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	int room, dir;
 	int num_descs, num_mobs, num_objs, num_rooms;
 	char exec_buf[256];
-	const std::string copyover_tmp_path = std::string(COPYOVER_FILE) + ".tmp";
-	const char *copyover_tmp = copyover_tmp_path.c_str();
+	std::string copyover_tmp_path = std::string(COPYOVER_FILE) + ".tmp.XXXXXX";
+	char *copyover_tmp = copyover_tmp_path.data();
+
+	const std::string published_path = COPYOVER_FILE;
+	for (const auto &pending : { published_path, published_path + ".recovering" })
+	{
+		struct stat retained = {};
+		if (!lstat(pending.c_str(), &retained))
+		{
+			logit(LOG_STATUS,
+			      "copyover: refusing to overwrite prior recovery state at %s",
+			      pending.c_str());
+			notify_copyover_failure(
+				"\r\n*** Copyover cancelled: prior recovery state needs review; server remains live. ***\r\n");
+			return false;
+		}
+		if (errno != ENOENT)
+		{
+			logit(LOG_STATUS,
+			      "copyover: recovery path could not be inspected at %s: %s",
+			      pending.c_str(), strerror(errno));
+			notify_copyover_failure(
+				"\r\n*** Copyover cancelled: recovery paths could not be inspected; server remains live. ***\r\n");
+			return false;
+		}
+	}
 
 	if (item_creation_grant_batches_pending())
 	{
@@ -929,10 +1220,19 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// count items to save
 	count_copyover_items(&num_descs, &num_mobs, &num_objs, &num_rooms);
 
-	fp = fopen(copyover_tmp, "wb");
+	const int state_descriptor = mkstemp(copyover_tmp);
+	if (state_descriptor >= 0)
+		fp = fdopen(state_descriptor, "wb");
 	if (!fp)
 	{
-		logit(LOG_STATUS, "copyover: cant open %s for writing", copyover_tmp);
+		const int error = errno;
+		if (state_descriptor >= 0)
+		{
+			close(state_descriptor);
+			unlink(copyover_tmp);
+		}
+		logit(LOG_STATUS, "copyover: cant open %s for writing: %s", copyover_tmp,
+		      strerror(error));
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}
@@ -1070,7 +1370,16 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		unlink(copyover_tmp);
 		return false;
 	}
-	if (rename(copyover_tmp, COPYOVER_FILE) != 0)
+	copyover_boot_snapshot validated;
+	if (copyover_read_file(copyover_tmp, &validated) != copyover_boot_result::ready)
+	{
+		logit(LOG_STATUS,
+		      "copyover: staged image failed bounded validation; retaining the live process");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		unlink(copyover_tmp);
+		return false;
+	}
+	if (renameat2(AT_FDCWD, copyover_tmp, AT_FDCWD, COPYOVER_FILE, RENAME_NOREPLACE) != 0)
 	{
 		logit(LOG_STATUS, "copyover: failed to publish %s as %s: %s", copyover_tmp,
 		      COPYOVER_FILE, strerror(errno));
@@ -1082,8 +1391,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	logit(LOG_STATUS, "copyover: saved %d descs, %d mobs, %d objs, %d doors", num_descs,
 	      num_mobs, num_objs, num_rooms);
 
-	// All prerequisite saves and the complete copyover file are durable. Only
-	// now may non-preservable transports be disconnected.
+	// Prerequisite saves are acknowledged and the complete image is published.
+	// Only now may non-preservable transports be disconnected.
 	for (d = descriptor_list; d; d = d->next)
 	{
 		if (d->descriptor < 0 || d->connected != CON_PLAYING || !d->character)
@@ -1254,15 +1563,21 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	int i, rnum, save_room;
 	int success = 0;
 	std::vector<telemetry_copyover_entry> telemetry_entries;
+	struct stat current = {};
 
 	copyover_in_progress = 1;
 
-	fp = fopen(COPYOVER_FILE, "rb");
+	if (pinned_copyover_loaded || copyover_prepare_boot() != copyover_boot_result::ready)
+	{
+		logit(LOG_STATUS,
+		      "copyover_recover: no validated pinned image; retained source is not consumed");
+		copyover_in_progress = 0;
+		return 0;
+	}
+	fp = fmemopen(pinned_copyover.bytes.data(), pinned_copyover.bytes.size(), "rb");
 	if (!fp)
 	{
-		logit(LOG_STATUS, "copyover_recover: no %s found, normal boot", COPYOVER_FILE);
 		copyover_in_progress = 0;
-		copyover_boot = 0;
 		return 0;
 	}
 
@@ -1433,47 +1748,21 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	// restore mobs directly from saved data (zones were not reset)
 	for (i = 0; i < header.num_mobs; i++)
 	{
-		struct copyover_mob mob_entry = {};
-		struct copyover_affect aff_entries[64];
-		copyover_carried_item inv_entries[256];
-		int num_affs, num_inv;
-
-		const size_t mob_bytes = copyover_mob_bytes_for_version(header.version);
-		if (fread(&mob_entry, mob_bytes, 1, fp) != 1)
+		copyover_mob_record decoded;
+		size_t consumed = 0;
+		const long position = ftell(fp);
+		if (position < 0 ||
+		    !copyover_decode_mob(pinned_copyover.bytes.data() + position,
+					 pinned_copyover.bytes.size() -
+						 static_cast<size_t>(position),
+					 header.version, &decoded, &consumed) ||
+		    fseek(fp, static_cast<long>(consumed), SEEK_CUR))
 			goto copyover_recover_fail;
-		if (header.version < COPYOVER_VERSION)
-			mob_entry.shopkeeper_shop_id = -1;
-
-		// read affects into temp array
-		num_affs = mob_entry.num_affects;
-		if (num_affs > 64)
-			num_affs = 64;
-		for (int a = 0; a < mob_entry.num_affects; a++)
-		{
-			struct copyover_affect aff_entry;
-			if (fread(&aff_entry, sizeof(aff_entry), 1, fp) != 1)
-				goto copyover_recover_fail;
-			if (a < 64)
-				aff_entries[a] = aff_entry;
-		}
-
-		// read carried items into temp array
-		num_inv = mob_entry.num_carrying;
-		if (num_inv > 256)
-			num_inv = 256;
-		for (int c = 0; c < mob_entry.num_carrying; c++)
-		{
-			copyover_carried_item inv_entry;
-			if (fread(&inv_entry, sizeof(inv_entry), 1, fp) != 1)
-				goto copyover_recover_fail;
-			if (c < 256)
-				inv_entries[c] = inv_entry;
-		}
-
-		std::string generated;
-		if (header.version >= 14 &&
-		    !read_generated_npc_state(fp, mob_entry.vnum, &generated))
-			goto copyover_recover_fail;
+		const auto &mob_entry = decoded.mob;
+		const auto &aff_entries = decoded.affects;
+		const auto &inv_entries = decoded.inventory;
+		const size_t num_affs = aff_entries.size(), num_inv = inv_entries.size();
+		const auto &generated = decoded.generated;
 		if (generated.empty() && generated_npc_vnum(mob_entry.vnum))
 			logit(LOG_STATUS,
 			      "generated NPC recovery review: legacy state missing vnum=%d id=%d room=%d; lost identity cannot be reconstructed",
@@ -1481,11 +1770,11 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 		int mob_rnum = real_mobile(mob_entry.vnum);
 		if (mob_rnum < 0)
-			continue;
+			goto copyover_recover_fail;
 
 		rnum = real_room(mob_entry.room);
 		if (rnum < 0 || rnum > top_of_world)
-			continue;
+			goto copyover_recover_fail;
 
 		// spawn mob from vnum
 		if (legacy_summon_prototype(mob_entry.vnum))
@@ -1497,13 +1786,13 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		{
 			logit(LOG_STATUS, "copyover: read_mobile failed for vnum %d at mob %d",
 			      mob_entry.vnum, i);
-			continue;
+			goto copyover_recover_fail;
 		}
 		if (!mob->only.npc)
 		{
 			logit(LOG_STATUS, "copyover: mob has null only.npc for vnum %d at mob %d",
 			      mob_entry.vnum, i);
-			continue;
+			goto copyover_recover_fail;
 		}
 
 		if (!generated_npc_apply(mob, generated))
@@ -1537,7 +1826,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		transport_restore(mob, mob_entry.transport);
 
 		// restore affects
-		for (int a = 0; a < num_affs; a++)
+		for (size_t a = 0; a < num_affs; a++)
 		{
 			struct affected_type af;
 			memset(&af, 0, sizeof(af));
@@ -1571,7 +1860,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		}
 
 		// restore carried items
-		for (int c = 0; c < num_inv; c++)
+		for (size_t c = 0; c < num_inv; c++)
 		{
 			if (inv_entries[c].vnum > 0)
 			{
@@ -1634,7 +1923,12 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 	copyover_in_progress = 0;
 	fclose(fp);
-	unlink(COPYOVER_FILE);
+	pinned_copyover_loaded = true;
+	if (stat(pinned_copyover_path.c_str(), &current) ||
+	    !same_copyover_file(pinned_copyover.identity, current) ||
+	    unlink(pinned_copyover_path.c_str()))
+		logit(LOG_STATUS,
+		      "copyover_recover: restored image retained because its claimed file changed or could not be consumed");
 	logit(LOG_STATUS, "copyover_recover: complete");
 	return success;
 
@@ -1647,8 +1941,8 @@ copyover_recover_fail:
 		*ws_desc = -1;
 	copyover_in_progress = 0;
 	fclose(fp);
-	unlink(COPYOVER_FILE);
-	logit(LOG_STATUS, "copyover_recover: failed, copyover state discarded");
+	pinned_copyover_state = copyover_boot_result::failed;
+	logit(LOG_STATUS, "copyover_recover: failed; claimed state retained for disposition");
 	return 0;
 }
 

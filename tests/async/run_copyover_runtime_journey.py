@@ -17,8 +17,8 @@ import test_flatfile_combat_journey as journey
 
 
 class Client(journey.MudClient):
-    def __init__(self, port):
-        super().__init__(port)
+    def __init__(self, port, *, source_host=None):
+        super().__init__(port, source_host=source_host)
         self.inflater = None
         self.waiting_marker = False
         self.wire = b''
@@ -135,6 +135,16 @@ def run(binary, compressed, nonroot=False):
             print(f'{compressed=}: failed open kept transport and save worker usable', flush=True)
             path.parent.mkdir()
             if nonroot: os.chown(path.parent, 10001, 10001)
+            claimed = path.with_name(path.name + '.recovering')
+            for pending in (path, claimed):
+                pending.write_bytes(b'retained fixture evidence')
+                if nonroot: os.chown(pending, 10001, 10001)
+                process.send_signal(signal.SIGUSR1)
+                client.expect('Copyover cancelled: prior recovery state needs review', timeout=30)
+                assert pending.read_bytes() == b'retained fixture evidence'
+                assert process.poll() is None
+                client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+                pending.unlink()  # explicit disposition of this test's synthetic image
             with socket.create_connection(('127.0.0.1', port), timeout=10) as idle:
                 idle.settimeout(10)
                 idle.recv(65536)
@@ -147,7 +157,7 @@ def run(binary, compressed, nonroot=False):
             process.send_signal(signal.SIGUSR1); client.expect('Copyover complete!', timeout=90)
             client.send('look'); client.expect('The Regression Arena')
             client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
-            assert not path.exists() and process.poll() is None
+            assert not path.exists() and not claimed.exists() and process.poll() is None
             assert (runtime / 'server.out').read_text().count('Entering game loop.') == 2
             # The session keeps its account across the exec, so quit returns to its menu.
             client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)

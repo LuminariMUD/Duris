@@ -5,6 +5,7 @@ The fixture has no clients or NPCs. Worker drains are idle; unrelated player,
 network and NPC services must not be called. No database or running game is used.
 """
 import ast
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -56,6 +57,7 @@ HARNESS = r'''
 #include "telemetry/telemetry_runtime.h"
 #include <unistd.h>
 #include <cstdarg>
+#include <sys/syscall.h>
 
 // The fixture's logit() writes nothing, so there is no log thread to flush before the exec.
 void flush_log_writer(void) {}
@@ -136,10 +138,23 @@ void obj_to_char(P_obj, P_char) { std::abort(); }
 int bind_shopkeeper_calls = 0;
 void bind_shopkeeper(P_char, int) { ++bind_shopkeeper_calls; }
 
+// Inject a concurrent publication at the actual kernel rename boundary.
+extern "C" int renameat2(int from_directory,const char *from,int to_directory,const char *to,
+    unsigned int flags) noexcept
+{
+    const char *scenario=getenv("COPYOVER_TEST_CASE");
+    if (scenario && !strcmp(scenario,"publish-race") && !strcmp(to,COPYOVER_FILE)) {
+        FILE *other=fopen(to,"wb");
+        assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
+    }
+    return static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
+}
+
 // Exercise a real process replacement. Only the executable destination changes;
 // the production save, publication, counting and recovery functions are intact.
 extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
 {
+    assert(strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") && "a competing publication must refuse before exec");
     assert(!std::strcmp(path, "bin/server/dms"));
     FILE *file = std::fopen(COPYOVER_FILE, "rb"); assert(file);
     copyover_header header = {};
@@ -191,6 +206,16 @@ int main(int argc, char **argv)
             assert(item_ownership_runtime_hydrate(custody(uid)));
         std::vector<char> buffer(WORLD_RECOVERY_MAX_RECORD_BYTES);
         assert(world_recovery_write_object_to_buffer(corpse, 100, buffer.data(), buffer.size()) == 0);
+        if (!strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race")) {
+            assert(!copyover_save(-1,-1,-1));
+            FILE *other=fopen(COPYOVER_FILE,"rb"); char bytes[11];
+            assert(other && fread(bytes,sizeof(bytes),1,other)==1 && fclose(other)==0);
+            assert(!memcmp(bytes,"replacement",11) && object_list && item_ownership_runtime_size()==3);
+            extract_obj(corpse,FALSE); item_ownership_runtime_reset();
+            assert(!object_list);
+            puts("[PASS] competing publication survives atomic publish refusal; live objects and custody remain");
+            return 0;
+        }
         copyover_save(-1, -1, -1);
         assert(false && "copyover_save failed before process replacement");
     }
@@ -220,10 +245,32 @@ int main(int argc, char **argv)
     assert(item_ownership_runtime_lookup(902, &retained));
     assert(retained.item_revision == newer.item_revision);
     item_ownership_runtime_reset();
+    assert(copyover_prepare_boot() == copyover_boot_result::ready);
+    const auto *pinned = copyover_boot_evidence();
+    assert(pinned && pinned->objects.size() == 1 && pinned->header.version == COPYOVER_VERSION);
+    const std::string claimed = std::string(COPYOVER_FILE) + ".recovering";
+    const char *scenario = getenv("COPYOVER_TEST_CASE");
+    assert(scenario);
+    const bool new_publication = !strcmp(scenario,"newer");
+    const bool changed = !strcmp(scenario,"changed");
+    if (new_publication || changed) {
+        FILE *replacement = std::fopen(new_publication ? COPYOVER_FILE : claimed.c_str(),"wb");
+        assert(replacement && std::fwrite("replacement",11,1,replacement)==1 && std::fclose(replacement)==0);
+        assert(copyover_prepare_boot() == copyover_boot_result::ready && copyover_boot_evidence() == pinned);
+        assert(copyover_has_durable_shopkeepers());
+    }
     int telnet = 0, tls = 0, websocket = 0;
     assert(copyover_recover(&telnet, &tls, &websocket) == 1);
     assert(telnet == -1 && tls == -1 && websocket == -1);
-    assert(access(COPYOVER_FILE, F_OK) != 0);
+    assert(copyover_recover(&telnet, &tls, &websocket) == 0);
+    assert((access(COPYOVER_FILE, F_OK) == 0) == new_publication);
+    assert((access(claimed.c_str(), F_OK) == 0) == changed);
+    if (new_publication || changed) {
+        FILE *retained_file = std::fopen(new_publication ? COPYOVER_FILE : claimed.c_str(),"rb");
+        char retained_bytes[11];
+        assert(retained_file && std::fread(retained_bytes,sizeof(retained_bytes),1,retained_file)==1);
+        assert(!std::memcmp(retained_bytes,"replacement",11) && std::fclose(retained_file)==0);
+    }
     P_obj corpse = nullptr;
     for (P_obj object = object_list; object; object = object->next)
         if (object->obj_uid == 900) corpse = object;
@@ -272,4 +319,8 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    subprocess.run([str(temp / "fixture")], cwd=temp, check=True, timeout=60)
+    for scenario in ("normal", "newer", "changed", "publish-race"):
+        state = temp / scenario
+        state.mkdir()
+        subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
+                       env=dict(os.environ, COPYOVER_TEST_CASE=scenario, COPYOVER_STATE_FILE="copyover.dat"))

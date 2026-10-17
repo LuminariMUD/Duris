@@ -1622,40 +1622,67 @@ int world_recovery_write_copyover_object_to_buffer(P_obj obj, int room_vnum, cha
 	return static_cast<int>(tree_size + custody_bytes);
 }
 
-// File copyover is a quiesced process handoff, not replay of a Redis room snapshot.
-// Keep physical-tree validation, but restore the captured live ledger without SQL.
-P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len)
+// File copyover hands off the live ledger without a SQL round trip.
+bool world_recovery_read_copyover_object_record(const char *buf, size_t len,
+						world_recovery_copyover_tree *tree)
 {
+	if (!buf || !tree || len < sizeof(world_recovery_object_record) ||
+	    len > WORLD_RECOVERY_MAX_RECORD_BYTES)
+		return false;
 	world_recovery_object_record record = {};
-	if (!buf || len < sizeof(record) || len > WORLD_RECOVERY_MAX_RECORD_BYTES)
-		return nullptr;
 	memcpy(&record, buf, sizeof(record));
 	if (!record.item_count || record.item_count > WORLD_RECOVERY_MAX_ITEM_TREE)
-		return nullptr;
+		return false;
 	const size_t tree_size = sizeof(record) + static_cast<size_t>(record.item_count) *
 							  sizeof(world_recovery_item_snapshot);
 	if (tree_size > len)
+		return false;
+	try
+	{
+		world_recovery_copyover_tree staged;
+		if (!world_recovery_read_object_record(reinterpret_cast<const unsigned char *>(buf),
+						       tree_size, &staged.record, &staged.items))
+			return false;
+		const size_t count = std::count_if(
+			staged.items.begin(), staged.items.end(), [](const auto &item)
+			{ return item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED; });
+		if (len - tree_size != count * sizeof(item_ownership_runtime_entry))
+			return false;
+		staged.custody.resize(count);
+		if (count)
+			memcpy(staged.custody.data(), buf + tree_size,
+			       count * sizeof(staged.custody[0]));
+		size_t index = 0;
+		for (const auto &item : staged.items)
+			if (item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED)
+			{
+				const auto &entry = staged.custody[index++];
+				if (entry.item_uid != item.item_uid || entry.vnum != item.vnum ||
+				    !entry.root_item_uid ||
+				    !item_owner_identity_valid(entry.owner) ||
+				    entry.state != item_custody_state::active)
+					return false;
+			}
+		*tree = std::move(staged);
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+}
+
+P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len)
+{
+	world_recovery_copyover_tree tree;
+	if (!world_recovery_read_copyover_object_record(buf, len, &tree))
 		return nullptr;
 	recovery_plan plan;
+	const size_t tree_size = sizeof(tree.record) + tree.items.size() * sizeof(tree.items[0]);
 	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size))
 		return nullptr;
-	std::vector<item_ownership_runtime_entry> authoritative(plan.authority_items.size());
-	const size_t custody_bytes = authoritative.size() * sizeof(item_ownership_runtime_entry);
-	if (len - tree_size != custody_bytes)
-		return nullptr;
-	if (custody_bytes)
-		memcpy(authoritative.data(), buf + tree_size, custody_bytes);
-	for (size_t index = 0; index < authoritative.size(); ++index)
-	{
-		const auto &entry = authoritative[index];
-		const auto &item = plan.authority_items[index];
-		if (entry.item_uid != item.item_uid || entry.vnum != item.vnum ||
-		    !entry.root_item_uid || !item_owner_identity_valid(entry.owner) ||
-		    entry.state != item_custody_state::active)
-			return nullptr;
-	}
 	redis_floor_runtime_set_materializing(true);
-	const bool restored = materialize_plan(plan, authoritative);
+	const bool restored = materialize_plan(plan, tree.custody);
 	redis_floor_runtime_set_materializing(false);
 	return restored ? find_object_uid(plan.objects.front().items.front().item_uid) : nullptr;
 }

@@ -17,6 +17,26 @@ aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready 
 identity qualification, combined classification and admission remain open.
 No operational repair started.
 
+Current copyover evidence chunk: `branch/issue-67-copyover-evidence`, based on
+PR #146; implemented and validated, publication pending. Outcome: pin and frame-validate the bounded native copyover image before
+boot, restore exactly that image, preserve failed/uncertain images and newer
+published files, project ground UID trees and label NPC vnum hints as fresh
+reconstruction. Non-goals: fabricate a physical UID for historical NPC hints,
+introduce another NPC format/writer, choose a conflict winner or operate production.
+Files: existing copyover reader and pure native-tree handoff inspector, boot caller,
+population projection, focused fixtures and this plan. Proof: real save/exec/recover,
+framing/truncation/version failures, unchanged pinned input after replacement,
+complete NPC vectors and field/custody preservation, backend builds and checks.
+
+Ablation decision: retain the plan's explicit proven-absent non-durable NPC
+predecessor route. Vnum-only NPC images are reconstruction requests, not stable
+physical UID payloads. Fresh admission must still wait for complete evidence and
+must never bypass another saved/canonical UID. A new NPC item format would also
+need to replace separately restored shop stock; it is unnecessary to enforce
+that admitted-creation contract. Do not add a parallel ownerless item loader or
+invent database/NPC custody merely to deserialize these hints. This does not
+waive any admission, availability, rollback or recovery acceptance requirement.
+
 Focused repair ready for review in [PR #145](https://github.com/LuminariMUD/Duris/pull/145):
 `branch/issue-67-recovery-floor-overlap`, based on PR #144. Implementation commit:
 `b988dc7b5e794f5033cdbf41197f850926032291`. Outcome: retain floor trees with unseen child UIDs instead of
@@ -359,9 +379,11 @@ Dependencies: none. Complete before choosing schema changes.
   release a reservation. Bound scans and retain continuation/error outcomes.
 - [ ] Explicitly account for recovered NPC equipment: current recovery omits
   authoritative NPC item identity and reconstructs items from reset templates.
-  Choose whether the canonical UID must be retained in recovery or a proven
-  absent, non-durable predecessor may be replaced. A fresh reconstruction UID
-  must never bypass an existing saved/canonical copy.
+  Selected route: preserve reconstruction as a fresh-admission request only after
+  complete evidence proves that a non-durable predecessor is not recoverable
+  elsewhere. This source request does not itself prove absence or justify a UID.
+  A known saved/canonical copy must block it. Enforcement and executable NPC
+  availability/rollback qualification remain required before checking this item.
 
 Exit: documented reachable paths, identity states, and executable failing cases;
 an implementation-ready boot/admission design consistent with memory authority.
@@ -1019,6 +1041,120 @@ inventory or reducing the required availability of proved-absent artifacts.
 Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
+
+### Native copyover pinning and evidence — AR-01/AR-02 prerequisite
+
+Implemented on `branch/issue-67-copyover-evidence`, based on PR #146; publication
+pending. `copyover_prepare_boot` now runs before the existing early custody reap.
+It distinguishes unprepared/absent/ready/failed state, validates the complete
+selected native file read-only, then claims a valid regular file by an atomic
+no-replace rename to `<COPYOVER_STATE_FILE>.recovering`. Invalid originals and
+non-file paths remain in place. Existing claims are never replaced or selected
+against another publication. After claiming, the reader seals the actual claimed
+bytes and their inode/size/mtime/ctime identity. Only that ready cut is published.
+A failed/absent result stays fixed for the boot; it cannot silently become a
+newer source later. Source-file readiness helpers use the same prepared state.
+
+The versioned decoder is shared by preflight, source projection and the actual
+restorer. It retains complete NPC affect/inventory vectors, replacing the old
+silent 64-affect/256-item truncation. Its allocations follow the bounded input
+bytes. It preserves the established version-12 pre-transport and version-13–15
+pre-shop-identity NPC widths and reads version 16 unchanged. The producer updates
+short affects **before** recording their count, and explicitly zeroes the entire
+legacy carried-item wire entry. Older file writers left its UID bytes
+uninitialized; those bytes are never promoted to physical identity evidence.
+No native file-format version or NPC item format is added.
+
+Ground tree/custody inspection is extracted from the actual copyover materializer
+into `world_recovery_read_copyover_object_record`. The same pure native numeric,
+string, parent/UID and live-custody checks now serve both inspection and real
+restoration. Captured logical corpse/storage custody may differ from physical
+room/tree roots; it is preserved without synthetic owners or SQL reconciliation.
+`artifact_population_read_copyover` emits physical ground UID projections plus
+separate `reconstruction` rows for NPC vnum hints. It retains full ground flags,
+parent/root, source inode/ordinal and captured live custody, and NPC prototype,
+instance, room, birthplace and shop provenance. The NPC hint rows have no
+trustworthy item UID or saved flag override and do not count as physical presence
+or as proof of absence. Independent storage evidence still must be correlated.
+
+Inspection reads at most 256 MiB, opens nonblocking and rejects non-regular data,
+checks complete header/descriptor/telemetry/NPC/ground/door framing and exact EOF,
+and refuses repeated physical ground UIDs. Read failure leaves the previous
+snapshot intact; absent is reported only for a missing file in an available
+parent. Item projection uses the existing one-million-record bound, including
+reconstruction requests. Neither inspector queries templates, constructs an
+object, touches sockets, nor reads/mutates runtime custody.
+
+The actual restorer reads the retained memory image, never reopens the publication
+path, and cannot replay a successful load. A failed requested copyover stops boot
+before any partial world reaches the game loop. Failed claimed images remain for
+owner disposition; an invalid original is not moved. Success consumes only the
+unchanged claim and leaves a newer publication or changed claim untouched.
+`copyover_clear_boot` releases the retained bytes only after the boot consumers.
+The generic source acquisition/classification for SQL, flat and Redis still must
+move ahead of cleanup and forced population; this chunk does not make cleanup
+safe on incomplete evidence.
+
+Publication uses a private `mkstemp` staging file, validates it before promotion,
+and uses no-replace rename before any client disconnect/FD mutation. Both an
+existing publication and a retained claim refuse a new copyover before terminal
+saves. This includes a prior failed exec: its published source is not overwritten
+without review. There is no automatic deletion or first-image winner. The default
+publication/claim/staging names are ignored by Git. The real-journey client wrapper
+also now accepts the shared reconnect helper's `source_host` argument; its former
+signature failed the fixture before copyover was exercised.
+
+Passed:
+
+```sh
+python3 tests/run_regression_tests.py --match copyover_evidence
+python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_shopkeeper_copyover_compat.py
+python3 tests/async/test_copyover_save_guards.py
+python3 tests/async/test_copyover_failure_runtime.py
+python3 tests/async/test_telemetry_copyover_format.py
+python3 tests/async/test_world_singletons.py
+python3 tests/async/test_world_recovery_pipeline.py
+python3 tests/async/run_copyover_runtime_journey.py /home/aiwithapex/projects/duris-issue67-plan/bin/analysis/issue67/flat-memory-build/server/dms_new
+make -C src -j2
+```
+
+The new automatically discovered native fixture uses ASan/terminating UBSan and
+actual producers/decoders. It exercises known native version gates/record widths
+12–16, short-affect expiration/count consistency, complete 300-item NPC vectors,
+zeroed wire bytes, physical UID/custody versus reconstruction provenance,
+truncation/count/trailing/oversize errors, missing/unavailable parents, FIFO and
+non-file refusal, retained output, fixed failed/absent state and competing images.
+The process replacement fixture uses actual save/exec/recover for normal, newer
+publication and changed-claim cases, verifies physical tree/custody preservation
+and refuses replay. Its competing-publication injection proves no-replace refusal
+before exec with the live objects/custody intact. Removing only that publication
+flag makes the case fail at the expected before-exec assertion. The early claim prototype's nonregular-input case reproduced a directory move;
+the final validation path keeps both directories and symlinks in place before any
+claim. These development/ablation logs are retained separately.
+
+The real flat server journey passes ordinary Telnet and MCCP: failed open,
+pending publication/claim refusal, non-preservable-session refusal, subsequent
+look/save, real exec, original-connection recovery, acknowledged save and account
+menu. Native SQL/client-free builds, formatting, compatible staged clang-tidy and
+whitespace checks pass. All fixture state paths are explicit/private and do not
+inherit a user's configured copyover target. Evidence is under ignored
+`bin/analysis/issue67/copyover-evidence-*`. No hardware-power-loss or arbitrary
+historical native-platform ABI qualification is inferred from these results.
+
+Next: assemble the consistent durable and pinned recovery sources **before**
+`reap_unheld_player_items_at_boot`, including a read-only check of both publication
+and retained-claim paths on ordinary cold boots. Never ignore a retained image or
+choose the newest/first file. Fetch independent custody for recovery-only UIDs;
+keep captured warm-handoff memory authority distinct from stale SQL. Resolve
+prototype/effective flags and stage canonical or unresolved vnums in the existing
+artifact authority before `ne_init_events`. Preserve source/owner qualification
+for same-UID hydration so a stale vnum fallback cannot materialize an offline
+owner's UID at the wrong location. Prove the selected NPC reconstruction absence
+rule; missing UID or vnum hints alone never grant admission. Then complete shared
+creation/hydration/inspection and retirement/reward guards and the remaining
+AR-01–AR-07 matrix. No production read, migration, cleanup, repair, deployment,
+merge or release tag occurred.
 
 ### Numeric SQL population source pages — AR-01/AR-02 prerequisite
 

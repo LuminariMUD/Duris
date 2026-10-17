@@ -691,6 +691,10 @@ int main(int argc, char **argv)
 	if (persistence_mode_requires_mysql() && !sql_hydrate_item_owner_revisions())
 		logit(LOG_STATUS,
 		      "Authoritative item owner revisions unavailable; movement fails closed.");
+	if (copyover_boot && copyover_prepare_boot() != copyover_boot_result::ready)
+		fatal_boot_error(
+			"copyover",
+			"No validated copyover image is available; inspect the publication and .recovering paths before retrying");
 	reap_unheld_player_items_at_boot();
 
 	redis_init();
@@ -847,7 +851,7 @@ int run_the_game(int port, int sslport)
 
 	SetSpellCircles(); /* spells circlewise done with pure math */
 
-	// Pin recovery before boot_db, so its later materialization uses this cut.
+	// Redis pins here; native copyover was pinned before early custody cleanup.
 	if (!copyover_boot)
 	{
 		const auto recovery = redis_world_prepare_boot();
@@ -2485,6 +2489,10 @@ void game_loop(int port, int sslport)
 			// recalculate avg mob level now that mobs are restored
 			calc_zone_mob_level();
 		}
+		else
+			fatal_boot_error(
+				"copyover",
+				"Recovery failed; no source was consumed and no partial world will enter the game loop");
 	}
 
 	// redis crash recovery - restore world state from redis snapshot

@@ -25,6 +25,8 @@ enum class artifact_payload_domain : uint8_t
 	auction_pickup,
 	redis_generation,
 	redis_floor,
+	copyover_ground,
+	copyover_reconstruction,
 };
 
 enum class artifact_payload_role : uint8_t
@@ -32,6 +34,7 @@ enum class artifact_payload_role : uint8_t
 	stored,
 	delivery,
 	history,
+	reconstruction,
 };
 
 // Raw payload provenance is retained even when its UID/owner is missing or its
@@ -98,6 +101,13 @@ struct artifact_recovery_population
 // Success is source decoding, not complete recovery/population qualification.
 // Failure preserves output. Encoded record/aggregate limits apply.
 unsigned int artifact_population_read_recovery(const redis_world_boot_snapshot &snapshot,
+					       artifact_recovery_population *population);
+
+struct copyover_boot_snapshot;
+// Ground trees carry physical UIDs and captured live custody. Historical NPC
+// vnums are reconstruction requests with no trustworthy item identity, not
+// physical candidates or proof of absence. Admission must qualify them separately.
+unsigned int artifact_population_read_copyover(const copyover_boot_snapshot &snapshot,
 					       artifact_recovery_population *population);
 
 #ifndef __NO_MYSQL__

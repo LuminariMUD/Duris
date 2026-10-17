@@ -20,6 +20,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <vector>
+#include "item/item_ownership_runtime.h"
 
 constexpr uint32_t WORLD_RECOVERY_SCHEMA_VERSION = 13;
 constexpr uint32_t WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED = 1U << 0;
@@ -120,6 +122,17 @@ struct world_recovery_authority_item
 	int32_t room_vnum;
 	int32_t vnum;
 };
+
+struct world_recovery_copyover_tree
+{
+	world_recovery_object_record record = {};
+	std::vector<world_recovery_item_snapshot> items;
+	std::vector<item_ownership_runtime_entry> custody;
+};
+// Pure native handoff inspection: no templates, materialization or custody writes.
+// Failure preserves output.
+bool world_recovery_read_copyover_object_record(const char *data, size_t size,
+						world_recovery_copyover_tree *tree);
 
 struct world_recovery_health
 {

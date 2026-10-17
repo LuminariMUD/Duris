@@ -27,6 +27,8 @@ program = r'''
 #include <cstdio>
 #include <cstring>
 const char *copyover_state_file() { return "compat-copyover.dat"; }
+const copyover_boot_snapshot *copyover_boot_evidence() { return nullptr; }
+copyover_boot_result copyover_boot_state() { return copyover_boot_result::unprepared; }
 '''+legacy+"\n"+"\n".join(function(s) for s in (
     "static bool copyover_version_supported(",
     "static size_t copyover_mob_bytes_for_version(",

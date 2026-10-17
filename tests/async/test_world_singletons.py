@@ -47,6 +47,6 @@ assert copyover.count('transport_restore(mob, mob_entry.transport);') == 2
 assert copyover.count('char_to_room(mob, rnum, -1);') == 2
 assert 'char_to_room(ch, save_room, -1);' in copyover
 save = copyover[copyover.index('bool copyover_save('):copyover.index('// find_player_by_name')]
-assert save.index('snapshot_shopkeepers_for_copyover()') < save.index('fopen(copyover_tmp')
+assert save.index('snapshot_shopkeepers_for_copyover()') < save.index('mkstemp(copyover_tmp')
 assert 'copyover_has_durable_shopkeepers()' in (ROOT / 'src/world/db.c').read_text()
 print('world singleton lifecycle and recovery compatibility passed')
