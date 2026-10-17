@@ -7,23 +7,23 @@ The initial inventory contained 31 unresolved inline threads across 14 PRs plus 
 additional finding in #139's review body. #132/#133 repairs are already published
 and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
 
-Current work: #142, `branch/issue-67-flat-population-sources`, in
+Current work: #143, `branch/issue-67-sql-population-blobs`, in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
-#138 (`ba2f3f79f`), #139 (`5df732237`) and #141 (`1bf1d5986`) are pushed;
-their inline threads are resolved and #139's extra review-body finding is addressed.
-#140's carry-forward passed isolated Redis, writer and native build checks.
+#138 (`ba2f3f79f`), #139 (`5df732237`), #141 (`1bf1d5986`) and #142
+(`e29ab3926`) are pushed with their inline threads resolved. #139's extra review-body
+finding is addressed. Parent repairs are being carried through the stack; the
+#143 merge retains both normalized locker joins and item quarantine projection.
 
-#142 outcome: test inaccessible-store failure atomically under ordinary users and
-root. The root before run reproduces the chmod-based assertion failure. Use a
-regular file at the expected directory path, restore the fixture, then check EIO,
-unchanged output and successful reread. This changes only the test. The parent
-merge retains both the legacy-pet fixture and #141's renamed/deleted corpse cases.
-The new revision-presence field remains explicitly false for the flat reader's
-currently unknown owner revisions; it must not imply that zero is known evidence.
-Root and non-root native runs pass. The merged SQL-reader fixtures and maintained
-schema queries pass, along with the native build and formatting checks. Evidence:
-`bin/analysis/pr142-{root-before,root-after,user-after,carryforward-sql,build}.log`.
-Publication follows; next address both #143 blob-reader findings.
+#143 outcome: preserve unrepaired collector quarantine independently of item-level
+quarantine; reject embedded payloads unless they meet the existing coin writer's
+singleton/UID/vnum/type/nonnegative-value contract. Also carry #141's owner-revision
+presence flag through the new blob custody attachment. Reuse the current queries,
+codec and storage constants, with no new schema or loader. The disposable SQL
+before cases reproduce lost collector quarantine and accepted non-coin history.
+The repaired disposable SQL suite passes collector-only/repaired quarantine,
+non-money and all four negative coin-value cases, rollback/output preservation,
+and missing versus zero blob owner revisions on the maintained schema. Native
+build and format/tidy pass. Logs: `bin/analysis/pr143-*.log`. Publication follows.
 
 **Carry-forward requirement:** populate `custody_owner_revision_found` from actual
 revision authority in later readers and have the #148 classifier reject missing
@@ -34,8 +34,8 @@ PRs move the shared projection type.
 Remaining review sequence (initial inventory, oldest first):
 - #139: all 3 findings addressed and published.
 - #141: all 3 owner/revision evidence findings addressed and published.
-- #142: 1 root-compatible unreadable-store regression finding — in progress.
-- #143: 2 collector quarantine/embedded-payload findings.
+- #142: root-compatible unreadable-store regression addressed and published.
+- #143: 2 collector quarantine/embedded-payload findings — in progress.
 - #144: 3 Redis retry/state/test-contract findings.
 - #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
 - #149: 1 recovered-NPC evidence completeness finding.

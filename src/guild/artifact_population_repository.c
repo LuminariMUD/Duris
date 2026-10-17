@@ -2,11 +2,13 @@
 
 #ifndef __NO_MYSQL__
 #include "guild/artifact_identity.h"
+#include "core/defines.h"
 #include "economy/collector_codec.h"
 #include "economy/auction_command.h"
 #include "item/legacy_object_identity.h"
 #include "player/player_snapshot_codec.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cerrno>
 #include <cstring>
@@ -243,6 +245,7 @@ unsigned int attach_blob_custody(MYSQL *connection, std::vector<artifact_payload
 			if (item.item_uid == custody.item_uid)
 			{
 				item.custody_found = row[11] != nullptr;
+				item.custody_owner_revision_found = row[9] != nullptr;
 				item.custody = item.custody_found ? custody :
 								    item_ownership_runtime_entry{};
 				item.source_quarantined = item.source_quarantined || quarantined;
@@ -303,7 +306,8 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			key = "i.listing_id";
 			fields =
 				"i.listing_id,i.beneficiary_pid,i.listing_id,i.item_uid,0,1,"
-				"IF(i.status IN (2,3),0,2),10,i.listing_id,i.death_operation_id,0,"
+				"IF(i.status IN (2,3),0,2),10,i.listing_id,i.death_operation_id,"
+				"EXISTS(SELECT 1 FROM collector_reconciliation_quarantine q WHERE q.listing_id=i.listing_id AND q.repaired_at IS NULL),"
 				"OCTET_LENGTH(i.item_blob),LEFT(i.item_blob,131073),i.record_blob,i.beneficiary_pid,i.status";
 			source = "collector_listings i";
 			break;
@@ -429,6 +433,12 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 						       EINVAL;
 				if (decoded.size() != 1 || decoded[0].object_uid != indexed_uid ||
 				    (indexed_vnum && decoded[0].vnum != indexed_vnum))
+					return EINVAL;
+				if (domain == artifact_payload_domain::embedded &&
+				    (decoded[0].type != ITEM_MONEY ||
+				     std::any_of(decoded[0].values.begin(),
+						 decoded[0].values.begin() + 4,
+						 [](int32_t value) { return value < 0; })))
 					return EINVAL;
 				item.item_uid = decoded[0].object_uid;
 				item.vnum = decoded[0].vnum;
