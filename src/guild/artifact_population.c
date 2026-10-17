@@ -187,6 +187,17 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			    row.domain > artifact_payload_domain::copyover_reconstruction ||
 			    row.role > artifact_payload_role::reconstruction)
 				return EINVAL;
+			if (row.item_uid && row.role == artifact_payload_role::history &&
+			    (row.source_quarantined || !row.custody_examined ||
+			     (row.custody_found &&
+			      (row.custody.state == item_custody_state::active ||
+			       row.custody.state == item_custody_state::quarantined))))
+			{
+				const auto prior = prior_uids.find(row.item_uid);
+				if (prior != prior_uids.end() && prior->second != row.vnum)
+					conflicting_uids.insert(row.item_uid);
+			}
+
 			if (row.item_uid && row.role != artifact_payload_role::history &&
 			    row.role != artifact_payload_role::reconstruction && !superseded(row))
 			{
