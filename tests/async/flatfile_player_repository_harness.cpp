@@ -383,6 +383,20 @@ static void retained_roots_case(const fs::path &path, bool unknown_root)
 	require(flatfile_player_snapshot_apply(root, retry, &error).outcome ==
 			player_save_apply_outcome::applied,
 		"save after retention reload: " + error);
+	auto pet_overlap = retry;
+	pet_overlap.revision = 6;
+	pet_overlap.components = PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY |
+				 PLAYER_COMPONENT_PETS;
+	auto conflicting_pet = original.pets.front();
+	conflicting_pet.pet_uid = 70042;
+	conflicting_pet.items = { unknown_root ? child : unknown };
+	conflicting_pet.items[0].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	pet_overlap.pets = { conflicting_pet };
+	const auto pet_refused = flatfile_player_snapshot_apply(root, pet_overlap, &error);
+	require(pet_refused.outcome == player_save_apply_outcome::terminal_failure &&
+			pet_refused.error_code == ESTALE,
+		"active pet/held inventory UID overlap accepted");
+	// The revision and foreign custody checks below prove refusal was atomic.
 	retry.revision = 6;
 	retry.retained_items.rows.pop_back();
 	require(flatfile_player_snapshot_apply(root, retry, &error).outcome ==

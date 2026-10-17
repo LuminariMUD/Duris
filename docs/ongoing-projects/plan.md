@@ -1,30 +1,32 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: #154 command-ring diagnostics
+## Latest review checkpoint: #155 payload retention
 
-Current branch: `branch/issue-67-fatal-boot-exit`, in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Carry-forward is
-published through #153 `14c74b1cb` (#150 `ff9e1599e`, #151 `cbfc324d1`, #152
-`b9ba6f24e`). Their relevant lifecycle, offline cleanup, report inspection,
-source-qualified recovery, logical custody, native/Redis boot and build checks pass.
-Latest inventory: 41 findings, 30 resolved, 11 outstanding before this repair.
+Current branch: `branch/issue-67-player-payload-retention`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #154 is published at
+`6f6f57fc8` and its thread is resolved. The refreshed inventory confirms no older
+outstanding threads: 41 findings total, 31 resolved, 10 remaining (#155:2,
+#156:3, #157:4, #162:1). Details: `bin/analysis/review-refresh-after-154.json`.
 
-#154 outcome: normal exit/signal writes an empty current-run command log; only
-fatal startup with no new commands preserves the previous file. Keep worker-safe
-fatal exit and populated-ring capture. Files: existing debug writer/fatal caller,
-public declaration and pfile utility stub, existing fatal-worker regression, this
-plan. A small boot-specific flush entry point supplies the distinct fatal policy
-without changing the no-argument signal/atexit writer. No runtime mode or storage
-format is added. Ordinary empty-ring exit reproduces the failure before repair.
-The regression now covers fatal exit with/without live workers, normal exit and
-signal flush, each with empty/populated rings. All cases pass after repair, as do
-the existing command-log test, native server build, pfile utility build, formatting
-and tidy. Logs: `bin/analysis/pr154-*`. Publication is next.
+#155 outcome: retain every raw source root sharing a nonzero UID with an unreadable
+row, regardless of parse order, while allowing independent inventory progress;
+reject a retained-inventory UID also present in an actively saved pet graph on
+SQL and flat storage. Files: existing SQL loader, SQL/flat save validation,
+existing disposable SQL/flat repository fixtures, this plan. Reuse the raw UID
+index and existing overlap sets; no new retention format or save path is needed.
+Proof: both invalid/valid row orders plus unrelated save/reload, pet/held collision
+with unchanged revision/custody, existing retained-row controls and backend builds.
+Both before-repair regressions failed in disposable storage. After repair, the
+SQL save/load claim suite passes both malformed/valid duplicate orders and pet
+collision refusal; the flat repository suite passes pet collision refusal with
+unchanged source revision and foreign custody. Unrelated inventory save/reload
+still succeeds with both duplicate roots retained. SQL and flat native builds,
+formatting and tidy pass. Evidence: `bin/analysis/pr155-*`. Publication is next.
 
-Next: #155 (2), #156 (3), #157 (4), #162 (1), with carry-forward through their
-intermediate PRs. Latest fetched details: `bin/analysis/review-refresh-after-150.json`.
-Refresh before closeout and return to newly reviewed older PRs. No production
-operations or PR merges have been performed in this review pass.
+The stack through #154 includes the prior copyover, classification, recovery,
+player lifecycle and diagnostic repairs. No production operations or PR merges
+have been performed. Publish #155 when verified, then continue through #156/#157
+and the no-finding intermediate PRs to #162; refresh before final closeout.
 ## Additional #141 review: saved-room source keys
 
 A subsequent review identified cross-key parents inside the same room. The reader

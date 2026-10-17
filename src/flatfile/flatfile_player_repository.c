@@ -1053,6 +1053,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		for (const auto &item : materialized.items)
 			if (item.object_uid)
 				active.insert(item.object_uid);
+		if (snapshot.components & PLAYER_COMPONENT_PETS)
+			for (const auto &pet : materialized.pets)
+				for (const auto &item : pet.items)
+					if (item.object_uid)
+						active.insert(item.object_uid);
 		const size_t offset = materialized.items.size();
 		for (auto &item : held_items)
 		{
