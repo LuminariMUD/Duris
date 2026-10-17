@@ -22,8 +22,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current inspection-role work: `branch/issue-67-artifact-hunt-inspection`, based
-on #156. Outcome: artifact hunt reads the original bounded player source cut,
+Current inspection-role checkpoint: [PR #157](https://github.com/LuminariMUD/Duris/pull/157),
+ready for review, `branch/issue-67-artifact-hunt-inspection`, based on #156. Outcome: artifact hunt reads the original bounded player source cut,
 including nested, retained and stale rows, without constructing characters/objects
 or changing live artifacts, timers, binding, custody or source payloads. Keep its
 current initial/filename discovery; a full store-wide audit remains AR-07.
@@ -38,7 +38,8 @@ materialization, replacing the duplicated worn/inventory repair loops with one
 raw source report. Objectful offline commands remain on their current path until
 the next role-migration chunk; do not label them all inspection.
 
-Hunt inspection checkpoint (2026-10-17, verification complete):
+Hunt inspection checkpoint (2026-10-17, PR #157):
+Implementation commit: `bfa360a99376cb5047018fd58ccc0d099ba669c0`.
 - Reproduced the original report extracting a live ground copy and updating tracking
   from its materialized offline copy. Ignored before log:
   `bin/analysis/issue67/hunt-inspection-before.log`.
@@ -66,15 +67,17 @@ Hunt inspection checkpoint (2026-10-17, verification complete):
   timer/soul and reward history. Frozen proof:
   `bin/analysis/issue67/hunt-inspection-gameplay.{log,json}`. The actual admission
   regression also passes. Both builds pass after the help-text clarification.
-  Final review, format/tidy and all focused checks pass; commit/push and open a
-  non-draft PR based on #156 next.
+  Final review, format/tidy and all focused checks pass. Committed/pushed as open,
+  non-draft PR #157 based on #156 and attached to this chat. No merge, deployment
+  or production operation occurred.
 - Discovery still uses names found under `Players/<initial>`, as the help now says.
   This is not the complete all-store AR-07 audit. Normal selected-store read/journal
   replay semantics are reused; forensic byte retention still needs a retained copy.
 
 Next objectful offline migration findings (not yet implemented):
-- Remove the `gameplay_items=false` restoration bypass only after the actual
-  maintenance callbacks are qualified; staff `load char` publishes a real PC.
+- With hunt now data-only, all objectful PC load paths can share admission and the
+  temporary `gameplay_items` bypass can be removed after the actual maintenance
+  callbacks are guarded; staff `load char` publishes a real PC.
 - `poof_loaded_owner` currently expires the vnum even when its loaded target was
   absent. A withheld source or nested artifact must not be interpreted as absence;
   target lookup/retirement must match the canonical UID and preserve refused data.
