@@ -1,5 +1,56 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Oldest-first code-review follow-up — 2026-10-17
+
+The current goal is to address every existing review finding, in PR creation order.
+The initial inventory contained 31 unresolved inline threads across 14 PRs plus one
+additional finding in #139's review body. #132/#133 repairs are already published
+and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
+
+Current work: #143, `branch/issue-67-sql-population-blobs`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+#138 (`ba2f3f79f`), #139 (`5df732237`), #141 (`1bf1d5986`) and #142
+(`e29ab3926`) are pushed with their inline threads resolved. #139's extra review-body
+finding is addressed. Parent repairs are being carried through the stack; the
+#143 merge retains both normalized locker joins and item quarantine projection.
+
+#143 outcome: preserve unrepaired collector quarantine independently of item-level
+quarantine; reject embedded payloads unless they meet the existing coin writer's
+singleton/UID/vnum/type/nonnegative-value contract. Also carry #141's owner-revision
+presence flag through the new blob custody attachment. Reuse the current queries,
+codec and storage constants, with no new schema or loader. The disposable SQL
+before cases reproduce lost collector quarantine and accepted non-coin history.
+The repaired disposable SQL suite passes collector-only/repaired quarantine,
+non-money and all four negative coin-value cases, rollback/output preservation,
+and missing versus zero blob owner revisions on the maintained schema. Native
+build and format/tidy pass. Logs: `bin/analysis/pr143-*.log`. Publication follows.
+
+**Carry-forward requirement:** populate `custody_owner_revision_found` from actual
+revision authority in later readers and have the #148 classifier reject missing
+revision authority. Preserve legitimate flat recovery by obtaining its real owner
+revision evidence before enforcing this check. Do not drop the flag when later
+PRs move the shared projection type.
+
+Remaining review sequence (initial inventory, oldest first):
+- #139: all 3 findings addressed and published.
+- #141: all 3 owner/revision evidence findings addressed and published.
+- #142: root-compatible unreadable-store regression addressed and published.
+- #143: 2 collector quarantine/embedded-payload findings — in progress.
+- #144: 3 Redis retry/state/test-contract findings.
+- #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
+- #149: 1 recovered-NPC evidence completeness finding.
+- #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
+- #154: 1 fatal-boot diagnostic retention finding.
+- #155: 2 retained-row/pet overlap findings.
+- #156: 3 source-ID, foreign-vnum and foreign-owner qualification findings.
+- #157: 4 audit completeness/noise/quantity/revision findings.
+- #162: 1 pending-action preservation finding.
+
+Full fetched review/thread bodies and pagination evidence are retained privately in
+`duris-issue67-delivery/bin/analysis/open-review-details.json`. Every fetched page
+was complete. Refresh live reviews before final closeout. The implementation
+checkpoint below is historical context for this PR, not the current review status.
+
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity

@@ -625,6 +625,10 @@ int main(int argc, char **argv)
 	       embedded.extra_flags == (1U << 28));
 	assert(find(rows, 906, artifact_payload_domain::embedded, 0).role ==
 	       artifact_payload_role::history);
+	for (const auto &row : rows)
+		if (row.custody_found)
+			assert(!row.custody_owner_revision_found &&
+			       row.custody.owner_revision == 0);
 	const size_t expected = rows.size();
 	for (const auto &path :
 	     { root / "players/42.snapshot", root / "domains/locker_catalog",
@@ -651,10 +655,16 @@ int main(int argc, char **argv)
 	assert(artifact_population_read_flat_payloads(root.string(), &rows, &error) == EINVAL);
 	assert(rows.data() == before && rows.size() == expected);
 	fs::remove(root / "players/042.snapshot");
-	fs::permissions(root / "domains", fs::perms::owner_read, fs::perm_options::replace);
+	// A non-directory store is inaccessible even to root, which bypasses chmod.
+	fs::rename(root / "domains", root / "domains.saved");
+	{
+		std::ofstream blocked(root / "domains");
+		blocked << "not a store directory";
+	}
 	const auto unavailable =
 		artifact_population_read_flat_payloads(root.string(), &rows, &error);
-	fs::permissions(root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	assert(fs::remove(root / "domains"));
+	fs::rename(root / "domains.saved", root / "domains");
 	assert(unavailable == EIO && rows.data() == before && rows.size() == expected);
 	assert(!artifact_population_read_flat_payloads(root.string(), &rows, &error) &&
 	       rows.size() == expected);

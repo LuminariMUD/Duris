@@ -2,11 +2,13 @@
 
 #ifndef __NO_MYSQL__
 #include "guild/artifact_identity.h"
+#include "core/defines.h"
 #include "economy/collector_codec.h"
 #include "economy/auction_command.h"
 #include "item/legacy_object_identity.h"
 #include "player/player_snapshot_codec.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cerrno>
 #include <cstring>
@@ -61,7 +63,9 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 		owner_context = "COALESCE(i.chest_id,public_chest.id,0)";
 		metadata =
 			" LEFT JOIN private_chests public_chest ON "
-			"public_chest.locker_id=i.locker_id AND i.chest_id IS NULL AND public_chest.is_public=1";
+			"public_chest.locker_id=i.locker_id AND i.chest_id IS NULL AND public_chest.is_public=1"
+			" LEFT JOIN private_chests parent_public_chest ON "
+			"parent_public_chest.locker_id=p.locker_id AND p.chest_id IS NULL AND parent_public_chest.is_public=1";
 		payload_owner_type = item_owner_type::locker;
 		break;
 	case artifact_payload_domain::account_locker:
@@ -71,10 +75,10 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 	case artifact_payload_domain::corpse:
 		table = "corpse_items";
 		owner = "corpse_id";
-		owner_id = "IF(pd.pid>0 AND c.save_id BETWEEN 1 AND 4294967295,"
-			   "((CAST(pd.pid AS UNSIGNED)<<32)|CAST(c.save_id AS UNSIGNED)),0)";
-		metadata = " LEFT JOIN corpses c ON c.id=i.corpse_id "
-			   "LEFT JOIN player_data pd ON LOWER(pd.name)=LOWER(c.player_name)";
+		owner_id =
+			"IF(c.value3 BETWEEN 1 AND 4294967295 AND c.save_id BETWEEN 1 AND 4294967295,"
+			"((CAST(c.value3 AS UNSIGNED)<<32)|CAST(c.save_id AS UNSIGNED)),0)";
+		metadata = " LEFT JOIN corpses c ON c.id=i.corpse_id";
 		payload_owner_type = item_owner_type::corpse;
 		break;
 	case artifact_payload_domain::room:
@@ -102,7 +106,7 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 		const std::string owner_field = owner;
 		const std::string parent_context =
 			domain == artifact_payload_domain::locker ?
-				" OR (p.chest_id IS NOT NULL AND i.chest_id IS NOT NULL AND p.chest_id<>i.chest_id)" :
+				" OR (COALESCE(p.chest_id,parent_public_chest.id,0)<>COALESCE(i.chest_id,public_chest.id,0))" :
 				"";
 		const std::string sql =
 			"SELECT i.id,i.obj_uid,i.container_id,p.obj_uid,i." + owner_field + "," +
@@ -115,8 +119,8 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 			"rev.revision," +
 			owner_id + "," + owner_context +
 			",EXISTS(SELECT 1 FROM item_ownership_quarantine q WHERE q.item_uid=i.obj_uid AND q.repaired_at IS NULL) FROM " +
-			table + " i" + metadata + " LEFT JOIN " + table +
-			" p ON p.id=i.container_id LEFT JOIN item_current_owner own ON "
+			table + " i LEFT JOIN " + table + " p ON p.id=i.container_id" + metadata +
+			" LEFT JOIN item_current_owner own ON "
 			"own.item_uid=i.obj_uid LEFT JOIN item_owner_revision rev ON "
 			"rev.owner_type=own.owner_type AND rev.owner_id=own.owner_id AND "
 			"rev.owner_context_id=own.owner_context_id WHERE i.id>" +
@@ -175,6 +179,7 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 			item.extra_flags_present = row[7] != nullptr;
 			item.parent_owner_disagrees = disagreement;
 			item.custody_found = row[11] != nullptr;
+			item.custody_owner_revision_found = row[20] != nullptr;
 			item.custody.owner.type = static_cast<item_owner_type>(owner_type);
 			item.custody.state = static_cast<item_custody_state>(state);
 			staged.next_row_id = item.row_id;
@@ -240,6 +245,7 @@ unsigned int attach_blob_custody(MYSQL *connection, std::vector<artifact_payload
 			if (item.item_uid == custody.item_uid)
 			{
 				item.custody_found = row[11] != nullptr;
+				item.custody_owner_revision_found = row[9] != nullptr;
 				item.custody = item.custody_found ? custody :
 								    item_ownership_runtime_entry{};
 				item.source_quarantined = item.source_quarantined || quarantined;
@@ -300,7 +306,8 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			key = "i.listing_id";
 			fields =
 				"i.listing_id,i.beneficiary_pid,i.listing_id,i.item_uid,0,1,"
-				"IF(i.status IN (2,3),0,2),10,i.listing_id,i.death_operation_id,0,"
+				"IF(i.status IN (2,3),0,2),10,i.listing_id,i.death_operation_id,"
+				"EXISTS(SELECT 1 FROM collector_reconciliation_quarantine q WHERE q.listing_id=i.listing_id AND q.repaired_at IS NULL),"
 				"OCTET_LENGTH(i.item_blob),LEFT(i.item_blob,131073),i.record_blob,i.beneficiary_pid,i.status";
 			source = "collector_listings i";
 			break;
@@ -426,6 +433,12 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 						       EINVAL;
 				if (decoded.size() != 1 || decoded[0].object_uid != indexed_uid ||
 				    (indexed_vnum && decoded[0].vnum != indexed_vnum))
+					return EINVAL;
+				if (domain == artifact_payload_domain::embedded &&
+				    (decoded[0].type != ITEM_MONEY ||
+				     std::any_of(decoded[0].values.begin(),
+						 decoded[0].values.begin() + 4,
+						 [](int32_t value) { return value < 0; })))
 					return EINVAL;
 				item.item_uid = decoded[0].object_uid;
 				item.vnum = decoded[0].vnum;
