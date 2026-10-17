@@ -1,5 +1,31 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review follow-up: atomic maintenance captures (#139)
+
+Active branch: `branch/issue-67-flat-artifact-cache`, worktree
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. A full refresh found
+six additional findings: two #139 review-body findings, #156 legacy-pet item-count
+accounting, #158 trusted-holder expiry, and two #161 swap safeguards. Known total:
+48 findings, 42 addressed, six outstanding. Details are in
+`bin/analysis/review-refresh-after-162.json`; #170/#171 have no findings in that cut.
+The #165 carry-forward is preserved locally at `d5ee23ad4`, unvalidated/unpushed.
+
+#139 outcome: one owner's war timer burn is one immutable capture, and fixit binds
+and resets the timer in the same capture. Reuse the existing SQL/flat complete-row
+builders and ordered writer retry; refuse admission without changing live war
+timers. Do not add a retry registry or new persistence format. Files: existing
+artifact service, existing SQL/flat snapshot fixtures, this plan. Proof: actual war
+callback emits one job, fixit succeeds with one writer slot and its first image has
+both fields, flat multi-record durability/retry and queue refusal, required builds.
+Both regressions fail before repair. After repair, the actual SQL war callback
+queues one transaction; flat war capture passes queue-refusal, shared-receipt I/O
+retry and unrelated-owner controls; fixit's first committed image contains both
+fields with one writer slot. SQL/flat artifact suites, both native builds, format
+and tidy pass (`bin/analysis/pr139-atomic-*`, `pr139-compound-*`, `pr139-fixit-before.log`).
+Publication is next; the six-finding count above is the pre-repair snapshot.
+After #139, address #156/#158/#161 in order and propagate the new fixes through the
+existing stack, retaining and reusing earlier valid evidence.
+
 ## Oldest-first code-review follow-up — 2026-10-17
 
 The current goal is to address every existing review finding, in PR creation order.
