@@ -1,5 +1,18 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — all-souls reset admission (#139)
+
+Outcome: reject a refused all-souls batch without changing live bindings or
+creating individual dirty retries. Build the existing atomic capture from a local
+reset value, then publish memory changes only after queue acceptance. Files:
+existing reset function, existing SQL/flat snapshot fixtures and this plan.
+No new retry registry or persistence format. Native SQL regression reproduces the
+partial-retry bug before repair. SQL and flat fixtures, both native backend builds,
+formatting and diff checks pass (`bin/analysis/pr139-reset-*.log`).
+This is a later review finding (`PRRT_kwDOVA3mlM6tguBO`) from the full 15:16 UTC
+inventory; #161 offline refusal is already published as `7920d0675`.
+
+
 ## Review follow-up: atomic maintenance captures (#139)
 
 Repair branch: `branch/issue-67-flat-artifact-cache`, published as `10897d620`; worktree
