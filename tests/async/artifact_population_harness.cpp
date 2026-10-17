@@ -167,6 +167,19 @@ int main()
 	expect(classify({ current }, { { 902, 111, state::present } }), state::unresolved, 0, 0,
 	       reason::unqualified_payload);
 
+	// A canonical UID seen under another vnum is contradictory evidence for
+	// its old identity too, even when the foreign payload is explicitly ordinary.
+	for (const uint64_t saved_flags : { uint64_t{ 0 }, uint64_t{ ITEM_ARTIFACT } })
+	{
+		auto foreign = current;
+		foreign.vnum = foreign.custody.vnum = 901;
+		foreign.extra_flags = saved_flags;
+		expect(classify({ foreign }, { { 900, 111, state::present } }), state::present, 111,
+		       0, reason::unqualified_payload);
+		expect(classify({ foreign }, { { 900, 111, state::retired } }), state::retired, 111,
+		       0, reason::unqualified_payload);
+	}
+
 	// Missing evidence never becomes absence; retained identities are not erased.
 	expect(classify({}, {}, false), state::unresolved, 0, 0, reason::incomplete);
 	expect(classify({ current }, { { 900, 111, state::present } }, false), state::present, 111,

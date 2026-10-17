@@ -1,40 +1,28 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: #149 boot assembly
+## Latest review checkpoint: native NPC completeness on #149
 
 Current branch: `branch/issue-67-boot-population`, in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Parent merges retain
-all repairs through #148. #147's two new findings are fixed in `3ff3f3f64`, pushed
-and resolved; #148's four findings are fixed in `7e3bc3837`, with carry-forward head
-`ea6cf988c`. Twenty findings are resolved; fifteen remain in the latest inventory.
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Latest review inventory
+contains 41 findings: 29 resolved, 12 remaining. #147 follow-up `d41067fba` and #148
+follow-up `f27d4950a` are pushed with their threads resolved and merged here.
+#150's three lifecycle findings are fixed in published `d429a3736`; #151 is published
+at `bbea4f9f6`. Those branches still need the newest #147/#148/#149 carry-forward.
 
-#149 outcome: Redis NPC projections must prevent a claim of complete absence
-until their reset reconstruction is qualified. Keep ground-only and superseded
-Redis/native handoff controls working. Finish carrying actual owner-revision
-presence through native capture and combined-source custody reads, with missing
-durable revision authority remaining a conflict. Clear stale serialized custody
-hints before independent acquisition. Files: existing boot/recovery/population
-readers and their existing native/SQL/flat harnesses, this plan. Proof: actual boot
-assembler/classifier plus backend acquisition tests, copyover evidence and native
-builds. No NPC format, reset-mapping subsystem or operational repair is added.
-The NPC-only regression fails before repair. After repair, the boot assembler and
-classifier (ASan/UBSan), copyover evidence, flat source reader (UBSan), disposable
-SQL source reader against the maintained schema, recovery transaction contract,
-SQL/flat native builds, formatting and tidy pass. The merge's stale transaction
-assertions were reconciled and the executable contract rerun successfully.
-Revision-presence integration through combined acquisition is complete, including
-clearing stale supplied authority when the independently read UID is missing and
-preserving selected native capture authority. Publication is the remaining step.
+#149 outcome: native NPC VNUM-only reconstruction must not prove absence or erase
+an established canonical UID. Make combined recovery evidence incomplete whenever
+native reconstruction rows remain, including retained unselected native images.
+Reuse the existing aggregate-completeness boundary; add no format, identity guess,
+reset-mapping framework or operational repair. Files: existing boot assembler,
+existing native boot harness, this plan. Proof: selected and retained NPC hints,
+prior canonical UID preservation, ground-only/native controls, native build/tidy.
+The prior Redis-NPC and real revision-authority repairs remain in `91f31995b`.
 
-#148 validation passed: SQL/flat builds, classifier ASan/UBSan, flat catalog,
-capture/reload, feeding refusal, population revisions, SQL snapshot/cache tests.
-Flat v3 records the exact identity-only marker and reads v1/v2; old unresolved v2
-rows remain inherently ambiguous because those bytes lack the marker.
-#147 validation passed: raced symlink/inode/claimed-inode replacement, exact and
-oversized vectors, all supported formats/pinning under ASan/UBSan, real
-save/exec/recover custody, save guards, native build and tidy. NPC vectors use the
-existing 512-entry recovery-tree budget; the full 80-affect/300-item control passes.
-Evidence: `bin/analysis/pr147-review-*`, `pr148-*`, and ongoing `pr149-*`.
+Next: publish this #149 follow-up, carry through #150/#151, then #152/#153 and
+address #154 (1), #155 (2), #156 (3), #157 (4), #162 (1). Latest fetched details:
+`bin/analysis/review-refresh-after-150.json`. Refresh again before final closeout.
+No production operations or PR merges are part of this review pass.
+
 
 ## Additional #141 review: saved-room source keys
 
