@@ -13,12 +13,15 @@ in PR #138, and the common flat artifact authority is ready in PR #139 on
 `branch/issue-67-flat-artifact-cache`. Numeric/flat/SQL blob readers and the SQL snapshot
 aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready in
 [PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
-`branch/issue-67-pinned-recovery-evidence`. Pinned Redis item/NPC projections are ready in PR #146. Copyover and NPC item
-identity qualification, combined classification and admission remain open.
+`branch/issue-67-pinned-recovery-evidence`. Pinned Redis item/NPC projections are ready in PR #146; native copyover pinning
+and projections are ready in [PR #147](https://github.com/LuminariMUD/Duris/pull/147).
+Combined source assembly/custody correlation, NPC reconstruction qualification,
+canonical classification and admission remain open.
 No operational repair started.
 
-Current copyover evidence chunk: `branch/issue-67-copyover-evidence`, based on
-PR #146; implemented and validated, publication pending. Outcome: pin and frame-validate the bounded native copyover image before
+Current copyover evidence checkpoint:
+[PR #147](https://github.com/LuminariMUD/Duris/pull/147),
+`branch/issue-67-copyover-evidence`, based on PR #146 and ready for review. Outcome: pin and frame-validate the bounded native copyover image before
 boot, restore exactly that image, preserve failed/uncertain images and newer
 published files, project ground UID trees and label NPC vnum hints as fresh
 reconstruction. Non-goals: fabricate a physical UID for historical NPC hints,
@@ -1044,8 +1047,9 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Native copyover pinning and evidence — AR-01/AR-02 prerequisite
 
-Implemented on `branch/issue-67-copyover-evidence`, based on PR #146; publication
-pending. `copyover_prepare_boot` now runs before the existing early custody reap.
+Ready for review in [PR #147](https://github.com/LuminariMUD/Duris/pull/147) on
+`branch/issue-67-copyover-evidence`, based on PR #146. Implementation commit:
+`325971977d3924c03225b3d49067aa1827c7c774`. `copyover_prepare_boot` now runs before the existing early custody reap.
 It distinguishes unprepared/absent/ready/failed state, validates the complete
 selected native file read-only, then claims a valid regular file by an atomic
 no-replace rename to `<COPYOVER_STATE_FILE>.recovering`. Invalid originals and
