@@ -172,7 +172,14 @@ bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { o
 bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done) {
  offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
 }
-int writeCharacter(P_char,int,int) { ++offline_saves; return offline_save_allowed ? 1 : 0; }
+static bool inspect_swap_snapshot=false;
+int writeCharacter(P_char owner,int,int) {
+ ++offline_saves;
+ if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
+ return offline_save_allowed ? 1 : 0;
+}
+static size_t removed_wear_links=0;
+void clear_links(P_char,P_obj,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; }
 void writeCorpse(P_obj) {}
 void do_shout(P_char,char *,int) {}
 void free_char(P_char owner) {
@@ -363,7 +370,7 @@ source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("playe
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
-source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)"))
+source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
  extract_function("world_recovery_pipeline.c","P_obj materialize_object("))
@@ -1004,13 +1011,36 @@ void swap_admission_cases() {
  offline_callbacks.front()(&owner); offline_callbacks.clear();
  assert(offline.canonical_item_uid==80001 && offline.identity_state==artifact_identity_state::present && offline.timer==source_timer &&
         artifact_binds.at(900).owner_pid==77 && procedures==restored_effects && !object_list && !pool.objs_used && writes.empty());
- // The unchanged request can complete; snapshot refusal still releases its temporary graph.
- char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+ // Refused snapshots restore source identity before discarding the temporary graph.
+ inspect_swap_snapshot=true;
+ for(int refused_location=0;refused_location<3;++refused_location) {
+  char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+  source=read_object_for_recovery(restored); assert(source);
+  if(refused_location==0) obj_to_char(source,&owner);
+  else if(refused_location==1) equip_char(&owner,source,0,TRUE);
+  else {
+   auto *bag=read_object_for_creation(903,VIRTUAL); assert(bag); bag->value[0]=1000;
+   obj_to_char(bag,&owner); obj_to_obj(source,bag);
+  }
+  const auto releases=offline_released;
+  const auto links_before=removed_wear_links;
+  const auto target_before_refusal=artifact_rows.at(902);
+  command_output.clear();
+  offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
+  assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
+         artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::present &&
+         !artifact_rows.at(900).live_object && artifact_rows.at(900).timer==source_timer &&
+         artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
+         artifact_rows.at(902).canonical_item_uid==target_before_refusal.canonical_item_uid &&
+         artifact_rows.at(902).identity_state==target_before_refusal.identity_state &&
+         !artifact_rows.at(902).live_object && writes.empty() && !artifact_save_pulse(false) && removed_wear_links==links_before);
+  assert(command_output.find("original retained")!=std::string::npos && command_output.find("swapped with")==std::string::npos);
+ }
+ // The unchanged durable source remains admissible when snapshot capture recovers.
+ char admitted_retry[]="900 902"; arti_swap_sql(&staff,admitted_retry); assert(offline_callbacks.size()==1);
  source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
- const auto releases=offline_released;
- offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
- assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
-        artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+ offline_callbacks.front()(&owner); offline_callbacks.clear(); inspect_swap_snapshot=false;
+ assert(!object_list && !pool.objs_used && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
         artifact_rows.at(902).identity_state==artifact_identity_state::present && artifact_rows.at(902).timer==source_timer);
  artifact_save_pulse(true); drain();
  // A saved artifact on an ordinary prototype is eligible through its actual UID/flags.

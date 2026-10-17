@@ -1,25 +1,43 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Current follow-up: #161 swap safeguards
+## Current checkpoint — 2026-10-17 15:15 UTC
 
-Active branch: `branch/issue-67-canonical-swap-admission`, worktree
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. #158's trusted-holder
-repair is published as `df8acbf76` and resolved; carried through #159 `adb35c2b2`
-and #160 `947950018`. This branch's carry-forward merge is `5c307fb74`.
-Known inventory: 48 findings, 46 addressed, two remaining on this PR.
+Active branch: `branch/issue-67-canonical-swap-admission` (#161), worktree
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Known inventory:
+53 findings after the 15:16 UTC refresh; 47 published/addressed, offline-snapshot
+refusal repair verified and five additional threads to assess. Target-copy refusal is published as `5e9ddc975`; #158's trusted-holder
+repair is `df8acbf76`, carried through #159 `adb35c2b2` and #160 `947950018`.
 
-First outcome: refuse a swap when an effective artifact target body already exists,
-even if the target row is absent/retired and has no registered live pointer. Scan
-the existing live list immediately before construction; do not destroy a conflicting
-copy or consume another UID. Files: existing swap constructor, native command fixture,
-this plan. Both absent/retired controls reproduce the duplicate before repair.
-Second outcome: retain the original when an offline player snapshot is refused.
-That requires keeping its physical body until snapshot admission and reusing the
-existing metadata checkpoint/placement rollback; do not add a retry-owner registry.
-The target-copy regression passes for absent and retired rows, with unchanged
-source state, no extra UID/procedure and no writes. Native admission, build, format
-and tidy pass (`bin/analysis/pr161-target-copy-*`). Publish this first fix, then
-address snapshot refusal.
+Outcome for the current hour: publish the offline-swap refusal repair, propagate
+it and earlier verified repairs through #162–#165/#167, run integration proof,
+and leave an accurate PR/branch/remaining-work handoff. Non-goals: merging or
+production deployment, unrelated cleanup, or new persistence frameworks.
+Files: existing artifact swap path, existing native/snapshot fixtures, this plan.
+
+The snapshot-refusal regression reproduced source retirement before capture
+acceptance. The repair reuses #162's checkpoint and placement rollback: detach the
+old body for capture, keep it alive until admission, restore it on refusal, then
+release the temporary owner after rollback. No retry-owner registry is needed.
+Carried, worn and nested refusal cases plus a successful retry pass under
+ASan/UBSan; capture assertions require the replacement and exclude the source.
+Native server build, formatting and tidy pass. The SQL snapshot fixture exposed
+an omitted runtime-ownership link dependency; linking the existing implementation
+fixes it. SQL snapshot and offline-load regressions now pass.
+Evidence: `bin/analysis/pr161-snapshot-refusal-*.log` and `pr161-target-copy-*`.
+The accepted-snapshot cross-domain crash window remains an open original-project
+acceptance item; capture/queue refusal proof does not establish crash atomicity.
+
+New threads: #139 all-souls batch refusal; #149 Redis restore-conflict completeness;
+#159 promoted template caching (check #160 coverage); #160 missing-flags template
+caching; #163 corpse loot direct binding. Inventory: `review-hour-start.json`.
+
+Critical next sequence: publish #161, then address new findings oldest-first; merge it normally into
+#162 in `duris-issue67-handoff`, preserving pending-action tests; carry #163/#164/
+#165 in this checkout (preserve local #165 `d5ee23ad4`); carry #167 in
+`duris-issue67-delivery`; run the disposable standard gameplay/restart journey;
+refresh every review thread AND review body. No force-push or release tag.
+
+The earlier checkpoints below are historical evidence, not the current status.
 
 ## Current follow-up: #158 trusted artifact holders
 

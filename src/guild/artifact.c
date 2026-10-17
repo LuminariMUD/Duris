@@ -4204,54 +4204,125 @@ void arti_timer_sql(P_char ch, char *arg)
 // artifact swap: puts arti2 where arti1 is, on dummy (its rented owner, loaded off the loop)
 // or in the game, and pulls arti1.
 static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, arti_data artidata,
-			     const char *artishort1, int vnum1, int vnum2)
+			     const char *artishort1, int vnum1, int vnum2,
+			     artifact_restore_scope &checkpoint)
 {
 	char buf[MAX_STRING_LENGTH];
-	int wearloc;
-	P_obj cont;
-	P_char owner1;
-
-	// Whoever holds arti1, directly or in a container.
-	cont = arti1;
+	P_obj cont = arti1;
 	while (OBJ_INSIDE(cont) && cont->loc.inside)
 		cont = cont->loc.inside;
-	owner1 = OBJ_WORN(cont) ? cont->loc.wearing : OBJ_CARRIED(cont) ? cont->loc.carrying : NULL;
-	// arti1 is in a valid location (I hope), and arti2 is ready for transfer.
-	// Put arti2 in the right spot.
-	switch (arti1->loc_p)
+	P_char owner1 = OBJ_WORN(cont)	  ? cont->loc.wearing :
+			OBJ_CARRIED(cont) ? cont->loc.carrying :
+					    nullptr;
+	const auto location = arti1->loc_p;
+	const auto original = arti1->loc;
+	const uint64_t source_uid = arti1->obj_uid;
+	const uint64_t replacement_uid = arti2->obj_uid;
+	int wearloc = 0;
+	bool source_detached = false;
+	if (location == LOC_WORN)
+		while (wearloc < MAX_WEAR && owner1->equipment[wearloc] != arti1)
+			++wearloc;
+
+	switch (location)
 	{
 	case LOC_CARRIED:
-		obj_to_char(arti2, arti1->loc.carrying);
+		obj_to_char(arti2, original.carrying);
 		break;
 	case LOC_WORN:
-		// Find it on their body.
-		for (wearloc = 0; wearloc < MAX_WEAR; wearloc++)
+		if (wearloc < MAX_WEAR)
 		{
-			// And move it to their inventory (Also replace with arti2).
-			if (owner1->equipment[wearloc] == arti1)
-			{
-				obj_to_char(unequip_char(owner1, wearloc), owner1);
-				equip_char(owner1, arti2, wearloc, TRUE);
-			}
+			// Hold the original body intact, without breaking its links on a failed attempt.
+			unequip_char(owner1, wearloc, TRUE);
+			source_detached = true;
+			equip_char(owner1, arti2, wearloc, TRUE);
 		}
 		break;
 	case LOC_ROOM:
-		obj_to_room(arti2, arti1->loc.room);
+		obj_to_room(arti2, original.room);
 		break;
 	case LOC_INSIDE:
-		obj_to_obj(arti2, arti1->loc.inside);
+		obj_to_obj(arti2, original.inside);
 		break;
-	// Not in a valid location, so skip it.
 	case LOC_NOWHERE:
-		snprintf(buf, MAX_STRING_LENGTH,
-			 "&+WStrange, artifact '&+w%s&+W' &+w%d&+W has a bad location?!?&n\n\r",
-			 artishort1, vnum1);
-		send_to_char(buf, ch);
-		extract_obj(arti2);
-		if (dummy)
-			release_offline_owner(dummy);
+		break;
+	}
+	// Placement helpers return void and may refuse, redirect or destroy the item.
+	// Find the live UID before inspecting it, then verify the exact destination.
+	P_obj placed = find_live_object(arti2, replacement_uid);
+	bool positioned = false;
+	if (placed && artifact_is_canonical(placed))
+		switch (location)
+		{
+		case LOC_CARRIED:
+			positioned = OBJ_CARRIED(placed) &&
+				     placed->loc.carrying == original.carrying;
+			break;
+		case LOC_WORN:
+			positioned = wearloc < MAX_WEAR && owner1->equipment[wearloc] == placed &&
+				     OBJ_WORN(placed) && placed->loc.wearing == original.wearing;
+			break;
+		case LOC_ROOM:
+			positioned = OBJ_ROOM(placed) && placed->loc.room == original.room;
+			break;
+		case LOC_INSIDE:
+			positioned = OBJ_INSIDE(placed) && placed->loc.inside == original.inside;
+			break;
+		case LOC_NOWHERE:
+			break;
+		}
+	bool snapshot_queued = true;
+	if (positioned && dummy)
+	{
+		// Keep the old body alive, but exclude it from the replacement snapshot.
+		if (OBJ_CARRIED(arti1))
+			obj_from_char(arti1);
+		else if (OBJ_INSIDE(arti1))
+			obj_from_obj(arti1);
+		else if (OBJ_ROOM(arti1))
+			obj_from_room(arti1);
+		source_detached = true;
+		snapshot_queued = writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room);
+	}
+	if (!positioned || !snapshot_queued)
+	{
+		if (placed)
+			extract_obj(placed, FALSE);
+		if (source_detached && find_live_object(arti1, source_uid))
+			switch (location)
+			{
+			case LOC_CARRIED:
+				obj_to_char(arti1, original.carrying);
+				break;
+			case LOC_WORN:
+				if (wearloc < MAX_WEAR)
+					equip_char(owner1, arti1, wearloc,
+						   9); // Restore without recasting enchantments.
+				break;
+			case LOC_INSIDE:
+				obj_to_obj(arti1, original.inside);
+				break;
+			case LOC_ROOM:
+				obj_to_room(arti1, original.room);
+				break;
+			case LOC_NOWHERE:
+				break;
+			}
+		send_to_char_f(
+			ch,
+			"Artifact %d replacement %s; original retained. Reference: artifact_identity/swap.\r\n",
+			vnum1, positioned ? "snapshot was not queued" : "placement failed");
+		persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none", "none",
+				  positioned ? "player_snapshot_not_queued" :
+					       "replacement_placement_failed",
+				  "vnum=%d replacement_vnum=%d source_uid=%llu", vnum1, vnum2,
+				  (unsigned long long)source_uid);
 		return;
 	}
+	// Rollback may restore metadata only while the original physical body still exists.
+	checkpoint.commit();
+	if (location == LOC_WORN)
+		clear_links(owner1, arti1, LNKFLG_BREAK_REMOVE);
 	// Since arti2 is in position, can pull arti1.
 	extract_obj(arti1, TRUE); // Yes, we want to remove arti1 from owned artis.
 	// Updata artidata type with arti2 stats.
@@ -4264,14 +4335,6 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 	if (owner1 == dummy)
 	{
 		owner1 = NULL;
-	}
-	// Save pfile if applies.
-	if (dummy)
-	{
-		if (!writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room))
-			persistence_alert(AVATAR, "artifact", "offline_swap", "none", "none",
-					  "player_snapshot_not_queued",
-					  "vnum=%d temporary_owner_discarded=1", vnum2);
 	}
 	// Save in-game owner if applies.
 	if (owner1)
@@ -4310,8 +4373,6 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 		 "&+WArtifact '&+w%s&+W' &+w%d&+W swapped with artifact '&+w%s&+W' &+w%d&+W.&n\n\r",
 		 artishort1, vnum1, OBJ_SHORT(arti2), vnum2);
 	send_to_char(buf, ch);
-	if (dummy)
-		release_offline_owner(dummy);
 }
 
 // The real replacement is created only after a canonical, located source is known.
@@ -4333,8 +4394,6 @@ static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
 		send_to_char_f(ch,
 			       "Artifact %d canonical location is unavailable; swap refused.\r\n",
 			       vnum1);
-		if (dummy)
-			release_offline_owner(dummy);
 		return;
 	}
 	for (P_obj existing = object_list; existing; existing = existing->next)
@@ -4348,13 +4407,19 @@ static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
 					  "none", "target_copy_present",
 					  "vnum=%d existing_uid=%llu", vnum2,
 					  (unsigned long long)existing->obj_uid);
-			if (dummy)
-				release_offline_owner(dummy);
 			return;
 		}
+	artifact_restore_scope checkpoint;
+	if (!checkpoint)
+	{
+		send_to_char("Artifact swap staging is unavailable; original retained.\r\n", ch);
+		return;
+	}
 	P_obj replacement = read_object_for_creation(vnum2, VIRTUAL);
 	if (!replacement)
 	{
+		// The constructor refused before procedures/publication; no staged placement exists.
+		checkpoint.commit();
 		const int error = errno;
 		const char *reason = error == EEXIST  ? "already present or reserved" :
 				     error == ENODATA ? "identity unavailable" :
@@ -4365,8 +4430,6 @@ static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
 			vnum2, reason);
 		persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none", "none",
 				  "replacement_creation_refused", "vnum=%d error=%d", vnum2, error);
-		if (dummy)
-			release_offline_owner(dummy);
 		return;
 	}
 	// Constructor procedures precede publication; do not use a stale source image.
@@ -4379,11 +4442,10 @@ static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
 	{
 		extract_obj(replacement, FALSE);
 		send_to_char_f(ch, "Artifact %d source changed; swap refused.\r\n", vnum1);
-		if (dummy)
-			release_offline_owner(dummy);
 		return;
 	}
-	arti_swap_finish(ch, source, replacement, dummy, artidata, artishort1, vnum1, vnum2);
+	arti_swap_finish(ch, source, replacement, dummy, artidata, artishort1, vnum1, vnum2,
+			 checkpoint);
 }
 
 // The asynchronous request identifies the intended physical source, not just its vnum.
@@ -4423,6 +4485,8 @@ static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, uint
 		return;
 	}
 	arti_swap_create(ch, source, vnum2, dummy, artishort1);
+	// Staging has committed or rolled back before the temporary graph is discarded.
+	release_offline_owner(dummy);
 }
 
 void arti_swap_sql(P_char ch, char *arg)
