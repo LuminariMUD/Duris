@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "guild/artifact_admission.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
 
@@ -12,6 +13,18 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+
+// Fixtures that do not link the artifact authority have no artifact state to
+// checkpoint. Focused admission tests and server builds use the real methods.
+HARNESS_STUB artifact_restore_scope::artifact_restore_scope()
+	: active_(true)
+{
+}
+HARNESS_STUB artifact_restore_scope::~artifact_restore_scope() {}
+HARNESS_STUB void artifact_restore_scope::commit()
+{
+	active_ = false;
+}
 
 HARNESS_STUB void logit(const char *, const char *, ...) {}
 HARNESS_STUB bool sql_async_booting(void)

@@ -29,6 +29,7 @@
 #include "account/account.h"
 #include "guild/assocs.h"
 #include "guild/artifact_population.h"
+#include "guild/artifact_admission.h"
 #include "guild/artifact_population_boot.h"
 #include "persistence/copyover.h"
 #include "world/epic.h"
@@ -3089,7 +3090,7 @@ static void stage_artifact_population()
 	}
 }
 
-P_obj instantiate_object_template(const object_template &prototype)
+static P_obj instantiate_object_template_impl(const object_template &prototype, bool fresh_creation)
 {
 	// Only this main-thread adapter touches the pool, index, list or events.
 	const int nr = prototype.R_num;
@@ -3121,6 +3122,11 @@ P_obj instantiate_object_template(const object_template &prototype)
 	obj->obj_uid = static_cast<unsigned long>(persistence_next_item_uid());
 	obj->loc_p = LOC_NOWHERE;
 	obj->loc.room = NOWHERE;
+	if (fresh_creation && !artifact_begin_creation(obj))
+	{
+		mm_release(dead_obj_pool, obj);
+		return nullptr;
+	}
 	obj_index[nr].number++;
 	if (object_list)
 		object_list->prev = obj;
@@ -3203,6 +3209,24 @@ P_obj instantiate_object_template(const object_template &prototype)
 	convertObj(obj);
 
 	return (obj);
+}
+
+P_obj instantiate_object_template(const object_template &prototype)
+{
+	return instantiate_object_template_impl(prototype, false);
+}
+
+// Fresh producers opt in here while restoration/inspection callers are migrated.
+P_obj read_object_for_creation(int nr, int type)
+{
+	if (type == VIRTUAL)
+		nr = real_object(nr);
+	if (nr < 0 || nr > top_of_objt)
+	{
+		errno = EINVAL;
+		return nullptr;
+	}
+	return instantiate_object_template_impl(parse_object_template(nr), true);
 }
 
 /* Non-starter callers retain cold loading; both paths share one parser. */
@@ -3296,7 +3320,6 @@ void reset_zone(int zone, int force_item_repop)
 	int temp, ival, configured_shop, replicated_shop;
 	P_char mob = NULL, last_mob = NULL, tmp_mob = NULL, last_mob_followable = NULL;
 	P_obj obj, obj_to;
-	arti_data artidata;
 	char buf[MAX_STRING_LENGTH];
 
 	logit(LOG_STATUS, "reset_zone: reseting zone '%s', force_item_repop: %d",
@@ -3367,20 +3390,12 @@ void reset_zone(int zone, int force_item_repop)
 
 				if ((ZCMD.arg3 >= 0) && (obj_index[temp].number < ZCMD.arg2))
 				{
-					if (!(obj = read_object(temp, REAL)))
+					if (!(obj = read_object_for_creation(temp, REAL)))
 					{
+						last_cmd = 0;
 						break;
 					}
-					if (get_artifact_data_sql(obj_index[temp].virtual_number,
-								  &artidata))
-					{
-						// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-						if (artidata.owned)
-						{
-							extract_obj(obj);
-							break;
-						}
-					}
+
 					// Remove the artifact unless artifact.respawn == 0
 					//   or artifact.respawn == 1 and we are not booting.
 					if (IS_ARTIFACT(obj) &&
@@ -3400,8 +3415,13 @@ void reset_zone(int zone, int force_item_repop)
 					}
 
 					obj_to = get_obj_num(ZCMD.arg3);
-					if (!obj_to)
+					if (!obj_to || !obj_can_nest(obj, obj_to))
 					{
+						if (obj_to)
+							logit(LOG_OBJ,
+							      "reset_zone: object=%d invalid container=%d zone=%d",
+							      OBJ_VNUM(obj), OBJ_VNUM(obj_to),
+							      zone);
 						extract_obj(obj);
 						break;
 					}
@@ -3435,20 +3455,12 @@ void reset_zone(int zone, int force_item_repop)
 					ZCMD.command = '!';
 					break;
 				}
-				if (!(obj = read_object(temp, REAL)))
+				if (!(obj = read_object_for_creation(temp, REAL)))
 				{
+					last_cmd = 0;
 					break;
 				}
-				if (get_artifact_data_sql(obj_index[temp].virtual_number,
-							  &artidata))
-				{
-					// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-					if (artidata.owned)
-					{
-						extract_obj(obj);
-						break;
-					}
-				}
+
 				// Remove the artifact unless artifact.respawn == 0
 				//   or artifact.respawn == 1 and we are not booting.
 				if (IS_ARTIFACT(obj) &&
@@ -3489,20 +3501,12 @@ void reset_zone(int zone, int force_item_repop)
 
 				if (obj_index[ZCMD.arg1].number < ZCMD.arg2)
 				{
-					if (!(obj = read_object(temp, REAL)))
+					if (!(obj = read_object_for_creation(temp, REAL)))
 					{
+						last_cmd = 0;
 						break;
 					}
-					if (get_artifact_data_sql(obj_index[temp].virtual_number,
-								  &artidata))
-					{
-						// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-						if (artidata.owned)
-						{
-							extract_obj(obj);
-							break;
-						}
-					}
+
 					// Remove the artifact unless artifact.respawn == 0
 					//   or artifact.respawn == 1 and we are not booting.
 					if (IS_ARTIFACT(obj) &&
@@ -3622,29 +3626,24 @@ void reset_zone(int zone, int force_item_repop)
 					    IS_SET(obj->wear_flags, ITEM_TAKE))
 					{
 						obj = NULL;
-						if (!(obj = read_object(ZCMD.arg1, REAL)))
+						if (!(obj = read_object_for_creation(ZCMD.arg1,
+										     REAL)))
 						{
-							ZCMD.command = '!';
-							logit(LOG_DEBUG,
-							      "reset_zone(): (zone %d) obj %d [%d] not loadable",
-							      zone, ZCMD.arg1,
-							      obj_index[ZCMD.arg1].virtual_number);
+							last_cmd = 0;
+							if (errno != EEXIST && errno != ENODATA &&
+							    errno != ENOMEM)
+							{
+								ZCMD.command = '!';
+								logit(LOG_DEBUG,
+								      "reset_zone(): zone=%d object=%d not loadable",
+								      zone,
+								      obj_index[ZCMD.arg1]
+									      .virtual_number);
+							}
+							break;
 						}
 						if (obj)
 						{
-							if (IS_ARTIFACT(obj) &&
-							    get_artifact_data_sql(
-								    obj_index[ZCMD.arg1]
-									    .virtual_number,
-								    &artidata))
-							{
-								// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-								if (artidata.owned)
-								{
-									extract_obj(obj);
-									break;
-								}
-							}
 							if (IS_ARTIFACT(obj) &&
 							    (respawn == 0 ||
 							     (respawn == 1 &&
@@ -3682,69 +3681,61 @@ void reset_zone(int zone, int force_item_repop)
 
 			case 'P': /* object to object */
 				last_cmd = 0;
-				obj_index[ZCMD.arg1].limit =
-					ZCMD.arg2; // set the limit from zone file
-
-				if ((ZCMD.arg1 >= 0) && (ZCMD.arg3 >= 0) &&
-				    ((obj_index[ZCMD.arg1].number < ZCMD.arg2) || force_item_repop))
+				obj_index[ZCMD.arg1].limit = ZCMD.arg2;
+				if (ZCMD.arg1 >= 0 && ZCMD.arg3 >= 0 &&
+				    (obj_index[ZCMD.arg1].number < ZCMD.arg2 || force_item_repop))
 				{
-					if (!(obj = read_object(ZCMD.arg1, REAL)))
+					obj = read_object_for_creation(ZCMD.arg1, REAL);
+					if (!obj)
 					{
-						ZCMD.command = '!';
-						logit(LOG_DEBUG,
-						      "reset_zone(): (zone %d) obj %d [%d] not loadable",
-						      zone, ZCMD.arg1,
-						      obj_index[ZCMD.arg1].virtual_number);
-					}
-					if (obj)
-					{
-						if (IS_ARTIFACT(obj) &&
-						    get_artifact_data_sql(
-							    obj_index[ZCMD.arg1].virtual_number,
-							    &artidata))
+						if (errno != EEXIST && errno != ENODATA &&
+						    errno != ENOMEM)
 						{
-							// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-							if (artidata.owned)
-							{
-								extract_obj(obj);
-								break;
-							}
+							ZCMD.command = '!';
+							logit(LOG_DEBUG,
+							      "reset_zone(): zone=%d object=%d not loadable",
+							      zone,
+							      obj_index[ZCMD.arg1].virtual_number);
 						}
-
-						obj_to = get_obj_num(ZCMD.arg3);
+						break;
+					}
+					obj_to = get_obj_num(ZCMD.arg3);
+					if (!obj_to || !obj_can_nest(obj, obj_to))
+					{
 						if (obj_to)
-						{
-							if (IS_ARTIFACT(obj) &&
-							    (respawn == 0 ||
-							     (respawn == 1 &&
-							      force_item_repop != 2)))
-							{
-								extract_obj(obj);
-								break;
-							}
-							ival = itemvalue(obj);
-							if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
-							{
-								extract_obj(obj);
-								last_cmd = 1;
-								break;
-							}
-							obj_to_obj(obj, obj_to);
-							last_cmd = 1;
-							break;
-						}
+							logit(LOG_OBJ,
+							      "reset_zone: object=%d invalid container=%d zone=%d",
+							      OBJ_VNUM(obj), OBJ_VNUM(obj_to),
+							      zone);
+						extract_obj(obj);
+						break;
 					}
+					if (IS_ARTIFACT(obj) &&
+					    (respawn == 0 ||
+					     (respawn == 1 && force_item_repop != 2)))
+					{
+						extract_obj(obj);
+						break;
+					}
+					ival = itemvalue(obj);
+					if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
+					{
+						extract_obj(obj);
+						last_cmd = 1;
+						break;
+					}
+					obj_to_obj(obj, obj_to);
+					last_cmd = 1;
 				}
 				else if (obj_index[ZCMD.arg1].number < ZCMD.arg2)
 				{
 					logit(LOG_OBJ,
 					      "P cmd: obj: %d to_obj: %d, chance: %d, limit %d(%d)",
 					      obj_index[ZCMD.arg1].virtual_number,
-					      (ZCMD.arg3 >= 0) ?
-						      obj_index[ZCMD.arg3].virtual_number :
-						      -2,
+					      ZCMD.arg3 >= 0 ? obj_index[ZCMD.arg3].virtual_number :
+							       -2,
 					      ZCMD.arg4, ZCMD.arg2, obj_index[ZCMD.arg1].number);
-					ZCMD.command = '!'; /* disable */
+					ZCMD.command = '!';
 				}
 				break;
 
@@ -3756,28 +3747,22 @@ void reset_zone(int zone, int force_item_repop)
 				if ((ZCMD.arg1 >= 0) &&
 				    ((obj_index[ZCMD.arg1].number < ZCMD.arg2) || force_item_repop))
 				{
-					if (!(obj = read_object(ZCMD.arg1, REAL)))
+					if (!(obj = read_object_for_creation(ZCMD.arg1, REAL)))
 					{
-						ZCMD.command = '!';
-						logit(LOG_DEBUG,
-						      "reset_zone(): (zone %d) obj %d [%d] not loadable",
-						      zone, ZCMD.arg1,
-						      obj_index[ZCMD.arg1].virtual_number);
+						last_cmd = 0;
+						if (errno != EEXIST && errno != ENODATA &&
+						    errno != ENOMEM)
+						{
+							ZCMD.command = '!';
+							logit(LOG_DEBUG,
+							      "reset_zone(): zone=%d object=%d not loadable",
+							      zone,
+							      obj_index[ZCMD.arg1].virtual_number);
+						}
+						break;
 					}
 					if (obj)
 					{
-						if (IS_ARTIFACT(obj) &&
-						    get_artifact_data_sql(
-							    obj_index[ZCMD.arg1].virtual_number,
-							    &artidata))
-						{
-							// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-							if (artidata.owned)
-							{
-								extract_obj(obj);
-								break;
-							}
-						}
 						if (IS_ARTIFACT(obj) &&
 						    (respawn == 0 ||
 						     (respawn == 1 && force_item_repop != 2)))
@@ -3839,28 +3824,22 @@ void reset_zone(int zone, int force_item_repop)
 				if ((ZCMD.arg1 >= 0) &&
 				    ((obj_index[ZCMD.arg1].number < ZCMD.arg2) || force_item_repop))
 				{
-					if (!(obj = read_object(ZCMD.arg1, REAL)))
+					if (!(obj = read_object_for_creation(ZCMD.arg1, REAL)))
 					{
-						ZCMD.command = '!';
-						logit(LOG_DEBUG,
-						      "reset_zone(): (zone %d) obj %d [%d] not loadable",
-						      zone, ZCMD.arg1,
-						      obj_index[ZCMD.arg1].virtual_number);
+						last_cmd = 0;
+						if (errno != EEXIST && errno != ENODATA &&
+						    errno != ENOMEM)
+						{
+							ZCMD.command = '!';
+							logit(LOG_DEBUG,
+							      "reset_zone(): zone=%d object=%d not loadable",
+							      zone,
+							      obj_index[ZCMD.arg1].virtual_number);
+						}
+						break;
 					}
 					if (obj)
 					{
-						if (IS_ARTIFACT(obj) &&
-						    get_artifact_data_sql(
-							    obj_index[ZCMD.arg1].virtual_number,
-							    &artidata))
-						{
-							// If the artifact is owned, then it's timer is ticking somwhere, so we don't need to load another.
-							if (artidata.owned)
-							{
-								extract_obj(obj);
-								break;
-							}
-						}
 						if (IS_ARTIFACT(obj) &&
 						    (respawn == 0 ||
 						     (respawn == 1 && force_item_repop != 2)))
@@ -3899,6 +3878,7 @@ void reset_zone(int zone, int force_item_repop)
 								      "ERR",
 							      ZCMD.arg4, ZCMD.arg2,
 							      obj_index[ZCMD.arg1].number);
+							extract_obj(obj);
 							break;
 						}
 					}

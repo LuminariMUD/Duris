@@ -748,7 +748,7 @@ int main()
     object_list = nullptr;
 
     // Failed Redis materialization rolls back before the forced O reset and
-    // memory fallback. The reset's owned guard must leave only the tracked instance.
+    // memory fallback. The reset's admission guard must leave only the tracked instance.
     fallback_fixture = true;
     ground_artifact.vnum = 1000;
     ground_artifact.owned = true;
@@ -783,8 +783,8 @@ int main()
     const int extracts_before_fallback = objects_extracted;
     run_recovery_boot();
     assert(redis_loads == 1 && fallback_resets == 1 && fallback_loads == 1);
-    assert(!recovery_active && objects_read == reads_before_fallback + 3);
-    assert(objects_extracted == extracts_before_fallback + 2);
+    assert(!recovery_active && objects_read == reads_before_fallback + 2);
+    assert(objects_extracted == extracts_before_fallback + 1);
     assert(object_list && !object_list->next && IS_ARTIFACT(object_list));
     assert(object_list->loc_p == LOC_ROOM && world[object_list->loc.room].number == 100);
     extract_obj(object_list, FALSE);
@@ -792,8 +792,16 @@ int main()
     // Unowned stock artifacts still load through a forced reset.
     ground_artifact.owned = false;
     reset_zone(0, 2);
+    assert(!object_list); // unowned does not release a physical reservation
+    fallback_reserved = false;
+    reset_zone(0, 2);
     assert(object_list && !object_list->next && IS_ARTIFACT(object_list));
     extract_obj(object_list, FALSE);
+
+    fallback_allocation_failed = true;
+    reset_zone(0, 2);
+    assert(!object_list && fallback_last_command == 'O');
+    fallback_allocation_failed = false;
 
     // File copyover rejects a flagged tree with missing custody records.
     {
@@ -990,12 +998,22 @@ static bool recovery_active = true;
 static bool clean_restart = false;
 static bool mini_mode = false;
 static constexpr int ARTIFACT_ONGROUND = 4;
-bool get_artifact_data_sql(int vnum, P_arti out)
+// The fallback fixture supplies its reserved/absent admission result; the real
+// artifact service and constructor are exercised by test_artifact_creation_admission.
+static bool fallback_reserved = true;
+static bool fallback_allocation_failed = false;
+static char fallback_last_command = 0;
+P_obj read_object_for_creation(int nr, int type)
 {
-    assert(vnum == ground_artifact.vnum);
-    *out = ground_artifact;
-    return true;
+    if (fallback_allocation_failed) { errno = ENOMEM; return nullptr; }
+    if (fallback_fixture && fallback_reserved)
+    {
+        errno = EEXIST;
+        return nullptr;
+    }
+    return read_object(nr, type);
 }
+
 P_obj get_obj_in_list_num(int rnum, P_obj)
 {
     for (P_obj object = object_list; object; object = object->next)
@@ -1011,7 +1029,6 @@ void reset_zone(int zone, int force_item_repop)
     ++fallback_resets;
     struct { char command; int arg1, arg2, arg3, arg4; } command = {'O', 0, 1, 0, 100};
     P_obj obj = nullptr;
-    arti_data artidata = {};
     const int respawn = 1;
     int ival = 0;
     int last_cmd = 0;
@@ -1021,6 +1038,7 @@ void reset_zone(int zone, int force_item_repop)
 @RESET_OBJECT@
     }
 #undef ZCMD
+    fallback_last_command = command.command;
     (void)last_cmd;
 }
 @GROUND_LOADER@

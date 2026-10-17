@@ -483,6 +483,8 @@ static void artifact_ordering_cases()
 	database_next_job = 0;
 	const time_t now = time(nullptr);
 	artifact_update_sql(900, true, ARTIFACT_ON_PC, 42, now + 8000, ARTIFACT_MAJOR);
+	artifact_rows.at(900).canonical_item_uid = 90001;
+	artifact_rows.at(900).identity_state = artifact_identity_state::present;
 	artifact_bind_store(900, 42, 0);
 	artifact_feed_set_timer(900, now + 8100);
 	// Transfer and soul change capture the timer already fed in memory.
@@ -503,6 +505,7 @@ static void artifact_ordering_cases()
 	artifact_feed_set_timer(900, artifact_rows.at(900).timer + 100);
 	obj_data object = {};
 	object.R_num = 0;
+	object.obj_uid = 90001;
 	object.extra_flags = ITEM_ARTIFACT;
 	assert(remove_owned_artifact_sql(&object, 77));
 	assert(artifact_rows.at(900).locType == ARTIFACT_ONCORPSE &&
@@ -774,6 +777,11 @@ static void population_snapshot_cases()
 	const std::vector<artifact_payload_projection> rows = { row };
 	const std::vector<artifact_population_template> prototypes = { { 900, ITEM_ARTIFACT },
 								       { 902, ITEM_ARTIFACT } };
+	{
+		fail_allocation = true;
+		artifact_restore_scope restore;
+		assert(!restore && !fail_allocation && artifact_rows.size() == 1 && jobs.empty());
+	}
 	const auto generation = arti_cache_generation;
 	fail_allocation = true;
 	assert(!artifacts_stage_population(rows, prototypes, true) && !fail_allocation &&
@@ -800,6 +808,32 @@ static void population_snapshot_cases()
 	puts("PASS population publication: allocation failure is atomic, legacy timer/soul preserved, normal SQL captures/reload");
 }
 
+static void creation_allocation_cases()
+{
+	artifact_rows.clear();
+	artifact_binds.clear();
+	jobs.clear();
+	artifact_cache_loaded = artifact_population_complete = true;
+	obj_data object = {};
+	object.R_num = 0;
+	object.obj_uid = 12345;
+	object.extra_flags = ITEM_ARTIFACT;
+	fail_allocation = true;
+	assert(!artifact_begin_creation(&object) && !fail_allocation && errno == ENOMEM &&
+	       artifact_rows.empty());
+	assert(artifact_begin_creation(&object));
+	artifact_object_extracted(&object, false);
+	artifact_binds.clear();
+	fail_allocation = true;
+	assert(!artifact_begin_creation(&object) && !fail_allocation && errno == ENOMEM &&
+	       !artifact_rows.at(900).creation_pending &&
+	       !artifact_rows.at(900).canonical_item_uid);
+	assert(artifact_begin_creation(&object));
+	artifact_object_extracted(&object, false);
+	assert(jobs.empty());
+	puts("PASS fresh creation allocation: row and soul-slot failures publish no claim; retry remains eligible");
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 2)
@@ -814,6 +848,7 @@ int main(int argc, char **argv)
 		artifact_ordering_cases();
 		identity_snapshot_cases();
 		population_snapshot_cases();
+		creation_allocation_cases();
 		mysql_close(payment_db);
 		return 0;
 	}
@@ -1068,4 +1103,5 @@ int main(int argc, char **argv)
 	artifact_ordering_cases();
 	identity_snapshot_cases();
 	population_snapshot_cases();
+	creation_allocation_cases();
 }

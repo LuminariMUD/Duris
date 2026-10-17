@@ -189,9 +189,18 @@ int main(int argc, char **argv)
 			stored.bind_owner_pid == 0 && stored.bind_timer == 0 &&
 			stored.revision == 1,
 		"newly tracked runtime artifact did not receive binding defaults");
+	// This behavior fixture now identifies the physical canonical item explicitly;
+	// unresolved vnum-only rows cannot authorize removal of an arbitrary object.
+	stored.canonical_item_uid = 70101;
+	stored.identity_state = artifact_identity_state::present;
+	require(flatfile_artifact_snapshot_apply(state_root, { stored }, &error) ==
+				flatfile_artifact_result::ok &&
+			artifacts_load(),
+		"could not establish canonical identity for the removal control");
 	P_obj removed = new obj_data{};
 	obj_indices[0].virtual_number = 701;
 	removed->R_num = 0;
+	removed->obj_uid = 70101;
 	removed->extra_flags = ITEM_ARTIFACT;
 	removed->name = const_cast<char *>("artifact");
 	require(remove_owned_artifact_sql(removed),
@@ -207,6 +216,7 @@ int main(int argc, char **argv)
 	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_GROUND, 1202, 7000, 1);
 	P_obj fed = new obj_data{};
 	fed->R_num = 0;
+	fed->obj_uid = 70101;
 	fed->extra_flags = ITEM_ARTIFACT;
 	fed->name = const_cast<char *>("artifact");
 	const time_t minimum_timer = time(NULL) + 120 * 60;

@@ -3,6 +3,7 @@
  * keeps player connections alive across process replacement
  */
 
+#include "guild/artifact_admission.h"
 #include "persistence/persistence_log.h"
 #include "core/prototypes.h"
 #include "world/world_singletons.h"
@@ -1581,6 +1582,16 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		return 0;
 	}
 
+	artifact_restore_scope artifacts;
+	if (!artifacts)
+	{
+		fclose(fp);
+		copyover_in_progress = 0;
+		logit(LOG_STATUS,
+		      "copyover_recover: artifact checkpoint unavailable; image retained");
+		return 0;
+	}
+
 	// read and verify header
 	if (fread(&header, sizeof(header), 1, fp) != 1 ||
 	    memcmp(header.magic, COPYOVER_MAGIC, 4) != 0 ||
@@ -1851,7 +1862,10 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		{
 			if (mob_entry.equipment_vnums[w] > 0)
 			{
-				P_obj obj = read_object(mob_entry.equipment_vnums[w], VIRTUAL);
+				P_obj obj = read_object_for_creation(mob_entry.equipment_vnums[w],
+								     VIRTUAL);
+				if (!obj && errno == ENOMEM)
+					goto copyover_recover_fail;
 				if (obj)
 				{
 					equip_char(mob, obj, w, 0);
@@ -1864,7 +1878,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		{
 			if (inv_entries[c].vnum > 0)
 			{
-				P_obj obj = read_object(inv_entries[c].vnum, VIRTUAL);
+				P_obj obj = read_object_for_creation(inv_entries[c].vnum, VIRTUAL);
+				if (!obj && errno == ENOMEM)
+					goto copyover_recover_fail;
 				if (obj)
 				{
 					obj_to_char(obj, mob);
@@ -1923,6 +1939,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 	copyover_in_progress = 0;
 	fclose(fp);
+	artifacts.commit();
 	pinned_copyover_loaded = true;
 	if (stat(pinned_copyover_path.c_str(), &current) ||
 	    !same_copyover_file(pinned_copyover.identity, current) ||
@@ -2338,7 +2355,12 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 				      "[copyover.c] REDIS restoring artifact 58424 on mob '%s' vnum=%d room=%d slot=%d",
 				      GET_NAME(mob), mob_entry.vnum, mob_entry.room, w);
 			}
-			P_obj obj = read_object(mob_entry.equipment_vnums[w], VIRTUAL);
+			P_obj obj = read_object_for_creation(mob_entry.equipment_vnums[w], VIRTUAL);
+			if (!obj && errno == ENOMEM)
+			{
+				extract_char(mob);
+				return nullptr;
+			}
 			if (obj)
 				equip_char(mob, obj, w, 0);
 		}
@@ -2355,7 +2377,12 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 
 		if (inv_entry.vnum > 0)
 		{
-			P_obj obj = read_object(inv_entry.vnum, VIRTUAL);
+			P_obj obj = read_object_for_creation(inv_entry.vnum, VIRTUAL);
+			if (!obj && errno == ENOMEM)
+			{
+				extract_char(mob);
+				return nullptr;
+			}
 			if (obj)
 				obj_to_char(obj, mob);
 		}

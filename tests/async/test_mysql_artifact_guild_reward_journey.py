@@ -24,7 +24,7 @@ ROOT = journey.ROOT
 PLAYER, ACCOUNT = 'Articaster', 'Artiplayer'
 GOD, GOD_ACCOUNT = 'Artiwarden', 'Artistaff'
 VICTIM, VICTIM_ACCOUNT = 'Artivictim', 'Artienemy'
-ARTIFACT = 900
+ARTIFACT = 900000
 
 
 CASES = ('standard', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
@@ -34,6 +34,21 @@ def run(binary, case):
     with tempfile.TemporaryDirectory(prefix='artifact-rewards-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
+        # The reward subject is a private prototype with no reset/script
+        # producers; natural world population is random and is not fixture state.
+        objects = (ROOT / 'areas/world.obj').read_text(encoding='latin-1')
+        original = re.search(r'(?ms)^#900\n.*?(?=^#\d+\n)', objects)
+        assert original and not re.search(rf'(?m)^#{ARTIFACT}$', objects)
+        inserted = original.group().replace('#900\n', f'#{ARTIFACT}\n', 1)
+        position = next(match.start() for match in re.finditer(r'(?m)^#(\d+)\n', objects)
+                        if int(match.group(1)) > ARTIFACT)
+        areas = runtime / 'areas'
+        assert areas.is_symlink()
+        areas.unlink(); areas.mkdir()
+        for source in (ROOT / 'areas').iterdir():
+            if source.name != 'world.obj':
+                (areas / source.name).symlink_to(source, target_is_directory=source.is_dir())
+        (areas / 'world.obj').write_text(objects[:position] + inserted + objects[position:], encoding='latin-1')
         (runtime / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         (runtime / 'bin/server').mkdir(parents=True)
         executable = runtime / 'bin/server/dms'
@@ -63,7 +78,7 @@ def run(binary, case):
         clients = []
         process = None
         locker = None
-        evidence = {'case': case, 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}
+        evidence = {'case': case, 'artifact_vnum': ARTIFACT, 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}
         barrier = runtime / 'history-commit.hold'
         preload = runtime / 'bin/tests/artifact-commit-barrier.so'
         if case == 'after_history':
@@ -166,6 +181,9 @@ def run(binary, case):
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
                 command(god, 'goto 1')
+                # Roaming world mobs must not join the three controlled boon targets.
+                command(god, 'setbit room here flag NO_MOB 1')
+                command(god, 'purge')
                 command(god, 'setbit room here flag SAFE 0')
                 command(god, 'setbit room here flag ROOM_NO_MAGIC 0')
                 command(god, 'setbit room here flag ROOM_MAGIC_LIGHT 1')
@@ -184,7 +202,18 @@ def run(binary, case):
                 command(player, 'consent ' + GOD)
                 grouped = command(god, 'group ' + PLAYER)
                 assert 'now a member' in grouped, grouped
-                command(god, f'load obj {ARTIFACT}')
+
+                created = command(god, f'load obj {ARTIFACT}')
+                assert 'You have created' in created, created
+                command(god, 'drop stone')
+                settle(lambda: sql(f'SELECT owned FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '0', 'unowned ground control missing')
+                ground = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', ground), ground
+                duplicate = command(god, f'load obj {ARTIFACT}')
+                assert 'creation refused: already present' in duplicate, duplicate
+                command(god, 'get stone')
+                cloned = command(god, 'clone obj stone 2')
+                assert 'Clone refused' in cloned and 'You make a clone' not in cloned, cloned
                 command(god, 'give stone ' + PLAYER)
                 equipped = command(player, 'wear stone')
                 assert 'stone' in equipped, equipped
@@ -195,6 +224,9 @@ def run(binary, case):
                 settle(lambda: int(sql(f'SELECT UNIX_TIMESTAMP(timer) FROM artifacts WHERE vnum={ARTIFACT}')) < time.time() + 1000, 'uncapped timer setup was not saved')
                 timer_before = int(sql(f'SELECT UNIX_TIMESTAMP(timer) FROM artifacts WHERE vnum={ARTIFACT}'))
                 evidence['timer_before'] = timer_before
+                identity_before = sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}')
+                assert identity_before.endswith('\t1') and int(identity_before.split('\t')[0]) > 0, identity_before
+                evidence['canonical_identity'] = identity_before
                 if case == 'pvp':
                     # Two synthetic mortal accounts may fight in this private fixture.
                     god.send('whitelist add Fixture 127.0.0.* isolated reward journey')
@@ -352,13 +384,21 @@ def run(binary, case):
                 player.expect('Copyover complete!', timeout=180)
                 god.expect('Copyover complete!', timeout=180)
                 assert saved_state() == after, 'copyover changed persisted reward state/history'
-                assert 'ioun stone' in command(player, 'equipment')
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                recovered_equipment = command(player, 'equipment')
+                assert 'ioun stone' in recovered_equipment, recovered_equipment
                 evidence['copyover_after_drain'] = True
                 player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
                 stop()
                 before_restart = saved_state()
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
+                offline_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*0\b', offline_stat), offline_stat
+                offline_denied = command(god, f'load obj {ARTIFACT}')
+                assert 'creation refused: already present' in offline_denied, offline_denied
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
                 player = login(PLAYER, ACCOUNT)
                 assert 'ioun stone' in command(player, 'equipment')
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'

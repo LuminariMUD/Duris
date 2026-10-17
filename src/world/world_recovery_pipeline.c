@@ -12,6 +12,7 @@
  *
  ****************************************************************************/
 
+#include "guild/artifact_admission.h"
 #include "world/world_recovery_pipeline.h"
 
 #include "persistence/copyover.h"
@@ -1576,6 +1577,12 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		      plan.authority_items.size());
 		return false;
 	}
+	artifact_restore_scope artifacts;
+	if (!artifacts)
+	{
+		logit(LOG_SYS, "redis: artifact recovery checkpoint unavailable");
+		return false;
+	}
 	redis_floor_runtime_set_materializing(true);
 	const bool materialized = materialize_plan(plan, authoritative);
 	redis_floor_runtime_set_materializing(false);
@@ -1585,6 +1592,7 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		      plan.mobs.size(), plan.objects.size());
 		return false;
 	}
+	artifacts.commit();
 	if (header_out)
 		*header_out = plan.header;
 	return true;

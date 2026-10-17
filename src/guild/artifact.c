@@ -11,6 +11,7 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "guild/artifact_cache_codec.h"
+#include "guild/artifact_admission.h"
 #include "guild/artifact_population.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -89,7 +90,16 @@ static unsigned int arti_cache_generation = 0;
 static void arti_cache_invalidate(void)
 {
 	++arti_cache_generation;
-	redis_invalidate_artifact_cache();
+	try
+	{
+		redis_invalidate_artifact_cache();
+	}
+	catch (const std::bad_alloc &)
+	{
+		// Reports are optional, like a refused/disconnected cache deletion.
+		// Allocation failure here must not fail authoritative gameplay state.
+		return;
+	}
 }
 
 namespace
@@ -120,6 +130,10 @@ struct artifact_row
 	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 	artifact_population_reason population_reason = artifact_population_reason::incomplete;
 	std::vector<artifact_payload_projection> canonical_payloads = {};
+	P_obj live_object = nullptr;
+	bool creation_pending = false;
+	uint64_t previous_uid = 0;
+	artifact_identity_state previous_state = artifact_identity_state::unresolved;
 };
 struct artifact_bind_row
 {
@@ -130,6 +144,13 @@ struct artifact_bind_row
 std::map<int, artifact_row> artifact_rows;
 std::map<int, artifact_bind_row> artifact_binds;
 bool artifact_cache_loaded = false;
+bool artifact_population_complete = false;
+struct artifact_restore_snapshot
+{
+	std::map<int, artifact_row> rows;
+	std::map<int, artifact_bind_row> binds;
+};
+std::unique_ptr<artifact_restore_snapshot> artifact_restore_checkpoint;
 
 #ifndef __NO_MYSQL__
 const char ARTIFACT_ROWS_QUERY[] =
@@ -400,6 +421,10 @@ bool artifact_queue_save(int vnum, const char *kind, artifact_save &save,
 
 bool artifact_row_save(int vnum, artifact_row &row)
 {
+	if (artifact_restore_checkpoint)
+		return true;
+	if (row.creation_pending)
+		return false;
 	try
 	{
 #ifdef __NO_MYSQL__
@@ -447,6 +472,8 @@ void artifact_row_store(int vnum, const artifact_row &row)
 
 bool artifact_bind_save(int vnum, artifact_bind_row &bind)
 {
+	if (artifact_restore_checkpoint)
+		return true;
 	try
 	{
 		const auto row = artifact_rows.find(vnum);
@@ -502,6 +529,8 @@ bool artifact_binds_reset(int vnum)
 			entry.second.save.dirty = true;
 		}
 	arti_cache_invalidate();
+	if (artifact_restore_checkpoint)
+		return true;
 	try
 	{
 #ifdef __NO_MYSQL__
@@ -560,6 +589,48 @@ bool artifact_binds_reset(int vnum)
 }
 
 } // namespace
+
+artifact_restore_scope::artifact_restore_scope()
+{
+	if (artifact_restore_checkpoint)
+	{
+		errno = EBUSY;
+		return;
+	}
+	try
+	{
+		auto snapshot = std::make_unique<artifact_restore_snapshot>();
+		snapshot->rows = artifact_rows;
+		snapshot->binds = artifact_binds;
+		artifact_restore_checkpoint = std::move(snapshot);
+		active_ = true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		errno = ENOMEM;
+	}
+}
+
+artifact_restore_scope::~artifact_restore_scope()
+{
+	if (!active_)
+		return;
+	artifact_rows.swap(artifact_restore_checkpoint->rows);
+	artifact_binds.swap(artifact_restore_checkpoint->binds);
+	artifact_restore_checkpoint.reset();
+	// Rollback must not allocate while unwinding. Stored/report state never
+	// changed, and this invalidates any in-flight local report generation.
+	++arti_cache_generation;
+}
+
+void artifact_restore_scope::commit()
+{
+	if (!active_)
+		return;
+	artifact_restore_checkpoint.reset();
+	active_ = false;
+	// Mutated rows remain dirty for the existing writer's normal retries.
+}
 
 bool artifacts_load(void)
 {
@@ -673,13 +744,169 @@ bool artifacts_stage_population(const std::vector<artifact_payload_projection> &
 		// No store or template call occurs in classification/publication. The
 		// normal writer retries complete dirty captures after boot.
 		artifact_rows.swap(staged);
-		arti_cache_invalidate();
+		artifact_population_complete = complete;
+		++arti_cache_generation;
 		return true;
 	}
 	catch (const std::bad_alloc &)
 	{
 		return false;
 	}
+}
+
+bool artifact_begin_creation(P_obj object)
+{
+	if (!object || !IS_ARTIFACT(object))
+		return object != nullptr;
+	if (!artifact_cache_loaded || !object->obj_uid || object->R_num < 0)
+	{
+		errno = ENODATA;
+		return false;
+	}
+	const int vnum = OBJ_VNUM(object);
+	try
+	{
+		auto found = artifact_rows.find(vnum);
+		if (found == artifact_rows.end())
+		{
+			// A previously ordinary prototype can acquire artifact flags. The
+			// full boot scan is required to establish its prior absence too.
+			if (!artifact_population_complete)
+			{
+				errno = ENODATA;
+				return false;
+			}
+			if (artifact_rows.size() >= ARTIFACT_IDENTITY_MAX_RECORDS)
+			{
+				errno = ENOMEM;
+				return false;
+			}
+			auto &row = artifact_rows[vnum];
+			row.locType = ARTIFACT_NOTINGAME;
+			row.type = ARTIFACT_MAJOR;
+			row.removed = true;
+			row.identity_state = artifact_identity_state::absent;
+			row.population_reason = artifact_population_reason::complete;
+			found = artifact_rows.find(vnum);
+		}
+		auto &row = found->second;
+		if (row.creation_pending && row.live_object == object &&
+		    row.canonical_item_uid == object->obj_uid)
+			return true;
+		if (row.identity_state == artifact_identity_state::present || row.live_object)
+		{
+			errno = EEXIST;
+			return false;
+		}
+		if (row.population_reason != artifact_population_reason::complete ||
+		    (row.identity_state != artifact_identity_state::absent &&
+		     row.identity_state != artifact_identity_state::retired))
+		{
+			errno = ENODATA;
+			return false;
+		}
+		// Reserve the soul slot before publishing the claim. Placement/rollback
+		// can then update the existing entry without another allocation.
+		artifact_binds.try_emplace(vnum, artifact_bind_row{ 0, 0 });
+		++arti_cache_generation;
+		row.previous_uid = row.canonical_item_uid;
+		row.previous_state = row.identity_state;
+		row.canonical_item_uid = object->obj_uid;
+		row.identity_state = artifact_identity_state::present;
+		row.live_object = object;
+		row.creation_pending = true;
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		errno = ENOMEM;
+		return false;
+	}
+}
+
+bool artifact_is_canonical(P_obj object)
+{
+	if (!object || !IS_ARTIFACT(object) || !object->obj_uid || object->R_num < 0)
+		return false;
+	const auto found = artifact_rows.find(OBJ_VNUM(object));
+	return found != artifact_rows.end() && !found->second.creation_pending &&
+	       found->second.identity_state == artifact_identity_state::present &&
+	       found->second.canonical_item_uid == object->obj_uid &&
+	       (!found->second.live_object || found->second.live_object == object);
+}
+
+void artifact_object_placed(P_obj object)
+{
+	if (!object || object->R_num < 0)
+		return;
+	const int vnum = OBJ_VNUM(object);
+	const auto found = artifact_rows.find(vnum);
+	if (found == artifact_rows.end())
+		return;
+	auto &row = found->second;
+	if (!row.creation_pending || row.live_object != object ||
+	    row.canonical_item_uid != object->obj_uid)
+		return;
+	row.creation_pending = false;
+	row.previous_uid = 0;
+	row.previous_state = artifact_identity_state::unresolved;
+	row.owned = false;
+	row.locType = ARTIFACT_NOTINGAME;
+	row.location = 0;
+	row.timer = 0;
+	row.removed = true;
+	row.canonical_payloads.clear();
+	artifact_binds.at(vnum) = { 0, 0 };
+	row.save = {};
+	row.save.dirty = true;
+	++arti_cache_generation;
+}
+
+void artifact_object_extracted(P_obj object, bool physical_retirement)
+{
+	if (!object || object->R_num < 0)
+		return;
+	const int vnum = OBJ_VNUM(object);
+	const auto found = artifact_rows.find(vnum);
+	if (found == artifact_rows.end())
+		return;
+	auto &row = found->second;
+	if (row.live_object != object || row.canonical_item_uid != object->obj_uid)
+		return;
+	row.live_object = nullptr;
+	if (row.creation_pending)
+	{
+		row.canonical_item_uid = row.previous_uid;
+		row.identity_state = row.previous_state;
+		row.previous_uid = 0;
+		row.previous_state = artifact_identity_state::unresolved;
+		row.creation_pending = false;
+		// The tentative UID was never captured. Rollback must not allocate
+		// report-cache work while releasing an abandoned constructor.
+		++arti_cache_generation;
+		return;
+	}
+	else if (!physical_retirement)
+	{
+		++arti_cache_generation;
+		return;
+	}
+	else
+	{
+		row.identity_state = artifact_identity_state::retired;
+		row.owned = false;
+		row.locType = ARTIFACT_NOTINGAME;
+		row.location = 0;
+		row.timer = 0;
+		row.removed = true;
+		artifact_binds.at(vnum) = { 0, 0 };
+		row.population_reason = artifact_population_reason::complete;
+		row.canonical_payloads.clear();
+		row.save = {};
+		row.save.dirty = true;
+		artifact_row_save(vnum, row);
+	}
+	arti_cache_invalidate();
 }
 
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer)
@@ -1972,6 +2199,9 @@ bool remove_owned_artifact_sql(P_obj arti, int pid)
 		return FALSE;
 	}
 
+	if (!artifact_is_canonical(arti))
+		return FALSE;
+
 	const int type = IS_IOUN(arti)	 ? ARTIFACT_IOUN :
 			 IS_UNIQUE(arti) ? ARTIFACT_UNIQUE :
 					   ARTIFACT_MAJOR;
@@ -2003,7 +2233,20 @@ void artifact_update_location_sql(P_obj arti)
 	P_obj cont = arti;
 	P_char owner;
 
-	if (!arti || !IS_ARTIFACT(arti) || !updateArtis)
+	if (!arti)
+		return;
+	P_obj root = arti;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	if (OBJ_NOWHERE(root))
+		return;
+	for (P_obj child = arti->contains; child; child = child->next_content)
+		artifact_update_location_sql(child);
+	artifact_object_placed(arti);
+	if (!artifact_is_canonical(arti))
+		return;
+
+	if (!updateArtis)
 	{
 		return;
 	}

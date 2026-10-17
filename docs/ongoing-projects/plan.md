@@ -21,6 +21,32 @@ implemented on `branch/issue-67-boot-population`. Recovery/delivery normalizatio
 NPC reconstruction qualification and gameplay admission remain open.
 No operational repair started.
 
+Current creation admission work: `branch/issue-67-creation-admission`, based on
+PR #149. Outcome: reserve a fresh artifact UID in the existing authority before
+constructor procedures/placement; protect an existing UID and roll back abandoned
+creation; apply the shared decision to reset population and staff load/clone.
+Non-goals: treating the old generic constructor as fresh creation, silently
+rejecting void placement after costs, or claiming the remaining producers,
+hydration domains and lifecycle/reward matrix are complete. Files: artifact
+service/admission interface, shared constructor, reset/staff callers, extraction
+hook and focused native/gameplay fixtures. Proof: repeated/forced O/P/G/E,
+offline/unresolved reservations, failure rollback, ordinary objects, nested clones,
+and unchanged canonical timer/soul on rejected/temporary objects. The old generic
+constructor remains an explicitly tracked migration boundary, not an admission
+bypass accepted by the final design.
+
+Current creation checkpoint (publication being prepared): fresh reset/staff/NPC admission and
+native/Redis restoration rollback are implemented. Native ASan/UBSan service,
+actual constructor/clone/extraction/reset, native SQL-capture, flat repository/runtime,
+NPC, copyover custody/evidence and full recovery controls pass. SQL and client-free
+builds and changed-line format/tidy pass. The disposable-MariaDB standard reward
+journey passes load/clone refusal, three feeds, exact UID across copyover/restart
+and offline-owner reservation. Flat compressed/uncompressed native copyover also
+passes socket, account and acknowledged-save recovery.
+Saved-UID source/owner qualification and the remaining producers/lifecycle remain
+open. See the creation checkpoint below for the precise boundary and next work.
+
+
 Current boot integration checkpoint: [PR #149](https://github.com/LuminariMUD/Duris/pull/149), ready for review, `branch/issue-67-boot-population`, based on PR #148.
 Outcome: acquire durable plus selected/retained recovery sources and independent
 custody before the boot reap, preserve their UIDs through cleanup, then stage
@@ -1069,6 +1095,149 @@ inventory or reducing the required availability of proved-absent artifacts.
 Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
+
+### Fresh reset/staff/NPC admission and restoration rollback — AR-03 in progress
+
+Branch: `branch/issue-67-creation-admission`, based on PR #149. Publication pending.
+This is a focused admission checkpoint, not universal artifact admission or final
+AR-03/AR-04 acceptance. The old generic `read_object` and saved-UID materializers
+are not yet source-qualified. Keep all unchecked AR-01–AR-07 acceptance work open.
+
+The actual constructor now offers `read_object_for_creation`: after effective
+prototype flags and a new UID exist, reserve through the existing artifact maps
+**before** procedures, object-list publication or index counts. Complete absence
+or a proven retired predecessor can claim; present/offline/reserved and unresolved
+identities refuse with EEXIST/ENODATA; resource refusal is ENOMEM. An instance
+whose template was ordinary requires complete population evidence too. Allocate
+the row and soul slot before publishing the tentative UID. Cancellation restores
+the preceding UID/state without changing its timer/soul or submitting a capture.
+Placement commits the new generation and normal location tracking captures it.
+Physical extraction of a registered canonical object retains a retired UID
+and clears generation-local state; mere unload keeps the reservation. Saved-UID
+objects still need their explicit qualification/registration boundary before this
+pointer lifetime policy can cover them.
+
+Mapped callers are reset B/C/A and O/P/G/E, staff `load obj` and clone (including
+nested containers and NPC equipment/inventory), and vnum-only native/Redis NPC
+reconstruction. Staff refusal names the public vnum and searchable
+`artifact_identity/create` reference. Expected reset refusals leave the command
+enabled and last_cmd false. Existing respawn/limit/chance rules still apply.
+Clone refuses effective artifact flags before construction and handles null
+children while preserving ordinary siblings. It logs the actual successful count.
+
+The native test reproduced abandoned pending objects for a missing P container
+and missing E mobile/invalid slot. These paths now extract the unused object;
+B/P reuse the existing `obj_can_nest` check for invalid/self containers. No new
+nesting abstraction is needed. Retained failing controls are
+`bin/analysis/issue67/creation-admission-missing-container-before.log` and
+`creation-admission-missing-mobile-before.log`. A transient-constructor refusal
+also originally disabled O; its retained before log and final consumer-allocation
+fixture prove resource refusal remains retryable. The final implementation does
+not use optional Redis report invalidation as an admission failure injector.
+
+Location tracking now walks artifacts inside ordinary moved containers and skips
+unplaced trees. Physical metadata removal and Redis floor-drop cleanup reject a
+noncanonical object when another registered physical pointer has the same UID.
+This is a guard for mapped registered objects, not a claim that legacy raw UID
+materialization or all mana/action/reward consumers are already qualified.
+
+Native copyover and Redis world restoration now checkpoint the existing artifact
+row/bind maps before materialization. Artifact captures remain deferred throughout
+the group. A later failure rolls back the full identity, live pointer, timer, soul,
+qualification and writer-dirty state after physical rollback; successful groups
+leave dirty rows for the existing writer. Checkpoint allocation failure publishes
+nothing and retains the input. Nested scopes refuse. This is one temporary
+snapshot, not a parallel authority, writer, queue or synchronous SQL fallback.
+
+Ablation: reuse the existing common maps/writer and public nesting helper. Pure
+population staging and tentative admission/cancellation do not touch optional
+report-cache I/O; optional report invalidation allocation failure cannot unwind an
+authoritative mutation. Do not register a raw matching UID at placement: equality
+alone cannot prove saved source/owner or distinguish offline inspection. That
+attempt was removed before publication. No NPC format change or invented custody.
+
+Proof for this checkpoint (logs under ignored `bin/analysis/issue67/`):
+
+- `test_artifact_creation_admission.py`: actual constructor/clone/extraction and
+  O/P/G/E bodies with the real artifact authority under ASan/terminating UBSan.
+  The 72-case matrix covers three respawn settings, three force settings, four
+  reset commands and artifact/ordinary controls. It also covers offline/unresolved
+  reservations, pending cancellation, missing/invalid destinations, effective
+  flags, ordinary nested clone siblings, unload/retirement, same-UID different
+  pointer cleanup, old ACK after replacement, and actual recovery coordinator
+  rollback/commit using controlled materialization with the real service.
+- `test_artifact_guild_snapshots.py`: actual row/soul allocation failures leave no
+  claim or capture; retry remains eligible. Existing async capture/ACK, timers,
+  soul, owner, reward transaction and memory-authority controls pass.
+- `test_flatfile_artifact_repository.py`: actual catalog/writer/bind/gameplay
+  controls pass. Positive removal fixtures now carry their canonical UID.
+- `test_world_recovery_npc_items.py`: existing 54,000-mob reconstruction control
+  and allocation refusal/whole-group failure pass.
+- `test_world_recovery_pipeline.py`: actual pipeline/planner/codec rollback and
+  reset controls pass; ENOMEM keeps the real O command enabled.
+- `test_copyover_custody.py` and `test_copyover_evidence.py`: actual native
+  save/exec/recover and pinning/framing controls pass. Other retained green
+  controls: newbie kit plan, player items, flat corpse restore and artifact mana.
+- SQL and client-free `make -C src` rebuild touched production units; changed-line
+  formatting and compatible clang-tidy pass. No full regression/database suite
+  is claimed.
+- `tests/async/with_disposable_mariadb.sh python3
+  tests/async/test_mysql_artifact_guild_reward_journey.py --case standard` passes:
+  deterministic unowned-ground load refusal, clone refusal, three real boon feeds
+  before held snapshots/history can commit, eventual exact timer/guild/history
+  agreement, unchanged canonical UID through native copyover and clean restart,
+  and refused staff creation with zero live instances while its owner is offline.
+  Retained report: `bin/analysis/artifact-estale/gameplay-journey.json`;
+  log: `creation-admission-reward-journey-final.log`.
+- `python3 tests/async/run_copyover_runtime_journey.py
+  bin/analysis/issue67/flat-memory-build/server/dms_new` passes both compressed and
+  uncompressed actual exec, original socket, look, acknowledged save and account
+  menu. The failed-open control keeps transport/save usable. Retained log:
+  `creation-admission-flat-journey-final.log`.
+
+The SQL reward journey previously used vnum900, already physically populated and
+unowned in a full boot. Refusal exposed an invalid fixture assumption. Natural reset/chance rules also make an assumed existing900 count unreliable.
+The fixture now derives private prototype900000 in a private test world file,
+with no reset/script producer, creates and drops it, then proves the unowned
+ground copy blocks another staff load. Root world outputs
+are untouched. A retained full-server failure also showed a wandering NPC could
+knock the fixture caster unconscious and block its equipment command; the private
+fixture room now excludes wandering NPCs and is cleared before targets load
+(`failure-standard-1792205411563459133`). Repeat staff load and direct clone must refuse, while the admitted
+subject is used by the real reward/copyover/restart path. Added assertions compare
+canonical UID/state through copyover and clean boot and attempt staff creation
+while its owner is offline. Only the standard journey was run for this chunk;
+the script's injected fault/PVP cases are not fresh coverage here.
+
+Immediate continuation after this checkpoint:
+
+1. Repair the separately found offline-load cancellation cleanup: when the
+   requesting actor disappears, `player_load_offline_for` calls `free_char` on a
+   temporary character that may still carry/equip loaded items. `free_char` only
+   logs these and frees the owner. A scratch native probe linked to the actual
+   offline callback and item-discard implementation reproduces attached inventory
+   at free (`bin/analysis/issue67/offline-cleanup-before.log`). Reuse
+   `player_load_items_discard` before free; it clears temporary UIDs recursively
+   and extracts with FALSE. Promote the probe, prove worn/nested/carried cleanup
+   and the live-callback controls, and publish as its own focused PR. Existing
+   `player_save_pipeline_end_session` already protects a live owner's revision;
+   do not add another session abstraction.
+2. Implement explicit saved-UID materialization with source/owner qualification
+   and inspection roles. Cover player/pet/storage/delivery/ground/copyover loaders
+   and rollback; do not blanket-change every `read_object` to fresh creation.
+   Legacy `addOnGroundArtis_sql`/`addOnMobArtis_sql` metadata reconstruction still
+   needs an explicit qualified route preserving UID/timer/soul where justified.
+   Do not let fresh creation race a planned legacy restoration.
+3. Migrate remaining producer families with refusal before costs/success and
+   effective saved/override flags. Then complete canonical lifecycle, save coupling,
+   mana/action and reward eligibility, audit/rehearsal and full acceptance matrix.
+   `item_actions_source_leaving` currently cancels by UID: inspect physical source
+   selection before repairing same-UID inspection interference as separate work.
+   Ferry and world-recovery capture cleanup were inspected and compare pointers.
+   Administrative `arti_syncdb_sql` still needs qualified refusal/audit rather
+   than a workaround preserving transient pointers around unsafe vnum resets.
+
+No production inspection, migration, cleanup, deployment, merge or release tag.
 
 ### Boot source acquisition, reap protection and early staging — AR-01/AR-02
 

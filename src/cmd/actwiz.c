@@ -5283,9 +5283,22 @@ void do_load(P_char ch, char *argument, int /*cmd*/)
 			send_to_char("There is no object with that number.\n", ch);
 			return;
 		}
-		obj = read_object(r_num, REAL);
+		obj = read_object_for_creation(r_num, REAL);
 		if (!obj)
 		{
+			if (errno == EEXIST || errno == ENODATA || errno == ENOMEM)
+			{
+				const char *reason = errno == EEXIST ?
+							     "already present or reserved" :
+						     errno == ENOMEM ? "temporarily unavailable" :
+								       "identity unresolved";
+				send_to_char_f(
+					ch,
+					"Artifact %d creation refused: %s. Reference: artifact_identity/create.\n\r",
+					l_num, reason);
+				persistence_alert(AVATAR, "artifact_identity/create", "redacted",
+						  "none", "none", reason, "vnum=%d", l_num);
+			}
 			logit(LOG_DEBUG, "do_load(): obj %d [%d] not loadable", r_num,
 			      obj_index[r_num].virtual_number);
 			return;
@@ -8163,7 +8176,17 @@ struct obj_data *clone_obj(P_obj obj)
 	P_obj ocopy;
 	size_t i;
 
+	if (obj->R_num < 0)
+		return nullptr;
+	if (IS_ARTIFACT(obj))
+	{
+		persistence_alert(AVATAR, "artifact_identity/create", "redacted", "none", "none",
+				  "clone_source_exists", "vnum=%d", OBJ_VNUM(obj));
+		return nullptr;
+	}
 	ocopy = read_object(obj->R_num, REAL);
+	if (!ocopy)
+		return nullptr;
 	/* copy  */
 	if (obj->name)
 	{
@@ -8241,6 +8264,8 @@ void clone_container_obj(P_obj to, P_obj obj)
 	for (tmp = obj->contains; tmp; tmp = tmp->next_content)
 	{
 		ocopy = clone_obj(tmp);
+		if (!ocopy)
+			continue;
 		if (tmp->contains)
 			clone_container_obj(ocopy, tmp);
 		obj_to_obj(ocopy, to);
@@ -8360,6 +8385,8 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 				{
 					/* clone mob->equipment[j]  */
 					ocopy = clone_obj(mob->equipment[j]);
+					if (!ocopy)
+						continue;
 					if (mob->equipment[j]->contains)
 					{
 						clone_container_obj(ocopy, mob->equipment[j]);
@@ -8372,6 +8399,9 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 				for (obj = mob->carrying; obj; obj = obj->next_content)
 				{
 					ocopy = clone_obj(obj);
+
+					if (!ocopy)
+						continue;
 					if (obj->contains)
 						clone_container_obj(ocopy, obj);
 					/* move obj to cloned mobs carrying  */
@@ -8409,6 +8439,14 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 		for (i = 0; i < count; i++)
 		{
 			ocopy = clone_obj(obj);
+			if (!ocopy)
+			{
+				send_to_char_f(
+					ch,
+					"Clone refused for object %d: artifact copy exists or template unavailable. Reference: artifact_identity/create.\n\r",
+					OBJ_VNUM(obj));
+				break;
+			}
 			ocopy->type = obj->type;
 
 			if (obj->contains)
@@ -8420,13 +8458,13 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 			else
 				obj_to_room(ocopy, ch->in_room);
 		}
-		if (IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
+		if (i > 0 && IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
 		{
 			wizlog(GET_LEVEL(ch), "%s just cloned %s %d times [&+C%d&N]", GET_NAME(ch),
-			       obj->short_description, count, world[ch->in_room].number);
+			       obj->short_description, i, world[ch->in_room].number);
 			logit(LOG_WIZ, "%s cloned %s %d times [&+C%d&N]", GET_NAME(ch),
-			      obj->short_description, count, world[ch->in_room].number);
-			sql_log(ch, WIZLOG, "Cloned %s &n%d times", obj->short_description, count);
+			      obj->short_description, i, world[ch->in_room].number);
+			sql_log(ch, WIZLOG, "Cloned %s &n%d times", obj->short_description, i);
 		}
 	}
 	else

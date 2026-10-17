@@ -45,6 +45,8 @@ for signature in (
     support = remove_function(support, signature)
 
 HARNESS = r'''
+P_obj read_object_for_creation(int, int) { std::abort(); }
+
 #include "persistence/locker_async.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/critical_command_coordinator.h"

@@ -846,6 +846,8 @@ P_char read_mobile(int, int);
 P_char read_mobile(int, int, bool apply_mob_gold);
 P_char read_mobile_probe(int, int);
 P_obj read_object(int, int);
+// Fresh creation can be refused by canonical identity; handle a null result.
+P_obj read_object_for_creation(int, int);
 char *file_to_string(const char *);
 char *fread_string(FILE *);
 int is_empty(int);

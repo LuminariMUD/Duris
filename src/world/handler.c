@@ -8,6 +8,7 @@
  * ***************************************************************************
  */
 
+#include "guild/artifact_admission.h"
 #include "core/prototypes.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/item_actions.h"
@@ -1937,10 +1938,7 @@ void obj_to_char(P_obj object, P_char ch)
 	GET_CARRYING_W(ch) += encumbrance_weight(GET_OBJ_WEIGHT(object));
 	IS_CARRYING_N(ch)++;
 
-	if (IS_ARTIFACT(object))
-	{
-		artifact_update_location_sql(object);
-	}
+	artifact_update_location_sql(object);
 
 	if (object->g_key == 0 && IS_PC(ch) && GET_LEVEL(ch) < 57 && GET_PID(ch) < 10000000)
 	{
@@ -2069,10 +2067,7 @@ void equip_char(P_char ch, P_obj obj, int pos, int nodrop)
 	obj->loc.wearing = ch;
 	obj->loc_p = LOC_WORN;
 
-	if (IS_ARTIFACT(obj))
-	{
-		artifact_update_location_sql(obj);
-	}
+	artifact_update_location_sql(obj);
 
 	if (IS_PC(ch) && GET_ITEM_TYPE(ch->equipment[pos]) == ITEM_ARMOR)
 		ch->only.pc->prestige += obj->value[2];
@@ -2702,10 +2697,7 @@ void obj_to_room(P_obj object, int room)
 	{
 		falling_obj(object, 1, false);
 	}
-	if (IS_ARTIFACT(object))
-	{
-		artifact_update_location_sql(object);
-	}
+	artifact_update_location_sql(object);
 }
 
 /*
@@ -2936,6 +2928,7 @@ void obj_to_obj(P_obj obj, P_obj obj_to)
 	  }
 	*/
 	mark_container_dirty(obj_to);
+	artifact_update_location_sql(obj);
 }
 
 // appends obj to end of a linked list - used during load to preserve order
@@ -2996,6 +2989,7 @@ void obj_to_obj_at_end(P_obj obj, P_obj obj_to)
 	resync_reducing_container(obj_to);
 
 	mark_container_dirty(obj_to);
+	artifact_update_location_sql(obj);
 }
 
 void obj_to_char_at_end(P_obj object, P_char ch)
@@ -3048,8 +3042,7 @@ void obj_to_char_at_end(P_obj object, P_char ch)
 	GET_CARRYING_W(ch) += encumbrance_weight(GET_OBJ_WEIGHT(object));
 	IS_CARRYING_N(ch)++;
 
-	if (IS_ARTIFACT(object))
-		artifact_update_location_sql(object);
+	artifact_update_location_sql(object);
 
 	if (object->g_key == 0 && IS_PC(ch) && GET_LEVEL(ch) < 57 && GET_PID(ch) < 10000000)
 		object->g_key = 1;
@@ -3180,7 +3173,7 @@ void extract_obj(P_obj obj, int gone_for_good)
 	ferry_forget_object(obj);
 
 	// remove from floor_drops if it was tracked
-	if (obj->obj_uid > 0)
+	if (obj->obj_uid > 0 && (!IS_ARTIFACT(obj) || artifact_is_canonical(obj)))
 		redis_remove_floor_drop(obj->obj_uid);
 
 	if (OBJ_ROOM(obj))
@@ -3257,6 +3250,8 @@ void extract_obj(P_obj obj, int gone_for_good)
 		if (obj->next)
 			obj->next->prev = obj->prev;
 	}
+
+	artifact_object_extracted(obj, gone_for_good);
 
 	obj->prev = NULL;
 	obj->next = NULL;
