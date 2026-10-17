@@ -180,6 +180,33 @@ int main()
 		       0, reason::unqualified_payload);
 	}
 
+	for (const uint64_t saved_flags : { uint64_t{ 0 }, uint64_t{ ITEM_ARTIFACT } })
+		for (int contradiction = 0; contradiction < 4; ++contradiction)
+		{
+			auto foreign = item(111, 901);
+			foreign.role = role::history;
+			foreign.extra_flags = saved_flags;
+			if (contradiction == 1)
+				foreign.custody.state = item_custody_state::quarantined;
+			if (contradiction == 2)
+			{
+				foreign.custody_found = false;
+				foreign.source_quarantined = true;
+			}
+			if (contradiction == 3)
+			{
+				foreign.custody_found = false;
+				foreign.custody_examined = false;
+			}
+			expect(classify({ foreign }, { { 900, 111, state::present } }),
+			       state::present, 111, 0, reason::unqualified_payload);
+		}
+	auto terminal_foreign = item(111, 901);
+	terminal_foreign.role = role::history;
+	terminal_foreign.custody.state = item_custody_state::destroyed;
+	expect(classify({ terminal_foreign }, { { 900, 111, state::present } }), state::absent, 0,
+	       0);
+
 	// Missing evidence never becomes absence; retained identities are not erased.
 	expect(classify({}, {}, false), state::unresolved, 0, 0, reason::incomplete);
 	expect(classify({ current }, { { 900, 111, state::present } }, false), state::present, 111,

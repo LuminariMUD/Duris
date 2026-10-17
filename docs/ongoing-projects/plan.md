@@ -1,5 +1,21 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — foreign-vnum historical custody (#148)
+
+Outcome: active, quarantined or unexamined historical evidence for an established
+UID cannot falsely release that UID under its prior vnum. Reuse the existing
+conflicting-UID set; history still never becomes a new physical candidate.
+Files: classifier, existing executable classifier fixture, this plan. The new
+active-history case fails before repair. Cover ordinary/artifact effective flags,
+quarantine and missing custody evidence, with terminal-history absence control.
+No new persisted identity state or query is needed. Classifier regressions,
+native build and formatting pass (`bin/analysis/pr148-history-*.log`).
+
+Closeout direction after the user challenged the six-hour overrun: finish and
+publish already-started repairs, propagate them, and record remaining release
+blockers. Do not treat the review queue or issue #67 as complete.
+
+
 ## Review repair — atomic recovery-claim isolation (#147)
 
 Outcome: consuming the restored image cannot unlink a replacement at the public
