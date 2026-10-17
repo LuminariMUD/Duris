@@ -120,8 +120,11 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 			"own.owner_id,own.owner_context_id,own.item_revision,own.vnum,own.state,"
 			"rev.revision," +
 			owner_id + "," + owner_context +
-			",EXISTS(SELECT 1 FROM item_ownership_quarantine q WHERE q.item_uid=i.obj_uid AND q.repaired_at IS NULL) FROM " +
-			table + " i LEFT JOIN " + table + " p ON p.id=i.container_id" + metadata +
+			",EXISTS(SELECT 1 FROM item_ownership_quarantine q WHERE q.repaired_at IS NULL AND "
+			"((i.obj_uid<>0 AND q.item_uid=i.obj_uid) OR "
+			"(COALESCE(i.obj_uid,0)=0 AND q.item_uid=0 AND q.source_table='" +
+			table + "' AND q.source_row_id=i.id))) FROM " + table + " i LEFT JOIN " +
+			table + " p ON p.id=i.container_id" + metadata +
 			" LEFT JOIN item_current_owner own ON "
 			"own.item_uid=i.obj_uid LEFT JOIN item_owner_revision rev ON "
 			"rev.owner_type=own.owner_type AND rev.owner_id=own.owner_id AND "
@@ -283,7 +286,8 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 				"COALESCE(i.claim_operation_id,a.listing_operation_id),(a.id IS NULL OR a.custody_state<>1 OR "
 				"a.quantity<>(SELECT COUNT(*) FROM auction_item_custody c WHERE c.auction_id=i.auction_id) OR "
 				"EXISTS(SELECT 1 FROM auction_reconciliation_quarantine q WHERE q.auction_id=i.auction_id AND q.repaired_at IS NULL)),"
-				"OCTET_LENGTH(i.obj_blob),LEFT(i.obj_blob,32769),NULL,0,0";
+				"OCTET_LENGTH(i.obj_blob),LEFT(i.obj_blob,32769),NULL,0,0,"
+				"i.claim_pid,i.claim_operation_id,i.claimed_at";
 			source = "auction_item_custody i LEFT JOIN auctions a ON a.id=i.auction_id";
 			break;
 		case artifact_payload_domain::auction_legacy:
@@ -299,9 +303,11 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			break;
 		case artifact_payload_domain::auction_pickup:
 			max_bytes = AUCTION_BLOB_MAX_BYTES;
-			fields =
-				"i.id,i.pid,0,0,0,i.quantity,IF(i.retrieved=0,0,2),1,i.pid,"
-				"NULL,0,OCTET_LENGTH(i.obj_blob_str),LEFT(i.obj_blob_str,32769),NULL,0,0";
+			fields = "i.id,i.pid,0,0,0,i.quantity,IF(i.retrieved=0,0,2),1,i.pid,"
+				 "NULL,EXISTS(SELECT 1 FROM item_ownership_quarantine q WHERE "
+				 "q.item_uid=0 AND q.source_table='auction_item_pickups' AND "
+				 "q.source_row_id=i.id AND q.repaired_at IS NULL),"
+				 "OCTET_LENGTH(i.obj_blob_str),LEFT(i.obj_blob_str,32769),NULL,0,0";
 			source = "auction_item_pickups i";
 			break;
 		case artifact_payload_domain::collector:
@@ -370,6 +376,17 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			    blob_size > max_bytes || lengths[12] != blob_size ||
 			    !number(row[14], &beneficiary) || !number(row[15], &status))
 				return EINVAL;
+			if (domain == artifact_payload_domain::auction)
+			{
+				uint64_t claimant = 0;
+				// Reservation sets the PID first; completion writes operation/time together.
+				if ((row[18] != nullptr) != (row[17] != nullptr) ||
+				    (row[18] && !row[16]) ||
+				    (row[16] && (!number(row[16], &claimant) || !claimant)) ||
+				    (row[17] && lengths[17] != item.source_operation.bytes.size()))
+					return EINVAL;
+			}
+
 			staged.next_row_id = item.row_id;
 			++staged.source_rows;
 			item.role = static_cast<artifact_payload_role>(role);
@@ -435,6 +452,9 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 						       EINVAL;
 				if (decoded.size() != 1 || decoded[0].object_uid != indexed_uid ||
 				    (indexed_vnum && decoded[0].vnum != indexed_vnum))
+					return EINVAL;
+				if (domain == artifact_payload_domain::collector &&
+				    decoded[0].equipment_slot != 0)
 					return EINVAL;
 				if (domain == artifact_payload_domain::embedded &&
 				    (decoded[0].type != ITEM_MONEY ||
