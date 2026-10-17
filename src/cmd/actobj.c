@@ -26,6 +26,7 @@
 #include "combat/justice.h"
 #include "classes/necromancy.h"
 #include "item/objmisc.h"
+#include "guild/artifact_admission.h"
 #include "persistence/persistence_checkpoint.h"
 #include "redis/redis_floor_runtime.h"
 #include "core/safe_format.h"
@@ -914,7 +915,8 @@ do_get_finalize_container_success(P_char ch, P_char hood, P_obj s_obj, P_obj o_o
 			{
 				do_get_log_container_artifact_pickup(ch, hood, o_obj, s_obj);
 				// If the artifact was picked up across racewar lines.
-				if ((s_obj->value[5] != RACEWAR_NONE) &&
+				if (artifact_is_canonical(o_obj) &&
+				    (s_obj->value[5] != RACEWAR_NONE) &&
 				    (GET_RACEWAR(ch) != s_obj->value[5]))
 				{
 					int vnum = OBJ_VNUM(o_obj);
