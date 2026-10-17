@@ -381,6 +381,8 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	      "(1,900,3," +
 		      legacy + ",1),(2,900,2," + uidless + ",0)");
 	query(connection,
+	      "UPDATE auctions SET listing_operation_id=UNHEX('fedcba9876543210fedcba9876543210') WHERE id=1");
+	query(connection,
 	      "INSERT INTO auction_item_custody(auction_id,slot,item_uid,item_revision,vnum,obj_blob) VALUES"
 	      "(1,0,101,3,900," +
 		      legacy + "),(1,1,102,4,900," + legacy +
@@ -471,6 +473,16 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	       page.rows[1].role == artifact_payload_role::stored &&
 	       page.rows[1].source_quarantined && !page.rows[1].item_uid &&
 	       page.rows[1].quantity == 2);
+	query(connection,
+	      "INSERT INTO item_ownership_quarantine(item_uid,source_table,source_row_id,conflict_code,evidence) VALUES(0,'auctions',1,1,'legacy template')");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_legacy, 0, &page));
+	assert(page.rows[0].source_quarantined);
+	query(connection,
+	      "UPDATE item_ownership_quarantine SET repaired_at=CURRENT_TIMESTAMP(6) WHERE item_uid=0 AND source_table='auctions'");
+	assert(!artifact_population_read_sql_blob_page(
+		connection, artifact_payload_domain::auction_legacy, 0, &page));
+	assert(!page.rows[0].source_quarantined);
 	assert(!artifact_population_read_sql_blob_page(
 		connection, artifact_payload_domain::auction_pickup, 0, &page));
 	assert(page.rows.size() == 2 && page.rows[0].custody_examined &&
@@ -558,7 +570,7 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	query(connection, "SET autocommit=0");
 	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);
 	query(connection, "SET autocommit=1");
-	for (const auto &fault : std::array<std::pair<std::string, std::string>, 9>{ {
+	for (const auto &fault : std::array<std::pair<std::string, std::string>, 12>{ {
 		     { "UPDATE auction_item_custody SET obj_blob=X'00' WHERE item_uid=101",
 		       "UPDATE auction_item_custody SET obj_blob=" + legacy +
 			       " WHERE item_uid=101" },
@@ -580,6 +592,13 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 		       "UPDATE auction_item_custody SET claim_operation_id=UNHEX('0123456789abcdef0123456789abcdef') WHERE slot=1" },
 		     { "UPDATE auction_item_custody SET claimed_at=NULL WHERE slot=1",
 		       "UPDATE auction_item_custody SET claimed_at=CURRENT_TIMESTAMP(6) WHERE slot=1" },
+
+		     { "UPDATE auctions SET listing_operation_id=NULL WHERE id=1",
+		       "UPDATE auctions SET listing_operation_id=UNHEX('fedcba9876543210fedcba9876543210') WHERE id=1" },
+		     { "UPDATE collector_listings SET listing_revision=listing_revision+1 WHERE listing_id=2001",
+		       "UPDATE collector_listings SET listing_revision=listing_revision-1 WHERE listing_id=2001" },
+		     { "UPDATE collector_listings SET item_revision=item_revision+1 WHERE listing_id=2001",
+		       "UPDATE collector_listings SET item_revision=item_revision-1 WHERE listing_id=2001" },
 
 		     { "UPDATE item_current_owner SET coin_payload=X'00' WHERE item_uid=904",
 		       "UPDATE item_current_owner SET coin_payload=" + modern_blob(904, true) +

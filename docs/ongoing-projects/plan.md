@@ -1,5 +1,21 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active review repair — remaining SQL source contracts
+
+Branch `branch/issue-67-evidence-contracts`, based on qualified registration.
+Three later #143 review-body findings: keep source-keyed quarantine on legacy
+auction templates; require a listing operation for otherwise authoritative auction
+custody; compare collector scalar revisions to its encoded record. Reuse existing
+queries and rejection/quarantine behavior. Files: SQL population reader, existing
+maintained-schema fixture, plan. No schema or format changes. Tests exercise each
+corruption and repaired/valid controls while preserving prior aggregate output.
+Disposable MariaDB numeric/maintained-schema blob suites and native build pass
+(`bin/analysis/evidence-contracts-*.log`).
+The latest full review also adds two #149 boot-selection findings and two #153
+recovery/topology findings; these remain after this chunk. Inventory is retained
+at `duris-issue67-writer-backpressure/bin/analysis/review-after173.json`.
+
+
 ## Active review repair — require qualified physical registration
 
 Branch `branch/issue-67-qualified-registration`. Outcome: a matching UID in an

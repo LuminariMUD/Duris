@@ -293,7 +293,7 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 				"a.quantity<>(SELECT COUNT(*) FROM auction_item_custody c WHERE c.auction_id=i.auction_id) OR "
 				"EXISTS(SELECT 1 FROM auction_reconciliation_quarantine q WHERE q.auction_id=i.auction_id AND q.repaired_at IS NULL)),"
 				"OCTET_LENGTH(i.obj_blob),LEFT(i.obj_blob,32769),NULL,0,0,"
-				"i.claim_pid,i.claim_operation_id,i.claimed_at";
+				"i.claim_pid,i.claim_operation_id,i.claimed_at,a.listing_operation_id";
 			source = "auction_item_custody i LEFT JOIN auctions a ON a.id=i.auction_id";
 			break;
 		case artifact_payload_domain::auction_legacy:
@@ -303,7 +303,8 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 				"IF(i.status=1 AND NOT EXISTS(SELECT 1 FROM auction_item_custody c WHERE c.auction_id=i.id),0,2),"
 				"6,i.id,i.listing_operation_id,(i.custody_state<>1 OR "
 				"i.quantity<>(SELECT COUNT(*) FROM auction_item_custody c WHERE c.auction_id=i.id) OR "
-				"EXISTS(SELECT 1 FROM auction_reconciliation_quarantine q WHERE q.auction_id=i.id AND q.repaired_at IS NULL)),"
+				"EXISTS(SELECT 1 FROM auction_reconciliation_quarantine q WHERE q.auction_id=i.id AND q.repaired_at IS NULL) OR "
+				"EXISTS(SELECT 1 FROM item_ownership_quarantine q WHERE q.item_uid=0 AND q.source_table='auctions' AND q.source_row_id=i.id AND q.repaired_at IS NULL)),"
 				"OCTET_LENGTH(i.obj_blob_str),LEFT(i.obj_blob_str,32769),NULL,0,0";
 			source = "auctions i";
 			break;
@@ -322,7 +323,7 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 				"i.listing_id,i.beneficiary_pid,i.listing_id,i.item_uid,0,1,"
 				"IF(i.status IN (2,3),0,2),10,i.listing_id,i.death_operation_id,"
 				"EXISTS(SELECT 1 FROM collector_reconciliation_quarantine q WHERE q.listing_id=i.listing_id AND q.repaired_at IS NULL),"
-				"OCTET_LENGTH(i.item_blob),LEFT(i.item_blob,131073),i.record_blob,i.beneficiary_pid,i.status";
+				"OCTET_LENGTH(i.item_blob),LEFT(i.item_blob,131073),i.record_blob,i.beneficiary_pid,i.status,i.listing_revision,i.item_revision";
 			source = "collector_listings i";
 			break;
 		case artifact_payload_domain::embedded:
@@ -386,7 +387,10 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			{
 				uint64_t claimant = 0;
 				// Reservation sets the PID first; completion writes operation/time together.
-				if ((row[18] != nullptr) != (row[17] != nullptr) ||
+				if ((!quarantined && !row[19]) ||
+				    (row[19] &&
+				     lengths[19] != item.source_operation.bytes.size()) ||
+				    (row[18] != nullptr) != (row[17] != nullptr) ||
 				    (row[18] && !row[16]) ||
 				    (row[16] && (!number(row[16], &claimant) || !claimant)) ||
 				    (row[17] && lengths[17] != item.source_operation.bytes.size()))
@@ -408,6 +412,7 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			{
 				collector::record record;
 				critical_operation_id operation;
+				uint64_t listing_revision = 0, item_revision = 0;
 				if (!row[13] ||
 				    collector::record_decode(
 					    reinterpret_cast<const uint8_t *>(row[13]), lengths[13],
@@ -416,6 +421,10 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 								    &operation) ||
 				    record.listing != item.row_id || record.uid != indexed_uid ||
 				    record.beneficiary != beneficiary ||
+				    !number(row[16], &listing_revision) ||
+				    !number(row[17], &item_revision) ||
+				    record.revision != listing_revision ||
+				    record.item_revision != item_revision ||
 				    static_cast<unsigned>(record.status) != status ||
 				    !critical_operation_id_equal(operation,
 								 item.source_operation) ||
