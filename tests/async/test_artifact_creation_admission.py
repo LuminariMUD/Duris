@@ -89,7 +89,8 @@ int proclibObj_add(P_obj,char *,char *) { return 0; }
 int FillMasterSpellBook(P_obj) { return 0; }
 void convertObj(P_obj) {}
 void world_recovery_capture_forget_object(P_obj) {}
-void item_actions_source_leaving(P_obj) {}
+static std::map<P_obj,unsigned> pending_actions;
+void item_actions_source_leaving(P_obj object) { pending_actions.erase(object); }
 void ferry_forget_object(P_obj) {}
 void redis_remove_floor_drop(unsigned long uid) { ++floors; removed_floor_uids.push_back(uid); }
 void disarm_obj_nevents(P_obj,event_func_type) {}
@@ -103,10 +104,11 @@ void unlink_content(P_obj object,P_obj *head) {
 void obj_from_room(P_obj object) { unlink_content(object,&rooms[object->loc.room].contents); }
 void obj_from_char(P_obj object) { auto *owner=object->loc.carrying; unlink_content(object,&owner->carrying); }
 void obj_from_obj(P_obj object) { auto *parent=object->loc.inside; unlink_content(object,&parent->contains); }
-P_obj unequip_char(P_char mob,int slot,bool) {
- auto *object=mob->equipment[slot]; mob->equipment[slot]=nullptr;
- object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; return object;
-}
+void all_affects(P_char,int) {}
+static void mark_char_or_owner_dirty(P_char) {}
+int char_light(P_char) { return 0; }
+int room_light(int,int) { return 0; }
+// ACTUAL_UNEQUIP
 void place_tree(P_obj object) {
  for(P_obj child=object->contains;child;child=child->next_content) place_tree(child);
  artifact_object_placed(object);
@@ -379,6 +381,7 @@ source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("playe
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
+source=source.replace("// ACTUAL_UNEQUIP",extract_function("handler.c","P_obj unequip_char("))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
@@ -962,6 +965,11 @@ void swap_admission_cases() {
   }
   artifact_binds[900]={77,88}; artifact_save_pulse(true); drain();
   const auto original_uid=source->obj_uid; const auto original_population=pool.objs_used;
+  if(location==1) {
+   pending_actions[source]=3; // active and passive actions referencing the worn source
+   assert(unequip_char(&owner,0,FALSE)==source && !pending_actions.contains(source));
+   equip_char(&owner,source,0,TRUE); pending_actions[source]=3;
+  }
   for(int fault : {1,2,3}) {
    const auto before_target_uid=artifact_rows.at(902).canonical_item_uid;
    const auto before_links=removed_wear_links; const auto before_floor=removed_floor_uids.size();
@@ -969,6 +977,8 @@ void swap_admission_cases() {
    swap_placement_fault=fault;
    char refused[]="900 902"; arti_swap_sql(&staff,refused);
    swap_placement_fault=0;
+   if(location==1) assert(pending_actions.contains(source) && pending_actions.at(source)==3);
+   assert(!rooms[1].contents && "failed redirection left a live object on the alternate floor");
    assert(artifact_rows.at(900).live_object==source && artifact_rows.at(900).canonical_item_uid==original_uid &&
           artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_is_canonical(source) &&
           artifact_rows.at(900).timer==source_timer && artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
@@ -984,6 +994,7 @@ void swap_admission_cases() {
    for(size_t index=before_floor; index<removed_floor_uids.size(); ++index) assert(removed_floor_uids[index]!=original_uid);
   }
   char swap[]="900 902"; arti_swap_sql(&staff,swap);
+  assert(!pending_actions.contains(source)); // committed replacement cancels old-source actions
   replacement=artifact_rows.at(902).live_object;
   assert(replacement && artifact_is_canonical(replacement) && artifact_rows.at(902).timer==source_timer);
   if(location==0 || location==3) assert(OBJ_CARRIED(replacement) && replacement->loc.carrying==&owner);

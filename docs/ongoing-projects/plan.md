@@ -1,5 +1,30 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Current review checkpoint: #162 pending swap actions
+
+Active branch: `branch/issue-67-swap-placement-rollback`, in the clean reused
+worktree `/home/aiwithapex/projects/duris-issue67-handoff`. Parent carry-forward
+merge: `495fe031b`; prior fixes are published through #161 `1812c633d`.
+Latest inventory: 42 findings, 41 resolved, one outstanding (#162).
+
+Outcome: a refused, redirected or destroyed worn replacement preserves pending
+active/passive actions on the original item; normal unequip and committed swap
+still cancel them. The existing `saving` flag already prevents temporary unequip
+from breaking wear links. Honor the same flag for action-departure cleanup instead
+of adding an API, state snapshot or rollback mechanism. Verified current callers
+using that mode are temporary character-save unequip and the swap probe.
+Files: `src/world/handler.c`, the existing native admission/rollback fixture, this
+plan. The actual unequip/swap regression fails before repair. After repair,
+ASan/UBSan covers all three failed placement modes, ordinary unequip and committed
+swap; the full item-action runtime/cancellation suite, native build, formatting and
+tidy pass. Evidence is in this worktree's `bin/analysis/pr162-*`. Publication is next.
+
+Prior review logs remain in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure/bin/analysis`.
+After publishing #162, return there to carry through #163–#165 and #167, then run
+combined validation and refresh every open PR/thread before marking the review
+goal complete. Production operations and PR merges are outside this review pass.
+
 ## Capacity review verification — #156
 
 A later review claimed that qualification could admit 4096 active items plus a

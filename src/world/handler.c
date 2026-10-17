@@ -2110,7 +2110,9 @@ P_obj unequip_char(P_char ch, int pos, bool saving)
 		return NULL;
 	}
 	obj = ch->equipment[pos];
-	item_actions_source_leaving(obj);
+	// Temporary unequip preserves actions until an actual source departure.
+	if (!saving)
+		item_actions_source_leaving(obj);
 
 	if (IS_PC(ch) && GET_ITEM_TYPE(ch->equipment[pos]) == ITEM_ARMOR)
 		ch->only.pc->prestige -= obj->value[2];
