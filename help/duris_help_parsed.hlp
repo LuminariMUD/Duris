@@ -1974,16 +1974,16 @@ possible effects are bestowed upon reaching 10th circle.
 #0
 
 Aura of Battle Lust
-Aura of Battle Lust - Last Edited: 2018-05-11 10:25:08 by lohrr
-===============================================================
+Aura of Battle Lust - Last Edited: 2026-10-18
+==========================================
 Syntax:         innate aura of battlelust
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
 * Duration:       Instantaneous
-While affected by this aura, members of the paladin's group are more effective in dealing both melee and spell damage.
+While affected by this aura, members of the paladin's group are more effective in dealing both melee and spell damage. The aura combines with an anti-paladin's Blood Tithe.
 ==See also==
-Aura of Vigor, Aura of Improved Healing, Aura of Precision, Aura of Protection, Aura of Endurance,  Paladin auras
+Aura of Vigor, Aura of Improved Healing, Aura of Precision, Aura of Protection, Aura of Endurance, Blood Tithe, Paladin auras
 #0
 
 Aura of Endurance
@@ -12168,16 +12168,35 @@ See also: Crusader, Paladin
 #0
 
 Holy Sacrifice
-Holy Sacrifice - Last Edited: 2007-04-20 14:02:09 by Unknown
-============================================================
+Holy Sacrifice - Last Edited: 2026-10-18
+=====================================
+* Paladin circle: 10th (Cavalier, Crusader)
 * Area of effect: <caster> & <group>
 * Aggressive:     No
 * Cumulative:     No
-* Duration:       Dependent on proficiency of caster
-* Type of spell:  Generic
-As the Paladin sheds blood in combat, their grouped comrades will gain
-strength from their suffering.
-	See also:group ,tank
+* Duration:       15 ticks, plus 1 for every 10 points of Devotion
+* Type of spell:  Healing
+As the Paladin sheds blood in combat, their suffering mends the wounds of
+their comrades. While it lasts, each blow the Paladin takes heals every
+groupmate in the same room by up to 30% of the damage dealt, but never past
+that groupmate's maximum hit points.
+
+The healing a single blow can share is limited. In total, one blow heals the
+group by no more than 90% of its damage, and never more than 60% of the
+Paladin's own maximum hit points. Across a whole combat round the group can
+receive at most 120% of the Paladin's maximum hit points. In a small group
+each groupmate usually receives the full 30%; in a large group the healing
+is divided among those who need it. Against players these limits are halved.
+
+Groupmates who are plagued, or who carry a Holy Sacrifice of their own,
+receive nothing. The sacrifice gives nothing while the Paladin is plagued,
+under Blood Mantle or under Flamestrike, or when the blow comes from someone
+in Battle Ecstasy.
+
+Above 50th level, a Cavalier's summoned mount also carries this blessing.
+
+Usage: cast 'holy sacrifice'
+	See also: group, tank, Blood Tithe, Battle Ecstasy
 #0
 
 Holy Word
@@ -17446,13 +17465,16 @@ Emote, Social Actions, commands
 #0
 
 Power
-Power - Last Edited: 2014-07-25 18:12:36 by lohrr
-=================================================
+Power - Last Edited: 2026-10-18
+============================
 A statistic primarily used by Psionicists. Although, there are spellcasters
 who use spells that rely on r. Spells like Power Word Blind are more
 detrimental to the victim of the caster has high power.
 Likewise, a high power stat provides greater resistance to power based spells.
-And a high power allows an Anti-Paladin to absorb more hitpoints above their maximum.
+A high power also lets those who drain life absorb more hit points above
+their maximum. Anti-Paladins gain a little extra room, but no one can be
+drained above two and a half times their normal maximum hit points, and hit
+points above maximum fade gradually.
 ==See Also==
 * Agility
 * Attributes
@@ -24325,7 +24347,7 @@ See also: Remove Poison, Cure Blind, Cure Disease
 #0
 
 Blood Tithe
-Blood Tithe - Last Edited: 2026-10-12
+Blood Tithe - Last Edited: 2026-10-18
 Anti-Paladin circle: 10th (Dark Knight, Demonic Rider)
 Area of effect: <caster>
 Aggressive: No
@@ -24347,11 +24369,11 @@ At full charge each groupmate deals 12% more damage. Beyond three groupmates
 in the room the bonus shrinks: about 9% with five, 7% with eight and 5% with
 fifteen. Against players the bonus is halved.
 
-Blood Tithes do not stack. A groupmate gains only the strongest one in the
-room, and a caster with a Blood Tithe gains none from others. A groupmate
-under the aura of battlelust gains nothing from Blood Tithe. Battle Lust on
-the caster does not silence the bonus for groupmates without that aura.
-The score command shows the bonus available to eligible groupmates.
+Blood Tithes do not stack with each other. A groupmate gains only the
+strongest one in the room, and a caster with a Blood Tithe gains none from
+others. Blood Tithe does combine with the aura of battlelust: a groupmate
+under both gains the full benefit of each. The score command shows the bonus
+available to eligible groupmates.
 
 Duration: 15 ticks, plus 1 for every 10 points of Devotion.
 
