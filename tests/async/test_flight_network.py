@@ -295,6 +295,57 @@ int main() {
     command(CMD_GIVE, "ticket carrier");
     while (!scheduled.empty()) run_event(recipient);
     assert(ch->in_room == 29 && recipient->in_room == 2 && !pc.learned_flight_stops);
+    // Kimordril is good-side only from every ordinary origin, even with a
+    // previously learned stop and a ticket bought by a good-side character.
+    pc.learned_flight_stops = other_pc.learned_flight_stops = all_stops;
+    GET_ALIGNMENT(ch) = -1000; // Faction, not alignment or racial appearance, grants access.
+    GET_ALIGNMENT(other) = 1000;
+    other->player.race = RACE_MOUNTAIN;
+    GET_COPPER(ch) = 1000000;
+    for (int service = 1; service < 27; ++service) {
+        if (service == 11 || service == 12) continue;
+        visit(service);
+        GET_RACEWAR(ch) = RACEWAR_GOOD;
+        command(CMD_LIST);
+        assert(output.find("Kimordril") != std::string::npos);
+        const auto good_choices = transport_choices(ch, recipient);
+        auto destination = std::find_if(good_choices.begin(), good_choices.end(), [](int route) {
+            return transport_routes[route].destination_vnum == 543662;
+        });
+        assert(destination != good_choices.end());
+        const std::string choice = std::to_string(destination - good_choices.begin() + 1);
+        command(CMD_BUY, choice.c_str());
+        ticket = ch->carrying;
+        assert(ticket && ticket->value[7] == 543662);
+        char_from_room(other);
+        char_to_room(other, service, -1);
+        obj_from_char(ticket); obj_to_char(ticket, other);
+        for (int side : {RACEWAR_EVIL, RACEWAR_UNDEAD, RACEWAR_NEUTRAL}) {
+            GET_RACEWAR(ch) = GET_RACEWAR(other) = side;
+            command(CMD_LIST);
+            assert(output.find("Kimordril") == std::string::npos);
+            auto expected = good_choices;
+            expected.erase(expected.begin() + (destination - good_choices.begin()));
+            assert(transport_choices(ch, recipient) == expected); // Other destinations stay available.
+            const auto balance = GET_MONEY(other);
+            assert(flying_transport_cmd_give(other, recipient, give));
+            assert(other->carrying == ticket && !GET_MOUNT(other));
+            assert(GET_MONEY(other) == balance && scheduled.empty());
+        }
+        obj_from_char(ticket); obj_to_char(ticket, ch);
+        GET_RACEWAR(ch) = RACEWAR_GOOD;
+        command(CMD_GIVE, "ticket carrier");
+        assert(!ch->carrying && GET_MOUNT(ch) == recipient);
+        while (!scheduled.empty()) run_event(recipient);
+        assert(ch->in_room == 11 && recipient->in_room == service && !GET_MOUNT(ch));
+    }
+    visit(6); // Ugta offers no eligible destination if only Kimordril is learned.
+    pc.learned_flight_stops = uint64_t{1} << 11;
+    GET_RACEWAR(ch) = RACEWAR_EVIL;
+    const auto denied_balance = GET_MONEY(ch);
+    command(CMD_BUY, "1");
+    assert(output.find("Invalid choice") != std::string::npos);
+    assert(!ch->carrying && GET_MONEY(ch) == denied_balance);
     pc.learned_flight_stops = 6;
     // A wrap edge wins over the long way around the synthetic map.
     for (const auto &route : transport_routes)

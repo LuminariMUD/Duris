@@ -448,6 +448,9 @@ static vector<int> transport_choices(P_char ch, P_char carrier)
 		const auto &route = transport_routes[i];
 		if (route.service_vnum != service_vnum || route.path.empty())
 			continue;
+		// Flying into Kimordril bypasses its good-side town guards.
+		if (route.destination_vnum == 543662 && !IS_RACEWAR_GOOD(ch))
+			continue;
 		if (route.discovery_bit >= 0)
 		{
 			if (!(ch->only.pc->learned_flight_stops &

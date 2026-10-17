@@ -198,6 +198,7 @@ def run(binary, backend, build):
                 command(god, 'restore ' + PLAYER)
                 help_text = command(player, 'help flights')
                 assert 'Explore 25 ordinary flight stops' in help_text, help_text
+                assert 'good side of the racewar' in help_text, help_text
                 assert 'None yet' in command(player, 'flights')
                 # All ordinary service mobs and corrected pads must be usable in the real world.
                 for mob, room, name in STOPS:
@@ -230,6 +231,18 @@ def run(binary, backend, build):
                 assert money(before) - money(after) == steps * 500, (before, after)
                 evidence['ordinary_wallet_before'] = before['wallet']
                 evidence['ordinary_wallet_after'] = after['wallet']
+                # A learned stop and an existing paid ticket cannot bypass the
+                # Kimordril faction gate. Numeric alignment remains good here.
+                command(god, 'setbit char ' + PLAYER + ' racewar 2')
+                assert 'Kimordril' not in command(player, 'list')
+                refused = command(player, 'give ticket griffin')
+                assert 'not valid for a flight you can take' in refused, refused
+                assert 'ticket' in command(player, 'inventory').lower()
+                save(player)
+                assert progress()['wallet'] == after['wallet']
+                command(god, 'setbit char ' + PLAYER + ' racewar 1')
+                assert 'Kimordril' in command(player, 'list')
+                evidence['kimordril_evil_refused'] = True
                 # The real dispatcher skips an immobile carrier's special procedure.
                 # Ordinary give must still retain the paid ticket, without another debit.
                 command(god, 'setbit char griffin aff2 MINOR_PARA 1')
@@ -253,6 +266,7 @@ def run(binary, backend, build):
                 player.expect('Copyover complete!', timeout=180)
                 assert 'Kimordril' in command(player, 'flights')
                 player.expect('lands.', timeout=90)
+                assert 'A Rocky Mountain Clearing' in command(player, 'look')
                 # An empty returning carrier is recovered as well.
                 process.send_signal(signal.SIGUSR1)
                 player.expect('Copyover complete!', timeout=180)
