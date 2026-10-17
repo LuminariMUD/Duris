@@ -570,7 +570,7 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	query(connection, "SET autocommit=0");
 	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);
 	query(connection, "SET autocommit=1");
-	for (const auto &fault : std::array<std::pair<std::string, std::string>, 12>{ {
+	for (const auto &fault : std::array<std::pair<std::string, std::string>, 15>{ {
 		     { "UPDATE auction_item_custody SET obj_blob=X'00' WHERE item_uid=101",
 		       "UPDATE auction_item_custody SET obj_blob=" + legacy +
 			       " WHERE item_uid=101" },
@@ -599,6 +599,14 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 		       "UPDATE collector_listings SET listing_revision=listing_revision-1 WHERE listing_id=2001" },
 		     { "UPDATE collector_listings SET item_revision=item_revision+1 WHERE listing_id=2001",
 		       "UPDATE collector_listings SET item_revision=item_revision-1 WHERE listing_id=2001" },
+
+		     { "UPDATE auctions SET listing_operation_id=UNHEX(REPEAT('00',16)) WHERE id=1",
+		       "UPDATE auctions SET listing_operation_id=UNHEX('fedcba9876543210fedcba9876543210') WHERE id=1" },
+		     { "UPDATE auction_item_custody SET claim_operation_id=UNHEX(REPEAT('00',16)) WHERE slot=1",
+		       "UPDATE auction_item_custody SET claim_operation_id=UNHEX('0123456789abcdef0123456789abcdef') WHERE slot=1" },
+		     { "INSERT INTO auctions(id,obj_vnum,quantity,obj_blob_str,custody_state) VALUES(3,900,0," +
+			       uidless + ",1)",
+		       "DELETE FROM auctions WHERE id=3" },
 
 		     { "UPDATE item_current_owner SET coin_payload=X'00' WHERE item_uid=904",
 		       "UPDATE item_current_owner SET coin_payload=" + modern_blob(904, true) +

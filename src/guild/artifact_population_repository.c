@@ -305,7 +305,7 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 				"i.quantity<>(SELECT COUNT(*) FROM auction_item_custody c WHERE c.auction_id=i.id) OR "
 				"EXISTS(SELECT 1 FROM auction_reconciliation_quarantine q WHERE q.auction_id=i.id AND q.repaired_at IS NULL) OR "
 				"EXISTS(SELECT 1 FROM item_ownership_quarantine q WHERE q.item_uid=0 AND q.source_table='auctions' AND q.source_row_id=i.id AND q.repaired_at IS NULL)),"
-				"OCTET_LENGTH(i.obj_blob_str),LEFT(i.obj_blob_str,32769),NULL,0,0";
+				"OCTET_LENGTH(i.obj_blob_str),LEFT(i.obj_blob_str,32769),NULL,0,0,i.custody_state";
 			source = "auctions i";
 			break;
 		case artifact_payload_domain::auction_pickup:
@@ -383,13 +383,28 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			    blob_size > max_bytes || lengths[12] != blob_size ||
 			    !number(row[14], &beneficiary) || !number(row[15], &status))
 				return EINVAL;
+			const auto valid_operation = [&](size_t column)
+			{
+				critical_operation_id operation;
+				if (!row[column] || lengths[column] != operation.bytes.size())
+					return false;
+				memcpy(operation.bytes.data(), row[column], operation.bytes.size());
+				return !critical_operation_id_is_zero(operation);
+			};
+			if (domain == artifact_payload_domain::auction_legacy)
+			{
+				unsigned int custody_state = 0;
+				if (!number(row[16], &custody_state) ||
+				    (custody_state == 1 && (!item.quantity || !valid_operation(9))))
+					return EINVAL;
+			}
+
 			if (domain == artifact_payload_domain::auction)
 			{
 				uint64_t claimant = 0;
 				// Reservation sets the PID first; completion writes operation/time together.
 				if ((!quarantined && !row[19]) ||
-				    (row[19] &&
-				     lengths[19] != item.source_operation.bytes.size()) ||
+				    (row[19] && !valid_operation(19)) ||
 				    (row[18] != nullptr) != (row[17] != nullptr) ||
 				    (row[18] && !row[16]) ||
 				    (row[16] && (!number(row[16], &claimant) || !claimant)) ||
@@ -404,7 +419,7 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			item.source_quarantined = quarantined;
 			if (row[9])
 			{
-				if (lengths[9] != item.source_operation.bytes.size())
+				if (!valid_operation(9))
 					return EINVAL;
 				memcpy(item.source_operation.bytes.data(), row[9], lengths[9]);
 			}

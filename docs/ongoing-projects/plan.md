@@ -1,5 +1,19 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active follow-up — complete auction operation validation (#175)
+
+Branch `branch/issue-67-auction-operation-evidence`. Outcome: provided operation
+IDs must satisfy the existing nonzero-ID contract, and authoritative auction
+parents must be validated even when no custody child row exists. Reuse
+`critical_operation_id_is_zero`; require positive quantity and valid listing
+operation on the authoritative legacy projection. Existing legacy/quarantine
+selection remains intact. Files: SQL reader, current disposable-schema fixture,
+plan. Before repair, the zero-operation regression fails; add listing/claim-zero
+and zero-quantity authoritative-parent cases with restored valid controls.
+The disposable numeric/maintained-schema SQL suites and SQL/flat builds pass
+(`bin/analysis/auction-operation-*.log`).
+
+
 ## Active follow-up — qualified owned payload loaders (#174)
 
 Branch `branch/issue-67-owned-payload-admission`. Valid non-player loaders already
