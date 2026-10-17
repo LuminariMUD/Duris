@@ -751,6 +751,55 @@ static void identity_snapshot_cases()
 	puts("PASS canonical identity hydration, immutable captures, late ACK, bind/owner preservation, clear refusal and atomic sync refusal");
 }
 
+static void population_snapshot_cases()
+{
+	artifact_rows.clear();
+	artifact_binds.clear();
+	jobs.clear();
+	database_next_job = 0;
+	artifact_cache_loaded = true;
+	artifact_rows[900] = { true, ARTIFACT_ON_PC, 42, 1000, ARTIFACT_MAJOR };
+	artifact_binds[900] = { 42, 99 };
+	artifact_payload_projection row = {};
+	row.domain = artifact_payload_domain::player;
+	row.row_id = row.item_uid = 111;
+	row.owner_reference = 42;
+	row.payload_owner = { item_owner_type::player, 42, 0 };
+	row.vnum = 900;
+	row.extra_flags = ITEM_ARTIFACT;
+	row.extra_flags_present = true;
+	row.quantity = 1;
+	row.custody_examined = row.custody_found = true;
+	row.custody = { 111, 111, 0, row.payload_owner, 1, 1, 900, item_custody_state::active };
+	const std::vector<artifact_payload_projection> rows = { row };
+	const std::vector<artifact_population_template> prototypes = { { 900, ITEM_ARTIFACT },
+								       { 902, ITEM_ARTIFACT } };
+	const auto generation = arti_cache_generation;
+	fail_allocation = true;
+	assert(!artifacts_stage_population(rows, prototypes, true) && !fail_allocation &&
+	       artifact_rows.size() == 1 && !artifact_rows.at(900).canonical_item_uid &&
+	       arti_cache_generation == generation && jobs.empty());
+	assert(artifacts_stage_population(rows, prototypes, true) && jobs.empty() &&
+	       artifact_rows.at(900).canonical_item_uid == 111 &&
+	       artifact_rows.at(900).canonical_payloads.size() == 1 &&
+	       artifact_rows.at(900).timer == 1000 && artifact_binds.at(900).owner_pid == 42 &&
+	       artifact_binds.at(900).timer == 99 && artifact_rows.at(902).removed);
+	assert(artifact_save_pulse(true) == 2 && jobs.size() == 2);
+	for (size_t index = 0; index < jobs.size(); ++index)
+	{
+		assert(contains(jobs[index], "canonical_item_uid"));
+		finish(index);
+	}
+	assert(!artifact_save_pulse(false));
+	if (payment_db)
+		assert(artifacts_load() && artifact_rows.at(900).canonical_item_uid == 111 &&
+		       artifact_rows.at(900).timer == 1000 &&
+		       artifact_binds.at(900).owner_pid == 42 &&
+		       artifact_binds.at(900).timer == 99 && artifact_rows.at(902).removed &&
+		       artifact_rows.at(902).identity_state == artifact_identity_state::absent);
+	puts("PASS population publication: allocation failure is atomic, legacy timer/soul preserved, normal SQL captures/reload");
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 2)
@@ -764,6 +813,7 @@ int main(int argc, char **argv)
 		indexes[0].virtual_number = 900;
 		artifact_ordering_cases();
 		identity_snapshot_cases();
+		population_snapshot_cases();
 		mysql_close(payment_db);
 		return 0;
 	}
@@ -1017,4 +1067,5 @@ int main(int argc, char **argv)
 	payment_cases(guild);
 	artifact_ordering_cases();
 	identity_snapshot_cases();
+	population_snapshot_cases();
 }

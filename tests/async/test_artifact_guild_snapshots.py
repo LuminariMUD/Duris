@@ -24,8 +24,8 @@ with tempfile.TemporaryDirectory(prefix='artifact-snapshots-',dir=out) as direct
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
         '-fsanitize=undefined','-fno-sanitize-recover=all',
         '-ffunction-sections','-fdata-sections','-Isrc','-I/usr/include/mysql',
-        str(cpp),'src/guild/assocs.c','src/core/safe_format.c',
+        str(cpp),'src/guild/artifact_population.c','src/item/item_transfer_command.c','src/guild/assocs.c','src/core/safe_format.c',
         'src/kingdom/kingdom.c','src/kingdom/kingdom_db.c','src/kingdom/kingdom_upkeep.c',
         str(HARNESS_STUBS),
-        '-Wl,--gc-sections','-lcjson','-lmysqlclient','-o',str(binary)],cwd=ROOT,check=True)
+        '-Wl,--gc-sections','-lcjson','-lmysqlclient','-lcrypto','-o',str(binary)],cwd=ROOT,check=True)
     subprocess.run([str(binary), *sys.argv[1:]],check=True,timeout=30)

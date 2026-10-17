@@ -8,7 +8,7 @@ import tempfile
 from _paths import ROOT, rel, HARNESS_STUBS
 
 sources = [
-    "flatfile_player_snapshot_file.c", "flatfile_locker_repository.c",
+    "artifact_population.c", "flatfile_player_snapshot_file.c", "flatfile_locker_repository.c",
     "flatfile_world_item_repository.c", "flatfile_shopkeeper_repository.c",
     "flatfile_item_repository.c", "flatfile_auction_repository.c",
     "flatfile_collector_repository.c", "collector_command.c", "collector_codec.c", "collector_policy.c",

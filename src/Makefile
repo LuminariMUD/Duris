@@ -151,6 +151,7 @@ OBJS =  $(SHIP_OBJS) \
 				 world/falling_policy.o \
 				 combat/arena.o \
 				 guild/artifact.o \
+				 guild/artifact_population.o \
 				 guild/artifact_population_repository.o \
 				 guild/artifact_population_flatfile.o \
 				 guild/artifact_population_recovery.o \

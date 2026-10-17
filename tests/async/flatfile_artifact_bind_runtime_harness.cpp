@@ -271,6 +271,79 @@ int main(int argc, char **argv)
 		writes.clear();
 	}
 
+	// Stage through the actual artifact authority. No partial result, store
+	// call, or second identity map may change timers or soul bindings.
+	booting = true;
+	auto &legacy = artifact_rows.at(600);
+	legacy.owned = true;
+	legacy.removed = false;
+	legacy.timer = 1234;
+	legacy.locType = ARTIFACT_ON_PC;
+	legacy.location = 88;
+	legacy.identity_state = artifact_identity_state::unresolved;
+	artifact_binds[600] = { 88, 2345 };
+	std::vector<artifact_population_template> prototypes = { { 600, ITEM_ARTIFACT },
+								 { 602, ITEM_ARTIFACT },
+								 { 603, ITEM_ARTIFACT } };
+	std::vector<artifact_payload_projection> population;
+	for (const auto &[vnum, uid] :
+	     { std::pair{ 600, uint64_t{ 60001 } }, std::pair{ 602, uint64_t{ 60201 } } })
+	{
+		artifact_payload_projection row = {};
+		row.domain = artifact_payload_domain::player;
+		row.row_id = row.item_uid = uid;
+		row.vnum = vnum;
+		row.quantity = 1;
+		row.extra_flags_present = true;
+		row.extra_flags = ITEM_ARTIFACT;
+		row.owner_reference = 88;
+		row.payload_owner = { item_owner_type::player, 88, 0 };
+		row.custody_examined = row.custody_found = true;
+		row.custody = { uid, uid, 0,	row.payload_owner,
+				1,   1,	  vnum, item_custody_state::active };
+		population.push_back(row);
+	}
+	require(artifacts_stage_population(population, prototypes, false) && writes.empty() &&
+			artifact_rows.at(600).identity_state ==
+				artifact_identity_state::unresolved &&
+			artifact_rows.at(602).canonical_item_uid == 60201 &&
+			artifact_rows.at(602).canonical_payloads.empty(),
+		"partial population granted identity");
+	require(artifacts_stage_population(population, prototypes, true) && writes.empty() &&
+			artifact_rows.at(600).canonical_item_uid == 60001 &&
+			artifact_rows.at(600).canonical_payloads.size() == 1 &&
+			artifact_rows.at(600).canonical_payloads[0].payload_owner.id == 88 &&
+			artifact_rows.at(600).timer == 1234 &&
+			artifact_binds.at(600).owner_pid == 88 &&
+			artifact_binds.at(600).timer == 2345 && artifact_rows.at(603).removed &&
+			artifact_rows.at(603).identity_state == artifact_identity_state::absent,
+		"population did not stage into the existing authority without changing legacy state");
+	const auto generation = arti_cache_generation;
+	prototypes.push_back(prototypes.front());
+	require(!artifacts_stage_population({}, prototypes, true) &&
+			arti_cache_generation == generation &&
+			artifact_rows.at(600).canonical_item_uid == 60001 &&
+			artifact_rows.at(600).canonical_payloads.size() == 1 && writes.empty(),
+		"invalid population published a prefix or invalidated the current cache");
+	prototypes.pop_back();
+	booting = false;
+	require(!artifacts_stage_population({}, prototypes, true) &&
+			artifact_rows.at(600).canonical_item_uid == 60001 &&
+			arti_cache_generation == generation,
+		"boot classifier replaced live identity");
+	require(artifact_save_pulse(true) == 2 && writes.size() == 2,
+		"classified identities did not use normal dirty writer captures");
+	for (auto &write : writes)
+		require(write().outcome == player_save_apply_outcome::applied,
+			"classified flat identity capture failed");
+	require(!artifact_save_pulse(false) && artifacts_load() &&
+			artifact_rows.at(600).canonical_item_uid == 60001 &&
+			artifact_rows.at(600).timer == 1234 &&
+			artifact_binds.at(600).owner_pid == 88 &&
+			artifact_binds.at(600).timer == 2345 && artifact_rows.at(603).removed &&
+			artifact_rows.at(600).canonical_payloads.empty(),
+		"classified identity/timer/soul did not survive existing capture/reload");
+
 	std::cout << "flat-file artifact bind runtime passed\n";
 	return 0;
 }

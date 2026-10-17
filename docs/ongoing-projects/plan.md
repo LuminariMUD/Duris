@@ -15,9 +15,23 @@ aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready 
 [PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
 `branch/issue-67-pinned-recovery-evidence`. Pinned Redis item/NPC projections are ready in PR #146; native copyover pinning
 and projections are ready in [PR #147](https://github.com/LuminariMUD/Duris/pull/147).
-Combined source assembly/custody correlation, NPC reconstruction qualification,
-canonical classification and admission remain open.
+The pure canonical classifier and atomic cache staging are implemented on
+`branch/issue-67-population-classification`. Combined source assembly/custody
+correlation, early boot publication, NPC reconstruction qualification and
+gameplay admission remain open.
 No operational repair started.
+
+Current classification checkpoint (implemented; publication pending): `branch/issue-67-population-classification`, based on
+PR #147. Outcome: classify the assembled raw payloads without choosing a legacy
+conflict winner, retain exact qualified source/owner evidence, and atomically
+stage the result in the existing artifact rows. Non-goals: another authority,
+new persistence formats, automatic repair, or claiming boot admission is wired
+before acquisition is complete. Files: population classifier, existing artifact
+service, executable classification/runtime fixtures and this plan. Proof: nested
+offline copies, same-UID projections, distinct-UID conflicts, effective saved
+flags, missing/partial evidence, history/delivery/reconstruction, retired identity,
+atomic failure and preservation of timer/soul state. Combined source acquisition
+before the custody reap and the actual admission consumers remain required.
 
 Current copyover evidence checkpoint:
 [PR #147](https://github.com/LuminariMUD/Duris/pull/147),
@@ -1044,6 +1058,86 @@ inventory or reducing the required availability of proved-absent artifacts.
 Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
+
+### Canonical population classification and cache staging — AR-01/AR-02
+
+Implemented on `branch/issue-67-population-classification`, based on PR #147.
+This is the actual classifier and its artifact-service publication boundary;
+source acquisition and startup/admission callers are still required.
+
+`artifact_population_classify` consumes the combined source qualification,
+complete prototype catalog, raw projections and previously stored identity. It
+never infers completeness from empty rows or a successful decoder. It derives
+source-scoped roots through ordinary ancestors, rejects missing/ambiguous/cyclic
+parentage, and qualifies every ancestor's current custody, effective flags and
+quarantine state. The traversal is iterative and bounded by the existing million
+record cap. Missing saved flags remain unknown; explicit zero remains ordinary.
+A changed ordinary prototype carrying saved artifact flags remains a candidate.
+
+Two qualified projections of one UID are one identity only when their current
+owner, root/parent, vnum and effective flags agree. Independent custody can exclude
+a stale projection at another owner; only the valid source is admitted to the
+qualification result. Different current vnums or artifact flags on one UID also
+invalidate descendants using that UID as an ancestor. Distinct legacy UIDs have
+no traversal-order winner. An already established canonical UID can isolate an
+extra copy when its own source qualifies, but is never reassigned to the extra
+copy merely because the canonical body is missing. Complete absence may release
+a missing present identity; incomplete/contradictory evidence cannot. Retired UID
+tombstones survive and retained retired bodies never become canonical again.
+
+History is not physical presence. Active/quarantined or unqueried history without
+a matching current candidate remains unresolved. Old listing templates without
+UIDs are not physical candidates. Delivery considers the latest inbound ordinal;
+old receipt bytes cannot override it. Native NPC hints are reconstruction requests
+only: repeated hints alone allow an absence result only when the caller has
+qualified the whole input as complete, and an existing saved copy blocks that
+result. This does **not** prove the actual NPC admission/rollback journey yet.
+Reparented delivery/player normalization still must use the actual materialization
+rules during combined source acquisition; raw undecidable topology stays reserved.
+
+`artifacts_stage_population` is boot-only and publishes atomically into existing
+`artifact_rows`. It retains exact canonical payload/source/owner projections for
+later hydration checks, rather than another canonical registry. It leaves legacy
+location, timer and soul fields intact; changed identities use existing dirty
+captures on the existing writer. It makes no store/template/materialization call.
+Invalid input or allocation failure publishes no prefix. Newly reserved catalog
+rows use the existing valid type default without claiming a physical variant.
+These transient source qualifications must be rebuilt at each boot; the UID/state
+alone persists. Nothing currently calls this boundary from server startup, so
+this PR does not yet change gameplay creation or recovery permission.
+
+Verification passed:
+
+```text
+python3 tests/async/test_artifact_population.py
+python3 tests/async/test_flatfile_artifact_repository.py
+python3 tests/async/test_flatfile_artifact_population.py
+tests/async/with_disposable_mariadb.sh tests/async/run_artifact_guild_schema_mysql.sh
+make -C src -j2
+make -C src -j2 PERSISTENCE_BACKEND=flatfile BIN_ROOT=.../bin/analysis/issue67/flat-memory-build
+./scripts/format.sh
+./scripts/tidy.sh  (compatible retained clang-tidy-18/GCC-13 wrapper)
+git diff --check
+```
+
+The native classifier uses ASan and terminating UBSan. Existing flat fixtures
+exercise real payload readers, common memory publication, writer capture and
+reload. The disposable SQL schema leg exercises actual SQL captures and boot
+reload, including allocation-failure atomicity and unchanged timers/souls. Build
+and focused evidence logs are ignored under `bin/analysis/issue67/population-classification-*`.
+Final classification review added ordinary-ancestor custody/quarantine and UID
+conflict cases; the focused native cases pass with these guards. No full runtime
+matrix or live backend operation is inferred from these results.
+
+Next: acquire all durable and pinned recovery sources before the early custody
+reap, attach independent custody for **ordinary ancestors as well as artifact
+UIDs**, and explicitly reconcile selected warm-handoff memory authority with stale
+durable custody. Inspect both retained native paths on a cold boot. Normalize
+pending delivery through actual loader semantics, resolve prototype flags, and
+call cache staging before `ne_init_events`. Then implement shared tentative
+creation/same-UID-source hydration, rollback, physical retirement and reward guards.
+All unchecked AR-01–AR-07 acceptance requirements remain open. No production
+read, migration, repair, deployment, merge or release tag occurred.
 
 ### Native copyover pinning and evidence — AR-01/AR-02 prerequisite
 

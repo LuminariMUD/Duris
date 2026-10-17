@@ -1,4 +1,5 @@
 #include "guild/artifact_population_flatfile.c"
+#include "guild/artifact_population.h"
 #include "flatfile/flatfile_store.h"
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "player/player_snapshot_codec.h"
@@ -627,6 +628,15 @@ int main(int argc, char **argv)
 	       embedded.extra_flags == (1U << 28));
 	assert(find(rows, 906, artifact_payload_domain::embedded, 0).role ==
 	       artifact_payload_role::history);
+	std::vector<artifact_population_decision> decisions;
+	assert(!artifact_population_classify(rows, { { 900, ITEM_ARTIFACT }, { 901, 0 }, { 3, 0 } },
+					     {}, true, &decisions));
+	const auto classified = std::find_if(decisions.begin(), decisions.end(),
+					     [](const auto &decision)
+					     { return decision.identity.vnum == 900; });
+	assert(classified != decisions.end() &&
+	       classified->identity.state == artifact_identity_state::unresolved &&
+	       classified->canonical_payloads.empty());
 	const size_t expected = rows.size();
 	for (const auto &path :
 	     { root / "players/42.snapshot", root / "domains/locker_catalog",

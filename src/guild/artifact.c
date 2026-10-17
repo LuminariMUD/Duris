@@ -11,6 +11,7 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "guild/artifact_cache_codec.h"
+#include "guild/artifact_population.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "core/utility.h"
@@ -117,6 +118,8 @@ struct artifact_row
 	bool removed = false;
 	uint64_t canonical_item_uid = 0;
 	artifact_identity_state identity_state = artifact_identity_state::unresolved;
+	artifact_population_reason population_reason = artifact_population_reason::incomplete;
+	std::vector<artifact_payload_projection> canonical_payloads = {};
 };
 struct artifact_bind_row
 {
@@ -619,6 +622,62 @@ bool artifacts_load(void)
 	{
 		logit(LOG_STATUS,
 		      "artifact identity boot: allocation failure before state publication");
+		return false;
+	}
+}
+
+bool artifacts_stage_population(const std::vector<artifact_payload_projection> &items,
+				const std::vector<artifact_population_template> &prototypes,
+				bool complete)
+{
+	// Never replace live claims or queued captures with a boot-time scan.
+	if (!artifact_cache_loaded || !sql_async_booting())
+		return false;
+	try
+	{
+		std::vector<artifact_population_identity> previous;
+		previous.reserve(artifact_rows.size());
+		for (const auto &[vnum, row] : artifact_rows)
+			previous.push_back({ vnum, row.canonical_item_uid, row.identity_state });
+		std::vector<artifact_population_decision> decisions;
+		if (artifact_population_classify(items, prototypes, previous, complete, &decisions))
+			return false;
+		auto staged = artifact_rows;
+		for (const auto &decision : decisions)
+		{
+			const auto &identity = decision.identity;
+			auto [found, inserted] = staged.try_emplace(identity.vnum);
+			auto &row = found->second;
+			if (inserted)
+			{
+				row.locType = ARTIFACT_NOTINGAME;
+				row.type =
+					ARTIFACT_MAJOR; // catalog default; no physical variant claim
+				row.removed =
+					true; // identity-only row, no invented legacy location
+			}
+			if (inserted || row.canonical_item_uid != identity.canonical_item_uid ||
+			    row.identity_state != identity.state)
+			{
+				row.canonical_item_uid = identity.canonical_item_uid;
+				row.identity_state = identity.state;
+				row.save = {};
+				row.save.dirty = true;
+			}
+			row.population_reason = decision.reason;
+			row.canonical_payloads.clear();
+			row.canonical_payloads.reserve(decision.canonical_payloads.size());
+			for (const auto index : decision.canonical_payloads)
+				row.canonical_payloads.push_back(items[index]);
+		}
+		// No store or template call occurs in classification/publication. The
+		// normal writer retries complete dirty captures after boot.
+		artifact_rows.swap(staged);
+		arti_cache_invalidate();
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
 		return false;
 	}
 }
