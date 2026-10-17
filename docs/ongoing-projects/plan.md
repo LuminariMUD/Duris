@@ -17,6 +17,9 @@ reset-mapping framework or operational repair. Files: existing boot assembler,
 existing native boot harness, this plan. Proof: selected and retained NPC hints,
 prior canonical UID preservation, ground-only/native controls, native build/tidy.
 The prior Redis-NPC and real revision-authority repairs remain in `91f31995b`.
+The new selected/retained-native regression failed before repair; after repair,
+boot assembly and classifier (ASan/UBSan), recovery transaction contract, native
+build, formatting and tidy pass. Logs: `bin/analysis/pr149-native-*`.
 
 Next: publish this #149 follow-up, carry through #150/#151, then #152/#153 and
 address #154 (1), #155 (2), #156 (3), #157 (4), #162 (1). Latest fetched details:

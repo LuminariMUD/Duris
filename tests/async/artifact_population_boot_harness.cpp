@@ -189,6 +189,29 @@ int main()
 	assert(artifact_population_prepare_boot(false).complete &&
 	       classify(artifact_population_boot_evidence()).identity.state == state::absent);
 
+	// Native NPC hints carry vnums, not physical UIDs. Neither selected nor
+	// retained hints may release an established identity as proven absent.
+	for (const bool selected : { false, true })
+	{
+		reset();
+		auto hint = item(0, domain::copyover_reconstruction);
+		hint.role = artifact_payload_role::reconstruction;
+		hint.row_id = 1;
+		hint.extra_flags_present = false;
+		native_rows[selected ? 2 : 1] = { hint };
+		if (!selected)
+			paths["copyover.dat"] = copyover_boot_result::ready;
+		const auto &native = artifact_population_prepare_boot(selected);
+		assert(!native.complete && classify(native).identity.state == state::unresolved);
+		std::vector<artifact_population_decision> held;
+		assert(!artifact_population_classify(native.items, { { 900, ITEM_ARTIFACT } },
+						     { { 900, 111, state::present } },
+						     native.complete, &held));
+		assert(held.size() == 1 && held[0].identity.state == state::present &&
+		       held[0].identity.canonical_item_uid == 111 &&
+		       held[0].canonical_payloads.empty());
+	}
+
 	// Native handoff authority supersedes an older durable owner. It is never
 	// overwritten by that older SQL/flat projection, nor confused with history.
 	for (int conflict = 0; conflict < 6; ++conflict)
