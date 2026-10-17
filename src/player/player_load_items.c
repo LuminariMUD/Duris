@@ -413,7 +413,8 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 			    const item_owner_identity &expected_owner, uint64_t owner_revision,
 			    bool hydrate_ownership, bool complete_snapshot_state,
 			    player_load_item_materialize_metrics *metrics,
-			    const std::vector<artifact_payload_projection> *admission = nullptr)
+			    const std::vector<artifact_payload_projection> *admission = nullptr,
+			    bool committed_creation = false)
 {
 	player_load_item_materialize_metrics local_metrics = {};
 	if (!metrics)
@@ -672,11 +673,16 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 				item.vnum,	   identity.state
 			};
 		}
-		P_obj object =
-			read_object_for_recovery(admission ? (*admission)[index] : owned_source);
+		const auto &source = admission ? (*admission)[index] : owned_source;
+		errno = 0;
+		P_obj object = committed_creation ? read_object_for_creation_repair(source) :
+						    read_object_for_recovery(source);
 		if (!object)
-			return fail(metrics,
-				    player_load_item_materialize_outcome::allocation_failure);
+			return fail(
+				metrics,
+				errno == ENOMEM ?
+					player_load_item_materialize_outcome::allocation_failure :
+					player_load_item_materialize_outcome::ownership_failure);
 		staged.objects[index] = object;
 		object->obj_uid = static_cast<unsigned long>(identity.item_uid);
 		object->db_item_id = static_cast<int>(identity.database_id);
@@ -923,9 +929,9 @@ bool player_load_item_graph_materialize_creation(const item_transfer_payload &pa
 		return false;
 	}
 	player_load_item_materialize_metrics metrics = {};
-	return player_load_item_graph_materialize_detached(items, identities, payload.to_owner,
-							   result.to_owner_revision, false, true,
-							   roots, &metrics);
+	return materialize_item_graph(nullptr, roots, items, identities, payload.to_owner,
+				      result.to_owner_revision, false, true, &metrics, nullptr,
+				      true);
 }
 
 bool player_load_item_graph_materialize(P_char character,

@@ -749,15 +749,10 @@ void boot_db(int mini_mode)
 
 		fprintf(stderr, "-- Shopkeepers\n");
 		logit(LOG_STATUS, "Reloading Shopkeepers.");
-		// Version 17 carries exact native stock UIDs. Replaying the durable
-		// catalog first would duplicate those bodies. Older file/Redis boots
-		// retain their existing durable-store selection.
-		const auto *native_items = copyover_boot ? copyover_boot_evidence() : nullptr;
-		if (native_items && native_items->header.version >= 17)
-			restore_shopkeepers(
-				false); // Flat trades still need their catalog revisions.
-		else if (!copyover_boot || copyover_has_durable_shopkeepers() ||
-			 persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		// Durable catalogs retain full stock properties and revision state.
+		// Native recovery reuses their matching UID bodies before reconciliation.
+		if (!copyover_boot || copyover_has_durable_shopkeepers() ||
+		    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 			restore_shopkeepers();
 		remember_boot_shopkeepers();
 
@@ -3146,8 +3141,11 @@ static P_obj instantiate_object_template_impl(const object_template &prototype, 
 							     persistence_next_item_uid());
 	obj->loc_p = LOC_NOWHERE;
 	obj->loc.room = NOWHERE;
-	if ((fresh_creation && !artifact_begin_creation(obj)) ||
-	    (recovery && !artifact_begin_recovery(obj, *recovery)))
+	const bool admitted = fresh_creation ?
+				      (recovery ? artifact_begin_creation_repair(obj, *recovery) :
+						  artifact_begin_creation(obj)) :
+				      (!recovery || artifact_begin_recovery(obj, *recovery));
+	if (!admitted)
 	{
 		mm_release(dead_obj_pool, obj);
 		return nullptr;
@@ -3263,6 +3261,17 @@ P_obj read_object_for_recovery(const artifact_payload_projection &source)
 		return nullptr;
 	}
 	return instantiate_object_template_impl(parse_object_template(number), false, &source);
+}
+
+P_obj read_object_for_creation_repair(const artifact_payload_projection &source)
+{
+	const int number = real_object(source.vnum);
+	if (!source.item_uid || !source.extra_flags_present || number < 0 || number > top_of_objt)
+	{
+		errno = EINVAL;
+		return nullptr;
+	}
+	return instantiate_object_template_impl(parse_object_template(number), true, &source);
 }
 
 /* Non-starter callers retain cold loading; both paths share one parser. */

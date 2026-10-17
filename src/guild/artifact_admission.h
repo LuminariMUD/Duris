@@ -12,11 +12,15 @@ struct artifact_payload_projection;
 // Zero also covers ordinary objects; a known canonical UID cannot clear its flag.
 unsigned int artifact_player_source_error(const artifact_payload_projection &source,
 					  P_obj object = nullptr);
-// Qualified player or pinned ground payload: saved UID/flags precede procedures.
+// Qualified owned or pinned ground payload: saved UID/flags precede procedures.
 // Player payloads match current custody; ground payloads match a pinned boot projection.
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source);
 P_obj read_object_for_recovery(const artifact_payload_projection &source);
-// Placement commits the pending purpose or registers a canonical saved UID.
+// Only for reconstructing an already committed system creation grant. Keeps the
+// committed UID; callers stage any displaced reservation in a restore scope.
+bool artifact_begin_creation_repair(P_obj object, const artifact_payload_projection &source);
+P_obj read_object_for_creation_repair(const artifact_payload_projection &source);
+// Placement commits a pending creation or source-qualified recovery reservation.
 // Recovery and registration preserve timer/soul state.
 void artifact_object_placed(P_obj object);
 // Pending admission rolls back. Committed physical retirement retains a UID

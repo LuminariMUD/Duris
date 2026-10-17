@@ -45,11 +45,9 @@ strict; see [World recovery format](../persistence/WORLD_RECOVERY_FORMAT.md).
 
 Shop inventory has different authorities in each recovery mode:
 
-- Version 17 native copyover restores each keeper and its exact UID-bearing stock
-  from the native image; durable keeper-body replay is skipped for that boot.
-  Flat catalog bindings and trade revisions are still validated and loaded before
-  the native bodies are restored, so buy/sell revision checks remain available.
-  Cold boots and older native files retain the durable-store selection below.
+- Native copyover reuses UID-matching stock already restored from the authoritative
+  catalog. Singleton reconciliation keeps that catalog keeper, preserving complete
+  item properties and trade revisions without replaying its stock a second time.
 - SQL copyovers commit each live keeper's complete shop snapshot after
   persistence drains and before publishing the copyover file. Any save failure
   cancels the copyover while the server remains live. Startup retains these
@@ -60,7 +58,7 @@ Shop inventory has different authorities in each recovery mode:
   retains the keeper already restored from the durable shop store and removes
   recovered duplicates and their regenerated template stock.
 - Flat-file trade records remain authoritative for item custody and shop revisions.
-  Version 17 restores their live bodies once, from the drained native image.
+  Native recovery reuses their restored live bodies when their shop and UID agree.
 - Without a durable incumbent, reconciliation selects the recovered keeper
   with the most stock/equipment, breaking ties by instance ID. File-recovered
   duplicates contribute their non-produced stock and equipment to the survivor.

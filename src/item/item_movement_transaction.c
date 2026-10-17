@@ -15,6 +15,7 @@
 #include "item/item_movement_transaction.h"
 
 #include "item/item_ownership_runtime.h"
+#include "guild/artifact_admission.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_transaction.h"
 #include "persistence/persistence_checkpoint.h"
@@ -388,7 +389,10 @@ bool stage_displaced_creation_objects(const item_transfer_payload &payload,
 		return false;
 	}
 	for (displaced_creation_object &entry : *displaced)
+	{
+		artifact_object_extracted(entry.object, false);
 		entry.object->obj_uid = 0;
+	}
 	return true;
 }
 
@@ -483,6 +487,9 @@ bool reconcile_creation_grant_batch(P_char actor, pending_movement &entry,
 	if (!needs_reconciliation)
 		return true;
 
+	artifact_restore_scope artifacts;
+	if (!artifacts)
+		return false;
 	std::vector<displaced_creation_object> displaced;
 	if (!stage_displaced_creation_objects(entry.payload, &displaced))
 		return false;
@@ -512,6 +519,8 @@ bool reconcile_creation_grant_batch(P_char actor, pending_movement &entry,
 			return false;
 		}
 
+	// Old physical bodies cannot be restored after extraction.
+	artifacts.commit();
 	extract_displaced_creation_objects(&displaced);
 	if (entry.creation_batch)
 		for (P_obj root : roots)
