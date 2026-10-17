@@ -151,6 +151,7 @@ player_load_result base_result(int pid = 42)
 {
     player_load_result result = {};
     result.pid = pid;
+    result.gameplay_items = false;
     result.item_owner_revision = 7;
     result.read_components = PLAYER_LOAD_SESSION04_READS;
     return result;
@@ -236,6 +237,19 @@ int real_object(int vnum)
     return vnum == 999 ? -1 : vnum;
 }
 
+static int refused_artifact_vnum = 0;
+static std::vector<uint64_t> released_artifact_uids;
+void artifact_object_extracted(P_obj object, bool) { if(object->obj_uid) released_artifact_uids.push_back(object->obj_uid); }
+void artifact_object_placed(P_obj) {}
+P_obj read_object(int, int);
+P_obj read_object_for_recovery(const artifact_payload_projection &source) {
+    auto *object=read_object(source.vnum,REAL);
+    if(object) { object->obj_uid=source.item_uid; object->extra_flags=source.extra_flags; }
+    return object;
+}
+unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj) {
+    return refused_artifact_vnum && source.vnum==refused_artifact_vnum ? EEXIST : 0;
+}
 P_obj read_object(int rnum, int)
 {
     if (allocations++ == fail_read_at)
@@ -380,6 +394,53 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 
 int main()
 {
+    {
+        reset_test_state(); test_character owner(42);
+        auto result=base_result(); result.gameplay_items=true; result.outcome=player_load_outcome::applied;
+        add_item(result,10,1000,100,-1,0); // raw container root
+        add_item(result,11,1001,101,0,0);  // rejected artifact
+        add_item(result,12,1002,101,1,0);  // retained descendant
+        add_item(result,13,1003,101,-1,0); // independent valid root
+        for(const auto &identity:result.item_identities) {
+            player_load_source_item raw;
+            raw.row_id=identity.database_id; raw.parent_row_id=identity.serialized_parent_id;
+            raw.item_uid=identity.item_uid; raw.bytes=50;
+            result.item_sources.push_back(raw);
+        }
+        // Reject one item, not every item of the fixture's ordinary vnum.
+        result.snapshot.items[1].vnum=103;
+        refused_artifact_vnum=103;
+        const auto original=result;
+        assert(!player_load_items_qualify(&result));
+        assert(result.snapshot.items.size()==1 && result.snapshot.items[0].object_uid==1003);
+        assert(result.snapshot.retained_items.rows.size()==3 && result.snapshot.retained_items.bytes==150);
+        assert(original.snapshot.items.size()==4 && original.snapshot.retained_items.rows.empty());
+        assert(result.item_admission_sources.size()==1 && result.item_admission_sources[0].item_uid==1003);
+        player_load_item_materialize_metrics metrics;
+        assert(player_load_items_materialize(&owner.character,result,&metrics));
+        assert(owner.character.carrying && owner.character.carrying->obj_uid==1003 && !owner.character.carrying->next_content);
+        player_load_items_discard(&owner.character);
+        // Raw and repaired ancestry can connect otherwise separate source roots.
+        result=original; result.item_sources[2].parent_row_id=0;
+        assert(!player_load_items_qualify(&result) && result.snapshot.retained_items.rows.size()==3 && result.snapshot.items.size()==1);
+        refused_artifact_vnum=0;
+    }
+    {
+        reset_test_state(); test_character owner(42);
+        auto result=base_result(); result.gameplay_items=true;
+        add_item(result,10,1000,101,-1,0);
+        add_item(result,11,1001,101,-1,0);
+        for(const auto &item:result.snapshot.items) {
+            artifact_payload_projection source={}; source.domain=artifact_payload_domain::player;
+            source.item_uid=item.object_uid; source.vnum=item.vnum; result.item_admission_sources.push_back(source);
+        }
+        released_artifact_uids.clear(); fail_read_at=1;
+        player_load_item_materialize_metrics metrics;
+        assert(!player_load_items_materialize(&owner.character,result,&metrics));
+        assert(released_artifact_uids==std::vector<uint64_t>{1000});
+        assert(!owner.character.carrying && !owner.character.equipment[0]);
+    }
+
     {
         reset_test_state();
         std::vector<player_item_snapshot> snapshots(3);
@@ -1118,6 +1179,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
             "-Isrc",
             str(source),
             rel("player_load_items.c"),
+            rel("player_load_topology.c"),
             rel("player_load_pets.c"),
             "src/player/pet_restore_state.c",
             "src/player/pet_restore_runtime.c",

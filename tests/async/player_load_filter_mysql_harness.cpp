@@ -153,6 +153,14 @@ int main()
 	execute("INSERT INTO player_item_extra_descr(item_id,keyword,description) VALUES(" +
 		std::to_string(legacy_id) + ",'legacy','unchanged details')");
 	const player_load_result giver = load(11, 1);
+	require(giver.gameplay_items && !giver.item_sources.empty(),
+		"gameplay source cut was not retained");
+	bool inactive_source_seen = false;
+	for (const auto &source : giver.item_sources)
+		if (source.item_uid == 2005)
+			inactive_source_seen = source.custody_found &&
+					       source.custody.state != item_custody_state::active;
+	require(inactive_source_seen, "load normalization hid the raw inactive custody state");
 	require(giver.outcome == player_load_outcome::applied,
 		"the giver's load must succeed: outcome=" +
 			std::to_string(static_cast<int>(giver.outcome)) +

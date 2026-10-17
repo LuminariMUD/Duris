@@ -16,6 +16,7 @@
 #define PLAYER_LOAD_REPOSITORY_H
 
 #include "item/item_transfer_command.h"
+#include "guild/artifact_population_repository.h"
 #include "persistence/gameplay_read_state.h"
 #include "player/player_snapshot.h"
 
@@ -117,6 +118,8 @@ struct player_load_request
 	std::string account_name;
 	uint64_t deadline_usec = 0;
 	std::string player_name;
+	// Offline commands are migrated separately from gameplay restoration.
+	bool gameplay_items = true;
 	bool include_items = true;
 	bool include_pets = true;
 };
@@ -144,12 +147,25 @@ struct player_load_metrics
 	uint64_t transaction_usec = 0;
 };
 
+struct player_load_source_item
+{
+	uint64_t row_id = 0;
+	uint64_t parent_row_id = 0;
+	uint64_t item_uid = 0;
+	size_t bytes = 0;
+	bool retain = false;
+	uint64_t root_item_uid = 0;
+	bool custody_found = false;
+	item_ownership_runtime_entry custody = {};
+};
+
 struct player_load_result
 {
 	uint64_t request_id = 0;
 	int32_t pid = 0;
 	player_load_outcome outcome = player_load_outcome::component_failure;
 	unsigned int error_code = 0;
+	bool gameplay_items = true;
 	player_snapshot snapshot = {};
 	player_load_domain_state domains = {};
 	uint64_t item_owner_revision = 0;
@@ -165,6 +181,8 @@ struct player_load_result
 	// Items whose saved parent disagreed with authoritative custody and whose placement
 	// was rebuilt from the custody graph during load.
 	size_t repaired_item_rows = 0;
+	std::vector<player_load_source_item> item_sources;
+	std::vector<artifact_payload_projection> item_admission_sources;
 	std::vector<player_load_item_identity> item_identities;
 	std::vector<player_load_pet_identity> pet_identities;
 	player_load_read_mask_t read_components = 0;
@@ -179,18 +197,9 @@ struct player_load_result
 	std::string account_name;
 };
 
-struct player_load_source_item
-{
-	uint64_t row_id = 0;
-	uint64_t parent_row_id = 0;
-	uint64_t item_uid = 0;
-	size_t bytes = 0;
-	bool retain = false;
-};
-
 // Retain the complete source component around each withheld row. No payload is
 // decoded, claimed or rewritten here; output is atomic and source IDs stay local.
-unsigned int player_load_retain_item_roots(const std::vector<player_load_source_item> &source,
+unsigned int player_load_retain_item_roots(std::vector<player_load_source_item> &source,
 					   player_item_retention *retained);
 
 bool player_load_reconcile_item_topology(std::vector<player_item_snapshot> *items,

@@ -773,6 +773,7 @@ bool load_items(MYSQL *connection, player_load_result *result)
 	std::vector<uint64_t> unrecorded;
 	std::vector<player_load_source_item> source;
 	std::unordered_map<uint64_t, size_t> source_by_uid;
+	std::unordered_map<uint64_t, size_t> source_by_id;
 	std::unordered_set<uint64_t> retained;
 	try
 	{
@@ -811,11 +812,32 @@ bool load_items(MYSQL *connection, player_load_result *result)
 				(row[3] && !parse_unsigned(row[3], UINT32_MAX, &raw.parent_row_id)))
 				    return false;
 			    parse_unsigned(row[29], UINT64_MAX, &raw.item_uid);
+			    raw.custody_found = row[31] != nullptr;
+			    if (raw.custody_found)
+			    {
+				    auto &custody = raw.custody;
+				    uint64_t owner_type = 0, state = 0;
+				    int64_t vnum = 0;
+				    parse_unsigned(row[31], UINT64_MAX, &custody.item_uid);
+				    parse_unsigned(row[32], UINT64_MAX, &custody.root_item_uid);
+				    parse_unsigned(row[33], UINT64_MAX, &custody.parent_item_uid);
+				    parse_unsigned(row[34], UINT8_MAX, &owner_type);
+				    parse_unsigned(row[35], UINT64_MAX, &custody.owner.id);
+				    parse_unsigned(row[36], UINT64_MAX, &custody.owner.context_id);
+				    parse_unsigned(row[37], UINT64_MAX, &custody.item_revision);
+				    parse_signed(row[38], INT32_MIN, INT32_MAX, &vnum);
+				    parse_unsigned(row[39], UINT8_MAX, &state);
+				    parse_unsigned(row[40], UINT64_MAX, &custody.owner_revision);
+				    custody.owner.type = static_cast<item_owner_type>(owner_type);
+				    custody.state = static_cast<item_custody_state>(state);
+				    custody.vnum = static_cast<int32_t>(vnum);
+			    }
 			    raw.bytes = result->metrics.byte_count - previous_bytes;
 			    previous_bytes = result->metrics.byte_count;
 			    try
 			    {
 				    source.push_back(raw);
+				    source_by_id.emplace(raw.row_id, source.size() - 1);
 			    }
 			    catch (const std::bad_alloc &)
 			    {
@@ -1006,6 +1028,10 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    if (!parse_unsigned(row[0], 1, &row_kind) ||
 				!parse_unsigned(row[2], UINT64_MAX, &database_id))
 				    return false;
+			    const auto raw = source_by_id.find(database_id);
+			    if (raw == source_by_id.end())
+				    return false;
+			    source[raw->second].bytes += source_bytes;
 			    // Metadata of a row that was not loaded goes with it.
 			    const auto found = item_by_database_id.find(database_id);
 			    if (found == item_by_database_id.end())
@@ -1060,6 +1086,7 @@ bool load_items(MYSQL *connection, player_load_result *result)
 				   result->outcome != player_load_outcome::limit_exceeded;
 		    }))
 		return false;
+	result->item_sources = std::move(source);
 	return result->snapshot.items.size() == result->item_identities.size();
 }
 
@@ -1474,6 +1501,7 @@ player_load_result player_load_repository_execute(MYSQL *connection,
 {
 	player_load_result result = {};
 	result.request_id = request.request_id;
+	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	const uint64_t started = persistence_observability_now_usec();
 	if (!connection || !player_load_request_valid(request, started))

@@ -70,6 +70,7 @@ bool player_load_offline(const char *name, bool include_items, std::function<voi
 		request.pid = pid;
 	else
 		request.player_name = name;
+	request.gameplay_items = false;
 	request.include_items = include_items;
 	request.include_pets = false;
 	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;

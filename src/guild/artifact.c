@@ -831,6 +831,48 @@ bool artifact_begin_creation(P_obj object)
 	}
 }
 
+unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
+{
+	const auto found = artifact_rows.find(source.vnum);
+	if (!(source.extra_flags & ITEM_ARTIFACT) &&
+	    (found == artifact_rows.end() || found->second.canonical_item_uid != source.item_uid))
+		return 0;
+	if (!artifact_cache_loaded || source.domain != artifact_payload_domain::player ||
+	    source.role != artifact_payload_role::stored || !source.row_id || !source.item_uid ||
+	    !source.extra_flags_present || !(source.extra_flags & ITEM_ARTIFACT) ||
+	    source.quantity != 1 || source.source_quarantined || source.parent_missing ||
+	    source.parent_owner_disagrees || source.owner_context ||
+	    source.payload_owner.type != item_owner_type::player || !source.payload_owner.id ||
+	    source.payload_owner.context_id || source.owner_reference <= 0 ||
+	    source.payload_owner.id != static_cast<uint64_t>(source.owner_reference) ||
+	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found)
+		return ENODATA;
+	const auto &custody = source.custody;
+	if (custody.item_uid != source.item_uid || custody.vnum != source.vnum ||
+	    custody.state != item_custody_state::active || !custody.item_revision ||
+	    !custody.owner_revision ||
+	    !item_owner_identity_equal(custody.owner, source.payload_owner) ||
+	    custody.root_item_uid != source.payload_root_item_uid ||
+	    custody.parent_item_uid != source.parent_item_uid)
+		return ESTALE;
+	item_ownership_runtime_entry current = {};
+	if (item_ownership_runtime_lookup(source.item_uid, &current) &&
+	    (current.vnum != custody.vnum || current.state != custody.state ||
+	     !item_owner_identity_equal(current.owner, custody.owner) ||
+	     current.root_item_uid != custody.root_item_uid ||
+	     current.parent_item_uid != custody.parent_item_uid ||
+	     current.item_revision > custody.item_revision))
+		return ESTALE;
+	if (found == artifact_rows.end() ||
+	    found->second.identity_state != artifact_identity_state::present ||
+	    found->second.canonical_item_uid != source.item_uid)
+		return ENODATA;
+	if ((found->second.live_object && found->second.live_object != object) ||
+	    found->second.pending == artifact_pending::creation)
+		return EEXIST;
+	return 0;
+}
+
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source)
 {
 	const auto refuse = [&](int error, const char *reason)
@@ -856,13 +898,20 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 		    known->second.canonical_item_uid != object->obj_uid)
 			return true;
 	}
+	const bool player = source.domain == artifact_payload_domain::player;
+	if (player)
+	{
+		const unsigned int error = artifact_player_source_error(source, object);
+		if (error)
+			return refuse(error, "player_source_unqualified");
+	}
 	if (!artifact_cache_loaded || object->R_num < 0 || !object->obj_uid ||
 	    !source.extra_flags_present || source.quantity != 1 ||
 	    source.role != artifact_payload_role::stored || source.source_quarantined ||
 	    source.item_uid != object->obj_uid || source.vnum != OBJ_VNUM(object) ||
-	    source.extra_flags != object->extra_flags || !source.owner_context ||
+	    source.extra_flags != object->extra_flags || (!player && !source.owner_context) ||
 	    !source.payload_root_item_uid ||
-	    (source.domain != artifact_payload_domain::redis_generation &&
+	    (!player && source.domain != artifact_payload_domain::redis_generation &&
 	     source.domain != artifact_payload_domain::redis_floor &&
 	     source.domain != artifact_payload_domain::copyover_ground))
 	{
@@ -884,21 +933,24 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	// The pinned source supplies this locator; the boot classifier already
 	// checked its full graph, effective flags and independent/captured custody.
 	// A same-UID payload in another source or owner is not an interchangeable copy.
-	const bool qualified = std::any_of(
-		row.canonical_payloads.begin(), row.canonical_payloads.end(),
-		[&](const artifact_payload_projection &payload)
-		{
-			return payload.domain == source.domain &&
-			       payload.role == artifact_payload_role::stored &&
-			       payload.owner_context == source.owner_context &&
-			       payload.owner_reference == source.owner_reference &&
-			       payload.item_uid == source.item_uid && payload.vnum == source.vnum &&
-			       payload.payload_root_item_uid == source.payload_root_item_uid &&
-			       payload.parent_item_uid == source.parent_item_uid &&
-			       payload.extra_flags_present &&
-			       payload.extra_flags == source.extra_flags;
-		});
-	if (!qualified)
+	const bool qualified =
+		player ||
+		std::any_of(row.canonical_payloads.begin(), row.canonical_payloads.end(),
+			    [&](const artifact_payload_projection &payload)
+			    {
+				    return payload.domain == source.domain &&
+					   payload.role == artifact_payload_role::stored &&
+					   payload.owner_context == source.owner_context &&
+					   payload.owner_reference == source.owner_reference &&
+					   payload.item_uid == source.item_uid &&
+					   payload.vnum == source.vnum &&
+					   payload.payload_root_item_uid ==
+						   source.payload_root_item_uid &&
+					   payload.parent_item_uid == source.parent_item_uid &&
+					   payload.extra_flags_present &&
+					   payload.extra_flags == source.extra_flags;
+			    });
+	if (!player && !qualified)
 	{
 		return refuse(ENODATA, "source_projection_mismatch");
 	}

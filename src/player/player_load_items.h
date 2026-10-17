@@ -44,6 +44,12 @@ struct player_load_item_materialize_metrics
 	size_t maximum_depth = 0;
 };
 
+// Game-thread qualification of the immutable gameplay load. Rejected components
+// remain in the original store; accepted sources are sealed for construction.
+unsigned int player_load_items_qualify(player_load_result *result);
+bool player_load_item_graph_materialize_player(P_char character, const player_load_result &result,
+					       bool hydrate_ownership,
+					       player_load_item_materialize_metrics *metrics);
 bool player_load_items_materialize(P_char character, const player_load_result &result,
 				   player_load_item_materialize_metrics *metrics);
 bool player_load_item_graph_materialize(P_char character,

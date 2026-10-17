@@ -502,6 +502,62 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  tree=materialize_object(plan); assert(tree && tree->contains && artifact_is_canonical(tree->contains));
  assert(artifact_rows.at(900).timer==4567 && artifact_binds.at(900).owner_pid==77);
  extract_obj(tree,FALSE); assert(!object_list && !pool.objs_used && writes.empty());
+ // A mutable player cut may legitimately move after the pinned boot source.
+ auto player=saved; player.domain=artifact_payload_domain::player;
+ player.owner_reference=77; player.owner_context=0; player.row_id=100;
+ player.parent_row_id=0; player.parent_item_uid=0; player.payload_root_item_uid=4242;
+ player.payload_owner={item_owner_type::player,77,0};
+ player.custody_examined=player.custody_found=true;
+ player.custody={4242,4242,0,player.payload_owner,3,7,900,item_custody_state::active};
+ stage_saved({player},true); item_ownership_runtime_reset();
+ assert(!artifact_player_source_error(player));
+ const auto before_player_procedures=procedures;
+ for(int kind=0;kind<12;++kind) {
+  auto bad=player;
+  switch(kind) {
+   case 0: bad.custody_found=false; break;
+   case 1: bad.custody.owner.id=88; break;
+   case 2: bad.custody.state=item_custody_state::absent; break;
+   case 3: bad.custody.vnum=901; break;
+   case 4: bad.custody.item_revision=0; break;
+   case 5: bad.custody.owner_revision=0; break;
+   case 6: bad.parent_item_uid=10; break;
+   case 7: bad.payload_root_item_uid=10; break;
+   case 8: bad.parent_missing=true; break;
+   case 9: bad.parent_owner_disagrees=true; break;
+   case 10: bad.extra_flags=0; break;
+   case 11: ++bad.item_uid; bad.payload_root_item_uid=bad.item_uid; bad.custody.item_uid=bad.item_uid; bad.custody.root_item_uid=bad.item_uid; break;
+  }
+  assert(artifact_player_source_error(bad));
+  assert(!read_object_for_recovery(bad));
+  assert(procedures==before_player_procedures && !object_list && !pool.objs_used);
+ }
+ auto current=player.custody; current.owner.id=88;
+ assert(item_ownership_runtime_hydrate(current));
+ assert(artifact_player_source_error(player)==ESTALE && !read_object_for_recovery(player));
+ item_ownership_runtime_reset(); current=player.custody; ++current.item_revision;
+ assert(item_ownership_runtime_hydrate(current));
+ assert(artifact_player_source_error(player)==ESTALE);
+ item_ownership_runtime_reset(); current=player.custody; ++current.owner_revision;
+ assert(item_ownership_runtime_hydrate(current));
+ assert(!artifact_player_source_error(player)); // unrelated owner-fence advance
+ expected_procedure_uid=4242;
+ first=read_object_for_recovery(player); assert(first && first->obj_uid==4242);
+ assert(artifact_player_source_error(player)==EEXIST && !read_object_for_recovery(player));
+ extract_obj(first,FALSE); // cancelled before placement: release only the tentative pointer
+ assert(!artifact_rows.at(900).live_object && artifact_rows.at(900).canonical_item_uid==4242);
+ first=read_object_for_recovery(player); assert(first); obj_to_room(first,0);
+ assert(artifact_is_canonical(first) && artifact_rows.at(900).timer==4567 && artifact_binds.at(900).owner_pid==77);
+ extract_obj(first,FALSE); expected_procedure_uid=0;
+ assert(!artifact_rows.at(900).live_object && writes.empty());
+ artifact_rows.at(900).identity_state=artifact_identity_state::retired;
+ assert(artifact_player_source_error(player)==ENODATA && !read_object_for_recovery(player));
+ artifact_rows.at(900).identity_state=artifact_identity_state::present;
+ auto ordinary=player; ordinary.extra_flags=0; ordinary.item_uid=99999;
+ assert(!artifact_player_source_error(ordinary));
+ first=read_object_for_recovery(ordinary); assert(first && !IS_ARTIFACT(first)); extract_obj(first,FALSE);
+ item_ownership_runtime_reset();
+ std::cout<<"mutable player source/custody qualification, live reservation and cancellation: PASS\n";
  std::cout<<"source-qualified recovery factory and actual nested tree: PASS\n";
 }
 """
@@ -511,6 +567,6 @@ with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as dire
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
-  "src/item/item_transfer_command.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

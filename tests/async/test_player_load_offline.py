@@ -62,6 +62,9 @@ void free_char(P_char character) {
     std::free(character->only.pc);
     std::free(character);
 }
+void artifact_object_extracted(P_obj object, bool retired) {
+    assert(!retired && object->obj_uid); // detach before discarding the saved UID
+}
 void extract_obj(P_obj object, int gone_for_good) {
     assert(!gone_for_good); // inspection cleanup cannot retire a saved artifact
     assert(OBJ_NOWHERE(object));
@@ -101,9 +104,9 @@ int main() {
     // The actor leaves before include-items completion: actual callback must discard first.
     populate_items = true;
     assert(player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
-    assert(submitted.pid == 42 && submitted.include_items && !submitted.include_pets);
+    assert(submitted.pid == 42 && !submitted.gameplay_items && submitted.include_items && !submitted.include_pets);
     player_load_result result = {}; result.request_id = request_id;
-    result.outcome = player_load_outcome::applied; result.pid = 42;
+    result.outcome = player_load_outcome::applied; result.pid = 42; result.gameplay_items = false;
     assert(player_load_offline_complete(result));
     assert(completed == 0 && released == 1 && allocated == 4 && extracted == 4);
     assert(!player_load_offline_complete(result));

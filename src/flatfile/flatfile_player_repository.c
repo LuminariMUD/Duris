@@ -148,6 +148,7 @@ player_load_result identity_failure(const player_load_request &request,
 {
 	player_load_result result = {};
 	result.request_id = request.request_id;
+	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	result.failed_component = "identity";
 	switch (failure)
@@ -245,6 +246,40 @@ bool build_item_identities(
 						  0 :
 						  static_cast<uint64_t>(item.parent_index) + 1,
 					  item.object_uid, 0, !item.object_uid || item.vnum <= 0 });
+				const auto custody = catalog.find(item.object_uid);
+				if (custody != catalog.end())
+				{
+					const auto &held = custody->second;
+					source.back().custody_found = true;
+					source.back().custody = { held.item_uid,
+								  held.root_item_uid,
+								  held.parent_item_uid,
+								  held.owner,
+								  held.item_revision,
+								  item_owner_identity_equal(
+									  held.owner, owner) ?
+									  owner_revision :
+									  0,
+								  held.vnum,
+								  held.state };
+				}
+				// Normalize a single node only to measure its complete raw bytes. The
+				// extra list framing conservatively bounds retained capture capacity.
+				auto measured = item;
+				measured.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+				std::vector<uint8_t> encoded;
+				const auto encoded_result =
+					player_item_snapshot_list_encode({ measured }, &encoded);
+				if (encoded_result != player_snapshot_codec_result::ok)
+				{
+					result->error_code =
+						encoded_result == player_snapshot_codec_result::
+									  allocation_failure ?
+							ENOMEM :
+							EILSEQ;
+					return false;
+				}
+				source.back().bytes = encoded.size();
 				// Duplicate raw UIDs are evidence even when custody names another
 				// owner. Retain every matching root so source selection is unambiguous.
 				if (item.object_uid)
@@ -264,32 +299,9 @@ bool build_item_identities(
 				result->error_code = error;
 				return false;
 			}
-			if (!retained->rows.empty())
-			{
-				std::vector<player_item_snapshot> held;
-				std::vector<uint8_t> encoded;
-				const auto selected =
-					retained_item_payloads(*items, *retained, &held);
-				if (selected)
-				{
-					result->error_code = selected;
-					return false;
-				}
-				const auto encoded_result =
-					player_item_snapshot_list_encode(held, &encoded);
-				if (encoded_result != player_snapshot_codec_result::ok)
-				{
-					result->error_code =
-						encoded_result == player_snapshot_codec_result::
-									  allocation_failure ?
-							ENOMEM :
-							EILSEQ;
-					return false;
-				}
-				retained->bytes = encoded.size();
-				for (const auto &row : retained->rows)
-					held_rows.insert(row.source_row_id);
-			}
+			for (const auto &row : retained->rows)
+				held_rows.insert(row.source_row_id);
+			result->item_sources = std::move(source);
 		}
 		database_ids.reserve(items->size());
 		remap.reserve(items->size());
@@ -746,6 +758,7 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	const uint64_t started = persistence_observability_now_usec();
 	player_load_result result = {};
 	result.request_id = request.request_id;
+	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	if (!player_load_request_valid(request, started))
 	{
@@ -878,6 +891,7 @@ flatfile_player_load_repository_execute_selected(const player_load_request &requ
 		return flatfile_player_load_repository_execute(root, request);
 	player_load_result result = {};
 	result.request_id = request.request_id;
+	result.gameplay_items = request.gameplay_items;
 	result.pid = request.pid;
 	result.outcome = player_load_outcome::component_failure;
 	result.error_code = ENOENT;

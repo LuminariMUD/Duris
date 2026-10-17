@@ -435,8 +435,23 @@ def run(binary, case):
                 offline_denied = command(god, f'load obj {ARTIFACT}')
                 assert 'creation refused: already present' in offline_denied, offline_denied
                 assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                # Change mutable source data after boot classified the healthy canonical
+                # artifact. The wrong-UID root and child must stay raw, while that real
+                # artifact and independent ordinary inventory still enter gameplay.
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,extra_flags,short_descr) VALUES({source_pid},{ARTIFACT},8888899,1,268435456,'rejected mutable artifact')")
+                rejected_root = int(sql(f"SELECT id FROM player_items WHERE pid={source_pid} AND obj_uid=8888899"))
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,container_id,quantity) VALUES({source_pid},901,8888898,{rejected_root},1)")
+                sql(f"INSERT INTO player_items(pid,vnum,obj_uid,quantity,extra_flags,short_descr) VALUES({source_pid},901,8888897,1,0,'ordinary source control')")
                 player = login(PLAYER, ACCOUNT)
                 assert 'ioun stone' in command(player, 'equipment')
+                assert 'ordinary source control' in command(player, 'inventory')
+                admitted_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', admitted_stat), admitted_stat
+                player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                assert sql(f"SELECT COUNT(*) FROM player_items p JOIN player_items c ON c.container_id=p.id AND c.obj_uid=8888898 WHERE p.id={rejected_root} AND p.obj_uid=8888899 AND p.short_descr='rejected mutable artifact'") == '1'
+                assert sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (8888899,8888898)") == '0'
+                assert sql(f"SELECT COUNT(*) FROM item_current_owner WHERE item_uid=8888897 AND owner_type=1 AND owner_id={source_pid} AND state=1") == '1'
+                evidence['mutable_player_admission'] = {'wrong_uid_root_retained': True, 'no_held_claim': True, 'canonical_live_count': 1, 'ordinary_inventory_saved': True}
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
                 stop()

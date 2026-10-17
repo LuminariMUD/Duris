@@ -396,8 +396,32 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 }
 } // namespace
 
-bool player_load_materialize(P_char ch, const player_load_result &result)
+bool player_load_materialize(P_char ch, const player_load_result &loaded)
 {
+	player_load_result qualified;
+	const player_load_result *selected = &loaded;
+	if (loaded.gameplay_items && valid_snapshot(loaded) && !loaded.snapshot.items.empty())
+	{
+		unsigned int error = ENOMEM;
+		try
+		{
+			qualified = loaded;
+			error = player_load_items_qualify(&qualified);
+		}
+		catch (const std::bad_alloc &)
+		{
+			error = ENOMEM;
+		}
+		if (error)
+		{
+			logit(LOG_SYS,
+			      "player_load: pid=%d component=artifact_source outcome=refused error=%u",
+			      loaded.pid, error);
+			return false;
+		}
+		selected = &qualified;
+	}
+	const auto &result = *selected;
 	if (!ch || !ch->only.pc)
 		return false;
 	if (!valid_snapshot(result))
@@ -679,9 +703,7 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 			return refuse("pets", "materialize_failure");
 		}
 		player_load_item_materialize_metrics item_metrics = {};
-		if (!player_load_item_graph_materialize(
-			    ch, result.snapshot.items, result.item_identities, result.pid,
-			    result.item_owner_revision, false, &item_metrics))
+		if (!player_load_item_graph_materialize_player(ch, result, false, &item_metrics))
 		{
 			logit(LOG_DEBUG,
 			      "player_load_materialize: component=item_graph pid=%d outcome=%u "

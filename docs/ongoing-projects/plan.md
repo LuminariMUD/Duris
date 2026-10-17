@@ -22,6 +22,62 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current gameplay-player admission work: `branch/issue-67-player-artifact-admission`,
+based on #155. Outcome: qualify a gameplay player's saved artifact source/UID/current
+custody before constructor procedures, reserve its physical pointer, and withhold
+rejected complete raw roots while independent valid roots still load/save. Reuse
+existing artifact recovery admission, source retention and object rollback hooks.
+Non-goals: selecting a legacy winner, another ownership store, or claiming offline
+maintenance/inspection, pets, storage and deliveries are migrated in this chunk.
+Files: immutable player load source metadata and request purpose, source readers,
+artifact admission/constructor, PC materialization and focused regressions/journeys.
+Proof: wrong UID/owner/topology/state/live copies refuse before procedures; valid
+same-UID load preserves timer/soul, whole-root retention survives later saves,
+rollback releases only tentative pointers, and ordinary inventory remains available.
+Offline commands keep their existing explicit unmigrated path until their individual
+callbacks are migrated; they are not classified wholesale as inspection.
+
+Gameplay-player implementation checkpoint (2026-10-17, verification complete):
+- The gameplay/offline-command request distinction follows the actual caller into
+  both repositories. Existing offline commands remain unmigrated, explicitly false;
+  staff live `load char` must be migrated with its callback in a later chunk.
+- Repository results retain bounded original source IDs/ancestry/root UIDs, complete
+  byte reservations and actual custody fields, including inactive state before the
+  permissive ordinary-item loader normalizes it. No new persistent format/store.
+- Game-thread qualification copies the immutable result, checks canonical identity
+  and current per-item custody, and keeps every component connected through raw or
+  custody-repaired ancestry when a candidate refuses. Held rows stay out of claims
+  and construction. A bounded staff notice names the first vnum/reason/reference;
+  per-row artifact logs retain source selectors for the rest.
+- Qualified gameplay PC construction reuses `read_object_for_recovery`, with saved
+  UID/effective flags set before procedures. Placement commits the existing pending
+  recovery reservation without resetting timer/soul. Graph failure and explicit
+  discard detach reservations before clearing saved UIDs. No nested/global restore
+  scope was added: native copyover already owns its outer rollback checkpoint.
+- Fresh ASan/UBSan actual service/constructor tests pass wrong UID/owner/root/parent,
+  inactive/missing custody, stale per-item revision, existing live pointer, ordinary
+  overrides, valid same-UID construction and cancellation/timer/soul preservation.
+  Item graph integration passes full raw/repaired-root withholding, independent
+  inventory, immutable original result and detach-before-UID-clear on failure.
+  Topology, ordinary item, offline callback cleanup and pipeline controls pass;
+  initial SQL and flat builds and changed-line format/tidy pass.
+- Ablation: removed the redundant second encoding of a held flat subtree after the
+  per-node raw-byte measurement and already-validated file decoding supply its bound.
+- Fresh verification passed: the disposable SQL standard gameplay journey injects
+  a wrong-UID artifact root/child *after boot*, then proves exactly one canonical
+  live artifact, independent ordinary inventory/save, and original held rows with
+  no custody claim. Original NULL-UID source evidence also survives. Native
+  copyover/clean restart preserve the valid UID, timer, soul and reward history.
+  Ordinary flat compressed/uncompressed native-copyover controls passed. These
+  are not a full-server flat artifact admission journey or the final AR-07 matrix.
+  Logs: `bin/analysis/issue67/player-admission-*.log`; frozen SQL evidence:
+  `bin/analysis/issue67/player-admission-gameplay.json`. SQL/flat builds pass after
+  the encoding simplification. The final flat repository regression verifies the
+  raw source custody, owner fence, ancestry and byte bound consumed by admission.
+- Remaining for publication: commit/push and open a non-draft PR based on #155.
+  Focused review, executable regressions, format/tidy and both builds passed. Offline maintenance/inspection, pet/storage/delivery
+  admission, remaining fresh producers and full AR-04/AR-07 acceptance stay open.
+
 Current player-retention checkpoint: [PR #155](https://github.com/LuminariMUD/Duris/pull/155),
 ready for review, `branch/issue-67-player-payload-retention`, based on PR #154. Outcome: withheld player payload roots survive later saves while
 independent valid roots remain loadable and saveable. Keep SQL raw rows/nullable

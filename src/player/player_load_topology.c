@@ -150,7 +150,7 @@ bool player_load_reconcile_item_topology(std::vector<player_item_snapshot> *item
 	return true;
 }
 
-unsigned int player_load_retain_item_roots(const std::vector<player_load_source_item> &source,
+unsigned int player_load_retain_item_roots(std::vector<player_load_source_item> &source,
 					   player_item_retention *retained)
 {
 	if (!retained)
@@ -202,6 +202,8 @@ unsigned int player_load_retain_item_roots(const std::vector<player_load_source_
 					{ source[index].row_id, root_uids[group(index)] });
 				staged.bytes += source[index].bytes;
 			}
+		for (size_t index = 0; index < source.size(); ++index)
+			source[index].root_item_uid = root_uids[group(index)];
 		*retained = std::move(staged);
 		return 0;
 	}
