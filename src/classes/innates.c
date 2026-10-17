@@ -3990,7 +3990,7 @@ void webwrap(P_char ch, P_char victim)
 	struct affected_type af;
 	int chance;
 
-	if (check_freedom_of_movement(victim, number(0, 1)) && !IS_TRUSTED(ch))
+	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your webs!&n\r\n", ch);
 		return;
@@ -4090,8 +4090,7 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 	    TO_NOTVICT);
 
 	// Webbing is stopped by freedom of movement, then evade.
-	if (check_freedom_of_movement(
-		    victim, GET_LEVEL(ch) - GET_LEVEL(victim) >= 10 ? true : number(0, 1)))
+	if (check_freedom_of_movement(victim))
 	{
 		act("The webbing slides harmlessly off $N.", FALSE, ch, 0, victim, TO_CHAR);
 		act("The webbing slides harmlessly off you.", FALSE, ch, 0, victim, TO_VICT);

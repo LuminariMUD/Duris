@@ -58,8 +58,10 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
 # repository probe with that database's environment. make test-db runs it; the generic
 # test-all runner invokes every discovered script with no arguments.
 # The Discord game journey similarly needs an external Node checkout via --node-driver.
+# The artifact population reader requires the disposable SQL fixture in test-db.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
+        "test_artifact_population_repository.py",
         "test_discord_game_journey.py",
         "test_epic_task_catalog_mysql.py",
         "test_epic_task_recovery_journey.py",

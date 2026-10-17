@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import ROOT, SRC, rel
+from _paths import ROOT, SRC, HARNESS_STUBS, rel
 
 
 def extract(source: Path, signature: str) -> str:
@@ -1186,7 +1186,7 @@ def main() -> int:
                 rel("critical_command.c"),
                 rel("player_snapshot_capture.c"),
                 rel("player_snapshot_codec.c"),
-                "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+                str(HARNESS_STUBS), "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
             ],
             cwd=ROOT,
             check=True,

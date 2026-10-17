@@ -686,7 +686,7 @@ void fetid_breath(P_char ch, P_char victim)
 	{
 		struct affected_type af;
 
-		if (!check_freedom_of_movement(victim, number(0, 1)))
+		if (!check_freedom_of_movement(victim))
 		{
 			bzero(&af, sizeof(af));
 			af.type = SPELL_MINOR_PARALYSIS;
@@ -6586,22 +6586,28 @@ int plant_attacks_paralysis(P_char ch, P_char pl, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
 
-	if (!ch || pl || cmd)
+	if (!ch)
 		return FALSE;
 
 	if (cmd == CMD_DEATH) /*
 	                       * unwrap vines upon death of vine
 	                       */
+	{
 		LOOP_THRU_PEOPLE(vict, ch)
 			if ((vict != ch) && affected_by_spell(vict, SPELL_MAJOR_PARALYSIS))
 				affect_from_char(vict, SPELL_MAJOR_PARALYSIS);
+		return FALSE;
+	}
+
+	if (pl || cmd)
+		return FALSE;
 
 	duration_factor = 10;
 
 	LOOP_THRU_PEOPLE(vict, ch)
 		if ((vict != ch) && (IS_PC(vict) || IS_PC_PET(vict)) && !number(0, 2) &&
 		    !IS_AFFECTED2(vict, AFF2_MAJOR_PARALYSIS) && !saves_spell(vict, SAVING_PARA) &&
-		    !check_freedom_of_movement(vict, false))
+		    !check_freedom_of_movement(vict))
 		{
 			act("$n reach up and wrap themselves about you, making it difficult to move, or even breathe!",
 			    FALSE, ch, 0, vict, TO_VICT);
@@ -9197,7 +9203,7 @@ int jotun_thrym(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 		if (!number(0, 2))
 		{
 			vict = GET_OPPONENT(ch);
-			if (!vict || check_freedom_of_movement(vict, true))
+			if (!vict || check_freedom_of_movement(vict))
 				return FALSE;
 
 			act("&+BA blue bolt of energy streaks from&n $N's&n&+B hands, encasing&n $n &n&+Bin a solid block of ice!",

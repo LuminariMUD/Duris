@@ -7765,7 +7765,7 @@ void spell_major_paralysis(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 	     (IS_NPC(victim) && IS_SET(victim->specials.act, ACT_IMMUNE_TO_PARA))))
 		return;
 
-	if (check_freedom_of_movement(victim, number(0, 1)) && !IS_TRUSTED(ch))
+	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your spell!&n\r\n", ch);
 		return;
@@ -7823,7 +7823,7 @@ void spell_minor_paralysis(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 	    (IS_NPC(victim) && IS_SET(victim->specials.act, ACT_IMMUNE_TO_PARA)))
 		return;
 
-	if (check_freedom_of_movement(victim, false) && !IS_TRUSTED(ch))
+	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your spell!&n\r\n", ch);
 		return;
@@ -12297,7 +12297,7 @@ void spell_entangle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		return;
 	}
 
-	if (check_freedom_of_movement(victim, number(0, 1)) && !IS_TRUSTED(ch))
+	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your spell!&n\r\n", ch);
 		return;
@@ -12332,14 +12332,18 @@ void spell_entangle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		}
 		StopMercifulAttackers(victim);
 
-		if (world[ch->in_room].sector_type == SECT_FOREST && number(1, 100) < chance)
+		if (world[ch->in_room].sector_type == SECT_FOREST && number(1, 100) < chance &&
+		    !IS_AFFECTED(victim, AFF_BOUND))
 		{
 			act("&+GThe vegetation closes tightly, completely entangling $n!", TRUE,
 			    victim, 0, 0, TO_ROOM);
 			send_to_char(
 				"&+GThe vegetation closes tightly, completely entangling you!\n",
 				victim);
-			SET_BIT(victim->specials.affected_by, AFF_BOUND);
+			af.type = SPELL_ENTANGLE;
+			af.duration = -1; // Remains until unbound, cut free, or dispelled.
+			af.bitvector = AFF_BOUND;
+			affect_to_char(victim, &af);
 		}
 		else
 		{
@@ -14326,22 +14330,14 @@ void spell_infernal_fury(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_u
 	}
 }
 
-bool check_freedom_of_movement(P_char ch, bool clear)
+// Only the spell protects here, not item-granted AFF_FREEDOM_OF_MVMNT. Blocking an effect
+// never consumes the spell; it lasts its full duration.
+bool check_freedom_of_movement(P_char ch)
 {
-	// only the spell works for these checks
-	if (affected_by_spell(ch, SPELL_FREEDOM_OF_MOVEMENT))
-	{
-		if (clear)
-		{
-			act("&+yYour movement is no longer unhindered!&n", TRUE, ch, 0, 0, TO_CHAR);
-			affect_from_char(ch, SPELL_FREEDOM_OF_MOVEMENT);
-		}
-		return true;
-	}
-	return false;
+	return affected_by_spell(ch, SPELL_FREEDOM_OF_MOVEMENT);
 }
 
-void spell_freedom_of_movement(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
+void spell_freedom_of_movement(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			       P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
@@ -14354,7 +14350,8 @@ void spell_freedom_of_movement(int /*level*/, P_char ch, char * /*arg*/, [[maybe
 		    TO_CHAR);
 		bzero(&af, sizeof(af));
 		af.type = SPELL_FREEDOM_OF_MOVEMENT;
-		af.duration = (GET_LEVEL(ch) / 28) + 1; // 1-3 minutes depends on level of caster
+		// About 70% of guardian spirits' player duration.
+		af.duration = MAX(3, (level / 2 + number(-4, 0)) * 7 / 10);
 		af.bitvector = AFF_FREEDOM_OF_MVMNT;
 		affect_to_char(victim, &af);
 
@@ -17962,8 +17959,7 @@ void event_judgement(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 
 		if (GET_RACE(victim) == RACE_TROLL)
 		{
-			if (!NewSaves(victim, SAVING_FEAR, 3) &&
-			    !check_freedom_of_movement(victim, true))
+			if (!NewSaves(victim, SAVING_FEAR, 3) && !check_freedom_of_movement(victim))
 			{
 				bzero(&af, sizeof(af));
 
@@ -20282,8 +20278,7 @@ void spell_chaotic_ripple(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 				return;
 			}
 			if (!NewSaves(victim, SAVING_PARA, number(-2, 2)) &&
-			    !IS_GREATER_RACE(victim) &&
-			    !check_freedom_of_movement(victim, number(0, 1)))
+			    !IS_GREATER_RACE(victim) && !check_freedom_of_movement(victim))
 			{
 				af.type = SPELL_MAJOR_PARALYSIS;
 				af.flags = AFFTYPE_SHORT;
