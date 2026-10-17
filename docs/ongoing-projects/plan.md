@@ -1,47 +1,30 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: carry-forward through #150–#153
+## Latest review checkpoint: #154 command-ring diagnostics
 
-The latest inventory contains 41 findings: 30 resolved, 11 outstanding. Published
-repair heads: #147 `d41067fba`, #148 `f27d4950a`, #149 `cd37a4288`, #150
-`d429a3736`, #151 `bbea4f9f6`. The newer #147–#149 fixes are being carried through
-#150/#151, then #152/#153, in `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
-Published carry-forward heads: #150 `ff9e1599e`, #151 `cbfc324d1`, #152 `b9ba6f24e`.
-Current branch: `branch/issue-67-recovery-hydration` (#153). Resolve its pending-admission
-merge retains saved-player registration, revision presence, NPC incompleteness,
-and the existing logical-custody-root support. Native build, classifier, boot assembly,
-creation/recovery/player lifecycle, copyover custody (including late claims and newer
-owner revisions), SQL snapshots and recovery pipeline pass. The boot fixture keeps
-missing revision and newer known revision as distinct cases. Logs: `bin/analysis/pr153-*`.
-Publish, then continue at #154.
+Current branch: `branch/issue-67-fatal-boot-exit`, in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Carry-forward is
+published through #153 `14c74b1cb` (#150 `ff9e1599e`, #151 `cbfc324d1`, #152
+`b9ba6f24e`). Their relevant lifecycle, offline cleanup, report inspection,
+source-qualified recovery, logical custody, native/Redis boot and build checks pass.
+Latest inventory: 41 findings, 30 resolved, 11 outstanding before this repair.
 
-#147 now safely refuses raced symlinks/inodes and late recovery claims, bounds
-NPC vectors, recognizes captured revision authority, and routes failed restoration
-through worker-joining shutdown. #148 preserves identity-only flat reservations,
-rejects zero vnums and duplicate physical rows, retains retired identities, and
-preserves canonical UIDs found under foreign vnums. #149 treats unresolved Redis
-and native NPC reconstruction as incomplete, including retained native images,
-and carries real revision evidence through independent SQL/flat acquisition.
-Their focused before/after regressions, relevant backend builds and tidy passed.
+#154 outcome: normal exit/signal writes an empty current-run command log; only
+fatal startup with no new commands preserves the previous file. Keep worker-safe
+fatal exit and populated-ring capture. Files: existing debug writer/fatal caller,
+public declaration and pfile utility stub, existing fatal-worker regression, this
+plan. A small boot-specific flush entry point supplies the distinct fatal policy
+without changing the no-argument signal/atexit writer. No runtime mode or storage
+format is added. Ordinary empty-ring exit reproduces the failure before repair.
+The regression now covers fatal exit with/without live workers, normal exit and
+signal flush, each with empty/populated rings. All cases pass after repair, as do
+the existing command-log test, native server build, pfile utility build, formatting
+and tidy. Logs: `bin/analysis/pr154-*`. Publication is next.
 
-#150's three review findings are implemented in `d429a3736`: legacy ground/NPC
-loaders hydrate the canonical UID once; normal placement and direct player
-attachment register its live body; load-discard detaches before clearing UIDs;
-destruction retires it. Failed NPC restoration and outer rollback explicitly
-purge equipment/inventory before normal teardown can drop them onto the floor.
-Passed: SQL/flat builds, actual constructor/clone/extraction/player attach/discard
-(ASan/UBSan), player loads, NPC buffer restoration/failure and singleton journeys
-(ASan/UBSan), world recovery pipeline, SQL snapshots, flat artifact codec/runtime,
-real copyover save/exec/recover, formatting and tidy. Logs: `bin/analysis/pr150-*`.
-#151's offline cleanup and lifecycle tests/build also pass; its fixture now links
-the existing shared lifecycle stubs. #152/#153 had no findings in the last scan.
-
-Next review targets: #154 (1), #155 (2), #156 (3), #157 (4), #162 (1). Latest
-fetched details: `bin/analysis/review-refresh-after-150.json`. Refresh before final
-closeout and return to any newly reviewed older PR. No production operations or
-PR merges have been performed in this review pass.
-
-
+Next: #155 (2), #156 (3), #157 (4), #162 (1), with carry-forward through their
+intermediate PRs. Latest fetched details: `bin/analysis/review-refresh-after-150.json`.
+Refresh before closeout and return to newly reviewed older PRs. No production
+operations or PR merges have been performed in this review pass.
 ## Additional #141 review: saved-room source keys
 
 A subsequent review identified cross-key parents inside the same room. The reader

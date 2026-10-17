@@ -897,6 +897,7 @@ void do_mreport(P_char, char *, int);
 void hour_debug(void);
 void init_cmdlog(void);
 void write_cmdlog(void);
+void write_boot_cmdlog(void);
 void loop_debug(void);
 
 /* drannak.c */
