@@ -150,7 +150,22 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
         FILE *other=fopen(competing.c_str(),"wb");
         assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
     }
+    if (scenario && !strcmp(scenario,"consume-race") && std::string(to).ends_with(".consuming/image")) {
+        assert(!syscall(SYS_unlink,from));
+        FILE *other=fopen(from,"wb");
+        assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
+    }
     return static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
+}
+
+extern "C" int unlink(const char *path) noexcept {
+    const char *scenario=getenv("COPYOVER_TEST_CASE");
+    if(scenario && !strcmp(scenario,"consume-race") && std::string(path).ends_with(".recovering")) {
+        assert(!syscall(SYS_unlink,path));
+        FILE *other=fopen(path,"wb");
+        assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
+    }
+    return static_cast<int>(syscall(SYS_unlink,path));
 }
 
 // Exercise a real process replacement. Only the executable destination changes;
@@ -255,11 +270,16 @@ int main(int argc, char **argv)
     const auto *pinned = copyover_boot_evidence();
     assert(pinned && pinned->objects.size() == 1 && pinned->header.version == COPYOVER_VERSION);
     const std::string claimed = std::string(COPYOVER_FILE) + ".recovering";
+    const std::string interrupted = claimed + ".consuming";
+    assert(!mkdir(interrupted.c_str(),0700));
+    copyover_boot_snapshot blocked;
+    assert(copyover_read_file(claimed,&blocked)==copyover_boot_result::failed);
+    assert(!rmdir(interrupted.c_str()));
     const char *scenario = getenv("COPYOVER_TEST_CASE");
     assert(scenario);
     const bool new_publication = !strcmp(scenario,"newer");
-    const bool changed = !strcmp(scenario,"changed");
-    if (new_publication || changed) {
+    const bool changed = !strcmp(scenario,"changed") || !strcmp(scenario,"consume-race");
+    if (new_publication || !strcmp(scenario,"changed")) {
         FILE *replacement = std::fopen(new_publication ? COPYOVER_FILE : claimed.c_str(),"wb");
         assert(replacement && std::fwrite("replacement",11,1,replacement)==1 && std::fclose(replacement)==0);
         assert(copyover_prepare_boot() == copyover_boot_result::ready && copyover_boot_evidence() == pinned);
@@ -328,7 +348,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
+    for scenario in ("consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
         state = temp / scenario
         state.mkdir()
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
