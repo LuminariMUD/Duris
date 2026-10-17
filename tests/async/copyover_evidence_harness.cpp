@@ -7,6 +7,31 @@
 #include <iostream>
 #include <iterator>
 
+static int replace_on_open = 0;
+static unsigned file_opens = 0;
+extern "C" int __real_open(const char *, int, ...);
+extern "C" int __wrap_open(const char *path, int flags, ...)
+{
+	if (!strcmp(path, "copyover.dat") || !strcmp(path, "copyover.dat.recovering"))
+	{
+		++file_opens;
+		if ((replace_on_open == 1 || replace_on_open == 2) && file_opens == 1)
+		{
+			assert(rename(path, "original.dat") == 0);
+			if (replace_on_open == 1)
+				assert(symlink("target.dat", path) == 0);
+			else
+				assert(rename("target.dat", path) == 0);
+		}
+		if (replace_on_open == 3 && file_opens == 2)
+		{
+			assert(rename(path, "original.dat") == 0);
+			assert(rename("target.dat", path) == 0);
+		}
+	}
+	return __real_open(path, flags);
+}
+
 static room_data rooms[1] = {};
 static index_data objects[1] = {}, mobs[1] = {};
 P_room world = rooms;
@@ -45,7 +70,8 @@ static void write_bytes(const std::string &path, const std::vector<char> &bytes)
 	output.write(bytes.data(), bytes.size());
 	assert(output.good());
 }
-static std::vector<char> image(int version = COPYOVER_VERSION)
+static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count = 80,
+			       int inventory_count = 300)
 {
 	copyover_header header = {};
 	memcpy(header.magic, COPYOVER_MAGIC, 4);
@@ -74,7 +100,7 @@ static std::vector<char> image(int version = COPYOVER_VERSION)
 	npc.shopkeeper_shop_id = 7;
 	mob.player.birthplace = 100;
 	GET_MAX_HIT(&mob) = GET_HIT(&mob) = 100;
-	std::vector<obj_data> inventory(300);
+	std::vector<obj_data> inventory(inventory_count);
 	for (size_t index = 0; index < inventory.size(); ++index)
 	{
 		inventory[index].R_num = 0;
@@ -87,7 +113,7 @@ static std::vector<char> image(int version = COPYOVER_VERSION)
 	worn.obj_uid = 9999;
 	mob.carrying = inventory.data();
 	mob.equipment[3] = &worn;
-	std::vector<affected_type> affects(80);
+	std::vector<affected_type> affects(affect_count);
 	for (size_t index = 0; index < affects.size(); ++index)
 	{
 		affects[index].duration = 30;
@@ -108,14 +134,14 @@ static std::vector<char> image(int version = COPYOVER_VERSION)
 		entry.room = 100;
 		entry.idnum = 42;
 		entry.birthplace = 100;
-		entry.num_affects = 80;
-		entry.num_carrying = 300;
+		entry.num_affects = affect_count;
+		entry.num_carrying = inventory_count;
 		entry.shopkeeper_shop_id = 7;
 		assert(fwrite(&entry, copyover_mob_bytes_for_version(version), 1, file) == 1);
-		std::vector<copyover_affect> saved_affects(80);
+		std::vector<copyover_affect> saved_affects(affect_count);
 		assert(fwrite(saved_affects.data(), saved_affects.size() * sizeof(saved_affects[0]),
 			      1, file) == 1);
-		std::vector<copyover_carried_item> saved_inventory(300);
+		std::vector<copyover_carried_item> saved_inventory(inventory_count);
 		for (auto &item : saved_inventory)
 		{
 			item.obj_uid = UINT64_MAX;
@@ -200,7 +226,8 @@ int main(int argc, char **argv)
 			const auto &child = population.items.back();
 			assert(child.item_uid == 8888 && child.payload_root_item_uid == 7777 &&
 			       child.parent_item_uid == 7777 && child.custody_examined &&
-			       child.custody_found && child.custody.item_revision == 9 &&
+			       child.custody_found && child.custody_owner_revision_found &&
+			       child.custody.item_revision == 9 &&
 			       child.payload_owner.type == item_owner_type::corpse &&
 			       child.payload_owner.id == 77);
 			if (version == COPYOVER_VERSION)
@@ -272,6 +299,38 @@ int main(int argc, char **argv)
 		assert(unlink(path.c_str()) == 0 && mkfifo(path.c_str(), 0600) == 0);
 		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
 		assert(snapshot.bytes.data() == retained);
+	}
+	else if (std::string(argv[1]) == "limits")
+	{
+		copyover_boot_snapshot snapshot;
+		for (const bool affects : { true, false })
+		{
+			const int bound = WORLD_RECOVERY_MAX_ITEM_TREE;
+			write_bytes(path, image(12, affects ? bound : 1, affects ? 1 : bound));
+			assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready);
+			const auto *retained = snapshot.bytes.data();
+			write_bytes(path,
+				    image(12, affects ? bound + 1 : 1, affects ? 1 : bound + 1));
+			assert(copyover_read_file(path, &snapshot) ==
+				       copyover_boot_result::failed &&
+			       snapshot.bytes.data() == retained);
+		}
+	}
+	else if (std::string(argv[1]) == "race-symlink" || std::string(argv[1]) == "race-inode" ||
+		 std::string(argv[1]) == "race-claimed-inode")
+	{
+		write_bytes(path, valid);
+		write_bytes("target.dat", valid);
+		replace_on_open = std::string(argv[1]) == "race-symlink" ? 1 :
+				  std::string(argv[1]) == "race-inode"	 ? 2 :
+									   3;
+		assert(copyover_prepare_boot() == copyover_boot_result::failed &&
+		       !copyover_boot_evidence());
+		assert(read_bytes("original.dat") == valid);
+		if (replace_on_open == 1)
+			assert(read_bytes("target.dat") == valid);
+		if (replace_on_open < 3)
+			assert(access(claimed.c_str(), F_OK) != 0);
 	}
 	else if (std::string(argv[1]) == "pin")
 	{

@@ -32,7 +32,7 @@ void __free(void *p, const char *file, int line);
 #define GET_LONG(buf) getLong(&buf)
 #define GET_STRING(buf) getString(&buf)
 void logit(char const *, char const *, ...) {}
-void write_cmdlog(void) {}
+void write_boot_cmdlog(void) {}
 
 void wizlog(char *, char *, ...) {}
 
