@@ -8148,7 +8148,8 @@ void rescue(P_char ch, P_char rescuee, bool rescue_all)
 		return;
 	}
 
-	CharWait(ch, PULSE_VIOLENCE * (rescue_all ? 2 : 1));
+	/* Guardian rescue all: 6 seconds of lag; normal rescue: 1 combat round */
+	CharWait(ch, rescue_all ? (WAIT_SEC * 6) : PULSE_VIOLENCE);
 
 	// CharWait(rescuee, PULSE_VIOLENCE / 2);
 

@@ -1104,6 +1104,26 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Guardian rescue all and guarding two people
+
+A Guardian's `rescue <friend> all` (level 46 and up) leaves them unable to act for 6
+seconds, down from two combat rounds (8 seconds); a normal rescue still costs one round.
+Guardians now guard two people at once, as Cavaliers and Demonic Riders do: a third
+`guard` drops one of the other two. Other warriors still guard one person. The help
+entries had said rescue all arrived at level 51 and belonged to every specialized warrior.
+
+```sh
+python3 tests/async/test_guardian_rescue_all_and_guard.py
+```
+
+The test evaluates the real `rescue()` lag expression against `config.h` and runs the
+real `do_guard()` and guard-list helpers under ASan/UBSan with the shipped
+`skill.guard.max*` properties, for a Guardian, a Cavalier, unspecialized, Swordsman and
+Swashbuckler warriors, and a non-warrior with the Guardian spec number. The link
+functions, room lookup and skill check are stand-ins, and no journey drives a live fight.
+It also checks the `guard`, `guardian` and rescue-all help entries in both help catalogs
+and `help_index`.
+
 ## Item race restrictions and races without a bit
 
 An item's race list (`anti2_flags`) holds one bit for each of races 1-32. Races 33-37

@@ -7453,6 +7453,10 @@ Syntax:         guard <name>
 
 When guarding a person, there is a chance that you may jump in front of
 them protect them from being attacked.
+
+Most characters can guard one person at a time. Guardians, Cavaliers and
+Demonic Riders can guard two people at once; guarding a third person drops
+one of the others.
 ===========================================================================
 See also: DEFEND, RESCUE
 
@@ -7463,12 +7467,13 @@ As their name suggests, the Guardian is a true savior to all. They are
 able to dive in and often rescue their entire group in the heat of battle. 
 They can also use their shield as a weapon to cause extra damage by Shield 
 Punching their opponent, then following up with extended riposte abilities.
+Guardians can guard two people at once.
 
 Skills
 ---------------------------------------------------------------------------
 31st level:     Follow-Up Riposte
 46th level:     Shield Punch
-51st level:     Rescue All
+46th level:     Rescue All
 
 ===========================================================================
 See also: RESCUE, "SHIELD PUNCH", "FOLLOW-UP RIPOSTE", "RESCUE ALL"  
@@ -12546,8 +12551,9 @@ See also: TANK
 ===========================================================================
 Syntax:         rescue <playername> all
 
-Specialized Warriors possess the added ability to rescue someone from all
-mobs that are attacking it, rather than just one.
+Guardians of level 46 and above can rescue someone from all mobs that are
+attacking them at once, rather than just one. Rescuing all leaves you unable
+to act for 6 seconds; a normal rescue costs one combat round (4 seconds).
 ===========================================================================
 See also: GUARDIAN, RESCUE
 
