@@ -2,6 +2,63 @@
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 
+## One-hour delivery result — 2026-10-17
+
+The user authorized work at **11:26 IDT / 08:26 UTC** with a one-hour limit.
+Three focused repairs were published by **12:12 IDT / 09:12 UTC**, about 46 minutes
+into that window. **Issue #67 as a whole remains unfinished.**
+
+| Review order | Branch | Delivered behavior | Implementation commit |
+| --- | --- | --- | --- |
+| [#163](https://github.com/LuminariMUD/Duris/pull/163), base #162 | `branch/issue-67-delivery` | Canonical reward/feed/bind/update guards, canonical contribution deduplication, safe syncdb refusal, monolith charge/feedback correctness | `37069858709c` |
+| [#164](https://github.com/LuminariMUD/Duris/pull/164), base #163 | `branch/issue-67-scripted-admission` | Studio load/give uniqueness, failed-placement reservation cleanup, live-object checks and truthful success feedback | `97d11ddaa` |
+| [#165](https://github.com/LuminariMUD/Duris/pull/165), base #164 | `branch/issue-67-quest-transformation` | Artifact 21/22 admission before quest NPC replacement, duplicate refusal and boss-load/entry rollback | `451238643392` |
+
+Current checkout: `/home/aiwithapex/projects/duris-issue67-delivery`, on
+`branch/issue-67-quest-transformation`. All three PRs are pushed, open, non-draft,
+and attached to the chat. No merge, release tag, deployment, or production operation
+was performed. Review and land them in dependency order only after the required
+repository review gates are satisfied.
+
+Verification for the delivered changes:
+- SQL and flat builds passed (`make -C src -j8`; the flat build uses
+  `PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/analysis/issue67/flat-build"`).
+- Actual constructor/service/action regressions passed with ASan/UBSan, including
+  copies/aliases, monolith charge and feedback behavior, Studio placement outcomes,
+  and both quest-transformation alignment variants and rollback paths.
+- Reward runtime, SQL snapshot, flat artifact repository/bind/gameplay, combat
+  persistence, reward cutover, and Studio movement contracts passed. Changed-line
+  format and clang-tidy passed.
+- The disposable MariaDB real-server standard journey passed at each completed
+  checkpoint. The final journey includes actual Studio command dispatch and the
+  quest duplicate refusal, followed by live/persisted rewards, retained payloads,
+  copyover, online/offline swaps, and clean restart. Before probes reproduce the
+  earlier defects. Final evidence is
+  `bin/analysis/issue67/quest-transformation-gameplay.{log,json}`; its binary hash
+  is recorded in the checkpoint below. These results do not claim a complete
+  flat-file server journey or the entire AR-07 matrix.
+
+Highest-priority remaining work:
+1. Qualify the asynchronous legacy quest grant factory and committed-grant
+   rematerialization together; then migrate the remaining actual fresh producers.
+   Studio and the Black Pearl transformation are now covered. Avoid a blanket
+   replacement of `read_object`, since inspection and saved-UID hydration use it.
+2. Complete saved-domain admission for pets, lockers/account chests, corpses,
+   saved rooms/shop stock, delivery roles and legacy reconstruction, preserving
+   withheld source payloads and legitimate hydration.
+3. Finish durable canonical retirement/swap across metadata, payload and custody;
+   save refusal/crash/retry/late-ack behavior remains unqualified. The preserved
+   compound helper is not a completed runtime integration.
+4. Finish the all-store audit, intended variant decisions, and recoverable,
+   repeatable cleanup rehearsal. Production repair still requires its separately
+   approved concrete plan.
+5. Complete the full maintained flat-file artifact journey and AR-07 lifecycle,
+   recovery and legacy-conflict qualification, including its final broad checks.
+
+The preserved compound-capture work remains in `duris-issue67-plan`; it was not
+included in these PRs. Its staged code/test changes remain intact. The detailed
+checkpoints and original acceptance criteria below remain the takeover reference.
+
 ## Current quest-transformation repair — same one-hour window
 
 Branch `branch/issue-67-quest-transformation`, based on #164 at
@@ -24,11 +81,14 @@ copyover, online/offline swap and restart journey. The initial new journey fixtu
 was placed before login; that test setup error was corrected before the successful
 rerun. Evidence: `bin/analysis/issue67/quest-transformation-{before,native}.log` and
 `quest-transformation-gameplay-before.log`, `quest-transformation-gameplay.{log,json}`.
-Publication follows.
+Published as [PR #165](https://github.com/LuminariMUD/Duris/pull/165), open and
+non-draft. Implementation commit: `451238643392df88da19ee317ac4585049abf056`.
+Final SQL binary SHA-256:
+`36ea1f14ec918bdc4c7fbda8ebe7e2a985b2c97b99fbe6b007fcd801f70ecf10`.
 
 The separate legacy `give_reward` factory still needs work. Its asynchronous grant
-queue may rematerialize committed objects; that recovery path currently conflicts
-with a pending creation reservation. A one-line constructor substitution would
+queue may rematerialize committed objects; that recovery path must be qualified
+against pending creation reservations. A one-line constructor substitution would
 leave that integration unqualified, so it is not included in this bounded fix.
 
 ## Current scripted-admission repair — same one-hour window
@@ -109,10 +169,10 @@ The current remote #132 and #133 review repairs are already ancestors of #162.
 A PR being open or a previous focused test passing does not mean the whole issue
 is implemented, qualified, or ready to merge as a stack.
 
-The user's latest objective is to update this handoff document. **Do not silently
-resume implementation on the strength of this document update.** The one-hour
-implementation sequence below is the proposed next execution order. The existing
-code and uncommitted experiments are preserved. No merge, tag, deployment,
+At this earlier snapshot the objective was documentation only. The later explicit
+one-hour implementation authorization and published results above supersede that
+temporary boundary. The earlier execution sequence below is retained as history.
+The existing code and uncommitted experiments are preserved. No merge, tag, deployment,
 production migration, or production repair was performed by this work.
 
 This current section supersedes earlier statements such as "next required chunk"
@@ -357,21 +417,12 @@ The delivery copy of the flat bind fixture still needs the already-proven cached
 prototype fixture repair from the preserved experiment if that runner fails to
 link; copy that specific test repair, not the unused production helper.
 
-### Complete PR and branch inventory
+### Complete PR and branch inventory — refreshed 2026-10-17 12:12 IDT
 
-Also published: [PR #164](https://github.com/LuminariMUD/Duris/pull/164),
-`branch/issue-67-scripted-admission` → `branch/issue-67-delivery` (#163),
-implementation `97d11ddaa`, Guard Studio artifact creation and placement.
-
-New since the snapshot below: [PR #163](https://github.com/LuminariMUD/Duris/pull/163),
-`branch/issue-67-delivery` → `branch/issue-67-swap-placement-rollback` (#162),
-implementation `37069858709c`, Protect canonical artifact feeds, rewards and reconciliation.
-The branch is now published; its earlier local-only status below is historical.
-
-All rows below were verified live as **OPEN, non-draft, unmerged** at the snapshot.
-Each PR after #132 is based on the immediately preceding PR's branch. All 31
-published heads match `git ls-remote`; preserve this dependency order. This table
-lists implemented chunks, not independent declarations of full issue completion.
+All **34 PRs below are open, non-draft, and unmerged** at this refresh. The local
+inventory contains **40 relevant branches**. PR heads are the verified published
+heads before this documentation closeout commit; #165's later documentation head
+is available with `gh pr view 165 --json headRefOid`. Preserve the stack order.
 
 | PR | Published branch | Base | Verified head | Implemented chunk |
 | --- | --- | --- | --- | --- |
@@ -405,26 +456,26 @@ lists implemented chunks, not independent declarations of full issue completion.
 | [#159](https://github.com/LuminariMUD/Duris/pull/159) | `branch/issue-67-maintenance-inspection` | #158 | `c9b5f2dcf077` | Avoid gameplay construction in artifact maintenance queries |
 | [#160](https://github.com/LuminariMUD/Duris/pull/160) | `branch/issue-67-maintenance-cache` | #159 | `26b8ec6e122e` | Keep promoted artifact prototypes available for maintenance inspection |
 | [#161](https://github.com/LuminariMUD/Duris/pull/161) | `branch/issue-67-canonical-swap-admission` | #160 | `4e5aa4ec3ed8` | Use canonical identity and fresh admission for artifact swaps |
-| [#162](https://github.com/LuminariMUD/Duris/pull/162) | `branch/issue-67-swap-placement-rollback` | #161 | `c50475f85dbe` | Roll back failed artifact swap placement before source retirement |
+| [#162](https://github.com/LuminariMUD/Duris/pull/162) | `branch/issue-67-swap-placement-rollback` | #161 | `383c632e1f58` | Roll back failed artifact swap placement before source retirement |
+| [#163](https://github.com/LuminariMUD/Duris/pull/163) | `branch/issue-67-delivery` | #162 | `a53ca576c580` | Protect canonical artifact feeds, rewards and reconciliation |
+| [#164](https://github.com/LuminariMUD/Duris/pull/164) | `branch/issue-67-scripted-admission` | #163 | `0bb643d45fa1` | Guard Studio artifact creation and placement |
+| [#165](https://github.com/LuminariMUD/Duris/pull/165) | `branch/issue-67-quest-transformation` | #164 | `451238643392` | Reserve quest artifacts before replacing the source NPC |
 
-The local `branch/issue-67-artifact-identity` ref is stale at `21bcc275421b`,
-while its published PR #132 head is `74e043f40029`. The clean review branch
-`branch/pr132-review-repair` holds the published head. Do not force-push the stale
-local ref. Every other published issue branch's local head matches this snapshot.
+The local `branch/issue-67-artifact-identity` ref remains stale at `21bcc275421b`;
+its published #132 head is `74e043f40029`, also held by the review branch below.
+Do not overwrite the published review repair with that stale local ref. Other
+published issue branches match their local heads at this refresh.
 
 | Local branch without its own PR | Head | State / use |
 | --- | --- | --- |
-| `branch/issue-67-artifact-compound-capture` | `c50475f85dbe` | Unpublished work at the #162 code checkpoint; staged production/helper tests and unstaged runner repair. Preserved, not integrated into runtime. |
-| `branch/issue-67-delivery` | `c50475f85dbe` | Unpublished branch at the #162 code checkpoint; four test files changed, new regressions fail, production repair not yet written. |
-| `branch/issue-67-flat-artifact-authority` | `713c00c82828` | Historical local development ref; upstream misleadingly points to writer-backpressure. Not an ancestor of #162. Do not resume or push it without comparing with #139. |
-| `branch/issue-67-flat-artifact-memory` | `5dd8be6cb1fb` | Historical local development ref, no upstream or PR; not an ancestor of #162. Compare with the published #139 implementation before reusing anything. |
-| `branch/issue-67-recovery-sequence` | `57ffa467f0dc` | Historical local development ref, no upstream or PR; not an ancestor of #162. Compare with published #140 before reusing anything. |
-| `branch/pr132-review-repair` | `74e043f40029` | Review worktree branch; same commit as the current published #132 head. |
-| `branch/pr133-review-repair` | `dcb2f1544721` | Review worktree branch; same commit as the current published #133 head. |
+| `branch/issue-67-artifact-compound-capture` | `c50475f85dbe` | Preserved uncommitted experiment in duris-issue67-plan; no runtime consumer, upstream, or PR. Do not include it accidentally. |
+| `branch/issue-67-flat-artifact-authority` | `713c00c82828` | Historical local development ref; misleading writer-backpressure upstream. Not an ancestor of #162; compare with #139 before reuse. |
+| `branch/issue-67-flat-artifact-memory` | `5dd8be6cb1fb` | Historical local development ref; no upstream/PR. Not an ancestor of #162; compare with #139 before reuse. |
+| `branch/issue-67-recovery-sequence` | `57ffa467f0dc` | Historical local development ref; no upstream/PR. Not an ancestor of #162; compare with #140 before reuse. |
+| `branch/pr132-review-repair` | `74e043f40029` | Clean review worktree; equals the published #132 head. |
+| `branch/pr133-review-repair` | `dcb2f1544721` | Clean review worktree; equals the published #133 head. |
 
-No other remote branch containing `issue-67` was present in the live inventory.
-The local-only historical refs above are preserved; they have no separate PR and
-must not be mistaken for pending published stack entries.
+The delivery, scripted-admission, and quest-transformation branches are now published.
 
 ## Historical checkpoints and original acceptance plan
 
