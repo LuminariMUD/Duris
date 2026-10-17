@@ -1,5 +1,18 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — Redis restore conflicts (#149)
+
+Outcome: a cold Redis image that the real restore rejects cannot prove artifact
+presence or absence. Propagate the existing `restore_conflict` result into aggregate
+incompleteness; selected native handoffs still supersede historical Redis images.
+Files: existing boot assembler and its fixture, this plan. No new recovery state.
+The executable assembler/classifier regression fails before repair for both an
+empty and a populated conflicting image. Boot/classifier, real recovery-projection
+tests and native build pass (`bin/analysis/pr149-restore-*.log`); format/tidy pass.
+#139's all-souls repair is published as `f0022ff5f`, now carried locally through
+#149. Publish those parent merges after the destination validation.
+
+
 ## Review repair — all-souls reset admission (#139)
 
 Outcome: reject a refused all-souls batch without changing live bindings or
