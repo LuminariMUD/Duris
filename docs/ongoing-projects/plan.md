@@ -7,18 +7,46 @@ The initial inventory contained 31 unresolved inline threads across 14 PRs plus 
 additional finding in #139's review body. #132/#133 repairs are already published
 and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
 
-Current work: #138, `branch/issue-67-writer-backpressure`, in
+Current work: #139, `branch/issue-67-flat-artifact-cache`, in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
-Outcome: expose completion slots and in-flight payload bytes that consume writer
-admission capacity, including when no database work remains queued. Reuse the
-existing health snapshot and `world persistence` output. The native regression
-executes the production formatter against actual blocked/in-flight and undrained
-completion states; the before run reproduces omitted payload bytes. Verification
-passed, including 4,096 retained completions, full in-flight byte accounting,
-completion drain, and production formatter output. Persistence-status/shutdown
-controls, changed-line format/tidy, and `make -C src -j8` passed.
-Evidence: `bin/analysis/pr138-health-{before,after-final,build-final,tidy-final}.log`.
-Next: all three #139 findings, including its non-inline deletion callback finding. Preserve and carry parent repairs through the existing stack.
+#138 is fixed in `ba2f3f79f`, pushed, and its thread is resolved. The real worker
+and production formatter cover in-flight bytes, 4,096 completions and drain health;
+status/shutdown controls, native build and format/tidy passed. Its repair has been
+merged into this dependent branch while preserving published history.
+
+#139 outcome: fence all earlier artifact captures before synchronous flat character
+or account deletion; mirror the complete player/corpse/soul release in memory;
+submit removal/corpse ownership and cleared soul in one complete capture. Reuse the
+existing writer, artifact pulse, release callback and catalog transaction. One
+bounded artifact drain is shared by the two real deletion entry points; no second
+queue or deletion backend is introduced. Native tests reproduce the old split
+capture, verify held-writer refusal and release ordering, exercise both deletion
+entry points, and verify later saves cannot restore deleted ownership or binding.
+Focused flat runtime, SQL snapshots, both account-deletion entry points, and the
+full flat character/account deletion repository checks pass. Removal was tested
+with only one writer slot available. Both SQL/flat builds and changed-line
+format/tidy pass. Logs: `bin/analysis/pr139-*.log`. Publication follows; next carry
+this repair through #140, then address all three #141 findings.
+
+Remaining review sequence (initial inventory, oldest first):
+- #139: 2 inline findings and 1 review-body finding — in progress.
+- #141: 3 owner/revision evidence findings.
+- #142: 1 root-compatible unreadable-store regression finding.
+- #143: 2 collector quarantine/embedded-payload findings.
+- #144: 3 Redis retry/state/test-contract findings.
+- #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
+- #149: 1 recovered-NPC evidence completeness finding.
+- #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
+- #154: 1 fatal-boot diagnostic retention finding.
+- #155: 2 retained-row/pet overlap findings.
+- #156: 3 source-ID, foreign-vnum and foreign-owner qualification findings.
+- #157: 4 audit completeness/noise/quantity/revision findings.
+- #162: 1 pending-action preservation finding.
+
+Full fetched review/thread bodies and pagination evidence are retained privately in
+`duris-issue67-delivery/bin/analysis/open-review-details.json`. Every fetched page
+was complete. Refresh live reviews before final closeout. The implementation
+checkpoint below is historical context for this PR, not the current review status.
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
