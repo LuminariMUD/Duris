@@ -21,10 +21,10 @@ HARNESS = r"""
 index_data indexes[4] = {};
 index_data mob_indexes[1] = {};
 P_index mob_index=mob_indexes;
-room_data rooms[1] = {};
+room_data rooms[2] = {};
 const char *equipment_types[CUR_MAX_WEAR+1] = {};
 P_room world=rooms;
-extern const int top_of_world=0;
+extern const int top_of_world=1;
 P_index obj_index = indexes;
 P_obj object_list = nullptr;
 mm_ds pool = {};
@@ -34,6 +34,9 @@ static unsigned long long next_uid=10000;
 static size_t procedures=0, floors=0;
 static uint64_t expected_procedure_uid=0;
 static bool drop_swap_artifact_flag=false, renew_swap_source=false;
+static int swap_placement_fault=0;
+static size_t removed_wear_links=0;
+static std::vector<uint64_t> removed_floor_uids;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
 static bool booting=false;
@@ -83,7 +86,7 @@ void convertObj(P_obj) {}
 void world_recovery_capture_forget_object(P_obj) {}
 void item_actions_source_leaving(P_obj) {}
 void ferry_forget_object(P_obj) {}
-void redis_remove_floor_drop(unsigned long) { ++floors; }
+void redis_remove_floor_drop(unsigned long uid) { ++floors; removed_floor_uids.push_back(uid); }
 void disarm_obj_nevents(P_obj,event_func_type) {}
 void remove_linked_object(P_obj) {}
 void free_obj(P_obj object) { mm_release(dead_obj_pool,object); }
@@ -103,21 +106,33 @@ void place_tree(P_obj object) {
  for(P_obj child=object->contains;child;child=child->next_content) place_tree(child);
  artifact_object_placed(object);
 }
+// Exercise the void placement contract: refusal, an alternate destination, or destruction.
+static bool intercept_swap_placement(P_obj object) {
+ if(object->R_num!=2 || !swap_placement_fault) return false;
+ const int fault=swap_placement_fault;
+ if(fault==2) { swap_placement_fault=0; obj_to_room(object,1); swap_placement_fault=fault; }
+ else if(fault==3) extract_obj(object,TRUE);
+ return true;
+}
 void obj_to_room(P_obj object,int room) {
+ if(intercept_swap_placement(object)) return;
  object->loc_p=LOC_ROOM; object->loc.room=room;
  object->next_content=rooms[room].contents; rooms[room].contents=object; place_tree(object);
 }
 void obj_to_char(P_obj object,P_char mob) {
+ if(intercept_swap_placement(object)) return;
  object->loc_p=LOC_CARRIED; object->loc.carrying=mob;
  object->next_content=mob->carrying; mob->carrying=object; artifact_object_placed(object);
 }
 void obj_to_obj(P_obj object,P_obj parent) {
+ if(intercept_swap_placement(object)) return;
  object->loc_p=LOC_INSIDE; object->loc.inside=parent;
  object->next_content=parent->contains; parent->contains=object;
  P_obj root=parent; while(OBJ_INSIDE(root)) root=root->loc.inside;
  if(!OBJ_NOWHERE(root)) place_tree(object);
 }
 void equip_char(P_char mob,P_obj object,int slot,int) {
+ if(intercept_swap_placement(object)) return;
  mob->equipment[slot]=object; object->loc_p=LOC_WORN; object->loc.wearing=mob; artifact_object_placed(object);
 }
 P_obj get_obj_num(int number) {
@@ -157,7 +172,7 @@ const object_template *find_object_template(int vnum) {
  if(!ready) { for(int index=0;index<4;++index) templates[index]=parse_object_template(index); ready=true; }
  const int index=real_object(vnum); return index<0 ? nullptr : &templates[index];
 }
-static size_t offline_released=0, offline_saves=0, expiry_retries=0;
+static size_t offline_released=0, offline_saves=0, corpse_saves=0, expiry_retries=0;
 static bool owner_online=false, owner_loading=false, offline_save_allowed=true;
 static std::vector<std::function<void(P_char)>> offline_callbacks;
 char *get_player_name_from_pid(int pid) { return pid==77 ? const_cast<char *>("Offline") : nullptr; }
@@ -168,7 +183,8 @@ bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P
  offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
 }
 int writeCharacter(P_char,int,int) { ++offline_saves; return offline_save_allowed ? 1 : 0; }
-void writeCorpse(P_obj) {}
+void writeCorpse(P_obj) { ++corpse_saves; }
+void clear_links(P_char,P_obj,int flag) { assert(flag==LNKFLG_BREAK_REMOVE); ++removed_wear_links; }
 void do_shout(P_char,char *,int) {}
 void free_char(P_char owner) {
  assert(!owner->carrying); for(auto *object:owner->equipment) assert(!object); ++offline_released;
@@ -323,7 +339,7 @@ source=HARNESS.replace("// ACTUAL_DISCARD", extract_function("player_load_items.
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
-source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)"))
+source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
  extract_function("world_recovery_pipeline.c","P_obj materialize_object("))
@@ -879,6 +895,34 @@ void swap_admission_cases() {
   auto &from=artifact_rows.at(900); from.owned=true; from.removed=false; from.timer=source_timer;
   from.locType=location==4 ? ARTIFACT_ONCORPSE : location==3 ? ARTIFACT_ON_NPC : ARTIFACT_ON_PC;
   from.location=77;
+  P_obj child=nullptr;
+  if(location==2) {
+   source->type=ITEM_CONTAINER; source->value[0]=1000;
+   child=read_object_for_creation(901,VIRTUAL); assert(child); child->value[0]=123; obj_to_obj(child,source);
+  }
+  artifact_binds[900]={77,88}; artifact_save_pulse(true); drain();
+  const auto original_uid=source->obj_uid; const auto original_population=pool.objs_used;
+  for(int fault : {1,2,3}) {
+   const auto before_target_uid=artifact_rows.at(902).canonical_item_uid;
+   const auto before_links=removed_wear_links; const auto before_floor=removed_floor_uids.size();
+   const auto before_saves=offline_saves; const auto before_corpses=corpse_saves;
+   swap_placement_fault=fault;
+   char refused[]="900 902"; arti_swap_sql(&staff,refused);
+   swap_placement_fault=0;
+   assert(artifact_rows.at(900).live_object==source && artifact_rows.at(900).canonical_item_uid==original_uid &&
+          artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_is_canonical(source) &&
+          artifact_rows.at(900).timer==source_timer && artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 &&
+          "failed placement retired or changed the original artifact");
+   if(location==0 || location==3) assert(OBJ_CARRIED(source) && source->loc.carrying==&owner);
+   else if(location==1) assert(owner.equipment[0]==source && OBJ_WORN(source) && source->loc.wearing==&owner);
+   else assert(OBJ_INSIDE(source) && source->loc.inside==parent);
+   if(child) assert(source->contains==child && child->value[0]==123 && child->loc.inside==source);
+   assert(artifact_rows.at(902).canonical_item_uid==before_target_uid && !artifact_rows.at(902).live_object &&
+          artifact_rows.at(902).pending==artifact_pending::none && pool.objs_used==original_population &&
+          removed_wear_links==before_links && offline_saves==before_saves && corpse_saves==before_corpses && writes.empty());
+   assert(artifact_save_pulse(false)==0);
+   for(size_t index=before_floor; index<removed_floor_uids.size(); ++index) assert(removed_floor_uids[index]!=original_uid);
+  }
   char swap[]="900 902"; arti_swap_sql(&staff,swap);
   replacement=artifact_rows.at(902).live_object;
   assert(replacement && artifact_is_canonical(replacement) && artifact_rows.at(902).timer==source_timer);
@@ -909,7 +953,14 @@ void swap_admission_cases() {
  offline_callbacks.front()(&owner); offline_callbacks.clear();
  assert(offline.canonical_item_uid==80001 && offline.identity_state==artifact_identity_state::present && offline.timer==source_timer &&
         artifact_binds.at(900).owner_pid==77 && procedures==restored_effects && !object_list && !pool.objs_used && writes.empty());
- // The unchanged request can complete; snapshot refusal still releases its temporary graph.
+ // Staging rollback must precede discarding a temporary graph, so no saved live pointer dangles.
+ char failed_placement[]="900 902"; arti_swap_sql(&staff,failed_placement); assert(offline_callbacks.size()==1);
+ source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
+ swap_placement_fault=2; offline_callbacks.front()(&owner); swap_placement_fault=0; offline_callbacks.clear();
+ assert(artifact_rows.at(900).canonical_item_uid==80001 && !artifact_rows.at(900).live_object &&
+        artifact_rows.at(900).identity_state==artifact_identity_state::present && artifact_rows.at(900).timer==source_timer &&
+        artifact_binds.at(900).owner_pid==77 && !object_list && !pool.objs_used && writes.empty());
+ // Queue-failure durability is still the next chunk; this legacy path releases its temporary graph.
  char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
  source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
  const auto releases=offline_released;

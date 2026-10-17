@@ -25,7 +25,7 @@ PLAYER, ACCOUNT = 'Articaster', 'Artiplayer'
 GOD, GOD_ACCOUNT = 'Artiwarden', 'Artistaff'
 VICTIM, VICTIM_ACCOUNT = 'Artivictim', 'Artienemy'
 ARTIFACT = 900000
-SWAP_LIVE, SWAP_OFFLINE = ARTIFACT + 1, ARTIFACT + 2
+SWAP_LIVE, SWAP_OFFLINE, SWAP_CRUMBLE = ARTIFACT + 1, ARTIFACT + 2, ARTIFACT + 3
 
 
 CASES = ('standard', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
@@ -40,9 +40,24 @@ def run(binary, case):
         objects = (ROOT / 'areas/world.obj').read_text(encoding='latin-1')
         original = re.search(r'(?ms)^#900\n.*?(?=^#\d+\n)', objects)
         assert original and not re.search(rf'(?m)^#{ARTIFACT}$', objects)
-        assert not re.search(rf'(?m)^#({SWAP_LIVE}|{SWAP_OFFLINE})$', objects)
-        inserted = ''.join(original.group().replace('#900\n', f'#{vnum}\n', 1)
-                           for vnum in (ARTIFACT, SWAP_LIVE, SWAP_OFFLINE))
+        assert not re.search(rf'(?m)^#({SWAP_LIVE}|{SWAP_OFFLINE}|{SWAP_CRUMBLE})$', objects)
+        private_records = []
+        for vnum in (ARTIFACT, SWAP_LIVE, SWAP_OFFLINE, SWAP_CRUMBLE):
+            record = original.group().replace('#900\n', f'#{vnum}\n', 1)
+            if vnum == SWAP_CRUMBLE:
+                # The real obj_to_char contract can destroy an artifact with this
+                # existing flag before returning to its caller. Keep it private.
+                strings = record.split('~', 4)
+                numeric = strings[4].splitlines(keepends=True)
+                header = next(index for index, line in enumerate(numeric) if line.strip())
+                fields = numeric[header].split()
+                assert len(fields) == 11
+                fields[8] = str(int(fields[8]) | 2048) # ITEM2_CRUMBLELOOT
+                numeric[header] = ' '.join(fields) + '\n'
+                strings[4] = ''.join(numeric)
+                record = '~'.join(strings)
+            private_records.append(record)
+        inserted = ''.join(private_records)
         position = next(match.start() for match in re.finditer(r'(?m)^#(\d+)\n', objects)
                         if int(match.group(1)) > ARTIFACT)
         areas = runtime / 'areas'
@@ -507,6 +522,18 @@ def run(binary, case):
                 assert re.search(r'Number in game\s*:\s*1\b', still_one), still_one
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
+                assert 'You stop using' in command(player, 'remove stone')
+                failed_swap = command(god, f'artifacts swap {ARTIFACT} {SWAP_CRUMBLE}')
+                assert 'replacement placement failed; original retained' in failed_swap, failed_swap
+                assert 'ioun stone' in command(player, 'inventory')
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {ARTIFACT}'))
+                assert sql(f'SELECT canonical_item_uid,identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={SWAP_CRUMBLE}') == '0\t3'
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                assert saved_state() == before_restart, 'failed placement changed persisted artifact/reward state'
+                command(player, 'wear stone')
+                assert 'ioun stone' in command(player, 'equipment')
+                evidence['destructive_placement_preserves_original'] = True
                 # Real worn replacement, then an offline replacement after a clean
                 # restart. This proves admission/recovery, not atomic crash windows.
                 expected_timer = int(before_restart['artifact'].split('\t')[-1])

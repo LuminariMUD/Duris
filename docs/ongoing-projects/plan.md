@@ -23,6 +23,62 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current swap-placement work: `branch/issue-67-swap-placement-rollback`, based
+on #161. Outcome: confirm that the real admitted replacement reached the source's
+physical location before retiring the source. Failed, redirected or destructive
+placement leaves the original UID/body/contents/timer/binding intact and restores
+the prior replacement reservation. Keep carried/worn/nested/NPC/corpse paths.
+Non-goals for this chunk: treating accepted independent save jobs as an atomic
+commit or claiming rejected-save/crash-window qualification. Files: existing swap
+finisher/owner lifetime and focused actual constructor/service regressions.
+Proof: reproduce the source being destroyed after a void placement helper refuses;
+then cover refusal, redirection, destruction during placement and valid routes.
+Ablation: reuse the existing artifact restore scope and live-object lookup, holding
+the original body until placement is verified. Do not build another rollback store.
+The next durable commit still must span all affected owner payloads and metadata;
+player/corpse dual captures and writeCharacter locker hooks preclude merely moving
+one save before extraction and pretending that provides failure atomicity.
+
+Swap-placement checkpoint (2026-10-17, publication pending):
+- The native before probe reproduced a worn source being destroyed when the void
+  placement endpoint refused: `bin/analysis/issue67/swap-placement-before.log`.
+- Reuse `artifact_restore_scope` around real construction and placement. Keep the
+  original body alive, verify replacement liveness by pointer plus UID before
+  dereferencing it, and require the original physical destination. A refused,
+  redirected or destroyed replacement is discarded and metadata rolls back.
+- Worn originals are held detached with removal links intact, then restored without
+  recasting their enchantment if placement fails. Removal links break only after
+  successful placement. Offline owner lifetime now belongs to the load callback:
+  the restore scope has unwound before that temporary graph is discarded, avoiding
+  rollback that would reintroduce a pointer to an already freed body.
+- The existing ASan/UBSan actual constructor/service harness now fault-injects all
+  three void-placement outcomes for carried/worn/nested/NPC/corpse destinations.
+  It preserves the original UID/body/location, contents, timer/binding, removal
+  links and source floor tracking, without save admission or dirty artifact writes.
+  Existing successful routes and temporary-owner release still pass. Both backend
+  builds, offline-owner/slicing contracts and changed-line format/tidy pass.
+- Added a private CRUMBLELOOT prototype to the real SQL journey. This is a reachable
+  production `obj_to_char` path that destroys the replacement before returning.
+  The retained #161 binary (hash checked against its prior journey) fails this
+  invariant and falsely announces success. Before proof:
+  `bin/analysis/issue67/swap-placement-real-before.log` and synthetic failure folder
+  `bin/analysis/artifact-estale/failure-standard-1792223009287661012`.
+- The fixed binary passes actual destructive-placement UID/body/timer/binding and
+  persisted-state checks. Its first journey stopped only because the new test
+  expected generic wear wording; an ioun uses its orbiting message. The test now
+  asserts actual equipment state. Retained first-run diagnostic:
+  `swap-placement-wear-assertion.log` in the same issue67 evidence folder. The
+  corrected journey passed actual crumble failure, successful worn/offline swaps
+  and final canonical UID/payload/timer restoration after restart. Frozen proof:
+  `bin/analysis/issue67/swap-placement-gameplay.{log,json}`. Existing retained-source,
+  copyover, reward/history and binding controls also passed.
+- This scope commits only the in-memory placement stage before original extraction.
+  Save refusal and durable atomicity remain open. A player-carried corpse can
+  involve both player and corpse captures, and writeCharacter includes locker hooks;
+  accepting one independent job then refusing another cannot be called rollback.
+  The full durable transition must keep the original recoverable until all required
+  dispositions are admitted together, then qualify crash, retry and stale-ack cases.
+
 Current swap-admission checkpoint: [PR #161](https://github.com/LuminariMUD/Duris/pull/161),
 ready for review, `branch/issue-67-canonical-swap-admission`, based on #160. Outcome: select only the established canonical source pointer/UID, carry
 that UID through offline completion, and use fresh replacement admission before
