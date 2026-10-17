@@ -23,7 +23,10 @@ The fixed binary refuses both scripted duplicate paths, safely handles a real
 CRUMBLELOOT `give`, then passes the existing rewards/copyover/swaps/restart journey.
 Evidence: `bin/analysis/issue67/scripted-admission-gameplay-before.log`,
 `scripted-admission-native.log`, and `scripted-admission-gameplay.{log,json}`.
-Publication follows; other fresh-producer and saved-domain gaps remain open.
+Published as [PR #164](https://github.com/LuminariMUD/Duris/pull/164), open and
+non-draft, implementation commit `97d11ddaa`. Other fresh-producer and saved-domain
+gaps remain open. Tested SQL binary SHA-256:
+`29d54099f54dd0c28aa5fc8ee17da0291a72b8e0a6fbe221244ea2e201eea1f7`.
 
 ## Active one-hour repair — 2026-10-17 11:26 IDT / 08:26 UTC
 
@@ -326,6 +329,10 @@ prototype fixture repair from the preserved experiment if that runner fails to
 link; copy that specific test repair, not the unused production helper.
 
 ### Complete PR and branch inventory
+
+Also published: [PR #164](https://github.com/LuminariMUD/Duris/pull/164),
+`branch/issue-67-scripted-admission` → `branch/issue-67-delivery` (#163),
+implementation `97d11ddaa`, Guard Studio artifact creation and placement.
 
 New since the snapshot below: [PR #163](https://github.com/LuminariMUD/Duris/pull/163),
 `branch/issue-67-delivery` → `branch/issue-67-swap-placement-rollback` (#162),
