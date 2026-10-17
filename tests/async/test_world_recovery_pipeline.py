@@ -5,7 +5,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +35,7 @@ HARNESS = r'''
 #include "world/world_recovery_pipeline.h"
 #include "core/utils.h"
 #include "core/prototypes.h"
+#include "world/vnum.obj.h"
 #include <cstdio>
 #include "world/world_recovery_codec.h"
 #include "persistence/copyover.h"
@@ -1112,7 +1113,7 @@ FALLBACK_SUPPORT = FALLBACK_SUPPORT.replace(
 HARNESS = HARNESS.replace("int main()", FALLBACK_SUPPORT + "\nint main()", 1)
 
 
-COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + section(COPYOVER, "static int write_obj_entry", "// raw write to socket fd")
+COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + extract_function("copyover.c", "bool copyover_training_dummy_is(") + section(COPYOVER, "static bool copyover_world_mob", "// raw write to socket fd")
 TAKEABILITY = section(
     (SRC / "item/item_command_policy.c").read_text(),
     "bool item_command_object_is_takeable",

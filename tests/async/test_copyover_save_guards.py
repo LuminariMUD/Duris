@@ -88,7 +88,7 @@ checks = {
     "descriptor capture requires the player's actual pet link":
         "GET_MASTER(f->follower) == ch" in descriptor_capture,
     "world mob capture excludes every linked pet":
-        "ch->in_room >= 0 && !GET_MASTER(ch)" in body,
+        "copyover_world_mob(ch)" in body and "!GET_MASTER(mob)" in copyover,
     "minimal copyover preserves its world dataset":
         'execl(DMS_RUNTIME_BINARY, "dms", "--minimal", "-C", exec_buf' in body,
 }
