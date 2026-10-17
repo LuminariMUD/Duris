@@ -7,31 +7,34 @@ The initial inventory contained 31 unresolved inline threads across 14 PRs plus 
 additional finding in #139's review body. #132/#133 repairs are already published
 and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
 
-Current work: #141, `branch/issue-67-population-evidence`, in
+Current work: #142, `branch/issue-67-flat-population-sources`, in
 `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
-#138 is fixed in `ba2f3f79f`, pushed, and its thread is resolved. #139 is fixed in
-`5df732237`, pushed, with both inline threads resolved and its third review-body
-finding addressed. The fixes have been carried through #140 with isolated Redis,
-writer regression and native build checks passing; #140 had no outstanding findings.
+#138 (`ba2f3f79f`), #139 (`5df732237`) and #141 (`1bf1d5986`) are pushed;
+their inline threads are resolved and #139's extra review-body finding is addressed.
+#140's carry-forward passed isolated Redis, writer and native build checks.
 
-#141 outcome: derive corpse identity from stored PID/save ID, compare both locker
-rows after public-chest normalization, and retain whether the owner-revision row
-was found (valid revision zero remains distinguishable from NULL). Reuse the
-existing projection and bounded SQL reader; no new store or query framework.
-The disposable SQL regression reproduces rename failure and now covers rename,
-deleted players, NULL/private/public chest combinations, and missing versus zero
-owner revisions. The fixture and all eight reader queries pass against the full
-maintained schema after its real migration runner. Native build and changed-line
-format/tidy pass. Evidence: `bin/analysis/pr141-{owner-before,population-after,build,tidy}.log`.
-Publication follows.
-**Carry-forward requirement:** populate `custody_owner_revision_found` in later
-reader additions and have the #148 classifier reject missing revision authority.
-Do not discard the presence bit when later PRs move the shared projection type.
+#142 outcome: test inaccessible-store failure atomically under ordinary users and
+root. The root before run reproduces the chmod-based assertion failure. Use a
+regular file at the expected directory path, restore the fixture, then check EIO,
+unchanged output and successful reread. This changes only the test. The parent
+merge retains both the legacy-pet fixture and #141's renamed/deleted corpse cases.
+The new revision-presence field remains explicitly false for the flat reader's
+currently unknown owner revisions; it must not imply that zero is known evidence.
+Root and non-root native runs pass. The merged SQL-reader fixtures and maintained
+schema queries pass, along with the native build and formatting checks. Evidence:
+`bin/analysis/pr142-{root-before,root-after,user-after,carryforward-sql,build}.log`.
+Publication follows; next address both #143 blob-reader findings.
+
+**Carry-forward requirement:** populate `custody_owner_revision_found` from actual
+revision authority in later readers and have the #148 classifier reject missing
+revision authority. Preserve legitimate flat recovery by obtaining its real owner
+revision evidence before enforcing this check. Do not drop the flag when later
+PRs move the shared projection type.
 
 Remaining review sequence (initial inventory, oldest first):
 - #139: all 3 findings addressed and published.
-- #141: 3 owner/revision evidence findings — implemented, final validation pending.
-- #142: 1 root-compatible unreadable-store regression finding.
+- #141: all 3 owner/revision evidence findings addressed and published.
+- #142: 1 root-compatible unreadable-store regression finding — in progress.
 - #143: 2 collector quarantine/embedded-payload findings.
 - #144: 3 Redis retry/state/test-contract findings.
 - #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
