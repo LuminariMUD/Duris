@@ -1,5 +1,216 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Authoritative handoff — 2026-10-17 18:38 UTC
+
+**The PR review-repair pass is complete through the recorded review snapshot. The
+full issue #67 acceptance program below remains unfinished.** This section is the
+current status; all later sections are historical evidence or retained acceptance
+requirements and must not override it.
+
+- Delivery branch: `branch/issue-67-review-handoff`, [PR #184](https://github.com/LuminariMUD/Duris/pull/184),
+  worktree `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+- Last production change: `eeadafdc3`, [PR #183](https://github.com/LuminariMUD/Duris/pull/183).
+  The handoff branch's `src/` tree is identical to that tested commit. Its remaining
+  changes preserve #132's reviewed reward-fixture guarantees and update this plan.
+- Review snapshot: `bin/analysis/review-final-readback.json`, taken before #184 was
+  opened: **48 open PRs, zero unresolved inline review threads**, with complete
+  pagination for threads, reviews and comments. Body-only findings on #139 and #143
+  were checked against the published repairs. This is a timestamped review result,
+  not a claim about reviews arriving after this snapshot.
+- #178's two findings are implemented in dependent #182; #181's population-test
+  finding is fixed by #183. Their original PR descriptions link the tested followups
+  and the corresponding threads are resolved. Read the final stack, since earlier
+  slices are superseded by these explicitly dependent corrections.
+- Every issue #67 PR below is open and non-draft. **Nothing has been merged to master,
+  deployed, migrated in production, or release-tagged by this pass.**
+- `origin/master` was refreshed to `e07b51a6d84c4010a89a333b9cafc00d804717f2` and is
+  three commits beyond the stack's ancestor. Refresh/test integration before any
+  eventual merge; do not treat this as merge-readiness proof against future master.
+- No unfinished shop experiment remains: the shop reuse change is tested and published
+  in #183. The separate compound-capture experiment below remains preserved and unused.
+
+### Completed and verified
+
+1. Canonical identity/admission, feeding and reward guards, source population and
+   quarantine handling, pinned native/Redis evidence, payload retention, load cleanup,
+   inspection, swap placement rollback and the reviewed scripted producers are in
+   the published stack. The per-PR descriptions and historical evidence below retain
+   the exact scope of each repair; this does not imply every producer has migrated.
+2. Native NPC recovery preserves carried, worn and nested UIDs; recovery keeps NPC
+   roots detached, handles relocated NPCs, restores generated resources after equipment,
+   and uses the existing outer artifact checkpoint. Owned payload materializers now
+   use qualified recovery admission for all nine supported owner domains.
+3. Committed creation-grant repair (#182) preserves the committed UID and canonical
+   artifact state for pending, vanished and previously published bodies, and rolls
+   back failed repair. Admission conflicts are ownership failures; only ENOMEM is
+   allocation failure. Actual coordinator/constructor and materializer tests pass.
+4. Native shop recovery (#183) restores the full durable catalog and its trade revision
+   map, reuses UID/vnum/shop-matching stock, and leaves the catalog keeper for existing
+   singleton reconciliation. It removes the extra metadata-only mode. The actual
+   save/exec/recover fixture preserves catalog-only generated keys on carried, worn
+   and nested stock, keeps exactly one body per UID, and refuses foreign-shop reuse.
+5. The final reward fixture keeps fatal UBSan checking and real canonical pointers
+   in cross-player/wrong-custody cases. Its actual runtime test passes at the integrated tip.
+
+### Exact final verification
+
+Commands run from the delivery worktree above; all listed checks passed:
+
+```sh
+make -C src -j8
+PERSISTENCE_BACKEND=flatfile BIN_ROOT=/home/aiwithapex/projects/duris-issue67-writer-backpressure/bin/analysis/pr139-flat-build make -C src -j8
+python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_flatfile_shopkeeper_restore.py
+python3 tests/async/test_shopkeeper_copyover_compat.py
+python3 tests/async/test_world_singletons.py
+python3 tests/async/test_shopkeeper_population.py
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+git diff --exit-code branch/issue-67-authoritative-shop-reuse HEAD -- src
+git diff --check
+```
+
+Changed-line formatting and commit-hook clang-tidy also passed. Final evidence:
+`bin/analysis/shop-reuse-{build,flat-build,custody,catalog,singletons,population,commit}.log`
+and `bin/analysis/review-handoff-final-rewards.log`. Version/backend-selection test
+printed its pass result directly. The build/test evidence remains under ignored `bin/`.
+The shop fixture initially exposed a cleanup bug in the new test; that cleanup was
+corrected before the successful sanitizer run. No sanitizer failure is counted as a pass.
+
+Earlier actual full-world disposable SQL NPC artifact/copyover/restart/swap journeys
+and repeated flat generated-NPC journeys passed at the recorded earlier heads. Those
+are historical evidence, **not fresh full-game qualification of #182/#183**. Full
+`make test-all`, every isolated `make test-db` case, all-domain artifact lifecycle and
+production acceptance were not run in this final pass. Hosted CI was not used as a gate.
+
+### Unfinished issue #67 acceptance and next hour priority
+
+These requirements are still open; green focused tests do not close them:
+
+1. **Highest implementation priority: AR-04 atomic accepted-snapshot retirement/swap.**
+   Player/corpse payload, custody and artifact metadata still need the complete atomic
+   transition plus crash-prefix/retry/late-ACK proof. Existing admission refusals and
+   placement rollback are complete, but do not prove this broader persistence contract.
+   Start with one concrete saved-domain failure and its narrow executable regression;
+   publish that independently reviewable fix before widening the matrix.
+2. Complete remaining fresh producers in `src/specs` and dynamic quest/random-zone/
+   encounter paths, plus respawn 0/1/2 admission coverage. Shared qualified owner
+   materializers are implemented; every legacy raw loader and every producer is not.
+3. Finish complete saved-domain qualification and retained-conflict handling, actual
+   instance audit, variant dispositions for 32827/67281, 67280/98904, 902/914 and
+   923–926, and a recoverable reconciliation rehearsal preserving enhancements.
+4. Remove constructor-based display/act work from the periodic binding event; fixit
+   inspection already has its reviewed repair.
+5. Complete the flat artifact server lifecycle, remaining Redis combinations,
+   legacy-conflict repair/restart/repeat and broad AR-07 qualification. Add production
+   rollout/data verification only with the separately required owner authorization.
+
+For a one-hour continuation, first reproduce and close one AR-04 transaction boundary,
+run its focused SQL/flat failure/retry checks, then commit/push its focused dependent PR
+and update this section. Do not spend that hour re-running all previously green suites,
+rewriting this history, or rebuilding a second implementation. The full remaining
+acceptance list has not been demonstrated to fit in one hour.
+
+### Complete issue #67 PR inventory
+
+Snapshot below records remote PR heads before this final documentation-only commit.
+For #184, use its current remote head rather than the snapshot hash when resuming.
+All rows are OPEN / ready for review, not merged. Base names preserve the dependency
+order; the final handoff also carries #132's repaired test ancestry.
+
+| PR | Branch | Base | Published head at snapshot | Scope |
+| --- | --- | --- | --- | --- |
+| [#132](https://github.com/LuminariMUD/Duris/pull/132) | `branch/issue-67-artifact-identity` | `master` | `74e043f40029` | Pin artifact identity reward failures and admission boundaries |
+| [#133](https://github.com/LuminariMUD/Duris/pull/133) | `branch/issue-67-feeding-feedback` | `branch/issue-67-artifact-identity` | `dcb2f1544721` | Restore artifact feeding feedback from above |
+| [#134](https://github.com/LuminariMUD/Duris/pull/134) | `branch/issue-67-direct-feed-timers` | `branch/issue-67-feeding-feedback` | `ee0aa39ed7d3` | Preserve signed direct artifact feed timers |
+| [#135](https://github.com/LuminariMUD/Duris/pull/135) | `branch/issue-67-reward-conflicts` | `branch/issue-67-direct-feed-timers` | `ec0eb58107b5` | Isolate conflicted artifact contributions from live rewards |
+| [#136](https://github.com/LuminariMUD/Duris/pull/136) | `branch/issue-67-canonical-storage` | `branch/issue-67-reward-conflicts` | `15d5bc76aba0` | Persist canonical artifact identity independently of custody |
+| [#137](https://github.com/LuminariMUD/Duris/pull/137) | `branch/issue-67-identity-snapshots` | `branch/issue-67-canonical-storage` | `d438422da0d2` | Hydrate and snapshot canonical artifact identity atomically |
+| [#138](https://github.com/LuminariMUD/Duris/pull/138) | `branch/issue-67-writer-backpressure` | `branch/issue-67-identity-snapshots` | `ba2f3f79fba8` | Bound persistence writer admission during storage outages |
+| [#139](https://github.com/LuminariMUD/Duris/pull/139) | `branch/issue-67-flat-artifact-cache` | `branch/issue-67-writer-backpressure` | `f0022ff5f098` | Use one artifact memory authority in flat-file mode |
+| [#140](https://github.com/LuminariMUD/Duris/pull/140) | `branch/issue-67-recovery-numeric-evidence` | `branch/issue-67-flat-artifact-cache` | `822696e1bcb3` | Reject malformed Redis recovery identity numbers |
+| [#141](https://github.com/LuminariMUD/Duris/pull/141) | `branch/issue-67-population-evidence` | `branch/issue-67-recovery-numeric-evidence` | `d4eef689a829` | Read bounded physical artifact payload evidence from SQL |
+| [#142](https://github.com/LuminariMUD/Duris/pull/142) | `branch/issue-67-flat-population-sources` | `branch/issue-67-population-evidence` | `66293d1e5847` | Stage flat artifact payload evidence without materialization |
+| [#143](https://github.com/LuminariMUD/Duris/pull/143) | `branch/issue-67-sql-population-blobs` | `branch/issue-67-flat-population-sources` | `0b08a084187c` | Stage SQL artifact blob evidence in one population snapshot |
+| [#144](https://github.com/LuminariMUD/Duris/pull/144) | `branch/issue-67-pinned-recovery-evidence` | `branch/issue-67-sql-population-blobs` | `89afb86a0a9f` | Pin Redis recovery input before boot and consume only matching evidence |
+| [#145](https://github.com/LuminariMUD/Duris/pull/145) | `branch/issue-67-recovery-floor-overlap` | `branch/issue-67-pinned-recovery-evidence` | `d96ce2b4bb15` | Preserve unseen items when recovery floor trees overlap |
+| [#146](https://github.com/LuminariMUD/Duris/pull/146) | `branch/issue-67-recovery-population` | `branch/issue-67-recovery-floor-overlap` | `84afb9f6e39d` | Project pinned recovery items and NPC reconstruction evidence |
+| [#147](https://github.com/LuminariMUD/Duris/pull/147) | `branch/issue-67-copyover-evidence` | `branch/issue-67-recovery-population` | `b5b547094c82` | Pin copyover evidence and preserve pending recovery images |
+| [#148](https://github.com/LuminariMUD/Duris/pull/148) | `branch/issue-67-population-classification` | `branch/issue-67-copyover-evidence` | `757f46f071d1` | Classify artifact population evidence before canonical publication |
+| [#149](https://github.com/LuminariMUD/Duris/pull/149) | `branch/issue-67-boot-population` | `branch/issue-67-population-classification` | `c8406f097ea1` | Acquire artifact population before custody cleanup and boot resets |
+| [#150](https://github.com/LuminariMUD/Duris/pull/150) | `branch/issue-67-creation-admission` | `branch/issue-67-boot-population` | `3e259276b0b7` | Guard reset, staff and NPC artifact creation |
+| [#151](https://github.com/LuminariMUD/Duris/pull/151) | `branch/issue-67-offline-load-cleanup` | `branch/issue-67-creation-admission` | `5da8e8907624` | Release items from abandoned offline player loads |
+| [#152](https://github.com/LuminariMUD/Duris/pull/152) | `branch/issue-67-artifact-report-inspection` | `branch/issue-67-offline-load-cleanup` | `acf7f9b6a7a9` | Inspect artifact reports without constructing live objects |
+| [#153](https://github.com/LuminariMUD/Duris/pull/153) | `branch/issue-67-recovery-hydration` | `branch/issue-67-artifact-report-inspection` | `7163e2c68a9e` | Qualify artifact hydration from pinned ground sources |
+| [#154](https://github.com/LuminariMUD/Duris/pull/154) | `branch/issue-67-fatal-boot-exit` | `branch/issue-67-recovery-hydration` | `d658a5b669b4` | Preserve fatal boot status and diagnostics with active workers |
+| [#155](https://github.com/LuminariMUD/Duris/pull/155) | `branch/issue-67-player-payload-retention` | `branch/issue-67-fatal-boot-exit` | `9f38a158724b` | Preserve withheld player item roots across saves |
+| [#156](https://github.com/LuminariMUD/Duris/pull/156) | `branch/issue-67-player-artifact-admission` | `branch/issue-67-player-payload-retention` | `2ac5a500ca82` | Qualify gameplay player artifact sources before construction |
+| [#157](https://github.com/LuminariMUD/Duris/pull/157) | `branch/issue-67-artifact-hunt-inspection` | `branch/issue-67-player-artifact-admission` | `8b9a4d706351` | Make artifact hunt inspect raw sources without reconciliation |
+| [#158](https://github.com/LuminariMUD/Duris/pull/158) | `branch/issue-67-offline-player-admission` | `branch/issue-67-artifact-hunt-inspection` | `71e66ea7e1ac` | Qualify offline PC restoration and canonical artifact expiry |
+| [#159](https://github.com/LuminariMUD/Duris/pull/159) | `branch/issue-67-maintenance-inspection` | `branch/issue-67-offline-player-admission` | `994050c1f634` | Avoid gameplay construction in artifact maintenance queries |
+| [#160](https://github.com/LuminariMUD/Duris/pull/160) | `branch/issue-67-maintenance-cache` | `branch/issue-67-maintenance-inspection` | `1a7ba73eca35` | Keep promoted artifact prototypes available for maintenance inspection |
+| [#161](https://github.com/LuminariMUD/Duris/pull/161) | `branch/issue-67-canonical-swap-admission` | `branch/issue-67-maintenance-cache` | `d58b0a9eadc4` | Preserve canonical artifact swaps across placement and save refusal |
+| [#162](https://github.com/LuminariMUD/Duris/pull/162) | `branch/issue-67-swap-placement-rollback` | `branch/issue-67-canonical-swap-admission` | `18b1e8efc447` | Preserve pending item actions during temporary artifact unequip |
+| [#163](https://github.com/LuminariMUD/Duris/pull/163) | `branch/issue-67-delivery` | `branch/issue-67-swap-placement-rollback` | `a39f6d4b170a` | Protect canonical artifact feeds, rewards and reconciliation |
+| [#164](https://github.com/LuminariMUD/Duris/pull/164) | `branch/issue-67-scripted-admission` | `branch/issue-67-delivery` | `eeaac7b2673c` | Guard Studio artifact creation and placement |
+| [#165](https://github.com/LuminariMUD/Duris/pull/165) | `branch/issue-67-quest-transformation` | `branch/issue-67-scripted-admission` | `9d928fd59a1b` | Reserve quest artifacts before replacing the source NPC |
+| [#167](https://github.com/LuminariMUD/Duris/pull/167) | `branch/issue-67-binding-inspection` | `branch/issue-67-quest-transformation` | `c16a06a3e457` | Read artifact binding repair labels from cached templates |
+| [#173](https://github.com/LuminariMUD/Duris/pull/173) | `branch/issue-67-native-npc-artifacts` | `branch/issue-67-binding-inspection` | `86f5a9157438` | Preserve NPC item identities across native copyover |
+| [#174](https://github.com/LuminariMUD/Duris/pull/174) | `branch/issue-67-qualified-registration` | `branch/issue-67-native-npc-artifacts` | `5721ce490814` | Require qualified evidence before canonical artifact registration |
+| [#175](https://github.com/LuminariMUD/Duris/pull/175) | `branch/issue-67-evidence-contracts` | `branch/issue-67-qualified-registration` | `641f1c4365f6` | Validate auction and collector population evidence |
+| [#176](https://github.com/LuminariMUD/Duris/pull/176) | `branch/issue-67-recovery-validation` | `branch/issue-67-evidence-contracts` | `9ccf61f91c2f` | Qualify recovery evidence and roll back partial artifact admissions |
+| [#177](https://github.com/LuminariMUD/Duris/pull/177) | `branch/issue-67-npc-restore-boundaries` | `branch/issue-67-recovery-validation` | `2c1e896f13e8` | Restore NPC inventory without floor effects or duplicate shop stock |
+| [#178](https://github.com/LuminariMUD/Duris/pull/178) | `branch/issue-67-owned-payload-admission` | `branch/issue-67-npc-restore-boundaries` | `1003c1754711` | Admit qualified non-player artifact payloads before construction |
+| [#179](https://github.com/LuminariMUD/Duris/pull/179) | `branch/issue-67-auction-operation-evidence` | `branch/issue-67-owned-payload-admission` | `ce0183d9c130` | Reject invalid auction operation IDs and empty authoritative parents |
+| [#180](https://github.com/LuminariMUD/Duris/pull/180) | `branch/issue-67-copyover-checkpoint-reuse` | `branch/issue-67-auction-operation-evidence` | `f023da8ce8ce` | Reuse the active artifact checkpoint during native copyover |
+| [#181](https://github.com/LuminariMUD/Duris/pull/181) | `branch/issue-67-copyover-shop-revisions` | `branch/issue-67-copyover-checkpoint-reuse` | `fb7688ba154c` | Load flat shop revisions without replaying native keeper bodies |
+| [#182](https://github.com/LuminariMUD/Duris/pull/182) | `branch/issue-67-committed-creation-repair` | `branch/issue-67-copyover-shop-revisions` | `9118bf59b5d4` | Preserve artifact identity during committed creation-grant repair |
+| [#183](https://github.com/LuminariMUD/Duris/pull/183) | `branch/issue-67-authoritative-shop-reuse` | `branch/issue-67-committed-creation-repair` | `eeadafdc382d` | Preserve complete shop stock across native copyover |
+| [#184](https://github.com/LuminariMUD/Duris/pull/184) | `branch/issue-67-review-handoff` | `branch/issue-67-authoritative-shop-reuse` | `47c612ba8cbf` | Finalize artifact review fixes and continuation handoff |
+
+### Local branches, worktrees and preserved work
+
+The PR table is authoritative for published heads. All local issue #67 branches
+without a separate PR, plus review aliases, are listed below. Do not delete or
+silently include their work in a delivery commit.
+
+| Local branch | Head | Status |
+| --- | --- | --- |
+| `branch/issue-67-artifact-compound-capture` | `c50475f85dbe` | Preserved staged/unstaged experiment in duris-issue67-plan; unused, incomplete, no PR. |
+| `branch/issue-67-flat-artifact-authority` | `713c00c82828` | Historical local alternative; no PR; preserved. |
+| `branch/issue-67-flat-artifact-memory` | `5dd8be6cb1fb` | Historical local alternative; no PR; preserved. |
+| `branch/issue-67-recovery-sequence` | `57ffa467f0dc` | Historical local alternative; no PR; preserved. |
+| `branch/pr132-review-repair` | `74e043f40029` | Review alias matching published #132. |
+| `branch/pr133-review-repair` | `dcb2f1544721` | Review alias matching published #133. |
+
+Local `branch/issue-67-artifact-identity` is `21bcc275421b`; the PR head is `74e043f40029`. Use the published PR head (and review alias where listed), not the stale local name.
+
+- `duris-issue67-writer-backpressure`: final `branch/issue-67-review-handoff`; this is
+  the checkout to resume and the plan to read.
+- `duris-issue67-delivery`: clean `branch/issue-67-committed-creation-repair` at
+  `9118bf59b`; contains #182's detailed proof logs.
+- `duris-issue67-handoff`: preserved `branch/issue-67-quest-transformation` at
+  `9d928fd59`.
+- `duris-issue67-plan`: preserved compound-capture WIP at `c50475f85`. Its staged
+  repository/header/harness/test changes and mixed plan edits are **not** part of
+  the published stack and must not be discarded or presented as an atomicity solution.
+- Root `duris` and earlier `duris-pr132-review` / `duris-pr133-review` worktrees were
+  not repurposed. Other unrelated worktrees are preserved. Fresh inventory is in
+  `bin/analysis/worktrees-wrap.txt`; use `git worktree list` before switching branches.
+- #170 and #171 were unrelated open PRs included in the review inventory, with no
+  unresolved inline findings at that readback. They are outside this issue #67 stack.
+
+No forced push, branch deletion, release tag, production operation or PR merge was
+needed for this closeout. Parent changes were carried by ordinary merges. Git reports
+old unreachable objects / a gc log; no pruning or unrelated repository maintenance
+was performed because those objects may contain recoverable work.
+
+## Historical evidence and retained acceptance requirements
+
+The following checkpoints are retained for traceability. Phrases such as “active”,
+“current” and “running” below describe their original checkpoint, not today's status.
+In particular the metadata-only shop path was superseded by #183, and the later shop
+build completed successfully as recorded above.
+
 ## Active ablation — reuse authoritative restored shop stock
 
 Branch `branch/issue-67-authoritative-shop-reuse`. The fixed native item record
