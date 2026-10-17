@@ -1,5 +1,23 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Current follow-up: #158 trusted artifact holders
+
+#156's legacy-pet count repair is published as `74fcd4156` and resolved; #157
+carry-forward `4e8fd5072` passes player capacity/audit/build checks. This branch is
+`branch/issue-67-offline-player-admission`, with carry-forward merge `d5723031d`.
+Known review inventory: 48 total, 45 addressed, three outstanding before this fix.
+
+Outcome: expiry respects the existing trusted-holder exemption even when stored
+tracking still names a different player and an expired timer. Walk to the live
+artifact's outer holder in the existing retirement helper and apply the same
+`IS_TRUSTED` policy as location updates. No identity rewrite or new timer policy.
+Files: artifact expiry helper, existing native lifecycle fixture, this plan.
+The actual expiry event reproduces removal from a trusted holder before repair;
+carried, worn and nested cases plus mortal-expiry controls now pass under
+ASan/UBSan. Player capacity controls, native build, formatting and tidy also pass
+(`bin/analysis/pr158-trusted-*`, `pr158-legacy-pet.log`). Publish, then address both
+#161 swap findings.
+
 ## Current follow-up: #156 legacy-pet capacity
 
 The newer capacity finding is distinct from the earlier verified inventory-only

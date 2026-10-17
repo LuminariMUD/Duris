@@ -3338,6 +3338,14 @@ static bool retire_expired_artifact(P_obj object)
 	const auto current = artifact_rows.find(vnum);
 	if (current == artifact_rows.end() || !artifact_expired(current->second))
 		return false;
+	P_obj root = object;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	P_char holder = OBJ_WORN(root)	  ? root->loc.wearing :
+			OBJ_CARRIED(root) ? root->loc.carrying :
+					    nullptr;
+	if (holder && IS_TRUSTED(holder))
+		return false;
 	poof_artifact(object);
 	const auto retired = artifact_rows.find(vnum);
 	return retired != artifact_rows.end() && retired->second.canonical_item_uid == uid &&

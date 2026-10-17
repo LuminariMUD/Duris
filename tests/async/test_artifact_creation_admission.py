@@ -667,6 +667,28 @@ void offline_expiry_cases() {
   row.location=77; row.timer=1; artifact_binds[900]={77,88}; assert(artifact_expired(row));
   return object;
  };
+ // Trusted holders are exempt even when legacy tracking still names another PID.
+ for(int location=0;location<3;++location) {
+  auto *held=make_nested(); auto *bag=held->loc.inside;
+  if(location<2) {
+   obj_from_obj(held); extract_obj(bag,FALSE); bag=nullptr;
+   if(location==0) obj_to_char(held,&owner); else equip_char(&owner,held,0,TRUE);
+  }
+  auto &tracked=artifact_rows.at(900); tracked.location=88;
+  artifact_save_pulse(true); drain();
+  const auto count=pool.objs_used; const auto uid=held->obj_uid;
+  owner.player.level=FORGER; owner.specials.act=0;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(tracked.identity_state==artifact_identity_state::present && tracked.live_object==held &&
+         tracked.canonical_item_uid==uid && tracked.timer==1 && pool.objs_used==count && writes.empty());
+  owner.player.level=51; owner.specials.act=PLR_MORTAL;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(tracked.identity_state==artifact_identity_state::retired && !tracked.live_object);
+  if(bag) extract_obj(bag,FALSE);
+  artifact_save_pulse(true); drain(); assert(!object_list && !pool.objs_used);
+ }
  auto *object=make_nested(); const uint64_t saved_uid=object->obj_uid;
  assert(artifact_on_owner(&owner,900)==object);
  auto *alias=read_object(0,REAL); assert(alias); alias->obj_uid=saved_uid; obj_to_char(alias,&owner);
