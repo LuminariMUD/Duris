@@ -1789,7 +1789,13 @@ P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t
 		// bodies need their earlier admission state restored without extraction.
 		artifacts.emplace();
 		if (!*artifacts)
-			return nullptr;
+		{
+			if (errno != EBUSY)
+				return nullptr;
+			// copyover_recover already owns the transaction and will roll it
+			// back on failure. Do not commit or destroy that outer checkpoint.
+			artifacts.reset();
+		}
 	}
 	redis_floor_runtime_set_materializing(true);
 	const bool restored = materialize_plan(plan, tree.custody);

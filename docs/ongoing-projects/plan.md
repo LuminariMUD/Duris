@@ -13,6 +13,17 @@ body calls, and native/legacy SQL/flat selection. The actual catalog loader and
 real trade revision map pass together, preserving the prior map on invalid data.
 Trade runtime controls, version-selection controls and SQL/flat builds pass
 (`bin/analysis/shop-revision-*.log`).
+## Active follow-up — reuse the native copyover checkpoint (#176)
+
+Branch `branch/issue-67-copyover-checkpoint-reuse`. The standalone existing-tree
+checkpoint must reuse the transaction already owned by `copyover_recover`.
+Treat only the existing `EBUSY` ownership result as a borrowed outer checkpoint;
+allocation failures still refuse. Keep standalone rollback. The real native
+coordinator fixture now covers both failure/rollback and successful commit inside
+an outer scope; it fails before repair. Files: native wrapper, existing fixture,
+plan. No new checkpoint state/API or nested snapshot stack. The before case
+fails; outer/standalone failure and success cases, actual save/exec/recover,
+SQL/flat builds and format/tidy pass (`bin/analysis/checkpoint-reuse-*.log`).
 
 
 ## Active follow-up — complete auction operation validation (#175)

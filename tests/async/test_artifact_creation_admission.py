@@ -590,8 +590,18 @@ void native_existing_recovery_cases() {
  native_existing_late_fail=true;
  assert(!world_recovery_restore_copyover_object_from_buffer("fixture",7,44,true));
  assert(OBJ_ROOM(bag) && bag->loc.room==0 && !artifact_rows.at(900).live_object && !artifact_rows.at(902).live_object);
+ {
+  artifact_restore_scope outer; assert(outer);
+  assert(!world_recovery_restore_copyover_object_from_buffer("fixture",7,44,true));
+  assert(artifact_rows.at(900).live_object==first && artifact_rows.at(902).live_object==second);
+ }
+ assert(!artifact_rows.at(900).live_object && !artifact_rows.at(902).live_object && OBJ_ROOM(bag));
  native_existing_late_fail=false;
- assert(world_recovery_restore_copyover_object_from_buffer("fixture",7,44,true)==bag && OBJ_NOWHERE(bag));
+ {
+  artifact_restore_scope outer; assert(outer);
+  assert(world_recovery_restore_copyover_object_from_buffer("fixture",7,44,true)==bag && OBJ_NOWHERE(bag));
+  outer.commit();
+ }
  assert(artifact_is_canonical(first) && artifact_is_canonical(second) && artifact_rows.at(900).timer==5678 && writes.empty());
  native_fixture=native_existing_fixture=false;
  extract_obj(bag,FALSE); assert(!object_list && !pool.objs_used);
