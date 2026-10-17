@@ -1,5 +1,22 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active follow-up — committed creation-grant repair (#178)
+
+Branch `branch/issue-67-committed-creation-repair`. Committed creation repair needs
+its own admission purpose: stage displaced artifact reservations before hiding
+UIDs, reconstruct the committed UID through existing fresh/recovery admission,
+and restore old metadata/UIDs on failure. Reuse the artifact checkpoint and the
+existing constructor; do not add a retry registry. Admission refusal is reported
+as ownership failure; only ENOMEM is allocation failure. Files: creation repair
+coordinator, shared materializer, constructor/admission service, existing tests,
+plan. Required proof: pending, vanished and already-published grants, rollback,
+conflicting identity refusal, and distinct ownership/allocation outcomes. These
+pass in the actual reconciliation coordinator, artifact service and constructors;
+the shared materializer proves the dedicated repair route and all three admission
+error codes. Creation submission/reconciliation contracts, template/snapshot
+controls and SQL/flat builds pass (`bin/analysis/creation-repair-*.log`).
+
+
 ## Active follow-up — flat shop metadata during native copyover (#177)
 
 Branch `branch/issue-67-copyover-shop-revisions`. Native v17 must skip duplicate

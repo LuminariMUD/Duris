@@ -1097,6 +1097,15 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	return true;
 }
 
+bool artifact_begin_creation_repair(P_obj object, const artifact_payload_projection &source)
+{
+	// A previously published grant retains its canonical state. If its pending
+	// body vanished, the committed UID re-enters the ordinary fresh-admission path.
+	return artifact_row_for_uid(source.item_uid) != artifact_rows.cend() ?
+		       artifact_begin_recovery(object, source) :
+		       artifact_begin_creation(object);
+}
+
 bool artifact_tracks_vnum(int vnum)
 {
 	return artifact_rows.count(vnum) != 0;

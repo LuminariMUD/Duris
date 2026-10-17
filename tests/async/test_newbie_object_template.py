@@ -63,6 +63,7 @@ bool artifacts_stage_population(const std::vector<artifact_payload_projection> &
 void fatal_boot_error(const char *, const char *, ...) { abort(); }
 bool artifact_begin_creation(P_obj) { abort(); }
 bool artifact_begin_recovery(P_obj, const artifact_payload_projection &) { abort(); }
+bool artifact_begin_creation_repair(P_obj,const artifact_payload_projection &) { abort(); }
 void mm_release(mm_ds *, void *) { abort(); }
 void *__malloc(size_t size, const char *, const char *, int)
 {

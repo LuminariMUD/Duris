@@ -246,6 +246,8 @@ int real_object(int vnum)
 }
 
 static int refused_artifact_vnum = 0;
+static int refused_artifact_errno=EEXIST;
+static size_t creation_repair_reads=0;
 static artifact_payload_projection last_recovery_source;
 static std::vector<uint64_t> released_artifact_uids;
 void artifact_object_extracted(P_obj object, bool) { if(object->obj_uid) released_artifact_uids.push_back(object->obj_uid); }
@@ -253,17 +255,20 @@ void artifact_object_placed(P_obj) {}
 P_obj read_object(int, int);
 P_obj read_object_for_recovery(const artifact_payload_projection &source) {
     last_recovery_source=source;
+    if(refused_artifact_vnum && source.vnum==refused_artifact_vnum) { errno=refused_artifact_errno; return nullptr; }
     auto *object=read_object(source.vnum,REAL);
     if(object) { object->obj_uid=source.item_uid; object->extra_flags=source.extra_flags; }
     return object;
+}
+P_obj read_object_for_creation_repair(const artifact_payload_projection &source) {
+    ++creation_repair_reads; return read_object_for_recovery(source);
 }
 unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj) {
     return refused_artifact_vnum && source.vnum==refused_artifact_vnum ? EEXIST : 0;
 }
 P_obj read_object(int rnum, int)
 {
-    if (allocations++ == fail_read_at)
-        return nullptr;
+    if (allocations++ == fail_read_at) { errno=ENOMEM; return nullptr; }
     P_obj object = static_cast<P_obj>(std::calloc(1, sizeof(obj_data)));
     assert(object);
     object->R_num = rnum;
@@ -556,7 +561,9 @@ int main()
         std::copy(encoded.begin(), encoded.end(), payload.item_blob.begin());
         const item_transfer_result committed = { 40, 3, 1, 1, 1, 0 };
         std::vector<P_obj> roots;
+        const auto repair_reads_before=creation_repair_reads;
         assert(player_load_item_graph_materialize_creation(payload, committed, &roots));
+        assert(creation_repair_reads==repair_reads_before+3);
         assert(roots.size() == 2 && roots[0]->obj_uid == 40 && roots[1]->obj_uid == 42);
         assert(roots[0]->contains && roots[0]->contains->obj_uid == 41);
         for (P_obj root : roots)
@@ -746,6 +753,19 @@ int main()
         owner.character.carrying = nullptr;
     }
 
+    {
+        reset_test_state(); test_character owner(42); auto result=base_result();
+        add_item(result,1,10,101,PLAYER_SNAPSHOT_NO_PARENT,0);
+        const item_owner_identity corpse={item_owner_type::corpse,77,12};
+        result.item_identities[0].owner=corpse;
+        refused_artifact_vnum=101; player_load_item_materialize_metrics metrics={};
+        for(int error : {EEXIST,ESTALE,ENODATA}) {
+            refused_artifact_errno=error;
+            assert(!player_load_item_graph_materialize_for_owner(&owner.character,result.snapshot.items,result.item_identities,corpse,result.item_owner_revision,true,true,&metrics));
+            assert(metrics.outcome==player_load_item_materialize_outcome::ownership_failure && !owner.character.carrying);
+        }
+        refused_artifact_vnum=0; refused_artifact_errno=EEXIST;
+    }
     {
         reset_test_state();
         test_character owner(42);

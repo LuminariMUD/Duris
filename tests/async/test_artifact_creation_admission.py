@@ -226,6 +226,7 @@ bool training_dummy_is(P_char) { return false; }
 // RESTORE_WRAPPER
 // NATIVE_EXISTING_CASES
 // OWNED_RECOVERY_CASES
+// CREATION_REPAIR_CASES
 // RECOVERY_CASES
 // MAINTENANCE_CASES
 // SWAP_CASES
@@ -392,6 +393,7 @@ int main() {
  corpse_bind_cases();
  native_existing_recovery_cases();
  owned_recovery_cases();
+ creation_repair_cases();
  // Tracking metadata alone is not a physical restore source, even with a known UID.
  auto &legacy=artifact_rows[900];
  legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
@@ -446,7 +448,7 @@ source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("playe
 source=source.replace("// RESTORE_CARRIED",extract_function("handler.c","static void append_obj_to_list(")+"\n"+extract_function("handler.c","void obj_to_char_at_end("))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
- "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object(int nr, int type)")))
+ "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object_for_creation_repair(","P_obj read_object(int nr, int type)")))
 source=source.replace("// ACTUAL_UNEQUIP",extract_function("handler.c","P_obj unequip_char("))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
@@ -639,6 +641,67 @@ void owned_recovery_cases() {
   assert(!row.live_object && row.identity_state==artifact_identity_state::present && row.timer==4567 && writes.empty());
  }
  std::cout<<"qualified owner domains: saved UID before procedures, source mismatch refusal, live alias isolation and unload: PASS\n";
+}
+""")
+
+creation_helpers="\n".join(extract_function("item_movement_transaction.c",sig) for sig in (
+ "size_t creation_payload_depth(","bool stage_displaced_creation_objects(","void restore_displaced_creation_objects(",
+ "void extract_creation_roots(","void extract_displaced_creation_objects(","bool reconcile_creation_grant_batch("))
+source=source.replace("// CREATION_REPAIR_CASES",r"""
+struct pending_creation_grant { uint64_t item_uid; };
+struct creation_grant_queue { std::vector<pending_creation_grant> requests; };
+struct pending_movement { bool creation_batch=true; item_transfer_payload payload={}; };
+"""+extract_function("item_movement_transaction.c","struct displaced_creation_object")+";\n"+r"""
+P_obj find_item(uint64_t uid) { return find_object_uid(uid); }
+bool creation_grant_request_live_ready(P_char,const pending_creation_grant &) { return false; }
+static bool fail_creation_materialization=false;
+bool player_load_item_graph_materialize_creation(const item_transfer_payload &payload,const item_transfer_result &result,std::vector<P_obj> *roots) {
+ roots->clear(); if(fail_creation_materialization) return false;
+ artifact_payload_projection source={}; source.domain=artifact_payload_domain::player; source.row_id=1;
+ source.item_uid=source.payload_root_item_uid=payload.items[0].item_uid;
+ source.vnum=payload.items[0].vnum; source.extra_flags=ITEM_ARTIFACT; source.extra_flags_present=true; source.quantity=1;
+ source.owner_reference=payload.to_owner.id; source.payload_owner=payload.to_owner;
+ source.custody_examined=source.custody_found=source.custody_owner_revision_found=true;
+ source.custody={source.item_uid,source.item_uid,0,payload.to_owner,1,result.to_owner_revision,source.vnum,item_custody_state::active};
+ auto *object=read_object_for_creation_repair(source); if(!object) return false;
+ artifact_object_placed(object); roots->push_back(object); return true;
+}
+"""+creation_helpers+r"""
+void creation_repair_cases() {
+ for(int variant=0;variant<4;++variant) {
+  assert(!object_list && !pool.objs_used); artifact_rows.clear(); artifact_binds.clear(); writes.clear();
+  artifact_population_complete=artifact_cache_loaded=true;
+  auto *old=read_object_for_creation(900,VIRTUAL); assert(old); const auto uid=old->obj_uid;
+  char_data actor={}; pc_only_data pc={}; actor.only.pc=&pc; pc.pid=77; actor.player.level=51; actor.in_room=0;
+  if(variant==1) extract_obj(old,FALSE); // committed grant's pending body vanished
+  if(variant==2) { obj_to_room(old,0); artifact_rows.at(900).timer=5678; artifact_binds[900]={77,88}; }
+  pending_movement entry; entry.payload.item_count=1; entry.payload.multi_root=true;
+  entry.payload.from_owner={item_owner_type::system,0,0}; entry.payload.to_owner={item_owner_type::player,77,0};
+  entry.payload.reason=item_transfer_reason::creation;
+  entry.payload.items[0]={uid,uid,0,ITEM_TRANSFER_ABSENT_REVISION,900,item_custody_state::absent};
+  creation_grant_queue queue; queue.requests.push_back({uid}); item_transfer_result result={uid,1,1,1,1,0};
+  if(variant==3) {
+   const auto effects=procedures;
+   entry.payload.items[0].item_uid=entry.payload.items[0].root_item_uid=uid+5000000;
+   queue.requests[0].item_uid=result.root_item_uid=uid+5000000;
+   assert(!reconcile_creation_grant_batch(&actor,entry,queue,result) && errno==EEXIST &&
+          old->obj_uid==uid && artifact_rows.at(900).live_object==old && procedures==effects && pool.objs_used==1);
+   extract_obj(old,FALSE); continue;
+  }
+  if(variant!=1) {
+   const auto before=artifact_rows.at(900);
+   fail_creation_materialization=true; assert(!reconcile_creation_grant_batch(&actor,entry,queue,result)); fail_creation_materialization=false;
+   assert(old->obj_uid==uid && artifact_rows.at(900).live_object==old && artifact_rows.at(900).pending==before.pending && artifact_rows.at(900).timer==before.timer);
+  }
+  const auto cursor=next_uid;
+  assert(reconcile_creation_grant_batch(&actor,entry,queue,result));
+  auto *replacement=find_item(uid); assert(replacement && (variant==1 || replacement!=old) && artifact_is_canonical(replacement) &&
+      OBJ_CARRIED(replacement) && replacement->loc.carrying==&actor && next_uid==cursor && pool.objs_used==1);
+  assert(artifact_rows.at(900).timer==(variant==2 ? 5678 : 0));
+  if(variant==2) assert(artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88);
+  artifact_save_pulse(true); drain(); extract_obj(replacement,FALSE);
+ }
+ std::cout<<"actual creation reconciliation: pending/missing/published artifacts keep committed UID, rollback and canonical state: PASS\n";
 }
 """)
 
