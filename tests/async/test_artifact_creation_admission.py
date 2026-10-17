@@ -382,35 +382,48 @@ int main() {
  studio_cases();
  transformation_cases();
  corpse_bind_cases();
- // Legacy reconstruction keeps the canonical UID and registers one live body.
+ // Tracking metadata alone is not a physical restore source, even with a known UID.
  auto &legacy=artifact_rows[900];
  legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
  legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80001;
  artifact_binds[900]={55,666};
+ const auto before_legacy=procedures;
  addOnGroundArtis_sql(); addOnGroundArtis_sql();
- assert(object_list && !object_list->next && object_list->obj_uid==80001 && legacy.live_object==object_list);
- assert(legacy.timer==7777 && artifact_binds.at(900).owner_pid==55);
- extract_obj(object_list,TRUE); assert(legacy.identity_state==artifact_identity_state::retired);
- artifact_save_pulse(true); drain();
+ assert(!object_list && !legacy.live_object && procedures==before_legacy && legacy.timer==7777);
+ artifact_payload_projection qualified={}; qualified.domain=artifact_payload_domain::copyover_ground;
+ qualified.row_id=1; qualified.owner_reference=2300; qualified.owner_context=1;
+ qualified.item_uid=qualified.payload_root_item_uid=80001; qualified.vnum=900;
+ qualified.extra_flags_present=true; qualified.extra_flags=ITEM_ARTIFACT; qualified.quantity=1;
+ legacy.canonical_payloads={qualified}; legacy.population_reason=artifact_population_reason::complete;
+ auto *ground=read_object_for_recovery(qualified); assert(ground); obj_to_room(ground,0);
+ assert(artifact_is_canonical(ground) && legacy.timer==7777 && artifact_binds.at(900).owner_pid==55);
+ addOnGroundArtis_sql(); assert(object_list==ground && !ground->next);
+ extract_obj(ground,TRUE); artifact_save_pulse(true); drain();
  char_data holder={}; npc_only_data npc={}; holder.only.npc=&npc;
  holder.specials.act=ACT_ISNPC; npc.R_num=0; mob_indexes[0].virtual_number=2000; character_list=&holder;
  legacy={true,ARTIFACT_ON_NPC,2000,7777,ARTIFACT_MAJOR};
  legacy.identity_state=artifact_identity_state::present; legacy.canonical_item_uid=80002;
  addOnMobArtis_sql(); addOnMobArtis_sql();
- assert(holder.carrying && !holder.carrying->next_content && holder.carrying->obj_uid==80002 && legacy.live_object==holder.carrying);
- extract_obj(holder.carrying,FALSE); assert(!legacy.live_object && legacy.identity_state==artifact_identity_state::present);
- // Player/recovery hydration assigns a saved UID before the normal placement hook.
+ assert(!holder.carrying && !object_list && !legacy.live_object);
+ // Unqualified same-UID placement cannot register, mutate or retire the authority.
  auto *hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
  player_item_snapshot saved={}; saved.equipment_slot=0;
  attach_loaded_inventory(&holder,{hydrated},{0},{saved});
- assert(legacy.live_object==hydrated);
+ assert(!legacy.live_object && !artifact_is_canonical(hydrated));
+ artifact_update_location_sql(hydrated); artifact_feed_sql(&holder,hydrated,100,false,false);
+ assert(legacy.timer==7777 && legacy.location==2000);
  player_load_items_discard(&holder);
  assert(!legacy.live_object && legacy.identity_state==artifact_identity_state::present && !object_list);
- hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
+ // A qualified saved UID still registers and unloads/reloads without resetting state.
+ qualified.item_uid=qualified.payload_root_item_uid=80002;
+ legacy.canonical_payloads={qualified}; legacy.population_reason=artifact_population_reason::complete;
+ hydrated=read_object_for_recovery(qualified); assert(hydrated);
  attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  assert(legacy.live_object==hydrated && legacy.pending==artifact_pending::none && legacy.timer==7777);
+ player_load_items_discard(&holder); assert(!legacy.live_object);
+ hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  auto *duplicate=read_object(900,VIRTUAL); duplicate->obj_uid=80002; obj_to_char(duplicate,&holder);
- assert(legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
+ assert(!artifact_is_canonical(duplicate) && legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
  assert(legacy.identity_state==artifact_identity_state::present);
  artifact_binds.erase(900); // a legacy canonical row need not have a soul row
  extract_obj(hydrated,TRUE); assert(legacy.identity_state==artifact_identity_state::retired && !legacy.live_object);

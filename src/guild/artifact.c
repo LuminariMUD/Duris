@@ -1073,7 +1073,7 @@ bool artifact_is_canonical(P_obj object)
 	return found != artifact_rows.end() && found->second.pending == artifact_pending::none &&
 	       found->second.identity_state == artifact_identity_state::present &&
 	       found->second.canonical_item_uid == object->obj_uid &&
-	       (!found->second.live_object || found->second.live_object == object);
+	       found->second.live_object == object;
 }
 
 void artifact_object_placed(P_obj object)
@@ -1085,19 +1085,10 @@ void artifact_object_placed(P_obj object)
 	if (found == artifact_rows.end())
 		return;
 	auto &row = found->second;
+	// Only the creation or source-qualified recovery factory may register a body.
+	// UID equality alone does not prove which saved payload was authoritative.
 	if (row.pending == artifact_pending::none)
-	{
-		// Saved player/recovery objects receive their UID before ordinary
-		// placement. Register that physical body without resetting legacy state.
-		if (IS_ARTIFACT(object) && !row.live_object && object->obj_uid &&
-		    row.identity_state == artifact_identity_state::present &&
-		    row.canonical_item_uid == object->obj_uid)
-		{
-			row.live_object = object;
-			++arti_cache_generation;
-		}
 		return;
-	}
 	if (row.live_object != object || row.canonical_item_uid != object->obj_uid)
 		return;
 	const bool recovery = row.pending == artifact_pending::recovery;
@@ -2048,7 +2039,7 @@ void setupMortArtiList_sql()
 #endif
 }
 
-// Loads the artis that were on the ground and owned back into the boot.
+// Report retained ground identities whose actual payload was not restored.
 void addOnGroundArtis_sql()
 {
 	for (const auto &[vnum, row] : artifact_rows)
@@ -2059,23 +2050,9 @@ void addOnGroundArtis_sql()
 		if (row.identity_state != artifact_identity_state::present ||
 		    !row.canonical_item_uid || row.live_object)
 			continue;
-		const int location = row.location;
-		P_obj artifact = read_object(vnum, VIRTUAL);
-		if (!artifact)
-		{
-			logit(LOG_ARTIFACT, "artifact boot: missing object prototype vnum=%d",
-			      vnum);
-			continue;
-		}
-		const int room = real_room(location);
-		if (room < 0 || room > top_of_world)
-		{
-			logit(LOG_ARTIFACT, "artifact boot: missing ground room vnum=%d", location);
-			extract_obj(artifact, FALSE);
-			continue;
-		}
-		artifact->obj_uid = static_cast<unsigned long>(row.canonical_item_uid);
-		obj_to_room(artifact, room);
+		logit(LOG_ARTIFACT,
+		      "artifact boot: ground tracking has no qualified restored body; identity retained vnum=%d uid=%llu location=%d",
+		      vnum, (unsigned long long)row.canonical_item_uid, row.location);
 	}
 }
 
@@ -4905,7 +4882,7 @@ P_char find_mob_in_game(int vnum)
 	return NULL;
 }
 
-// Loads the artis that were on a random mob and owned back into the boot.
+// Report retained NPC identities whose actual payload was not restored.
 void addOnMobArtis_sql()
 {
 	for (const auto &[vnum, row] : artifact_rows)
@@ -4916,24 +4893,9 @@ void addOnMobArtis_sql()
 		if (row.identity_state != artifact_identity_state::present ||
 		    !row.canonical_item_uid || row.live_object)
 			continue;
-		const int location = row.location;
-		P_obj artifact = read_object(vnum, VIRTUAL);
-		if (!artifact)
-		{
-			logit(LOG_ARTIFACT, "artifact boot: missing object prototype vnum=%d",
-			      vnum);
-			continue;
-		}
-		P_char mob = find_mob_in_game(location);
-		if (!mob)
-		{
-			logit(LOG_ARTIFACT, "artifact boot: missing NPC prototype vnum=%d",
-			      location);
-			extract_obj(artifact, FALSE);
-			continue;
-		}
-		artifact->obj_uid = static_cast<unsigned long>(row.canonical_item_uid);
-		obj_to_char(artifact, mob);
+		logit(LOG_ARTIFACT,
+		      "artifact boot: NPC tracking has no qualified restored body; identity retained vnum=%d uid=%llu location=%d",
+		      vnum, (unsigned long long)row.canonical_item_uid, row.location);
 	}
 }
 

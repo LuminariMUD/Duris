@@ -525,6 +525,8 @@ static void artifact_ordering_cases()
 	object.R_num = 0;
 	object.obj_uid = 90001;
 	object.extra_flags = ITEM_ARTIFACT;
+	artifact_rows.at(900).live_object =
+		&object; // Registered synthetic body for capture ordering.
 	assert(remove_owned_artifact_sql(&object, 77));
 	assert(artifact_rows.at(900).locType == ARTIFACT_ONCORPSE &&
 	       artifact_rows.at(900).location == 77);

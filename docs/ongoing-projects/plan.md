@@ -1,5 +1,23 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active review repair — require qualified physical registration
+
+Branch `branch/issue-67-qualified-registration`. Outcome: a matching UID in an
+unqualified saved body cannot register as canonical, move/feed the shared state,
+or retire it. Creation and source-qualified recovery already reserve the live
+pointer; ordinary placement now only commits those reservations. Canonical checks
+require that registered pointer. Legacy tracking-only ground/NPC rows retain their
+identity and emit a diagnostic instead of fabricating a body from a prototype.
+Actual player/pinned-tree restoration continues through its qualified factory;
+native NPC full-tree restoration is supplied by the preceding repair branch.
+Files: artifact service, existing admission regression, plan. No new policy API.
+Proof: missing-evidence refusal plus qualified hydration/unload/reload, timer/soul
+preservation, alias isolation and missing-soul retirement controls. These pass,
+as do SQL snapshot, flat artifact repository/runtime, reward, recovery pipeline/
+transaction checks and native build (`bin/analysis/qualified-registration-*.log`).
+The final combined NPC gameplay journey and flat build remain next.
+
+
 ## Fresh review inventory — return to #139
 
 The refresh in `bin/analysis/review-refresh-after-162.json` found six additional

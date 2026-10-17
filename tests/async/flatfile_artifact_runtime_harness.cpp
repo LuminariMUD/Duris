@@ -2,6 +2,8 @@
 #include "core/prototypes.h"
 #include "sql/sql.h"
 #include "world/object_template.h"
+#include "guild/artifact_admission.h"
+#include "guild/artifact_population_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 
 #include <cstdlib>
@@ -150,6 +152,28 @@ void extract_obj(P_obj object, int)
 	delete object;
 }
 
+static void register_fixture(P_obj object, uint64_t pid)
+{
+	artifact_payload_projection source = {};
+	source.domain = artifact_payload_domain::player;
+	source.row_id = 1;
+	source.item_uid = source.payload_root_item_uid = object->obj_uid;
+	source.owner_reference = pid;
+	source.payload_owner = { item_owner_type::player, pid, 0 };
+	source.vnum = 701;
+	source.extra_flags = ITEM_ARTIFACT;
+	source.extra_flags_present = true;
+	source.quantity = 1;
+	source.custody_examined = source.custody_found = source.custody_owner_revision_found = true;
+	source.custody = {
+		object->obj_uid,	   object->obj_uid, 0, source.payload_owner, 1, 1, 701,
+		item_custody_state::active
+	};
+	require(artifact_begin_recovery(object, source),
+		"qualified runtime fixture could not register");
+	artifact_object_placed(object);
+}
+
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");
@@ -242,8 +266,10 @@ int main(int argc, char **argv)
 	removed->obj_uid = 70101;
 	removed->extra_flags = ITEM_ARTIFACT;
 	removed->name = const_cast<char *>("artifact");
+	register_fixture(removed, 42);
 	require(remove_owned_artifact_sql(removed),
 		"runtime owned-artifact removal rejected flat persistence");
+	artifact_object_extracted(removed, false);
 	delete removed;
 	require(flatfile_artifact_get(state_root, 701, &stored, &error) ==
 				flatfile_artifact_result::ok &&
@@ -259,7 +285,9 @@ int main(int argc, char **argv)
 	fed->extra_flags = ITEM_ARTIFACT;
 	fed->name = const_cast<char *>("artifact");
 	const time_t minimum_timer = time(NULL) + 120 * 60;
+	register_fixture(fed, 42);
 	artifact_feed_to_min_sql(fed, 120);
+	artifact_object_extracted(fed, false);
 	delete fed;
 	require(flatfile_artifact_get(state_root, 701, &stored, &error) ==
 				flatfile_artifact_result::ok &&
@@ -276,9 +304,9 @@ int main(int argc, char **argv)
 	setupMortArtiList_sql();
 	addOnGroundArtis_sql();
 	addOnMobArtis_sql();
-	require(read_count == 5 && room_load_count == 2 && mob_load_count == 1 &&
-			extract_count == 2,
-		"boot restoration did not load exactly the owned ground and NPC artifacts");
+	require(read_count == 0 && room_load_count == 0 && mob_load_count == 0 &&
+			extract_count == 0,
+		"tracking-only boot rows constructed unqualified physical bodies");
 
 	char_data owner = {};
 	pc_only_data pc = {};
@@ -291,6 +319,7 @@ int main(int argc, char **argv)
 	worn.loc_p = LOC_WORN;
 	worn.loc.wearing = &owner;
 	worn.short_description = const_cast<char *>("fixture artifact");
+	register_fixture(&worn, 42);
 	const std::string satisfaction = "&+RYou feel a sense of satisfaction from above.&n\r\n";
 	const time_t feed_start = time(nullptr) + 100;
 	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
@@ -368,6 +397,8 @@ int main(int argc, char **argv)
 	held.extra_flags = ITEM_ARTIFACT;
 	held.loc_p = LOC_CARRIED;
 	held.loc.carrying = &dying;
+	artifact_object_extracted(&worn, false);
+	register_fixture(&held, 77);
 	artifact_update_sql(&held, 'Y', 7000);
 	require(flatfile_artifact_get(state_root, 701, &stored, &error) ==
 				flatfile_artifact_result::ok &&

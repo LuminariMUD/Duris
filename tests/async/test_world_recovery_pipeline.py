@@ -766,7 +766,7 @@ int main()
     object_list = nullptr;
 
     // Failed Redis materialization rolls back before the forced O reset and
-    // memory fallback. The reset's admission guard must leave only the tracked instance.
+    // tracking report. Failed evidence must not authorize reconstruction of a reserved UID.
     fallback_fixture = true;
     ground_artifact.vnum = 1000;
     ground_artifact.owned = true;
@@ -787,10 +787,9 @@ int main()
         assert(world[object_list->loc.room].number == 100);
         extract_obj(object_list, FALSE);
     }
-    // Without any recovery generation, legacy boot loads the owned row once.
+    // Without qualified recovery bytes, tracking metadata alone leaves the UID reserved.
     run_artifact_boot();
-    assert(fallback_loads == 1 && object_list && !object_list->next);
-    extract_obj(object_list, FALSE);
+    assert(fallback_loads == 1 && !object_list);
     fallback_loads = 0;
     redis_loads = 0;
     recovery_active = true;
@@ -801,11 +800,9 @@ int main()
     const int extracts_before_fallback = objects_extracted;
     run_recovery_boot();
     assert(redis_loads == 1 && fallback_resets == 1 && fallback_loads == 1);
-    assert(!recovery_active && objects_read == reads_before_fallback + 2);
+    assert(!recovery_active && objects_read == reads_before_fallback + 1);
     assert(objects_extracted == extracts_before_fallback + 1);
-    assert(object_list && !object_list->next && IS_ARTIFACT(object_list));
-    assert(object_list->loc_p == LOC_ROOM && world[object_list->loc.room].number == 100);
-    extract_obj(object_list, FALSE);
+    assert(!object_list && ground_artifact.canonical_item_uid == 500);
 
     // Unowned stock artifacts still load through a forced reset.
     ground_artifact.owned = false;

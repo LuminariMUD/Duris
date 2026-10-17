@@ -419,6 +419,8 @@ int main(int argc, char **argv)
 		object.R_num = 0;
 		object.obj_uid = 60001;
 		object.extra_flags = ITEM_ARTIFACT;
+		artifact_rows.at(600).live_object =
+			&object; // Registered synthetic body for capture ordering.
 		require(remove_owned_artifact_sql(&object, corpse_pid) && writes.size() == 1,
 			"artifact removal split ownership and soul into separate captures");
 		require(writes.front()().outcome == player_save_apply_outcome::applied &&
