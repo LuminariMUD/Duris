@@ -1598,9 +1598,13 @@ static bool consume_copyover_claim()
 		rmdir(directory.c_str());
 		return false;
 	}
-	struct stat current = {};
-	if (lstat(isolated.c_str(), &current) ||
-	    !same_copyover_file(pinned_copyover.identity, current))
+	copyover_boot_snapshot current;
+	// Moving across directories may change ctime. Verify the isolated inode and
+	// complete pinned bytes; copyover_read_file checks stability during the read.
+	if (copyover_read_file(isolated, &current) != copyover_boot_result::ready ||
+	    pinned_copyover.identity.st_dev != current.identity.st_dev ||
+	    pinned_copyover.identity.st_ino != current.identity.st_ino ||
+	    pinned_copyover.bytes != current.bytes)
 	{
 		// Never overwrite another publication while returning the changed claim.
 		if (!renameat2(AT_FDCWD, isolated.c_str(), AT_FDCWD, pinned_copyover_path.c_str(),
