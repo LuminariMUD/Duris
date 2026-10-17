@@ -23,8 +23,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current maintenance-cache work: `branch/issue-67-maintenance-cache`, based on
-#159. Outcome: the existing boot template cache includes known artifact identities
+Current maintenance-cache checkpoint: [PR #160](https://github.com/LuminariMUD/Duris/pull/160),
+ready for review, `branch/issue-67-maintenance-cache`, based on #159. Outcome: the existing boot template cache includes known artifact identities
 and effective saved artifact flags on ordinary prototypes, keeping runtime queries
 free of file parsing and gameplay constructors. Non-goals: caching every ordinary
 prototype, changing canonical selection or completing swap's durable transition.
@@ -34,7 +34,8 @@ reproduces the missing promoted template, then includes promoted/prior-known vnu
 while excluding unrelated ordinary templates without UID/procedure/index effects.
 Ablation: retain only relevant parsed values; reuse the current boot pass and cache.
 
-Maintenance-cache checkpoint (2026-10-17, publication pending):
+Maintenance-cache checkpoint (2026-10-17, PR #160):
+Implementation commit: `2039ea7b955657bf2e5da365cc40e4756d121898`.
 - The existing actual parser/cache harness had stale cache naming and omitted the
   now-shared constructor implementation. Updated it to execute current production
   functions, then extended it with the actual boot adapter. The before run fails
@@ -56,6 +57,8 @@ Maintenance-cache checkpoint (2026-10-17, publication pending):
 - The durable swap replacement/retirement transaction is still the next required
   AR-04 work. Preserve all existing room/corpse/NPC/offline-PC paths and treat memory
   rollback, accepted queueing and durable atomic publication as distinct stages.
+  Final diff reviewed, committed/pushed as open non-draft PR #160 based on #159
+  and attached to this chat. No merge, tag, deployment or production operation.
 
 Current maintenance-inspection checkpoint: [PR #159](https://github.com/LuminariMUD/Duris/pull/159),
 ready for review, `branch/issue-67-maintenance-inspection`, based on #158. Outcome: clear/poof/timer and swap's source-template inspection read
