@@ -452,6 +452,26 @@ def run(binary, case):
                 assert sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (8888899,8888898)") == '0'
                 assert sql(f"SELECT COUNT(*) FROM item_current_owner WHERE item_uid=8888897 AND owner_type=1 AND owner_id={source_pid} AND state=1") == '1'
                 evidence['mutable_player_admission'] = {'wrong_uid_root_retained': True, 'no_held_claim': True, 'canonical_live_count': 1, 'ordinary_inventory_saved': True}
+                # Hunt follows the established initial/filename discovery but reads
+                # the complete raw SQL source cut without creating a second owner.
+                discovery = runtime / 'Players/a'
+                discovery.mkdir(parents=True, exist_ok=True)
+                (discovery / PLAYER).touch()
+                # Compare logical source payloads: an unrelated autosave may replace
+                # valid rows' database IDs while this read is in flight.
+                audit_query = f"SELECT p.obj_uid,COALESCE(parent.obj_uid,0),p.vnum,p.quantity,p.extra_flags,p.short_descr FROM player_items p LEFT JOIN player_items parent ON parent.id=p.container_id WHERE p.pid={source_pid} ORDER BY p.obj_uid,p.id"
+                before_hunt = sql(audit_query)
+                god.send('artifacts hunt a')
+                god.expect('Artifact source audit for ' + PLAYER, timeout=60)
+                god.expect('No repairs applied.', timeout=60)
+                hunt_output = god.transcript.decode(errors='replace')
+                assert f'vnum={ARTIFACT} uid=8888899' in hunt_output
+                assert 'vnum=900 uid=0' in hunt_output and 'quantity=7' in hunt_output
+                assert sql(audit_query) == before_hunt
+                hunt_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', hunt_stat), hunt_stat
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                evidence['hunt_read_only_source_inspection'] = True
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
                 stop()

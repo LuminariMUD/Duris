@@ -22,6 +22,67 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current inspection-role work: `branch/issue-67-artifact-hunt-inspection`, based
+on #156. Outcome: artifact hunt reads the original bounded player source cut,
+including nested, retained and stale rows, without constructing characters/objects
+or changing live artifacts, timers, binding, custody or source payloads. Keep its
+current initial/filename discovery; a full store-wide audit remains AR-07.
+Non-goals: automatic reconciliation or canonical selection, another reader worker,
+or enabling unreviewed maintenance callbacks. Files: existing offline completion
+routing, immutable raw metadata, artifact hunt/report and focused native/journeys.
+Proof: reproduce the old report deleting a live ground copy/updating tracking;
+then prove raw metadata reporting, no construction/mutation, asynchronous actor
+lifetime handling, both repository cuts, builds and an actual hunt command.
+Ablation: reuse the existing async read pipeline; route results to inspection before
+materialization, replacing the duplicated worn/inventory repair loops with one
+raw source report. Objectful offline commands remain on their current path until
+the next role-migration chunk; do not label them all inspection.
+
+Hunt inspection checkpoint (2026-10-17, verification complete):
+- Reproduced the original report extracting a live ground copy and updating tracking
+  from its materialized offline copy. Ignored before log:
+  `bin/analysis/issue67/hunt-inspection-before.log`.
+- SQL/flat raw item descriptors now preserve vnum, original quantity and explicit
+  saved flags (including missing flags) before filtering. The report consumes all
+  raw rows, so unknown UID, nested, stale and held candidates remain visible.
+- Existing async completion now dispatches the immutable result first. Inspection
+  never calls materialization; an actor who left before completion gets no callback
+  or character/item construction. Objectful callbacks preserve their ownership
+  contract. Non-actor expiry callbacks still receive their objectful completion.
+- Hunt is read-only: one source report replaces the worn/inventory reconciliation
+  loops, character/object/NPC construction, zone extraction and tracking writes.
+  At most 16 candidate rows per character reach staff; every candidate is logged
+  under `artifact_hunt/<pid>`. UID/state comparisons are facts, not physical-copy
+  selection. Missing/failed reads cannot report a complete empty audit.
+- Fresh ASan/UBSan report and offline-completion tests pass, including nested/raw
+  metadata, missing UID/flags, explicit ordinary overrides, retired identity,
+  foreign custody, output bounds, failed reads and actor cancellation. SQL and
+  flat repository regressions verify those original raw fields. Ordinary item
+  and pipeline controls pass; both backend builds and format/tidy passed.
+- Fresh actual-command verification passed: the disposable SQL standard reward/
+  copyover/restart journey invokes `artifacts hunt a` while the canonical owner is
+  live and unknown/wrong-UID roots remain stored. The report includes those raw
+  candidates and preserves logical source graph, one live canonical object,
+  timer/soul and reward history. Frozen proof:
+  `bin/analysis/issue67/hunt-inspection-gameplay.{log,json}`. The actual admission
+  regression also passes. Both builds pass after the help-text clarification.
+  Final review, format/tidy and all focused checks pass; commit/push and open a
+  non-draft PR based on #156 next.
+- Discovery still uses names found under `Players/<initial>`, as the help now says.
+  This is not the complete all-store AR-07 audit. Normal selected-store read/journal
+  replay semantics are reused; forensic byte retention still needs a retained copy.
+
+Next objectful offline migration findings (not yet implemented):
+- Remove the `gameplay_items=false` restoration bypass only after the actual
+  maintenance callbacks are qualified; staff `load char` publishes a real PC.
+- `poof_loaded_owner` currently expires the vnum even when its loaded target was
+  absent. A withheld source or nested artifact must not be interpreted as absence;
+  target lookup/retirement must match the canonical UID and preserve refused data.
+- `arti_files_give` and both replacement paths still use generic fresh constructors;
+  migrate to creation admission, preserve source evidence and reject reserved vnums.
+  Prototype inspection in the remaining maintenance commands must be data-only.
+- Pet/storage/delivery roles and full lifecycle/AR-07 acceptance remain open.
+
 Current gameplay-player admission checkpoint: [PR #156](https://github.com/LuminariMUD/Duris/pull/156),
 ready for review, `branch/issue-67-player-artifact-admission`, based on #155. Outcome: qualify a gameplay player's saved artifact source/UID/current
 custody before constructor procedures, reserve its physical pointer, and withhold

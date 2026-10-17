@@ -353,6 +353,11 @@ static void retained_roots_case(const fs::path &path, bool unknown_root)
 			loaded.item_sources[1].custody.parent_item_uid == 100 &&
 			loaded.item_sources[0].bytes > 0,
 		"flat source cut lost custody, original ancestry or byte bounds");
+	require(loaded.item_sources[2].vnum == 900 && loaded.item_sources[2].quantity == 1 &&
+			loaded.item_sources[2].extra_flags_present &&
+			loaded.item_sources[2].extra_flags == unknown.extra_flags &&
+			loaded.item_sources[3].vnum == 901,
+		"flat inspection lost withheld raw source metadata");
 	auto partial = loaded.snapshot;
 	partial.revision = 2;
 	partial.components = PLAYER_COMPONENT_LANGUAGES;

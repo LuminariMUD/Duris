@@ -31,7 +31,7 @@ extern struct mm_ds *dead_pconly_pool;
 namespace
 {
 // Game thread only.
-std::unordered_map<uint64_t, std::function<void(P_char)>> offline_loads;
+std::unordered_map<uint64_t, std::function<void(const player_load_result &)>> offline_loads;
 
 P_char materialize(const player_load_result &result)
 {
@@ -55,9 +55,8 @@ P_char materialize(const player_load_result &result)
 	}
 	return character;
 }
-} // namespace
-
-bool player_load_offline(const char *name, bool include_items, std::function<void(P_char)> done)
+bool submit_offline(const char *name, bool include_items,
+		    std::function<void(const player_load_result &)> done)
 {
 	if (!name || !*name || !done)
 		return false;
@@ -80,25 +79,48 @@ bool player_load_offline(const char *name, bool include_items, std::function<voi
 	return true;
 }
 
-bool player_load_offline_for(P_char ch, const char *name, bool include_items,
-			     std::function<void(P_char ch, P_char loaded)> done)
+bool submit_offline_for(P_char ch, const char *name, bool include_items,
+			std::function<void(P_char, const player_load_result &)> done)
 {
+	if (!ch || !done)
+		return false;
 	const uint64_t runtime_id = ch->runtime_id;
-	if (player_load_offline(name, include_items,
-				[runtime_id, done = std::move(done)](P_char loaded)
-				{
-					P_char live = find_character_by_runtime_id(runtime_id);
-					if (live)
-						done(live, loaded);
-					else if (loaded)
-					{
-						player_load_items_discard(loaded);
-						free_char(loaded);
-					}
-				}))
+	if (submit_offline(name, include_items,
+			   [runtime_id, done = std::move(done)](const player_load_result &result)
+			   {
+				   if (P_char live = find_character_by_runtime_id(runtime_id))
+					   done(live, result);
+			   }))
 		return true;
 	send_to_char("That is not available right now.\r\n", ch);
 	return false;
+}
+} // namespace
+
+bool player_load_offline(const char *name, bool include_items, std::function<void(P_char)> done)
+{
+	if (!done)
+		return false;
+	return submit_offline(name, include_items,
+			      [done = std::move(done)](const player_load_result &result)
+			      { done(materialize(result)); });
+}
+
+bool player_load_offline_for(P_char ch, const char *name, bool include_items,
+			     std::function<void(P_char, P_char)> done)
+{
+	if (!done)
+		return false;
+	return submit_offline_for(ch, name, include_items,
+				  [done = std::move(done)](P_char live,
+							   const player_load_result &result)
+				  { done(live, materialize(result)); });
+}
+
+bool player_load_offline_inspect_for(P_char ch, const char *name,
+				     std::function<void(P_char, const player_load_result &)> done)
+{
+	return submit_offline_for(ch, name, true, std::move(done));
 }
 
 bool player_load_offline_complete(const player_load_result &result)
@@ -106,8 +128,8 @@ bool player_load_offline_complete(const player_load_result &result)
 	auto found = offline_loads.find(result.request_id);
 	if (found == offline_loads.end())
 		return false;
-	std::function<void(P_char)> done = std::move(found->second);
+	auto done = std::move(found->second);
 	offline_loads.erase(found);
-	done(materialize(result));
+	done(result);
 	return true;
 }

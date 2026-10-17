@@ -36,6 +36,7 @@
 #include "core/mm.h"
 #include "classes/necromancy.h"
 #include "persistence/persistence_mode.h"
+#include "persistence/dupe_log.h"
 #include "player/player_load_items.h"
 #include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
@@ -3833,177 +3834,71 @@ void event_arti_hunt_sql(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data
 	arti_hunt_sql(ch, (char *)data);
 }
 
-// artifact hunt: checks the artifacts of owner, the character name loaded off the loop (null
-// when it could not be), against the artifact data.
-static void arti_hunt_owner(P_char ch, const char *name, P_char owner)
+// Inspect the original player source cut without materializing or reconciling it.
+static void arti_hunt_owner(P_char ch, const char *name, const player_load_result &result)
 {
-	char buf[MAX_STRING_LENGTH];
-	int wearloc;
-	arti_data artidata;
-	P_char mob;
-	P_obj arti, arti2;
-
-	if (!owner)
+	if (result.outcome != player_load_outcome::applied)
 	{
-		snprintf(buf, MAX_STRING_LENGTH, "hunt_for_artis: %s has bad pfile.\n\r", name);
-		send_to_char(buf, ch);
+		send_to_char_f(ch,
+			       "Artifact hunt: %s source unavailable (outcome=%u error=%u).\r\n",
+			       name, static_cast<unsigned>(result.outcome), result.error_code);
 		return;
 	}
-	if (IS_TRUSTED(owner))
+	send_to_char_f(
+		ch,
+		"Artifact source audit for %s (pid=%d), read-only. First 16 rows shown; all candidates logged.\r\n",
+		name, result.pid);
+	size_t candidates = 0;
+	for (const auto &source : result.item_sources)
 	{
-		release_offline_owner(owner);
-		return;
-	}
-
-	/* For debugging only.. gets spammy on live mud.
-	snprintf(buf, MAX_STRING_LENGTH, "Hunting pfile of '%s'.\n", J_NAME(owner) );
-	send_to_char( buf, ch );
-	*/
-
-	// Search each pfile:
-	// Search Worn equipment.
-	for (wearloc = 0; wearloc < MAX_WEAR; wearloc++)
-	{
-		arti = owner->equipment[wearloc];
-		if (arti == NULL || !IS_ARTIFACT(arti))
-		{
+		const auto tracked = artifact_rows.find(source.vnum);
+		if (!(source.extra_flags & ITEM_ARTIFACT) && tracked == artifact_rows.end())
 			continue;
-		}
-
-		snprintf(buf, MAX_STRING_LENGTH, "%-12s has %s&n (%6d) : ", J_NAME(owner),
-			 pad_ansi(arti->short_description, 35, TRUE).c_str(), OBJ_VNUM(arti));
-		send_to_char(buf, ch);
-
-		if (!get_artifact_data_sql(OBJ_VNUM(arti), &artidata))
-		{
-			send_to_char("&+WNot yet tracked - adding.&n\n", ch);
-			// If there's one in zone, pull it.
-			if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-			{
-				send_to_char("&+WPulled artifact from zone.\n\r", ch);
-				extract_obj(arti2);
-			}
-			// If they managed to get it on pfile and not in DB, give them full timer.
-			artifact_update_sql(arti, 'Y',
-					    time(NULL) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY);
-		}
-		else if (artidata.locType == ARTIFACT_ON_PC ||
-			 artidata.locType == ARTIFACT_ONCORPSE)
-		{
-			if (artidata.location == GET_PID(owner))
-			{
-				send_to_char("Already tracked on char.\n", ch);
-			}
-			else
-			{
-				snprintf(buf, MAX_STRING_LENGTH, "&+ROn another char:&N %s\n",
-					 get_player_name_from_pid(artidata.location));
-				send_to_char(buf, ch);
-			}
-		}
-		else if (artidata.locType == ARTIFACT_ON_NPC)
-		{
-			mob = read_mobile(artidata.location, VIRTUAL);
-			snprintf(buf, MAX_STRING_LENGTH, "&+ROn a mob:&N '%s' %d.\n", J_NAME(mob),
-				 artidata.location);
-			extract_char(mob);
-			send_to_char(buf, ch);
-			// If there's one in zone, pull it.
-			if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-			{
-				send_to_char("&+WPulled artifact from zone.\n\r", ch);
-				extract_obj(arti2);
-			}
-			artifact_update_location_sql(arti);
-		}
-		else if (artidata.locType == ARTIFACT_ONGROUND)
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "&+ROn ground:&N '%s' %d.\n",
-				 world[real_room0(artidata.location)].name, artidata.location);
-			send_to_char(buf, ch);
-			// If there's one in zone, pull it.
-			if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-			{
-				send_to_char("&+WPulled artifact from zone.\n\r", ch);
-				extract_obj(arti2);
-			}
-			artifact_update_location_sql(arti);
-		}
-		else if (artidata.locType == ARTIFACT_NOTINGAME)
-		{
-			send_to_char("&+WNot in game - updating.&n\n\r", ch);
-			artifact_update_location_sql(arti);
-		}
-		else
-		{
-			send_to_char("&+rUnknown location.&n\n\r", ch);
-		}
+		const uint64_t canonical_uid =
+			tracked == artifact_rows.end() ? 0 : tracked->second.canonical_item_uid;
+		const auto state = tracked == artifact_rows.end() ?
+					   artifact_identity_state::unresolved :
+					   tracked->second.identity_state;
+		const char *state_name = state == artifact_identity_state::present ? "present" :
+					 state == artifact_identity_state::retired ? "retired" :
+					 state == artifact_identity_state::absent  ? "absent" :
+										     "unresolved";
+		const char *flags = !source.extra_flags_present	       ? "missing" :
+				    source.extra_flags & ITEM_ARTIFACT ? "artifact" :
+									 "ordinary";
+		const auto &custody = source.custody;
+		const char *custody_state =
+			!source.custody_found				 ? "missing" :
+			custody.state == item_custody_state::active	 ? "active" :
+			custody.state == item_custody_state::destroyed	 ? "destroyed" :
+			custody.state == item_custody_state::quarantined ? "quarantined" :
+									   "absent";
+		char row[MAX_STRING_LENGTH];
+		snprintf(
+			row, sizeof(row),
+			"vnum=%d uid=%llu row=%llu parent_row=%llu quantity=%llu flags=%s source_root=%llu canonical_uid=%llu state=%s uid_match=%s custody=%s owner_type=%s(%u) owner=%llu context=%llu custody_root=%llu custody_parent=%llu item_revision=%llu owner_revision=%llu",
+			source.vnum, (unsigned long long)source.item_uid,
+			(unsigned long long)source.row_id, (unsigned long long)source.parent_row_id,
+			(unsigned long long)source.quantity, flags,
+			(unsigned long long)source.root_item_uid, (unsigned long long)canonical_uid,
+			state_name,
+			source.item_uid && source.item_uid == canonical_uid ? "yes" : "no",
+			custody_state, item_owner_type_label(custody.owner.type),
+			static_cast<unsigned>(custody.owner.type),
+			(unsigned long long)custody.owner.id,
+			(unsigned long long)custody.owner.context_id,
+			(unsigned long long)custody.root_item_uid,
+			(unsigned long long)custody.parent_item_uid,
+			(unsigned long long)custody.item_revision,
+			(unsigned long long)custody.owner_revision);
+		logit(LOG_ARTIFACT, "artifact_hunt/%d: %s", result.pid, row);
+		if (candidates++ < 16)
+			send_to_char_f(ch, "%s\r\n", row);
 	}
-	// Search inventory.
-	for (arti = owner->carrying; arti; arti = arti->next_content)
-	{
-		if (IS_ARTIFACT(arti))
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "%-12s has %s&n (%6d) : ", J_NAME(owner),
-				 pad_ansi(arti->short_description, 35, TRUE).c_str(),
-				 obj_index[arti->R_num].virtual_number);
-			send_to_char(buf, ch);
-			if (!get_artifact_data_sql(OBJ_VNUM(arti), &artidata))
-			{
-				send_to_char("&+WNot yet tracked - adding.&n\n", ch);
-				// If they managed to get it on pfile and not in DB, give them full timer.
-				artifact_update_sql(arti, 'Y',
-						    time(NULL) + ARTIFACT_BLOOD_DAYS *
-									 SECS_PER_REAL_DAY);
-				// If there's one in zone, pull it.
-				if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-				{
-					send_to_char("&+WPulled artifact from zone.\n\r", ch);
-					extract_obj(arti2);
-				}
-			}
-			else if (artidata.locType == ARTIFACT_ON_PC ||
-				 artidata.locType == ARTIFACT_ONCORPSE)
-			{
-				if (artidata.location == GET_PID(owner))
-				{
-					send_to_char("Already tracked on char.\n", ch);
-				}
-				else
-				{
-					snprintf(buf, MAX_STRING_LENGTH,
-						 "&+ROn another char:&N %s\n",
-						 get_player_name_from_pid(artidata.location));
-					send_to_char(buf, ch);
-				}
-			}
-			else if (artidata.locType == ARTIFACT_ON_NPC)
-			{
-				mob = read_mobile(artidata.location, VIRTUAL);
-				snprintf(buf, MAX_STRING_LENGTH, "&+ROn a mob:&N '%s' %d.\n",
-					 J_NAME(mob), artidata.location);
-				extract_char(mob);
-				send_to_char(buf, ch);
-			}
-			else if (artidata.locType == ARTIFACT_ONGROUND)
-			{
-				snprintf(buf, MAX_STRING_LENGTH, "&+ROn ground:&N '%s' %d.\n",
-					 world[real_room0(artidata.location)].name,
-					 artidata.location);
-				send_to_char(buf, ch);
-			}
-			else if (artidata.locType == ARTIFACT_NOTINGAME)
-			{
-				send_to_char("&+rNot in game - updating.&n\n\r", ch);
-				artifact_update_location_sql(arti);
-			}
-			else
-			{
-				send_to_char("&+rUnknown location.&n\n\r", ch);
-			}
-		}
-	}
-	release_offline_owner(owner);
+	send_to_char_f(
+		ch,
+		"Artifact source audit complete pid=%d candidates=%zu displayed=%zu reference=artifact_hunt/%d. No repairs applied.\r\n",
+		result.pid, candidates, std::min<size_t>(candidates, 16), result.pid);
 }
 
 // Searches through all pfiles with initial *arg for artis.
@@ -4034,7 +3929,7 @@ void arti_hunt_sql(P_char ch, const char *arg)
 			"Arti hunt needs a letter for which initial to hunt for, or 1 to search all pfiles.\n",
 			ch);
 		send_to_char(
-			"Arti hunt will then search all pfiles with said initial for artifacts, and add them to the arti list if necessary.\n",
+			"Arti hunt discovers names in Players/<initial> and audits their saved sources without changing objects or tracking.\n",
 			ch);
 		return;
 	}
@@ -4060,17 +3955,18 @@ void arti_hunt_sql(P_char ch, const char *arg)
 		if (strstr(dire->d_name, "."))
 			continue;
 
-		// The pfile loads off the loop and is hunted there.
-		if (player_load_offline_for(ch, dire->d_name, true,
-					    [name = std::string(dire->d_name)](P_char staff,
-									       P_char owner)
-					    { arti_hunt_owner(staff, name.c_str(), owner); }))
+		// The source is inspected on completion without constructing its owner.
+		if (player_load_offline_inspect_for(
+			    ch, dire->d_name,
+			    [name = std::string(dire->d_name)](P_char staff,
+							       const player_load_result &result)
+			    { arti_hunt_owner(staff, name.c_str(), result); }))
 			++count;
 	}
 	// Close the directory!
 	closedir(dir);
-	snprintf(buf, MAX_STRING_LENGTH, "Arti hunting '%c': %d pfiles are loading.\n", *arg,
-		 count);
+	snprintf(buf, MAX_STRING_LENGTH,
+		 "Arti hunting '%c': %d source audits queued (read-only).\n", *arg, count);
 	send_to_char(buf, ch);
 }
 

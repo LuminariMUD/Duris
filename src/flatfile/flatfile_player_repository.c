@@ -246,6 +246,10 @@ bool build_item_identities(
 						  0 :
 						  static_cast<uint64_t>(item.parent_index) + 1,
 					  item.object_uid, 0, !item.object_uid || item.vnum <= 0 });
+				source.back().vnum = item.vnum;
+				source.back().quantity = 1;
+				source.back().extra_flags = item.extra_flags;
+				source.back().extra_flags_present = true;
 				const auto custody = catalog.find(item.object_uid);
 				if (custody != catalog.end())
 				{

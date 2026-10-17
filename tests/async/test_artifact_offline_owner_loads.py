@@ -27,7 +27,7 @@ for signature, loader in (
     ("static bool poof_offline_artifact(", "player_load_offline("),
     ("void arti_poof_sql(P_char ch, char *arg)\n{", "player_load_offline_for("),
     ("void arti_swap_sql(P_char ch, char *arg)\n{", "player_load_offline_for("),
-    ("void arti_hunt_sql(P_char ch, const char *arg)\n{", "player_load_offline_for("),
+    ("void arti_hunt_sql(P_char ch, const char *arg)\n{", "player_load_offline_inspect_for("),
     ("void arti_files_to_sql(P_char ch, char *arg)\n{", "player_load_offline_for("),
 ):
     assert loader in body(signature), signature
@@ -67,3 +67,10 @@ assert "flatfile_identity_lookup_pid(" in body(
     "void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)\n{")
 
 print("artifact offline owner load contracts passed")
+
+# Hunt is an inspection of the original bounded source cut, including withheld rows.
+hunt = body("static void arti_hunt_owner(")
+assert "const player_load_result &" in hunt and "result.item_sources" in hunt
+for mutation in ("read_object(", "read_mobile(", "extract_obj(", "artifact_update_sql(", "artifact_update_location_sql(", "release_offline_owner("):
+    assert mutation not in hunt, mutation
+assert "No repairs applied" in hunt

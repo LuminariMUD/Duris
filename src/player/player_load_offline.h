@@ -31,10 +31,16 @@ typedef struct char_data *P_char;
  * called then.
  */
 bool player_load_offline(const char *name, bool include_items, std::function<void(P_char)> done);
-// For a command of ch's: done runs only while ch is still in the game (otherwise the loaded
-// character and its temporary items are freed). A load that cannot be queued tells ch.
+// For a command of ch's: done and materialization run only while ch is still in the
+// game. A load that cannot be queued tells ch.
 bool player_load_offline_for(P_char ch, const char *name, bool include_items,
 			     std::function<void(P_char ch, P_char loaded)> done);
+// Read-only inspection of the original item source cut, including retained/stale
+// rows. No character or item is constructed. done borrows the result only for the
+// callback and runs only while ch is still in the game, including failed reads.
+bool player_load_offline_inspect_for(
+	P_char ch, const char *name,
+	std::function<void(P_char ch, const player_load_result &result)> done);
 // Hands a finished load to its offline caller; false when it was not an offline load.
 bool player_load_offline_complete(const player_load_result &result);
 

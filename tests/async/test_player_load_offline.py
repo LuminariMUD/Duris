@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native asynchronous offline completion releases abandoned temporary item trees."""
+"""Native offline completion separates raw inspection from object materialization."""
 import os
 from pathlib import Path
 import subprocess
@@ -101,14 +101,14 @@ void send_to_char(const char *, P_char) {}
 
 int main() {
     char_data staff = {}; staff.runtime_id = 77; actor = &staff;
-    // The actor leaves before include-items completion: actual callback must discard first.
+    // The actor leaves before completion: no character or items may be constructed.
     populate_items = true;
     assert(player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
     assert(submitted.pid == 42 && !submitted.gameplay_items && submitted.include_items && !submitted.include_pets);
     player_load_result result = {}; result.request_id = request_id;
     result.outcome = player_load_outcome::applied; result.pid = 42; result.gameplay_items = false;
     assert(player_load_offline_complete(result));
-    assert(completed == 0 && released == 1 && allocated == 4 && extracted == 4);
+    assert(completed == 0 && released == 0 && allocated == 0 && extracted == 0);
     assert(!player_load_offline_complete(result));
 
     // A live actor receives ownership unchanged and releases it through the real item discard.
@@ -123,18 +123,42 @@ int main() {
     }));
     result.request_id = request_id;
     assert(player_load_offline_complete(result));
-    assert(completed == 1 && released == 2 && allocated == extracted);
+    assert(completed == 1 && released == 1 && allocated == 4 && allocated == extracted);
 
     online = false; populate_items = false;
     assert(player_load_offline_for(actor, "Offline", false, [](P_char, P_char) { ++completed; }));
     result.request_id = request_id;
     assert(player_load_offline_complete(result));
-    assert(released == 3 && completed == 1);
+    assert(released == 1 && completed == 1);
     // Failed load hands no temporary owner to cancellation; rejected submissions never complete.
     assert(player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
     result.request_id = request_id; result.outcome = player_load_outcome::not_found;
     assert(player_load_offline_complete(result));
-    assert(released == 3);
+    assert(released == 1);
+    // Inspection receives the raw result without constructing any gameplay owner.
+    online = true; populate_items = true;
+    const auto before_allocated=allocated, before_released=released;
+    size_t inspected=0;
+    assert(player_load_offline_inspect_for(actor,"Offline",[&](P_char live,const player_load_result &cut) {
+        assert(live==actor && cut.item_sources.size()==1 && cut.item_sources[0].quantity==7);
+        assert(allocated==before_allocated && released==before_released);
+        ++inspected;
+    }));
+    result.request_id=request_id; result.outcome=player_load_outcome::applied;
+    player_load_source_item raw; raw.row_id=10; raw.quantity=7; result.item_sources={raw};
+    assert(player_load_offline_complete(result) && inspected==1);
+    online=false;
+    assert(player_load_offline_inspect_for(actor,"Offline",[&](P_char,const player_load_result &) { ++inspected; }));
+    result.request_id=request_id;
+    assert(player_load_offline_complete(result) && inspected==1 && allocated==before_allocated);
+    online=true;
+    assert(player_load_offline_inspect_for(actor,"Offline",[&](P_char,const player_load_result &cut) {
+        assert(cut.outcome==player_load_outcome::timed_out); ++inspected;
+    }));
+    result.request_id=request_id; result.outcome=player_load_outcome::timed_out;
+    assert(player_load_offline_complete(result) && inspected==2 && allocated==before_allocated);
+    assert(!player_load_offline_inspect_for(nullptr,"Offline",[](P_char,const player_load_result &) {}));
+    assert(!player_load_offline_inspect_for(actor,"Offline",{}));
     submit_allowed = false;
     assert(!player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
     result.request_id = request_id;

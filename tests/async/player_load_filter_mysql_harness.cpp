@@ -161,6 +161,19 @@ int main()
 			inactive_source_seen = source.custody_found &&
 					       source.custody.state != item_custody_state::active;
 	require(inactive_source_seen, "load normalization hid the raw inactive custody state");
+	bool raw_legacy_seen = false, foreign_seen = false;
+	for (const auto &source : giver.item_sources)
+	{
+		if (source.row_id == legacy_id)
+			raw_legacy_seen = source.vnum == 900 && !source.item_uid &&
+					  source.quantity == 7 && source.extra_flags_present &&
+					  source.extra_flags == 268435456;
+		if (source.item_uid == 2003)
+			foreign_seen = source.vnum == 603 && source.custody_found &&
+				       source.custody.owner.id == 12;
+	}
+	require(raw_legacy_seen && foreign_seen,
+		"inspection lost unreadable or foreign raw source metadata");
 	require(giver.outcome == player_load_outcome::applied,
 		"the giver's load must succeed: outcome=" +
 			std::to_string(static_cast<int>(giver.outcome)) +
