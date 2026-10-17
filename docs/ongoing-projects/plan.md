@@ -1,5 +1,33 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — canonical corpse-loot binding (#163)
+## Review checkpoint — #162 integrated, 2026-10-17
+
+#161 now owns placement and offline-snapshot refusal rollback. This dependent
+chunk preserves pending item actions during temporary unequip, with ordinary
+unequip and successful replacement cancellation controls. Parent fixes through
+#160 and #161 `58ee0e022` are integrated. The actual swap fixture, item-action
+runtime suite and native build pass (`bin/analysis/pr162-hour-*.log`). Source
+wear-link assertions now distinguish the retained source UID from the discarded
+replacement. Remaining work: #163 corpse binding review repair and propagation
+through #164/#165/#167, followed by final integration and review inventory.
+
+
+## Current review checkpoint: #162 pending swap actions
+
+Outcome: an alias looted across racewar lines cannot reset the canonical artifact's
+soul. Guard the existing direct binding/feed block with the same canonical-identity
+decision used by the feed path. Files: `actobj.c`, existing admission fixture, plan.
+The regression executes the actual container-get success function and real artifact
+service; the alias corrupts the soul before repair. Canonical cross-racewar and
+same-racewar controls remain required. No replacement helper or new policy layer.
+All earlier review repairs are carried through #162 locally; its full swap fixture
+now counts source wear links by UID so cleanup of a discarded replacement does not
+masquerade as damage to the retained original. Full native admission/corpse
+controls, bulk-get runtime/limits, native build and format/tidy pass
+(`bin/analysis/pr163-corpse-*.log`).
+
+
 ## Current review checkpoint: final dependent branches
 
 Active branch: `branch/issue-67-scripted-admission` (#164), in
@@ -28,6 +56,155 @@ Prior review logs remain in
 After publishing #162, return there to carry through #163–#165 and #167, then run
 combined validation and refresh every open PR/thread before marking the review
 goal complete. Production operations and PR merges are outside this review pass.
+## Current checkpoint — 2026-10-17 15:15 UTC
+
+Active branch: `branch/issue-67-canonical-swap-admission` (#161), worktree
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Known inventory:
+53 findings after the 15:16 UTC refresh; 47 published/addressed, offline-snapshot
+refusal repair verified and five additional threads to assess. Target-copy refusal is published as `5e9ddc975`; #158's trusted-holder
+repair is `df8acbf76`, carried through #159 `adb35c2b2` and #160 `947950018`.
+
+Outcome for the current hour: publish the offline-swap refusal repair, propagate
+it and earlier verified repairs through #162–#165/#167, run integration proof,
+and leave an accurate PR/branch/remaining-work handoff. Non-goals: merging or
+production deployment, unrelated cleanup, or new persistence frameworks.
+Files: existing artifact swap path, existing native/snapshot fixtures, this plan.
+
+The snapshot-refusal regression reproduced source retirement before capture
+acceptance. The repair reuses #162's checkpoint and placement rollback: detach the
+old body for capture, keep it alive until admission, restore it on refusal, then
+release the temporary owner after rollback. No retry-owner registry is needed.
+Carried, worn and nested refusal cases plus a successful retry pass under
+ASan/UBSan; capture assertions require the replacement and exclude the source.
+Native server build, formatting and tidy pass. The SQL snapshot fixture exposed
+an omitted runtime-ownership link dependency; linking the existing implementation
+fixes it. SQL snapshot and offline-load regressions now pass.
+Evidence: `bin/analysis/pr161-snapshot-refusal-*.log` and `pr161-target-copy-*`.
+The accepted-snapshot cross-domain crash window remains an open original-project
+acceptance item; capture/queue refusal proof does not establish crash atomicity.
+
+New threads: #139 all-souls batch refusal; #149 Redis restore-conflict completeness;
+#159 promoted template caching (check #160 coverage); #160 missing-flags template
+caching; #163 corpse loot direct binding. Inventory: `review-hour-start.json`.
+
+Critical next sequence: publish #161, then address new findings oldest-first; merge it normally into
+#162 in `duris-issue67-handoff`, preserving pending-action tests; carry #163/#164/
+#165 in this checkout (preserve local #165 `d5ee23ad4`); carry #167 in
+`duris-issue67-delivery`; run the disposable standard gameplay/restart journey;
+refresh every review thread AND review body. No force-push or release tag.
+
+The earlier checkpoints below are historical evidence, not the current status.
+## Review repair — templates for uncertain saved flags (#160)
+
+Outcome: maintenance can inspect identities inferred from legacy payloads with
+missing flags, without constructing gameplay objects. Extend the existing boot
+cache selection to unknown flags, matching the classifier's existing policy.
+Files: one predicate in `src/world/db.c`, existing real-parser/cache fixture, plan.
+Before repair the missing-flags control fails; explicit ordinary payloads remain
+uncached. #159's promoted-template finding is already implemented in this dependent
+PR and exercised by the same actual boot-cache fixture. No new cache or fallback.
+#139/#149 repairs are carried through #160 locally; validate the destination, then
+publish the parent merges and these final template checks. Actual cache/parser,
+full native admission, boot/classifier and server build pass; logs are
+`bin/analysis/pr160-missing-flags-*` and `pr160-hour-*`.
+
+
+## Current follow-up: #158 trusted artifact holders
+
+#156's legacy-pet count repair is published as `74fcd4156` and resolved; #157
+carry-forward `4e8fd5072` passes player capacity/audit/build checks. This branch is
+`branch/issue-67-offline-player-admission`, with carry-forward merge `d5723031d`.
+Known review inventory: 48 total, 45 addressed, three outstanding before this fix.
+
+Outcome: expiry respects the existing trusted-holder exemption even when stored
+tracking still names a different player and an expired timer. Walk to the live
+artifact's outer holder in the existing retirement helper and apply the same
+`IS_TRUSTED` policy as location updates. No identity rewrite or new timer policy.
+Files: artifact expiry helper, existing native lifecycle fixture, this plan.
+The actual expiry event reproduces removal from a trusted holder before repair;
+carried, worn and nested cases plus mortal-expiry controls now pass under
+ASan/UBSan. Player capacity controls, native build, formatting and tidy also pass
+(`bin/analysis/pr158-trusted-*`, `pr158-legacy-pet.log`). Publish, then address both
+#161 swap findings.
+
+## Current follow-up: #156 legacy-pet capacity
+
+The newer capacity finding is distinct from the earlier verified inventory-only
+gate: qualification overwrote the owner count and lost legacy-pet items that share
+player custody. Preserve the non-inventory portion of the existing count while
+removing only withheld inventory. Reject inconsistent input counts before any
+subtraction. Files: existing qualifier, existing player-item regression, this plan;
+no new capacity limit or data format. The regression now covers SESSION02 and
+SESSION03 at and over combined capacity, and the legacy-pet case fails before
+repair (`bin/analysis/pr156-legacy-pet-before.log`). Both session variants now
+pass at/over capacity, as do real admission/qualification controls, the native
+build, formatting and tidy (`bin/analysis/pr156-legacy-pet-*`). Publication is next.
+
+#139's two atomic-capture repairs are published as `10897d620` and carried through
+#155 `3443c6fbc`, with builds on each branch and snapshot regressions at #155. This
+branch's carry-forward merge is `0201e0cb2`. There are 48 known findings: 44
+addressed and four outstanding before this repair. After #156, continue to #158's
+trusted-holder exemption and #161's target-copy/offline-save safeguards.
+## Review repair — Redis restore conflicts (#149)
+
+Outcome: a cold Redis image that the real restore rejects cannot prove artifact
+presence or absence. Propagate the existing `restore_conflict` result into aggregate
+incompleteness; selected native handoffs still supersede historical Redis images.
+Files: existing boot assembler and its fixture, this plan. No new recovery state.
+The executable assembler/classifier regression fails before repair for both an
+empty and a populated conflicting image. Boot/classifier, real recovery-projection
+tests and native build pass (`bin/analysis/pr149-restore-*.log`); format/tidy pass.
+#139's all-souls repair is published as `f0022ff5f`, now carried locally through
+#149. Publish those parent merges after the destination validation.
+
+
+## Review repair — all-souls reset admission (#139)
+
+Outcome: reject a refused all-souls batch without changing live bindings or
+creating individual dirty retries. Build the existing atomic capture from a local
+reset value, then publish memory changes only after queue acceptance. Files:
+existing reset function, existing SQL/flat snapshot fixtures and this plan.
+No new retry registry or persistence format. Native SQL regression reproduces the
+partial-retry bug before repair. SQL and flat fixtures, both native backend builds,
+formatting and diff checks pass (`bin/analysis/pr139-reset-*.log`).
+This is a later review finding (`PRRT_kwDOVA3mlM6tguBO`) from the full 15:16 UTC
+inventory; #161 offline refusal is already published as `7920d0675`.
+
+
+## Review follow-up: atomic maintenance captures (#139)
+
+Repair branch: `branch/issue-67-flat-artifact-cache`, published as `10897d620`; worktree
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. A full refresh found
+six additional findings: two #139 review-body findings, #156 legacy-pet item-count
+accounting, #158 trusted-holder expiry, and two #161 swap safeguards. Known total:
+48 findings, 42 addressed, six outstanding. Details are in
+`bin/analysis/review-refresh-after-162.json`; #170/#171 have no findings in that cut.
+The #165 carry-forward is preserved locally at `d5ee23ad4`, unvalidated/unpushed.
+
+#139 outcome: one owner's war timer burn is one immutable capture, and fixit binds
+and resets the timer in the same capture. Reuse the existing SQL/flat complete-row
+builders and ordered writer retry; refuse admission without changing live war
+timers. Do not add a retry registry or new persistence format. Files: existing
+artifact service, existing SQL/flat snapshot fixtures, this plan. Proof: actual war
+callback emits one job, fixit succeeds with one writer slot and its first image has
+both fields, flat multi-record durability/retry and queue refusal, required builds.
+Both regressions fail before repair. After repair, the actual SQL war callback
+queues one transaction; flat war capture passes queue-refusal, shared-receipt I/O
+retry and unrelated-owner controls; fixit's first committed image contains both
+fields with one writer slot. SQL/flat artifact suites, both native builds, format
+and tidy pass (`bin/analysis/pr139-atomic-*`, `pr139-compound-*`, `pr139-fixit-before.log`).
+These two findings are addressed. Current count: 48 total, 44 addressed, four
+outstanding. Carry-forward progress is retained in `bin/analysis/atomic-carry-progress.txt`.
+After #139, address #156/#158/#161 in order and propagate the new fixes through the
+existing stack, retaining and reusing earlier valid evidence.
+
+## Latest review checkpoint: new findings on #147–#149
+
+## Latest review checkpoint: native NPC completeness on #149
+
+## Latest review checkpoint: carry-forward through #150–#153
+
+## Latest review checkpoint: #154 command-ring diagnostics
 
 ## Capacity review verification — #156
 
