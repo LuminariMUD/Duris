@@ -1,5 +1,20 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Review repair — templates for uncertain saved flags (#160)
+
+Outcome: maintenance can inspect identities inferred from legacy payloads with
+missing flags, without constructing gameplay objects. Extend the existing boot
+cache selection to unknown flags, matching the classifier's existing policy.
+Files: one predicate in `src/world/db.c`, existing real-parser/cache fixture, plan.
+Before repair the missing-flags control fails; explicit ordinary payloads remain
+uncached. #159's promoted-template finding is already implemented in this dependent
+PR and exercised by the same actual boot-cache fixture. No new cache or fallback.
+#139/#149 repairs are carried through #160 locally; validate the destination, then
+publish the parent merges and these final template checks. Actual cache/parser,
+full native admission, boot/classifier and server build pass; logs are
+`bin/analysis/pr160-missing-flags-*` and `pr160-hour-*`.
+
+
 ## Current follow-up: #158 trusted artifact holders
 
 #156's legacy-pet count repair is published as `74fcd4156` and resolved; #157

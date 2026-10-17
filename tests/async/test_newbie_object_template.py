@@ -52,7 +52,7 @@ bool artifact_tracks_vnum(int vnum) { return vnum == 102; }
 bool artifacts_stage_population(const std::vector<artifact_payload_projection> &items,
                                 const std::vector<artifact_population_template> &prototypes,
                                 bool complete) {
-    assert(complete && items.size() == 1 && items.front().vnum == 101 && prototypes.size() == 9);
+    assert(complete && items.size() == 3 && items.front().vnum == 101 && prototypes.size() == 9);
     classified = true; return true;
 }
 void fatal_boot_error(const char *, const char *, ...) { abort(); }
@@ -221,12 +221,18 @@ int main()
     artifact_payload_projection promoted = {};
     promoted.vnum = 101; promoted.extra_flags = ITEM_ARTIFACT; promoted.extra_flags_present = true;
     population.items.push_back(promoted);
+    artifact_payload_projection legacy = {};
+    legacy.vnum = 103; legacy.extra_flags_present = false;
+    population.items.push_back(legacy);
+    legacy.vnum = 104; legacy.extra_flags_present = true;
+    population.items.push_back(legacy);
     stage_artifact_population();
     assert(classified && population.items.empty());
     assert(find_object_template(100));
     assert(find_object_template(101) && "saved-flag artifact promotion was not cached");
     assert(find_object_template(102) && "previous artifact identity was not cached");
-    assert(!find_object_template(103) && object_templates.size() == 3);
+    assert(find_object_template(103) && "unknown saved flags must retain the inferred identity template");
+    assert(!find_object_template(104) && object_templates.size() == 4);
     assert_inert();
     for (int nr = 0; nr <= top_of_objt; ++nr) assert(cache_object_template(100 + nr));
     assert(!cache_object_template(999) && !find_object_template(999));
