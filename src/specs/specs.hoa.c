@@ -408,7 +408,7 @@ int hoa_sin(P_char ch, P_char vict, int cmd, char * /*arg*/)
 		{
 			victim = GET_OPPONENT(ch);
 			if (!victim || GET_CLASS(victim, CLASS_PALADIN) || IS_TRUSTED(victim) ||
-			    check_freedom_of_movement(vict, true))
+			    check_freedom_of_movement(victim))
 				return FALSE;
 
 			act("&+rS&+Ri&+rn &+Lgets ahold of your sight and gazes deep within your soul.\n"

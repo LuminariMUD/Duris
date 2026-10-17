@@ -22447,9 +22447,10 @@ Type of spell:  Enhancement
 Available at 11th circle (level 51) to Druids, Blighters, Clerics, Bards,
 Reavers and Rangers. Previously memorized copies still require this level.
 Takedown chance is multiplied by 0.80 and backstab chance by 0.70 while
-the spell lasts; takedowns do not consume it.
+the spell lasts. Nothing it blocks consumes it; it lasts its full
+duration, about 70% as long as guardian spirits at the same level.
 
-"Freedom of movement": a blessing of unencumbered motion settles over the caster, letting them stride unhindered through the world. Bonds of paralysis great and small, grasping earth, and clinging vines all slough away the moment the blessing takes hold, and fresh bindings and webbing may slide off while it lasts, though turning one aside can exhaust the blessing early. For its whole duration the caster keeps surer footing, so bashes, trips and other attempts to bring them down succeed less often, and a blade slipped in from behind finds its mark less readily. Every step over land costs the barest effort; water still drags at the limbs, but only half as much as it otherwise would. The liberation lasts longest in the hands of the most seasoned casters, and cannot be renewed while its protection already rests upon the body.
+"Freedom of movement": a blessing of unencumbered motion settles over the caster, letting them stride unhindered through the world. Bonds of paralysis great and small, grasping earth, and clinging vines all slough away the moment the blessing takes hold, and fresh bindings and webbing slide off for as long as it lasts, never wearing the blessing thin. For its whole duration the caster keeps surer footing, so bashes, trips and other attempts to bring them down succeed less often, and a blade slipped in from behind finds its mark less readily. Every step over land costs the barest effort; water still drags at the limbs, but only half as much as it otherwise would. The liberation lasts longest in the hands of the most seasoned casters, and cannot be renewed while its protection already rests upon the body.
 ===========================================================================
 See also: minor paralysis, major paralysis, earthen grasp, entangle, bash, backstab
 #

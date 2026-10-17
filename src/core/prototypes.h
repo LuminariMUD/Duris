@@ -1691,7 +1691,7 @@ void spell_freedom_of_movement(int level, P_char ch, char *arg, int type, P_char
 void vital_intercession_heal(P_char, int, int);
 void spell_vital_intercession(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
 void spell_holy_intercession(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
-bool check_freedom_of_movement(P_char ch, bool clear);
+bool check_freedom_of_movement(P_char ch);
 int get_spell_component(P_char, int, int);
 
 /* smagic.c */

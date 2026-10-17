@@ -4538,7 +4538,7 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 					if (!IS_ELITE(ch) && !IS_GREATER_RACE(ch) &&
 					    (GET_LEVEL(ch) + 5) > GET_LEVEL(victim))
 					{
-						if (!check_freedom_of_movement(victim, false))
+						if (!check_freedom_of_movement(victim))
 						{
 							af.type = SPELL_MINOR_PARALYSIS;
 							af.bitvector2 = AFF2_MINOR_PARALYSIS;

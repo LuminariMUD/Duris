@@ -1520,7 +1520,7 @@ void earthen_grasp(int level, P_char ch, P_char victim, bool greater)
 		effect = EG_FAIL;
 	}
 	// if they have freedom of movement
-	else if (check_freedom_of_movement(victim, number(0, 1)) && !IS_TRUSTED(ch))
+	else if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your spell!&n\r\n", ch);
 		effect = EG_FAIL;

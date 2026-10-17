@@ -7195,7 +7195,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		act("$n &+Wsteps through the web&n", TRUE, ch, NULL, NULL, TO_ROOM);
 		if (!NewSaves(ch, SAVING_PARA, 0))
 		{
-			if (!check_freedom_of_movement(ch, number(0, 1)))
+			if (!check_freedom_of_movement(ch))
 			{
 				bzero(&af, sizeof(af));
 				af.type = SPELL_MINOR_PARALYSIS;
@@ -11021,7 +11021,7 @@ int imprison_armor(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (!check_freedom_of_movement(victim, number(0, 1)))
+	if (!check_freedom_of_movement(victim))
 	{
 		act("&+L$n's $q &+bfl&+Bar&+Wes &+Bup &+bat &+L$N's &+chit &+Land &=LBZAPPPPS &N&+W$M&+L!&N",
 		    TRUE, ch, obj, victim, TO_NOTVICT);

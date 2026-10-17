@@ -47,7 +47,7 @@ bool affected_by_spell(P_char, int spell)
 }
 
 // A takedown must neither spend the spell nor be turned away outright.
-bool check_freedom_of_movement(P_char, bool) { std::abort(); }
+bool check_freedom_of_movement(P_char) { std::abort(); }
 void affect_from_char(P_char, int) { std::abort(); }
 void show_failed_takedown_messages(P_char, P_char, int, int) { std::abort(); }
 

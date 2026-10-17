@@ -64,7 +64,7 @@ int fill_word(char *) { return false; }
 int get_property(const char *, int fallback) { return fallback; }
 int get_innate_property(int, const char *, int fallback) { return fallback; }
 int CanDoFightMove(P_char, P_char) { return legal; }
-bool check_freedom_of_movement(P_char, bool) { return freedom; }
+bool check_freedom_of_movement(P_char) { return freedom; }
 int GET_CHAR_SKILL_P(P_char, int id) { return id == SKILL_EVADE && evading ? 100 : 0; }
 int number(int low, int high) {
     if (low == 1 && high == 100) { ++rolls; return roll; }
