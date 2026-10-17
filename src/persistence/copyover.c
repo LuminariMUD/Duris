@@ -1049,7 +1049,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	char *copyover_tmp = copyover_tmp_path.data();
 
 	const std::string published_path = COPYOVER_FILE;
-	for (const auto &pending : { published_path, published_path + ".recovering" })
+	const std::string recovering_path = published_path + ".recovering";
+	for (const auto &pending : { published_path, recovering_path })
 	{
 		struct stat retained = {};
 		if (!lstat(pending.c_str(), &retained))
@@ -1396,6 +1397,19 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		      COPYOVER_FILE, strerror(errno));
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		unlink(copyover_tmp);
+		return false;
+	}
+
+	// RENAME_NOREPLACE protects the publication, but not a recovery claim
+	// created during the drains/write. Fence that second name before touching
+	// sockets or executing. Retain both images for disposition on refusal.
+	struct stat recovery_claim = {};
+	if (!lstat(recovering_path.c_str(), &recovery_claim) || errno != ENOENT)
+	{
+		logit(LOG_STATUS,
+		      "copyover: recovery claim appeared at publication; retaining live process");
+		notify_copyover_failure(
+			"\r\n*** Copyover cancelled: recovery state needs review; server remains live. ***\r\n");
 		return false;
 	}
 

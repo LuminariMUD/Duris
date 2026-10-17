@@ -206,7 +206,10 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			artifact_population_decision decision;
 			decision.identity = entry.previous;
 			std::map<uint64_t, std::vector<size_t>> candidates;
-			bool uncertain = false, retired_payload = false;
+			// Foreign-vnum evidence must reserve the prior identity as well.
+			bool uncertain =
+				conflicting_uids.count(entry.previous.canonical_item_uid) != 0;
+			bool retired_payload = false;
 			std::set<uint64_t> unqualified_uids;
 			for (const auto index : entry.payloads)
 			{

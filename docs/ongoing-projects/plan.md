@@ -1,50 +1,39 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: #150 artifact lifecycle
+## Latest review checkpoint: carry-forward through #150–#153
 
-Current branch: `branch/issue-67-creation-admission`, in
-`/home/aiwithapex/projects/duris-issue67-writer-backpressure`. Parent repairs are
-merged through #149 `91f31995b` (published; review thread resolved). Twenty-one
-findings are resolved; fourteen remain in the latest inventory, including the
-three #150 findings currently under validation.
+The latest inventory contains 41 findings: 30 resolved, 11 outstanding. Published
+repair heads: #147 `d41067fba`, #148 `f27d4950a`, #149 `cd37a4288`, #150
+`d429a3736`, #151 `bbea4f9f6`. The newer #147–#149 fixes are being carried through
+#150/#151, then #152/#153, in `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+Current branch: `branch/issue-67-creation-admission`; carry-forward validation precedes push.
 
-#150 outcome: legacy ground/NPC loaders restore the canonical UID once; ordinary
-saved-UID placement and direct player attachment register the live object so
-destruction retires it; partial
-NPC recovery discards equipment/inventory rather than dropping it into the world.
-Files: artifact service/admission declaration, player attachment/discard, copyover
-restorer, world recovery
-rollback, existing creation/singleton/pipeline fixtures, this plan. Proof: actual
-legacy loaders and constructor/placement/extraction hooks, injected allocation
-failure after equipment and inventory restoration, recovery rollback, backend
-builds and required checks. No new creation authority or persistence format.
+#147 now safely refuses raced symlinks/inodes and late recovery claims, bounds
+NPC vectors, recognizes captured revision authority, and routes failed restoration
+through worker-joining shutdown. #148 preserves identity-only flat reservations,
+rejects zero vnums and duplicate physical rows, retains retired identities, and
+preserves canonical UIDs found under foreign vnums. #149 treats unresolved Redis
+and native NPC reconstruction as incomplete, including retained native images,
+and carries real revision evidence through independent SQL/flat acquisition.
+Their focused before/after regressions, relevant backend builds and tidy passed.
 
-Ablation: reuse the normal placement hook for saved-UID registration. One discard
-helper is shared by the failed NPC restorer and outer world rollback; both had the
-same normal-teardown floor-drop problem. Preserve unresolved legacy evidence by
-refusing reconstruction without a present canonical UID. Incomplete reconstruction
-and source-admission requirements in later PRs remain separate.
+#150's three review findings are implemented in `d429a3736`: legacy ground/NPC
+loaders hydrate the canonical UID once; normal placement and direct player
+attachment register its live body; load-discard detaches before clearing UIDs;
+destruction retires it. Failed NPC restoration and outer rollback explicitly
+purge equipment/inventory before normal teardown can drop them onto the floor.
+Passed: SQL/flat builds, actual constructor/clone/extraction/player attach/discard
+(ASan/UBSan), player loads, NPC buffer restoration/failure and singleton journeys
+(ASan/UBSan), world recovery pipeline, SQL snapshots, flat artifact codec/runtime,
+real copyover save/exec/recover, formatting and tidy. Logs: `bin/analysis/pr150-*`.
+#151's offline cleanup and lifecycle tests/build also pass; its fixture now links
+the existing shared lifecycle stubs. #152/#153 had no findings in the last scan.
 
-Before repair the legacy-loader and partial-NPC regressions failed. After repair,
-creation/clone/extraction admission and the actual NPC buffer restorer/singleton
-journeys pass under ASan/UBSan. Validation passed: SQL and flat native builds; creation/player attach/discard
-(ASan/UBSan); player-load regression; singleton NPC failure/recovery (ASan/UBSan);
-world recovery pipeline; SQL snapshots; flat artifact codec/runtime; actual
-copyover save/exec/recover; formatting and tidy. Logs: `bin/analysis/pr150-*`.
-Publication is the remaining step. Timers/bindings survive hydration;
-unloading detaches the live pointer and physical destruction retains a tombstone.
-Direct player attachment bypasses normal placement, so its existing attach helper
-now registers all items. Load-discard detaches artifact identity before zeroing
-UIDs; the native authority fixture executes both actual player helpers.
+Next review targets: #154 (1), #155 (2), #156 (3), #157 (4), #162 (1). Latest
+fetched details: `bin/analysis/review-refresh-after-150.json`. Refresh before final
+closeout and return to any newly reviewed older PR. No production operations or
+PR merges have been performed in this review pass.
 
-Published earlier repairs: #147 `3ff3f3f64` fixes raced symlinks/inodes and bounds
-NPC vectors at the existing 512-entry recovery budget; #148 `7e3bc3837` fixes four
-classification/flat-marker findings (carry-forward head `ea6cf988c`); #149
-`91f31995b` keeps unresolved Redis NPC evidence incomplete and completes revision
-presence through combined SQL/flat/native acquisition. Their focused regressions,
-SQL/flat builds where relevant, formatting and tidy passed. Flat v3 reads v1/v2;
-old unresolved v2 rows remain ambiguous because the old bytes lack the marker.
-No production operations or PR merges have been performed in this review pass.
 
 ## Additional #141 review: saved-room source keys
 
