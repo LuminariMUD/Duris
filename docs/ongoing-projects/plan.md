@@ -21,8 +21,8 @@ implemented on `branch/issue-67-boot-population`. Recovery/delivery normalizatio
 NPC reconstruction qualification and gameplay admission remain open.
 No operational repair started.
 
-Current creation admission work: `branch/issue-67-creation-admission`, based on
-PR #149. Outcome: reserve a fresh artifact UID in the existing authority before
+Current creation admission checkpoint: [PR #150](https://github.com/LuminariMUD/Duris/pull/150),
+ready for review, `branch/issue-67-creation-admission`, based on PR #149. Outcome: reserve a fresh artifact UID in the existing authority before
 constructor procedures/placement; protect an existing UID and roll back abandoned
 creation; apply the shared decision to reset population and staff load/clone.
 Non-goals: treating the old generic constructor as fresh creation, silently
@@ -35,7 +35,7 @@ and unchanged canonical timer/soul on rejected/temporary objects. The old generi
 constructor remains an explicitly tracked migration boundary, not an admission
 bypass accepted by the final design.
 
-Current creation checkpoint (publication being prepared): fresh reset/staff/NPC admission and
+Current creation checkpoint (published for review): fresh reset/staff/NPC admission and
 native/Redis restoration rollback are implemented. Native ASan/UBSan service,
 actual constructor/clone/extraction/reset, native SQL-capture, flat repository/runtime,
 NPC, copyover custody/evidence and full recovery controls pass. SQL and client-free
@@ -1098,7 +1098,9 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Fresh reset/staff/NPC admission and restoration rollback — AR-03 in progress
 
-Branch: `branch/issue-67-creation-admission`, based on PR #149. Publication pending.
+Review: [PR #150](https://github.com/LuminariMUD/Duris/pull/150),
+`branch/issue-67-creation-admission`, based on PR #149. Implementation commit:
+`8bdfc8b534e99fda7fce0b1f19620f4990bcc9f8`.
 This is a focused admission checkpoint, not universal artifact admission or final
 AR-03/AR-04 acceptance. The old generic `read_object` and saved-UID materializers
 are not yet source-qualified. Keep all unchecked AR-01–AR-07 acceptance work open.
