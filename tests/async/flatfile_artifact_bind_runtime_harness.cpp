@@ -251,6 +251,19 @@ int main(int argc, char **argv)
 			timer == 4200,
 		"flat retry/reload did not preserve the current binding");
 	writes.clear();
+	const auto first_soul = artifact_binds.at(600);
+	const auto second_soul = artifact_binds.at(602);
+	admission_error = ENOSPC;
+	require(!artifact_binds_reset(-1) && writes.empty() &&
+			artifact_binds.at(600).owner_pid == first_soul.owner_pid &&
+			artifact_binds.at(600).timer == first_soul.timer &&
+			artifact_binds.at(602).owner_pid == second_soul.owner_pid &&
+			artifact_binds.at(602).timer == second_soul.timer &&
+			artifact_save_pulse(false) == 0,
+		"refused all-souls batch changed live bindings");
+	admission_error = 0;
+	artifact_save_pulse(true);
+	require(writes.empty(), "refused all-souls batch became partial retries");
 	require(artifact_binds_reset(-1) && writes.size() == 1 && artifact_save_pulse(false) == 2,
 		"flat all-souls reset did not share one captured batch/receipt");
 	owner_pid = 55;
