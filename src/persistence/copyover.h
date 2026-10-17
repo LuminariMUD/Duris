@@ -9,6 +9,7 @@
 #include "core/structs.h" // for P_char, P_desc, etc
 #include "world/transport.h"
 #include <cstddef>
+#include <array>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -17,7 +18,7 @@
 const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
-#define COPYOVER_VERSION 16 // shopkeeper identity + telemetry; reads versions 12-15 too
+#define COPYOVER_VERSION 17 // full NPC item trees and equipment UIDs; reads versions 12-16 too
 
 // copyover file header
 struct copyover_header
@@ -137,14 +138,15 @@ struct copyover_obj_content
 	int vnum;
 };
 
-// Historical NPC vnums request fresh reconstruction; their file UID field was
-// never trustworthy identity evidence. Ground handoff trees carry actual UIDs.
+// Versions before 17 request NPC item reconstruction. Version 17 references
+// complete item trees by UID; older inventory UID bytes are never authority.
 struct copyover_mob_record
 {
 	copyover_mob mob = {};
 	std::vector<copyover_affect> affects;
 	std::vector<copyover_obj_content> inventory;
 	std::string generated;
+	std::array<uint64_t, 43> equipment_uids = {};
 };
 struct copyover_record_span
 {

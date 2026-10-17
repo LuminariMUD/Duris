@@ -218,6 +218,9 @@ unsigned int artifact_population_read_copyover(const copyover_boot_snapshot &sna
 				return E2BIG;
 			staged.mobs.push_back({ mob.vnum, mob.idnum, mob.room, mob.birthplace,
 						mob.shopkeeper_shop_id });
+			// Modern NPC roots are full qualified trees in the object section.
+			if (snapshot.header.version >= 17)
+				continue;
 			auto reconstruction = [&](int vnum)
 			{
 				if (vnum <= 0)

@@ -53,7 +53,9 @@
 #include "telemetry/telemetry_runtime.h"
 #include <new>
 #include <memory>
+#include <map>
 #include <unordered_set>
+#include <unordered_map>
 #include <type_traits>
 #include <vector>
 
@@ -94,7 +96,7 @@ static size_t copyover_mob_bytes_for_version(int version)
 {
 	if (version == 12)
 		return offsetof(copyover_mob, transport);
-	if (version < COPYOVER_VERSION)
+	if (version < 16)
 		return offsetof(copyover_mob, shopkeeper_shop_id);
 	return sizeof(copyover_mob);
 }
@@ -538,10 +540,16 @@ static int write_mob_entry(FILE *fp, P_char mob)
 static bool write_generated_npc_state(FILE *fp, P_char mob)
 {
 	std::string generated, extension;
-	return generated_npc_capture(mob, &generated) &&
-	       generated_npc_extension_encode(mob_index[GET_RNUM(mob)].virtual_number, generated,
-					      &extension) &&
-	       fwrite(extension.data(), extension.size(), 1, fp) == 1;
+	if (!generated_npc_capture(mob, &generated) ||
+	    !generated_npc_extension_encode(mob_index[GET_RNUM(mob)].virtual_number, generated,
+					    &extension) ||
+	    fwrite(extension.data(), extension.size(), 1, fp) != 1)
+		return false;
+	std::array<uint64_t, 43> equipment = {};
+	for (int slot = 0; slot < MAX_WEAR; ++slot)
+		if (mob->equipment[slot])
+			equipment[slot] = mob->equipment[slot]->obj_uid;
+	return fwrite(equipment.data(), sizeof(equipment), 1, fp) == 1;
 }
 
 bool copyover_decode_mob(const char *data, size_t size, int version, copyover_mob_record *record,
@@ -603,6 +611,22 @@ bool copyover_decode_mob(const char *data, size_t size, int version, copyover_mo
 				return false;
 			offset += extension;
 		}
+		if (version >= 17)
+		{
+			if (sizeof(staged.equipment_uids) > size - offset)
+				return false;
+			memcpy(staged.equipment_uids.data(), data + offset,
+			       sizeof(staged.equipment_uids));
+			offset += sizeof(staged.equipment_uids);
+			for (size_t slot = 0; slot < staged.equipment_uids.size(); ++slot)
+				if ((staged.mob.equipment_vnums[slot] > 0) !=
+				    (staged.equipment_uids[slot] != 0))
+					return false;
+			for (const auto &item : staged.inventory)
+				if (item.vnum <= 0 || !item.obj_uid)
+					return false;
+		}
+
 		*record = std::move(staged);
 		*consumed = offset;
 		return true;
@@ -662,6 +686,7 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 			return false;
 		offset = position;
 	}
+	std::map<uint64_t, std::pair<int, int>> npc_roots;
 	snapshot->mobs.reserve(header.num_mobs);
 	for (int index = 0; index < header.num_mobs; ++index)
 	{
@@ -671,6 +696,20 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 					 snapshot->bytes.size() - offset, header.version, &mob,
 					 &consumed))
 			return false;
+		if (header.version >= 17)
+		{
+			const auto retain = [&](uint64_t uid, int vnum)
+			{ return npc_roots.emplace(uid, std::pair{ vnum, mob.mob.room }).second; };
+			for (size_t slot = 0; slot < mob.equipment_uids.size(); ++slot)
+				if (mob.equipment_uids[slot] &&
+				    !retain(mob.equipment_uids[slot],
+					    mob.mob.equipment_vnums[slot]))
+					return false;
+			for (const auto &item : mob.inventory)
+				if (!retain(item.obj_uid, item.vnum))
+					return false;
+		}
+
 		snapshot->mobs.push_back({ offset, consumed });
 		offset += consumed;
 	}
@@ -688,6 +727,15 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 		    !world_recovery_read_copyover_object_record(snapshot->bytes.data() + offset,
 								size, &tree))
 			return false;
+		const auto npc_root = npc_roots.find(tree.items.front().item_uid);
+		if (npc_root != npc_roots.end())
+		{
+			if (npc_root->second !=
+			    std::pair{ tree.items.front().vnum, tree.record.room_vnum })
+				return false;
+			npc_roots.erase(npc_root);
+		}
+
 		for (const auto &item : tree.items)
 			if (!seen.insert(item.item_uid).second)
 				return false;
@@ -698,7 +746,7 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 	    (snapshot->bytes.size() - offset) / sizeof(copyover_room))
 		return false;
 	offset += static_cast<size_t>(header.num_rooms) * sizeof(copyover_room);
-	return offset == snapshot->bytes.size();
+	return npc_roots.empty() && offset == snapshot->bytes.size();
 }
 } // namespace
 
@@ -861,6 +909,7 @@ static int write_mob_inventory(FILE *fp, P_char mob)
 	for (obj = mob->carrying; obj; obj = obj->next_content)
 	{
 		entry.vnum = OBJ_VNUM(obj);
+		entry.obj_uid = obj->obj_uid;
 		if (fwrite(&entry, sizeof(entry), 1, fp) != 1)
 		{
 			return 0;
@@ -881,9 +930,36 @@ static int write_room_door(FILE *fp, int room_rnum, int dir)
 	return fwrite(&entry, sizeof(entry), 1, fp) == 1;
 }
 
+static bool copyover_world_mob(P_char mob)
+{
+	return mob && IS_NPC(mob) && mob->only.npc && mob->in_room >= 0 &&
+	       mob->in_room <= top_of_world && !GET_MASTER(mob) &&
+	       !mob->only.npc->summoned_instance && !copyover_training_dummy_is(mob);
+}
+
+static int copyover_root_room(P_obj object)
+{
+	if (OBJ_ROOM(object))
+	{
+		const int vnum = OBJ_VNUM(object);
+		return object->loc.room >= 0 && object->loc.room <= top_of_world &&
+				       vnum != VOBJ_PANEL && vnum != VOBJ_ALL_SHIPS &&
+				       vnum != VOBJ_CARGO_CRATE && !IS_SHIP_ROOM(object->loc.room) ?
+			       object->loc.room :
+			       -1;
+	}
+	P_char owner = OBJ_WORN(object)	   ? object->loc.wearing :
+		       OBJ_CARRIED(object) ? object->loc.carrying :
+					     nullptr;
+	return copyover_world_mob(owner) ? owner->in_room : -1;
+}
+
 static int write_obj_entry(FILE *fp, P_obj obj, std::vector<char> &buffer)
 {
-	const int size = copyover_write_obj_to_buffer(obj, buffer.data(), buffer.size());
+	const int room = copyover_root_room(obj);
+	const int size = room < 0 ? -1 :
+				    world_recovery_write_copyover_object_to_buffer(
+					    obj, world[room].number, buffer.data(), buffer.size());
 	if (size <= 0)
 		return 0;
 	const uint32_t record_size = size;
@@ -1004,8 +1080,7 @@ static void count_copyover_items(int *num_descs, int *num_mobs, int *num_objs, i
 	// ordinary attackable NPCs after copyover.
 	for (ch = character_list; ch; ch = ch->next)
 	{
-		if (IS_NPC(ch) && ch->in_room >= 0 && !GET_MASTER(ch) &&
-		    !ch->only.npc->summoned_instance && !copyover_training_dummy_is(ch))
+		if (copyover_world_mob(ch))
 		{
 			(*num_mobs)++;
 		}
@@ -1015,14 +1090,8 @@ static void count_copyover_items(int *num_descs, int *num_mobs, int *num_objs, i
 	// also skip objects in ship rooms (dynamic vnums 60000-64999)
 	for (obj = object_list; obj; obj = obj->next)
 	{
-		if (OBJ_ROOM(obj))
+		if (copyover_root_room(obj) >= 0)
 		{
-			int vnum = OBJ_VNUM(obj);
-			if (vnum == VOBJ_PANEL || vnum == VOBJ_ALL_SHIPS ||
-			    vnum == VOBJ_CARGO_CRATE)
-				continue;
-			if (IS_SHIP_ROOM(obj->loc.room))
-				continue;
 			(*num_objs)++;
 		}
 	}
@@ -1315,8 +1384,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// Training dummies are recreated by training_dummy_bootstrap() during boot.
 	for (ch = character_list; ch; ch = ch->next)
 	{
-		if (IS_NPC(ch) && ch->in_room >= 0 && !GET_MASTER(ch) &&
-		    !ch->only.npc->summoned_instance && !copyover_training_dummy_is(ch))
+		if (copyover_world_mob(ch))
 		{
 			if (!write_mob_entry(fp, ch) || !write_mob_affects(fp, ch) ||
 			    !write_mob_inventory(fp, ch) || !write_generated_npc_state(fp, ch))
@@ -1337,14 +1405,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// also skip objects in ship rooms (dynamic vnums 60000-64999)
 	for (obj = object_list; obj; obj = obj->next)
 	{
-		if (OBJ_ROOM(obj))
+		if (copyover_root_room(obj) >= 0)
 		{
-			int vnum = OBJ_VNUM(obj);
-			if (vnum == VOBJ_PANEL || vnum == VOBJ_ALL_SHIPS ||
-			    vnum == VOBJ_CARGO_CRATE)
-				continue;
-			if (IS_SHIP_ROOM(obj->loc.room))
-				continue;
 			if (!write_obj_entry(fp, obj, object_buffer))
 			{
 				logit(LOG_STATUS, "copyover: failed to write object entry vnum %d",
@@ -1627,6 +1689,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	int i, rnum, save_room;
 	int success = 0;
 	std::vector<telemetry_copyover_entry> telemetry_entries;
+
+	std::vector<std::pair<P_char, copyover_mob_record>> npc_items;
+	std::unordered_map<uint64_t, P_obj> npc_roots;
 
 	copyover_in_progress = 1;
 
@@ -1919,33 +1984,37 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 			affect_to_char(mob, &af);
 		}
 
-		// restore equipment
-		for (int w = 0; w < MAX_WEAR; w++)
+		if (header.version < 17)
 		{
-			if (mob_entry.equipment_vnums[w] > 0)
+			// restore equipment
+			for (int w = 0; w < MAX_WEAR; w++)
 			{
-				P_obj obj = read_object_for_creation(mob_entry.equipment_vnums[w],
-								     VIRTUAL);
-				if (!obj && errno == ENOMEM)
-					goto copyover_recover_fail;
-				if (obj)
+				if (mob_entry.equipment_vnums[w] > 0)
 				{
-					equip_char(mob, obj, w, 0);
+					P_obj obj = read_object_for_creation(
+						mob_entry.equipment_vnums[w], VIRTUAL);
+					if (!obj && errno == ENOMEM)
+						goto copyover_recover_fail;
+					if (obj)
+					{
+						equip_char(mob, obj, w, 0);
+					}
 				}
 			}
-		}
 
-		// restore carried items
-		for (size_t c = 0; c < num_inv; c++)
-		{
-			if (inv_entries[c].vnum > 0)
+			// restore carried items
+			for (size_t c = 0; c < num_inv; c++)
 			{
-				P_obj obj = read_object_for_creation(inv_entries[c].vnum, VIRTUAL);
-				if (!obj && errno == ENOMEM)
-					goto copyover_recover_fail;
-				if (obj)
+				if (inv_entries[c].vnum > 0)
 				{
-					obj_to_char(obj, mob);
+					P_obj obj = read_object_for_creation(inv_entries[c].vnum,
+									     VIRTUAL);
+					if (!obj && errno == ENOMEM)
+						goto copyover_recover_fail;
+					if (obj)
+					{
+						obj_to_char(obj, mob);
+					}
 				}
 			}
 		}
@@ -1971,6 +2040,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 					mob_entry.fighting_name,
 					sizeof(mob->specials.copyover_fighting_name));
 		}
+		if (header.version >= 17)
+			npc_items.emplace_back(mob, std::move(decoded));
 	}
 
 	// Version 12 stores bounded trees and their live custody handoff.
@@ -1982,6 +2053,51 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 			      i + 1, header.num_objects);
 			goto copyover_recover_fail;
 		}
+
+	for (P_obj object = object_list; object; object = object->next)
+		if (OBJ_ROOM(object))
+			npc_roots.emplace(object->obj_uid, object);
+
+	for (const auto &[mob, saved] : npc_items)
+	{
+		const auto attach = [&](uint64_t uid, int vnum, int slot)
+		{
+			const auto found = npc_roots.find(uid);
+			P_obj object = found == npc_roots.end() ? nullptr : found->second;
+			// The pinned reader already matched this root to the saved NPC room.
+			// char_to_room may legitimately relocate the restored NPC.
+			if (!object || OBJ_VNUM(object) != vnum || !OBJ_ROOM(object))
+			{
+				logit(LOG_STATUS,
+				      "copyover_recover: NPC item source mismatch uid=%llu vnum=%d npc=%d expected_room=%d actual_room=%d",
+				      (unsigned long long)uid, vnum, GET_VNUM(mob), mob->in_room,
+				      object && OBJ_ROOM(object) ? object->loc.room : -1);
+				return false;
+			}
+			obj_from_room(object);
+			if (slot >= 0)
+				equip_char(mob, object, slot, 9);
+			else
+				obj_to_char_at_end(object, mob);
+			const bool positioned =
+				slot >= 0 ? (OBJ_WORN(object) && object->loc.wearing == mob &&
+					     mob->equipment[slot] == object) :
+					    (OBJ_CARRIED(object) && object->loc.carrying == mob);
+			if (!positioned)
+				logit(LOG_STATUS,
+				      "copyover_recover: NPC item placement refused uid=%llu vnum=%d npc=%d slot=%d",
+				      (unsigned long long)uid, vnum, GET_VNUM(mob), slot);
+			return positioned;
+		};
+		for (size_t slot = 0; slot < saved.equipment_uids.size(); ++slot)
+			if (saved.equipment_uids[slot] &&
+			    !attach(saved.equipment_uids[slot], saved.mob.equipment_vnums[slot],
+				    slot))
+				goto copyover_recover_fail;
+		for (const auto &item : saved.inventory)
+			if (!attach(item.obj_uid, item.vnum, -1))
+				goto copyover_recover_fail;
+	}
 
 	// restore door states
 	for (i = 0; i < header.num_rooms; i++)

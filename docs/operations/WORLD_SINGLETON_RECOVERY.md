@@ -33,7 +33,10 @@ multiple occupied dragons, one flight survives and extra passengers are landed
 at that service's origin before their extra dragon is removed. Carried and worn
 items on retired dragons are transferred to the survivor.
 
-Current file copyover version 16 accepts versions 12 through 16. Version 13
+Current file copyover version 17 accepts versions 12 through 17. Version 17
+preserves complete NPC item trees and their stable root UIDs, including worn and
+nested artifacts; native restore attaches those qualified roots to the restored
+NPC even when transport rules relocate it. Version 13
 introduced the transport endpoints and rider state; version 12 flights lack that
 state and return home. Current Redis world generations use schema 13, while the
 NPC codec accepts the original record and its bounded optional `TRN1` transport

@@ -28,7 +28,7 @@ ARTIFACT = 900000
 SWAP_LIVE, SWAP_OFFLINE, SWAP_CRUMBLE = ARTIFACT + 1, ARTIFACT + 2, ARTIFACT + 3
 
 
-CASES = ('standard', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
+CASES = ('standard', 'npc', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
 
 
 def run(binary, case):
@@ -386,7 +386,7 @@ def run(binary, case):
                 evidence['cast_transcript'] = bytes(player.transcript[cast_start:]).decode(errors='replace')
                 assert evidence['cast_transcript'].count('Raoul convulses and dies') == 3
                 assert evidence['cast_transcript'].count('sense of satisfaction') == 3
-                if case != 'standard':
+                if case not in ('standard', 'npc'):
                     evidence['before_crash'] = held
                     stopped_at = time.monotonic()
                     stop(crash=case != 'shutdown')
@@ -461,6 +461,11 @@ def run(binary, case):
                 dropped = command(player, 'drop stone')
                 assert 'You drop' in dropped, dropped
                 settle(lambda: sql(f'SELECT loc_type,location FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '4\t1', 'ground artifact location did not commit')
+                if case == 'npc':
+                    command(god, 'load mob 11')
+                    command(god, 'force raoul get stone')
+                    command(god, 'force raoul wear stone')
+                    settle(lambda: sql(f'SELECT location FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '11', 'NPC artifact placement did not commit')
                 ground_state = saved_state()
                 assert ground_state['artifact'].split('\t')[-1] == after['artifact'].split('\t')[-1]
                 soul_before = sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
@@ -474,6 +479,10 @@ def run(binary, case):
                 assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
                 recovered_ground = command(god, f'stat obj {ARTIFACT}')
                 assert re.search(r'Number in game\s*:\s*1\b', recovered_ground), recovered_ground
+                if case == 'npc':
+                    command(god, 'force raoul remove stone')
+                    command(god, 'force raoul drop stone')
+                    evidence['npc_copyover_preserved_uid_timer_soul'] = True
                 command(player, 'get stone')
                 command(player, 'wear stone')
                 settle(lambda: saved_state() == after, 'ground pickup changed artifact timer/reward history')

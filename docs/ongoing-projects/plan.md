@@ -16,6 +16,23 @@ preservation, alias isolation and missing-soul retirement controls. These pass,
 as do SQL snapshot, flat artifact repository/runtime, reward, recovery pipeline/
 transaction checks and native build (`bin/analysis/qualified-registration-*.log`).
 The final combined NPC gameplay journey and flat build remain next.
+## Active review repair — preserve native NPC artifact identity
+
+Branch `branch/issue-67-native-npc-artifacts`, based on #167. Outcome: native
+copyover preserves carried, worn and nested NPC item UIDs/state and restores
+canonical artifacts through the existing qualified tree path. Version 17 adds
+worn-root UID references; inventory uses its existing UID field. Full NPC trees
+reuse the current object-record section and custody codec. Old versions remain
+readable and their UID-less NPC hints remain unqualified reconstruction.
+Files: copyover header/service, recovery projection, existing native fixtures and
+this plan. Proof required: actual save/exec/recover with NPC roots, canonical
+identity/metadata and malformed root references; compatibility, builds, gameplay.
+No Redis format change or new materializer/identity store is needed. Actual
+save/exec/recover covers carried/worn/nested UIDs and relocated NPCs; format
+12–17, malformed root references, telemetry, save guards and projection checks
+pass. The real disposable MariaDB NPC journey preserves the canonical UID, timer
+and soul through full-world copyover, then completes restart and both swaps. SQL
+and flat native builds pass; logs: `bin/analysis/npc-copyover-*.log`.
 
 
 ## Fresh review inventory — return to #139

@@ -77,7 +77,8 @@ static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count 
 	memcpy(header.magic, COPYOVER_MAGIC, 4);
 	header.version = version;
 	header.timestamp = time(nullptr);
-	header.num_mobs = header.num_objects = 1;
+	header.num_mobs = 1;
+	header.num_objects = version >= 17 ? inventory_count + 2 : 1;
 	FILE *file = tmpfile();
 	assert(file);
 	assert(fwrite(&header, sizeof(header), 1, file) == 1);
@@ -156,6 +157,25 @@ static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count 
 		assert(generated_npc_extension_encode(2000, "", &extension));
 		assert(fwrite(extension.data(), extension.size(), 1, file) == 1);
 	}
+	if (version >= 17)
+	{
+		std::array<uint64_t, 43> equipment = {};
+		equipment[3] = 9999;
+		assert(fwrite(equipment.data(), sizeof(equipment), 1, file) == 1);
+		for (uint64_t uid = 9999; uid < 10000 + static_cast<uint64_t>(inventory_count);
+		     ++uid)
+		{
+			world_recovery_object_record record = { 100, 1 };
+			world_recovery_item_snapshot item = {};
+			item.item_uid = item.root_item_uid = uid;
+			item.vnum = 900;
+			const uint32_t bytes = sizeof(record) + sizeof(item);
+			assert(fwrite(&bytes, sizeof(bytes), 1, file) == 1 &&
+			       fwrite(&record, sizeof(record), 1, file) == 1 &&
+			       fwrite(&item, sizeof(item), 1, file) == 1);
+		}
+	}
+
 	world_recovery_object_record root = { 100, 2 };
 	world_recovery_item_snapshot nodes[2] = {};
 	nodes[0].item_uid = nodes[0].root_item_uid = 7777;
@@ -203,7 +223,7 @@ int main(int argc, char **argv)
 			write_bytes(path, bytes);
 			assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready);
 			assert(snapshot.header.version == version && snapshot.mobs.size() == 1 &&
-			       snapshot.objects.size() == 1);
+			       snapshot.objects.size() == (version >= 17 ? 302 : 1));
 			copyover_mob_record mob;
 			size_t used = 0;
 			const auto span = snapshot.mobs[0];
@@ -235,8 +255,12 @@ int main(int argc, char **argv)
 				copyover_carried_item expected;
 				memset(&expected, 0, sizeof(expected));
 				expected.vnum = 900;
-				for (const auto &item : mob.inventory)
-					assert(!memcmp(&item, &expected, sizeof(expected)));
+				for (size_t index = 0; index < mob.inventory.size(); ++index)
+				{
+					expected.obj_uid = 10000 + index;
+					assert(!memcmp(&mob.inventory[index], &expected,
+						       sizeof(expected)));
+				}
 			}
 		}
 		const auto *retained = snapshot.bytes.data();
@@ -249,6 +273,21 @@ int main(int argc, char **argv)
 				       copyover_boot_result::failed &&
 			       snapshot.bytes.data() == retained);
 		}
+		for (uint64_t invalid_uid :
+		     { uint64_t{ 0 }, uint64_t{ 10000 }, uint64_t{ 999999 } })
+		{
+			auto invalid = valid;
+			const size_t equipment_offset = snapshot.mobs[0].offset +
+							snapshot.mobs[0].size -
+							sizeof(std::array<uint64_t, 43>);
+			memcpy(invalid.data() + equipment_offset + 3 * sizeof(uint64_t),
+			       &invalid_uid, sizeof(invalid_uid));
+			write_bytes(path, invalid);
+			assert(copyover_read_file(path, &snapshot) ==
+				       copyover_boot_result::failed &&
+			       snapshot.bytes.data() == retained);
+		}
+
 		auto malformed = valid;
 		copyover_header header = {};
 		memcpy(&header, malformed.data(), sizeof(header));
@@ -271,7 +310,7 @@ int main(int argc, char **argv)
 		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
 		malformed = valid;
 		memcpy(&header, malformed.data(), sizeof(header));
-		header.num_objects = 2;
+		header.num_objects += 1;
 		memcpy(malformed.data(), &header, sizeof(header));
 		const auto object = snapshot.objects[0];
 		const uint32_t frame_size = object.size;
@@ -283,7 +322,8 @@ int main(int argc, char **argv)
 		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed &&
 		       snapshot.bytes.data() == retained);
 		malformed = valid;
-		const auto state_offset = object.offset + object.size -
+		const auto &custodied = snapshot.objects.back();
+		const auto state_offset = custodied.offset + custodied.size -
 					  sizeof(item_ownership_runtime_entry) +
 					  offsetof(item_ownership_runtime_entry, state);
 		malformed[state_offset] = static_cast<char>(item_custody_state::destroyed);

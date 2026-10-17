@@ -50,7 +50,7 @@ int main() {
         assert(copyover_has_durable_shopkeepers() == (version>=13));
     }
     assert(remove(COPYOVER_FILE)==0);
-    puts("copyover versions 12-16: record widths and durable shopkeeper provenance PASS");
+    puts("copyover versions 12-17: record widths and durable shopkeeper provenance PASS");
 }
 '''
 with tempfile.TemporaryDirectory(prefix="duris-shop-copyover-") as tmp:
