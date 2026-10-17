@@ -93,8 +93,7 @@ void discard_staged(std::vector<flatfile_materialized_shopkeeper> *staged,
 }
 
 flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std::string &root,
-								       std::string *error,
-								       bool restore_bodies)
+								       std::string *error)
 {
 	std::vector<flatfile_shopkeeper_record> records;
 	const auto listed = flatfile_shopkeeper_list(root, &records, error);
@@ -110,8 +109,7 @@ flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std
 	try
 	{
 		shop_ids.reserve(records.size());
-		if (restore_bodies)
-			staged.reserve(records.size());
+		staged.reserve(records.size());
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -133,8 +131,6 @@ flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std
 			discard_staged(&staged, records);
 			return flatfile_shopkeeper_restore_result::io_error;
 		}
-		if (!restore_bodies)
-			continue;
 		flatfile_materialized_shopkeeper materialized = {};
 		if (flatfile_shopkeeper_materialize(root, record, &materialized, nullptr, error) !=
 		    flatfile_shopkeeper_materialize_result::ok)
@@ -144,11 +140,6 @@ flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std
 		}
 		staged.push_back(materialized);
 	}
-
-	if (!restore_bodies)
-		return shop_trade_runtime_replace_revisions(records) ?
-			       flatfile_shopkeeper_restore_result::ok :
-			       flatfile_shopkeeper_restore_result::io_error;
 
 	for (size_t index = 0; index < staged.size(); ++index)
 		if (!char_to_room(staged[index].character, staged[index].room_rnum, 0))

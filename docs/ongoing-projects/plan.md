@@ -1,5 +1,23 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active ablation — reuse authoritative restored shop stock
+
+Branch `branch/issue-67-authoritative-shop-reuse`. The fixed native item record
+omits properties such as generated keys and dynamic affects that the durable
+shop snapshot retains. Reuse pre-restored UID/vnum/shop-matching catalog bodies
+and leave them with the catalog keeper for singleton reconciliation. This restores
+the existing full catalog/revision boot path and removes the metadata-only mode.
+Normal NPC roots remain detached. No new format or cache is needed. Required
+proof: no second stock body, preserved catalog-only properties, foreign-shop
+refusal, and legacy/native backend selection plus existing recovery controls.
+The real save/exec/recover test now passes with carried, worn and nested catalog
+stock, retained generated keys, exactly one body per UID, and foreign-shop refusal.
+The actual catalog coordinator plus trade revision map, singleton lifecycle,
+shop population and SQL/native boot-selection controls pass. SQL build passes;
+flat build is running. Evidence: `bin/analysis/shop-reuse-*.log`.
+This also removes the obsolete guard behind the #181 population-test finding.
+
+
 ## Active follow-up — committed creation-grant repair (#178)
 
 Branch `branch/issue-67-committed-creation-repair`. Committed creation repair needs

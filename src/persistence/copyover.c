@@ -954,6 +954,16 @@ static int copyover_root_room(P_obj object)
 	return copyover_world_mob(owner) ? owner->in_room : -1;
 }
 
+using copyover_npc_roots = std::unordered_map<uint64_t, std::pair<int, P_obj>>;
+
+static bool copyover_shop_stock(P_obj object, int shop)
+{
+	P_char owner = OBJ_CARRIED(object) ? object->loc.carrying :
+		       OBJ_WORN(object)	   ? object->loc.wearing :
+					     nullptr;
+	return shop >= 0 && owner && singleton_shop_id(owner) == shop;
+}
+
 static int write_obj_entry(FILE *fp, P_obj obj, std::vector<char> &buffer)
 {
 	const int room = copyover_root_room(obj);
@@ -967,7 +977,7 @@ static int write_obj_entry(FILE *fp, P_obj obj, std::vector<char> &buffer)
 	       fwrite(buffer.data(), record_size, 1, fp) == 1;
 }
 
-static P_obj read_obj_entry(FILE *fp, std::unordered_map<uint64_t, P_obj> *npc_roots = nullptr)
+static P_obj read_obj_entry(FILE *fp, copyover_npc_roots *npc_roots = nullptr)
 {
 	uint32_t record_size = 0;
 	if (fread(&record_size, sizeof(record_size), 1, fp) != 1 ||
@@ -992,10 +1002,29 @@ static P_obj read_obj_entry(FILE *fp, std::unordered_map<uint64_t, P_obj> *npc_r
 		       sizeof(root_uid));
 	const bool detached = npc_roots && npc_roots->count(root_uid);
 	size_t consumed = 0;
-	P_obj object =
-		copyover_restore_obj_from_buffer(buffer.data(), buffer.size(), &consumed, detached);
+	P_obj object = nullptr;
+	if (detached && npc_roots->at(root_uid).first >= 0)
+	{
+		world_recovery_copyover_tree tree;
+		if (!world_recovery_read_copyover_object_record(buffer.data(), buffer.size(),
+								&tree))
+			return nullptr;
+		for (P_obj existing = object_list; existing; existing = existing->next)
+			if (existing->obj_uid == root_uid && existing->R_num >= 0 &&
+			    OBJ_VNUM(existing) == tree.items.front().vnum &&
+			    copyover_shop_stock(existing, npc_roots->at(root_uid).first))
+			{
+				// The durable catalog retains properties outside the native record.
+				object = existing;
+				consumed = buffer.size();
+				break;
+			}
+	}
+	if (!object)
+		object = copyover_restore_obj_from_buffer(buffer.data(), buffer.size(), &consumed,
+							  detached);
 	if (object && detached)
-		npc_roots->at(root_uid) = object;
+		npc_roots->at(root_uid).second = object;
 	if (!object || consumed != buffer.size())
 	{
 		world_recovery_object_record record = {};
@@ -1697,7 +1726,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	std::vector<telemetry_copyover_entry> telemetry_entries;
 
 	std::vector<std::pair<P_char, copyover_mob_record>> npc_items;
-	std::unordered_map<uint64_t, P_obj> npc_roots;
+	copyover_npc_roots npc_roots;
 
 	copyover_in_progress = 1;
 
@@ -2052,12 +2081,12 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 	for (const auto &[mob, saved] : npc_items)
 	{
-		(void)mob;
+		const int shop = singleton_shop_id(mob);
 		for (const auto uid : saved.equipment_uids)
 			if (uid)
-				npc_roots.emplace(uid, nullptr);
+				npc_roots.emplace(uid, std::pair<int, P_obj>{ shop, nullptr });
 		for (const auto &item : saved.inventory)
-			npc_roots.emplace(item.obj_uid, nullptr);
+			npc_roots.emplace(item.obj_uid, std::pair<int, P_obj>{ shop, nullptr });
 	}
 	// Version 12 stores bounded trees and their live custody handoff.
 	for (i = 0; i < header.num_objects; ++i)
@@ -2074,7 +2103,10 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		const auto attach = [&](uint64_t uid, int vnum, int slot)
 		{
 			const auto found = npc_roots.find(uid);
-			P_obj object = found == npc_roots.end() ? nullptr : found->second;
+			P_obj object = found == npc_roots.end() ? nullptr : found->second.second;
+			if (object && OBJ_VNUM(object) == vnum &&
+			    copyover_shop_stock(object, found->second.first))
+				return true; // Singleton reconciliation retains the catalog keeper.
 			// The pinned reader already matched this root to the saved NPC room.
 			// char_to_room may legitimately relocate the restored NPC.
 			if (!object || OBJ_VNUM(object) != vnum || !OBJ_NOWHERE(object))

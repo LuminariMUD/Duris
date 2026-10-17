@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Production copyover save -> exec -> recover with the real runtime custody ledger.
 
-The fixture has no clients or NPCs. Worker drains are idle; unrelated player,
-network and NPC services must not be called. No database or running game is used.
+The fixture has no clients. Worker drains are idle; unrelated player and
+network services must not be called. NPC cases cover generated mobs and shop stock.
+No database or running game is used.
 """
 import ast
 import os
@@ -50,6 +51,9 @@ support = support.replace("void obj_to_room(P_obj object, int room)\n{", "void o
 
 HARNESS = r'''
 P_obj read_object_for_creation(int, int) { std::abort(); }
+bool npc_case() { const char *s=getenv("COPYOVER_TEST_CASE"); return !strcmp(s,"npc") || !strcmp(s,"shop") || !strcmp(s,"foreign-shop"); }
+bool shop_case() { return npc_case() && strcmp(getenv("COPYOVER_TEST_CASE"),"npc"); }
+int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc->shopkeeper_shop_id : -1; }
 
 #include "persistence/locker_async.h"
 #include "persistence/maintenance_scheduler.h"
@@ -135,12 +139,14 @@ void account_read(P_desc, const char *, account_read_done) { std::abort(); }
 acct_entry *free_account(acct_entry *) { std::abort(); }
 static char_data npc_holder;
 static npc_only_data npc_holder_data;
-bool char_to_room(P_char mob, int room, int) { mob->in_room=!strcmp(getenv("COPYOVER_TEST_CASE"),"npc") ? 1 : room; return true; }
+static char_data catalog_keeper;
+static npc_only_data catalog_data;
+bool char_to_room(P_char mob, int room, int) { mob->in_room=npc_case() ? 1 : room; return true; }
 P_char read_mobile(int number, int mode) {
  assert((mode==REAL && number==0) || (mode==VIRTUAL && number==2000));
  npc_holder={}; npc_holder_data={}; npc_holder.only.npc=&npc_holder_data;
  npc_holder.specials.act=ACT_ISNPC; npc_holder_data.R_num=0; npc_holder_data.shopkeeper_shop_id=-1;
- npc_holder.player.name=const_cast<char *>("fixture NPC"); character_list=&npc_holder; return &npc_holder;
+ npc_holder.player.name=const_cast<char *>("fixture NPC"); npc_holder.next=character_list; character_list=&npc_holder; return &npc_holder;
 }
 int setup_pet(P_char, P_char, int, int) { std::abort(); }
 void add_follower(P_char, P_char) { std::abort(); }
@@ -159,7 +165,7 @@ P_obj find_live_object(P_obj expected,uint64_t uid) {
  return nullptr;
 }
 int bind_shopkeeper_calls = 0;
-void bind_shopkeeper(P_char, int) { ++bind_shopkeeper_calls; }
+void bind_shopkeeper(P_char mob, int shop) { ++bind_shopkeeper_calls; mob->only.npc->shopkeeper_shop_id=shop; }
 
 // Inject a concurrent publication at the actual kernel rename boundary.
 extern "C" int renameat2(int from_directory,const char *from,int to_directory,const char *to,
@@ -198,7 +204,7 @@ extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
     FILE *file = std::fopen(COPYOVER_FILE, "rb"); assert(file);
     copyover_header header = {};
     assert(std::fread(&header, sizeof(header), 1, file) == 1);
-    const bool npc=!strcmp(getenv("COPYOVER_TEST_CASE"),"npc");
+    const bool npc=npc_case();
     assert(header.version == COPYOVER_VERSION && header.num_objects == (npc ? 5 : 1));
     assert(!header.num_descriptors && header.num_mobs==(npc ? 1 : 0));
     std::fclose(file);
@@ -225,7 +231,7 @@ item_ownership_runtime_entry custody(uint64_t uid)
 int main(int argc, char **argv)
 {
     rooms[0].number = 100; rooms[1].number = 200;
-    object_indexes[0].virtual_number = 1000; mob_indexes[0].virtual_number=!strcmp(getenv("COPYOVER_TEST_CASE"),"npc") ? 1255 : 2000;
+    object_indexes[0].virtual_number = 1000; mob_indexes[0].virtual_number=npc_case() ? 1255 : 2000;
     if (argc == 1) {
         P_obj corpse = read_object(1000, VIRTUAL);
         P_obj bag = read_object(1000, VIRTUAL);
@@ -247,8 +253,9 @@ int main(int argc, char **argv)
         std::vector<char> buffer(WORLD_RECOVERY_MAX_RECORD_BYTES);
         assert(world_recovery_write_object_to_buffer(corpse, 100, buffer.data(), buffer.size()) == 0);
 
-        if(!strcmp(getenv("COPYOVER_TEST_CASE"),"npc")) {
+        if(npc_case()) {
             auto *mob=read_mobile(0,REAL); mob->in_room=0; mob->only.npc->idnum=42;
+            if(shop_case()) mob->only.npc->shopkeeper_shop_id=0;
             auto *carried=read_object(1000,VIRTUAL); carried->obj_uid=910; carried->extra_flags=ITEM_ARTIFACT;
             carried->value[0]=73; obj_to_char(carried,mob);
             auto *worn=read_object(1000,VIRTUAL); worn->obj_uid=911; worn->extra_flags=ITEM_ARTIFACT;
@@ -311,7 +318,7 @@ int main(int argc, char **argv)
     item_ownership_runtime_reset();
     assert(copyover_prepare_boot() == copyover_boot_result::ready);
     const auto *pinned = copyover_boot_evidence();
-    assert(pinned && pinned->objects.size() == (!strcmp(getenv("COPYOVER_TEST_CASE"),"npc") ? 5 : 1) && pinned->header.version == COPYOVER_VERSION);
+    assert(pinned && pinned->objects.size() == (npc_case() ? 5 : 1) && pinned->header.version == COPYOVER_VERSION);
     const std::string claimed = std::string(COPYOVER_FILE) + ".recovering";
     const std::string interrupted = claimed + ".consuming";
     assert(!mkdir(interrupted.c_str(),0700));
@@ -331,7 +338,30 @@ int main(int argc, char **argv)
     const bool newer_owner = !strcmp(scenario,"newer-owner");
     const bool mixed_owner = !strcmp(scenario,"mixed-owner");
     if (newer_owner) assert(item_ownership_runtime_hydrate_owner(custody(900).owner, 99));
+    if(shop_case()) {
+        catalog_keeper.only.npc=&catalog_data; catalog_keeper.specials.act=ACT_ISNPC;
+        catalog_data.shopkeeper_shop_id=!strcmp(scenario,"foreign-shop") ? 1 : 0;
+        catalog_keeper.in_room=0; character_list=&catalog_keeper;
+        P_obj roots[5]={};
+        for(int i=0;i<5;++i) { roots[i]=read_object(1000,VIRTUAL); roots[i]->obj_uid=910+i; roots[i]->g_key=700+i; }
+        roots[0]->extra_flags=ITEM_ARTIFACT; roots[0]->value[0]=73;
+        roots[1]->extra_flags=ITEM_ARTIFACT; roots[1]->value[1]=74;
+        roots[2]->type=ITEM_CONTAINER; roots[3]->extra_flags=ITEM_ARTIFACT; roots[3]->value[2]=75;
+        roots[4]->type=ITEM_MONEY; roots[4]->value[3]=9;
+        obj_to_char(roots[0],&catalog_keeper); equip_char(&catalog_keeper,roots[1],3,9);
+        obj_to_char(roots[2],&catalog_keeper); obj_to_obj(roots[3],roots[2]); obj_to_char(roots[4],&catalog_keeper);
+    }
     int telnet = 0, tls = 0, websocket = 0;
+    if(!strcmp(scenario,"foreign-shop")) {
+        assert(copyover_recover(&telnet,&tls,&websocket)==0);
+        assert(catalog_keeper.carrying && catalog_keeper.equipment[3]);
+        assert(catalog_keeper.equipment[3]->obj_uid==911 && catalog_keeper.equipment[3]->g_key==701);
+        while(object_list) { P_obj root=object_list; while(OBJ_INSIDE(root)) root=root->loc.inside; extract_obj(root,FALSE); }
+        str_free(npc_holder.player.name); str_free(npc_holder.player.short_descr); str_free(npc_holder.player.long_descr);
+        item_ownership_runtime_reset();
+        puts("[PASS] foreign-shop UID reuse refuses without replacing catalog stock");
+        return 0;
+    }
     assert(copyover_recover(&telnet, &tls, &websocket) == 1);
     assert(telnet == -1 && tls == -1 && websocket == -1);
     assert(copyover_recover(&telnet, &tls, &websocket) == 0);
@@ -369,21 +399,31 @@ int main(int argc, char **argv)
         assert(restored.state == item_custody_state::active);
     }
 
-    if(!strcmp(scenario,"npc")) {
-        assert(character_list==&npc_holder && npc_holder.in_room==1 && npc_holder.equipment[3] && npc_holder.equipment[3]->obj_uid==911);
-        assert(npc_holder.equipment[3]->extra_flags & ITEM_ARTIFACT);
-        assert(npc_holder.equipment[3]->value[1]==74);
+    if(npc_case()) {
+        P_char inventory=shop_case() ? &catalog_keeper : &npc_holder;
+        if(shop_case()) {
+            assert(!npc_holder.carrying && !npc_holder.equipment[3]);
+            int count=0;
+            for(P_obj object=object_list;object;object=object->next) {
+                ++count;
+                if(object->obj_uid>=910 && object->obj_uid<=914) assert(object->g_key==long(object->obj_uid-210));
+            }
+            assert(count==8); // Five catalog items and three recovered corpse items.
+        }
+        assert(character_list==&npc_holder && npc_holder.in_room==1 && inventory->equipment[3] && inventory->equipment[3]->obj_uid==911);
+        assert(inventory->equipment[3]->extra_flags & ITEM_ARTIFACT);
+        assert(inventory->equipment[3]->value[1]==74);
         assert(GET_MAX_HIT(&npc_holder)==333 && GET_HIT(&npc_holder)==222 && GET_MAX_MANA(&npc_holder)==211 && GET_MANA(&npc_holder)==111 && GET_MAX_VITALITY(&npc_holder)==123 && GET_VITALITY(&npc_holder)==99);
         bool carried=false,nested=false,money=false;
-        for(auto *root=npc_holder.carrying;root;root=root->next_content) {
+        for(auto *root=inventory->carrying;root;root=root->next_content) {
             if(root->obj_uid==914) { money=true; assert(root->type==ITEM_MONEY && root->value[3]==9); }
             if(root->obj_uid==910) { carried=true; assert((root->extra_flags & ITEM_ARTIFACT) && root->value[0]==73); }
             if(root->obj_uid==912) { nested=true; assert(root->contains && root->contains->obj_uid==913 &&
                 (root->contains->extra_flags & ITEM_ARTIFACT) && root->contains->value[2]==75); }
         }
         assert(carried && nested && money);
-        extract_obj(npc_holder.equipment[3],FALSE); npc_holder.equipment[3]=nullptr;
-        while(npc_holder.carrying) { auto *root=npc_holder.carrying; npc_holder.carrying=root->next_content; extract_obj(root,FALSE); }
+        extract_obj(inventory->equipment[3],FALSE); inventory->equipment[3]=nullptr;
+        while(inventory->carrying) { auto *root=inventory->carrying; inventory->carrying=root->next_content; extract_obj(root,FALSE); }
         str_free(npc_holder.player.name); str_free(npc_holder.player.short_descr); str_free(npc_holder.player.long_descr);
         npc_holder.player.name=npc_holder.player.short_descr=npc_holder.player.long_descr=nullptr;
         character_list=nullptr;
@@ -391,7 +431,7 @@ int main(int argc, char **argv)
     extract_obj(corpse, FALSE);
     item_ownership_runtime_reset();
     assert(!object_list);
-    assert(bind_shopkeeper_calls == 0);
+    assert(bind_shopkeeper_calls == (shop_case() ? 1 : 0));
     std::puts("[PASS] production copyover save/exec/recover preserves corpse, generated loot and live custody without SQL");
 }
 '''
@@ -401,7 +441,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
     source = temp / "fixture.cpp"
     source.write_text(support + HARNESS)
     common = ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined",
-              "-fno-omit-frame-pointer", "-ffunction-sections", "-fdata-sections", "-Isrc", "-D__NO_MYSQL__"]
+              "-fno-omit-frame-pointer", "-fno-sanitize-recover=undefined", "-ffunction-sections", "-fdata-sections", "-Isrc", "-D__NO_MYSQL__"]
     subprocess.run(common + ["-Dexecl=fixture_execl", "-c", "src/persistence/copyover.c",
                             "-o", str(temp / "copyover.o")], cwd=ROOT, check=True)
     subprocess.run(common + [str(source), str(temp / "copyover.o"),
@@ -411,7 +451,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
+    for scenario in ("shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
         state = temp / scenario
         state.mkdir()
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
