@@ -2824,7 +2824,7 @@ void event_object_proc(P_char /*ch*/, P_char /*victim*/, P_obj obj, void * /*dat
 
 namespace
 {
-std::unordered_map<int, object_template> starter_object_templates;
+std::unordered_map<int, object_template> object_templates;
 
 std::string read_template_string(FILE *file, const char *shared = nullptr)
 {
@@ -3046,19 +3046,19 @@ object_template parse_object_template(int nr)
 
 bool cache_object_template(int vnum)
 {
-	if (starter_object_templates.count(vnum))
+	if (object_templates.count(vnum))
 		return true;
 	const int nr = real_object(vnum);
 	if (nr < 0)
 		return false;
-	starter_object_templates.emplace(vnum, parse_object_template(nr));
+	object_templates.emplace(vnum, parse_object_template(nr));
 	return true;
 }
 
 const object_template *find_object_template(int vnum)
 {
-	const auto found = starter_object_templates.find(vnum);
-	return found == starter_object_templates.end() ? nullptr : &found->second;
+	const auto found = object_templates.find(vnum);
+	return found == object_templates.end() ? nullptr : &found->second;
 }
 
 static void stage_artifact_population()
@@ -3073,9 +3073,12 @@ static void stage_artifact_population()
 		prototypes.reserve(static_cast<size_t>(top_of_objt) + 1);
 		for (int index = 0; index <= top_of_objt; ++index)
 		{
-			const auto prototype = parse_object_template(index);
-			prototypes.push_back(
-				{ obj_index[index].virtual_number, prototype.extra_flags });
+			auto prototype = parse_object_template(index);
+			const int vnum = obj_index[index].virtual_number;
+			prototypes.push_back({ vnum, prototype.extra_flags });
+			// Reports need prototype values, never a temporary gameplay object.
+			if (prototype.extra_flags & ITEM_ARTIFACT)
+				object_templates.try_emplace(vnum, std::move(prototype));
 		}
 		const auto &population = artifact_population_boot_evidence();
 		if (!artifacts_stage_population(population.items, prototypes, population.complete))

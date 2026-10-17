@@ -227,6 +227,14 @@ def run(binary, case):
                 identity_before = sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}')
                 assert identity_before.endswith('\t1') and int(identity_before.split('\t')[0]) > 0, identity_before
                 evidence['canonical_identity'] = identity_before
+                # Exercise actual async list/player reports after boot cached the private template.
+                for report in ('artifacts player ' + PLAYER, 'artifacts ioun'):
+                    god.send(report)
+                    god.expect(f'(#{ARTIFACT})', timeout=30)
+                report_population = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', report_population), report_population
+                assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before
+                evidence['reports_preserved_population'] = True
                 if case == 'pvp':
                     # Two synthetic mortal accounts may fight in this private fixture.
                     god.send('whitelist add Fixture 127.0.0.* isolated reward journey')

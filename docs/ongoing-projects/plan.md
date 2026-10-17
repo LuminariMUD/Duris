@@ -18,8 +18,21 @@ and projections are ready in [PR #147](https://github.com/LuminariMUD/Duris/pull
 The pure canonical classifier and atomic cache staging are implemented in PR #148.
 Boot source assembly, custody lookup, reap protection and early publication are
 implemented on `branch/issue-67-boot-population`. Recovery/delivery normalization,
-NPC reconstruction qualification and gameplay admission remain open.
-No operational repair started.
+Remaining saved-UID source/custody qualification, fresh producer families and
+lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
+implemented in PR #150. No operational repair started.
+
+Current inspection work: `branch/issue-67-artifact-report-inspection`, based on
+PR #151. Outcome: artifact lists/JSON/player reports read owned prototype values
+without constructing/extracting temporary gameplay objects. Non-goals: changing
+live saved-item admission or treating every offline load as inspection. Staff
+`load char` publishes the loaded character; maintenance may mutate a temporary
+owner. Files: existing boot prototype cache, artifact reports and existing native
+snapshot/flat fixtures. Proof: actual reports never call object construction,
+preserve output and skip missing/non-artifact prototypes; both backend builds.
+Ablation: reuse `find_object_template` and retain artifact templates during the
+already-required boot catalog parse; no purpose flag or inspection bypass needed
+for these read-only reports. Other saved-UID source/custody roles remain open.
 
 Current focused repair: [PR #151](https://github.com/LuminariMUD/Duris/pull/151),
 ready for review, `branch/issue-67-offline-load-cleanup`, based on PR #150. Abandoned asynchronous
@@ -1102,6 +1115,79 @@ inventory or reducing the required availability of proved-absent artifacts.
 Canonical admission, hydration rollback, retirement/reward guards and the full
 AR-01–AR-07 acceptance matrix remain open. No production read, migration,
 cleanup, repair, deployment, merge or release tag occurred.
+
+### Artifact report inspection without materialization — AR-03 prerequisite
+
+Branch: `branch/issue-67-artifact-report-inspection`, based on PR #151;
+publication pending. Outcome: SQL JSON/list and both backends' player/list reports
+read prototype labels/flags without creating a temporary physical object. Non-goals:
+source/owner qualification for saved payloads, canonical administrative mutations,
+or classifying all offline work as read-only. Files: existing template cache/boot
+catalog parse, artifact reports and their existing native/gameplay fixtures.
+
+The native JSON regression failed at `artifact JSON constructed a gameplay object`;
+the flat list regression failed at the equivalent constructor-count assertion.
+Retained logs: `bin/analysis/issue67/report-inspection-sql-before.log` and
+`report-inspection-flat-before.log`. These are real report bodies, not source-text
+assertions: a report entered `read_object`, which allocates a UID, publishes a live
+object/index count and arms constructor procedures before later extraction. None
+of those effects is needed to display a prototype name and artifact flag.
+
+Reuse the existing `object_template` cache and `find_object_template`. During the
+already-required pure boot catalog scan, retain artifact templates in that same
+cache; rename its previously starter-only map to reflect the shared use. No second
+parser, cache, purpose flag, trusted constructor bypass or runtime file lookup.
+Missing/non-artifact templates are skipped as before. JSON schema fields, list
+locations/timers/summary and asynchronous query/cache generation rules remain.
+Saved instance overrides are not selected as a report prototype.
+
+Changed report consumers: `arti_generate_json` (SQL cache/list), flat
+`list_artifacts_sql`, and SQL/flat `arti_player_sql`. Pure template inspection needs
+no artifact reservation or extraction callback. This does not cover the remaining
+raw template samples in bind maintenance and administrative clear/poof/swap/hunt/
+fixit; qualify their real mutation targets with AR-04 rather than granting a broad
+inspection exception. Legacy ground/NPC metadata reconstruction is also still open.
+
+Passed:
+
+- `python3 tests/async/test_artifact_guild_snapshots.py`: the actual JSON producer
+  preserves valid schema/name output, skips missing/ordinary prototypes and makes
+  zero object reads; existing artifact/guild snapshot, ACK, rollback and allocation
+  controls remain green under terminating UBSan. The fixture now links the real
+  existing cache-payload validator for this output contract.
+- `python3 tests/async/test_flatfile_artifact_repository.py`: actual flat list and
+  player report bodies use cached names with zero object reads/extractions; actual
+  repository/bind/gameplay controls remain green. Formatting helpers/custody-name
+  lookups are controlled test boundaries; the existing safe formatter is linked.
+- `python3 tests/async/test_newbie_kit_plan.py`: all 36,360 selections and 471
+  original table cells preserve starter-template behavior.
+- SQL and client-free builds, changed-line format and compatible clang-tidy pass.
+- `tests/async/with_disposable_mariadb.sh python3
+  tests/async/test_mysql_artifact_guild_reward_journey.py --case standard` passes.
+  Actual `artifacts player` and `artifacts ioun` include the private artifact after
+  boot cached its template; live population remains one and canonical UID is
+  unchanged. Three real feeds while snapshots/history are held, eventual exact
+  timer/guild/history agreement, native copyover and clean restart remain green,
+  including offline-owner reservation. Retained log/report:
+  `bin/analysis/issue67/report-inspection-gameplay.log` and
+  `report-inspection-gameplay.json` (`reports_preserved_population=true`).
+  Other fault/PVP cases, a fresh flat full-server journey and the full suite were
+  not run for this report chunk. Flat report execution is the native fixture above.
+
+Loader-role mapping for the next source-qualified hydration work: an offline
+request is not inherently inspection. `do_read_player` calls the offline loader
+and its callback actually inserts the character into `character_list`/a room;
+artifact maintenance instead loads a temporary owner to mutate/save/release it.
+Modern `materialize_item_graph` is shared by player, pet, flat corpse, locker,
+shopkeeper and collector paths; it currently calls the generic constructor before
+replacing UID/effective flags. Its creation-result entry point is a distinct
+committed fresh-delivery path. Keep those roles and already validated custody/
+revision/topology inputs explicit. Boot provenance alone becomes stale after
+in-session movement, so do not require a stale boot row ID or accept UID equality
+alone as universal saved materialization proof. Reuse the current authority and
+prepared source/current-custody evidence, and preserve independent valid inventory
+when one legacy artifact payload is unresolved. All unchecked AR-01–AR-07 items
+remain open. No production operation, merge or release tag.
 
 ### Abandoned offline-load item cleanup — focused AR-03 prerequisite
 

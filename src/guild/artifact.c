@@ -15,6 +15,7 @@
 #include "guild/artifact_population.h"
 #include "net/comm.h"
 #include "world/db.h"
+#include "world/object_template.h"
 #include "core/utility.h"
 #include "core/utils.h"
 #include <algorithm>
@@ -1097,7 +1098,6 @@ static std::string artifact_list_query(int type, bool Godlist)
 // json for redis/website, from the rows of artifact_list_query()
 static char *arti_generate_json(int type, bool Godlist, const sql_rows &rows)
 {
-	P_obj obj;
 	char *locName;
 	int racewar;
 	cJSON *root, *arr, *item;
@@ -1126,18 +1126,13 @@ static char *arti_generate_json(int type, bool Godlist, const sql_rows &rows)
 		int location = row[2] ? atoi(row[2]) : 0;
 		bool owned = row[3] && row[3][0] == 'Y';
 
-		obj = read_object(vnum, VIRTUAL);
-		if (!obj || !IS_ARTIFACT(obj))
-		{
-			if (obj)
-				extract_obj(obj, FALSE);
+		const auto *prototype = find_object_template(vnum);
+		if (!prototype || !(prototype->extra_flags & ITEM_ARTIFACT))
 			continue;
-		}
 
 		item = cJSON_CreateObject();
 		if (!item)
 		{
-			extract_obj(obj, FALSE);
 			cJSON_Delete(root);
 			return NULL;
 		}
@@ -1145,7 +1140,7 @@ static char *arti_generate_json(int type, bool Godlist, const sql_rows &rows)
 		cJSON_AddNumberToObject(item, "locType", locType);
 		cJSON_AddNumberToObject(item, "location", location);
 		cJSON_AddBoolToObject(item, "owned", owned);
-		cJSON_AddStringToObject(item, "shortDesc", obj->short_description);
+		cJSON_AddStringToObject(item, "shortDesc", prototype->short_description.c_str());
 
 		if (Godlist)
 		{
@@ -1174,7 +1169,6 @@ static char *arti_generate_json(int type, bool Godlist, const sql_rows &rows)
 		}
 
 		cJSON_AddItemToArray(arr, item);
-		extract_obj(obj, FALSE);
 	}
 
 	cJSON *summary = cJSON_CreateObject();
@@ -1633,13 +1627,9 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 		    (!Godlist && record.location_type != ARTIFACT_ON_PC &&
 		     record.location_type != ARTIFACT_ONCORPSE))
 			continue;
-		P_obj artifact = read_object(record.vnum, VIRTUAL);
-		if (!artifact || !IS_ARTIFACT(artifact))
-		{
-			if (artifact)
-				extract_obj(artifact, FALSE);
+		const auto *prototype = find_object_template(record.vnum);
+		if (!prototype || !(prototype->extra_flags & ITEM_ARTIFACT))
 			continue;
-		}
 		char *owner_name = NULL;
 		int racewar = RACEWAR_NONE;
 		if (record.location_type == ARTIFACT_ON_PC ||
@@ -1681,7 +1671,6 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 			}
 			break;
 		default:
-			extract_obj(artifact, FALSE);
 			continue;
 		}
 		if (!location_name)
@@ -1696,10 +1685,9 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 		if (!Godlist)
 		{
 			checked_snprintf(buf, MAX_STRING_LENGTH, "%-20s%s\r\n", location_name,
-					 artifact->short_description);
+					 prototype->short_description.c_str());
 			send_to_char(buf, ch);
 			shownData = TRUE;
-			extract_obj(artifact, FALSE);
 			continue;
 		}
 		long total_time = static_cast<long>(record.timer - time(NULL));
@@ -1731,10 +1719,9 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 			 pad_ansi(location_name, MAX_NAME_LENGTH + 9, TRUE).c_str());
 		checked_snprintf(buf, MAX_STRING_LENGTH, "%-21s&n%-11s %-22s%s (#%d)\r\n",
 				 padded_location, timer_buffer, update_buffer,
-				 artifact->short_description, record.vnum);
+				 prototype->short_description.c_str(), record.vnum);
 		send_to_char(buf, ch);
 		shownData = TRUE;
-		extract_obj(artifact, FALSE);
 	}
 	if (!shownData)
 	{
@@ -5167,15 +5154,11 @@ void arti_player_sql(P_char ch, char *arg)
 			if (locType != ARTIFACT_ON_PC && locType != ARTIFACT_ONCORPSE)
 				continue;
 
-			// Tryin' load a copy of the arti for display purposes.
-			P_obj arti = read_object(vnum, VIRTUAL);
-			if (!arti || !IS_ARTIFACT(arti))
+			const auto *prototype = find_object_template(vnum);
+			if (!prototype || !(prototype->extra_flags & ITEM_ARTIFACT))
 			{
-				debug("list_artifacts_sql: Non artifact on arti list: '%s' %d.",
-				      (arti == NULL) ? "NULL" : arti->short_description, vnum);
-				// Pull arti if it loaded.
-				if (arti)
-					extract_obj(arti);
+				debug("arti_player_sql: missing/non-artifact prototype vnum=%d",
+				      vnum);
 				continue;
 			}
 
@@ -5204,10 +5187,9 @@ void arti_player_sql(P_char ch, char *arg)
 
 			checked_snprintf(line, MAX_STRING_LENGTH, "%s&n%-11s %-22s%s (#%d)\r\n",
 					 locationBuf, timeBuf, row[5] ? row[5] : "",
-					 OBJ_SHORT(arti), vnum);
+					 prototype->short_description.c_str(), vnum);
 			send_to_char(line, viewer);
 			shownData = TRUE;
-			extract_obj(arti, FALSE);
 		}
 		if (!shownData)
 			send_to_char("No artifacts found.\n\r", viewer);
@@ -5259,13 +5241,11 @@ void arti_player_sql(P_char ch, char *arg)
 		if (record.location != pid || (record.location_type != ARTIFACT_ON_PC &&
 					       record.location_type != ARTIFACT_ONCORPSE))
 			continue;
-		P_obj artifact = read_object(record.vnum, VIRTUAL);
-		if (!artifact || !IS_ARTIFACT(artifact))
+		const auto *prototype = find_object_template(record.vnum);
+		if (!prototype || !(prototype->extra_flags & ITEM_ARTIFACT))
 		{
-			debug("arti_player_sql: Non artifact on arti list: '%s' %d.",
-			      artifact ? artifact->short_description : "NULL", record.vnum);
-			if (artifact)
-				extract_obj(artifact, FALSE);
+			debug("arti_player_sql: missing/non-artifact prototype vnum=%d",
+			      record.vnum);
 			continue;
 		}
 		if (record.location_type == ARTIFACT_ON_PC)
@@ -5294,11 +5274,10 @@ void arti_player_sql(P_char ch, char *arg)
 			strftime(update_buffer, sizeof(update_buffer), "%Y-%m-%d %H:%M:%S",
 				 &update_time);
 		checked_snprintf(buf, sizeof(buf), "%s&n%-11s %-22s%s (#%d)\r\n", location_buffer,
-				 time_buffer, update_buffer, artifact->short_description,
+				 time_buffer, update_buffer, prototype->short_description.c_str(),
 				 record.vnum);
 		send_to_char(buf, ch);
 		shown_data = true;
-		extract_obj(artifact, FALSE);
 	}
 	if (!shown_data)
 		send_to_char("No artifacts found.\n\r", ch);

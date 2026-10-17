@@ -116,6 +116,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Isrc/no_mysql",
             "-Isrc",
             "tests/async/flatfile_artifact_runtime_harness.cpp",
+            "src/core/safe_format.c",
             rel("artifact.c"),
             rel("flatfile_artifact_repository.c"),
             rel("artifact_population.c"),

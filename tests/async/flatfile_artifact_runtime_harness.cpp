@@ -1,8 +1,11 @@
 #include "flatfile/flatfile_artifact_repository.h"
 #include "core/prototypes.h"
 #include "sql/sql.h"
+#include "world/object_template.h"
+#include "flatfile/flatfile_identity_repository.h"
 
 #include <cstdlib>
+#include <algorithm>
 #include <climits>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +14,8 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+void list_artifacts_sql(P_char, int, bool, bool);
+void arti_player_sql(P_char, char *);
 
 void artifact_update_sql(int vnum, bool owned, int location_type, int location, time_t timer,
 			 int type);
@@ -71,6 +76,32 @@ const char *persistence_mode_flatfile_root()
 bool redis_invalidate_artifact_cache()
 {
 	return true;
+}
+
+const object_template *find_object_template(int vnum)
+{
+	static const object_template artifact = []
+	{
+		object_template result;
+		result.extra_flags = ITEM_ARTIFACT;
+		result.short_description = "a report artifact";
+		return result;
+	}();
+	static const object_template ordinary;
+	return vnum == 701 ? &artifact : vnum == 703 ? &ordinary : nullptr;
+}
+std::string pad_ansi(const char *text, int, bool)
+{
+	return text;
+}
+int get_player_pid_from_name(char *)
+{
+	return 77;
+}
+flatfile_identity_result flatfile_identity_lookup_pid(const std::string &, int,
+						      flatfile_identity_record *, std::string *)
+{
+	return flatfile_identity_result::not_found;
 }
 
 P_obj read_object(int vnum, int)
@@ -333,6 +364,24 @@ int main(int argc, char **argv)
 			stored.location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
 			stored.location == 77,
 		"death inventory update lost the persistent artifact owner before corpse transfer");
+	const int before_reads = read_count, before_extracts = extract_count;
+	feedback.clear();
+	list_artifacts_sql(&owner, 1, true, true);
+	require(read_count == before_reads && extract_count == before_extracts,
+		"flat artifact list constructed a gameplay object for inspection");
+	require(std::any_of(feedback.begin(), feedback.end(), [](const std::string &line)
+			    { return line.find("a report artifact") != std::string::npos; }),
+		"flat artifact list omitted its cached template label");
+	feedback.clear();
+	char player[] = "77";
+	arti_player_sql(&owner, player);
+	require(read_count == before_reads && extract_count == before_extracts,
+		"flat player artifact report constructed a gameplay object for inspection");
+	require(std::any_of(feedback.begin(), feedback.end(), [](const std::string &line)
+			    { return line.find("a report artifact") != std::string::npos; }),
+		"flat player artifact report omitted its cached template label");
+	std::cout << "flat artifact list/player reports inspect templates without objects\n";
+
 	std::fstream corrupt(authority, std::ios::in | std::ios::out | std::ios::binary);
 	require(corrupt.good(), "could not open artifact authority for corruption test");
 	corrupt.seekg(-1, std::ios::end);

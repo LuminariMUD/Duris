@@ -54,7 +54,7 @@ struct object_template
 	std::vector<object_template_description> descriptions;
 };
 
-// Boot-only cache population; misses at runtime never fall back to file parsing.
+// Boot-only starter/report cache; runtime misses never fall back to file parsing.
 bool cache_object_template(int vnum);
 const object_template *find_object_template(int vnum);
 P_obj instantiate_object_template(const object_template &prototype);

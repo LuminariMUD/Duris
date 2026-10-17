@@ -1,6 +1,7 @@
 // Real artifact stores, cache generation, guild capture and dirty-state polling.
 // The writer retains owned SQL and commit receipts; tests decide when each commits.
 #include "guild/artifact.c"
+#include "world/object_template.h"
 #include "guild/assocs.h"
 #include "sql/sql_player.h"
 #include "kingdom/kingdom_internal.h"
@@ -220,8 +221,22 @@ void redis_cache_artifact_list(int, bool, const char *)
 {
 	++cache_writes;
 }
+static size_t report_object_reads = 0;
+const object_template *find_object_template(int vnum)
+{
+	static const object_template artifact = []
+	{
+		object_template result;
+		result.extra_flags = ITEM_ARTIFACT;
+		result.short_description = "a report artifact";
+		return result;
+	}();
+	static const object_template ordinary;
+	return vnum == 900 ? &artifact : vnum == 901 ? &ordinary : nullptr;
+}
 P_obj read_object(int vnum, int)
 {
+	++report_object_reads;
 	assert(vnum == 900);
 	auto *obj = new obj_data{};
 	obj->extra_flags = ITEM_ARTIFACT;
@@ -834,8 +849,36 @@ static void creation_allocation_cases()
 	puts("PASS fresh creation allocation: row and soul-slot failures publish no claim; retry remains eligible");
 }
 
+static void report_inspection_cases()
+{
+	const auto before = report_object_reads;
+	const sql_rows rows = { sql_row{ { "900", "4", "1", "N", "0", "", "0" } } };
+	char *json = arti_generate_json(ARTIFACT_MAJOR, true, rows);
+	assert(report_object_reads == before && "artifact JSON constructed a gameplay object");
+	cJSON *root = cJSON_Parse(json);
+	assert(root && artifact_cache_payload_valid(root, ARTIFACT_MAJOR, true));
+	cJSON *artifacts = cJSON_GetObjectItem(root, "artifacts");
+	assert(cJSON_GetArraySize(artifacts) == 1);
+	assert(std::string(cJSON_GetObjectItem(cJSON_GetArrayItem(artifacts, 0), "shortDesc")
+				   ->valuestring) == "a report artifact");
+	cJSON_Delete(root);
+	free(json);
+	auto unavailable = rows;
+	unavailable.push_back(sql_row{ { "901", "4", "1", "N", "0", "", "0" } });
+	unavailable.push_back(sql_row{ { "902", "4", "1", "N", "0", "", "0" } });
+	json = arti_generate_json(ARTIFACT_MAJOR, false, unavailable);
+	root = cJSON_Parse(json);
+	assert(root && artifact_cache_payload_valid(root, ARTIFACT_MAJOR, false));
+	assert(cJSON_GetArraySize(cJSON_GetObjectItem(root, "artifacts")) == 1);
+	assert(report_object_reads == before);
+	cJSON_Delete(root);
+	free(json);
+	puts("PASS artifact JSON inspection: cached labels, missing/ordinary templates, no gameplay constructor");
+}
+
 int main(int argc, char **argv)
 {
+	report_inspection_cases();
 	if (argc == 2)
 	{
 		assert(std::string(argv[1]) == "--mysql");
