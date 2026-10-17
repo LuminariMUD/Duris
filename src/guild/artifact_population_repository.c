@@ -99,6 +99,8 @@ unsigned int artifact_population_read_sql_page(MYSQL *connection, artifact_paylo
 		const std::string parent_context =
 			domain == artifact_payload_domain::locker ?
 				" OR (COALESCE(p.chest_id,parent_public_chest.id,0)<>COALESCE(i.chest_id,public_chest.id,0))" :
+			domain == artifact_payload_domain::room ?
+				" OR (NOT (p.item_key <=> i.item_key))" :
 				"";
 		const std::string sql =
 			"SELECT i.id,i.obj_uid,i.container_id,p.obj_uid,i." + owner_field + "," +
