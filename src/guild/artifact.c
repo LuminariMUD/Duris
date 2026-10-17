@@ -4135,12 +4135,12 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 		owner1 = NULL;
 	}
 	// Save pfile if applies.
-	if (dummy && writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room))
-		release_offline_owner(dummy);
-	else if (dummy)
+	if (dummy)
 	{
-		persistence_alert(AVATAR, "artifact", "offline_swap", "none", "none",
-				  "terminal_save_failed", "extract_refused=1");
+		if (!writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room))
+			persistence_alert(AVATAR, "artifact", "offline_swap", "none", "none",
+					  "player_snapshot_not_queued",
+					  "vnum=%d temporary_owner_discarded=1", vnum2);
 	}
 	// Save in-game owner if applies.
 	if (owner1)
@@ -4179,221 +4179,168 @@ static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, 
 		 "&+WArtifact '&+w%s&+W' &+w%d&+W swapped with artifact '&+w%s&+W' &+w%d&+W.&n\n\r",
 		 artishort1, vnum1, OBJ_SHORT(arti2), vnum2);
 	send_to_char(buf, ch);
+	if (dummy)
+		release_offline_owner(dummy);
 }
 
-// artifact swap: finds vnum1 on its rented owner dummy, loaded off the loop (null when it
-// could not be), and swaps it there for vnum2.
-static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, const char *artishort1)
+// The real replacement is created only after a canonical, located source is known.
+// The existing finisher still needs a coupled durable payload/identity commit.
+static void arti_swap_create(P_char ch, P_obj source, int vnum2, P_char dummy,
+			     const char *artishort1)
 {
+	const int vnum1 = OBJ_VNUM(source);
+	const uint64_t expected_uid = source->obj_uid;
+	P_obj root = source;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	P_char owner = OBJ_WORN(root)	 ? root->loc.wearing :
+		       OBJ_CARRIED(root) ? root->loc.carrying :
+					   nullptr;
+	if (!artifact_is_canonical(source) || (owner && IS_TRUSTED(owner)) ||
+	    (!owner && (!OBJ_ROOM(root) || root->loc.room < 0 || root->loc.room > top_of_world)))
+	{
+		send_to_char_f(ch,
+			       "Artifact %d canonical location is unavailable; swap refused.\r\n",
+			       vnum1);
+		if (dummy)
+			release_offline_owner(dummy);
+		return;
+	}
+	P_obj replacement = read_object_for_creation(vnum2, VIRTUAL);
+	if (!replacement)
+	{
+		const int error = errno;
+		const char *reason = error == EEXIST  ? "already present or reserved" :
+				     error == ENODATA ? "identity unavailable" :
+							"creation unavailable";
+		send_to_char_f(
+			ch,
+			"Artifact %d replacement creation refused: %s. Reference: artifact_identity/swap.\r\n",
+			vnum2, reason);
+		persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none", "none",
+				  "replacement_creation_refused", "vnum=%d error=%d", vnum2, error);
+		if (dummy)
+			release_offline_owner(dummy);
+		return;
+	}
+	// Constructor procedures precede publication; do not use a stale source image.
+	const auto current = artifact_rows.find(vnum1);
 	arti_data artidata;
-	P_obj arti1, arti2;
+	if (!IS_ARTIFACT(replacement) || current == artifact_rows.end() ||
+	    current->second.live_object != source ||
+	    current->second.canonical_item_uid != expected_uid || !artifact_is_canonical(source) ||
+	    !get_artifact_data_sql(vnum1, &artidata))
+	{
+		extract_obj(replacement, FALSE);
+		send_to_char_f(ch, "Artifact %d source changed; swap refused.\r\n", vnum1);
+		if (dummy)
+			release_offline_owner(dummy);
+		return;
+	}
+	arti_swap_finish(ch, source, replacement, dummy, artidata, artishort1, vnum1, vnum2);
+}
 
+// The asynchronous request identifies the intended physical source, not just its vnum.
+static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, uint64_t expected_uid,
+			     const char *artishort1)
+{
 	if (!dummy)
 	{
 		send_to_char("Could not load that pfile.\n\r", ch);
 		return;
 	}
-	// In the game now, or another copy of it is loading, whose saves would undo this one's.
 	if (is_pid_online(GET_PID(dummy), TRUE) || player_load_pipeline_pid_pending(GET_PID(dummy)))
 	{
 		send_to_char_f(ch, "%s is in the game now; swap it there.\n\r", GET_NAME(dummy));
 		release_offline_owner(dummy);
 		return;
 	}
-	if (!get_artifact_data_sql(vnum1, &artidata) || !(arti1 = artifact_on_owner(dummy, vnum1)))
+	const auto *identity = artifact_command_identity(ch, vnum1);
+	P_obj source = artifact_on_owner(dummy, vnum1);
+	if (!identity || identity->canonical_item_uid != expected_uid || !source)
 	{
-		send_to_char_f(ch,
-			       "&+WCould not find '&+w%s&+W' &+w%d&+W on &+w%s&+W's pfile.&n\n\r",
-			       artishort1, vnum1, GET_NAME(dummy));
+		send_to_char_f(
+			ch,
+			"Artifact %d requested identity is unavailable; swap refused. Reference: artifact_identity/swap.\r\n",
+			vnum1);
+		persistence_alert(AVATAR, "artifact_identity/swap", "redacted", "none", "none",
+				  "requested_identity_unavailable", "vnum=%d expected_uid=%llu",
+				  vnum1, (unsigned long long)expected_uid);
 		release_offline_owner(dummy);
 		return;
 	}
-	if (!(arti2 = read_object_for_creation(vnum2, VIRTUAL)))
+	arti_data artidata;
+	if (!get_artifact_data_sql(vnum1, &artidata))
 	{
+		send_to_char_f(ch, "Artifact %d has no ticking timer; swap refused.\r\n", vnum1);
 		release_offline_owner(dummy);
 		return;
 	}
-	arti_swap_finish(ch, arti1, arti2, dummy, artidata, artishort1, vnum1, vnum2);
+	arti_swap_create(ch, source, vnum2, dummy, artishort1);
 }
 
-// This function is designed to swap out one arti for another.
 void arti_swap_sql(P_char ch, char *arg)
 {
-	char buf[MAX_STRING_LENGTH];
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
-	char artishort1[256];
 	int vnum1, vnum2;
-	bool found = FALSE;
-	P_obj arti1, arti2, cont;
-	P_char owner1;
-	arti_data artidata;
-
 	arg = one_argument(arg, arg1);
-	arg = one_argument(arg, arg2);
-
-	// If they don't have 2 args, then we can't do anything, so show the help.
+	one_argument(arg, arg2);
 	if (!*arg2)
 	{
 		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
 		send_to_char("This command changes one artifact for another.\n\r", ch);
 		send_to_char(
-			"&+WIt should only be used by those who know what they're doing.&n\n\r",
-			ch);
-		send_to_char(
-			"This will only work if arti1 has a ticking timer and arti2 doesn't.\n\r",
+			"The source needs a ticking timer and the replacement must be physically absent.\n\r",
 			ch);
 		return;
 	}
-
-	// Handle arg1: the vnum of the first arti.
-	if (!artifact_positive_integer(arg1, &vnum1))
+	if (!artifact_positive_integer(arg1, &vnum1) || !artifact_positive_integer(arg2, &vnum2))
 	{
-		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+W'&+w%s&+W' is not a valid vnum.  Please use a positive number for the vnum.&n\n\r",
-			arg1);
-		send_to_char(buf, ch);
+		send_to_char("Please supply two positive integer artifact vnums.\r\n", ch);
 		return;
 	}
 	const auto *source_prototype = artifact_command_template(ch, vnum1);
-	if (!source_prototype)
+	const auto *replacement_prototype = artifact_command_template(ch, vnum2);
+	if (!source_prototype || !replacement_prototype)
 		return;
-	// The replacement/commit path is still legacy; keep its existing template
-	// eligibility until it is migrated to canonical-pointer source selection.
-	if (!(source_prototype->extra_flags & ITEM_ARTIFACT))
+	if (!(replacement_prototype->extra_flags & ITEM_ARTIFACT))
 	{
 		send_to_char_f(ch, "%s (%d) is not an artifact template.\r\n",
-			       source_prototype->short_description.c_str(), vnum1);
+			       replacement_prototype->short_description.c_str(), vnum2);
 		return;
 	}
-	snprintf(artishort1, sizeof(artishort1), "%s&n",
-		 source_prototype->short_description.c_str());
-
-	// Handle arg2: the vnum of the first arti.
-	if (!artifact_positive_integer(arg2, &vnum2))
-	{
-		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+W'&+w%s&+W' is not a valid vnum.  Please use a positive number for the vnum.&n\n\r",
-			arg2);
-		send_to_char(buf, ch);
+	const auto *identity = artifact_command_identity(ch, vnum1);
+	if (!identity)
 		return;
-	}
-	if ((arti2 = read_object(vnum2, VIRTUAL)) == NULL)
-	{
-		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
-		snprintf(buf, MAX_STRING_LENGTH,
-			 "&+W'&+w%s&+W' is not the vnum of any object in the game.&n\n\r", arg2);
-		send_to_char(buf, ch);
-		return;
-	}
-	if (!IS_ARTIFACT(arti2))
-	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+W'&+w%s&+W' &+w%d&+W is not an artifact.  This command only works with artifacts.&n\n\r",
-			OBJ_SHORT(arti2), vnum2);
-		send_to_char(buf, ch);
-		return;
-	}
-	// Do not pull arti2.. will use it.
-
-	// Now we have 2 valid vnums and their corresponding short descriptions.
+	arti_data artidata;
 	if (!get_artifact_data_sql(vnum1, &artidata))
 	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+WThere's no timer ticking on '&+w%s&+W' &+w%d&+W. That won't work.&n\n\r",
-			artishort1, vnum1);
-		send_to_char(buf, ch);
+		send_to_char_f(ch, "Artifact %d has no ticking timer; swap refused.\r\n", vnum1);
 		return;
 	}
-	// We just want to make sure it's not ticking.
-	if (get_artifact_data_sql(vnum2, NULL))
+	const uint64_t expected_uid = identity->canonical_item_uid;
+	const std::string shown = source_prototype->short_description + "&n";
+	if (P_obj source = identity->live_object)
 	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+WThere's a timer ticking on '&+w%s&+W' &+w%d&+W.  That won't work.&n\n\r",
-			OBJ_SHORT(arti2), vnum2);
-		send_to_char(buf, ch);
+		arti_swap_create(ch, source, vnum2, nullptr, shown.c_str());
 		return;
 	}
-	// If there's a copy of arti2 in zone, pull it.
-	if ((arti1 = artifact_find(vnum2)) != NULL)
+	if (artidata.locType != ARTIFACT_ON_PC || is_pid_online(artidata.location, TRUE))
 	{
-		extract_obj(arti1);
-		snprintf(buf, MAX_STRING_LENGTH,
-			 "&+WPulled artifact '&+w%s&+W' &+w%d&+W from zone.&n\n\r",
-			 OBJ_SHORT(arti2), vnum2);
-		send_to_char(buf, ch);
-	}
-
-	cont = NULL;
-	for (arti1 = object_list; arti1; arti1 = arti1->next)
-	{
-		// Found it in game!
-		if (OBJ_VNUM(arti1) == vnum1)
-		{
-			cont = arti1;
-			while (OBJ_INSIDE(cont) && cont->loc.inside)
-			{
-				cont = cont->loc.inside;
-			}
-			found = FALSE;
-			// Just make sure it's in a valid location.
-			switch (cont->loc_p)
-			{
-			case LOC_CARRIED:
-			case LOC_WORN:
-				owner1 = OBJ_WORN(cont) ? cont->loc.wearing : cont->loc.carrying;
-				// Skip artis on Immortals.
-				if (!IS_TRUSTED(owner1))
-				{
-					found = TRUE;
-				}
-				break;
-			case LOC_ROOM:
-				found = TRUE;
-				break;
-			// Not in a valid location, so skip it.
-			case LOC_INSIDE:
-			case LOC_NOWHERE:
-				break;
-			}
-			if (found)
-			{
-				break;
-			}
-		}
-	}
-	// If it's on a PC, and the owner isn't online, it's on their pfile: they load off the loop.
-	if (!found && artidata.locType == ARTIFACT_ON_PC && !is_pid_online(artidata.location, TRUE))
-	{
-		extract_obj(arti2);
-		const char *owner_name = get_player_name_from_pid(artidata.location);
-		if (!owner_name)
-			send_to_char_f(ch, "Could not load pfile of %d.\n\r", artidata.location);
-		else
-			player_load_offline_for(
-				ch, owner_name, true,
-				[vnum1, vnum2, shown = std::string(artishort1)](P_char staff,
-										P_char dummy)
-				{ arti_swap_loaded(staff, dummy, vnum1, vnum2, shown.c_str()); });
+		send_to_char_f(ch, "Artifact %d canonical source is unavailable; swap refused.\r\n",
+			       vnum1);
 		return;
 	}
-	if (!arti1)
-	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+WStrange, could not find artifact '&+w%s&+W' &+w%d&+W anywhere?!?&n\n\r",
-			artishort1, vnum1);
-		send_to_char(buf, ch);
-		extract_obj(arti2);
-		return;
-	}
-	arti_swap_finish(ch, arti1, arti2, NULL, artidata, artishort1, vnum1, vnum2);
+	const char *owner_name = get_player_name_from_pid(artidata.location);
+	if (!owner_name)
+		send_to_char_f(ch, "Could not load pfile of %d.\n\r", artidata.location);
+	else if (!player_load_offline_for(ch, owner_name, true,
+					  [vnum1, vnum2, expected_uid, shown](P_char staff,
+									      P_char dummy) {
+						  arti_swap_loaded(staff, dummy, vnum1, vnum2,
+								   expected_uid, shown.c_str());
+					  }))
+		send_to_char("Could not queue that pfile load; swap refused.\r\n", ch);
 }
 
 // This function walks through the artifact_bind table, gathers its info, then compares

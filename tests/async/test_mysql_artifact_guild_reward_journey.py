@@ -25,6 +25,7 @@ PLAYER, ACCOUNT = 'Articaster', 'Artiplayer'
 GOD, GOD_ACCOUNT = 'Artiwarden', 'Artistaff'
 VICTIM, VICTIM_ACCOUNT = 'Artivictim', 'Artienemy'
 ARTIFACT = 900000
+SWAP_LIVE, SWAP_OFFLINE = ARTIFACT + 1, ARTIFACT + 2
 
 
 CASES = ('standard', 'before_artifact', 'after_artifact', 'after_history', 'shutdown', 'pvp')
@@ -39,7 +40,9 @@ def run(binary, case):
         objects = (ROOT / 'areas/world.obj').read_text(encoding='latin-1')
         original = re.search(r'(?ms)^#900\n.*?(?=^#\d+\n)', objects)
         assert original and not re.search(rf'(?m)^#{ARTIFACT}$', objects)
-        inserted = original.group().replace('#900\n', f'#{ARTIFACT}\n', 1)
+        assert not re.search(rf'(?m)^#({SWAP_LIVE}|{SWAP_OFFLINE})$', objects)
+        inserted = ''.join(original.group().replace('#900\n', f'#{vnum}\n', 1)
+                           for vnum in (ARTIFACT, SWAP_LIVE, SWAP_OFFLINE))
         position = next(match.start() for match in re.finditer(r'(?m)^#(\d+)\n', objects)
                         if int(match.group(1)) > ARTIFACT)
         areas = runtime / 'areas'
@@ -497,8 +500,55 @@ def run(binary, case):
                 assert re.search(r'Number in game\s*:\s*1\b', maintenance_stat), maintenance_stat
                 assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
                 evidence['maintenance_query_preserves_identity_and_source'] = True
+                refused_swap = command(god, f'artifacts swap {ARTIFACT} {ARTIFACT}')
+                assert 'already present or reserved' in refused_swap, refused_swap
+                assert sql(audit_query) == before_hunt
+                still_one = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', still_one), still_one
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
+                # Real worn replacement, then an offline replacement after a clean
+                # restart. This proves admission/recovery, not atomic crash windows.
+                expected_timer = int(before_restart['artifact'].split('\t')[-1])
+                old_uid = int(identity_before.split('\t')[0])
+                live_swapped = command(god, f'artifacts swap {ARTIFACT} {SWAP_LIVE}')
+                assert 'swapped with artifact' in live_swapped, live_swapped
+                settle(lambda: sql(f'SELECT identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == '2',
+                       'online swap did not retain its old UID tombstone')
+                settle(lambda: sql(f'SELECT timer_epoch FROM artifact_domain_state WHERE vnum={SWAP_LIVE}') == str(expected_timer),
+                       'online replacement lost its timer')
+                live_uid = int(sql(f'SELECT canonical_item_uid FROM artifact_domain_state WHERE vnum={SWAP_LIVE}'))
+                assert live_uid != old_uid
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {SWAP_LIVE}'))
+                assert re.search(r'Number in game\s*:\s*0\b', command(god, f'stat obj {ARTIFACT}'))
+                player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                settle(lambda: sql(f'SELECT COUNT(*) FROM player_items WHERE pid={source_pid} AND obj_uid={live_uid}') == '1',
+                       'online replacement payload did not save')
+                stop()
+                boot(); god = login(GOD, GOD_ACCOUNT)
+                god.send(f'artifacts swap {SWAP_LIVE} {SWAP_OFFLINE}')
+                god.expect('swapped with artifact', timeout=60)
+                settle(lambda: sql(f'SELECT identity_state FROM artifact_domain_state WHERE vnum={SWAP_LIVE}') == '2',
+                       'offline swap did not retire its requested UID')
+                settle(lambda: sql(f'SELECT timer_epoch FROM artifact_domain_state WHERE vnum={SWAP_OFFLINE}') == str(expected_timer),
+                       'offline replacement lost its timer')
+                final_uid = int(sql(f'SELECT canonical_item_uid FROM artifact_domain_state WHERE vnum={SWAP_OFFLINE}'))
+                assert final_uid not in (old_uid, live_uid)
+                settle(lambda: sql(f'SELECT COUNT(*) FROM player_items WHERE pid={source_pid} AND vnum={SWAP_OFFLINE} AND obj_uid={final_uid}') == '1',
+                       'offline replacement payload did not save')
+                assert sql(f'SELECT COUNT(*) FROM player_items WHERE pid={source_pid} AND obj_uid IN ({old_uid},{live_uid})') == '0'
+                assert re.search(r'Number in game\s*:\s*0\b', command(god, f'stat obj {SWAP_OFFLINE}'))
+                stop()
+                boot(); god = login(GOD, GOD_ACCOUNT); player = login(PLAYER, ACCOUNT)
+                assert 'ioun stone' in command(player, 'equipment')
+                assert re.search(r'Number in game\s*:\s*1\b', command(god, f'stat obj {SWAP_OFFLINE}'))
+                assert sql(f'SELECT canonical_item_uid,identity_state,timer_epoch FROM artifact_domain_state WHERE vnum={SWAP_OFFLINE}') == f'{final_uid}\t1\t{expected_timer}'
+                assert sql('SELECT COUNT(*) FROM artifact_guild_outcome') == before_restart['history']
+                evidence['canonical_online_offline_swap_admission'] = {
+                    'source_uid': old_uid, 'online_uid': live_uid, 'offline_uid': final_uid,
+                    'timer_preserved': True, 'final_live_count': 1,
+                    'atomic_crash_windows_qualified': False,
+                }
                 stop()
                 assert retained_source_intact(), 'load/save/copyover/restart lost or claimed retained source rows'
                 evidence['retained_source_survived_without_claim'] = True
@@ -506,7 +556,7 @@ def run(binary, case):
                 target = ROOT / 'bin/analysis/artifact-estale'
                 target.mkdir(parents=True, exist_ok=True)
                 (target / 'gameplay-journey.json').write_text(json.dumps(evidence, indent=2) + '\n')
-                print('PASS Summon Ghasts -> actual kills/boons -> three feeds and cumulative guild threshold; clean restart', flush=True)
+                print('PASS Summon Ghasts -> three feeds/guild threshold -> copyover/restart -> canonical online/offline swaps', flush=True)
             except Exception as error:
                 failure = ROOT / 'bin/analysis/artifact-estale' / f'failure-{case}-{time.time_ns()}'
                 failure.mkdir(parents=True)

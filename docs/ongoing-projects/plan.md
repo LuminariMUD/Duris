@@ -23,6 +23,62 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current swap-admission work: `branch/issue-67-canonical-swap-admission`, based
+on #160. Outcome: select only the established canonical source pointer/UID, carry
+that UID through offline completion, and use fresh replacement admission before
+placement or source retirement. Keep valid PC/NPC/room/corpse/nested paths.
+Non-goals for this chunk: declaring the existing placement/save finisher durable,
+changing placement policy or resolving ambiguous legacy copies automatically.
+Files: swap frontend/callback and focused actual constructor/service/gameplay tests.
+Proof: existing target or failed source causes no constructor procedures, extraction
+or tracking changes; stale offline UID refuses; legitimate swaps still work and
+only the admitted target becomes canonical. Ablation: remove the vnum scan/pull
+maze and the throwaway replacement preceding offline work; share real construction.
+The following durable-disposition chunk must still couple payload/custody and both
+artifact after-images before claiming AR-04 complete. Queue order alone is not proof.
+
+Swap-admission checkpoint (2026-10-17, publication pending):
+- Actual constructor/service before probe reproduced swap constructing/removing an
+  already-present, unowned replacement: `bin/analysis/issue67/swap-admission-before.log`.
+  The frontend now checks cached templates and source identity/timer first, follows
+  its registered pointer and uses `read_object_for_creation` only for the actual
+  replacement. Existing occupied/unresolved targets refuse through the shared
+  admission authority; no second copy is pulled to make room.
+- Offline requests capture the source UID and defer the only real constructor
+  until the qualified owner arrives. A different later UID, missing source or
+  active/loading owner refuses and releases the temporary graph. The common
+  constructor path rechecks canonical source/timer after procedures and rolls back
+  a replacement whose effective artifact flag was removed.
+- Removed the old vnum scan/pull maze, source-template flag restriction and
+  throwaway replacement before offline reads. A canonical saved artifact on an
+  ordinary cached prototype can now be the source through actual UID/flags.
+- Expanded ASan/UBSan cases cover occupied/unresolved targets, unlocated/stopped
+  sources, same-vnum aliases, constructor flag changes and source timer renewal,
+  carried/worn/nested/NPC/corpse locations, saved-flag promotion, stale async UID,
+  and temporary-owner cleanup when the snapshot queue refuses.
+- That last probe exposed an actual offline finisher use-after-free: it released
+  the owner then inspected the freed replacement for messages. Release now follows
+  publication and also occurs on snapshot refusal. Retained before proof:
+  `bin/analysis/issue67/swap-offline-release-before.log`.
+- Both builds, offline-owner/slicing contracts, changed-line format/tidy and native
+  regressions pass. The disposable SQL standard journey now checks occupied-target
+  refusal, a real worn replacement, then a real offline replacement, saving the
+  same timer and restoring the final canonical UID exactly once after restart.
+  Held source roots and existing reward/history controls remain intact. Frozen proof:
+  `bin/analysis/issue67/swap-admission-gameplay.{log,json}`.
+- Still required: the finisher places the replacement and extracts the source
+  before knowing the save was accepted; its metadata and owner payload are separate
+  writes. Placement failure, rejected captures and crash windows need a coupled
+  durable transition with rollback before source destruction. No atomicity claim
+  follows from the successful normal/restart cases above.
+- Persistence tracing found the SQL item-transfer engine's existing transaction-
+  scoped `execute_at_offset` entry and its direct player payload materialization.
+  The flat engine stages custody, room payloads and retained delivery records under
+  one authority lock. Reuse these concrete paths where possible; do not repurpose
+  artifact/guild reward history as a swap command or mistake queue order for an
+  atomic commit. Normal full player snapshots coalesce; a transition cannot be
+  silently replaced by a later snapshot without its identity disposition.
+
 Current maintenance-cache checkpoint: [PR #160](https://github.com/LuminariMUD/Duris/pull/160),
 ready for review, `branch/issue-67-maintenance-cache`, based on #159. Outcome: the existing boot template cache includes known artifact identities
 and effective saved artifact flags on ordinary prototypes, keeping runtime queries
@@ -259,13 +315,12 @@ Next maintenance and saved-domain work:
 - The legacy `arti_files_to_sql` parent reconciliation still pulls copies and writes
   tracking by vnum before its offline callback. It needs source/UID-qualified
   disposition, preserving original files and refusing ambiguous candidates.
-- The current maintenance chunk removes query specimens from clear/poof/timer
-  and swap's source check. The online swap still constructs its real replacement
-  generically and can pull an existing replacement by vnum. Its required next
-  chunk must pin source UID, admit the fresh replacement before effects and keep
-  original physical state until the durable disposition is accepted. Separate
-  artifact/player captures are not an atomic transition; memory-only rollback
-  cannot restore an already freed source. Preserve existing room/corpse/NPC paths.
+- The swap-admission chunk now pins the source UID, selects the canonical pointer
+  and admits the real replacement through the fresh factory. It never pulls an
+  existing replacement. The required next chunk must preserve original physical
+  state until placement and durable disposition are accepted. Separate artifact/
+  player captures are not an atomic transition; memory-only rollback cannot
+  restore an already freed source. Preserve existing room/corpse/NPC paths.
 - The maintenance-cache chunk now retains known artifact and saved-flag promoted
   prototype values at boot. Keep runtime queries free of file parsing; do not
   reintroduce constructors when migrating the remaining inspections.

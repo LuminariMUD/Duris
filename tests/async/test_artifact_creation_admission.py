@@ -33,6 +33,7 @@ const int top_of_objt = 3;
 static unsigned long long next_uid=10000;
 static size_t procedures=0, floors=0;
 static uint64_t expected_procedure_uid=0;
+static bool drop_swap_artifact_flag=false, renew_swap_source=false;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
 static bool booting=false;
@@ -68,6 +69,8 @@ int number(int from,int) { return from; }
 int real_object(const int vnum) { return vnum>=900 && vnum<=903 ? vnum-900 : -1; }
 int periodic(P_obj object,P_char,int,char *) {
  if(expected_procedure_uid) assert(object->obj_uid==expected_procedure_uid && IS_ARTIFACT(object) && !artifact_is_canonical(object));
+ if(OBJ_VNUM(object)==902 && drop_swap_artifact_flag) object->extra_flags&=~ITEM_ARTIFACT;
+ if(OBJ_VNUM(object)==902 && renew_swap_source) artifact_rows.at(900).timer+=60;
  ++procedures; return 0;
 }
 int item_switch(P_obj,P_char,int,char *) { return 0; }
@@ -182,6 +185,7 @@ void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_ret
 // RESTORE_WRAPPER
 // RECOVERY_CASES
 // MAINTENANCE_CASES
+// SWAP_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
@@ -311,6 +315,7 @@ int main() {
  recovery_cases(prototypes);
  offline_expiry_cases();
  maintenance_inspection_cases();
+ swap_admission_cases();
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
@@ -798,6 +803,139 @@ void maintenance_inspection_cases() {
         next_uid==clear_cursor && procedures==clear_effects && !pool.objs_used);
  artifact_save_pulse(true); drain();
  std::cout<<"cached maintenance inspection and bounded canonical timer editing: PASS\n";
+}
+""")
+source=source.replace("// SWAP_CASES", r"""
+void swap_admission_cases() {
+ assert(!object_list && !pool.objs_used && writes.empty());
+ artifact_rows.clear(); artifact_binds.clear();
+ for(int vnum : {900,902}) {
+  auto &row=artifact_rows[vnum]; row.identity_state=artifact_identity_state::absent;
+  row.population_reason=artifact_population_reason::complete; row.type=ARTIFACT_MAJOR; row.removed=true;
+ }
+ auto *source=read_object_for_creation(900,VIRTUAL); assert(source); obj_to_room(source,0);
+ auto *occupied=read_object_for_creation(902,VIRTUAL); assert(occupied); obj_to_room(occupied,0);
+ auto &row=artifact_rows.at(900); row.owned=true; row.removed=false; row.locType=ARTIFACT_ONGROUND;
+ row.location=2300; row.timer=time(nullptr)+3600; artifact_binds[900]={77,88};
+ const auto source_uid=source->obj_uid; const auto occupied_uid=occupied->obj_uid;
+ const auto source_timer=row.timer;
+ artifact_save_pulse(true); drain();
+ indexes[2].func.obj=periodic;
+ char_data staff={}; pc_only_data pc={}; staff.only.pc=&pc; staff.player.level=OVERLORD;
+ const auto effects=procedures; const auto population=pool.objs_used;
+ char blocked[]="900 902"; arti_swap_sql(&staff,blocked);
+ assert(procedures==effects && pool.objs_used==population &&
+        "swap constructed or removed an already-present replacement");
+ assert(artifact_rows.at(900).canonical_item_uid==source_uid && artifact_rows.at(900).live_object==source &&
+        artifact_rows.at(900).timer==source_timer && artifact_binds.at(900).owner_pid==77 &&
+        artifact_rows.at(902).canonical_item_uid==occupied_uid && artifact_rows.at(902).live_object==occupied && writes.empty());
+ // A first same-vnum alias cannot choose the source or clear the survivor.
+ extract_obj(occupied,TRUE); artifact_save_pulse(true); drain();
+ const auto refused_uid=next_uid; const auto refused_effects=procedures;
+ obj_from_room(source);
+ char unlocated[]="900 902"; arti_swap_sql(&staff,unlocated);
+ assert(next_uid==refused_uid && procedures==refused_effects && artifact_is_canonical(source) && writes.empty());
+ obj_to_room(source,0);
+ row.owned=false;
+ char stopped[]="900 902"; arti_swap_sql(&staff,stopped);
+ assert(next_uid==refused_uid && procedures==refused_effects && !artifact_rows.at(902).live_object && writes.empty());
+ row.owned=true;
+ const auto previous_target=artifact_rows.at(902);
+ artifact_rows.at(902).identity_state=artifact_identity_state::unresolved; artifact_rows.at(902).canonical_item_uid=0;
+ char unverified[]="900 902"; arti_swap_sql(&staff,unverified);
+ assert(procedures==refused_effects && pool.objs_used==1 && artifact_is_canonical(source) && writes.empty());
+ artifact_rows.at(902)=previous_target;
+ drop_swap_artifact_flag=true;
+ char lost_flag[]="900 902"; arti_swap_sql(&staff,lost_flag); drop_swap_artifact_flag=false;
+ assert(pool.objs_used==1 && artifact_is_canonical(source) &&
+        artifact_rows.at(902).canonical_item_uid==occupied_uid &&
+        artifact_rows.at(902).identity_state==artifact_identity_state::retired &&
+        artifact_rows.at(902).pending==artifact_pending::none && writes.empty());
+ auto *alias=read_object(0,REAL); assert(alias); alias->obj_uid=99900; obj_to_room(alias,0);
+ char allowed[]="900 902"; renew_swap_source=true; arti_swap_sql(&staff,allowed); renew_swap_source=false;
+ auto &target=artifact_rows.at(902); auto *replacement=target.live_object;
+ assert(replacement && artifact_is_canonical(replacement) && replacement->obj_uid!=occupied_uid &&
+        target.timer==source_timer+60 && target.owned && OBJ_ROOM(replacement) && replacement->loc.room==0);
+ assert(artifact_rows.at(900).canonical_item_uid==source_uid && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+        !artifact_binds.at(900).owner_pid && pool.objs_used==2 && OBJ_ROOM(alias) && alias->obj_uid==99900);
+ alias->obj_uid=0; extract_obj(alias,FALSE); extract_obj(replacement,TRUE); artifact_save_pulse(true); drain();
+ // Existing carried, worn, nested, NPC and corpse locations still use the same finisher.
+ char_data owner={}; pc_only_data owner_pc={}; npc_only_data npc={};
+ owner.only.pc=&owner_pc; owner_pc.pid=77; owner.player.name=const_cast<char *>("Offline");
+ owner.player.level=51; owner.specials.act=PLR_MORTAL; owner.in_room=NOWHERE;
+ for(int location=0; location<5; ++location) {
+  P_obj parent=nullptr;
+  if(location==3) { owner.only.npc=&npc; owner.specials.act=ACT_ISNPC; }
+  else { owner.only.pc=&owner_pc; owner.specials.act=PLR_MORTAL; }
+  source=read_object_for_creation(900,VIRTUAL); assert(source);
+  if(location==0 || location==3) obj_to_char(source,&owner);
+  else if(location==1) equip_char(&owner,source,0,TRUE);
+  else {
+   parent=read_object_for_creation(903,VIRTUAL); assert(parent);
+   if(location==4) { parent->type=ITEM_CORPSE; parent->value[CORPSE_FLAGS]=PC_CORPSE; obj_to_room(parent,0); }
+   else obj_to_char(parent,&owner);
+   obj_to_obj(source,parent);
+  }
+  auto &from=artifact_rows.at(900); from.owned=true; from.removed=false; from.timer=source_timer;
+  from.locType=location==4 ? ARTIFACT_ONCORPSE : location==3 ? ARTIFACT_ON_NPC : ARTIFACT_ON_PC;
+  from.location=77;
+  char swap[]="900 902"; arti_swap_sql(&staff,swap);
+  replacement=artifact_rows.at(902).live_object;
+  assert(replacement && artifact_is_canonical(replacement) && artifact_rows.at(902).timer==source_timer);
+  if(location==0 || location==3) assert(OBJ_CARRIED(replacement) && replacement->loc.carrying==&owner);
+  else if(location==1) assert(owner.equipment[0]==replacement && OBJ_WORN(replacement));
+  else assert(OBJ_INSIDE(replacement) && replacement->loc.inside==parent);
+  extract_obj(replacement,TRUE); if(parent) extract_obj(parent,FALSE);
+  artifact_save_pulse(true); drain(); assert(!object_list && !pool.objs_used);
+ }
+ owner.only.pc=&owner_pc; owner.specials.act=PLR_MORTAL;
+ // A delayed request cannot substitute a later physical UID of the same artifact.
+ auto &offline=artifact_rows.at(900); offline.canonical_item_uid=80000;
+ offline.identity_state=artifact_identity_state::present; offline.owned=true; offline.removed=false;
+ offline.locType=ARTIFACT_ON_PC; offline.location=77; offline.timer=source_timer;
+ artifact_binds[900]={77,88};
+ const auto request_uid=next_uid; const auto request_effects=procedures;
+ char requested[]="900 902"; arti_swap_sql(&staff,requested);
+ assert(offline_callbacks.size()==1 && next_uid==request_uid && procedures==request_effects && !pool.objs_used);
+ offline.canonical_item_uid=80001;
+ artifact_payload_projection restored={}; restored.domain=artifact_payload_domain::player;
+ restored.row_id=1; restored.item_uid=restored.payload_root_item_uid=80001; restored.owner_reference=77;
+ restored.payload_owner={item_owner_type::player,77,0}; restored.vnum=900;
+ restored.extra_flags=ITEM_ARTIFACT; restored.extra_flags_present=true; restored.quantity=1;
+ restored.custody_examined=restored.custody_found=true;
+ restored.custody={80001,80001,0,restored.payload_owner,1,1,900,item_custody_state::active};
+ source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
+ const auto restored_effects=procedures;
+ offline_callbacks.front()(&owner); offline_callbacks.clear();
+ assert(offline.canonical_item_uid==80001 && offline.identity_state==artifact_identity_state::present && offline.timer==source_timer &&
+        artifact_binds.at(900).owner_pid==77 && procedures==restored_effects && !object_list && !pool.objs_used && writes.empty());
+ // The unchanged request can complete; snapshot refusal still releases its temporary graph.
+ char retry[]="900 902"; arti_swap_sql(&staff,retry); assert(offline_callbacks.size()==1);
+ source=read_object_for_recovery(restored); assert(source); obj_to_char(source,&owner);
+ const auto releases=offline_released;
+ offline_save_allowed=false; offline_callbacks.front()(&owner); offline_save_allowed=true; offline_callbacks.clear();
+ assert(offline_released==releases+1 && !object_list && !pool.objs_used &&
+        artifact_rows.at(900).canonical_item_uid==80001 && artifact_rows.at(900).identity_state==artifact_identity_state::retired &&
+        artifact_rows.at(902).identity_state==artifact_identity_state::present && artifact_rows.at(902).timer==source_timer);
+ artifact_save_pulse(true); drain();
+ // A saved artifact on an ordinary prototype is eligible through its actual UID/flags.
+ artifact_rows.clear(); artifact_binds.clear();
+ auto &empty_target=artifact_rows[902]; empty_target.identity_state=artifact_identity_state::absent;
+ empty_target.population_reason=artifact_population_reason::complete; empty_target.type=ARTIFACT_MAJOR; empty_target.removed=true;
+ auto &promoted=artifact_rows[901]; promoted.canonical_item_uid=81000;
+ promoted.identity_state=artifact_identity_state::present; promoted.owned=true;
+ promoted.type=ARTIFACT_MAJOR; promoted.locType=ARTIFACT_ON_PC; promoted.location=77; promoted.timer=source_timer;
+ auto saved_promoted=restored; saved_promoted.vnum=901;
+ saved_promoted.item_uid=saved_promoted.payload_root_item_uid=81000;
+ saved_promoted.custody={81000,81000,0,saved_promoted.payload_owner,1,1,901,item_custody_state::active};
+ source=read_object_for_recovery(saved_promoted); assert(source); obj_to_char(source,&owner);
+ char promoted_swap[]="901 902"; arti_swap_sql(&staff,promoted_swap);
+ replacement=artifact_rows.at(902).live_object;
+ assert(replacement && artifact_is_canonical(replacement) && artifact_rows.at(902).timer==source_timer &&
+        artifact_rows.at(901).canonical_item_uid==81000 && artifact_rows.at(901).identity_state==artifact_identity_state::retired);
+ extract_obj(replacement,TRUE); artifact_save_pulse(true); drain();
+ assert(!object_list && !pool.objs_used && offline_callbacks.empty());
+ std::cout<<"canonical swap admission and UID-pinned callbacks: PASS\n";
 }
 """)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:
