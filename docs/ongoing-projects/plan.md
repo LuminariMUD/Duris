@@ -31,7 +31,8 @@ Proof: missing-evidence refusal plus qualified hydration/unload/reload, timer/so
 preservation, alias isolation and missing-soul retirement controls. These pass,
 as do SQL snapshot, flat artifact repository/runtime, reward, recovery pipeline/
 transaction checks and native build (`bin/analysis/qualified-registration-*.log`).
-The final combined NPC gameplay journey and flat build remain next.
+The combined real NPC gameplay/copyover/restart/swap journey and flat build
+now pass (`qualified-registration-gameplay.log`, `qualified-registration-flat-build.log`).
 ## Active review repair — preserve native NPC artifact identity
 
 Branch `branch/issue-67-native-npc-artifacts`, based on #167. Outcome: native
