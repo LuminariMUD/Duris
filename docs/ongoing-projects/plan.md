@@ -1,27 +1,331 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
-Implementation stack starts at `branch/issue-67-artifact-identity`; the current
-review branch and checkpoint are listed below.
-Status: AR-01 executable acceptance cases and source boundary mapped; identity
-implementation in progress; independent feeding feedback implemented on
-`branch/issue-67-feeding-feedback`, with direct timer arithmetic repaired on
-`branch/issue-67-direct-feed-timers` and conservative reward conflict isolation on
-`branch/issue-67-reward-conflicts`. AR-02 storage is implemented on
-`branch/issue-67-canonical-storage`. Canonical snapshot/hydration is implemented
-in PR #137 on `branch/issue-67-identity-snapshots`; writer backpressure is ready
-in PR #138, and the common flat artifact authority is ready in PR #139 on
-`branch/issue-67-flat-artifact-cache`. Numeric/flat/SQL blob readers and the SQL snapshot
-aggregate are ready in PRs #141–#143. Redis generation/floor pinning is ready in
-[PR #144](https://github.com/LuminariMUD/Duris/pull/144) on
-`branch/issue-67-pinned-recovery-evidence`. Pinned Redis item/NPC projections are ready in PR #146; native copyover pinning
-and projections are ready in [PR #147](https://github.com/LuminariMUD/Duris/pull/147).
-The pure canonical classifier and atomic cache staging are implemented in PR #148.
-Boot source assembly, custody lookup, reap protection and early publication are
-implemented on `branch/issue-67-boot-population`. Recovery/delivery normalization,
-saved-UID source/custody qualification, fresh producer families and
-lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
-implemented in PR #150. No operational repair started.
+
+## Current handoff — verified 2026-10-17, 11:16 IDT / 08:16 UTC
+
+**Issue #67 is unfinished.** There are **31 open, non-draft, unmerged PRs
+(#132–#162)**. The latest published code checkpoint is
+`c50475f85dbebbdc25addc692a27452c97b75181` (#162). Against freshly fetched
+`origin/master` (`9b4d7384825aa9a19a990e68f939fb6e6c04c011`), that code checkpoint
+is 69 commits ahead, zero behind, and changes 142 files (+16,694 / -3,735 lines).
+The current remote #132 and #133 review repairs are already ancestors of #162.
+A PR being open or a previous focused test passing does not mean the whole issue
+is implemented, qualified, or ready to merge as a stack.
+
+The user's latest objective is to update this handoff document. **Do not silently
+resume implementation on the strength of this document update.** The one-hour
+implementation sequence below is the proposed next execution order. The existing
+code and uncommitted experiments are preserved. No merge, tag, deployment,
+production migration, or production repair was performed by this work.
+
+This current section supersedes earlier statements such as "next required chunk"
+and "ready for review" in the historical checkpoint narrative below. The original
+AR-01–AR-07 requirements remain the completion criteria; none is waived here.
+
+### Checkout and resume locations
+
+- Documentation publication: `/home/aiwithapex/projects/duris-issue67-handoff`,
+  branch `branch/issue-67-swap-placement-rollback` (#162). This handoff is a
+  documentation-only update to that existing PR; it creates no additional PR.
+  The PR inventory below records heads immediately before this documentation
+  commit. Obtain its later documentation head with `git rev-parse HEAD` or
+  `gh pr view 162 --json headRefOid`.
+- Next implementation checkout: `/home/aiwithapex/projects/duris-issue67-delivery`,
+  branch `branch/issue-67-delivery`, based on the #162 code checkpoint. It has no
+  upstream and no PR. Its source code is unchanged; only the four test files
+  listed below and this document are modified.
+- Preserved compound-capture experiment:
+  `/home/aiwithapex/projects/duris-issue67-plan`, branch
+  `branch/issue-67-artifact-compound-capture`, also based on #162. It has no
+  upstream or PR. Its index contains staged experiment changes; use
+  `git diff HEAD` to see the full state. Do not commit that entire index as the
+  delivery repair. A complete pre-handoff patch is retained at
+  `bin/analysis/issue67/compound-capture-preserved.patch` in that checkout.
+- `/home/aiwithapex/projects/duris` is a separate, clean detached checkout at
+  `6d4d71e56547c71898247e73ccca74da75e0a9f6`; it does not contain this plan at
+  that revision. Do not implement there or overwrite its unrelated checkout.
+- Other issue-related worktrees are clean: `duris-issue67-writer-backpressure`
+  holds `branch/issue-67-flat-artifact-cache`; `duris-pr132-review` holds
+  `branch/pr132-review-repair`; `duris-pr133-review` holds
+  `branch/pr133-review-repair`. All are under `/home/aiwithapex/projects/`.
+- The delivery checkout has its own `bin/` directory. Its ignored `bin/bin`
+  symlink points to the older checkout's `bin/`; it is **not** a shared build root.
+  Do not assume a newly built delivery binary already exists or reuse a binary
+  without checking its source revision/hash.
+
+### Implemented and retained proof
+
+These are implemented portions of the issue, not a claim that every acceptance
+case is complete. Detailed commands, implementation commits, and limitations
+remain in the historical entries.
+
+- **Feedback and reward isolation (#133–#135):** requested "from above" wording,
+  signed direct-feed timer arithmetic, exclusion of ambiguous equipped copies,
+  and preservation of unrelated artifact/guild rewards. The early reward guard
+  still uses vnum/equipment/owner evidence instead of the later canonical identity;
+  that integration gap is now reproduced and remains unfixed.
+- **Identity and persistence foundation (#136–#139):** persisted canonical UID and
+  identity state, immutable captures/hydration, current-receipt checks, bounded
+  writer admission, and one in-memory artifact authority in flat-file mode.
+- **Population/recovery evidence (#140–#149):** strict numeric decoding, bounded
+  SQL/flat payload readers, one SQL population snapshot, pinned Redis/copyover
+  evidence and consume checks, overlap preservation, NPC reconstruction evidence,
+  classification, and publication before boot resets/reaping.
+- **Mapped creation and restoration (#150–#158):** O/P/G/E and related reset
+  equipment, staff load/clone, recovered-NPC creation, reservation rollback,
+  abandoned offline-load cleanup, constructor-free reports, qualified pinned-ground
+  and gameplay/offline-PC hydration, held player-root retention, read-only hunt,
+  and canonical offline expiry. Remaining producer/store families are listed below.
+- **Maintenance and swaps (#159–#162):** cached maintenance queries, bounded timer
+  edits, promoted artifact templates retained in the cache, canonical swap source
+  selection, fresh target admission, and rollback when placement refuses,
+  redirects, or destroys the replacement. Valid worn/offline swap paths pass;
+  save-refusal/crash atomicity is explicitly unqualified.
+- **Latest retained full SQL journey (#162):** the real server exercised three
+  Summon Ghasts rewards, guild threshold/history, held-writer copyover refusal,
+  ground copyover, PC duplicate admission, retained conflicting source roots,
+  report/hunt queries, destructive replacement placement, successful worn/offline
+  swaps, and clean restart with one final canonical UID and preserved timer.
+  Evidence: `swap-placement-gameplay.{log,json}` under the older checkout's
+  `bin/analysis/issue67/`. Tested binary SHA-256:
+  `4d2702ef7852565403d1607d73b7224876b1583fe6590cf11f68473edbab81ed`.
+  Its JSON explicitly records `atomic_crash_windows_qualified: false`.
+- **Latest retained builds:** SQL and flat builds, changed-line format/tidy, and
+  actual constructor/service regressions passed at the #162 checkpoint. Later
+  SQL/flat builds and native tests also passed with the *uncommitted* compound
+  helper; those later results are not a passing build of a completed delivery fix.
+
+### Current uncommitted work — exact state
+
+**Delivery branch: tests only; production repair has not started.**
+
+- `tests/async/artifact_guild_rewards_runtime.cpp`: adds a canonical-object fixture
+  boundary and scenarios for a rejected same-owner copy plus canonical/copy pairs
+  in both equipment orders.
+- `tests/async/test_artifact_guild_rewards_runtime.py`: runs those three scenarios.
+- `tests/async/test_artifact_creation_admission.py`: adds actual-service calls to
+  direct feed, minimum feed, and soul-switch on rejected and same-UID alias bodies.
+- `tests/async/test_artifact_guild_snapshots.py`: links the real
+  `item_ownership_runtime.c`; this repairs a stale native link list. The repair
+  passed in the older experiment checkout and has been copied here.
+- `docs/ongoing-projects/plan.md`: this handoff update.
+
+Fresh checks in the delivery checkout:
+
+```sh
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+# FAIL: rejected-copy, canonical-copy, canonical-copy-reversed.
+# Existing reward controls pass. The three new cases currently abort at the
+# expected diagnostic-count assertion before returning their final state verdict.
+python3 tests/async/test_artifact_creation_admission.py
+# FAIL: rejected physical artifact changed canonical feed/bind state or feedback.
+```
+
+Logs: `bin/analysis/issue67/delivery-rewards-before.log` and
+`bin/analysis/issue67/delivery-service-before.log` in the delivery checkout.
+The service test currently groups three calls; split their assertions when fixing
+so each mutation/feedback boundary is proven independently. Neither test has an
+after-fix passing result. Both commands exited; no build/test process was left
+running by these calls. No delivery code build or new full-server journey has run.
+
+**Preserved compound-capture experiment:**
+
+- Production: `src/flatfile/flatfile_artifact_repository.{c,h}` factors existing
+  catalog merge/validation into `flatfile_artifact_prepare_snapshot` under a held
+  authority lock. Ordinary snapshot writes retain their existing publication path.
+- Tests: `flatfile_artifact_repository_harness.cpp`,
+  `flatfile_artifact_bind_runtime_harness.cpp`, `test_flatfile_artifact_repository.py`,
+  and the snapshot runner link repair above. Fourteen fault/order cases cover
+  prepare/abandon, rejected commit, journal prefixes, recovery, and revisions.
+- The paired owner file is a synthetic encoded item projection, **not a complete
+  player save**. The live swap does not call this helper. Passing these tests does
+  not close the runtime persistence gap.
+- Retained results in the older checkout's `bin/analysis/issue67/`:
+  `compound-capture-native.log` passed; SQL/flat build logs completed successfully;
+  `compound-capture-tidy.log` passed; authority transaction control passed.
+  `compound-capture-controls.log` also contains an initial snapshot link failure;
+  the corrected rerun is `compound-capture-sql-snapshots.log` and passed.
+- Keep this experiment out of the immediate delivery change unless a concrete
+  runtime consumer is completed and proven. Do not publish another helper-only PR.
+
+### Unfinished acceptance and concrete blockers
+
+1. **Reward eligibility (AR-05, highest priority):**
+   `artifact_guild_state_capture` in `src/guild/artifact_guild_state.c` never calls
+   `artifact_is_canonical`. It excludes all same-vnum equipped copies, including a
+   justified canonical one, while a single rejected copy with matching tracked
+   owner can pass. Use the existing predicate, then deduplicate accepted vnums;
+   keep independent guild/unrelated rewards and one positive message per award.
+2. **Direct state mutation (AR-04/05, highest priority):** in
+   `src/guild/artifact.c`, `artifact_feed_sql`, `artifact_feed_to_min_sql`,
+   `artifact_switch_check`, and the object overload of `artifact_update_sql`
+   lack their own canonical-UID check. The placement wrapper and removal path
+   already check identity; direct callers can bypass that protection. Guard before
+   shared state or feedback. Preserve valid canonical transfer/feed/soul behavior,
+   and verify where placement finalizes a reservation before any guarded call.
+3. **Unsafe reconciliation (AR-04/06):** SQL `arti_syncdb_sql` still clears ownership
+   and bindings then joins player payloads by vnum. Its later callback checks do
+   not undo already-issued ambiguous SQL. The flat command already refuses a
+   complete-population reconciliation. The issue allows explicit conflict refusal;
+   prefer a bounded refusal where evidence is insufficient over inventing a new
+   automatic repair engine. Preserve a test proving no mutation is issued.
+4. **Remaining fresh producers (AR-01/03):** generic `read_object` remains unchecked
+   for fresh artifact creation. Unmigrated families include Studio actions, scripted
+   `src/specs/` callbacks, dynamic quest/random-zone/encounter producers, and other
+   mapped dynamic factories. Use the existing creation API at actual fresh seams,
+   with refusal before costs, dependent effects, or success messages. Review null
+   results. Do not blanket-convert inspection and saved-UID hydration callers.
+5. **Remaining saved domains (AR-02/03):** qualified PC and pinned-ground loaders
+   do not establish equivalent admission for pets, lockers/account chests, corpses,
+   saved rooms/shop stock, delivery roles, and legacy reconstruction. Trace the
+   actual supported paths and keep withheld payloads intact. A source classifier
+   is not proof that every later materializer consumes its decision.
+6. **Durable retirement/swap (AR-04):** replacement placement now rolls back, but
+   successful swap still retires the original before all owner/corpse captures and
+   artifact metadata have been durably accepted together. Save refusal, crash
+   prefixes, retry, and late acknowledgements remain unqualified. Independent jobs
+   in queue order are not atomic. The unused prepared helper does not fix this.
+7. **Feedback completion (AR-05):** command-wide direct monolith coalescing and
+   canonical recipient eligibility remain open. Preserve negative and capped valid
+   feedback; rejected/no-effect feeds must not announce success or repeat on replay.
+8. **Actual conflict audit and reconciliation (AR-06):** no complete all-store
+   artifact audit or recoverable cleanup rehearsal is finished. Raw hunt covers
+   bounded source inspection, not all-store reconciliation. Local 430/139004 leads
+   are not a current production inventory. Intended dispositions for 32827/67281,
+   67280/98904, 902/914, and 923–926 are not established by name similarity.
+   Preserve valid enhancements/intentional variants. No production repair is
+   authorized by this handoff; it requires the separately approved concrete plan
+   already required by the issue.
+9. **Whole-outcome qualification (AR-07):** the complete lifecycle matrix, full
+   flat-file artifact server journey, Redis success/disabled/failure combinations,
+   legacy-conflict repair/restart/repeat, and final required `make test-all` /
+   applicable isolated `make test-db` have not been completed for this stack.
+   Earlier native and SQL journeys cover their named cases only.
+
+### One-hour execution priority
+
+The user's hour was first recorded at **11:12:25 IDT / 08:12:25 UTC on
+2026-10-17**. A planning cutoff is **12:12:25 IDT / 09:12:25 UTC**; this is the
+local work clock, not a verified external deadline. Do not restart that clock at
+handoff. At the 11:16 inventory snapshot, about 56 minutes remained.
+
+**There is no evidence-based promise that every blocker above fits in the remaining
+hour.** Do not mark the issue complete by shrinking its acceptance criteria.
+This order maximizes completed, provable behavior and exposes any hard blocker
+before the final handoff:
+
+1. **First 12 minutes of resumed implementation:** fix the four direct mutation
+   guards and canonical reward capture using the existing predicate. Turn the two
+   current failing runners green; preserve canonical, cross-player, alias, ordinary
+   reward, guild-only, cap, and feedback controls. No new identity store/helper API.
+2. **Next 15 minutes:** close reachable fresh-constructor bypasses using the
+   existing admission API and prove refusal handling. In the same bounded pass,
+   make ambiguous `syncdb` refuse before writes. Record the exact converted callers
+   and any still-unconverted saved domain; do not call a search result an audit.
+3. **Next 10 minutes:** assess remaining saved-domain and retirement blockers
+   against the existing transaction mechanisms. Implement only a complete,
+   testable path. Do not spend this window publishing standalone prerequisites.
+   If a required domain or durable transition remains unsafe, record it as an
+   explicit release blocker; disabling a normal feature is not silently accepted.
+4. **Reserve at least 15 minutes for proof and publication:** after final source
+   edits, run changed-line format/tidy, SQL and flat builds, the focused native
+   runners, and the applicable isolated real-server save/reload/restart journey.
+   Reuse unchanged valid evidence. Stop source edits while full builds run. Commit
+   and push the actual tested repair, open one focused dependent PR against #162,
+   attach it, and read back its base/head/state. Do not merge the stack or create a
+   release tag as part of this deadline.
+5. **At the cutoff:** publish exact passed/failed/unrun checks and remaining
+   acceptance items. Full issue closure requires all nine blockers above resolved
+   or an explicit owner decision where design/evidence is required. A green reward
+   fix is a real deliverable, but it is not proof that all of #67 is finished.
+
+Relevant existing commands, run from the selected implementation checkout:
+
+```sh
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+python3 tests/async/test_artifact_creation_admission.py
+python3 tests/async/test_artifact_guild_snapshots.py
+python3 tests/async/test_flatfile_artifact_repository.py
+./scripts/format.sh --check
+make -C src -j2
+PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/analysis/issue67/flat-build" make -C src -j2
+bash tests/async/with_disposable_mariadb.sh   python3 tests/async/test_mysql_artifact_guild_reward_journey.py --case standard
+```
+
+These are the immediate checks, not a substitute for AR-07's full required matrix.
+The disposable DB wrapper does not read `.env`. Keep production data untouched.
+The existing GCC-13-compatible tidy wrapper is retained at
+`/home/aiwithapex/projects/duris-issue67-plan/bin/analysis/issue67/clang-tidy-gcc13`.
+The delivery copy of the flat bind fixture still needs the already-proven cached
+prototype fixture repair from the preserved experiment if that runner fails to
+link; copy that specific test repair, not the unused production helper.
+
+### Complete PR and branch inventory
+
+All rows below were verified live as **OPEN, non-draft, unmerged** at the snapshot.
+Each PR after #132 is based on the immediately preceding PR's branch. All 31
+published heads match `git ls-remote`; preserve this dependency order. This table
+lists implemented chunks, not independent declarations of full issue completion.
+
+| PR | Published branch | Base | Verified head | Implemented chunk |
+| --- | --- | --- | --- | --- |
+| [#132](https://github.com/LuminariMUD/Duris/pull/132) | `branch/issue-67-artifact-identity` | master | `74e043f40029` | Pin artifact identity reward failures and admission boundaries |
+| [#133](https://github.com/LuminariMUD/Duris/pull/133) | `branch/issue-67-feeding-feedback` | #132 | `dcb2f1544721` | Restore artifact feeding feedback from above |
+| [#134](https://github.com/LuminariMUD/Duris/pull/134) | `branch/issue-67-direct-feed-timers` | #133 | `ee0aa39ed7d3` | Preserve signed direct artifact feed timers |
+| [#135](https://github.com/LuminariMUD/Duris/pull/135) | `branch/issue-67-reward-conflicts` | #134 | `ec0eb58107b5` | Isolate conflicted artifact contributions from live rewards |
+| [#136](https://github.com/LuminariMUD/Duris/pull/136) | `branch/issue-67-canonical-storage` | #135 | `15d5bc76aba0` | Persist canonical artifact identity independently of custody |
+| [#137](https://github.com/LuminariMUD/Duris/pull/137) | `branch/issue-67-identity-snapshots` | #136 | `d438422da0d2` | Hydrate and snapshot canonical artifact identity atomically |
+| [#138](https://github.com/LuminariMUD/Duris/pull/138) | `branch/issue-67-writer-backpressure` | #137 | `bc7b6acd7d8f` | Bound persistence writer admission during storage outages |
+| [#139](https://github.com/LuminariMUD/Duris/pull/139) | `branch/issue-67-flat-artifact-cache` | #138 | `54db203867b1` | Use one artifact memory authority in flat-file mode |
+| [#140](https://github.com/LuminariMUD/Duris/pull/140) | `branch/issue-67-recovery-numeric-evidence` | #139 | `2bbd788a7de4` | Reject malformed Redis recovery identity numbers |
+| [#141](https://github.com/LuminariMUD/Duris/pull/141) | `branch/issue-67-population-evidence` | #140 | `b253a95e0db2` | Read bounded physical artifact payload evidence from SQL |
+| [#142](https://github.com/LuminariMUD/Duris/pull/142) | `branch/issue-67-flat-population-sources` | #141 | `adac130fbc77` | Stage flat artifact payload evidence without materialization |
+| [#143](https://github.com/LuminariMUD/Duris/pull/143) | `branch/issue-67-sql-population-blobs` | #142 | `df3c65f72826` | Stage SQL artifact blob evidence in one population snapshot |
+| [#144](https://github.com/LuminariMUD/Duris/pull/144) | `branch/issue-67-pinned-recovery-evidence` | #143 | `9d86b4d0037b` | Pin Redis recovery input before boot and consume only matching evidence |
+| [#145](https://github.com/LuminariMUD/Duris/pull/145) | `branch/issue-67-recovery-floor-overlap` | #144 | `4a537576b9df` | Preserve unseen items when recovery floor trees overlap |
+| [#146](https://github.com/LuminariMUD/Duris/pull/146) | `branch/issue-67-recovery-population` | #145 | `5d1713f8409f` | Project pinned recovery items and NPC reconstruction evidence |
+| [#147](https://github.com/LuminariMUD/Duris/pull/147) | `branch/issue-67-copyover-evidence` | #146 | `40eb6385fae3` | Pin copyover evidence and preserve pending recovery images |
+| [#148](https://github.com/LuminariMUD/Duris/pull/148) | `branch/issue-67-population-classification` | #147 | `537cc5a054d4` | Classify artifact population evidence before canonical publication |
+| [#149](https://github.com/LuminariMUD/Duris/pull/149) | `branch/issue-67-boot-population` | #148 | `d1bab6a9db8f` | Acquire artifact population before custody cleanup and boot resets |
+| [#150](https://github.com/LuminariMUD/Duris/pull/150) | `branch/issue-67-creation-admission` | #149 | `2b4bf3146c8f` | Guard reset, staff and NPC artifact creation |
+| [#151](https://github.com/LuminariMUD/Duris/pull/151) | `branch/issue-67-offline-load-cleanup` | #150 | `5e9450b28e7f` | Release items from abandoned offline player loads |
+| [#152](https://github.com/LuminariMUD/Duris/pull/152) | `branch/issue-67-artifact-report-inspection` | #151 | `e508cca40cd6` | Inspect artifact reports without constructing live objects |
+| [#153](https://github.com/LuminariMUD/Duris/pull/153) | `branch/issue-67-recovery-hydration` | #152 | `05773283d4f9` | Qualify artifact hydration from pinned ground sources |
+| [#154](https://github.com/LuminariMUD/Duris/pull/154) | `branch/issue-67-fatal-boot-exit` | #153 | `c2d61c58cc74` | Preserve fatal boot status and diagnostics with active workers |
+| [#155](https://github.com/LuminariMUD/Duris/pull/155) | `branch/issue-67-player-payload-retention` | #154 | `e5e171ea91a8` | Preserve withheld player item roots across saves |
+| [#156](https://github.com/LuminariMUD/Duris/pull/156) | `branch/issue-67-player-artifact-admission` | #155 | `91e0aef68c28` | Qualify gameplay player artifact sources before construction |
+| [#157](https://github.com/LuminariMUD/Duris/pull/157) | `branch/issue-67-artifact-hunt-inspection` | #156 | `33b41ec329ae` | Make artifact hunt inspect raw sources without reconciliation |
+| [#158](https://github.com/LuminariMUD/Duris/pull/158) | `branch/issue-67-offline-player-admission` | #157 | `0f44d6e84294` | Qualify offline PC restoration and canonical artifact expiry |
+| [#159](https://github.com/LuminariMUD/Duris/pull/159) | `branch/issue-67-maintenance-inspection` | #158 | `c9b5f2dcf077` | Avoid gameplay construction in artifact maintenance queries |
+| [#160](https://github.com/LuminariMUD/Duris/pull/160) | `branch/issue-67-maintenance-cache` | #159 | `26b8ec6e122e` | Keep promoted artifact prototypes available for maintenance inspection |
+| [#161](https://github.com/LuminariMUD/Duris/pull/161) | `branch/issue-67-canonical-swap-admission` | #160 | `4e5aa4ec3ed8` | Use canonical identity and fresh admission for artifact swaps |
+| [#162](https://github.com/LuminariMUD/Duris/pull/162) | `branch/issue-67-swap-placement-rollback` | #161 | `c50475f85dbe` | Roll back failed artifact swap placement before source retirement |
+
+The local `branch/issue-67-artifact-identity` ref is stale at `21bcc275421b`,
+while its published PR #132 head is `74e043f40029`. The clean review branch
+`branch/pr132-review-repair` holds the published head. Do not force-push the stale
+local ref. Every other published issue branch's local head matches this snapshot.
+
+| Local branch without its own PR | Head | State / use |
+| --- | --- | --- |
+| `branch/issue-67-artifact-compound-capture` | `c50475f85dbe` | Unpublished work at the #162 code checkpoint; staged production/helper tests and unstaged runner repair. Preserved, not integrated into runtime. |
+| `branch/issue-67-delivery` | `c50475f85dbe` | Unpublished branch at the #162 code checkpoint; four test files changed, new regressions fail, production repair not yet written. |
+| `branch/issue-67-flat-artifact-authority` | `713c00c82828` | Historical local development ref; upstream misleadingly points to writer-backpressure. Not an ancestor of #162. Do not resume or push it without comparing with #139. |
+| `branch/issue-67-flat-artifact-memory` | `5dd8be6cb1fb` | Historical local development ref, no upstream or PR; not an ancestor of #162. Compare with the published #139 implementation before reusing anything. |
+| `branch/issue-67-recovery-sequence` | `57ffa467f0dc` | Historical local development ref, no upstream or PR; not an ancestor of #162. Compare with published #140 before reusing anything. |
+| `branch/pr132-review-repair` | `74e043f40029` | Review worktree branch; same commit as the current published #132 head. |
+| `branch/pr133-review-repair` | `dcb2f1544721` | Review worktree branch; same commit as the current published #133 head. |
+
+No other remote branch containing `issue-67` was present in the live inventory.
+The local-only historical refs above are preserved; they have no separate PR and
+must not be mistaken for pending published stack entries.
+
+## Historical checkpoints and original acceptance plan
+
+The following entries retain implementation details and evidence for takeover.
+Their prospective statements describe the state at that checkpoint. Use the
+current handoff above for present priorities, branch selection, and known gaps.
 
 Current swap-placement checkpoint: [PR #162](https://github.com/LuminariMUD/Duris/pull/162),
 ready for review, `branch/issue-67-swap-placement-rollback`, based on #161. Outcome: confirm that the real admitted replacement reached the source's
