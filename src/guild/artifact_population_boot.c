@@ -149,6 +149,11 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 			}
 			else
 			{
+				if (!native_copyover && population.restore_conflict)
+				{
+					complete = false;
+					staged.unavailable_sources += "Redis restore conflict; ";
+				}
 				// Redis mobs have no stable equipment identities. Until their
 				// reconstruction is qualified, they cannot prove artifact absence.
 				if (!native_copyover && !population.mobs.empty())

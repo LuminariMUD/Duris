@@ -23,6 +23,7 @@ copyover_boot_snapshot selected_image;
 redis_world_boot_snapshot redis_image;
 redis_world_boot_result redis_result = redis_world_boot_result::disabled;
 unsigned int durable_error = 0, reads = 0;
+bool redis_restore_conflict = false;
 
 artifact_payload_projection item(uint64_t uid, artifact_payload_domain domain)
 {
@@ -45,6 +46,7 @@ void reset()
 	native_rows.clear();
 	redis_rows.clear();
 	redis_mobs.clear();
+	redis_restore_conflict = false;
 	missing_revisions.clear();
 	durable_rows.clear();
 	custody.clear();
@@ -108,6 +110,7 @@ unsigned int artifact_population_read_recovery(const redis_world_boot_snapshot &
 {
 	population->items = redis_rows;
 	population->mobs = redis_mobs;
+	population->restore_conflict = redis_restore_conflict;
 	return 0;
 }
 unsigned int artifact_population_read_flat_payloads(
@@ -175,6 +178,26 @@ int main()
 	redis_rows = { item(555, domain::redis_generation) };
 	assert(artifact_population_prepare_boot(false).complete);
 	assert(classify(artifact_population_boot_evidence()).identity.canonical_item_uid == 555);
+
+	// A decoded Redis image rejected by the real restore cannot prove presence
+	// or absence. A selected native handoff may supersede that historical image.
+	for (bool has_candidate : { false, true })
+	{
+		reset();
+		redis_result = redis_world_boot_result::ready;
+		redis_restore_conflict = true;
+		if (has_candidate)
+			redis_rows = { item(555, domain::redis_generation) };
+		const auto &conflict = artifact_population_prepare_boot(false);
+		assert(!conflict.complete &&
+		       classify(conflict).identity.state == state::unresolved);
+	}
+	reset();
+	redis_result = redis_world_boot_result::ready;
+	redis_restore_conflict = true;
+	native_rows[2] = { item(700, domain::copyover_ground) };
+	assert(artifact_population_prepare_boot(true).complete &&
+	       classify(artifact_population_boot_evidence()).identity.canonical_item_uid == 700);
 
 	// Redis mob records omit equipment identity. Source decoding alone cannot
 	// establish artifact absence while their reset reconstruction is unresolved.
