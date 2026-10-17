@@ -23,6 +23,52 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
+Current maintenance-inspection work: `branch/issue-67-maintenance-inspection`,
+based on #158. Outcome: clear/poof/timer and swap's source-template inspection read
+cached values without creating gameplay objects, consuming UIDs or running procedures.
+Timer edits require an established canonical UID and use bounded arithmetic for
+positive integer input. Non-goals: calling the legacy swap state transition durable,
+changing placement policy, or completing legacy import/binding/store migrations.
+Files: existing artifact command queries, timer input/arithmetic and focused tests.
+Proof: actual invalid and valid command paths never construct/extract a specimen;
+canonical timer edits work, unverified identities retain state, numeric extremes
+stay bounded, and real command/source controls still pass in both builds.
+Ablation: reuse the existing template cache; do not add an inspection object mode.
+The swap source query can be separated now. Its real replacement constructor and
+retirement/save ordering remain a required durable-transition chunk under AR-04.
+
+Maintenance-inspection checkpoint (2026-10-17, publication pending):
+- Native before probes reproduced procedures/UID consumption for invalid timer
+  input, UBSan overflow when displaying an extreme saved epoch, and an oversized
+  vnum wrapping to edit artifact 900. Retained ignored logs:
+  `bin/analysis/issue67/maintenance-inspection-before.log`,
+  `maintenance-timer-range-before.log` and `maintenance-vnum-range-before.log`.
+- Clear/poof/timer and swap's source check now use the existing boot template
+  cache. A cache miss refuses rather than falling back to a gameplay constructor.
+  Timer/poof support a known canonical saved artifact on an ordinary prototype;
+  the still-legacy swap keeps its prior template eligibility until its rewrite.
+- Timer edits require a present, nonpending canonical UID. Checked integer parsing
+  prevents vnum truncation and rejects negative/out-of-range minutes. Exact wide
+  arithmetic precedes the existing lifetime bounds; the native cancellation probe
+  (`maintenance-timer-cancellation-before.log`) exposed why early saturation was
+  incorrect for a negative extreme epoch. Countdown formatting uses unsigned
+  magnitude after signed comparison, avoiding subtraction/negation overflow.
+- Live manual poof follows the registered canonical pointer. Offline poof captures
+  the requested UID and refuses a later different identity, releasing its temporary
+  owner without retirement. Same-vnum aliases cannot select the target.
+- Fresh ASan/UBSan actual-constructor/service regressions pass query side effects,
+  stale callbacks, canonical/promoted timer editing, unresolved refusal, numeric
+  extremes, wrapped clear/poof/swap inputs and proven-absence clear. Both builds,
+  offline-owner/slicing controls, changed-line format/tidy pass. The actual disposable
+  SQL journey passed invalid timer/wrapped-vnum/unknown-identity commands with one
+  live canonical artifact and unchanged raw held roots, UID/timer/binding and reward
+  history through copyover/restart. Frozen proof:
+  `bin/analysis/issue67/maintenance-inspection-gameplay.{log,json}`.
+- Ablation: reuse cached values and the existing identity/pointer authority; no
+  inspection mode, fallback constructor, alternate store or command framework.
+  The real swap replacement and durable retirement/save ordering remain open;
+  do not treat this command-query chunk as completion of AR-04 or the full goal.
+
 Current objectful-PC restoration checkpoint: [PR #158](https://github.com/LuminariMUD/Duris/pull/158),
 ready for review, `branch/issue-67-offline-player-admission`, based on #157. Outcome: every materialized PC inventory uses source-qualified
 saved-UID admission, including staff live loads and maintenance. Missing/withheld
@@ -173,12 +219,21 @@ Next maintenance and saved-domain work:
 - The legacy `arti_files_to_sql` parent reconciliation still pulls copies and writes
   tracking by vnum before its offline callback. It needs source/UID-qualified
   disposition, preserving original files and refusing ambiguous candidates.
-- The online `arti_swap_sql` frontend still constructs prototypes and can pull an
-  existing replacement by vnum. Migrate its read-only checks and fresh replacement
-  admission before placement/costs; the offline replacement constructor is migrated.
-- Remaining maintenance prototype inspections (`clear`, `poof`, `timer`, legacy
-  import and other mapped reports/helpers) must use cached values, not constructors.
-  Recheck `arti_syncdb_sql` and delayed/action source fences under AR-04 as planned.
+- The current maintenance chunk removes query specimens from clear/poof/timer
+  and swap's source check. The online swap still constructs its real replacement
+  generically and can pull an existing replacement by vnum. Its required next
+  chunk must pin source UID, admit the fresh replacement before effects and keep
+  original physical state until the durable disposition is accepted. Separate
+  artifact/player captures are not an atomic transition; memory-only rollback
+  cannot restore an already freed source. Preserve existing room/corpse/NPC paths.
+- The boot report cache currently includes artifact-flagged prototypes and starter
+  items. Saved-flag promotion of another ordinary prototype can therefore refuse
+  maintenance with "prototype unavailable" even when identity is established.
+  Extend boot cache coverage from classified artifact vnums before claiming all
+  promoted artifacts are inspectable; keep runtime queries free of file parsing.
+- Remaining maintenance prototype inspections (legacy import, binding and other
+  mapped reports/helpers) must use cached values, not constructors. Recheck
+  `arti_syncdb_sql` and delayed/action source fences under AR-04 as planned.
 - Pet/storage/delivery materialization, a full-server flat artifact journey and the
   complete lifecycle/AR-07 rehearsal remain required. Do not treat ordinary flat
   copyover controls or this PC chunk as that acceptance evidence.

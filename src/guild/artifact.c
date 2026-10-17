@@ -2731,7 +2731,8 @@ void nuke_eq(P_char ch)
 void artifact_timer_sql(int vnum, char *buffer)
 {
 	arti_data artidata;
-	time_t timer;
+	unsigned long long timer;
+	bool expired = false;
 
 	if (!updateArtis)
 	{
@@ -2742,33 +2743,41 @@ void artifact_timer_sql(int vnum, char *buffer)
 	{
 		if (artidata.owned)
 		{
-			timer = artidata.timer - time(NULL);
+			const time_t now = time(NULL);
+			expired = artidata.timer < now;
+			timer = expired ? static_cast<unsigned long long>(now) -
+						  static_cast<unsigned long long>(artidata.timer) :
+					  static_cast<unsigned long long>(artidata.timer) -
+						  static_cast<unsigned long long>(now);
 		}
 		else
 		{
 			snprintf(buffer, MAX_STRING_LENGTH, "[ &=LRUnknown&n ]");
 			return;
 		}
-		if (timer < 0)
+		if (expired)
 		{
-			timer *= -1;
-			snprintf(buffer, MAX_STRING_LENGTH, "[&+R-%ld&+Lh &+R%ld&+Lm &+R%ld&+Ls&n]",
-				 timer / 3600, (timer / 60) % 60, timer % 60);
+			snprintf(buffer, MAX_STRING_LENGTH,
+				 "[&+R-%llu&+Lh &+R%llu&+Lm &+R%llu&+Ls&n]", timer / 3600,
+				 (timer / 60) % 60, timer % 60);
 		}
 		else if (timer <= (ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY) / 16)
 		{
-			snprintf(buffer, MAX_STRING_LENGTH, "[&+R%ld&+Lh &+R%ld&+Lm &+R%ld&+Ls&n]",
-				 timer / 3600, (timer / 60) % 60, timer % 60);
+			snprintf(buffer, MAX_STRING_LENGTH,
+				 "[&+R%llu&+Lh &+R%llu&+Lm &+R%llu&+Ls&n]", timer / 3600,
+				 (timer / 60) % 60, timer % 60);
 		}
 		else if (timer <= (ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY) / 5)
 		{
-			snprintf(buffer, MAX_STRING_LENGTH, "[&+Y%ld&+Lh &+Y%ld&+Lm &+Y%ld&+Ls&n]",
-				 timer / 3600, (timer / 60) % 60, timer % 60);
+			snprintf(buffer, MAX_STRING_LENGTH,
+				 "[&+Y%llu&+Lh &+Y%llu&+Lm &+Y%llu&+Ls&n]", timer / 3600,
+				 (timer / 60) % 60, timer % 60);
 		}
 		else
 		{
-			snprintf(buffer, MAX_STRING_LENGTH, "[&+G%ld&+Lh &+G%ld&+Lm &+G%ld&+Ls&n]",
-				 timer / 3600, (timer / 60) % 60, timer % 60);
+			snprintf(buffer, MAX_STRING_LENGTH,
+				 "[&+G%llu&+Lh &+G%llu&+Lm &+G%llu&+Ls&n]", timer / 3600,
+				 (timer / 60) % 60, timer % 60);
 		}
 	}
 	else
@@ -3688,10 +3697,59 @@ void arti_hunt_sql(P_char ch, const char *arg)
 	send_to_char(buf, ch);
 }
 
+// Parse command numbers in their destination type so oversized vnums cannot wrap.
+template <typename Integer> static bool artifact_positive_integer(const char *text, Integer *value)
+{
+	while (isspace(static_cast<unsigned char>(*text)))
+		++text;
+	const char *end = text + strlen(text);
+	while (end > text && isspace(static_cast<unsigned char>(end[-1])))
+		--end;
+	if (text != end && *text == '+')
+		++text;
+	const auto parsed = std::from_chars(text, end, *value);
+	return parsed.ec == std::errc{} && parsed.ptr == end && *value > 0;
+}
+
+// Command queries inspect cached values; they never create a gameplay specimen.
+static const object_template *artifact_command_template(P_char ch, int vnum)
+{
+	const auto *prototype = find_object_template(vnum);
+	if (!prototype)
+	{
+		send_to_char_f(ch, "Artifact %d prototype is unavailable.\r\n", vnum);
+		return nullptr;
+	}
+	if (!(prototype->extra_flags & ITEM_ARTIFACT) && !artifact_rows.count(vnum))
+	{
+		send_to_char_f(ch, "%s (%d) is not an artifact.\r\n",
+			       prototype->short_description.c_str(), vnum);
+		return nullptr;
+	}
+	return prototype;
+}
+
+static const artifact_row *artifact_command_identity(P_char ch, int vnum)
+{
+	const auto found = artifact_rows.find(vnum);
+	if (found == artifact_rows.end() ||
+	    found->second.identity_state != artifact_identity_state::present ||
+	    !found->second.canonical_item_uid || found->second.pending != artifact_pending::none)
+	{
+		send_to_char_f(
+			ch,
+			"Artifact %d canonical identity is unavailable. Reference: artifact_identity/maintenance.\r\n",
+			vnum);
+		persistence_alert(AVATAR, "artifact_identity/maintenance", "redacted", "none",
+				  "none", "canonical_identity_unavailable", "vnum=%d", vnum);
+		return nullptr;
+	}
+	return &found->second;
+}
+
 void arti_clear_sql(P_char ch, char *arg)
 {
 	int vnum;
-	P_obj arti;
 
 	if (!*arg || !strcmp(arg, "?") || !strcmp(arg, "help"))
 	{
@@ -3712,7 +3770,7 @@ void arti_clear_sql(P_char ch, char *arg)
 		return;
 	}
 
-	if ((vnum = atoi(arg)) <= 0)
+	if (!artifact_positive_integer(arg, &vnum))
 	{
 		send_to_char(
 			"The proper argument for this is the vnum of the arti for which you want the data cleared.\n\r",
@@ -3734,15 +3792,9 @@ void arti_clear_sql(P_char ch, char *arg)
 		return;
 	}
 
-	if (!(arti = read_object(vnum, VIRTUAL)))
-	{
-		send_to_char("&+WThat's not a vnum for any object, wth?&n\n\r", ch);
+	const auto *prototype = artifact_command_template(ch, vnum);
+	if (!prototype)
 		return;
-	}
-	if (!IS_ARTIFACT(arti))
-	{
-		act("$p &+Wis not an artifact.", FALSE, ch, arti, 0, TO_CHAR);
-	}
 
 	// Keep the deletion dirty until its current capture is acknowledged.
 	auto &removed = artifact_rows[vnum];
@@ -3752,16 +3804,19 @@ void arti_clear_sql(P_char ch, char *arg)
 	removed.save.dirty = true;
 	artifact_row_save(vnum, removed);
 	arti_cache_invalidate();
-	act("&+WThe artifact data for $p&+W has been cleared from the Immortal and Mortal lists.  You fool!",
-	    FALSE, ch, arti, 0, TO_CHAR);
-	extract_obj(arti);
+	send_to_char_f(
+		ch,
+		"The artifact data for %s has been cleared from the Immortal and Mortal lists.\r\n",
+		prototype->short_description.c_str());
 }
 
 // artifact poof: poofs vnum from its rented owner, loaded off the loop (null when it could not
 // be), which poof_artifact() saves.
-static void arti_poof_loaded(P_char ch, P_char owner, int vnum, const char *artishort)
+static void arti_poof_loaded(P_char ch, P_char owner, int vnum, uint64_t expected_uid,
+			     const char *artishort)
 {
 	P_obj arti;
+	const auto current = artifact_rows.find(vnum);
 
 	if (!owner)
 		send_to_char("Could not load that pfile.\n\r", ch);
@@ -3770,6 +3825,22 @@ static void arti_poof_loaded(P_char ch, P_char owner, int vnum, const char *arti
 		 player_load_pipeline_pid_pending(GET_PID(owner)))
 		send_to_char_f(ch, "%s is in the game now; poof %s there.\n\r", GET_NAME(owner),
 			       artishort);
+	else if (current == artifact_rows.end() ||
+		 current->second.canonical_item_uid != expected_uid ||
+		 current->second.identity_state != artifact_identity_state::present)
+	{
+		send_to_char_f(
+			ch,
+			"Artifact %d identity changed; poof refused. Reference: artifact_identity/poof.\r\n",
+			vnum);
+		persistence_alert(AVATAR, "artifact_identity/poof", "redacted", "none", "none",
+				  "requested_identity_changed",
+				  "vnum=%d expected_uid=%llu current_uid=%llu", vnum,
+				  (unsigned long long)expected_uid,
+				  (unsigned long long)(current == artifact_rows.end() ?
+							       0 :
+							       current->second.canonical_item_uid));
+	}
 	else if (!(arti = artifact_on_owner(owner, vnum)))
 		send_to_char_f(ch, "Strange, arti '%s' %d was not on %s's pfile!\n\r", artishort,
 			       vnum, GET_NAME(owner));
@@ -3804,7 +3875,7 @@ void arti_poof_sql(P_char ch, char *arg)
 		return;
 	}
 
-	if ((vnum = atoi(arg)) <= 0)
+	if (!artifact_positive_integer(arg, &vnum))
 	{
 		send_to_char(
 			"The proper argument for this is the vnum of the arti for which you want the data cleared.\n\r",
@@ -3812,19 +3883,12 @@ void arti_poof_sql(P_char ch, char *arg)
 		return;
 	}
 
-	if (!(arti = read_object(vnum, VIRTUAL)))
-	{
-		send_to_char("&+WThat's not a vnum for any object, wth?&n\n\r", ch);
+	const auto *prototype = artifact_command_template(ch, vnum);
+	const auto *identity = prototype ? artifact_command_identity(ch, vnum) : nullptr;
+	if (!identity)
 		return;
-	}
-	if (!IS_ARTIFACT(arti))
-	{
-		act("$p &+Wis not an artifact.", FALSE, ch, arti, 0, TO_CHAR);
-		extract_obj(arti);
-		return;
-	}
-	snprintf(artishort, MAX_STRING_LENGTH, "%s&n", OBJ_SHORT(arti));
-	extract_obj(arti);
+	const uint64_t expected_uid = identity->canonical_item_uid;
+	snprintf(artishort, sizeof(artishort), "%s&n", prototype->short_description.c_str());
 
 	if (!get_artifact_data_sql(vnum, &artidata))
 	{
@@ -3836,7 +3900,7 @@ void arti_poof_sql(P_char ch, char *arg)
 		return;
 	}
 	// If we can't find it in game.
-	if (!(arti = artifact_find(artidata)))
+	if (!(arti = identity->live_object) || !artifact_is_canonical(arti))
 	{
 		// If it isn't on a char, or the char is online.
 		if (artidata.locType != ARTIFACT_ON_PC || is_pid_online(artidata.location, TRUE))
@@ -3853,8 +3917,11 @@ void arti_poof_sql(P_char ch, char *arg)
 		else
 			player_load_offline_for(
 				ch, owner_name, true,
-				[vnum, shown = std::string(artishort)](P_char staff, P_char owner)
-				{ arti_poof_loaded(staff, owner, vnum, shown.c_str()); });
+				[vnum, expected_uid, shown = std::string(artishort)](P_char staff,
+										     P_char owner) {
+					arti_poof_loaded(staff, owner, vnum, expected_uid,
+							 shown.c_str());
+				});
 		return;
 	}
 	poof_artifact(arti);
@@ -3868,9 +3935,9 @@ void arti_timer_sql(P_char ch, char *arg)
 {
 	char buf[MAX_STRING_LENGTH], artishort[256];
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH], arg3[MAX_INPUT_LENGTH];
-	int minutes, cmd, vnum;
+	int cmd, vnum;
+	int64_t minutes = 0;
 	time_t new_time;
-	P_obj arti;
 	arti_data artidata;
 
 	arg = one_argument(arg, arg1);
@@ -3928,7 +3995,7 @@ void arti_timer_sql(P_char ch, char *arg)
 	}
 
 	// Handle arg2: the vnum.
-	if ((vnum = atoi(arg2)) <= 0)
+	if (!artifact_positive_integer(arg2, &vnum))
 	{
 		send_to_char(
 			"&+WFormat: &+wartifact timer <set|add|subtract> <vnum> <time in minutes>&+W.&n\n\r",
@@ -3940,61 +4007,17 @@ void arti_timer_sql(P_char ch, char *arg)
 		send_to_char(buf, ch);
 		return;
 	}
-	if ((arti = read_object(vnum, VIRTUAL)) == NULL)
+	if (!artifact_positive_integer(arg3, &minutes))
 	{
 		send_to_char(
-			"&+WFormat: &+wartifact timer <set|add|subtract> <vnum> <time in minutes>&+W.&n\n\r",
+			"Please supply positive integer minutes; choose add or subtract for the intended change.\r\n",
 			ch);
-		snprintf(buf, MAX_STRING_LENGTH,
-			 "&+W'&+w%s&+W' is not the vnum of any object in the game.&n\n\r", arg2);
-		send_to_char(buf, ch);
 		return;
 	}
-	if (!IS_ARTIFACT(arti))
-	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+W'&+w%s&+W' &+w%d&+W is not an artifact.  This command only works with artifacts.&n\n\r",
-			OBJ_SHORT(arti), vnum);
-		send_to_char(buf, ch);
+	const auto *prototype = artifact_command_template(ch, vnum);
+	if (!prototype || !artifact_command_identity(ch, vnum))
 		return;
-	}
-	snprintf(artishort, 256, "%s&n", OBJ_SHORT(arti));
-	extract_obj(arti);
-
-	// Handle arg3: the time in minutes.
-	if ((minutes = atoi(arg3)) == 0)
-	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+W'%s' is not a positive number.  Please supply a positive number of minutes.&n\n\r",
-			arg3);
-		send_to_char(buf, ch);
-		return;
-	}
-	if (minutes < 0)
-	{
-		if (!strcmp(arg1, "add"))
-		{
-			snprintf(
-				buf, MAX_STRING_LENGTH,
-				"&+WMaybe you should try '&+wartifact timer subtract %d %d&+W'.&n\n\r",
-				vnum, minutes * -1);
-			send_to_char(buf, ch);
-		}
-		else if (!strcmp(arg1, "subtract"))
-		{
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "&+WMaybe you should try '&+wartifact timer add %d %d&+W'.&n\n\r",
-				 vnum, minutes * -1);
-			send_to_char(buf, ch);
-		}
-		else
-		{
-			send_to_char("&+WPlease supply a positive number of minutes.&n\n\r", ch);
-		}
-		return;
-	}
+	snprintf(artishort, sizeof(artishort), "%s&n", prototype->short_description.c_str());
 
 	// Now we have a valid command, the vnum of an arti, and a postitive number of minutes to change.
 	if (!get_artifact_data_sql(vnum, &artidata))
@@ -4006,40 +4029,25 @@ void arti_timer_sql(P_char ch, char *arg)
 		return;
 	}
 
-	// Calculate the new time at which to poof.
-	if (cmd == COMMAND_ADD)
+	const int64_t now = time(NULL);
+	const int64_t cap = now + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+	// Minutes span int64_t and stored epochs may be negative. Keep the exact
+	// sum wide until the existing lifetime bounds have been applied.
+	const __int128_t seconds = static_cast<__int128_t>(minutes) * 60;
+	__int128_t target = cmd == COMMAND_SET ? now : artidata.timer;
+	target += cmd == COMMAND_SUB ? -seconds : seconds;
+	if (target < now)
 	{
-		new_time = artidata.timer + 60 * minutes;
+		send_to_char("New time is in the past; setting to 1 minute.\r\n", ch);
+		target = now + 60;
 	}
-	else if (cmd == COMMAND_SUB)
+	if (target > cap)
 	{
-		new_time = artidata.timer - 60 * minutes;
-	}
-	else if (cmd == COMMAND_SET)
-	{
-		new_time = time(NULL) + 60 * minutes;
-	}
-	else
-	{
-		send_to_char("&+WSomeone messed with this and created a faulty command. sorry.\n\r",
+		send_to_char("New time exceeds the artifact lifetime; setting to the maximum.\r\n",
 			     ch);
-		return;
+		target = cap;
 	}
-
-	// Minimum of 1 minute.
-	if (new_time < time(NULL))
-	{
-		send_to_char(
-			"&+WNew time is less than &+w0&+W minutes, setting to &+w1&+W minute.&n\n\r",
-			ch);
-		new_time = time(NULL) + 60;
-	}
-	// And max.
-	if (new_time > time(NULL) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY)
-	{
-		send_to_char("&+WOops, went a little over max, didn't ya?&n\n\r", ch);
-		new_time = time(NULL) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
-	}
+	new_time = static_cast<time_t>(target);
 
 	snprintf(buf, MAX_STRING_LENGTH,
 		 "&+WArtifact '&+w%s&+W' &+w%d&+W has had it's timer changed from &n", artishort,
@@ -4233,7 +4241,7 @@ void arti_swap_sql(P_char ch, char *arg)
 	}
 
 	// Handle arg1: the vnum of the first arti.
-	if ((vnum1 = atoi(arg1)) <= 0)
+	if (!artifact_positive_integer(arg1, &vnum1))
 	{
 		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
 		snprintf(
@@ -4243,28 +4251,22 @@ void arti_swap_sql(P_char ch, char *arg)
 		send_to_char(buf, ch);
 		return;
 	}
-	if ((arti1 = read_object(vnum1, VIRTUAL)) == NULL)
+	const auto *source_prototype = artifact_command_template(ch, vnum1);
+	if (!source_prototype)
+		return;
+	// The replacement/commit path is still legacy; keep its existing template
+	// eligibility until it is migrated to canonical-pointer source selection.
+	if (!(source_prototype->extra_flags & ITEM_ARTIFACT))
 	{
-		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
-		snprintf(buf, MAX_STRING_LENGTH,
-			 "&+W'&+w%s&+W' is not the vnum of any object in the game.&n\n\r", arg1);
-		send_to_char(buf, ch);
+		send_to_char_f(ch, "%s (%d) is not an artifact template.\r\n",
+			       source_prototype->short_description.c_str(), vnum1);
 		return;
 	}
-	if (!IS_ARTIFACT(arti1))
-	{
-		snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+W'&+w%s&+W' &+w%d&+W is not an artifact.  This command only works with artifacts.&n\n\r",
-			OBJ_SHORT(arti1), vnum1);
-		send_to_char(buf, ch);
-		return;
-	}
-	snprintf(artishort1, 256, "%s&n", OBJ_SHORT(arti1));
-	extract_obj(arti1);
+	snprintf(artishort1, sizeof(artishort1), "%s&n",
+		 source_prototype->short_description.c_str());
 
 	// Handle arg2: the vnum of the first arti.
-	if ((vnum2 = atoi(arg2)) <= 0)
+	if (!artifact_positive_integer(arg2, &vnum2))
 	{
 		send_to_char("&+WFormat: &+wartifact swap <vnum1> <vnum2>&+W.&n\n\r", ch);
 		snprintf(

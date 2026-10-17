@@ -14,6 +14,8 @@ HARNESS = r"""
 #include "world/world_recovery_pipeline.h"
 #include "world/world_recovery_codec.h"
 #include <cassert>
+#include <cstdarg>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 index_data indexes[4] = {};
@@ -135,6 +137,23 @@ object_template parse_object_template(int index) {
  prototype.type=index==3 ? ITEM_CONTAINER : 0; prototype.wear_flags=ITEM_TAKE;
  return prototype;
 }
+static std::string command_output;
+void send_to_char(const char *text,P_char) { command_output+=text; }
+void send_to_char_f(P_char,const char *format,...) {
+ char text[MAX_STRING_LENGTH]; va_list args; va_start(args,format); std::vsnprintf(text,sizeof(text),format,args); va_end(args); command_output+=text;
+}
+char *one_argument(const char *input,char *word) {
+ while(*input && isspace(static_cast<unsigned char>(*input))) ++input;
+ while(*input && !isspace(static_cast<unsigned char>(*input))) *word++=*input++;
+ *word=0; while(*input && isspace(static_cast<unsigned char>(*input))) ++input;
+ return const_cast<char *>(input);
+}
+bool is_abbrev(const char *word,const char *full) { return *word && !strncasecmp(word,full,strlen(word)); }
+const object_template *find_object_template(int vnum) {
+ static bool ready=false; static object_template templates[4];
+ if(!ready) { for(int index=0;index<4;++index) templates[index]=parse_object_template(index); ready=true; }
+ const int index=real_object(vnum); return index<0 ? nullptr : &templates[index];
+}
 static size_t offline_released=0, offline_saves=0, expiry_retries=0;
 static bool owner_online=false, owner_loading=false, offline_save_allowed=true;
 static std::vector<std::function<void(P_char)>> offline_callbacks;
@@ -142,6 +161,9 @@ char *get_player_name_from_pid(int pid) { return pid==77 ? const_cast<char *>("O
 bool is_pid_online(int,bool) { return owner_online; }
 bool player_load_pipeline_pid_pending(int) { return owner_loading; }
 bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { offline_callbacks.push_back(std::move(done)); return true; }
+bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done) {
+ offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
+}
 int writeCharacter(P_char,int,int) { ++offline_saves; return offline_save_allowed ? 1 : 0; }
 void writeCorpse(P_obj) {}
 void do_shout(P_char,char *,int) {}
@@ -159,6 +181,7 @@ void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_ret
 // RESET
 // RESTORE_WRAPPER
 // RECOVERY_CASES
+// MAINTENANCE_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
@@ -287,6 +310,7 @@ int main() {
  artifact_save_pulse(true); drain(); extract_obj(last_materialized,FALSE); assert(!object_list && !pool.objs_used);
  recovery_cases(prototypes);
  offline_expiry_cases();
+ maintenance_inspection_cases();
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
@@ -676,11 +700,111 @@ void offline_expiry_cases() {
 }
 """
 source=source.replace("// RECOVERY_CASES",recovery_cases)
+source=source.replace("// MAINTENANCE_CASES", r"""
+void maintenance_inspection_cases() {
+ assert(!object_list && !pool.objs_used && writes.empty());
+ artifact_rows.clear(); artifact_binds.clear();
+ auto &row=artifact_rows[900]; row.canonical_item_uid=70000; row.identity_state=artifact_identity_state::present;
+ row.type=ARTIFACT_MAJOR; row.owned=true; row.locType=ARTIFACT_ON_PC; row.location=77; row.timer=time(nullptr)+3600;
+ artifact_binds[900]={77,88};
+ char_data staff={}; pc_only_data pc={}; staff.only.pc=&pc; staff.player.level=OVERLORD;
+ const auto cursor=next_uid; const auto effects=procedures;
+ char invalid[]="set 900 not-a-number"; arti_timer_sql(&staff,invalid);
+ assert(next_uid==cursor && procedures==effects && !object_list && !pool.objs_used &&
+        "timer argument inspection constructed a gameplay object");
+ char valid[]="set 900 1"; const auto before=time(nullptr); arti_timer_sql(&staff,valid);
+ assert(row.timer>=before+60 && row.timer<=time(nullptr)+60 && row.canonical_item_uid==70000 &&
+        artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88);
+ assert(next_uid==cursor && procedures==effects && !object_list && !pool.objs_used);
+ artifact_save_pulse(true); drain();
+ const auto before_wrapped_vnum=row.timer;
+ char wrapped_vnum[]="set 4294968196 10"; arti_timer_sql(&staff,wrapped_vnum);
+ assert(row.timer==before_wrapped_vnum && writes.empty() && "overflowing vnum updated a different record");
+ row.timer=time(nullptr)+3600;
+ char enormous[]="add 900 2147483647"; arti_timer_sql(&staff,enormous);
+ assert(row.timer<=time(nullptr)+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY && row.timer>time(nullptr));
+ artifact_save_pulse(true); drain();
+ row.timer=INT64_MAX;
+ char subtract[]="subtract 900 9223372036854775807"; const auto subtract_start=time(nullptr); arti_timer_sql(&staff,subtract);
+ assert(row.timer>=subtract_start+60 && row.timer<=time(nullptr)+60);
+ artifact_save_pulse(true); drain();
+ row.timer=INT64_MIN;
+ char cancel_extreme[]="add 900 153722867280912931"; const auto cancel_start=time(nullptr);
+ arti_timer_sql(&staff,cancel_extreme);
+ assert(row.timer>=cancel_start+60 && row.timer<=time(nullptr)+60 && "extreme addition saturated before accounting for its negative epoch");
+ artifact_save_pulse(true); drain();
+ row.timer=INT64_MIN;
+ char repair[]="set +900 +2"; const auto repair_start=time(nullptr); arti_timer_sql(&staff,repair);
+ assert(row.timer>=repair_start+120 && row.timer<=time(nullptr)+120);
+ artifact_save_pulse(true); drain();
+ const auto unchanged=row.timer;
+ char overflow[]="set 900 9223372036854775808"; arti_timer_sql(&staff,overflow);
+ char negative[]="add 900 -9223372036854775808"; arti_timer_sql(&staff,negative);
+ char ordinary[]="set 901 1"; arti_timer_sql(&staff,ordinary);
+ char missing[]="set 999 1"; arti_timer_sql(&staff,missing);
+ assert(row.timer==unchanged && writes.empty() && next_uid==cursor && procedures==effects && !pool.objs_used);
+ char invalid_poof[]="4294968196"; arti_poof_sql(&staff,invalid_poof);
+ char swap_wrapped_source[]="4294968196 902"; arti_swap_sql(&staff,swap_wrapped_source);
+ char swap_wrapped_target[]="900 4294968198"; arti_swap_sql(&staff,swap_wrapped_target);
+ assert(offline_callbacks.empty() && next_uid==cursor && procedures==effects && !pool.objs_used && writes.empty());
+ char swap_invalid[]="900 0"; arti_swap_sql(&staff,swap_invalid);
+ assert(next_uid==cursor && procedures==effects && !pool.objs_used && writes.empty());
+ // A poof request pins the UID before the asynchronous source read.
+ row.locType=ARTIFACT_ON_PC; row.location=77; row.removed=false;
+ char requested[]="900"; arti_poof_sql(&staff,requested); assert(offline_callbacks.size()==1);
+ row.canonical_item_uid=70001;
+ char_data owner={}; pc_only_data owner_pc={}; owner.only.pc=&owner_pc; owner_pc.pid=77;
+ owner.player.name=const_cast<char *>("Offline"); owner.player.level=51; owner.specials.act=PLR_MORTAL; owner.in_room=NOWHERE;
+ artifact_payload_projection restored={}; restored.domain=artifact_payload_domain::player;
+ restored.row_id=1; restored.item_uid=restored.payload_root_item_uid=70001; restored.owner_reference=77;
+ restored.payload_owner={item_owner_type::player,77,0}; restored.vnum=900;
+ restored.extra_flags=ITEM_ARTIFACT; restored.extra_flags_present=true; restored.quantity=1;
+ restored.custody_examined=restored.custody_found=true;
+ restored.custody={70001,70001,0,restored.payload_owner,1,1,900,item_custody_state::active};
+ auto *replacement=read_object_for_recovery(restored); assert(replacement); obj_to_char(replacement,&owner);
+ const auto restored_effects=procedures;
+ offline_callbacks.front()(&owner); offline_callbacks.clear();
+ assert(row.canonical_item_uid==70001 && row.identity_state==artifact_identity_state::present && row.timer==unchanged &&
+        artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==88 && writes.empty() &&
+        procedures==restored_effects && !object_list && !pool.objs_used);
+ // The live pointer is authoritative even when a same-vnum legacy alias is first.
+ replacement=read_object_for_recovery(restored); assert(replacement); obj_to_char(replacement,&owner);
+ auto *alias=read_object(0,REAL); assert(alias); alias->obj_uid=70002; obj_to_char(alias,&owner);
+ const auto poof_cursor=next_uid; const auto poof_effects=procedures;
+ char live_poof[]="900"; arti_poof_sql(&staff,live_poof);
+ assert(row.canonical_item_uid==70001 && row.identity_state==artifact_identity_state::retired &&
+        owner.carrying==alias && pool.objs_used==1 && next_uid==poof_cursor && procedures==poof_effects);
+ alias->obj_uid=0; extract_obj(alias,FALSE); artifact_save_pulse(true); drain();
+ row.identity_state=artifact_identity_state::present; row.canonical_item_uid=70001;
+ row.owned=true; row.removed=false; row.timer=unchanged;
+ // Effective saved artifact flags may promote an ordinary prototype.
+ auto &promoted=artifact_rows[901]; promoted.canonical_item_uid=71000;
+ promoted.identity_state=artifact_identity_state::present; promoted.owned=true;
+ promoted.type=ARTIFACT_MAJOR; promoted.locType=ARTIFACT_ON_PC; promoted.location=77; promoted.timer=unchanged;
+ char promoted_timer[]="set 901 1"; const auto promoted_start=time(nullptr); arti_timer_sql(&staff,promoted_timer);
+ assert(promoted.timer>=promoted_start+60 && promoted.timer<=time(nullptr)+60 && promoted.canonical_item_uid==71000 &&
+        next_uid==poof_cursor && procedures==poof_effects && !pool.objs_used);
+ artifact_save_pulse(true); drain();
+ row.identity_state=artifact_identity_state::unresolved; row.canonical_item_uid=0;
+ char unverified[]="set 900 10"; arti_timer_sql(&staff,unverified);
+ assert(row.timer==unchanged && writes.empty());
+ row.identity_state=artifact_identity_state::absent; row.canonical_item_uid=0; row.owned=false;
+ row.removed=false;
+ char invalid_clear[]="4294968196"; arti_clear_sql(&staff,invalid_clear);
+ assert(!row.removed && writes.empty());
+ char clear[]="  +900  "; const auto clear_cursor=next_uid; const auto clear_effects=procedures;
+ arti_clear_sql(&staff,clear);
+ assert(row.identity_state==artifact_identity_state::absent && row.removed && !row.canonical_item_uid &&
+        next_uid==clear_cursor && procedures==clear_effects && !pool.objs_used);
+ artifact_save_pulse(true); drain();
+ std::cout<<"cached maintenance inspection and bounded canonical timer editing: PASS\n";
+}
+""")
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:
  cpp=Path(directory)/"creation.cpp"; binary=Path(directory)/"creation"; cpp.write_text(source)
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
-  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/core/safe_format.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

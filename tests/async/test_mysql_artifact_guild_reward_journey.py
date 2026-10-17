@@ -485,6 +485,18 @@ def run(binary, case):
                 assert re.search(r'Number in game\s*:\s*1\b', hunt_stat), hunt_stat
                 assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
                 evidence['hunt_read_only_source_inspection'] = True
+                # Invalid maintenance input must leave the canonical artifact and
+                # raw held source graph untouched, including a vnum that used to wrap.
+                for invalid_timer in (f'artifacts timer set {ARTIFACT} not-a-number',
+                                      f'artifacts timer set {2**32 + ARTIFACT} 10'):
+                    refused = command(god, invalid_timer)
+                    assert 'timer changed' not in refused, refused
+                command(god, 'artifacts poof 900')
+                assert sql(audit_query) == before_hunt
+                maintenance_stat = command(god, f'stat obj {ARTIFACT}')
+                assert re.search(r'Number in game\s*:\s*1\b', maintenance_stat), maintenance_stat
+                assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
+                evidence['maintenance_query_preserves_identity_and_source'] = True
                 assert saved_state() == before_restart, 'restart changed persisted reward state/history'
                 assert 'artifact_guild live_applied=0' in command(god, 'world persistence')
                 stop()
