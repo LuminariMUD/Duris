@@ -1,5 +1,130 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Latest review checkpoint: carry-forward through #150–#153
+
+The latest inventory contains 41 findings: 30 resolved, 11 outstanding. Published
+repair heads: #147 `d41067fba`, #148 `f27d4950a`, #149 `cd37a4288`, #150
+`d429a3736`, #151 `bbea4f9f6`. The newer #147–#149 fixes are being carried through
+#150/#151, then #152/#153, in `/home/aiwithapex/projects/duris-issue67-writer-backpressure`.
+Current branch: `branch/issue-67-creation-admission`; carry-forward validation precedes push.
+
+#147 now safely refuses raced symlinks/inodes and late recovery claims, bounds
+NPC vectors, recognizes captured revision authority, and routes failed restoration
+through worker-joining shutdown. #148 preserves identity-only flat reservations,
+rejects zero vnums and duplicate physical rows, retains retired identities, and
+preserves canonical UIDs found under foreign vnums. #149 treats unresolved Redis
+and native NPC reconstruction as incomplete, including retained native images,
+and carries real revision evidence through independent SQL/flat acquisition.
+Their focused before/after regressions, relevant backend builds and tidy passed.
+
+#150's three review findings are implemented in `d429a3736`: legacy ground/NPC
+loaders hydrate the canonical UID once; normal placement and direct player
+attachment register its live body; load-discard detaches before clearing UIDs;
+destruction retires it. Failed NPC restoration and outer rollback explicitly
+purge equipment/inventory before normal teardown can drop them onto the floor.
+Passed: SQL/flat builds, actual constructor/clone/extraction/player attach/discard
+(ASan/UBSan), player loads, NPC buffer restoration/failure and singleton journeys
+(ASan/UBSan), world recovery pipeline, SQL snapshots, flat artifact codec/runtime,
+real copyover save/exec/recover, formatting and tidy. Logs: `bin/analysis/pr150-*`.
+#151's offline cleanup and lifecycle tests/build also pass; its fixture now links
+the existing shared lifecycle stubs. #152/#153 had no findings in the last scan.
+
+Next review targets: #154 (1), #155 (2), #156 (3), #157 (4), #162 (1). Latest
+fetched details: `bin/analysis/review-refresh-after-150.json`. Refresh before final
+closeout and return to any newly reviewed older PR. No production operations or
+PR merges have been performed in this review pass.
+
+
+## Additional #141 review: saved-room source keys
+
+A subsequent review identified cross-key parents inside the same room. The reader
+now compares `saved_items.item_key` as well as room ownership, matching the real
+saved-item loader's source boundary. A disposable SQL regression reproduces the
+old accepted cross-key link and retains a valid same-key control. The disposable
+SQL fixture, maintained-schema queries, native build and format/tidy pass. Evidence:
+`bin/analysis/pr141-room-key-*.log`. This is an additional finding beyond the initial
+32; fixed in `c3fae0f61`, pushed, and its thread is resolved.
+This repair is published through #147. The #145 transaction contract now follows
+the shared overlap planner; native pipeline, recovery/SQL and copyover checks pass.
+
+## Oldest-first code-review follow-up — 2026-10-17
+
+The current goal is to address every existing review finding, in PR creation order.
+The initial inventory contained 31 unresolved inline threads across 14 PRs plus one
+additional finding in #139's review body. #132/#133 repairs are already published
+and resolved; #134–#137 have no outstanding findings. No merge is part of this pass.
+
+Current work: #148 classification review repair in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`, on
+`branch/issue-67-population-classification`. Parent carry-forward merge: `bb5e858a2`.
+Published repairs: #138 `ba2f3f79f`, #139 `5df732237`, #141 `1bf1d5986` plus
+`c3fae0f61`, #142 `e29ab3926`, #143 `d0845890f`, #144 `136b65c0f`.
+Their review threads are resolved, and #139's additional review-body finding is
+addressed. Fourteen findings have been addressed, including the later #141 one;
+nineteen findings remain in the latest inventory.
+
+Carry-forward is published through #145 `e89a19434`, #146 `85c5b0d64`, and
+#147 `7434758f7`. The #145 native pipeline/transaction tests, #146 recovery
+projections and disposable SQL suite, #147 copyover evidence/custody/save guards,
+and native builds passed. These PRs had no outstanding findings in the inventory.
+Evidence is retained in `bin/analysis/pr145-*`, `pr146-*`, and `pr147-*`.
+
+#148 outcome: preserve identity-only reservations on flat reload, reject zero
+vnums atomically, reject repeated UIDs within one physical source, retain retired
+tombstones, and enforce actual owner-revision evidence without rejecting valid
+flat custody. Files: existing classifier, artifact capture/load, flat catalog and
+population reader, existing regression harnesses, this plan. Proof: executable
+classifier cases, capture/reload plus feeding refusal, flat authority revisions,
+backward-compatible codec controls, required native builds and formatting/tidy.
+Non-goals: unrelated cleanup, new authority services, operational repair or merge.
+
+Ablation: the flat schema currently cannot distinguish an unresolved identity-only
+reservation from a real legacy unowned row with identical fields. Persist the
+existing marker in the catalog rather than infer it and alter legitimate legacy
+rows. Read real flat owner revisions from the already-loaded custody catalog;
+avoid per-item store reads or a separate revision cache. Preserve old catalog
+readability. Later boot assembly must carry this evidence into recovery projections.
+
+#148 repairs implemented and locally verified: duplicate same-source rows now
+reserve the UID (including duplicate ordinary ancestors); cross-source matching
+projections remain valid. Only unresolved/absent states may adopt a UID. Zero and
+negative vnums fail without publishing a prefix. Flat v3 preserves the exact
+identity-only marker for every state and still reads v1/v2. Existing unmarked
+legacy rows keep their prior semantics; historical unresolved reservations in v2
+are inherently ambiguous and cannot be reconstructed uniquely from those bytes.
+Flat population revisions come from the same validated custody catalog and the
+classifier distinguishes missing revision authority from valid revision zero.
+
+Reproduced before repair: accepted two same-source rows as canonical, and lost
+an unresolved marker across the real flat capture/reload. Passed after repair:
+`test_artifact_population.py` (ASan/UBSan),
+`test_flatfile_artifact_repository.py` (codec, capture/reload, feeding refusal),
+`test_flatfile_artifact_population.py` (UBSan, real revision comparison),
+`test_artifact_cache_codec.py`, SQL and flat native builds, formatting and tidy.
+The SQL snapshot fixture explicitly supplies its existing revision authority;
+`test_artifact_guild_snapshots.py` also passes. Logs: `bin/analysis/pr148-*`.
+This is local verification; no production or full-server restart is claimed.
+
+Remaining review sequence (initial inventory, oldest first):
+- #139: all 3 findings addressed and published.
+- #141: all 3 owner/revision evidence findings addressed and published.
+- #142: root-compatible unreadable-store regression addressed and published.
+- #143: both blob-reader findings addressed and published.
+- #144: all 3 Redis retry/state/test-contract findings addressed and published.
+- #148: 4 identity marker, vnum, repeated-UID and tombstone findings.
+- #149: 1 recovered-NPC evidence completeness finding.
+- #150: 3 legacy hydration/retirement/partial-NPC rollback findings.
+- #154: 1 fatal-boot diagnostic retention finding.
+- #155: 2 retained-row/pet overlap findings.
+- #156: 3 source-ID, foreign-vnum and foreign-owner qualification findings.
+- #157: 4 audit completeness/noise/quantity/revision findings.
+- #162: 1 pending-action preservation finding.
+
+Full fetched review/thread bodies and pagination evidence are retained privately in
+`duris-issue67-delivery/bin/analysis/open-review-details.json`. Every fetched page
+was complete. Refresh live reviews before final closeout. The implementation
+checkpoint below is historical context for this PR, not the current review status.
+
 Tracking: [Duris #67](https://github.com/LuminariMUD/Duris/issues/67).
 Implementation branch: `branch/issue-67-artifact-identity`.
 Status: AR-01 executable acceptance cases and source boundary mapped; identity
@@ -1977,7 +2102,8 @@ refuses incompatible shapes, inconsistent UID/state or a missing original FK;
 no existing timer/soul/custody evidence is rewritten. Applied older immutable
 files are unchanged. Runtime table count remains 198.
 
-The flat-file artifact catalog writes v2, reads v1 as unresolved, rejects invalid
+The flat-file artifact catalog now writes v3 with the identity-only marker, reads
+v1 as unresolved and v2 with its existing tombstone inference, and rejects invalid
 UID/state pairs and a shared nonzero UID across vnums, and preserves identity
 through ordinary gameplay/bind updates. The existing fixture covers all four
 states, round-trip/reload, invalid data, duplicate UID, a real v1 byte layout,

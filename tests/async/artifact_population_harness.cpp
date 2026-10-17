@@ -28,7 +28,7 @@ static artifact_payload_projection item(uint64_t uid, int vnum = 900, uint64_t p
 	row.extra_flags_present = true;
 	row.extra_flags = vnum == 901 ? 0 : ITEM_ARTIFACT;
 	row.quantity = 1;
-	row.custody_examined = row.custody_found = true;
+	row.custody_examined = row.custody_found = row.custody_owner_revision_found = true;
 	row.custody = { uid, uid, 0, row.payload_owner, 1, 1, vnum, item_custody_state::active };
 	return row;
 }
@@ -121,6 +121,20 @@ int main()
 	auto projection = current;
 	projection.domain = domain::locker;
 	expect(classify({ current, projection }), state::present, 111, 2);
+	// Different row IDs do not make repeated UIDs in one physical source safe.
+	auto repeated = current;
+	repeated.row_id += 1;
+	for (const auto &rows :
+	     { std::vector{ current, repeated }, std::vector{ repeated, current } })
+	{
+		expect(classify(rows), state::unresolved, 0, 0, reason::unqualified_payload);
+		expect(classify(rows, { { 900, 111, state::present } }), state::present, 111, 0,
+		       reason::unqualified_payload);
+	}
+	auto repeated_bag = bag;
+	repeated_bag.row_id += 10;
+	expect(classify({ bag, repeated_bag, artifact }), state::unresolved, 0, 0,
+	       reason::unqualified_payload);
 	auto stale = current;
 	stale.owner_reference = 13;
 	stale.payload_owner.id = 13;
@@ -153,6 +167,19 @@ int main()
 	expect(classify({ current }, { { 902, 111, state::present } }), state::unresolved, 0, 0,
 	       reason::unqualified_payload);
 
+	// A canonical UID seen under another vnum is contradictory evidence for
+	// its old identity too, even when the foreign payload is explicitly ordinary.
+	for (const uint64_t saved_flags : { uint64_t{ 0 }, uint64_t{ ITEM_ARTIFACT } })
+	{
+		auto foreign = current;
+		foreign.vnum = foreign.custody.vnum = 901;
+		foreign.extra_flags = saved_flags;
+		expect(classify({ foreign }, { { 900, 111, state::present } }), state::present, 111,
+		       0, reason::unqualified_payload);
+		expect(classify({ foreign }, { { 900, 111, state::retired } }), state::retired, 111,
+		       0, reason::unqualified_payload);
+	}
+
 	// Missing evidence never becomes absence; retained identities are not erased.
 	expect(classify({}, {}, false), state::unresolved, 0, 0, reason::incomplete);
 	expect(classify({ current }, { { 900, 111, state::present } }, false), state::present, 111,
@@ -163,7 +190,7 @@ int main()
 	       state::present, 111, 1, reason::incomplete);
 	expect(classify({}, { { 900, 111, state::retired } }, false), state::retired, 111, 0,
 	       reason::incomplete);
-	for (int variant = 0; variant < 7; ++variant)
+	for (int variant = 0; variant < 8; ++variant)
 	{
 		auto bad = current;
 		if (variant == 0)
@@ -180,8 +207,13 @@ int main()
 			bad.custody.state = item_custody_state::quarantined;
 		if (variant == 6)
 			bad.custody.state = item_custody_state::destroyed;
+		if (variant == 7)
+			bad.custody_owner_revision_found = false;
 		expect(classify({ bad }), state::unresolved, 0, 0, reason::unqualified_payload);
 	}
+	auto zero_revision = current;
+	zero_revision.custody.owner_revision = 0;
+	expect(classify({ zero_revision }), state::present, 111, 1);
 	// Unclaimed ground has a physical UID without invented persistent custody.
 	auto ground = current;
 	ground.domain = domain::redis_generation;
@@ -243,6 +275,8 @@ int main()
 	expect(classify({}, { { 900, 111, state::retired } }), state::retired, 111, 0);
 	expect(classify({ current }, { { 900, 111, state::retired } }), state::retired, 111, 0,
 	       reason::retired_payload);
+	expect(classify({ extra }, { { 900, 111, state::retired } }), state::retired, 111, 0,
+	       reason::conflicting_identities);
 	expect(classify({}, { { 900, 111, state::present } }), state::absent, 0, 0);
 
 	// No invalid input publishes even a prefix over the previous output.
@@ -258,5 +292,18 @@ int main()
 					      { 902, 111, state::retired } },
 					    true, &output) == EINVAL);
 	assert(output[0].identity.canonical_item_uid == 111);
+	for (const int invalid_vnum : { -1, 0 })
+	{
+		assert(artifact_population_classify({}, { { invalid_vnum, ITEM_ARTIFACT } }, {},
+						    true, &output) == EINVAL);
+		assert(artifact_population_classify({}, prototypes,
+						    { { invalid_vnum, 0, state::unresolved } },
+						    true, &output) == EINVAL);
+		auto invalid = current;
+		invalid.vnum = invalid_vnum;
+		assert(artifact_population_classify({ invalid }, prototypes, {}, true, &output) ==
+		       EINVAL);
+		assert(output.size() == 1 && output[0].identity.canonical_item_uid == 111);
+	}
 	std::cout << "artifact population classification: PASS\n";
 }

@@ -7,7 +7,7 @@
 // Refusal sets EEXIST (reserved), ENODATA (unresolved), or ENOMEM (unavailable).
 // No persistence is queued until successful placement commits the claim.
 bool artifact_begin_creation(P_obj object);
-// Placement commits a fresh claim. Saved-UID hydration has a separate boundary.
+// Placement commits a fresh claim or registers an already canonical saved UID.
 void artifact_object_placed(P_obj object);
 // Pending creation rolls back. Committed physical retirement retains a UID
 // tombstone; unloading merely detaches the live pointer.

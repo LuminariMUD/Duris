@@ -84,10 +84,14 @@ for call in (
     "player_save_pipeline_quiesce()",
     "player_save_pipeline_drain(3000)",
     "locker_async_drain(3000)",
+    "artifact_save_drain(3000)",
 ):
     assert call in drain_guard
 assert "drain_pending_ship_saves()" in confirm_delete
 assert confirm_delete.index("account_deletion_drain_guard drain_guard") > confirm_delete.index("#else")
+flat_completion = confirm_delete[confirm_delete.index("#else"):]
+assert flat_completion.index("artifacts_forget_deleted_account_character(identity.pid)") < flat_completion.index("remove_deleted_account_characters(d, identities)")
+
 runtime_remove = function_body(ACCOUNT, "void remove_deleted_account_characters(")
 detach_character = runtime_remove.index("character->desc = NULL")
 detach_descriptor = runtime_remove.index("character_desc->character = NULL")

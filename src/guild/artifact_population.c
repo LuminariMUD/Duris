@@ -32,9 +32,9 @@ bool qualified(const artifact_payload_projection &row, uint64_t root)
 		// A genuinely unclaimed ground tree may have no persistent owner yet.
 		return !row.custody_required && row.payload_owner.type == item_owner_type::room;
 	const auto &custody = row.custody;
-	return custody.state == item_custody_state::active && custody.item_uid == row.item_uid &&
-	       custody.vnum == row.vnum && custody.root_item_uid == root &&
-	       custody.parent_item_uid == row.parent_item_uid &&
+	return row.custody_owner_revision_found && custody.state == item_custody_state::active &&
+	       custody.item_uid == row.item_uid && custody.vnum == row.vnum &&
+	       custody.root_item_uid == root && custody.parent_item_uid == row.parent_item_uid &&
 	       item_owner_identity_equal(custody.owner, row.payload_owner);
 }
 
@@ -124,7 +124,7 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 		std::map<int32_t, vnum_evidence> evidence;
 		for (const auto &prototype : prototypes)
 		{
-			if (prototype.vnum < 0 ||
+			if (prototype.vnum <= 0 ||
 			    !flags.emplace(prototype.vnum, prototype.extra_flags).second)
 				return EINVAL;
 			if (prototype.extra_flags & ITEM_ARTIFACT)
@@ -134,7 +134,7 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 		std::map<uint64_t, int32_t> prior_uids;
 		for (const auto &identity : previous)
 		{
-			if (identity.vnum < 0 ||
+			if (identity.vnum <= 0 ||
 			    !artifact_identity_valid(identity.canonical_item_uid, identity.state) ||
 			    !prior_vnums.insert(identity.vnum).second ||
 			    (identity.canonical_item_uid &&
@@ -157,17 +157,20 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			       row.delivery_ordinal <
 				       latest_delivery.at({ row.owner_reference, row.item_uid });
 		};
+		std::set<row_key> source_uids;
 		std::set<uint64_t> conflicting_uids;
 		for (size_t index = 0; index < items.size(); ++index)
 		{
 			const auto &row = items[index];
-			if (row.vnum < 0 ||
+			if (row.vnum <= 0 ||
 			    row.domain > artifact_payload_domain::copyover_reconstruction ||
 			    row.role > artifact_payload_role::reconstruction)
 				return EINVAL;
 			if (row.item_uid && row.role != artifact_payload_role::history &&
 			    row.role != artifact_payload_role::reconstruction && !superseded(row))
 			{
+				if (!source_uids.insert(key(row, row.item_uid)).second)
+					conflicting_uids.insert(row.item_uid);
 				const auto [found, inserted] =
 					uid_vnums.emplace(row.item_uid, row.vnum);
 				const auto prior = prior_uids.find(row.item_uid);
@@ -203,7 +206,10 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			artifact_population_decision decision;
 			decision.identity = entry.previous;
 			std::map<uint64_t, std::vector<size_t>> candidates;
-			bool uncertain = false, retired_payload = false;
+			// Foreign-vnum evidence must reserve the prior identity as well.
+			bool uncertain =
+				conflicting_uids.count(entry.previous.canonical_item_uid) != 0;
+			bool retired_payload = false;
 			std::set<uint64_t> unqualified_uids;
 			for (const auto index : entry.payloads)
 			{
@@ -308,7 +314,8 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 						artifact_identity_state::unresolved;
 			}
 			else if (!uncertain && candidates.size() == 1 && !retired_payload &&
-				 entry.previous.state != artifact_identity_state::present)
+				 (entry.previous.state == artifact_identity_state::unresolved ||
+				  entry.previous.state == artifact_identity_state::absent))
 			{
 				decision.identity.canonical_item_uid = candidates.begin()->first;
 				decision.identity.state = artifact_identity_state::present;
@@ -331,8 +338,10 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 						artifact_identity_state::unresolved;
 				decision.reason =
 					(candidates.size() > 1 ||
-					 (entry.previous.state ==
-						  artifact_identity_state::present &&
+					 ((entry.previous.state ==
+						   artifact_identity_state::present ||
+					   entry.previous.state ==
+						   artifact_identity_state::retired) &&
 					  !candidates.empty())) ?
 						artifact_population_reason::conflicting_identities :
 					retired_payload ?

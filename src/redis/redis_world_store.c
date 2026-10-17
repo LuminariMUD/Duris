@@ -678,8 +678,11 @@ bool redis_world_store_consume_generation(
 }
 
 bool redis_world_store_read_generation(const struct redis_world_store_config *config,
-				       uint64_t sequence, std::vector<unsigned char> *generation)
+				       uint64_t sequence, std::vector<unsigned char> *generation,
+				       bool *transport_failure)
 {
+	if (transport_failure)
+		*transport_failure = false;
 	char manifest_key[160];
 	if (!config || !sequence || !generation ||
 	    !generation_key(manifest_key, sizeof manifest_key, config, sequence))
@@ -687,6 +690,8 @@ bool redis_world_store_read_generation(const struct redis_world_store_config *co
 	redisContext *context = connect_bounded(config, 500);
 	if (!context || context->err)
 	{
+		if (transport_failure)
+			*transport_failure = true;
 		if (context)
 			redisFree(context);
 		return false;
@@ -745,6 +750,8 @@ bool redis_world_store_read_generation(const struct redis_world_store_config *co
 		valid = SHA256(generation->data(), generation->size(), actual_digest) &&
 			CRYPTO_memcmp(actual_digest, generation_digest, SHA256_DIGEST_LENGTH) == 0;
 	}
+	if (transport_failure)
+		*transport_failure = context->err != 0;
 	redisFree(context);
 	if (!valid)
 		generation->clear();
