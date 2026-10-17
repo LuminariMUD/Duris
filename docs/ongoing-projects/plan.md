@@ -28,7 +28,8 @@ corpse/locker/pet/shop/room/collector sources and mismatched/current-live contro
 All nine owner-domain native controls pass, including saved UID before procedures,
 source mismatch refusal and live-alias isolation. Actual shop/corpse graph
 materializers, SQL snapshots, flat artifact suites and both native builds pass
-(`bin/analysis/owned-admission-*.log`). Final integration follows the NPC boundary repair.
+(`bin/analysis/owned-admission-*.log`). Integration with the NPC boundary repair passes: the full-world disposable
+MariaDB NPC artifact/copyover/restart/swap journey and both builds are green.
 ## Active follow-up — native NPC restoration boundaries (#173)
 
 Branch `branch/issue-67-npc-restore-boundaries`, based on #176. New review found
