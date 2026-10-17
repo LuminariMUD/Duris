@@ -17,6 +17,7 @@ prelude = r'''
 #include "net/comm.h"
 #include "net/gmcp.h"
 #include "magic/spells.h"
+#include "guild/artifact_admission.h"
 #include "sql/sql.h"
 #include "persistence/persistence_checkpoint.h"
 #include "redis/redis_floor_runtime.h"
@@ -78,6 +79,7 @@ int char_light(P_char ch) { assert(IS_ALIVE(ch)); return 0; }
 int room_light(int room,int) { assert(room>=0); return 0; }
 void sql_update_bind_data(int,int *,int *) {}
 void artifact_feed_to_min_sql(P_obj,int) {}
+// These pickup fixtures have no canonical artifact authority.
 bool artifact_is_canonical(P_obj) { return false; }
 void obj_from_obj(P_obj obj) { obj->loc_p=LOC_NOWHERE; }
 void obj_from_room(P_obj obj) { obj->loc_p=LOC_NOWHERE; }

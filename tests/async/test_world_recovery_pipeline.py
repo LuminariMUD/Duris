@@ -38,6 +38,7 @@ HARNESS = r'''
 #include "world/vnum.obj.h"
 #include <cstdio>
 #include "world/world_recovery_codec.h"
+#include "world/world_singletons.h"
 #include "persistence/copyover.h"
 #include "guild/artifact_population_repository.h"
 #include "item/item_ownership_runtime.h"
@@ -269,6 +270,8 @@ int copyover_write_zone_age_to_buffer(int, char *, size_t)
 // in test_artifact_creation_admission; ordinary codec controls use this boundary.
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &) { return object != nullptr; }
 void artifact_object_placed(P_obj) {}
+// Ordinary world objects in this fixture do not belong to shopkeepers.
+int singleton_shop_id(P_char) { return -1; }
 P_obj read_object_for_recovery(const artifact_payload_projection &source)
 {
     assert(source.extra_flags_present && source.quantity == 1);
