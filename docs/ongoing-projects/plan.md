@@ -22,8 +22,8 @@ Remaining saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current inspection work: `branch/issue-67-artifact-report-inspection`, based on
-PR #151. Outcome: artifact lists/JSON/player reports read owned prototype values
+Current inspection checkpoint: [PR #152](https://github.com/LuminariMUD/Duris/pull/152),
+ready for review, `branch/issue-67-artifact-report-inspection`, based on PR #151. Outcome: artifact lists/JSON/player reports read owned prototype values
 without constructing/extracting temporary gameplay objects. Non-goals: changing
 live saved-item admission or treating every offline load as inspection. Staff
 `load char` publishes the loaded character; maintenance may mutate a temporary
@@ -1118,8 +1118,9 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Artifact report inspection without materialization — AR-03 prerequisite
 
-Branch: `branch/issue-67-artifact-report-inspection`, based on PR #151;
-publication pending. Outcome: SQL JSON/list and both backends' player/list reports
+Review: [PR #152](https://github.com/LuminariMUD/Duris/pull/152),
+`branch/issue-67-artifact-report-inspection`, based on PR #151. Implementation
+commit: `db96a77ed` (the following documentation-only commit records its PR). Outcome: SQL JSON/list and both backends' player/list reports
 read prototype labels/flags without creating a temporary physical object. Non-goals:
 source/owner qualification for saved payloads, canonical administrative mutations,
 or classifying all offline work as read-only. Files: existing template cache/boot
@@ -2098,7 +2099,10 @@ record already names that actor, protect shared lifecycle writes, or prevent
 creation. Full canonical validation and the boot/offline/recovery work remain
 required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
-Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 → #140 → #141 → #142.
+Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 →
+#140 → #141 → #142 → #143 → #144 → #145 → #146 → #147 → #148 → #149 → #150 →
+#151 → #152. Each dependent PR targets its immediate predecessor; none of these
+issue-67 chunks has been merged or deployed by this goal.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
 from the tip of `branch/issue-67-flat-population-sources` in
