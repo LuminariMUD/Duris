@@ -53,6 +53,10 @@ void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entr
 	std::set<uint64_t> conflicts;
 	for (const auto &row : *items)
 	{
+		if (row.role == artifact_payload_role::history &&
+		    (row.domain == artifact_payload_domain::redis_generation ||
+		     row.domain == artifact_payload_domain::redis_floor))
+			continue; // Selected native authority supersedes these older Redis projections.
 		const auto found = selected.find(row.item_uid);
 		if (found == selected.end())
 			continue;

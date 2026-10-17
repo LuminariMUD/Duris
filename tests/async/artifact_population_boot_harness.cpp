@@ -268,7 +268,8 @@ int main()
 				9; // unrelated owner saves do not change this item
 		}
 		redis_result = redis_world_boot_result::ready;
-		redis_rows = { item(999, domain::redis_generation) };
+		redis_rows = { item(700, domain::redis_floor) };
+		redis_rows.front().source_quarantined = true; // superseded partial Redis overlap
 		redis_mobs.push_back({ 2000, 42, 2300, 2300, -1 }); // superseded by selected native
 		if (conflict == 6)
 			missing_revisions.insert(700);

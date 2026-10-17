@@ -3071,6 +3071,13 @@ static void stage_artifact_population()
 			fatal_boot_error("artifact_identity",
 					 "Object prototype catalog exceeds population limit");
 		const auto &population = artifact_population_boot_evidence();
+		const bool restorable = copyover_boot ||
+					redis_world_prepare_boot() !=
+						redis_world_boot_result::ready ||
+					redis_world_validate_boot();
+		if (!restorable)
+			logit(LOG_ARTIFACT,
+			      "artifact boot: Redis world cannot be restored; identities remain reserved");
 		std::unordered_set<int> saved_artifacts;
 		for (const auto &item : population.items)
 			if (!item.extra_flags_present || (item.extra_flags & ITEM_ARTIFACT))
@@ -3087,7 +3094,8 @@ static void stage_artifact_population()
 			    saved_artifacts.count(vnum) || artifact_tracks_vnum(vnum))
 				object_templates.try_emplace(vnum, std::move(prototype));
 		}
-		if (!artifacts_stage_population(population.items, prototypes, population.complete))
+		if (!artifacts_stage_population(population.items, prototypes,
+						population.complete && restorable))
 			fatal_boot_error("artifact_identity",
 					 "Could not stage canonical population evidence");
 		artifact_population_boot_clear();

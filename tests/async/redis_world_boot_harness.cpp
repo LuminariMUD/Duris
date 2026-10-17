@@ -71,6 +71,23 @@ static int restore_calls = 0;
 static bool restore_succeeds = true;
 static std::vector<unsigned char> restored_generation;
 static std::vector<std::vector<unsigned char>> restored_floors;
+static bool semantic_succeeds = true;
+static std::vector<unsigned char> validated_generation;
+static std::vector<std::vector<unsigned char>> validated_floors;
+bool world_recovery_validate_with_floor(const unsigned char *data, size_t size, int age,
+					uint64_t sequence,
+					const unsigned char *const *floor_records,
+					const size_t *floor_sizes, size_t floor_count)
+{
+	assert(world_recovery_validate(data, size, age, sequence, nullptr));
+	validated_generation.assign(data, data + size);
+	validated_floors.clear();
+	for (size_t index = 0; index < floor_count; ++index)
+		validated_floors.emplace_back(floor_records[index],
+					      floor_records[index] + floor_sizes[index]);
+	return semantic_succeeds;
+}
+
 bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int age,
 				       uint64_t sequence, const unsigned char *const *floor_records,
 				       const size_t *floor_sizes, size_t floor_count,
@@ -214,6 +231,14 @@ static void pinning_checks(redisContext *other, int port)
 	put_floor(other, 202, replacement);
 	assert(redis_world_prepare_boot() == redis_world_boot_result::ready &&
 	       redis_world_boot_evidence() == pinned);
+	semantic_succeeds = false;
+	assert(!redis_world_validate_boot() && restore_calls == 0);
+	semantic_succeeds = true;
+	assert(redis_world_validate_boot() && restore_calls == 0 && validated_generation == first &&
+	       validated_floors.size() == 1 &&
+	       validated_floors.front() ==
+		       std::vector<unsigned char>(floor.begin() + WORLD_RECOVERY_FLOOR_PREFIX_BYTES,
+						  floor.end()));
 	assert(redis_load_world_state() && restore_calls == 1 && restored_generation == first &&
 	       restored_floors.size() == 1 &&
 	       restored_floors[0] ==

@@ -37,7 +37,8 @@ bool qualified(const artifact_payload_projection &row, uint64_t root,
 	    custody.item_uid != row.item_uid || custody.vnum != row.vnum ||
 	    !custody.root_item_uid || !item_owner_identity_equal(custody.owner, row.payload_owner))
 		return false;
-	if (row.domain == artifact_payload_domain::copyover_ground && row.custody_required)
+	if (row.domain == artifact_payload_domain::copyover_ground && row.custody_required &&
+	    custody.owner.type == item_owner_type::corpse)
 	{
 		// A native physical corpse can wrap several logical custody roots.
 		// Each logical root starts at itself, or is inherited from its actual

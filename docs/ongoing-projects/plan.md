@@ -1,5 +1,22 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
+## Active review repair — recovery qualification and rollback
+
+Branch `branch/issue-67-recovery-validation`, based on #175. Four later findings:
+#149 semantic Redis restorability and superseded Redis quarantine; #153 partial
+admission rollback and overly broad split custody roots. Outcome: classify cold
+Redis evidence only after the real read-only restoration plan accepts loaded-world
+semantics; selected native UIDs ignore superseded Redis quarantine; native tree
+failure rolls back artifact admission; only corpse custody can split logical roots.
+Reuse the existing plan builder and restore checkpoint. Files: recovery pipeline,
+Redis boot adapter, artifact boot consumer/classifier, existing focused fixtures,
+plan. No new persistence format or independent validation policy. Focused
+admission/classifier/boot-consumer, real Redis, native save/exec/recover, recovery
+pipeline/transaction checks and SQL/flat builds pass. The native rollback case
+executes a two-artifact existing tree: later refusal restores earlier admissions,
+and a repaired retry registers both. Logs: `bin/analysis/recovery-validation-*.log`.
+
+
 ## Active review repair — remaining SQL source contracts
 
 Branch `branch/issue-67-evidence-contracts`, based on qualified registration.

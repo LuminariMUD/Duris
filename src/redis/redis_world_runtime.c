@@ -1298,6 +1298,37 @@ bool redis_consume_world_state(void)
 #endif
 }
 
+bool redis_world_validate_boot(void)
+{
+#ifdef __NO_REDIS__
+	return false;
+#else
+	if (world_boot_result != redis_world_boot_result::ready)
+		return false;
+	std::vector<const unsigned char *> floor_data;
+	std::vector<size_t> floor_sizes;
+	try
+	{
+		floor_data.reserve(world_boot_snapshot.floor_records.size());
+		floor_sizes.reserve(world_boot_snapshot.floor_records.size());
+		for (const auto &record : world_boot_snapshot.floor_records)
+		{
+			floor_data.push_back(record.data() + WORLD_RECOVERY_FLOOR_PREFIX_BYTES);
+			floor_sizes.push_back(record.size() - WORLD_RECOVERY_FLOOR_PREFIX_BYTES);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	return world_recovery_validate_with_floor(world_boot_snapshot.generation.data(),
+						  world_boot_snapshot.generation.size(),
+						  world_state_max_age, world_boot_snapshot.sequence,
+						  floor_data.data(), floor_sizes.data(),
+						  floor_data.size());
+#endif
+}
+
 bool redis_load_world_state(void)
 {
 #ifdef __NO_REDIS__

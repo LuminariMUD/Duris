@@ -188,6 +188,13 @@ bool world_recovery_validate(const unsigned char *data, size_t size, int max_age
 			     uint64_t minimum_sequence, world_recovery_header *header_out);
 bool world_recovery_restore(const unsigned char *data, size_t size, int max_age_seconds,
 			    uint64_t minimum_sequence, world_recovery_header *header_out);
+// Read-only semantic validation against loaded rooms, exits, zones and prototypes.
+// Uses the same plan builder as restoration, without custody mutation/materialization.
+bool world_recovery_validate_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
+					uint64_t minimum_sequence,
+					const unsigned char *const *floor_records,
+					const size_t *floor_record_sizes,
+					size_t floor_record_count);
 bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
 				       uint64_t minimum_sequence,
 				       const unsigned char *const *floor_records,

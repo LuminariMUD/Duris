@@ -37,6 +37,7 @@
 #include <deque>
 #include <mutex>
 #include <map>
+#include <optional>
 #include <tuple>
 #include <new>
 #include <thread>
@@ -1560,16 +1561,15 @@ void world_recovery_discard_mob(P_char mob)
 	extract_char(mob);
 }
 
-bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
-				       uint64_t minimum_sequence,
-				       const unsigned char *const *floor_records,
-				       const size_t *floor_record_sizes, size_t floor_record_count,
-				       world_recovery_header *header_out)
+static bool prepare_recovery_plan(const unsigned char *data, size_t size, int max_age_seconds,
+				  uint64_t minimum_sequence,
+				  const unsigned char *const *floor_records,
+				  const size_t *floor_record_sizes, size_t floor_record_count,
+				  recovery_plan *plan)
 {
 	if ((!floor_records || !floor_record_sizes) && floor_record_count)
 		return false;
-	recovery_plan plan;
-	if (!build_recovery_plan(data, size, max_age_seconds, minimum_sequence, &plan))
+	if (!build_recovery_plan(data, size, max_age_seconds, minimum_sequence, plan))
 	{
 		logit(LOG_SYS, "redis: world recovery semantic plan validation failed");
 		return false;
@@ -1581,14 +1581,14 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		const bool decoded = world_recovery_decode_record(
 			world_recovery_record_type::object, floor_records[index],
 			floor_record_sizes[index], &native_record);
-		if (decoded && floor_record_repeats(plan, native_record))
+		if (decoded && floor_record_repeats(*plan, native_record))
 		{
 			++repeated;
 			continue;
 		}
 		if (!decoded ||
-		    !add_object_record(&plan, native_record.data(), native_record.size(),
-				       artifact_payload_domain::redis_floor, plan.header.sequence))
+		    !add_object_record(plan, native_record.data(), native_record.size(),
+				       artifact_payload_domain::redis_floor, plan->header.sequence))
 		{
 			logit(LOG_SYS, "redis: world recovery floor record rejected index=%zu",
 			      index);
@@ -1598,6 +1598,29 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 	if (repeated)
 		logit(LOG_SYS, "redis: world recovery left out %zu floor records of items it holds",
 		      repeated);
+	return true;
+}
+
+bool world_recovery_validate_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
+					uint64_t minimum_sequence,
+					const unsigned char *const *floor_records,
+					const size_t *floor_record_sizes, size_t floor_record_count)
+{
+	recovery_plan plan;
+	return prepare_recovery_plan(data, size, max_age_seconds, minimum_sequence, floor_records,
+				     floor_record_sizes, floor_record_count, &plan);
+}
+
+bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
+				       uint64_t minimum_sequence,
+				       const unsigned char *const *floor_records,
+				       const size_t *floor_record_sizes, size_t floor_record_count,
+				       world_recovery_header *header_out)
+{
+	recovery_plan plan;
+	if (!prepare_recovery_plan(data, size, max_age_seconds, minimum_sequence, floor_records,
+				   floor_record_sizes, floor_record_count, &plan))
+		return false;
 	if (!leave_out_owned_trees(&plan))
 	{
 		logit(LOG_SYS, "redis: world recovery ownership lookup failed");
@@ -1756,10 +1779,23 @@ P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t
 	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size,
 			       artifact_payload_domain::copyover_ground, source_context))
 		return nullptr;
+	std::optional<artifact_restore_scope> artifacts;
+	if (plan.objects.front().existing_root)
+	{
+		// Fresh trees unwind their newly constructed bodies on failure. Existing
+		// bodies need their earlier admission state restored without extraction.
+		artifacts.emplace();
+		if (!*artifacts)
+			return nullptr;
+	}
 	redis_floor_runtime_set_materializing(true);
 	const bool restored = materialize_plan(plan, tree.custody);
 	redis_floor_runtime_set_materializing(false);
-	return restored ? find_object_uid(plan.objects.front().items.front().item_uid) : nullptr;
+	P_obj root = restored ? find_object_uid(plan.objects.front().items.front().item_uid) :
+				nullptr;
+	if (root && artifacts)
+		artifacts->commit();
+	return root;
 }
 
 void world_recovery_capture_forget_character(P_char ch)

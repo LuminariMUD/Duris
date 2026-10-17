@@ -42,6 +42,8 @@ void redis_world_recovery_boot_clear(void);
 
 bool redis_save_world_state(void);
 bool redis_load_world_state(void);
+// Validate pinned bytes after world definitions load and before artifact classification.
+bool redis_world_validate_boot(void);
 enum class redis_world_boot_result
 {
 	disabled,

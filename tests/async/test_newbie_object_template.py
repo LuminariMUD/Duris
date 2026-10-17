@@ -22,6 +22,7 @@ PRELUDE = r'''
 #include "guild/artifact_admission.h"
 #include "guild/artifact_population.h"
 #include "guild/artifact_population_boot.h"
+#include "redis/redis_world_runtime.h"
 #include "item/objmisc.h"
 #include <cassert>
 #include <cstdarg>
@@ -46,13 +47,17 @@ static std::unordered_set<void *> allocations;
 static std::unordered_map<int, object_template> object_templates;
 static artifact_population_boot_snapshot population;
 static bool classified = false;
+int copyover_boot=0;
+static bool semantic_valid=true, expected_complete=true;
+redis_world_boot_result redis_world_prepare_boot() { return redis_world_boot_result::ready; }
+bool redis_world_validate_boot() { return semantic_valid; }
 const artifact_population_boot_snapshot &artifact_population_boot_evidence() { return population; }
 void artifact_population_boot_clear() { assert(classified); population = {}; }
 bool artifact_tracks_vnum(int vnum) { return vnum == 102; }
 bool artifacts_stage_population(const std::vector<artifact_payload_projection> &items,
                                 const std::vector<artifact_population_template> &prototypes,
                                 bool complete) {
-    assert(complete && items.size() == 3 && items.front().vnum == 101 && prototypes.size() == 9);
+    assert(complete==expected_complete && items.size() == 3 && items.front().vnum == 101 && prototypes.size() == 9);
     classified = true; return true;
 }
 void fatal_boot_error(const char *, const char *, ...) { abort(); }
@@ -233,6 +238,11 @@ int main()
     assert(find_object_template(102) && "previous artifact identity was not cached");
     assert(find_object_template(103) && "unknown saved flags must retain the inferred identity template");
     assert(!find_object_template(104) && object_templates.size() == 4);
+    semantic_valid=false; expected_complete=false; population.complete=true;
+    auto unknown=legacy; unknown.vnum=103; unknown.extra_flags_present=false;
+    population.items={promoted,unknown,legacy};
+    stage_artifact_population(); assert(classified);
+    semantic_valid=true; expected_complete=true;
     assert_inert();
     for (int nr = 0; nr <= top_of_objt; ++nr) assert(cache_object_template(100 + nr));
     assert(!cache_object_template(999) && !find_object_template(999));

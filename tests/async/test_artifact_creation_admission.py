@@ -22,6 +22,7 @@ HARNESS = r"""
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 index_data indexes[4] = {};
 index_data mob_indexes[1] = {};
 P_index mob_index=mob_indexes;
@@ -223,6 +224,7 @@ bool training_dummy_is(P_char) { return false; }
 // NEST_CHECK
 // RESET
 // RESTORE_WRAPPER
+// NATIVE_EXISTING_CASES
 // RECOVERY_CASES
 // MAINTENANCE_CASES
 // SWAP_CASES
@@ -368,6 +370,11 @@ int main() {
  assert(!world_recovery_restore_with_floor(nullptr,0,300,0,nullptr,nullptr,0,nullptr));
  assert(!materializing && !object_list && writes.empty() && artifact_rows.at(902).canonical_item_uid==wrapper_uid &&
   artifact_rows.at(902).identity_state==wrapper_state && artifact_rows.at(902).timer==4321 && artifact_binds.at(902).owner_pid==77);
+ native_fixture=true;
+ assert(!world_recovery_restore_copyover_object_from_buffer("fixture",7,44));
+ native_fixture=false;
+ assert(!materializing && !object_list && writes.empty() && artifact_rows.at(902).canonical_item_uid==wrapper_uid &&
+  artifact_rows.at(902).identity_state==wrapper_state && artifact_rows.at(902).timer==4321 && artifact_binds.at(902).owner_pid==77);
  fail_materialization=false;
  world_recovery_header header={};
  assert(world_recovery_restore_with_floor(nullptr,0,300,0,nullptr,nullptr,0,&header));
@@ -382,6 +389,7 @@ int main() {
  studio_cases();
  transformation_cases();
  corpse_bind_cases();
+ native_existing_recovery_cases();
  // Tracking metadata alone is not a physical restore source, even with a known UID.
  auto &legacy=artifact_rows[900];
  legacy={true,ARTIFACT_ONGROUND,2300,7777,ARTIFACT_MAJOR};
@@ -514,19 +522,31 @@ restore_support=r"""
 // controlled here, while its callback uses the real artifact/constructor code.
 struct recovery_plan {
  std::vector<world_recovery_authority_item> authority_items;
- std::vector<int> mobs,objects;
+ std::vector<int> mobs;
+ std::vector<planned_object> objects;
  world_recovery_header header={};
 };
-bool fail_materialization=false,materializing=false;
+bool fail_materialization=false,materializing=false,native_fixture=false,native_existing_fixture=false;
+planned_object native_existing_plan;
+bool world_recovery_read_copyover_object_record(const char *,size_t,world_recovery_copyover_tree *tree) {
+ *tree={}; if(native_existing_fixture) { tree->items=native_existing_plan.items; tree->record={2300,static_cast<uint32_t>(tree->items.size())}; }
+ return native_fixture;
+}
 P_obj last_materialized=nullptr;
 bool build_recovery_plan(const unsigned char *,size_t,int,uint64_t,recovery_plan *plan) { plan->header.sequence=123; return true; }
 bool floor_record_repeats(const recovery_plan &,const std::vector<unsigned char> &) { return false; }
-bool add_object_record(recovery_plan *,const unsigned char *,size_t,artifact_payload_domain,uint64_t) { return false; }
+bool add_object_record(recovery_plan *plan,const unsigned char *,size_t,artifact_payload_domain,uint64_t) {
+ if(!native_fixture) return false;
+ if(native_existing_fixture) { plan->objects.push_back(native_existing_plan); return true; }
+ static obj_data existing={}; planned_object tree={}; tree.existing_root=&existing;
+ plan->objects.push_back(tree); return true;
+}
 bool leave_out_owned_trees(recovery_plan *) { return true; }
 bool world_recovery_decode_record(world_recovery_record_type,const unsigned char *,size_t,std::vector<unsigned char> *) { return false; }
 bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authority_item *,size_t,item_ownership_runtime_entry *,size_t) { return true; }
 void redis_floor_runtime_set_materializing(bool active) { materializing=active; }
 bool materialize_plan(const recovery_plan &,const std::vector<item_ownership_runtime_entry> &) {
+ if(native_existing_fixture) return materialize_object(native_existing_plan)!=nullptr;
  last_materialized=read_object_for_creation(902,VIRTUAL); assert(last_materialized);
  last_materialized->loc_p=LOC_ROOM; last_materialized->loc.room=0; artifact_object_placed(last_materialized);
  artifact_update_sql(902,true,ARTIFACT_ON_PC,88,9876,ARTIFACT_MAJOR); artifact_bind_store(902,88,123);
@@ -535,7 +555,43 @@ bool materialize_plan(const recovery_plan &,const std::vector<item_ownership_run
  return true;
 }
 """
-source=source.replace("// RESTORE_WRAPPER",restore_support+extract_function("world_recovery_pipeline.c","bool world_recovery_restore_with_floor("))
+source=source.replace("// RESTORE_WRAPPER",restore_support+extract_function("world_recovery_pipeline.c","static bool prepare_recovery_plan(")+"\n"+extract_function("world_recovery_pipeline.c","bool world_recovery_restore_with_floor(")+"\n"+extract_function("world_recovery_pipeline.c","P_obj world_recovery_restore_copyover_object_from_buffer("))
+
+source=source.replace("// NATIVE_EXISTING_CASES",r"""
+void native_existing_recovery_cases() {
+ assert(!object_list && !pool.objs_used); artifact_rows.clear(); artifact_binds.clear(); writes.clear();
+ auto *bag=read_object(903,VIRTUAL); bag->obj_uid=71000; bag->value[0]=1000; obj_to_room(bag,0);
+ auto *first=read_object(900,VIRTUAL); first->obj_uid=71001; obj_to_obj(first,bag);
+ auto *second=read_object(902,VIRTUAL); second->obj_uid=71002; obj_to_obj(second,bag);
+ native_existing_plan={}; native_existing_plan.existing_root=bag;
+ native_existing_plan.room_vnum=2300; native_existing_plan.source_domain=artifact_payload_domain::copyover_ground;
+ native_existing_plan.source_context=44;
+ for(P_obj body : {bag,first,second}) {
+  world_recovery_item_snapshot item={}; item.item_uid=body->obj_uid; item.root_item_uid=bag->obj_uid;
+  item.parent_item_uid=body==bag ? 0 : bag->obj_uid; item.vnum=OBJ_VNUM(body); item.extra_flags=body->extra_flags;
+  native_existing_plan.items.push_back(item);
+  if(body==bag) continue;
+  artifact_payload_projection source={}; source.domain=artifact_payload_domain::copyover_ground;
+  source.owner_reference=2300; source.owner_context=44; source.item_uid=item.item_uid;
+  source.payload_root_item_uid=item.root_item_uid; source.parent_item_uid=item.parent_item_uid;
+  source.vnum=item.vnum; source.extra_flags=item.extra_flags; source.extra_flags_present=true; source.quantity=1;
+  auto &row=artifact_rows[source.vnum]; row.canonical_item_uid=source.item_uid;
+  row.identity_state=artifact_identity_state::present; row.timer=5678; row.canonical_payloads={source};
+  artifact_binds[source.vnum]={77,88};
+ }
+ artifact_rows.at(902).canonical_item_uid=99999; // later item refuses after the first entered recovery
+ native_fixture=native_existing_fixture=true;
+ assert(!world_recovery_restore_copyover_object_from_buffer("fixture",7,44));
+ assert(!artifact_rows.at(900).live_object && artifact_rows.at(900).pending==artifact_pending::none &&
+        artifact_rows.at(900).timer==5678 && artifact_binds.at(900).owner_pid==77 && object_list && pool.objs_used==3 && writes.empty());
+ artifact_rows.at(902).canonical_item_uid=second->obj_uid;
+ assert(world_recovery_restore_copyover_object_from_buffer("fixture",7,44)==bag);
+ assert(artifact_is_canonical(first) && artifact_is_canonical(second) && artifact_rows.at(900).timer==5678 && writes.empty());
+ native_fixture=native_existing_fixture=false;
+ extract_obj(bag,FALSE); assert(!object_list && !pool.objs_used);
+ std::cout<<"actual existing native tree: later refusal rolls back earlier admissions, successful retry registers both: PASS\n";
+}
+""")
 
 
 output=ROOT/"bin/tests"; output.mkdir(parents=True,exist_ok=True)

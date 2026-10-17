@@ -136,6 +136,19 @@ int main()
 	nested.custody.root_item_uid = contents.item_uid;
 	nested.custody.parent_item_uid = contents.item_uid;
 	expect(classify({ shell, contents, nested }), state::present, 202, 1);
+	for (const auto owner :
+	     { item_owner_type::player, item_owner_type::locker, item_owner_type::shopkeeper })
+	{
+		auto wrong_shell = shell, wrong_contents = contents, wrong_nested = nested;
+		for (auto *row : { &wrong_shell, &wrong_contents, &wrong_nested })
+		{
+			row->payload_owner.type = owner;
+			row->custody.owner = row->payload_owner;
+		}
+		expect(classify({ wrong_shell, wrong_contents, wrong_nested }), state::unresolved,
+		       0, 0, reason::unqualified_payload);
+	}
+
 	auto stored_contents = contents;
 	stored_contents.domain = domain::corpse;
 	stored_contents.owner_reference = 77;

@@ -480,6 +480,18 @@ int main()
     memcpy(blob.data() + WORLD_RECOVERY_WIRE_HEADER_BYTES, record.data(), record.size());
     finish(blob, header);
     assert(world_recovery_validate(blob.data(), blob.size(), 300, 42, nullptr));
+    const auto before_semantic_reads=objects_read;
+    assert(!world_recovery_validate_with_floor(blob.data(),blob.size(),300,42,nullptr,nullptr,0));
+    assert(objects_read==before_semantic_reads); // the saved door no longer exists
+    zone_age_entry missing_zone={}; missing_zone.zone_rnum=42;
+    const auto zone_record=frame(world_recovery_record_type::zone,reinterpret_cast<const unsigned char *>(&missing_zone),sizeof(missing_zone));
+    auto zone_header=header; zone_header.door_count=0; zone_header.zone_count=1;
+    std::vector<unsigned char> missing_zone_blob(WORLD_RECOVERY_WIRE_HEADER_BYTES+zone_record.size());
+    memcpy(missing_zone_blob.data()+WORLD_RECOVERY_WIRE_HEADER_BYTES,zone_record.data(),zone_record.size());
+    finish(missing_zone_blob,zone_header);
+    assert(world_recovery_validate(missing_zone_blob.data(),missing_zone_blob.size(),300,42,nullptr));
+    assert(!world_recovery_validate_with_floor(missing_zone_blob.data(),missing_zone_blob.size(),300,42,nullptr,nullptr,0));
+    assert(objects_read==before_semantic_reads);
     header.door_count = 2;
     finish(blob, header);
     assert(!world_recovery_validate(blob.data(), blob.size(), 300, 42, nullptr));
@@ -738,11 +750,15 @@ int main()
     const auto invalid_flags = object_generation({{invalid_flags_item}});
     assert(!world_recovery_restore(invalid_flags.data(), invalid_flags.size(), 300, 77,
                                    nullptr));
+    const auto validation_reads=objects_read;
+    assert(!world_recovery_validate_with_floor(invalid_flags.data(),invalid_flags.size(),300,77,nullptr,nullptr,0));
+    assert(objects_read==validation_reads);
 
     auto type_zero_item = item(675, 675, 0);
     type_zero_item.type = 0;
     type_zero_item.flags = 0;
     const auto type_zero_object = object_generation({{type_zero_item}});
+    assert(world_recovery_validate_with_floor(type_zero_object.data(),type_zero_object.size(),300,77,nullptr,nullptr,0));
     assert(world_recovery_restore(type_zero_object.data(), type_zero_object.size(), 300, 77,
                                   nullptr));
     assert(object_list && object_list->type == 0);
@@ -1156,7 +1172,7 @@ print("[PASS] in-flight publication joins before pwipe deletion can continue")
 print("[PASS] a world above the old 64 MiB ceiling is captured, published and restored")
 print("[PASS] a failed capture completes as one, and health keeps the last publish's age")
 print("[PASS] duplicate/moved items and custody failures fail closed with rollback")
-print("[PASS] failed recovery and forced zone reset restore exactly one owned ground artifact")
+print("[PASS] failed recovery and forced reset preserve reserved artifact identity without fabrication")
 
 for token in (
     "WORLD_RECOVERY_MAX_BYTES = 256 * 1024 * 1024",
@@ -1275,15 +1291,16 @@ transactional_restore = section(
     PIPELINE, "bool world_recovery_restore_with_floor", "bool world_recovery_restore("
 )
 for token in (
-    "build_recovery_plan",
-    "add_object_record",
+    "prepare_recovery_plan",
     "sql_persistence_reconcile_world_recovery_items",
     "materialize_plan",
     "redis_floor_runtime_set_materializing(true)",
     "redis_floor_runtime_set_materializing(false)",
 ):
     assert token in transactional_restore
-assert transactional_restore.index("build_recovery_plan") < transactional_restore.index(
+planning = extract_function("world_recovery_pipeline.c", "static bool prepare_recovery_plan(")
+assert "build_recovery_plan" in planning and "add_object_record" in planning
+assert transactional_restore.index("prepare_recovery_plan") < transactional_restore.index(
     "sql_persistence_reconcile_world_recovery_items"
 ) < transactional_restore.index("materialize_plan")
 for token in (
