@@ -52,8 +52,10 @@ bool redis_world_store_consume_generation(
 	const struct redis_world_store_config *config, uint64_t sequence,
 	const std::vector<unsigned char> &generation,
 	const std::vector<std::vector<unsigned char>> &floor_records);
+// The dedicated reader connection can fail while the caller's WATCH connection is healthy.
 bool redis_world_store_read_generation(const struct redis_world_store_config *config,
-				       uint64_t sequence, std::vector<unsigned char> *generation);
+				       uint64_t sequence, std::vector<unsigned char> *generation,
+				       bool *transport_failure = nullptr);
 bool redis_world_store_publish(const struct redis_world_store_config *config,
 			       const char *writer_token, uint64_t lease_msec,
 			       const unsigned char *data, size_t size, uint64_t sequence,

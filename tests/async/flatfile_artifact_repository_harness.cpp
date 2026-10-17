@@ -1,4 +1,5 @@
 #include "flatfile/flatfile_artifact_repository.h"
+#include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 
 #include <algorithm>
@@ -122,6 +123,13 @@ static void identity_storage(const fs::path &root)
 					state == artifact_identity_state::retired ?
 				record.vnum :
 				0;
+		record.identity_only = true;
+		states.push_back(record);
+		// Identical legacy metadata must remain distinguishable from the reservation.
+		record.vnum += 1;
+		if (record.canonical_item_uid)
+			record.canonical_item_uid += 1;
+		record.identity_only = false;
 		states.push_back(record);
 	}
 	require(flatfile_artifact_establish(invalid_root.string(), states, &error) ==
@@ -133,13 +141,30 @@ static void identity_storage(const fs::path &root)
 			roundtrip == states,
 		"identity states changed on reload");
 
-	// Materialize the actual v1 wire shape: the v2 record adds only UID/state.
+	// Materialize the actual v1 wire shape: v2 added UID/state, v3 the marker.
 	// Legacy bytes have no identity evidence and must never decode as absent.
 	std::ifstream input(root / "domains/artifact_catalog", std::ios::binary);
 	std::vector<uint8_t> legacy{ std::istreambuf_iterator<char>(input), {} };
-	require(legacy.size() == 56 + 4 + 62 && legacy[8] == 2,
+	require(legacy.size() == 56 + 4 + 63 && legacy[8] == 3,
 		"unexpected single-record artifact catalog wire shape");
-	legacy.resize(legacy.size() - 9);
+	auto version_two = legacy;
+	version_two.pop_back();
+	version_two[8] = 2;
+	const uint32_t v2_size = version_two.size() - 56;
+	for (size_t byte = 0; byte < sizeof(v2_size); ++byte)
+		version_two[12 + byte] = static_cast<uint8_t>(v2_size >> (byte * 8));
+	SHA256(version_two.data() + 56, v2_size, version_two.data() + 24);
+	const fs::path v2_root = root.parent_path() / "version-two-identity";
+	prepare_root(v2_root);
+	require(flatfile_atomic_write((v2_root / "domains").string(), "artifact_catalog",
+				      version_two, &error),
+		"could not write v2 artifact fixture");
+	flatfile_artifact_record v2_record;
+	require(flatfile_artifact_get(v2_root.string(), 100, &v2_record, &error) ==
+				flatfile_artifact_result::ok &&
+			v2_record == loaded && !v2_record.identity_only,
+		"v2 identity or gameplay state changed");
+	legacy.resize(legacy.size() - 10);
 	legacy[8] = 1;
 	const uint32_t payload_size = legacy.size() - 56;
 	for (size_t byte = 0; byte < sizeof(payload_size); ++byte)
