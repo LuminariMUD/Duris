@@ -2489,10 +2489,8 @@ void game_loop(int port, int sslport)
 			// recalculate avg mob level now that mobs are restored
 			calc_zone_mob_level();
 		}
-		else
-			fatal_boot_error(
-				"copyover",
-				"Recovery failed; no source was consumed and no partial world will enter the game loop");
+		// Failed recovery leaves the listeners invalid. The socket-selection
+		// branch below returns through normal shutdown, joining every worker.
 	}
 
 	// redis crash recovery - restore world state from redis snapshot

@@ -1,28 +1,34 @@
 # Issue #67: artifact identity, duplicate prevention, and feeding feedback
 
-## Latest review checkpoint: #147 follow-up and #148 completion
+## Latest review checkpoint: new findings on #147–#149
 
-#148's four findings are fixed in `7e3bc3837`, pushed and resolved. SQL and flat
-builds, classifier ASan/UBSan, flat catalog/runtime/population, SQL snapshot and
-cache checks passed. Its plan has the detailed marker/revision compatibility notes.
-That repair is preserved in local #149 merge `42a49c1ab`, not yet published.
+Fresh inventory after #150: 41 findings total (including the original extra review
+body finding), 24 resolved and 17 outstanding. #150 repair `d429a3736` is published
+and all three threads are resolved. #151 carry-forward `bbea4f9f6` is published;
+offline cleanup, lifecycle tests and native build pass. Its test now links the
+existing shared lifecycle stubs. #152 and later have not received these repairs.
 
-A fresh scan found two new #147 findings, so the active branch is again
-`branch/issue-67-copyover-evidence`: refuse raced symlinks/replaced inodes, and bound
-NPC arrays before materialization. Outcome: pin the original regular inode and
-cap NPC effects/carried items at the existing 512-entry recovery-tree budget.
-The complete 80-effect/300-item compatibility case remains supported. Files:
-copyover reader, existing executable evidence harness, this plan. Proof: injected
-replacements at first and claimed-file open, exact/over-limit framed records,
-existing real copyover custody/save guards and native build. No new format,
-configuration, service or production operation is needed.
+The scan added three findings on #147, two on #148 and one on #149. Active work
+returns to #147 (`branch/issue-67-copyover-evidence`) in
+`/home/aiwithapex/projects/duris-issue67-writer-backpressure`:
+- Route failed native recovery to the existing graceful shutdown, avoiding exit
+  while worker threads are joinable.
+- Recheck the recovery-claim name immediately after publication and before any
+  socket mutation/exec. On conflict, keep the live process and both evidence files.
+- Mark embedded native owner revisions present, backporting the already tested
+  #149 integration; this also addresses #148's duplicate flag finding once carried.
+Outcome/files/proof: existing comm startup and copyover publication paths, native
+projection reader and existing failure/custody/evidence harnesses; no new locking
+service or format. Actual startup-branch and late-claim regressions fail before
+repair; post-fix startup/thread-join, late-claim save/exec refusal, normal copyover
+custody, projection/format evidence, native build and tidy pass. Evidence:
+`bin/analysis/pr147-shutdown-*`, `pr147-claim-*`, `pr147-revision-after.log`,
+`pr147-followup-*`. Publication is next.
 
-The symlink-race regression fails before repair. All three race scenarios,
-exact/over-limit vectors, format/pinning controls (ASan/UBSan), real custody
-save/exec/recover, save guards, native build and format/tidy pass after repair.
-Evidence: `bin/analysis/pr147-review-*`. Eighteen findings are resolved;
-seventeen remain including these two newly arrived findings. Continue #147,
-carry it through #148 and the local #149 merge, then resume the remaining list.
+Next: finish/publish these #147 repairs, carry to #148 and fix its foreign-vnum
+canonical-release finding, then fix #149's native NPC completeness finding.
+Carry through #150/#151, then #152/#153 and resume #154, #155, #156, #157, #162.
+The full latest inventory is `bin/analysis/review-refresh-after-150.json`.
 
 ## Additional #141 review: saved-room source keys
 

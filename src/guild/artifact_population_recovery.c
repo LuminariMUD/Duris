@@ -261,7 +261,8 @@ unsigned int artifact_population_read_copyover(const copyover_boot_snapshot &sna
 				    WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED)
 				{
 					auto &row = staged.items[first + index];
-					row.custody_examined = row.custody_found = true;
+					row.custody_examined = row.custody_found =
+						row.custody_owner_revision_found = true;
 					row.custody = tree.custody[custody++];
 					// Native hotboot retains the live logical owner (for
 					// example a corpse domain), independent of physical room.
