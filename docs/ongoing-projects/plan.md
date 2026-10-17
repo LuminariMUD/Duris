@@ -21,7 +21,7 @@ correlation, early boot publication, NPC reconstruction qualification and
 gameplay admission remain open.
 No operational repair started.
 
-Current classification checkpoint (implemented; publication pending): `branch/issue-67-population-classification`, based on
+Current classification checkpoint: [PR #148](https://github.com/LuminariMUD/Duris/pull/148), ready for review, `branch/issue-67-population-classification`, based on
 PR #147. Outcome: classify the assembled raw payloads without choosing a legacy
 conflict winner, retain exact qualified source/owner evidence, and atomically
 stage the result in the existing artifact rows. Non-goals: another authority,
@@ -1061,7 +1061,9 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Canonical population classification and cache staging — AR-01/AR-02
 
-Implemented on `branch/issue-67-population-classification`, based on PR #147.
+Ready for review in [PR #148](https://github.com/LuminariMUD/Duris/pull/148) on
+`branch/issue-67-population-classification`, based on PR #147. Implementation
+commit: `4378c057bb0fe611621a0b11ebe94b3e4ef0d00f`.
 This is the actual classifier and its artifact-service publication boundary;
 source acquisition and startup/admission callers are still required.
 
