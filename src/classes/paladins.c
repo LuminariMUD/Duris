@@ -864,15 +864,14 @@ double blood_tithe_bonus(P_char ap)
 
 /*
  damage bonus for ch's hit on victim: the strongest tithe among ch's groupmates in the
- room. Tithe holders and anyone carrying Battle Lust get none, so tithes never stack on
- each other or on Battle Lust.
+ room. Tithe holders get none, so tithes never stack on each other; Battle Lust is a
+ separate damage modifier and combines with it.
 */
 double blood_tithe_damage_bonus(P_char ch, P_char victim)
 {
 	P_char player = GET_PLYR(ch);
 	if (!IS_PC(player) || !player->group || affected_by_spell(player, SPELL_BLOOD_TITHE) ||
-	    affected_by_spell(ch, SPELL_BLOOD_TITHE) || has_aura(ch, AURA_BATTLELUST) ||
-	    has_aura(player, AURA_BATTLELUST))
+	    affected_by_spell(ch, SPELL_BLOOD_TITHE))
 		return 0;
 
 	double bonus = 0;

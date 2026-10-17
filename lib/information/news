@@ -1,11 +1,28 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 17, 2026&n
+&+WUpdated: October 18, 2026&n
 
-Welcome back! Catch up on September 15 to October 17, 2026 below.
+Welcome back! Catch up on September 15 to October 18, 2026 below.
 The newest changes come first; later updates replace older rules.
 Earlier coverage, back to December 14, 2025, and the archive follow.
+
+&+R10/18/26&n &+L-&n &+YHoly blood, dark wrath&n
+&+W----------------------------------------------------------------------&n
+
+&+Y-&n &+C'Holy sacrifice'&n healing is now shared. Each groupmate still
+  heals up to &+Y30%&n of a blow's damage, but one blow heals the group by
+  no more than &+Y90%&n of its damage or &+Y60%&n of the Paladin's maximum
+  hit points, and a combat round by no more than &+Y120%&n. These limits
+  are halved against players. Small groups notice little change.
+&+Y-&n &+C'Blood tithe'&n now combines with the aura of battlelust instead
+  of being cancelled by it. Tithes still do not stack with each other.
+&+Y-&n Anti-Paladins can no longer drain past &+Y2.5x&n their normal
+  maximum hit points (previously up to &+Y3.5x&n). Vampiric touch drains
+  just as strongly as before, and hit points already above the new limit
+  fade gradually as before.
+&+Y-&n See &+C'help holy sacrifice'&n, &+C'help blood tithe'&n and
+  &+C'help power'&n for details.
 
 &+R10/17/26&n &+L-&n &+YPets should not bar the door&n
 &+W----------------------------------------------------------------------&n
