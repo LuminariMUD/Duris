@@ -22,8 +22,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current player-retention work: `branch/issue-67-player-payload-retention`, based
-on PR #154. Outcome: withheld player payload roots survive later saves while
+Current player-retention checkpoint: [PR #155](https://github.com/LuminariMUD/Duris/pull/155),
+ready for review, `branch/issue-67-player-payload-retention`, based on PR #154. Outcome: withheld player payload roots survive later saves while
 independent valid roots remain loadable and saveable. Keep SQL raw rows/nullable
 values/auxiliary metadata in place; merge retained flat roots after active-item
 claims without claiming held data. Reuse current stores and ordered writer.
@@ -37,7 +37,8 @@ regular SQL jobs own the structured capture; full snapshot encoding is used for
 flat files. Retention selectors can remain in-process metadata, with preserved
 payloads staying in the existing source and no file-format version change.
 
-Retention implementation checkpoint (2026-10-17, publication pending):
+Retention implementation checkpoint (2026-10-17, PR #155):
+Implementation commit: `c8300925319975d438534a65ab56e948b01bc306`.
 - Reproduced the old SQL NULL-UID artifact/auxiliary-row erasure and flat missing-UID
   root/child promotion and loss before repair. Logs: ignored
   `bin/analysis/issue67/player-retention-{sql,flat}-before.log`.
@@ -63,8 +64,9 @@ Retention implementation checkpoint (2026-10-17, publication pending):
   Ordinary flat copyover journeys passed with both compressed and uncompressed
   sockets, acknowledged saves, retained connections and account-menu return.
   This is not a held-payload full-server flat journey or the final AR-07 matrix.
-- Remaining before PR: commit/push and open a non-draft PR based on #154.
-  Focused review, final builds and changed-line format/tidy are complete. Full mutable artifact source
+- Publication: committed and pushed as non-draft PR #155 based on #154; attached
+  to this chat. Focused review, final builds and changed-line format/tidy passed.
+  No merge/deploy/operational repair occurred. Full mutable artifact source
   admission, pet/storage/delivery roles, remaining producers and AR-04/AR-07
   lifecycle acceptance remain open; this prerequisite does not complete AR-02/03.
 
