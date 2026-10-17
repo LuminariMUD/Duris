@@ -22,8 +22,8 @@ saved-UID source/custody qualification, fresh producer families and
 lifecycle/reward acceptance remain open. Mapped reset/staff/NPC fresh admission is
 implemented in PR #150. No operational repair started.
 
-Current saved-ground hydration work: `branch/issue-67-recovery-hydration`, based
-on PR #152. Outcome: admit saved artifact UIDs/effective flags before constructor
+Current saved-ground checkpoint: [PR #153](https://github.com/LuminariMUD/Duris/pull/153),
+ready for review, `branch/issue-67-recovery-hydration`, based on PR #152. Outcome: admit saved artifact UIDs/effective flags before constructor
 procedures only from the exact qualified pinned Redis generation/floor or native
 copyover source, reserve one live physical pointer, and preserve timer/soul through
 placement, unload and whole-group rollback. Non-goals: UID-only admission, choosing
@@ -1139,9 +1139,10 @@ cleanup, repair, deployment, merge or release tag occurred.
 
 ### Pinned ground saved-UID admission — AR-03 in progress
 
-Working branch: `branch/issue-67-recovery-hydration`, based on PR #152; not yet
-published. Outcome/non-goals/files/proof are at the top of this plan. Current
-implementation and remaining validation are recorded here for takeover.
+Review: [PR #153](https://github.com/LuminariMUD/Duris/pull/153),
+`branch/issue-67-recovery-hydration`, based on PR #152. Implementation commit:
+`d1bba51484f5bbba457f1220f970d61ee48b7f73`. Outcome/non-goals/files/proof are at the top of this plan;
+verified behavior and continuation are recorded here for takeover.
 
 `read_object_for_recovery` applies the saved UID and effective extra flags in the
 existing constructor before procedures, list publication or index counts. It does
@@ -1284,8 +1285,7 @@ The actual fatal handler plus an active static worker reproduces SIGABRT in
 diagnostics and the failure status without partial-world shutdown saves, then run
 its existing startup/error contracts and both builds.
 
-Immediate next steps: publish this tested source-qualified ground chunk. Repair
-the fatal boot termination separately, then
+Immediate next steps: repair the fatal boot termination separately, then
 implement mutable saved player/pet/storage/delivery source admission with explicit
 live/temporary roles and payload retention across later saves. The existing player
 save's wholesale delete is not compatible with skip-only conflict handling.
@@ -2278,7 +2278,7 @@ required; AR-02–AR-04 and the full AR-05 checkbox are still open.
 
 Current review order is #132 → #133 → #134 → #135 → #136 → #137 → #138 → #139 →
 #140 → #141 → #142 → #143 → #144 → #145 → #146 → #147 → #148 → #149 → #150 →
-#151 → #152. Each dependent PR targets its immediate predecessor; none of these
+#151 → #152 → #153. Each dependent PR targets its immediate predecessor; none of these
 issue-67 chunks has been merged or deployed by this goal.
 All published chunks are open for review,
 with the displayed dependent PR bases; none has been merged or deployed. Resume
