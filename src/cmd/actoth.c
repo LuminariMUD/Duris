@@ -5727,9 +5727,41 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_HINT_CHANNEL);
 		break;
 	case 52:
+	{
+		const auto before = PLR2_FLAGS(ch);
 		result = PLR2_TOG(PLR2_WEBINFO);
-		sql_webinfo_toggle(ch);
-		break;
+		if (result == -1)
+			break;
+		if (before == PLR2_FLAGS(ch))
+		{
+			send_to_char(
+				"Webinfo is already set that way; any pending save is still pending.\r\n",
+				send_ch);
+			return;
+		}
+		const int room = ch->in_room == NOWHERE ? NOWHERE : world[ch->in_room].number;
+		const auto saved =
+			player_save_pipeline_request(ch, PLAYER_COMPONENT_STATUS, RENT_CRASH, room);
+		if (saved != player_save_pipeline_result::queued &&
+		    saved != player_save_pipeline_result::coalesced)
+		{
+			PLR2_FLAGS(ch) = before;
+			send_to_char(
+				"Webinfo change did not take effect: unable to queue the save.\r\n",
+				send_ch);
+			return;
+		}
+		if (GET_PLAYER_LOG(ch))
+			GET_PLAYER_LOG(ch)->reset_export_window();
+		send_to_char(result ? "Webinfo ON for new PvP captures; save pending.\r\n" :
+				      "Webinfo OFF for new PvP captures; save pending.\r\n",
+			     send_ch);
+		send_to_char(
+			"Historical POV visibility uses the saved setting when enabled on the website.\r\n"
+			"Wait for save acknowledgement and refresh the page; see HELP TOGGLE_WEBINFO.\r\n",
+			send_ch);
+		return;
+	}
 	case 53:
 		result = PLR2_TOG(PLR2_ACC);
 		break;

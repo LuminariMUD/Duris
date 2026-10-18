@@ -330,7 +330,7 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 		const std::string log = escape(connection, entry.log.data(), entry.log.size());
 		if (!execute(connection,
 			     "INSERT INTO pkill_info(event_id,pid,level,pk_type,player_description,"
-			     "equip,log,inroom,leader) VALUES(" +
+			     "equip,log,inroom,leader,webinfo_at_capture) VALUES(" +
 				     std::to_string(event_id) + "," + std::to_string(entry.pid) +
 				     "," + std::to_string(entry.level) + ",'" + role + "','" +
 				     description + "','" + equipment + "','" + log + "'," +
@@ -338,6 +338,10 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 						    0) +
 				     "," +
 				     std::to_string((entry.flags & COMBAT_PARTICIPANT_LEADER) != 0) +
+				     "," +
+				     (entry.webinfo_at_capture == combat_webinfo::unknown ? "NULL" :
+				      entry.webinfo_at_capture == combat_webinfo::on	  ? "1" :
+											    "0") +
 				     ")"))
 			return false;
 		if (!execute(

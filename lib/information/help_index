@@ -12841,8 +12841,12 @@ ON, no matter where they are in the MUD.
 
 Toggling "Tell" will effectively allow you to turn off this line of 
 communication. However, it will not prevent a God from speaking to you.
+
+Tell, whisper and directed ask bodies are private in personal recall and are
+excluded from exported PvP logs regardless of webinfo. Content-free room
+notices remain public. See TOGGLE_WEBINFO for publication and save behavior.
 ===========================================================================
-See also: TOGGLE, TOGGLE_TELL
+See also: TOGGLE, TOGGLE_TELL, TOGGLE_WEBINFO
 
 #
 "SCALDING BLAST" (Spell)
@@ -17207,22 +17211,33 @@ See also: TOGGLE
 #
 TOGGLE_WEBINFO
 ===========================================================================
-Syntax:         toggle webinfo
+Syntax:         toggle webinfo [on|off]
 
-In the interests of providing an informative and interactive website, we
-develop and show statistics about such things as Top Players, PvP kills and
-equipment worn during raids on the website.
+Webinfo controls publication of your whole PvP point of view: equipment and
+combat log, including equipment displayed within the log. OFF withholds both
+for new captures. Battle metadata, rewards, normal game output, personal
+recall and access to permitted opponent views are unaffected.
 
-This toggle allows us to display more information over and above the
-general, non-sensitive information like frag and experience progress. One
-of the things toggling this setting to OFF will restrict is EQ display, and
-other such more specific character information.
+ON allows only public messages received during the current uninterrupted ON
+interval to enter a new capture. Turning ON never publishes earlier OFF-period
+text or captures. Tell/reply, whisper, directed ask, group, guild and alliance
+message bodies stay private regardless of webinfo. Room notices without the
+message body can still appear. New characters default to ON; existing
+characters keep their saved setting.
 
-Please note, that any such information shown on the website has an 30
-minute delay before release.
+An accepted change takes effect for new captures immediately, but its save is
+pending. A rejected save request leaves your old setting active. Wait for save
+acknowledgement for durable confirmation. A failed write is retried while you
+remain in game; disconnect or a crash before commit can reload the last saved
+setting. Repeating the same setting does not acknowledge a pending save.
 
-This option is ON by default for new characters. To turn it off, use
-"toggle webinfo off". Existing characters keep their saved setting.
+When the website respects the current saved toggle, saving OFF also hides
+previously permitted POVs after a page refresh. Saving ON restores only those
+permitted captures. If that website setting is disabled, saved toggles do not
+withdraw previously permitted captures. Private and unknown-consent captures
+stay withheld either way. Already downloaded copies cannot be recalled.
+
+Publication follows the website's configured release delay.
 ===========================================================================
 See also: TOGGLE, WEBSITE
 

@@ -5906,6 +5906,8 @@ static void do_start_impl(P_char ch, int nomsg, bool grant_newbie_kit)
 		SET_BIT(ch->specials.act2, PLR2_SPEC);
 		SET_BIT(ch->specials.act2, PLR2_HINT_CHANNEL);
 		SET_BIT(ch->specials.act2, PLR2_WEBINFO);
+		if (GET_PLAYER_LOG(ch))
+			GET_PLAYER_LOG(ch)->reset_export_window();
 		SET_BIT(ch->specials.act2, PLR2_SHOW_QUEST);
 		SET_BIT(ch->specials.act2, PLR2_BOON);
 		SET_BIT(ch->specials.act2, PLR2_SHIPMAP);

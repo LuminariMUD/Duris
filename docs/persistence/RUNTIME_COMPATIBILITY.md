@@ -20,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0044_artifact_canonical_identity`, and the contract
+The current head is `0045_pkill_webinfo_at_capture`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -66,6 +66,14 @@ column/index guards permit interrupted DDL replay, and the verifier refuses
 incompatible shapes or inconsistent UID/state rather than rewriting evidence.
 This storage migration does not itself choose canonical copies or enforce
 admission; those runtime changes remain tracked in issue #67's plan.
+
+0045 appends nullable signed `pkill_info.webinfo_at_capture TINYINT DEFAULT NULL`.
+NULL preserves unknown historical consent; 0 denies publication; 1 permits the
+website to consider the captured equipment/log under its release and saved-toggle
+gates. Existing text is preserved, and old writers default to NULL. Deploy the
+compatible withholding reader first, then apply this additive migration before
+starting the v4 capture producer. Keep the column and reader gate during rollback;
+an older binary's exact schema contract will not accept this migration head.
 
 An existing populated database must first be upgraded only on a disposable clone.
 Run the legacy convergence, then the immutable runner against the same clone before

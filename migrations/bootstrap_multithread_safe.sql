@@ -897,6 +897,7 @@ CREATE TABLE `pkill_info` (
   `inroom` int NOT NULL DEFAULT '0',
   `leader` int DEFAULT NULL,
   `player_description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `webinfo_at_capture` tinyint DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `part_of_name` (`event_id`),
   KEY `unique_index` (`pid`)

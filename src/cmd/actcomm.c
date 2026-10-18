@@ -1266,7 +1266,7 @@ void do_whisper(P_char ch, char *argument, int /*cmd*/)
 			}
 			checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "You whisper '%s' to %s\r\n",
 					 message, dispname);
-			send_to_char(Gbuf1, ch,
+			send_to_char(Gbuf1, ch, LOG_PRIVATE,
 				     recipient_output_context(OutputChannel::ChatWhisper));
 		}
 		else
@@ -1277,7 +1277,7 @@ void do_whisper(P_char ch, char *argument, int /*cmd*/)
 			escape_act_dollars(escaped_text, sizeof(escaped_text), message);
 			checked_snprintf(Gbuf1, MAX_STRING_LENGTH,
 					 "A soft voice in your head whispers '%s'", escaped_text);
-			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT,
+			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT | ACT_PRIVATE,
 			    recipient_output_context(OutputChannel::ChatWhisper));
 		}
 		else
@@ -1291,7 +1291,7 @@ void do_whisper(P_char ch, char *argument, int /*cmd*/)
 					   language_CRYPT(ch, vict, message));
 			checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "$n whispers to you, %s'%s'",
 					 language_known(ch, vict), escaped_text);
-			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT,
+			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT | ACT_PRIVATE,
 			    recipient_output_context(OutputChannel::ChatWhisper));
 			act("$n whispers something to $N.", FALSE, ch, 0, vict, TO_NOTVICT,
 			    recipient_output_context(OutputChannel::ChatWhisper));
@@ -1355,7 +1355,7 @@ void do_ask(P_char ch, char *argument, int /*cmd*/)
 			*/
 			escape_act_dollars(escaped_text, sizeof(escaped_text), message);
 			checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "You ask $N '%s'", escaped_text);
-			act(Gbuf1, FALSE, ch, 0, vict, TO_CHAR,
+			act(Gbuf1, FALSE, ch, 0, vict, TO_CHAR | ACT_PRIVATE,
 			    recipient_output_context(OutputChannel::ChatAsk));
 		}
 		else
@@ -1366,7 +1366,7 @@ void do_ask(P_char ch, char *argument, int /*cmd*/)
 			escape_act_dollars(escaped_text, sizeof(escaped_text), message);
 			checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "A voice in your head asks '%s'",
 					 escaped_text);
-			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT,
+			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT | ACT_PRIVATE,
 			    recipient_output_context(OutputChannel::ChatAsk));
 		}
 		else
@@ -1375,7 +1375,7 @@ void do_ask(P_char ch, char *argument, int /*cmd*/)
 					   language_CRYPT(ch, vict, message));
 			checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "$n asks you %s'%s'",
 					 language_known(ch, vict), escaped_text);
-			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT | ACT_SILENCEABLE,
+			act(Gbuf1, FALSE, ch, 0, vict, TO_VICT | ACT_SILENCEABLE | ACT_PRIVATE,
 			    recipient_output_context(OutputChannel::ChatAsk));
 			act("$n asks $N a question.", FALSE, ch, 0, vict, TO_NOTVICT,
 			    recipient_output_context(OutputChannel::ChatAsk));

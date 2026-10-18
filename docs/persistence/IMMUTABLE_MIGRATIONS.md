@@ -202,6 +202,14 @@ Reference: [MariaDB online schema change](https://mariadb.com/docs/server/refere
 
 ## Post-baseline migration contract
 
+Migration 0045 appends `pkill_info.webinfo_at_capture TINYINT NULL DEFAULT NULL`
+at position 11. The verifier requires its exact signed, nullable/default-NULL
+shape and position. Replays preserve existing values and snapshots; old rows
+and old-writer inserts retain unknown consent. No current player flag is used
+to backfill permission. The v4 combat writer records NULL/0/1 with each owned
+snapshot in the existing transaction. See the
+[PvP implementation and rollout plan](../ongoing-projects/2026-10-18-pvp-mud-implementation-plan.md).
+
 Migration 0044 adds canonical artifact UID/state fields to the existing
 `artifact_domain_state` store. It retains `item_uid` and its custody FK: the
 canonical physical UID must also represent unclaimed NPC/ground items without

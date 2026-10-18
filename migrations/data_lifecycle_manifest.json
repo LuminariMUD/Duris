@@ -3194,7 +3194,7 @@
       "locator": "pkill_info",
       "data_category": "player_or_character_state",
       "data_subject_key": "player_id",
-      "technical_purpose": "character gameplay, inventory, progression, communication, and recovery",
+      "technical_purpose": "PvP participant metadata and owned snapshots; public equipment/log publication requires webinfo_at_capture=1 and any enabled current saved-flag gate (docs/ongoing-projects/2026-10-18-pvp-mud-implementation-plan.md); personal-data export and retention decisions remain pending",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"

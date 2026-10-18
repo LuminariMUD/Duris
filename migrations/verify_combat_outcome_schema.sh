@@ -18,4 +18,5 @@ tables=$(read_scalar "SELECT COUNT(*) FROM information_schema.tables WHERE table
 columns=$(read_scalar "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='player_data' AND column_name='frag_revision' AND data_type='bigint' AND column_type LIKE '%unsigned';")
 indexes=$(read_scalar "SELECT COUNT(*) FROM (SELECT table_name,index_name FROM information_schema.statistics WHERE table_schema=DATABASE() AND ((table_name='combat_outcome' AND index_name='PRIMARY') OR (table_name='combat_outcome_participant' AND index_name IN ('PRIMARY','uq_combat_participant')) OR (table_name='combat_frag_ledger' AND index_name IN ('PRIMARY','uq_combat_frag_pid_revision'))) GROUP BY table_name,index_name) exact_indexes;")
 [[ "$tables" == "4" && "$columns" == "1" && "$indexes" == "5" ]]
+"$SCRIPT_DIR/immutable/0045_pkill_webinfo_at_capture.sh"
 echo "combat outcome schema verified"
