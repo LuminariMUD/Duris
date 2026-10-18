@@ -32,6 +32,9 @@ combat state are seeded. The existing `test_nevent_scheduler_runtime.py` now als
 executes the real PSP callback and admission on the production queue, with a controlled
 rate: duplicate suppression, NPC first/recurring cadence, delayed events, combat
 termination, fresh restart payload and full termination pass under ASan/UBSan.
+Every queued callback asserts its elapsed interval: one/four pulses for PCs and
+four initially then five for NPCs. Four-pulse delays use the previous callback tick,
+so advancing the heartbeat cannot introduce a three- or five-pulse interval.
 Existing difficulty, HP decay and tick spreading controls pass as well.
 
 The same harness executes `spell_restore_spirit()` to grant 20 surplus vitality in
@@ -56,6 +59,10 @@ seconds. A signed affect change from zero net recovery to 90/tick restarts via
 identities. Setup uses staff commands on a disposable character; player data and
 runtime settings are temporary and removed afterwards. The full server is a normal
 development build, with sanitizers confined to the native harnesses.
+
+The CLI creates missing output directories before retaining the JSON result.
+`test_psp_regen_journey_output.py` executes its argument parsing and result writing
+with the full journey stubbed, checking a missing nested parent and an existing file.
 
 See `docs/ongoing-projects/plan.md` for exact build commands, binary hash and review
 stack. No migration, production rollout or shared-player changes were performed.

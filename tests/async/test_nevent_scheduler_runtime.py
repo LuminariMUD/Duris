@@ -1311,12 +1311,17 @@ static void test_regen_lifecycle()
             while (ne_event_tick <= 3000)
             {
                 auto *event = get_scheduled(&owner, event_mana_regen);
+                const auto *state = static_cast<const regen_event_state *>(event->data);
                 if (!npc && interval == 4 && event->sequence != adjusted_sequence)
                 {
-                    // Delay the actual queued event, retaining its elapsed-credit payload.
+                    // The heartbeat already advanced past the last callback tick.
+                    // Schedule four pulses from that callback, retaining elapsed credit.
                     adjusted_sequence = event->sequence;
-                    require(nevent_reschedule_after(nevent_handle_from_event(event), 3), 332);
+                    require(nevent_reschedule_at(nevent_handle_from_event(event),
+                                                state->last_tick + interval), 332);
                 }
+                const int expected_interval = npc ? (state->last_tick == 0 ? 4 : 5) : interval;
+                require(event->due_tick - state->last_tick == expected_interval, 340);
                 run_one_heartbeat();
                 require(ne_event_counter == 1, 333);
             }

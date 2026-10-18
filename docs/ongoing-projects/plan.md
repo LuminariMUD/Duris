@@ -3,7 +3,10 @@
 Status: RG-01/02/03 implemented, locally qualified and published for review as #201 → #202 → #203.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
-Base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
+Original base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
+Review stack rebased onto master `2378b49162ecf04d81366d3863355f93889da27a`.
+All five original commits have identical patches after rebasing; the added master
+commit changes backup tooling and documentation, not regeneration sources.
 Source inspection and executable probes used `2c70abf1728a5930f345ee5f731ccbbb44c238a9`;
 the newer base changes auction code and unrelated records, with no differences in
 the regeneration sources or previous plan.
@@ -48,7 +51,7 @@ Passed on the RG-01 source changes based on `38c0de994`: `test_psp_move_regen.py
 Build output is ignored at `bin/analysis/issue57-plan/rg01-build.log`.
 
 RG-01 is published as [PR #201](https://github.com/LuminariMUD/Duris/pull/201),
-head `b1454ab8db2cd986efee99d52737007b667599d0`, with exact remote parity and clean
+initial head `b1454ab8db2cd986efee99d52737007b667599d0`, with exact remote parity and clean
 working tree verified. RG-02 is on `branch/issue-57-movement-decay`, based on that
 head. Its only production edit makes the movement upper cap conditional on a positive
 increment. The expanded ASan/UBSan test executes `spell_restore_spirit()` twice in
@@ -59,7 +62,7 @@ rest, admission, rates and accumulator are real. It also proves progressive deca
 NPC/negative dial independence. Both normal and flat-file server builds passed.
 
 RG-02 is published as [PR #202](https://github.com/LuminariMUD/Duris/pull/202),
-head `0b245add9223f12bd483cd451a15d805a37733a6`, stacked on #201; remote parity
+initial head `0b245add9223f12bd483cd451a15d805a37733a6`, stacked on #201; remote parity
 and a clean working tree were verified. RG-03 continues on
 `branch/issue-57-regen-lifecycle`. The existing sanitized scheduler runtime test now
 also runs the real PSP callback and `StartRegen()` with a controlled rate:
@@ -102,11 +105,35 @@ PSP implementation and movement cap were also substituted into the native regres
 in memory: they fail the rate and first-decrement assertions respectively.
 
 RG-03 is published as [PR #203](https://github.com/LuminariMUD/Duris/pull/203),
-qualification commit `315dbf7da`, stacked on #202. This final documentation update
-does not change the qualified source or tests. Next: external review. There are no remaining
-local implementation or acceptance gates. Full-server execution used the normal
-development binary; ASan/UBSan coverage is in the native policy and scheduler tests.
-Merge, issue closure and production deployment remain separate, unperformed actions.
+initial qualification commit `315dbf7da`, stacked on #202. Review rebasing preserves
+the #201 → #202 → #203 order: #201 head `e2930589ce4b2ee48e3f07cb0ffec541b3f9a81d`,
+#202 head `604a19314ff76f76b3663545463eb3b5898d4f4e`. Merge in that order and retarget
+each remaining child to master after its parent lands; if a parent is squash-merged,
+rebase only the child's unique commits onto the new master first. No tags are needed.
+
+Both #203 review findings were reproduced and repaired. The journey CLI creates
+missing output parents before saving JSON; `test_psp_regen_journey_output.py` executes
+that entry point with a stubbed journey and verifies both new nested directories and
+replacement of existing JSON. It failed with `FileNotFoundError` before the fix.
+The scheduler harness now schedules at `last_tick + interval` and asserts every queued
+callback's elapsed interval: PCs one/four, NPCs first four then five. The old relative
+delay fails this assertion at tick zero. Merely replacing three with four also fails:
+the heartbeat has already advanced one tick after dispatch, producing five-pulse
+recurring gaps. Absolute scheduling preserves four-pulse elapsed credit throughout.
+
+The review rerun passed against production sources at `604a19314ff76f76b3663545463eb3b5898d4f4e`
+with the same flat-file binary hash recorded above. The complete CLI created and saved
+`bin/analysis/pr203-review/fresh-output/issue57/journey.json` without precreating its
+output parents. Dials again gained 33/65/17 PSP over 123 callbacks each, meditation
+sent one completion message, both casting restarts passed, combat recovery resumed
+after 42.019 seconds, and the zero-to-positive modifier restarted 90/tick recovery.
+All 569 traced callbacks had unique pulse identities. The disposable server and state
+were removed. Both builds, the focused checks below, all scheduler sanitizer modes,
+the output regression, formatting and 14 documentation contracts passed after rebasing.
+
+Full-server execution uses the normal development binary; ASan/UBSan coverage is in
+the native policy and scheduler tests. Merge, issue closure and production deployment
+remain separate, unperformed actions.
 
 Implementation and proof files:
 
@@ -348,6 +375,7 @@ All commands below passed on the final production source tree (builds used `-j8`
 
 ```sh
 python3 tests/async/test_psp_move_regen.py
+python3 tests/async/test_psp_regen_journey_output.py
 python3 tests/async/test_difficulty_dials.py
 python3 tests/async/test_vampiric_overheal_regen.py
 python3 tests/async/test_nevent_catchup_contract.py
