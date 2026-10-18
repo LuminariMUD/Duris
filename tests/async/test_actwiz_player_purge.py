@@ -2,7 +2,7 @@
 """Run the real staff purge command with save/floor services under ASan/UBSan.
 
 The harness injects snapshot rejection and locker/item-movement conditions.
-Production container linking runs unchanged; objects and characters are freed,
+Production container linking and unequip run unchanged; objects and characters are freed,
 including merged coins;
 external persistence, account teardown and unrelated command modes are stubbed.
 """
@@ -18,6 +18,7 @@ FUNCTIONS = "\n\n".join(extract_function("actwiz.c", signature) for signature in
 )) + "\n\n" + "\n\n".join(extract_function("handler.c", signature) for signature in (
     "bool obj_can_nest(", "bool obj_is_in_container(",
     "void obj_to_obj(P_obj obj, P_obj obj_to)", "void obj_from_obj(P_obj obj)",
+    "P_obj unequip_char(P_char ch, int pos, bool saving)",
 ))
 
 HARNESS = r'''
@@ -52,7 +53,7 @@ bool ShipObjHash::erase(P_ship) { abort(); }
 void delete_ship(P_ship, bool) { abort(); }
 static P_char victim;
 static player_save_pipeline_result save_result = player_save_pipeline_result::queued;
-static bool busy, collector_ready = true, snapshot_accepted, redirect, recording = true;
+static bool busy, collector_busy, collector_ready = true, snapshot_accepted, redirect, recording = true;
 static int saves, extracted, logout_count, offline_count, faction_delta, announcements;
 static std::string output;
 static std::set<P_obj> live;
@@ -68,6 +69,7 @@ void send_to_room(const char *, int) { abort(); }
 void act(const char *, int, P_char, P_obj, void *, int) { ++announcements; }
 void update_ingame_racewar(int delta) { assert(snapshot_accepted); faction_delta += delta; }
 bool item_movement_transaction_player_busy(P_char) { return busy; }
+bool collector_transaction_player_busy(P_char) { return collector_busy; }
 bool collector_service_recover_player(P_char) { return collector_ready; }
 int calculate_save_room(P_char, int type, int room) {
     assert(type == RENT_QUIT && room == NOWHERE); return 1234;
@@ -75,9 +77,11 @@ int calculate_save_room(P_char, int type, int room) {
 player_save_pipeline_result player_save_pipeline_request(P_char ch, player_component_mask_t parts,
                                                          int type, int room) {
     ++saves;
+    assert(!collector_busy);
     assert(parts == PLAYER_CHECKPOINT_COMPONENT_ALL && type == RENT_QUIT && room == 1234);
     assert(!rooms[1].contents && !rooms[2].contents);
     assert(!ch->carrying);
+    assert(ch->only.pc->prestige == 43);
     for (auto item : ch->equipment) assert(!item);
     assert(!logout_count && !offline_count && !faction_delta && !announcements);
     snapshot_accepted = save_result == player_save_pipeline_result::queued ||
@@ -103,12 +107,14 @@ static void resync_reducing_container(P_obj) {}
 static void mark_container_dirty(P_obj) {}
 void artifact_update_location_sql(P_obj) {}
 void writeSavedItem(P_obj) { abort(); }
-P_obj unequip_char(P_char ch, int slot, bool) {
-    assert(snapshot_accepted || !recording);
-    P_obj item = ch->equipment[slot]; assert(item);
-    ch->equipment[slot] = nullptr; item->loc_p = LOC_NOWHERE; item->loc.wearing = nullptr;
-    return item;
-}
+void item_actions_source_leaving(P_obj) { assert(snapshot_accepted || !recording); }
+void clear_links(P_char, P_obj, int) {}
+void all_affects(P_char, int) {}
+void balance_affects(P_char) {}
+int char_light(P_char) { return 0; }
+int room_light(int, int) { return 0; }
+int encumbrance_weight(int weight) { return weight; }
+static void mark_char_or_owner_dirty(P_char) {}
 void extract_obj(P_obj item, int) {
     assert(live.count(item));
     if (OBJ_ROOM(item)) unlink_item(&rooms[item->loc.room].contents, item);
@@ -136,6 +142,7 @@ void redis_log_floor_drop(P_obj item, int room) {
 void extract_char_after_terminal_save(P_char ch) {
     assert(snapshot_accepted && !IS_ROOM(ch->in_room, ROOM_LOCKER));
     assert(!ch->carrying && logout_count == 1 && offline_count == 1);
+    assert(ch->only.pc->prestige == 43);
     for (auto item : ch->equipment) assert(!item);
     assert(world[ch->in_room].people == ch);
     world[ch->in_room].people = ch->next_in_room;
@@ -174,6 +181,10 @@ int main(int argc, char **argv) {
     victim->next_in_room = &staff; world[1].people = victim;
     if (test != "linkdead") { victim->desc = &descriptor; descriptor.character = victim; }
     P_obj worn = make_item(10), bag = make_item(11), transient_bag = make_item(12, true);
+    worn->type = test == "nonarmor" ? ITEM_WEAPON : ITEM_ARMOR;
+    worn->value[2] = test == "negative_prestige" ? -7 : 7;
+    const int original_prestige = 43 + (worn->type == ITEM_ARMOR ? worn->value[2] : 0);
+    victim->only.pc->prestige = original_prestige;
     victim->equipment[0] = worn; worn->loc_p = LOC_WORN; worn->loc.wearing = victim;
     bag->loc_p = LOC_CARRIED; bag->loc.carrying = victim; victim->carrying = bag;
     bag->next_content = transient_bag;
@@ -190,23 +201,27 @@ int main(int argc, char **argv) {
     if (test == "coalesced") save_result = player_save_pipeline_result::coalesced;
     if (test == "locker") SET_BIT(rooms[1].room_flags, ROOM_LOCKER);
     if (test == "busy") busy = true;
+    if (test == "collector_pending") collector_busy = true;
     if (test == "collector") collector_ready = false;
     if (test == "redirect") redirect = true;
     if (test == "immortal") victim->player.level = MINLVLIMMORTAL;
     const bool refused = test == "invalid" || test == "unavailable" || test == "capture_failed" ||
-                         test == "unchanged" || test == "locker" || test == "busy" || test == "collector";
+                         test == "unchanged" || test == "locker" || test == "busy" ||
+                         test == "collector" || test == "collector_pending";
     char argument[] = "Victim";
     do_purge(&staff, argument, 0);
     if (refused) {
         assert(victim && world[1].people == victim && victim->next_in_room == &staff);
         assert(victim->desc == &descriptor && descriptor.character == victim);
         assert(victim->equipment[0] == worn && victim->carrying == bag && bag->next_content == transient_bag);
+        assert(victim->only.pc->prestige == original_prestige);
         assert(temporary->loc.inside == bag && promoted->loc.inside == temporary);
         assert(deepest->loc.inside == inner && inner->loc.inside == transient_bag);
         assert(live.size() == 9 && recovered.empty());
         assert(!extracted && !faction_delta && !offline_count && !logout_count && !announcements);
         assert(!rooms[1].contents && !rooms[2].contents && output.find("Ok.") == std::string::npos);
-        assert(saves == ((test == "locker" || test == "busy" || test == "collector") ? 0 : 1));
+        assert(saves == ((test == "locker" || test == "busy" || test == "collector" ||
+                         test == "collector_pending") ? 0 : 1));
         recording = false;
         extract_obj(unequip_char(victim, 0, false), TRUE);
         while (victim->carrying) { P_obj item = victim->carrying; obj_from_char(item); extract_obj(item, TRUE); }
@@ -239,7 +254,8 @@ with tempfile.TemporaryDirectory(prefix="player-purge-", dir=build_root) as dire
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary),
         ], cwd=ROOT, check=True)
-        for case in ("queued", "coalesced", "linkdead", "immortal", "redirect", "invalid",
-                     "unavailable", "capture_failed", "unchanged", "locker", "busy", "collector"):
+        for case in ("collector_pending", "queued", "coalesced", "linkdead", "immortal", "redirect", "invalid",
+                     "unavailable", "capture_failed", "unchanged", "locker", "busy", "collector",
+                     "negative_prestige", "nonarmor"):
             print(f"{backend}: {case}", flush=True)
             subprocess.run([str(binary), case], check=True, timeout=30)

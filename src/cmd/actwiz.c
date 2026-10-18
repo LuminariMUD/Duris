@@ -50,6 +50,7 @@
 #include "player/player_save_pipeline.h"
 #include "item/item_movement_transaction.h"
 #include "economy/collector_service.h"
+#include "economy/collector_transaction.h"
 #include "player/player_load_offline.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
@@ -5382,6 +5383,7 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 					return;
 				}
 				if (item_movement_transaction_player_busy(vict) ||
+				    collector_transaction_player_busy(vict) ||
 				    !collector_service_recover_player(vict))
 				{
 					send_to_char(
@@ -5396,6 +5398,12 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 				P_obj equipment[MAX_WEAR];
 				memcpy(equipment, vict->equipment, sizeof(equipment));
 				P_obj carrying = vict->carrying;
+				// Armor prestige is stored in status as well as reflected by
+				// equipment. Capture the value unequip_char will leave behind.
+				const auto prestige = vict->only.pc->prestige;
+				for (P_obj item : equipment)
+					if (item && GET_ITEM_TYPE(item) == ITEM_ARMOR)
+						vict->only.pc->prestige -= item->value[2];
 				memset(vict->equipment, 0, sizeof(vict->equipment));
 				vict->carrying = NULL;
 				const auto saved = player_save_pipeline_request(
@@ -5403,6 +5411,7 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 					calculate_save_room(vict, RENT_QUIT, NOWHERE));
 				memcpy(vict->equipment, equipment, sizeof(equipment));
 				vict->carrying = carrying;
+				vict->only.pc->prestige = prestige;
 				if (saved != player_save_pipeline_result::queued &&
 				    saved != player_save_pipeline_result::coalesced)
 				{

@@ -225,6 +225,7 @@ void obj_to_obj(P_obj, P_obj) { abort(); }
 void redis_log_floor_drop(P_obj, int) { abort(); }
 bool item_movement_transaction_player_busy(P_char) { abort(); }
 bool collector_service_recover_player(P_char) { abort(); }
+bool collector_transaction_player_busy(P_char) { abort(); }
 int calculate_save_room(P_char, int, int) { abort(); }
 player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int) { abort(); }
 void sql_log_player_login(P_char, const char *) { abort(); }
