@@ -13,17 +13,108 @@ then stops the runner.
 Usage: run_migration_runner_engines.py [image ...]; the default is all three.
 """
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 import migration_runner as runner  # noqa: E402
 
 IMAGES = ("mariadb:11.8", "mariadb:10.11", "mysql:8.0")
+
+
+def check_lock(environment, sql):
+    """Two ordinary executors exclude each other and detect server-side lock loss."""
+    with mock.patch.dict(os.environ, environment):
+        first = runner.MysqlExecutor(runner.load_manifest())
+        second = runner.MysqlExecutor(runner.load_manifest())
+        connection = None
+        try:
+            first.acquire_lock()
+            assert sql("SELECT IS_USED_LOCK('duris_immutable_migration')") == str(first.lock_connection_id)
+            first.require_quiescent()  # Its own lock session is not another writer.
+            try:
+                second.acquire_lock()
+            except runner.MigrationContractError as error:
+                assert 'lock unavailable' in str(error)
+            else:
+                raise AssertionError('two normal runners acquired the migration lock')
+            assert first.sql('SELECT 42') == '42'
+            assert first.sql('SELECT CONNECTION_ID()') == str(first.lock_connection_id)
+            # Both SQL input and output can exceed a pipe buffer without deadlocking.
+            assert first.sql('', ("SELECT REPEAT('x',131072);\n/*" + 'y' * 131072 +
+                                  "*/\nSELECT 7;\n").encode()) == 'x' * 131072 + '\n7'
+
+            connection = subprocess.Popen(first.command + ['--unbuffered'],
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, env=environment, text=True)
+            connection.stdin.write('SELECT CONNECTION_ID();\n')
+            connection.stdin.flush()
+            assert connection.stdout.readline().strip().isdigit()
+            try:
+                first.require_quiescent()
+            except runner.MigrationContractError as error:
+                assert 'every other database connection' in str(error)
+            else:
+                raise AssertionError('ordinary quiescence ignored another connection')
+            connection.communicate(timeout=5)
+            connection = None
+            first.require_quiescent()
+
+            # Kill the owner while apply is in flight, then let a competing runner
+            # acquire the lock. No statement after the killed query may execute.
+            with tempfile.TemporaryDirectory() as temporary, ThreadPoolExecutor() as pool:
+                apply_path = Path(temporary) / 'interrupted.sql'
+                apply_path.write_text(
+                    "SELECT SLEEP(4) /* migration_lock_inflight */;\n"
+                    "CREATE TABLE lock_loss_must_not_write(id INT);\n")
+                migration = runner.replace(runner.load_manifest().migrations[0],
+                                           apply_path=apply_path)
+                operation = pool.submit(first.apply, migration)
+                deadline = time.monotonic() + 10
+                while sql("SELECT COUNT(*) FROM information_schema.PROCESSLIST "
+                          "WHERE INFO LIKE 'SELECT SLEEP(4)%'") != '1':
+                    assert time.monotonic() < deadline, 'migration did not enter its long query'
+                    time.sleep(0.05)
+                sql(f'KILL {first.lock_connection_id}')
+                second.acquire_lock()
+                try:
+                    operation.result(timeout=10)
+                except runner.MigrationContractError:
+                    pass
+                else:
+                    raise AssertionError('killed migration reported success')
+                assert sql("SELECT COUNT(*) FROM information_schema.tables WHERE "
+                           "table_schema=DATABASE() AND table_name='lock_loss_must_not_write'") == '0', \
+                    'migration continued writing after its advisory lock was released'
+                first.release_lock()
+                second.release_lock()
+                first.acquire_lock()
+
+            sql(f'KILL {first.lock_connection_id}')
+            try:
+                first.sql('CREATE TABLE lock_loss_must_not_write(id INT)')
+            except runner.MigrationContractError as error:
+                assert 'lock connection was lost' in str(error)
+            else:
+                raise AssertionError('lost server lock allowed another operation')
+            assert sql("SELECT COUNT(*) FROM information_schema.tables WHERE "
+                       "table_schema=DATABASE() AND table_name='lock_loss_must_not_write'") == '0'
+            first.release_lock()
+            second.acquire_lock()
+            second.require_quiescent()
+        finally:
+            if connection is not None:
+                connection.kill()
+                connection.communicate()
+            first.release_lock()
+            second.release_lock()
 
 
 def check(image: str, expected_head: str) -> None:
@@ -58,6 +149,8 @@ def check(image: str, expected_head: str) -> None:
         version = sql("SELECT VERSION();", None)
         sql("CREATE DATABASE runner_engines CHARACTER SET utf8mb4 "
             "COLLATE utf8mb4_unicode_ci;", None)
+        check_lock(environment, sql)
+        print(f'[PASS] {image}: normal runner lock exclusion, quiescence and server-side loss', flush=True)
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
 
         # Reproduce the real pre-0044 shape and an interrupted/incorrect partial

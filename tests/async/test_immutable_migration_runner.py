@@ -400,7 +400,7 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                     normal.apply(manifest.migrations[-1])
                 self.assertEqual(sql.call_count, 1)
 
-    def test_online_migration_keeps_lock_client_open_until_release(self):
+    def test_normal_and_online_migrations_keep_lock_client_open_until_release(self):
         manifest = runner.load_manifest()
         # Exercise the current online mode; older modes share this lock path.
         manifest = runner.replace(manifest, migrations=tuple(
@@ -417,19 +417,31 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
             client = directory / "lock_client.py"
             client.write_text("import sys\n"
                               "assert 'GET_LOCK' in sys.stdin.readline()\n"
-                              "print('1', flush=True)\n"
-                              "sys.stdin.read()\n")
-            executor = runner.MysqlExecutor(
-                manifest, "127.0.0.1/duris", backup, online_combat_outcome_allies=True)
-            executor.command = [sys.executable, str(client)]
-            try:
-                executor.acquire_lock()
-                process = executor.lock_process
-                self.assertIsNone(process.poll())
-            finally:
-                executor.release_lock()
-            self.assertEqual(process.returncode, 0)
-            self.assertIsNone(executor.lock_process)
+                              "print('1\\t123', flush=True)\n"
+                              "for line in sys.stdin:\n"
+                              "    assert 'IS_USED_LOCK' in line\n"
+                              "    print('1', flush=True)\n")
+            for online in (False, True):
+                executor = runner.MysqlExecutor(
+                    manifest, "127.0.0.1/duris", backup, online_combat_outcome_allies=online)
+                executor.command = [sys.executable, str(client)]
+                try:
+                    executor.acquire_lock()
+                    process = executor.lock_process
+                    self.assertEqual(executor.lock_connection_id, 123)
+                    self.assertIsNone(process.poll())
+                    executor.require_lock()
+                    with mock.patch.object(executor, "sql", return_value="0"):
+                        executor.require_quiescent()
+                    process.kill()
+                    process.wait()
+                    with self.assertRaisesRegex(runner.MigrationContractError,
+                                                "lock connection was lost"):
+                        executor.require_lock()
+                finally:
+                    executor.release_lock()
+                self.assertIsNone(executor.lock_process)
+                self.assertEqual(executor.lock_connection_id, 0)
 
     def test_online_combat_allies_scope_and_authorization(self):
         manifest = runner.load_manifest()
