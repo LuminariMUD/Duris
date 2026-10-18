@@ -9,8 +9,12 @@ sage handling, neutral guardian cleanup and observable loading failures. Migrati
 `0046_nexus_phase1` provides the insert-only seed. Migration and runtime compatibility
 qualification passed on MySQL 8.0, MariaDB 10.11 and MariaDB 11.8, including conflict
 refusal, partial/played-state replay, verifier drift and lock lifetime. Both server
-backends and native Nexus sanitizer tests pass. Full-world gameplay and production
-acceptance are still pending; exact commands/results are maintained in the plan.
+backends and native Nexus sanitizer tests pass. The complete isolated full-world
+MariaDB journey also passed: mortal captures, epic/boon awards, live cargo/contraband
+bonuses, unchanged base stats, cold-restart state, expiration and duplicate-free
+neutral reloads. Exact commands, measured deltas, binary hash and fixture limits are
+maintained in the plan. The stack was refreshed onto master `d6f4d4aa6`; production
+acceptance remains pending. No production operation or merge has been performed.
 
 Selected configuration:
 
@@ -27,8 +31,12 @@ configuration or reserved names on other IDs, and preserves legitimate existing
 alignment/timestamps and unrelated rows. Existing matching rows are unchanged on
 reapply. The immutable verifier proves static configuration and valid alignment;
 it deliberately does not require neutral state after play or delete unrelated rows.
-The ordinary migration runner now holds its advisory lock throughout apply,
-verification and history publication, and detects session loss.
+The ordinary migration runner executes apply and history SQL on its advisory-lock
+session, holds the lock through verification, and interrupts the applying SQL when
+that session is killed. The native capture fixture uses real epic preparation and
+checks the shipped Nexus settings. The full-world journey now tests same-side
+rejection with no guardian and observes reconnected scores, live ownership and
+aligned guardian prototypes after restart; SQL snapshots alone cannot prove those.
 
 Before rollout, identify the actual process/binary and database, inspect effective
 properties, back up the target, and retain these read-only results:

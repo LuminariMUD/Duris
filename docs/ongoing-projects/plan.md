@@ -1,13 +1,13 @@
 # Issue #109: restore Marduk and Enlil Nexus stones
 
-Status: implementation in progress. NS-01 through NS-03 are implemented and locally
-validated. Remaining reward/gameplay qualification and NS-05/NS-06 remain open.
+Status: implementation and all required local qualification are complete. The
+focused PR stack is published for review; production acceptance remains open.
 No production changes have been made.
 Prepared 2026-10-18 from `origin/master` at
 `89253179ab1f89249634eeef9116653381e3d807` and
 [issue #109](https://github.com/LuminariMUD/Duris/issues/109), updated
 2026-10-18T11:12:55Z. Delivery branch:
-`branch/issue-109-nexus-stones`. Refresh master and the issue before implementation;
+`branch/issue-109-nexus-stones`. Rebased onto master `d6f4d4aa6` during review repair;
 line references below describe this inspected revision, not a moving checkout.
 
 The previous artifact plan is preserved unchanged in
@@ -31,7 +31,7 @@ The previous artifact plan is preserved unchanged in
   `test_nexus_stones_empty_table.py`, and `test_flatfile_nexus_repository.py`.
   The flat-file full server build and full-world gameplay proof remain outstanding.
 - Publication snapshot: `branch/issue-109-nexus-sage-guardians`, based on master.
-  [PR #190](https://github.com/LuminariMUD/Duris/pull/190), head `87a264acc`.
+  [PR #190](https://github.com/LuminariMUD/Duris/pull/190), head `3d81f4809`.
   The delivery branch carries this commit and subsequent chunks.
 
 ### 2026-10-18 — NS-02: load failures and diagnostics
@@ -56,7 +56,7 @@ The previous artifact plan is preserved unchanged in
   `bin/issue109-flat`. No database seed or full-world journey has run yet.
 - Publication snapshot: `branch/issue-109-nexus-loading`, based on
   `branch/issue-109-nexus-sage-guardians` for a focused dependent PR:
-  [PR #191](https://github.com/LuminariMUD/Duris/pull/191), head `9f3876c9a`.
+  [PR #191](https://github.com/LuminariMUD/Duris/pull/191), head `fa7418774`.
 
 ### 2026-10-18 — NS-03a: migration serialization (locally complete)
 
@@ -75,7 +75,7 @@ The previous artifact plan is preserved unchanged in
   including replay, failed verification and edited-history refusal.
 - Publication snapshot: `branch/issue-109-migration-lock`, based on
   `branch/issue-109-nexus-loading` for focused review:
-  [PR #193](https://github.com/LuminariMUD/Duris/pull/193), head `e9f0b9841`.
+  [PR #193](https://github.com/LuminariMUD/Duris/pull/193), head `8a1f52ae0`.
 
 ### 2026-10-18 — NS-03b: two-row seed and runtime head (locally complete)
 
@@ -96,7 +96,7 @@ The previous artifact plan is preserved unchanged in
   the flat-file repository test, 19 runner unit tests and formatting also passed.
 - Publication snapshot: `branch/issue-109-nexus-seed`, based on
   `branch/issue-109-migration-lock` for focused review:
-  [PR #194](https://github.com/LuminariMUD/Duris/pull/194), head `bda621d94`.
+  [PR #194](https://github.com/LuminariMUD/Duris/pull/194), head `555fa2e7c`.
 - Full-world gameplay/restart qualification remains pending. No production SQL was run.
 
 ### 2026-10-18 — NS-04: native gameplay qualification (locally complete)
@@ -118,19 +118,122 @@ The previous artifact plan is preserved unchanged in
   This expands the existing fixture and uses real production consumers, without
   changing gameplay code or adding a second reward implementation.
 - Publication snapshot: `branch/issue-109-nexus-gameplay-tests`, based on
-  `branch/issue-109-nexus-seed`.
+  `branch/issue-109-nexus-seed`: [PR #195](https://github.com/LuminariMUD/Duris/pull/195),
+  head `322ceb6ac`.
 
-### 2026-10-18 — NS-05: full-world journey (in progress)
-- A full-world SQL journey is being qualified with fresh fixture accounts and the
-  actual migrated catalogue. It uses shortened 5/6-second test timers and reduces
-  the guardian combat fixture to level 1/one hit point/weak armor; it proves mortal
-  command/death/capture wiring, not production boss balance. Account-name and
-  faction-admission setup mistakes have been corrected without changing game code.
-  Combat training and death-message expectations have also been corrected from the
-  actual source/output. Capture/restart/expiration results are not yet claimed.
-- The journey is adding actual boon completion and normal/contraband market
-  settlements. Its database-gate registration will publish with the completed
-  journey, excluding it from argument-free regression discovery.
+### 2026-10-18 — NS-05 and local NS-06: final qualification and handoff
+
+- Master advanced to `9017ce1ca` with migration 0045 during qualification. Rebased
+  the stack and renumbered the unpublished Nexus seed to `0046_nexus_phase1`.
+  Retained master's measured structural fingerprints, regenerated the combined
+  runtime head/history contract, and updated the existing boot-contract expectation.
+  `git range-diff` confirmed the other five commits retain their original changes.
+- Added `tests/async/test_mysql_nexus_journey.py`, registered in `run_db_tests.sh`
+  and excluded from argument-free regression discovery. It creates a disposable
+  MariaDB 10.11 database, independent accounts/ports and a copied full-world runtime;
+  it never sources the checkout's `.env` and cleans up its database/server/runtime.
+- The complete journey passed against the refreshed SQL build: both stone placements,
+  guardian blocking and mortal defeat, three-touch captures (+3/-3), immediate-touch
+  rejection, same-side rejection, epic awards, durable boon completion and at least
+  7 boon points, actual cargo/contraband sales, unchanged base stats, clean restart,
+  expiration and two neutral reloads with exactly one VNUM-74 guardian. Population
+  checks use `stat mob`, because combat legitimately changes the idle description.
+- Observed capture epic deltas: Marduk +21, Enlil +50. Owning-side cargo paid
+  13,858 + 1,524 = 15,382 copper; contraband paid 95,611 + 10,517 = 106,128.
+  Opposing-side sales paid their base quotes of 13,873 and 96,288 with no bonus.
+  SQL before/after cold restart retained `(1,+3,2026-10-18 12:56:02)` and
+  `(3,-3,2026-10-18 12:56:51)` plus saved reward balances. Enlil's boot-resolved
+  room changed from 60010 to 60018 and still contained exactly one stone.
+  Expiring Marduk cleared its timestamp and preserved Enlil's -3 ownership.
+- The full-world fixture uses 5/6-second touch/turn timers, trained mortal attackers
+  and a level-1/one-hit-point guardian fixture. Production 300/3,600-second boundaries,
+  every alignment/faction reward case, partial-state load/replay, safe sage paths,
+  objective selection and controlled placement failures are covered by NS-04's
+  real-source native/SQL cases. Redis recovery is disabled in the full-world fixture.
+  No claim is made for boss balance, abrupt-crash durability or Redis world recovery.
+- Original delivery SQL binary SHA-256:
+  `57b2ba457bfd00fdade94d1345868d56c0ab9381f2d18658ee4b53d574f2c7fe`.
+  Original delivery logs are under ignored `bin/tests/issue109-final-*.log` and
+  `bin/tests/issue109-nexus-journey.log`; only synthetic aggregate results are recorded
+  here, not credentials or account/player files.
+
+Original delivery commands passed after the first master refresh:
+
+```sh
+make -C src -j8
+make -C src -j4 PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/issue109-flat"
+python3 tests/async/test_nexus_runtime.py
+python3 tests/async/test_nexus_stones_empty_table.py
+TMPDIR="$PWD/bin/tests/issue109-plan" python3 tests/async/test_flatfile_nexus_repository.py
+python3 tests/async/test_immutable_migration_runner.py
+python3 tests/async/test_runtime_boot_compatibility.py
+python3 tests/async/run_migration_runner_engines.py
+tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_nexus_journey.py --server bin/server/dms_new
+./scripts/format.sh --check
+git diff --check
+```
+
+The runner suite passed on MySQL 8.0.46, MariaDB 10.11.19 and MariaDB 11.8.9
+through head 46, including lock exclusion/loss, seed preflight/replay and edited
+history refusal. All three runtime compatibility fixtures passed. The unit suites
+reported 19 migration tests and 7 boot-contract tests. Both Nexus native suites use
+ASan/UBSan. No aggregate `make test-all`/`make test-db` or production checks are claimed;
+CI was not used as a completion gate.
+
+Publication order: #190 -> #191 -> #193 -> #194 -> #195 -> #196
+(`branch/issue-109-nexus-world-journey`). The delivery branch retains the entire stack;
+[issue #109](https://github.com/LuminariMUD/Duris/issues/109) links every PR and the
+current acceptance checklist. Merge/review and the separately authorized production
+steps below remain outstanding.
+
+### 2026-10-18 — review repairs for #191, #193, #195 and #196
+
+- Refreshed the complete stack onto master `d6f4d4aa6` while preserving the
+  dependent bases and unrelated changes in the main checkout. #190 carries the
+  rebase and corrected links to the moved investigation; #194 reacquires its
+  session between intentional SQL
+  failures in the seed fixture. Publish each branch with its explicit old-head lease.
+- #191: empty-catalogue diagnostics link to the existing provisioning plan.
+  Every placed stone requires both aligned guardian templates, including neutral
+  and partial states. SQL and flat-file regressions reject each missing template
+  at every alignment, during boot and reload. The original implementation failed.
+- #193: apply and history SQL use the persistent lock-owning session. A real
+  in-flight KILL regression reproduced a write after lock release in the original
+  runner; the repair prevents that write after a competitor acquires the lock.
+  All three engine suites pass the same-session, large-pipe, lock-loss, quiescence,
+  seed/replay/conflict and migration-history cases through migration 0046.
+- #195: all seven controlled Nexus settings are checked against the shipped
+  property file, and seven independent property mutations fail. The capture wallet
+  adapter uses real epic preparation; corrected Marduk/Enlil totals are 1016/1046
+  from a starting balance of 1000. The former bypass fails the corrected assertion.
+- #196: remove the capture guardian before requiring the exact same-side rejection;
+  wait for the server's hum notification with a bounded deadline; reconnect both
+  players after cold restart and compare live epic/coin scores, live ownership
+  listings and guardian prototypes 65/66. These observations strengthen the earlier
+  SQL-only restart checks and guardian-shadowed same-side check.
+- The complete repaired world journey passed with a seven-second pause of its own
+  server during the first cooldown. Cold restart restored live balances of 1024/1049
+  epics and 28492961/28505686 copper for the good/evil fixtures, plus ownership,
+  aligned guardians and dynamic Enlil placement. Expiration and repeated reloads pass.
+  Isolated negative-control binaries fail at the intended assertions when same-side
+  rejection is removed or boot's cached alignments are replaced with neutral values.
+- Current review SQL binary SHA-256:
+  `d73a6343e7f657e0af3fac5084d106fa0f80293921435829db5920d366047f69`.
+  Evidence is retained under ignored `bin/analysis/review/`: the engine/seed matrix,
+  `pr196-delayed-journey.log`, and both `pr196-negative-*.log` files. The positive
+  journey's seven-second pause is an external test wrapper; normal gate behavior
+  has no delay injection or extra configuration option.
+- Current repair checks also pass both server builds, both Nexus ASan/UBSan suites,
+  the flat-file Nexus repository test, 19 migration runner tests, 7 boot-contract
+  tests, migration CLI/invocation checks, formatting, clang-tidy and whitespace.
+  The original three-engine runtime-compatibility fixtures above were not repeated;
+  the current repair reran the full migration/seed matrix and the live MariaDB boot.
+- The last master refresh moved documentation only. A diff against the tested
+  pre-refresh tree confirms identical `src/`, `tests/`, `scripts/`, `migrations/`
+  and `lib/` contents, so the completed runtime results remain applicable.
 
 ## Outcome and boundaries
 
@@ -160,7 +263,7 @@ historical mapping recovery, persistent cooldown redesign, and general ship chan
 are excluded. Shared code must continue to support the flat-file backend. Production
 SQL, migrations, restarts, and gameplay checks require explicit deployment authority.
 
-## What the code actually establishes
+## Baseline findings that motivated implementation
 
 The issue is a requirement source, not proof of the following behavior.
 
@@ -500,10 +603,10 @@ Rollback must account for the immutable ledger and cached rows:
 
 - [x] Issue requirement 1, safe durable provisioning: NS-03 and the three-engine NS-04 cases.
 - [x] Issue requirement 2, no-stat sages: NS-01 and its executable NS-04 cases.
-- [ ] Issue requirement 3, neutral guardian lifecycle: NS-01, NS-04 and NS-05.
-- [ ] Issue requirement 4, empty/error/ship diagnostics: NS-02 and NS-04/NS-05.
-- [ ] Issue requirement 5, tests and maintained handoff: NS-04 through NS-06.
-- [ ] Staging catalogue/placement: NS-05.1; capture/rewards: NS-05.2-3;
+- [x] Issue requirement 3, neutral guardian lifecycle: NS-01, NS-04 and NS-05.
+- [x] Issue requirement 4, empty/error/ship diagnostics: NS-02 and NS-04/NS-05.
+- [x] Issue requirement 5, tests and maintained handoff: NS-04 through NS-06.
+- [x] Staging catalogue/placement: NS-05.1; capture/rewards: NS-05.2-3;
   expiration/restart: NS-05.4-6.
 - [ ] Target verification, backup, deployment approval, production proof and closure:
   NS-06. All remain required after local implementation.
