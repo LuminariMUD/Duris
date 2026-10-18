@@ -81,7 +81,6 @@ bool sql_populate_lookup_tables();
 int sql_save_player_core(P_char ch);
 int sql_level_cap(int racewar_side);
 void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update);
-void sql_webinfo_toggle(P_char ch);
 void sql_update_level(P_char ch);
 void get_log(P_char ch, char *temp);
 void sql_insert_item(P_char ch, P_obj obj, char *desc);

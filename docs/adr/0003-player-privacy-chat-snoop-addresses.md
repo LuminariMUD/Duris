@@ -127,3 +127,24 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
 - **DurisWeb.** The website's tables in the same database also hold addresses (page views,
   forum posts and threads, admin and builder logs). The same 30-day rule applies; that work
   belongs to the DurisWeb repository.
+
+## PvP publication boundary (2026-10-18)
+
+The server `LOG_CHAT` and command-debug decisions above are separate from the
+in-memory `PlayerLog` used for personal recall and combat snapshots. Their tests
+alone do not prove PvP privacy. Tell/reply, whisper (including telepathic delivery),
+directed ask, group, guild and alliance bodies use the private recall buffer for
+both sender and recipient. Content-free room notices may remain public.
+
+New combat captures freeze each participant's live `webinfo` decision. Off means
+no equipment or log; on exports only the bounded public suffix received during
+the current uninterrupted on interval. Toggle transitions reset that eligibility
+without clearing personal recall. Schema/payload legacy consent remains unknown,
+never inferred from current flags. DurisWeb withholds unknown and captured-off
+POVs and their stored quotes, and optionally applies the current saved flag to
+captured-on POVs. Pending status saves are not durable acknowledgements.
+
+See the [MUD implementation plan](../ongoing-projects/2026-10-18-pvp-mud-implementation-plan.md)
+for the contract, focused delivery/capture/SQL/API/UI evidence and release gates.
+These code changes do not authorize a production migration or historical-text edit,
+and do not decide unrelated retention or personal-data export policy.

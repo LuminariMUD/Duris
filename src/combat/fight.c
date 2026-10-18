@@ -860,11 +860,16 @@ static combat_outcome_participant *combat_outcome_add_participant(combat_outcome
 		 race_names_table[GET_RACE(ch)].ansi);
 	static_assert(MAX_STRING_LENGTH - 1 == COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES);
 	static_assert(MAX_LOG_LEN - 1 == COMBAT_OUTCOME_LOG_MAX_BYTES);
-	char equipment[MAX_STRING_LENGTH];
-	get_equipment_list(ch, equipment, 1);
-	entry.equipment = equipment;
-	if (GET_PLAYER_LOG(ch))
-		entry.log = GET_PLAYER_LOG(ch)->read(LOG_PUBLIC, MAX_LOG_LEN);
+	entry.webinfo_at_capture = PLR2_FLAGGED(ch, PLR2_WEBINFO) ? combat_webinfo::on :
+								    combat_webinfo::off;
+	if (entry.webinfo_at_capture == combat_webinfo::on)
+	{
+		char equipment[MAX_STRING_LENGTH];
+		get_equipment_list(ch, equipment, 1);
+		entry.equipment = equipment;
+		if (GET_PLAYER_LOG(ch))
+			entry.log = GET_PLAYER_LOG(ch)->read_export(MAX_LOG_LEN);
+	}
 	return &entry;
 }
 

@@ -618,6 +618,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "1d64797c4ad6c448c4a771262fd08e0ee4e79b3db0f84ba3143db9856395afce",
       "verify_checksum": "d008062231aaab96090ad593fb281bb7876a080948cfe5742b575b0f5697be84"
+    },
+    {
+      "id": "0045_pkill_webinfo_at_capture",
+      "sequence": 45,
+      "description": "Capture immutable per-participant PvP publication permission",
+      "apply": "immutable/0045_pkill_webinfo_at_capture.sql",
+      "verify": "immutable/0045_pkill_webinfo_at_capture.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "9ec4164a7f70796409f6e88e483b1e90044eae1ff8ef9c3151397dba9e24e110",
+      "verify_checksum": "0d3f5cf89844a00fdba5e0be9cec79bd6b91bcb79c20bd94157d57f43e0a96d1"
     }
   ],
   "engine_verifiers": [

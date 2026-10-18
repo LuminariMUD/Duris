@@ -197,7 +197,6 @@ int sql_save_player_core(P_char /*ch*/)
 }
 void sql_insert_item(P_char /*ch*/, P_obj /*obj*/, char * /*desc*/) {}
 
-void sql_webinfo_toggle(P_char /*ch*/) {}
 void sql_update_level(P_char /*ch*/) {}
 int sql_shop_trophy(P_obj obj)
 {
@@ -2534,15 +2533,6 @@ void sql_insert_item(P_char /*ch*/, P_obj obj, char *desc)
 		{ sql_format("INSERT IGNORE INTO items_stats VALUES( null, '%s', '', %d)",
 			     sql_short, m_virtual),
 		  query });
-}
-
-/* Save character's preferences about displaying extended info on
-   webpage for all to see. */
-void sql_webinfo_toggle(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// webinfo is stored in act2 flag, saved with player_data
 }
 
 /* Update level info */

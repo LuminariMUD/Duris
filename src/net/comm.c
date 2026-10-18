@@ -4317,7 +4317,7 @@ void write_to_pc_log(P_char ch, const char *message, int log)
 		return;
 	}
 
-	GET_PLAYER_LOG(ch)->write(log, message);
+	GET_PLAYER_LOG(ch)->write(log, message, PLR2_FLAGGED(ch, PLR2_WEBINFO));
 }
 
 void initialize_logs(P_char ch, bool reset_logs)

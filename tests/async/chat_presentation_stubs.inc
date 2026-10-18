@@ -13,7 +13,9 @@ P_Guild get_guild_from_id(int)
 {
 	return nullptr;
 }
-const racewar_struct racewar_color[MAX_RACEWAR + 2]{};
+const racewar_struct racewar_color[MAX_RACEWAR + 2]{ { 'g', "Fixture" }, { 'g', "Fixture" },
+						     { 'g', "Fixture" }, { 'g', "Fixture" },
+						     { 'g', "Fixture" }, { 'g', "Fixture" } };
 bool affected_by_spell_flagged(P_char, int, uint)
 {
 	return false;

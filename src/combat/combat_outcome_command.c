@@ -95,6 +95,11 @@ bool valid(const combat_outcome_payload &payload)
 		    entry.log.size() > COMBAT_OUTCOME_LOG_MAX_BYTES ||
 		    entry.equipment.find('\0') != std::string::npos ||
 		    entry.log.find('\0') != std::string::npos ||
+		    (entry.webinfo_at_capture != combat_webinfo::unknown &&
+		     entry.webinfo_at_capture != combat_webinfo::off &&
+		     entry.webinfo_at_capture != combat_webinfo::on) ||
+		    (entry.webinfo_at_capture == combat_webinfo::off &&
+		     (!entry.equipment.empty() || !entry.log.empty())) ||
 		    ((entry.wallet_delta_copper != 0) && !entry.account_name[0]))
 			return false;
 		for (size_t other = 0; other < index; ++other)
@@ -155,6 +160,15 @@ bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload
 		append_text(encoded, payload.participants[index].equipment);
 		append_text(encoded, payload.participants[index].log);
 	}
+	// Append the v4 consent bytes after the v3 snapshots. 255 is unknown on wire;
+	// SQL uses NULL for that state, never this byte or the enum's ordinal.
+	for (size_t index = 0; index < payload.participant_count; ++index)
+		append_le<uint8_t>(
+			encoded,
+			payload.participants[index].webinfo_at_capture == combat_webinfo::unknown ?
+				255 :
+			payload.participants[index].webinfo_at_capture == combat_webinfo::on ? 1 :
+											       0);
 	return encoded->size() <= CRITICAL_COMMAND_MAX_PAYLOAD_BYTES;
 }
 
@@ -205,6 +219,18 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 			    !read_text(&cursor, end, COMBAT_OUTCOME_LOG_MAX_BYTES,
 				       &payload->participants[index].log))
 				return false;
+	if (command.payload_version >= 4)
+		for (size_t index = 0; index < payload->participant_count; ++index)
+		{
+			uint8_t consent;
+			if (!read_le(&cursor, end, &consent) ||
+			    (consent != 0 && consent != 1 && consent != 255))
+				return false;
+			payload->participants[index].webinfo_at_capture =
+				consent == 255 ? combat_webinfo::unknown :
+				consent == 1   ? combat_webinfo::on :
+						 combat_webinfo::off;
+		}
 	if (cursor != end || !valid(*payload))
 		return false;
 	critical_command expected = {};

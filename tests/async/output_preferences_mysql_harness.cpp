@@ -26,7 +26,7 @@ MYSQL *connect()
 	assert(std::string(std::getenv("DB_NAME")) == "colorization_test");
 	MYSQL *connection = mysql_init(nullptr);
 	assert(connection &&
-	       mysql_real_connect(connection, std::getenv("DB_HOST"), "root",
+	       mysql_real_connect(connection, std::getenv("DB_HOST"), std::getenv("DB_USER"),
 				  std::getenv("DB_PASSWD"), "colorization_test",
 				  static_cast<unsigned>(std::atoi(std::getenv("DB_PORT"))), nullptr,
 				  0));
@@ -71,6 +71,28 @@ int main()
 		"VALUES('ColorTwo','color_test_account',1,25,1,100)");
 	const int second_pid = static_cast<int>(mysql_insert_id(connection));
 	auto first = load(connection, first_pid), second = load(connection, second_pid);
+	auto set_webinfo = [](player_snapshot &snapshot, bool on)
+	{
+		for (auto &row : snapshot.status_integers)
+			if (row.field == player_status_field::action_flags_2)
+			{
+				row.is_unsigned = true;
+				row.unsigned_value = on ? 134217728 : 0;
+				return;
+			}
+		assert(false);
+	};
+	auto webinfo = [](const player_snapshot &snapshot)
+	{
+		for (const auto &row : snapshot.status_integers)
+			if (row.field == player_status_field::action_flags_2)
+				return ((row.is_unsigned ? row.unsigned_value : row.signed_value) &
+					134217728) != 0;
+		assert(false);
+		return false;
+	};
+	set_webinfo(first, true);
+	set_webinfo(second, false);
 	assert(first.output_preferences.empty() && second.output_preferences.empty());
 	assert(first.status_strings.back().field ==
 	       player_status_string_field::last_read_news_hash);
@@ -88,6 +110,7 @@ int main()
 	mysql_close(connection);
 	connection = connect();
 	assert(load(connection, first_pid).output_preferences == first.output_preferences);
+	assert(webinfo(load(connection, first_pid)) && !webinfo(load(connection, second_pid)));
 	assert(load(connection, second_pid).output_preferences == second.output_preferences);
 	assert(load(connection, first_pid).status_strings.back().value == std::string(64, 'a'));
 	assert(load(connection, second_pid).status_strings.back().value.empty());
@@ -100,11 +123,13 @@ int main()
 	++failed.revision;
 	failed.components |= PLAYER_COMPONENT_TROPHIES;
 	failed.output_preferences.clear();
+	set_webinfo(failed, false);
 	failed.status_strings.back().value = std::string(64, 'b');
 	failed.trophies = { { 12, 50 }, { 12, 60 } };
 	assert(player_snapshot_repository_apply(connection, failed).outcome ==
 	       player_save_apply_outcome::terminal_failure);
 	assert(load(connection, first_pid).output_preferences == first.output_preferences);
+	assert(webinfo(load(connection, first_pid)) && !webinfo(load(connection, second_pid)));
 	assert(load(connection, first_pid).revision == first.revision);
 	assert(load(connection, first_pid).status_strings.back().value == std::string(64, 'a'));
 	// A save of a different component cannot clear an acknowledged version.
@@ -122,10 +147,12 @@ int main()
 	assert(player_snapshot_repository_apply(connection, first).outcome ==
 	       player_save_apply_outcome::applied);
 	assert(load(connection, first_pid).output_preferences == first.output_preferences);
+	assert(webinfo(load(connection, first_pid)) && !webinfo(load(connection, second_pid)));
 	--first.revision;
 	assert(player_snapshot_repository_apply(connection, first).outcome ==
 	       player_save_apply_outcome::applied);
 	assert(load(connection, first_pid).output_preferences == first.output_preferences);
+	assert(webinfo(load(connection, first_pid)) && !webinfo(load(connection, second_pid)));
 	first.revision += 2;
 	first.output_preferences.clear();
 	assert(player_snapshot_repository_apply(connection, first).outcome ==

@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <string>
 
-constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 3;
+constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 4;
 constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 15;
 constexpr size_t COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES = 96;
 constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 255;
@@ -52,6 +52,13 @@ enum combat_participant_flag : uint8_t
 	COMBAT_PARTICIPANT_SPILL_BLOOD = UINT8_C(1) << 2,
 };
 
+enum class combat_webinfo : int8_t
+{
+	unknown = -1,
+	off = 0,
+	on = 1,
+};
+
 struct combat_outcome_participant
 {
 	uint32_t pid;
@@ -68,6 +75,7 @@ struct combat_outcome_participant
 	uint64_t expected_bank_revision;
 	std::array<char, CURRENCY_ACCOUNT_NAME_MAX_BYTES + 1> account_name;
 	std::array<char, COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES + 1> description;
+	combat_webinfo webinfo_at_capture = combat_webinfo::unknown;
 	std::string equipment;
 	std::string log;
 };
