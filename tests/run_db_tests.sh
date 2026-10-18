@@ -103,6 +103,7 @@ legacy_personal_locker_access_repair tests/async/run_legacy_personal_locker_acce
 player_replacement_state tests/async/run_player_replacement_state_mysql.sh
 epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
 auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
+auction_list $DB python3 tests/async/run_auction_list_journey.py --server $SERVER
 artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh
 statistics $DB bash tests/async/run_statistics_mysql.sh
 session_audit $DB tests/async/run_session_audit_schema_mysql.sh
