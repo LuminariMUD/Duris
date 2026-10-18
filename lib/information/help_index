@@ -8063,8 +8063,12 @@ The healing a single blow can share is limited. In total, one blow heals the
 group by no more than 90% of its damage, and never more than 60% of the
 Paladin's own maximum hit points. Across a whole combat round the group can
 receive at most 120% of the Paladin's maximum hit points. In a small group
-each groupmate usually receives the full 30%; in a large group the healing
-is divided among those who need it. Against players these limits are halved.
+each groupmate usually receives the full 30% before healing modifiers; in a
+large group the healing is divided among those who need it. A blow from a
+player, including their pet or borrowed form, halves these limits for the
+rest of the combat round, even if monsters also attack. Healing already
+received counts toward that smaller allowance; no hit points are taken back.
+This reduction can also reduce healing in a small group.
 
 Groupmates who are plagued, or who carry a Holy Sacrifice of their own,
 receive nothing. The sacrifice gives nothing while the Paladin is plagued,

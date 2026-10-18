@@ -1432,6 +1432,7 @@ struct char_special_data
 	//   (ne_event_tick / PULSE_VIOLENCE).  Runtime only; never saved.
 	unsigned long long holy_sacrifice_round;
 	int holy_sacrifice_healed;
+	bool holy_sacrifice_pvp;
 	P_char arrest_by;
 	char undead_spell_slots[MAX_CIRCLE + 1];
 

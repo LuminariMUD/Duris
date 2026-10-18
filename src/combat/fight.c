@@ -5103,21 +5103,37 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
  Holy Sacrifice: ch's blow of dam on owner heals each injured groupmate in the room by up
  to vamping.holySacrifice of the damage, out of one budget the group shares. A blow's
  budget is the smaller of a share of its damage and a share of the owner's max hp, and the
- owner's combat round has its own limit. Against players both limits are scaled down.
+ owner's combat round has its own limit. A player-controlled hit keeps both limits
+ scaled down for the rest of that round, including later NPC hits.
  The neediest go last, so healing that the others cannot take still reaches them.
 */
-static void holy_sacrifice_heal(P_char ch, P_char owner, int dam)
+// Observe actual incoming damage even when that hit cannot trigger healing.
+static void holy_sacrifice_note_hit(P_char ch, P_char owner)
 {
-	const double pvp_mod =
-		IS_PC(GET_PLYR(ch)) ? get_property("vamping.holySacrifice.pvpMod", 0.5) : 1.0;
-	const double max_hit = GET_MAX_HIT(owner);
+	// Morphs keep their group and round allowance on the original player.
+	P_char holder = GET_PLYR(owner);
+	P_char source = GET_PLYR(ch);
+	if (P_char master = GET_MASTER(source))
+		source = GET_PLYR(master);
 	const unsigned long long round = ne_event_tick / PULSE_VIOLENCE;
 
-	if (owner->specials.holy_sacrifice_round != round)
+	if (holder->specials.holy_sacrifice_round != round)
 	{
-		owner->specials.holy_sacrifice_round = round;
-		owner->specials.holy_sacrifice_healed = 0;
+		holder->specials.holy_sacrifice_round = round;
+		holder->specials.holy_sacrifice_healed = 0;
+		holder->specials.holy_sacrifice_pvp = false;
 	}
+	if (IS_PC(source))
+		holder->specials.holy_sacrifice_pvp = true;
+}
+
+static void holy_sacrifice_heal(P_char owner, int dam)
+{
+	P_char holder = GET_PLYR(owner);
+	const double max_hit = GET_MAX_HIT(owner);
+	const double pvp_mod = holder->specials.holy_sacrifice_pvp ?
+				       get_property("vamping.holySacrifice.pvpMod", 0.5) :
+				       1.0;
 
 	double budget =
 		pvp_mod * MIN(static_cast<double>(dam) *
@@ -5125,19 +5141,22 @@ static void holy_sacrifice_heal(P_char ch, P_char owner, int dam)
 			      max_hit * get_property("vamping.holySacrifice.hitMaxHpCap", 0.6));
 	budget = MIN(budget,
 		     pvp_mod * max_hit * get_property("vamping.holySacrifice.roundMaxHpCap", 1.2) -
-			     owner->specials.holy_sacrifice_healed);
+			     holder->specials.holy_sacrifice_healed);
 	// Hit points are whole: 90% of 1000 is 900, not the 899.99997 a float property gives.
 	budget = std::round(budget);
 	if (budget < 1)
 		return;
 
 	std::vector<P_char> injured;
-	for (struct group_list *group = owner->group; group; group = group->next)
+	for (struct group_list *group = holder->group; group; group = group->next)
 	{
 		P_char tch = group->ch;
-		if (tch->in_room == owner->in_room && tch != owner &&
+		if (IS_PC(tch) && tch->only.pc->switched)
+			tch = tch->only.pc->switched;
+		if (IS_ALIVE(tch) && tch->in_room == owner->in_room && tch != owner &&
 		    !IS_AFFECTED4(tch, AFF4_HOLY_SACRIFICE) &&
-		    !affected_by_spell(tch, SPELL_PLAGUE) && GET_HIT(tch) < GET_MAX_HIT(tch))
+		    !affected_by_spell(tch, SPELL_PLAGUE) && GET_HIT(tch) < GET_MAX_HIT(tch) &&
+		    std::find(injured.begin(), injured.end(), tch) == injured.end())
 			injured.push_back(tch);
 	}
 	std::stable_sort(injured.begin(), injured.end(), [](P_char a, P_char b)
@@ -5153,7 +5172,7 @@ static void holy_sacrifice_heal(P_char ch, P_char owner, int dam)
 			vamp(tch, gain,
 			     MIN(static_cast<double>(GET_MAX_HIT(tch)), GET_HIT(tch) + share));
 		budget -= healed;
-		owner->specials.holy_sacrifice_healed += healed;
+		holder->specials.holy_sacrifice_healed += healed;
 	}
 }
 
@@ -5459,7 +5478,7 @@ void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 	    || (EVIL_RACE(victim) && !EVIL_RACE(ch))))
 	*/
 	{
-		holy_sacrifice_heal(ch, victim, dam);
+		holy_sacrifice_heal(victim, dam);
 	}
 }
 
@@ -5779,6 +5798,8 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		{
 			// Ahead of check_vamp, whose early returns must not stop the tithe.
 			blood_tithe_charge(ch, victim, dam);
+			if (dam > 0 && IS_AFFECTED4(victim, AFF4_HOLY_SACRIFICE))
+				holy_sacrifice_note_hit(ch, victim);
 			check_vamp(ch, victim, dam, flags);
 		}
 
