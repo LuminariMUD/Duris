@@ -2431,7 +2431,17 @@ None.
 10th Circle: detect invisibility
 11th Circle: freedom of movement, rope trick
 12th Circle: enlarge, sirens song
-100th Circle: clairvoyance
+==Songs==
+6th Level: song of sleep
+16th Level: song of calming, song of discord, song of harmony
+21st Level: song of cowardice, song of forgetfulness, song of protection
+26th Level: song of dissonance, song of peace
+31st Level: song of flight, song of healing
+36th Level: song of charming, song of dragons, song of harming
+41st Level: song of heroism, song of storms
+46th Level: song of chaos, song of revelation
+==Instruments==
+5th Level: drums, flute, harp, horn, lyre, mandolin
 ==See also==
 * Bard
 * Specialization
@@ -2907,6 +2917,10 @@ Blademaster is a Ranger specialization. Selection requires level 30, an eligible
 ==Race permission rows==
 Centaur, Githzerai, Grey Elf, Halfling, Human, Tiefling.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+==Class mechanics==
+Blademasters receive a 10% bonus to the defensive parry value and a 5% bonus
+to the standard riposte value used in combat checks. Training caps are
+unchanged, and normal skill, weapon, and combat conditions still apply.
 ==Skill changes==
 double strike: level 36, skill cap 100%
 follow-up riposte: level 51, skill cap 60%
@@ -3296,6 +3310,12 @@ Swashbuckler is a Warrior specialization. Selection requires level 30, an eligib
 ==Race permission rows==
 Drow Elf, Grey Elf, Human, Orc, Tiefling.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+==Class mechanics==
+Swashbucklers receive a 10% bonus to both the defensive parry value and the
+standard riposte value used in combat checks. Their attacks are also harder
+to parry: the attacker's value in the defender's parry check is increased by
+10%. Training caps are unchanged, and normal skill, weapon, and combat
+conditions still apply.
 ==Skill changes==
 awareness: level 1, skill cap 80%
 dual wield: level 30, skill cap 100%
@@ -4826,7 +4846,6 @@ None.
 11th Circle: conjure greater elemental, group globe of invulnerability,
     prismatic cube, stornogs spheres
 12th Circle: group stornogs spheres
-100th Circle: clairvoyance
 ==See also==
 * Conjurer
 * Specialization
@@ -14835,6 +14854,8 @@ These permissions apply to an existing character; they do not enable a forbidden
 riff: level 30, skill cap 100%
 ==Spell changes==
 None beyond the base-class registrations.
+==Song changes==
+song of drifting: level 46, skill cap 100%
 ==Innate additions==
 *blindsinging: level 1
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
@@ -22237,7 +22258,6 @@ None.
 10th Circle: bigbys crushing hand, chain lightning, meteorswarm
 11th Circle: enlarge, reduce, solbeeps missile barrage
 12th Circle: deflect, globe of invulnerability
-100th Circle: clairvoyance
 ==See also==
 * Sorcerer
 * Specialization
@@ -23655,7 +23675,6 @@ None.
 9th Circle: fly, gate, prismatic ray, relocate
 10th Circle: farsee, group stone skin
 11th Circle: group globe of invulnerability, prismatic cube
-100th Circle: clairvoyance
 ==See also==
 * Summoner
 * Specialization

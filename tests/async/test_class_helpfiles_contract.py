@@ -9,6 +9,7 @@ COMMON_C = (SRC / "common.c").read_text()
 DEFINES_H = (SRC / "defines.h").read_text()
 PARSED_HELP = (ROOT / "help/duris_help_parsed.hlp").read_text()
 HELP_INDEX = (ROOT / "lib/information/help_index").read_text()
+MAX_CIRCLE = int(re.search(r"#define MAX_CIRCLE (\d+)", (SRC / "config.h").read_text())[1])
 
 # 1. Extract all 30 classes from class_names_table in src/common.c
 class_table_match = re.search(
@@ -75,6 +76,8 @@ for cls in class_names:
     assert "==skills==" in skill_lower, f"Missing '==Skills==' in skills help for '{cls}'"
     assert "==spells==" in skill_lower, f"Missing '==Spells==' in skills help for '{cls}'"
     assert "==see also==" in skill_lower, f"Missing '==See also==' in skills help for '{cls}'"
+    for circle in re.findall(r"(?m)^(\d+)(?:st|nd|rd|th) Circle:", skill_entry):
+        assert 1 <= int(circle) <= MAX_CIRCLE, f"Unobtainable circle {circle} in {skills_title}"
 
     # Main class and skillset in help_index
     assert cls_lower in index_map or cls.upper() in [t.upper() for t in index_map], f"Missing '{cls}' in lib/information/help_index"
@@ -87,4 +90,50 @@ for cls in class_names:
         index_body = "\n".join(index_map[key][1].strip().splitlines()[2:]).strip()
         assert index_body == expected, f"Divergent help source body for {key}"
 
-print("All 30 class help files and skills contracts passed successfully!")
+# Songs and instruments have their own ID ranges, but belong in Bard progression.
+skills_source = re.sub(r"/\*.*?\*/|//[^\n]*", "", (SRC / "skills.c").read_text(), flags=re.S)
+musical_grants = {"SONG": {}, "INSTRUMENT": {}}
+minstrel_grants = {}
+for block in re.split(r"\bSKILL_CREATE(?:_WITH_MESSAGES)?\(", skills_source)[1:]:
+    name = re.match(r'"([^"]+)",\s*(SONG|INSTRUMENT)_\w+', block)
+    if not name:
+        continue
+    base = re.search(r"\bSKILL_ADD\(CLASS_BARD,\s*(\d+),\s*(\d+)\)", block)
+    spec = re.search(r"\bSPEC_SKILL_ADD\(CLASS_BARD,\s*(\d+),\s*(\d+),\s*SPEC_MINSTREL\)", block)
+    if base:
+        musical_grants[name[2]][name[1]] = int(base[1])
+    if spec:
+        minstrel_grants[name[1]] = (int(spec[1]), int(spec[2]))
+
+bard_help = parsed_map["bard skills"][1]
+for kind, section in (("SONG", "Songs"), ("INSTRUMENT", "Instruments")):
+    body = re.search(r"==" + section + r"==\n(.*?)(?=\n==|\Z)", bard_help, re.S)
+    assert body, f"Missing Bard {section} progression"
+    listed = {}
+    for level, names in re.findall(r"(?m)^(\d+)(?:st|nd|rd|th) Level:([^\n]*(?:\n +[^\n]+)*)", body[1]):
+        for name in names.replace("\n", " ").split(","):
+            name = name.strip()
+            assert name not in listed, f"Duplicate Bard {section} entry: {name}"
+            listed[name] = int(level)
+    assert musical_grants[kind], f"No source {kind} grants found"
+    assert listed == musical_grants[kind], f"Bard {section} differs from skills.c"
+
+minstrel_help = parsed_map["minstrel"][1]
+song_changes = re.search(r"==Song changes==\n(.*?)(?=\n==|\Z)", minstrel_help, re.S)
+assert song_changes, "Missing Minstrel song progression"
+listed = {name: (int(level), int(cap)) for name, level, cap in re.findall(
+    r"(?m)^([^\n:]+): level (\d+), skill cap (\d+)%$", song_changes[1])}
+assert minstrel_grants and listed == minstrel_grants, "Minstrel songs differ from skills.c"
+
+# These specialization bonuses are implemented in fight.c, outside grant tables.
+for title in ("blademaster", "swashbuckler"):
+    entry = parsed_map[title][1]
+    mechanics = re.search(r"==Class mechanics==\n(.*?)(?=\n==|\Z)", entry, re.S)
+    assert mechanics and all(word in mechanics[1].lower() for word in ("parry", "riposte")), title
+assert "harder to parry" in " ".join(parsed_map["swashbuckler"][1].lower().split())
+for title in ("minstrel", "blademaster", "swashbuckler"):
+    parsed_body = "\n".join(parsed_map[title][1].strip().splitlines()[3:]).strip()
+    index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
+    assert index_body == parsed_body, f"Divergent specialization help source body for {title}"
+
+print("All 30 class help files, Bard progression, and specialization help contracts passed!")
