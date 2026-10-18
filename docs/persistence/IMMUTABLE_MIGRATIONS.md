@@ -218,7 +218,7 @@ canonical selection or data cleanup. A unique key prevents one non-null canonica
 UID from naming two vnums, and retired UIDs remain representable. Column/index
 guards replay partial DDL; the verifier checks their full shape, preserves the
 custody FK, and refuses inconsistent state/UID pairs. Apply it before starting
-the updated database-backed server. See the [artifact plan](../ongoing-projects/plan.md)
+the updated database-backed server. See the [artifact plan](../ongoing-projects/plan-issue-67.md)
 for the separate runtime/admission/reconciliation acceptance work.
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
