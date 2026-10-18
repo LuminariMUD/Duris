@@ -18,6 +18,13 @@ Delayed surplus movement decay also stops at the maximum: after 120/100 becomes
 equipment recovery below the maximum still drains normally. The native sanitizer
 regression covers both cases at recovery dials 1, 5 and 10.
 
+The same native test executes real `affect_update()`, `StartRegen()`, policy and
+callbacks after combat and sunlight suppression. It covers Human/Pillithid/Illithid
+PSP users, including racial warriors and sorcerers, missing/full/over-cap PSP,
+negative recovery at full, fresh elapsed credit and duplicate suppression. An
+ordinary human warrior remains excluded. The full-world combat case uses a
+Pillithid warrior to verify the periodic restart beyond psionic classes.
+
 `python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
 functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
 ASan/UBSan. It checks the POW+INT base and truncation, recovery dials 1/5/10,

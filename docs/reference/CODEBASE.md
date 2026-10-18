@@ -407,7 +407,10 @@ existing fractional accumulator, elapsed-pulse catch-up, duplicate suppression a
 cadence remain. Blocked callbacks terminate and discard fractional credit; a later start
 begins with fresh elapsed accounting. Existing casting, meditation, rest, affect changes
 and periodic player affect updates supply restarts. Combat exit relies on the next
-eligible player affect tick, nominally within 75 seconds.
+eligible player affect tick, nominally within 75 seconds. That restart covers every
+`USES_MANA` character, including racial PSP users without a psionic class, and lets
+`StartRegen()` check the current rate at full or above-maximum PSP too. Negative
+equipment recovery therefore resumes after suppression even from full PSP.
 
 Movement retains its existing rates and cadence. Positive increments cap at maximum;
 vitality granted above maximum by restore spirit or Reaper drain decays gradually

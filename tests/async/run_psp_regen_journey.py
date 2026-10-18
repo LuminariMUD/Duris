@@ -152,7 +152,14 @@ def run(binary):
                 assert cast["mana"] < cast["maximum"] and cast["callbacks"] > idle["callbacks"], cast
                 result[cls + "_casting"] = cast
             print("Psionicist and mindflayer casting restarts passed", flush=True)
-            command(staff, f"setbit char {NAME} class Psionicist")
+            # Racial PSP users must also recover after their pending event is suppressed.
+            # Pillithid's +25 POW/+20 INT racial bonuses retain current stats of 100.
+            for field, value in (("race", "'Planetbound Illithid'"), ("class", "Warrior"),
+                                 ("pow", "75"), ("int", "80")):
+                text = command(staff, f"setbit char {NAME} {field} {value}")
+                assert "Valid sub-options" not in text and "Invalid" not in text, text
+            identity = command(staff, f"stat char {NAME}")
+            assert re.search(r"Race:.*Illithid\s+Class: Warrior", identity), identity
 
             set_mana(1000)
             pending = sample()
@@ -174,7 +181,8 @@ def run(binary):
                     break
                 assert time.monotonic() - start < 77, "periodic combat-exit restart failed"
                 time.sleep(.5)
-            result["combat"] = {"entry": fighting, "blocked": still, "recovered": recovered,
+            result["combat"] = {"race": "Pillithid", "class": "Warrior",
+                                "entry": fighting, "blocked": still, "recovered": recovered,
                                 "restart_seconds": round(time.monotonic() - start, 3)}
             print("Combat suppression and periodic restart passed", flush=True)
 

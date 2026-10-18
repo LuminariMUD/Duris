@@ -1,6 +1,6 @@
 # Issue #57: consistent PSP regeneration and gradual movement decay
 
-Status: RG-01/02/03 implemented, locally qualified and published for review as #201 → #202 → #203.
+Status: RG-01/02/03 implemented and locally qualified; delivery is #201 → #202 → #203.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
 Original base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
@@ -35,6 +35,22 @@ implementation continues on the requested delivery branch.
 
 ### Active handoff (2026-10-18)
 
+Ordered merge work landed #201 as `bb25872e4e564ceb5bd1d67868501b8c864172fd`
+and #202 as `c1d201aeb31543f01ef6c51a765fdc73b6c87696`, each with exact
+tested-tree and single-parent verification. #202 also repairs the review finding
+where delayed surplus decay crossed below maximum: 119/100 plus 1,200 elapsed pulses
+now stops at 100, while an ordinary negative equipment rate still drains below it.
+The new ASan/UBSan cases pass at recovery dials 1/5/10.
+
+A #201 review completed after its merge and exposed a periodic restart gap. RG-03
+now replaces the psionic-class/below-maximum predicate in `affect_update()` with
+`USES_MANA`; existing `StartRegen()` checks the current actionable rate and prevents
+duplicates. The expanded native test failed before repair and passes through the
+real periodic update, admission, policy and callbacks after combat/sunlight. It
+covers racial warriors/sorcerers, class PSP users, missing/full/over-cap PSP and
+negative recovery at full, without retaining credit from suppression. An ordinary
+human warrior remains excluded. No new timer or event mechanism was added.
+
 RG-01 replaces the obsolete quadratic PSP policy with the selected POW+INT contract,
 uses it in the callback, and adds directional upper/lower PSP bounds. There are no
 new scheduler hooks or abstractions. The native regression uses real rate functions,
@@ -53,8 +69,9 @@ Build output is ignored at `bin/analysis/issue57-plan/rg01-build.log`.
 RG-01 is published as [PR #201](https://github.com/LuminariMUD/Duris/pull/201),
 initial head `b1454ab8db2cd986efee99d52737007b667599d0`, with exact remote parity and clean
 working tree verified. RG-02 is on `branch/issue-57-movement-decay`, based on that
-head. Its only production edit makes the movement upper cap conditional on a positive
-increment. The expanded ASan/UBSan test executes `spell_restore_spirit()` twice in
+head. Its initial production edit makes the movement upper cap conditional on a positive
+increment; the later delayed-boundary repair is recorded above. The expanded ASan/UBSan
+test executes `spell_restore_spirit()` twice in
 combat to produce 120/100 vitality, then clears combat and executes `do_rest()`:
 the first decrement at pulse 61 leaves 119. Damage/saves are stubbed; the producer,
 rest, admission, rates and accumulator are real. It also proves progressive decay,
@@ -132,8 +149,8 @@ were removed. Both builds, the focused checks below, all scheduler sanitizer mod
 the output regression, formatting and 14 documentation contracts passed after rebasing.
 
 Full-server execution uses the normal development binary; ASan/UBSan coverage is in
-the native policy and scheduler tests. Merge, issue closure and production deployment
-remain separate, unperformed actions.
+the native policy and scheduler tests. The historical runs above predate the ordered
+merge work. Production deployment and acceptance remain separate.
 
 Implementation and proof files:
 
@@ -197,8 +214,9 @@ command reachability or the real event queue. No database migration is required.
    `use_spell()` subtracts PSP and starts mana regeneration; `do_meditate()` sets the
    flag and starts it; `do_rest()` starts each resource; `affect_total()` retries
    non-full/negative-modified resources for connected players. `affect_update()`
-   retries depleted PSP for psionicists/mindflayers each player tick and preserves
-   NPC slicing. `stop_fighting()` does not itself start PSP regeneration. Preserve
+   originally retried depleted PSP for psionicists/mindflayers each player tick;
+   the review repair above covers all `USES_MANA` characters and actionable rates,
+   preserving NPC slicing. `stop_fighting()` does not itself start PSP regeneration. Preserve
    the existing periodic recovery path and prove its bounded delay after combat
    rather than inventing a new timer or promising immediate restart.
 
@@ -429,11 +447,11 @@ them. Preserve the previous plan rather than discarding its unrelated acceptance
 ## Publication handoff
 
 Review order is #201 (PSP) → #202 (movement) → #203 (lifecycle qualification).
-The active checkout is `branch/issue-57-regen-lifecycle`; its production sources are
-identical to #202. All chunks use `Refs #57`, with no closing keyword or release tag.
-Refreshed `origin/master` is `2378b4916` (backup scripts/docs/tests only); it changes
-none of these production sources. #201 and #202 remain mergeable without rewriting
-their reviewed branch histories.
-When review is complete, merge/retarget the stack only when requested, preserving the
-tested code tree and current branch protections. Keep #53/#56/#106 closed and unchanged.
+The owner requested ordered merging. #201 and #202 are merged at the commits above;
+#203 replays only its three unique original patches onto #202, plus the demonstrated
+periodic-restart repair. Its only new production change is in `src/magic/affects.c`.
+All chunks use `Refs #57`, with no release tag. #57 was reopened after GitHub closed
+it on #201; close it only after #203 and the full acceptance evidence are integrated.
+Preserve the tested tree and master linear history. Keep #53/#56/#106 unchanged.
+Production deployment remains separately authorized work.
 The planning estimate was 12–20 engineering hours; it is not a measured delivery claim.
