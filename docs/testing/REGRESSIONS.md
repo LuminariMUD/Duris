@@ -11,6 +11,23 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## PSP policy and callback consistency (#57)
+
+`python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
+functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
+ASan/UBSan. It checks the POW+INT base and truncation, recovery dials 1/5/10,
+PC/NPC behavior, signed equipment modifiers, feeblemind, sunlight exemptions,
+all six statuses crossed with all four postures and meditation, combat entry with
+fractional credit, delayed callbacks, full/zero/over-cap bounds, one completion
+message, psionicist/mindflayer casting restarts, duplicate starts and NPC cadence.
+One- and four-pulse recovery agrees with the rate within one point of float credit.
+
+The fixture queue and ordinary engine dependencies are stubs. Meditation flags and
+combat state are seeded; this test does not claim command reachability, a full-world
+journey or production scheduler integration. Those remaining gates are tracked in
+`docs/ongoing-projects/plan.md`. Existing difficulty, HP decay, tick spreading and
+sanitized scheduler runtime controls also pass with the consolidated PSP policy.
+
 ## Combined log-review integration qualification
 
 The combined server/world/schema at `8b2681862` incorporates master `c6a95a470`

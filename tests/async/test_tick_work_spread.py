@@ -149,8 +149,6 @@ int main()
     player.points.mana = 99;
     player.points.max_ward = 100;
     player.points.ward = 99;
-    // event_mana_regen() takes its rate from power and intelligence, not mana_regen().
-    player.curr_stats.Pow = player.curr_stats.Int = 100;
     for (regen_resource resource :
          { regen_resource::hit, regen_resource::mana, regen_resource::ward })
     {

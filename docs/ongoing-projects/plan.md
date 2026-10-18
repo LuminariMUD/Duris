@@ -1,6 +1,6 @@
 # Issue #57: consistent PSP regeneration and gradual movement decay
 
-Status: implementation plan only; no server behavior has been changed.
+Status: RG-01 implemented and locally verified; RG-02 and RG-03 remain in progress.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
 Base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
@@ -27,8 +27,32 @@ claims about current behavior. Do not substitute the older quadratic formula.
 
 Non-goals: general movement rebalance, reconstructing historical player complaints,
 HP/ward redesign, scheduler rewrites, new properties, services or schema, production
-rollout, and changes to live player data. Implementation is a subsequent task; this
-branch initially publishes only this plan and preservation of the previous plan.
+rollout, and changes to live player data. The initial planning commit is `38c0de994`;
+implementation continues on the requested delivery branch.
+
+### Active handoff (2026-10-18)
+
+RG-01 replaces the obsolete quadratic PSP policy with the selected POW+INT contract,
+uses it in the callback, and adds directional upper/lower PSP bounds. There are no
+new scheduler hooks or abstractions. The native regression uses real rate functions,
+difficulty, admission, callback and `use_spell()`; its queue and ordinary engine
+dependencies are stubbed. It proves the status/posture matrix, modifiers, sunlight,
+combat cancellation of fractional credit, full/zero/over-cap bounds, completion
+message, casting restart, NPC staggering and one/four-pulse elapsed accounting.
+
+Passed on the RG-01 source changes based on `38c0de994`: `test_psp_move_regen.py`
+(ASan/UBSan), `test_difficulty_dials.py`, `test_vampiric_overheal_regen.py`,
+`test_tick_work_spread.py`, `test_nevent_catchup_contract.py`,
+`test_nevent_regen_death_contract.py`, `test_nevent_scheduler_runtime.py`
+(ASan/UBSan), `test_player_event_timing_contract.py`, and `make -C src -j8`.
+Build output is ignored at `bin/analysis/issue57-plan/rg01-build.log`.
+
+Next: publish RG-01 for review, then stack the directional movement fix and producer
+fixture (RG-02). Finish with an isolated local full-server journey (RG-03), using a
+fresh flat-file build and disposable accounts/runtime settings. `.env` was read only
+for `ENVIRONMENT=local`; no shared server is running. Actual meditation commands,
+staff display, combat-exit periodic restart and the production event queue remain
+unverified by the new isolated harness. Do not claim issue completion yet.
 
 Expected implementation files:
 
@@ -48,7 +72,7 @@ existing focused difficulty, HP and scheduler checks; then a local/dev server jo
 through casting, meditation, combat and staff display. Helper-only tests cannot prove
 command reachability or the real event queue. No database migration is required.
 
-## What current code actually establishes
+## Pre-implementation findings (planning baseline)
 
 1. **The PSP split is real and predates recent event optimization.**
    `StartRegen()` calls `mana_regen(ch, false)`; staff `stat` calls it with `true`.
@@ -186,28 +210,28 @@ these effects in the implementation PR and codebase documentation.
 
 ### RG-01 — Unify PSP policy, application and display
 
-- [ ] Implement the ordered contract in `mana_regen()`, replacing the obsolete
+- [x] Implement the ordered contract in `mana_regen()`, replacing the obsolete
   base/square and unreachable switch; remove abandoned commented formula code in
   this function only. Update its misleading minute/hour comment.
-- [ ] Replace the callback's POW/INT expression with `mana_regen(ch, false)`.
+- [x] Replace the callback's POW/INT expression with `mana_regen(ch, false)`.
   Keep `regen_event_state`, elapsed pulses, fractional remainder, player/NPC delays,
   GMCP updates, psionicist full-reserve message and `stop_meditation()` behavior.
-- [ ] Apply the max cap only to positive PSP increments; allow gradual over-cap
+- [x] Apply the max cap only to positive PSP increments; allow gradual over-cap
   negative decay and stop/clamp negative net drain at zero. Base full-resource
   admission on the computed rate rather than the sign of `mana_reg` alone.
-- [ ] Keep `StartRegen()` deduplication and NPC first-event staggering. Staff
+- [x] Keep `StartRegen()` deduplication and NPC first-event staggering. Staff
   `stat` should agree automatically through the shared helper, with the documented
   full-resource potential-rate exception; no parallel display calculation.
-- [ ] Add native regression cases for the real helper, admission and callback:
+- [x] Add native regression cases for the real helper, admission and callback:
   dials 1/5/10; varied POW/INT including fractional base truncation; PC/NPC;
   positive/zero/negative modifiers; feeblemind; sunlight/twilight/globe;
   every listed status crossed with posture; incapacitation/dying plus bonuses;
   meditation entry/exit; and reaching full with exactly one completion message.
-- [ ] Prove idle-to-combat and already-in-combat both gain zero, including an
+- [x] Prove idle-to-combat and already-in-combat both gain zero, including an
   already accumulated fractional remainder and a delayed callback. Rechecking the
   current rate must prevent credit while blocked. On restart use a fresh state,
   so blocked elapsed time is not credited later.
-- [ ] Cover full/over-full/zero PSP, positive capping, signed drain and full ->
+- [x] Cover full/over-full/zero PSP, positive capping, signed drain and full ->
   actual `use_spell()` expenditure -> one scheduled recovery event. Preserve
   duplicate-start suppression and normal NPC recurrence/staggered elapsed credit.
 
