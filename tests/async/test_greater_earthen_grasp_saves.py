@@ -23,7 +23,7 @@ from _source_contract import function_body, strip_comments
 
 
 BOUNDED = extract_function("utility.c", "int BOUNDED(int a, int b, int c)")
-FREEDOM = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch, bool clear)")
+FREEDOM = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch)")
 GRASP = extract_function(
     "smagic.c", "void earthen_grasp(int level, P_char ch, P_char victim, bool greater)"
 )
@@ -52,7 +52,6 @@ static std::deque<int> para_rolls;
 static std::deque<bool> para_outcomes;  // next SAVING_PARA results, in call order
 static std::vector<int> para_mods;      // the mod each SAVING_PARA call received
 static int jitter;                      // number(-WAIT_SEC, WAIT_SEC)
-static int freedom_clear;               // number(0, 1)
 static double para_bonus = 2.0;
 static int bonus_reads;
 static bool grasped, freedom, freedom_removed, victim_dead;
@@ -93,8 +92,6 @@ int number(int low, int high)
     }
     if (low == -WAIT_SEC && high == WAIT_SEC)
         return jitter;
-    if (low == 0 && high == 1)
-        return freedom_clear;
     std::abort();
 }
 
@@ -330,15 +327,15 @@ int main()
     require(damage_calls == 0, "already grasped", "a second fist did damage");
     grasped = false;
 
+    // Freedom of Movement turns the grasp aside every time and is never spent doing so.
     freedom = true;
-    freedom_clear = 1;
-    cast(true, 220, 100, none);
-    require_mods("Freedom of Movement", {});
-    require_hold("Freedom of Movement", 0);
-    require(freedom_removed, "Freedom of Movement", "spell was not spent on a clear roll");
-    freedom_clear = 0;
-    cast(true, 220, 100, none);
-    require(!freedom_removed, "Freedom of Movement kept", "spell spent without a clear roll");
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        cast(true, 220, 100, none);
+        require_mods("Freedom of Movement", {});
+        require_hold("Freedom of Movement", 0);
+        require(!freedom_removed, "Freedom of Movement kept", "blocking a grasp spent the spell");
+    }
     freedom = false;
 
     // A grasp that kills applies no hold; a dead target is never grasped.

@@ -32,6 +32,7 @@ artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_
 epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server $SERVER
 epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server $SERVER
 epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
+artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
 game_loop_budget $DB python3 tests/async/test_mysql_game_loop_budget_journey.py --server $SERVER
 world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py $SERVER crash

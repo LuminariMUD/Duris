@@ -11,7 +11,7 @@ capture = extract_function(
 )
 materialize = extract_function(
     "player_load_materialize.c",
-    "bool player_load_materialize(P_char ch, const player_load_result &result)",
+    "bool player_load_materialize(P_char ch, const player_load_result &",
 )
 enter_game = extract_function("nanny.c", "void enter_game(P_desc d)")
 account_load = extract_function(

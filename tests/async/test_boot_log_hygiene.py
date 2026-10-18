@@ -192,7 +192,8 @@ for n in timer_warnings:
     # clang-format wraps the logit() call, so the ownership guard sits a couple
     # of lines above the message rather than immediately before it.
     window = [line.strip() for line in artifact_lines[max(0, n - 4) : n]]
-    assert any(g in window for g in ("if (owned)", "if (new_owned)")), window
+    assert any(re.fullmatch(r"if \((?:timer <= 0 && )?(?:new_)?owned\)", line)
+               for line in window), window
 
 
 # --- MAX_TRADE must cover the largest trade list shipped in world.shp --------

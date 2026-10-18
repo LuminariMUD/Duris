@@ -4538,7 +4538,7 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 					if (!IS_ELITE(ch) && !IS_GREATER_RACE(ch) &&
 					    (GET_LEVEL(ch) + 5) > GET_LEVEL(victim))
 					{
-						if (!check_freedom_of_movement(victim, false))
+						if (!check_freedom_of_movement(ch))
 						{
 							af.type = SPELL_MINOR_PARALYSIS;
 							af.bitvector2 = AFF2_MINOR_PARALYSIS;
@@ -5815,6 +5815,9 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 			if (number(0, 100) <= dam)
 			{
 				/* ok char if free */
+				if (auto *entangle = get_spell_from_char(victim, SPELL_ENTANGLE);
+				    entangle && IS_SET(entangle->bitvector, AFF_BOUND))
+					affect_remove(victim, entangle);
 				REMOVE_BIT(victim->specials.affected_by, AFF_BOUND);
 				act("$N's bindings are cut free!", FALSE, ch, 0, victim,
 				    TO_NOTVICT);

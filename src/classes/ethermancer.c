@@ -2156,7 +2156,7 @@ void spell_single_polar_vortex(int level, P_char ch, char * /*arg*/, [[maybe_unu
 
 	if (((!IS_AFFECTED3(victim, AFF3_COLDSHIELD) && !NewSaves(victim, SAVING_PARA, 2)) ||
 	     (GET_RACE(victim) == RACE_THRIKREEN && !NewSaves(victim, SAVING_PARA, 0))) &&
-	    !check_freedom_of_movement(victim, number(0, 1)))
+	    !check_freedom_of_movement(victim))
 	{
 		struct affected_type af;
 

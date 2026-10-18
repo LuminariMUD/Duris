@@ -56,6 +56,7 @@ runner_spec.loader.exec_module(runner)
 expected_resource_intensive = {
     "test_account_recovery_journey.py",
     "test_connection_limit_journey.py",
+    "test_corpse_trap_restart_journey.py",
     "test_creation_prompt_journey.py",
     "test_game_loop_session_journey.py",
     "test_area_coin_pickup.py",
@@ -76,6 +77,7 @@ expected_resource_intensive = {
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
+    "test_artifact_population_repository.py",
     "test_discord_game_journey.py",
     "test_epic_task_catalog_mysql.py",
     "test_epic_task_recovery_journey.py",
