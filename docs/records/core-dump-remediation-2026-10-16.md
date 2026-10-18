@@ -1,7 +1,9 @@
 # Core dump investigation and repair plan — 2026-10-16
 
+> Archived 2026-10-18: PRs #129-#131 are merged and the repair is locally qualified. The [current core-dump coverage audit](../ongoing-projects/core-dump-coverage-audit-2026-10-18.md) tracks the unresolved auction crash and distinguishes existing repair evidence from production validation.
+
 Scope: the three October 16 dumps listed below. The
-[October 18 coverage audit](core-dump-coverage-audit-2026-10-18.md) reviews six newer
+[October 18 coverage audit](../ongoing-projects/core-dump-coverage-audit-2026-10-18.md) reviews six newer
 October 17 dumps and identifies an unresolved auction keyword-list crash.
 
 Status: repaired and qualified locally on MariaDB and flat-file persistence. Production

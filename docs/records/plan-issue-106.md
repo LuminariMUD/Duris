@@ -1,5 +1,7 @@
 # Issue #106: runtime reports and host failures
 
+> Archived 2026-10-18: PRs #117, #120, #124 and #126 are merged, and #106 is closed under the owner's recorded disposition. The future-reference notes below preserve the limits of the evidence; they do not claim the historical reports were reproduced or that later notifier changes were deployed.
+
 Tracker: <https://github.com/LuminariMUD/Duris/issues/106>
 
 ## Current checkpoint — 2026-10-16

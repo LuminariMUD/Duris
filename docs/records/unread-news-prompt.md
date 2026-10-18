@@ -1,5 +1,7 @@
 # Unread news in player prompts
 
+> Archived 2026-10-18: PRs #127 and #128 are merged into master. Implementation and local acceptance are complete; the review-stack instructions below are historical. This record does not certify production deployment.
+
 Status: implementation and local acceptance are complete. Both PRs are open and
 ready for review: [#127](https://github.com/LuminariMUD/Duris/pull/127) (publication)
 and [#128](https://github.com/LuminariMUD/Duris/pull/128) (acknowledgement and prompt).

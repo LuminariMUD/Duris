@@ -144,7 +144,7 @@ never inferred from current flags. DurisWeb withholds unknown and captured-off
 POVs and their stored quotes, and optionally applies the current saved flag to
 captured-on POVs. Pending status saves are not durable acknowledgements.
 
-See the [MUD implementation plan](../ongoing-projects/2026-10-18-pvp-mud-implementation-plan.md)
+See the [MUD implementation plan](../records/2026-10-18-pvp-mud-implementation-plan.md)
 for the contract, focused delivery/capture/SQL/API/UI evidence and release gates.
 These code changes do not authorize a production migration or historical-text edit,
 and do not decide unrelated retention or personal-data export policy.

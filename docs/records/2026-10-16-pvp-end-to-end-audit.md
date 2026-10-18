@@ -25,7 +25,7 @@ live gameplay was performed by this audit. Tests that write data used a separate
 disposable MariaDB instance. Browser notification fixtures were injected only
 into the test browser; no message was sent to subscribers or Discord.
 
-The [October 14 investigation](2026-10-14-pvp-missing-details-investigation.md)
+The [October 14 investigation](https://github.com/LuminariMUD/DurisWeb/blob/e003097a1309f2e25d8e33364c9dc26f6559e3e4/docs/ongoing-projects/2026-10-14-pvp-missing-details-investigation.md)
 described repaired source that was not yet deployed. That deployment status is
 now historical: current production data, API behavior, and served frontend
 assets demonstrate that the snapshot and historical-display repairs are active.
@@ -124,7 +124,7 @@ historical text that was not stored.
 
 The advertised setting says how long to wait before showing new battles.
 Only `getPvPEvents` and `getPvPEventDetail` in
-[pvpService.ts](../../backend/src/services/pvpService.ts) load/apply that delay.
+[pvpService.ts](https://github.com/LuminariMUD/DurisWeb/blob/98379c89e43e113284b796289e280b713ad2b0c1/backend/src/services/pvpService.ts) load/apply that delay.
 Leaderboards, player statistics, autocomplete, analytics, favorites, comments,
 and interaction counts do not consistently enforce it. The character-profile
 history query in `forumService.ts:2638` also lacks the cutoff.
@@ -205,8 +205,8 @@ current character or browser settings as evidence of their original timezone.
 
 ### 6. Medium — in-app and browser notifications link to an unsupported route
 
-[App.vue](../../frontend/src/App.vue) and
-[useNotifications.ts](../../frontend/src/composables/useNotifications.ts) use
+[App.vue](https://github.com/LuminariMUD/DurisWeb/blob/98379c89e43e113284b796289e280b713ad2b0c1/frontend/src/App.vue) and
+[useNotifications.ts](https://github.com/LuminariMUD/DurisWeb/blob/98379c89e43e113284b796289e280b713ad2b0c1/frontend/src/composables/useNotifications.ts) use
 `/pvp/battle/:id`; the router defines `/pvp/:id`.
 
 **Browser reproduction:** inject a synthetic `NEW_PVP_EVENT` into the browser's
@@ -221,7 +221,7 @@ separate push-delivery path with the two broken links.
 
 ### 7. Medium — notification polling couples release delay to polling frequency
 
-In [index.ts](../../backend/src/index.ts), `checkForNewEvents` fetches only one
+In [index.ts](https://github.com/LuminariMUD/DurisWeb/blob/98379c89e43e113284b796289e280b713ad2b0c1/backend/src/index.ts), `checkForNewEvents` fetches only one
 latest visible event. The timer interval is `pvpDelayMinutes * 60 * 1000`, fixed
 at startup. This is source-confirmed behavior, not a measured live burst test.
 
