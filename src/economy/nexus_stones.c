@@ -1091,7 +1091,13 @@ int nexus_sage_ask(P_char ch, P_char pl, char *arg)
 		return FALSE;
 	}
 
-	sh_int current_stat = *char_stat(pl, info.stat_affect);
+	const sh_int *stat = char_stat(pl, info.stat_affect);
+	if (!stat)
+	{
+		act("$n says, 'This stone offers no stat training.'", FALSE, ch, 0, pl, TO_VICT);
+		return TRUE;
+	}
+	const sh_int current_stat = *stat;
 
 	if (current_stat >= 100)
 	{
@@ -1179,7 +1185,13 @@ int nexus_sage_train(P_char ch, P_char pl, char * /*arg*/)
 		return FALSE;
 	}
 
-	int current_stat = (int)(*char_stat(pl, info.stat_affect));
+	const sh_int *stat = char_stat(pl, info.stat_affect);
+	if (!stat)
+	{
+		act("$n says, 'This stone offers no stat training.'", FALSE, ch, 0, pl, TO_VICT);
+		return TRUE;
+	}
+	const int current_stat = *stat;
 
 	if (current_stat >= 100)
 	{
