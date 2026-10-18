@@ -19,6 +19,7 @@ PRELUDE = r'''
 #include "combat/damage.h"
 #include "world/epic_bonus.h"
 #include "world/events.h"
+#include "world/falling.h"
 #include "world/difficulty.c"
 #include <cassert>
 #include <cmath>
@@ -39,6 +40,16 @@ static int completion_messages = 0, vitals = 0;
 static char_data ch{}, enemy{};
 static pc_only_data pc{};
 static npc_only_data npc{};
+P_char character_list = nullptr;
+extern const struct racial_data_type racial_data[];
+const struct racial_data_type racial_data[LAST_RACE + 1] = {};
+void remove_disguise(P_char, bool) { assert(false); }
+void wear_off_message(P_char, affected_type *) { assert(false); }
+P_char un_morph(P_char owner) { return owner; }
+bool char_falling(P_char) { return false; }
+falling_start_result falling_start(P_char) { assert(false); return {}; }
+struct time_info_data age(P_char) { return {}; }
+int IS_MORPH(P_char) { return false; }
 
 float get_property(const char *key, double fallback) {
     const auto i = properties.find(key);
@@ -135,6 +146,9 @@ HELPERS = "\n".join([
     extract_function("actmove.c", "static bool standing_and_resting("),
     extract_function("actmove.c", "static int resting_posture("),
     extract_function("actmove.c", "void do_rest("),
+    extract_function("handler.c", "unsigned int char_slice(P_char c, unsigned int slices)"),
+    "#define AFFECT_UPDATE_SLICES 20",
+    extract_function("affects.c", "void affect_update(int pulse)"),
 ])
 
 DRIVER = r'''
@@ -313,6 +327,43 @@ static void bounds_and_spending() {
     advance(5); assert(GET_MANA(&ch) == 102);
 }
 
+static void periodic_restart() {
+    for (int race : {RACE_HUMAN, RACE_PILLITHID, RACE_ILLITHID}) {
+        for (uint cls : {CLASS_WARRIOR, CLASS_SORCERER, CLASS_PSIONICIST, CLASS_MINDFLAYER}) {
+            for (bool sunlight : {false, true}) {
+                for (int resource : {90, 100, 120}) {
+                    reset(); ch.player.race = race; ch.player.m_class = cls;
+                    ch.player.level = 60; // trusted; the fixture racial ages are zero
+                    character_list = &ch;
+                    GET_MANA(&ch) = resource; GET_MAX_MANA(&ch) = 100;
+                    GET_MAX_VITALITY(&ch) = GET_VITALITY(&ch);
+                    if (resource == 100) ch.points.mana_reg = -100;
+                    if (!USES_MANA(character_list)) continue;
+                    StartRegen(&ch, regen_resource::mana); advance(3);
+                    if (sunlight) vulnerable = sun = true;
+                    else ch.specials.fighting = &enemy;
+                    advance(1); assert(queue.empty());
+                    affect_update(0); assert(queue.empty());
+                    ch.specials.fighting = nullptr; sun = false;
+                    affect_update(0);
+                    assert(queue.size() == 1 && queue[0].func == event_mana_regen);
+                    assert(queue[0].state.accumulated == 0 &&
+                           queue[0].state.last_tick == ne_event_tick);
+                    affect_update(0); assert(queue.size() == 1);
+                    advance(300);
+                    assert(resource < 100 ? GET_MANA(&ch) > resource :
+                                           GET_MANA(&ch) < resource);
+                }
+            }
+        }
+    }
+    reset(); ch.player.level = 60; ch.player.m_class = CLASS_WARRIOR;
+    GET_MAX_VITALITY(&ch) = GET_VITALITY(&ch); character_list = &ch;
+    affect_update(0); assert(queue.empty());
+    character_list = nullptr;
+    puts("Periodic PSP restart after combat/sunlight covers racial users and signed/full rates");
+}
+
 static void movement() {
     for (int dial : {1, 5, 10}) {
         reset(dial); GET_VITALITY(&ch) = 120; GET_MAX_VITALITY(&ch) = 100;
@@ -390,7 +441,7 @@ int main() {
             && sep != std::string::npos)
             properties[line.substr(0, sep)] = std::stof(line.substr(sep + 1));
     }
-    rates(); transitions(); bounds_and_spending(); movement();
+    rates(); transitions(); bounds_and_spending(); periodic_restart(); movement();
     puts("PSP rates, status/posture, combat, modifiers, bounds, spending and cadence passed");
 }
 '''

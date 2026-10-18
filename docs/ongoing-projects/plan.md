@@ -1,9 +1,12 @@
 # Issue #57: consistent PSP regeneration and gradual movement decay
 
-Status: RG-01 and RG-02 implemented and locally verified; RG-03 remains in progress.
+Status: RG-01/02/03 implemented and locally qualified; delivery is #201 → #202 → #203.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
-Base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
+Original base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
+Review stack rebased onto master `2378b49162ecf04d81366d3863355f93889da27a`.
+All five original commits have identical patches after rebasing; the added master
+commit changes backup tooling and documentation, not regeneration sources.
 Source inspection and executable probes used `2c70abf1728a5930f345ee5f731ccbbb44c238a9`;
 the newer base changes auction code and unrelated records, with no differences in
 the regeneration sources or previous plan.
@@ -22,8 +25,8 @@ above maximum decays gradually, while positive regeneration still caps correctly
 Preserve elapsed-pulse accounting, fractional credit and event scheduling optimizations.
 
 The owner selected **preserve the current POW+INT base** during planning. The detailed
-modifier rules below are the proposed implementation contract for that choice, not
-claims about current behavior. Do not substitute the older quadratic formula.
+modifier rules below are now the implemented contract. The historical reproduction
+section describes the pre-implementation baseline. Do not restore the quadratic formula.
 
 Non-goals: general movement rebalance, reconstructing historical player complaints,
 HP/ward redesign, scheduler rewrites, new properties, services or schema, production
@@ -31,6 +34,40 @@ rollout, and changes to live player data. The initial planning commit is `38c0de
 implementation continues on the requested delivery branch.
 
 ### Active handoff (2026-10-18)
+
+Ordered merge work landed #201 as `bb25872e4e564ceb5bd1d67868501b8c864172fd`
+and #202 as `c1d201aeb31543f01ef6c51a765fdc73b6c87696`, each with exact
+tested-tree and single-parent verification. #202 also repairs the review finding
+where delayed surplus decay crossed below maximum: 119/100 plus 1,200 elapsed pulses
+now stops at 100, while an ordinary negative equipment rate still drains below it.
+The new ASan/UBSan cases pass at recovery dials 1/5/10.
+
+A #201 review completed after its merge and exposed a periodic restart gap. RG-03
+now replaces the psionic-class/below-maximum predicate in `affect_update()` with
+`USES_MANA`; existing `StartRegen()` checks the current actionable rate and prevents
+duplicates. The expanded native test failed before repair and passes through the
+real periodic update, admission, policy and callbacks after combat/sunlight. It
+covers racial warriors/sorcerers, class PSP users, missing/full/over-cap PSP and
+negative recovery at full, without retaining credit from suppression. An ordinary
+human warrior remains excluded. No new timer or event mechanism was added.
+
+The merge qualification passed against the production sources at
+`b0a04e3ba195cb2d35b692ca2f56f9c79661a7be`; the final follow-up changes only
+the journey fixture and documentation. Flat-file binary SHA-256:
+`e8fb67557386f4cd0e3c299750b093e2e5a771288f5b66751d3d72dd5bcb2c49`.
+The complete CLI saved `bin/analysis/merge-201-203/full-world/issue57/journey.json`
+with 570 callbacks and zero duplicate pulse identities. Dials 5/1/10 again gained
+33/65/17 over 123 callbacks each; meditation completed once and both class casting
+restarts passed. A verified Planetbound Illithid warrior, with base POW/INT 80/83
+rounding through racial multipliers to current 100/100, stopped at 1,001 PSP in
+combat and resumed to 1,003 after 1.984 seconds on the existing periodic path.
+The signed affect fixture then restarted at 90/tick, gaining 1,007 to 1,010 PSP.
+The disposable runtime now creates the launcher's `.since` log-age marker: the
+earlier missing-marker attempt lost its trace to retention. The final run also
+corrects the staff race name and racial-stat setup; its server/state were removed.
+Both builds, native sanitizer checks, focused controls, formatting/clang-tidy and
+all 14 documentation contracts passed. Hosted formatting separately identifies
+the unchanged `tests/async/word_output_integration_harness.cpp`.
 
 RG-01 replaces the obsolete quadratic PSP policy with the selected POW+INT contract,
 uses it in the callback, and adds directional upper/lower PSP bounds. There are no
@@ -48,28 +85,102 @@ Passed on the RG-01 source changes based on `38c0de994`: `test_psp_move_regen.py
 Build output is ignored at `bin/analysis/issue57-plan/rg01-build.log`.
 
 RG-01 is published as [PR #201](https://github.com/LuminariMUD/Duris/pull/201),
-head `b1454ab8db2cd986efee99d52737007b667599d0`, with exact remote parity and clean
+initial head `b1454ab8db2cd986efee99d52737007b667599d0`, with exact remote parity and clean
 working tree verified. RG-02 is on `branch/issue-57-movement-decay`, based on that
-head. Its only production edit makes the movement upper cap conditional on a positive
-increment. The expanded ASan/UBSan test executes `spell_restore_spirit()` twice in
+head. Its initial production edit makes the movement upper cap conditional on a positive
+increment; the later delayed-boundary repair is recorded above. The expanded ASan/UBSan
+test executes `spell_restore_spirit()` twice in
 combat to produce 120/100 vitality, then clears combat and executes `do_rest()`:
 the first decrement at pulse 61 leaves 119. Damage/saves are stubbed; the producer,
 rest, admission, rates and accumulator are real. It also proves progressive decay,
 99/100 capping, one/four-pulse equivalence, neutral 80/229/632 movement rates and
 NPC/negative dial independence. Both normal and flat-file server builds passed.
 
-Next: publish RG-02 stacked on #201. Finish with an isolated local full-server journey (RG-03), using a
-fresh flat-file build and disposable accounts/runtime settings. `.env` was read only
-for `ENVIRONMENT=local`; no shared server is running. Actual meditation commands,
-staff display, combat-exit periodic restart and the production event queue remain
-unverified by the new isolated harness. Do not claim issue completion yet.
+RG-02 is published as [PR #202](https://github.com/LuminariMUD/Duris/pull/202),
+initial head `0b245add9223f12bd483cd451a15d805a37733a6`, stacked on #201; remote parity
+and a clean working tree were verified. RG-03 continues on
+`branch/issue-57-regen-lifecycle`. The existing sanitized scheduler runtime test now
+also runs the real PSP callback and `StartRegen()` with a controlled rate:
+duplicate admission, NPC first/recurring delays, manually delayed queued callbacks,
+combat termination, fresh restart payload and full termination pass on the real
+queue. The policy harness separately verifies the real rates. No scheduler code changed.
 
-Expected implementation files:
+The full-world journey passed against production sources at `0b245add9223f12bd483cd451a15d805a37733a6`.
+Flat-file binary SHA-256: `8cb7c7b352bec253a7af313c565c48d14138b3d29e6f7b6376565e1d9228490a`.
+It uses disposable local accounts, the complete authored world, ordinary Telnet
+commands and existing scheduler traces filtered by the test player's ID. Human base
+POW/INT=95 plus the configured +5 racial bonus gives verified current POW/INT=100;
+equipment, boons and the well-rested buff are absent. Staff setup gives level 50 and
+the required skills. These are controlled fixtures, not balance observations of an
+existing player.
+
+- Dials 5/1/10 display 80/160/40 and gain 33/65/17 PSP respectively. Each comparison
+  spans 123 traced callbacks; the staff snapshots bracket elapsed time at 120–126
+  pulses. Gains agree within the one-point float tolerance plus that sampling window.
+- `rest` then `meditate` displays 1,500/tick, fills 10,639/10,639, sends exactly one
+  completion message and stops PSP callbacks. At full, staff displays resting
+  potential 120. `stand` restores the ordinary 80 rate.
+- Actual `will 'adrenaline control'` dispatch spends PSP and restarts one chain for
+  both Psionicist and MindFlayer configurations of the isolated character.
+- `hit dummy` with recovery pending leaves 1,001 PSP unchanged and display zero,
+  with no callbacks during the measured combat interval. `tranquilize`, `wake` and
+  `stand` end combat; periodic recovery is observed after 42.014 seconds, by pulses
+  903–906. No new restart hook was needed.
+- A disposable spell affect set to `MANA_REG=-80` stops recovery. Changing it to
+  `+10` and recalculating via the existing staff edit/`balance_affects()` path starts
+  90/tick recovery, from 1,006 to 1,009 PSP. The test purges that fixture affect.
+- All 569 traced PSP callbacks have unique player/pulse pairs. Native scheduler
+  proof additionally verifies owner queues, NPC cadence and one/four-pulse elapsed
+  credit within one point.
+
+`.env` was read only for `ENVIRONMENT=local`. The test server stopped and disposable
+state/settings were removed. JSON evidence is ignored at
+`bin/analysis/issue57-plan/journey.json`; the command below reproduces it. The earlier
+PSP implementation and movement cap were also substituted into the native regression
+in memory: they fail the rate and first-decrement assertions respectively.
+
+RG-03 is published as [PR #203](https://github.com/LuminariMUD/Duris/pull/203),
+initial qualification commit `315dbf7da`, stacked on #202. Review rebasing preserves
+the #201 → #202 → #203 order: #201 head `e2930589ce4b2ee48e3f07cb0ffec541b3f9a81d`,
+#202 head `604a19314ff76f76b3663545463eb3b5898d4f4e`. Merge in that order and retarget
+each remaining child to master after its parent lands; if a parent is squash-merged,
+rebase only the child's unique commits onto the new master first. No tags are needed.
+
+Both #203 review findings were reproduced and repaired. The journey CLI creates
+missing output parents before saving JSON; `test_psp_regen_journey_output.py` executes
+that entry point with a stubbed journey and verifies both new nested directories and
+replacement of existing JSON. It failed with `FileNotFoundError` before the fix.
+The scheduler harness now schedules at `last_tick + interval` and asserts every queued
+callback's elapsed interval: PCs one/four, NPCs first four then five. The old relative
+delay fails this assertion at tick zero. Merely replacing three with four also fails:
+the heartbeat has already advanced one tick after dispatch, producing five-pulse
+recurring gaps. Absolute scheduling preserves four-pulse elapsed credit throughout.
+
+The review rerun passed against production sources at `604a19314ff76f76b3663545463eb3b5898d4f4e`
+with the same flat-file binary hash recorded above. The complete CLI created and saved
+`bin/analysis/pr203-review/fresh-output/issue57/journey.json` without precreating its
+output parents. Dials again gained 33/65/17 PSP over 123 callbacks each, meditation
+sent one completion message, both casting restarts passed, combat recovery resumed
+after 42.019 seconds, and the zero-to-positive modifier restarted 90/tick recovery.
+All 569 traced callbacks had unique pulse identities. The disposable server and state
+were removed. Both builds, the focused checks below, all scheduler sanitizer modes,
+the output regression, formatting and 14 documentation contracts passed after rebasing.
+
+Full-server execution uses the normal development binary; ASan/UBSan coverage is in
+the native policy and scheduler tests. The historical runs above predate the ordered
+merge work. Production deployment and acceptance remain separate.
+
+Implementation and proof files:
 
 - `src/world/limits.c`: make `mana_regen()` authoritative, including status and signed rates.
 - `src/world/events.c`: consume that rate and correct directional resource bounds.
 - One focused `tests/async/test_psp_move_regen.py`, using the existing `_paths.py`
   extraction/native harness conventions and real difficulty module.
+- Extend `test_nevent_scheduler_runtime.py` for real-queue PSP lifecycle proof and
+  remove the obsolete PSP-bypass fixture comment in `test_tick_work_spread.py`.
+- `run_psp_regen_journey.py` drives the isolated full world, reusing existing journey
+  helpers. `run_item_pilot_journey.py` adds a two-line opt-in to omit the mini-zone
+  boot flag; existing callers retain their original boot command.
 - `docs/reference/CODEBASE.md`, `docs/testing/REGRESSIONS.md`, and this plan: document
   the rate contract, deliberate balance effects, executable evidence and remaining gates.
 - Existing caller files (`src/classes/memorize.c`, `src/cmd/actnew.c`,
@@ -121,8 +232,9 @@ command reachability or the real event queue. No database migration is required.
    `use_spell()` subtracts PSP and starts mana regeneration; `do_meditate()` sets the
    flag and starts it; `do_rest()` starts each resource; `affect_total()` retries
    non-full/negative-modified resources for connected players. `affect_update()`
-   retries depleted PSP for psionicists/mindflayers each player tick and preserves
-   NPC slicing. `stop_fighting()` does not itself start PSP regeneration. Preserve
+   originally retried depleted PSP for psionicists/mindflayers each player tick;
+   the review repair above covers all `USES_MANA` characters and actionable rates,
+   preserving NPC slicing. `stop_fighting()` does not itself start PSP regeneration. Preserve
    the existing periodic recovery path and prove its bounded delay after combat
    rather than inventing a new timer or promising immediate restart.
 
@@ -173,7 +285,7 @@ All 14 documentation contracts also passed; the preserved Nexus plan has the sam
 blob hash as the original. No full server build or live gameplay observation was run
 for this documentation task.
 
-## PSP contract to implement
+## Implemented PSP contract
 
 Keep the current `mana_regen(P_char, bool display_only)` interface and express all
 rates in resource points per game tick. Use the following order, with explicit
@@ -209,7 +321,8 @@ For POW=INT=100 and neutral difficulty, this contract yields a normal unmodified
 rate of 80; resting 120; sleeping 160; normal meditating 1,000; and resting
 meditating 1,500. Normal `mana_reg=+10/-30/-100` gives 90/50/-20; feeblemind alone
 20. Dials 1/5/10 give 160/80/40 for the unmodified normal PC and leave an equivalent
-NPC at 80. These are **planned expectations**, not measurements of fixed code.
+NPC at 80. These expectations now pass against the real helper and callback under
+ASan/UBSan in `test_psp_move_regen.py`.
 
 Rest/sleep bonuses, feeblemind, signed equipment modifiers, sunlight/combat suppression
 and positive difficulty scaling deliberately change affected recovery. Preserving
@@ -266,24 +379,24 @@ these effects in the implementation PR and codebase documentation.
 
 ### RG-03 — Integrate and qualify the real lifecycle
 
-- [ ] Run the focused sanitized test and the existing controls below. The new test
+- [x] Run the focused sanitized test and the existing controls below. The new test
   must compile actual source functions; do not validate a copied Python formula.
   Reuse existing harness stubs; add no general-purpose regen framework.
-- [ ] Run formatting checks and the required server build after C/C++ edits.
-- [ ] In a verified local/dev environment, use an isolated test character to
+- [x] Run formatting checks and the required server build after C/C++ edits.
+- [x] In a verified local/dev environment, use an isolated test character to
   compare staff `stat` and accumulated PSP at neutral and changed recovery dials,
   holding stats, effects and elapsed pulses fixed. Include psionicist meditation
   completion and a mindflayer resource-spending/restart control.
-- [ ] Exercise combat entry while a regen event is pending, no recovery in combat,
+- [x] Exercise combat entry while a regen event is pending, no recovery in combat,
   combat exit, and periodic restart within the existing next eligible player
   `affect_update()` tick (nominally up to 75 seconds). Also cover zero-to-positive
   modifier changes and recovery after leaving a suppressing state. If the real
   journey fails to restart, fix that specific existing caller and add a regression.
-- [ ] Confirm full-resource event termination, no duplicate callback chains, NPC
+- [x] Confirm full-resource event termination, no duplicate callback chains, NPC
   cadence, and elapsed-pulse catch-up through the real scheduler. One/four-pulse
   steady-state gains should agree within the measured float remainder tolerance;
   state changes use the rate at callback execution, without adding state history.
-- [ ] Update CODEBASE, REGRESSIONS and this plan with exact tested revision,
+- [x] Update CODEBASE, REGRESSIONS and this plan with exact tested revision,
   commands, results and any remaining acceptance gaps. Publish cohesive code/test
   changes for review; retain other repository review requirements. Do not wait for
   hosted CI when the required local proof is available.
@@ -294,20 +407,28 @@ under #57, not separate issues or an obligation to create extra PRs.
 
 ## Validation commands and completion
 
-Run the new focused test once it exists, then the relevant existing controls:
+All commands below passed on the final production source tree (builds used `-j8`):
 
 ```sh
 python3 tests/async/test_psp_move_regen.py
+python3 tests/async/test_psp_regen_journey_output.py
 python3 tests/async/test_difficulty_dials.py
 python3 tests/async/test_vampiric_overheal_regen.py
 python3 tests/async/test_nevent_catchup_contract.py
 python3 tests/async/test_nevent_regen_death_contract.py
 python3 tests/async/test_nevent_scheduler_runtime.py
 python3 tests/async/test_player_event_timing_contract.py
+python3 tests/async/test_tick_work_spread.py
 ./scripts/format.sh --check
 make -C src
 python3 tests/async/test_documentation_contract.py
 git diff --check
+make -C src -j8 PERSISTENCE_BACKEND=flatfile \
+  DMS_BINARY="$PWD/bin/server/dms_issue57_flatfile"
+make world -j8
+python3 tests/async/run_psp_regen_journey.py \
+  --binary bin/server/dms_issue57_flatfile \
+  --output bin/analysis/issue57-plan/journey.json
 ```
 
 Use ASan/UBSan in the native regression, following the existing HP regression.
@@ -342,18 +463,14 @@ framework, new event cancellation machinery, numeric-accumulator rewrites, unrel
 HP/ward cleanup and a rollback of October's optimizations; no requested outcome needs
 them. Preserve the previous plan rather than discarding its unrelated acceptance work.
 
-## Estimate and publication handoff
+## Publication handoff
 
-Estimate: **12-20 focused engineering hours, about 2-3 working days for one engineer**.
-Allow 4-6 hours for PSP policy/application and its matrix, 1-2 for movement and its
-producer/decay tests, 5-9 for sanitized integration, build and local gameplay journeys,
-and 2-3 for documentation, review repairs and publication.
-12-20 is a planning range, not a measured delivery promise. External review waits and
-production scheduling are excluded. A demonstrated restart defect may add 2-4 hours;
-record its evidence before expanding scope.
-
-The branch is based on refreshed `origin/master` and linked natively to #57 through
-GitHub's Development section. RG-01/02/03 remain work items in this file. The initial
-commit uses `Refs #57`, not a closing keyword. Only this plan and the unchanged Nexus
-plan copy belong in the planning commit. Verify remote commit equality, upstream
-parity and a clean working tree after push; keep #53/#56/#106 closed and unchanged.
+Review order is #201 (PSP) → #202 (movement) → #203 (lifecycle qualification).
+The owner requested ordered merging. #201 and #202 are merged at the commits above;
+#203 replays only its three unique original patches onto #202, plus the demonstrated
+periodic-restart repair. Its only new production change is in `src/magic/affects.c`.
+All chunks use `Refs #57`, with no release tag. #57 was reopened after GitHub closed
+it on #201; close it only after #203 and the full acceptance evidence are integrated.
+Preserve the tested tree and master linear history. Keep #53/#56/#106 unchanged.
+Production deployment remains separately authorized work.
+The planning estimate was 12–20 engineering hours; it is not a measured delivery claim.
