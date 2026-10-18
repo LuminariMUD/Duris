@@ -1,15 +1,36 @@
 # Issue #109: restore Marduk and Enlil Nexus stones
 
-Status: implementation plan; no feature or production work completed by this commit.
+Status: implementation in progress. NS-01 is implemented and locally validated;
+NS-02 through NS-06 remain open. No production changes have been made.
 Prepared 2026-10-18 from `origin/master` at
 `89253179ab1f89249634eeef9116653381e3d807` and
 [issue #109](https://github.com/LuminariMUD/Duris/issues/109), updated
-2026-10-18T11:12:55Z. Intended delivery branch:
+2026-10-18T11:12:55Z. Delivery branch:
 `branch/issue-109-nexus-stones`. Refresh master and the issue before implementation;
 line references below describe this inspected revision, not a moving checkout.
 
 The previous artifact plan is preserved unchanged in
 [plan-issue-67.md](plan-issue-67.md). Its instructions concern that work only.
+
+## Implementation record
+
+### 2026-10-18 — NS-01: sage safety and neutral guardians
+
+- Added a no-training response before dereferencing unsupported stats in both real
+  sage handlers; preserved supported-stat purchases and their existing callback.
+- Recognize neutral guardian 74 in the shared guardian predicate, retaining existing
+  lookup/reset/reload/expiry behavior and per-stone tag matching.
+- Added `tests/async/test_nexus_runtime.py` and its native harness. It links the real
+  Nexus implementation and flat-file repository plus the extracted real `char_stat`.
+  The unmodified source failed the neutral guardian lookup assertion. The fixed
+  source passes with ASan/UBSan: two-stone repeated reset/reload, all alignments,
+  repeated expiry, peer preservation, invalid sage stats 0/-1/255 with no spend or
+  stat gain, and supported training/cap/insufficient-funds controls.
+- Passed `make -C src -j8` (MariaDB server), the new runtime test, existing
+  `test_nexus_stones_empty_table.py`, and `test_flatfile_nexus_repository.py`.
+  The flat-file full server build and full-world gameplay proof remain outstanding.
+- Publication snapshot: `branch/issue-109-nexus-sage-guardians`, based on master.
+  The delivery branch retains the same commit and will carry subsequent chunks.
 
 ## Outcome and boundaries
 
@@ -133,7 +154,7 @@ The issue is a requirement source, not proof of the following behavior.
 Keep these work items on the issue branch. Each needs its focused proof before
 claiming completion; do not count publication of this plan as implementation.
 
-### NS-01 — Safe no-stat handling and neutral lifecycle
+### NS-01 — Safe no-stat handling and neutral lifecycle (locally complete)
 
 Files: [nexus_stones.c](../../src/economy/nexus_stones.c),
 [nexus_stones.h](../../src/economy/nexus_stones.h), and focused native regression
@@ -394,6 +415,6 @@ Planning baseline checks run on the inspected revision (2026-10-18):
   includes the existing online-lock test, not proof of normal-runner exclusion.
 
 No full server build, disposable database integration, new runtime regression,
-gameplay journey, production query or operational change was run for this plan.
+gameplay journey, production query or operational change was run for the original plan.
 The source-derived failure paths above require executable reproduction during the
 listed work items. These baseline passes do not prove the proposed fixes.

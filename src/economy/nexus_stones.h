@@ -59,8 +59,9 @@
 #define OBJ_NEXUS_STONE 394
 #define OBJ_GUARDIAN_MACE 395
 
-#define IS_NEXUS_GUARDIAN(ch) \
-	(IS_NPC(ch) && (GET_VNUM(ch) == MOB_GOOD_GUARDIAN || GET_VNUM(ch) == MOB_EVIL_GUARDIAN))
+#define IS_NEXUS_GUARDIAN(ch)                                                                     \
+	(IS_NPC(ch) && (GET_VNUM(ch) == MOB_GOOD_GUARDIAN || GET_VNUM(ch) == MOB_EVIL_GUARDIAN || \
+			GET_VNUM(ch) == MOB_NEUTRAL_GUARDIAN))
 
 #define IS_NEXUS_SAGE(ch) \
 	(IS_NPC(ch) && (GET_VNUM(ch) == MOB_GOOD_SAGE || GET_VNUM(ch) == MOB_EVIL_SAGE))
