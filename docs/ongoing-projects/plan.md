@@ -95,8 +95,42 @@ The previous artifact plan is preserved unchanged in
   metadata fingerprints and new head; both server builds, both Nexus native suites,
   the flat-file repository test, 19 runner unit tests and formatting also passed.
 - Publication snapshot: `branch/issue-109-nexus-seed`, based on
-  `branch/issue-109-migration-lock` for focused review.
+  `branch/issue-109-migration-lock` for focused review:
+  [PR #194](https://github.com/LuminariMUD/Duris/pull/194), head `bda621d94`.
 - Full-world gameplay/restart qualification remains pending. No production SQL was run.
+
+### 2026-10-18 — NS-04: native gameplay qualification (locally complete)
+
+- Expanded the existing real-source native harness: exact 300-second touch and
+  3,600-second turn boundaries on a controlled clock, eligible/low-level/neutral
+  character checks, guardian blocking, capture payouts and Enlil multiplier,
+  epic-task removal, boon dispatch, and only-configured objective selection.
+- The native harness now also compiles the real epic award calculation and normal/
+  PvP award and contraband/normal sale handlers with controlled pre-bonus price/wallet adapters. All
+  seven alignments and both factions pass, including partial/neutral/opposing-side
+  exclusion, minimum bonuses and epic-bottle exclusion. This is executable consumer
+  coverage, not a claim of an in-game market transaction or live boon settlement.
+- Bind the seven controlled Nexus settings to `lib/duris.properties`; changes to
+  any qualified cooldown, expiry, payout limit, or epic/cargo rate now fail the test.
+  Capture rewards pass through the real epic preparation function, including the
+  newly captured Marduk bonus: 16 epics for Marduk and 30 for opposing-side Enlil.
+- `python3 tests/async/test_nexus_runtime.py` passes these cases with ASan/UBSan.
+  This expands the existing fixture and uses real production consumers, without
+  changing gameplay code or adding a second reward implementation.
+- Publication snapshot: `branch/issue-109-nexus-gameplay-tests`, based on
+  `branch/issue-109-nexus-seed`.
+
+### 2026-10-18 — NS-05: full-world journey (in progress)
+- A full-world SQL journey is being qualified with fresh fixture accounts and the
+  actual migrated catalogue. It uses shortened 5/6-second test timers and reduces
+  the guardian combat fixture to level 1/one hit point/weak armor; it proves mortal
+  command/death/capture wiring, not production boss balance. Account-name and
+  faction-admission setup mistakes have been corrected without changing game code.
+  Combat training and death-message expectations have also been corrected from the
+  actual source/output. Capture/restart/expiration results are not yet claimed.
+- The journey is adding actual boon completion and normal/contraband market
+  settlements. Its database-gate registration will publish with the completed
+  journey, excluding it from argument-free regression discovery.
 
 ## Outcome and boundaries
 

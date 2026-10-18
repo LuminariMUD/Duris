@@ -2,13 +2,19 @@
 #include "core/defines.h"
 #include "core/utils.h"
 #include "economy/nexus_stones.h"
+#include "economy/boon.h"
 #include "flatfile/flatfile_nexus_repository.h"
 #include "magic/spells.h"
 #include "ships/ship_npc.h"
 #include "world/epic_transaction.h"
+#include "world/epic.h"
+#include "world/epic_bonus.h"
+#include "world/difficulty.h"
+#include "persistence/persistence_checkpoint.h"
 
 #include <cassert>
 #include <cstring>
+#include <cstdarg>
 #include <filesystem>
 #include <iostream>
 
@@ -31,22 +37,157 @@ static std::string output_messages;
 static int submissions = 0;
 static int saves = 0;
 static bool refuse_guardian = false;
+static time_t fixture_time = 1800000000;
+static event_func pending_event = nullptr;
+static P_obj pending_stone = nullptr;
+static int event_delay = 0, capture_awards = 0, boon_completions = 0, task_removals = 0;
+static int random_low = 0, random_high = 0;
+static affected_type task = {};
+static bool has_task = false;
+bool nexus_stone_touch(P_obj, P_char);
+int fixture_epic_award(P_char, int, int = 1, int = 250);
+int sell_cargo(P_char, P_ship, int);
+int sell_contra(P_char, P_ship, int);
+int errand_notch = 500;
+const PortData ports[NUM_PORTS] = { { 1001, "fixture", 0 } };
+static int paid_copper = 0, ship_saves = 0;
+bool has_epic_task(P_char)
+{
+	return has_task;
+}
+float get_epic_bonus(P_char, int)
+{
+	return 0;
+}
+double difficulty_multiplier(difficulty_dial)
+{
+	return 1;
+}
+void ADD_MONEY(P_char, int copper)
+{
+	paid_copper += copper;
+}
+bool has_eq_diplomat(const ShipData *)
+{
+	return false;
+}
+void ShipCrew::sail_skill_raise(float) {}
+void ShipCrew::rpar_skill_raise(float) {}
+void update_crew(P_ship) {}
+void update_ship_status(P_ship, P_ship) {}
+void queue_ship_save(P_ship, const char *)
+{
+	++ship_saves;
+}
+int write_cargo()
+{
+	return true;
+}
+int sell_cargo_slot(P_char, P_ship ship, int slot, int)
+{
+	ship->slot[slot].type = SLOT_EMPTY;
+	return 250;
+}
+int sell_contra_slot(P_char ch, P_ship ship, int slot, int room)
+{
+	return sell_cargo_slot(ch, ship, slot, room);
+}
+void send_to_char_f(P_char, const char *format, ...)
+{
+	char buffer[512];
+	va_list arguments;
+	va_start(arguments, format);
+	vsnprintf(buffer, sizeof(buffer), format, arguments);
+	va_end(arguments);
+	output_messages += buffer;
+}
+
+extern "C" time_t time(time_t *out) noexcept
+{
+	if (out)
+		*out = fixture_time;
+	return fixture_time;
+}
 
 const char *persistence_mode_flatfile_root()
 {
 	return state_root.c_str();
 }
-float get_property(const char *, double fallback)
+float get_property(const char *name, double fallback)
 {
+	if (!strcmp(name, "nexusStones.touchTimerSecs"))
+		return 300;
+	if (!strcmp(name, "nexusStones.turnTimerSecs"))
+		return 3600;
+	if (!strcmp(name, "nexusStones.expireDays"))
+		return 12;
+	if (!strcmp(name, "nexusStones.epicsMin"))
+		return 15;
+	if (!strcmp(name, "nexusStones.epicsMax"))
+		return 25;
+	if (!strcmp(name, "nexusStones.bonus.epics") || !strcmp(name, "nexusStones.bonus.cargo"))
+		return .110;
 	return fallback;
 }
-int get_property(const char *, int fallback)
+int get_property(const char *name, int fallback)
 {
-	return fallback;
+	return get_property(name, static_cast<double>(fallback));
 }
 int BOUNDED(int lower, int value, int upper)
 {
 	return std::min(upper, std::max(lower, value));
+}
+char *coin_stringv(int, int)
+{
+	static char coins[] = "coins";
+	return coins;
+}
+int number(int low, int high)
+{
+	random_low = low;
+	random_high = high;
+	return low;
+}
+affected_type *get_epic_task(P_char)
+{
+	return has_task ? &task : nullptr;
+}
+void affect_remove(P_char, affected_type *value)
+{
+	assert(value == &task);
+	has_task = false;
+	++task_removals;
+}
+bool gain_epic(P_char player, int type, int stone_id, int amount)
+{
+	assert(type == EPIC_NEXUS_STONE && (stone_id == 1 || stone_id == 3));
+	amount = fixture_epic_award(player, type, stone_id, amount);
+	if (!amount)
+		return false;
+	++capture_awards;
+	player->only.pc->epics += amount;
+	return true;
+}
+void check_boon_completion(P_char, P_char, double id, int kind)
+{
+	assert(kind == BOPT_NEXUS && (id == 1 || id == 3));
+	++boon_completions;
+}
+void mark_player_dirty_components(int, player_component_mask_t) {}
+nevent_schedule_result add_event(event_func callback, int delay, P_char, P_char, P_obj obj, int,
+				 const void *, int)
+{
+	pending_event = callback;
+	pending_stone = obj;
+	event_delay = delay;
+	return { nevent_schedule_status::scheduled, { nullptr, 1 } };
+}
+static void finish_touch_cooldown()
+{
+	assert(event_delay == 300 * WAIT_SEC && pending_event == event_nexus_stone_hum);
+	fixture_time += 300;
+	pending_event(nullptr, nullptr, pending_stone, nullptr);
+	pending_event = nullptr;
 }
 int get_cyrics_revenge_nexus_rvnum(P_ship)
 {
@@ -332,5 +473,104 @@ int main(int argc, char **argv)
 		}
 		extract_char(sage);
 	}
-	std::cout << "Nexus actual sage handlers and neutral/partial/faction lifecycle passed\n";
+	establish(root / "capture");
+	nexus_to_cyrics_revenge = true;
+	cyrics_revenge = reinterpret_cast<P_ship>(&staff);
+	assert(load_nexus_stones());
+	player.player.level = 51;
+	player.player.racewar = RACEWAR_GOOD;
+	player.in_room = 0;
+	pc.epics = 1000;
+	P_obj stone = get_nexus_stone(1);
+	auto attempt_touch = [&](P_obj target)
+	{
+		// Arrange a healed, eligible mortal before each independent command attempt.
+		player.points.hit = 1000;
+		player.specials.position = POS_STANDING + STAT_NORMAL;
+		return nexus_stone_touch(target, &player);
+	};
+	assert(!attempt_touch(stone)); // living guardian
+	extract_char(get_nexus_guardian(1));
+	player.player.level = 50;
+	assert(!attempt_touch(stone));
+	player.player.level = 51;
+	player.player.racewar = 0;
+	assert(!attempt_touch(stone));
+	player.player.racewar = RACEWAR_GOOD;
+	const time_t started = fixture_time;
+	assert(attempt_touch(stone) && STONE_ALIGN(stone) == 1);
+	assert(!attempt_touch(stone));
+	fixture_time += 299;
+	assert(!attempt_touch(stone));
+	fixture_time -= 299;
+	finish_touch_cooldown();
+	assert(attempt_touch(stone) && STONE_ALIGN(stone) == 2);
+	assert(capture_awards == 0 && boon_completions == 0);
+	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_EPICS) == 250);
+	finish_touch_cooldown();
+	assert(!attempt_touch(stone)); // full turn still on cooldown
+	fixture_time = started + 3599;
+	assert(!attempt_touch(stone));
+	fixture_time = started + 3600;
+	has_task = true;
+	task.modifier = SPILL_BLOOD + 1;
+	assert(attempt_touch(stone) && STONE_ALIGN(stone) == 3);
+	assert(capture_awards == 1 && boon_completions == 1 && task_removals == 1);
+	assert(random_low == 15 && random_high == 50 && pc.epics == 1016);
+	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_EPICS) == 277);
+	assert(check_nexus_bonus(&player, 1, NEXUS_BONUS_EPICS) == 2);
+	assert(STONE_ALIGN(get_random_enemy_nexus(&player)) == 0);
+	player.player.racewar = RACEWAR_EVIL;
+	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_EPICS) == 250);
+	player.in_room = 1;
+	stone = get_nexus_stone(3);
+	extract_char(get_nexus_guardian(3));
+	for (int touch = 1; touch <= 3; ++touch)
+	{
+		assert(attempt_touch(stone) && STONE_ALIGN(stone) == -touch);
+		finish_touch_cooldown();
+	}
+	assert(capture_awards == 2 && boon_completions == 2);
+	assert(random_low == 30 && random_high == 50 && pc.epics == 1046);
+	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_CARGO) == 277);
+	assert(check_nexus_bonus(&player, 1, NEXUS_BONUS_CARGO) == 11);
+	assert(STONE_ID(get_random_enemy_nexus(&player)) == 1);
+	player.player.racewar = RACEWAR_GOOD;
+	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_CARGO) == 250);
+	assert(STONE_ID(get_random_enemy_nexus(&player)) == 3);
+	player.in_room = 0;
+	player.specials.position = POS_STANDING + STAT_NORMAL;
+	ShipData trader = {};
+	trader.location = 0;
+	for (int align : { -3, -2, -1, 0, 1, 2, 3 })
+	{
+		assert(update_nexus_stone_align(1, align));
+		assert(update_nexus_stone_align(3, align));
+		for (int side : { RACEWAR_GOOD, RACEWAR_EVIL })
+		{
+			player.player.racewar = side;
+			const bool owned = (align == 3 && side == RACEWAR_GOOD) ||
+					   (align == -3 && side == RACEWAR_EVIL);
+			const int expected = owned ? 277 : 250;
+			assert(fixture_epic_award(&player, EPIC_PVP) == expected);
+			assert(fixture_epic_award(&player, EPIC_NEXUS_STONE) == expected);
+			assert(epic_calculate_pvp_award(&player, 250) == expected);
+			assert(fixture_epic_award(&player, EPIC_BOTTLE) == 250);
+			for (bool contraband : { false, true })
+			{
+				trader.slot[0].type = contraband ? SLOT_CONTRABAND : SLOT_CARGO;
+				paid_copper = ship_saves = 0;
+				assert(contraband ? sell_contra(&player, &trader, 0) :
+						    sell_cargo(&player, &trader, 0));
+				assert(paid_copper == expected && ship_saves == 1);
+				assert(trader.slot[0].type == SLOT_EMPTY);
+			}
+		}
+	}
+	while (character_list)
+		extract_char(character_list);
+	while (object_list)
+		extract_obj(object_list, false);
+	std::cout
+		<< "Nexus real sage, guardian, capture/cooldown, task/boon dispatch and faction bonus paths passed\n";
 }
