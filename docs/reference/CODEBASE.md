@@ -382,6 +382,33 @@ feeding in
 `sql_world_quest_can_do_another()` (never fewer than one a day) and the kill count in
 `createQuest()`.
 
+## PSP regeneration
+
+`mana_regen(ch, display_only)` supplies PSP admission, each recovery callback and staff
+`stat`. Rates are points per game tick (300 pulses, nominally 75 seconds). Dead, dying,
+incapacitated, fighting and sun-vulnerable characters in the existing suppressing light
+conditions have zero recovery, including with meditation or equipment bonuses. Twilight
+rooms and Globe of Darkness retain their existing sunlight exemptions.
+
+Eligible characters above maximum decay at `min(-1, (maximum - current) / 5)`. Otherwise
+the base is the integer conversion of `(POW + INT) / 2.5`, or `/ 0.2` while meditating,
+for both players and NPCs. Feeblemind quarters that base; sleeping doubles it and resting
+adds half. Posture does not change PSP. The signed flat `mana_reg` modifier is added once,
+then the recovery dial scales positive player gains only. There is no final square and
+no extra meditation-skill bonus. At POW=INT=100, neutral normal/resting/sleeping rates
+are 80/120/160; normal meditation is 1,000. Combat/sun suppression, status bonuses,
+feeblemind, equipment and difficulty now affect the callback as well as the displayed
+rate; these are deliberate corrections to previously inconsistent recovery.
+
+At full PSP, display reports potential positive recovery but admission returns zero.
+A negative net rate can drain from full and stops at zero. Positive increments cap at
+maximum; negative increments preserve gradual over-cap decay and clamp at zero. The
+existing fractional accumulator, elapsed-pulse catch-up, duplicate suppression and NPC
+cadence remain. Blocked callbacks terminate and discard fractional credit; a later start
+begins with fresh elapsed accounting. Existing casting, meditation, rest, affect changes
+and periodic player affect updates supply restarts. Combat exit relies on the next
+eligible player affect tick, nominally within 75 seconds.
+
 ## Racial pulse
 
 Each race's action rates live in `lib/duris.properties`. `spellcast.pulse.racial.<Race>`
