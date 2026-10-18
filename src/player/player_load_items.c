@@ -363,7 +363,8 @@ void apply_extra_descriptions(P_obj object, const player_item_snapshot &item)
 
 void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects,
 			     const std::vector<size_t> &roots,
-			     const std::vector<player_item_snapshot> &items)
+			     const std::vector<player_item_snapshot> &items,
+			     const std::vector<item_ownership_runtime_entry> &ownership)
 {
 	P_obj carrying_tail = character->carrying;
 	while (carrying_tail && carrying_tail->next_content)
@@ -399,8 +400,11 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 				object->g_key = 1;
 		}
 	}
-	for (P_obj object : objects)
-		artifact_object_placed(object);
+	for (size_t index = 0; index < objects.size(); ++index)
+	{
+		artifact_object_placed(objects[index]);
+		artifact_reconcile_player_owner(objects[index], &ownership[index]);
+	}
 	balance_affects(character);
 }
 }
@@ -818,7 +822,7 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 		for (size_t root : roots)
 			detached_roots->push_back(staged.objects[root]);
 	else
-		attach_loaded_inventory(character, staged.objects, roots, items);
+		attach_loaded_inventory(character, staged.objects, roots, items, ownership);
 	for (P_obj object : staged.objects)
 		artifact_object_placed(object);
 	staged.published = true;

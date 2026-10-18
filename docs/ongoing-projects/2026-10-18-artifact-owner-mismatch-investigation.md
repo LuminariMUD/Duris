@@ -189,3 +189,91 @@ bodies and custody records, then use a narrowly scoped game-thread location
 reconciliation and verify the next eligible award. A blanket `syncdb`, direct
 SQL rewrite, artifact recreation, or item deletion is not justified by this
 evidence. No live repair or compensation was attempted in this investigation.
+
+## Repair behavior and local verification
+
+The repair favors continued play when canonical identity, the live item, and
+validated custody establish the answer. A stale artifact tracking row is repaired
+on the game thread, without a player prompt or an owner-mismatch alert. Genuine
+identity/custody conflicts still exclude only the affected artifact; independent
+items, epic awards, and eligible guild rewards continue.
+
+`artifact_reconcile_player_owner()` checks the registered canonical pointer and
+UID, the physical player owner, and active custody including vnum, root, parent,
+and item revision. Successful attachment supplies the custody already validated
+by the source-qualified loader: normal session loading attaches items before
+hydrating its optional runtime ownership cache. Other callers must have matching
+current runtime custody. Reconciliation runs only after the complete item graph
+has passed construction, topology, and attachment checks.
+
+The repair keeps the existing UID, timer, and soul. An unowned row with a positive
+timer keeps that timer; one with no timer receives the ordinary ten-day timer.
+It does not invoke acquisition/soul-switch effects. Both epic reward capture and
+direct artifact feeding attempt the same repair before rejecting stale tracking.
+Writer admission failure leaves the corrected state dirty for the existing retry
+path and does not undo or postpone the player's feed.
+
+Orderly shutdown now uses `extract_char_after_terminal_save()` after queuing and
+draining terminal snapshots. Cleanup unloads saved bodies without publishing a
+room transfer or retiring their identities. Existing terminal-save admission
+failures remain reported; shutdown does not invent a successful save.
+
+Verification also found that flat-file mode unconditionally rejected epic
+artifact/guild reward capture. The shared calculation now applies on both
+backends, saving through their existing artifact and guild stores. MariaDB alone
+queues the additional derived SQL history; flat-file mode does not attempt an
+unsupported SQL history operation.
+
+Permanent coverage:
+
+- `test_artifact_creation_admission.py` exercises the real artifact service,
+  source-qualified constructor, attachment, epic capture/application, direct
+  feed, terminal-save helper, and extraction cleanup under ASan/UBSan. It covers
+  worn, carried, and nested restores from ground, NPC, another player, and
+  unowned tracking (including no timer), with unrelated inventory preserved.
+  It also covers deferred custody-cache hydration, cancelled construction,
+  rejected/same-UID copies, conflicting or missing custody, alias-slot
+  deduplication, writer refusal/retry, and rejected terminal-save admission.
+- `test_artifact_guild_rewards_runtime.py` covers independent rewards, exactly-once
+  source publication and completion handling, and flat-file live rewards without
+  SQL history. `test_flatfile_artifact_repository.py` verifies real durable
+  artifact storage and direct-feed recovery/refusal behavior.
+- `test_artifact_owner_restart_journey.py` uses synthetic accounts, private
+  full-world servers, and disposable persistence. It keeps playing descriptors
+  connected through shutdown to exercise the original cleanup bug. Each backend
+  restores stale ground, NPC, unowned, and other-player tracking, receives one
+  actual four-epic boon with exactly one hour of feeding, saves, shuts down, and
+  restarts again. It checks canonical UID, timer, soul, player custody, unrelated
+  inventory, and absence of owner-mismatch logs. The flat-file journey is
+  registered in the regression runner; the MariaDB leg is in `tests/run_db_tests.sh`.
+
+The original production observations above remain historical evidence. This
+implementation and its fixtures do not deploy a server, repair production data,
+or reconstruct past skipped feeds.
+
+Validation completed locally on 2026-10-18:
+
+- `make -C src -j4` passed.
+- `make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=/home/staging/duris/bin/server/dms_owner_flat -j4` passed.
+- `python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server bin/server/dms_new`
+  passed against a separate disposable MariaDB 11.8 process configured only with
+  `TEST_DB_*` variables. All four stale-location cases and the final restart passed.
+- `python3 tests/async/test_artifact_owner_restart_journey.py --backend flatfile --server bin/server/dms_owner_flat`
+  passed all four cases and the final restart.
+- Direct runs of `test_artifact_creation_admission.py`,
+  `test_artifact_guild_rewards_runtime.py` (five groups),
+  `test_flatfile_artifact_repository.py`, `test_artifact_guild_snapshots.py`,
+  `test_artifact_guild_transactional_cutover.py`, `test_player_load_items.py`,
+  `test_player_load_offline.py`, `test_artifact_offline_owner_loads.py`,
+  `test_artifact_population.py`, `test_artifact_recovery_population.py`,
+  `test_artifact_population_boot.py`, `test_terminal_extract_item_retention.py`,
+  `test_terminal_save_safety.py`, and `test_root_test_harness.py` passed.
+- `git diff --check` and changed-line `git clang-format --diff` passed.
+  `./scripts/format.sh --check` reports whole-file drift in six touched files;
+  all six also fail when formatting their unchanged `HEAD` contents with the
+  installed clang-format 21. Those unrelated legacy formatting changes were
+  deliberately left outside this repair.
+
+Local journey evidence is in `bin/analysis/artifact-owner/mariadb.json` and
+`bin/analysis/artifact-owner/flatfile.json`; build and focused-test logs use the
+`bin/artifact-owner-` prefix. These generated files are not committed.

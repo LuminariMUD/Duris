@@ -202,6 +202,23 @@ Reference: [MariaDB online schema change](https://mariadb.com/docs/server/refere
 
 ## Post-baseline migration contract
 
+`run --online-artifact-pvp` accepts only the sealed manifest ending at 0045,
+with all steps through 0043 already applied. It retains production target,
+allow-list, backup, checksum, advisory-lock, ordered-history and success-last
+verification safeguards. On MariaDB 11.8 InnoDB it strengthens the exact 0044
+and 0045 ALTER statements to `ALTER ONLINE TABLE` (`LOCK=NONE`), with one-second
+metadata and row-lock waits. 0044 uses NOCOPY for its appended columns and unique
+index; 0045 uses INSTANT. Unsupported operations fail without a table-copy or
+offline fallback. The sealed files and ledger checksums do not change.
+
+The October 18 production review found 90 artifact rows and 11 PvP rows, both
+InnoDB, with the additions absent. Existing artifact and combat writers name
+their columns explicitly; NULL/0 defaults preserve unresolved identity and
+unknown consent until the new runtime writes them. The artifact custody FK is
+retained. Coordinate schema-aware backup jobs across the migration and verify
+the new runtime contract before installing the server. See MariaDB's
+[NOCOPY online DDL documentation](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-online-ddl/innodb-online-ddl-operations-with-the-nocopy-alter-algorithm).
+
 Migration 0045 appends `pkill_info.webinfo_at_capture TINYINT NULL DEFAULT NULL`
 at position 11. The verifier requires its exact signed, nullable/default-NULL
 shape and position. Replays preserve existing values and snapshots; old rows

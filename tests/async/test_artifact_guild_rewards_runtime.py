@@ -37,6 +37,9 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
     def test_drain_releases_writer_capacity(self):
         subprocess.run([str(self.binary), 'drain-capacity'], check=True, timeout=30)
 
+    def test_flatfile_rewards_publish_without_sql_history(self):
+        subprocess.run([str(self.binary), 'flatfile'], check=True, timeout=30)
+
     def test_duplicate_excludes_only_conflicting_artifact(self):
         for scenario in ('duplicate', 'duplicate-reversed', 'same-uid', 'guild-only'):
             with self.subTest(scenario=scenario):

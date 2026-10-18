@@ -41,7 +41,7 @@ static std::vector<critical_command> commands;
 static std::vector<std::string> feedback;
 static std::vector<std::string> diagnostics;
 static critical_submit_result admission = critical_submit_result::accepted;
-static bool recent_frag = false;
+static bool recent_frag = false, mysql_mode = true;
 static double difficulty = 1;
 index_data indexes[2] = {};
 P_index obj_index = indexes;
@@ -68,7 +68,7 @@ double difficulty_multiplier(difficulty_dial)
 }
 bool persistence_mode_requires_mysql()
 {
-	return true;
+	return mysql_mode;
 }
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *owner, int64_t *bind)
 {
@@ -309,14 +309,14 @@ static int identity_contract(const std::string &scenario)
 	critical_operation_id parent = {};
 	assert(critical_operation_id_generate(&parent));
 	const bool submitted = artifact_guild_transaction_submit(&actor, parent, 4, EPIC_BOON);
-	const bool isolated = submitted &&
-			      rows.at(42001).timer == NOW + 100 + (canonical_copy ? 3600 : 0) &&
-			      rows.at(42002).timer == NOW + 200 + (guild_only ? 0 : 3600) &&
-			      guild->get_prestige() == 105 && guild->get_construction() == 1 &&
-			      snapshots.size() == (guild_only	  ? 0u :
-						   canonical_copy ? 2u :
-								    1u) &&
-			      guild_snapshots.size() == 1 && commands.size() == 1;
+	const bool isolated =
+		submitted && rows.at(42001).timer == NOW + 100 + (canonical_copy ? 3600 : 0) &&
+		rows.at(42002).timer == NOW + 200 + (guild_only ? 0 : 3600) &&
+		guild->get_prestige() == 105 && guild->get_construction() == 1 &&
+		snapshots.size() == (guild_only	    ? 0u :
+				     canonical_copy ? 2u :
+						      1u) &&
+		guild_snapshots.size() == 1 && commands.size() == (mysql_mode ? 1u : 0u);
 	assert(std::count(feedback.begin(), feedback.end(), SATISFACTION) == (guild_only ? 0 : 1));
 	assert(diagnostics.size() == (duplicate				 ? 2u :
 				      scenario == "canonical-alias-slot" ? 0u :
@@ -343,6 +343,11 @@ int main(int argc, char **argv)
 {
 	if (argc == 2)
 	{
+		if (std::string(argv[1]) == "flatfile")
+		{
+			mysql_mode = false;
+			return identity_contract("canonical-alias-slot");
+		}
 		if (std::string(argv[1]) == "drain-capacity")
 		{
 			reset();
