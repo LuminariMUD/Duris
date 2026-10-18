@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute PSP policy, admission, callbacks and spell expenditure under ASan/UBSan.
+"""Execute PSP policy and gradual vitality decay under ASan/UBSan.
 
 The queue is deterministic; full-server lifecycle coverage is a separate journey.
 Rates, elapsed credit, bounds, difficulty and use_spell are production code.
@@ -16,6 +16,7 @@ PRELUDE = r'''
 #include "core/utils.h"
 #include "net/comm.h"
 #include "magic/spells.h"
+#include "combat/damage.h"
 #include "world/epic_bonus.h"
 #include "world/events.h"
 #include "world/difficulty.c"
@@ -58,6 +59,7 @@ int GET_SECONDARY_CLASS(P_char, uint) { return 0; }
 ClassSkillInfo SKILL_DATA_ALL(P_char, int) { assert(false); return {}; }
 int GET_CHAR_SKILL_P(P_char, int skill) { return skill == SKILL_MEDITATE ? 75 : 0; }
 float get_epic_bonus(P_char, int) { return 0; }
+float BOUNDEDF(float low, float value, float high) { return std::min(high, std::max(low, value)); }
 int dice(int, int) { assert(false && "not a quadruped fixture"); return 0; }
 void gmcp_char_vitals(P_char) { ++vitals; }
 void send_to_char(const char *text, P_char) {
@@ -100,6 +102,21 @@ void affect_remove(P_char, affected_type *) { assert(false); }
 void event_memorize(P_char, P_char, P_obj, void *) { assert(false); }
 void schedule_memorize(P_char, int) { assert(false); }
 int get_circle_memtime(P_char, int) { assert(false); return 0; }
+
+bool resists_spell(P_char, P_char) { return false; }
+bool saves_spell(P_char, int) { return true; }
+int vamp(P_char, double, double) { return 0; }
+int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) {
+    return DAM_NONEDEAD;
+}
+void affect_join(P_char, affected_type *, int, int) { assert(false); }
+void affect_to_char_with_messages(P_char, affected_type *, const char *, const char *) {
+    assert(false);
+}
+int NumAttackers(P_char owner) { return IS_FIGHTING(owner) ? 1 : 0; }
+void stop_memorizing(P_char, memorization_stop_reason) { assert(false); }
+static void telemetry_gameplay_context_changed(P_char) {}
+static void log_standing_resting_recovery(P_char, const char *) { assert(false); }
 '''
 
 events = source("events.c").read_text()
@@ -114,6 +131,10 @@ HELPERS = "\n".join([
     extract_function("events.c", "void event_move_regen(P_char ch,"),
     extract_function("events.c", "void StartRegen(P_char ch,"),
     extract_function("memorize.c", "void use_spell("),
+    extract_function("magic.c", "void spell_restore_spirit("),
+    extract_function("actmove.c", "static bool standing_and_resting("),
+    extract_function("actmove.c", "static int resting_posture("),
+    extract_function("actmove.c", "void do_rest("),
 ])
 
 DRIVER = r'''
@@ -127,7 +148,7 @@ static void reset(int dial = 5, bool mob = false) {
     ch.in_room = 0;
     ch.specials.position = STAT_NORMAL | POS_STANDING;
     ch.curr_stats.Pow = ch.curr_stats.Int = 100;
-    if (!mob) GET_COND(&ch, FULL) = GET_COND(&ch, THIRST) = 24;
+    GET_COND(&ch, FULL) = GET_COND(&ch, THIRST) = 24;
     GET_MANA(&ch) = GET_VITALITY(&ch) = 100;
     GET_MAX_MANA(&ch) = GET_MAX_VITALITY(&ch) = 10000;
     queue.clear(); ne_event_tick = 0; completion_messages = vitals = 0;
@@ -292,6 +313,60 @@ static void bounds_and_spending() {
     advance(5); assert(GET_MANA(&ch) == 102);
 }
 
+static void movement() {
+    for (int interval : {1, 4}) {
+        for (int dial : {1, 5, 10}) {
+            reset(dial); GET_VITALITY(&ch) = 120; GET_MAX_VITALITY(&ch) = 100;
+            assert(move_regen(&ch, false) == -5);
+            StartRegen(&ch, regen_resource::vitality);
+            while (GET_VITALITY(&ch) == 120) advance(interval, interval);
+            assert(GET_VITALITY(&ch) == 119);
+            advance(300, interval);
+            assert(GET_VITALITY(&ch) < 119 && GET_VITALITY(&ch) > 100);
+            advance(12000, interval);
+            assert(GET_VITALITY(&ch) == 100 && queue.empty());
+            reset(dial); GET_VITALITY(&ch) = 99; GET_MAX_VITALITY(&ch) = 100;
+            StartRegen(&ch, regen_resource::vitality); advance(300, interval);
+            assert(GET_VITALITY(&ch) == 100 && queue.empty());
+        }
+        for (int status : {STAT_NORMAL, STAT_RESTING, STAT_SLEEPING}) {
+            reset();
+            ch.specials.position = status | (status == STAT_NORMAL ? POS_STANDING :
+                                            status == STAT_RESTING ? POS_SITTING : POS_PRONE);
+            int rate = status == STAT_NORMAL ? 80 : status == STAT_RESTING ? 229 : 632;
+            assert(move_regen(&ch, false) == rate);
+            StartRegen(&ch, regen_resource::vitality); advance(3000, interval);
+            assert(std::abs(GET_VITALITY(&ch) - 100 - rate * 10) <= 1);
+        }
+    }
+    for (int dial : {1, 5, 10}) {
+        reset(dial, true); assert(move_regen(&ch, false) == 96);
+        StartRegen(&ch, regen_resource::vitality);
+        assert(queue[0].due == 4); advance(4);
+        assert(GET_VITALITY(&ch) == 101 && queue[0].due == 14);
+        reset(dial); ch.points.move_reg = -30;
+        assert(move_regen(&ch, false) == -20);
+        StartRegen(&ch, regen_resource::vitality); advance(300);
+        assert(std::abs(GET_VITALITY(&ch) - 80) <= 1);
+    }
+    // The real producer can create surplus in combat, where admission is blocked.
+    reset(); GET_MAX_VITALITY(&ch) = 100;
+    GET_MANA(&ch) = GET_MAX_MANA(&ch);
+    ch.player.m_class = CLASS_PALADIN;
+    enemy.specials.position = STAT_NORMAL | POS_STANDING;
+    GET_VITALITY(&enemy) = 100;
+    ch.specials.fighting = &enemy; enemy.specials.fighting = &ch;
+    spell_restore_spirit(50, &ch, nullptr, SPELL_TYPE_SPELL, &enemy, nullptr);
+    spell_restore_spirit(50, &ch, nullptr, SPELL_TYPE_SPELL, &enemy, nullptr);
+    assert(GET_VITALITY(&ch) == 120 && GET_VITALITY(&enemy) == 90 && queue.empty());
+    ch.specials.fighting = enemy.specials.fighting = nullptr;
+    do_rest(&ch, nullptr, 0);
+    assert(GET_STAT(&ch) == STAT_RESTING && queue.size() == 1);
+    while (GET_VITALITY(&ch) == 120) advance(1);
+    assert(GET_VITALITY(&ch) == 119 && ne_event_tick == 61);
+    puts("Movement first decrement, progressive decay, caps, neutral rates and restore/rest passed");
+}
+
 int main() {
     std::ifstream input("lib/duris.properties");
     assert(input.good());
@@ -301,7 +376,7 @@ int main() {
             && sep != std::string::npos)
             properties[line.substr(0, sep)] = std::stof(line.substr(sep + 1));
     }
-    rates(); transitions(); bounds_and_spending();
+    rates(); transitions(); bounds_and_spending(); movement();
     puts("PSP rates, status/posture, combat, modifiers, bounds, spending and cadence passed");
 }
 '''
