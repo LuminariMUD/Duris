@@ -121,6 +121,7 @@ def run(binary, baseline, evidence_path):
                         (517246, 'west', 85700, 'east'),
                         (517645, 'north', 85700, 'south'),
                         (548452, 'north', 35800, 'south'),
+                        (548053, 'west', 35800, 'east'),
                         (584845, 'north', 7102, 'south'),
                         (551667, 'north', 11300, 'south'),
                         (616249, 'north', 9288, 'south'),
@@ -130,9 +131,6 @@ def run(binary, baseline, evidence_path):
                         visit(start)
                         walk(direction, target)
                         walk(reverse, start)
-                    visit(35800)
-                    cmd(player, 'east')
-                    assert location() == 35800, 'Homestead retains its old east exit'
                     for footprint, neighbors in (
                         (516443, ((516444, 'west', 'east'), (516843, 'north', 'south'),
                                   (516442, 'east', 'west'))),

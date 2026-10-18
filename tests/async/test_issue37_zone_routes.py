@@ -11,7 +11,8 @@ FILES = ('surface', 'otower', 'underworld3', 'arcium', 'elvish', 'willem', 'turo
          'mist_chasm', 'underdark', 'asylum')
 REVERSE = (2, 3, 0, 1, 5, 4)
 SURFACE_ROUTES = ((517246, 3, 85700, 1), (517645, 0, 85700, 2),
-                  (548452, 0, 35800, 2), (584845, 0, 7102, 2),
+                  (548452, 0, 35800, 2), (548053, 3, 35800, 1),
+                  (584845, 0, 7102, 2),
                   (551667, 0, 11300, 2), (616249, 0, 9288, 2))
 MARKERS = {517245: 'Arcium', 548052: 'Abandoned Elven Homestead',
            584445: 'Turopolis', 551267: 'Outcast Tower', 615849: 'Temple of Lizizania'}
@@ -86,7 +87,6 @@ def check_routes(rooms):
         actual = sorted((v, d) for v, (_, _, exits) in rooms.items() for d, target in exits.items()
                         if 500000 <= v < 660000 and target == entrance)
         assert actual == expected, (entrance, 'superseded surface entrance', actual)
-    assert 1 not in rooms[35800][2], 'Homestead still exits east to Arcium'
 
 
 if __name__ == '__main__':
@@ -108,4 +108,4 @@ if __name__ == '__main__':
         else:
             raise AssertionError(f'missing return edge {room}/{direction} was accepted')
         rooms[room] = original
-    print('Zone route contracts passed; all six broken surface returns rejected.')
+    print('Zone route contracts passed; all seven broken surface returns rejected.')
