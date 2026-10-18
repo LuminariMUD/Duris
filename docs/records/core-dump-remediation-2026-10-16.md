@@ -1,10 +1,9 @@
 # Core dump investigation and repair plan — 2026-10-16
 
-> Archived 2026-10-18: PRs #129-#131 are merged and the repair is locally qualified. The [current core-dump coverage audit](../ongoing-projects/core-dump-coverage-audit-2026-10-18.md) tracks the unresolved auction crash and distinguishes existing repair evidence from production validation.
+> Archived 2026-10-18: PRs #129-#131 are merged and the repair is locally qualified. Production validation remains separate.
 
-Scope: the three October 16 dumps listed below. The
-[October 18 coverage audit](../ongoing-projects/core-dump-coverage-audit-2026-10-18.md) reviews six newer
-October 17 dumps and identifies an unresolved auction keyword-list crash.
+Scope: the three October 16 dumps listed below. The newer October 17 auction
+keyword-list crash is addressed by [PR #200](https://github.com/LuminariMUD/Duris/pull/200).
 
 Status: repaired and qualified locally on MariaDB and flat-file persistence. Production
 rollout remains a separate owner-authorized operation. Investigation source reviewed at
