@@ -1324,6 +1324,10 @@ int old_search_block(const char *argument, const uint begin, uint length, const 
 	if (!argument)
 		return -1;
 
+	/* Resolve bs as backstab for every command lookup, before the bslap prefix. */
+	if (list == command && length == 2 && !strncmp(argument + begin, "bs", length))
+		return CMD_BACKSTAB;
+
 	/*
 	 * If the word contain 0 letters, then a match is already found
 	 */
