@@ -314,6 +314,20 @@ static void bounds_and_spending() {
 }
 
 static void movement() {
+    for (int dial : {1, 5, 10}) {
+        reset(dial); GET_VITALITY(&ch) = 120; GET_MAX_VITALITY(&ch) = 100;
+        StartRegen(&ch, regen_resource::vitality);
+        advance(61); assert(GET_VITALITY(&ch) == 119);
+        advance(1200, 1200);
+        assert(GET_VITALITY(&ch) == 100);
+        advance(1); assert(queue.empty());
+
+        // A negative equipment rate below the maximum must still drain normally.
+        reset(dial); GET_VITALITY(&ch) = 99; GET_MAX_VITALITY(&ch) = 100;
+        ch.points.move_reg = -30;
+        StartRegen(&ch, regen_resource::vitality);
+        advance(300, 300); assert(GET_VITALITY(&ch) == 79);
+    }
     for (int interval : {1, 4}) {
         for (int dial : {1, 5, 10}) {
             reset(dial); GET_VITALITY(&ch) = 120; GET_MAX_VITALITY(&ch) = 100;

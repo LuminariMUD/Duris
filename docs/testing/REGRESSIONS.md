@@ -13,6 +13,11 @@ journey does that yet.
 
 ## PSP consistency and gradual movement decay (#57)
 
+Delayed surplus movement decay also stops at the maximum: after 120/100 becomes
+119/100 at pulse 61, a 1,200-pulse callback delay must leave 100/100. Negative
+equipment recovery below the maximum still drains normally. The native sanitizer
+regression covers both cases at recovery dials 1, 5 and 10.
+
 `python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
 functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
 ASan/UBSan. It checks the POW+INT base and truncation, recovery dials 1/5/10,

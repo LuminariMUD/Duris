@@ -409,10 +409,11 @@ begins with fresh elapsed accounting. Existing casting, meditation, rest, affect
 and periodic player affect updates supply restarts. Combat exit relies on the next
 eligible player affect tick, nominally within 75 seconds.
 
-Movement retains its existing rates and cadence. Its callback now caps only positive
-increments at maximum, following the HP pattern: vitality granted above maximum by
-restore spirit or Reaper drain decays gradually instead of losing all surplus at the
-first decrement. A real rest command can start that decay after combat.
+Movement retains its existing rates and cadence. Positive increments cap at maximum;
+vitality granted above maximum by restore spirit or Reaper drain decays gradually
+instead of losing all surplus at the first decrement. Delayed decay that crosses the
+maximum stops there, while negative equipment recovery below maximum still drains
+normally. A real rest command can start surplus decay after combat.
 
 ## Racial pulse
 

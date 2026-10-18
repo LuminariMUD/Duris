@@ -201,8 +201,11 @@ void event_move_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	regen_value_int = (int)state.accumulated;
 	if (regen_value_int >= 1 || regen_value_int <= -1)
 	{
+		int previous_vitality = GET_VITALITY(ch);
 		GET_VITALITY(ch) += regen_value_int;
-		if (regen_value_int > 0 && GET_VITALITY(ch) > GET_MAX_VITALITY(ch))
+		if ((regen_value_int > 0 && GET_VITALITY(ch) > GET_MAX_VITALITY(ch)) ||
+		    (previous_vitality > GET_MAX_VITALITY(ch) &&
+		     GET_VITALITY(ch) < GET_MAX_VITALITY(ch)))
 			GET_VITALITY(ch) = GET_MAX_VITALITY(ch);
 		state.accumulated -= (float)regen_value_int;
 		gmcp_char_vitals(ch);

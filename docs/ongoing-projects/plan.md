@@ -247,7 +247,8 @@ these effects in the implementation PR and codebase documentation.
 
 ### RG-02 — Preserve gradual movement decay
 
-- [x] Mirror HP's positive-increment-only max clamp in `event_move_regen()`.
+- [x] Cap positive gains and clamp delayed surplus decay when it crosses the maximum
+  in `event_move_regen()`, preserving ordinary negative recovery below the maximum.
   Leave `move_regen()` arithmetic, posture properties, difficulty settings,
   CTF conditional bonus, and event cadence unchanged.
 - [x] Add a regression that fails on the current first nonzero decrement:
