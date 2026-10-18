@@ -5817,12 +5817,12 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		/* poofin/poofout for gods */
 		if (IS_TRUSTED(ch))
 		{
-			if (ch->only.pc->poofIn == NULL)
+			if (!ch->only.pc->poofIn || !*ch->only.pc->poofIn)
 				APPENDF(buf, "PoofIn:  None\n");
 			else
 				APPENDF(buf, "PoofIn:  %s\n", ch->only.pc->poofIn);
 
-			if (ch->only.pc->poofOut == NULL)
+			if (!ch->only.pc->poofOut || !*ch->only.pc->poofOut)
 				APPENDF(buf, "PoofOut: None\n");
 			else
 				APPENDF(buf, "PoofOut: %s\n", ch->only.pc->poofOut);
@@ -9420,10 +9420,6 @@ void do_ok(P_char ch, char *arg, int /*cmd*/)
 	fputs(Gbuf1, fl);
 	fclose(fl);
 	send_to_char("&+WAdded to file..\n", ch);
-
-	if (t_ch->only.pc->poofIn != NULL)
-		str_free(t_ch->only.pc->poofIn);
-	t_ch->only.pc->poofIn = str_dup("Accepted");
 }
 
 void do_punish(P_char ch, char *arg, int /*cmd*/)

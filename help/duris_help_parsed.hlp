@@ -10322,15 +10322,21 @@ There may be more in the future.
 #0
 
 Godpoofin
-Godpoofin - Last Edited: 2007-04-22 22:12:53 by Unknown
+Godpoofin - Last Edited: 2026-10-18
 =======================================================
-"poofin <text>" sets up the message for when you "goto" a room. This
-replaces the default "ear-splitting bang" message we are used to seeing. To
-get the default back, just type poofin with no argument.
-"Poofout" is the same as poofin, except is is the message seen by people in
-the room you are leaving when you do a "goto."
-To see what your current poofin/-out is, type "poofin ?" or "poofout?"
-	See also:god goto
+"poofin <text>" sets your arrival message for "goto". "poofout <text>"
+sets your departure message. Each message can contain up to 512 characters,
+including color codes. An overlong message leaves your current setting intact.
+
+Use %n to put your name anywhere in the message. Without %n, your name is
+added at the beginning. Example: poofin A swirl of mist reveals %n.
+
+Type "poofin ?" or "poofout ?" to preview the message. Type "poofin" or
+"poofout" without arguments to restore the default. Messages are shown only
+to people who can see you. Teleport and transfer use their own messages.
+
+See also: god goto, POOFIN, POOFOUT
+
 #0
 
 Godptell

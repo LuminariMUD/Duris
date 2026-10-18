@@ -69,6 +69,7 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
         "test_mysql_playtime_journey.py",
         "test_mysql_nexus_journey.py",
         "test_playtime_mysql_repository.py",
+        "test_staff_poof_journey.py",
     }
 )
 
