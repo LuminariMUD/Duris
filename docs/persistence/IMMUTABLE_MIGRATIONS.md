@@ -221,6 +221,15 @@ custody FK, and refuses inconsistent state/UID pairs. Apply it before starting
 the updated database-backed server. See the [artifact plan](../ongoing-projects/plan-issue-67.md)
 for the separate runtime/admission/reconciliation acceptance work.
 
+Migration 0046 restores only Nexus IDs 1 (Marduk) and 3 (Enlil), with explicit
+zero stat fields and the existing epic/cargo bonus assignments. Its SQL checks
+both existing IDs and reserved names before inserting either missing row. A
+configuration conflict raises a field/ID-specific error; matching rows retain
+alignment and last-touch state. The verifier accepts legitimate played state and
+unrelated rows. Reapplying the payload completes a partial insert without resetting
+the first row; replaying recorded history remains a no-op. Runtime activation needs
+a controlled restart because SQL Nexus records are cached at boot.
+
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size
 limits and rejects duplicate JSON keys, invalid paths, missing/duplicate/reordered IDs,

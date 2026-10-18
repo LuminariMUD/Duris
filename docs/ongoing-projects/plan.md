@@ -1,7 +1,8 @@
 # Issue #109: restore Marduk and Enlil Nexus stones
 
-Status: implementation in progress. NS-01/NS-02 are implemented and locally validated;
-NS-03 through NS-06 remain open. No production changes have been made.
+Status: implementation in progress. NS-01 through NS-03 are implemented and locally
+validated. Remaining reward/gameplay qualification and NS-05/NS-06 remain open.
+No production changes have been made.
 Prepared 2026-10-18 from `origin/master` at
 `89253179ab1f89249634eeef9116653381e3d807` and
 [issue #109](https://github.com/LuminariMUD/Duris/issues/109), updated
@@ -73,8 +74,29 @@ The previous artifact plan is preserved unchanged in
   release/reacquisition, and the complete current migration chain through 0044,
   including replay, failed verification and edited-history refusal.
 - Publication snapshot: `branch/issue-109-migration-lock`, based on
-  `branch/issue-109-nexus-loading` for focused review.
-- The Nexus seed and new runtime migration head are not implemented yet.
+  `branch/issue-109-nexus-loading` for focused review:
+  [PR #193](https://github.com/LuminariMUD/Duris/pull/193), head `e9f0b9841`.
+
+### 2026-10-18 — NS-03b: two-row seed and runtime head (locally complete)
+
+- Added guarded migration `0046_nexus_phase1` and verifier. Both selected IDs and
+  reserved names are checked before either insert; existing played state and unrelated
+  rows are preserved. Conflicts identify the field/ID and do not advance the ledger.
+- Updated the manifest and compiled runtime head/checksums with the existing contract
+  updater. Kept structural fingerprints because this is a data-only change; fresh
+  MySQL/MariaDB compatibility verifiers confirmed them, rather than running the
+  unrelated historical telemetry fixture's hard-coded task setup.
+- Extended the existing three-engine runner fixture with empty/each-present/both-present
+  seed cases, played timestamps/alignments, each configuration conflict, reserved-name
+  collisions, direct payload reapply, verifier drift, and legacy MyISAM retry behavior.
+- Passed that complete runner fixture on MySQL 8.0.46, MariaDB 10.11.19 and MariaDB
+  11.8.9, including recorded-ledger replay after Nexus gameplay state changes.
+  Passed `run_runtime_compatibility_mysql.sh` on all three images with the unchanged
+  metadata fingerprints and new head; both server builds, both Nexus native suites,
+  the flat-file repository test, 19 runner unit tests and formatting also passed.
+- Publication snapshot: `branch/issue-109-nexus-seed`, based on
+  `branch/issue-109-migration-lock` for focused review.
+- Full-world gameplay/restart qualification remains pending. No production SQL was run.
 
 ## Outcome and boundaries
 
@@ -251,15 +273,16 @@ Files: `src/economy/nexus_stones.c` and the same focused Nexus runtime harness.
 Exit: a successful placement means the required world entities actually exist;
 empty configuration and failed loading remain different, observable states.
 
-### NS-03 — Serialized, insert-only migration and compatible runtime head
+### NS-03 — Serialized, insert-only migration and compatible runtime head (locally complete)
 
 Files: [migration_runner.py](../../scripts/migration_runner.py), its existing tests,
 one new `migrations/immutable/NNNN_nexus_phase1.sql` and executable `.sh` verifier,
 [migration_manifest.json](../../migrations/migration_manifest.json),
 [runtime_compatibility_manifest.json](../../migrations/runtime_compatibility_manifest.json),
 [runtime_compatibility_contract.h](../../src/core/runtime_compatibility_contract.h),
-and the two persistence contract documents. `NNNN` means the next free sequence at
-implementation time; 0044 is the inspected head, not a reservation of 0045.
+and the two persistence contract documents. This branch now uses **0045** after
+refreshing master at head 0044. Recheck sequence availability when integrating a
+newer master; never modify another applied migration to resolve a collision.
 
 1. Reuse the runner's existing persistent lock-client path for ordinary runs as
    well as reviewed online modes. Hold it through baseline/prefix validation,
@@ -287,9 +310,10 @@ implementation time; 0044 is the inspected head, not a reservation of 0045.
 5. Seal apply/verify hashes and update the runtime head/history checksum in both
    contract files. Reuse
    [telemetry_rollup_schema_mysql.py](../../tests/async/telemetry_rollup_schema_mysql.py)
-   with its private disposable-engine `--credentials` and `--update-contract`
-   workflow; do not hand-copy metadata from production. Data-only seeding should
-   leave table inventory/metadata fingerprints unchanged; investigate any drift.
+   for its contract updater. Retain structural fingerprints for this data-only step
+   and verify them with fresh disposable-engine runtime gates; the historical full
+   telemetry script has a task-specific setup unrelated to this seed. Never copy
+   metadata from production. Investigate any unexpected structural drift.
    Do not edit existing immutable payloads or their hashes.
 
 Exit: fresh and upgraded databases reach the same new head, concurrent runners
@@ -440,8 +464,8 @@ Rollback must account for the immutable ledger and cached rows:
 
 ## Completion map and current evidence
 
-- [ ] Issue requirement 1, safe durable provisioning: NS-03 and NS-04.
-- [ ] Issue requirement 2, no-stat sages: NS-01 and NS-04.
+- [x] Issue requirement 1, safe durable provisioning: NS-03 and the three-engine NS-04 cases.
+- [x] Issue requirement 2, no-stat sages: NS-01 and its executable NS-04 cases.
 - [ ] Issue requirement 3, neutral guardian lifecycle: NS-01, NS-04 and NS-05.
 - [ ] Issue requirement 4, empty/error/ship diagnostics: NS-02 and NS-04/NS-05.
 - [ ] Issue requirement 5, tests and maintained handoff: NS-04 through NS-06.
