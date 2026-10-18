@@ -54,7 +54,27 @@ The previous artifact plan is preserved unchanged in
   formatting, `make -C src -j8`, and the separate flat-file server build under
   `bin/issue109-flat`. No database seed or full-world journey has run yet.
 - Publication snapshot: `branch/issue-109-nexus-loading`, based on
-  `branch/issue-109-nexus-sage-guardians` for a focused dependent PR.
+  `branch/issue-109-nexus-sage-guardians` for a focused dependent PR:
+  [PR #191](https://github.com/LuminariMUD/Duris/pull/191), head `9f3876c9a`.
+
+### 2026-10-18 — NS-03a: migration serialization (locally complete)
+
+- Ordinary and reviewed online runners execute SQL on their persistent advisory-lock
+  session, including apply and history writes. Killing the owner interrupts an
+  in-flight apply; no separate applying session can continue after lock release.
+- Check ownership before/after SQL and verifier operations, including server-side
+  loss that leaves the client process alive. Preserve production target/backup/TLS
+  checks and existing online-mode restrictions.
+- Passed `python3 tests/async/test_immutable_migration_runner.py` (19 tests), including
+  normal/online client lifetime, release, loss and quiescence exclusion.
+- Passed `python3 tests/async/run_migration_runner_engines.py` on MariaDB 11.8.9,
+  MariaDB 10.11.19 and MySQL 8.0.46. Each proves competing normal executors,
+  another-connection refusal, server-side KILL before and during apply, no-write-after-loss,
+  release/reacquisition, and the complete current migration chain through 0044,
+  including replay, failed verification and edited-history refusal.
+- Publication snapshot: `branch/issue-109-migration-lock`, based on
+  `branch/issue-109-nexus-loading` for focused review.
+- The Nexus seed and new runtime migration head are not implemented yet.
 
 ## Outcome and boundaries
 

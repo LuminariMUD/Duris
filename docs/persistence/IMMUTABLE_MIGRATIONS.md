@@ -48,7 +48,7 @@ verification requirements while allowing live connections. It accepts only the
 manifest ending at the exact reviewed 0039 step and only an InnoDB `level_cap`.
 It executes the unchanged sealed SQL with session `alter_algorithm=INSTANT` and
 one-second metadata/InnoDB lock waits: an unsupported instant operation or lock
-timeout fails rather than falling back to a table rebuild. A dedicated connection
+timeout fails rather than falling back to a table rebuild. The applying connection
 holds the migration advisory lock through verification and history publication.
 The equivalent `run --online-combat-outcome-allies` path accepts only the manifest
 ending at the sealed `0040_combat_outcome_allies` step and an InnoDB
@@ -232,6 +232,17 @@ pending migration it runs apply, then verifier, and only then atomically inserts
 history row and advances the history head. A verifier failure leaves the step
 unrecorded. The migration itself must therefore be additive and re-runnable so an exact
 retry can finish partial MySQL DDL safely.
+
+Every runner mode holds that advisory lock on a persistent, non-reconnecting client
+through the complete operation. A one-shot `mysql -e GET_LOCK` would release it before
+the first apply. All runner SQL, including apply and history publication, executes on
+the lock-owning session, so killing that session also interrupts its SQL and prevents
+later statements in the batch from writing after a competing runner acquires the lock.
+The runner also checks ownership before and after SQL and the external read-only
+verifiers, including server-side loss where the client process has not exited.
+Ordinary production quiescence excludes its own session; any other connection to the
+target database still refuses the operation. Any interrupted apply must be recovered
+by its guarded retry, not assumed rolled back.
 
 Editing or reordering an applied row fails against the manifest. Deleting even the
 trailing row fails against the retained history count/head rather than silently

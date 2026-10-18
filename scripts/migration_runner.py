@@ -10,11 +10,14 @@ import hmac
 import json
 import os
 import re
+import secrets
 import select
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -362,6 +365,8 @@ class MysqlExecutor:
         self.online_migration: Migration | None = None
         self.online_player_updates = online_player_updates
         self.lock_process = None
+        self.lock_errors = None
+        self.lock_connection_id = 0
         if self.production:
             expected_target = f"{host}/{database}"
             if confirmed_production_target is None or not hmac.compare_digest(
@@ -442,13 +447,20 @@ class MysqlExecutor:
                         "-N", "-B", database]
 
     def sql(self, statement: str, input_payload: bytes | None = None) -> str:
-        if self.lock_process is not None and self.lock_process.poll() is not None:
-            raise MigrationContractError("online migration lock connection was lost")
+        self.require_lock()
+        if self.lock_process is not None:
+            # Apply and history writes must use the session holding GET_LOCK.
+            # KILL/connection loss then stops the SQL itself, not just the next step.
+            result = self.locked_sql(input_payload.decode() if input_payload is not None
+                                     else statement)
+            self.require_lock()
+            return result
         environment = dict(os.environ)
         environment["MYSQL_PWD"] = os.environ["DB_PASSWD"]
         result = subprocess.run(self.command + (["-e", statement] if input_payload is None
                                                 else []), input=input_payload,
                                 capture_output=True, env=environment, check=False)
+        self.require_lock()
         if result.returncode:
             detail = result.stderr.decode(errors="replace").strip().splitlines()
             raise MigrationContractError(
@@ -456,44 +468,94 @@ class MysqlExecutor:
                 (f": {detail[-1]}" if detail else ""))
         return result.stdout.decode().strip()
 
+    def locked_sql(self, payload: str) -> str:
+        marker = 'migration_result_' + secrets.token_hex(16)
+        write_errors = []
+
+        def write():
+            try:
+                self.lock_process.stdin.write(payload + f"\n;\nSELECT '{marker}';\n")
+                self.lock_process.stdin.flush()
+            except OSError as error:
+                write_errors.append(error)
+
+        # Drain output while feeding SQL: a migration can exceed the pipe buffer
+        # in both directions. The mysql client handles DELIMITER and batch errors.
+        writer = threading.Thread(target=write)
+        writer.start()
+        output = []
+        for line in self.lock_process.stdout:
+            if line.rstrip('\n') == marker:
+                writer.join()
+                if not write_errors:
+                    return ''.join(output).strip()
+                break
+            output.append(line)
+        writer.join()
+        self.lock_process.wait()
+        self.lock_errors.seek(0)
+        detail = self.lock_errors.read().decode(errors='replace').strip().splitlines()
+        raise MigrationContractError(
+            'database migration command failed or lock connection was lost' +
+            (f': {detail[-1]}' if detail else ''))
+
     def acquire_lock(self) -> None:
-        if self.online_migration is not None:
-            # Keep this connection open through apply, verification and recording.
-            # A one-shot mysql -e GET_LOCK releases its lock as soon as it exits.
-            environment = dict(os.environ, MYSQL_PWD=os.environ["DB_PASSWD"])
+        # The lock's session must outlive apply, verification and history recording.
+        environment = dict(os.environ, MYSQL_PWD=os.environ["DB_PASSWD"])
+        # Error output must not block the client while stdout carries SQL results.
+        self.lock_errors = tempfile.TemporaryFile()
+        try:
             self.lock_process = subprocess.Popen(
                 self.command + ["--unbuffered", "--skip-reconnect", "--connect-timeout=5"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.lock_errors,
                 text=True, env=environment)
-            try:
-                self.lock_process.stdin.write("SELECT GET_LOCK('duris_immutable_migration',5);\n")
-                self.lock_process.stdin.flush()
-                readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
-                if not readable or self.lock_process.stdout.readline().strip() != "1":
-                    raise MigrationContractError("migration lock unavailable")
-            except (OSError, MigrationContractError) as error:
-                self.release_lock()
-                raise MigrationContractError("migration lock unavailable") from error
-            return
-        if self.sql("SELECT GET_LOCK('duris_immutable_migration',5);") != "1":
-            raise MigrationContractError("migration lock unavailable")
+            self.lock_process.stdin.write(
+                "SELECT GET_LOCK('duris_immutable_migration',5), CONNECTION_ID();\n")
+            self.lock_process.stdin.flush()
+            readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
+            result = self.lock_process.stdout.readline().strip() if readable else ""
+            if not re.fullmatch(r"1\t[1-9][0-9]*", result):
+                raise MigrationContractError("migration lock unavailable")
+            self.lock_connection_id = int(result.split("\t")[1])
+        except (OSError, MigrationContractError) as error:
+            self.release_lock()
+            raise MigrationContractError("migration lock unavailable") from error
+
+    def require_lock(self) -> None:
+        if self.lock_process is None:
+            return  # Standalone inspection/verifier calls do not acquire a lock.
+        if self.lock_process.poll() is not None:
+            raise MigrationContractError("migration lock connection was lost")
+        try:
+            # A server-side KILL may leave the client idle/alive. Check the session,
+            # not just its process, before and after each database operation.
+            self.lock_process.stdin.write(
+                "SELECT IS_USED_LOCK('duris_immutable_migration')=CONNECTION_ID();\n")
+            self.lock_process.stdin.flush()
+            readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
+            if not readable or self.lock_process.stdout.readline().strip() != "1":
+                raise MigrationContractError("migration lock connection was lost")
+        except OSError as error:
+            raise MigrationContractError("migration lock connection was lost") from error
 
     def release_lock(self) -> None:
+        self.lock_connection_id = 0
         if self.lock_process is not None:
             process = self.lock_process
             self.lock_process = None
-            process.stdin.close()
+            try:
+                process.stdin.close()
+            except BrokenPipeError:
+                pass
             process.stdin = None
             try:
                 process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.communicate()
-            return
-        try:
-            self.sql("SELECT RELEASE_LOCK('duris_immutable_migration');")
-        except MigrationContractError:
-            pass
+        if self.lock_errors is not None:
+            self.lock_errors.close()
+            self.lock_errors = None
 
     def require_quiescent(self) -> None:
         connections = self.sql(
@@ -579,6 +641,7 @@ class MysqlExecutor:
                                   "migration apply"))
 
     def verify(self, migration: Migration) -> None:
+        self.require_lock()
         environment = dict(os.environ)
         if self.socket_path:
             # Immutable verifier files are checksum-sealed and carry explicit
@@ -594,6 +657,7 @@ class MysqlExecutor:
             self.engine = engine_of(self.sql("SELECT VERSION();"))
         result = subprocess.run([str(migration.verifier(self.engine))], capture_output=True,
                                 env=environment, check=False)
+        self.require_lock()
         if result.returncode:
             detail = (result.stderr or result.stdout).decode(errors="replace").strip().splitlines()
             raise MigrationContractError(
