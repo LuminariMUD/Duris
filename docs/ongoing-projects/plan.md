@@ -1,625 +1,324 @@
-# Issue #109: restore Marduk and Enlil Nexus stones
+# Issue #57: consistent PSP regeneration and gradual movement decay
 
-Status: implementation and all required local qualification are complete. The
-focused PR stack is published for review; production acceptance remains open.
-No production changes have been made.
-Prepared 2026-10-18 from `origin/master` at
-`89253179ab1f89249634eeef9116653381e3d807` and
-[issue #109](https://github.com/LuminariMUD/Duris/issues/109), updated
-2026-10-18T11:12:55Z. Delivery branch:
-`branch/issue-109-nexus-stones`. Rebased onto master `d6f4d4aa6` during review repair;
-line references below describe this inspected revision, not a moving checkout.
+Status: implementation plan only; no server behavior has been changed.
+Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
+Delivery branch: `branch/issue-57-regen-consistency`.
+Base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
+Source inspection and executable probes used `2c70abf1728a5930f345ee5f731ccbbb44c238a9`;
+the newer base changes auction code and unrelated records, with no differences in
+the regeneration sources or previous plan.
 
-The previous artifact plan is preserved unchanged in
-[plan-issue-67.md](plan-issue-67.md). Its instructions concern that work only.
+**Nexus provisioning / issue #109:** the previous contents of this file are preserved
+byte-for-byte in [plan-issue-109.md](plan-issue-109.md), including its outstanding
+production acceptance. The existing Nexus diagnostic that points here should be
+followed through that link. This plan does not close or supersede that work.
 
-## Implementation record
+## Outcome, scope and proof
 
-### 2026-10-18 — NS-01: sage safety and neutral guardians
+Outcome: one PSP rate calculation supplies event admission, every recovery callback,
+and staff display; it honors current eligibility, modifiers and the recovery dial.
+Resting/sleeping and incapacitated/dying behavior use status, not posture. Movement
+above maximum decays gradually, while positive regeneration still caps correctly.
+Preserve elapsed-pulse accounting, fractional credit and event scheduling optimizations.
 
-- Added a no-training response before dereferencing unsupported stats in both real
-  sage handlers; preserved supported-stat purchases and their existing callback.
-- Recognize neutral guardian 74 in the shared guardian predicate, retaining existing
-  lookup/reset/reload/expiry behavior and per-stone tag matching.
-- Added `tests/async/test_nexus_runtime.py` and its native harness. It links the real
-  Nexus implementation and flat-file repository plus the extracted real `char_stat`.
-  The unmodified source failed the neutral guardian lookup assertion. The fixed
-  source passes with ASan/UBSan: two-stone repeated reset/reload, all alignments,
-  repeated expiry, peer preservation, invalid sage stats 0/-1/255 with no spend or
-  stat gain, and supported training/cap/insufficient-funds controls.
-- Passed `make -C src -j8` (MariaDB server), the new runtime test, existing
-  `test_nexus_stones_empty_table.py`, and `test_flatfile_nexus_repository.py`.
-  The flat-file full server build and full-world gameplay proof remain outstanding.
-- Publication snapshot: `branch/issue-109-nexus-sage-guardians`, based on master.
-  [PR #190](https://github.com/LuminariMUD/Duris/pull/190), head `3d81f4809`.
-  The delivery branch carries this commit and subsequent chunks.
+The owner selected **preserve the current POW+INT base** during planning. The detailed
+modifier rules below are the proposed implementation contract for that choice, not
+claims about current behavior. Do not substitute the older quadratic formula.
 
-### 2026-10-18 — NS-02: load failures and diagnostics
+Non-goals: general movement rebalance, reconstructing historical player complaints,
+HP/ward redesign, scheduler rewrites, new properties, services or schema, production
+rollout, and changes to live player data. Implementation is a subsequent task; this
+branch initially publishes only this plan and preservation of the previous plan.
 
-- Guard callback prototype indexing; report missing ship/room/object/guardian,
-  invalid SQL rows and query/result failures. A failed guardian load removes the
-  newly created stone, and placement success is logged only after required entities
-  are created. Preserve valid loaded prefixes and explicitly report incomplete loads.
-- Empty catalogues still succeed. Initialization requests one warning; ordinary
-  reload/reset loading stays quiet about intentional empty configuration. Existing
-  flat-file authority failure still follows its fatal boot path.
-- Staff reset/reload failures now report failure; request logs no longer claim that
-  placement succeeded before attempting it.
-- Replaced the old empty-table source assertion with ASan/UBSan executable tests of
-  extracted real init/SQL+flat loaders/placement. The fixture controls database and
-  world dependencies; it is not a live database/ship journey. Covers empty boot,
-  missing callback prototypes, valid two-stone load, dynamic ship override, missing
-  ship/room/object/guardian, invalid/missing SQL fields, query/result failures,
-  retained valid prefix, cleanup on failure, and existing flat-file fatal policy.
-- Passed both Nexus native suites, the existing flat-file repository regression,
-  formatting, `make -C src -j8`, and the separate flat-file server build under
-  `bin/issue109-flat`. No database seed or full-world journey has run yet.
-- Publication snapshot: `branch/issue-109-nexus-loading`, based on
-  `branch/issue-109-nexus-sage-guardians` for a focused dependent PR:
-  [PR #191](https://github.com/LuminariMUD/Duris/pull/191), head `fa7418774`.
+Expected implementation files:
 
-### 2026-10-18 — NS-03a: migration serialization (locally complete)
+- `src/world/limits.c`: make `mana_regen()` authoritative, including status and signed rates.
+- `src/world/events.c`: consume that rate and correct directional resource bounds.
+- One focused `tests/async/test_psp_move_regen.py`, using the existing `_paths.py`
+  extraction/native harness conventions and real difficulty module.
+- `docs/reference/CODEBASE.md`, `docs/testing/REGRESSIONS.md`, and this plan: document
+  the rate contract, deliberate balance effects, executable evidence and remaining gates.
+- Existing caller files (`src/classes/memorize.c`, `src/cmd/actnew.c`,
+  `src/cmd/actmove.c`, `src/magic/affects.c`, `src/combat/fight.c`) are inspection and
+  journey targets. Edit only if a focused test proves a missing necessary restart.
+  No speculative restart hooks or modifications to `src/world/new_events.c` are planned.
 
-- Ordinary and reviewed online runners execute SQL on their persistent advisory-lock
-  session, including apply and history writes. Killing the owner interrupts an
-  in-flight apply; no separate applying session can continue after lock release.
-- Check ownership before/after SQL and verifier operations, including server-side
-  loss that leaves the client process alive. Preserve production target/backup/TLS
-  checks and existing online-mode restrictions.
-- Passed `python3 tests/async/test_immutable_migration_runner.py` (19 tests), including
-  normal/online client lifetime, release, loss and quiescence exclusion.
-- Passed `python3 tests/async/run_migration_runner_engines.py` on MariaDB 11.8.9,
-  MariaDB 10.11.19 and MySQL 8.0.46. Each proves competing normal executors,
-  another-connection refusal, server-side KILL before and during apply, no-write-after-loss,
-  release/reacquisition, and the complete current migration chain through 0044,
-  including replay, failed verification and edited-history refusal.
-- Publication snapshot: `branch/issue-109-migration-lock`, based on
-  `branch/issue-109-nexus-loading` for focused review:
-  [PR #193](https://github.com/LuminariMUD/Duris/pull/193), head `8a1f52ae0`.
+Proof: real rate functions, callbacks and admission code in a native sanitized harness;
+existing focused difficulty, HP and scheduler checks; then a local/dev server journey
+through casting, meditation, combat and staff display. Helper-only tests cannot prove
+command reachability or the real event queue. No database migration is required.
 
-### 2026-10-18 — NS-03b: two-row seed and runtime head (locally complete)
+## What current code actually establishes
 
-- Added guarded migration `0046_nexus_phase1` and verifier. Both selected IDs and
-  reserved names are checked before either insert; existing played state and unrelated
-  rows are preserved. Conflicts identify the field/ID and do not advance the ledger.
-- Updated the manifest and compiled runtime head/checksums with the existing contract
-  updater. Kept structural fingerprints because this is a data-only change; fresh
-  MySQL/MariaDB compatibility verifiers confirmed them, rather than running the
-  unrelated historical telemetry fixture's hard-coded task setup.
-- Extended the existing three-engine runner fixture with empty/each-present/both-present
-  seed cases, played timestamps/alignments, each configuration conflict, reserved-name
-  collisions, direct payload reapply, verifier drift, and legacy MyISAM retry behavior.
-- Passed that complete runner fixture on MySQL 8.0.46, MariaDB 10.11.19 and MariaDB
-  11.8.9, including recorded-ledger replay after Nexus gameplay state changes.
-  Passed `run_runtime_compatibility_mysql.sh` on all three images with the unchanged
-  metadata fingerprints and new head; both server builds, both Nexus native suites,
-  the flat-file repository test, 19 runner unit tests and formatting also passed.
-- Publication snapshot: `branch/issue-109-nexus-seed`, based on
-  `branch/issue-109-migration-lock` for focused review:
-  [PR #194](https://github.com/LuminariMUD/Duris/pull/194), head `555fa2e7c`.
-- Full-world gameplay/restart qualification remains pending. No production SQL was run.
+1. **The PSP split is real and predates recent event optimization.**
+   `StartRegen()` calls `mana_regen(ch, false)`; staff `stat` calls it with `true`.
+   `event_mana_regen()` instead computes `(POW + INT) / 2.5`, or `/ 0.2` when
+   `AFF_MEDITATE` is set. It never evaluates the helper's ongoing combat, sunlight,
+   feeblemind, equipment or difficulty rules.
+   The actual [2012 change](https://github.com/LuminariMUD/Duris/commit/c8004b74ea84947c878ed5ec58bd6836f1b4d492)
+   deliberately replaced the callback's helper call with POW/INT arithmetic but left
+   admission unchanged. Treating the old helper as the intended balance would silently
+   reverse that change. Preserve the live base and consolidate in the existing helper.
 
-### 2026-10-18 — NS-04: native gameplay qualification (locally complete)
+2. **The status switch is invalid, and replacing its selector is insufficient.**
+   `GET_POS` masks the two posture bits; `GET_STAT` masks distinct `STAT_*` bits
+   (`src/core/utils.h:392-394`, `src/core/defines.h:1140-1154`). The PSP switch tests
+   status constants against posture. Even after changing the selector, setting
+   `gain = 0` for incapacitation/dying would be followed by meditation and `mana_reg`
+   additions, which can restore a gain. Use terminal eligibility gates. The scheduler's
+   dead-owner guard in `add_event()` does not reject incapacitated or dying characters:
+   `IS_ALIVE` only requires status above `STAT_DEAD`.
 
-- Expanded the existing real-source native harness: exact 300-second touch and
-  3,600-second turn boundaries on a controlled clock, eligible/low-level/neutral
-  character checks, guardian blocking, capture payouts and Enlil multiplier,
-  epic-task removal, boon dispatch, and only-configured objective selection.
-- The native harness now also compiles the real epic award calculation and normal/
-  PvP award and contraband/normal sale handlers with controlled pre-bonus price/wallet adapters. All
-  seven alignments and both factions pass, including partial/neutral/opposing-side
-  exclusion, minimum bonuses and epic-bottle exclusion. This is executable consumer
-  coverage, not a claim of an in-game market transaction or live boon settlement.
-- Bind the seven controlled Nexus settings to `lib/duris.properties`; changes to
-  any qualified cooldown, expiry, payout limit, or epic/cargo rate now fail the test.
-  Capture rewards pass through the real epic preparation function, including the
-  newly captured Marduk bonus: 16 epics for Marduk and 30 for opposing-side Enlil.
-- `python3 tests/async/test_nexus_runtime.py` passes these cases with ASan/UBSan.
-  This expands the existing fixture and uses real production consumers, without
-  changing gameplay code or adding a second reward implementation.
-- Publication snapshot: `branch/issue-109-nexus-gameplay-tests`, based on
-  `branch/issue-109-nexus-seed`: [PR #195](https://github.com/LuminariMUD/Duris/pull/195),
-  head `322ceb6ac`.
+3. **Movement's first decrement destroys the surplus.**
+   `move_regen()` returns a negative rate above max vitality. `event_move_regen()`
+   unconditionally clamps the result to max, including after a negative increment.
+   `event_hit_regen()` already demonstrates the necessary positive-increment-only
+   upper clamp. `spell_restore_spirit()` and the Reaper energy-drain branch really do
+   add vitality without an upper cap and call `StartRegen()`; the resulting state is
+   reachable. This inspection is not a live spell/combat reproduction.
 
-### 2026-10-18 — NS-05 and local NS-06: final qualification and handoff
+4. **Consolidation exposes more PSP boundary behavior that must be covered.**
+   The old helper squares `gain`, making a negative intermediate positive. Its
+   over-cap path returns negative, while the current callback never consumes that
+   rate and also has an unconditional cap. A shared signed rate therefore needs
+   directional PSP capping as part of this fix, not a later cleanup.
 
-- Master advanced to `9017ce1ca` with migration 0045 during qualification. Rebased
-  the stack and renumbered the unpublished Nexus seed to `0046_nexus_phase1`.
-  Retained master's measured structural fingerprints, regenerated the combined
-  runtime head/history contract, and updated the existing boot-contract expectation.
-  `git range-diff` confirmed the other five commits retain their original changes.
-- Added `tests/async/test_mysql_nexus_journey.py`, registered in `run_db_tests.sh`
-  and excluded from argument-free regression discovery. It creates a disposable
-  MariaDB 10.11 database, independent accounts/ports and a copied full-world runtime;
-  it never sources the checkout's `.env` and cleans up its database/server/runtime.
-- The complete journey passed against the refreshed SQL build: both stone placements,
-  guardian blocking and mortal defeat, three-touch captures (+3/-3), immediate-touch
-  rejection, same-side rejection, epic awards, durable boon completion and at least
-  7 boon points, actual cargo/contraband sales, unchanged base stats, clean restart,
-  expiration and two neutral reloads with exactly one VNUM-74 guardian. Population
-  checks use `stat mob`, because combat legitimately changes the idle description.
-- Observed capture epic deltas: Marduk +21, Enlil +50. Owning-side cargo paid
-  13,858 + 1,524 = 15,382 copper; contraband paid 95,611 + 10,517 = 106,128.
-  Opposing-side sales paid their base quotes of 13,873 and 96,288 with no bonus.
-  SQL before/after cold restart retained `(1,+3,2026-10-18 12:56:02)` and
-  `(3,-3,2026-10-18 12:56:51)` plus saved reward balances. Enlil's boot-resolved
-  room changed from 60010 to 60018 and still contained exactly one stone.
-  Expiring Marduk cleared its timestamp and preserved Enlil's -3 ownership.
-- The full-world fixture uses 5/6-second touch/turn timers, trained mortal attackers
-  and a level-1/one-hit-point guardian fixture. Production 300/3,600-second boundaries,
-  every alignment/faction reward case, partial-state load/replay, safe sage paths,
-  objective selection and controlled placement failures are covered by NS-04's
-  real-source native/SQL cases. Redis recovery is disabled in the full-world fixture.
-  No claim is made for boss balance, abrupt-crash durability or Redis world recovery.
-- Original delivery SQL binary SHA-256:
-  `57b2ba457bfd00fdade94d1345868d56c0ab9381f2d18658ee4b53d574f2c7fe`.
-  Original delivery logs are under ignored `bin/tests/issue109-final-*.log` and
-  `bin/tests/issue109-nexus-journey.log`; only synthetic aggregate results are recorded
-  here, not credentials or account/player files.
+5. **Restart paths already exist.**
+   `use_spell()` subtracts PSP and starts mana regeneration; `do_meditate()` sets the
+   flag and starts it; `do_rest()` starts each resource; `affect_total()` retries
+   non-full/negative-modified resources for connected players. `affect_update()`
+   retries depleted PSP for psionicists/mindflayers each player tick and preserves
+   NPC slicing. `stop_fighting()` does not itself start PSP regeneration. Preserve
+   the existing periodic recovery path and prove its bounded delay after combat
+   rather than inventing a new timer or promising immediate restart.
 
-Original delivery commands passed after the first master refresh:
+6. **Reported movement balance is separate.**
+   Checked-in recovery dial 5 is neutral; `difficulty_scale_player_regen()` scales
+   only positive PC gains, leaving NPC and negative rates alone. #53 is closed.
+   #56 transferred its historical movement report through #82 to #106; #106 is now
+   closed by owner disposition and does not establish a further balance defect.
+   Only #57 is the implementation work item for this branch.
 
-```sh
-make -C src -j8
-make -C src -j4 PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/issue109-flat"
-python3 tests/async/test_nexus_runtime.py
-python3 tests/async/test_nexus_stones_empty_table.py
-TMPDIR="$PWD/bin/tests/issue109-plan" python3 tests/async/test_flatfile_nexus_repository.py
-python3 tests/async/test_immutable_migration_runner.py
-python3 tests/async/test_runtime_boot_compatibility.py
-python3 tests/async/run_migration_runner_engines.py
-tests/async/run_runtime_compatibility_mysql.sh
-RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
-RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
-tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_nexus_journey.py --server bin/server/dms_new
-./scripts/format.sh --check
-git diff --check
-```
+### Fresh reproduction evidence
 
-The runner suite passed on MySQL 8.0.46, MariaDB 10.11.19 and MariaDB 11.8.9
-through head 46, including lock exclusion/loss, seed preflight/replay and edited
-history refusal. All three runtime compatibility fixtures passed. The unit suites
-reported 19 migration tests and 7 boot-contract tests. Both Nexus native suites use
-ASan/UBSan. No aggregate `make test-all`/`make test-db` or production checks are claimed;
-CI was not used as a completion gate.
+The complete diagnostic probe attached to #57 was inspected before execution and
+run against the current source under UBSan. Its only adjustment was the scratch
+output directory, `bin/analysis/issue57-plan/`. It extracts real rate functions,
+callbacks and `StartRegen()`, includes the real difficulty module, and stubs ordinary
+engine dependencies and the event queue. Its assertions describe existing bugs;
+**do not copy them unchanged as desired regression expectations**.
 
-Publication order: #190 -> #191 -> #193 -> #194 -> #195 -> #196
-(`branch/issue-109-nexus-world-journey`). The delivery branch retains the entire stack;
-[issue #109](https://github.com/LuminariMUD/Duris/issues/109) links every PR and the
-current acceptance checklist. Merge/review and the separately authorized production
-steps below remain outstanding.
+Observed with the issue's level-50 human psionicist, POW=INT=100, generous resource
+caps and the checked-in properties:
 
-### 2026-10-18 — review repairs for #191, #193, #195 and #196
+- PSP helper rates at recovery dials 5/1/10: 24/48/12 per tick; actual gain was
+  800 over 3,000 pulses for every dial. Starting before combat still gained 800;
+  starting while already fighting scheduled no event and gained zero.
+- `mana_reg=+10` changed the helper to 72 but actual ten-tick gain stayed 800.
+  `mana_reg=-30` produced helper +32 and the same 800 actual gain; feeblemind
+  produced helper 1 with the same 800 actual gain.
+- Normal/resting/sleeping/incapacitated/dying statuses all produced helper 24
+  and actual gain 80 over 300 pulses. Meditation at skill 75 reported 1,104
+  while delivering 999 over 300 pulses (nominal callback rate 1,000).
+- At 120/100 vitality, the first decrement was at pulse 61 and changed 120 to
+  100; the helper was -5/tick. Positive refill from 99/100 stopped at 100.
+- Resting/sitting movement at dials 5/1/10: rates 229/458/115 and measured
+  ten-tick gains 2,289/4,579/1,149. One- and four-pulse callback intervals matched.
+- Substituting pre-October-10 callbacks and admission with the current rate functions
+  gave the same observations. This is a controlled callback comparison, not a replay
+  of an old server or proof of the player's historical circumstances.
 
-- Refreshed the complete stack onto master `d6f4d4aa6` while preserving the
-  dependent bases and unrelated changes in the main checkout. #190 carries the
-  rebase and corrected links to the moved investigation; #194 reacquires its
-  session between intentional SQL
-  failures in the seed fixture. Publish each branch with its explicit old-head lease.
-- #191: empty-catalogue diagnostics link to the existing provisioning plan.
-  Every placed stone requires both aligned guardian templates, including neutral
-  and partial states. SQL and flat-file regressions reject each missing template
-  at every alignment, during boot and reload. The original implementation failed.
-- #193: apply and history SQL use the persistent lock-owning session. A real
-  in-flight KILL regression reproduced a write after lock release in the original
-  runner; the repair prevents that write after a competitor acquires the lock.
-  All three engine suites pass the same-session, large-pipe, lock-loss, quiescence,
-  seed/replay/conflict and migration-history cases through migration 0046.
-- #195: all seven controlled Nexus settings are checked against the shipped
-  property file, and seven independent property mutations fail. The capture wallet
-  adapter uses real epic preparation; corrected Marduk/Enlil totals are 1016/1046
-  from a starting balance of 1000. The former bypass fails the corrected assertion.
-- #196: remove the capture guardian before requiring the exact same-side rejection;
-  wait for the server's hum notification with a bounded deadline; reconnect both
-  players after cold restart and compare live epic/coin scores, live ownership
-  listings and guardian prototypes 65/66. These observations strengthen the earlier
-  SQL-only restart checks and guardian-shadowed same-side check.
-- The complete repaired world journey passed with a seven-second pause of its own
-  server during the first cooldown. Cold restart restored live balances of 1024/1049
-  epics and 28492961/28505686 copper for the good/evil fixtures, plus ownership,
-  aligned guardians and dynamic Enlil placement. Expiration and repeated reloads pass.
-  Isolated negative-control binaries fail at the intended assertions when same-side
-  rejection is removed or boot's cached alignments are replaced with neutral values.
-- Current review SQL binary SHA-256:
-  `d73a6343e7f657e0af3fac5084d106fa0f80293921435829db5920d366047f69`.
-  Evidence is retained under ignored `bin/analysis/review/`: the engine/seed matrix,
-  `pr196-delayed-journey.log`, and both `pr196-negative-*.log` files. The positive
-  journey's seven-second pause is an external test wrapper; normal gate behavior
-  has no delay injection or extra configuration option.
-- Current repair checks also pass both server builds, both Nexus ASan/UBSan suites,
-  the flat-file Nexus repository test, 19 migration runner tests, 7 boot-contract
-  tests, migration CLI/invocation checks, formatting, clang-tidy and whitespace.
-  The original three-engine runtime-compatibility fixtures above were not repeated;
-  the current repair reran the full migration/seed matrix and the live MariaDB boot.
-- The last master refresh moved documentation only. A diff against the tested
-  pre-refresh tree confirms identical `src/`, `tests/`, `scripts/`, `migrations/`
-  and `lib/` contents, so the completed runtime results remain applicable.
+`PULSES_IN_TICK=300` and `OPT_USEC=250000` mean a nominal 75-second game tick,
+not one minute. Float accumulation can leave a one-point discrepancy from rate times
+whole ticks; preserve and bound that behavior instead of changing numeric storage.
 
-## Outcome and boundaries
+Also passed during planning: `test_difficulty_dials.py`,
+`test_vampiric_overheal_regen.py`, `test_nevent_catchup_contract.py`, and
+`test_event_loop_hotspots.py`. These establish existing controls, not a completed fix.
+All 14 documentation contracts also passed; the preserved Nexus plan has the same Git
+blob hash as the original. No full server build or live gameplay observation was run
+for this documentation task.
 
-Restore the two selected stones through persistent catalogue data, with working
-placement, guardians, capture, existing rewards, expiration, and restart persistence.
-Provide a repeatable migration, safe no-stat interaction, useful failure diagnostics,
-and executable evidence before the separately authorized production rollout.
+## PSP contract to implement
 
-These are accepted design decisions, not recovered historical facts:
+Keep the current `mana_regen(P_char, bool display_only)` interface and express all
+rates in resource points per game tick. Use the following order, with explicit
+integer truncation at the same base conversion as the callback:
 
-- Marduk: ID **1**, name `Marduk`, stored/active room **130199**, bonus **1** (epics).
-- Enlil: ID **3**, name `Enlil`, stored room **130399**, bonus **3** (cargo). Keep
-  `nexus_to_cyrics_revenge=true`; actual placement is Cyric's Revenge interior
-  **slot 7**, resolved on each boot. Missing ship means load failure, never fallback
-  placement in 130399.
-- New rows start with `align=0`, `last_touched_at=NULL`, `stat_affect=0`
-  (`APPLY_NONE`), and `affect_amount=0`. Zero is an explicit value, not a nullable
-  field or the schema's legacy -1 default. Existing ownership/timestamps survive
-  every retry and replay.
-- Retain checked-in 11% epic/cargo rates, 12-day expiry, 300-second touch cooldown,
-  and 3,600-second turn cooldown. Preserve minimum/rounding rules, ordinary turn
-  payouts, Enlil's capture multiplier, and epic-task/boon completion. No sage/stat
-  benefit is enabled for these rows.
+1. Return zero for dead, dying or incapacitated status, active fighting, or the
+   existing vulnerable-sun condition (honoring twilight and Globe of Darkness).
+   Apply these gates before over-cap handling and bonuses; neither a positive
+   modifier nor a stale meditation flag may restore recovery. Apply the same
+   eligibility to staff display. Do not broaden sunlight exemptions incidentally.
+2. For eligible characters above maximum, retain the helper's gradual PSP decay:
+   `min(-1, (max_mana - mana) / 5)`. Do not multiply this negative rate by recovery.
+3. Otherwise calculate the existing callback base for PCs and NPCs:
+   `int((POW + INT) / 2.5)` normally, `int((POW + INT) / 0.2)` with meditation.
+   Preserve that expression's truncation; do not revive the old level/race base or
+   add `5 + meditation_skill` on top of the already accelerated meditation base.
+   The existing skill prerequisite and advanced-meditation side effects remain.
+4. Apply feeblemind's explicit quarter-rate reduction to the nonnegative base,
+   then status: sleeping doubles it; resting adds half (integer division).
+   Posture alone does not change PSP. Add `points.mana_reg` once as a signed,
+   flat points-per-tick adjustment. This makes the formerly bypassed modifiers
+   effective without restoring the abandoned quadratic balance curve.
+5. Call `difficulty_scale_player_regen()` once on the resulting signed rate.
+   Positive player recovery is scaled; zero/negative and NPC rates remain unchanged.
+   There is no final square, so stronger negative modifiers cannot turn a drain
+   into a gain. A modest negative modifier may still leave positive net recovery.
+6. At exactly full PSP, suppress a positive rate for actual scheduling/recovery;
+   `display_only=true` reports its potential rate. A true negative net rate may
+   drain from full. At zero PSP, stop negative drain and clamp a decrement to zero
+   if accumulated credit would cross it. Do not schedule a zero/blocked rate.
 
-Antu/Ningishzida, balance changes, hot catalogue refresh, a new persistence system,
-historical mapping recovery, persistent cooldown redesign, and general ship changes
-are excluded. Shared code must continue to support the flat-file backend. Production
-SQL, migrations, restarts, and gameplay checks require explicit deployment authority.
+For POW=INT=100 and neutral difficulty, this contract yields a normal unmodified
+rate of 80; resting 120; sleeping 160; normal meditating 1,000; and resting
+meditating 1,500. Normal `mana_reg=+10/-30/-100` gives 90/50/-20; feeblemind alone
+20. Dials 1/5/10 give 160/80/40 for the unmodified normal PC and leave an equivalent
+NPC at 80. These are **planned expectations**, not measurements of fixed code.
 
-## Baseline findings that motivated implementation
+Rest/sleep bonuses, feeblemind, signed equipment modifiers, sunlight/combat suppression
+and positive difficulty scaling deliberately change affected recovery. Preserving
+POW/INT does not mean every previously inconsistent rate remains unchanged. Record
+these effects in the implementation PR and codebase documentation.
 
-The issue is a requirement source, not proof of the following behavior.
+## Implementation work items
 
-1. **Missing data explains the reported symptom, but current production is unverified.**
-   The [dated investigation](../records/nexus-stones-109-investigation.md) records an October 16
-   read-only zero-row query and two empty backup sections. This planning pass did not
-   reconnect to that database or match it to the running process. The MySQL staff
-   message describes the empty in-memory vector, not an independent SQL diagnosis.
-   The [loader](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L200-L257) reads/caches rows at
-   boot; reset/reload at lines 1496-1588 do not requery SQL. A controlled restart is
-   the existing activation mechanism.
+### RG-01 — Unify PSP policy, application and display
 
-2. **The selected data is supported, not already provisioned.**
-   [Constants](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.h#L38-L68) define IDs 1/3, bonus types,
-   object 394, guardians 65/66/74, and mace 395. Rooms are present in
-   [nexus_ic.wld](../../areas/wld/nexus_ic.wld#L2760) and
-   [nexus_island.wld](../../areas/wld/nexus_island.wld#L2405); their existence does
-   not prove the historical mapping. The modern
-   [bootstrap](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/migrations/bootstrap_multithread_safe.sql#L773-L784) creates
-   **InnoDB** with NOT NULL integer stat fields and no rows. The legacy bootstrap
-   used MyISAM. Do not assume that the target is MyISAM or claim a transaction can
-   undo writes to an unverified target engine. This repair adds data, not an engine
-   conversion or a schema-default change.
+- [ ] Implement the ordered contract in `mana_regen()`, replacing the obsolete
+  base/square and unreachable switch; remove abandoned commented formula code in
+  this function only. Update its misleading minute/hour comment.
+- [ ] Replace the callback's POW/INT expression with `mana_regen(ch, false)`.
+  Keep `regen_event_state`, elapsed pulses, fractional remainder, player/NPC delays,
+  GMCP updates, psionicist full-reserve message and `stop_meditation()` behavior.
+- [ ] Apply the max cap only to positive PSP increments; allow gradual over-cap
+  negative decay and stop/clamp negative net drain at zero. Base full-resource
+  admission on the computed rate rather than the sign of `mana_reg` alone.
+- [ ] Keep `StartRegen()` deduplication and NPC first-event staggering. Staff
+  `stat` should agree automatically through the shared helper, with the documented
+  full-resource potential-rate exception; no parallel display calculation.
+- [ ] Add native regression cases for the real helper, admission and callback:
+  dials 1/5/10; varied POW/INT including fractional base truncation; PC/NPC;
+  positive/zero/negative modifiers; feeblemind; sunlight/twilight/globe;
+  every listed status crossed with posture; incapacitation/dying plus bonuses;
+  meditation entry/exit; and reaching full with exactly one completion message.
+- [ ] Prove idle-to-combat and already-in-combat both gain zero, including an
+  already accumulated fractional remainder and a delayed callback. Rechecking the
+  current rate must prevent credit while blocked. On restart use a fresh state,
+  so blocked elapsed time is not credited later.
+- [ ] Cover full/over-full/zero PSP, positive capping, signed drain and full ->
+  actual `use_spell()` expenditure -> one scheduled recovery event. Preserve
+  duplicate-start suppression and normal NPC recurrence/staggered elapsed credit.
 
-3. **No-stat needs a real guard despite disabled automatic sages.**
-   [Ask/train](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L1074-L1211) dereference
-   `char_stat()` before checking it; [char_stat](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/core/utility.c#L5991-L6036)
-   returns NULL for 0, -1, and unsupported apply codes. The training callback already
-   checks the pointer. `affect_amount` is transported as data but does not disable
-   training, which uses `nexusStones.sage.statAdd`. Automatic `load_sage` calls are
-   commented out; do not reactivate them. A synthetic/manual sage can still reach
-   the command handlers, so test those handlers directly.
+### RG-02 — Preserve gradual movement decay
 
-4. **Neutral guardian cleanup is broken; neutral combat is not part of this repair.**
-   `IS_NEXUS_GUARDIAN` excludes 74. Lookup, reset, reload and expiration use it;
-   `load_guardian()` does create 74 at neutral alignment. Repeated neutral reloads
-   therefore leave a previous guardian while adding another. Touch's room scan
-   already blocks on 65/66/74. Preserve the existing combat procedures instead of
-   assigning a new neutral combat special as a side effect of fixing recognition.
-   Partial alignments -2/-1/+1/+2 intentionally load **no guardian**; an acceptance
-   check requiring a guardian for every row would be wrong.
+- [ ] Mirror HP's positive-increment-only max clamp in `event_move_regen()`.
+  Leave `move_regen()` arithmetic, posture properties, difficulty settings,
+  CTF conditional bonus, and event cadence unchanged.
+- [ ] Add a regression that fails on the current first nonzero decrement:
+  120/100 must become 119, not 100, with the existing -5/tick initial rate.
+  Continue to show progressive decay and normal 99/100 -> 100 positive capping.
+- [ ] Exercise one-pulse and delayed callbacks using the same real accumulator;
+  verify signed movement rates and that the full-resource exit optimization remains.
+  Preserve representative neutral standing/resting/sleeping rates 80/229/632 for
+  the fed/hydrated ordinary-player fixture without buffs, endurance or epic bonuses.
+  Negative/NPC rates must stay independent of the player recovery dial.
+- [ ] Trace one actual vitality-granting producer through the full-world journey
+  or an executable producer fixture, then end combat and start recovery through
+  a real command such as rest. A directly seeded 120/100 fixture alone does not
+  prove producer reachability or automatic over-cap recovery after combat.
 
-5. **Load logs currently overstate success.**
-   [init/load](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L178-L257) assigns prototype callbacks
-   without guarding failed `real_mobile`/`real_object` lookups. The stone loader logs
-   success before guardian creation, ignores its return value, and returns true.
-   `load_guardian()` also logs before it has created a mob. Missing required templates
-   must be covered at initialization and placement, not just by counting SQL rows.
-   SQL stops at its first bad row and may retain a valid loaded prefix. Do not
-   describe that as complete recovery or add unrelated all-or-nothing catalogue
-   machinery to hide it.
+### RG-03 — Integrate and qualify the real lifecycle
 
-6. **Ship ordering exists; ship availability is not guaranteed.**
-   `boot_db()` calls [initialize_ships](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/ships/ship_base.c#L552-L584) before
-   `init_nexus_stones()` in [comm.c](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/net/comm.c#L894). Enlil's
-   [override](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L1301-L1309) and
-   [slot resolver](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/ships/ship_npc.c#L2042-L2045) are already implemented.
-   `load_cyrics_revenge()` can fail its bounded ocean search, ship setup, creation,
-   or room loading. The plan adds diagnosis and tests, not another ship spawner.
+- [ ] Run the focused sanitized test and the existing controls below. The new test
+  must compile actual source functions; do not validate a copied Python formula.
+  Reuse existing harness stubs; add no general-purpose regen framework.
+- [ ] Run formatting checks and the required server build after C/C++ edits.
+- [ ] In a verified local/dev environment, use an isolated test character to
+  compare staff `stat` and accumulated PSP at neutral and changed recovery dials,
+  holding stats, effects and elapsed pulses fixed. Include psionicist meditation
+  completion and a mindflayer resource-spending/restart control.
+- [ ] Exercise combat entry while a regen event is pending, no recovery in combat,
+  combat exit, and periodic restart within the existing next eligible player
+  `affect_update()` tick (nominally up to 75 seconds). Also cover zero-to-positive
+  modifier changes and recovery after leaving a suppressing state. If the real
+  journey fails to restart, fix that specific existing caller and add a regression.
+- [ ] Confirm full-resource event termination, no duplicate callback chains, NPC
+  cadence, and elapsed-pulse catch-up through the real scheduler. One/four-pulse
+  steady-state gains should agree within the measured float remainder tolerance;
+  state changes use the rate at callback execution, without adding state history.
+- [ ] Update CODEBASE, REGRESSIONS and this plan with exact tested revision,
+  commands, results and any remaining acceptance gaps. Publish cohesive code/test
+  changes for review; retain other repository review requirements. Do not wait for
+  hosted CI when the required local proof is available.
 
-7. **Existing consumers already select catalogue-backed rewards/objectives.**
-   [check_nexus_bonus](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L281-L355) requires full
-   control and matching racewar, then uses the property rate with integer truncation
-   and its minimum. [gain_epic/PvP calculation](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/world/epic.c#L580-L608)
-   and [normal/contraband cargo sales](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/ships/ship_shop.c#L1084-L1088)
-   already call it; epic bottles remain excluded. `get_random_enemy_nexus()` selects
-   configured IDs and resolves a live object; `boon.c` validates the configured ID.
-   No new hard-coded two-ID task selector is needed. Keep existing task probabilities
-   and faction rules. Check the live reward paths, not just the bonus helper.
+Suggested implementation split: RG-01 with its tests, RG-02 with its tests, then
+RG-03 evidence and any demonstrated integration repair. These are checklist items
+under #57, not separate issues or an obligation to create extra PRs.
 
-8. **Migration integration has requirements missing from the issue's sketch.**
-   [run_pending](../../scripts/migration_runner.py#L331-L349) applies SQL, runs the
-   verifier, then records success. A post-apply verifier is too late to provide
-   the promised no-write conflict preflight. The apply SQL itself must check both
-   target rows before either insert. The
-   [0010 procedure/SIGNAL pattern](../../migrations/immutable/0010_coin_custody_payload.sql)
-   already supplies a portable way to reject incompatible data before writes.
-   A new head also requires the runtime manifest, compiled header and checksums;
-   changing only the migration manifest makes the database and binary disagree.
+## Validation commands and completion
 
-9. **Default migration locking is not durable for the operation.**
-   [acquire_lock/sql](../../scripts/migration_runner.py#L444-L479) holds a persistent
-   client only for the special online modes. The normal path invokes one-shot
-   `mysql -e GET_LOCK`, whose session exits before apply/verify/record. Its own code
-   comment identifies that lifetime problem. Existing tests cover the online client,
-   not exclusion between two normal runners. The issue's “serialize through the
-   existing workflow” therefore needs a small runner repair, not an assumption.
-
-## Implementation sequence
-
-Keep these work items on the issue branch. Each needs its focused proof before
-claiming completion; do not count publication of this plan as implementation.
-
-### NS-01 — Safe no-stat handling and neutral lifecycle (locally complete)
-
-Files: [nexus_stones.c](../../src/economy/nexus_stones.c),
-[nexus_stones.h](../../src/economy/nexus_stones.h), and focused native regression
-coverage under `tests/async/`.
-
-- In ask/train, resolve the stat pointer once and return a handled, clear
-  no-training response if NULL, before reading the stat, indexing names, displaying
-  a purchase offer or submitting an epic transaction. Do not use `affect_amount`
-  as a new training switch. Preserve valid legacy stat training/callback behavior.
-- Include neutral guardian 74 in the existing guardian predicate. Retain per-stone
-  tag matching in lookup/reload/expiry and global reset semantics. Do not change
-  guardian stats, equipment, specials, or touch/capture balance.
-- Compile the actual handlers and lifecycle paths with the real header, using the
-  existing harness stubs. Test 0, -1, unsupported positive apply, and supported-stat
-  controls. Assert unchanged stats/epics and zero transaction submissions on refusal.
-- Exercise two stone IDs together: lookup, repeated neutral reload/reset, expiry
-  and non-target guardian retention. Cover 0/+3/-3 guardian states and guardian-free
-  partial states. ASan/UBSan must detect an unsafe dereference/lifetime regression.
-
-Exit: no-stat commands are safe, supported training remains functional, and each
-operation leaves only the intended stone and guardians without affecting its peer.
-
-### NS-02 — Honest loading and diagnostics (locally complete)
-
-Files: `src/economy/nexus_stones.c` and the same focused Nexus runtime harness.
-
-- Guard prototype lookups before assigning callbacks. Missing stone or required
-  guardian templates must produce a named failure instead of invalid indexing.
-  Keep optional sage spawning disabled; guarding its existing callback assignment
-  must not add a dependency on spawning sages.
-- Resolve Enlil's ship slot before creating its stone. Report stone ID and missing
-  ship/invalid resolved room explicitly. Never use 130399 as a missing-ship fallback.
-- For states needing a guardian, make placement fail if it cannot be created;
-  remove the just-created stone on that failure. Move successful placement messages
-  after successful creation. Partial alignments still succeed without a guardian.
-  Preserve existing mace behavior; missing mace is already an error and fails the
-  rollout's template/equipment verification, not a reason to invent new equipment.
-- Preserve valid prefix behavior on a later load failure, but report which row
-  failed and that the catalogue is incomplete. Missing/null row fields, invalid ID,
-  empty name, out-of-range alignment/bonus, SQL query/result failure, invalid room,
-  and object/guardian failures need distinguishable messages. Respect the SQL
-  integer schema and existing flat-file validation; no general parsing framework.
-- On normal initialization, a successful zero-row load emits one warning explaining
-  that Nexus gameplay is unavailable and pointing to the provisioning/runbook.
-  Keep its successful return in SQL and flat-file worlds; do not make empty worlds
-  fatal. Do not add recurring warning spam to periodic events or resets.
-- Propagate/report failed reset/reload placement instead of announcing success.
-  Do not make these commands refresh the SQL catalogue or add automatic retries.
-
-Exit: a successful placement means the required world entities actually exist;
-empty configuration and failed loading remain different, observable states.
-
-### NS-03 — Serialized, insert-only migration and compatible runtime head (locally complete)
-
-Files: [migration_runner.py](../../scripts/migration_runner.py), its existing tests,
-one new `migrations/immutable/NNNN_nexus_phase1.sql` and executable `.sh` verifier,
-[migration_manifest.json](../../migrations/migration_manifest.json),
-[runtime_compatibility_manifest.json](../../migrations/runtime_compatibility_manifest.json),
-[runtime_compatibility_contract.h](../../src/core/runtime_compatibility_contract.h),
-and the two persistence contract documents. This branch now uses **0046** after
-refreshing master at head 0045. Recheck sequence availability when integrating a
-newer master; never modify another applied migration to resolve a collision.
-
-1. Reuse the runner's existing persistent lock-client path for ordinary runs as
-   well as reviewed online modes. Hold it through baseline/prefix validation,
-   apply, verification and history recording; fail if it dies. Record that exact
-   connection ID and exclude only it and the probing connection from the ordinary
-   production quiescence check. Other connections must still block the normal
-   production path. Retain target confirmation, allow-list, backup, TLS and all
-   existing online-mode restrictions. Do not add a Nexus online mode or lock service.
-2. Add SQL preflight for both selected IDs, before either insert, using the existing
-   short procedure/SIGNAL approach. Compare exact name, stored room, stat fields,
-   and bonus, including a reserved stone name assigned to another ID. Reject a
-   conflicting row with an identifiable ID/field; do not turn
-   a missing counterpart into a partial write on a known conflict. Validate existing
-   alignment is within -3..3; preserve valid alignment/touch state, including NULL.
-3. Insert only the missing rows with the selected values. Preserve all unrelated
-   IDs. Existing matching rows are no-ops even after play; a retry after an interrupted
-   first insert adds only the missing row. No REPLACE, broad UPDATE, schema/default
-   rewrite, or duplicate-ignoring statement that conceals a conflict. Clean up the
-   migration-owned temporary routine on success and make its failed-run retry safe.
-4. The verifier checks both canonical rows and valid state, without demanding
-   neutral alignment/NULL timestamps or a global count of two on an unrelated
-   populated database. An actual Phase 1 rollout separately requires exactly 1/3.
-   It reports incompatibility without rewriting data. Replay of an already recorded
-   migration does not run its verifier: run it explicitly in drift tests and rollout.
-5. Seal apply/verify hashes and update the runtime head/history checksum in both
-   contract files. Reuse
-   [telemetry_rollup_schema_mysql.py](../../tests/async/telemetry_rollup_schema_mysql.py)
-   for its contract updater. Retain structural fingerprints for this data-only step
-   and verify them with fresh disposable-engine runtime gates; the historical full
-   telemetry script has a task-specific setup unrelated to this seed. Never copy
-   metadata from production. Investigate any unexpected structural drift.
-   Do not edit existing immutable payloads or their hashes.
-
-Exit: fresh and upgraded databases reach the same new head, concurrent runners
-cannot overlap the operation, conflicts produce no catalogue write/history advance,
-and a successful replay preserves player-influenced state.
-
-### NS-04 — Automated qualification and test registration
-
-Extend existing fixtures where they exercise the actual behavior. The current
-flat-file harness proves storage/selected reward helpers; it does not boot the world
-or exercise sages/guardian cleanup. The empty-table test is a source contract, not
-an executable SQL loader test. Add a focused real-source Nexus harness for the missing
-paths instead of counting those existing tests as proof. Keep generated binaries and
-reports under `bin/`; never consume the checkout's `.env` in isolated tests.
-
-Required executable cases:
-
-- SQL and flat-file loader success with IDs 1/3; successful empty load with a warning;
-  SQL query/result failures; malformed rows; each placement failure; missing ship;
-  a good first row followed by failure. A failed row creates no stranded stone.
-- NS-01 stat controls and complete guardian lifecycle, with assertions on side
-  effects and object/guardian counts, not copies of the implementation's predicates.
-- Migration on **MySQL 8.0, MariaDB 10.11 and MariaDB 11.8**: empty table, each
-  row alone, both rows, changed alignment/time, partial prior apply, each static
-  conflict, and unrelated rows. Check preserved bytes/values and failed/successful
-  ledger state. Run the real apply twice as well as runner replay; those are
-  different paths. Test verifier drift directly and incompatible preflight before
-  any insert. The supported bootstrap is InnoDB; any claimed legacy MyISAM support
-  also needs an explicit fixture and no rollback assumptions.
-- Two real normal runners competing for the advisory lock; release and lock-client
-  loss; ordinary production quiescence excluding only its own lock connection;
-  existing reviewed online-mode guards. Extend
-  [test_immutable_migration_runner.py](../../tests/async/test_immutable_migration_runner.py)
-  and the disposable engine runner, rather than relying only on mocked call order.
-- Full-control bonus calculations for good and evil, negative cases for the other
-  side/neutral/partial control, integer/minimum cases, and zero stat effects.
-  Exercise epic-award and both normal/contraband cargo-sale call paths; preserve
-  the epic-bottle exclusion. Test only-configured Nexus task selection and boon IDs.
-
-Register new database/journey legs in [run_db_tests.sh](../../tests/run_db_tests.sh);
-keep argument-requiring journeys out of argument-free regression discovery. Reuse
-the [disposable MariaDB wrapper](../../tests/async/with_disposable_mariadb.sh) and
-existing journey client/runtime helpers. Label new test filenames as proposed until
-implemented, and record their final commands here.
-
-Run after relevant edits:
+Run the new focused test once it exists, then the relevant existing controls:
 
 ```sh
-python3 tests/async/test_nexus_stones_empty_table.py
-python3 tests/async/test_flatfile_nexus_repository.py
-python3 tests/async/test_immutable_migration_runner.py
-python3 tests/async/run_migration_runner_engines.py
-tests/async/run_runtime_compatibility_mysql.sh
-RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
-RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+python3 tests/async/test_psp_move_regen.py
+python3 tests/async/test_difficulty_dials.py
+python3 tests/async/test_vampiric_overheal_regen.py
+python3 tests/async/test_nevent_catchup_contract.py
+python3 tests/async/test_nevent_regen_death_contract.py
+python3 tests/async/test_nevent_scheduler_runtime.py
+python3 tests/async/test_player_event_timing_contract.py
 ./scripts/format.sh --check
 make -C src
-make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/issue109-flat"
+python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Also run the new native/migration cases and NS-05 journey at the final reviewed
-source tree. Follow [TESTING.md](../guides/TESTING.md) for fixture integration. Use
-the smallest relevant check while iterating; do not claim `make test-all` or
-`make test-db` passed from individual legs. Hosted CI is reported separately and
-does not replace local proof or require waiting to finish this work.
+Use ASan/UBSan in the native regression, following the existing HP regression.
+For source controls, distinguish text assertions from executable scheduler proof.
+The local gameplay journey is a separate gate from these commands; document its
+fixture, actual entry points, elapsed pulses, resource changes and observations.
+Restore test-only runtime settings after the journey. Read only `ENVIRONMENT` first
+before choosing a server target, and keep credentials and player records private.
 
-### NS-05 — Full-world staging and persistence journey
+Issue acceptance maps directly to the work above:
 
-Use an isolated SQL database and full world, with independent accounts/characters,
-ports and generated outputs. Reuse the setup/client conventions of
-[world capture](../../tests/async/test_mysql_world_capture_journey.py) and
-[epic training](../../tests/async/test_mysql_epic_training_journey.py), not their
-current passing results as proof of Nexus gameplay. Create one focused Nexus journey
-if these fixtures cannot directly host the scenario; register it as above.
+- Consistent PSP formula/eligibility/modifiers/dial/display and restart: RG-01 + RG-03.
+- Correct status behavior through actual callbacks: RG-01's status/bonus matrix.
+- Gradual over-cap movement and ordinary capping: RG-02 + producer journey.
+- Preserved elapsed catch-up, neutral movement and optimizations: RG-02 + RG-03.
 
-1. Verify backend, new migration head, schema, selected catalogue, actual properties,
-   rooms, prototypes 394/395 and 65/66/74, and Cyric's Revenge setup. Start normally;
-   capture both successful load logs. Staff `nexus` must list only Marduk/Enlil.
-   Inspect Marduk at 130199 and Enlil at the logged dynamic ship VNUM, with no
-   Enlil object at the stored placeholder.
-2. Use non-staff level-51+ good/evil characters. Prove guardian presence blocks
-   touch, defeat allows progression, and full capture produces the correct guardian,
-   rewards and +3/-3 ownership. Include low-level/neutral/same-side rejection.
-   Staff may arrange fixture state but must not be the actor proving cooldowns.
-   Use a controlled clock in native tests for exact 300/3,600-second boundaries;
-   the journey proves real command wiring with recorded fixture timing settings.
-3. Measure ordinary eligible epic gain and normal/contraband cargo sale deltas on
-   the owning and opposing sides, before/after full control. Isolate other reward
-   modifiers. Verify no bonus from neutral/partial states, existing turn payouts
-   (including Enlil's multiplier), appropriate task completion and boon completion,
-   and no stat gains/sage spawning.
-4. Set controlled persisted touch timestamps while the isolated server is stopped,
-   then boot: verify nonzero alignments expire only beyond the configured threshold,
-   return to neutral with cleared touch time, lose their passive bonus and have
-   one neutral guardian. NULL/zero touch timestamps do not expire a new row.
-5. Capture partial and full alignments, wait for durable SQL writer completion,
-   record SQL values, perform a clean stop/cold start, and compare them. Re-resolve
-   the ship room; its VNUM need not remain constant. Verify no duplicate objects or
-   guardians, including normal configured world-recovery startup if enabled.
-   Restart resets transient stone timers/hum state today; preserve that behavior.
-   Do not claim abrupt-crash durability from a clean restart or enqueue success.
-6. Rehearse the missing-ship and failed-placement cases in the isolated fixture and
-   repeat neutral resets/reloads. Diagnose the failure without fallback placement
-   or a false complete-success report. Do not add ship respawn/lifecycle redesign.
+Do not close #57 on publication of this plan. Completion requires the implementation
+and the above local behavior evidence, plus review/merge when separately requested.
+Production deployment or production acceptance is separate and needs owner permission.
+No migration or full repository burn-in is justified by this change alone.
 
-Exit: both stones meet the gameplay and persistence checks on the same tested
-revision. Record exact commands, engine/backend, effective settings, row snapshots,
-logs and observed reward deltas in the handoff; keep credentials/player data private.
+## Ablation decisions
 
-### NS-06 — Handoff, deployment and issue closeout
+Keep one existing rate helper and the existing event payload; each supplies an
+explicit acceptance requirement. Keep the small PSP boundary/status additions because
+making the helper authoritative exposes them. Reuse HP's directional-cap pattern.
 
-Update [the investigation](../records/nexus-stones-109-investigation.md) with a dated resolution
-section linking this plan/results; retain its historical query and backup limits.
-Update the migration/runtime contract docs for the new head. Before publication,
-refresh master and resolve relevant drift, run affected checks, and publish a focused
-implementation PR linked to #109. Do not merge or deploy merely because this plan
-branch exists. Keep #109 open through production acceptance.
+Drop the tempting one-line callback substitution: it would replace the deliberately
+selected POW/INT balance with the old quadratic formula. Drop a selector-only status
+fix: later bonuses could undo it. Drop new tuning knobs, a shared four-resource
+framework, new event cancellation machinery, numeric-accumulator rewrites, unrelated
+HP/ward cleanup and a rollback of October's optimizations; no requested outcome needs
+them. Preserve the previous plan rather than discarding its unrelated acceptance work.
 
-Before an authorized rollout, match the actual process, executable revision, backend
-and database; query current schema/rows and effective tuning. Unexpected entries or
-conflicting values require explicit reconciliation, never deletion to satisfy a count.
-Retain a verified restorable backup plus before/after Nexus snapshots and the exact
-set of newly inserted IDs. Build and prepare while service remains available.
+## Estimate and publication handoff
 
-The ordinary migration runner currently requires other database connections to be
-stopped; special online allow-lists do not cover this new seed. Plan a controlled
-maintenance/restart window for this existing path, after preparation and explicit
-owner approval. Do not bypass quiescence or reuse an unrelated online flag. Apply,
-verify the seed and runtime contract, then boot the matching binary. Record the
-deployed revision, migration receipt, SQL rows, both load logs, staff listing and
-authorized gameplay/restart smoke results. Close #109 only after both stones pass.
+Estimate: **12-20 focused engineering hours, about 2-3 working days for one engineer**.
+Allow 4-6 hours for PSP policy/application and its matrix, 1-2 for movement and its
+producer/decay tests, 5-9 for sanitized integration, build and local gameplay journeys,
+and 2-3 for documentation, review repairs and publication.
+12-20 is a planning range, not a measured delivery promise. External review waits and
+production scheduling are excluded. A demonstrated restart defect may add 2-4 hours;
+record its evidence before expanding scope.
 
-Rollback must account for the immutable ledger and cached rows:
-
-- Before success is recorded, preserve the failure evidence and retry the guarded
-  seed or restore only its newly inserted rows from the recorded snapshot with
-  writers stopped. Do not overwrite pre-existing legitimate state.
-- After the new head is recorded, **an old binary is not automatically compatible**:
-  boot checks the exact migration head/checksums. Prefer a forward correction using
-  the compatible binary/ledger. Never delete or forge history to make an old binary
-  boot. A full downgrade needs a separately reviewed matching database/ledger backup
-  restore and accounting for all intervening writes; it is not a two-row undo.
-- Any authorized targeted data rollback first saves current Nexus state, stops
-  writers, preserves unrelated rows, and restarts to clear the cache. Verify actual
-  catalogue/world agreement afterward and record the intentionally disabled or
-  restored state. Rollback is not successful Phase 1 acceptance.
-
-## Completion map and current evidence
-
-- [x] Issue requirement 1, safe durable provisioning: NS-03 and the three-engine NS-04 cases.
-- [x] Issue requirement 2, no-stat sages: NS-01 and its executable NS-04 cases.
-- [x] Issue requirement 3, neutral guardian lifecycle: NS-01, NS-04 and NS-05.
-- [x] Issue requirement 4, empty/error/ship diagnostics: NS-02 and NS-04/NS-05.
-- [x] Issue requirement 5, tests and maintained handoff: NS-04 through NS-06.
-- [x] Staging catalogue/placement: NS-05.1; capture/rewards: NS-05.2-3;
-  expiration/restart: NS-05.4-6.
-- [ ] Target verification, backup, deployment approval, production proof and closure:
-  NS-06. All remain required after local implementation.
-
-Planning baseline checks run on the inspected revision (2026-10-18):
-
-- `python3 tests/async/test_nexus_stones_empty_table.py`: passed its source contract.
-- `TMPDIR="$PWD/bin/tests/issue109-plan" python3 tests/async/test_flatfile_nexus_repository.py`:
-  passed the compiled repository/runtime-helper harness and preprocessing checks.
-- `python3 tests/async/test_immutable_migration_runner.py`: 19 tests passed; this
-  includes the existing online-lock test, not proof of normal-runner exclusion.
-
-No full server build, disposable database integration, new runtime regression,
-gameplay journey, production query or operational change was run for the original plan.
-The source-derived failure paths above require executable reproduction during the
-listed work items. These baseline passes do not prove the proposed fixes.
+The branch is based on refreshed `origin/master` and linked natively to #57 through
+GitHub's Development section. RG-01/02/03 remain work items in this file. The initial
+commit uses `Refs #57`, not a closing keyword. Only this plan and the unchanged Nexus
+plan copy belong in the planning commit. Verify remote commit equality, upstream
+parity and a clean working tree after push; keep #53/#56/#106 closed and unchanged.
