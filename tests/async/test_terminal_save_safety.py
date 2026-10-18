@@ -110,11 +110,11 @@ checks["flat terminal saves queue except the first baseline"] = all(
 
 # Ghost extraction shares one fail-closed terminal-save helper across the named
 # and bulk command paths, and extraction remains ordered after that save gate.
-actwiz = read("actwiz.c")
+ghost_extract = extract_function("actwiz.c", "static void extractlink_attempt(P_char ch")
 checks["ghost extraction gate"] = (
-    actwiz.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 1
-    and actwiz.index("persistence_save_character_terminal(vict, RENT_LINKDEAD)")
-    < actwiz.index("extract_char_after_terminal_save(vict)")
+    ghost_extract.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 1
+    and ghost_extract.index("persistence_save_character_terminal(vict, RENT_LINKDEAD)")
+    < ghost_extract.index("extract_char_after_terminal_save(vict)")
 )
 
 # Every logout writes a log_entries row through sql_log(). The MariaDB build queues
