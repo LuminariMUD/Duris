@@ -1,6 +1,6 @@
 # Issue #57: consistent PSP regeneration and gradual movement decay
 
-Status: RG-01 implemented and locally verified; RG-02 and RG-03 remain in progress.
+Status: RG-01 and RG-02 implemented and locally verified; RG-03 remains in progress.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
 Base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
@@ -47,8 +47,18 @@ Passed on the RG-01 source changes based on `38c0de994`: `test_psp_move_regen.py
 (ASan/UBSan), `test_player_event_timing_contract.py`, and `make -C src -j8`.
 Build output is ignored at `bin/analysis/issue57-plan/rg01-build.log`.
 
-Next: publish RG-01 for review, then stack the directional movement fix and producer
-fixture (RG-02). Finish with an isolated local full-server journey (RG-03), using a
+RG-01 is published as [PR #201](https://github.com/LuminariMUD/Duris/pull/201),
+head `b1454ab8db2cd986efee99d52737007b667599d0`, with exact remote parity and clean
+working tree verified. RG-02 is on `branch/issue-57-movement-decay`, based on that
+head. Its only production edit makes the movement upper cap conditional on a positive
+increment. The expanded ASan/UBSan test executes `spell_restore_spirit()` twice in
+combat to produce 120/100 vitality, then clears combat and executes `do_rest()`:
+the first decrement at pulse 61 leaves 119. Damage/saves are stubbed; the producer,
+rest, admission, rates and accumulator are real. It also proves progressive decay,
+99/100 capping, one/four-pulse equivalence, neutral 80/229/632 movement rates and
+NPC/negative dial independence. Both normal and flat-file server builds passed.
+
+Next: publish RG-02 stacked on #201. Finish with an isolated local full-server journey (RG-03), using a
 fresh flat-file build and disposable accounts/runtime settings. `.env` was read only
 for `ENVIRONMENT=local`; no shared server is running. Actual meditation commands,
 staff display, combat-exit periodic restart and the production event queue remain
@@ -237,18 +247,19 @@ these effects in the implementation PR and codebase documentation.
 
 ### RG-02 — Preserve gradual movement decay
 
-- [ ] Mirror HP's positive-increment-only max clamp in `event_move_regen()`.
+- [x] Cap positive gains and clamp delayed surplus decay when it crosses the maximum
+  in `event_move_regen()`, preserving ordinary negative recovery below the maximum.
   Leave `move_regen()` arithmetic, posture properties, difficulty settings,
   CTF conditional bonus, and event cadence unchanged.
-- [ ] Add a regression that fails on the current first nonzero decrement:
+- [x] Add a regression that fails on the current first nonzero decrement:
   120/100 must become 119, not 100, with the existing -5/tick initial rate.
   Continue to show progressive decay and normal 99/100 -> 100 positive capping.
-- [ ] Exercise one-pulse and delayed callbacks using the same real accumulator;
+- [x] Exercise one-pulse and delayed callbacks using the same real accumulator;
   verify signed movement rates and that the full-resource exit optimization remains.
   Preserve representative neutral standing/resting/sleeping rates 80/229/632 for
   the fed/hydrated ordinary-player fixture without buffs, endurance or epic bonuses.
   Negative/NPC rates must stay independent of the player recovery dial.
-- [ ] Trace one actual vitality-granting producer through the full-world journey
+- [x] Trace one actual vitality-granting producer through the full-world journey
   or an executable producer fixture, then end combat and start recovery through
   a real command such as rest. A directly seeded 120/100 fixture alone does not
   prove producer reachability or automatic over-cap recovery after combat.

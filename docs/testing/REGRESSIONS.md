@@ -11,7 +11,12 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
-## PSP policy and callback consistency (#57)
+## PSP consistency and gradual movement decay (#57)
+
+Delayed surplus movement decay also stops at the maximum: after 120/100 becomes
+119/100 at pulse 61, a 1,200-pulse callback delay must leave 100/100. Negative
+equipment recovery below the maximum still drains normally. The native sanitizer
+regression covers both cases at recovery dials 1, 5 and 10.
 
 `python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
 functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
@@ -27,6 +32,14 @@ combat state are seeded; this test does not claim command reachability, a full-w
 journey or production scheduler integration. Those remaining gates are tracked in
 `docs/ongoing-projects/plan.md`. Existing difficulty, HP decay, tick spreading and
 sanitized scheduler runtime controls also pass with the consolidated PSP policy.
+
+The same harness executes `spell_restore_spirit()` to grant 20 surplus vitality in
+combat, then `do_rest()` after combat to admit recovery. At 120/100, the first
+decrement at pulse 61 must leave 119, and later decrements approach 100 progressively.
+It preserves positive 99/100 capping, full-event termination, signed/NPC rates and
+neutral fed/hydrated standing/resting/sleeping rates 80/229/632, with one- and
+four-pulse callbacks. Spell damage and saving throws are stubbed; the vitality grant,
+rest command, rate and callback are actual source functions.
 
 ## Combined log-review integration qualification
 
