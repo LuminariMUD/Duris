@@ -31,13 +31,15 @@ FUNCTIONS = "\n\n".join(
         ("ship_npc.c", ("bool try_unload_npc_ship(P_ship ship)",)),
         ("ship_npc_ai.c", ("NPCShipAI::NPCShipAI(P_ship s, P_char ch)",)),
         ("ship_shop.c", ("int list_hulls(P_char ch, P_ship ship, int owned)",)),
-        ("actwiz.c", ("void do_purge(P_char ch, char *argument, int /*cmd*/)",)),
+        ("actwiz.c", ("static void purge_drop_item(", "void do_purge(P_char ch, char *argument, int /*cmd*/)")),
     )
     for signature in signatures
 )
 
 HARNESS = r'''
 #include "core/prototypes.h"
+#include "core/files.h"
+#include "player/player_save_pipeline.h"
 #include "core/structs.h"
 #include "core/utils.h"
 #include "core/utility.h"
@@ -214,9 +216,21 @@ void extract_char(P_char ch) {
     assert(IS_NPC(ch)); char_from_room(ch); ++extracted_crew;
 }
 void update_ingame_racewar(int) { abort(); }
-int writeCharacter(P_char, int, int) { abort(); }
-void close_socket(P_desc) { abort(); }
 void free_char(P_char) { abort(); }
+// These are only used by the player branch of do_purge(), not ship purges.
+P_obj unequip_char(P_char, int, bool) { abort(); }
+void obj_from_char(P_obj) { abort(); }
+void obj_from_obj(P_obj) { abort(); }
+void obj_to_obj(P_obj, P_obj) { abort(); }
+void redis_log_floor_drop(P_obj, int) { abort(); }
+bool item_movement_transaction_player_busy(P_char) { abort(); }
+bool collector_service_recover_player(P_char) { abort(); }
+bool collector_transaction_player_busy(P_char) { abort(); }
+int calculate_save_room(P_char, int, int) { abort(); }
+player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int) { abort(); }
+void sql_log_player_login(P_char, const char *) { abort(); }
+void redis_player_offline(P_char) { abort(); }
+void extract_char_after_terminal_save(P_char) { abort(); }
 int checked_snprintf_at(const char *, int, char *, size_t, const char *, ...) { abort(); }
 void *_mm_get(mm_ds *, const char *, int) { abort(); }
 void ensure_pconly_pool() { abort(); }

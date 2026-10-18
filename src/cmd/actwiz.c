@@ -45,6 +45,12 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "persistence/persistence_mode.h"
+#include "redis/redis_presence_runtime.h"
+#include "redis/redis_floor_runtime.h"
+#include "player/player_save_pipeline.h"
+#include "item/item_movement_transaction.h"
+#include "economy/collector_service.h"
+#include "economy/collector_transaction.h"
 #include "player/player_load_offline.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
@@ -5306,6 +5312,32 @@ void do_load(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("That'll have to be either 'char' or 'obj'.\n", ch);
 }
 
+// Preserve permanent contents inside the nearest surviving container. Only
+// detached roots reach the room, after the empty player snapshot is accepted.
+static void purge_drop_item(P_obj item, int room, P_obj container)
+{
+	const bool transient = IS_SET(item->extra_flags, ITEM_TRANSIENT);
+	for (P_obj child = item->contains; child;)
+	{
+		P_obj next = child->next_content;
+		obj_from_obj(child);
+		purge_drop_item(child, room, transient ? container : item);
+		child = next;
+	}
+	if (transient)
+		extract_obj(item, TRUE);
+	else if (container)
+		obj_to_obj(item, container);
+	else
+	{
+		// obj_to_room can merge and free coins, or redirect a sinking object.
+		const bool coins = OBJ_VNUM(item) == VOBJ_COINS;
+		obj_to_room(item, room);
+		if (!coins && item->obj_uid && OBJ_ROOM(item))
+			redis_log_floor_drop(item, world[item->loc.room].number);
+	}
+}
+
 /* clean a room of all mobiles and objects */
 void do_purge(P_char ch, char *argument, int /*cmd*/)
 {
@@ -5339,6 +5371,58 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 				send_to_char("You are too lame to be able to purge chars!\n", ch);
 				return;
 			}
+			if (IS_PC(vict))
+			{
+				// Locker departure may veto removal or release the room. Let the
+				// ordinary leave path secure its contents before a staff purge.
+				if (IS_ROOM(vict->in_room, ROOM_LOCKER))
+				{
+					send_to_char(
+						"Move the player out of the locker before purging.\r\n",
+						ch);
+					return;
+				}
+				if (item_movement_transaction_player_busy(vict) ||
+				    collector_transaction_player_busy(vict) ||
+				    !collector_service_recover_player(vict))
+				{
+					send_to_char(
+						"The player's items are still being secured. Try again shortly.\r\n",
+						ch);
+					return;
+				}
+
+				// Capture an empty inventory without moving, unequipping or
+				// destroying anything. Restore the live view before testing the
+				// result so a rejected capture leaves the player intact.
+				P_obj equipment[MAX_WEAR];
+				memcpy(equipment, vict->equipment, sizeof(equipment));
+				P_obj carrying = vict->carrying;
+				// Armor prestige is stored in status as well as reflected by
+				// equipment. Capture the value unequip_char will leave behind.
+				const auto prestige = vict->only.pc->prestige;
+				for (P_obj item : equipment)
+					if (item && GET_ITEM_TYPE(item) == ITEM_ARMOR)
+						vict->only.pc->prestige -= item->value[2];
+				memset(vict->equipment, 0, sizeof(vict->equipment));
+				vict->carrying = NULL;
+				const auto saved = player_save_pipeline_request(
+					vict, PLAYER_CHECKPOINT_COMPONENT_ALL, RENT_QUIT,
+					calculate_save_room(vict, RENT_QUIT, NOWHERE));
+				memcpy(vict->equipment, equipment, sizeof(equipment));
+				vict->carrying = carrying;
+				vict->only.pc->prestige = prestige;
+				if (saved != player_save_pipeline_result::queued &&
+				    saved != player_save_pipeline_result::coalesced)
+				{
+					logit(LOG_WIZ, "Failed to save %s before staff purge.",
+					      GET_NAME(vict));
+					send_to_char(
+						"Purge cancelled: the player could not be saved.\r\n",
+						ch);
+					return;
+				}
+			}
 			act("$n disintegrates $N, who is reduced to a small pile of ashes.", FALSE,
 			    ch, 0, vict, TO_NOTVICT);
 
@@ -5356,20 +5440,23 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 			}
 			else
 			{
-				// If it's not an immortal.
-				if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+				if (GET_LEVEL(vict) < MINLVLIMMORTAL)
+					update_ingame_racewar(-GET_RACEWAR(vict));
+
+				for (int slot = 0; slot < MAX_WEAR; ++slot)
+					if (vict->equipment[slot])
+						purge_drop_item(unequip_char(vict, slot),
+								vict->in_room, NULL);
+				while (vict->carrying)
 				{
-					update_ingame_racewar(-GET_RACEWAR(ch));
+					P_obj item = vict->carrying;
+					obj_from_char(item);
+					purge_drop_item(item, vict->in_room, NULL);
 				}
 
-				/* player will lose all objects! */
-				extract_char(vict);
-				writeCharacter(vict, 2, NOWHERE);
-				if (vict->desc)
-					close_socket(vict->desc);
-				else
-					free_char(vict);
-				vict->desc = 0;
+				sql_log_player_login(vict, "logout");
+				redis_player_offline(vict);
+				extract_char_after_terminal_save(vict);
 				vict = NULL;
 			}
 		}
