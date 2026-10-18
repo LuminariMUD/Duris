@@ -30,6 +30,7 @@ static std::string state_root;
 static std::string output_messages;
 static int submissions = 0;
 static int saves = 0;
+static bool refuse_guardian = false;
 
 const char *persistence_mode_flatfile_root()
 {
@@ -117,6 +118,8 @@ void extract_obj(P_obj obj, int)
 }
 P_char read_mobile(int rnum, int)
 {
+	if (refuse_guardian)
+		return nullptr;
 	auto mob = new char_data{};
 	mob->specials.act = ACT_ISNPC;
 	mob->only.npc = new npc_only_data{};
@@ -270,6 +273,16 @@ int main(int argc, char **argv)
 		extract_char(character_list);
 	while (object_list)
 		extract_obj(object_list, false);
+	refuse_guardian = true;
+	output_messages.clear();
+	reset_nexus_stones(&staff);
+	assert(output_messages.find("reset is incomplete") != std::string::npos);
+	assert(stone_count(1) == 0 && stone_count(3) == 0);
+	output_messages.clear();
+	reload_nexus_stone(&staff, 1);
+	assert(output_messages.find("reload failed") != std::string::npos);
+	assert(stone_count(1) == 0);
+	refuse_guardian = false;
 
 	char_data player = {};
 	pc_only_data pc = {};
