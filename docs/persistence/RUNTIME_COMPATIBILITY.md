@@ -81,7 +81,7 @@ and touch timestamps remain unchanged. Both new rows start neutral with no stat
 benefit. The migration adds no table or column, so metadata fingerprints stay the
 same; the migration head, apply/verify checksums and history checksum advance.
 Apply it before starting the updated SQL-backed binary. See the
-[Nexus handoff](../ongoing-projects/nexus-stones-109-investigation.md) for world/ship
+[Nexus handoff](../records/nexus-stones-109-investigation.md) for world/ship
 dependencies, operator checks and the separate production acceptance work.
 
 An existing populated database must first be upgraded only on a disposable clone.

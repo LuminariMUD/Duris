@@ -280,8 +280,8 @@ one new `migrations/immutable/NNNN_nexus_phase1.sql` and executable `.sh` verifi
 [migration_manifest.json](../../migrations/migration_manifest.json),
 [runtime_compatibility_manifest.json](../../migrations/runtime_compatibility_manifest.json),
 [runtime_compatibility_contract.h](../../src/core/runtime_compatibility_contract.h),
-and the two persistence contract documents. This branch now uses **0045** after
-refreshing master at head 0044. Recheck sequence availability when integrating a
+and the two persistence contract documents. This branch now uses **0046** after
+refreshing master at head 0045. Recheck sequence availability when integrating a
 newer master; never modify another applied migration to resolve a collision.
 
 1. Reuse the runner's existing persistent lock-client path for ordinary runs as
