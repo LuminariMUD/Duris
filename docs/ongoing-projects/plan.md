@@ -1,6 +1,6 @@
 # Issue #57: consistent PSP regeneration and gradual movement decay
 
-Status: RG-01/02/03 implemented and locally qualified; publishing the final review chunk.
+Status: RG-01/02/03 implemented, locally qualified and published for review as #201 → #202 → #203.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
 Base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
@@ -101,7 +101,9 @@ state/settings were removed. JSON evidence is ignored at
 PSP implementation and movement cap were also substituted into the native regression
 in memory: they fail the rate and first-decrement assertions respectively.
 
-Next: publish RG-03 stacked on #202, then external review. There are no remaining
+RG-03 is published as [PR #203](https://github.com/LuminariMUD/Duris/pull/203),
+qualification commit `315dbf7da`, stacked on #202. This final documentation update
+does not change the qualified source or tests. Next: external review. There are no remaining
 local implementation or acceptance gates. Full-server execution used the normal
 development binary; ASan/UBSan coverage is in the native policy and scheduler tests.
 Merge, issue closure and production deployment remain separate, unperformed actions.
@@ -398,7 +400,7 @@ them. Preserve the previous plan rather than discarding its unrelated acceptance
 
 ## Publication handoff
 
-Review order is #201 (PSP) → #202 (movement) → the RG-03 lifecycle qualification PR.
+Review order is #201 (PSP) → #202 (movement) → #203 (lifecycle qualification).
 The active checkout is `branch/issue-57-regen-lifecycle`; its production sources are
 identical to #202. All chunks use `Refs #57`, with no closing keyword or release tag.
 Refreshed `origin/master` is `2378b4916` (backup scripts/docs/tests only); it changes
