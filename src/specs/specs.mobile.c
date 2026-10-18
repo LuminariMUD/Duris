@@ -6593,9 +6593,8 @@ int plant_attacks_paralysis(P_char ch, P_char pl, int cmd, char * /*arg*/)
 	                       * unwrap vines upon death of vine
 	                       */
 	{
-		LOOP_THRU_PEOPLE(vict, ch)
-			if ((vict != ch) && affected_by_spell(vict, SPELL_MAJOR_PARALYSIS))
-				affect_from_char(vict, SPELL_MAJOR_PARALYSIS);
+		while ((vict = get_linking_char(ch, LNK_PLANT_PARALYSIS)))
+			unlink_char(vict, ch, LNK_PLANT_PARALYSIS);
 		return FALSE;
 	}
 
@@ -6618,7 +6617,7 @@ int plant_attacks_paralysis(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			af.flags = AFFTYPE_SHORT;
 			af.duration = duration_factor * WAIT_SEC;
 			af.bitvector2 = AFF2_MAJOR_PARALYSIS;
-			affect_join(vict, &af, FALSE, FALSE);
+			linked_affect_to_char(vict, &af, ch, LNK_PLANT_PARALYSIS);
 			flag = TRUE;
 		}
 	return flag;

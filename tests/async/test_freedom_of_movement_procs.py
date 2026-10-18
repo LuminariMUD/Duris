@@ -8,6 +8,7 @@ affected branches; unrelated combat, movement and stat recalculation are fixture
 
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 
@@ -18,6 +19,7 @@ PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "core/mm.h"
+#include "core/profile.h"
 #include "cmd/interp.h"
 #include "magic/spells.h"
 #include "net/comm.h"
@@ -33,8 +35,13 @@ P_room world = rooms;
 static char_data caster, target, other;
 static bool saved, moved;
 static int roll, message_count, dispels, moves, position_updates;
-static mm_ds pool{};
+static mm_ds pool{}, link_pool{};
 mm_ds *dead_affect_pool = &pool;
+mm_ds *dead_link_pool = &link_pool;
+link_description link_types[LNK_MAX + 1]{};
+P_char character_list;
+bool do_profile = false;
+PROFILE_DEFINE(short_affect_liveness)
 
 int number(int low, int high) { return roll >= low && roll <= high ? roll : low; }
 bool NewSaves(P_char, int, int) { return saved; }
@@ -64,16 +71,22 @@ int do_simple_move_skipping_procs(P_char ch, int, int) {
 void spell_dispel_magic(int, P_char, char *, int, P_char, P_obj) { ++dispels; }
 const char *dirs[] = {"north"};
 
-void *_mm_get(mm_ds *, const char *, int) { return new affected_type{}; }
-void mm_release(mm_ds *, void *p) { delete static_cast<affected_type *>(p); }
+void *_mm_get(mm_ds *allocator, const char *, int) {
+    if (allocator == dead_link_pool) return new char_link_data{};
+    return new affected_type{};
+}
+void mm_release(mm_ds *allocator, void *p) {
+    if (allocator == dead_link_pool) delete static_cast<char_link_data *>(p);
+    else delete static_cast<affected_type *>(p);
+}
 mm_ds *mm_create(const char *, size_t, size_t, unsigned) { return &pool; }
 void balance_affects(P_char) {}
 void gmcp_char_affects(P_char) {}
 int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }
-void unlink_char_affect(P_char, affected_type *) { assert(false); }
+void unlink_char_affect(P_char, affected_type *);
+void wear_off_message(P_char, affected_type *) {}
 void unlink_char_obj_affect(P_char, affected_type *) { assert(false); }
-void event_short_affect(P_char, P_char, P_obj, void *) {}
 void event_web_spray(P_char, P_char, P_obj, void *) {}
 void disarm_char_nevents(P_char, event_func_type) {}
 nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int) {
@@ -104,6 +117,18 @@ def production():
         ("affects.c", "void affect_remove("),
         ("affects.c", "void affect_from_char("),
         ("affects.c", "void affect_join("),
+        ("affects.c", "void event_short_affect("),
+        ("affects.c", "void define_link("),
+        ("affects.c", "struct char_link_data *link_char_with_affect("),
+        ("affects.c", "P_char get_linked_char("),
+        ("affects.c", "P_char get_linking_char("),
+        ("affects.c", "void dispose_link("),
+        ("affects.c", "void internal_unlink_char("),
+        ("affects.c", "void unlink_char("),
+        ("affects.c", "void unlink_char_affect(P_char ch, struct affected_type *af)"),
+        ("affects.c", "void clear_links(P_char ch, ush_int type)"),
+        ("affects.c", "void clear_all_links("),
+        ("affects.c", "void linked_affect_to_char("),
         ("magic.c", "bool check_freedom_of_movement("),
         ("magic.c", "void spell_freedom_of_movement("),
         ("magic.c", "void spell_entangle("),
@@ -112,6 +137,11 @@ def production():
         ("specs.mobile.c", "int plant_attacks_paralysis("),
         ("new_skills.c", "void do_unbind("),
     ])
+    # Use the actual registration without pulling in unrelated link callbacks.
+    links = extract_function("affects.c", "void initialize_links()")
+    registration = re.search(r'define_link\(LNK_PLANT_PARALYSIS,.*?;', links, re.S)
+    assert registration, "plant holds must have a registered link type"
+    code += "\nvoid initialize_plant_link() { " + registration[0] + " }\n"
     shields = extract_function("fight.c", "int check_shields(")
     start = shields.index("\t\t\t\tcase 1:")
     end = shields.index("\t\t\t\tcase 2:", start)
@@ -135,6 +165,7 @@ static void clear(P_char ch) {
 }
 static void reset() {
     clear(&caster); clear(&target); clear(&other);
+    for (auto *ch : {&caster, &target, &other}) assert(!ch->linking && !ch->linked);
     caster = {}; target = {}; other = {};
     for (auto *ch : {&caster, &target, &other}) {
         SET_POS(ch, POS_STANDING + STAT_NORMAL);
@@ -145,6 +176,9 @@ static void reset() {
     rooms[0].people = &caster;
     caster.next_in_room = &target;
     target.next_in_room = &other;
+    character_list = &caster;
+    caster.next = &target;
+    target.next = &other;
     saved = false; moved = false; roll = 1;
     message_count = dispels = moves = position_updates = 0;
 }
@@ -198,14 +232,59 @@ static void plant() {
     assert(IS_AFFECTED2(&target, AFF2_MAJOR_PARALYSIS));
     assert(!IS_AFFECTED2(&other, AFF2_MAJOR_PARALYSIS));
     auto *hold = target.affected;
+    assert(hold->duration == 10 * WAIT_SEC);
+    assert(IS_SET(hold->flags, AFFTYPE_SHORT) && IS_SET(hold->flags, AFFTYPE_NOSAVE));
+    assert(get_linking_char(&caster, LNK_PLANT_PARALYSIS) == &target);
     assert(!plant_attacks_paralysis(&caster, &other, CMD_LOOK, nullptr));
     assert(target.affected == hold);
+    plant_attacks_paralysis(&other, &caster, CMD_DEATH, nullptr);
+    assert(target.affected == hold); // a different plant cannot release this hold
     // Death dispatch supplies the killer as pl, unlike a periodic invocation.
     assert(!plant_attacks_paralysis(&caster, &other, CMD_DEATH, nullptr));
     assert(!target.affected && !IS_AFFECTED2(&target, AFF2_MAJOR_PARALYSIS));
     assert(check_freedom_of_movement(&other));
     assert(!plant_attacks_paralysis(&caster, nullptr, CMD_DEATH, nullptr));
     assert(!target.affected); // no reapplication during cleanup
+
+    reset(); roll = 0;
+    spell_beholder_paralyze(50, &caster, &other, nullptr);
+    auto *unrelated = other.affected;
+    assert(unrelated && plant_attacks_paralysis(&caster, nullptr, 0, nullptr));
+    plant_attacks_paralysis(&caster, &target, CMD_DEATH, nullptr);
+    assert(!target.affected);
+    assert(other.affected == unrelated && IS_AFFECTED2(&other, AFF2_MAJOR_PARALYSIS));
+
+    // Removing the plant's instance must leave another paralysis on the same victim.
+    reset(); roll = 0; freedom(&other);
+    assert(plant_attacks_paralysis(&caster, nullptr, 0, nullptr));
+    affected_type independent{};
+    independent.type = SPELL_MAJOR_PARALYSIS;
+    independent.duration = 30 * WAIT_SEC;
+    independent.flags = AFFTYPE_SHORT;
+    independent.bitvector2 = AFF2_MAJOR_PARALYSIS;
+    unrelated = affect_to_char(&target, &independent);
+    plant_attacks_paralysis(&caster, &other, CMD_DEATH, nullptr);
+    assert(target.affected == unrelated && !unrelated->next);
+    assert(IS_AFFECTED2(&target, AFF2_MAJOR_PARALYSIS));
+    assert(!caster.linked && !target.linking);
+
+    // All existing affect/character cleanup paths must release both link ends.
+    for (int release = 0; release < 4; ++release) {
+        reset(); roll = 0; freedom(&other);
+        assert(plant_attacks_paralysis(&caster, nullptr, 0, nullptr));
+        if (release == 0) freedom(&target);
+        if (release == 1) {
+            event_short_affect_data expiry{&target, target.affected};
+            event_short_affect(&target, nullptr, nullptr, &expiry);
+        }
+        if (release == 2) clear_all_links(&caster); // source extraction
+        if (release == 3) clear_all_links(&target); // victim extraction
+        assert(!IS_AFFECTED2(&target, AFF2_MAJOR_PARALYSIS));
+        assert(!caster.linked && !target.linking);
+        plant_attacks_paralysis(&caster, &other, CMD_DEATH, nullptr);
+        assert(check_freedom_of_movement(&other));
+        assert(check_freedom_of_movement(&target) == (release == 0));
+    }
 }
 static void web() {
     for (bool protected_target : {false, true}) for (bool success : {false, true}) {
@@ -268,6 +347,7 @@ static void entangle() {
     }
 }
 int main(int argc, char **argv) {
+    initialize_plant_link();
     if (argc == 1 || !strcmp(argv[1], "beholder")) behold();
     if (argc == 1 || !strcmp(argv[1], "soulshield")) soulshield();
     if (argc == 1 || !strcmp(argv[1], "armor")) armor();
@@ -275,7 +355,7 @@ int main(int argc, char **argv) {
     if (argc == 1 || !strcmp(argv[1], "web")) web();
     if (argc == 1 || !strcmp(argv[1], "entangle")) entangle();
     reset();
-    puts("Freedom of Movement: six reviewed proc and binding regressions passed");
+    puts("Freedom of Movement: proc, binding and source-specific plant cleanup regressions passed");
 }
 '''
 
