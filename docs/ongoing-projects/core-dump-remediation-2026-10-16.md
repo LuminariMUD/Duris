@@ -1,5 +1,9 @@
 # Core dump investigation and repair plan — 2026-10-16
 
+Scope: the three October 16 dumps listed below. The
+[October 18 coverage audit](core-dump-coverage-audit-2026-10-18.md) reviews six newer
+October 17 dumps and identifies an unresolved auction keyword-list crash.
+
 Status: repaired and qualified locally on MariaDB and flat-file persistence. Production
 rollout remains a separate owner-authorized operation. Investigation source reviewed at
 `b149b3ada6e8c9c1e041ad864772195173fef7c6`.
