@@ -36,6 +36,9 @@ def run(binary):
         runtime.mkdir(); state.mkdir(mode=0o700)
         (state / "domains").mkdir(mode=0o700)
         (runtime / "logs/log").mkdir(parents=True)
+        # Match the launcher: without this marker, maintenance archives the trace
+        # immediately because its age is unknown.
+        (runtime / "logs/log/.since").touch()
         for name in ("areas", "areas_mini", "docs"):
             (runtime / name).symlink_to(ROOT / name, target_is_directory=True)
         shutil.copytree(ROOT / "lib", runtime / "lib")
@@ -153,9 +156,9 @@ def run(binary):
                 result[cls + "_casting"] = cast
             print("Psionicist and mindflayer casting restarts passed", flush=True)
             # Racial PSP users must also recover after their pending event is suppressed.
-            # Pillithid's +25 POW/+20 INT racial bonuses retain current stats of 100.
+            # Pillithid's 1.25 POW/1.20 INT multipliers round these bases to 100.
             for field, value in (("race", "'Planetbound Illithid'"), ("class", "Warrior"),
-                                 ("pow", "75"), ("int", "80")):
+                                 ("pow", "80"), ("int", "83")):
                 text = command(staff, f"setbit char {NAME} {field} {value}")
                 assert "Valid sub-options" not in text and "Invalid" not in text, text
             identity = command(staff, f"stat char {NAME}")

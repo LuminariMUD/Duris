@@ -24,6 +24,8 @@ PSP users, including racial warriors and sorcerers, missing/full/over-cap PSP,
 negative recovery at full, fresh elapsed credit and duplicate suppression. An
 ordinary human warrior remains excluded. The full-world combat case uses a
 Pillithid warrior to verify the periodic restart beyond psionic classes.
+Its disposable runtime creates the launcher's `logs/log/.since` marker so log
+retention does not archive the callback trace as an unknown-age log set.
 
 `python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
 functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
@@ -54,7 +56,8 @@ rest command, rate and callback are actual source functions.
 
 `run_psp_regen_journey.py --binary bin/server/dms_issue57_flatfile --output
 bin/analysis/issue57-plan/journey.json` drives a fresh flat-file full-world server via
-Telnet. Against production sources `0b245add9223f12bd483cd451a15d805a37733a6`,
+Telnet; run `make world` first to generate the authored world in a clean checkout.
+Against production sources `0b245add9223f12bd483cd451a15d805a37733a6`,
 current POW=INT=100, no equipment/boons/rested bonus, dials 5/1/10 display 80/160/40
 and gain 33/65/17 PSP over 123 traced callbacks each (staff snapshots bound elapsed
 time at 120–126 pulses). Rest/meditate displays 1,500, fills reserves, sends one

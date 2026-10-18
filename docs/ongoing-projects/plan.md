@@ -51,6 +51,24 @@ covers racial warriors/sorcerers, class PSP users, missing/full/over-cap PSP and
 negative recovery at full, without retaining credit from suppression. An ordinary
 human warrior remains excluded. No new timer or event mechanism was added.
 
+The merge qualification passed against the production sources at
+`b0a04e3ba195cb2d35b692ca2f56f9c79661a7be`; the final follow-up changes only
+the journey fixture and documentation. Flat-file binary SHA-256:
+`e8fb67557386f4cd0e3c299750b093e2e5a771288f5b66751d3d72dd5bcb2c49`.
+The complete CLI saved `bin/analysis/merge-201-203/full-world/issue57/journey.json`
+with 570 callbacks and zero duplicate pulse identities. Dials 5/1/10 again gained
+33/65/17 over 123 callbacks each; meditation completed once and both class casting
+restarts passed. A verified Planetbound Illithid warrior, with base POW/INT 80/83
+rounding through racial multipliers to current 100/100, stopped at 1,001 PSP in
+combat and resumed to 1,003 after 1.984 seconds on the existing periodic path.
+The signed affect fixture then restarted at 90/tick, gaining 1,007 to 1,010 PSP.
+The disposable runtime now creates the launcher's `.since` log-age marker: the
+earlier missing-marker attempt lost its trace to retention. The final run also
+corrects the staff race name and racial-stat setup; its server/state were removed.
+Both builds, native sanitizer checks, focused controls, formatting/clang-tidy and
+all 14 documentation contracts passed. Hosted formatting separately identifies
+the unchanged `tests/async/word_output_integration_harness.cpp`.
+
 RG-01 replaces the obsolete quadratic PSP policy with the selected POW+INT contract,
 uses it in the callback, and adds directional upper/lower PSP bounds. There are no
 new scheduler hooks or abstractions. The native regression uses real rate functions,
@@ -407,6 +425,7 @@ python3 tests/async/test_documentation_contract.py
 git diff --check
 make -C src -j8 PERSISTENCE_BACKEND=flatfile \
   DMS_BINARY="$PWD/bin/server/dms_issue57_flatfile"
+make world -j8
 python3 tests/async/run_psp_regen_journey.py \
   --binary bin/server/dms_issue57_flatfile \
   --output bin/analysis/issue57-plan/journey.json
