@@ -48,6 +48,9 @@ ONLINE_LEVEL_CAP_VERIFY = "a9cbde7decfc928629dc2a88baead64305c55a67b919b2dbe5ce3
 ONLINE_COMBAT_ALLIES_ID = "0040_combat_outcome_allies"
 ONLINE_COMBAT_ALLIES_APPLY = "a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e"
 ONLINE_COMBAT_ALLIES_VERIFY = "da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa"
+ONLINE_NEXUS_ID = "0046_nexus_phase1"
+ONLINE_NEXUS_APPLY = "40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6"
+ONLINE_NEXUS_VERIFY = "bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f"
 ONLINE_PLAYER_UPDATES = (
     ("0042_player_base_stats",
      "a5698a97f953e175fee3030fd7408fff5a7cdb53d15d6bd8bfb5136f203ec78f",
@@ -365,7 +368,8 @@ class MysqlExecutor:
                  online_level_cap_sides: bool = False,
                  online_combat_outcome_allies: bool = False,
                  online_player_updates: bool = False,
-                 online_artifact_pvp: bool = False):
+                 online_artifact_pvp: bool = False,
+                 online_nexus_phase1: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
@@ -404,7 +408,7 @@ class MysqlExecutor:
             if not os.environ.get(name):
                 raise MigrationContractError(f"missing migration credential: {name}")
         if sum((online_level_cap_sides, online_combat_outcome_allies,
-                online_player_updates, online_artifact_pvp)) > 1:
+                online_player_updates, online_artifact_pvp, online_nexus_phase1)) > 1:
             raise MigrationContractError("select only one reviewed online migration")
         if online_player_updates:
             reviewed = tuple((step.migration_id, step.apply_checksum, step.verify_checksum)
@@ -423,14 +427,17 @@ class MysqlExecutor:
                 raise MigrationContractError(
                     "online migration requires the reviewed production 0044/0045 manifest")
             self.online_migration = manifest.migrations[-1]
-        if online_level_cap_sides or online_combat_outcome_allies:
+        if online_level_cap_sides or online_combat_outcome_allies or online_nexus_phase1:
             if online_level_cap_sides:
                 reviewed = (ONLINE_LEVEL_CAP_ID, ONLINE_LEVEL_CAP_APPLY, ONLINE_LEVEL_CAP_VERIFY)
                 count, self.online_table = 39, "level_cap"
-            else:
+            elif online_combat_outcome_allies:
                 reviewed = (ONLINE_COMBAT_ALLIES_ID, ONLINE_COMBAT_ALLIES_APPLY,
                             ONLINE_COMBAT_ALLIES_VERIFY)
                 count, self.online_table = 40, "combat_outcome"
+            else:
+                reviewed = (ONLINE_NEXUS_ID, ONLINE_NEXUS_APPLY, ONLINE_NEXUS_VERIFY)
+                count, self.online_table = 46, "nexus_stones"
             head = manifest.migrations[-1] if manifest.migrations else None
             if not self.production or head is None or len(manifest.migrations) != count or \
                     (head.migration_id, head.apply_checksum, head.verify_checksum) != reviewed:
@@ -755,13 +762,17 @@ def main() -> int:
     online.add_argument("--online-artifact-pvp", action="store_true",
                         help="apply only reviewed 0044/0045 on MariaDB 11.8 using online "
                              "NOCOPY/INSTANT DDL; requires production confirmation and backup")
+    online.add_argument("--online-nexus-phase1", action="store_true",
+                        help="apply only reviewed 0046 Nexus inserts on MariaDB 11.8 InnoDB; "
+                             "requires production confirmation, backup and compatible live writers")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
     try:
         manifest = load_manifest(arguments.manifest)
         if (arguments.online_level_cap_sides or arguments.online_combat_outcome_allies or
-                arguments.online_player_updates or arguments.online_artifact_pvp) and \
+                arguments.online_player_updates or arguments.online_artifact_pvp or
+                arguments.online_nexus_phase1) and \
                 arguments.command != "run":
             raise MigrationContractError("online migration option requires run")
         if arguments.command == "inspect":
@@ -780,7 +791,8 @@ def main() -> int:
         executor = MysqlExecutor(manifest, arguments.confirm_production_target,
                                  arguments.production_backup, arguments.online_level_cap_sides,
                                  arguments.online_combat_outcome_allies,
-                                 arguments.online_player_updates, arguments.online_artifact_pvp)
+                                 arguments.online_player_updates, arguments.online_artifact_pvp,
+                                 arguments.online_nexus_phase1)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")
