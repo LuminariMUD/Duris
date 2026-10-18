@@ -6,6 +6,11 @@ implementation. The availability lists below describe the checked-in configurati
 with `CREATION_ALL_CLASSES=FALSE` and `CREATION_ALL_RACES=FALSE`; they do not
 describe a live server's settings or prove that every ability works in play.
 
+For a tunable design budget based on the ordinary roster, see the
+[class point system](CLASS-POINTS.md). It defines capability prices, initial
+reference scorecards, and a process for evaluating balance changes and new
+classes; its point estimates are distinct from these implemented rules.
+
 - [Existing resources](#existing-resources)
 - [Class catalogue](#class-catalogue)
 - [Creation and alignment](#creation-and-alignment)
