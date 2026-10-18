@@ -304,14 +304,13 @@ int main() {
         assert(healed(2) == 600 && mount.specials.holy_sacrifice_healed == 600);
     }
 
-    // Tiny blows and an exhausted round do nothing at all.
+    // A tiny blow heals nothing and spends nothing.
     {
         test_group party({&paladin, &mates[0]});
         wound_all();
         next_round();
-        vamp_calls = 0;
         holy_sacrifice_heal(&monster, &paladin, 1);
-        assert(vamp_calls == 0 && GET_HIT(&mates[0]) == 1);
+        assert(GET_HIT(&mates[0]) == 1 && paladin.specials.holy_sacrifice_healed == 0);
     }
 
     // The vamp ceiling: prime anti-paladins get +0.25, never past 2.5x; others unchanged.

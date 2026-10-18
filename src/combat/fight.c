@@ -5120,11 +5120,14 @@ static void holy_sacrifice_heal(P_char ch, P_char owner, int dam)
 	}
 
 	double budget =
-		pvp_mod * MIN(dam * get_property("vamping.holySacrifice.hitDamageCap", 0.9),
+		pvp_mod * MIN(static_cast<double>(dam) *
+				      get_property("vamping.holySacrifice.hitDamageCap", 0.9),
 			      max_hit * get_property("vamping.holySacrifice.hitMaxHpCap", 0.6));
 	budget = MIN(budget,
 		     pvp_mod * max_hit * get_property("vamping.holySacrifice.roundMaxHpCap", 1.2) -
 			     owner->specials.holy_sacrifice_healed);
+	// Hit points are whole: 90% of 1000 is 900, not the 899.99997 a float property gives.
+	budget = std::round(budget);
 	if (budget < 1)
 		return;
 
@@ -5140,7 +5143,7 @@ static void holy_sacrifice_heal(P_char ch, P_char owner, int dam)
 	std::stable_sort(injured.begin(), injured.end(), [](P_char a, P_char b)
 			 { return GET_MAX_HIT(a) - GET_HIT(a) < GET_MAX_HIT(b) - GET_HIT(b); });
 
-	const double gain = dam * get_property("vamping.holySacrifice", 0.035);
+	const double gain = static_cast<double>(dam) * get_property("vamping.holySacrifice", 0.035);
 	for (size_t i = 0; i < injured.size() && budget >= 1; ++i)
 	{
 		P_char tch = injured[i];
