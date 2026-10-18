@@ -62,10 +62,15 @@ lifecycle tables, and all runtime tables. Nontransactional tables are rejected.
 Coordinate schema migrations/DDL with the backup window; a transactional data
 snapshot does not make concurrent DDL safe. Database capture checks runtime
 compatibility before and after the dump against the manifest frozen in the
-generation. Before an upgrade, set `RUNTIME_COMPATIBILITY_MANIFEST` to an absolute,
-owner-only copy of the deployed version's manifest when the checkout already
-requires a newer schema. Verify historical generations against their recorded
-manifest; do not relabel them with the checkout's current contract.
+generation. If the checkout's contract does not match the live database, capture
+automatically tries the last successful database backup's checksum-verified
+manifest and validates it against the live database. This lets backups continue
+when code is pulled ahead of deployment; once the database matches the checkout,
+new backups automatically use the new contract. No version pin is needed.
+An explicit `RUNTIME_COMPATIBILITY_MANIFEST` still selects only that absolute,
+owner-only manifest, including for a first backup of an older deployment. Verify
+historical generations against their recorded manifest; do not relabel them with
+the checkout's current contract.
 Ownership validation requires the host UID identities of every path ancestor.
 A namespaced per-user systemd service can map root-owned ancestors to `nobody`;
 the guard correctly rejects that execution context. The root-managed production

@@ -710,7 +710,25 @@ def backup(p, mode):
                 require(p["journal_roots"]["critical"] == Path(os.environ["CRITICAL_COMMAND_JOURNAL_DIR"]),
                         "journal_policy_mismatch")
             if mode == "mariadb-primary":
-                verify_database_schema(stage / "runtime-schema.json")
+                try:
+                    verify_database_schema(stage / "runtime-schema.json")
+                except BackupError as error:
+                    if (os.environ.get("RUNTIME_COMPATIBILITY_MANIFEST") or not items or
+                            items[0][1]["mode"] != "mariadb-primary" or
+                            str(error) != "subprocess_failed" or
+                            error.detail.get("phase") != "schema_check" or
+                            error.detail.get("exit_status") != 1):
+                        raise
+                    # A checkout can advance before the live database. Reuse its last
+                    # captured contract only if it still verifies against the database.
+                    previous = secure_path(items[0][0] / "runtime-schema.json", False)
+                    previous_digest = digest(previous)
+                    require(previous_digest == items[0][1]["runtime_schema_sha256"],
+                            "schema_manifest_mismatch")
+                    if previous_digest == digest(stage / "runtime-schema.json"):
+                        raise
+                    shutil.copyfile(previous, stage / "runtime-schema.json")
+                    verify_database_schema(stage / "runtime-schema.json")
             waiting = {name: waiting_receipts(source) for name, source in p["journal_roots"].items()}
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
