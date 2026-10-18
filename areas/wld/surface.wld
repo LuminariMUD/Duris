@@ -336845,6 +336845,10 @@ D1
 ~
 ~
 0 0 516044
+D2
+~
+~
+0 0 516443
 D3
 ~
 ~
@@ -345208,6 +345212,10 @@ D0
 ~
 ~
 0 0 516042
+D1
+~
+~
+0 0 516443
 D2
 ~
 ~
@@ -345218,10 +345226,9 @@ D3
 0 0 516441
 S
 #516443
-Arcium~
-   A shrouded grove nestles below the foothills northwest of Evermeet.
+&+yRolling &+gFertile &+yFoothills &+gCovered With Grass&n~
 ~
-5000 134250688 0 0
+5000 0 4 0
 D0
 ~
 ~
@@ -345241,7 +345248,6 @@ D3
 S
 #516444
 &+yRolling &+gFertile &+yFoothills &+gCovered With Grass&n~
-   A dark trail leads west into the shrouded grove of Arcium below the hills.
 ~
 5000 0 4 0
 D0
@@ -345259,7 +345265,7 @@ D2
 D3
 ~
 ~
-0 0 85700
+0 0 516443
 S
 #516445
 &+yRolling &+gFertile &+yFoothills &+gCovered With Grass&n~
@@ -353617,13 +353623,12 @@ D3
 S
 #516843
 &+gNorthern Valley of &+MMyrabolus&n~
-   A dark trail disappears north into the dense trees of Arcium.
 ~
 5000 0 2 0
 D0
 ~
 ~
-0 0 85700
+0 0 516443
 D1
 ~
 ~
@@ -362051,7 +362056,7 @@ D3
 0 0 517243
 S
 #517245
-Acrium~
+Arcium~
 ~
 5000 134250688 0 0
 D0
@@ -362090,7 +362095,7 @@ D2
 D3
 ~
 ~
-0 0 35800
+0 0 85700
 S
 #517247
 &+gThe Magnificent Woodlands of Evermeet&n~
@@ -370453,7 +370458,7 @@ S
 D0
 ~
 ~
-0 0 35800
+0 0 85700
 D1
 ~
 ~
@@ -966949,6 +966954,10 @@ D1
 ~
 ~
 0 0 546062
+D2
+~
+~
+0 0 546461
 D3
 ~
 ~
@@ -975312,6 +975321,10 @@ D0
 ~
 ~
 0 0 546060
+D1
+~
+~
+0 0 546461
 D2
 ~
 ~
@@ -975322,10 +975335,9 @@ D3
 0 0 546459
 S
 #546461
-Outcasts Tower~
-   The tower rises above a scorched hollow in the Hearth Valley hills.
+&+yRugged &+gHills of the &+yHearth &+gValley&n~
 ~
-5000 134250688 0 0
+5000 0 4 0
 D0
 ~
 ~
@@ -975359,6 +975371,10 @@ D2
 ~
 ~
 0 0 546862
+D3
+~
+~
+0 0 546461
 S
 #546463
 &+gFertile Grasslands of the &+yHearth &+gValley&n~
@@ -983720,13 +983736,12 @@ D3
 S
 #546861
 &+gFertile Grasslands of the &+yHearth &+gValley&n~
-   A scorched trail winds north into the hills toward Outcasts Tower.
 ~
 5000 0 2 0
 D0
 ~
 ~
-0 0 11300
+0 0 546461
 D1
 ~
 ~
@@ -1008711,9 +1008726,9 @@ D3
 0 0 548050
 S
 #548052
-&+yRugged &+gHills of the &+yHearth &+gValley&n~
+Abandoned Elven Homestead~
 ~
-5000 0 0 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1017105,7 +1017120,7 @@ S
 D0
 ~
 ~
-0 0 7102
+0 0 35800
 D1
 ~
 ~
@@ -1084600,7 +1084615,7 @@ S
 D0
 ~
 ~
-0 0 9288
+0 0 11300
 D1
 ~
 ~
@@ -1764276,10 +1764291,6 @@ D1
 ~
 ~
 0 0 584046
-D2
-~
-~
-0 0 584445
 D3
 ~
 ~
@@ -1772675,10 +1772686,6 @@ D0
 ~
 ~
 0 0 584044
-D1
-~
-~
-0 0 584445
 D2
 ~
 ~
@@ -1772689,9 +1772696,9 @@ D3
 0 0 584443
 S
 #584445
-&+gVast Plains of the &+yEagle Ridge &+gDelta&n~
+Turopolis~
 ~
-5000 0 2 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1772725,10 +1772732,6 @@ D2
 ~
 ~
 0 0 584846
-D3
-~
-~
-0 0 584445
 S
 #584447
 &+yRocky Hillside &+gof the &+yEagle Ridge &+gDelta&n~
@@ -1781095,7 +1781098,7 @@ S
 D0
 ~
 ~
-0 0 584445
+0 0 7102
 D1
 ~
 ~
@@ -2423794,10 +2423797,6 @@ D1
 ~
 ~
 0 0 615450
-D2
-~
-~
-0 0 615849
 D3
 ~
 ~
@@ -2432173,10 +2432172,6 @@ D0
 ~
 ~
 0 0 615448
-D1
-~
-~
-0 0 615849
 D2
 ~
 ~
@@ -2432187,11 +2432182,9 @@ D3
 0 0 615847
 S
 #615849
-&+yA &+LRocky &+yClimb Along the &+LDark&+yPeak Mountains&n~
-   Rocky slopes rise toward the lone peak to the north, while grasslands
-spread out below to the south. The hills continue to the east and west.
+Temple of Lizizania~
 ~
-5000 0 4 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -2432225,10 +2432218,6 @@ D2
 ~
 ~
 0 0 616250
-D3
-~
-~
-0 0 615849
 S
 #615851
 &+gA Thick Forest of &+yTangle&+gwood&n~
@@ -2440595,7 +2440584,7 @@ S
 D0
 ~
 ~
-0 0 615849
+0 0 9288
 D1
 ~
 ~

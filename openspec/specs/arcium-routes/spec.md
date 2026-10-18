@@ -1,37 +1,43 @@
 # arcium-routes Specification
 
 ## Purpose
-Keep both Arcium approaches on GC northwest of Evermeet while preserving
-Homestead, existing progression, and travel at the vacated site.
+Place Arcium on GC northwest of Evermeet, move Homestead to Turopolis's vacated
+site, and move Turopolis to the Eagle Ridge Delta while preserving progression.
 
 ## Requirements
 
 ### Requirement: Two Good Continent approaches
-Arcium SHALL connect through `516444 W <-> 85700 E` and `516843 N <-> 85700 S`.
-Both approaches SHALL be GC and northwest of active Evermeet woodland at 517246.
-The former UC entrances at 591773 and 592172 SHALL no longer enter Arcium.
+Arcium SHALL connect through `517246 W <-> 85700 E` and `517645 N <-> 85700 S`,
+replacing Homestead at map marker `517245`. Both approaches SHALL be GC in the
+Evermeet woodlands. Neither `516444`/`516843` nor the former UC approaches at
+`591773`/`592172` SHALL enter Arcium.
 
 #### Scenario: Enter and leave through either approach
 - **WHEN** an ordinary player walks each new entrance and its return
 - **THEN** the expected rooms are reached without staff movement bypass
 - **AND** loaded continent and surface grid coordinates establish the required placement
 
-### Requirement: Preserve map travel and Homestead
-The new marker 516443 SHALL have no ordinary incoming map exit. The old footprint
-591772 SHALL be hills with reciprocal cardinal grid edges. Homestead's footprint
-517245 and approaches 517246/517645 SHALL remain unchanged.
+### Requirement: Relocate Homestead and Turopolis with coherent map travel
+Homestead SHALL use marker `548052` and `548452 N <-> 35800 S`, replacing
+Turopolis's former surface entrance. Homestead SHALL have no east exit to its
+former location. Turopolis SHALL use marker `584445` and
+`584845 N <-> 7102 S`. Its Zoo route `7123 W <-> 53000 E` SHALL remain unchanged.
+All three markers SHALL have accurate zone labels and no ordinary incoming map
+exit. Vacated Arcium footprint `516443` and the previously restored `591772`
+SHALL be hills with reciprocal cardinal grid edges.
 
 #### Scenario: Old site and surrounding map
-- **WHEN** a player walks the vacated east/south approaches and around the new site
+- **WHEN** a player walks the vacated approaches and around the new sites
 - **THEN** the intended ordinary routes remain usable
-- **AND** the existing north/west mountains retain their ordinary movement barriers
-- **AND** both Homestead entrance pairs remain usable
+- **AND** the existing mountains retain their ordinary movement barriers
+- **AND** Homestead and Turopolis each have their specified entrance and return
+- **AND** the Zoo route remains usable
 
-### Requirement: Preserve Arcium progression
-The relocation SHALL preserve all Arcium room identities, interior exits, flags,
-resets, quests, and all accepted no-change areas.
+### Requirement: Preserve existing progression
+The relocations SHALL preserve room identities, interior exits, flags, resets,
+quests, and unrelated secondary connections in all three zones.
 
 #### Scenario: Zone reset and clean restart
 - **WHEN** the world resets and restarts
-- **THEN** both new entrance pairs remain loaded and traversable
+- **THEN** all four surface entrance pairs remain loaded and traversable
 - **AND** no new zcheck finding, dangling exit, or one-way trap is introduced
