@@ -1,7 +1,7 @@
 # Issue #109: restore Marduk and Enlil Nexus stones
 
-Status: implementation in progress. NS-01 is implemented and locally validated;
-NS-02 through NS-06 remain open. No production changes have been made.
+Status: implementation in progress. NS-01/NS-02 are implemented and locally validated;
+NS-03 through NS-06 remain open. No production changes have been made.
 Prepared 2026-10-18 from `origin/master` at
 `89253179ab1f89249634eeef9116653381e3d807` and
 [issue #109](https://github.com/LuminariMUD/Duris/issues/109), updated
@@ -30,7 +30,31 @@ The previous artifact plan is preserved unchanged in
   `test_nexus_stones_empty_table.py`, and `test_flatfile_nexus_repository.py`.
   The flat-file full server build and full-world gameplay proof remain outstanding.
 - Publication snapshot: `branch/issue-109-nexus-sage-guardians`, based on master.
-  The delivery branch retains the same commit and will carry subsequent chunks.
+  [PR #190](https://github.com/LuminariMUD/Duris/pull/190), head `87a264acc`.
+  The delivery branch carries this commit and subsequent chunks.
+
+### 2026-10-18 — NS-02: load failures and diagnostics
+
+- Guard callback prototype indexing; report missing ship/room/object/guardian,
+  invalid SQL rows and query/result failures. A failed guardian load removes the
+  newly created stone, and placement success is logged only after required entities
+  are created. Preserve valid loaded prefixes and explicitly report incomplete loads.
+- Empty catalogues still succeed. Initialization requests one warning; ordinary
+  reload/reset loading stays quiet about intentional empty configuration. Existing
+  flat-file authority failure still follows its fatal boot path.
+- Staff reset/reload failures now report failure; request logs no longer claim that
+  placement succeeded before attempting it.
+- Replaced the old empty-table source assertion with ASan/UBSan executable tests of
+  extracted real init/SQL+flat loaders/placement. The fixture controls database and
+  world dependencies; it is not a live database/ship journey. Covers empty boot,
+  missing callback prototypes, valid two-stone load, dynamic ship override, missing
+  ship/room/object/guardian, invalid/missing SQL fields, query/result failures,
+  retained valid prefix, cleanup on failure, and existing flat-file fatal policy.
+- Passed both Nexus native suites, the existing flat-file repository regression,
+  formatting, `make -C src -j8`, and the separate flat-file server build under
+  `bin/issue109-flat`. No database seed or full-world journey has run yet.
+- Publication snapshot: `branch/issue-109-nexus-loading`, based on
+  `branch/issue-109-nexus-sage-guardians` for a focused dependent PR.
 
 ## Outcome and boundaries
 
@@ -69,25 +93,25 @@ The issue is a requirement source, not proof of the following behavior.
    read-only zero-row query and two empty backup sections. This planning pass did not
    reconnect to that database or match it to the running process. The MySQL staff
    message describes the empty in-memory vector, not an independent SQL diagnosis.
-   The [loader](../../src/economy/nexus_stones.c#L200-L257) reads/caches rows at
+   The [loader](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L200-L257) reads/caches rows at
    boot; reset/reload at lines 1496-1588 do not requery SQL. A controlled restart is
    the existing activation mechanism.
 
 2. **The selected data is supported, not already provisioned.**
-   [Constants](../../src/economy/nexus_stones.h#L38-L68) define IDs 1/3, bonus types,
+   [Constants](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.h#L38-L68) define IDs 1/3, bonus types,
    object 394, guardians 65/66/74, and mace 395. Rooms are present in
    [nexus_ic.wld](../../areas/wld/nexus_ic.wld#L2760) and
    [nexus_island.wld](../../areas/wld/nexus_island.wld#L2405); their existence does
    not prove the historical mapping. The modern
-   [bootstrap](../../migrations/bootstrap_multithread_safe.sql#L773-L784) creates
+   [bootstrap](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/migrations/bootstrap_multithread_safe.sql#L773-L784) creates
    **InnoDB** with NOT NULL integer stat fields and no rows. The legacy bootstrap
    used MyISAM. Do not assume that the target is MyISAM or claim a transaction can
    undo writes to an unverified target engine. This repair adds data, not an engine
    conversion or a schema-default change.
 
 3. **No-stat needs a real guard despite disabled automatic sages.**
-   [Ask/train](../../src/economy/nexus_stones.c#L1074-L1211) dereference
-   `char_stat()` before checking it; [char_stat](../../src/core/utility.c#L5991-L6036)
+   [Ask/train](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L1074-L1211) dereference
+   `char_stat()` before checking it; [char_stat](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/core/utility.c#L5991-L6036)
    returns NULL for 0, -1, and unsupported apply codes. The training callback already
    checks the pointer. `affect_amount` is transported as data but does not disable
    training, which uses `nexusStones.sage.statAdd`. Automatic `load_sage` calls are
@@ -104,7 +128,7 @@ The issue is a requirement source, not proof of the following behavior.
    check requiring a guardian for every row would be wrong.
 
 5. **Load logs currently overstate success.**
-   [init/load](../../src/economy/nexus_stones.c#L178-L257) assigns prototype callbacks
+   [init/load](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L178-L257) assigns prototype callbacks
    without guarding failed `real_mobile`/`real_object` lookups. The stone loader logs
    success before guardian creation, ignores its return value, and returns true.
    `load_guardian()` also logs before it has created a mob. Missing required templates
@@ -114,18 +138,18 @@ The issue is a requirement source, not proof of the following behavior.
    machinery to hide it.
 
 6. **Ship ordering exists; ship availability is not guaranteed.**
-   `boot_db()` calls [initialize_ships](../../src/ships/ship_base.c#L552-L584) before
-   `init_nexus_stones()` in [comm.c](../../src/net/comm.c#L894). Enlil's
-   [override](../../src/economy/nexus_stones.c#L1301-L1309) and
-   [slot resolver](../../src/ships/ship_npc.c#L2042-L2045) are already implemented.
+   `boot_db()` calls [initialize_ships](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/ships/ship_base.c#L552-L584) before
+   `init_nexus_stones()` in [comm.c](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/net/comm.c#L894). Enlil's
+   [override](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L1301-L1309) and
+   [slot resolver](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/ships/ship_npc.c#L2042-L2045) are already implemented.
    `load_cyrics_revenge()` can fail its bounded ocean search, ship setup, creation,
    or room loading. The plan adds diagnosis and tests, not another ship spawner.
 
 7. **Existing consumers already select catalogue-backed rewards/objectives.**
-   [check_nexus_bonus](../../src/economy/nexus_stones.c#L281-L355) requires full
+   [check_nexus_bonus](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/economy/nexus_stones.c#L281-L355) requires full
    control and matching racewar, then uses the property rate with integer truncation
-   and its minimum. [gain_epic/PvP calculation](../../src/world/epic.c#L580-L608)
-   and [normal/contraband cargo sales](../../src/ships/ship_shop.c#L1084-L1088)
+   and its minimum. [gain_epic/PvP calculation](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/world/epic.c#L580-L608)
+   and [normal/contraband cargo sales](https://github.com/LuminariMUD/Duris/blob/89253179ab1f89249634eeef9116653381e3d807/src/ships/ship_shop.c#L1084-L1088)
    already call it; epic bottles remain excluded. `get_random_enemy_nexus()` selects
    configured IDs and resolves a live object; `boon.c` validates the configured ID.
    No new hard-coded two-ID task selector is needed. Keep existing task probabilities
@@ -177,7 +201,7 @@ coverage under `tests/async/`.
 Exit: no-stat commands are safe, supported training remains functional, and each
 operation leaves only the intended stone and guardians without affecting its peer.
 
-### NS-02 — Honest loading and diagnostics
+### NS-02 — Honest loading and diagnostics (locally complete)
 
 Files: `src/economy/nexus_stones.c` and the same focused Nexus runtime harness.
 
