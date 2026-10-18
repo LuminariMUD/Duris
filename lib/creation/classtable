@@ -1,23 +1,6 @@
-Class selection menu - Please choose one of the following for your character:
---------------------
-
-&+Ba) Warrior
-&+Gb) Ranger 
-&+bc) Psionicist
-&+Wd) Paladin 
-&+Le) Anti-Paladin             This class will must start in one of the cities 
-&+cf) Cleric                   where evil races live, due to their evil nature.
-&+gh) Druid                    Advanced player and know Duris well.
-&+Ci) Shaman
-&+Mj) Sorcerer
-&+mk) Necromancer
-&+Yl) Conjurer
-&+Rm) Thief
-&+rn) Assassin 
-&+yo) Mercenary 
-&=bwp) Bard 
-&+wk) Monk
-
+Class choices are displayed for the selected race by the creation menu.
+Type the selection shown there; unavailable combinations cannot be selected.
+In game, use help classes or help <class> for class information.
 z) Return to the Race selection menu and re-choose your race, and/or get more
                                     information on races and classes.
 Your Selection? 

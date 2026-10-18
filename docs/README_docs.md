@@ -26,6 +26,7 @@ docs/
 |----------|---------|
 | [ARCHITECTURE.md](reference/ARCHITECTURE.md) | Process model, boot gate, game loop, typed persistence, recovery, and networking. |
 | [CODEBASE.md](reference/CODEBASE.md) | Module-by-module map of the server sources. |
+| [CLASSES.md](reference/CLASSES.md) | PC class catalogue, help resources, creation eligibility, specializations, multiclassing, and progression rules. |
 | [DATABASE.md](reference/DATABASE.md) | Database authority, typed reads/writes, schema, reconciliation, and migrations. |
 | [EVENTS.md](reference/EVENTS.md) | The `nevent` deferred-work scheduler: the timer wheel, scheduling, cancellation, the per-pulse budget, and catch-up. |
 | [SHIPS.md](reference/SHIPS.md) | Ship subsystem engineering reference: lifecycle, heartbeat, movement, crews, combat, NPC ships, persistence, GMCP, and extending it. |
@@ -33,7 +34,7 @@ docs/
 | [BATCH_ITEM_COMMANDS.md](reference/BATCH_ITEM_COMMANDS.md) | Batch get, put, drop, wear, and remove syntax, the GET parser, and what their saves record. |
 | [CHAOS_MODE.md](reference/CHAOS_MODE.md) | Chaos configuration, new-character grants, equipment catalogs, and craft-pouch behavior. |
 | [CHAOS_KIT_CATALOG.md](reference/CHAOS_KIT_CATALOG.md) | Generated Chaos starter-kit catalog policy (`scripts/chaos_eq_catalog.py`; not edited by hand). |
-| [LEGACY_STARTER_KITS.md](reference/LEGACY_STARTER_KITS.md) | How the legacy newbie kit is planned off the game loop. |
+| [LEGACY_STARTER_KITS.md](reference/LEGACY_STARTER_KITS.md) | How the standard newbie kit is planned off the game loop. |
 | [EXPERIENCE_TROPHIES.md](reference/EXPERIENCE_TROPHIES.md) | In-memory PvE XP observation per zone and its checkpoint persistence. |
 | [DIVINE_REFUSAL.md](reference/DIVINE_REFUSAL.md) | The default-off refusal roll for ordered cleric pets. |
 | [RANDOM_EQUIPMENT.md](reference/RANDOM_EQUIPMENT.md) | Random equipment, salvage material and stone drops on NPC kills: the chance, the generated item, zone sets, and the settings. |

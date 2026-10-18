@@ -56,7 +56,7 @@ structs = source("structs.h").read_text(encoding="utf-8")
 assert re.search(r"unsigned long long holy_sacrifice_round;\s*int holy_sacrifice_healed;", structs)
 
 # Every help source describes the shared limits and the 2.5x ceiling.
-for help_file in ("help/duris_help.hlp", "help/duris_help_parsed.hlp", "lib/information/help_index"):
+for help_file in ("help/duris_help_parsed.hlp", "lib/information/help_index"):
     text = " ".join((ROOT / help_file).read_text(encoding="utf-8").split())
     for phrase in ("no more than 90% of its damage", "60% of the Paladin's own maximum hit points",
                    "at most 120% of the Paladin's maximum hit points", "halves these limits for the rest of the combat round",

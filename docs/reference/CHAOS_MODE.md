@@ -53,8 +53,9 @@ character can also receive:
 - every eligible no-specialization epic skill;
 - a free-frigate claim, using the persisted `AIP_FREESLOOP` effect as the
   compatibility marker for the existing dock reward flow;
-- 20,000 epic points through the critical epic ledger; and
-- 1,000,000 bank platinum through the critical currency ledger.
+- 20,000 epic points through the in-memory epic transaction API; and
+- 1,000,000 bank platinum through the in-memory currency transaction API and
+  the persistence writer's bank-delta job.
 
 The class equipment bag is part of Chaos mode itself; the
 `CHAOS_STARTER_BONUSES` master does not disable it. The material pouch inside
@@ -83,11 +84,13 @@ releases the maintenance fence without a success announcement. A
 failed or interrupted partial grant may require staff recovery; it is not
 automatically duplicated on login.
 
-Epic and bank rewards use stable operation identities and pending player flags,
-so retry follows the critical-command result instead of applying an anonymous
-balance mutation. Completion clears the matching pending flag and marks player
-status dirty. Existing characters are not retroactively given the one-time
-equipment bag or material pouch.
+Epic and bank reward intents carry stable operation identities and pending player
+flags. The current APIs change balances in memory and invoke their completion
+before returning. Completion clears the matching pending flag and marks player
+status dirty; it is not a durable acknowledgement. Player snapshots persist epic
+points and flags, while bank changes use ordered bank-delta jobs. A crash can lose
+unwritten state; these flags do not constitute a durable kit-wide reward receipt.
+Existing characters are not retroactively given the equipment bag or material pouch.
 
 Two staff commands use the same kit. `chaos kit <character>` grants it through
 the ownership coordinator to an online mortal who holds and wears nothing.
@@ -113,8 +116,7 @@ unlocks do not spend epic points. In non-Chaos mode, the persisted
 `src/account/chaos_eq_data.h` is generated, not hand-maintained. It contains a
 standard and enhanceable profile for each of the 30 classes, shared optional
 body-slot entries, shared consumables, and skill-gated utilities. The catalog pipeline separates the
-durable selection policy from dated observations about a particular character
-population:
+runtime selection policy from optional equipment-population analysis:
 
 1. `scripts/chaos_eq_analyze.py` analyzes aggregate high-level equipment data
    and reconciles it with active area prototypes and `lib/enhance.cfg`.
@@ -175,9 +177,9 @@ craft pouch supplies supported recipe materials. The active Craft/Forge paths
 do not require the hammer/parchment tools from the disabled legacy path. A
 configured scientific-tool prototype must exist and pass runtime validation.
 
-A sanitized seed records the prior catalog's VNUM/slot choices and its source
-commit, without player records or population statistics. Regenerate from this
-seed plus current active AREA/enhancement data without database access:
+A sanitized selection seed supplies VNUM/slot recommendations without player
+records or population statistics. Regenerate from this seed plus current active
+AREA/enhancement data without database access:
 
 ```sh
 python3 scripts/chaos_eq_catalog.py --static-seed docs/data/chaos_eq_seed.json \

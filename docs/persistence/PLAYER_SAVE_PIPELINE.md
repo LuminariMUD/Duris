@@ -32,8 +32,11 @@ The artifact/guild lifecycle drain consumes writer completions before retrying
 dirty captures, releasing admission slots while the normal game loop is stopped.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Nothing is journaled. A crash loses whatever had not reached the database,
-at most one 30-second `dirty-player-checkpoint`.
+operation. Nothing is journaled. A crash loses whatever had not reached durable
+storage. The 30-second `dirty-player-checkpoint` interval is a scheduling target,
+not an upper bound on loss: batching, refused admission, writer retries, or an
+outage can leave older state unwritten. Inspect the writer's oldest age and the
+player's written revision when assessing durability.
 
 ## Game-thread SQL
 
@@ -80,7 +83,9 @@ A player save writes the wallet, epic points, frags and old frags with the rest 
 character; a bank change is its own `bank` job (see
 [Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory) and
 [Epic points and frags live in memory](CRITICAL_COMMAND_PIPELINE.md#epic-points-and-frags-live-in-memory)).
-A save never refuses. In one transaction it writes what its owner holds in memory and
+An admitted save applies its owner's captured state without a revision-conflict
+refusal. Submission can still be refused at the capacity bound described above.
+In one transaction it writes what its owner holds in memory and
 makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
 the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and
 commits it with the player file):
@@ -148,8 +153,10 @@ is only counted; the boot reap above deletes it once no payload carries the item
 the claim model that is every item picked up since the last login, until the next
 login.
 
-A load always succeeds with the rows that pass the filter; there is no degraded
-admission, no stale-row refusal threshold and no read-only quarantine. Logins never
+Stale ownership rows alone do not refuse the load; matching rows pass the filter.
+Malformed required components, storage errors, worker capacity, or a deadline can
+still refuse or time out the load. There is no degraded admission, stale-row refusal
+threshold, or read-only quarantine. Logins never
 block the game loop: the account menu submits the load and the descriptor waits in
 `CON_PLAYER_LOAD` until the load worker answers. If the worker refuses the request, the
 player is asked to try again. Copyover restore, which runs before the game loop starts,
@@ -266,12 +273,9 @@ starvation. The controlled retry/crash modes are documented in
 A death happens at once: `make_corpse()` moves the
 player's items into the corpse in memory, the corpse save claims them, the
 player's save follows, and the character is extracted. There is no recovery
-hold, corpse handoff batch or disputed-death disposition any more. The wallet
+hold, corpse handoff batch, or disputed-death disposition. The wallet
 becomes a coin pile in the corpse; the player's save, with the
 wallet empty, is queued before the corpse's, so a crash between them can lose
 the coins but never leave them in both places. See
 [the persistence reset decision](../adr/0002-persistence-reset-memory-is-the-authority.md)
-and `tests/async/test_deaths_happen_at_once.py`. Every server is treated as new, so
-the death evidence older servers stored is gone: migration 0034 drops
-`player_death_disposition` and `player_death_custody`, and the flat-file
-`player-deaths/` store is no longer created.
+and `tests/async/test_deaths_happen_at_once.py`.

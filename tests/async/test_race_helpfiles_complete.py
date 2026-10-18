@@ -13,7 +13,6 @@ defines = (SRC / "defines.h").read_text(encoding="utf-8", errors="ignore")
 common = (SRC / "common.c").read_text(encoding="utf-8", errors="ignore")
 props_text = (LIB_DIR / "duris.properties").read_text(encoding="utf-8", errors="ignore")
 parsed_hlp = (HELP_DIR / "duris_help_parsed.hlp").read_text(encoding="utf-8", errors="ignore")
-duris_hlp = (HELP_DIR / "duris_help.hlp").read_text(encoding="utf-8", errors="ignore")
 
 # Extract race_names_table
 rnt_match = re.search(r"race_names_table\[.*?\]\s*=\s*\{(.*?)\n\};", common, re.S)
@@ -43,17 +42,6 @@ for block in parsed_hlp.split("\n#0\n"):
         title = title_line.split(" - Last Edited:")[0].strip()
         parsed_entries[title.lower()] = block.strip()
 
-# Parse entries from duris_help.hlp
-duris_entries = {}
-for block in re.split(r"You say 'HELPMARKER_\d+_[^']+'", duris_hlp):
-    lines = block.strip().splitlines()
-    for l in lines[:5]:
-        m = re.search(r"([A-Za-z0-9 -]+)\s+-\s+Last Edited:", l)
-        if m:
-            t = m.group(1).strip()
-            duris_entries[t.lower()] = block.strip()
-            break
-
 required_universal_sections = [
     "==See also==",
     "==Class list==",
@@ -77,9 +65,6 @@ for normal, nospaces, ansi, code in races_to_test:
     # 1. Must exist in parsed.hlp
     assert key in parsed_entries, f"Missing helpfile in duris_help_parsed.hlp for race '{normal}'"
     p_content = parsed_entries[key]
-    
-    # 2. Must exist in duris_help.hlp
-    assert key in duris_entries, f"Missing helpfile in duris_help.hlp for race '{normal}'"
     
     # 3. Must have Last Edited header
     assert " - Last Edited:" in p_content, f"Helpfile for '{normal}' missing '- Last Edited:' header"

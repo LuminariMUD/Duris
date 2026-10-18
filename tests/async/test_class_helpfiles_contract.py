@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[2]
 COMMON_C = (SRC / "common.c").read_text()
 DEFINES_H = (SRC / "defines.h").read_text()
 PARSED_HELP = (ROOT / "help/duris_help_parsed.hlp").read_text()
-RAW_HELP = (ROOT / "help/duris_help.hlp").read_text()
 HELP_INDEX = (ROOT / "lib/information/help_index").read_text()
 
 # 1. Extract all 30 classes from class_names_table in src/common.c
@@ -39,7 +38,7 @@ for entry in parsed_entries:
         parsed_map[title.lower()] = (title, entry)
 
 # 3. Parse lib/information/help_index
-index_entries = HELP_INDEX.split("\n#\n")
+index_entries = re.split(r"(?m)^[ \t]*#[ \t]*$", HELP_INDEX)
 index_map = {}
 for entry in index_entries:
     lines = entry.strip().split("\n")
@@ -81,8 +80,11 @@ for cls in class_names:
     assert cls_lower in index_map or cls.upper() in [t.upper() for t in index_map], f"Missing '{cls}' in lib/information/help_index"
     assert index_skill_title in index_map or f"skill_{cls.upper()}".lower() in index_map, f"Missing 'SKILL_{cls.upper()}' in lib/information/help_index"
 
-    # Verify presence of HELPMARKER in help/duris_help.hlp
-    marker_name = cls.replace(" ", "_").replace("-", "_")
-    assert f"HELPMARKER_" in RAW_HELP and (f"_{marker_name}'" in RAW_HELP or f"_{cls.replace(' ', '_')}'" in RAW_HELP or f"_{cls.replace('-', '')}'" in RAW_HELP or f"_{cls}'" in RAW_HELP), f"Missing HELPMARKER for '{cls}' in duris_help.hlp"
+    # Both actual import sources must carry the same maintained class/skill body.
+    main_body = "\n".join(main_entry.strip().splitlines()[3:]).strip()
+    skill_body = "\n".join(skill_entry.strip().splitlines()[3:]).strip()
+    for key, expected in ((cls_lower, main_body), (index_skill_title, skill_body)):
+        index_body = "\n".join(index_map[key][1].strip().splitlines()[2:]).strip()
+        assert index_body == expected, f"Divergent help source body for {key}"
 
 print("All 30 class help files and skills contracts passed successfully!")

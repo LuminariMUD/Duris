@@ -6,6 +6,9 @@ This document explains how to add, edit, or modify the playable races and
 classes available during character creation. Both telnet and WebSocket clients
 use the same data structures.
 
+For the PC class catalogue, player help links, progression, specializations,
+and multiclassing, see docs/reference/CLASSES.md.
+
 ================================================================================
                     QUICK OPERATOR CONFIGURATION
 ================================================================================
@@ -16,7 +19,7 @@ For normal enable/disable changes, edit:
 The file is loaded at server boot, so restart the server after changing it.
 Use true to show and allow an option; use false to hide it from the creation
 menu and reject it if a client submits the option directly. Missing settings
-retain the historical enabled behavior.
+default to enabled.
 
 Examples:
   creation.class.dragoon.enabled=false
@@ -31,7 +34,7 @@ CREATION_ALL_CLASSES=TRUE in .env overrides both the per-class switches and
 the race/class restrictions for character creation. Normally unavailable
 choices are clearly labelled and selected by typing the full class name in the
 telnet menu; WebSocket clients receive restricted/restricted_note fields. The
-committed .env.example currently enables this override.
+committed .env.example currently sets this override to FALSE.
 
 The per-option config only affects new character creation. It does not change
 existing characters, class/race mechanics, race/class alignment rules, or item
@@ -61,9 +64,17 @@ Fields:
   - menu_key   : The lowercase letter/number for telnet menu selection
                  Uppercase = show help, e.g., 'h' selects Human, 'H' shows help
                  For numbers: '1' selects, '!' shows help (shift key)
-  - faction    : "good"    = Always good faction (good hometowns)
-                 "evil"    = Always evil faction (evil hometowns)
+  - faction    : "good"    = Good creation-side group
+                 "evil"    = Evil creation-side group
                  "neutral" = Player chooses good or evil during creation
+
+Alignment is separate from racewar side. Telnet resolves fixed or selectable
+alignment from the race/class cell. WebSocket assigns good/evil from this faction
+field, or from a neutral-faction player's good/evil choice, then checks only fixed
+good/evil class requirements. It does not resolve neutral and mixed alignment
+cells in the same way. A legal matrix cell is not proof that both clients can
+complete it; Human Necromancer, for example, is rejected by WebSocket's fixed-good
+Human alignment even though its matrix cell permits evil.
 
 --------------------------------------------------------------------------------
                          HOW TO ADD A NEW PLAYABLE RACE
@@ -71,7 +82,7 @@ Fields:
 
 1. Open src/core/constant.c
 
-2. Find the playable_races[] array (around line 1800)
+2. Find the playable_races[] array by name
 
 3. Add a new entry before the sentinel { -1, 0, NULL }:
 
@@ -178,7 +189,7 @@ Class names are defined in src/core/common.c (class_names_table[])
 
 Race constants are defined in: src/core/defines.h (search for RACE_HUMAN)
 
-Current playable races (as of this writing):
+Normal creation roster (subject to the per-race switches):
 
 Good Faction:
   RACE_HUMAN, RACE_BARBARIAN, RACE_GREY (Grey Elf), RACE_MOUNTAIN (Dwarf),
@@ -195,12 +206,16 @@ Neutral (Player Chooses):
                             RACIAL STAT MODIFIERS
 ================================================================================
 
-Location: src/core/constant.c (search for "stat_factor")
+Storage: src/core/constant.c (stat_factor[])
+Loading: src/world/db.c (update_stat_data())
+Configuration: lib/duris.properties (stats.<stat>.<race-name-without-spaces>)
 
-The stat_factor[] array defines racial bonuses/penalties to base stats.
-Each race has modifiers for: Str, Dex, Agi, Con, Pow, Int, Wis, Cha
-
-These are added to the rolled base stats during character creation.
+Fields cover Str, Dex, Agi, Con, Pow, Int, Wis, Cha, Kar, and Luk; the Luck
+property uses the token luc. Missing factors default to 100. These are racial
+scaling factors, not additive creation bonuses. src/magic/affects.c applies the
+factor to the character's stat value divided by 100, with affect, item, and
+clamping rules. Edit the properties through the normal property workflow rather
+than adding hardcoded values to the zero-initialized array.
 
 ================================================================================
                                QUICK REFERENCE
@@ -213,10 +228,11 @@ To add a new playable race:
   4. Recompile
 
 To change class availability:
-  1. Edit src/core/constant.c -> class_table[][]
-  2. Find race row, class column
-  3. Set value (5=forbidden, 2=any, 1=good, -1=evil, 0=neutral)
-  4. Recompile
+  - Global enable/disable: edit lib/creation_availability.cfg and restart.
+  - Race-specific rules: edit src/core/constant.c -> class_table[][],
+    find the race row/class column, set the alignment code, and recompile.
+    Codes: 5=forbidden, 2=any, 1=good, -1=evil, 0=neutral,
+    3=good/neutral, 4=neutral/evil.
 
 Files involved:
   src/core/defines.h    - RACE_* and CLASS_* constants
@@ -230,17 +246,22 @@ Files involved:
 ================================================================================
 
 Q: I added a race but it doesn't appear in character creation
-A: Make sure you added it BEFORE the sentinel { -1, 0, NULL } and recompiled
+A: Check roster membership, its per-race switch, the all-races setting when
+   using a restricted race, and the running binary. Add roster entries before
+   the sentinel { -1, 0, NULL }.
 
 Q: Players can't select a class that should be available
-A: Check class_table[race][class] - value of 5 means forbidden
+A: Check the per-class switch, class_table[race][class] (5 is forbidden),
+   override settings, alignment handling, and account side admission.
 
 Q: WebSocket client shows different races than telnet
-A: Both use playable_races[] - if different, check for compilation issues
+A: Both use the shared roster and availability helpers. Check client handling
+   of restricted/restricted_note fields and the running binary. Their alignment
+   selection paths differ as described above.
 
 Q: Race name shows wrong in WebSocket client
 A: Check race_names_table[] in common.c matches the RACE_* constant
 
 ================================================================================
-Last updated: December 2024 - Arih
+Current PC class rules: docs/reference/CLASSES.md
 ================================================================================
