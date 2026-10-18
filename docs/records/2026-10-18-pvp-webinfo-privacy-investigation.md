@@ -5,7 +5,7 @@ the website's database reader, API, and rendered desktop/mobile views.
 **Findings only. No application repair or production mutation was performed.**
 
 Website implementation tasks are tracked in the
-[dedicated DurisWeb workfile](2026-10-18-durisweb-pvp-privacy-workfile.md).
+[dedicated DurisWeb workfile](https://github.com/LuminariMUD/DurisWeb/blob/master/docs/ongoing-projects/2026-10-18-durisweb-pvp-privacy-workfile.md).
 
 **The equipment snapshots were captured, but the publication privacy contract
 is broken on both ends.** The MUD captures every participant's equipment and
@@ -102,14 +102,14 @@ and log strings; its participant flags record participation/gameplay state, not 
 `src/combat/combat_outcome_repository.c:332` inserts both strings into
 `pkill_info`. The live table likewise has no captured privacy field.
 
-The website's [getPvPEventDetail](../../backend/src/services/pvpService.ts)
+The website's [getPvPEventDetail](https://github.com/LuminariMUD/DurisWeb/blob/ade01ddcea70c0448825a0b4ab3e8ba77982aae4/backend/src/services/pvpService.ts)
 conditionally selects `p.equip`, but always selects `p.log`. Its public
 `GET /api/pvp/events/:event_id` handler does not authenticate the reader.
 The API therefore publishes every participant's log even when the database
 flag is off. Disabling the viewer's own `webinfo` does not affect this query;
 the missing control is on the data being published.
 
-[BattleDetailView.vue](../../frontend/src/views/BattleDetailView.vue) renders
+[BattleDetailView.vue](https://github.com/LuminariMUD/DurisWeb/blob/ade01ddcea70c0448825a0b4ab3e8ba77982aae4/frontend/src/views/BattleDetailView.vue) renders
 the returned log and offers every returned participant in its POV selector.
 Its privacy message applies only to `equip === null`. Desktop, mobile, and
 maximized-log rendering use the log independently of that equipment state.

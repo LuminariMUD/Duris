@@ -150,7 +150,7 @@ audit does not claim a new purge/reconnect/restart gameplay journey.
 ## Addressed: historical October 16 corpse looting and trap persistence
 
 The three October 16 dumps named in the
-[existing investigation](core-dump-remediation-2026-10-16.md) are no longer among
+[existing investigation](../records/core-dump-remediation-2026-10-16.md) are no longer among
 the available core files and were not re-symbolized in this audit. Their documented
 common fault was continuing `get all corpse` after a trap extracted the looter.
 

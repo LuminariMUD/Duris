@@ -1,5 +1,7 @@
 # Base-stat persistence and ended-session recovery
 
+> Archived 2026-10-18: PRs #111-#114 are merged into master. This completed implementation record preserves the regression commands and production boundaries.
+
 Base stats use signed shorts at runtime. The former signed TINYINT database
 columns could reject values accepted by staff commands, rolling back the entire
 save transaction. Migration `0042_player_base_stats` widens all ten columns to
