@@ -32,6 +32,7 @@ PROGRESS_SECONDS = 60
 RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
     {
         "test_account_recovery_journey.py",
+        "test_artifact_owner_restart_journey.py",
         "test_connection_limit_journey.py",
         "test_corpse_trap_restart_journey.py",
         "test_creation_prompt_journey.py",

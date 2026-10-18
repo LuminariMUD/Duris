@@ -17,6 +17,12 @@ HARNESS = r"""
 #include "item/encumbrance_policy.h"
 #include "player/player_snapshot.h"
 #include "player/player_load_items.h"
+#include "guild/artifact_guild_state.h"
+#include "guild/assocs.h"
+#include "player/player_save_pipeline.h"
+#include "telemetry/telemetry_runtime.h"
+#include "world/difficulty.h"
+#include "world/epic.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -47,7 +53,7 @@ static std::map<uint64_t,size_t> removed_wear_links_by_uid;
 static std::vector<uint64_t> removed_floor_uids;
 static std::vector<persistence_job_write_fn> writes;
 static std::vector<std::vector<flatfile_artifact_record>> captures;
-static bool booting=false;
+static bool booting=false, writer_admission=true;
 bool sql_async_booting() { return booting; }
 static bool fail_invalidation=false;
 bool redis_invalidate_artifact_cache() {
@@ -61,7 +67,9 @@ flatfile_artifact_result flatfile_artifact_snapshot_apply(const std::string &,
 }
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind,uint64_t,size_t,
  persistence_job_write_fn write) {
- assert(kind==persistence_job_kind::artifact); writes.push_back(std::move(write));
+ assert(kind==persistence_job_kind::artifact);
+ if(!writer_admission) return player_save_submit_result::unavailable;
+ writes.push_back(std::move(write));
  return player_save_submit_result::accepted;
 }
 void drain() {
@@ -215,8 +223,17 @@ void nevent_periodic_continue_after(unsigned long long) {}
 void nevent_periodic_retry_after(unsigned long long,const char *) { ++expiry_retries; }
 void balance_affects(P_char) {}
 bool training_dummy_is(P_char) { return false; }
+double difficulty_multiplier(difficulty_dial) { return 1; }
+int check_nexus_bonus(P_char,int value,int) { return value; }
+bool Guild::save() { return true; }
+static size_t owner_mismatch_alerts=0, terminal_queue_failures=0;
+void persistence_alert(int,const char *,const char *,const char *,const char *,const char *reason,const char *,...) {
+ if(std::string(reason)=="owner_mismatch") ++owner_mismatch_alerts;
+ if(std::string(reason)=="queue_failed") ++terminal_queue_failures;
+}
 // RESTORE_CARRIED
 // PLAYER_ATTACHMENT
+// TERMINAL_EXTRACTION
 // CONSTRUCTORS
 // EXTRACTION
 // RECOVERY_TREE
@@ -234,10 +251,12 @@ bool training_dummy_is(P_char) { return false; }
 // MONOLITH_CASES
 // STUDIO_CASES
 // TRANSFORMATION_CASES
+// OWNER_RECONCILIATION_CASES
 int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
  artifact_cache_loaded=true;
+ owner_reconciliation_cases();
  const std::vector<artifact_population_template> prototypes={{900,ITEM_ARTIFACT},{901,0},{902,ITEM_ARTIFACT}};
  const auto stage=[&](bool complete) {
   booting=true; const bool result=artifacts_stage_population({},prototypes,complete); booting=false; return result;
@@ -420,7 +439,7 @@ int main() {
  // Unqualified same-UID placement cannot register, mutate or retire the authority.
  auto *hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
  player_item_snapshot saved={}; saved.equipment_slot=0;
- attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
  assert(!legacy.live_object && !artifact_is_canonical(hydrated));
  artifact_update_location_sql(hydrated); artifact_feed_sql(&holder,hydrated,100,false,false);
  assert(legacy.timer==7777 && legacy.location==2000);
@@ -430,10 +449,10 @@ int main() {
  qualified.item_uid=qualified.payload_root_item_uid=80002;
  legacy.canonical_payloads={qualified}; legacy.population_reason=artifact_population_reason::complete;
  hydrated=read_object_for_recovery(qualified); assert(hydrated);
- attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
  assert(legacy.live_object==hydrated && legacy.pending==artifact_pending::none && legacy.timer==7777);
  player_load_items_discard(&holder); assert(!legacy.live_object);
- hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved});
+ hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
  auto *duplicate=read_object(900,VIRTUAL); duplicate->obj_uid=80002; obj_to_char(duplicate,&holder);
  assert(!artifact_is_canonical(duplicate) && legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
  assert(legacy.identity_state==artifact_identity_state::present);
@@ -444,11 +463,147 @@ int main() {
  std::cout<<"actual artifact constructor/clone/extraction admission: PASS\n";
 }
 """
+HARNESS=HARNESS.replace("// OWNER_RECONCILIATION_CASES", r"""
+void owner_reconciliation_cases() {
+ for(int placement=0;placement<3;++placement) for(int stale=0;stale<5;++stale) {
+  assert(!object_list && !pool.objs_used && writes.empty());
+  artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
+  char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=77;
+  owner.player.level=51; owner.specials.act=PLR_MORTAL; owner.in_room=0;
+  owner.player.name=const_cast<char *>("Restorefixture");
+  const time_t before=time(nullptr)+3600;
+  auto &row=artifact_rows[900];
+  row={stale<3,stale==0 ? ARTIFACT_ONGROUND : stale==1 ? ARTIFACT_ON_NPC : ARTIFACT_ON_PC,
+       88,stale==4 ? 0 : before,ARTIFACT_MAJOR};
+  row.canonical_item_uid=4242; row.identity_state=artifact_identity_state::present;
+  artifact_binds[900]={77,666};
+  artifact_payload_projection source={}; source.domain=artifact_payload_domain::player;
+  source.row_id=1; source.item_uid=4242; source.vnum=900; source.owner_reference=77;
+  source.extra_flags=ITEM_ARTIFACT; source.extra_flags_present=true; source.quantity=1;
+  source.payload_owner={item_owner_type::player,77,0};
+  source.payload_root_item_uid=placement==2 ? 5000 : 4242;
+  source.parent_item_uid=placement==2 ? 5000 : 0;
+  source.custody_examined=source.custody_found=source.custody_owner_revision_found=true;
+  source.custody={4242,source.payload_root_item_uid,source.parent_item_uid,source.payload_owner,
+                  1,1,900,item_custody_state::active};
+  assert(item_ownership_runtime_hydrate(source.custody));
+  // A later attachment failure releases only the pending body, with no publication.
+  auto *body=read_object_for_recovery(source); assert(body);
+  assert(!artifact_reconcile_player_owner(body));
+  extract_obj(body,FALSE);
+  assert(!row.live_object && row.location==88 && row.timer==(stale==4 ? 0 : before));
+  assert(row.canonical_item_uid==4242 && row.identity_state==artifact_identity_state::present && writes.empty());
+  body=read_object_for_recovery(source); assert(body);
+  writer_admission=placement!=0 || stale!=0;
+  item_ownership_runtime_reset(); // normal login hydrates only after attachment
+  auto *unrelated=read_object(901,VIRTUAL); obj_to_char(unrelated,&owner);
+  player_item_snapshot saved={}; saved.equipment_slot=placement==0 ? 1 : 0;
+  if(placement==2) {
+   auto *bag=read_object(903,VIRTUAL); bag->obj_uid=5000;
+   obj_to_obj(body,bag);
+   attach_loaded_inventory(&owner,{bag,body},{0},{saved,player_item_snapshot{}},{{},source.custody});
+   assert(owner.carrying==unrelated && unrelated->next_content==bag && bag->contains==body);
+  } else {
+   attach_loaded_inventory(&owner,{body},{0},{saved},{source.custody});
+   assert(owner.carrying==unrelated);
+   assert(placement==0 ? owner.equipment[0]==body : unrelated->next_content==body);
+  }
+  assert(artifact_is_canonical(body) && row.owned && row.locType==ARTIFACT_ON_PC && row.location==77);
+  assert(row.timer==(stale==4 ? time(nullptr)+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY : before));
+  assert(artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==666);
+  assert(item_ownership_runtime_hydrate(source.custody));
+  if(placement==0) {
+   critical_operation_id operation={}; operation.bytes[0]=1;
+   artifact_guild_payload payload={};
+   owner.equipment[1]=body; // alias slot must not double-feed
+   assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::ready);
+   assert(payload.artifact_count==1 && payload.artifacts[0].timer_before==row.timer);
+   const auto expected=std::min<int64_t>(row.timer+900,time(nullptr)+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY);
+   artifact_guild_state_apply(&owner,payload); assert(row.timer==expected);
+   owner.equipment[1]=nullptr;
+   // A valid body can also repair tracking that drifted while already online.
+   for(bool capture : {false,true}) {
+    row.owned=false; row.locType=ARTIFACT_ON_PC; row.location=88; row.timer=before;
+    if(capture) {
+     assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::ready);
+     assert(payload.artifact_count==1 && payload.artifacts[0].timer==before+900);
+     artifact_guild_state_apply(&owner,payload);
+    } else assert(artifact_feed_sql(&owner,body,900,false,false)==artifact_feed_result::positive);
+    assert(row.timer==before+900 && row.owned && row.location==77);
+   }
+   // Rejected/same-UID copies cannot repair tracking or receive an award.
+   auto *copy=read_object(900,VIRTUAL); copy->obj_uid=body->obj_uid;
+   row.location=88; obj_to_char(copy,&owner);
+   assert(!artifact_reconcile_player_owner(copy) && row.location==88);
+   assert(artifact_feed_sql(&owner,copy,900,false,false)==artifact_feed_result::rejected);
+   extract_obj(copy,FALSE);
+   const auto alerts=owner_mismatch_alerts;
+   // Every disagreement leaves authority intact instead of guessing an owner.
+   for(int conflict=0;conflict<6;++conflict) {
+    item_ownership_runtime_reset(); auto custody=source.custody;
+    switch(conflict) {
+     case 0: custody.owner.id=88; break;
+     case 1: custody.vnum=902; break;
+     case 2: custody.root_item_uid=5000; break;
+     case 3: custody.parent_item_uid=5000; break;
+     case 4: custody.state=item_custody_state::quarantined; break;
+    }
+    if(conflict!=5) assert(item_ownership_runtime_hydrate(custody));
+    assert(!artifact_reconcile_player_owner(body) && row.location==88);
+    assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::no_effect);
+    assert(artifact_feed_sql(&owner,body,900,false,false)==artifact_feed_result::rejected);
+    assert(row.timer==before+900 && row.location==88 && row.canonical_item_uid==4242);
+   }
+   assert(owner_mismatch_alerts==alerts+12);
+   owner_mismatch_alerts=0;
+  }
+  assert(owner_mismatch_alerts==0);
+  const auto saved_timer=row.timer;
+  const auto saved_location=row.location;
+  const auto failures=terminal_queue_failures;
+  terminal_admission=stale%2 ? player_save_pipeline_result::unavailable : player_save_pipeline_result::queued;
+  character_list=&owner;
+  assert(persistence_save_all_characters_terminal(RENT_CRASH));
+  extract_char_after_terminal_save(&owner);
+  character_list=nullptr;
+  assert(terminal_queue_failures==failures+(stale%2));
+  assert(!owner.carrying && !owner.equipment[0] && !rooms[0].contents);
+  assert(row.timer==saved_timer && row.location==saved_location);
+  assert(!row.live_object && row.canonical_item_uid==4242 && row.identity_state==artifact_identity_state::present);
+  assert(artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==666);
+  if(!writer_admission) assert(writes.empty() && row.save.dirty);
+  writer_admission=true; artifact_save_pulse(true); drain();
+ }
+ artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
+ std::cout<<"qualified worn/carried/nested owner reconciliation, first feed, conflicts and cancellation: PASS\n";
+}
+""")
 source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "unsigned int player_load_items_qualify(")))
 source=source.replace("// RESTORE_CARRIED",extract_function("handler.c","static void append_obj_to_list(")+"\n"+extract_function("handler.c","void obj_to_char_at_end("))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object_for_creation_repair(","P_obj read_object(int nr, int type)")))
+terminal_extract=extract_function("handler.c","void extract_char(P_char ch)")
+terminal_cleanup=terminal_extract[terminal_extract.index("\t/* clear equipment_list */"):terminal_extract.index("\n\ttraining_dummy_begin_removal(ch);")]
+source=source.replace("// TERMINAL_EXTRACTION", r"""
+static player_save_pipeline_result terminal_admission=player_save_pipeline_result::queued;
+int calculate_save_room(P_char,int,int room) { return room; }
+void locker_post_save_hook(P_char) {}
+player_save_pipeline_result player_save_pipeline_request(P_char ch,player_component_mask_t components,int intent,int) {
+ assert(ch->carrying && components==PLAYER_CHECKPOINT_COMPONENT_ALL && intent==RENT_CRASH);
+ return terminal_admission;
+}
+struct deferred_save_slot { int pid; };
+deferred_save_slot *find_deferred_save_slot(int) { return nullptr; }
+void clear_manual_save_status(int) {}
+telemetry_capture_result telemetry_runtime_game_session_exit(P_char,P_desc,telemetry_session_end_reason) { return {}; }
+void terminal_item_cleanup(P_char ch) {
+ P_obj obj; int l;
+ const bool terminal_items_saved=IS_PC(ch) && IS_SET(ch->runtime_flags,CHAR_RFLAG_TERMINAL_ITEMS_SAVED);
+"""+terminal_cleanup+"\n}\n"+
+extract_function("handler.c","void extract_char_after_terminal_save(P_char ch)")+"\n"+
+extract_function("actoth.c","bool persistence_save_character_terminal(P_char ch, int type)")+"\n"+
+extract_function("actoth.c","bool persistence_save_all_characters_terminal(int type)"))
 source=source.replace("// ACTUAL_UNEQUIP",extract_function("handler.c","P_obj unequip_char("))
 source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
@@ -1495,6 +1650,7 @@ bool char_to_room(P_char ch,int room,int) {
 }
 P_char find_character_by_runtime_id(uint64_t id) { return transformed_live && id==transformed_mob.runtime_id ? &transformed_mob : nullptr; }
 void extract_char(P_char ch) {
+ if(IS_PC(ch)) { terminal_item_cleanup(ch); return; }
  if(ch==transformation_source) ++transformation_removals;
  else { assert(ch==&transformed_mob && transformed_live && !ch->carrying); transformed_live=false; }
 }
@@ -1587,6 +1743,7 @@ with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as dire
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
-  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/core/safe_format.c","src/player/player_load_topology.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/guild/artifact_guild_state.c",
+  "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

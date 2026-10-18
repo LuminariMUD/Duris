@@ -2459,6 +2459,43 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 	artifact_row_store(vnum, { new_owned, locType, location, timer, type });
 }
 
+bool artifact_reconcile_player_owner(P_obj object,
+				     const item_ownership_runtime_entry *restored_custody)
+{
+	if (!updateArtis || !artifact_is_canonical(object))
+		return false;
+	P_obj root = object;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	P_char owner = OBJ_WORN(root)	 ? root->loc.wearing :
+		       OBJ_CARRIED(root) ? root->loc.carrying :
+					   nullptr;
+	if (!owner || IS_NPC(owner) || IS_TRUSTED(owner) || GET_PID(owner) <= 0)
+		return false;
+	item_ownership_runtime_entry custody = {};
+	if (!item_ownership_runtime_lookup(object->obj_uid, &custody))
+	{
+		if (!restored_custody)
+			return false;
+		custody = *restored_custody;
+	}
+	if (custody.item_uid != object->obj_uid || custody.state != item_custody_state::active ||
+	    !custody.item_revision || custody.vnum != OBJ_VNUM(object) ||
+	    !item_owner_identity_equal(custody.owner,
+				       { item_owner_type::player,
+					 static_cast<uint64_t>(GET_PID(owner)), 0 }) ||
+	    custody.root_item_uid != root->obj_uid ||
+	    custody.parent_item_uid != (OBJ_INSIDE(object) ? object->loc.inside->obj_uid : 0))
+		return false;
+	const auto &row = artifact_rows.at(OBJ_VNUM(object));
+	if (row.removed || !row.owned || row.locType != ARTIFACT_ON_PC ||
+	    row.location != GET_PID(owner))
+		// This is recovery, not acquisition: no soul-switch effects or timer reset.
+		// The ordinary updater supplies the normal timer only if none exists.
+		artifact_update_sql(object, 'Y', row.timer);
+	return true;
+}
+
 // This function just updates/creates a new entry for the arti with vnum vnum.
 void artifact_update_sql(int vnum, bool owned, int locType, int location, time_t timer, int type)
 {
@@ -2667,28 +2704,17 @@ artifact_feed_result artifact_feed_sql(P_char owner, P_obj arti, int feed_second
 		      (long)0, vnum);
 	}
 
-	if (!get_artifact_data_sql(vnum, &artidata))
-	{
-		statuslog(MINLVLIMMORTAL, "artifact_feed_sql: called without an entry in DB?!");
-		const int type = IS_IOUN(arti)	 ? ARTIFACT_IOUN :
-				 IS_UNIQUE(arti) ? ARTIFACT_UNIQUE :
-						   ARTIFACT_MAJOR;
-		artifact_row_store(vnum, { true, ARTIFACT_ON_PC, GET_PID(owner), poof_time, type });
-		if (positive_feedback)
-			send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n",
-				     owner);
-		return artifact_feed_result::positive;
-	}
-
-	if (artidata.owned &&
-	    (artidata.locType == ARTIFACT_ON_PC || artidata.locType == ARTIFACT_ONCORPSE) &&
+	if (!get_artifact_data_sql(vnum, &artidata) || artidata.locType != ARTIFACT_ON_PC ||
 	    artidata.location != GET_PID(owner))
 	{
-		statuslog(
-			MINLVLIMMORTAL,
-			"artifact_feed_sql: tried to track arti vnum %d on %s when already tracked on %s.",
-			vnum, GET_NAME(owner), get_player_name_from_pid(artidata.location));
-		return artifact_feed_result::rejected;
+		artifact_reconcile_player_owner(arti);
+		if (!get_artifact_data_sql(vnum, &artidata) || artidata.locType != ARTIFACT_ON_PC ||
+		    artidata.location != GET_PID(owner))
+		{
+			persistence_alert(AVATAR, "artifact_reward/feed", "redacted", "none",
+					  "none", "owner_mismatch", "vnum=%d", vnum);
+			return artifact_feed_result::rejected;
+		}
 	}
 
 	// Check the cap before adding so even an extreme positive feed cannot
