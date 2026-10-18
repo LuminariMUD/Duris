@@ -42,6 +42,7 @@ for signature in (
     "bool world_recovery_rehydrate_npc_items(",
     "int copyover_write_door_to_buffer(",
     "int copyover_write_zone_age_to_buffer(",
+    "int singleton_shop_id(",
 ):
     support = remove_function(support, signature)
 
