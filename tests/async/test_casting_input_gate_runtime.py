@@ -133,6 +133,7 @@ static void logit(int, const char *, ...) {}
 #define CMD_PETITION 1
 #define CMD_RETURN 2
 #define CMD_ABORT 3
+#define CMD_BACKSTAB 154
 static const char *command[] = {
 	"petition", "return", "abort", "rest", "pray", "meditate", "look", "\n"
 };

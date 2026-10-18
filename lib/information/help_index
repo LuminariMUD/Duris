@@ -1006,6 +1006,7 @@ control.
 BACKSTAB (Skill)
 ===========================================================================
 Syntax:         backstab <victim>
+Abbreviations:  ba, back, bs
 
 A backstab is an attempt to sneak up on the victim and place a weapon in
 the victim's back at exactly the point where it will do the most damage. 
