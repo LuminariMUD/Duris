@@ -27,6 +27,13 @@ void artifact_object_placed(P_obj object);
 // tombstone; unloading merely detaches the live pointer.
 void artifact_object_extracted(P_obj object, bool physical_retirement);
 bool artifact_is_canonical(P_obj object);
+// Repair stale tracking only when the canonical live body and active player
+// custody agree. Preserve an existing timer and soul; never claim another copy.
+// Successful source-qualified attachment may supply validated custody before
+// the optional runtime cache has been populated.
+struct item_ownership_runtime_entry;
+bool artifact_reconcile_player_owner(
+	P_obj object, const item_ownership_runtime_entry *restored_custody = nullptr);
 // Read-only catalog membership, including unresolved/absent known identities.
 // Boot uses this to retain prototype values for later constructor-free queries.
 bool artifact_tracks_vnum(int vnum);

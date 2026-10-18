@@ -28,6 +28,10 @@ HARNESS_STUB void artifact_restore_scope::commit()
 
 // Fixtures without artifact state still exercise their ordinary item lifecycle.
 HARNESS_STUB void artifact_object_placed(P_obj) {}
+HARNESS_STUB bool artifact_reconcile_player_owner(P_obj, const item_ownership_runtime_entry *)
+{
+	return false;
+}
 HARNESS_STUB void artifact_object_extracted(P_obj, bool) {}
 
 HARNESS_STUB void logit(const char *, const char *, ...) {}

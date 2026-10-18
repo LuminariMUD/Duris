@@ -14,6 +14,7 @@ actoth = (SRC / "actoth.c").read_text()
 rooms = (SRC / "specs.room.c").read_text()
 actwiz = (SRC / "actwiz.c").read_text()
 fight = (SRC / "fight.c").read_text()
+comm = (SRC / "comm.c").read_text()
 
 
 def body(text, signature):
@@ -79,5 +80,11 @@ assert death.index("persistence_save_character_terminal(ch, RENT_DEATH)") < deat
     "extract_char_after_terminal_save(ch)"
 )
 assert "event_death_extract_retry" not in fight
+
+shutdown = body(comm, "void game_loop(")
+assert shutdown.index("persistence_save_all_characters_terminal(RENT_CRASH)") < shutdown.index(
+    "extract_char_after_terminal_save(point->character)"
+)
+assert "extract_char(point->character)" not in shutdown
 
 print("terminal saved-item extraction contracts passed")
