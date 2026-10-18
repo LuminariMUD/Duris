@@ -1428,6 +1428,11 @@ struct char_special_data
 	// Per-live-NPC anti-retry deadline for the optional divine order-refusal gate.
 	// Runtime only; extraction/recreation and restart deliberately reset it.
 	unsigned long long divine_refusal_until_pulse;
+	// Holy Sacrifice healing this owner has shared in combat round holy_sacrifice_round
+	//   (ne_event_tick / PULSE_VIOLENCE).  Runtime only; never saved.
+	unsigned long long holy_sacrifice_round;
+	int holy_sacrifice_healed;
+	bool holy_sacrifice_pvp;
 	P_char arrest_by;
 	char undead_spell_slots[MAX_CIRCLE + 1];
 
