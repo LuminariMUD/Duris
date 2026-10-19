@@ -121,7 +121,7 @@ class LockerChest
 		: m_chestKeyword(keyword)
 		, m_chestDescText(prettyDesc)
 		, m_pNextInChain(NULL)
-		, m_pChestObject(NULL){};
+		, m_pChestObject(NULL) {};
 
 	P_obj CreateChestObject(void);
 
@@ -146,7 +146,7 @@ class UnsortedChest : public LockerChest
 
     protected:
 	UnsortedChest(void)
-		: LockerChest("unsorted", "that are unsorted"){};
+		: LockerChest("unsorted", "that are unsorted") {};
 };
 
 class EqSlotChest : public LockerChest
@@ -154,12 +154,17 @@ class EqSlotChest : public LockerChest
 	friend class StorageLocker;
 
     public:
-	virtual bool ItemFits(P_obj obj) { return (obj->wear_flags & m_eqBit) ? true : false; };
+	virtual bool ItemFits(P_obj obj)
+	{
+		if (!obj || obj->type == ITEM_CONTAINER || obj->type == ITEM_CORPSE)
+			return false;
+		return (obj->wear_flags & m_eqBit) ? true : false;
+	};
 
     protected:
 	EqSlotChest(unsigned int eqSlotBit, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_eqBit(eqSlotBit){};
+		, m_eqBit(eqSlotBit) {};
 
     private:
 	unsigned int m_eqBit;
@@ -172,6 +177,8 @@ class EqWearChest : public LockerChest
     public:
 	virtual bool ItemFits(P_obj obj)
 	{
+		if (!obj || obj->type == ITEM_CONTAINER || obj->type == ITEM_CORPSE)
+			return false;
 		return IS_SET(obj->extra_flags, ITEM_ALLOWED_CLASSES) ?
 			       IS_SET(obj->anti_flags, m_wearClass) :
 			       !IS_SET(obj->anti_flags, m_wearClass);
@@ -180,7 +187,7 @@ class EqWearChest : public LockerChest
     protected:
 	EqWearChest(unsigned wearClass, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_wearClass(wearClass){};
+		, m_wearClass(wearClass) {};
 
     private:
 	unsigned m_wearClass;
@@ -196,7 +203,7 @@ class EqTypeChest : public LockerChest
     protected:
 	EqTypeChest(::byte eqType, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_eqType(eqType){};
+		, m_eqType(eqType) {};
 
     private:
 	::byte m_eqType;
@@ -212,7 +219,7 @@ class EqApplyChest : public LockerChest
     protected:
 	EqApplyChest(::byte applyType, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_applyType(applyType){};
+		, m_applyType(applyType) {};
 
     private:
 	::byte m_applyType;
@@ -229,7 +236,7 @@ class EqAffectChest : public LockerChest
 	EqAffectChest(int b, int bv, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
 		, m_bitVector(bv)
-		, m_bit(b){};
+		, m_bit(b) {};
 
     private:
 	int m_bitVector;
@@ -243,6 +250,8 @@ class OreChest : public LockerChest
     public:
 	virtual bool ItemFits(P_obj obj)
 	{
+		if (!obj || obj->type == ITEM_CONTAINER || obj->type == ITEM_CORPSE)
+			return false;
 		return (strstr(obj->name, "_ore_") &&
 			(!m_oreType[0] || strstr(obj->name, m_oreType))) ?
 			       true :
@@ -275,7 +284,7 @@ class ComboChest : public LockerChest
     protected:
 	ComboChest(LockerChest *pChestList)
 		: LockerChest("custom", "that you custom specified")
-		, m_LockerChests(pChestList){};
+		, m_LockerChests(pChestList) {};
 	~ComboChest(void);
 
 	LockerChest *m_LockerChests;
