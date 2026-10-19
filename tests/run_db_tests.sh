@@ -32,6 +32,7 @@ artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server $SERVER
 epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server $SERVER
 nexus_journey $DB python3 tests/async/test_mysql_nexus_journey.py --server $SERVER
+hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server $SERVER
 epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server $SERVER
 epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
 artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
