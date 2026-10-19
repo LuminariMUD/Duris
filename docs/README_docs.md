@@ -26,6 +26,7 @@ docs/
 |----------|---------|
 | [ARCHITECTURE.md](reference/ARCHITECTURE.md) | Process model, boot gate, game loop, typed persistence, recovery, and networking. |
 | [CODEBASE.md](reference/CODEBASE.md) | Module-by-module map of the server sources. |
+| [WORLD_ZONE_ROUTES.md](reference/WORLD_ZONE_ROUTES.md) | Current zone entrances, map footprints, preservation rules, validation, and historical placement decisions. |
 | [CLASSES.md](reference/CLASSES.md) | PC class catalogue, help resources, creation eligibility, specializations, multiclassing, and progression rules. |
 | [DATABASE.md](reference/DATABASE.md) | Database authority, typed reads/writes, schema, reconciliation, and migrations. |
 | [EVENTS.md](reference/EVENTS.md) | The `nevent` deferred-work scheduler: the timer wheel, scheduling, cancellation, the per-pulse budget, and catch-up. |
