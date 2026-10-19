@@ -2020,6 +2020,7 @@ vector<epic_zone_data> get_epic_zones()
 	// sql_zones() is in id order, so equal values keep it.
 	stable_sort(epic.begin(), epic.end(),
 		    [](const zone_info &a, const zone_info &b) {
+			    // The epic zone listing is ranked by base payout, not group size.
 			    return a.epic_payout < b.epic_payout;
 		    });
 
