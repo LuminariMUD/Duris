@@ -1408,12 +1408,14 @@ char *CRYPT2(char *passwd, char *name);
 		  (1.10 / 3) * ch->specials.base_combat_round + 2.73))
 
 // New effects of attributes:
-// Vamp multiplier for ch: value between 1.1 and 2.2.
-#define VAMPPERCENT(ch)                                                  \
-	(BOUNDEDF(1.10, (GET_C_POW(ch) / 90.0), 2.50) +                  \
-	 (IS_PC(ch) && GET_PRIME_CLASS(ch, CLASS_ANTIPALADIN) ?          \
-		  get_property("vamping.maxHP.bonus.antipaladin", 1.0) : \
-		  get_property("vamping.maxHP.bonus.all", 0.0)))
+// Vamp multiplier for ch: value between 1.1 and 2.5.
+// Prime anti-paladins get a bonus on top, but never past 2.5x max hp.
+#define VAMPPERCENT(ch)                                                                     \
+	(IS_PC(ch) && GET_PRIME_CLASS(ch, CLASS_ANTIPALADIN) ?                              \
+		 MIN(2.50, BOUNDEDF(1.10, (GET_C_POW(ch) / 90.0), 2.50) +                   \
+				   get_property("vamping.maxHP.bonus.antipaladin", 0.25)) : \
+		 BOUNDEDF(1.10, (GET_C_POW(ch) / 90.0), 2.50) +                             \
+			 get_property("vamping.maxHP.bonus.all", 0.0))
 // Crit rate for ch: value between 8 and 100+ (if you get int to 560+).
 #define CRITRATE(ch) ((GET_C_INT(ch) < 105) ? 8 : (GET_C_INT(ch) - 100) / 5 + 8)
 // Calming chance for ch: value between 1 and 100+ (if you get cha to 400+).

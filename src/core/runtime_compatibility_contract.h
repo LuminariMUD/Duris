@@ -100,15 +100,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0042 widens all ten player base stats to signed shorts.
  * Migration 0044 adds canonical artifact UID/state without replacing the custody FK.
  * Migration 0045 adds nullable capture permission to PvP participant snapshots.
+ * Migration 0046 seeds two Nexus catalogue rows; structural fingerprints are unchanged.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0045_pkill_webinfo_at_capture";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 45;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0046_nexus_phase1";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 46;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"9ec4164a7f70796409f6e88e483b1e90044eae1ff8ef9c3151397dba9e24e110";
+	"40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"0d3f5cf89844a00fdba5e0be9cec79bd6b91bcb79c20bd94157d57f43e0a96d1";
+	"bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"b752a224ed8fbf717c83129a8e805aaf89b9807e745ee8499406f7770b1d986d";
+	"ea92ca173e8807c500ce07086baac1449f0a0855d82c775c7cb38cf6c49ca586";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

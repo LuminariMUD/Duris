@@ -32,6 +32,7 @@ PROGRESS_SECONDS = 60
 RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
     {
         "test_account_recovery_journey.py",
+        "test_artifact_owner_restart_journey.py",
         "test_connection_limit_journey.py",
         "test_corpse_trap_restart_journey.py",
         "test_creation_prompt_journey.py",
@@ -66,7 +67,9 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
         "test_epic_task_catalog_mysql.py",
         "test_epic_task_recovery_journey.py",
         "test_mysql_playtime_journey.py",
+        "test_mysql_nexus_journey.py",
         "test_playtime_mysql_repository.py",
+        "test_staff_poof_journey.py",
     }
 )
 

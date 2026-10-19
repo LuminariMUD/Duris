@@ -48,7 +48,7 @@ verification requirements while allowing live connections. It accepts only the
 manifest ending at the exact reviewed 0039 step and only an InnoDB `level_cap`.
 It executes the unchanged sealed SQL with session `alter_algorithm=INSTANT` and
 one-second metadata/InnoDB lock waits: an unsupported instant operation or lock
-timeout fails rather than falling back to a table rebuild. A dedicated connection
+timeout fails rather than falling back to a table rebuild. The applying connection
 holds the migration advisory lock through verification and history publication.
 The equivalent `run --online-combat-outcome-allies` path accepts only the manifest
 ending at the sealed `0040_combat_outcome_allies` step and an InnoDB
@@ -202,13 +202,30 @@ Reference: [MariaDB online schema change](https://mariadb.com/docs/server/refere
 
 ## Post-baseline migration contract
 
+`run --online-artifact-pvp` accepts only the sealed manifest ending at 0045,
+with all steps through 0043 already applied. It retains production target,
+allow-list, backup, checksum, advisory-lock, ordered-history and success-last
+verification safeguards. On MariaDB 11.8 InnoDB it strengthens the exact 0044
+and 0045 ALTER statements to `ALTER ONLINE TABLE` (`LOCK=NONE`), with one-second
+metadata and row-lock waits. 0044 uses NOCOPY for its appended columns and unique
+index; 0045 uses INSTANT. Unsupported operations fail without a table-copy or
+offline fallback. The sealed files and ledger checksums do not change.
+
+The October 18 production review found 90 artifact rows and 11 PvP rows, both
+InnoDB, with the additions absent. Existing artifact and combat writers name
+their columns explicitly; NULL/0 defaults preserve unresolved identity and
+unknown consent until the new runtime writes them. The artifact custody FK is
+retained. Coordinate schema-aware backup jobs across the migration and verify
+the new runtime contract before installing the server. See MariaDB's
+[NOCOPY online DDL documentation](https://mariadb.com/docs/server/server-usage/storage-engines/innodb/innodb-online-ddl/innodb-online-ddl-operations-with-the-nocopy-alter-algorithm).
+
 Migration 0045 appends `pkill_info.webinfo_at_capture TINYINT NULL DEFAULT NULL`
 at position 11. The verifier requires its exact signed, nullable/default-NULL
 shape and position. Replays preserve existing values and snapshots; old rows
 and old-writer inserts retain unknown consent. No current player flag is used
 to backfill permission. The v4 combat writer records NULL/0/1 with each owned
 snapshot in the existing transaction. See the
-[PvP implementation and rollout plan](../ongoing-projects/2026-10-18-pvp-mud-implementation-plan.md).
+[PvP implementation and rollout plan](../records/2026-10-18-pvp-mud-implementation-plan.md).
 
 Migration 0044 adds canonical artifact UID/state fields to the existing
 `artifact_domain_state` store. It retains `item_uid` and its custody FK: the
@@ -218,8 +235,31 @@ canonical selection or data cleanup. A unique key prevents one non-null canonica
 UID from naming two vnums, and retired UIDs remain representable. Column/index
 guards replay partial DDL; the verifier checks their full shape, preserves the
 custody FK, and refuses inconsistent state/UID pairs. Apply it before starting
-the updated database-backed server. See the [artifact plan](../ongoing-projects/issue-67-artifact-identity-plan.md)
+the updated database-backed server. See the [artifact plan](../ongoing-projects/plan-issue-67.md)
 for the separate runtime/admission/reconciliation acceptance work.
+
+Migration 0046 restores only Nexus IDs 1 (Marduk) and 3 (Enlil), with explicit
+zero stat fields and the existing epic/cargo bonus assignments. Its SQL checks
+both existing IDs and reserved names before inserting either missing row. A
+configuration conflict raises a field/ID-specific error; matching rows retain
+alignment and last-touch state. The verifier accepts legitimate played state and
+unrelated rows. Reapplying the payload completes a partial insert without resetting
+the first row; replaying recorded history remains a no-op. Runtime activation needs
+a controlled restart because SQL Nexus records are cached at boot.
+
+`run --online-nexus-phase1` accepts only the sealed manifest ending at 0046,
+with every earlier step already applied. It uses the existing production target,
+allow-list, fresh backup, checksum, advisory-lock, ordered-history and success-last
+verification safeguards. It requires MariaDB 11.8 and InnoDB `nexus_stones`, runs
+the sealed SQL unchanged, and bounds metadata and row-lock waits to one second.
+This migration adds catalogue rows; it does not alter the table or reset existing
+ownership. A lock timeout fails without an offline fallback.
+
+The October 18 deployment review found an empty InnoDB catalogue on MariaDB 11.8.6.
+The running game caches the catalogue at boot and updates existing IDs; it cannot
+touch the absent stones. The two inserts can therefore run while it stays online,
+with activation at the scheduled reboot. Check the live catalogue and writers
+again before reuse; this option does not authorize arbitrary online migrations.
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size
@@ -232,6 +272,17 @@ pending migration it runs apply, then verifier, and only then atomically inserts
 history row and advances the history head. A verifier failure leaves the step
 unrecorded. The migration itself must therefore be additive and re-runnable so an exact
 retry can finish partial MySQL DDL safely.
+
+Every runner mode holds that advisory lock on a persistent, non-reconnecting client
+through the complete operation. A one-shot `mysql -e GET_LOCK` would release it before
+the first apply. All runner SQL, including apply and history publication, executes on
+the lock-owning session, so killing that session also interrupts its SQL and prevents
+later statements in the batch from writing after a competing runner acquires the lock.
+The runner also checks ownership before and after SQL and the external read-only
+verifiers, including server-side loss where the client process has not exited.
+Ordinary production quiescence excludes its own session; any other connection to the
+target database still refuses the operation. Any interrupted apply must be recovered
+by its guarded retry, not assumed rolled back.
 
 Editing or reordering an applied row fails against the manifest. Deleting even the
 trailing row fails against the retained history count/head rather than silently

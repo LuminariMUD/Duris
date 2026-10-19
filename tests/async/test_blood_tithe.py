@@ -64,8 +64,13 @@ score = extract_function("actinf.c", "void do_score(")
 assert "blood_tithe_bonus(ch)" in score
 score_start = score.index("\tif (affected_by_spell(GET_PLYR(ch), SPELL_BLOOD_TITHE)")
 score_output = score[score_start:score.index("\n\tif (IS_AFFECTED4(ch, AFF4_NEG_SHIELD))", score_start)]
-for help_file in ("help/duris_help.hlp", "help/duris_help_parsed.hlp"):
+for help_file in ("help/duris_help_parsed.hlp",):
     assert "\nBlood Tithe - Last Edited:" in (ROOT / help_file).read_text(encoding="utf-8")
+# Every help source says Blood Tithe combines with Battle Lust.
+for help_file in ("help/duris_help_parsed.hlp", "lib/information/help_index"):
+    text = (ROOT / help_file).read_text(encoding="utf-8")
+    assert "Blood Tithe does combine with the aura of battlelust" in text, help_file
+    assert "gains nothing from Blood Tithe" not in text, help_file
 assert '"BLOOD TITHE" (Spell)' in (ROOT / "lib/information/help_index").read_text(
     encoding="utf-8"
 )
@@ -349,9 +354,10 @@ int main() {
         assert(about(blood_tithe_damage_bonus(&mate, &enemy), 0.06));
         set_malice(&ap, 600);
 
-        // Battle Lust silences it, so the two never stack.
+        // Battle Lust, or any other aura, leaves it intact: the two stack.
         aura(&mate, AURA_BATTLELUST);
-        assert(blood_tithe_damage_bonus(&mate, &enemy) == 0);
+        assert(about(blood_tithe_damage_bonus(&mate, &enemy), 0.12));
+        assert(about(blood_tithe_damage_bonus(&mate, &enemy_pc), 0.06));
         clear(&mate);
         aura(&mate, AURA_PROTECTION);
         assert(about(blood_tithe_damage_bonus(&mate, &enemy), 0.12));
@@ -393,13 +399,13 @@ int main() {
         assert(about(blood_tithe_damage_bonus(&morph, &enemy), expected));
         assert(about(blood_tithe_damage_bonus(&morph, &enemy_pc), expected * 0.5));
         aura(&morph, AURA_BATTLELUST);
-        assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
+        assert(about(blood_tithe_damage_bonus(&morph, &enemy), expected));
         clear(&morph);
         aura(&mate, SPELL_BLOOD_TITHE);
         assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
         clear(&mate);
         aura(&mate, AURA_BATTLELUST);
-        assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
+        assert(about(blood_tithe_damage_bonus(&morph, &enemy), expected));
         clear(&mate);
         // Only the active body determines presence, even if the original is in this room.
         morph.in_room = 2;
@@ -445,7 +451,8 @@ int main() {
         ap.only.pc->switched = nullptr;
     }
 
-    // Score reports the offered bonus even when only the holder has Battle Lust.
+    // Battle Lust on the holder, the groupmate or both changes nothing, and score
+    // reports the offered bonus throughout.
     {
         test_group party({&ap, &mate});
         set_malice(&ap, 600);
@@ -454,9 +461,11 @@ int main() {
         assert(render_tithe_score(&ap).find("+12.0% group damage") != std::string::npos);
         assert(render_tithe_score(&ap).find("silenced") == std::string::npos);
         aura(&mate, AURA_BATTLELUST);
-        assert(blood_tithe_damage_bonus(&mate, &enemy) == 0);
+        assert(about(blood_tithe_damage_bonus(&mate, &enemy), 0.12));
         assert(render_tithe_score(&ap).find("+12.0% group damage") != std::string::npos);
         assert(render_tithe_score(&stranger).empty());
+        // A tithe holder under Battle Lust still gains nothing from a tithe.
+        assert(blood_tithe_damage_bonus(&ap, &enemy) == 0);
     }
 
     // Without a group there is no one to empower.

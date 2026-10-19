@@ -119,7 +119,7 @@ class Server:
         self.port,self.tls,self.ws=journey.available_ports(); self.process=None; self.client=None
         for name in ('players','critical'):
             (root/'journals'/name).mkdir(parents=True,mode=0o700)
-    def start(self):
+    def start(self, *, full_world=False):
         env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'ENVIRONMENT':'local',
             'PERSISTENCE_MODE':'flatfile-primary','FLATFILE_STATE_DIR':str(self.state),
             'CRITICAL_COMMAND_JOURNAL_DIR':str(self.root/'journals/critical'),
@@ -129,7 +129,7 @@ class Server:
         if 'LD_LIBRARY_PATH' in os.environ: env['LD_LIBRARY_PATH']=os.environ['LD_LIBRARY_PATH']
         env.update(self.environment)
         self.output_path=self.root/'server.out'; self.output=self.output_path.open('w')
-        self.process=subprocess.Popen([str(self.binary),'-z','-d',str(self.root),str(self.port)],
+        self.process=subprocess.Popen([str(self.binary),*([] if full_world else ['-z']),'-d',str(self.root),str(self.port)],
             cwd=self.root,env=env,stdout=self.output,stderr=subprocess.STDOUT)
         deadline=time.monotonic()+60
         while 'Entering game loop.' not in self.output_path.read_text(errors='replace'):

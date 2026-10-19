@@ -149,8 +149,6 @@ int main()
     player.points.mana = 99;
     player.points.max_ward = 100;
     player.points.ward = 99;
-    // event_mana_regen() takes its rate from power and intelligence, not mana_regen().
-    player.curr_stats.Pow = player.curr_stats.Int = 100;
     for (regen_resource resource :
          { regen_resource::hit, regen_resource::mana, regen_resource::ward })
     {
@@ -194,6 +192,8 @@ bool char_falling(P_char) { return false; }
 falling_start_result falling_start(P_char) { return {}; }
 struct time_info_data age(P_char) { return {}; }
 int GET_CLASS(P_char, uint) { return 0; }
+int GET_PRIME_CLASS(P_char, uint) { return 0; }
+int GET_SECONDARY_CLASS(P_char, uint) { return 0; }
 static P_char shapechanged = nullptr;
 int IS_MORPH(P_char ch) { return ch == shapechanged; }
 static int removed = 0;

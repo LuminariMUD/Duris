@@ -2794,7 +2794,7 @@ resume_game_loop:
 						update_ingame_racewar(
 							-GET_RACEWAR(point->character));
 					}
-					extract_char(point->character);
+					extract_char_after_terminal_save(point->character);
 				}
 			}
 		}

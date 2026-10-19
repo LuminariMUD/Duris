@@ -1,5 +1,76 @@
 # Nexus stone data investigation and recovery options
 
+## Implementation handoff — 2026-10-18
+
+The historical investigation below is retained as dated evidence. Its open design
+questions are superseded by [issue #109](https://github.com/LuminariMUD/Duris/issues/109)
+and the [implementation plan](../ongoing-projects/plan.md). The current branch implements safe no-stat
+sage handling, neutral guardian cleanup and observable loading failures. Migration
+`0046_nexus_phase1` provides the insert-only seed. Migration and runtime compatibility
+qualification passed on MySQL 8.0, MariaDB 10.11 and MariaDB 11.8, including conflict
+refusal, partial/played-state replay, verifier drift and lock lifetime. Both server
+backends and native Nexus sanitizer tests pass. The complete isolated full-world
+MariaDB journey also passed: mortal captures, epic/boon awards, live cargo/contraband
+bonuses, unchanged base stats, cold-restart state, expiration and duplicate-free
+neutral reloads. Exact commands, measured deltas, binary hash and fixture limits are
+maintained in the plan. The stack was refreshed onto master `d6f4d4aa6`; production
+acceptance remains pending. No production operation or merge has been performed.
+
+Selected configuration:
+
+- Marduk: ID 1, room 130199, epic bonus type 1.
+- Enlil: ID 3, stored room 130399, cargo bonus type 3. Keep the existing override
+  to Cyric's Revenge interior slot 7. Its active VNUM is dynamic; a missing ship is
+  a load failure, with no static-room fallback.
+- New rows: neutral alignment, NULL touch timestamp, `stat_affect=0` and
+  `affect_amount=0`. Preserve existing 11% rates, 12-day expiry and capture rewards.
+  Antu/Ningishzida and additional stat benefits remain excluded.
+
+The seed checks both target rows before either insert, rejects incompatible
+configuration or reserved names on other IDs, and preserves legitimate existing
+alignment/timestamps and unrelated rows. Existing matching rows are unchanged on
+reapply. The immutable verifier proves static configuration and valid alignment;
+it deliberately does not require neutral state after play or delete unrelated rows.
+The ordinary migration runner executes apply and history SQL on its advisory-lock
+session, holds the lock through verification, and interrupts the applying SQL when
+that session is killed. The native capture fixture uses real epic preparation and
+checks the shipped Nexus settings. The full-world journey now tests same-side
+rejection with no guardian and observes reconnected scores, live ownership and
+aligned guardian prototypes after restart; SQL snapshots alone cannot prove those.
+
+Before rollout, identify the actual process/binary and database, inspect effective
+properties, back up the target, and retain these read-only results:
+
+```sql
+SELECT DATABASE();
+SHOW CREATE TABLE nexus_stones;
+SELECT id,name,room_vnum,align,stat_affect,affect_amount,bonus,last_touched_at
+FROM nexus_stones ORDER BY id;
+```
+
+Use the existing immutable runner and runtime verifier on an isolated clone first.
+The new runtime head and compiled header must match the applied ledger. The supported
+bootstrap is InnoDB; historical MyISAM data does not justify assuming transactional
+rollback. Unexpected live rows require reconciliation, not a destructive reset.
+
+After explicit production approval, use the runner's confirmed target and validated
+backup flow during its required quiescent maintenance window. Prepare/build before
+that window. Verify the seed and contract, then perform a controlled restart; staff
+`nexus reset`/`nexus reload` cannot discover newly inserted SQL rows. Require exactly
+IDs 1/3 for this rollout, successful load logs for Marduk at 130199 and Enlil at the
+resolved ship VNUM, and actual stone/guardian placement. Complete the plan's
+non-staff capture, faction rewards, cooldown, expiration and saved-state restart
+checks before closing the issue.
+
+For rollback, save current Nexus state and the exact IDs inserted by the rollout
+before stopping writers for a targeted data restore. Preserve unrelated/pre-existing
+state and restart to clear the cache. Once migration success is recorded, do not
+delete ledger history or assume the old binary can boot against the new head.
+Prefer a compatible forward correction. A binary/database downgrade requires a
+separately reviewed matching backup restore and accounting for intervening writes.
+
+## Historical investigation — 2026-10-16
+
 Investigated 2026-10-16 against commit
 `1dad54760c7f27a24881fd4a41fa59b600937875`.
 Related issue: [#109 — Nexus stones missing from game](https://github.com/LuminariMUD/Duris/issues/109).

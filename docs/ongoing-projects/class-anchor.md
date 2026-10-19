@@ -1,7 +1,8 @@
 # Character mechanics: explicit connections in gameplay code
 
-Status: implementation plan only. Inspected on 2026-10-12 at
-`6b9845556ea6fcd7e3ef29b911c83906933de181`. This document changes no gameplay.
+Status: implementation plan only. The proposed compiled contract and acceptance
+tests are not implemented. Current player rules are in
+[CLASSES.md](../reference/CLASSES.md). This plan changes no gameplay.
 
 Tracking issue: [#52 — Make character mechanics explicitly connected and mechanically traceable](https://github.com/LuminariMUD/Duris/issues/52).
 
@@ -64,8 +65,8 @@ These are inspected source findings, not completed gameplay qualification.
 | [skills.c](../../src/classes/skills.c): `initialize_skills`, `SPELL_CREATE`, `SKILL_CREATE`, `*_ADD`; [structs.h](../../src/core/structs.h): `s_skill`, `ClassSkillInfo` | Existing registration already connects ability IDs, spell callbacks, class/spec requirements, and caps. `rlevel` means a skill level or spell circle. Enumerate actual initialized structures and registration provenance. Ordinary skills have no spell callback; they need their command or passive implementation linked separately. |
 | [innates.c](../../src/classes/innates.c): `assign_innates`, `innates_data`, `has_innate` | Grants have unlock levels. Active innates have callbacks; passives have null callbacks and consumers elsewhere. `innate_char_race` handles shape disguise and corpseform specially. Connect grant, effective-identity rule, dispatcher/passive consumer, and effect. |
 | [db.c](../../src/world/db.c): `update_stat_data`; [affects.c](../../src/magic/affects.c): `apply_affs`, `calculate_hitpoints2`; [limits.c](../../src/world/limits.c) | Race properties populate `stat_factor`; equipment can substitute individual racial stat factors. Hit points use racial constitution and class modifiers, choosing the larger class modifier for a multiclass PC. Vitality, aging, and level progression have separate consumers. Connect inputs, property defaults, calculations, and results; include conditional [racewar stat modifiers](../../src/combat/racewar_stat_mods.c). |
-| [utility.c](../../src/core/utility.c): `GET_CLASS`, `GET_PRIME_CLASS`, `SKILL_DATA_ALL`; [utils.h](../../src/core/utils.h): `GET_SPEC`, race accessors | `GET_CLASS` includes secondary class; `GET_SPEC` tests primary class and slot. Secondary-only skill requirements increase by 5 and use separate cap properties. True, displayed, and effective race also differ. Preserve these distinctions instead of introducing one generic class/race interpretation. |
-| [guild.c](../../src/guild/guild.c), [memorize.c](../../src/classes/memorize.c), [epic_skills.c](../../src/classes/epic_skills.c) | Skill updates, practice, spell acquisition, memorization, and use complete the grant chain. Epic rewards already connect classes, teachers, costs, prerequisites, and committed purchase callbacks. Multiclass affects learning costs and memorization. Reuse these structures and connect their consumers/callbacks. |
+| [utility.c](../../src/core/utility.c): `GET_CLASS`, `GET_PRIME_CLASS`, `SKILL_DATA_ALL`; [utils.h](../../src/core/utils.h): `GET_SPEC`, race accessors | `GET_CLASS` includes secondary class; `GET_SPEC` tests primary class and slot. Secondary-only ordinary skill requirements increase by 5 levels and use separate cap properties; `get_spell_circle` instead adds one circle for secondary-only spells. True, displayed, and effective race also differ. Preserve these distinctions instead of introducing one generic class/race interpretation. |
+| [guild.c](../../src/guild/guild.c), [memorize.c](../../src/classes/memorize.c), [epic_skills.c](../../src/classes/epic_skills.c) | Skill updates, practice, spell acquisition, memorization, and use complete the grant chain. Epic rewards already connect classes, teachers, costs, prerequisites, and immediate in-memory purchase callbacks; character saves persist the result. Multiclass affects learning costs and memorization. Reuse these structures and connect their consumers/callbacks. |
 | [frag_cap_config.c](../../src/combat/frag_cap_config.c), [limits.c](../../src/world/limits.c): `gain_exp`; [sql.c](../../src/sql/sql.c): `sql_level_cap`; [maintenance_repository.c](../../src/persistence/maintenance_repository.c): `execute_level_cap` | Progression depends on side-specific caps, qualifying frags, timers, and Hardcore allowance. Spell-circle unlocks apply across sides. The client-free SQL branch returns the configured floor instead of the live side cap. Connect these restrictions to level-dependent options; an isolated flat-file fixture cannot prove the live cap lifecycle. Reuse [frag_cap.cfg](../../lib/frag_cap.cfg) and existing cap tests. |
 | [paladins.c](../../src/classes/paladins.c): Blood Tithe; [dam_mods.c](../../src/combat/dam_mods.c), `fight.c`, `nanny.c` | A class/spec spell grant connects to an affect, damage charging, a periodic decay callback, group damage consumers, and login event rescheduling. Morph identity matters here too. This is a concrete case where a handler binding alone misses essential consumers and lifecycle dependencies. |
 | [handler.c](../../src/world/handler.c): item predicates; [actobj.c](../../src/cmd/actobj.c); [mount.c](../../src/classes/mount.c) | Item race/class restrictions and body-dependent wear/mount rules are separate mechanics. Horse body prevents mounting and has other combat consumers. Register restrictions as well as benefits, with each actual consumer identified. |
@@ -107,7 +108,7 @@ work, and reversal without a rules engine.
 
 | Route | Inspected state; connections to retain |
 | --- | --- |
-| Ascension | In [actoth.c](../../src/cmd/actoth.c), registered `do_ascend` rejects PCs at `!IS_NPC(ch)`. `ascend_theurgist` rejects NPCs and has no other discovered caller. Preserve Paladin -> Agathinon/Avenger, Theurgist -> Eladrin/Theurgist, and Avenger specialization paths, costs, transaction callbacks, and mutations as disabled contracts. Historical rooms/costs are not usable unlocks. |
+| Ascension | In [actoth.c](../../src/cmd/actoth.c), registered `do_ascend` rejects PCs at `!IS_NPC(ch)`. `ascend_theurgist` rejects NPCs and has no other discovered caller. Preserve Paladin -> Agathinon/Avenger, Theurgist -> Eladrin/Theurgist, and Avenger specialization paths, costs, transaction callbacks, and mutations as disabled contracts. No player altar/cost instructions apply to this disabled route. |
 | Descension | `do_descend` checks Necromancer/level 50, then returns disabled before its Lich body changes race, secondary class, racewar, hometown, guild, skills, and saved state. `do_old_descend` rejects PCs and has no discovered active registration. Retain its target mappings as legacy; do not infer reachability from `restricted_races` comments. |
 | Battlerager and Monk conversion | `berserker_proc_room` in `specs.room.c` changes eligible dwarves to Berserker; `monk_remort` in [specs.mobile.c](../../src/specs/specs.mobile.c) converts certain Clerics. Their assignments in `specs.assign.c` are commented out. Record unbound legacy routes; a class's other acquisition routes are separate. |
 | Item forms | Revenant crown is actively assigned. Dragonkin transformation is in `dragonlord_plate_old`; object 25723 instead uses `dragonlord_plate`, which supplies spell effects. The old body's existence does not establish Dragonkin access. |
@@ -336,7 +337,7 @@ Reuse isolated servers, clients, build artifacts, and full-world fixtures.
 | Family | Behavioral acceptance |
 | --- | --- |
 | Creation | Telnet and WebSocket menus/submissions; legal and forbidden race/class/alignment; disabled Dragoon/restricted races; admission denial; starter kit/abilities; save/relog. Characterize transport differences rather than correcting them incidentally. |
-| Specialization | Real mortal teacher command at/below 30; wrong teacher/race/slot, existing spec/multiclass/timer denials; resulting spec and skills; relog. Unspecialize covers funds, submission/commit failure, successful cost/reset, and spell removal. |
+| Specialization | Real mortal teacher command at/below 30; wrong teacher/race/slot, existing spec/multiclass/timer denials; resulting spec and skills; relog. Unspecialize covers funds, submission/result failure, successful cost/reset, and spell removal. |
 | Effects and restrictions | Guardian at 40/41, with/without shield, correct/wrong spec, through actual damage application; active innate dispatch/cooldown/effect; racial stats and body/item restrictions. Cover primary/secondary and effective-race differences. |
 | Multiclass | Assigned room path for both races; invalid race/pair/morph, repeat and threshold denials; before/after identity, level, experience, skills/spells/epics/guild/trophies; secondary learning/caps/stat effects; save/relog. |
 | Level progression | Side-cap and Hardcore restrictions, level/circle boundaries, and resulting ability eligibility. Reuse the existing isolated level-cap database tests for qualifying-frag/timer/unlock/persistence behavior; keep flat-file fixture evidence separate. |
@@ -357,7 +358,7 @@ Reuse existing evidence at its actual scope:
 - [test_innate_reflection.py](../../tests/async/test_innate_reflection.py) executes
   grants/eligibility/dispatch/cooldown but stubs the spell effect.
 - [test_unspecialize_guard.py](../../tests/async/test_unspecialize_guard.py) checks
-  invalid-state charging; its commit callback is stubbed.
+  invalid-state charging; its purchase-result callback is stubbed.
 - [test_item_race_restriction_runtime.py](../../tests/async/test_item_race_restriction_runtime.py)
   executes real item race predicates, not every equipment/body restriction.
 - Race/class help coverage and
@@ -391,8 +392,8 @@ Keep the compiled vocabulary for shared identities/relationships, bindings at
 actual gameplay sites to prevent a detached catalogue, reverse checks to find
 unregistered code, and executable/lifecycle tests to establish behavior.
 
-Drop the former plan's proposed JSON evidence file, source-table extraction
-generator, and documentation-first architecture. Reuse production tables and tests.
+Reuse production tables and tests rather than adding a JSON evidence store,
+alternate rule evaluator, or documentation-owned gameplay architecture.
 Keep only extractions necessary for a shared, checkable production rule. No
 exporter, alternate evaluator, general transition framework, or wholesale move.
 
@@ -402,8 +403,7 @@ are connected; mutation checks detect missing/conflicting/stale/unregistered lin
 and proof is current and limited to its assertions. Documentation explains this
 code structure. This plan authorizes no implementation by itself.
 
-Planning validation: all 57 local source/document links resolved, scope/revision
-and whitespace checks passed, and these existing focused commands passed:
+Validation commands for the existing boundaries:
 
 ```bash
 python3 tests/async/test_creation_availability_contract.py
@@ -413,6 +413,5 @@ python3 tests/async/test_item_race_restriction_runtime.py
 python3 tests/async/test_frag_cap_config_contract.py
 ```
 
-Their evidence is limited as described above; the frag-cap test is a source
-contract. No full build, database test, or gameplay journey was run for this
-document-only change. The proposed contract and acceptance tests do not yet exist.
+These checks do not implement or qualify the proposed contract. Their scope is
+limited to their actual assertions; the frag-cap test is a source contract.

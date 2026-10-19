@@ -1,339 +1,101 @@
-# DurisMUD Help Entry Style Guide
+# Help authoring guide
 
-Based on analysis of existing help entries in duris_help.hlp
+Use the current command, ability registration, handler, and configuration as the
+source of truth. Describe what a player can do now. Omit disabled recipes,
+superseded behavior, capture transcripts, and claims based only on a class name.
 
----
+## Source files and precedence
 
-## Entry Structure
+- `help/duris_help_parsed.hlp` holds complete player-help topics separated by
+  `#0` on its own line. Each topic starts with a short title line followed by
+  the full title line shown below. The importer derives the title from the
+  second line, so both lines must be present.
+- `lib/information/help_index` holds topics separated by `#`. Its first line
+  supplies the title, with an optional parenthesized type. Quote a title whose
+  parentheses are part of the actual name.
+- A matching parsed-help title wins over the help index during import. Check
+  both sources before editing, and keep overlapping maintained entries consistent.
+- Do not put a new Rules copy in parsed help: `lib/information/rules` owns it.
 
-Every spell help entry follows this format:
+See [HELP_SYSTEM.md](HELP_SYSTEM.md) for the import and serving paths.
 
-```
-[Spell Name] - Last Edited: [DATE] by [AUTHOR]
-[======= matching length =======]
-* Area of effect: <target>
-* Aggressive:     Yes/No
-* Cumulative:     Yes/No
-* Duration:       [duration text]
-* Type of spell:  [type]
+## Parsed topic format
 
-[Description paragraph(s)]
-
+```text
+Topic title
+Topic title - Last Edited: YYYY-MM-DD
+============================================================
+Current description and usable syntax.
 ==See also==
-[related topics]
+* Related topic
+#0
 ```
 
----
+Do not add author or contributor attributions. A date identifies the content
+revision, not proof of deployment. Preserve the importer's two-line title shape.
+Do not include captured prompts or the unrelated search results printed by a
+previous help lookup inside the topic body.
 
-## Header Fields
+## Describe the actual rule
 
-### Area of Effect
-Use these exact formats:
-- `<victim>` - Single target spell
-- `<victim> | <victim> <direction>` - Can be cast at target or into adjacent room
-- `<room>` - Affects everyone in the room
-- `<direction>` - Creates effect in a direction (walls, etc.)
-- `<group>` - Affects caster's group
-- `<self>` - Self-only spell
-- `Caster's group` - Alternative for group spells
+Use short, readable prose. Start with the command's purpose and usable syntax.
+Include requirements, targets, costs, failure conditions, duration, and reversal
+when those details affect a player's decision. Explain disabled commands directly
+without an item list, altar recipe, or cost that cannot activate them.
 
-### Aggressive
-- `Yes` - Spell causes damage OR debuffs the target
-- `No` - Buff, heal, utility, or summon spell
-- `N/A` - Rare, for spells that don't fit either category
+For spells, a compact header can expose the useful facts:
 
-### Cumulative
-- `Yes` - Effect stacks or has multiple waves (DoTs)
-- `No` - Single application, doesn't stack
-
-### Duration
-Use these phrases (from existing entries):
-- `Instantaneous` - Immediate effect, no lingering duration
-- `Short` - Brief duration (1-4 ticks)
-- `Dependent on level of caster` - Standard scaling duration
-- `Up to 3 hours, dependent on level of caster` - For long buffs
-- `2 to 5 waves` - For DoT spells
-- `Dependent on level of caster or until dispelled` - For removable buffs
-
-### Type of Spell
-Common types from existing entries:
-- `Fire` / `Cold` / `Electric` / `Acid` - Elemental damage
-- `Negative Energy` - Necromantic/unholy damage
-- `Holy` - Divine damage
-- `Healing` - Restoration spells
-- `Protection` - Defensive buffs
-- `Enhancement` - Stat buffs
-- `Enchantment` - Mind-affecting spells
-- `Summoning` - Creature summoning
-- `Teleportation` - Movement spells
-- `Animal` - Druid/nature spells
-- `Generic` - Catch-all for others
-
----
-
-## Description Writing Style
-
-### Tone
-- **Thematic and evocative** - Write like you're describing magic, not code
-- **Second person avoided** - Don't say "you cast" or "your target"
-- **In-world perspective** - Describe what happens, not game mechanics
-- **Concise** - Usually 1-3 sentences, rarely more than a paragraph
-
-### Opening the Description
-Good patterns from existing entries:
-
-**Quote the spell name first:**
-> "Fireball" is a very potent spell that causes a small ball of flame to shoot forth from the caster's fingertips.
-
-> "Haste" grants the victim a faster pulse speed, allowing them to hit more often than without it.
-
-> "Heal" restores a great deal of hit points, and also cures blindness (if any), but cannot heal completely.
-
-**Or start with "This spell...":**
-> This spell will change the skin of the caster's group to a stone-like consistency...
-
-> This potent spell bathes all living things within the vision of the caster in pure mental confusion.
-
-**Or describe the action directly:**
-> A conflagration of fire is sent towards the victim, burning their flesh for several rounds.
-
-### Word Choice
-
-**USE these terms:**
-- `victim` - The target of a spell (even for buffs)
-- `caster` - The person casting the spell
-- `recipient` - Alternative for buff targets
-- `hit points` - For health/HP (also acceptable: hitpoints, HP)
-- `level` - For caster/character level
-
-**AVOID these terms:**
-- `target` - Use "victim" instead
-- `ticks` - Use "rounds" or time descriptions
-- Code-like terms - "modifier", "bitvector", "affect"
-
-### Describing Effects
-
-**Damage spells:**
-> ...striking the victim for considerable damage.
-> ...burning the victim quite profoundly.
-> ...causes a huge bolt of lightning to streak from the caster's outstretched palm.
-
-**DoT spells:**
-> ...burning their flesh for several rounds. The burning hot flames scorch and sear the unfortunate creature caught within its grasp. Although the fire burns hotly at first, the burning damage slowly dissipates over time.
-
-**Buff spells:**
-> ...grants the victim a faster pulse speed, allowing them to hit more often.
-> ...provides protection from magical fire attacks and some protection against physical attacks.
-
-**Debuff spells:**
-> ...will reduce the mental faculties of the victim when successful.
-> ...causes all exposed to it to react in pure mental confusion.
-
-**Healing spells:**
-> ...restores a great deal of hit points...
-> ...cures blindness (if any)...
-
-**Protection spells:**
-> ...negates almost all damage from physical attacks.
-> ...absorb magical energies directed at anyone protected by them.
-
-### Describing Mechanics (When Needed)
-
-If mechanical details matter, weave them into the prose:
-
-> It will last until either the duration expires or a variable number of attacks (of any type, whether they hit or do damage) are made against the victim.
-
-> The spell will cause the victim to forget some of the spells they have memorized among other detrimental effects to the mind. Wisdom is an important factor when using or saving against this spell.
-
-> Because of the spell's detrimental effects, the victim will save against it. Thus, if the victim wants to be the recipient, he should consent the caster.
-
----
-
-## See Also Section
-
-### Format
-```
-==See also==
-[item], [item], [item]
+```text
+* Area of effect: <actual supported targets>
+* Aggressive:     <Yes / No>
+* Cumulative:     <actual stacking behavior>
+* Duration:       <actual lifetime or Instantaneous>
+* Type of spell:  <actual damage/effect type>
 ```
 
-or with bullets:
+There is no universal duration or stacking rule for a damage-over-time, healing,
+wall, or protection spell. Trace the registration and handler before selecting
+these values. A tick, combat round, pulse, and real-time second are different
+units; use the unit the effect actually follows. Do not substitute one for another
+for stylistic consistency. State uncertainty instead of inventing a duration.
 
-```
-==See also==
-* [item]
-* [item]
-```
+Use game terms such as caster, recipient, victim, hit points, level, spell circle,
+and epic points. Implementation names belong in developer references unless they
+are also the player's syntax. State stat dependencies only after checking the
+handler and its relevant helper calls; command attribute metadata is a separate
+maintained input, not an automatic analysis of the implementation.
 
-### What to Include
-- Related spells (group version, similar effect)
-- Classes that learn the spell
-- Counter-spells or complementary spells
-- Related help topics
+## Classes, races, and specializations
 
-### Examples
-> ==See also==
-> Chain Lightning, druid, sorcerer, conjurer
+[CLASSES.md](../reference/CLASSES.md) maps the authoritative tables and current
+rules. Distinguish defined IDs from normal creation choices, a permitted matrix
+cell from a client's completed creation path, and defined specialization names
+from the choices allowed for a particular race.
 
-> ==See also==
-> * Stone Skin
-> * biofeedback
+Class skill lists must distinguish base grants from specialization additions,
+removed grants, ordinary skill levels, spell circles, and epic purchases. A
+listed requirement does not mean the character has learned or prepared the
+ability. Item use follows item masks and body rules; avoid blanket promises that
+a class can equip every weapon, armor piece, or artifact.
 
-> See also: cureblind, fullheal, blindness
+The importer assigns category `0` to parsed-help and help-index topics. Those
+pages need complete authored lists in both database and flat-file builds.
+Database pages explicitly assigned dynamic categories receive code-generated
+sections: race `25`, class `9`, specialization `16`, and class-skillset `10`.
+Do not duplicate those sections in the authored body of a dynamic page.
 
----
+## Verification and publication
 
-## Complete Examples
+Check title collisions and parser output with
+`./scripts/import_help_to_prod.sh --dry-run`. Run the focused class/race/help
+contracts for the topics changed; see [HELP_SYSTEM.md](HELP_SYSTEM.md) and
+[help-cache.md](../operations/help-cache.md). Confirm that the actual prose and
+lists agree with source; structural coverage alone cannot establish accuracy.
 
-### Damage Spell (Fireball)
-```
-* Area of effect: <victim> | <victim> <direction>
-* Aggressive:     Yes
-* Cumulative:     No
-* Duration:       Instantaneous
-* Type of spell:  Fire
+Racial innate lists are maintained by `scripts/sync_race_innate_help.py`; its
+`--check` mode detects stale lists. Keep command-stat metadata in
+`docs/lib/information/command_attributes.txt` and restart after changing it.
 
-"Fireball" is a very potent spell that causes a small ball of flame to
-shoot forth from the caster's fingertips. Upon contact with the victim, it
-explodes in a huge blast, burning the victim quite profoundly.
-```
-
-### DoT Spell (Immolate)
-```
-* Area of effect: <victim>
-* Aggressive:     Yes
-* Cumulative:     Yes
-* Duration:       2 to 5 waves
-* Type of Spell:  Fire
-
-A conflagration of fire is sent towards the victim, burning their flesh
-for several rounds. The burning hot flames scorch and sear the unfortunate
-creature caught within its grasp. Although the fire burns hotly at first,
-the burning damage slowly dissipates over time.
-
-==See also==
-* Immolure
-```
-
-### Buff Spell (Haste)
-```
-* Area of effect: <victim>
-* Aggressive:     No
-* Cumulative:     No
-* Duration:       Dependent on level of caster
-* Type of spell:  Generic
-
-"Haste" grants the victim a faster pulse speed, allowing them to hit more
-often than without it. It also adds an archery hit, allowing an archer to
-hit more often. When used on casters, it allows them to cast their spell
-more quickly.
-
-==See also==
-slowness, haste-eq, sorcerer, conjurer, bard
-```
-
-### Protection Spell (Group Stone Skin)
-```
-* Area of effect: <group>
-* Aggressive:     No
-* Cumulative:     No
-* Duration:       Dependent on level of caster
-* Type of spell:  Protection
-
-This spell will change the skin of the caster's group to a stone-like
-consistency and negates almost all damage from physical attacks. It will
-last until either the duration expires or a variable number of attacks
-(of any type, whether they hit or do damage) are made against the victim.
-The number of attacks it protects against varies with the level of the
-caster. If a particularly damaging attack is made, it will provide no
-protection at all. Group Stone Skin does not block any damage from magical
-spells (though these attacks will "chip away" at the protection).
-
-==See also==
-* Stone Skin
-* biofeedback
-```
-
-### Debuff Spell (Feeblemind)
-```
-* Area of effect: <victim>
-* Aggressive:     Yes
-* Cumulative:     No
-* Duration:       Short
-* Type of spell:  Enchantment
-
-Feeblemind will reduce the mental faculties of the victim when successful.
-The spell will cause the victim to forget some of the spells they have
-memorized among other detrimental effects to the mind. Wisdom is an
-important factor when using or saving against this spell.
-```
-
-### Healing Spell (Heal)
-```
-* Area of effect: <victim>
-* Aggressive:     No
-* Cumulative:     Yes
-* Duration:       Instantaneous
-* Type of spell:  Healing
-
-"Heal" restores a great deal of hit points, and also cures blindness
-(if any), but cannot heal completely.
-
-See also: cureblind, fullheal, blindness
-```
-
-### Area Spell (Earthquake)
-```
-* Area of effect: <room>
-* Aggressive:     Yes
-* Cumulative:     No
-* Duration:       Instantaneous
-* Type of spell:  Generic
-
-"Earthquake" causes the ground to tremble and quake, making everyone
-and everything in the room fall to the ground and take damage, unless they
-are grouped with the caster.
-```
-
----
-
-## Common Mistakes to Avoid
-
-1. **Generic placeholder text** - Never use "is a spell available to certain classes"
-2. **Redundant damage type** - Don't say "negative energy energy"
-3. **Code-like language** - Avoid "scales with level" or "modifier"
-4. **Missing aggressive flag** - Debuffs ARE aggressive (Yes)
-5. **Wrong duration for DoTs** - Use "2 to 5 waves" not "Dependent on..."
-6. **Typos** - Watch for "increasess" or "Dependant" vs "Dependent"
-7. **Too technical** - Don't expose internal mechanics unless relevant
-8. **Too verbose** - Keep it concise, 1-3 sentences usually suffices
-
----
-
-## Writing Process
-
-1. **Identify the spell type** - Damage? Buff? Heal? Utility?
-2. **Set the header fields** correctly based on type
-3. **Write the opening** - Quote name or "This spell..."
-4. **Describe the effect** - What does it look/feel like?
-5. **Add mechanical details** only if players need to know them
-6. **List related topics** in See Also
-
----
-
-## Spell Type Quick Reference
-
-| Spell Type | Aggressive | Cumulative | Duration | Example |
-|------------|------------|------------|----------|---------|
-| Direct Damage | Yes | No | Instantaneous | Fireball |
-| DoT | Yes | Yes | 2 to 5 waves | Immolate |
-| Area Damage | Yes | No | Instantaneous | Earthquake |
-| Debuff | Yes | No | Short/Dependent | Feeblemind |
-| Buff | No | No | Dependent | Haste |
-| Group Buff | No | No | Dependent | Group Haste |
-| Heal | No | Yes | Instantaneous | Heal |
-| Protection | No | No | Dependent | Stone Skin |
-| Summon | No | No | Dependent | Conjure Elemental |
-| Teleport | No | No | Instantaneous | Word of Recall |
-| Wall | No | No | Dependent | Wall of Fire |
-| Utility | No | No | Varies | Detect Invisibility |
+A local file edit does not publish database-backed help. Use the documented
+import/refresh procedure only for an authorized target. Flat-file help reloads
+on restart; database help refreshes through its catalog worker.

@@ -39,7 +39,7 @@ def cleric_help(path):
                      text[start:], re.S)[1]
 
 
-for path in ("help/duris_help.hlp", "help/duris_help_parsed.hlp",
+for path in ("help/duris_help_parsed.hlp",
              "lib/information/help_index"):
     help_text = cleric_help(path)
     listed = {}

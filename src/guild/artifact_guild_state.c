@@ -21,7 +21,6 @@
 #include "economy/nexus_stones.h"
 #include "core/prototypes.h"
 #include "world/difficulty.h"
-#include "persistence/persistence_mode.h"
 #include "magic/spells.h"
 #include "core/utils.h"
 
@@ -106,7 +105,6 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			     artifact_guild_payload *payload)
 {
 	if (!character || IS_NPC(character) || !payload || epics <= 0 ||
-	    !persistence_mode_requires_mysql() ||
 	    critical_operation_id_is_zero(parent_operation_id))
 		return artifact_guild_capture_status::unavailable;
 	*payload = {};
@@ -178,7 +176,15 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			else if (!get_artifact_data_sql(vnum, &tracked) ||
 				 tracked.locType != ARTIFACT_ON_PC ||
 				 tracked.location != GET_PID(character))
-				conflict = "owner_mismatch";
+			{
+				// A stale tracking row must not cost a valid wearer this award.
+				// Reconciliation requires canonical identity and matching custody.
+				artifact_reconcile_player_owner(object);
+				if (!get_artifact_data_sql(vnum, &tracked) ||
+				    tracked.locType != ARTIFACT_ON_PC ||
+				    tracked.location != GET_PID(character))
+					conflict = "owner_mismatch";
+			}
 			if (conflict)
 			{
 				// The existing reporter bounds staff notices and retains searchable

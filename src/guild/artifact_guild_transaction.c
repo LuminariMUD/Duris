@@ -20,6 +20,7 @@
 #include "redis/redis_report_cache.h"
 #include "core/utils.h"
 #include "player/player_save_pipeline.h"
+#include "persistence/persistence_mode.h"
 
 #include <algorithm>
 #include <chrono>
@@ -178,6 +179,10 @@ bool artifact_guild_transaction_submit(P_char character,
 	publish_messages(character, payload);
 	++health.live_applied;
 	health.max_artifacts = std::max<uint64_t>(health.max_artifacts, payload.artifact_count);
+	// Both backends save live artifact/guild state through their existing stores.
+	// The derived SQL history is additional bookkeeping only on MariaDB.
+	if (!persistence_mode_requires_mysql())
+		return true;
 	if (pending.size() >= ARTIFACT_GUILD_PENDING_MAX)
 	{
 		++health.history_lost;

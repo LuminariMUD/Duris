@@ -11,6 +11,72 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## PSP consistency and gradual movement decay (#57)
+
+Delayed surplus movement decay also stops at the maximum: after 120/100 becomes
+119/100 at pulse 61, a 1,200-pulse callback delay must leave 100/100. Negative
+equipment recovery below the maximum still drains normally. The native sanitizer
+regression covers both cases at recovery dials 1, 5 and 10.
+
+The same native test executes real `affect_update()`, `StartRegen()`, policy and
+callbacks after combat and sunlight suppression. It covers Human/Pillithid/Illithid
+PSP users, including racial warriors and sorcerers, missing/full/over-cap PSP,
+negative recovery at full, fresh elapsed credit and duplicate suppression. An
+ordinary human warrior remains excluded. The full-world combat case uses a
+Pillithid warrior to verify the periodic restart beyond psionic classes.
+Its disposable runtime creates the launcher's `logs/log/.since` marker so log
+retention does not archive the callback trace as an unknown-age log set.
+
+`python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
+functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
+ASan/UBSan. It checks the POW+INT base and truncation, recovery dials 1/5/10,
+PC/NPC behavior, signed equipment modifiers, feeblemind, sunlight exemptions,
+all six statuses crossed with all four postures and meditation, combat entry with
+fractional credit, delayed callbacks, full/zero/over-cap bounds, one completion
+message, psionicist/mindflayer casting restarts, duplicate starts and NPC cadence.
+One- and four-pulse recovery agrees with the rate within one point of float credit.
+
+The fixture queue and ordinary engine dependencies are stubs. Meditation flags and
+combat state are seeded. The existing `test_nevent_scheduler_runtime.py` now also
+executes the real PSP callback and admission on the production queue, with a controlled
+rate: duplicate suppression, NPC first/recurring cadence, delayed events, combat
+termination, fresh restart payload and full termination pass under ASan/UBSan.
+Every queued callback asserts its elapsed interval: one/four pulses for PCs and
+four initially then five for NPCs. Four-pulse delays use the previous callback tick,
+so advancing the heartbeat cannot introduce a three- or five-pulse interval.
+Existing difficulty, HP decay and tick spreading controls pass as well.
+
+The same harness executes `spell_restore_spirit()` to grant 20 surplus vitality in
+combat, then `do_rest()` after combat to admit recovery. At 120/100, the first
+decrement at pulse 61 must leave 119, and later decrements approach 100 progressively.
+It preserves positive 99/100 capping, full-event termination, signed/NPC rates and
+neutral fed/hydrated standing/resting/sleeping rates 80/229/632, with one- and
+four-pulse callbacks. Spell damage and saving throws are stubbed; the vitality grant,
+rest command, rate and callback are actual source functions.
+
+`run_psp_regen_journey.py --binary bin/server/dms_issue57_flatfile --output
+bin/analysis/issue57-plan/journey.json` drives a fresh flat-file full-world server via
+Telnet; run `make world` first to generate the authored world in a clean checkout.
+Against production sources `0b245add9223f12bd483cd451a15d805a37733a6`,
+current POW=INT=100, no equipment/boons/rested bonus, dials 5/1/10 display 80/160/40
+and gain 33/65/17 PSP over 123 traced callbacks each (staff snapshots bound elapsed
+time at 120–126 pulses). Rest/meditate displays 1,500, fills reserves, sends one
+completion message and ends callbacks. Actual will/cast dispatch restarts PSP for
+both Psionicist and MindFlayer. Training-dummy combat blocks recovery; after staff
+tranquilize and player wake/stand, the existing periodic path recovers within 42.014
+seconds. A signed affect change from zero net recovery to 90/tick restarts via
+`balance_affects()`/`affect_total()`. All 569 player PSP callbacks have unique pulse
+identities. Setup uses staff commands on a disposable character; player data and
+runtime settings are temporary and removed afterwards. The full server is a normal
+development build, with sanitizers confined to the native harnesses.
+
+The CLI creates missing output directories before retaining the JSON result.
+`test_psp_regen_journey_output.py` executes its argument parsing and result writing
+with the full journey stubbed, checking a missing nested parent and an existing file.
+
+See `docs/ongoing-projects/plan.md` for exact build commands, binary hash and review
+stack. No migration, production rollout or shared-player changes were performed.
+
 ## Combined log-review integration qualification
 
 The combined server/world/schema at `8b2681862` incorporates master `c6a95a470`
@@ -168,7 +234,7 @@ not final combined-stack qualification or production rollout; full-server fault
 journeys and the broad gates remain due after #73–#75 integration.
 
 Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
-[qualification record](../ongoing-projects/log-server-review.md#qualification-update-2026-10-14)
+[qualification record](../records/log-server-review.md#qualification-update-2026-10-14)
 maps the acceptance criteria to tests, records local logs and separates review
 readiness from production rollout.
 
@@ -399,7 +465,7 @@ fails at the adjacent-room assertion. RNG, eligibility, presentation, movement
 endpoints, and wait are adapters; no live cast, production rollout, or historical
 attribution is claimed. The development server build and eight related focused
 zone/movement/lifecycle/latency tests pass. Evidence and remaining original
-acceptance are in [the continuation plan](../ongoing-projects/plan-issue-106.md).
+acceptance are in [the continuation plan](../records/plan-issue-106.md).
 
 The legacy physical `damage()` wrapper now stops a skill after either
 participant dies, matching its spell branch. Previously simultaneous death

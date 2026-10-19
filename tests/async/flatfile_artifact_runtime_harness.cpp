@@ -4,6 +4,7 @@
 #include "world/object_template.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_population_repository.h"
+#include "item/item_ownership_runtime.h"
 #include "flatfile/flatfile_identity_repository.h"
 
 #include <cstdlib>
@@ -169,6 +170,8 @@ static void register_fixture(P_obj object, uint64_t pid)
 		object->obj_uid,	   object->obj_uid, 0, source.payload_owner, 1, 1, 701,
 		item_custody_state::active
 	};
+	require(item_ownership_runtime_hydrate(source.custody),
+		"could not hydrate fixture custody");
 	require(artifact_begin_recovery(object, source),
 		"qualified runtime fixture could not register");
 	artifact_object_placed(object);
@@ -341,9 +344,22 @@ int main(int argc, char **argv)
 	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 77, feed_start, 1);
 	feedback.clear();
 	artifact_feed_sql(&owner, &worn, 60);
+	require(feedback == std::vector<std::string>{ satisfaction } &&
+			get_artifact_data_sql(701, &data) && data.timer == feed_start + 60 &&
+			data.location == 42,
+		"qualified player custody did not repair stale tracking before feeding");
+	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 77, feed_start, 1);
+	item_ownership_runtime_entry disputed = {};
+	require(item_ownership_runtime_lookup(worn.obj_uid, &disputed), "missing fixture custody");
+	disputed.owner.id = 77;
+	require(item_ownership_runtime_hydrate(disputed), "could not seed disputed custody");
+	feedback.clear();
+	artifact_feed_sql(&owner, &worn, 60);
 	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start &&
 			data.location == 77,
 		"rejected cross-owner direct feed changed state or published satisfaction");
+	disputed.owner.id = 42;
+	require(item_ownership_runtime_hydrate(disputed), "could not restore fixture custody");
 	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
 	feedback.clear();
 	owner.player.level = 62;
@@ -379,7 +395,8 @@ int main(int argc, char **argv)
 	artifact_update_sql(701, false, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);
 	artifact_feed_sql(&owner, &worn, 60);
 	require(feedback == std::vector<std::string>{ satisfaction } &&
-			get_artifact_data_sql(701, &data) && data.owned && data.location == 42,
+			get_artifact_data_sql(701, &data) && data.owned && data.location == 42 &&
+			data.timer == feed_start + 60,
 		"newly tracked direct feed did not publish the requested wording once");
 	std::cout << "direct feed wording and accepted/rejected feedback passed\n";
 

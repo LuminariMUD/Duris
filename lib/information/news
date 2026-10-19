@@ -1,11 +1,135 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 17, 2026&n
+&+WUpdated: October 18, 2026&n
 
-Welcome back! Catch up on September 15 to October 17, 2026 below.
-The newest changes come first; later updates replace older rules.
-Earlier coverage, back to December 14, 2025, and the archive follow.
+Welcome back! Marduk and Enlil return, and your mental reserves recover
+more reliably. Newest changes come first; later updates replace older rules.
+Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/18/26&n &+L-&n &+YTwo stones, two sides, fresh battles&n
+&+W----------------------------------------------------------------------&n
+
+&+CNexus stones return&n
+&+Y-&n &+MMarduk&n and &+MEnlil&n are back, beginning neutral with guardians.
+  Marduk strengthens epic gains for the side that fully captures it;
+  Enlil improves that side's cargo and contraband sale proceeds. Both
+  bonuses are &+Y11%&n, rounded down with a minimum bonus of one. Partial
+  control gives no bonus, and epic bottles do not receive Marduk's bonus.
+&+Y-&n Good- and evil-side adventurers of &+Ylevel 51+&n can &+C'touch stone'&n
+  after defeating its guardian. Each touch moves it one step toward your
+  side; three steps from neutral capture it. Bring a healer: a valid
+  mortal touch leaves you incapacitated at &+Y-5 hit points&n.
+&+Y-&n Wait &+Y5 minutes&n between touches. A touch that completes a capture
+  must also respect the &+Y1-hour&n turn timer, which starts again when a
+  neutral or fully captured stone loads. A fully captured stone ignores
+  further touches from its own side. Untouched stones expire after
+  &+Y12 days&n and return to neutral.
+&+Y-&n Captures award epics to you and eligible groupmates in the room,
+  and count toward matching epic tasks and boons. These two stones offer
+  no stat training. Neutral guardians now clean up correctly on reload;
+  asking a sage about an unsupported stat no longer risks a crash.
+
+&+CYour mind catches its breath&n
+&+Y-&n PSP recovery now honors resting, sleeping, Feeblemind, equipment
+  modifiers and game difficulty. It pauses during combat, while you are
+  incapacitated, and in unprotected sunlight if your race is sun-vulnerable.
+  Meditation keeps its stronger recovery and finishes when PSP is full.
+&+Y-&n Recovery resumes for all eligible PSP users after a pause, including
+  Illithids and Pillithids whose class is not Psionicist or Mindflayer.
+  Surplus PSP fades gradually; negative recovery drains toward zero.
+&+Y-&n Vitality above your maximum now fades gradually instead of vanishing
+  in one step. That decay stops at your maximum even after a delay;
+  ordinary negative vitality modifiers still apply below maximum.
+
+&+CRewards and market errands&n
+&+Y-&n Restored artifacts now recover their rightful owner when your saved
+  belongings confirm it, so stale ownership records no longer block valid
+  artifact rewards. An orderly restart also preserves saved item ownership.
+&+Y-&n Asking &+C'auction list'&n for keyword help no longer crashes the game.
+
+&+R10/18/26&n &+L-&n &+YHoly blood, dark wrath&n
+&+W----------------------------------------------------------------------&n
+
+&+Y-&n &+C'Holy sacrifice'&n healing is now shared. Each groupmate still
+  heals up to &+Y30%&n of a blow's damage, but one blow heals the group by
+  no more than &+Y90%&n of its damage or &+Y60%&n of the Paladin's maximum
+  hit points, and a combat round by no more than &+Y120%&n. These limits
+  are halved for the rest of the round after a player or player-owned pet
+  strikes, even if monsters also attack. Small-group healing can fall in
+  PvP too. Shapechanged groupmates receive healing in their active form.
+&+Y-&n &+C'Blood tithe'&n now combines with the aura of battlelust instead
+  of being cancelled by it. Tithes still do not stack with each other.
+&+Y-&n Anti-Paladins can no longer drain past &+Y2.5x&n their normal
+  maximum hit points (previously up to &+Y3.5x&n). Vampiric touch drains
+  just as strongly as before, and hit points already above the new limit
+  fade gradually as before.
+&+Y-&n See &+C'help holy sacrifice'&n, &+C'help blood tithe'&n and
+  &+C'help power'&n for details.
+
+&+R10/17/26 - 10/18/26&n &+L-&n &+YArtifacts keep their place&n
+&+W----------------------------------------------------------------------&n
+
+&+Y-&n Artifact creation and restoration now check the identity of the saved
+  item before putting another copy into play. Conflicting copies are held
+  for staff review; unrelated belongings can still load and save.
+&+Y-&n Artifact checks now cover more monster, quest and scripted sources,
+  along with saved players, pets, shops, storage and recovered ground loot.
+  An uncertain or unavailable source does not count as an empty world.
+&+Y-&n Duplicate artifact copies cannot grant extra artifact rewards or take
+  over the surviving item's soul binding. Valid rewards retain their
+  familiar satisfaction-from-above message without replaying it on reload.
+&+Y-&n Staff artifact reports no longer create live copies while inspecting
+  them. Swaps refuse uncertain sources or occupied replacements and retain
+  the original item when placement or the required save cannot proceed.
+&+Y-&n Restored monsters keep their saved item identities, and shopkeepers
+  reuse their saved stock across a warm reboot instead of duplicating it.
+  Conflicting recovery records are retained for investigation.
+
+&+CYour battle view is yours&n
+&+Y-&n &+C'toggle webinfo off'&n withholds both your equipment and your combat
+  log from new PvP captures. Turning it on includes only public messages
+  received during that uninterrupted on period, never earlier off-period
+  text. Battle results and rewards are unchanged.
+&+Y-&n Tell/reply, whisper, directed ask, group, guild and alliance message
+  bodies stay out of exported battle logs regardless of Web Info. Your
+  personal recall still works; room notices without message text can remain.
+&+Y-&n Web Info changes now report that their save is pending. A refused
+  save leaves the old setting active. Wait for save acknowledgement before
+  relying on the setting after a disconnect or crash; repeating the same
+  setting does not confirm a pending save.
+&+Y-&n Website handling of older views depends on its saved-toggle setting:
+  when enabled, saving off hides previously permitted views after refresh,
+  and saving on restores only those permitted views. Private or unknown-
+  permission captures stay withheld. Downloaded copies cannot be recalled.
+  See &+C'help toggle_webinfo'&n for the publication delay and details.
+
+&+CProtection that lasts&n
+&+Y-&n Freedom of Movement lasts about &+Y70%&n as long as Guardian Spirits
+  at the same level. Blocking paralysis, webs or bindings no longer spends
+  the blessing early. Its existing takedown and backstab reductions remain.
+&+Y-&n Beholder paralysis now respects the blessing correctly. Shield-based
+  paralysis checks the attacker who would be paralyzed, and imprisonment
+  armor no longer carries stray effects into its paralysis.
+&+Y-&n Killing a binding plant releases the paralysis that plant caused,
+  without removing unrelated paralysis. Forest entanglement can be
+  dispelled, unbound or cut free without leaving a lingering binding.
+&+Y-&n A web wall only applies its crossing effects after you actually move
+  through it; a blocked move no longer entangles you as though you crossed.
+
+&+CGuard your friends, mind your destination&n
+&+Y-&n Guardians can guard &+Ytwo allies&n, as Cavaliers and Demonic Riders
+  already can. Choosing a third drops one of the previous two.
+&+Y-&n A Guardian's &+C'rescue <friend> all'&n now leaves &+Y6 seconds&n before
+  acting again. It is available at &+Ylevel 46&n; help now shows the correct
+  level. Ordinary rescue still costs one four-second combat round.
+&+Y-&n &+C'bs'&n reliably selects Backstab, alongside &+C'ba'&n and &+C'back'&n.
+&+Y-&n Flights into Kimordril are now restricted to the good side of the
+  racewar. Other ordinary-flight costs and level rules are unchanged.
+&+Y-&n Staff purging a player no longer crashes the game or destroys that
+  player's belongings: carried and worn items are left in the room.
+  Purge waits for item activity to finish and refuses an unsaved removal;
+  players in lockers must leave the locker before staff can purge them.
 
 &+R10/17/26&n &+L-&n &+YPets should not bar the door&n
 &+W----------------------------------------------------------------------&n

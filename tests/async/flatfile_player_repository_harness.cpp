@@ -718,6 +718,31 @@ static void saved_wallet_matrix(const fs::path &path)
 /** Inspect synthetic authority on request, otherwise exercise player repository durability and recovery. */
 int main(int argc, char **argv)
 {
+	if ((argc == 4 || argc == 5) && std::string(argv[2]) == "artifact-owner")
+	{
+		std::string error;
+		flatfile_artifact_record record;
+		require(flatfile_artifact_get(argv[1], std::stoi(argv[3]), &record, &error) ==
+				flatfile_artifact_result::ok,
+			"inspect artifact: " + error);
+		if (argc == 5)
+		{
+			// Only the isolated journey invokes this, with its server stopped.
+			record.location_type = std::stoi(argv[4]);
+			record.location = 88;
+			record.owned = record.location_type != FLATFILE_ARTIFACT_NOT_IN_GAME;
+			require(flatfile_artifact_snapshot_apply(argv[1], { record }, &error) ==
+					flatfile_artifact_result::ok,
+				"seed stale tracking: " + error);
+		}
+		std::cout << "{\"uid\":" << record.canonical_item_uid
+			  << ",\"identity\":" << static_cast<int>(record.identity_state)
+			  << ",\"owned\":" << record.owned << ",\"type\":" << record.location_type
+			  << ",\"location\":" << record.location << ",\"timer\":" << record.timer
+			  << ",\"soul\":" << record.bind_owner_pid
+			  << ",\"bind\":" << record.bind_timer << "}\n";
+		return 0;
+	}
 	if (argc == 3 && std::string(argv[2]) == "seed-creation-bank")
 	{
 		std::string error;

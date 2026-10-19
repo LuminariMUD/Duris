@@ -20,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0045_pkill_webinfo_at_capture`, and the contract
+The current head is `0046_nexus_phase1`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -74,6 +74,15 @@ gates. Existing text is preserved, and old writers default to NULL. Deploy the
 compatible withholding reader first, then apply this additive migration before
 starting the v4 capture producer. Keep the column and reader gate during rollback;
 an older binary's exact schema contract will not accept this migration head.
+
+0046 inserts the missing Marduk and Enlil Nexus catalogue rows after checking both
+IDs and reserved names for conflicts. Existing matching configuration, alignment
+and touch timestamps remain unchanged. Both new rows start neutral with no stat
+benefit. The migration adds no table or column, so metadata fingerprints stay the
+same; the migration head, apply/verify checksums and history checksum advance.
+Apply it before starting the updated SQL-backed binary. See the
+[Nexus handoff](../records/nexus-stones-109-investigation.md) for world/ship
+dependencies, operator checks and the separate production acceptance work.
 
 An existing populated database must first be upgraded only on a disposable clone.
 Run the legacy convergence, then the immutable runner against the same clone before
