@@ -3,9 +3,50 @@
 &+W======================================================================&n
 &+WUpdated: October 18, 2026&n
 
-Welcome back! Artifacts, battle privacy and sturdier protections lead
-this update. Newest changes come first; later updates replace older rules.
+Welcome back! Marduk and Enlil return, and your mental reserves recover
+more reliably. Newest changes come first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/18/26&n &+L-&n &+YTwo stones, two sides, fresh battles&n
+&+W----------------------------------------------------------------------&n
+
+&+CNexus stones return&n
+&+Y-&n &+MMarduk&n and &+MEnlil&n are back, beginning neutral with guardians.
+  Marduk strengthens epic gains for the side that fully captures it;
+  Enlil improves that side's cargo and contraband sale proceeds. Both
+  bonuses are &+Y11%&n, rounded down with a minimum bonus of one. Partial
+  control gives no bonus, and epic bottles do not receive Marduk's bonus.
+&+Y-&n Good- and evil-side adventurers of &+Ylevel 51+&n can &+C'touch stone'&n
+  after defeating its guardian. Each touch moves it one step toward your
+  side; three steps from neutral capture it. Bring a healer: a valid
+  mortal touch leaves you incapacitated at &+Y-5 hit points&n.
+&+Y-&n Wait &+Y5 minutes&n between touches. A touch that completes a capture
+  must also respect the &+Y1-hour&n turn timer, which starts again when a
+  neutral or fully captured stone loads. A fully captured stone ignores
+  further touches from its own side. Untouched stones expire after
+  &+Y12 days&n and return to neutral.
+&+Y-&n Captures award epics to you and eligible groupmates in the room,
+  and count toward matching epic tasks and boons. These two stones offer
+  no stat training. Neutral guardians now clean up correctly on reload;
+  asking a sage about an unsupported stat no longer risks a crash.
+
+&+CYour mind catches its breath&n
+&+Y-&n PSP recovery now honors resting, sleeping, Feeblemind, equipment
+  modifiers and game difficulty. It pauses during combat, while you are
+  incapacitated, and in unprotected sunlight if your race is sun-vulnerable.
+  Meditation keeps its stronger recovery and finishes when PSP is full.
+&+Y-&n Recovery resumes for all eligible PSP users after a pause, including
+  Illithids and Pillithids whose class is not Psionicist or Mindflayer.
+  Surplus PSP fades gradually; negative recovery drains toward zero.
+&+Y-&n Vitality above your maximum now fades gradually instead of vanishing
+  in one step. That decay stops at your maximum even after a delay;
+  ordinary negative vitality modifiers still apply below maximum.
+
+&+CRewards and market errands&n
+&+Y-&n Restored artifacts now recover their rightful owner when your saved
+  belongings confirm it, so stale ownership records no longer block valid
+  artifact rewards. An orderly restart also preserves saved item ownership.
+&+Y-&n Asking &+C'auction list'&n for keyword help no longer crashes the game.
 
 &+R10/18/26&n &+L-&n &+YHoly blood, dark wrath&n
 &+W----------------------------------------------------------------------&n

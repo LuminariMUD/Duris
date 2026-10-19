@@ -247,6 +247,20 @@ unrelated rows. Reapplying the payload completes a partial insert without resett
 the first row; replaying recorded history remains a no-op. Runtime activation needs
 a controlled restart because SQL Nexus records are cached at boot.
 
+`run --online-nexus-phase1` accepts only the sealed manifest ending at 0046,
+with every earlier step already applied. It uses the existing production target,
+allow-list, fresh backup, checksum, advisory-lock, ordered-history and success-last
+verification safeguards. It requires MariaDB 11.8 and InnoDB `nexus_stones`, runs
+the sealed SQL unchanged, and bounds metadata and row-lock waits to one second.
+This migration adds catalogue rows; it does not alter the table or reset existing
+ownership. A lock timeout fails without an offline fallback.
+
+The October 18 deployment review found an empty InnoDB catalogue on MariaDB 11.8.6.
+The running game caches the catalogue at boot and updates existing IDs; it cannot
+touch the absent stones. The two inserts can therefore run while it stays online,
+with activation at the scheduled reboot. Check the live catalogue and writers
+again before reuse; this option does not authorize arbitrary online migrations.
+
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size
 limits and rejects duplicate JSON keys, invalid paths, missing/duplicate/reordered IDs,
