@@ -964,8 +964,10 @@ void epic_publish_stone_award(P_char ch, const zone_touch_result &result, size_t
 				     GET_LEVEL(ch) < get_property("epic.maxFreeLevel", 50);
 	epic_award_committed(ch, true, {}, 0, reinterpret_cast<const uint8_t *>(&context),
 			     sizeof(context));
-	// Spending for stone levels and boon completion follows the secured award.
-	if (!uses_free_level)
+	// Stone level purchases start at level 50; lower levels can still earn epics.
+	// Levels 46-49 retain their separate free-level handling in epic_award_committed().
+	if (!uses_free_level &&
+	    GET_LEVEL(ch) >= get_property("epic.maxFreeLevel", 50))
 		epic_stone_level_char_from_level(result.stone_level, ch);
 	check_boon_completion(ch, nullptr, result.zone_number, BOPT_ZONE);
 }
