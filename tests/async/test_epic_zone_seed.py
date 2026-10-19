@@ -30,19 +30,46 @@ class EpicZoneSeedTest(unittest.TestCase):
         for number, payout in [(14, 80), (24, 225), (68, 600), (140, 90)]:
             self.assertEqual(rows[number]["epic_payout"], payout)
             self.assertEqual(rows[number]["suggested_group_size"], 100)
-        self.assertEqual(rows[1389]["status"], "disabled")
-        self.assertEqual(rows[1389]["epic_payout"], 0)
-        self.assertIsNone(rows[1389]["suggested_group_size"])
-        # The two zones without a payout row; a new stone-bearing zone needs one.
-        self.assertEqual({number for number, r in rows.items() if r["status"] == "unresolved"},
-                         {590, 1312})
-        self.assertTrue(all(r["epic_payout"] is None for r in rows.values()
-                            if r["status"] == "unresolved"))
+        for number, payout in [(1389, 300), (590, 1200), (1312, 700)]:
+            with self.subTest(zone=number):
+                self.assertEqual(rows[number]["status"], "known")
+                self.assertEqual(rows[number]["epic_payout"], payout)
+                self.assertEqual(rows[number]["suggested_group_size"], 100)
+        self.assertFalse(any(r["status"] in ("disabled", "unresolved")
+                             for r in rows.values()))
+        self.assertIn("migrations/seeds/epic_zone_payout_overrides.json", manifest["sources"])
         self.assertNotIn("world.zon", manifest["sources"])
         self.assertIn("migrations/epic-zone-payout.sql", manifest["sources"])
         self.assertEqual(manifest["unseeded_assignments"], [{
             "number": 4200, "epic_payout": 850,
             "reason": "no stone load in active area sources"}])
+
+    def test_approved_payouts_reject_bad_values_and_historical_overwrites(self):
+        spec = importlib.util.spec_from_file_location("epic_zone_seed", SCRIPT)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        historical = {14: 80, 1389: 0}
+        valid = '{"590": 1200, "1312": 700, "1389": 300}'
+        self.assertEqual(mod.parse_approved_payouts(valid, historical),
+                         {590: 1200, 1312: 700, 1389: 300})
+        for invalid in ['{}', '[]', '{"590": 0}', '{"590": -3}',
+                        '{"590": true}', '{"590": 2147483648}', '{"0590": 1200}',
+                        '{"590": 1200, "590": 1300}', '{"14": 1200}', '{']:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                mod.parse_approved_payouts(invalid, historical)
+
+    def test_epic_zones_sort_by_base_payout_without_new_display_column(self):
+        text = (ROOT / "src/world/epic.c").read_text()
+        zone_sort = text.split("vector<epic_zone_data> get_epic_zones()\n{", 1)[1].split(
+            "\n}\n", 1)[0]
+        self.assertIn("stable_sort(epic.begin(), epic.end()", zone_sort)
+        self.assertIn("return a.epic_payout < b.epic_payout;", zone_sort)
+        self.assertNotIn("suggested_group_size *", zone_sort)
+        output = text.split("char *generate_epic_zones_output(void)\n{", 1)[1].split(
+            "\n}\n", 1)[0]
+        self.assertIn('pad_ansi(epic_zones[i].name.c_str(), 45)', output)
+        self.assertNotIn('"Epics"', output)
 
     def test_deterministic_and_checked_in_manifest(self):
         first = self.cli("manifest")
