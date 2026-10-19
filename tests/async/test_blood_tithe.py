@@ -64,10 +64,10 @@ score = extract_function("actinf.c", "void do_score(")
 assert "blood_tithe_bonus(ch)" in score
 score_start = score.index("\tif (affected_by_spell(GET_PLYR(ch), SPELL_BLOOD_TITHE)")
 score_output = score[score_start:score.index("\n\tif (IS_AFFECTED4(ch, AFF4_NEG_SHIELD))", score_start)]
-for help_file in ("help/duris_help.hlp", "help/duris_help_parsed.hlp"):
+for help_file in ("help/duris_help_parsed.hlp",):
     assert "\nBlood Tithe - Last Edited:" in (ROOT / help_file).read_text(encoding="utf-8")
 # Every help source says Blood Tithe combines with Battle Lust.
-for help_file in ("help/duris_help.hlp", "help/duris_help_parsed.hlp", "lib/information/help_index"):
+for help_file in ("help/duris_help_parsed.hlp", "lib/information/help_index"):
     text = (ROOT / help_file).read_text(encoding="utf-8")
     assert "Blood Tithe does combine with the aura of battlelust" in text, help_file
     assert "gains nothing from Blood Tithe" not in text, help_file

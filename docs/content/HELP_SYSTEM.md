@@ -33,13 +33,17 @@ The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
      racial stats, innates), 9 class (allowed races, innates, specs),
      16 spec (races, innates, skills, spells), 10 class-skillset (innates,
      skills, spells). Titles `Multiclass` and `Races` also get hardcoded
-     sections. Editing those pages means authoring only the static part.
+     sections. The maintained importer writes category `0` for help-index and
+     parsed-help entries, so those imported class/spec pages must include their
+     complete lists. Do not assume they receive the category-driven additions.
+     A database page explicitly assigned one of the categories above does receive
+     those additions; its authored text should not duplicate them.
 
 2. **`attrib_help()`** - appends per-command attributes (stat usage)
     loaded at boot from `docs/lib/information/command_attributes.txt`
     (`src/cmd/wikihelp.c`, boot loader). If the file is missing, only a debug log
-    line notes it. Coverage is complete: every command name registered in
-    `src/cmd/interp.c` has an entry, plus legacy entries keyed by ability names
+    line notes it. Every command name registered in
+    `src/cmd/interp.c` has an entry, plus entries keyed by ability names
     that are not commands (`apply poison`, `parry`, ...) which serve
     `help <ability>` lookups. Each entry lists the `GET_C_*` stats its
     handler (or skill-gated helper chain) actually uses; commands whose
@@ -52,8 +56,7 @@ tracked source files that feed the database importer. It applies the importer's
 precedence - individual `lib/information` pages, then `help_index`, then
 `duris_help_parsed.hlp` - and provides case-insensitive exact and substring
 searches without a database connection. Missing or structurally invalid source
-catalogs fail closed with the normal help-system error instead of silently
-returning the former disabled stub.
+catalogs fail closed with the normal help-system error.
 
 The same client-free content path serves the existing `mud_info` callers for
 motd, news, wizmotd, credits, FAQ, rules, and wizlist directly from their
@@ -63,12 +66,11 @@ commands functional without changing the database-backed lookup path.
 ## Content pipeline
 
 ```
-lib/information/*          help/                      database
-|- motd, news, faq    -+   |- duris_help.hlp          +-------------+
-|- help, rules, ...   |-->|- duris_help_parsed.hlp ->| pages       |
-+- hints.txt, help_index  +- (parsed inline by the    | mud_info    |
-                             import script)           +-------------+
-        scripts/import_help_to_prod.sh
+lib/information/{motd,news,faq,...} ------> mud_info / pages
+lib/information/help_index -------------> pages (category 0)
+help/duris_help_parsed.hlp --------------> pages (category 0; wins duplicate titles)
+docs/lib/information/hints.txt ---------> pages
+                scripts/import_help_to_prod.sh
 ```
 
 `scripts/import_help_to_prod.sh`:
@@ -86,10 +88,9 @@ lib/information/*          help/                      database
   chaos pouch help, faq, rules, credits, wizlist, hints).
 - `hints.txt` now lives at `docs/lib/information/hints.txt`; the script reads
   it from there (the login screen streams it via `src/account/nanny.c`).
-- Imports the parsed help entries from `help/duris_help_parsed.hlp` (~500+
-  topics); the help index is parsed inline by an embedded Python heredoc in
-  the script (~1500 entries as of the immortal-command and full
-  spell/skill coverage).
+- Imports the entries from `help/duris_help_parsed.hlp` and parses
+  `lib/information/help_index` inline. Use `--dry-run` for current topic counts
+  and collisions.
 - **Import order matters**: Section 2 (`help_index`) runs before Section 3
   (`duris_help_parsed.hlp`). Both write with DELETE-by-title + INSERT, so a
   title present in both files ends up owned by `duris_help_parsed.hlp`.
@@ -138,8 +139,9 @@ Dry-run lists the file and byte count without connecting to the database; it
 does not compare against existing database text or create a backup. Review the
 source and back up the destination before publishing. Without `--news-only`,
 even an import without `--clean` overwrites matching information and help content.
-After publishing, an immortal must run plain `page` (no arguments), or restart the
-game, to refresh cached news. `page help` refreshes only help pages.
+After publishing, database-backed news refreshes on the next successful one-minute
+mud-info read. Plain `page` (no arguments) requests an immediate refresh. Flat-file
+news reloads on plain `page` or restart. `page help` refreshes only help pages.
 
 ## Editing help
 
@@ -164,12 +166,11 @@ game, to refresh cached news. `page help` refreshes only help pages.
   is the rule of
   [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md); change the
   entry with the rule, and add a new channel to it. The overview, `NCHAT` and
-  `SHOUT` are in `help_index` only: the older `Communications`, `Nchat` and
-  `Shout` copies in `duris_help_parsed.hlp`, which won over them at import, were
-  removed on 2026-10-09.
+  `SHOUT` are owned by `help_index`; do not add competing parsed-help copies.
 
 ## Related
 
+- PC class rules and source ownership: [CLASSES.md](../reference/CLASSES.md).
 - Login hints: `docs/lib/information/hints.txt` read by `nanny.c`.
 - Wiki export helpers and formatting utilities live alongside the loader in
   `wikihelp.c`.
