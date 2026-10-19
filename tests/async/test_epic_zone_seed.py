@@ -63,8 +63,8 @@ class EpicZoneSeedTest(unittest.TestCase):
         text = (ROOT / "src/world/epic.c").read_text()
         zone_sort = text.split("vector<epic_zone_data> get_epic_zones()\n{", 1)[1].split(
             "\n}\n", 1)[0]
-        self.assertIn("stable_sort(epic.begin(), epic.end()", zone_sort)
-        self.assertIn("return a.epic_payout < b.epic_payout;", zone_sort)
+        self.assertIn("std::ranges::stable_sort(epic, {}, &zone_info::epic_payout);",
+                      zone_sort)
         self.assertNotIn("suggested_group_size *", zone_sort)
         output = text.split("char *generate_epic_zones_output(void)\n{", 1)[1].split(
             "\n}\n", 1)[0]

@@ -2018,11 +2018,7 @@ vector<epic_zone_data> get_epic_zones()
 		if (zone.epic_type > 0)
 			epic.push_back(zone);
 	// sql_zones() is in id order, so equal values keep it.
-	stable_sort(epic.begin(), epic.end(),
-		    [](const zone_info &a, const zone_info &b) {
-			    // The epic zone listing is ranked by base payout, not group size.
-			    return a.epic_payout < b.epic_payout;
-		    });
+	std::ranges::stable_sort(epic, {}, &zone_info::epic_payout);
 
 	vector<epic_zone_data> zones;
 	for (const zone_info &zone : epic)
