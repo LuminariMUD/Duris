@@ -2042,6 +2042,9 @@ static P_obj locker_items_from_index(const locker_row_index &index, int locker_i
 			c->loc.inside = obj;
 		}
 
+		// The children were normalized by the recursive load above.
+		recalc_container_weight(obj);
+
 		if (!chest_obj)
 			append_loaded_objects(&first_obj, &last_obj, obj);
 	}
@@ -2063,7 +2066,10 @@ P_obj sql_locker_items_from_rows(const sql_rows &rows, int locker_id, int chest_
 		else if (!strcmp(row[0], "extra"))
 			index.extras[atoi(row[1])].push_back(&row);
 	}
-	return locker_items_from_index(index, locker_id, chest_id, 0, 0, chest_obj);
+	P_obj objects = locker_items_from_index(index, locker_id, chest_id, 0, 0, chest_obj);
+	if (chest_obj)
+		recalc_container_weight(chest_obj);
+	return objects;
 }
 
 /* The statement that deletes the personal or association locker selected by its
