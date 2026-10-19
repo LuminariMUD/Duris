@@ -1869,6 +1869,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				char_to_room(ch, save_room, -1);
 				player_load_pets_place(ch);
 				epic_bonus_hydrate(ch);
+				start_hatred_check(ch);
 
 				// stash fighting info for later restoration
 				ch->specials.copyover_fighting_type = desc_entry.fighting_type;

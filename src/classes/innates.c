@@ -4389,9 +4389,29 @@ static P_char visible_hatred_enemy(P_char ch)
 	return NULL;
 }
 
-void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
+bool start_hatred_check(P_char ch)
 {
 	if (!IS_ALIVE(ch))
+		return FALSE;
+
+	// Entry and rearm share one owner, even after repeated entry or reconnect.
+	disarm_char_nevents(ch, event_hatred_check);
+	int delay = get_property("innate.timer.hatred", WAIT_SEC);
+	if (delay <= 0)
+		delay = WAIT_SEC;
+	if (!add_event(event_hatred_check, delay, ch, 0, 0, 0, 0, 0))
+	{
+		logit(LOG_DEBUG, "Hatred watcher could not be scheduled; clearing its affects.");
+		affect_from_char(ch, TAG_HATRED);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
+{
+	// Own the unlimited pair before granting or retaining it.
+	if (!start_hatred_check(ch))
 		return;
 
 	P_char enemy = visible_hatred_enemy(ch);
@@ -4402,9 +4422,9 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 		if (af->type != TAG_HATRED)
 			continue;
 		++count;
-		if (af->modifier != -1 || af->flags != (AFFTYPE_NOSAVE | AFFTYPE_NODISPEL) ||
-		    af->bitvector || af->bitvector2 || af->bitvector3 || af->bitvector4 ||
-		    af->bitvector5)
+		if (af->modifier != -1 || af->duration != -1 ||
+		    af->flags != (AFFTYPE_NOSAVE | AFFTYPE_NODISPEL) || af->bitvector ||
+		    af->bitvector2 || af->bitvector3 || af->bitvector4 || af->bitvector5)
 			malformed = TRUE;
 		if (af->location == APPLY_COMBAT_PULSE)
 			++combat;
@@ -4422,15 +4442,12 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 			af.type = TAG_HATRED;
 			af.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL;
 			af.modifier = -1;
-			af.duration = 1;
+			af.duration = -1;
 			af.location = APPLY_COMBAT_PULSE;
 			affect_to_char(ch, &af);
 			af.location = APPLY_SPELL_PULSE;
 			affect_to_char(ch, &af);
 		}
-		for (struct affected_type *af = ch->affected; af; af = af->next)
-			if (af->type == TAG_HATRED)
-				af->duration = 1;
 		if (!count)
 			act("At the sight of your nemesis the hatred of old generations &+rBURN&n in your blood!",
 			    FALSE, ch, 0, enemy, TO_CHAR);
@@ -4448,9 +4465,6 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 			}
 		}
 	}
-
-	add_event(event_hatred_check, get_property("innate.timer.hatred", WAIT_SEC), ch, 0, 0, 0, 0,
-		  0);
 }
 
 bool rapier_dirk_check(P_char ch) // now known as swashbuckling, single weapon.

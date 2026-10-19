@@ -28,10 +28,15 @@ functions = [
     ("affects.c", "void affect_remove("),
     ("affects.c", "void affect_from_char("),
     ("affects.c", "void wear_off_message("),
+    ("affects.c", "void affect_update("),
+    ("files.c", "int writeAffects("),
+    ("files.c", "ush_int getShort("),
+    ("nanny.c", "void schedule_pc_events("),
+    ("innates.c", "bool start_hatred_check("),
     ("innates.c", "static P_char visible_hatred_enemy("),
     ("innates.c", "void event_hatred_check("),
 ]
-production = macros + arrays + table + "\n" + "\n".join(
+production = macros + arrays + table + "\n#define AFFECT_UPDATE_SLICES 20\n" + "\n".join(
     extract_function(file, signature) for file, signature in functions)
 build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
@@ -49,5 +54,6 @@ with tempfile.TemporaryDirectory(prefix="hatred-", dir=build) as directory:
         "-o", str(binary),
     ], check=True)
     for mode in sys.argv[1:] or ["bounds", "cleanup", "partial", "matching", "visibility",
-                               "eligibility", "normalization"]:
+                               "eligibility", "normalization", "scheduler", "timing",
+                               "serialization"]:
         subprocess.run([str(binary), mode], check=True)
