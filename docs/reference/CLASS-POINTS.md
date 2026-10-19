@@ -1,6 +1,6 @@
 # Class points
 
-**Version 0.1 — a proposed design budget, calibrated to the ordinary class
+**Version 0.2 — a proposed design budget, calibrated to the ordinary class
 roster.** Start with [Player classes (CLASSES.md)](CLASSES.md) for acquisition,
 specializations, progression, and implementation links. This document supplies
 the complementary question: what should a class's capabilities cost?
@@ -24,7 +24,8 @@ The initial scorecards are estimates, not telemetry or a completed simulation.
 2. Describe the capability being added or changed, its implementation, and its
    limits. Compare the resulting kit with the [capability anchors](#capabilities-and-prices).
 3. Adjust the affected grades and calculate `CP = 100 × raw / 84`. Keep the
-   original grades and the point delta alongside the proposal.
+   original grades, point delta, and [sensitivity bounds](#uncertainty-and-change-scores)
+   alongside the proposal. A central estimate alone is insufficient.
 4. Check the [interaction rules](#price-the-usable-kit) and each relevant
    [scenario](#comparison-conditions). A suitable total cannot excuse a
    guaranteed kill, permanent control, or a missing counter.
@@ -84,16 +85,19 @@ For a build, assign seven grades in the order `D, B, T, H, C, S, U`:
 raw = 6D + 4B + 5T + 5H + 4C + 4S + 2U
 CP  = 100 × raw / M
 
-M = 84 for version 0.1
+M = 84 for versions 0.1 and 0.2
 delta CP = (100 / 84) × (6 delta D + 4 delta B + 5 delta T
                          + 5 delta H + 4 delta C + 4 delta S + 2 delta U)
 ```
 
-`M` is the median raw score of the 21 initial scorecards, not a separate
-normalizer for each class. Freeze it while evaluating a change or a new class;
-otherwise adding power to the roster can silently move the goalposts. Only an
-explicit model revision recalibrates it. Calculate with full precision and
-round the displayed total to one decimal place.
+`M` is the original version 0.1 median raw score of the 21 initial scorecards,
+not a separate normalizer for each class. Freeze it while evaluating a change
+or a new class; otherwise adding power to the roster can silently move the
+goalposts. Only an explicit model revision recalibrates it. Corrected grades
+can change the current roster's median without changing `M`. Calculate with
+full precision and round
+only the displayed total and delta to one decimal place; subtracting rounded
+totals can give a different delta.
 
 The grade scale is shared across classes:
 
@@ -104,7 +108,7 @@ The grade scale is shared across classes:
 | 2 | Useful secondary capability; cannot reliably fill that role alone. |
 | 3 | Credible contributor to the role, with meaningful gaps versus specialists. |
 | 4 | Strong primary capability, approaching the specialist reference. |
-| 5 | Current specialist reference quality under the declared conditions. |
+| 5 | Frozen specialist reference quality under the declared conditions. |
 
 Use half-grades for intermediate designs; finer precision requires measured
 evidence. Five is an anchor, **not a clamp**: a new capability beyond the
@@ -112,11 +116,45 @@ incumbent ceiling must be scored above five and reviewed explicitly. Otherwise
 unlimited power would become free once a column reached five. A grade of zero
 does not mean the character cannot attack, flee, or use a common consumable.
 
+### Uncertainty and change scores
+
 For initial estimates, mark each judgment-based grade as uncertain by **±1 grade**
-(floor at zero, no ceiling at five); verified absences stay zero. This is a
-design sensitivity range, not a statistical confidence interval. Do not interpret one-decimal arithmetic as
-one-decimal knowledge. Replace that range with observed variation only after
-matched measurements exist.
+(floor at zero, no ceiling at five). With positive shared weights `w`, calculate:
+
+```text
+low_i  = max(0, grade_i - 1)
+high_i = grade_i + 1
+CP_low  = 100 × sum(w_i × low_i) / 84
+CP_high = 100 × sum(w_i × high_i) / 84
+```
+
+An audited absence can use `low_i = grade_i = high_i = 0` when its capability
+ledger establishes that absence for the selected build and conditions. The
+initial table has no per-axis absence audits, so **all seven grades, including
+zeros, use the default range**. A zero estimate is not proof of absence, and a
+capability that has not been assessed must be marked unknown rather than zero.
+
+These are conservative sensitivity bounds, not a statistical confidence
+interval or a claim that every extreme is simultaneously playable. Shared
+actions and resources can correlate the grades. Preserve those constraints in
+the scenario tests; do not treat the upper vector as a legal action schedule.
+Do not interpret one-decimal arithmetic as one-decimal knowledge. Measurements
+must retain both trial variation and uncertainty in the mapping to grades;
+precise damage measurements alone do not establish a precise design price.
+
+For a change, score the **paired difference** under the same fixtures, anchors,
+and prices. Unchanged axes cancel. Give each affected grade delta its own
+evidence-based bounds, then apply the delta formula to those bounds. Do not
+subtract two independently pessimistic/optimistic whole-kit ranges: that would
+charge uncertainty twice for unchanged capabilities. If paired evidence is
+missing, retain the conservative difference range and say it is unresolved.
+
+For example, if Mercenary's C increase is estimated as `0 to 1` with midpoint
+`0.5` and every other axis is unchanged, its delta is **0.0–4.8 CP**, midpoint
+**+2.4 CP**. This does not establish that the interrupt improves the kit; it
+identifies the uncertain claim to test. When an absolute range crosses a
+review threshold, report the budget classification as unresolved. The range
+does not override a demonstrated control, dominance, or counterplay failure.
 
 ## Capabilities and prices
 
@@ -156,10 +194,16 @@ and multiple damage types earn value only when they improve an actual outcome
 or meaningful choice.
 
 When measurements become available, freeze the fixtures and named anchor
-outputs for that model version. Interpolate between measured adjacent grades
-within the same axis and scenario; do not assume that every ordinal grade is
-an equal percentage of damage or HP. If evidence contradicts an initial grade,
-revise the grade before inventing a class-specific discount.
+outputs for that model version. Record the measured output, units, anchor
+outputs and interpolation rule alongside each resulting grade. Interpolate
+between measured adjacent grades within the same axis and scenario; do not
+assume that every ordinal grade is an equal percentage of damage or HP. If
+evidence contradicts an initial grade, revise the grade before inventing a
+class-specific discount.
+
+Do not move the grade-5 anchor to each new strongest build: that would erase
+increases in power even with `M` frozen. Until measured anchors exist, label the
+grade as a design estimate even when some underlying measurements are available.
 
 ## Initial scorecards
 
@@ -169,29 +213,29 @@ They include ordinary learned grants up to their legal caps and supported spell
 circles. They do not pool the strengths of mutually exclusive specializations.
 The conditions below define how to replace the estimates with comparable data.
 
-| Class / specialization | D | B | T | H | C | S | U | Raw | CP |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Warrior / Guardian | 4 | 2 | 5 | 0 | 3 | 3 | 1 | 83 | 98.8 |
-| Ranger / Blademaster | 4 | 3 | 3 | 1 | 2 | 2 | 4 | 80 | 95.2 |
-| Psionicist / Pyrokinetic | 4 | 4 | 2 | 1 | 4 | 2 | 3 | 85 | 101.2 |
-| Paladin / Crusader | 3 | 3 | 4 | 3 | 2 | 4 | 2 | 93 | 110.7 |
-| Anti-Paladin / Dark Knight | 4 | 4 | 3 | 2 | 3 | 3 | 2 | 93 | 110.7 |
-| Cleric / Healer | 1 | 0 | 4 | 5 | 2 | 4 | 3 | 81 | 96.4 |
-| Monk / Red Dragon | 5 | 3 | 4 | 1 | 3 | 0 | 2 | 83 | 98.8 |
-| Druid / Forest Druid | 3 | 2 | 2 | 3 | 4 | 3 | 5 | 89 | 106.0 |
-| Shaman / Spiritualist | 3 | 2 | 2 | 4 | 3 | 3 | 3 | 86 | 102.4 |
-| Sorcerer / Wizard | 4 | 5 | 2 | 0 | 4 | 2 | 3 | 84 | 100.0 |
-| Necromancer / Necrolyte | 4 | 3 | 2 | 2 | 4 | 2 | 3 | 86 | 102.4 |
-| Conjurer / Earth Magus | 3 | 3 | 3 | 0 | 4 | 4 | 4 | 85 | 101.2 |
-| Rogue / Assassin | 4 | 5 | 2 | 0 | 3 | 0 | 5 | 76 | 90.5 |
-| Mercenary / Brigand | 4 | 4 | 3 | 0 | 4 | 1 | 4 | 83 | 98.8 |
-| Bard / Minstrel | 2 | 2 | 2 | 3 | 4 | 5 | 4 | 89 | 106.0 |
-| Berserker / Mauler | 5 | 5 | 3 | 0 | 3 | 1 | 1 | 83 | 98.8 |
-| Reaver / Flame Reaver | 4 | 4 | 3 | 0 | 3 | 2 | 2 | 79 | 94.0 |
-| Illusionist / Magician | 3 | 3 | 2 | 0 | 5 | 4 | 5 | 86 | 102.4 |
-| Blighter / Scourge | 3 | 3 | 2 | 2 | 4 | 2 | 4 | 82 | 97.6 |
-| Ethermancer / Frost Magus | 4 | 4 | 3 | 1 | 4 | 2 | 4 | 92 | 109.5 |
-| Summoner / Controller | 4 | 3 | 2 | 0 | 4 | 3 | 4 | 82 | 97.6 |
+| Class / specialization | D | B | T | H | C | S | U | Raw | CP | CP low | CP high |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Warrior / Guardian | 4 | 2 | 5 | 0 | 3 | 3 | 1 | 83 | 98.8 | 69.0 | 134.5 |
+| Ranger / Blademaster | 4 | 3 | 3 | 1 | 2 | 2 | 4 | 80 | 95.2 | 59.5 | 131.0 |
+| Psionicist / Pyrokinetic | 4 | 4 | 2 | 1 | 4 | 2 | 3 | 85 | 101.2 | 65.5 | 136.9 |
+| Paladin / Crusader | 3 | 3 | 4 | 3 | 2 | 4 | 2 | 93 | 110.7 | 75.0 | 146.4 |
+| Anti-Paladin / Dark Knight | 4 | 4 | 3 | 2 | 3 | 3 | 2 | 93 | 110.7 | 75.0 | 146.4 |
+| Cleric / Healer | 1 | 0 | 4 | 5 | 2 | 4 | 3 | 81 | 96.4 | 65.5 | 132.1 |
+| Monk / Red Dragon | 5 | 3 | 4 | 1 | 3 | 0 | 2 | 83 | 98.8 | 67.9 | 134.5 |
+| Druid / Forest Druid | 3 | 2 | 2 | 3 | 4 | 3 | 5 | 89 | 106.0 | 70.2 | 141.7 |
+| Shaman / Spiritualist | 3 | 2 | 2 | 4 | 3 | 3 | 3 | 86 | 102.4 | 66.7 | 138.1 |
+| Sorcerer / Wizard | 4 | 5 | 2 | 0 | 4 | 2 | 3 | 84 | 100.0 | 70.2 | 135.7 |
+| Necromancer / Necrolyte | 4 | 3 | 2 | 2 | 4 | 2 | 3 | 86 | 102.4 | 66.7 | 138.1 |
+| Conjurer / Earth Magus | 3 | 3 | 3 | 0 | 4 | 4 | 4 | 85 | 101.2 | 71.4 | 136.9 |
+| Rogue / Assassin | 4 | 5 | 2 | 0 | 3 | 0 | 5 | 76 | 90.5 | 65.5 | 126.2 |
+| Mercenary / Brigand | 4 | 4 | 3 | 0 | 4 | 1 | 4 | 83 | 98.8 | 69.0 | 134.5 |
+| Bard / Minstrel | 2 | 2 | 2 | 3 | 4 | 5 | 4 | 89 | 106.0 | 70.2 | 141.7 |
+| Berserker / Mauler | 5 | 5 | 3 | 0 | 3 | 1 | 1 | 83 | 98.8 | 69.0 | 134.5 |
+| Reaver / Flame Reaver | 4 | 4 | 3 | 0 | 3 | 2 | 2 | 79 | 94.0 | 64.3 | 129.8 |
+| Illusionist / Magician | 3 | 3 | 2 | 0 | 5 | 4 | 5 | 86 | 102.4 | 72.6 | 138.1 |
+| Blighter / Scourge | 3 | 3 | 2 | 2 | 4 | 2 | 4 | 82 | 97.6 | 61.9 | 133.3 |
+| Ethermancer / Frost Magus | 4 | 4 | 3 | 1 | 4 | 2 | 4 | 92 | 109.5 | 73.8 | 145.2 |
+| Summoner / Controller | 4 | 3 | 2 | 0 | 4 | 3 | 4 | 82 | 97.6 | 67.9 | 133.3 |
 
 The raw median is **84**, range **76–93**, producing **90.5–110.7 CP**.
 Paladin and Anti-Paladin slightly exceed the initial review band. Under the
@@ -199,6 +243,32 @@ rough-balance premise, that is first a reason to examine estimated aura,
 healing, offense, and action overlap, not evidence for a nerf. Rogue's low end
 similarly calls for checking the price of stealth and opener access before
 adding damage. No per-class fudge factor has forced the totals to 100.
+
+**Every initial sensitivity range crosses both 90 and 110.** None of these
+rows therefore establishes a class as over, under, or within budget with the
+stated uncertainty. Keep the central estimates for designing comparisons, not
+for ranking live classes or ordering numerical changes.
+
+### Comparisons the current estimates flag
+
+A vector dominates another estimate when it is at least as high on every axis
+and strictly higher on at least one. This check is independent of the particular
+positive prices. The current table flags these five pairs:
+
+| Higher estimated vector | Lower estimated vector | Strictly higher axes |
+| --- | --- | --- |
+| Anti-Paladin / Dark Knight | Reaver / Flame Reaver | H, S |
+| Ethermancer / Frost Magus | Ranger / Blademaster | B, C |
+| Ethermancer / Frost Magus | Psionicist / Pyrokinetic | T, U |
+| Ethermancer / Frost Magus | Mercenary / Brigand | H, S |
+| Ethermancer / Frost Magus | Reaver / Flame Reaver | H, C, U |
+
+These are priorities for matched comparisons, **not demonstrated gameplay
+dominance**. Their sensitivity ranges overlap, and the seven grades hide
+delivery methods, counters and subroles. Preserve those distinctions in the
+ledger and compare feasible schedules before deciding whether the grades,
+grouped axes, or mechanics need correction. Merely changing positive weights
+cannot reverse a dominance relationship between these unchanged vectors.
 
 ### Source basis for the reference builds
 
@@ -287,18 +357,67 @@ Use these initial scenario weights when measured scorecards replace the priors:
 Party sizes and weights are modeling choices, not engine group-size limits.
 For each scenario, grade the seven axes under a **feasible action/resource
 schedule**, then use the same prices and frozen `M` to calculate its CP.
-The measured summary is `sum(scenario weight × scenario CP)`. Preserve every
-scenario's vector and total; never conceal a PvP failure inside a PvE average.
-Do not present the initial table as if these scenario runs had already happened.
+Record each axis as measured, estimated, verified absent, deliberately irrelevant
+to that fixture, or unknown. An irrelevant contribution, such as ally support in
+a solo fixture, is zero for that scenario, not proof the class lacks it.
+Apply the same relevance rules to every compared build. A missing measurement
+does not become zero or inherit a score from a different scenario.
+
+The complete summary is `sum(scenario weight × scenario CP)`, using fractions
+that sum to one. If a scenario or relevant axis is unknown, report partial
+coverage and withhold the complete summary; do not silently redistribute its
+weight among completed tests. A summary containing judgment-based grades must
+remain labeled an estimate. Preserve every scenario's vector and total; never
+conceal a PvP failure inside a PvE average.
+
+The 90–110 band was calibrated to the initial whole-kit estimates, **not to
+these unrun scenarios**. Co-score the candidate and incumbents under the same
+protocol and compare their paired scenario deltas. Do not directly classify a
+measured scenario summary against the initial band or mix it with unmeasured
+reference rows. A band for that measured profile needs an explicit calibration
+revision with the old and new results preserved; retain `M=84` in the meantime.
 
 Start with an **8-second burst window**, a **60-second sustained encounter**,
 and a **five-minute repeated-encounter sequence including setup and recovery**.
 These are test conventions, not ability cooldowns. Model a prepared opening and
-a depleted/recovery case. Limit burst credit to excess over sustained output
-in the same short window, and avoid counting that same excess again in D.
-Record actual elapsed time and pulses; property names such as `rechargeTime`
-do not guarantee seconds. Run single-target and three-target cases separately;
-an area effect does not hit an unlimited number of useful targets.
+a depleted/recovery case. Record actual elapsed time and pulses; property names
+such as `rechargeTime` do not guarantee seconds. Run single-target and
+three-target cases separately; an area effect does not hit an unlimited number
+of useful targets.
+
+### Separate sustained and burst damage
+
+Use one damage trace and declare the burst window before observing the result.
+For an encounter lasting `t` seconds with a burst window of `b` seconds, let
+`Q` be total effective damage and `Qb` the damage inside that window. Require
+`0 <= Qb <= Q` and a nonempty sustained remainder (`0 < b < t`), then use this
+accounting convention:
+
+```text
+r = (Q - Qb) / (t - b)
+burst_excess = max(0, Qb - r × b)
+sustained_damage = Q - burst_excess
+```
+
+Use `sustained_damage / t` as the D input and `burst_excess` within the declared
+window as the B input, each mapped through its own matched anchors. Their
+damage amounts sum to `Q`; no damage is allocated twice. Retain the full trace
+and total DPS as outcome evidence. This is an accounting convention, not a
+claim that a distinct burst ability caused every point of excess damage.
+
+For example, `t=60`, `b=8`, `Q=6800`, and `Qb=1600` give `r=100`,
+`burst_excess=800`, and `sustained_damage=6000`: D uses **100 damage/second**,
+and B uses **800 excess damage**. Using the full 113.3 DPS for D as well would
+count the same 800 damage again. Constant output has zero burst excess; a weak
+opening never earns negative B credit.
+
+For repeated encounters, partition each encounter the same way and include
+setup/recovery in the sequence's elapsed time. Use the same window protocol
+for incumbents and candidates. An early kill before the sustained remainder
+is measurable is a valid outcome, but not a complete D/B measurement; preserve
+it and run the durable-target fixture too.
+
+### Progression and alternate builds
 
 Also rescore at **25, 30, 41, 46, and 51**. They expose early play, spec entry,
 major innate/skill unlocks, and later progression. Calculate available circles
@@ -326,6 +445,9 @@ copy this document's one example spec to every spec.
   award a generic buff, pet, versatility, or synergy bonus for the same result.
   Cleansing goes in H; removing enemy buffs goes in C; post-death return goes
   in U. Retain submetrics so these different effects stay visible.
+  Enemy actions denied by control belong in C; do not also price their
+  hypothetical prevented damage in T/S. A debuff whose only result is extra
+  damage earns D/B or S through that damage, not another generic C bonus.
 - **Do not add incompatible maxima.** Casting, attacking, healing, singing,
   equipping an instrument/shield, using a mount, and switching targets have
   opportunity costs. Use the real action schedule and permitted equipment.
@@ -361,7 +483,9 @@ A specialization is a **replacement build**, not an automatic extra point
 allowance. Start with the base class at the same level, apply additions,
 removals, cap/circle changes and passive combat modifiers, then rescore. It
 may legitimately improve on remaining unspecialized; compare the final spec
-against other specialized builds in the 90–110 reference band.
+against other specialized builds at the same level and evidence profile. The
+90–110 band applies to the original level-56 design profile, not every level
+or individual scenario.
 
 Multiclassing is also one build, not the sum of two class scores. Only use
 ordinary ordered pairs and eligible Human/Orc combinations from
@@ -390,8 +514,9 @@ control/counterplay check fails even though 101.2 is inside the band.
 when the target has the innate and wears a shield;
 [innates.c](../../src/classes/innates.c) grants it at 41. Where that damage
 branch applies, the isolated factor corresponds to `1 / 0.85 = 1.1765` times
-the damage taken to exhaust the same HP, before other interactions. That is
-not a blanket 15-point bonus or a 17.65% increase in total character power.
+the incoming pre-mitigation damage needed to exhaust the same HP, before other
+interactions. That is not a blanket 15-point bonus or a 17.65% increase in total
+character power.
 
 Guardian's existing T=5 already includes this passive. Do not add it again.
 If a matched before/after test of a *new* mitigation change justified moving T
@@ -493,8 +618,9 @@ Intended role / incumbent comparisons:
 Capability ledger: grants, consumers, conditions, removals, counters:
 Before grades D B T H C S U / raw / CP:
 After grades D B T H C S U / raw / CP / delta:
-Uncertain grades and low/high sensitivity totals:
-Scenario and progression results, including adverse matchups:
+Per-axis evidence status, anchors, uncertain grades and low/high CP:
+Paired grade-delta bounds / CP delta bounds / shared uncertainties:
+Scenario coverage, weights and progression results, including adverse matchups:
 Action/resource schedule and first/second-copy group interactions:
 Evidence: test commands, fixtures, trial counts, outcome variation, gaps:
 Decision / rationale / next observation that would change the decision:
@@ -507,21 +633,37 @@ and [CLASSES.md](CLASSES.md) together. Preserve their reciprocal links. Recheck
 the legal race/class/spec intersection when selecting a new reference build;
 do not use all-classes mode to make a test fixture legal.
 
-For this revision, verify that all 21 source-eligible classes appear exactly
-once, all example race/spec combinations are allowed, the 21 HP inputs match
-the committed properties, each raw total follows the seven shared weights,
-the median is 84, and every CP/example calculation follows the frozen scale.
-Check relative links and `git diff --check`. The existing creation and class
-help contracts provide useful structural checks; none proves these grades.
+The [class point contract](../../tests/async/test_class_points_contract.py)
+checks the source-eligible roster, example race/spec intersections, HP inputs,
+shared weights, raw/CP/sensitivity arithmetic, current median/range, dominance
+pairs, scenario weights, and worked calculations. It reads the maintained
+Markdown tables directly, so there is no second copy of the scorecards to keep
+in sync. The frozen `M` and the current median are checked separately: an
+evidence correction must not force the corrected roster's median back to 84.
+These checks establish internal consistency and source eligibility, not the
+validity of the judgment-based grades or a completed character journey.
 
-The authoring audit passed those roster, permission, HP, arithmetic and link
-checks. The following existing source contracts also passed:
+Run the focused audit and the existing creation/class help contracts:
 
 ```sh
+python3 tests/async/test_class_points_contract.py
 python3 tests/async/test_class_helpfiles_contract.py
 python3 tests/async/test_creation_availability_contract.py
 python3 tests/async/test_creation_all_classes_toggle.py
 ```
+
+Also check relative links with the maintained documentation contract and run
+`git diff --check`.
+
+### Version 0.2 revision — 2026-10-19
+
+Central grades, seven prices, scenario weights and `M=84` are unchanged from
+version 0.1. The source/configuration snapshot above is unchanged. This revision
+publishes the previously implicit sensitivity bounds, exposes the five
+estimated dominance pairs, distinguishes incomplete scenario evidence, defines
+damage accounting for D/B, and makes the numerical/source audit repeatable.
+It does not supply new measured class outcomes or resolve the flagged
+comparisons; those require the matched evidence described here.
 
 No gameplay balance, runtime configuration, or production state changes with
 this document. The delivered system is usable for transparent design estimates;
