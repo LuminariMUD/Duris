@@ -75,6 +75,11 @@ HARNESS_STUB void send_to_char(const char *, P_char, int) {}
 HARNESS_STUB void act(const char *, int, P_char, P_obj, void *, int) {}
 HARNESS_STUB void update_pos(P_char) {}
 HARNESS_STUB void updateShortAffects(P_char) {}
+HARNESS_STUB void event_mana_regen(P_char, P_char, P_obj, void *) {}
+HARNESS_STUB bool start_hatred_check(P_char)
+{
+	return false;
+}
 HARNESS_STUB int process_proxy_protocol(P_desc)
 {
 	return 0;

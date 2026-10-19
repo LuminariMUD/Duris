@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Exercise stat migration and real saves in a disposable socket-only MariaDB.
+"""Exercise stat migration and real saves in a disposable socket-only database.
 
-Requires native mariadbd, mariadb-install-db, mysql, mysql_config and g++.
+Requires native MariaDB or MySQL, mysql, mysql_config and g++.
 Use --mysql-basedir for an unpacked MySQL 8 distribution instead of MariaDB.
 Never reads .env or connects to an existing database.
 """
 from pathlib import Path
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -169,8 +170,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix='duris-base-stats-') as td:
         work = Path(td)
         socket = str(work / 'mysql.sock')
-        if arguments.mysql_basedir:
-            daemon = str(arguments.mysql_basedir.resolve() / 'bin/mysqld')
+        if arguments.mysql_basedir or not shutil.which('mariadb-install-db'):
+            daemon = (str(arguments.mysql_basedir.resolve() / 'bin/mysqld')
+                      if arguments.mysql_basedir else shutil.which('mysqld'))
+            if not daemon:
+                raise RuntimeError('native MariaDB or MySQL is required for the isolated stat test')
             initialize = [daemon, '--no-defaults', '--initialize-insecure', f'--datadir={work}/data']
             extra = ['--mysqlx=OFF', '--default-authentication-plugin=mysql_native_password']
         else:
@@ -178,6 +182,9 @@ def main():
             initialize = ['mariadb-install-db', '--no-defaults', f'--datadir={work}/data',
                           '--auth-root-authentication-method=normal', '--skip-test-db']
             extra = []
+        if os.geteuid() == 0:
+            initialize.append('--user=root')
+            extra.append('--user=root')
         with (work / 'setup.log').open('w') as log:
             subprocess.run(initialize, check=True, stdout=log, stderr=subprocess.STDOUT)
         server = subprocess.Popen([daemon, '--no-defaults', f'--datadir={work}/data',

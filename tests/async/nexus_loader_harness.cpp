@@ -235,7 +235,7 @@ int main()
 	world[1].number = 3003;
 	assert(load_nexus_stones(true));
 	assert(logs_containing("catalogue is empty") == 1);
-	assert(logs_containing("docs/ongoing-projects/plan.md") == 1);
+	assert(logs_containing("docs/ongoing-projects/plan-issue-109.md") == 1);
 	assert(load_nexus_stones());
 	assert(logs_containing("catalogue is empty") == 1);
 	reset();

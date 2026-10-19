@@ -20,6 +20,7 @@ static void *observed_argv(redisContext *context, int argc, const char **argv,
 #undef redisCommandArgv
 
 #include <cassert>
+#include <csignal>
 #include <iostream>
 #include <limits>
 #include <zlib.h>
@@ -47,7 +48,7 @@ extern "C" void *__wrap_redisvCommand(redisContext *context, const char *format,
 		{
 			--generation_failures_left;
 			assert(world_context && !world_context->err && !context->err);
-			assert(shutdown(context->fd, SHUT_RD) == 0);
+			assert(shutdown(context->fd, SHUT_RDWR) == 0);
 			injected = true;
 		}
 	}
@@ -392,6 +393,8 @@ static void pinning_checks(redisContext *other, int port)
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
+	// Match server signal setup while injected disconnects exercise error returns.
+	std::signal(SIGPIPE, SIG_IGN);
 	redis_connection_options options = { "127.0.0.1", atoi(argv[1]), 250,	  100,
 					     0,		  nullptr,	 nullptr, false,
 					     nullptr,	  nullptr,	 false,	  nullptr };
