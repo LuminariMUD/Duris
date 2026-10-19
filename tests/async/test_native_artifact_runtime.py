@@ -27,6 +27,7 @@ def function(path, signature):
 platform = literal(ROOT / "tests/async/test_nevent_scheduler_runtime.py", "HARNESS")
 platform = platform.split("struct record_payload\n", 1)[0]
 platform = platform.replace("DEFINE_LABEL_CALLBACK(event_item_action_active)", "")
+platform = platform.replace("int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }", "")
 platform = platform.replace("test_world[1]", "test_world[2]").replace("top_of_world = 0", "top_of_world = 1")
 fixture = literal(ROOT / "tests/async/test_item_actions_runtime.py", "HARNESS")
 fixture = fixture.replace("int main() {", "void foundation_regression_main() {")

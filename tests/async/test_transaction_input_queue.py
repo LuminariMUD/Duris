@@ -91,12 +91,13 @@ HARNESS = r'''
 #define CMD_PRACTICE 36
 #define CMD_PRACTISE 37
 #define CMD_ENCHANT 38
+#define CMD_BACKSTAB 39
 static const char *command[] = {
 	"drop", "put", "give", "deposit", "withdraw", "inventory", "score", "look",
 	"say", "get", "collector", "ask", "buy", "sell", "offer", "rent", "pray",
 	"exchange", "split", "reload", "repair", "summon", "mail", "home", "auction",
 	"construct", "enter", "equipment", "stat", "hire", "forge", "refine", "enhance",
-	"'", "tell", "practice", "practise", "enchant", "\n"
+	"'", "tell", "practice", "practise", "enchant", "backstab", "\n"
 };
 void logit(const char *, const char *, ...) {}
 void __free(void *memory, const char *, int) { free(memory); }

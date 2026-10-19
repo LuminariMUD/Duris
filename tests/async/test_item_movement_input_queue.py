@@ -170,6 +170,7 @@ PRELUDE = r'''
 #define CMD_RENT 66
 #define CMD_QUIT 67
 #define CMD_CAMP 68
+#define CMD_BACKSTAB 69
 
 static const char *command[] = {
 	"get", "take", "drop", "put", "give", "wear", "wield", "grab", "hold",
@@ -180,7 +181,7 @@ static const char *command[] = {
 	"repair", "appraise", "lore", "write", "itemmana", "auction", "forge", "refine",
 	"enhance", "craft", "encrust", "spellbind", "fix", "mix", "mixpoison", "smelt",
 	"enchant", "make", "scribe", "disguise", "lock", "unlock", "pick", "rent", "quit",
-	"camp", "\n"
+	"camp", "backstab", "\n"
 };
 
 P_obj object_list = NULL;
