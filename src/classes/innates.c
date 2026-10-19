@@ -4389,6 +4389,20 @@ static P_char visible_hatred_enemy(P_char ch)
 	return NULL;
 }
 
+static void clear_hatred(P_char ch)
+{
+	for (struct affected_type *af = ch->affected, *next; af; af = next)
+	{
+		next = af->next;
+		if (af->type == TAG_HATRED)
+		{
+			// The last live node supplies the existing single wear-off message.
+			wear_off_message(ch, af);
+			affect_remove(ch, af);
+		}
+	}
+}
+
 bool start_hatred_check(P_char ch)
 {
 	if (!IS_ALIVE(ch))
@@ -4402,7 +4416,7 @@ bool start_hatred_check(P_char ch)
 	if (!add_event(event_hatred_check, delay, ch, 0, 0, 0, 0, 0))
 	{
 		logit(LOG_DEBUG, "Hatred watcher could not be scheduled; clearing its affects.");
-		affect_from_char(ch, TAG_HATRED);
+		clear_hatred(ch);
 		return FALSE;
 	}
 	return TRUE;
@@ -4454,16 +4468,7 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	}
 	else
 	{
-		for (struct affected_type *af = ch->affected, *next; af; af = next)
-		{
-			next = af->next;
-			if (af->type == TAG_HATRED)
-			{
-				// The last live node supplies the existing single wear-off message.
-				wear_off_message(ch, af);
-				affect_remove(ch, af);
-			}
-		}
+		clear_hatred(ch);
 	}
 }
 

@@ -32,11 +32,13 @@ functions = [
     ("files.c", "int writeAffects("),
     ("files.c", "ush_int getShort("),
     ("nanny.c", "void schedule_pc_events("),
+    ("innates.c", "static void clear_hatred("),
     ("innates.c", "bool start_hatred_check("),
     ("innates.c", "static P_char visible_hatred_enemy("),
     ("innates.c", "void event_hatred_check("),
 ]
-production = macros + arrays + table + "\n#define AFFECT_UPDATE_SLICES 20\n" + "\n".join(
+slices = re.search(r"^#define AFFECT_UPDATE_SLICES .*", source("affects.c").read_text(), re.M).group()
+production = macros + arrays + table + "\n" + slices + "\n" + "\n".join(
     extract_function(file, signature) for file, signature in functions)
 build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)

@@ -371,6 +371,28 @@ int main(int argc, char **argv)
 		s.check();
 		assert(!s.count() && subsides == 1);
 		rooms[1].people = nullptr;
+
+		// Multiple enemies and occupant order keep one pair and one activation.
+		char_data other{};
+		pc_only_data other_pc{};
+		other.only.pc = &other_pc;
+		SET_POS(&other, STAT_NORMAL + POS_STANDING);
+		other.player.race = RACE_DROW;
+		other.in_room = 0;
+		s.target.in_room = 0;
+		s.dwarf.next_in_room = &s.target;
+		s.target.next_in_room = &other;
+		s.check();
+		s.pair();
+		int announced = activations;
+		s.dwarf.next_in_room = &other;
+		other.next_in_room = &s.target;
+		s.target.next_in_room = nullptr;
+		s.check();
+		s.pair();
+		assert(activations == announced);
+		other.next_in_room = nullptr;
+		s.dwarf.next_in_room = nullptr;
 	}
 	else if (!std::strcmp(argv[1], "visibility"))
 	{
@@ -475,6 +497,7 @@ int main(int argc, char **argv)
 			schedule_pc_events(&s.dwarf);
 			auto *autosave = get_scheduled(&s.dwarf, event_autosave);
 			assert(autosave);
+			schedule_pc_events(&s.dwarf);
 			start_hatred_check(&s.dwarf);
 			start_hatred_check(&s.dwarf);
 			assert(watcher_count(&s.dwarf) == 1);
@@ -524,6 +547,7 @@ int main(int argc, char **argv)
 				heartbeat();
 			assert(!s.count() && watcher_count(&s.dwarf) == 0);
 			assert(activations == 1);
+			assert(subsides == 1);
 			ne_event_sequence = sequence;
 			SET_POS(&s.dwarf, STAT_DEAD + POS_PRONE);
 			assert(!start_hatred_check(&s.dwarf));
