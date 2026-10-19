@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute bartender quest XP awards and feedback with production function bodies."""
+"""Execute quest awards and kill-bonus XP with production function bodies."""
 
 from pathlib import Path
 import os
@@ -38,17 +38,21 @@ PRELUDE = r'''
 #include "combat/frag_cap_config.h"
 #include "economy/boon.h"
 #include "economy/nexus_stones.h"
+#include "world/achievements.h"
+#include "world/epic.h"
 #include "item/trophy.h"
 #include "item/item_movement_transaction.h"
 #include "sql/sql.h"
 #include "telemetry/telemetry_runtime.h"
 #include <cassert>
+#include <algorithm>
 #include <climits>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 room_data rooms[1]{};
 P_room world = rooms;
@@ -85,7 +89,11 @@ int IS_MORPH(P_char) { return false; }
 int GET_CLASS(P_char, unsigned int) { return 0; }
 int BOUNDED(int low, int value, int high) { return MAX(low, MIN(value, high)); }
 int shop_keeper(P_char, P_char, int, char *) { return 0; }
-bool affected_by_spell(P_char, int tag) { return tag == rested_tag; }
+bool affected_by_spell(P_char ch, int tag) {
+    for (auto *af = ch->affected; af; af = af->next)
+        if (af->type == tag) return true;
+    return tag == rested_tag;
+}
 bool opposite_racewar(P_char, P_char) { return false; }
 bool grouped(P_char, P_char) { return false; }
 double difficulty_multiplier(difficulty_dial dial) {
@@ -95,7 +103,17 @@ float gain_global_exp_modifiers(P_char, float xp) { return xp; }
 float gain_exp_modifiers(P_char, P_char, float xp) { return xp; }
 int check_nexus_bonus(P_char, int xp, int) { return xp; }
 float get_epic_bonus(P_char, int) { return 0; }
-void check_boon_completion(P_char, P_char, double, int) {}
+std::vector<int> boon_events;
+void check_boon_completion(P_char, P_char, double, int option) {
+    boon_events.push_back(option);
+}
+void update_achievements(P_char, P_char, int, int) {}
+void add_bloodlust(P_char, P_char) {}
+void change_alignment(P_char, P_char) {}
+bool valid_conjure(P_char, P_char) { return false; }
+void learn_conjure_recipe(P_char, P_char) {}
+bool gain_epic(P_char, int, int, int) { assert(false); return false; }
+affected_type *affect_to_char(P_char, affected_type *) { assert(false); return nullptr; }
 bool record_zone_trophy_award(P_char, P_char, int, int) { return false; }
 void mark_player_dirty_components(int, player_component_mask_t) { ++dirty; }
 telemetry_capture_result telemetry_runtime_game_progression(
@@ -372,6 +390,44 @@ int main() {
     assert(player.player.level == 20 && player.points.curr_exp == 900);
     assert(discoveries_at_level_save == 2);
 
+    // Kill bonuses retain all XP treatment, but one slain victim advances each
+    // mob/race boon only once. Exercise both branches of the real kill path.
+    affected_type blood{};
+    blood.type = TAG_ADDICTED_BLOOD;
+    group_list group{};
+    group.ch = &player;
+    for (bool in_group : {false, true}) {
+        for (int streak : {6, 7, 45}) {
+            for (int rested : {0, TAG_RESTED, TAG_WELLRESTED}) {
+                reset();
+                for (auto &xp : new_exp_table) xp = 1000000;
+                player.group = in_group ? &group : nullptr;
+                player.affected = &blood;
+                player.specials.act2 |= PLR2_BOON;
+                blood.modifier = streak;
+                rested_tag = rested;
+                mob.points.curr_exp = 1000;
+                rooms[0].people = &player;
+                boon_events.clear();
+                kill_gain(&player, &mob);
+                const int bonus = MAX(0, (streak - 5) / 2);
+                const double rest = rested == TAG_WELLRESTED ? 2.0 :
+                                    rested == TAG_RESTED ? 1.5 : 1.0;
+                assert(player.points.curr_exp == static_cast<int>((1000 + 10 * bonus) * rest));
+                assert(std::count(boon_events.begin(), boon_events.end(), BOPT_MOB) == 1);
+                assert(std::count(boon_events.begin(), boon_events.end(), BOPT_RACE) == 1);
+                assert(std::count(boon_events.begin(), boon_events.end(), BOPT_NONE) ==
+                       (bonus > 0 ? 2 : 1));
+                assert(blood.modifier == MIN(streak + 1, 45));
+                const auto line = output.find("&+CEXP:");
+                assert(line != std::string::npos);
+                const auto second = output.find("&+CEXP:", line + 1);
+                assert((second != std::string::npos) == (bonus > 0));
+                if (second != std::string::npos)
+                    assert(output.find("&+CEXP:", second + 1) == std::string::npos);
+            }
+        }
+    }
 }
 '''
 
@@ -390,6 +446,8 @@ def main() -> None:
     ]
     functions += [extract_function("world_quest.c", signature) for signature in (
         "int quest_exp_reward(", "void quest_full_reward(", "void quest_kill(")]
+    functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
+    functions += [extract_function("fight.c", "void kill_gain(P_char ch, P_char victim)\n")]
     quest = source("world_quest.c").read_text(encoding="utf-8")
     if "static void world_quest_reward_completed(" in quest:
         start = quest.index("struct world_quest_reward_context\n{")
@@ -413,7 +471,7 @@ def main() -> None:
                 *flags, str(program), "src/telemetry/telemetry_progression.c", str(HARNESS_STUBS), "-o", str(binary),
             ], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True, timeout=10)
-    print("world quest XP award and feedback executable passed (mariadb + flatfile)")
+    print("quest XP and solo/group kill-bonus boon credit passed (mariadb + flatfile)")
 
 
 if __name__ == "__main__":

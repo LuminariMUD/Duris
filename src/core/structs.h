@@ -979,6 +979,7 @@ struct room_data
 #define EXP_WORLD_QUEST 8
 #define EXP_TANKING 9
 #define EXP_BOON 10
+#define EXP_KILL_BONUS 11
 
 struct racial_data_type
 {
