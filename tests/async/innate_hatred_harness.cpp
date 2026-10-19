@@ -1,8 +1,11 @@
 // The effect pool frees nodes immediately so invalid traversals fail under ASan.
 #include "world/new_events.c"
 #include "classes/necromancy.h"
+#include "classes/disguise.h"
+#include "world/falling.h"
 #include "world/weather.h"
 #include "net/gmcp.h"
+#include "core/files.h"
 #include <cassert>
 #include <string>
 
@@ -21,11 +24,14 @@ extern const int top_of_world = 1;
 Skill skills[MAX_AFFECT_TYPES + 1];
 time_info_data time_info{};
 extern const stat_data stat_factor[256]{};
+extern const racial_data_type racial_data[LAST_RACE + 1]{};
 hold_data TmpAffs{};
 static mm_ds event_pool{}, affect_pool{};
 mm_ds *dead_affect_pool = &affect_pool;
 static int timer = WAIT_SEC;
+static bool timer_configured = true;
 static int activations, subsides;
+static int short_size = sizeof(short), int_size = sizeof(int), long_size = sizeof(long);
 
 bool nevent_periodic_begin(P_nevent)
 {
@@ -58,8 +64,60 @@ void event_balance_affects(P_char, P_char, P_obj, void *) {}
 void event_mob_mundane(P_char, P_char, P_obj, void *) {}
 void event_reset_zone(P_char, P_char, P_obj, void *) {}
 void event_autosave(P_char, P_char, P_obj, void *) {}
+void event_smite_evil(P_char, P_char, P_obj, void *) {}
+void event_halfling_check(P_char, P_char, P_obj, void *) {}
+void event_righteous_aura_check(P_char, P_char, P_obj, void *) {}
+void event_bleak_foeman_check(P_char, P_char, P_obj, void *) {}
+void event_blood_tithe(P_char, P_char, P_obj, void *) {}
 void event_short_affect(P_char, P_char, P_obj, void *) {}
 void event_web_spray(P_char, P_char, P_obj, void *) {}
+int IS_MORPH(P_char)
+{
+	return FALSE;
+}
+unsigned int char_slice(P_char, unsigned int)
+{
+	return 0;
+}
+void StartRegen(P_char, regen_resource) {}
+int number(int low, int)
+{
+	return low;
+}
+bool char_falling(P_char)
+{
+	return false;
+}
+time_info_data age(P_char)
+{
+	return {};
+}
+int GET_PRIME_CLASS(P_char, uint)
+{
+	return 0;
+}
+int GET_SECONDARY_CLASS(P_char, uint)
+{
+	return 0;
+}
+void remove_disguise(P_char, bool)
+{
+	assert(false);
+}
+P_char un_morph(P_char)
+{
+	assert(false);
+	return nullptr;
+}
+falling_start_result falling_start(P_char)
+{
+	assert(false);
+	return falling_start_result::not_applicable;
+}
+int GET_CHAR_SKILL_P(P_char, int)
+{
+	return 0;
+}
 void unlink_char_affect(P_char, affected_type *)
 {
 	assert(false);
@@ -93,7 +151,11 @@ int GET_CLASS(P_char ch, unsigned int cls)
 }
 int get_property(const char *key, int fallback)
 {
-	return !std::strcmp(key, "innate.timer.hatred") ? timer : fallback;
+	return timer_configured && !std::strcmp(key, "innate.timer.hatred") ? timer : fallback;
+}
+float get_property(const char *, double fallback)
+{
+	return fallback;
 }
 void act(const char *text, int, P_char, P_obj, void *, int)
 {
@@ -156,6 +218,20 @@ void remove_link(P_char, char_link_data *)
 
 #include "production.inc"
 
+static void heartbeat()
+{
+	ne_events();
+	nevent_advance_tick();
+}
+
+static int watcher_count(P_char ch)
+{
+	int count = 0;
+	for (auto *event = ch->nevents; event; event = event->next_char_nev)
+		count += event->func == event_hatred_check;
+	return count;
+}
+
 struct scene
 {
 	char_data dwarf{}, target{};
@@ -208,6 +284,10 @@ struct scene
 	{
 		assert(count() == 2);
 		assert(dwarf.points.combat_pulse == -1 && dwarf.points.spell_pulse == -1);
+		for (auto *af = dwarf.affected; af; af = af->next)
+			if (af->type == TAG_HATRED)
+				assert(af->duration == -1 &&
+				       af->flags == (AFFTYPE_NOSAVE | AFFTYPE_NODISPEL));
 	}
 };
 
@@ -291,6 +371,28 @@ int main(int argc, char **argv)
 		s.check();
 		assert(!s.count() && subsides == 1);
 		rooms[1].people = nullptr;
+
+		// Multiple enemies and occupant order keep one pair and one activation.
+		char_data other{};
+		pc_only_data other_pc{};
+		other.only.pc = &other_pc;
+		SET_POS(&other, STAT_NORMAL + POS_STANDING);
+		other.player.race = RACE_DROW;
+		other.in_room = 0;
+		s.target.in_room = 0;
+		s.dwarf.next_in_room = &s.target;
+		s.target.next_in_room = &other;
+		s.check();
+		s.pair();
+		int announced = activations;
+		s.dwarf.next_in_room = &other;
+		other.next_in_room = &s.target;
+		s.target.next_in_room = nullptr;
+		s.check();
+		s.pair();
+		assert(activations == announced);
+		other.next_in_room = nullptr;
+		s.dwarf.next_in_room = nullptr;
 	}
 	else if (!std::strcmp(argv[1], "visibility"))
 	{
@@ -385,6 +487,122 @@ int main(int argc, char **argv)
 			assert(get_spell_from_char(&s.dwarf, SPELL_BLESS));
 			assert(s.dwarf.points.combat_pulse == 0 && s.dwarf.points.spell_pulse == 0);
 		}
+	}
+	else if (!std::strcmp(argv[1], "scheduler"))
+	{
+		for (int setting : { -9, 0, 1, WAIT_SEC, 2 * PULSES_IN_TICK })
+		{
+			scene s;
+			timer = setting;
+			schedule_pc_events(&s.dwarf);
+			auto *autosave = get_scheduled(&s.dwarf, event_autosave);
+			assert(autosave);
+			schedule_pc_events(&s.dwarf);
+			start_hatred_check(&s.dwarf);
+			start_hatred_check(&s.dwarf);
+			assert(watcher_count(&s.dwarf) == 1);
+			assert(get_scheduled(&s.dwarf, event_autosave) == autosave);
+			const int delay = setting > 0 ? setting : WAIT_SEC;
+			assert(get_scheduled(&s.dwarf, event_hatred_check)->due_tick ==
+			       ne_event_tick + delay);
+			s.dwarf.player.level = 20;
+			s.target.player.race = RACE_ORC;
+			for (int n = 0; n <= delay; ++n)
+				heartbeat();
+			assert(!s.count() && watcher_count(&s.dwarf) == 1);
+			s.dwarf.player.level = 21;
+			for (int n = 0; n <= delay; ++n)
+				heartbeat();
+			s.pair();
+			assert(activations == 1 && watcher_count(&s.dwarf) == 1);
+			s.dwarf.disguise.active_shapechange = true;
+			s.dwarf.disguise.race = RACE_HUMAN;
+			for (int n = 0; n <= delay; ++n)
+				heartbeat();
+			assert(!s.count() && watcher_count(&s.dwarf) == 1);
+			s.dwarf.disguise.active_shapechange = false;
+			for (int n = 0; n <= delay; ++n)
+				heartbeat();
+			s.pair();
+			assert(activations == 2 && watcher_count(&s.dwarf) == 1);
+		}
+		timer = WAIT_SEC;
+		timer_configured = false;
+		{
+			scene s;
+			start_hatred_check(&s.dwarf);
+			assert(get_scheduled(&s.dwarf, event_hatred_check)->due_tick ==
+			       ne_event_tick + WAIT_SEC);
+		}
+		timer_configured = true;
+		{
+			scene s;
+			s.target.player.race = RACE_ORC;
+			s.check();
+			s.pair();
+			auto sequence = ne_event_sequence;
+			ne_event_sequence = ULLONG_MAX;
+			// Exercise refusal inside the queued callback, including self-cancellation.
+			for (int n = 0; n <= WAIT_SEC; ++n)
+				heartbeat();
+			assert(!s.count() && watcher_count(&s.dwarf) == 0);
+			assert(activations == 1);
+			assert(subsides == 1);
+			ne_event_sequence = sequence;
+			SET_POS(&s.dwarf, STAT_DEAD + POS_PRONE);
+			assert(!start_hatred_check(&s.dwarf));
+		}
+		assert(!start_hatred_check(nullptr));
+		auto *owner = new char_data{};
+		SET_POS(owner, STAT_NORMAL + POS_STANDING);
+		assert(start_hatred_check(owner));
+		disarm_char_nevents(owner, nullptr);
+		delete owner;
+		for (int n = 0; n <= WAIT_SEC; ++n)
+			heartbeat();
+		assert(event_pool.objs_used == 0);
+	}
+	else if (!std::strcmp(argv[1], "timing"))
+	{
+		scene s;
+		s.target.player.race = RACE_DROW;
+		timer = 3 * PULSES_IN_TICK;
+		s.check();
+		s.pair();
+		character_list = &s.dwarf;
+		for (int n = 0; n <= 5 * PULSES_IN_TICK; ++n)
+		{
+			if (!(n % PULSES_IN_TICK))
+				affect_update(0);
+			heartbeat();
+			s.pair();
+		}
+		assert(activations == 1 && subsides == 0);
+		character_list = nullptr;
+		timer = WAIT_SEC;
+	}
+	else if (!std::strcmp(argv[1], "serialization"))
+	{
+		scene s;
+		s.target.player.race = RACE_ORC;
+		s.check();
+		s.pair();
+		char saved[4096]{};
+		assert(writeAffects(saved, s.dwarf.affected) ==
+		       1 + static_cast<int>(sizeof(short)));
+		char *cursor = saved;
+		assert(GET_BYTE(cursor) == SAV_AFFVERS);
+		assert(GET_SHORT(cursor) == 0);
+		affected_type ordinary{};
+		ordinary.type = SPELL_BLESS;
+		ordinary.duration = 3;
+		affect_to_char(&s.dwarf, &ordinary);
+		writeAffects(saved, s.dwarf.affected);
+		cursor = saved;
+		assert(GET_BYTE(cursor) == SAV_AFFVERS);
+		assert(GET_SHORT(cursor) == 1);
+		assert(GET_BYTE(cursor) == 0);
+		assert(GET_SHORT(cursor) == SPELL_BLESS);
 	}
 	else
 		assert(false);

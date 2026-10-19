@@ -190,6 +190,7 @@ HELD_PETS_HARNESS = r"""
 #include "core/utils.h"
 #include "classes/necromancy.h"
 #include "core/files.h"
+#include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
@@ -238,6 +239,23 @@ int main()
     assert(status.status_strings.back().field == player_status_string_field::last_read_news_hash);
     pc.last_read_news_hash[0] = '\0';
     assert(status.status_strings.back().value == read_hash);
+    // Event-owned Hatred must be recomputed after either backend reloads a player.
+    affected_type hatred_combat{}, hatred_spell{}, ordinary{};
+    hatred_combat.type = hatred_spell.type = TAG_HATRED;
+    hatred_combat.flags = hatred_spell.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL;
+    hatred_combat.duration = hatred_spell.duration = -1;
+    hatred_combat.modifier = hatred_spell.modifier = -1;
+    hatred_combat.location = APPLY_COMBAT_PULSE;
+    hatred_spell.location = APPLY_SPELL_PULSE;
+    ordinary.type = SPELL_BLESS;
+    ordinary.duration = 3;
+    hatred_combat.next = &ordinary;
+    ordinary.next = &hatred_spell;
+    ch.affected = &hatred_combat;
+    player_snapshot affects;
+    assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_AFFECTS, RENT_QUIT, 22800, &affects) == player_snapshot_capture_result::ok);
+    assert(affects.affects.size() == 1 && affects.affects[0].type == SPELL_BLESS);
+    ch.affected = nullptr;
     player_held_pet_state held;
     player_pet_snapshot retained = {};
     retained.mob_vnum = 1201; retained.hit = retained.max_hit = 10;

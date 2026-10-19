@@ -68,9 +68,28 @@ The original publication contained documentation only.
   `test_race_innate_help_sync.py` and `make -C src -j4`.
   The harness replaces world services and stat recalculation; pulse contributions
   use the real `affect_modify`. Running-server journeys remain required.
-- Next: publish chunk 1 for review; qualify unlimited transient duration,
-  idempotent start/rearm, failure cleanup, level-unlock/temporary-ineligibility
-  recovery and the missing copyover entry start. Then run both backend journeys.
+- Published chunk 1: [PR #209](https://github.com/LuminariMUD/Duris/pull/209),
+  `b3ef7c89e`, base `master`. Review remains open.
+- Chunk 2 is on `branch/issue-166-hatred-lifecycle`, based on #209. It makes
+  both modifiers unlimited and event-owned, reserves one successor before retaining
+  effects, clears them on scheduling refusal, clamps nonpositive timer values,
+  and fixes the checked-in key without changing the one-second effective default.
+  Normal PC entry starts one watcher even before unlock or during ineligibility;
+  this avoids separate level/race-change hooks and permits recovery in place.
+  Copyover recovery lacked normal entry scheduling and now starts Hatred explicitly.
+- Chunk 2 focused proof passed: all ten Hatred harness modes, including real
+  scheduler refusal/self-cancellation, repeated entry, short/default/long/missing/
+  nonpositive timers, level unlock, temporary eligibility recovery, cancellation
+  before releasing an owner, five affect ticks with a three-tick watcher interval,
+  and legacy `writeAffects` omission. `test_player_snapshot_capture.py` now executes
+  a real capture containing both Hatred tags and an unrelated saved affect.
+  Scheduler/cancellation, Reflection, wear-off and race-help controls pass.
+- Both required builds passed: `make -C src -j4` and `make -C src -j4
+  PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_hatred_flatfile`.
+  Build logs are under ignored `bin/analysis/issue166/`.
+- Next: publish chunk 2 as a dependent PR, then add/run the disposable running-server
+  journey on both persistence backends, including movement, visibility, sustained
+  state, rent/relogin, reconnect and copyover. Record exact runtime evidence here.
 - The production build, effective overrides and offending NPC trace are still
   unavailable. Keep the live root-cause gate open unless direct evidence resolves it.
 
