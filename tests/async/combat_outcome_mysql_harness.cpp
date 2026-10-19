@@ -8,6 +8,9 @@
 #include <iostream>
 #include <mysql.h>
 #include <string>
+#include <fstream>
+#include <filesystem>
+#include <iterator>
 
 namespace
 {
@@ -32,6 +35,18 @@ uint64_t scalar(MYSQL *db, const std::string &sql)
 	MYSQL_ROW row = mysql_fetch_row(result);
 	assert(row && row[0]);
 	const uint64_t value = strtoull(row[0], nullptr, 10);
+	mysql_free_result(result);
+	return value;
+}
+
+std::string text_value(MYSQL *db, const std::string &sql)
+{
+	execute(db, sql);
+	MYSQL_RES *result = mysql_store_result(db);
+	assert(result);
+	MYSQL_ROW row = mysql_fetch_row(result);
+	assert(row && row[0]);
+	const std::string value(row[0], mysql_fetch_lengths(result)[0]);
 	mysql_free_result(result);
 	return value;
 }
@@ -84,13 +99,17 @@ combat_outcome_participant participant(uint32_t pid, combat_participant_role rol
 {
 	combat_outcome_participant entry = {};
 	entry.pid = pid;
+	entry.webinfo_at_capture = combat_webinfo::on;
 	entry.role = role;
 	entry.flags = COMBAT_PARTICIPANT_IN_ROOM;
 	entry.level = 50;
 	entry.racewar = 1;
 	snprintf(entry.account_name.data(), entry.account_name.size(), "%s", ACCOUNT);
 	snprintf(entry.description.data(), entry.description.size(), "%s",
-		 role == combat_participant_role::killer ? "Killer" : "Victim");
+		 role == combat_participant_role::killer ? "[50 &+RWarrior&n] Killer (Human)" :
+							   "[50 Cleric] Victim (Orc)");
+	entry.equipment = "<wielded> a warrior's &+Rsword&n\\edge\n";
+	entry.log = "You hit the victim's shield.\r\n&+RThe victim falls.&n\r\n";
 	return entry;
 }
 } // namespace
@@ -103,6 +122,50 @@ int main()
 	const unsigned int port = port_text ? static_cast<unsigned int>(atoi(port_text)) : 3306;
 	assert(mysql_real_connect(db, getenv("DB_HOST"), getenv("DB_USER"), getenv("DB_PASSWD"),
 				  getenv("DB_NAME"), port, nullptr, 0));
+	if (const char *directory = getenv("PVP_CAPTURE_COMMAND_DIR"))
+	{
+		// This mode is used only on the disposable schema created by the wrapper.
+		assert(std::string(getenv("ENVIRONMENT")) == "test");
+		execute(db, "SET time_zone='+00:00'");
+		execute(db, "INSERT INTO accounts(account_name) VALUES('privacy-fixture')");
+		execute(db,
+			"INSERT INTO player_data(pid,name,account_name,racewar,act2) VALUES"
+			"(100,'Alice','privacy-fixture',1,134217728),(101,'Bob','privacy-fixture',2,134217728)");
+		std::ofstream ids(std::filesystem::path(directory) / "events.json");
+		ids << '[';
+		for (int battle = 0; battle < 5; ++battle)
+		{
+			std::ifstream file(std::filesystem::path(directory) /
+						   (std::to_string(battle) + ".command"),
+					   std::ios::binary);
+			assert(file.good());
+			std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
+			critical_command captured{};
+			assert(critical_command_decode(bytes.data(), bytes.size(), &captured) ==
+			       critical_command_codec_result::ok);
+			const auto written = critical_command_repository_apply(db, captured);
+			assert(written.outcome == critical_apply_outcome::applied);
+			assert(critical_command_repository_apply(db, captured).outcome ==
+			       critical_apply_outcome::already_applied);
+			const auto event = scalar(db, "SELECT MAX(id) FROM pkill_event");
+			if (battle)
+				ids << ',';
+			ids << event;
+			assert(scalar(db, "SELECT COUNT(*) FROM pkill_info WHERE event_id=" +
+						  std::to_string(event)) == 2);
+			assert(scalar(db, "SELECT COUNT(*) FROM pkill_info WHERE event_id=" +
+						  std::to_string(event) +
+						  " AND log LIKE '%PRIVATE_HANDOFF_MARKER%'") == 0);
+		}
+		ids << ']';
+		ids.close();
+		assert(ids.good());
+		mysql_close(db);
+		std::cout
+			<< "five real capture/codec/repository handoff events written and replayed\n";
+		return 0;
+	}
+
 	execute(db, "SET @combat_harness_started=CURRENT_TIMESTAMP(6)");
 	cleanup(db);
 	execute(db, "INSERT INTO accounts(account_name) VALUES('" + std::string(ACCOUNT) +
@@ -136,6 +199,9 @@ int main()
 	snprintf(payload.participants[1].account_name.data(),
 		 payload.participants[1].account_name.size(), "%s", "combat-victim-account");
 	payload.participants[1].frag_delta = -100;
+	payload.participants[1].webinfo_at_capture = combat_webinfo::off;
+	payload.participants[1].equipment.clear();
+	payload.participants[1].log.clear();
 
 	critical_operation_id id = {};
 	assert(critical_operation_id_generate(&id));
@@ -144,6 +210,24 @@ int main()
 	command.accepted_at_usec = 1;
 	const critical_apply_result applied = critical_command_repository_apply(db, command);
 	assert(applied.outcome == critical_apply_outcome::applied);
+	const auto event_id =
+		scalar(db, "SELECT pkill_event_id FROM combat_outcome WHERE victim_pid=" +
+				   std::to_string(VICTIM_PID));
+	const std::string snapshot_where =
+		" FROM pkill_info WHERE event_id=" + std::to_string(event_id) +
+		" AND pid=" + std::to_string(KILLER_PID);
+	assert(text_value(db, "SELECT player_description" + snapshot_where) ==
+	       payload.participants[0].description.data());
+	assert(text_value(db, "SELECT equip" + snapshot_where) ==
+	       payload.participants[0].equipment);
+	assert(text_value(db, "SELECT log" + snapshot_where) == payload.participants[0].log);
+	assert(scalar(db, "SELECT webinfo_at_capture" + snapshot_where) == 1);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM pkill_info WHERE event_id=" + std::to_string(event_id) +
+			      " AND pid=" + std::to_string(VICTIM_PID) +
+			      " AND webinfo_at_capture=0 AND equip='' AND log=''") == 1);
+	execute(db, "UPDATE player_data SET act2=0 WHERE pid=" + std::to_string(KILLER_PID));
+	assert(scalar(db, "SELECT webinfo_at_capture" + snapshot_where) == 1);
 	// Frags, epic points and blood money are memory's: the submit changed them and the
 	// players' saves write them. The outcome leaves the balances alone and records the
 	// kill, the frag and epic ledgers (continued from their last rows) and the leaderboard.
@@ -164,28 +248,79 @@ int main()
 
 	const critical_apply_result replay = critical_command_repository_apply(db, command);
 	assert(replay.outcome == critical_apply_outcome::already_applied);
+	assert(scalar(db, "SELECT COUNT(*) FROM pkill_info WHERE event_id=" +
+				  std::to_string(event_id)) == 2);
+	assert(text_value(db, "SELECT log" + snapshot_where) == payload.participants[0].log);
+
+	// A failure after the first participant must roll back the whole snapshot/event.
+	execute(db,
+		"CREATE TRIGGER reject_combat_fixture BEFORE INSERT ON pkill_info FOR EACH ROW "
+		"BEGIN IF NEW.log='reject_fixture' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture'; END IF; END");
+	auto failed_payload = payload;
+	failed_payload.participants[1].webinfo_at_capture = combat_webinfo::on;
+	failed_payload.participants[1].log = "reject_fixture";
+	critical_operation_id failed_id = {};
+	assert(critical_operation_id_generate(&failed_id));
+	critical_command failed_command = {};
+	assert(combat_outcome_command_build(&failed_command, failed_id, failed_payload));
+	failed_command.accepted_at_usec = 2;
+	assert(critical_command_repository_apply(db, failed_command).outcome !=
+	       critical_apply_outcome::applied);
+	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" + victim) == 1);
+	assert(scalar(db, "SELECT COUNT(*) FROM pkill_info WHERE pid=" + killer) == 1);
+	execute(db, "DROP TRIGGER reject_combat_fixture");
+	// The identical command can succeed on retry after a transient storage failure.
+	assert(critical_command_repository_apply(db, failed_command).outcome ==
+	       critical_apply_outcome::applied);
+	assert(critical_command_repository_apply(db, failed_command).outcome ==
+	       critical_apply_outcome::already_applied);
 	// A second outcome is not fenced by the first: its ledger rows continue from the
 	// first's, whatever the saves wrote in between.
 	execute(db, "UPDATE player_data SET frags=900 WHERE pid=" + killer);
 	critical_operation_id second_id = {};
 	assert(critical_operation_id_generate(&second_id));
 	critical_command second = {};
+	for (size_t index = 0; index < payload.participant_count; ++index)
+	{
+		payload.participants[index].webinfo_at_capture = combat_webinfo::on;
+		payload.participants[index].equipment.assign(COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES,
+							     '\'');
+		payload.participants[index].log.assign(COMBAT_OUTCOME_LOG_MAX_BYTES, '\\');
+	}
 	assert(combat_outcome_command_build(&second, second_id, payload));
 	second.accepted_at_usec = 2;
 	assert(critical_command_repository_apply(db, second).outcome ==
 	       critical_apply_outcome::applied);
-	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" + victim) == 2);
+	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" + victim) == 3);
 	assert(scalar(db,
 		      "SELECT COUNT(*) FROM combat_outcome WHERE killer_allies=5 AND victim_pid=" +
-			      victim) == 2);
+			      victim) == 3);
 	assert(scalar(db, "SELECT frags_after FROM combat_frag_ledger WHERE pid=" + killer +
 				  " AND frag_revision=2") == 400);
 	assert(scalar(db, "SELECT balance_after FROM epic_ledger WHERE pid=" + killer +
 				  " AND epic_revision=2") == 1100);
 	assert(scalar(db, "SELECT frags FROM player_data WHERE pid=" + killer) == 900);
+	const std::string latest_snapshot =
+		" FROM pkill_info WHERE pid=" + killer + " ORDER BY id DESC LIMIT 1";
+	assert(text_value(db, "SELECT equip" + latest_snapshot) ==
+	       payload.participants[0].equipment);
+	assert(text_value(db, "SELECT log" + latest_snapshot) == payload.participants[0].log);
+	assert(critical_command_repository_apply(db, second).outcome ==
+	       critical_apply_outcome::already_applied);
 
+	// A v3 replay retains original text but cannot invent historical consent.
+	auto legacy = second;
+	assert(critical_operation_id_generate(&legacy.operation_id));
+	legacy.payload_version = 3;
+	legacy.payload.resize(legacy.payload.size() - payload.participant_count);
+	assert(critical_command_repository_apply(db, legacy).outcome ==
+	       critical_apply_outcome::applied);
+	assert(scalar(db, "SELECT webinfo_at_capture IS NULL" + latest_snapshot) == 1);
+	assert(text_value(db, "SELECT log" + latest_snapshot) == payload.participants[0].log);
+	assert(critical_command_repository_apply(db, legacy).outcome ==
+	       critical_apply_outcome::already_applied);
 	cleanup(db);
 	mysql_close(db);
 	std::cout
-		<< "combat outcome apply, replay, ledgers across saves, and the untouched balances passed\n";
+		<< "combat outcome snapshots, size limits, rollback/retry, replay, and ledgers passed\n";
 }

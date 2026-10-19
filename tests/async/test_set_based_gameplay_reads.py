@@ -18,11 +18,15 @@ COPYOVER = (SRC / "copyover.c").read_text()
 HARNESS = r'''
 #include "world/epic_task_catalog.h"
 #include "persistence/gameplay_read_state.h"
+#include "persistence/maintenance_scheduler.h"
 
 #include <cassert>
 #include <cstdint>
+#include <string>
 
 int real_zone0(const int zone) { return zone == 999 ? -1 : zone; }
+static int catalog_logs = 0;
+void logit(const char *, const char *, ...) { ++catalog_logs; }
 
 int number(int from, int to)
 {
@@ -74,6 +78,10 @@ int main()
     assert(status == epic_task_selection_status::unavailable);
     assert(!epic_task_catalog_publish(nullptr, 0));
     assert(!epic_task_catalog_ready());
+    assert(std::string(epic_task_catalog_last_refresh()) == "empty_task_flags");
+    const int empty_logs = catalog_logs;
+    assert(!epic_task_catalog_publish(nullptr, 0));
+    assert(catalog_logs == empty_logs); // Unchanged failure is quiet.
     const int32_t zones[] = {10, 20, 30, 40};
     assert(epic_task_catalog_publish(zones, 4));
     assert(epic_task_catalog_ready() && epic_task_catalog_size() == 4);
@@ -87,6 +95,40 @@ int main()
     const int32_t duplicate[] = {10, 10};
     assert(!epic_task_catalog_publish(duplicate, 2));
     assert(epic_task_catalog_size() == 4);
+
+    // A failed middle page is retried at the same cursor, not from zero.
+    maintenance_result page = {};
+    page.job_id = maintenance_job_id::epic_task_catalog;
+    page.outcome = maintenance_outcome::more;
+    page.value_count = 2;
+    page.values[0] = 10; page.values[1] = 20;
+    epic_task_catalog_complete(page);
+    page.outcome = maintenance_outcome::retryable_failure;
+    epic_task_catalog_complete(page);
+    page.outcome = maintenance_outcome::complete;
+    page.values[0] = 30; page.values[1] = 40;
+    epic_task_catalog_complete(page);
+    assert(epic_task_catalog_size() == 4);
+    assert(std::string(epic_task_catalog_last_refresh()) == "ready");
+
+    // Reject a whole refresh if any prefix is invalid, even when the tail is valid.
+    page.outcome = maintenance_outcome::more;
+    page.values[0] = 10; page.values[1] = INT64_MAX;
+    epic_task_catalog_complete(page);
+    page.outcome = maintenance_outcome::complete;
+    page.values[0] = 30; page.values[1] = 40;
+    epic_task_catalog_complete(page);
+    assert(epic_task_catalog_size() == 4);
+    assert(std::string(epic_task_catalog_last_refresh()) == "invalid_scheduled_page");
+    page.value_count = page.values.size() + 1;
+    epic_task_catalog_complete(page);
+    assert(epic_task_catalog_size() == 4);
+    page.value_count = 0;
+    epic_task_catalog_complete(page);
+    assert(epic_task_catalog_size() == 4);
+    assert(std::string(epic_task_catalog_last_refresh()) == "empty_task_flags");
+    assert(!epic_task_catalog_publish(invalid, 2));
+    assert(std::string(epic_task_catalog_last_refresh()) == "unloaded_zone");
 
     int selected_10 = 0;
     int selected_other = 0;
@@ -167,6 +209,8 @@ ASSIGNMENT_HARNESS = r'''
 #include "persistence/persistence_checkpoint.h"
 #include "magic/spells.h"
 #include "economy/nexus_stones.h"
+#include "item/item_ownership_runtime.h"
+#include "sql/sql_player.h"
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -196,6 +240,15 @@ void epiclog(int, const char *, ...) {}
 void epic_bonus_record_gain(P_char, int, int) {}
 void epic_free_level(P_char) { assert(false); }
 int get_property(const char *, int fallback) { return fallback; }
+void clear_title(P_char) {}
+int getNewPCidNumb() { return 42; }
+bool player_revision_hydrate(int, player_revision_t) { return true; }
+void sql_player_names_set(int, const char *) {}
+void find_starting_location(P_char, int) {}
+void NewbySkillSet(P_char, bool) {}
+void set_char_height_weight(P_char) {}
+void set_char_size(P_char) {}
+bool has_innate(P_char, int) { return false; }
 P_obj get_random_enemy_nexus(P_char) { return enemy_nexus; }
 bool training_dummy_capture_target_allowed(P_char) { return true; }
 void mark_player_dirty_components(int pid, player_component_mask_t components)
@@ -272,6 +325,27 @@ int main()
     zones[1].name = const_cast<char *>("Second");
     const int32_t catalogue[] = {10, 20};
     const int32_t completed[] = {10};
+
+    // A first-session character has no history to load. Exercise the shared
+    // telnet/WebSocket/staff creation initializer before a 400-point award at
+    // production's 500-point milestone, without logging out and back in.
+    init_char(&ch);
+    assert(pc.gameplay_reads.status == gameplay_read_status::ready);
+    assert(pc.gameplay_reads.recent_death_count == 0);
+    assert(pc.gameplay_reads.completed_zone_count == 0);
+    assert(epic_task_catalog_publish(catalogue, 2));
+    errand_notch = 500;
+    award(&ch, false, 100);
+    assert(!has_epic_task(&ch) && !pending(&ch));
+    assert(gameplay_read_state_add_completed_zone(&pc.gameplay_reads, 10));
+    award(&ch, false, 400);
+    assert(!pending(&ch) && get_epic_task(&ch)->modifier == 20);
+    assert(get_spell_from_char(&ch, TAG_EPICS_GAINED)->modifier == 500);
+    int heaven_seconds = 0;
+    assert(gameplay_read_state_heaven_seconds(&pc.gameplay_reads, 5000, 100, &heaven_seconds));
+    assert(heaven_seconds == 100);
+    clear(&ch);
+    errand_notch = 200;
     assert(gameplay_read_state_publish(&pc.gameplay_reads, nullptr, 0, completed, 1));
 
     for (bool pvp : {false, true}) {
@@ -356,6 +430,7 @@ for signature in (
 ):
     assignment_functions += extract_function("epic.c", signature) + "\n"
 assignment_functions = extract_function("achievements.c", "affected_type *apply_achievement(") + "\n" + assignment_functions
+assignment_functions = extract_function("nanny.c", "void init_char(") + "\n" + assignment_functions
 
 build = ROOT / "bin/tests/epic-task-assignment"
 build.mkdir(parents=True, exist_ok=True)

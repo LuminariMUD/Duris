@@ -29,7 +29,7 @@ int main()
 {
     static_assert(std::is_move_constructible_v<player_snapshot>);
     static_assert(std::is_move_assignable_v<player_snapshot>);
-    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 8);
+    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 9);
     static_assert(PLAYER_SNAPSHOT_MAX_BYTES == 4 * 1024 * 1024);
     static_assert(PLAYER_SNAPSHOT_MAX_OBJECTS < PLAYER_SNAPSHOT_MAX_ROWS);
     static_assert(PLAYER_SNAPSHOT_MAX_DEPTH > 0);
@@ -193,6 +193,7 @@ HELD_PETS_HARNESS = r"""
 #include "core/utils.h"
 #include "classes/necromancy.h"
 #include "core/files.h"
+#include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
@@ -259,6 +260,31 @@ int main()
     pc_only_data pc = {};
     ch.only.pc = &pc;
     pc.pid = 42;
+    const std::string read_hash(64, 'a');
+    std::memcpy(pc.last_read_news_hash, read_hash.c_str(), read_hash.size() + 1);
+    player_snapshot status;
+    assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_STATUS, RENT_CRASH, 22800, &status) == player_snapshot_capture_result::ok);
+    assert(status.status_strings.size() == 8);
+    assert(status.status_strings.back().field == player_status_string_field::last_read_news_hash);
+    pc.last_read_news_hash[0] = '\0';
+    assert(status.status_strings.back().value == read_hash);
+    // Event-owned Hatred must be recomputed after either backend reloads a player.
+    affected_type hatred_combat{}, hatred_spell{}, ordinary{};
+    hatred_combat.type = hatred_spell.type = TAG_HATRED;
+    hatred_combat.flags = hatred_spell.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL;
+    hatred_combat.duration = hatred_spell.duration = -1;
+    hatred_combat.modifier = hatred_spell.modifier = -1;
+    hatred_combat.location = APPLY_COMBAT_PULSE;
+    hatred_spell.location = APPLY_SPELL_PULSE;
+    ordinary.type = SPELL_BLESS;
+    ordinary.duration = 3;
+    hatred_combat.next = &ordinary;
+    ordinary.next = &hatred_spell;
+    ch.affected = &hatred_combat;
+    player_snapshot affects;
+    assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_AFFECTS, RENT_QUIT, 22800, &affects) == player_snapshot_capture_result::ok);
+    assert(affects.affects.size() == 1 && affects.affects[0].type == SPELL_BLESS);
+    ch.affected = nullptr;
     player_held_pet_state held;
     player_pet_snapshot retained = {};
     retained.mob_vnum = 1201; retained.hit = retained.max_hit = 10;
@@ -269,6 +295,12 @@ int main()
     retained.items[0].object_uid = 700;
     retained.items[0].vnum = 100;
     held.pets.push_back(retained);
+    auto malformed = retained;
+    malformed.hold_reason = pet_hold_reason::invalid_state;
+    malformed.hit = -1;
+    malformed.max_hit = 0;
+    malformed.items[0].object_uid = 701;
+    held.pets.push_back(malformed);
     pc.held_pets = &held;
     for (int intent : {RENT_CRASH, RENT_QUIT, RENT_DEATH}) {
         player_snapshot saved;
@@ -281,6 +313,10 @@ int main()
         player_snapshot restored;
         assert(player_snapshot_decode(encoded.data(), encoded.size(), &restored) == player_snapshot_codec_result::ok);
         assert(restored.pets[0].items[0].object_uid == 700);
+        assert(restored.pets.size() == 2);
+        assert(restored.pets[1].hold_reason == pet_hold_reason::invalid_state);
+        assert(restored.pets[1].hit == -1 && restored.pets[1].max_hit == 0);
+        assert(restored.pets[1].items[0].object_uid == 701);
     }
     pc.held_pets = nullptr;
     std::cout << "[PASS] held pet assets survive crash, logout and death saves\n";
@@ -432,6 +468,24 @@ int main()
         assert(!ch.affected && ch.player.time.birth == form_birth);
     }
     std::cout << "[PASS] generic race cleanup restores transient birth before death capture; saveable forms and apotheosis retain birth\n";
+    player_item_retention retained_items;
+    retained_items.rows={{10,0},{11,0}}; retained_items.bytes=128;
+    pc.retained_items=&retained_items; ch.carrying=&picked_up;
+    player_snapshot sealed;
+    assert(player_snapshot_capture(&ch,100,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&sealed)==player_snapshot_capture_result::ok);
+    retained_items.rows[0].source_row_id=90;
+    assert(sealed.retained_items.rows[0].source_row_id==10 && sealed.retained_items.bytes==128);
+    auto without_retention=sealed; without_retention.retained_items={};
+    std::vector<uint8_t> encoded,plain;
+    assert(player_snapshot_encode(sealed,&encoded)==player_snapshot_codec_result::ok &&
+           player_snapshot_encode(without_retention,&plain)==player_snapshot_codec_result::ok && encoded==plain);
+    player_snapshot decoded;
+    assert(player_snapshot_decode(encoded.data(),encoded.size(),&decoded)==player_snapshot_codec_result::ok && decoded.retained_items.rows.empty());
+    retained_items.bytes=PLAYER_SNAPSHOT_MAX_BYTES;
+    player_snapshot untouched; untouched.pid=123;
+    assert(player_snapshot_capture(&ch,101,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&untouched)==player_snapshot_capture_result::limit_exceeded && untouched.pid==123);
+    pc.retained_items=nullptr; ch.carrying=nullptr;
+    std::cout << "[PASS] immutable retained-source capture, byte bound and unchanged wire format\n";
 }
 """
 HELD_PETS_HARNESS = HELD_PETS_HARNESS.replace("/* RACE_CLEANUP */",

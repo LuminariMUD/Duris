@@ -153,7 +153,6 @@ extern void ereglog(int, const char *, ...);
 extern void whois_ip(P_char ch, char *ip_address);
 
 void displayShutdownMsg(P_char ch);
-void event_hatred_check(P_char, P_char, P_obj, void *);
 void event_halfling_check(P_char, P_char, P_obj, void *);
 void event_smite_evil(P_char, P_char, P_obj, void *);
 long unsigned int ip2ul(const char *ip);
@@ -1294,9 +1293,8 @@ void schedule_pc_events(P_char ch)
 	}
 
 	add_event(event_autosave, 1200, ch, 0, 0, 0, 0, 0);
-	if (has_innate(ch, INNATE_HATRED))
-		add_event(event_hatred_check, get_property("innate.timer.hatred", WAIT_SEC), ch, 0,
-			  0, 0, 0, 0);
+	// Keep watching through the level unlock and temporary race/innate changes.
+	start_hatred_check(ch);
 	if (GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL))
 		add_event(event_smite_evil,
 			  get_property("skill.timer.secs.smiteEvil", 5) * WAIT_SEC, ch, 0, 0, 0, 0,
@@ -2001,9 +1999,7 @@ void enter_game(P_desc d)
 	 * leaking GMCP frames into the login stream. */
 	if (!d->websocket || d->ws_handshake_done)
 	{
-		gmcp_char_status(ch);
-		gmcp_char_vitals(ch);
-		gmcp_quest_status(ch);
+		gmcp_send_initial_state(ch);
 	}
 
 	redis_player_online(ch);
@@ -3692,6 +3688,8 @@ void init_char(P_char ch)
 	ch->only.pc->epic_revision = 0;
 	ch->only.pc->frag_revision = 0;
 	ch->only.pc->numb_deaths = 0;
+	// A new character has no durable history; make it usable on the first login.
+	gameplay_read_state_publish(&ch->only.pc->gameplay_reads, nullptr, 0, nullptr, 0);
 
 	/* Initialize bank balances (spare1-spare4 map to copper/silver/gold/platinum) */
 	ch->only.pc->spare1 = 0; /* GET_BALANCE_COPPER */

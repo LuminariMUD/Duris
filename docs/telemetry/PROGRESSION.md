@@ -1,8 +1,7 @@
-# Telemetry progression facts — #267
+# Telemetry progression facts
 
-This document specifies the first post-foundation progression extension. It
-records what the game observed at the existing XP storage and level-transition
-boundaries. It does not become an XP authority, change balance, or claim that
+The progression adapter records what the game observed at the existing XP
+storage and level-transition boundaries. It does not become an XP authority, change balance, or claim that
 an accepted queue record is durable.
 
 ## Scope and boundary
@@ -15,8 +14,9 @@ storage candidate is still observable as `applied_xp = 0` with its computed
 candidate and modifier flags.
 
 The level functions in `src/world/limits.c` emit a separate level transition
-fact after the level field is changed and persisted through the existing game
-path. XP consumed to cross a level boundary is represented by
+fact after the level field changes in memory and the existing game path requests
+persistence. A requested save is not proof of a durable write. XP consumed to
+cross a level boundary is represented by
 `reason = level_threshold`; it is not emitted as a reward or a death loss.
 Death loss, resurrection restoration, and the level change caused by a death
 loss retain their source/reason classification. Direct administrative level
@@ -41,7 +41,7 @@ records retain their absent-field representation.
 | `progression_kind` | `1` observed XP storage; `2` level advanced; `3` level lost. |
 | `progression_source` | Bounded source: damage, healing, kill, death, quest, resurrect, melee, world quest, tanking, boon, administration, system, or unknown. |
 | `progression_reason` | `earned`, `death_loss`, `resurrection`, `level_threshold`, `administration`, `system_adjustment`, or unknown. |
-| `progression_observation_status` | H emits `observed_mutable` (`1`). `recovered_checkpoint` and `durable_reconciled` are reserved for later recovery/authority work. |
+| `progression_observation_status` | The adapter emits `observed_mutable` (`1`). `recovered_checkpoint` and `durable_reconciled` are reserved for later recovery/authority work. |
 | `progression_modifier_flags` | Fixed bit set for rested/well-rested, over-level-cap, difficulty, PvP, final per-call cap, race, and victim paths. Unknown bits are rejected. |
 | `progression_requested_xp` | Original `gain_exp` input. |
 | `progression_computed_xp` | Integer candidate after the existing source/modifier calculations and before the existing final per-call bound. |
@@ -93,7 +93,7 @@ replaying an identical record is a no-op in the repository. A report may use a
 second explicit fact key when it materializes an aggregate, but it must not sum
 both an original row and its replay.
 
-An observed-source report can use the existing I interface as follows:
+An observed-source report can read the persisted interval stream as follows:
 
 ```sql
 SELECT environment_id,
@@ -128,6 +128,5 @@ and does not silently become zero XP. A reload/checkpoint can later explain
 current state or promote a fact, but this extension never labels a raw
 observation `recovered_checkpoint` or `durable_reconciled` on its own.
 
-The migration is additive and rerunnable. No gameplay save/login dependency,
-ledger projection, rollup table, production migration action, or retention
-policy is introduced by #267.
+Progression observation does not add a gameplay save/login dependency, ledger
+projection, or rollup table. Queue admission is not a durability acknowledgement.

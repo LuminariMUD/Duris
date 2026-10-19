@@ -63,6 +63,23 @@ bool read_string(const uint8_t **cursor, const uint8_t *end, std::array<char, N>
 	return true;
 }
 
+void append_text(std::vector<uint8_t> *output, const std::string &value)
+{
+	append_le<uint32_t>(output, static_cast<uint32_t>(value.size()));
+	output->insert(output->end(), value.begin(), value.end());
+}
+
+bool read_text(const uint8_t **cursor, const uint8_t *end, size_t maximum, std::string *value)
+{
+	uint32_t size = 0;
+	if (!read_le(cursor, end, &size) || size > maximum ||
+	    static_cast<size_t>(end - *cursor) < size || memchr(*cursor, '\0', size))
+		return false;
+	value->assign(reinterpret_cast<const char *>(*cursor), size);
+	*cursor += size;
+	return true;
+}
+
 bool valid(const combat_outcome_payload &payload)
 {
 	if (!payload.victim_pid || !payload.participant_count ||
@@ -74,6 +91,15 @@ bool valid(const combat_outcome_payload &payload)
 		if (!entry.pid || entry.role == combat_participant_role::unknown ||
 		    entry.role > combat_participant_role::victim_group ||
 		    !bounded(entry.account_name) || !bounded(entry.description) ||
+		    entry.equipment.size() > COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES ||
+		    entry.log.size() > COMBAT_OUTCOME_LOG_MAX_BYTES ||
+		    entry.equipment.find('\0') != std::string::npos ||
+		    entry.log.find('\0') != std::string::npos ||
+		    (entry.webinfo_at_capture != combat_webinfo::unknown &&
+		     entry.webinfo_at_capture != combat_webinfo::off &&
+		     entry.webinfo_at_capture != combat_webinfo::on) ||
+		    (entry.webinfo_at_capture == combat_webinfo::off &&
+		     (!entry.equipment.empty() || !entry.log.empty())) ||
 		    ((entry.wallet_delta_copper != 0) && !entry.account_name[0]))
 			return false;
 		for (size_t other = 0; other < index; ++other)
@@ -129,6 +155,20 @@ bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload
 		append_string(encoded, entry.description);
 	}
 	append_le<uint32_t>(encoded, payload.killer_allies);
+	for (size_t index = 0; index < payload.participant_count; ++index)
+	{
+		append_text(encoded, payload.participants[index].equipment);
+		append_text(encoded, payload.participants[index].log);
+	}
+	// Append the v4 consent bytes after the v3 snapshots. 255 is unknown on wire;
+	// SQL uses NULL for that state, never this byte or the enum's ordinal.
+	for (size_t index = 0; index < payload.participant_count; ++index)
+		append_le<uint8_t>(
+			encoded,
+			payload.participants[index].webinfo_at_capture == combat_webinfo::unknown ?
+				255 :
+			payload.participants[index].webinfo_at_capture == combat_webinfo::on ? 1 :
+											       0);
 	return encoded->size() <= CRITICAL_COMMAND_MAX_PAYLOAD_BYTES;
 }
 
@@ -136,8 +176,9 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 					   combat_outcome_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::combat_outcome ||
-	    (command.payload_version != 1 &&
-	     command.payload_version != COMBAT_OUTCOME_PAYLOAD_VERSION))
+	    command.payload_version < 1 ||
+	    command.payload_version > COMBAT_OUTCOME_PAYLOAD_VERSION ||
+	    command.payload.size() > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES)
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
@@ -167,9 +208,29 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 			return false;
 		entry.role = static_cast<combat_participant_role>(role);
 	}
-	// Version 1 journals remain replayable, with an unknown ally count.
+	// Version 1 payloads remain decodable, with an unknown ally count.
 	if (command.payload_version >= 2 && !read_le(&cursor, end, &payload->killer_allies))
 		return false;
+	// Versions 1 and 2 did not capture presentation snapshots.
+	if (command.payload_version >= 3)
+		for (size_t index = 0; index < payload->participant_count; ++index)
+			if (!read_text(&cursor, end, COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES,
+				       &payload->participants[index].equipment) ||
+			    !read_text(&cursor, end, COMBAT_OUTCOME_LOG_MAX_BYTES,
+				       &payload->participants[index].log))
+				return false;
+	if (command.payload_version >= 4)
+		for (size_t index = 0; index < payload->participant_count; ++index)
+		{
+			uint8_t consent;
+			if (!read_le(&cursor, end, &consent) ||
+			    (consent != 0 && consent != 1 && consent != 255))
+				return false;
+			payload->participants[index].webinfo_at_capture =
+				consent == 255 ? combat_webinfo::unknown :
+				consent == 1   ? combat_webinfo::on :
+						 combat_webinfo::off;
+		}
 	if (cursor != end || !valid(*payload))
 		return false;
 	critical_command expected = {};

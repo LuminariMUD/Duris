@@ -50,6 +50,7 @@
 #include "sql/item_extra_descr_codec.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
+#include "kingdom/kingdom.h"
 #include "sql/sql_player.h"
 #include "item/storage_lockers.h"
 #include "item/trophy.h"
@@ -1538,7 +1539,7 @@ void delete_character(P_char ch, bool delete_locker,
 		GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) : 0, GET_FRAGS(ch)
 	};
 #ifdef __NO_MYSQL__
-	if (!delete_locker)
+	if (!delete_locker || !artifact_save_drain(3000))
 	{
 		done(character_delete_result::refused);
 		return;
@@ -1569,16 +1570,33 @@ void delete_character(P_char ch, bool delete_locker,
 	};
 	for (std::string &statement : remove_all_artifacts_sql(deleted.pid))
 		statements.push_back(std::move(statement));
+	sql_work guild_work;
 	if (GET_ASSOC(ch))
-		for (std::string &statement : GET_ASSOC(ch)->statements_without_member(ch))
-			statements.push_back(std::move(statement));
+	{
+		auto guild_statements = GET_ASSOC(ch)->statements_without_member(ch);
+		if (!guild_statements.empty())
+		{
+			guild_work =
+				kingdom_guild_save_work(static_cast<int>(GET_ASSOC(ch)->get_id()),
+							std::move(guild_statements));
+			if (!guild_work)
+			{
+				done(character_delete_result::refused);
+				return;
+			}
+		}
+	}
 	if (delete_locker)
 		statements.push_back(sql_delete_locker_statement(deleted.pid, 0));
 	statements.push_back(sql_delete_ship_statement(deleted.name.c_str()));
 	statements.push_back(sql_format("DELETE FROM player_data WHERE pid=%d", deleted.pid));
 	if (!sql_read_work(
-		    [statements](MYSQL *connection, sql_rows *) -> unsigned int
+		    [statements, guild_work = std::move(guild_work)](MYSQL *connection,
+								     sql_rows *) -> unsigned int
 		    {
+			    if (guild_work)
+				    if (const unsigned int error = guild_work(connection))
+					    return error;
 			    for (const std::string &statement : statements)
 				    if (const unsigned int error =
 						sql_execute(connection, statement))

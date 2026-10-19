@@ -63,6 +63,7 @@ typedef signed short int sh_int;
 typedef struct AC_Memory Memory;
 typedef struct char_data *P_char;
 struct player_held_pet_state;
+struct player_item_retention;
 typedef struct Guild *P_Guild;
 typedef struct Alliance *P_Alliance;
 typedef struct descriptor_data *P_desc;
@@ -255,7 +256,8 @@ struct edit_data
 #define LNK_ILESH 22
 #define LNK_CHAR_OBJ_AFF 23
 #define LNK_DRAGOON_MOUNT 24
-#define LNK_MAX 24
+#define LNK_PLANT_PARALYSIS 25
+#define LNK_MAX 25
 
 #define LNKFLG_NONE 0
 #define LNKFLG_ROOM BIT_1
@@ -977,6 +979,7 @@ struct room_data
 #define EXP_WORLD_QUEST 8
 #define EXP_TANKING 9
 #define EXP_BOON 10
+#define EXP_KILL_BONUS 11
 
 struct racial_data_type
 {
@@ -1241,8 +1244,10 @@ struct char_shapechange_data
 
 struct pc_only_data
 { /* values only used by PCs        */
+	char last_read_news_hash[65]; // empty or SHA-256 hex; saved with character status
 	OutputPreferenceState output_preferences;
 	player_held_pet_state *held_pets; // owned snapshots; never active followers
+	player_item_retention *retained_items; // owned source selectors; never live objects
 	uint64_t unloaded_components; // checkpoint components its load did not read; not saved
 	uint64_t learned_flight_stops; // permanent catalog bits; saved with experience
 	int pid; // replacement for PC's ->nr
@@ -1424,6 +1429,11 @@ struct char_special_data
 	// Per-live-NPC anti-retry deadline for the optional divine order-refusal gate.
 	// Runtime only; extraction/recreation and restart deliberately reset it.
 	unsigned long long divine_refusal_until_pulse;
+	// Holy Sacrifice healing this owner has shared in combat round holy_sacrifice_round
+	//   (ne_event_tick / PULSE_VIOLENCE).  Runtime only; never saved.
+	unsigned long long holy_sacrifice_round;
+	int holy_sacrifice_healed;
+	bool holy_sacrifice_pvp;
 	P_char arrest_by;
 	char undead_spell_slots[MAX_CIRCLE + 1];
 
@@ -1775,6 +1785,8 @@ struct descriptor_data
 	size_t ws_control_output_len;
 	size_t ws_control_output_offset;
 	int gmcp_enabled;
+	bool gmcp_initial_state_pending;
+	int mssp_sent;
 	int sga_disabled;
 	int write_failed;
 	unsigned char *telnet_output_buffer;
@@ -1782,6 +1794,9 @@ struct descriptor_data
 	size_t telnet_output_offset;
 	int telnet_tls_retry;
 	int gmcp_quest_map_sent;
+	int gmcp_ship_bridge; /* room index + 1; zero means no bridge subscription */
+	unsigned long gmcp_ship_contacts_hash;
+	unsigned long gmcp_ship_info_hash;
 	char client_name[64];
 	char client_version[32];
 	int durisweb_verified;

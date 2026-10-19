@@ -14,6 +14,7 @@ checks = [
     ("persistence command occupies trusted value", "#define WORLD_PERSISTENCE 8" in actinf and '"persistence"' in actinf),
     ("existing trusted gate covers persistence", "choice = world_values[world_index]) > WORLD_ZONES" in actinf),
     ("fresh snapshot getters are inside renderer", all(token in actinf[actinf.index("static void show_world_persistence(P_char ch)"):actinf.index("void do_world", actinf.index("static void show_world_persistence(P_char ch)"))] for token in ["persistence_query_snapshot_copy", "persistence_dirty_save_snapshot_copy", "persistence_deferred_save_snapshot_copy", "redis_shared_command_health_copy"])),
+    ("artifact rewards distinguish live state, dirty snapshots and history", all(token in actinf for token in ["artifact_guild_transaction_health_copy()", "artifact_guild live_applied=%llu", "dirty_artifacts=%llu", "dirty_guilds=%llu", "history_committed=%llu", "history_lost=%llu", "history_pending=%llu", "oldest_history_ms=%llu"])),
     ("flat shop materialization capacity is reported", all(token in actinf for token in ["flatfile_shop_trade_materialization_read_health", "shop_materialization state=%s", "reclaimable=%llu"])),
     ("top output is bounded with latency buckets", "top_site_limit = 8" in actinf and "site_index < rendered_sites" in actinf and "latency_buckets[7]" in actinf),
     ("status states are explicit", all(token in actinf for token in ["state=empty", "state=disabled", "state=unavailable", "registry_overflow", "failed_unscheduled", "oldest_save_age_ms"])),

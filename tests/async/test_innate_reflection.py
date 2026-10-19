@@ -59,12 +59,13 @@ static void clear(P_char ch) {
 functions = [
     ('utility.c', 'int flag2idx('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'bool is_abbrev('),
+    ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
     ('affects.c', 'struct affected_type *get_spell_from_char('),
     ('affects.c', 'bool affected_by_spell('),
-    ('innates.c', 'void get_property_format('), ('innates.c', 'int get_innate_property('),
+    ('innates.c', 'void get_property_format('), ('innates.c', 'int get_innate_property(int innate,'),
     ('innates.c', 'static int innate_char_race('), ('innates.c', 'static int innate_unlock_level('),
     ('innates.c', 'bool has_innate('), ('innates.c', 'void assign_innates('),
-    ('innates.c', 'bool can_use_innate('), ('innates.c', 'bool check_innate_time('),
+    ('innates.c', 'bool can_use_innate(P_char ch,'), ('innates.c', 'bool check_innate_time('),
     ('innates.c', 'void do_innate_reflection(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
 ]
 production = '\n'.join(extract_function(file, signature) for file, signature in functions)

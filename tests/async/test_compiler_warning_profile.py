@@ -8,6 +8,8 @@ quietly restoring 9,947 hidden diagnostics.
 from _paths import SRC
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 
 root = Path(__file__).resolve().parents[2]
 makefile = (SRC / "Makefile").read_text()
@@ -96,6 +98,32 @@ for name in repository_headers:
     check(f"{name} uses the public MYSQL header", "#include <mysql/mysql.h>" in header)
     check(f"{name} does not guess the MYSQL struct tag",
           "typedef struct st_mysql MYSQL" not in header)
+
+# Compile the real kingdom persistence interface against both public client
+# types. Guessing MariaDB's struct tag must not silently pass on a MariaDB host.
+with tempfile.TemporaryDirectory(prefix="kingdom-client-types-") as temporary:
+    include = Path(temporary)
+    (include / "mysql").mkdir()
+    for client, declaration, flags in (
+        ("MySQL", "struct MYSQL {};", []),
+        ("MariaDB", "typedef struct st_mysql {} MYSQL;", []),
+        ("flat-file", '#error "flat-file kingdom header must not include MySQL"',
+         ["-D__NO_MYSQL__"]),
+    ):
+        (include / "mysql/mysql.h").write_text("#pragma once\n" + declaration + "\n")
+        compiled = subprocess.run(
+            ["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-fsyntax-only",
+             "-x", "c++", "-", "-I" + str(include), "-I" + str(root / "src"), *flags],
+            input='''#include "kingdom/kingdom.h"
+#ifndef __NO_MYSQL__
+#include "sql/sql_work.h"
+sql_work work = kingdom_guild_save_work(1, {});
+#endif
+''', text=True, capture_output=True,
+        )
+        check(f"kingdom persistence interface compiles with {client}", compiled.returncode == 0)
+        if compiled.returncode:
+            print(compiled.stderr)
 
 # MYSQL 8 uses bool for statement null indicators while MariaDB retains
 # my_bool. Derive the type from MYSQL_BIND so both client libraries compile.

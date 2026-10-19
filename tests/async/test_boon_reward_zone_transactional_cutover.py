@@ -183,9 +183,12 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         ready_start = transaction.index("void boon_reward_transaction_player_ready")
         ready_end = transaction.index("critical_outbox_delivery_result", ready_start)
         ready = transaction[ready_start:ready_end]
-        publish = ready.index("boon_publish_transaction_result")
-        acknowledge = ready.index("acknowledge_flat_reward")
+        start = transaction.index("bool publish_reward(")
+        publication = transaction[start:transaction.index("} // namespace", start)]
+        publish = publication.index("boon_publish_transaction_result")
+        acknowledge = publication.index("acknowledge_flat_reward")
         self.assertLess(publish, acknowledge)
+        self.assertIn("publish_reward(character, reward.operation_id", ready)
         self.assertIn("flatfile_boon_find_pending_reward", ready)
 
         self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 1)

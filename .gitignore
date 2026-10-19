@@ -106,3 +106,8 @@ db/Backup/
 
 # Local incident/recovery working sets (player data, never committed)
 /private/
+
+# Private native copyover publications, claims and process-owned staging files.
+copyover.dat
+copyover.dat.recovering
+copyover.dat.tmp*

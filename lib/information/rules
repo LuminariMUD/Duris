@@ -1,53 +1,89 @@
-Read these rules carefully and fully.
+&+CDURIS RULES&n
+&+c======================================================================&n
+Read these rules before playing and check them for updates. Follow both
+their wording and their intent. If anything is unclear, ask Staff through
+&+Ypetition&n before acting. Not knowing a rule does not excuse breaking it.
 
-LAWS RULES
+&+C1. Fair play&n
+   Do not exploit loopholes or game mechanics to gain an unfair advantage.
+   This includes farming epics by camping epic stones, abusing broken
+   quests, or buying epic bottles that grant more epics than they cost.
+   Do not keep a character rented, camped, or voided solely to use as a
+   portal target. Do not use !risk or !frag alts to gain a PvP advantage.
 
-*** Current Duris LAWS - these are subject to change at any time.
+&+C2. Bugs and exploits&n
+   Report bugs promptly with the &+Ybug&n command. If you are unsure whether
+   something is a bug, ask Staff. Do not exploit bugs or help others exploit
+   them; reporting a bug does not give permission to keep using it.
+   Never deliberately crash, freeze, or disrupt the game. Report any bug
+   that does so to Staff immediately, or as soon as you can reconnect.
+   Keep exploit details off public channels and boards; report them to
+   Staff privately through &+Ybug&n or &+Ypetition&n.
 
-1.   Player killing is expected to be fully used by all!  If someone,
-pisses you off, kill them, and loot their corpse!
+&+C3. Respect, privacy, and communication&n
+   Treat players and Staff with respect. Harassment, hate speech, sexual
+   harassment, real-world threats, blackmail, and extortion are prohibited.
+   Do not share another person's private information without permission.
+   Do not impersonate Staff or another player, or forge Staff messages.
+   Do not spam or flood channels, tells, or commands. Keep disagreements
+   civil; repeated abuse or disruptive complaints may result in a silence.
 
-2.   &+RMulti-playing is NOT allowed&N.  For clarification of
-multi-playing, &+Ysee "help multi-playing."&N
+&+C4. Characters and multi-playing&n
+   Multi-playing and sharing a character between players are prohibited.
+   Do not access another person's account or character without permission,
+   steal passwords, or attempt to compromise accounts.
+   Read &+Yhelp multi-playing&n for the full policy, including the limited
+   exception for equipment exchanges and storage characters inside an inn.
+   That exception does not permit using alts to assist in combat, scouting,
+   travel, or corpse retrieval.
 
-3.   Bugs are to be reported to staff ASAP see bug policy below.  Since we 
-constantly put in new code, there are bound to be many bugs.  If you aren't 
-sure if something is a bug, ask staff. Use Discord or petition.
+&+C5. Robots and unattended play&n
+   Do not run a robot or leave scripts playing your character while you
+   are away. Do not let another player control your character through
+   triggers. Simple client actions must follow the limits in &+Yhelp robots&n;
+   they must not turn your character into an unattended, playable bot.
+   Ask Staff before using automation if you are unsure whether it is allowed.
 
-4.   Players should settle their own disputes.  Talking to staff
-should be a last resort, as gods abide by the non-interference policy.
-Use the petition channel if you need to consult with staff.
+&+C6. PvP and racewars&n
+   Player killing and corpse looting are expected parts of Duris. Resolve
+   ordinary in-game rivalries through play, within these rules. PvP does
+   not excuse harassment, real-world threats, or other misconduct.
+   Wait at least &+Yone hour&n after logging off before logging on a character
+   on the opposite side of the racewar.
+   Do not use an opposite-side character to spy for your primary side or
+   to take revenge on its behalf. Follow the additional restrictions in
+   &+Yhelp multi-playing&n when switching characters after PvP.
 
-5.   Running robots in ANY shape or form is illegal. This means any robot
-that you set up with clients such as Tintin.
+&+C7. Equipment and artifacts&n
+   Do not transfer equipment between the good and evil racewar sides,
+   either directly or through other characters or players.
+   You are not required to move artifacts between your characters whenever
+   you switch characters. See &+Yhelp artifact&n for the artifact policy.
 
-         
-                      &+BDURIS BUG POLICY&n
+&+C8. Connections and punishment evasion&n
+   VPN use is prohibited. Characters linked to VPNs are treated as
+   offenders regardless of ownership.
+   Do not evade bans, silences, or other Staff restrictions by using other
+   characters, accounts, connections, or players.
 
-  You must report all bugs you as a player find on Duris using the bug
-command, however once you have reported this bug you &+gMAY&n use it as many 
-times as you like till the code no longer allows you to.  There is one 
-exception to this rule any bug you find that &+RCRASHES&n or &+RFREEZES&n 
-the mud must be reported immediately after the next time you login and never 
-used again.
+&+C9. Staff and active players&n
+   &+YServing as Staff and actively playing are mutually exclusive.&n
+   Staff members may not actively play any player character. Anyone
+   actively playing a character may not serve as Staff.
+   Stop active play before joining Staff, and step down from Staff before
+   resuming play. This rule applies to the individual across all characters
+   and accounts. It prevents abuse of Staff privileges and protects the
+   playerbase's trust in fair administration.
 
-  We the operators of Duris have played many muds over the years and 
-have always believed that if the code lets you it is for lack of a better term 
-an undocumented feature of that mud.  We will &+gNOT&n delete players who show
-exceptional mudding ability and find these little gems or we might end up 
-possibly losing the best players on the mud.
+&+C10. Reporting and enforcement&n
+   Use &+Ypetition&n to report misconduct or ask Staff for clarification.
+   Provide an honest account and any relevant logs; do not fabricate
+   evidence or knowingly make false reports.
+   Staff generally do not intervene in ordinary gameplay disputes, but
+   they may act on misconduct even when no rule names the exact situation.
+   Respect Staff decisions and raise concerns calmly through petition.
+   Penalties depend on the circumstances and may include warnings,
+   silencing, loss of equipment, frags or levels, deletion, or a ban.
 
-  Now you may be telling yourself well gee I'll just use a bug over and over
-then the first time staff sees me I will tell them I just found it.  Well my
-friends &+RTHIS WILL NOT WORK&n because if we see you use a bug once we wont 
-say anything and will wait for you to ether use the bug command or for you to 
-use the bug again if it has not already been fixed.
-
-  What happens if you use a bug over and over again and don't report it?  Well
-in that case, it would be considered a GROSS violation of our simple rules here.
-And you at that poing more then likely WILL be deleted for doing something so
-obviously childish and immuture, depending on on the severity of 
-the abuse.
-
-       &+RDO NOT POST KNOWN BUGS ON THE BOARDS USE THE 'BUG' COMMAND!!!&n
-		
+&+c======================================================================&n
+&+CSee also:&n &+YMULTI-PLAYING, ROBOTS, RACEWARS, RAID, ARTIFACT, PETITION&n

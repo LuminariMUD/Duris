@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 transport = (ROOT / 'src/world/transport.c').read_text()
@@ -12,6 +12,7 @@ prefix = transport[:transport.index('// Handles list command')]
 movement = transport[transport.index('int do_simple_move_skipping_procs'):]
 copyover = (ROOT / 'src/persistence/copyover.c').read_text()
 mob_codec = copyover[copyover.index('int copyover_write_mob_to_buffer'):copyover.index('int copyover_write_obj_to_buffer')]
+mob_codec += extract_function('world_recovery_pipeline.c', 'void world_recovery_discard_mob(')
 mob_codec += copyover[copyover.index('P_char copyover_restore_mob_from_buffer'):copyover.index('P_obj copyover_restore_obj_from_buffer')]
 harness = (ROOT / 'tests/async/world_singletons_harness.cpp').read_text()
 harness = harness.replace('// TRANSPORT_PRODUCTION', prefix + '\n' + movement + '\n' + mob_codec)
@@ -43,7 +44,10 @@ assert 'memcmp(header.magic, COPYOVER_MAGIC, 4)' in durable_shopkeepers
 assert 'offsetof(copyover_mob, transport)' in copyover
 assert copyover.count('transport_capture(mob, &entry.transport);') == 2
 assert copyover.count('transport_restore(mob, mob_entry.transport);') == 2
+# The file and buffer restorers both use placement that skips room-entry effects.
+assert copyover.count('char_to_room(mob, rnum, -1);') == 2
+assert 'char_to_room(ch, save_room, -1);' in copyover
 save = copyover[copyover.index('bool copyover_save('):copyover.index('// find_player_by_name')]
-assert save.index('snapshot_shopkeepers_for_copyover()') < save.index('fopen(copyover_tmp')
+assert save.index('snapshot_shopkeepers_for_copyover()') < save.index('mkstemp(copyover_tmp')
 assert 'copyover_has_durable_shopkeepers()' in (ROOT / 'src/world/db.c').read_text()
 print('world singleton lifecycle and recovery compatibility passed')

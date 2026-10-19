@@ -16,6 +16,7 @@ HARNESS = r'''
 #include "core/utils.h"
 
 #include <cassert>
+#include <cerrno>
 #include <chrono>
 #include <cstdarg>
 #include <vector>
@@ -41,11 +42,6 @@ int get_property(const char *, int fallback)
     return fallback;
 }
 
-bool get_artifact_data_sql(int, P_arti)
-{
-    return false;
-}
-
 int itemvalue(P_obj)
 {
     return 1;
@@ -65,8 +61,10 @@ int shop_keeper(P_char, P_char, int, char *)
     return 0;
 }
 
-P_obj read_object(int object_rnum, int)
+static bool fail_creation = false;
+P_obj read_object_for_creation(int object_rnum, int)
 {
+    if (fail_creation) { errno = ENOMEM; return nullptr; }
     if (object_rnum < 0 || object_rnum > top_of_objt)
         return nullptr;
     P_obj object = new obj_data{};
@@ -160,6 +158,9 @@ int main()
     guard.in_room = 0;
     P_char recovered[] = {&keeper, &guard};
 
+    fail_creation = true;
+    assert(!world_recovery_rehydrate_npc_items(recovered, 2) && !object_list);
+    fail_creation = false;
     assert(world_recovery_rehydrate_npc_items(recovered, 2));
     assert(carried_count(&keeper, 0) == 2);
     for (int object_rnum = 1; object_rnum <= 6; ++object_rnum)

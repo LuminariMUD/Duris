@@ -230,7 +230,7 @@ def check_mechanic_sites(sources, bindings):
         "specialization_capture": ("player/player_snapshot_capture.c", r"ADD_STATUS\(specialization,\s*ch->player\.spec\)\s*;"),
         "specialization_load": ("player/player_load_materialize.c", r"ch->player\.spec\s*=\s*loaded\s*;"),
         "innate_entry": ("cmd/interp.c", r"CMD_Y\(\s*CMD_INNATE\s*,\s*STAT_NORMAL\s*\+\s*POS_STANDING\s*,\s*do_innate\s*,\s*0\s*,\s*TRUE\s*\)\s*;"),
-        "innate_dispatch": ("classes/innates.c", r'if\s*\(innates_data\[i\]\.func\)\s*\{\s*\(innates_data\[i\]\.func\)\(ch,\s*innate_args,\s*CMD_INNATE\);\s*\}\s*else\s*\{\s*send_to_char\("This innate is always active\.\\n",\s*ch\);\s*\}'),
+        "innate_dispatch": ("classes/innates.c", r'if\s*\(innates_data\[i\]\.func\)\s*\{\s*\(innates_data\[i\]\.func\)\(ch,\s*handler_args,\s*CMD_INNATE\);\s*\}\s*else\s*\{\s*send_to_char\("This innate is always active\.\\n",\s*ch\);\s*\}'),
         "unspecialization_entry_coral": ("specs/specs.assign.c", r"obj_index\[real_object0\(2203\)\]\.func\.obj\s*=\s*unspec_altar;"),
         "unspecialization_entry_blood": ("specs/specs.assign.c", r"obj_index\[real_object0\(12016\)\]\.func\.obj\s*=\s*unspec_altar;"),
         "unspecialization_altar": ("specs/specs.object.c", r"unspecialize\(ch,\s*obj\);"),
@@ -648,7 +648,7 @@ void gmcp_char_affects(P_char) {}
 void unlink_char_affect(P_char, affected_type *) { std::abort(); }
 void unlink_char_obj_affect(P_char, affected_type *) { std::abort(); }
 void event_web_spray(P_char, P_char, P_obj, void *) { std::abort(); }
-void disarm_char_nevents(P_char, event_func_type) { std::abort(); }
+void disarm_char_nevents(P_char ch, event_func_type callback) { assert(ch && callback == event_hatred_check); }
 nevent_handle nevent_handle_from_event(P_nevent) { std::abort(); }
 nevent_cancel_result nevent_cancel(nevent_handle) { std::abort(); }
 void stop_memorizing(P_char, memorization_stop_reason) { ++mechanic_stop_memorizing; }
@@ -702,6 +702,7 @@ combat_bodies = (
     + innates[innates.index("#define ADD_RACIAL_INNATE"):innates.index("float regen_factor")]
     + innates[innates.index("char racial_innates["):innates.index("extern const struct race_names")]
     + production_function("interp.c", "const char *fill_words[]") + ";\n"
+    + production_function("sparser.c", "char *skip_spaces(")
     + production_function("epic_skills.c", "epic_reward epic_rewards[] =") + ";\n"
     + production_function("epic.c", "struct epic_skill_refund_context") + ";\n"
     + "\n".join(production_function(file, signature) for file, signature in [
@@ -722,6 +723,9 @@ combat_bodies = (
         ("innates.c", "bool check_innate_time("),
         ("innates.c", "bool can_use_innate(P_char ch, int innate)"),
         ("innates.c", "void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)"),
+        ("innates.c", "static P_char visible_hatred_enemy("),
+        ("innates.c", "static void clear_hatred("),
+        ("innates.c", "bool start_hatred_check("),
         ("innates.c", "void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)"),
         ("innates.c", "void do_innate(P_char ch, char *arg, int cmd)"),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections("),
@@ -1128,10 +1132,10 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     # omit provenance and introduce conflicts; those do not need extra compilations.
     # Build variants under bin/ without editing the live worktree.
     for name, old, new, diagnostic in [
-        ("hatred_bulk_remove", "wear_off_message(ch, afp);\n\t\t\t\taffect_remove(ch, afp);",
-         "affect_from_char(ch, TAG_HATRED);\n\t\t\t\tx++;\n\t\t\t\tif (x > 1)\n\t\t\t\t\twear_off_message(ch, afp);", "heap-use-after-free"),
-        ("hatred_race_overrun", "z < MAX_HATRED && race_hatred_data[i][z] != -1 && !found",
-         "z < MAX_HATRED + 1 && !found", "out of bounds"),
+        ("hatred_bulk_remove", "wear_off_message(ch, af);\n\t\t\taffect_remove(ch, af);",
+         "affect_from_char(ch, TAG_HATRED);\n\t\t\twear_off_message(ch, af);", "heap-use-after-free"),
+        ("hatred_race_overrun", "z < MAX_HATRED && race_hatred_data[i][z] != -1",
+         "z < MAX_HATRED + 1", "out of bounds"),
         ("phantasmal_released_message", "if (afp)\n\t\t\twear_off_message(ch, afp);\n\t\taffect_from_char(ch, TAG_PHANTASMAL_FORM);",
          "affect_from_char(ch, TAG_PHANTASMAL_FORM);\n\t\twear_off_message(ch, afp);", "heap-use-after-free"),
         ("crown_original_race_lost", "af.modifier = GET_RACE(ch);", "af.modifier = RACE_REVENANT;",

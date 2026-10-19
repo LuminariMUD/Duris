@@ -253,6 +253,8 @@ def main() -> None:
                 str(SRC / "redis_command_observability.c"),
                 str(SRC / "redis_namespace.c"),
                 str(SRC / "redis_world_store.c"),
+                str(SRC / "world_recovery_codec.c"),
+                str(SRC / "generated_npc_state.c"), str(SRC / "pet_restore_state.c"),
                 str(source),
                 "-lhiredis",
                 "-lhiredis_ssl",

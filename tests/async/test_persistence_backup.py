@@ -206,6 +206,73 @@ class PolicyTests(Fixture):
                 self.assertEqual(backup.retained(items, p, now), {"latest", "second", "previous"})
 
 class GenerationTests(Fixture):
+    def test_schedule_tracks_live_contract_across_checkout_and_database_upgrade(self):
+        current = json.loads((ROOT / "migrations/runtime_compatibility_manifest.json").read_text())
+        deployed = dict(current, migration_head={"id": "older-deployment", "sequence": 1})
+        selected = self.base / "deployed-schema.json"
+        backup.write_json(selected, deployed)
+        with mock.patch.dict(os.environ, RUNTIME_COMPATIBILITY_MANIFEST=str(selected)):
+            previous = self.create("mariadb-primary")
+        before = backup.inventory(previous)
+        live_contract = deployed
+        checked = []
+
+        def check_live_contract(path):
+            contract = json.loads(path.read_text())
+            checked.append(contract)
+            if contract != live_contract:
+                raise backup.BackupError("subprocess_failed", {
+                    "phase": "schema_check", "exit_status": 1})
+
+        with mock.patch.object(backup, "verify_database_schema", side_effect=check_live_contract):
+            result = backup.schedule(self.p, "mariadb-primary")
+            self.assertEqual(result["result"], "ok")
+            generation = self.p["root"] / result["generation"]
+            self.assertEqual(json.loads((generation / "runtime-schema.json").read_text()), deployed)
+            backup.verify(generation)
+            self.assertEqual(checked, [current, deployed, deployed])
+            self.assertEqual(backup.inventory(previous), before)
+            self.assertEqual(backup.schedule(self.p, "mariadb-primary")["event"], "status")
+
+            # The next due backup adopts the checkout's contract after migration.
+            live_contract = current
+            checked.clear()
+            backup.write_json(self.p["root"] / "schedule.json", {"completed": 0})
+            result = backup.schedule(self.p, "mariadb-primary")
+            self.assertEqual(result["result"], "ok")
+            generation = self.p["root"] / result["generation"]
+            self.assertEqual(json.loads((generation / "runtime-schema.json").read_text()), current)
+            backup.verify(generation)
+            self.assertEqual(checked, [current, current])
+
+    def test_previous_contract_must_match_database_and_keep_its_checksum(self):
+        selected = self.base / "deployed-schema.json"
+        schema = json.loads((ROOT / "migrations/runtime_compatibility_manifest.json").read_text())
+        backup.write_json(selected, dict(schema, migration_head={"id": "older", "sequence": 1}))
+        with mock.patch.dict(os.environ, RUNTIME_COMPATIBILITY_MANIFEST=str(selected)):
+            previous = self.create("mariadb-primary")
+        before = backup.inventory(previous)
+        mismatch = backup.BackupError("subprocess_failed", {
+            "phase": "schema_check", "exit_status": 1})
+        for override in ("", str(selected)):
+            with self.subTest(override=override), \
+                 mock.patch.dict(os.environ, RUNTIME_COMPATIBILITY_MANIFEST=override), \
+                 mock.patch.object(backup, "verify_database_schema", side_effect=mismatch) as check, \
+                 self.assertRaisesRegex(backup.BackupError, "subprocess_failed"):
+                self.create("mariadb-primary")
+            self.assertEqual(check.call_count, 1 if override else 2)
+            self.assert_preserved({previous: before})
+            self.assertEqual(set(self.p["root"].glob("[0-9]*")), {previous})
+            self.assertFalse(list(self.p["root"].glob(".staging-*")))
+
+        (previous / "runtime-schema.json").write_text('{}\n')
+        with mock.patch.object(backup, "verify_database_schema", side_effect=mismatch) as check, \
+             self.assertRaisesRegex(backup.BackupError, "schema_manifest_mismatch"):
+            self.create("mariadb-primary")
+        self.assertEqual(check.call_count, 1)
+        self.assertEqual(set(self.p["root"].glob("[0-9]*")), {previous})
+        self.assertFalse(list(self.p["root"].glob(".staging-*")))
+
     def test_explicit_deployed_schema_survives_checkout_schema_change(self):
         schema = json.loads((ROOT / "migrations/runtime_compatibility_manifest.json").read_text())
         schema["runtime_table_sql_list"] = "'accounts','player_data','ships'"
@@ -219,11 +286,12 @@ class GenerationTests(Fixture):
 
     def test_schema_mismatch_before_or_after_capture_preserves_generations(self):
         before = self.baseline("mariadb-primary")
-        for checks in ([backup.BackupError("schema_mismatch")],
-                       [None, backup.BackupError("schema_mismatch")]):
+        mismatch = backup.BackupError("subprocess_failed", {
+            "phase": "schema_check", "exit_status": 1})
+        for checks in ([mismatch], [None, mismatch]):
             with self.subTest(checks=len(checks)), \
                  mock.patch.object(backup, "verify_database_schema", side_effect=checks), \
-                 self.assertRaisesRegex(backup.BackupError, "schema_mismatch"):
+                 self.assertRaisesRegex(backup.BackupError, "subprocess_failed"):
                 self.create("mariadb-primary")
             self.assert_preserved(before)
             self.assertEqual(set(self.p["root"].glob("[0-9]*")), set(before))

@@ -10,11 +10,15 @@
 
 #include "core/prototypes.h"
 #include "player/character_mechanics.h"
+#include "net/discord_petition.h"
 #include "account/creation_availability_config.h"
 #include "net/comm.h"
+#include "net/unicode.h"
 #include "world/db.h"
 #include "world/events.h"
 #include <errno.h>
+#include <climits>
+#include <cstddef>
 #include <ctype.h>
 #include <stdarg.h>
 #include <signal.h>
@@ -43,6 +47,12 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "persistence/persistence_mode.h"
+#include "redis/redis_presence_runtime.h"
+#include "redis/redis_floor_runtime.h"
+#include "player/player_save_pipeline.h"
+#include "item/item_movement_transaction.h"
+#include "economy/collector_service.h"
+#include "economy/collector_transaction.h"
 #include "player/player_load_offline.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
@@ -485,23 +495,6 @@ static void read_player_loaded(P_char ch, P_char vict)
 		return;
 	}
 	vict->only.pc->aggressive = -1;
-
-	if (!strstr(GET_NAME(vict), ".locker"))
-	{
-		for (P_char it = character_list; it; it = it->next)
-		{
-			if (IS_PC(it) && !strstr(GET_NAME(it), ".locker") &&
-			    GET_PID(it) == GET_PID(vict))
-			{
-				char buf[1024];
-				snprintf(
-					buf, ARRAY_SIZE(buf),
-					"&=lWPID collision - characters %s and %s share PID %d&n\n",
-					GET_NAME(it), GET_NAME(vict), GET_PID(it));
-				send_to_char(buf, ch);
-			}
-		}
-	}
 
 	/* insert in list */
 	vict->next = character_list;
@@ -1000,11 +993,29 @@ void do_at(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+static void show_poof(P_char ch, bool entering, int target)
+{
+	const char *message = entering ? ch->only.pc->poofIn : ch->only.pc->poofOut;
+	std::string output;
+	if (!message || !*message)
+		output = entering ? "$n appears with an ear-splitting bang." :
+				    "$n disappears in a puff of smoke.";
+	else if (!strstr(message, "%n"))
+		output = std::string("$n ") + message;
+	else
+	{
+		output = message;
+		for (size_t i = 0; i + 1 < output.size(); ++i)
+			if (output[i] == '%' && output[i + 1] == 'n')
+				output[i] = '$';
+	}
+	act(output.c_str(), TRUE, ch, 0, 0, target);
+}
+
 void do_goto(P_char ch, char *argument, int /*cmd*/)
 {
-	char buf[MAX_STRING_LENGTH], output[MAX_STRING_LENGTH];
+	char buf[MAX_STRING_LENGTH];
 	int location = NOWHERE, old_room, bits, zcoord = 0;
-	size_t i;
 	P_char target_mob = NULL;
 	P_obj target_obj = NULL;
 
@@ -1096,28 +1107,7 @@ void do_goto(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("You try, but you can't seem to get there.\n\r", ch);
 		return;
 	}
-	if (ch->only.pc->poofOut == NULL)
-	{
-		strcpy(output, "$n disappears in a puff of smoke.");
-	}
-	else
-	{
-		if (!strstr(ch->only.pc->poofOut, "%n"))
-		{
-			strcpy(output, "$n ");
-			strcat(output, ch->only.pc->poofOut);
-		}
-		else
-		{
-			strcpy(output, ch->only.pc->poofOut);
-
-			for (i = 0; i < strlen(output); i++)
-				if ((*(output + i) == '%') && (*(output + i + 1) == 'n'))
-					*(output + i) = '$';
-		}
-	}
-
-	act(output, TRUE, ch, 0, 0, TO_ROOM);
+	show_poof(ch, false, TO_ROOM);
 
 	old_room = ch->in_room;
 	char_from_room(ch);
@@ -1139,28 +1129,7 @@ void do_goto(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
-	if (ch->only.pc->poofIn == NULL)
-	{
-		strcpy(output, "$n appears with an ear-splitting bang.");
-	}
-	else
-	{
-		if (!strstr(ch->only.pc->poofIn, "%n"))
-		{
-			strcpy(output, "$n ");
-			strcat(output, ch->only.pc->poofIn);
-		}
-		else
-		{
-			strcpy(output, ch->only.pc->poofIn);
-
-			for (i = 0; i < strlen(output); i++)
-				if ((*(output + i) == '%') && (*(output + i + 1) == 'n'))
-					*(output + i) = '$';
-		}
-	}
-
-	act(output, TRUE, ch, 0, 0, TO_ROOM);
+	show_poof(ch, true, TO_ROOM);
 }
 
 void do_affectpurge(P_char ch, char *argument, int /*cmd*/)
@@ -4650,8 +4619,7 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 
 	int mins_to_reboot = 0;
 	const char *type = "reboot";
-	char reason[MAX_STRING_LENGTH];
-	strcpy(reason, "No reason given"); // Default reason
+	char reason[MAX_STRING_LENGTH] = "";
 
 	type = scheduled_shutdown_type_name(shutdownData.eShutdownType, false);
 
@@ -4729,7 +4697,7 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 			"Notes:\r\n"
 			"  - Scheduled shutdowns are cancelled when the scheduler leaves the game\r\n"
 			"    or uses the shutdown command again\r\n"
-			"  - Reason is optional but recommended for tracking purposes\r\n",
+			"  - Reason is optional; it is broadcast to players and saved for tracking\r\n",
 			ch);
 		return;
 	}
@@ -4805,7 +4773,8 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	}
 	type = scheduled_shutdown_type_name(shutdownData.eShutdownType, false);
 	strcpy(shutdownData.IssuedBy, GET_NAME(ch));
-	strlcpy(shutdownData.Reason, reason, sizeof shutdownData.Reason);
+	strlcpy(shutdownData.Reason, *reason ? reason : "No reason given",
+		sizeof shutdownData.Reason);
 	shutdownData.next_warning = -1;
 	shutdownData.reboot_time = (time(0) + (mins_to_reboot * 60));
 	snprintf(buf, sizeof buf, "Scheduled %s initiated by %s in %d minutes.", type, GET_NAME(ch),
@@ -4813,6 +4782,11 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	wizlog(60, "%s", buf);
 	sql_log(ch, WIZLOG, "%s initiated by %s in %d minutes.", type, GET_NAME(ch),
 		mins_to_reboot);
+	if (*reason)
+	{
+		send_to_all(reason);
+		send_to_all("&n\r\n");
+	}
 	// calling the event will start the event
 	timedShutdown(NULL, NULL, NULL, NULL);
 }
@@ -5276,9 +5250,22 @@ void do_load(P_char ch, char *argument, int /*cmd*/)
 			send_to_char("There is no object with that number.\n", ch);
 			return;
 		}
-		obj = read_object(r_num, REAL);
+		obj = read_object_for_creation(r_num, REAL);
 		if (!obj)
 		{
+			if (errno == EEXIST || errno == ENODATA || errno == ENOMEM)
+			{
+				const char *reason = errno == EEXIST ?
+							     "already present or reserved" :
+						     errno == ENOMEM ? "temporarily unavailable" :
+								       "identity unresolved";
+				send_to_char_f(
+					ch,
+					"Artifact %d creation refused: %s. Reference: artifact_identity/create.\n\r",
+					l_num, reason);
+				persistence_alert(AVATAR, "artifact_identity/create", "redacted",
+						  "none", "none", reason, "vnum=%d", l_num);
+			}
 			logit(LOG_DEBUG, "do_load(): obj %d [%d] not loadable", r_num,
 			      obj_index[r_num].virtual_number);
 			return;
@@ -5301,6 +5288,32 @@ void do_load(P_char ch, char *argument, int /*cmd*/)
 	}
 	else
 		send_to_char("That'll have to be either 'char' or 'obj'.\n", ch);
+}
+
+// Preserve permanent contents inside the nearest surviving container. Only
+// detached roots reach the room, after the empty player snapshot is accepted.
+static void purge_drop_item(P_obj item, int room, P_obj container)
+{
+	const bool transient = IS_SET(item->extra_flags, ITEM_TRANSIENT);
+	for (P_obj child = item->contains; child;)
+	{
+		P_obj next = child->next_content;
+		obj_from_obj(child);
+		purge_drop_item(child, room, transient ? container : item);
+		child = next;
+	}
+	if (transient)
+		extract_obj(item, TRUE);
+	else if (container)
+		obj_to_obj(item, container);
+	else
+	{
+		// obj_to_room can merge and free coins, or redirect a sinking object.
+		const bool coins = OBJ_VNUM(item) == VOBJ_COINS;
+		obj_to_room(item, room);
+		if (!coins && item->obj_uid && OBJ_ROOM(item))
+			redis_log_floor_drop(item, world[item->loc.room].number);
+	}
 }
 
 /* clean a room of all mobiles and objects */
@@ -5336,6 +5349,58 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 				send_to_char("You are too lame to be able to purge chars!\n", ch);
 				return;
 			}
+			if (IS_PC(vict))
+			{
+				// Locker departure may veto removal or release the room. Let the
+				// ordinary leave path secure its contents before a staff purge.
+				if (IS_ROOM(vict->in_room, ROOM_LOCKER))
+				{
+					send_to_char(
+						"Move the player out of the locker before purging.\r\n",
+						ch);
+					return;
+				}
+				if (item_movement_transaction_player_busy(vict) ||
+				    collector_transaction_player_busy(vict) ||
+				    !collector_service_recover_player(vict))
+				{
+					send_to_char(
+						"The player's items are still being secured. Try again shortly.\r\n",
+						ch);
+					return;
+				}
+
+				// Capture an empty inventory without moving, unequipping or
+				// destroying anything. Restore the live view before testing the
+				// result so a rejected capture leaves the player intact.
+				P_obj equipment[MAX_WEAR];
+				memcpy(equipment, vict->equipment, sizeof(equipment));
+				P_obj carrying = vict->carrying;
+				// Armor prestige is stored in status as well as reflected by
+				// equipment. Capture the value unequip_char will leave behind.
+				const auto prestige = vict->only.pc->prestige;
+				for (P_obj item : equipment)
+					if (item && GET_ITEM_TYPE(item) == ITEM_ARMOR)
+						vict->only.pc->prestige -= item->value[2];
+				memset(vict->equipment, 0, sizeof(vict->equipment));
+				vict->carrying = NULL;
+				const auto saved = player_save_pipeline_request(
+					vict, PLAYER_CHECKPOINT_COMPONENT_ALL, RENT_QUIT,
+					calculate_save_room(vict, RENT_QUIT, NOWHERE));
+				memcpy(vict->equipment, equipment, sizeof(equipment));
+				vict->carrying = carrying;
+				vict->only.pc->prestige = prestige;
+				if (saved != player_save_pipeline_result::queued &&
+				    saved != player_save_pipeline_result::coalesced)
+				{
+					logit(LOG_WIZ, "Failed to save %s before staff purge.",
+					      GET_NAME(vict));
+					send_to_char(
+						"Purge cancelled: the player could not be saved.\r\n",
+						ch);
+					return;
+				}
+			}
 			act("$n disintegrates $N, who is reduced to a small pile of ashes.", FALSE,
 			    ch, 0, vict, TO_NOTVICT);
 
@@ -5353,20 +5418,23 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 			}
 			else
 			{
-				// If it's not an immortal.
-				if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+				if (GET_LEVEL(vict) < MINLVLIMMORTAL)
+					update_ingame_racewar(-GET_RACEWAR(vict));
+
+				for (int slot = 0; slot < MAX_WEAR; ++slot)
+					if (vict->equipment[slot])
+						purge_drop_item(unequip_char(vict, slot),
+								vict->in_room, NULL);
+				while (vict->carrying)
 				{
-					update_ingame_racewar(-GET_RACEWAR(ch));
+					P_obj item = vict->carrying;
+					obj_from_char(item);
+					purge_drop_item(item, vict->in_room, NULL);
 				}
 
-				/* player will lose all objects! */
-				extract_char(vict);
-				writeCharacter(vict, 2, NOWHERE);
-				if (vict->desc)
-					close_socket(vict->desc);
-				else
-					free_char(vict);
-				vict->desc = 0;
+				sql_log_player_login(vict, "logout");
+				redis_player_offline(vict);
+				extract_char_after_terminal_save(vict);
 				vict = NULL;
 			}
 		}
@@ -5816,6 +5884,9 @@ static void do_start_impl(P_char ch, int nomsg, bool grant_newbie_kit)
 		SET_BIT(ch->specials.act2, PLR2_QUICKCHANT);
 		SET_BIT(ch->specials.act2, PLR2_SPEC);
 		SET_BIT(ch->specials.act2, PLR2_HINT_CHANNEL);
+		SET_BIT(ch->specials.act2, PLR2_WEBINFO);
+		if (GET_PLAYER_LOG(ch))
+			GET_PLAYER_LOG(ch)->reset_export_window();
 		SET_BIT(ch->specials.act2, PLR2_SHOW_QUEST);
 		SET_BIT(ch->specials.act2, PLR2_BOON);
 		SET_BIT(ch->specials.act2, PLR2_SHIPMAP);
@@ -6674,16 +6745,16 @@ void do_setattr(P_char ch, char *arg, int /*cmd*/)
 	} attr_tuples[] = {
 		{ "age", OFFSET(player.time.birth), sa_ageCopy },
 		{ "sex", OFFSET(player.sex), sa_byteCopy },
-		{ "str", OFFSET(base_stats.Str), sa_byteCopy },
-		{ "dex", OFFSET(base_stats.Dex), sa_byteCopy },
-		{ "agi", OFFSET(base_stats.Agi), sa_byteCopy },
-		{ "con", OFFSET(base_stats.Con), sa_byteCopy },
-		{ "pow", OFFSET(base_stats.Pow), sa_byteCopy },
-		{ "int", OFFSET(base_stats.Int), sa_byteCopy },
-		{ "wis", OFFSET(base_stats.Wis), sa_byteCopy },
-		{ "cha", OFFSET(base_stats.Cha), sa_byteCopy },
-		{ "luck", OFFSET(base_stats.Luk), sa_byteCopy },
-		{ "Karma", OFFSET(base_stats.Kar), sa_byteCopy },
+		{ "str", OFFSET(base_stats.Str), sa_shortCopy },
+		{ "dex", OFFSET(base_stats.Dex), sa_shortCopy },
+		{ "agi", OFFSET(base_stats.Agi), sa_shortCopy },
+		{ "con", OFFSET(base_stats.Con), sa_shortCopy },
+		{ "pow", OFFSET(base_stats.Pow), sa_shortCopy },
+		{ "int", OFFSET(base_stats.Int), sa_shortCopy },
+		{ "wis", OFFSET(base_stats.Wis), sa_shortCopy },
+		{ "cha", OFFSET(base_stats.Cha), sa_shortCopy },
+		{ "luck", OFFSET(base_stats.Luk), sa_shortCopy },
+		{ "Karma", OFFSET(base_stats.Kar), sa_shortCopy },
 		{ "hit", OFFSET(points.max_hit), sa_shortCopy },
 		{ "hitroll", OFFSET(points.hitroll), sa_byteCopy },
 		{ "damroll", OFFSET(points.damroll), sa_byteCopy },
@@ -6771,8 +6842,6 @@ void do_setattr(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
-	value = atoi(value_str);
-
 	/* Handle the special cases ...  */
 
 	/* Find out which attributes to set  */
@@ -6795,6 +6864,24 @@ void do_setattr(P_char ch, char *arg, int /*cmd*/)
 		send_to_char("ship\n", ch);
 		return;
 	}
+	// Base stats occupy signed shorts; reject input before any narrowing conversion.
+	if (attr_tuples[i].attr_offset >= offsetof(char_data, base_stats) &&
+	    attr_tuples[i].attr_offset < offsetof(char_data, base_stats) + sizeof(stat_data))
+	{
+		char *end = nullptr;
+		errno = 0;
+		const long parsed = strtol(value_str, &end, 10);
+		if (errno == ERANGE || end == value_str || *end || parsed < SHRT_MIN ||
+		    parsed > SHRT_MAX)
+		{
+			send_to_char("Enter a whole number from -32768 to 32767.\r\n", ch);
+			return;
+		}
+		value = static_cast<int>(parsed);
+	}
+	else
+		value = atoi(value_str);
+
 	/* Now set attributes  */
 
 	(*(attr_tuples[i].attr_func))(victim, attr_tuples[i].attr_offset, value);
@@ -6804,108 +6891,50 @@ void do_setattr(P_char ch, char *arg, int /*cmd*/)
 	return;
 }
 
-void do_poofIn(P_char ch, char *argument, int /*cmd*/)
+static void set_poof(P_char ch, char *argument, bool entering)
 {
-	char arg[MAX_INPUT_LENGTH], buf[MAX_INPUT_LENGTH];
-	size_t i;
-
 	if (!IS_TRUSTED(ch))
 		return;
 
-	one_argument(argument, arg);
-
-	if (!*arg)
+	while (isspace(static_cast<unsigned char>(*argument)))
+		++argument;
+	char *&message = entering ? ch->only.pc->poofIn : ch->only.pc->poofOut;
+	if (!*argument)
 	{
-		if (ch->only.pc->poofIn != NULL)
-			str_free(ch->only.pc->poofIn);
-		ch->only.pc->poofIn = NULL;
+		str_free(message);
+		message = NULL;
 	}
-	else if (!str_cmp("?", arg))
-	{
-		if (ch->only.pc->poofIn == NULL)
-		{
-			strcpy(buf, "$n appears with an ear-splitting bang.");
-		}
-		else
-		{
-			if (!strstr(ch->only.pc->poofIn, "%n"))
-			{
-				strcpy(buf, "$n ");
-				strcat(buf, ch->only.pc->poofIn);
-			}
-			else
-			{
-				strcpy(buf, ch->only.pc->poofIn);
-
-				/* bleah, code doubles $ to prevent entering 'act' strings */
-				for (i = 0; i < strlen(buf); i++)
-					if ((*(buf + i) == '%') && (*(buf + i + 1) == 'n'))
-						*(buf + i) = '$';
-			}
-		}
-		act(buf, TRUE, ch, 0, 0, TO_CHAR);
-	}
+	else if (*argument == '?' &&
+		 (!argument[1] || isspace(static_cast<unsigned char>(argument[1]))))
+		show_poof(ch, entering, TO_CHAR);
 	else
 	{
-		if (ch->only.pc->poofIn != NULL)
-			str_free(ch->only.pc->poofIn);
-
-		if (*argument == ' ')
-			argument++;
-		ch->only.pc->poofIn = str_dup(argument);
+		// player_data.poof_in and poof_out are VARCHAR(512), measured in characters.
+		int length = 0;
+		for (const char *cursor = argument; *cursor;)
+		{
+			get_utf8(cursor);
+			if (++length > 512)
+			{
+				send_to_char(
+					"Poof messages may contain at most 512 characters, including color codes.\n",
+					ch);
+				return;
+			}
+		}
+		str_free(message);
+		message = str_dup(argument);
 	}
+}
+
+void do_poofIn(P_char ch, char *argument, int /*cmd*/)
+{
+	set_poof(ch, argument, true);
 }
 
 void do_poofOut(P_char ch, char *argument, int /*cmd*/)
 {
-	char arg[MAX_INPUT_LENGTH], buf[MAX_INPUT_LENGTH];
-	size_t i;
-
-	if (!IS_TRUSTED(ch))
-		return;
-
-	one_argument(argument, arg);
-
-	if (!*arg)
-	{
-		if (ch->only.pc->poofOut != NULL)
-			str_free(ch->only.pc->poofOut);
-
-		ch->only.pc->poofOut = NULL;
-	}
-	else if (!str_cmp("?", arg))
-	{
-		if (ch->only.pc->poofOut == NULL)
-		{
-			strcpy(buf, "$n disappears in a puff of smoke.");
-		}
-		else
-		{
-			if (!strstr(ch->only.pc->poofOut, "%n"))
-			{
-				strcpy(buf, "$n ");
-				strcat(buf, ch->only.pc->poofOut);
-			}
-			else
-			{
-				strcpy(buf, ch->only.pc->poofOut);
-				/* bleah, code doubles $ to prevent entering 'act' strings */
-				for (i = 0; i < strlen(buf); i++)
-					if ((*(buf + i) == '%') && (*(buf + i + 1) == 'n'))
-						*(buf + i) = '$';
-			}
-		}
-		act(buf, TRUE, ch, 0, 0, TO_CHAR);
-	}
-	else
-	{
-		if (ch->only.pc->poofOut != NULL)
-			str_free(ch->only.pc->poofOut);
-
-		if (*argument == ' ')
-			argument++;
-		ch->only.pc->poofOut = str_dup(argument);
-	}
+	set_poof(ch, argument, false);
 }
 
 void do_teleport(P_char ch, char *argument, int /*cmd*/)
@@ -7616,6 +7645,7 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
 		send_to_char("That person can't hear you.\n", ch);
 		return;
 	}
+	discord_petition_export(ch, msg, vict);
 	if (ch->desc)
 	{
 		if (IS_SET(ch->specials.act, PLR_ECHO))
@@ -8139,7 +8169,17 @@ struct obj_data *clone_obj(P_obj obj)
 	P_obj ocopy;
 	size_t i;
 
+	if (obj->R_num < 0)
+		return nullptr;
+	if (IS_ARTIFACT(obj))
+	{
+		persistence_alert(AVATAR, "artifact_identity/create", "redacted", "none", "none",
+				  "clone_source_exists", "vnum=%d", OBJ_VNUM(obj));
+		return nullptr;
+	}
 	ocopy = read_object(obj->R_num, REAL);
+	if (!ocopy)
+		return nullptr;
 	/* copy  */
 	if (obj->name)
 	{
@@ -8217,6 +8257,8 @@ void clone_container_obj(P_obj to, P_obj obj)
 	for (tmp = obj->contains; tmp; tmp = tmp->next_content)
 	{
 		ocopy = clone_obj(tmp);
+		if (!ocopy)
+			continue;
 		if (tmp->contains)
 			clone_container_obj(ocopy, tmp);
 		obj_to_obj(ocopy, to);
@@ -8336,6 +8378,8 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 				{
 					/* clone mob->equipment[j]  */
 					ocopy = clone_obj(mob->equipment[j]);
+					if (!ocopy)
+						continue;
 					if (mob->equipment[j]->contains)
 					{
 						clone_container_obj(ocopy, mob->equipment[j]);
@@ -8348,6 +8392,9 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 				for (obj = mob->carrying; obj; obj = obj->next_content)
 				{
 					ocopy = clone_obj(obj);
+
+					if (!ocopy)
+						continue;
 					if (obj->contains)
 						clone_container_obj(ocopy, obj);
 					/* move obj to cloned mobs carrying  */
@@ -8385,6 +8432,14 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 		for (i = 0; i < count; i++)
 		{
 			ocopy = clone_obj(obj);
+			if (!ocopy)
+			{
+				send_to_char_f(
+					ch,
+					"Clone refused for object %d: artifact copy exists or template unavailable. Reference: artifact_identity/create.\n\r",
+					OBJ_VNUM(obj));
+				break;
+			}
 			ocopy->type = obj->type;
 
 			if (obj->contains)
@@ -8396,13 +8451,13 @@ void do_clone(P_char ch, char *argument, int /*cmd*/)
 			else
 				obj_to_room(ocopy, ch->in_room);
 		}
-		if (IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
+		if (i > 0 && IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
 		{
 			wizlog(GET_LEVEL(ch), "%s just cloned %s %d times [&+C%d&N]", GET_NAME(ch),
-			       obj->short_description, count, world[ch->in_room].number);
+			       obj->short_description, i, world[ch->in_room].number);
 			logit(LOG_WIZ, "%s cloned %s %d times [&+C%d&N]", GET_NAME(ch),
-			      obj->short_description, count, world[ch->in_room].number);
-			sql_log(ch, WIZLOG, "Cloned %s &n%d times", obj->short_description, count);
+			      obj->short_description, i, world[ch->in_room].number);
+			sql_log(ch, WIZLOG, "Cloned %s &n%d times", obj->short_description, i);
 		}
 	}
 	else

@@ -1,6 +1,6 @@
 # Character mechanics: delivery plan
 
-Updated 2026-10-14. Tracking: [issue #52](https://github.com/LuminariMUD/Duris/issues/52).
+Updated 2026-10-19. Tracking: [issue #52](https://github.com/LuminariMUD/Duris/issues/52).
 Branch: `feature/52-character-mechanics`. Implementation is **paused and incomplete**
 at the user's request. Resume from the checkpoint below.
 This revision replaces the accumulated checkpoints and the one-connection-at-a-time
@@ -57,6 +57,26 @@ restrictions on existing characters. Staff setup does not prove ordinary acquisi
 Use private fixtures without `.env`; another session may use the shared dev game.
 Do not stop or modify that game, its database, or Redis.
 
+## Upstream sync, 2026-10-19
+
+Merged master `f1c21a92f79d0bf429d5e241c2b890dce27e342d` without changing the paused feature scope. Preserve the item-restriction checkpoint and first-work-on-resume instructions below. Master now supplies the Hatred watcher/lifecycle repair, retained-item capture, Holy Sacrifice limits, object-template updates and weight propagation fixes. The older Hatred implementation and mutation descriptions below are historical; the focused upstream Hatred regression owns current watcher/effect behavior. Conflict resolution retains the mechanics bindings alongside the newer production behavior.
+
+Sync validation passed: `make -C src -j8`, 16 focused regressions covering the
+conflicting gameplay/persistence paths, the full existing character-mechanics
+native/source/mutation regression, formatting, documentation, and whitespace.
+The initial isolated world run passed disabled transformations, Phantom state,
+specialization/reversal, Human/Orc multiclass persistence, and Revenant reversal
+and staff death. Its remaining combat-death setup exposed an obsolete attempt
+to duplicate the artifact crown. The fixture now recovers the original crown
+from the character's persisted corpse; the focused Revenant rerun passed both
+death modes, restart and resurrection. All 15 creation journeys then passed,
+including WebSocket/Telnet and rejection/quit paths.
+
+Logs are under `bin/analysis/branch-sync-20261019/`. This is integration evidence
+for the existing checkpoint; the missing item-restriction cases below remain
+unfinished. The full regression/database burn-in and MariaDB gameplay journeys
+were not run. No shared game, database or Redis service was changed.
+
 ## Current checkpoint
 
 **Pause handoff (2026-10-14):** preserve the unfinished shared item-restriction batch
@@ -75,7 +95,7 @@ contract header so its extracted native predicates compile with the markers.
 Pause checks passed: `make -C src -j8`, the existing race-bit runtime test, native
 positive/binding assertions, current source locations, formatting, whitespace and
 documentation checks. Logs are `bin/tests/character-mechanics-pause-*.log`.
-No full mutation/world/integration rerun is
+At the pause, no full mutation/world/integration rerun was
 claimed for these draft item changes; prior evidence below retains its recorded scope.
 
 No PR has been opened. PR splitting was stopped before branch or PR changes when

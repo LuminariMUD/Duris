@@ -297,8 +297,10 @@ def run(binary, build, trace="all"):
                     staff = login(STAFF, STAFF_ACCOUNT)
                     command(staff, "goto " + str(orc_initial["room"]))
                     if death_mode == "combat":
-                        command(staff, "load obj 22070")
-                        assert "Ok." in command(staff, "give icecrown " + ORC)
+                        # The original crown survives on our recovered corpse.
+                        # Artifact admission correctly refuses a second copy.
+                        recovered = command(orc, "get icecrown corpse")
+                        assert "icecrown" in command(orc, "inventory").lower(), recovered
                     assert "head" in command(orc, "wear icecrown").lower()
                     wait_for_race("Revenant")
                     save(orc, ORC)

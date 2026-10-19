@@ -103,6 +103,13 @@ void write_cmdlog(void)
 	close(fd);
 }
 
+// Fatal startup preserves prior context only when this process has no commands.
+void write_boot_cmdlog(void)
+{
+	if (logcount)
+		write_cmdlog();
+}
+
 void init_cmdlog(void)
 {
 	atexit(write_cmdlog);

@@ -1,6 +1,6 @@
 # Database
 
-DurisMUD stores all durable state in MySQL/MariaDB. This document covers how
+This document covers the MySQL/MariaDB backend: how
 the server talks to the database, what tables matter, and how schema changes
 are managed. Setup steps (creating users/databases) are in
 [README.md](../../README.md#3-create-a-development-database). An entity-relationship
@@ -58,12 +58,17 @@ verification; a protected local loopback/socket path is the only plaintext excep
 | Player load | Unique request ID, one PID | One consistent read transaction returning owned typed rows | Required-component, limit, timeout, cancellation, or stale result publishes no character |
 | Player checkpoint | Owner, in capture order on the one writer | One transaction: claim the items the owner holds, then write its rows from memory | Lost connection retries at the head of the queue; any other failure drops the job and marks the owner dirty; nothing waits or refuses |
 | Critical command | Stable 128-bit operation ID plus sorted entity keys, in capture order on the one writer | Inbox, typed domain rows/ledgers, result, and outbox in one transaction | Lost connection or ambiguous commit retries on the writer and rereads a committed result; entity keys stay fenced until the game thread takes the completion |
+| Artifact/guild snapshot (#58 branch; locally qualified) | Current entity capture and its commit receipt, ordered on the same writer | Artifact row/soul plus domain mirror, or the full guild snapshot including both reward totals | Failed admission or terminal write retains dirty state; bounded retry captures current values; an older acknowledgement cannot clear a newer capture |
+| Artifact/guild reward history (#58 branch) | Derived parent/actor operation ID and immutable v2 facts | Inbox, reward outcome/delta ledgers, result and outbox | History failure does not undo live rewards; receipt replay never applies gameplay state |
+| Pending kingdom payment (#58 branch) | Matching guild commit receipt | Current guild and realm snapshots in one transaction; later guild writes keep the pending realm paired | Remains pending until commit; failure retries current values without debiting again; ordinary realm flushes hold the pending row |
 | Item ownership | Item UID (`PRIMARY KEY`), one owner | Claimed by the holder's save; a takeover writes `item_owner_audit` | A load skips a row another owner holds; `logs/log/dupes` records each item a save or load gave up |
 | Maintenance | Stable job/work ID plus continuation | Bounded row/time batch and success-last cursor | Retryable failure retains cursor; permanent failure is visible; lifecycle slot is disabled |
 | World recovery | Sequence, checksum, and item UID graph | Immutable Redis generation plus current-pointer publication; SQL custody remains authoritative | Floor and generation trees are planned together; every UID/root/parent/VNUM/room/state is reconciled before rollback-capable materialization |
 
-Queued jobs live only in memory. A clean shutdown or copyover writes them first; a crash
-loses what had not reached the database, at most one 30-second checkpoint.
+Queued jobs live only in memory. Clean shutdown and copyover attempt to drain them;
+a crash loses what had not reached the database. Thirty seconds is the normal player
+checkpoint interval, not a bound during an outage or a checkpoint for artifact/guild
+state. Those entities queue immediate snapshots and retain dirty retry metadata.
 
 Redis is not an authority for player dirty state. It holds floor-delta recovery data
 and optional sequence-numbered world generations used after graceful restart or an unclean exit
@@ -79,6 +84,65 @@ identity/result metadata in `critical_operation_inbox`, applies typed state, and
 inbox. Delivery is at least once with `(consumer_id,outbox_id)` dedupe, bounded retry,
 and retained dead letters. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
+
+PvP combat outcomes capture presentation snapshots on the game thread before
+death changes equipment or level: the formatted level/class/name/guild/race
+description, equipment listing, and public `PlayerLog` text. Payload v3 owns
+those strings and carries them to the writer; the writer never reads live
+character pointers. The event and its participant snapshots commit with the
+existing outcome transaction, so rollback and operation-ID replay cannot leave
+a partially recorded battle or duplicate its participants.
+
+The bounds preserve the former capture limits: 255 description bytes, 65,535
+equipment bytes, and 99,999 public-log bytes per participant, with at most 15
+participants. The critical-command payload ceiling is 3 MiB, with another
+128 KiB allowed for encoded metadata; coordinator admission retains its 64 MiB
+budget. Payload versions 1 and 2 remain decodable with empty equipment/log
+snapshots. This does not recover historical missing text or add a durable
+pre-commit queue: the in-memory crash-loss limitation above still applies.
+
+Immutable migration `0041_pkill_log_capacity` widens legacy `pkill_info.log`
+columns from `TEXT` to `MEDIUMTEXT` before the updated server can boot. The
+legacy baseline upgrade alone can retain `TEXT`; follow it with
+`python3 scripts/migration_runner.py run`. Existing logs and NULLs are preserved,
+and canonical `MEDIUMTEXT` columns are unchanged on replay. An unexpected
+`LONGTEXT` column or other noncanonical column metadata is preserved but rejected by verification before migration
+success is recorded, since runtime boot requires the canonical metadata shape.
+This prevents strict SQL mode
+from rejecting 65,536–99,999-byte logs and rolling back their entire outcome.
+
+The #58 implementation separates artifact/guild reward history from
+saved gameplay state. `artifacts`, `artifact_bind` and `artifact_domain_state`
+hold the artifact snapshot/mirror; `guilds` holds current guild totals.
+`artifact_guild_outcome`, `artifact_guild_outcome_delta`, `artifact_delta_ledger`
+and `guild_outcome_ledger` record captured reward facts. Their revisions order
+history; they do not approve gameplay or reconstruct present totals after later
+spending or timer adjustments. A history receipt alone does not prove that all
+state snapshots committed. Existing schema and committed v1 receipts/outbox remain
+supported. See the [qualification evidence](../records/log-server-review.md#qualification-update-2026-10-14)
+and the pipeline's reconciliation contract before interpreting these tables.
+
+Artifact canonical identity storage is separate from the optional custody link
+within `artifact_domain_state`: `canonical_item_uid` has a unique key and no
+custody FK, while the existing `item_uid` FK remains intact. `identity_state`
+records unresolved (0), present (1), retired (2), or proven absent (3). Present and
+retired rows retain a positive canonical UID; unresolved and absent rows have
+NULL. Migration 0044 leaves legacy rows unresolved and preserves their existing
+timer, soul and ownership evidence. Boot stages these identities with the
+existing artifact/soul maps before publication. All known-artifact snapshots,
+including soul/reset writes, persist current UID/timer/soul together on the
+ordered writer. Legacy mirrors preserve identity.
+A failed or inconsistent refresh keeps current memory and requeues its
+snapshots. Retired and proven-absent evidence remains in memory after legacy
+tracking removal. Staff clear requires proven absence. Complete payload
+classification, canonical selection and admission remain tracked in issue #67.
+
+The equivalent flat-file catalog is version 2, carrying canonical UID/state and
+rejecting one nonzero UID assigned to two vnums. Version 1 remains readable with
+unresolved identity; its next ordinary write emits version 2 without inventing a
+canonical copy. Older binaries refuse version 2 rather than silently dropping
+identity. Preserve an owner-controlled backup before any operational upgrade;
+none is authorized or performed by this storage implementation.
 
 ## External consumers and writers
 

@@ -59,8 +59,9 @@
 #define OBJ_NEXUS_STONE 394
 #define OBJ_GUARDIAN_MACE 395
 
-#define IS_NEXUS_GUARDIAN(ch) \
-	(IS_NPC(ch) && (GET_VNUM(ch) == MOB_GOOD_GUARDIAN || GET_VNUM(ch) == MOB_EVIL_GUARDIAN))
+#define IS_NEXUS_GUARDIAN(ch)                                                                     \
+	(IS_NPC(ch) && (GET_VNUM(ch) == MOB_GOOD_GUARDIAN || GET_VNUM(ch) == MOB_EVIL_GUARDIAN || \
+			GET_VNUM(ch) == MOB_NEUTRAL_GUARDIAN))
 
 #define IS_NEXUS_SAGE(ch) \
 	(IS_NPC(ch) && (GET_VNUM(ch) == MOB_GOOD_SAGE || GET_VNUM(ch) == MOB_EVIL_SAGE))
@@ -122,7 +123,7 @@ struct NexusStoneInfo
 };
 
 int init_nexus_stones();
-int load_nexus_stones();
+int load_nexus_stones(bool report_empty = false);
 bool nexus_stone_info(int stone_id, NexusStoneInfo *info);
 int check_nexus_bonus(P_char ch, int amount, int type);
 int update_nexus_stone_align(int stone_id, int align);

@@ -7,6 +7,7 @@
  ***************************************************************************
  */
 
+#include <algorithm>
 #include <ctype.h>
 #include <list>
 #include <stdio.h>
@@ -27,6 +28,7 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include "guild/assocs.h"
+#include "guild/artifact_admission.h"
 #include "magic/blispells.h"
 #include "combat/ctf.h"
 #include "economy/currency_transaction.h"
@@ -220,38 +222,42 @@ int artifact_monolith(P_obj monolith, P_char ch, int cmd, char *arg)
 
 		if (monolith == get_obj_in_list_vis(ch, buf, world[ch->in_room].contents))
 		{
-			// check if the person even has any arti's.
-			int i, nArtiCount = 0;
-			for (i = 0; i < MAX_WEAR; i++)
+			P_obj artifacts[MAX_WEAR] = {};
+			int count = 0;
+			if (!IS_TRUSTED(ch))
+				for (int slot = 0; slot < MAX_WEAR; ++slot)
+				{
+					P_obj candidate = ch->equipment[slot];
+					if (artifact_is_canonical(candidate) &&
+					    OBJ_WORN(candidate) && candidate->loc.wearing == ch &&
+					    std::find(artifacts, artifacts + count, candidate) ==
+						    artifacts + count)
+						artifacts[count++] = candidate;
+				}
+			bool fed = false, positive = false;
+			if (count && monolith->value[0] > 0)
 			{
-				if (ch->equipment[i] && IS_ARTIFACT(ch->equipment[i]))
-					nArtiCount++;
+				const int seconds = (HOURS_PER_CHARGE * 3600) / count;
+				for (int index = 0; index < count; ++index)
+				{
+					const auto result = artifact_feed_sql(
+						ch, artifacts[index], seconds, false, false);
+					fed = fed || result != artifact_feed_result::rejected;
+					positive = positive ||
+						   result == artifact_feed_result::positive;
+				}
 			}
-			// if no arti's, or no charges in the monolith, do nothing
-			if (!nArtiCount || !(monolith->value[0]))
+			if (fed)
 			{
-				send_to_char("Nothing seems to happen.\n", ch);
+				--monolith->value[0];
+				artifact_monolith_update(monolith);
+				if (positive)
+					send_to_char(
+						"&+RYou feel a sense of satisfaction from above.&n\r\n",
+						ch);
 			}
 			else
-			{
-				// okay, each "charge" is worth X hours (or X * 3600 seconds).  Divide
-				// that between all artifacts EQUALLY (regardless of how full they may
-				// already be)
-				int nFeedSeconds = (HOURS_PER_CHARGE * 3600) / nArtiCount;
-				// now feed up them arti's!
-				for (i = 0; i < MAX_WEAR; i++)
-				{
-					if (ch->equipment[i] && IS_ARTIFACT(ch->equipment[i]))
-					{
-						obj = ch->equipment[i];
-						artifact_feed_sql(ch, ch->equipment[i],
-								  nFeedSeconds);
-					}
-				}
-				// update the feeder object to have one less charge..
-				monolith->value[0]--;
-				artifact_monolith_update(monolith);
-			}
+				send_to_char("Nothing seems to happen.\n", ch);
 			return TRUE;
 		}
 	}
@@ -7256,15 +7262,16 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 
 	case WEB:
+		if (!do_simple_move_skipping_procs(ch, dircmd, 0))
+			return TRUE;
 		snprintf(buffer, MAX_STRING_LENGTH,
 			 "$n &+Wis enveloped in sticky webs as $e goes to the %s.", dirs[dircmd]);
 		send_to_char("&+WYou enter into the web!&n\n", ch);
 		act(buffer, TRUE, ch, obj, NULL, TO_ROOM);
-		do_simple_move_skipping_procs(ch, dircmd, 0);
 		act("$n &+Wsteps through the web&n", TRUE, ch, NULL, NULL, TO_ROOM);
 		if (!NewSaves(ch, SAVING_PARA, 0))
 		{
-			if (!check_freedom_of_movement(ch, number(0, 1)))
+			if (!check_freedom_of_movement(ch))
 			{
 				bzero(&af, sizeof(af));
 				af.type = SPELL_MINOR_PARALYSIS;
@@ -10181,7 +10188,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		if (isname(arg, "spirit"))
 		{
-			act("You whisper 'spirit' to your $q", FALSE, ch, 0, 0, TO_CHAR);
+			act("You whisper 'spirit' to your $q", FALSE, ch, obj, 0, TO_CHAR);
 			act("&+mA spirit fog streams out of your $q &+mand surrounds you.&N", FALSE,
 			    ch, obj, obj, TO_CHAR);
 			act("$n whispers 'spirit' to $q", TRUE, ch, obj, NULL, TO_ROOM);
@@ -10200,7 +10207,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "hawk"))
 		{
-			act("You whisper 'hawk' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'hawk' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+wA vaporous &+Whawk&+w appears briefly from your&N $q.&N", FALSE, ch,
 			    obj, obj, TO_CHAR);
 			act("$n whispers 'hawk' to $q.", FALSE, ch, obj, obj, TO_ROOM);
@@ -10218,7 +10225,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "panther"))
 		{
-			act("You whisper 'panther' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'panther' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+LThe spirit of a jet black &+wpanther&+L flows from your &N$q&+w.&N",
 			    FALSE, ch, obj, obj, TO_CHAR);
 			act("$n whispers 'panther' to $q.", FALSE, ch, obj, obj, TO_ROOM);
@@ -10236,7 +10243,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "sense"))
 		{
-			act("You whisper 'sense' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'sense' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+cA rush of air from your &N $q&+w.&N&+c engulfs you.", FALSE, ch,
 			    obj, obj, TO_CHAR);
 			act("$n whispers 'sense' to $q.", FALSE, ch, obj, obj, TO_ROOM);
@@ -10254,7 +10261,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "raven"))
 		{
-			act("You whisper 'raven' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'raven' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+ySmoke billows from your&N $q &+yin the form of a &+WRaven&+y.&N",
 			    FALSE, ch, obj, obj, TO_CHAR);
 			act("$n whispers 'raven' to $p.", FALSE, ch, obj, obj, TO_ROOM);
@@ -10272,7 +10279,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "ward"))
 		{
-			act("You whisper 'ward' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'ward' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+wA &+Wspirit &+wappears from your &N$q &+wand engulfs you.&N", FALSE,
 			    ch, obj, obj, TO_CHAR);
 			act("$n whispers 'ward' to $q.", FALSE, ch, obj, obj, TO_ROOM);
@@ -10307,7 +10314,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "elephant"))
 		{
-			act("You whisper 'elephant' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'elephant' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+LThe sounds of &+welephants &+Ltrumpeting erupt from your&N $q&+L.&N",
 			    FALSE, ch, obj, obj, TO_CHAR);
 			act("$n whispers 'elephant' to $q.", FALSE, ch, obj, obj, TO_ROOM);
@@ -10326,7 +10333,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 		/* EVERYTHING HERE IS JUST FUNNY SILLY STUFF */
 		else if (isname(arg, "mystra"))
 		{
-			act("You whisper 'mystra' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'mystra' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+LThe sky darkens and fills with clouds.  You hear a deep rumbling&N",
 			    FALSE, ch, obj, obj, TO_CHAR);
 			act("&+Lin the distance.  The rumbling gets louder and louder.  God himself&N",
@@ -10411,7 +10418,7 @@ int circlet_of_light(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (isname(arg, "mystra"))
 		{
-			act("You whisper 'mystra' to your $q", FALSE, ch, 0, vict, TO_CHAR);
+			act("You whisper 'mystra' to your $q", FALSE, ch, obj, vict, TO_CHAR);
 			act("&+LThe sky darkens and fills with clouds.  You hear a deep rumbling&N",
 			    FALSE, ch, obj, obj, TO_CHAR);
 			act("&+Lin the distance.  The rumbling gets louder and louder.  God himself&N",
@@ -11090,8 +11097,9 @@ int imprison_armor(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (!check_freedom_of_movement(victim, number(0, 1)))
+	if (!check_freedom_of_movement(victim))
 	{
+		bzero(&af, sizeof(af));
 		act("&+L$n's $q &+bfl&+Bar&+Wes &+Bup &+bat &+L$N's &+chit &+Land &=LBZAPPPPS &N&+W$M&+L!&N",
 		    TRUE, ch, obj, victim, TO_NOTVICT);
 		act("&+L$n's $q &+bfl&+Bar&+Wes &+Bup &+bat &+Lyour &+chit &+Land &=LBZAPPPPS &N&+WYOU&+L!&N",

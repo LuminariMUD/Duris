@@ -109,9 +109,12 @@ void update_depth_health_locked()
 {
 	health.queued_jobs = queue.size();
 	health.inflight_jobs = inflight ? 1 : 0;
+	health.completion_jobs = results.size();
 	health.queued_bytes = queued_bytes;
-	update_max(health.high_water_jobs, health.queued_jobs + health.inflight_jobs);
-	update_max(health.high_water_bytes, queued_bytes);
+	health.inflight_bytes = inflight ? inflight->bytes : 0;
+	update_max(health.high_water_jobs,
+		   health.queued_jobs + health.inflight_jobs + health.completion_jobs);
+	update_max(health.high_water_bytes, queued_bytes + health.inflight_bytes);
 }
 
 player_save_apply_result write_job(const queued_job &job)
@@ -202,6 +205,8 @@ void writer_main()
 			.queued_at_usec = job.queued_at_usec,
 			.started_at_usec = started,
 			.completed_at_usec = completed,
+			.failed_field = applied.failed_field,
+			.rolled_back = applied.rolled_back,
 		};
 		update_max(health.max_capture_to_apply_usec, started - job.queued_at_usec);
 		update_max(health.max_apply_usec, completed - started);
@@ -239,32 +244,55 @@ player_save_submit_result enqueue(queued_job job)
 {
 	std::lock_guard<std::mutex> lock(worker_mutex);
 	if (!health.running || stop_requested)
+	{
+		errno = ESHUTDOWN;
 		return player_save_submit_result::unavailable;
+	}
 	const persistence_job_owner key = { job.kind, job.owner };
+	const auto found = queued_by_owner.find(key);
+	const bool replace_tail = found != queued_by_owner.end() &&
+				  found->second == std::prev(queue.end());
+	const size_t retained_bytes = queued_bytes + (inflight ? inflight->bytes : 0) -
+				      (replace_tail ? found->second->bytes : 0);
+	const size_t pending_jobs = queue.size() + (inflight ? 1 : 0) + results.size();
+	if (job.bytes > PLAYER_SAVE_WORKER_MAX_PENDING_BYTES ||
+	    retained_bytes > PLAYER_SAVE_WORKER_MAX_PENDING_BYTES - job.bytes ||
+	    (!replace_tail && pending_jobs >= PLAYER_SAVE_WORKER_MAX_PENDING_JOBS))
+	{
+		errno = ENOSPC;
+		return player_save_submit_result::unavailable;
+	}
 	bool replaced = false;
 	try
 	{
-		// The newer capture carries everything the queued one did, but it takes the
-		// queued one's place only while nothing is queued behind it. A job queued
-		// later may rely on this owner being written first (the owner money or an
-		// item leaves is saved before the one it reaches), so the newer save then
-		// waits behind that job.
-		const auto found = queued_by_owner.find(key);
-		if (found != queued_by_owner.end() && found->second == std::prev(queue.end()))
-		{
-			queued_bytes -= found->second->bytes;
-			queue.erase(found->second);
-			queued_by_owner.erase(found);
-			replaced = true;
-		}
+		// Replace only the tail, without erasing its old capture before a possible
+		// allocation failure. A new owner index and list entry are admitted together.
 		job.queued_at_usec = now_usec();
 		const size_t bytes = job.bytes;
-		queue.push_back(std::move(job));
-		queued_by_owner.insert_or_assign(key, std::prev(queue.end()));
+		if (replace_tail)
+		{
+			queued_bytes -= found->second->bytes;
+			*found->second = std::move(job);
+			replaced = true;
+		}
+		else
+		{
+			queue.push_back(std::move(job));
+			try
+			{
+				queued_by_owner.insert_or_assign(key, std::prev(queue.end()));
+			}
+			catch (...)
+			{
+				queue.pop_back();
+				throw;
+			}
+		}
 		queued_bytes += bytes;
 	}
 	catch (const std::bad_alloc &)
 	{
+		errno = ENOMEM;
 		return player_save_submit_result::unavailable;
 	}
 	saturating_increment(replaced ? health.replaced : health.submitted);
@@ -301,6 +329,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "shopkeeper";
 	case persistence_job_kind::sql:
 		return "sql";
+	case persistence_job_kind::artifact:
+		return "artifact";
 	}
 	return "unknown";
 }
@@ -410,6 +440,7 @@ size_t player_save_worker_pulse(player_save_completion *completions_out, size_t 
 		completions_out[consumed++] = results.front();
 		results.pop_front();
 	}
+	update_depth_health_locked();
 	return consumed;
 }
 
@@ -417,7 +448,16 @@ bool player_save_worker_pid_pending(int pid)
 {
 	if (pid <= 0)
 		return false;
-	return persistence_writer_pending(persistence_job_kind::player, static_cast<uint64_t>(pid));
+	std::lock_guard<std::mutex> lock(worker_mutex);
+	if (inflight && inflight->kind == persistence_job_kind::player &&
+	    inflight->snapshot.pid == pid)
+		return true;
+	if (queued_by_owner.count({ persistence_job_kind::player, static_cast<uint64_t>(pid) }))
+		return true;
+	for (const auto &completion : results)
+		if (completion.kind == persistence_job_kind::player && completion.pid == pid)
+			return true;
+	return false;
 }
 
 bool persistence_writer_pending(persistence_job_kind kind, uint64_t owner)

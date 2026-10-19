@@ -650,7 +650,8 @@ def test_payment_durability_is_one_write() -> None:
     if bodies:
         body = strip_comments(bodies[0])
         check(
-            "sql_queue_statements(sql_save_guild_statements(" in body
+            "kingdom_queue_guild_save(" in body
+            and "sql_save_guild_statements(" in body
             and "sql_in_transaction" not in body,
             "sql_save_guild queues its statements as one writer job",
         )
@@ -682,7 +683,6 @@ def test_payment_durability_is_one_write() -> None:
     for decl in (
         r"\bbool\s+kingdom_persist_payment\s*\(\s*Guild\s*\*\s*\w+\s*,\s*kingdom_realm\s*&\s*\w+\s*\)\s*;",
         r"\bvoid\s+kingdom_upkeep_retry_pending\s*\(\s*void\s*\)\s*;",
-        r"\bvoid\s+kingdom_upkeep_forget_guild\s*\(\s*int\s+\w+\s*\)\s*;",
         r"\bvoid\s+kingdom_upkeep_reset\s*\(\s*void\s*\)\s*;",
     ):
         check(
@@ -721,9 +721,9 @@ def test_payment_durability_is_one_write() -> None:
             "Guild::save_with_kingdom",
         )
         check(
-            re.search(r"kingdom_db_save_payment_pair\s*\(\s*sql_save_guild_statements\s*\(",
-                      mariadb) is not None,
-            "the MariaDB payment path queues the guild's statements and the realm as one job",
+            "guild->save()" in mariadb and "payment_pending = true" in mariadb
+            and "payment_pending = false" not in mariadb,
+            "the MariaDB payment path stays pending through the ordinary guild snapshot receipt",
         )
         # A failed pair must leave the realm payment_pending, either set here
         # or by a helper in this file whose body sets it.
@@ -758,7 +758,7 @@ def test_payment_durability_is_one_write() -> None:
             and "flatfile_authority_transaction_commit_operations(" in code,
             "the guild and realm catalogue after-images share one authority transaction",
         )
-    sql_pair = [b for b in paired if "sql_queue_work(" in b]
+    sql_pair = function_bodies(db, r"\bsql_work\s+kingdom_guild_save_work\s*\(")
     check(len(sql_pair) == 1, "the MariaDB paid-pair writer is defined", f"{len(paired)}")
     if sql_pair:
         code = strip_comments(sql_pair[0])
@@ -857,14 +857,13 @@ def test_payment_durability_is_one_write() -> None:
         "kingdom_claim.c persists its debits through kingdom_persist_payment",
     )
     # The module core owns the guild-deleted hook and the shutdown/copyover
-    # flushes, so it is where the retry list is forgotten, drained and reset.
+    # flushes, so it is where pending realm state is drained and reset.
     core = "\n".join(
         strip_comments(p.read_text(encoding="latin-1"))
         for p in sorted((SRC / "kingdom").glob("*.c"))
         if p.name != "kingdom_upkeep.c"
     )
     for hook in (
-        "kingdom_upkeep_forget_guild",
         "kingdom_upkeep_retry_pending",
         "kingdom_upkeep_reset",
     ):
@@ -2725,7 +2724,7 @@ def test_kingdom_build_pays_first_and_credits_back_a_room_that_fails() -> None:
         "a room that cannot be raised has its charge credited back and the pair written",
     )
     check(
-        re.search(r"\bdurable\s*=\s*credited\s*&&\s*kingdom_persist_paid_change\(", failed)
+        re.search(r"\b\w+\s*=\s*credited\s*&&\s*kingdom_persist_paid_change\(", failed)
         is not None,
         "the credit-back pair is written only when the credit went through, never published "
         "as 'BUILD CREDITED' after a refused credit",

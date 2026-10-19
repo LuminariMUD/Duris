@@ -214,11 +214,6 @@ The last category includes inspector compilation and process startup; it is not
 solely gameplay time. Cache keys hash environment values without storing their
 plaintext in manifests. Never check cache artifacts into Git.
 
-Measured once on 2026-09-10 (four-CPU Ubuntu 24.04 container, four workers, GCC
-13.3.0): the Python gate took 1,315 s with five server builds, 911 s with an empty
-artifact cache (one build, 30.7% faster) and 781 s with a retained cache (no build,
-40.6% faster). These are single-run, host-specific numbers, not an SLA.
-
 ## Before a merge
 
 Run the gate, one command after the other, on a quiet machine. The performance
@@ -231,8 +226,8 @@ make test-all -j16 TEST_JOBS=16
 make test-db
 ```
 
-`make test-all` takes about 10 minutes and `make test-db` about 3½ (16 cores,
-2026-09-29). Run these only when the change touches what they check:
+Runtime depends on the host, selected tests, and build cache. Run the following
+additional checks when the change touches what they check:
 
 | Check | When |
 | --- | --- |
@@ -344,8 +339,7 @@ experiments without using the configured database:
 Normal runs keep their original deadlines and successful-fixture cleanup.
 Classify failures by boot, manual save, camp, recovery, or shutdown; distinguish
 an observation timeout from a rejected save. Retain the revision/worker timeline
-before diagnosing storage or scheduler latency. A passing rerun cannot establish
-the cause of a historical failure whose timeline was discarded.
+before diagnosing storage or scheduler latency. A passing rerun does not explain a failure whose timeline was discarded.
 
 The separate combat journey reconnects after creation to hydrate account-bank
 revision and disables optional boons. It proves that stated fixture scope;
@@ -394,7 +388,7 @@ measurements, or complete fault/reconciliation matrix the 200-player gate requir
 
 ### Account recovery contracts
 
-Password reset by email is covered by an executed core harness (injected mail sender and
+Password reset by email has a core harness (injected mail sender and
 clock, no network), a wire-level SMTP harness against a fake relay on `127.0.0.1`, a
 source-contract pin set, and a telnet journey that boots the client-free server with a
 fake relay. None of them needs a real relay or a database; the compiled harnesses need
@@ -409,8 +403,7 @@ python3 tests/async/test_account_recovery_journey.py
 
 The harnesses never print a reset code or an address; a captured code reaches the driver
 only through a temporary file. TLS/STARTTLS and SMTP AUTH are not exercised (the fake relay
-is plaintext on loopback, which the configuration rules permit), so the first production
-send is the first evidence for a real relay.
+is plaintext on loopback, which the configuration rules permit), so those fixtures do not qualify a real relay.
 
 ### Lifecycle and privacy contracts
 

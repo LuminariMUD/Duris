@@ -255,6 +255,13 @@ history_checksum=$("${MYSQL[@]}" -e "SELECT LOWER(HEX(history_checksum)) FROM mu
 verify() { docker exec -e ENVIRONMENT=test -e DB_HOST=127.0.0.1 -e DB_PORT=3306 -e DB_USER=root -e DB_PASSWD="$PASSWORD" -e DB_NAME="$DB_NAME" -e RUNTIME_COMPATIBILITY_MANIFEST=/tmp/runtime_compatibility_manifest.json "$NAME" /tmp/verify_runtime_compatibility.sh; }
 expect_reject() { if verify >/dev/null 2>&1; then echo "runtime drift was accepted: $1" >&2; exit 1; fi; }
 verify >/dev/null
+"${MYSQL[@]}" -e 'ALTER TABLE pkill_info RENAME COLUMN webinfo_at_capture TO unknown_capture_column;'
+expect_reject missing-capture-permission
+"${MYSQL[@]}" -e 'ALTER TABLE pkill_info RENAME COLUMN unknown_capture_column TO webinfo_at_capture;'
+"${MYSQL[@]}" -e 'ALTER TABLE pkill_info MODIFY webinfo_at_capture SMALLINT NULL DEFAULT NULL;'
+expect_reject malformed-capture-permission
+"${MYSQL[@]}" -e 'ALTER TABLE pkill_info MODIFY webinfo_at_capture TINYINT NULL DEFAULT NULL;'
+verify >/dev/null
 for table in kingdom_garrison epic_stone_claim telemetry_session telemetry_interval telemetry_config telemetry_player_day telemetry_cohort_day telemetry_rollup_state; do
     "${MYSQL[@]}" -e "RENAME TABLE $table TO ${table}_drift;"
     expect_reject "missing-$table"

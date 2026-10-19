@@ -40,7 +40,9 @@ poof = function_body(artifact, "void event_artifact_check_poof_sql(")
 assert "ARTIFACT_EXPIRY_BATCH_SIZE = 1" in artifact
 assert "artifact_rows.upper_bound(cursor_vnum)" in poof
 assert "expired_rows.size() < ARTIFACT_EXPIRY_BATCH_SIZE" in poof
-assert "artifact_expire(page_last_vnum)" in poof
+assert "retire_expired_artifact(row.live_object)" in poof
+assert "artifact_identity_state::absent" in poof
+assert "artifact_expire(" not in poof
 assert "nevent_periodic_continue_after(1);" in poof
 assert "qry(" not in poof
 # An offline owner loads off the loop; its items were saved with it and leave with it,
@@ -55,7 +57,9 @@ wars = function_body(artifact, "void event_artifact_wars_sql(")
 assert "ARTIFACT_WARS_OWNER_BATCH_SIZE = 4" in artifact
 assert "row.location <= cursor_pid" in wars
 assert "owner_count < ARTIFACT_WARS_OWNER_BATCH_SIZE" in wars
-assert "static_cast<double>(row.timer - now) *" in wars
+assert "artifact_wars_burn(entry.pid, now, retained)" in wars
+assert "static_cast<double>(row.timer - now) *" in function_body(
+    artifact, "bool artifact_wars_burn(")
 assert "nevent_periodic_continue_after(1);" in wars
 assert "qry(" not in wars
 assert "arti_list" not in artifact and "add_artidata_to_list" not in artifact

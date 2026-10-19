@@ -28,6 +28,14 @@ started=$SECONDS
 
 # Longest first.
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
+artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server $SERVER
+artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server $SERVER
+epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server $SERVER
+nexus_journey $DB python3 tests/async/test_mysql_nexus_journey.py --server $SERVER
+hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server $SERVER
+epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server $SERVER
+epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
+artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
 game_loop_budget $DB python3 tests/async/test_mysql_game_loop_budget_journey.py --server $SERVER
 world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py $SERVER crash
@@ -46,11 +54,13 @@ world_restart_handover $DB python3 tests/async/run_world_restart_journey.py $SER
 world_restart_slowread $DB python3 tests/async/run_world_restart_journey.py $SERVER slowread
 saved_item_recovery $DB python3 tests/async/run_saved_item_recovery_journey.py $SERVER
 playtime $DB python3 tests/async/test_mysql_playtime_journey.py --server $SERVER
+staff_poof $DB python3 tests/async/test_staff_poof_journey.py --server $SERVER
 runtime_compatibility tests/async/run_runtime_compatibility_mysql.sh
 runtime_compatibility_mariadb_11_8 env RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
 migration_runner_engines python3 tests/async/run_migration_runner_engines.py
 corpse_haul $DB python3 tests/async/run_corpse_haul_journey.py $SERVER
 corpse_haul_count_cap $DB python3 tests/async/run_corpse_haul_count_cap_journey.py $SERVER mariadb
+corpse_trap_restart $DB python3 tests/async/test_corpse_trap_restart_journey.py $SERVER mariadb
 information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server $SERVER
 deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server $SERVER
 stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
@@ -95,6 +105,7 @@ legacy_personal_locker_access_repair tests/async/run_legacy_personal_locker_acce
 player_replacement_state tests/async/run_player_replacement_state_mysql.sh
 epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
 auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
+auction_list $DB python3 tests/async/run_auction_list_journey.py --server $SERVER
 artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh
 statistics $DB bash tests/async/run_statistics_mysql.sh
 session_audit $DB tests/async/run_session_audit_schema_mysql.sh

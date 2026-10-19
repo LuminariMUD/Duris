@@ -21,6 +21,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <unordered_set>
 
 namespace
 {
@@ -870,4 +871,75 @@ bool world_recovery_floor_object_root_uid(const unsigned char *encoded, size_t e
 		return false;
 	*root_uid = get_u64(wire + WORLD_RECOVERY_WIRE_OBJECT_HEADER_BYTES);
 	return *root_uid != 0;
+}
+
+bool world_recovery_read_object_record(const unsigned char *data, size_t size,
+				       world_recovery_object_record *record_out,
+				       std::vector<world_recovery_item_snapshot> *items_out)
+{
+	if (!data || !record_out || !items_out ||
+	    size < sizeof(world_recovery_object_record) + sizeof(world_recovery_item_snapshot))
+		return false;
+	world_recovery_object_record record = {};
+	memcpy(&record, data, sizeof(record));
+	if (!record.item_count || record.item_count > WORLD_RECOVERY_MAX_ITEM_TREE ||
+	    size != sizeof(record) + static_cast<size_t>(record.item_count) *
+					     sizeof(world_recovery_item_snapshot))
+		return false;
+	try
+	{
+		std::vector<world_recovery_item_snapshot> items(record.item_count);
+		memcpy(items.data(), data + sizeof(record), items.size() * sizeof(items[0]));
+		std::unordered_set<uint64_t> parents;
+		parents.reserve(items.size());
+		const auto root_uid = items[0].item_uid;
+		for (size_t index = 0; index < items.size(); ++index)
+		{
+			const auto &item = items[index];
+			for (int timer_index = 0; timer_index < 6; ++timer_index)
+				if (static_cast<int64_t>(static_cast<time_t>(
+					    item.timers[timer_index])) != item.timers[timer_index])
+					return false;
+			for (int affect_index = 0; affect_index < MAX_OBJ_AFFECT; ++affect_index)
+				if (item.affect_locations[affect_index] < 0 ||
+				    item.affect_locations[affect_index] > SCHAR_MAX ||
+				    item.affect_modifiers[affect_index] < SCHAR_MIN ||
+				    item.affect_modifiers[affect_index] > SCHAR_MAX)
+					return false;
+			if (item.material < 0 || item.material > SCHAR_MAX ||
+			    item.trap_eff < SHRT_MIN || item.trap_eff > SHRT_MAX ||
+			    item.trap_dam < SHRT_MIN || item.trap_dam > SHRT_MAX ||
+			    item.trap_charge < SHRT_MIN || item.trap_charge > SHRT_MAX ||
+			    item.trap_level < SHRT_MIN || item.trap_level > SHRT_MAX ||
+			    item.condition < SHRT_MIN || item.condition > SHRT_MAX ||
+			    item.craftsmanship < SHRT_MIN || item.craftsmanship > SHRT_MAX ||
+			    item.z_cord < SHRT_MIN || item.z_cord > SHRT_MAX ||
+			    item.bitvector > ULONG_MAX || item.bitvector2 > ULONG_MAX ||
+			    item.bitvector3 > ULONG_MAX || item.bitvector4 > ULONG_MAX ||
+			    item.bitvector5 > ULONG_MAX)
+				return false;
+			if (!item.item_uid || item.item_uid > ULONG_MAX || !item.root_item_uid ||
+			    item.root_item_uid != root_uid || item.vnum <= 0 || item.type < 0 ||
+			    item.type > ITEM_LAST ||
+			    (item.flags & ~WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED) ||
+			    !memchr(item.name, 0, sizeof(item.name)) ||
+			    !memchr(item.short_description, 0, sizeof(item.short_description)) ||
+			    !memchr(item.description, 0, sizeof(item.description)) ||
+			    !memchr(item.action_description, 0, sizeof(item.action_description)) ||
+			    (index == 0 && item.parent_item_uid) ||
+			    (index != 0 && (!item.parent_item_uid ||
+					    parents.find(item.parent_item_uid) == parents.end())))
+				return false;
+
+			if (!parents.insert(item.item_uid).second)
+				return false;
+		}
+		*record_out = record;
+		*items_out = std::move(items);
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
 }

@@ -32,7 +32,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 ACCOUNT = "Pulseacct"
 CHARACTER = "Pulsewarden"
 EMAIL = "pulse@example.invalid"
-PROMPTS = ("<>",)
+PROMPTS = ("Pos: standing >", "<>")
 
 
 def require(condition: bool, message: str) -> None:

@@ -55,7 +55,9 @@ sys.modules[runner_spec.name] = runner
 runner_spec.loader.exec_module(runner)
 expected_resource_intensive = {
     "test_account_recovery_journey.py",
+    "test_artifact_owner_restart_journey.py",
     "test_connection_limit_journey.py",
+    "test_corpse_trap_restart_journey.py",
     "test_creation_prompt_journey.py",
     "test_character_mechanics_journey.py",
     "test_game_loop_session_journey.py",
@@ -77,8 +79,14 @@ expected_resource_intensive = {
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
+    "test_artifact_population_repository.py",
+    "test_discord_game_journey.py",
+    "test_epic_task_catalog_mysql.py",
+    "test_epic_task_recovery_journey.py",
     "test_mysql_playtime_journey.py",
+    "test_mysql_nexus_journey.py",
     "test_playtime_mysql_repository.py",
+    "test_staff_poof_journey.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
 required_mechanics = {
@@ -90,6 +98,7 @@ assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",
     "test_playtime_flatfile.py",
+    "test_discord_bridge_runtime.py", "test_discord_petition_export.py",
 } <= discovered
 sample_tests = [
     Path("test_fast.py"),

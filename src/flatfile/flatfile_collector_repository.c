@@ -609,6 +609,39 @@ unsigned int policy_code(collector::outcome outcome)
 }
 } // namespace
 
+flatfile_collector_repository_result
+flatfile_collector_repository_read_payloads(const std::string &root,
+					    std::vector<collector_listing_detail> *listings,
+					    std::string *error)
+{
+	if (root.empty() || !listings)
+		return flatfile_collector_repository_result::invalid;
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error))
+		return flatfile_collector_repository_result::io_error;
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_collector_repository_result::ok)
+		return recovered;
+	collector_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_collector_repository_result::ok &&
+	    loaded != flatfile_collector_repository_result::not_found)
+		return loaded;
+	std::vector<collector_listing_detail> staged;
+	try
+	{
+		for (const auto &listing : catalog.listings)
+			if (!listing.item_blob.empty())
+				staged.push_back({ listing.entry, listing.item_blob });
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_collector_repository_result::io_error;
+	}
+	*listings = std::move(staged);
+	return flatfile_collector_repository_result::ok;
+}
+
 flatfile_collector_repository_result flatfile_collector_repository_read_bootstrap(
 	const std::string &root, collector_bootstrap_snapshot *snapshot, std::string *error)
 {

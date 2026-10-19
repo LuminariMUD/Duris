@@ -77,6 +77,7 @@ extern P_room world;
 extern struct zone_data *zone_table;
 extern P_index mob_index;
 extern const char *dirs[];
+extern const char *planes_name[];
 // extern int rev_dir[];
 extern P_char character_list;
 extern struct time_info_data time_info;
@@ -2451,6 +2452,9 @@ void do_flurry(P_char ch, char * /*arg*/, int /*cmd*/)
 
 void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 {
+	char plane[MAX_INPUT_LENGTH];
+	int plane_id;
+
 	if (IS_FIGHTING(ch))
 	{
 		send_to_char("You're too busy fighting!\n", ch);
@@ -2468,6 +2472,17 @@ void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 	{
 		send_to_char("There is too much adrenaline pumping through your body to do that.\n",
 			     ch);
+		return;
+	}
+
+	// Reject a bad plane name before check_innate_time() spends the use.
+	one_argument(arg, plane);
+	plane_id = search_block(plane, planes_name, FALSE);
+	if (plane_id < 0 || plane_id > 8)
+	{
+		send_to_char(
+			"You may only travel to the Prime, Negative, Hell, Ethereal, Astral, Earth, Fire, Water or Air planes!\r\n",
+			ch);
 		return;
 	}
 
@@ -3650,11 +3665,45 @@ void do_innate(P_char ch, char *arg, int cmd)
 		return;
 	}
 
+	char *handler_args = innate_args;
+	char *rest = arg && cmd != CMD_SUMMON ? skip_spaces(arg) : NULL;
+
+	// Resolve an owned full name before abbreviations: "summon warg" must not
+	// select the earlier "summon horde" entry. Keep the arguments after that name.
 	for (i = 0; i <= LAST_INNATE; i++)
 	{
-		if (is_abbrev(innate_name, innates_data[i].name) && has_innate(ch, i))
+		const char *name = innates_data[i].name;
+		if (!rest || !strchr(name, ' ') || !has_innate(ch, i))
+			continue;
+
+		char *input = rest;
+		while (*name)
 		{
+			size_t len = strcspn(name, " ");
+			if (strn_cmp(input, name, len) ||
+			    (input[len] && !isspace((unsigned char)input[len])))
+				break;
+			input += len;
+			while (isspace((unsigned char)*input))
+				input++;
+			name += len;
+			if (*name)
+				name++;
+		}
+		if (!*name)
+		{
+			handler_args = input;
 			break;
+		}
+	}
+	if (i > LAST_INNATE)
+	{
+		for (i = 0; i <= LAST_INNATE; i++)
+		{
+			if (is_abbrev(innate_name, innates_data[i].name) && has_innate(ch, i))
+			{
+				break;
+			}
 		}
 	}
 
@@ -3663,7 +3712,7 @@ void do_innate(P_char ch, char *arg, int cmd)
 		CHARACTER_MECHANIC_SITE(innate_dispatch);
 		if (innates_data[i].func)
 		{
-			(innates_data[i].func)(ch, innate_args, CMD_INNATE);
+			(innates_data[i].func)(ch, handler_args, CMD_INNATE);
 		}
 		else
 		{
@@ -4095,7 +4144,7 @@ void webwrap(P_char ch, P_char victim)
 	struct affected_type af;
 	int chance;
 
-	if (check_freedom_of_movement(victim, number(0, 1)) && !IS_TRUSTED(ch))
+	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your webs!&n\r\n", ch);
 		return;
@@ -4195,8 +4244,7 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 	    TO_NOTVICT);
 
 	// Webbing is stopped by freedom of movement, then evade.
-	if (check_freedom_of_movement(
-		    victim, GET_LEVEL(ch) - GET_LEVEL(victim) >= 10 ? true : number(0, 1)))
+	if (check_freedom_of_movement(victim))
 	{
 		act("The webbing slides harmlessly off $N.", FALSE, ch, 0, victim, TO_CHAR);
 		act("The webbing slides harmlessly off you.", FALSE, ch, 0, victim, TO_VICT);
@@ -4471,81 +4519,111 @@ void event_halfling_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*
 	add_event(event_halfling_check, 3 * WAIT_SEC, ch, 0, 0, 0, 0, 0);
 }
 
+static P_char visible_hatred_enemy(P_char ch)
+{
+	if (!IS_ALIVE(ch) || ch->in_room == NOWHERE || !has_innate(ch, INNATE_HATRED))
+		return NULL;
+
+	for (int i = 0; race_hatred_data[i][0] != -1; ++i)
+	{
+		if (race_hatred_data[i][0] != GET_RACE(ch))
+			continue;
+
+		P_char target;
+		LOOP_THRU_PEOPLE(target, ch)
+		{
+			if (target == ch || !CAN_SEE(ch, target))
+				continue;
+			for (int z = 1; z < MAX_HATRED && race_hatred_data[i][z] != -1; ++z)
+				if (GET_RACE(target) == race_hatred_data[i][z])
+					return target;
+		}
+		break;
+	}
+	return NULL;
+}
+
+static void clear_hatred(P_char ch)
+{
+	for (struct affected_type *af = ch->affected, *next; af; af = next)
+	{
+		next = af->next;
+		if (af->type == TAG_HATRED)
+		{
+			// The last live node supplies the existing single wear-off message.
+			wear_off_message(ch, af);
+			affect_remove(ch, af);
+		}
+	}
+}
+
+bool start_hatred_check(P_char ch)
+{
+	if (!IS_ALIVE(ch))
+		return FALSE;
+
+	// Entry and rearm share one owner, even after repeated entry or reconnect.
+	disarm_char_nevents(ch, event_hatred_check);
+	int delay = get_property("innate.timer.hatred", WAIT_SEC);
+	if (delay <= 0)
+		delay = WAIT_SEC;
+	if (!add_event(event_hatred_check, delay, ch, 0, 0, 0, 0, 0))
+	{
+		logit(LOG_DEBUG, "Hatred watcher could not be scheduled; clearing its affects.");
+		clear_hatred(ch);
+		return FALSE;
+	}
+	return TRUE;
+}
+
 void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
-	// int CH_RACE = GET_RACE(ch);
-	// LOOP_ROOM....
-	// for each ch in room diffrent then CH
-	// loop your table and figure out if hatred should be updated.
-	struct affected_type af, *afp, *next_af;
-	P_char tch = NULL;
-	int x = 0, i = 0, z = 1;
-	int found = FALSE;
-
-	if (!has_innate(ch, INNATE_HATRED))
+	// Own the unlimited pair before granting or retaining it.
+	if (!start_hatred_check(ch))
 		return;
 
-	for (i = 0, x = race_hatred_data[i][0]; x == GET_RACE(ch) || x == -1 || found;
-	     i++, x = race_hatred_data[i][0])
+	P_char enemy = visible_hatred_enemy(ch);
+	int count = 0, combat = 0, spell = 0;
+	bool malformed = FALSE;
+	for (struct affected_type *af = ch->affected; af; af = af->next)
 	{
-		if (x == -1 || found)
-			break;
-
-		LOOP_THRU_PEOPLE(tch, ch)
-		{
-			if (tch == ch)
-				continue;
-			if (!CAN_SEE(ch, tch))
-				continue;
-
-			for (z = 1; z < MAX_HATRED && race_hatred_data[i][z] != -1 && !found; z++)
-			{
-				if (race_hatred_data[i][z] == GET_RACE(tch))
-				{
-					found = TRUE;
-					for (afp = ch->affected; afp; afp = next_af)
-					{
-						next_af = afp->next;
-						if (afp->type == TAG_HATRED)
-							afp->duration = 1;
-					}
-
-					if (!get_spell_from_char(ch, TAG_HATRED))
-					{
-						memset(&af, 0, sizeof(af));
-						af.type = TAG_HATRED;
-						af.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL;
-						af.location = APPLY_COMBAT_PULSE;
-						af.modifier = -1;
-						af.duration = 1;
-						affect_to_char(ch, &af);
-						af.location = APPLY_SPELL_PULSE;
-						af.modifier = -1;
-						af.duration = 1;
-						affect_to_char(ch, &af);
-						act("At the sight of your nemesis the hatred of old generations &+rBURN&n in your blood!",
-						    FALSE, ch, 0, tch, TO_CHAR);
-					}
-				}
-			}
-		}
-	}
-	if (!found)
-	{
-		for (afp = ch->affected; afp; afp = next_af)
-		{
-			next_af = afp->next;
-
-			if (afp->type == TAG_HATRED)
-			{
-				wear_off_message(ch, afp);
-				affect_remove(ch, afp);
-			}
-		}
+		if (af->type != TAG_HATRED)
+			continue;
+		++count;
+		if (af->modifier != -1 || af->duration != -1 ||
+		    af->flags != (AFFTYPE_NOSAVE | AFFTYPE_NODISPEL) || af->bitvector ||
+		    af->bitvector2 || af->bitvector3 || af->bitvector4 || af->bitvector5)
+			malformed = TRUE;
+		if (af->location == APPLY_COMBAT_PULSE)
+			++combat;
+		else if (af->location == APPLY_SPELL_PULSE)
+			++spell;
 	}
 
-	add_event(event_hatred_check, get_property("innate.timer.hatred", WAIT_SEC), ch, 0, 0, 0, 0,
-		  0);
+	if (enemy)
+	{
+		if (count != 2 || combat != 1 || spell != 1 || malformed)
+		{
+			// Normalize outside a traversal; bulk removal releases every Hatred node.
+			affect_from_char(ch, TAG_HATRED);
+			struct affected_type af = {};
+			af.type = TAG_HATRED;
+			af.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL;
+			af.modifier = -1;
+			af.duration = -1;
+			af.location = APPLY_COMBAT_PULSE;
+			affect_to_char(ch, &af);
+			af.location = APPLY_SPELL_PULSE;
+			affect_to_char(ch, &af);
+		}
+		if (!count)
+			act("At the sight of your nemesis the hatred of old generations &+rBURN&n in your blood!",
+			    FALSE, ch, 0, enemy, TO_CHAR);
+	}
+	else
+	{
+		clear_hatred(ch);
+	}
 }
 
 bool rapier_dirk_check(P_char ch) // now known as swashbuckling, single weapon.

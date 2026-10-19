@@ -53,6 +53,9 @@ unsigned int claim_transfer_item(MYSQL *connection, const item_owner_identity &h
 // (its contents) still references is kept for the foreign keys; the pass repeats until
 // it deletes nothing, so a container goes after its contents. *deleted counts the rows.
 // Returns 0, or the MySQL error code of the statement that failed.
-unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted);
+// Optional sorted retained UIDs come from the complete boot population cut,
+// including recovery and other payload domains not covered by the legacy joins.
+unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted,
+				      const std::vector<uint64_t> *retained = nullptr);
 
 #endif

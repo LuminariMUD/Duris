@@ -16,9 +16,12 @@
 #include "player/character_mechanics.h"
 
 #include "net/comm.h"
+#include "guild/artifact_admission.h"
+#include <cerrno>
 #include "item/item_ownership_runtime.h"
 #include "item/encumbrance_policy.h"
 #include "player/player_snapshot_codec.h"
+#include "sql/item_extra_descr_codec.h"
 #include "core/prototypes.h"
 #include "magic/spells.h"
 #include "core/structs.h"
@@ -47,7 +50,10 @@ class staged_item_graph
 			return;
 		for (P_obj object : objects)
 			if (object)
+			{
+				artifact_object_extracted(object, false);
 				object->obj_uid = 0;
+			}
 		if (linked)
 		{
 			for (size_t index = 0; index < objects.size(); ++index)
@@ -78,6 +84,7 @@ void clear_item_uids(P_obj object)
 {
 	if (!object)
 		return;
+	artifact_object_extracted(object, false);
 	object->obj_uid = 0;
 	for (P_obj child = object->contains; child; child = child->next_content)
 		clear_item_uids(child);
@@ -213,6 +220,7 @@ metadata_validation_outcome valid_item_metadata(const player_item_snapshot &item
 		     affect[1] > INT8_MAX))
 			return metadata_validation_outcome::invalid;
 	std::unordered_set<std::string> descriptions;
+	bool trap_state_seen = false;
 	try
 	{
 		descriptions.reserve(item.extra_descriptions.size());
@@ -220,9 +228,21 @@ metadata_validation_outcome valid_item_metadata(const player_item_snapshot &item
 		     item.extra_descriptions)
 		{
 			if (description.keyword.size() > PLAYER_SNAPSHOT_MAX_STRING_BYTES ||
-			    description.description.size() > PLAYER_SNAPSHOT_MAX_STRING_BYTES ||
-			    description.spellbook != (description.keyword == "SPELLBOOK"))
+			    description.description.size() > PLAYER_SNAPSHOT_MAX_STRING_BYTES)
 				return metadata_validation_outcome::invalid;
+			int16_t effect = 0, damage = 0, charges = 0, level = 0;
+			const auto trap = sql_decode_item_trap_state(
+				description.keyword.c_str(), description.description.c_str(),
+				&effect, &damage, &charges, &level);
+			if (trap == sql_item_trap_state_decode_status::invalid ||
+			    (trap == sql_item_trap_state_decode_status::decoded &&
+			     (trap_state_seen || description.spellbook ||
+			      !description.spell_ids.empty())) ||
+			    (trap == sql_item_trap_state_decode_status::not_trap_state &&
+			     description.spellbook != (description.keyword == "SPELLBOOK")))
+				return metadata_validation_outcome::invalid;
+			trap_state_seen = trap_state_seen ||
+					  trap == sql_item_trap_state_decode_status::decoded;
 			std::string key = description.keyword;
 			key.push_back('\0');
 			key += description.description;
@@ -305,6 +325,18 @@ void apply_extra_descriptions(P_obj object, const player_item_snapshot &item)
 	for (auto description = item.extra_descriptions.rbegin();
 	     description != item.extra_descriptions.rend(); ++description)
 	{
+		int16_t effect = 0, damage = 0, charges = 0, level = 0;
+		if (sql_decode_item_trap_state(description->keyword.c_str(),
+					       description->description.c_str(), &effect, &damage,
+					       &charges, &level) ==
+		    sql_item_trap_state_decode_status::decoded)
+		{
+			object->trap_eff = effect;
+			object->trap_dam = damage;
+			object->trap_charge = charges;
+			object->trap_level = level;
+			continue;
+		}
 		if (already_present(*description))
 			continue;
 		extra_descr_data *entry;
@@ -332,7 +364,8 @@ void apply_extra_descriptions(P_obj object, const player_item_snapshot &item)
 
 void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects,
 			     const std::vector<size_t> &roots,
-			     const std::vector<player_item_snapshot> &items)
+			     const std::vector<player_item_snapshot> &items,
+			     const std::vector<item_ownership_runtime_entry> &ownership)
 {
 	P_obj carrying_tail = character->carrying;
 	while (carrying_tail && carrying_tail->next_content)
@@ -370,6 +403,11 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 				object->g_key = 1;
 		}
 	}
+	for (size_t index = 0; index < objects.size(); ++index)
+	{
+		artifact_object_placed(objects[index]);
+		artifact_reconcile_player_owner(objects[index], &ownership[index]);
+	}
 	balance_affects(character);
 }
 }
@@ -381,7 +419,9 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 			    const std::vector<player_load_item_identity> &identities,
 			    const item_owner_identity &expected_owner, uint64_t owner_revision,
 			    bool hydrate_ownership, bool complete_snapshot_state,
-			    player_load_item_materialize_metrics *metrics)
+			    player_load_item_materialize_metrics *metrics,
+			    const std::vector<artifact_payload_projection> *admission = nullptr,
+			    bool committed_creation = false)
 {
 	player_load_item_materialize_metrics local_metrics = {};
 	if (!metrics)
@@ -394,7 +434,8 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 	    !item_owner_identity_valid(expected_owner) ||
 	    expected_owner.type == item_owner_type::system ||
 	    expected_owner.type == item_owner_type::destruction ||
-	    identities.size() != item_count || item_count > PLAYER_LOAD_ITEM_MAX)
+	    identities.size() != item_count || item_count > PLAYER_LOAD_ITEM_MAX ||
+	    (admission && admission->size() != item_count))
 		return fail(metrics,
 			    item_count > PLAYER_LOAD_ITEM_MAX ?
 				    player_load_item_materialize_outcome::limit_exceeded :
@@ -582,10 +623,73 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 		if (object_number < 0)
 			return fail(metrics,
 				    player_load_item_materialize_outcome::unknown_prototype);
-		P_obj object = read_object(object_number, REAL);
+		artifact_payload_projection owned_source = {};
+		if (!admission)
+		{
+			// These identities have already passed the owner/revision/topology
+			// checks above. Reserve their saved artifact UID before construction.
+			switch (expected_owner.type)
+			{
+			case item_owner_type::player:
+				owned_source.domain = artifact_payload_domain::player;
+				break;
+			case item_owner_type::pet:
+				owned_source.domain = artifact_payload_domain::pet;
+				break;
+			case item_owner_type::corpse:
+				owned_source.domain = artifact_payload_domain::corpse;
+				break;
+			case item_owner_type::locker:
+				owned_source.domain = artifact_payload_domain::locker;
+				break;
+			case item_owner_type::room:
+				owned_source.domain = artifact_payload_domain::room;
+				break;
+			case item_owner_type::shopkeeper:
+				owned_source.domain = artifact_payload_domain::shopkeeper;
+				break;
+			case item_owner_type::auction:
+				owned_source.domain = artifact_payload_domain::auction;
+				break;
+			case item_owner_type::collector:
+				owned_source.domain = artifact_payload_domain::collector;
+				break;
+			case item_owner_type::container:
+				owned_source.domain = artifact_payload_domain::embedded;
+				break;
+			default:
+				return fail(metrics,
+					    player_load_item_materialize_outcome::invalid_snapshot);
+			}
+			owned_source.row_id = identity.database_id;
+			owned_source.item_uid = identity.item_uid;
+			owned_source.payload_root_item_uid = identity.root_item_uid;
+			owned_source.parent_item_uid = identity.parent_item_uid;
+			owned_source.owner_reference = static_cast<int64_t>(expected_owner.id);
+			owned_source.owner_context = expected_owner.context_id;
+			owned_source.payload_owner = expected_owner;
+			owned_source.vnum = item.vnum;
+			owned_source.extra_flags = item.extra_flags;
+			owned_source.extra_flags_present = true;
+			owned_source.quantity = identity.quantity;
+			owned_source.custody_examined = owned_source.custody_found =
+				owned_source.custody_owner_revision_found = true;
+			owned_source.custody = {
+				identity.item_uid, identity.root_item_uid, identity.parent_item_uid,
+				expected_owner,	   identity.item_revision, owner_revision,
+				item.vnum,	   identity.state
+			};
+		}
+		const auto &source = admission ? (*admission)[index] : owned_source;
+		errno = 0;
+		P_obj object = committed_creation ? read_object_for_creation_repair(source) :
+						    read_object_for_recovery(source);
 		if (!object)
-			return fail(metrics,
-				    player_load_item_materialize_outcome::allocation_failure);
+			return fail(
+				metrics,
+				errno == ENOMEM ?
+					player_load_item_materialize_outcome::allocation_failure :
+					player_load_item_materialize_outcome::ownership_failure);
 		staged.objects[index] = object;
 		object->obj_uid = static_cast<unsigned long>(identity.item_uid);
 		object->db_item_id = static_cast<int>(identity.database_id);
@@ -721,7 +825,9 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 		for (size_t root : roots)
 			detached_roots->push_back(staged.objects[root]);
 	else
-		attach_loaded_inventory(character, staged.objects, roots, items);
+		attach_loaded_inventory(character, staged.objects, roots, items, ownership);
+	for (P_obj object : staged.objects)
+		artifact_object_placed(object);
 	staged.published = true;
 	metrics->outcome = player_load_item_materialize_outcome::applied;
 	return true;
@@ -830,9 +936,9 @@ bool player_load_item_graph_materialize_creation(const item_transfer_payload &pa
 		return false;
 	}
 	player_load_item_materialize_metrics metrics = {};
-	return player_load_item_graph_materialize_detached(items, identities, payload.to_owner,
-							   result.to_owner_revision, false, true,
-							   roots, &metrics);
+	return materialize_item_graph(nullptr, roots, items, identities, payload.to_owner,
+				      result.to_owner_revision, false, true, &metrics, nullptr,
+				      true);
 }
 
 bool player_load_item_graph_materialize(P_char character,
@@ -858,12 +964,216 @@ bool player_load_item_graph_materialize(P_char character,
 		hydrate_ownership, false, metrics);
 }
 
+unsigned int player_load_items_qualify(player_load_result *result)
+{
+	if (!result || result->outcome != player_load_outcome::applied ||
+	    result->snapshot.items.size() != result->item_identities.size())
+		return EINVAL;
+	try
+	{
+		auto &sources = result->item_sources;
+		const auto &items = result->snapshot.items;
+		const auto &identities = result->item_identities;
+		if (result->authoritative_item_count < identities.size())
+			return EINVAL;
+		// Legacy-pet items share player custody and remain in this counter.
+		const size_t other_owned_items =
+			result->authoritative_item_count - identities.size();
+		std::unordered_map<uint64_t, size_t> source_by_id;
+		for (size_t index = 0; index < sources.size(); ++index)
+			if (!source_by_id.emplace(sources[index].row_id, index).second)
+				return EINVAL;
+		std::vector<std::vector<size_t>> neighbors(sources.size());
+		const auto connect = [&](uint64_t child, uint64_t parent)
+		{
+			const auto a = source_by_id.find(child), b = source_by_id.find(parent);
+			if (a != source_by_id.end() && b != source_by_id.end())
+			{
+				neighbors[a->second].push_back(b->second);
+				neighbors[b->second].push_back(a->second);
+			}
+		};
+		for (const auto &source : sources)
+			connect(source.row_id, source.parent_row_id);
+		// Repository filtering omits foreign payloads before the materialized
+		// list exists. Qualify those raw sources too, preserving artifact roots.
+		const item_owner_identity player = { item_owner_type::player,
+						     static_cast<uint64_t>(result->pid), 0 };
+		for (auto &source : sources)
+		{
+			if (source.retain || !source.custody_found ||
+			    item_owner_identity_equal(source.custody.owner, player))
+				continue;
+			artifact_payload_projection projection = {};
+			projection.domain = artifact_payload_domain::player;
+			projection.row_id = source.row_id;
+			projection.parent_row_id = source.parent_row_id;
+			projection.item_uid = source.item_uid;
+			projection.vnum = source.vnum;
+			projection.extra_flags = source.extra_flags;
+			projection.extra_flags_present = source.extra_flags_present;
+			projection.quantity = source.quantity;
+			projection.payload_root_item_uid = source.root_item_uid;
+			projection.owner_reference = result->pid;
+			projection.payload_owner = player;
+			projection.custody_examined = true;
+			projection.custody_found = source.custody_found;
+			projection.custody_owner_revision_found =
+				source.custody_owner_revision_found;
+			projection.custody = source.custody;
+			if (artifact_player_source_error(projection))
+				source.retain = true;
+		}
+		std::vector<artifact_payload_projection> projections(items.size());
+		std::vector<size_t> withheld;
+		bool alerted = false;
+		for (size_t index = 0; index < items.size(); ++index)
+		{
+			const auto &item = items[index];
+			const auto &identity = identities[index];
+			auto &projection = projections[index];
+			projection.domain = artifact_payload_domain::player;
+			projection.row_id = identity.database_id;
+			projection.item_uid = item.object_uid;
+			projection.vnum = item.vnum;
+			projection.extra_flags = item.extra_flags;
+			projection.extra_flags_present = true;
+			projection.quantity = identity.quantity;
+			projection.owner_reference = result->pid;
+			projection.payload_owner = { item_owner_type::player,
+						     static_cast<uint64_t>(result->pid), 0 };
+			const auto raw = source_by_id.find(identity.database_id);
+			if (raw != source_by_id.end())
+			{
+				const auto &source = sources[raw->second];
+				projection.parent_row_id = source.parent_row_id;
+				projection.payload_root_item_uid = source.root_item_uid;
+				const auto parent = source_by_id.find(source.parent_row_id);
+				projection.parent_missing = source.parent_row_id &&
+							    parent == source_by_id.end();
+				projection.parent_item_uid =
+					parent == source_by_id.end() ?
+						0 :
+						sources[parent->second].item_uid;
+				projection.custody_examined = true;
+				projection.custody_found = source.custody_found;
+				projection.custody_owner_revision_found =
+					source.custody_owner_revision_found;
+				projection.custody = source.custody;
+				projection.parent_owner_disagrees =
+					source.item_uid != item.object_uid ||
+					source.root_item_uid != identity.root_item_uid ||
+					projection.parent_item_uid != identity.parent_item_uid;
+			}
+			// Preserve components connected by either raw FK ancestry or the
+			// custody-reconciled graph; never promote a child of a withheld root.
+			if (item.parent_index >= 0)
+			{
+				if (static_cast<size_t>(item.parent_index) >= identities.size())
+					return EINVAL;
+				connect(identity.database_id,
+					identities[item.parent_index].database_id);
+			}
+			const unsigned int error = artifact_player_source_error(projection);
+			if (error)
+			{
+				if (raw == source_by_id.end())
+					return ENODATA; // No trustworthy retention selector: do not save a loss.
+				sources[raw->second].retain = true;
+				const char *reason =
+					error == EEXIST ? "physical_copy_exists" :
+					error == ESTALE ? "custody_or_topology_mismatch" :
+							  "canonical_or_source_unavailable";
+				if (!alerted)
+				{
+					persistence_alert(
+						AVATAR, "artifact_identity/player_load",
+						"saved_source", "none", "none", reason,
+						"pid=%d first_vnum=%d source_row=%llu action=retain_source_root",
+						result->pid, item.vnum,
+						(unsigned long long)identity.database_id);
+					alerted = true;
+				}
+				logit(LOG_ARTIFACT,
+				      "artifact_identity/player_load: pid=%d vnum=%d uid=%llu row=%llu error=%u reason=%s outcome=source_retained",
+				      result->pid, item.vnum, (unsigned long long)item.object_uid,
+				      (unsigned long long)identity.database_id, error, reason);
+			}
+		}
+		std::vector<bool> held(sources.size(), false);
+		for (size_t index = 0; index < sources.size(); ++index)
+			if (sources[index].retain)
+			{
+				held[index] = true;
+				withheld.push_back(index);
+			}
+		for (size_t cursor = 0; cursor < withheld.size(); ++cursor)
+			for (size_t adjacent : neighbors[withheld[cursor]])
+				if (!held[adjacent])
+				{
+					held[adjacent] = true;
+					withheld.push_back(adjacent);
+				}
+		for (size_t index : withheld)
+			sources[index].retain = true;
+		const unsigned int retained_error =
+			player_load_retain_item_roots(sources, &result->snapshot.retained_items);
+		if (retained_error)
+			return retained_error;
+		std::vector<player_item_snapshot> kept;
+		std::vector<player_load_item_identity> kept_identities;
+		std::vector<artifact_payload_projection> admitted;
+		std::vector<size_t> remap(items.size());
+		for (size_t index = 0; index < items.size(); ++index)
+		{
+			const auto raw = source_by_id.find(identities[index].database_id);
+			if (raw != source_by_id.end() && held[raw->second])
+				continue;
+			remap[index] = kept.size();
+			kept.push_back(items[index]);
+			kept_identities.push_back(identities[index]);
+			admitted.push_back(projections[index]);
+		}
+		for (auto &item : kept)
+			if (item.parent_index >= 0)
+				item.parent_index = static_cast<int32_t>(remap[item.parent_index]);
+		result->snapshot.items = std::move(kept);
+		result->item_identities = std::move(kept_identities);
+		result->item_admission_sources = std::move(admitted);
+		result->authoritative_item_count =
+			other_owned_items + result->item_identities.size();
+		return 0;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return ENOMEM;
+	}
+}
+
+bool player_load_item_graph_materialize_player(P_char character, const player_load_result &result,
+					       bool hydrate_ownership,
+					       player_load_item_materialize_metrics *metrics)
+{
+	return materialize_item_graph(
+		character, nullptr, result.snapshot.items, result.item_identities,
+		{ item_owner_type::player, static_cast<uint64_t>(result.pid), 0 },
+		result.item_owner_revision, hydrate_ownership, false, metrics,
+		&result.item_admission_sources);
+}
+
 bool player_load_items_materialize(P_char character, const player_load_result &result,
 				   player_load_item_materialize_metrics *metrics)
 {
-	return player_load_item_graph_materialize(character, result.snapshot.items,
-						  result.item_identities, result.pid,
-						  result.item_owner_revision, true, metrics);
+	return player_load_item_graph_materialize_player(character, result, true, metrics);
+}
+
+void player_load_items_notify_retained(P_char character)
+{
+	if (character && IS_PC(character) && character->only.pc && character->desc &&
+	    character->only.pc->retained_items)
+		send_to_char(
+			"Some saved items need staff review and remain in storage. Reference: player_load/retained.\r\n",
+			character);
 }
 
 void player_load_items_activate_equipment(P_char character)

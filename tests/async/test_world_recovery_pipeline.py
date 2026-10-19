@@ -5,7 +5,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,9 +35,12 @@ HARNESS = r'''
 #include "world/world_recovery_pipeline.h"
 #include "core/utils.h"
 #include "core/prototypes.h"
+#include "world/vnum.obj.h"
 #include <cstdio>
 #include "world/world_recovery_codec.h"
+#include "world/world_singletons.h"
 #include "persistence/copyover.h"
+#include "guild/artifact_population_repository.h"
 #include "item/item_ownership_runtime.h"
 #include <array>
 #include <atomic>
@@ -48,6 +51,7 @@ HARNESS = r'''
 #include <cstring>
 #include <ctime>
 #include <mutex>
+#include <map>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -134,6 +138,8 @@ void obj_to_room(P_obj object, int room)
     object->loc.room = room;
 }
 
+void obj_from_room(P_obj object) { object->loc_p=LOC_NOWHERE; object->loc.room=NOWHERE; }
+
 void extract_obj(P_obj object, int)
 {
     while (object->contains)
@@ -162,6 +168,7 @@ void extract_obj(P_obj object, int)
 void extract_char(P_char)
 {
 }
+P_obj unequip_char(P_char, int, bool) { std::abort(); }
 
 P_char copyover_restore_mob_from_buffer(const char *, size_t, size_t *)
 {
@@ -258,6 +265,24 @@ int copyover_write_zone_age_to_buffer(int, char *, size_t)
 {
     return 0;
 }
+
+// The artifact authority is exercised with this pipeline's actual materializer
+// in test_artifact_creation_admission; ordinary codec controls use this boundary.
+bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &) { return object != nullptr; }
+void artifact_object_placed(P_obj) {}
+// Ordinary world objects in this fixture do not belong to shopkeepers.
+int singleton_shop_id(P_char) { return -1; }
+P_obj read_object_for_recovery(const artifact_payload_projection &source)
+{
+    assert(source.extra_flags_present && source.quantity == 1);
+    assert(source.payload_root_item_uid && source.item_uid && source.vnum == 1000);
+    P_obj object = read_object(source.vnum, VIRTUAL);
+    if (object) { object->obj_uid = source.item_uid; object->extra_flags = source.extra_flags; }
+    return object;
+}
+__attribute__((weak)) const copyover_boot_snapshot *copyover_boot_evidence() { return nullptr; }
+__attribute__((weak)) bool item_ownership_runtime_owner_revision(const item_owner_identity &, uint64_t *revision)
+{ *revision = 0; return false; }
 
 struct publish_gate
 {
@@ -460,6 +485,18 @@ int main()
     memcpy(blob.data() + WORLD_RECOVERY_WIRE_HEADER_BYTES, record.data(), record.size());
     finish(blob, header);
     assert(world_recovery_validate(blob.data(), blob.size(), 300, 42, nullptr));
+    const auto before_semantic_reads=objects_read;
+    assert(!world_recovery_validate_with_floor(blob.data(),blob.size(),300,42,nullptr,nullptr,0));
+    assert(objects_read==before_semantic_reads); // the saved door no longer exists
+    zone_age_entry missing_zone={}; missing_zone.zone_rnum=42;
+    const auto zone_record=frame(world_recovery_record_type::zone,reinterpret_cast<const unsigned char *>(&missing_zone),sizeof(missing_zone));
+    auto zone_header=header; zone_header.door_count=0; zone_header.zone_count=1;
+    std::vector<unsigned char> missing_zone_blob(WORLD_RECOVERY_WIRE_HEADER_BYTES+zone_record.size());
+    memcpy(missing_zone_blob.data()+WORLD_RECOVERY_WIRE_HEADER_BYTES,zone_record.data(),zone_record.size());
+    finish(missing_zone_blob,zone_header);
+    assert(world_recovery_validate(missing_zone_blob.data(),missing_zone_blob.size(),300,42,nullptr));
+    assert(!world_recovery_validate_with_floor(missing_zone_blob.data(),missing_zone_blob.size(),300,42,nullptr,nullptr,0));
+    assert(objects_read==before_semantic_reads);
     header.door_count = 2;
     finish(blob, header);
     assert(!world_recovery_validate(blob.data(), blob.size(), 300, 42, nullptr));
@@ -669,6 +706,23 @@ int main()
         extract_obj(object_list, FALSE);
     }
 
+    // A floor tree can overlap the generation yet contain an unseen child.
+    // Ignoring the entire tree would silently consume the child's only body.
+    {
+        const world_recovery_object_record dropped = {200,2};
+        const world_recovery_item_snapshot dropped_items[] = {item(500,500,0),item(501,500,500)};
+        std::vector<unsigned char> drop(sizeof(dropped)+sizeof(dropped_items));
+        memcpy(drop.data(),&dropped,sizeof(dropped));
+        memcpy(drop.data()+sizeof(dropped),dropped_items,sizeof(dropped_items));
+        assert(world_recovery_encode_record(world_recovery_record_type::object,
+            drop.data(),drop.size(),captured_wire.data(),captured_wire.size(),&captured_wire_size));
+        const unsigned char *floor_records[] = {captured_wire.data()};
+        const int before = objects_read;
+        assert(!world_recovery_restore_with_floor(valid_objects.data(),valid_objects.size(),300,77,
+            floor_records,&captured_wire_size,1,nullptr));
+        assert(objects_read==before && !object_list && !materializing);
+    }
+
     // An item a player took after the capture and saved has an ownership record. The tree
     // it was captured in is left out, with the custody of the tree's other items; the
     // other trees are restored. A failed lookup restores nothing.
@@ -701,11 +755,15 @@ int main()
     const auto invalid_flags = object_generation({{invalid_flags_item}});
     assert(!world_recovery_restore(invalid_flags.data(), invalid_flags.size(), 300, 77,
                                    nullptr));
+    const auto validation_reads=objects_read;
+    assert(!world_recovery_validate_with_floor(invalid_flags.data(),invalid_flags.size(),300,77,nullptr,nullptr,0));
+    assert(objects_read==validation_reads);
 
     auto type_zero_item = item(675, 675, 0);
     type_zero_item.type = 0;
     type_zero_item.flags = 0;
     const auto type_zero_object = object_generation({{type_zero_item}});
+    assert(world_recovery_validate_with_floor(type_zero_object.data(),type_zero_object.size(),300,77,nullptr,nullptr,0));
     assert(world_recovery_restore(type_zero_object.data(), type_zero_object.size(), 300, 77,
                                   nullptr));
     assert(object_list && object_list->type == 0);
@@ -730,7 +788,7 @@ int main()
     object_list = nullptr;
 
     // Failed Redis materialization rolls back before the forced O reset and
-    // SQL fallback. The reset's owned guard must leave only the SQL instance.
+    // tracking report. Failed evidence must not authorize reconstruction of a reserved UID.
     fallback_fixture = true;
     ground_artifact.vnum = 1000;
     ground_artifact.owned = true;
@@ -751,10 +809,9 @@ int main()
         assert(world[object_list->loc.room].number == 100);
         extract_obj(object_list, FALSE);
     }
-    // Without any recovery generation, legacy boot loads the owned row once.
+    // Without qualified recovery bytes, tracking metadata alone leaves the UID reserved.
     run_artifact_boot();
-    assert(fallback_loads == 1 && object_list && !object_list->next);
-    extract_obj(object_list, FALSE);
+    assert(fallback_loads == 1 && !object_list);
     fallback_loads = 0;
     redis_loads = 0;
     recovery_active = true;
@@ -765,17 +822,23 @@ int main()
     const int extracts_before_fallback = objects_extracted;
     run_recovery_boot();
     assert(redis_loads == 1 && fallback_resets == 1 && fallback_loads == 1);
-    assert(!recovery_active && objects_read == reads_before_fallback + 3);
-    assert(objects_extracted == extracts_before_fallback + 2);
-    assert(object_list && !object_list->next && IS_ARTIFACT(object_list));
-    assert(object_list->loc_p == LOC_ROOM && world[object_list->loc.room].number == 100);
-    extract_obj(object_list, FALSE);
+    assert(!recovery_active && objects_read == reads_before_fallback + 1);
+    assert(objects_extracted == extracts_before_fallback + 1);
+    assert(!object_list && ground_artifact.canonical_item_uid == 500);
 
     // Unowned stock artifacts still load through a forced reset.
     ground_artifact.owned = false;
     reset_zone(0, 2);
+    assert(!object_list); // unowned does not release a physical reservation
+    fallback_reserved = false;
+    reset_zone(0, 2);
     assert(object_list && !object_list->next && IS_ARTIFACT(object_list));
     extract_obj(object_list, FALSE);
+
+    fallback_allocation_failed = true;
+    reset_zone(0, 2);
+    assert(!object_list && fallback_last_command == 'O');
+    fallback_allocation_failed = false;
 
     // File copyover rejects a flagged tree with missing custody records.
     {
@@ -961,44 +1024,39 @@ int main()
 
 
 FALLBACK_SUPPORT = r'''
-// The SQL fixture seeds one owned ground row shared by resets and the loader.
-static arti_data ground_artifact = {};
+// The memory fixture seeds one owned ground row shared by resets and the loader.
+#include "guild/artifact_identity.h"
+struct fallback_artifact_row : arti_data {
+ bool removed = false;
+ artifact_identity_state identity_state=artifact_identity_state::present;
+ uint64_t canonical_item_uid=500;
+ P_obj live_object=nullptr;
+};
+static std::map<int, fallback_artifact_row> artifact_rows;
+static fallback_artifact_row &ground_artifact = artifact_rows[1000];
 static int fallback_loads = 0;
 static int fallback_resets = 0;
 static int redis_loads = 0;
 static bool recovery_active = true;
 static bool clean_restart = false;
 static bool mini_mode = false;
-static int DB = 0;
 static constexpr int ARTIFACT_ONGROUND = 4;
-struct MYSQL_RES { bool read = false; };
-using MYSQL_ROW = char **;
-static MYSQL_RES sql_result;
-void qry(const char *, int location_type)
+// The fallback fixture supplies its reserved/absent admission result; the real
+// artifact service and constructor are exercised by test_artifact_creation_admission.
+static bool fallback_reserved = true;
+static bool fallback_allocation_failed = false;
+static char fallback_last_command = 0;
+P_obj read_object_for_creation(int nr, int type)
 {
-    assert(location_type == ARTIFACT_ONGROUND);
-    ++fallback_loads;
-    sql_result.read = false;
-}
-MYSQL_RES *mysql_store_result(int) { return &sql_result; }
-int mysql_num_rows(MYSQL_RES *) { return ground_artifact.owned ? 1 : 0; }
-MYSQL_ROW mysql_fetch_row(MYSQL_RES *result)
-{
-    static char vnum[] = "1000";
-    static char room[] = "100";
-    static char *row[] = {vnum, room};
-    if (result->read || !ground_artifact.owned)
+    if (fallback_allocation_failed) { errno = ENOMEM; return nullptr; }
+    if (fallback_fixture && fallback_reserved)
+    {
+        errno = EEXIST;
         return nullptr;
-    result->read = true;
-    return row;
+    }
+    return read_object(nr, type);
 }
-void mysql_free_result(MYSQL_RES *) {}
-bool get_artifact_data_sql(int vnum, P_arti out)
-{
-    assert(vnum == ground_artifact.vnum);
-    *out = ground_artifact;
-    return true;
-}
+
 P_obj get_obj_in_list_num(int rnum, P_obj)
 {
     for (P_obj object = object_list; object; object = object->next)
@@ -1014,7 +1072,6 @@ void reset_zone(int zone, int force_item_repop)
     ++fallback_resets;
     struct { char command; int arg1, arg2, arg3, arg4; } command = {'O', 0, 1, 0, 100};
     P_obj obj = nullptr;
-    arti_data artidata = {};
     const int respawn = 1;
     int ival = 0;
     int last_cmd = 0;
@@ -1024,6 +1081,7 @@ void reset_zone(int zone, int force_item_repop)
 @RESET_OBJECT@
     }
 #undef ZCMD
+    fallback_last_command = command.command;
     (void)last_cmd;
 }
 @GROUND_LOADER@
@@ -1063,7 +1121,8 @@ void run_recovery_boot()
 FALLBACK_SUPPORT = FALLBACK_SUPPORT.replace(
     "@RESET_OBJECT@", section(DB, "\t\t\tcase 'O': /* load an object to room */", "\t\t\tcase 'P':")
 ).replace(
-    "@GROUND_LOADER@", section(ARTIFACT, "void addOnGroundArtis_sql()", "// This function either finds")
+    "@GROUND_LOADER@", section(ARTIFACT, "void addOnGroundArtis_sql()", "// This function either finds").replace(
+        "void addOnGroundArtis_sql()\n{", "void addOnGroundArtis_sql()\n{\n    ++fallback_loads;", 1)
 ).replace(
     "@RECOVERY_BOOT@", section(COMM, "\t// redis crash recovery", "\tPROFILES(RESET);")
 ).replace(
@@ -1072,7 +1131,7 @@ FALLBACK_SUPPORT = FALLBACK_SUPPORT.replace(
 HARNESS = HARNESS.replace("int main()", FALLBACK_SUPPORT + "\nint main()", 1)
 
 
-COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + section(COPYOVER, "static int write_obj_entry", "// raw write to socket fd")
+COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + extract_function("copyover.c", "bool copyover_training_dummy_is(") + section(COPYOVER, "static bool copyover_world_mob", "// raw write to socket fd")
 TAKEABILITY = section(
     (SRC / "item/item_command_policy.c").read_text(),
     "bool item_command_object_is_takeable",
@@ -1118,7 +1177,7 @@ print("[PASS] in-flight publication joins before pwipe deletion can continue")
 print("[PASS] a world above the old 64 MiB ceiling is captured, published and restored")
 print("[PASS] a failed capture completes as one, and health keeps the last publish's age")
 print("[PASS] duplicate/moved items and custody failures fail closed with rollback")
-print("[PASS] failed recovery and forced zone reset restore exactly one owned ground artifact")
+print("[PASS] failed recovery and forced reset preserve reserved artifact identity without fabrication")
 
 for token in (
     "WORLD_RECOVERY_MAX_BYTES = 256 * 1024 * 1024",
@@ -1176,9 +1235,9 @@ save = section(WORLD_RUNTIME, "bool redis_save_world_state(void)", "void redis_w
 assert "fork()" not in save and "redis_floor_store_request_barrier" in save
 generation_read = section(STORE, "bool redis_world_store_read_generation", "bool redis_world_store_publish")
 assert "bounded_string" in generation_read and "REDIS_WORLD_GENERATION_CHUNK_BYTES" in generation_read
-assert WORLD_RUNTIME.count("redis_world_store_read_generation") == 2
+assert WORLD_RUNTIME.count("redis_world_store_read_generation") == 1
 initialize = section(WORLD_RUNTIME, "bool redis_world_runtime_start", "void redis_world_runtime_shutdown")
-ensure = section(WORLD_RUNTIME, "bool redis_world_recovery_ensure_initialized", "void redis_clear_floor_pickups")
+ensure = section(WORLD_RUNTIME, "bool redis_world_recovery_ensure_initialized", "bool redis_read_floor_records")
 assert "redis_world_writer_fence_claim()" in initialize
 assert "redis_world_writer_fence_claim()" not in ensure
 assert "world_sequence_floor" in ensure
@@ -1216,7 +1275,7 @@ for token in ("redis_world_store_mark_clean_shutdown",
               "redis_world_store_consume_clean_shutdown"):
     assert token in STORE
 assert publisher.index("GET %s") < publisher.index("EVAL %b 9")
-assert "header.sequence == sequence" in section(WORLD_RUNTIME, "bool redis_has_world_state", "bool redis_consume_world_state")
+assert "header.sequence != staged.sequence" in section(WORLD_RUNTIME, "bool redis_capture_boot_snapshot", "redis_world_boot_result redis_world_prepare_boot")
 assert "world_recovery_restore" in section(WORLD_RUNTIME, "bool redis_load_world_state", "void event_save_world_state")
 consume = section(WORLD_RUNTIME, "bool redis_consume_world_state", "bool redis_load_world_state")
 assert "redis_world_recovery_quiesce" not in consume
@@ -1227,7 +1286,7 @@ store_consume = section(
     STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_read_generation"
 )
 assert "redis.call('GET',KEYS[1])~=ARGV[1]" in store_consume
-assert "keys.current, generation" in store_consume and "keys.fence" not in store_consume
+assert "keys.current" in store_consume and "generation_key_buffer" in store_consume and "keys.fence" not in store_consume
 assert "redis_consume_world_state()" in COMM
 assert "redis_clear_world_state();" not in section(
     COMM, "// redis crash recovery - restore world state from redis snapshot", "PROFILES(RESET)"
@@ -1237,15 +1296,16 @@ transactional_restore = section(
     PIPELINE, "bool world_recovery_restore_with_floor", "bool world_recovery_restore("
 )
 for token in (
-    "build_recovery_plan",
-    "add_object_record",
+    "prepare_recovery_plan",
     "sql_persistence_reconcile_world_recovery_items",
     "materialize_plan",
     "redis_floor_runtime_set_materializing(true)",
     "redis_floor_runtime_set_materializing(false)",
 ):
     assert token in transactional_restore
-assert transactional_restore.index("build_recovery_plan") < transactional_restore.index(
+planning = extract_function("world_recovery_pipeline.c", "static bool prepare_recovery_plan(")
+assert "build_recovery_plan" in planning and "add_object_record" in planning
+assert transactional_restore.index("prepare_recovery_plan") < transactional_restore.index(
     "sql_persistence_reconcile_world_recovery_items"
 ) < transactional_restore.index("materialize_plan")
 for token in (
@@ -1255,7 +1315,7 @@ for token in (
     "existing_tree_matches",
     "rollback_materialized",
     "extract_obj(*item, FALSE)",
-    "extract_char(*mob)",
+    "world_recovery_discard_mob(*mob)",
 ):
     assert token in PIPELINE
 mob_capture = section(PIPELINE, "int write_mob_record", "void publisher_main")
@@ -1284,7 +1344,7 @@ cancel = section(PIPELINE, "void world_recovery_pipeline_cancel", "bool world_re
 for token in ("stop_requested = true", "queued.clear()", "completions.clear()",
               "active_capture = {}", "publisher_worker.join()"):
     assert token in cancel
-quiesce = section(WORLD_RUNTIME, "bool redis_world_recovery_quiesce", "bool redis_has_world_state")
+quiesce = section(WORLD_RUNTIME, "bool redis_world_recovery_quiesce", "redis_world_boot_result redis_world_prepare_boot")
 assert "world_recovery_pipeline_cancel()" in quiesce
 assert "redis_floor_store_cancel()" in quiesce
 assert "redis_world_writer_fence_claim()" in quiesce

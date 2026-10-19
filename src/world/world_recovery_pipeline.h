@@ -20,6 +20,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <vector>
+#include "item/item_ownership_runtime.h"
+
+// Discard a partially restored NPC without normal teardown dropping its items.
+void world_recovery_discard_mob(P_char mob);
 
 constexpr uint32_t WORLD_RECOVERY_SCHEMA_VERSION = 13;
 constexpr uint32_t WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED = 1U << 0;
@@ -121,6 +126,17 @@ struct world_recovery_authority_item
 	int32_t vnum;
 };
 
+struct world_recovery_copyover_tree
+{
+	world_recovery_object_record record = {};
+	std::vector<world_recovery_item_snapshot> items;
+	std::vector<item_ownership_runtime_entry> custody;
+};
+// Pure native handoff inspection: no templates, materialization or custody writes.
+// Failure preserves output.
+bool world_recovery_read_copyover_object_record(const char *data, size_t size,
+						world_recovery_copyover_tree *tree);
+
 struct world_recovery_health
 {
 	uint64_t requested;
@@ -172,6 +188,13 @@ bool world_recovery_validate(const unsigned char *data, size_t size, int max_age
 			     uint64_t minimum_sequence, world_recovery_header *header_out);
 bool world_recovery_restore(const unsigned char *data, size_t size, int max_age_seconds,
 			    uint64_t minimum_sequence, world_recovery_header *header_out);
+// Read-only semantic validation against loaded rooms, exits, zones and prototypes.
+// Uses the same plan builder as restoration, without custody mutation/materialization.
+bool world_recovery_validate_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
+					uint64_t minimum_sequence,
+					const unsigned char *const *floor_records,
+					const size_t *floor_record_sizes,
+					size_t floor_record_count);
 bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
 				       uint64_t minimum_sequence,
 				       const unsigned char *const *floor_records,
@@ -181,7 +204,9 @@ int world_recovery_write_object_to_buffer(P_obj obj, int room_vnum, char *buf, s
 
 int world_recovery_write_copyover_object_to_buffer(P_obj obj, int room_vnum, char *buf,
 						   size_t max_len);
-P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len);
+P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len,
+							 uint64_t source_context,
+							 bool detached = false);
 
 void world_recovery_capture_forget_character(P_char ch);
 void world_recovery_capture_forget_object(P_obj obj);

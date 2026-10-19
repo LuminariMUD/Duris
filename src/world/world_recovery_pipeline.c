@@ -12,6 +12,8 @@
  *
  ****************************************************************************/
 
+#include "guild/artifact_admission.h"
+#include "guild/artifact_population_repository.h"
 #include "world/world_recovery_pipeline.h"
 
 #include "persistence/copyover.h"
@@ -34,6 +36,9 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <map>
+#include <optional>
+#include <tuple>
 #include <new>
 #include <thread>
 #include <unordered_map>
@@ -129,10 +134,13 @@ struct planned_mob
 
 struct planned_object
 {
+	artifact_payload_domain source_domain = artifact_payload_domain::redis_generation;
+	uint64_t source_context = 0;
 	int room_rnum = NOWHERE;
 	int room_vnum = 0;
 	std::vector<world_recovery_item_snapshot> items;
 	P_obj existing_root = nullptr;
+	bool detached = false;
 };
 
 struct recovery_plan
@@ -993,11 +1001,6 @@ bool world_recovery_validate(const unsigned char *data, size_t size, int max_age
 
 namespace
 {
-bool terminated(const char *text, size_t size)
-{
-	return text && memchr(text, '\0', size);
-}
-
 P_obj find_object_uid(uint64_t item_uid)
 {
 	for (P_obj object = object_list; object; object = object->next)
@@ -1044,82 +1047,29 @@ bool existing_tree_matches(const planned_object &planned)
 	return live_count == planned.items.size();
 }
 
-bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t size)
+bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t size,
+		       artifact_payload_domain domain, uint64_t context)
 {
-	if (!plan || !data ||
-	    size < sizeof(world_recovery_object_record) + sizeof(world_recovery_item_snapshot))
+	if (!plan)
 		return false;
 	world_recovery_object_record record = {};
-	memcpy(&record, data, sizeof(record));
-	if (!record.item_count || record.item_count > WORLD_RECOVERY_MAX_ITEM_TREE ||
-	    size != sizeof(record) + static_cast<size_t>(record.item_count) *
-					     sizeof(world_recovery_item_snapshot))
-		return false;
 	planned_object planned;
+	planned.source_domain = domain;
+	planned.source_context = context;
+	if (!world_recovery_read_object_record(data, size, &record, &planned.items))
+		return false;
 	planned.room_vnum = record.room_vnum;
 	planned.room_rnum = real_room(record.room_vnum);
 	if (planned.room_rnum < 0 || planned.room_rnum > top_of_world)
 		return false;
-	try
+	const auto root_uid = planned.items[0].item_uid;
+	for (const auto &item : planned.items)
 	{
-		planned.items.resize(record.item_count);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	memcpy(planned.items.data(), data + sizeof(record),
-	       planned.items.size() * sizeof(world_recovery_item_snapshot));
-	std::unordered_set<uint64_t> parents;
-	try
-	{
-		parents.reserve(planned.items.size());
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	const uint64_t root_uid = planned.items[0].item_uid;
-	for (size_t index = 0; index < planned.items.size(); ++index)
-	{
-		const world_recovery_item_snapshot &item = planned.items[index];
-		for (int timer_index = 0; timer_index < 6; ++timer_index)
-			if (static_cast<int64_t>(static_cast<time_t>(item.timers[timer_index])) !=
-			    item.timers[timer_index])
-				return false;
-		for (int affect_index = 0; affect_index < MAX_OBJ_AFFECT; ++affect_index)
-			if (item.affect_locations[affect_index] < 0 ||
-			    item.affect_locations[affect_index] > SCHAR_MAX ||
-			    item.affect_modifiers[affect_index] < SCHAR_MIN ||
-			    item.affect_modifiers[affect_index] > SCHAR_MAX)
-				return false;
-		if (item.material < 0 || item.material > SCHAR_MAX || item.trap_eff < SHRT_MIN ||
-		    item.trap_eff > SHRT_MAX || item.trap_dam < SHRT_MIN ||
-		    item.trap_dam > SHRT_MAX || item.trap_charge < SHRT_MIN ||
-		    item.trap_charge > SHRT_MAX || item.trap_level < SHRT_MIN ||
-		    item.trap_level > SHRT_MAX || item.condition < SHRT_MIN ||
-		    item.condition > SHRT_MAX || item.craftsmanship < SHRT_MIN ||
-		    item.craftsmanship > SHRT_MAX || item.z_cord < SHRT_MIN ||
-		    item.z_cord > SHRT_MAX || item.bitvector > ULONG_MAX ||
-		    item.bitvector2 > ULONG_MAX || item.bitvector3 > ULONG_MAX ||
-		    item.bitvector4 > ULONG_MAX || item.bitvector5 > ULONG_MAX)
-			return false;
-		if (!item.item_uid || item.item_uid > ULONG_MAX || !item.root_item_uid ||
-		    item.root_item_uid != root_uid || item.vnum <= 0 || item.type < 0 ||
-		    item.type > ITEM_LAST ||
-		    (item.flags & ~WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED) ||
-		    real_object(item.vnum) < 0 || !terminated(item.name, sizeof(item.name)) ||
-		    !terminated(item.short_description, sizeof(item.short_description)) ||
-		    !terminated(item.description, sizeof(item.description)) ||
-		    !terminated(item.action_description, sizeof(item.action_description)) ||
-		    (index == 0 && item.parent_item_uid) ||
-		    (index != 0 && (!item.parent_item_uid ||
-				    parents.find(item.parent_item_uid) == parents.end())))
+		if (real_object(item.vnum) < 0)
 			return false;
 		try
 		{
-			if (!plan->item_uids.insert(item.item_uid).second ||
-			    !parents.insert(item.item_uid).second)
+			if (!plan->item_uids.insert(item.item_uid).second)
 				return false;
 			if (item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED)
 				plan->authority_items.push_back({ item.item_uid, item.root_item_uid,
@@ -1223,7 +1173,9 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 			break;
 		}
 		case world_recovery_record_type::object:
-			if (!add_object_record(plan, record_data, native_record.size()))
+			if (!add_object_record(plan, record_data, native_record.size(),
+					       artifact_payload_domain::redis_generation,
+					       plan->header.sequence))
 			{
 				logit(LOG_SYS, "redis: world recovery object rejected index=%zu",
 				      record_index);
@@ -1299,24 +1251,17 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 	return counts_match;
 }
 
-// A drop is journaled after the capture it was made in, and that capture may have written
-// the item as well, where it was dropped or where it lay before. A later drop of an item
-// the generation holds is journaled too. The generation's stays; boot refuses an item that
-// comes twice.
+// A journaled tree is redundant only when every valid item UID is already held.
+// A partial overlap contains unseen payload: let normal duplicate rejection stop
+// recovery before reconciliation/materialization instead of silently discarding it.
 bool floor_record_repeats(const recovery_plan &plan, const std::vector<unsigned char> &record)
 {
-	for (size_t offset = sizeof(world_recovery_object_record);
-	     offset + sizeof(world_recovery_item_snapshot) <= record.size();
-	     offset += sizeof(world_recovery_item_snapshot))
-	{
-		uint64_t item_uid = 0;
-		memcpy(&item_uid,
-		       record.data() + offset + offsetof(world_recovery_item_snapshot, item_uid),
-		       sizeof(item_uid));
-		if (plan.item_uids.count(item_uid))
-			return true;
-	}
-	return false;
+	world_recovery_object_record header = {};
+	std::vector<world_recovery_item_snapshot> items;
+	if (!world_recovery_read_object_record(record.data(), record.size(), &header, &items))
+		return false;
+	return std::all_of(items.begin(), items.end(), [&](const auto &item)
+			   { return plan.item_uids.count(item.item_uid) != 0; });
 }
 
 // An item the capture saw on the floor without an owner is held once its taker's save, or
@@ -1395,8 +1340,31 @@ void replace_object_text(P_obj object, const world_recovery_item_snapshot &item)
 
 P_obj materialize_object(const planned_object &planned)
 {
+	const auto source_for = [&](const world_recovery_item_snapshot &item)
+	{
+		artifact_payload_projection source = {};
+		source.domain = planned.source_domain;
+		source.owner_reference = planned.room_vnum;
+		source.owner_context = planned.source_context;
+		source.item_uid = item.item_uid;
+		source.payload_root_item_uid = item.root_item_uid;
+		source.parent_item_uid = item.parent_item_uid;
+		source.vnum = item.vnum;
+		source.extra_flags = item.extra_flags;
+		source.extra_flags_present = true;
+		source.quantity = 1;
+		return source;
+	};
 	if (planned.existing_root)
+	{
+		for (const auto &item : planned.items)
+			if (!artifact_begin_recovery(find_object_uid(item.item_uid),
+						     source_for(item)))
+				return nullptr;
+		for (const auto &item : planned.items)
+			artifact_object_placed(find_object_uid(item.item_uid));
 		return planned.existing_root;
+	}
 	std::unordered_map<uint64_t, P_obj> objects;
 	P_obj root = nullptr;
 	try
@@ -1409,14 +1377,13 @@ P_obj materialize_object(const planned_object &planned)
 	}
 	for (const world_recovery_item_snapshot &item : planned.items)
 	{
-		P_obj object = read_object(item.vnum, VIRTUAL);
+		P_obj object = read_object_for_recovery(source_for(item));
 		if (!object)
 		{
 			if (root)
 				extract_obj(root, FALSE);
 			return nullptr;
 		}
-		object->obj_uid = static_cast<unsigned long>(item.item_uid);
 		object->type = item.type;
 		for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 			object->value[index] = item.values[index];
@@ -1485,7 +1452,8 @@ P_obj materialize_object(const planned_object &planned)
 		for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 			object->value[index] = item.values[index];
 	}
-	obj_to_room(root, planned.room_rnum);
+	if (!planned.detached)
+		obj_to_room(root, planned.room_rnum);
 	return root;
 }
 
@@ -1496,7 +1464,7 @@ void rollback_materialized(std::vector<P_char> *mobs, std::vector<P_obj> *object
 			extract_obj(*item, FALSE);
 	if (mobs)
 		for (auto mob = mobs->rbegin(); mob != mobs->rend(); ++mob)
-			extract_char(*mob);
+			world_recovery_discard_mob(*mob);
 }
 
 bool materialize_plan(const recovery_plan &plan,
@@ -1585,16 +1553,25 @@ bool materialize_plan(const recovery_plan &plan,
 }
 } // namespace
 
-bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
-				       uint64_t minimum_sequence,
-				       const unsigned char *const *floor_records,
-				       const size_t *floor_record_sizes, size_t floor_record_count,
-				       world_recovery_header *header_out)
+void world_recovery_discard_mob(P_char mob)
+{
+	for (int slot = 0; slot < MAX_WEAR; ++slot)
+		if (mob->equipment[slot])
+			extract_obj(unequip_char(mob, slot), FALSE);
+	while (mob->carrying)
+		extract_obj(mob->carrying, FALSE);
+	extract_char(mob);
+}
+
+static bool prepare_recovery_plan(const unsigned char *data, size_t size, int max_age_seconds,
+				  uint64_t minimum_sequence,
+				  const unsigned char *const *floor_records,
+				  const size_t *floor_record_sizes, size_t floor_record_count,
+				  recovery_plan *plan)
 {
 	if ((!floor_records || !floor_record_sizes) && floor_record_count)
 		return false;
-	recovery_plan plan;
-	if (!build_recovery_plan(data, size, max_age_seconds, minimum_sequence, &plan))
+	if (!build_recovery_plan(data, size, max_age_seconds, minimum_sequence, plan))
 	{
 		logit(LOG_SYS, "redis: world recovery semantic plan validation failed");
 		return false;
@@ -1606,13 +1583,14 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		const bool decoded = world_recovery_decode_record(
 			world_recovery_record_type::object, floor_records[index],
 			floor_record_sizes[index], &native_record);
-		if (decoded && floor_record_repeats(plan, native_record))
+		if (decoded && floor_record_repeats(*plan, native_record))
 		{
 			++repeated;
 			continue;
 		}
 		if (!decoded ||
-		    !add_object_record(&plan, native_record.data(), native_record.size()))
+		    !add_object_record(plan, native_record.data(), native_record.size(),
+				       artifact_payload_domain::redis_floor, plan->header.sequence))
 		{
 			logit(LOG_SYS, "redis: world recovery floor record rejected index=%zu",
 			      index);
@@ -1622,6 +1600,29 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 	if (repeated)
 		logit(LOG_SYS, "redis: world recovery left out %zu floor records of items it holds",
 		      repeated);
+	return true;
+}
+
+bool world_recovery_validate_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
+					uint64_t minimum_sequence,
+					const unsigned char *const *floor_records,
+					const size_t *floor_record_sizes, size_t floor_record_count)
+{
+	recovery_plan plan;
+	return prepare_recovery_plan(data, size, max_age_seconds, minimum_sequence, floor_records,
+				     floor_record_sizes, floor_record_count, &plan);
+}
+
+bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, int max_age_seconds,
+				       uint64_t minimum_sequence,
+				       const unsigned char *const *floor_records,
+				       const size_t *floor_record_sizes, size_t floor_record_count,
+				       world_recovery_header *header_out)
+{
+	recovery_plan plan;
+	if (!prepare_recovery_plan(data, size, max_age_seconds, minimum_sequence, floor_records,
+				   floor_record_sizes, floor_record_count, &plan))
+		return false;
 	if (!leave_out_owned_trees(&plan))
 	{
 		logit(LOG_SYS, "redis: world recovery ownership lookup failed");
@@ -1644,6 +1645,12 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		      plan.authority_items.size());
 		return false;
 	}
+	artifact_restore_scope artifacts;
+	if (!artifacts)
+	{
+		logit(LOG_SYS, "redis: artifact recovery checkpoint unavailable");
+		return false;
+	}
 	redis_floor_runtime_set_materializing(true);
 	const bool materialized = materialize_plan(plan, authoritative);
 	redis_floor_runtime_set_materializing(false);
@@ -1653,6 +1660,7 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		      plan.mobs.size(), plan.objects.size());
 		return false;
 	}
+	artifacts.commit();
 	if (header_out)
 		*header_out = plan.header;
 	return true;
@@ -1690,42 +1698,115 @@ int world_recovery_write_copyover_object_to_buffer(P_obj obj, int room_vnum, cha
 	return static_cast<int>(tree_size + custody_bytes);
 }
 
-// File copyover is a quiesced process handoff, not replay of a Redis room snapshot.
-// Keep physical-tree validation, but restore the captured live ledger without SQL.
-P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len)
+// File copyover hands off the live ledger without a SQL round trip.
+bool world_recovery_read_copyover_object_record(const char *buf, size_t len,
+						world_recovery_copyover_tree *tree)
 {
+	if (!buf || !tree || len < sizeof(world_recovery_object_record) ||
+	    len > WORLD_RECOVERY_MAX_RECORD_BYTES)
+		return false;
 	world_recovery_object_record record = {};
-	if (!buf || len < sizeof(record) || len > WORLD_RECOVERY_MAX_RECORD_BYTES)
-		return nullptr;
 	memcpy(&record, buf, sizeof(record));
 	if (!record.item_count || record.item_count > WORLD_RECOVERY_MAX_ITEM_TREE)
-		return nullptr;
+		return false;
 	const size_t tree_size = sizeof(record) + static_cast<size_t>(record.item_count) *
 							  sizeof(world_recovery_item_snapshot);
 	if (tree_size > len)
-		return nullptr;
-	recovery_plan plan;
-	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size))
-		return nullptr;
-	std::vector<item_ownership_runtime_entry> authoritative(plan.authority_items.size());
-	const size_t custody_bytes = authoritative.size() * sizeof(item_ownership_runtime_entry);
-	if (len - tree_size != custody_bytes)
-		return nullptr;
-	if (custody_bytes)
-		memcpy(authoritative.data(), buf + tree_size, custody_bytes);
-	for (size_t index = 0; index < authoritative.size(); ++index)
+		return false;
+	try
 	{
-		const auto &entry = authoritative[index];
-		const auto &item = plan.authority_items[index];
-		if (entry.item_uid != item.item_uid || entry.vnum != item.vnum ||
-		    !entry.root_item_uid || !item_owner_identity_valid(entry.owner) ||
-		    entry.state != item_custody_state::active)
-			return nullptr;
+		world_recovery_copyover_tree staged;
+		if (!world_recovery_read_object_record(reinterpret_cast<const unsigned char *>(buf),
+						       tree_size, &staged.record, &staged.items))
+			return false;
+		const size_t count = std::count_if(
+			staged.items.begin(), staged.items.end(), [](const auto &item)
+			{ return item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED; });
+		if (len - tree_size != count * sizeof(item_ownership_runtime_entry))
+			return false;
+		staged.custody.resize(count);
+		if (count)
+			memcpy(staged.custody.data(), buf + tree_size,
+			       count * sizeof(staged.custody[0]));
+		size_t index = 0;
+		for (const auto &item : staged.items)
+			if (item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED)
+			{
+				const auto &entry = staged.custody[index++];
+				if (entry.item_uid != item.item_uid || entry.vnum != item.vnum ||
+				    !entry.root_item_uid ||
+				    !item_owner_identity_valid(entry.owner) ||
+				    entry.state != item_custody_state::active)
+					return false;
+			}
+		*tree = std::move(staged);
+		return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+}
+
+P_obj world_recovery_restore_copyover_object_from_buffer(const char *buf, size_t len,
+							 uint64_t source_context, bool detached)
+{
+	world_recovery_copyover_tree tree;
+	if (!world_recovery_read_copyover_object_record(buf, len, &tree))
+		return nullptr;
+	try
+	{
+		// Per-item cache entries can predate later saves of their shared owner.
+		// Reconcile only the aggregate fence; the atomic ledger hydration below
+		// still rejects newer/conflicting per-item identity, state or topology.
+		const auto key = [](const item_owner_identity &owner)
+		{ return std::tuple{ owner.type, owner.id, owner.context_id }; };
+		std::map<std::tuple<item_owner_type, uint64_t, uint64_t>, uint64_t> revisions;
+		for (const auto &entry : tree.custody)
+		{
+			uint64_t current = 0;
+			item_ownership_runtime_owner_revision(entry.owner, &current);
+			auto &revision = revisions[key(entry.owner)];
+			revision = std::max({ revision, current, entry.owner_revision });
+		}
+		for (auto &entry : tree.custody)
+			entry.owner_revision = revisions.at(key(entry.owner));
+	}
+	catch (const std::bad_alloc &)
+	{
+		return nullptr;
+	}
+	recovery_plan plan;
+	const size_t tree_size = sizeof(tree.record) + tree.items.size() * sizeof(tree.items[0]);
+	if (!add_object_record(&plan, reinterpret_cast<const unsigned char *>(buf), tree_size,
+			       artifact_payload_domain::copyover_ground, source_context))
+		return nullptr;
+	plan.objects.front().detached = detached;
+	std::optional<artifact_restore_scope> artifacts;
+	if (plan.objects.front().existing_root)
+	{
+		// Fresh trees unwind their newly constructed bodies on failure. Existing
+		// bodies need their earlier admission state restored without extraction.
+		artifacts.emplace();
+		if (!*artifacts)
+		{
+			if (errno != EBUSY)
+				return nullptr;
+			// copyover_recover already owns the transaction and will roll it
+			// back on failure. Do not commit or destroy that outer checkpoint.
+			artifacts.reset();
+		}
 	}
 	redis_floor_runtime_set_materializing(true);
-	const bool restored = materialize_plan(plan, authoritative);
+	const bool restored = materialize_plan(plan, tree.custody);
 	redis_floor_runtime_set_materializing(false);
-	return restored ? find_object_uid(plan.objects.front().items.front().item_uid) : nullptr;
+	P_obj root = restored ? find_object_uid(plan.objects.front().items.front().item_uid) :
+				nullptr;
+	if (root && detached && plan.objects.front().existing_root)
+		obj_from_room(root);
+	if (root && artifacts)
+		artifacts->commit();
+	return root;
 }
 
 void world_recovery_capture_forget_character(P_char ch)

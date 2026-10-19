@@ -247,7 +247,6 @@ int Guild::max_assoc_size()
 }
 void Guild::default_title(P_char ch) {}
 void Guild::update_online_members() {}
-void Guild::add_points_from_epics(P_char ch, int epics, int epic_type) {}
 
 // other stubs
 void send_to_char(const char *txt, P_char ch) {}

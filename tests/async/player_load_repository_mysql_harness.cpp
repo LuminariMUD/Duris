@@ -3,6 +3,7 @@
 #include "core/defines.h"
 #include "item/trophy_state.h"
 #include "persistence/persistence_observability.h"
+#include "sql/item_extra_descr_codec.h"
 
 #include <mysql/mysql.h>
 
@@ -213,7 +214,7 @@ int main()
 	assert(result.metrics.byte_count > 0 &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES);
 	assert(result.metrics.transaction_usec <= PLAYER_LOAD_TIMEOUT_USEC);
-	assert(result.snapshot.status_strings.size() == 7);
+	assert(result.snapshot.status_strings.size() == 8);
 	assert(result.snapshot.status_integers.size() == 64);
 	assert(strcasecmp(result.account_name.c_str(), required_env("GAME_ACCOUNT_NAME")) == 0);
 
@@ -245,6 +246,10 @@ int main()
 	player_load_result name_result = player_load_repository_execute(connection, by_name);
 	assert(name_result.outcome == player_load_outcome::applied);
 	assert(name_result.pid == pid && name_result.request_id == by_name.request_id);
+	assert(name_result.domains.wallet == result.domains.wallet);
+	assert(name_result.domains.epics == result.domains.epics);
+	assert(name_result.domains.frags == result.domains.frags);
+	assert(name_result.domains.old_frags == result.domains.old_frags);
 
 	player_load_request wrong_account = request;
 	wrong_account.request_id = 79;
@@ -530,6 +535,70 @@ int main()
 	       legacy_pet_book.spellbook && legacy_pet_book.spell_ids.empty());
 	assert(pet_fixture.snapshot.pets[0].items[1].affects[0][0] == 1);
 	assert(pet_fixture.authoritative_item_count == 5);
+
+	// Trap state has its own single slot beside the 64 ordinary descriptions, for
+	// both player and pet items and regardless of metadata insertion order.
+	for (bool pet_item : { false, true })
+	{
+		const std::string table = pet_item ? "player_pet_item_extra_descr" :
+						     "player_item_extra_descr";
+		const std::string item_id = pet_item ? "3101" : "1001";
+		const std::string insert =
+			"INSERT INTO " + table + "(item_id,keyword,description) VALUES(" + item_id;
+		const std::string trap =
+			",'" + std::string(SQL_ITEM_TRAP_STATE_KEYWORD) + "','6,2,0,100')";
+		for (bool trap_first : { false, true })
+		{
+			execute_sql(connection,
+				    "DELETE FROM " + table + " WHERE item_id=" + item_id);
+			if (trap_first)
+				execute_sql(connection, insert + trap);
+			for (size_t index = 0; index < PLAYER_LOAD_ITEM_DESCRIPTION_MAX; ++index)
+				execute_sql(connection, insert + ",'detail" +
+								std::to_string(index) +
+								"','fixture')");
+			if (!trap_first)
+				execute_sql(connection, insert + trap);
+			auto loaded = execute_load(connection, request, 96);
+			assert(loaded.outcome == player_load_outcome::applied);
+			const auto &descriptions =
+				pet_item ? loaded.snapshot.pets[0].items[0].extra_descriptions :
+					   loaded.snapshot.items[0].extra_descriptions;
+			assert(descriptions.size() == PLAYER_LOAD_ITEM_DESCRIPTION_MAX + 1);
+			const auto &state = trap_first ? descriptions.front() : descriptions.back();
+			assert(state.keyword == SQL_ITEM_TRAP_STATE_KEYWORD &&
+			       state.description == "6,2,0,100");
+
+			execute_sql(connection, insert + ",'overflow','fixture')");
+			loaded = execute_load(connection, request, 97);
+			assert(loaded.outcome == player_load_outcome::limit_exceeded);
+			execute_sql(connection,
+				    "DELETE FROM " + table + " WHERE item_id=" + item_id +
+					    " AND keyword='" + SQL_ITEM_TRAP_STATE_KEYWORD + "'");
+			loaded = execute_load(connection, request, 97);
+			assert(loaded.outcome == player_load_outcome::limit_exceeded);
+			execute_sql(connection, "DELETE FROM " + table + " WHERE item_id=" +
+							item_id + " AND keyword='overflow'");
+			loaded = execute_load(connection, request, 97);
+			assert(loaded.outcome == player_load_outcome::applied);
+			execute_sql(connection, insert + trap);
+			execute_sql(connection,
+				    insert + ",'" + SQL_ITEM_TRAP_STATE_KEYWORD + "','6,2,1,100')");
+			loaded = execute_load(connection, request, 98);
+			assert(loaded.outcome == player_load_outcome::limit_exceeded);
+		}
+		execute_sql(connection, "DELETE FROM " + table + " WHERE item_id=" + item_id);
+		execute_sql(connection, insert + trap);
+		execute_sql(connection,
+			    insert + ",'" + SQL_ITEM_TRAP_STATE_KEYWORD + "','6,2,1,100')");
+		const auto conflicting = execute_load(connection, request, 98);
+		assert(conflicting.outcome == player_load_outcome::limit_exceeded);
+		execute_sql(connection, "DELETE FROM " + table + " WHERE item_id=" + item_id);
+	}
+	execute_sql(connection,
+		    "INSERT INTO player_pet_item_extra_descr(item_id,keyword,description) VALUES"
+		    "(3101,'detail','pet fixture')");
+	std::cout << "[PASS] player and pet trap metadata preserves the description limit\n";
 
 	// A pet payload row whose custody row was reassigned is skipped, exactly as the
 	// character's own inventory rows are.

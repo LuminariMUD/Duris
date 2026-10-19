@@ -517,8 +517,9 @@ def reconnect_character(
     *,
     account: str = ACCOUNT,
     character: str = CHARACTER,
+    source_host: str | None = None,
 ) -> MudClient:
-    client = MudClient(port)
+    client = MudClient(port, source_host=source_host)
     try:
         entry, _ = client.expect_any(("term type", "account name"))
         if entry == "term type":
@@ -533,8 +534,9 @@ def reconnect_character(
         client.send("1")
         client.expect(character)
         client.send("1")
-        client.expect("Play as")
-        client.send("y")
+        entry, _ = client.expect_any(("Play as", "Reconnecting...", "Overriding old connection..."))
+        if entry == "Play as":
+            client.send("y")
         if return_message:
             client.expect(return_message, timeout=30)
         if expected_room:

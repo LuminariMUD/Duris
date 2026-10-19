@@ -240,77 +240,6 @@ void sql_update_assoc_table()
 #endif
 }
 
-void Guild::add_points_from_epics(P_char ch, int epics, int epic_type)
-{
-	int assoc_members = 1;
-	int room = ch->in_room;
-	// add construction points
-	int cp_notch = MAX(1, get_property("prestige.constructionPoints.notch", 100));
-	int construction_points = 0;
-
-	if ((GET_ASSOC(ch) != this) || (epics < (int)get_property("prestige.epicsMinimum", 4.000)))
-	{
-		return;
-	}
-
-	// Count group members in same guild
-	for (struct group_list *gl = ch->group; gl; gl = gl->next)
-	{
-		// Don't count ch twice, don't count NPCs, and don't count ppl not in room.
-		if (ch != gl->ch && IS_PC(gl->ch) && room == gl->ch->in_room)
-		{
-			// If they're in the same guild, count them.
-			if (this == GET_ASSOC(gl->ch))
-			{
-				assoc_members++;
-			}
-		}
-	}
-
-	debug("add_points_from_epics: assoc_members: %d, epics: %d, epic_type: %d", assoc_members,
-	      epics, epic_type);
-
-	// If members in group are above 3...
-	if (assoc_members >= (int)get_property("prestige.guildedInGroupMinimum", 3.000))
-	{
-		int prest = 0;
-
-		switch (epic_type)
-		{
-		case EPIC_PVP:
-		case EPIC_SHIP_PVP:
-			prest = (int)get_property("prestige.gain.pvp", 20);
-			break;
-
-		case EPIC_ZONE:
-		case EPIC_QUEST:
-		case EPIC_RANDOM_ZONE:
-		case EPIC_NEXUS_STONE:
-		default:
-			prest = (int)get_property("prestige.gain.default", 10);
-		}
-
-		prest = MAX(0, check_nexus_bonus(ch, prest, NEXUS_BONUS_PRESTIGE));
-
-		debug("add_points_from_epics(): '%s' gaining: %d", get_name().c_str(), prest);
-
-		send_to_char("&+bYour guild gained prestige!\n", ch);
-		const unsigned long new_prestige = prestige + (unsigned long)prest;
-		construction_points = (int)(new_prestige / (unsigned long)cp_notch -
-					    prestige / (unsigned long)cp_notch);
-		add_prestige(prest);
-	}
-
-	if (construction_points > 0)
-	{
-		statuslog(GREATER_G, "Association %s &ngained %d construction points.", name,
-			  construction_points);
-		logit(LOG_STATUS, "Association %s &ngained %d construction points.", name,
-		      construction_points);
-		construction += construction_points;
-	}
-}
-
 bool Guild::sub_money(int p, int g, int s, int c)
 {
 	// debug( "%s: %d/%d p %d/%d g %d/%d s %d/%d c.", name, p, platinum, g, gold, s, silver, c, copper );
@@ -997,13 +926,8 @@ bool Guild::save_with_kingdom(const kingdom_realm &realm)
 }
 #endif
 
-/* Contract in assocs.h. Returns true when the guild record is durable, false
- * when the write failed -- every failure path alerts before returning, so a
- * caller that only needs to abort its own work can test the result and stay
- * silent. Under MariaDB the write joins an enclosing transaction when the
- * caller opened one (sql_save_guild()), which is what lets the kingdom upkeep
- * sweep land a treasury debit and the realm record that explains it as one
- * unit. */
+// Flat-file saves remain synchronous. MariaDB captures current state on the
+// ordered writer; only its own receipt can clear the dirty indication.
 bool Guild::save()
 {
 #ifdef __NO_MYSQL__
@@ -1039,6 +963,76 @@ bool Guild::save()
 	}
 	return true;
 #endif
+}
+
+bool Guild::save_pending([[maybe_unused]] bool retry)
+{
+#ifndef __NO_MYSQL__
+	if (save_receipt && save_receipt->finished.load(std::memory_order_acquire))
+	{
+		if (save_receipt->ok)
+		{
+			save_dirty = false;
+			save_error = 0;
+		}
+		else if (save_error != save_receipt->error_code)
+		{
+			save_error = save_receipt->error_code;
+			persistence_alert(AVATAR, "guild_snapshot", "redacted", "none", "none",
+					  "write_failed",
+					  "guild_id=%u reason=storage_failure error=%u", id_number,
+					  save_error);
+		}
+		kingdom_guild_save_completed(static_cast<int>(id_number), save_receipt);
+		save_receipt.reset();
+	}
+	if (retry && save_dirty && !save_receipt)
+		save();
+#endif
+	return save_dirty;
+}
+
+void Guild::report_unsaved()
+{
+	if (save_pending(false))
+		logit(LOG_FILE,
+		      "artifact_guild: stage=shutdown reason=unsaved entity=guild guild_id=%u",
+		      id_number);
+}
+
+size_t guild_save_pulse(bool retry)
+{
+	size_t dirty = 0;
+	static unsigned int cursor = 0;
+	Guild *start = guild_list;
+	for (Guild *guild = guild_list; guild; guild = guild->next())
+	{
+		dirty += guild->save_pending(false);
+		if (guild->get_id() == cursor)
+			start = guild->next() ? guild->next() : guild_list;
+	}
+	if (retry && start)
+	{
+		Guild *guild = start;
+		size_t attempts = 0;
+		do
+		{
+			cursor = guild->get_id();
+			if (guild->save_pending(false))
+			{
+				guild->save_pending(true);
+				++attempts;
+			}
+			guild = guild->next() ? guild->next() : guild_list;
+		} while (guild != start && attempts < 8);
+	}
+	return dirty;
+}
+
+void guild_report_unsaved()
+{
+	for (Guild *guild = guild_list; guild; guild = guild->next())
+		guild->report_unsaved();
 }
 
 bool Guild::load_guild(int guild_num)
@@ -1406,7 +1400,17 @@ std::vector<std::string> Guild::statements_without_member(P_char ch)
 		frags.top_frags = 0;
 	}
 	frags.frags -= GET_FRAGS(ch);
-	std::vector<std::string> statements = sql_save_guild_statements(this);
+	std::vector<std::string> statements;
+	try
+	{
+		statements = sql_save_guild_statements(this);
+	}
+	catch (...)
+	{
+		frags = old_frags;
+		*link = member;
+		throw;
+	}
 	frags = old_frags;
 	*link = member;
 	return statements;
@@ -3485,6 +3489,15 @@ void Guild::title(P_char member, P_char victim, char *arg)
 	}
 
 	title_trim(arg, new_title);
+
+	// player_data.title is VARCHAR(512); color codes count toward storage too.
+	if (strlen(new_title) > 512)
+	{
+		send_to_char(
+			"Title must fit within 512 bytes, including colors and the guild name.\n",
+			member);
+		return;
+	}
 
 	if (*new_title == '\0')
 	{

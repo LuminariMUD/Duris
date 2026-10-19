@@ -23,6 +23,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "player/news.h"
 #include "cmd/information_cache.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -37,6 +38,7 @@ using namespace std;
 #include "world/epic.h"
 #include "world/epic_bonus.h"
 #include "world/epic_transaction.h"
+#include "guild/artifact_guild_transaction.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "combat/grapple.h"
 #include "combat/guard.h"
@@ -57,6 +59,7 @@ using namespace std;
 #include "player/player_save_pipeline.h"
 #include "player/player_load_pipeline.h"
 #include "persistence/maintenance_scheduler.h"
+#include "world/epic_task_catalog.h"
 #include "world/world_recovery_pipeline.h"
 #include "redis/redis_cache_store.h"
 #include "redis/redis_command_observability.h"
@@ -115,7 +118,6 @@ extern int avail_descs;
 extern int help_array[27][2];
 extern int info_array[27][2];
 extern int max_descs;
-extern int max_descs_this_hour;
 extern const int curr_ingame_good;
 extern const int max_ingame_good;
 extern const int curr_ingame_evil;
@@ -4122,6 +4124,7 @@ static void show_world_persistence(P_char ch)
 	const critical_coordinator_health critical = critical_command_coordinator_health_copy();
 	const critical_outbox_health critical_outbox = critical_outbox_health_copy();
 	const epic_transaction_health epic_transactions = epic_transaction_health_copy();
+	const artifact_guild_health artifact_guild = artifact_guild_transaction_health_copy();
 	const currency_transaction_health currency_transactions =
 		currency_transaction_health_copy();
 	const world_recovery_health world_recovery = world_recovery_pipeline_health_copy();
@@ -4250,6 +4253,21 @@ static void show_world_persistence(P_char ch)
 				   world_recovery.publish_operations.calls ? "ready" :
 									     "empty",
 				   0, 0, &world_recovery.publish_operations);
+
+	size_t pending_tasks = 0, pending_reads_unavailable = 0;
+	for (P_char player = character_list; player; player = player->next)
+		if (!IS_NPC(player) && affected_by_spell(player, TAG_EPIC_TASK_PENDING))
+		{
+			++pending_tasks;
+			if (player->only.pc->gameplay_reads.status != gameplay_read_status::ready)
+				++pending_reads_unavailable;
+		}
+	snprintf(line, sizeof(line),
+		 "epic_tasks catalog_ready=%d zones=%zu last_refresh=%s pending=%zu "
+		 "pending_reads_unavailable=%zu\n",
+		 epic_task_catalog_ready(), epic_task_catalog_size(),
+		 epic_task_catalog_last_refresh(), pending_tasks, pending_reads_unavailable);
+	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
 		 "maintenance state=%s queued=%llu inflight=%llu completions=%llu "
@@ -4416,6 +4434,24 @@ static void show_world_persistence(P_char ch)
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
+		 "artifact_guild live_applied=%llu capture_failures=%llu "
+		 "dirty_artifacts=%llu dirty_guilds=%llu history_committed=%llu "
+		 "history_rejected=%llu history_lost=%llu history_pending=%llu "
+		 "admission_failures=%llu malformed_completions=%llu oldest_history_ms=%llu\n",
+		 (unsigned long long)artifact_guild.live_applied,
+		 (unsigned long long)artifact_guild.unavailable,
+		 (unsigned long long)artifact_guild.dirty_artifacts,
+		 (unsigned long long)artifact_guild.dirty_guilds,
+		 (unsigned long long)artifact_guild.committed,
+		 (unsigned long long)artifact_guild.rejected,
+		 (unsigned long long)artifact_guild.history_lost,
+		 (unsigned long long)artifact_guild.pending,
+		 (unsigned long long)artifact_guild.submission_failures,
+		 (unsigned long long)artifact_guild.malformed_completions,
+		 (unsigned long long)artifact_guild.oldest_age_msec);
+	send_to_char(line, ch);
+
+	snprintf(line, sizeof(line),
 		 "critical_commands state=%s queued=%llu inflight=%llu "
 		 "blocked=%llu bytes=%llu "
 		 "fences=%llu completed_cache=%llu high_water=%llu/%llu accepted=%llu "
@@ -4491,28 +4527,32 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)player_pipeline.drain_failures);
 	send_to_char(line, ch);
 
-	snprintf(line, sizeof(line),
-		 "writer state=%s queued=%llu inflight=%llu bytes=%llu oldest_age_ms=%llu "
-		 "high_water_jobs=%llu high_water_bytes=%llu submitted=%llu replaced=%llu "
-		 "applied=%llu connection_retries=%llu failures=%llu age_limit_exceeded=%d "
-		 "stop_pending=%d max_capture_to_apply_us=%llu max_apply_us=%llu\n",
-		 !player_saves.running					? "stopped" :
-		 player_saves.queued_jobs || player_saves.inflight_jobs ? "pending" :
-									  "empty",
-		 (unsigned long long)player_saves.queued_jobs,
-		 (unsigned long long)player_saves.inflight_jobs,
-		 (unsigned long long)player_saves.queued_bytes,
-		 (unsigned long long)player_saves.oldest_age_msec,
-		 (unsigned long long)player_saves.high_water_jobs,
-		 (unsigned long long)player_saves.high_water_bytes,
-		 (unsigned long long)player_saves.submitted,
-		 (unsigned long long)player_saves.replaced,
-		 (unsigned long long)player_saves.applied,
-		 (unsigned long long)player_saves.connection_retries,
-		 (unsigned long long)player_saves.failures, player_saves.age_limit_exceeded,
-		 player_saves.stop_pending,
-		 (unsigned long long)player_saves.max_capture_to_apply_usec,
-		 (unsigned long long)player_saves.max_apply_usec);
+	snprintf(
+		line, sizeof(line),
+		"writer state=%s queued=%llu inflight=%llu completions=%llu bytes=%llu oldest_age_ms=%llu "
+		"high_water_jobs=%llu high_water_bytes=%llu submitted=%llu replaced=%llu "
+		"applied=%llu connection_retries=%llu failures=%llu age_limit_exceeded=%d "
+		"stop_pending=%d max_capture_to_apply_us=%llu max_apply_us=%llu\n",
+		!player_saves.running ? "stopped" :
+		player_saves.queued_jobs || player_saves.inflight_jobs ||
+				player_saves.completion_jobs ?
+					"pending" :
+					"empty",
+		(unsigned long long)player_saves.queued_jobs,
+		(unsigned long long)player_saves.inflight_jobs,
+		(unsigned long long)player_saves.completion_jobs,
+		(unsigned long long)player_saves.queued_bytes +
+			(unsigned long long)player_saves.inflight_bytes,
+		(unsigned long long)player_saves.oldest_age_msec,
+		(unsigned long long)player_saves.high_water_jobs,
+		(unsigned long long)player_saves.high_water_bytes,
+		(unsigned long long)player_saves.submitted,
+		(unsigned long long)player_saves.replaced, (unsigned long long)player_saves.applied,
+		(unsigned long long)player_saves.connection_retries,
+		(unsigned long long)player_saves.failures, player_saves.age_limit_exceeded,
+		player_saves.stop_pending,
+		(unsigned long long)player_saves.max_capture_to_apply_usec,
+		(unsigned long long)player_saves.max_apply_usec);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
@@ -5776,12 +5816,12 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		/* poofin/poofout for gods */
 		if (IS_TRUSTED(ch))
 		{
-			if (ch->only.pc->poofIn == NULL)
+			if (!ch->only.pc->poofIn || !*ch->only.pc->poofIn)
 				APPENDF(buf, "PoofIn:  None\n");
 			else
 				APPENDF(buf, "PoofIn:  %s\n", ch->only.pc->poofIn);
 
-			if (ch->only.pc->poofOut == NULL)
+			if (!ch->only.pc->poofOut || !*ch->only.pc->poofOut)
 				APPENDF(buf, "PoofOut: None\n");
 			else
 				APPENDF(buf, "PoofOut: %s\n", ch->only.pc->poofOut);
@@ -7772,22 +7812,6 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 					"&+rRecord number of connections this boot: %d.&n\n",
 					max_descs);
 			}
-			else
-			{
-				checked_snprintf(
-					who_output + strlen(who_output),
-					MAX_STRING_LENGTH - strlen(who_output),
-					"&+rRecord number of connections this hour: %d.&n\n",
-					max_descs_this_hour);
-			}
-			if ((curr_ingame_good > 0) && !IS_RACEWAR_GOOD(ch) && !IS_TRUSTED(ch))
-				checked_snprintf(who_output + strlen(who_output),
-						 MAX_STRING_LENGTH - strlen(who_output),
-						 "There are &+Ygood(s)&N online.\n");
-			if ((curr_ingame_evil > 0) && !IS_RACEWAR_EVIL(ch) && !IS_TRUSTED(ch))
-				checked_snprintf(who_output + strlen(who_output),
-						 MAX_STRING_LENGTH - strlen(who_output),
-						 "There are &+Revil(s)&N online.\n");
 		}
 		send_to_char(who_output, ch, LOG_NONE);
 		strcpy(who_output, "");
@@ -8518,19 +8542,23 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 			if (((wear_order[j] >= WIELD) && (wear_order[j] <= HOLD)) &&
 			    (wield_item_size(ch, ch->equipment[wear_order[j]]) == 2))
 			{
-				strcat(buf, ((wear_order[j] >= WIELD) && (wear_order[j] <= HOLD) &&
-					     (t_obj->type != ITEM_WEAPON) &&
-					     t_obj->type != ITEM_FIREWEAPON) ?
-						    "<held in both hands> " :
-						    "<wielding twohanded> ");
+				strlcat(buf,
+					((wear_order[j] >= WIELD) && (wear_order[j] <= HOLD) &&
+					 (t_obj->type != ITEM_WEAPON) &&
+					 t_obj->type != ITEM_FIREWEAPON) ?
+						"<held in both hands> " :
+						"<wielding twohanded> ",
+					MAX_STRING_LENGTH);
 			}
 			else
 			{
-				strcat(buf, (wear_order[j] >= WIELD && wear_order[j] <= HOLD &&
-					     t_obj->type != ITEM_WEAPON &&
-					     t_obj->type != ITEM_FIREWEAPON) ?
-						    where[HOLD] :
-						    where[wear_order[j]]);
+				strlcat(buf,
+					(wear_order[j] >= WIELD && wear_order[j] <= HOLD &&
+					 t_obj->type != ITEM_WEAPON &&
+					 t_obj->type != ITEM_FIREWEAPON) ?
+						where[HOLD] :
+						where[wear_order[j]],
+					MAX_STRING_LENGTH);
 			}
 
 			if (CAN_SEE_OBJ(ch, t_obj) || list_only == 1)
@@ -8546,29 +8574,29 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 							  obj_index[t_obj->R_num].virtual_number :
 							  -1));
 				if (t_obj->short_description)
-					strcat(buf, t_obj->short_description);
+					strlcat(buf, t_obj->short_description, MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_INVISIBLE))
-					strcat(buf, " (&+Linvis&n)");
+					strlcat(buf, " (&+Linvis&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_SECRET))
-					strcat(buf, " (&+Lsecret&n)");
+					strlcat(buf, " (&+Lsecret&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_BURIED))
-					strcat(buf, " (&+Lburied&n)");
+					strlcat(buf, " (&+Lburied&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT2(t_obj, ITEM2_MAGIC) &&
 				    (IS_TRUSTED(ch) || IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ||
 				     (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
 				      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_PRIEST))))
-					strcat(buf, " (&+bmagic&n)");
+					strlcat(buf, " (&+bmagic&n)", MAX_STRING_LENGTH);
 				if (get_obj_affect(t_obj, SKILL_ENCHANT))
-					strcat(buf, " (&+mEnchanted&n)");
+					strlcat(buf, " (&+mEnchanted&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_GLOW))
-					strcat(buf, " (&+Mglowing&n)");
+					strlcat(buf, " (&+Mglowing&n)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_HUM))
-					strcat(buf, " (&+rhumming&N)");
+					strlcat(buf, " (&+rhumming&N)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_NOSHOW) && (IS_TRUSTED(ch)))
-					strcat(buf, " (&+LNOSHOW&N)");
+					strlcat(buf, " (&+LNOSHOW&N)", MAX_STRING_LENGTH);
 				if (IS_OBJ_STAT(t_obj, ITEM_LIT) ||
 				    ((t_obj->type == ITEM_LIGHT) && t_obj->value[2]))
-					strcat(buf, " (&+Willuminating&n)");
+					strlcat(buf, " (&+Willuminating&n)", MAX_STRING_LENGTH);
 
 				if (affected_by_spell(ch, SPELL_HOLY_SWORD))
 				{
@@ -8576,7 +8604,8 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 					{
 						if (ch->equipment[wear_order[j]]->value[3] == 3)
 						{
-							strcat(buf, " &+L(&+Wh&+wol&+Wy&+L)&N");
+							strlcat(buf, " &+L(&+Wh&+wol&+Wy&+L)&N",
+								MAX_STRING_LENGTH);
 						}
 					}
 				}
@@ -8587,8 +8616,9 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 					{
 						if (ch->equipment[wear_order[j]]->value[3] == 3)
 						{
-							strcat(buf,
-							       " &+L(&+rf&+Rl&+Ya&+Wm&+Yi&+Rn&+rg&+L)&N");
+							strlcat(buf,
+								" &+L(&+rf&+Rl&+Ya&+Wm&+Yi&+Rn&+rg&+L)&N",
+								MAX_STRING_LENGTH);
 						}
 					}
 				}
@@ -8597,8 +8627,8 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 				{
 					if (ch->equipment[wear_order[j]]->type == ITEM_WEAPON)
 					{
-						strcat(buf,
-						       " &+L(&+Cch&+Bill&+Cing&+L)&N"); // XXX zion
+						strlcat(buf, " &+L(&+Cch&+Bill&+Cing&+L)&N",
+							MAX_STRING_LENGTH); // XXX zion
 					}
 				}
 
@@ -8606,26 +8636,26 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 				{
 					if (ch->equipment[wear_order[j]]->type == ITEM_WEAPON)
 					{
-						strcat(buf,
-						       " &+L(&+Bele&+Wctri&+Bfied&+L)&N"); // XXX zion
+						strlcat(buf, " &+L(&+Bele&+Wctri&+Bfied&+L)&N",
+							MAX_STRING_LENGTH); // XXX zion
 					}
 				}
 
-				strcat(buf, item_condition(t_obj));
+				strlcat(buf, item_condition(t_obj), MAX_STRING_LENGTH);
 
 				snprintf(tempbuf, MAX_STRING_LENGTH, "Error");
 
 				if (IS_ARTIFACT(t_obj))
 				{
 					artifact_timer_sql(OBJ_VNUM(t_obj), tempbuf);
-					strcat(buf, tempbuf);
+					strlcat(buf, tempbuf, MAX_STRING_LENGTH);
 				}
 
-				strcat(buf, "\n");
+				strlcat(buf, "\n", MAX_STRING_LENGTH);
 			}
 			else
 			{
-				strcat(buf, "Something.\n");
+				strlcat(buf, "Something.\n", MAX_STRING_LENGTH);
 			}
 		}
 		else if (list_only == 2)
@@ -8637,8 +8667,8 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 			{
 				if (has_eq_slot(ch, wear_order[j]))
 				{
-					strcat(buf, where[wear_order[j]]);
-					strcat(buf, "\n");
+					strlcat(buf, where[wear_order[j]], MAX_STRING_LENGTH);
+					strlcat(buf, "\n", MAX_STRING_LENGTH);
 				}
 			}
 		}
@@ -8646,7 +8676,7 @@ bool get_equipment_list(P_char ch, char *buf, int list_only)
 
 	if (affected_by_spell(ch, TAG_SET_MASTER))
 		if (ch->only.pc->master_set)
-			strcat(buf, set_master_text[ch->only.pc->master_set]);
+			strlcat(buf, set_master_text[ch->only.pc->master_set], MAX_STRING_LENGTH);
 	if (list_only == 2)
 	{
 		return TRUE;
@@ -8707,7 +8737,6 @@ void do_map(P_char ch, char *arg, int /*cmd*/)
 {
 	if (!IS_TRUSTED(ch))
 	{
-		//    send_to_char("Please visit http://www.durismud.com/map.php to see the world map.\r\n", ch);
 		return;
 	}
 
@@ -8741,13 +8770,33 @@ void do_cheaters(P_char ch, char * /*argument*/, int /*cmd*/)
 }
 void do_news(P_char ch, char * /*argument*/, int /*cmd*/)
 {
-	if (!IS_SET(ch->specials.act, PLR_PAGING_ON))
+	if (!ch || !ch->desc || !ch->desc->character)
+		return;
+	P_char recipient = ch->desc->character;
+	P_char owner = GET_PLYR(recipient);
+	if (!owner || !IS_PC(owner) || !owner->only.pc)
+		return;
+	if (!IS_SET(recipient->specials.act, PLR_PAGING_ON))
 	{
 		send_to_char("&+WNews file is to long, please tog page on, to read it\n", ch);
 		return;
 	}
-	send_to_char("&+WDuris News\n\n", ch);
-	send_to_char(news.c_str(), ch, LOG_NONE);
+	const auto &news = current_news();
+	if (news.text.empty())
+	{
+		send_to_char("News is currently unavailable.\r\n", recipient);
+		return;
+	}
+	if (!send_paged_text(recipient, "&+WDuris News\n\n" + news.text, LOG_NONE))
+	{
+		send_to_char("News could not fit in the command output; it remains unread.\r\n",
+			     recipient);
+		return;
+	}
+	if (!acknowledge_news(recipient, news.fingerprint))
+		send_to_char(
+			"Unable to save your news acknowledgement. Please try 'news' again.\r\n",
+			recipient);
 }
 
 void do_projects(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -9354,10 +9403,6 @@ void do_ok(P_char ch, char *arg, int /*cmd*/)
 	fputs(Gbuf1, fl);
 	fclose(fl);
 	send_to_char("&+WAdded to file..\n", ch);
-
-	if (t_ch->only.pc->poofIn != NULL)
-		str_free(t_ch->only.pc->poofIn);
-	t_ch->only.pc->poofIn = str_dup("Accepted");
 }
 
 void do_punish(P_char ch, char *arg, int /*cmd*/)
@@ -9879,18 +9924,13 @@ void do_scan(P_char ch, char *argument, int /*cmd*/)
 
 void web_info(void)
 {
-	char *tmstr;
 	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH];
 	char Gbuf3[MAX_STRING_LENGTH];
 	const char *suf;
 	int weekday, day;
 	long ct;
-	struct tm *lt;
 	struct time_info_data uptime;
 	FILE *opf;
-	P_char t_ch;
-	int number_player = 0;
-	int nb_good = 0, nb_evil = 0;
 
 	Gbuf1[0] = 0;
 	Gbuf2[0] = 0;
@@ -9940,31 +9980,6 @@ void web_info(void)
 	snprintf(Gbuf2, MAX_STRING_LENGTH, "Time elapsed since boot-up: %d:%s%d:%s%d\n",
 		 uptime.day * 24 + uptime.hour, (uptime.minute > 9) ? "" : "0", uptime.minute,
 		 (uptime.second > 9) ? "" : "0", uptime.second);
-
-	strcat(Gbuf3, Gbuf2);
-
-	lt = localtime(&ct);
-	tmstr = asctime(lt);
-	*(tmstr + strlen(tmstr) - 1) = '\0';
-	//  snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (%s)\n",
-	//          tmstr, (lt->tm_isdst <= 0) ? "EDT" : "EDT");
-
-	//  strcat(Gbuf3, Gbuf2);
-
-	for (t_ch = character_list; t_ch; t_ch = t_ch->next)
-	{
-		if (!IS_NPC(t_ch) && t_ch->desc)
-		{
-			number_player++;
-			if (EVIL_RACE(t_ch))
-				nb_evil++;
-			else
-				nb_good++;
-		}
-	}
-
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "&+RRecord number of connections this boot: &+W%d&n\n",
-		 max_descs);
 
 	strcat(Gbuf3, Gbuf2);
 

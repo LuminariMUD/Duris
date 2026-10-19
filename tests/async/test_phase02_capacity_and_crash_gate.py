@@ -73,6 +73,7 @@ class Phase02CapacityCrashGateTests(unittest.TestCase):
 
     def test_crash_matrix_covers_every_required_boundary(self):
         pipeline = (ROOT / "docs/persistence/CRITICAL_COMMAND_PIPELINE.md").read_text()
+        normalized = " ".join(pipeline.lower().split())
         matrix = pipeline[pipeline.index("## Failure behavior"):
                           pipeline.index("## Reconciliation")].lower()
         for boundary in ("admission", "db acquire", "db apply", "db commit", "completion",
@@ -81,7 +82,8 @@ class Phase02CapacityCrashGateTests(unittest.TestCase):
         for result in ("reject before gameplay success", "same operation id",
                        "already_applied", "nothing is replayed"):
             self.assertIn(result.lower(), matrix)
-        self.assertIn("nothing executes sql text", pipeline.lower())
+        self.assertIn("critical envelopes carry typed payloads", normalized)
+        self.assertIn("snapshots can still queue owned sql statements", normalized)
 
 
 if __name__ == "__main__":

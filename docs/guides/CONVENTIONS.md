@@ -109,10 +109,11 @@
 ### Transactions and Idempotency
 
 - Critical commands (auctions, the collector, item grants, boons, artifacts, combat outcomes, zone touches) commit in the database, one transaction each on the one writer. Items, wallets, banks, epics and frags change in memory and are saved.
-- Put balance and ledger, current owner and audit outbox, or equivalent coupled state in one transaction.
+- The #58 branch also applies epic-derived artifact/guild rewards in memory and saves current snapshots. Its type-9 command records history only; local qualification is recorded in [log-server-review.md](../records/log-server-review.md#qualification-update-2026-10-14).
+- Put state owned by a database command and its ledger/outbox in one transaction. Memory-authoritative snapshots and reward history have separate durability; a history receipt does not certify saved gameplay state.
 - Use mandatory unique command or event IDs for ambiguous commits and replay.
 - Store outbox or inbox delivery state in the same transaction as the domain mutation.
-- Return authoritative committed values and publish them to all relevant in-memory owners.
+- Publish committed values only for domains whose command owns the state change. History-only completion must not reapply a reward or overwrite current memory.
 
 ## Redis and Caching
 

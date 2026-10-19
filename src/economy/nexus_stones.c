@@ -179,14 +179,32 @@ int init_nexus_stones()
 {
 	fprintf(stderr, "-- Booting nexus stones\n");
 
-	mob_index[real_mobile(MOB_GOOD_GUARDIAN)].func.mob = nexus_stone_guardian;
-	mob_index[real_mobile(MOB_EVIL_GUARDIAN)].func.mob = nexus_stone_guardian;
-	mob_index[real_mobile(MOB_GOOD_SAGE)].func.mob = nexus_sage;
-	mob_index[real_mobile(MOB_EVIL_SAGE)].func.mob = nexus_sage;
-	obj_index[real_object(OBJ_NEXUS_STONE)].func.obj = nexus_stone;
-	obj_index[real_object(OBJ_GUARDIAN_MACE)].func.obj = nexus_guardian_pwn_mace;
+	for (int vnum : { MOB_GOOD_GUARDIAN, MOB_EVIL_GUARDIAN, MOB_GOOD_SAGE, MOB_EVIL_SAGE })
+	{
+		const int rnum = real_mobile(vnum);
+		if (rnum < 0)
+		{
+			logit(LOG_DEBUG, "init_nexus_stones(): mob template %d is missing", vnum);
+			continue;
+		}
+		mob_index[rnum].func.mob = (vnum == MOB_GOOD_SAGE || vnum == MOB_EVIL_SAGE) ?
+						   nexus_sage :
+						   nexus_stone_guardian;
+	}
+	for (int vnum : { OBJ_NEXUS_STONE, OBJ_GUARDIAN_MACE })
+	{
+		const int rnum = real_object(vnum);
+		if (rnum < 0)
+		{
+			logit(LOG_DEBUG, "init_nexus_stones(): object template %d is missing",
+			      vnum);
+			continue;
+		}
+		obj_index[rnum].func.obj = vnum == OBJ_NEXUS_STONE ? nexus_stone :
+								     nexus_guardian_pwn_mace;
+	}
 
-	if (!load_nexus_stones())
+	if (!load_nexus_stones(true))
 	{
 #ifdef __NO_MYSQL__
 		fatal_boot_error("nexus_stones", "flat nexus authority could not be loaded");
@@ -197,7 +215,7 @@ int init_nexus_stones()
 	return 0;
 }
 
-int load_nexus_stones()
+int load_nexus_stones(bool report_empty)
 {
 #ifdef __NO_MYSQL__
 	std::vector<flatfile_nexus_record> records;
@@ -208,16 +226,27 @@ int load_nexus_stones()
 		      error.empty() ? "flat nexus authority failure" : error.c_str());
 		return FALSE;
 	}
+	size_t loaded = 0;
 	for (const auto &record : records)
+	{
 		if (!load_nexus_stone(record.id, record.name.c_str(), record.room_vnum,
 				      record.align))
+		{
+			logit(LOG_DEBUG,
+			      "load_nexus_stones(): stone %d failed; catalogue incomplete (%zu loaded)",
+			      record.id, loaded);
 			return FALSE;
-	return TRUE;
+		}
+		++loaded;
+	}
 #else
 	// Boot only: the rows stay in memory (nexus_rows).
 	if (!qry("SELECT id, name, room_vnum, align, stat_affect, affect_amount, bonus, "
 		 "UNIX_TIMESTAMP(last_touched_at) FROM nexus_stones ORDER BY id"))
+	{
+		logit(LOG_DEBUG, "load_nexus_stones(): SQL query failed; catalogue unavailable");
 		return FALSE;
+	}
 
 	MYSQL_RES *res = mysql_store_result(DB);
 	if (!res)
@@ -234,6 +263,9 @@ int load_nexus_stones()
 	{
 		if (!row[0] || !row[1] || !row[2] || !row[3] || !row[4] || !row[5] || !row[6])
 		{
+			logit(LOG_DEBUG,
+			      "load_nexus_stones(): row %s has a missing required field; catalogue incomplete (%zu loaded)",
+			      row[0] ? row[0] : "(unknown ID)", nexus_rows.size());
 			mysql_free_result(res);
 			return FALSE;
 		}
@@ -242,9 +274,21 @@ int load_nexus_stones()
 					      atoi(row[4]), atoi(row[5]),
 					      atoi(row[6]), row[7] ? atoi(row[7]) : 0 };
 		if (info.id <= 0 || info.name.empty() || info.align < STONE_ALIGN_EVIL ||
-		    info.align > STONE_ALIGN_GOOD ||
-		    !load_nexus_stone(info.id, info.name.c_str(), info.room_vnum, info.align))
+		    info.align > STONE_ALIGN_GOOD || info.bonus < NEXUS_BONUS_NONE ||
+		    info.bonus > NEXUS_BONUS_RANDDROPS)
 		{
+			logit(LOG_DEBUG,
+			      "load_nexus_stones(): invalid row id=%d name='%s' align=%d bonus=%d; catalogue incomplete (%zu loaded)",
+			      info.id, info.name.c_str(), info.align, info.bonus,
+			      nexus_rows.size());
+			mysql_free_result(res);
+			return FALSE;
+		}
+		if (!load_nexus_stone(info.id, info.name.c_str(), info.room_vnum, info.align))
+		{
+			logit(LOG_DEBUG,
+			      "load_nexus_stones(): stone %d failed; catalogue incomplete (%zu loaded)",
+			      info.id, nexus_rows.size());
 			mysql_free_result(res);
 			return FALSE;
 		}
@@ -252,9 +296,12 @@ int load_nexus_stones()
 	}
 
 	mysql_free_result(res);
-
-	return TRUE;
+	const size_t loaded = nexus_rows.size();
 #endif
+	if (report_empty && loaded == 0)
+		logit(LOG_STATUS,
+		      "Nexus catalogue is empty: Nexus gameplay is unavailable. See docs/ongoing-projects/plan-issue-109.md for catalogue provisioning status.");
+	return TRUE;
 }
 
 bool nexus_stone_info(int stone_id, NexusStoneInfo *info)
@@ -994,9 +1041,6 @@ int nexus_stone_guardian(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 // load guardian mob into a room, set the correct flags
 P_char load_guardian(int stone_id, int rroom_id, int align)
 {
-	statuslog(57, "Nexus Guardian [%d] loaded in [%d]", stone_id, ROOM_VNUM(rroom_id));
-	logit(LOG_STATUS, "Nexus Guardian [%d] loaded in [%d]", stone_id, ROOM_VNUM(rroom_id));
-
 	int mob_id;
 	if (align < 0)
 	{
@@ -1011,11 +1055,13 @@ P_char load_guardian(int stone_id, int rroom_id, int align)
 		mob_id = MOB_NEUTRAL_GUARDIAN;
 	}
 
-	P_char mob = read_mobile(real_mobile(mob_id), REAL);
+	const int mob_rnum = real_mobile(mob_id);
+	P_char mob = mob_rnum >= 0 ? read_mobile(mob_rnum, REAL) : nullptr;
 
 	if (!mob)
 	{
-		logit(LOG_DEBUG, "load_guardian():0 mob %d not loadable.", mob_id);
+		logit(LOG_DEBUG, "load_guardian(): stone %d guardian template %d not loadable.",
+		      stone_id, mob_id);
 		debug("load_guardian(): mob %d not loadable.", mob_id);
 		return NULL;
 	}
@@ -1040,7 +1086,8 @@ P_char load_guardian(int stone_id, int rroom_id, int align)
 	af.duration = -1;
 	affect_to_char(mob, &af);
 
-	P_obj mace = read_object(real_object(OBJ_GUARDIAN_MACE), REAL);
+	const int mace_rnum = real_object(OBJ_GUARDIAN_MACE);
+	P_obj mace = mace_rnum >= 0 ? read_object(mace_rnum, REAL) : nullptr;
 
 	if (!mace)
 	{
@@ -1054,6 +1101,8 @@ P_char load_guardian(int stone_id, int rroom_id, int align)
 	}
 
 	char_to_room(mob, rroom_id, 0);
+	statuslog(57, "Nexus Guardian [%d] loaded in [%d]", stone_id, ROOM_VNUM(rroom_id));
+	logit(LOG_STATUS, "Nexus Guardian [%d] loaded in [%d]", stone_id, ROOM_VNUM(rroom_id));
 
 	if (align < 0)
 	{
@@ -1091,7 +1140,13 @@ int nexus_sage_ask(P_char ch, P_char pl, char *arg)
 		return FALSE;
 	}
 
-	sh_int current_stat = *char_stat(pl, info.stat_affect);
+	const sh_int *stat = char_stat(pl, info.stat_affect);
+	if (!stat)
+	{
+		act("$n says, 'This stone offers no stat training.'", FALSE, ch, 0, pl, TO_VICT);
+		return TRUE;
+	}
+	const sh_int current_stat = *stat;
 
 	if (current_stat >= 100)
 	{
@@ -1179,7 +1234,13 @@ int nexus_sage_train(P_char ch, P_char pl, char * /*arg*/)
 		return FALSE;
 	}
 
-	int current_stat = (int)(*char_stat(pl, info.stat_affect));
+	const sh_int *stat = char_stat(pl, info.stat_affect);
+	if (!stat)
+	{
+		act("$n says, 'This stone offers no stat training.'", FALSE, ch, 0, pl, TO_VICT);
+		return TRUE;
+	}
+	const int current_stat = *stat;
 
 	if (current_stat >= 100)
 	{
@@ -1300,26 +1361,45 @@ int remove_nexus_sage(int stone_id)
 // load nexus stone into room, set the correct flags
 bool load_nexus_stone(int stone_id, const char *stone_name, int room_vnum, int align)
 {
+	// Every active stone can be captured by either side, regardless of its current alignment.
+	for (int vnum : { MOB_GOOD_GUARDIAN, MOB_EVIL_GUARDIAN })
+	{
+		if (real_mobile(vnum) < 0)
+		{
+			logit(LOG_DEBUG,
+			      "load_nexus_stone(): stone %d requires guardian template %d; not loadable.",
+			      stone_id, vnum);
+			return false;
+		}
+	}
+
 	if (stone_id == CYRICS_REVENGE_NEXUS_STONE && nexus_to_cyrics_revenge)
 	{
 		if (cyrics_revenge != 0)
 			room_vnum = get_cyrics_revenge_nexus_rvnum(cyrics_revenge);
 		else
+		{
+			logit(LOG_DEBUG,
+			      "load_nexus_stone(): stone %d requires Cyric's Revenge; ship is missing.",
+			      stone_id);
 			return false;
+		}
 	}
 	const int room = real_room(room_vnum);
 	if (room < 0)
 	{
-		logit(LOG_DEBUG, "load_nexus_stone(): room %d does not exist.", room_vnum);
+		logit(LOG_DEBUG, "load_nexus_stone(): stone %d room %d does not exist.", stone_id,
+		      room_vnum);
 		return false;
 	}
 
-	P_obj stone = read_object(real_object(OBJ_NEXUS_STONE), REAL);
+	const int stone_rnum = real_object(OBJ_NEXUS_STONE);
+	P_obj stone = stone_rnum >= 0 ? read_object(stone_rnum, REAL) : nullptr;
 
 	if (!stone)
 	{
-		logit(LOG_DEBUG, "load_nexus_stone(): nexus stone obj %d not loadable.",
-		      OBJ_NEXUS_STONE);
+		logit(LOG_DEBUG, "load_nexus_stone(): stone %d object template %d not loadable.",
+		      stone_id, OBJ_NEXUS_STONE);
 		debug("load_nexus_stone(): nexus stone obj %d not loadable.", OBJ_NEXUS_STONE);
 		return FALSE;
 	}
@@ -1345,27 +1425,18 @@ bool load_nexus_stone(int stone_id, const char *stone_name, int room_vnum, int a
 
 	obj_to_room(stone, room);
 
+	if (align == STONE_ALIGN_EVIL || align == STONE_ALIGN_GOOD || align == 0)
+	{
+		STONE_TURN_TIMER(stone) = time(NULL);
+		if (!load_guardian(stone_id, room, align))
+		{
+			extract_obj(stone);
+			return FALSE;
+		}
+	}
+
 	statuslog(57, "Nexus Stone (%d) loaded in [%d]", stone_id, room_vnum);
 	logit(LOG_STATUS, "Nexus Stone (%d) loaded in [%d]", stone_id, room_vnum);
-
-	if (align <= STONE_ALIGN_EVIL)
-	{
-		STONE_TURN_TIMER(stone) = time(NULL);
-		load_guardian(stone_id, room, STONE_ALIGN_EVIL);
-		// load_sage(stone_id, real_room(room_vnum), STONE_ALIGN_EVIL);
-	}
-	else if (align >= STONE_ALIGN_GOOD)
-	{
-		STONE_TURN_TIMER(stone) = time(NULL);
-		load_guardian(stone_id, room, STONE_ALIGN_GOOD);
-		// load_sage(stone_id, real_room(room_vnum), STONE_ALIGN_GOOD);
-	}
-	else if (align == 0)
-	{
-		STONE_TURN_TIMER(stone) = time(NULL);
-		load_guardian(stone_id, room, 0);
-	}
-
 	return TRUE;
 }
 
@@ -1495,8 +1566,8 @@ void nexus_stone_god_list(P_char ch)
 
 void reset_nexus_stones(P_char ch)
 {
-	wizlog(57, "%s reset nexus stones", GET_NAME(ch));
-	logit(LOG_WIZ, "%s reset nexus stones", GET_NAME(ch));
+	wizlog(57, "%s requested a nexus stone reset", GET_NAME(ch));
+	logit(LOG_WIZ, "%s requested a nexus stone reset", GET_NAME(ch));
 
 	vector<P_char> delete_chars;
 
@@ -1531,17 +1602,19 @@ void reset_nexus_stones(P_char ch)
 	}
 
 #ifdef __NO_MYSQL__
-	load_nexus_stones();
+	if (!load_nexus_stones())
+		send_to_char("Nexus reset is incomplete; check the server log.\r\n", ch);
 #else
 	for (const NexusStoneInfo &row : nexus_rows)
-		load_nexus_stone(row.id, row.name.c_str(), row.room_vnum, row.align);
+		if (!load_nexus_stone(row.id, row.name.c_str(), row.room_vnum, row.align))
+			send_to_char("Nexus reset is incomplete; check the server log.\r\n", ch);
 #endif
 }
 
 void reload_nexus_stone(P_char ch, int stone_id)
 {
-	wizlog(57, "%s reloaded nexus stone (%d)", GET_NAME(ch), stone_id);
-	logit(LOG_WIZ, "%s reloaded nexus stone (%d)", GET_NAME(ch), stone_id);
+	wizlog(57, "%s requested reload of nexus stone (%d)", GET_NAME(ch), stone_id);
+	logit(LOG_WIZ, "%s requested reload of nexus stone (%d)", GET_NAME(ch), stone_id);
 
 #ifdef __NO_MYSQL__
 	flatfile_nexus_record record;
@@ -1581,10 +1654,14 @@ void reload_nexus_stone(P_char ch, int stone_id)
 	}
 
 #ifdef __NO_MYSQL__
-	load_nexus_stone(record.id, record.name.c_str(), record.room_vnum, record.align);
+	const bool loaded =
+		load_nexus_stone(record.id, record.name.c_str(), record.room_vnum, record.align);
 #else
-	load_nexus_stone(row->id, row->name.c_str(), row->room_vnum, row->align);
+	const bool loaded =
+		load_nexus_stone(row->id, row->name.c_str(), row->room_vnum, row->align);
 #endif
+	if (!loaded)
+		send_to_char("Nexus reload failed; check the server log.\r\n", ch);
 }
 
 bool nexus_stone_expired(int stone_id)

@@ -7,6 +7,7 @@
  ************************************************************************/
 
 #include "core/prototypes.h"
+#include "player/news.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -196,7 +197,6 @@ int sql_save_player_core(P_char /*ch*/)
 }
 void sql_insert_item(P_char /*ch*/, P_obj /*obj*/, char * /*desc*/) {}
 
-void sql_webinfo_toggle(P_char /*ch*/) {}
 void sql_update_level(P_char /*ch*/) {}
 int sql_shop_trophy(P_obj obj)
 {
@@ -611,53 +611,17 @@ string get_mud_info(const char *name)
 
 void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 {
+	std::string error;
+	if (!load_news_file(".", &error))
+	{
+		logit(LOG_STATUS, "News reload failed: %s; previous news retained.", error.c_str());
+		send_to_char("News reload failed; previous news retained.\r\n", ch);
+		return;
+	}
 	done(ch);
 }
 
 void sql_mud_info_refresh(void) {}
-
-void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
-{
-	if (!owner_pid || !timer)
-	{
-		logit(LOG_DEBUG, "sql_update_bind_data: invalid input pointer");
-		return;
-	}
-	std::string error;
-	const auto updated = flatfile_artifact_bind_update(persistence_mode_flatfile_root(), vnum,
-							   *owner_pid, *timer, &error);
-	if (updated != flatfile_artifact_result::ok &&
-	    updated != flatfile_artifact_result::unchanged)
-		logit(LOG_DEBUG, "sql_update_bind_data: flat artifact update failed: %s",
-		      error.empty() ? "invalid or missing artifact authority" : error.c_str());
-}
-
-bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)
-{
-	if (owner_pid)
-		*owner_pid = 0;
-	if (timer)
-		*timer = 0;
-	if (!owner_pid || !timer)
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data: invalid output pointer");
-		return false;
-	}
-	int32_t flat_owner_pid = 0;
-	int64_t flat_timer = 0;
-	std::string error;
-	const auto loaded = flatfile_artifact_bind_get(persistence_mode_flatfile_root(), vnum,
-						       &flat_owner_pid, &flat_timer, &error);
-	if (loaded != flatfile_artifact_result::ok || flat_timer > INT_MAX)
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data: flat artifact lookup failed: %s",
-		      error.empty() ? "invalid or missing artifact authority" : error.c_str());
-		return false;
-	}
-	*owner_pid = flat_owner_pid;
-	*timer = static_cast<int>(flat_timer);
-	return true;
-}
 
 bool sql_pwipe(int code_verify)
 {
@@ -2571,15 +2535,6 @@ void sql_insert_item(P_char /*ch*/, P_obj obj, char *desc)
 		  query });
 }
 
-/* Save character's preferences about displaying extended info on
-   webpage for all to see. */
-void sql_webinfo_toggle(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// webinfo is stored in act2 flag, saved with player_data
-}
-
 /* Update level info */
 void sql_update_level(P_char ch)
 {
@@ -3774,12 +3729,24 @@ void sql_set_zone_reset_perc(int zone_number, int reset_perc)
 // without waiting) and when staff reload it. Nothing waits to read it.
 static std::unordered_map<std::string, std::string> mud_info;
 
-static void mud_info_publish(const sql_rows &rows)
+static bool mud_info_publish(const sql_rows &rows)
 {
 	mud_info.clear();
+	std::string text;
 	for (const sql_row &row : rows)
 		if (row[0])
-			mud_info[row[0]] = row[1] ? row[1] : "";
+		{
+			if (std::string_view(row[0]) == "news")
+				text = row.fields[1].value_or("");
+			else
+				mud_info[row[0]] = row[1] ? row[1] : "";
+		}
+	if (!publish_news(text))
+	{
+		logit(LOG_STATUS, "News publication failed; previous news retained.");
+		return false;
+	}
+	return true;
 }
 
 // Boot only: the game loop is not running yet.
@@ -3794,8 +3761,10 @@ static void sql_load_mud_info(void)
 		sql_row copied;
 		copied.fields.emplace_back(row[0] ? std::optional<std::string>(row[0]) :
 						    std::nullopt);
-		copied.fields.emplace_back(row[1] ? std::optional<std::string>(row[1]) :
-						    std::nullopt);
+		const unsigned long *lengths = mysql_fetch_lengths(res);
+		copied.fields.emplace_back(
+			row[1] ? std::optional<std::string>(std::string(row[1], lengths[1])) :
+				 std::nullopt);
 		rows.push_back(std::move(copied));
 	}
 	mysql_free_result(res);
@@ -3817,7 +3786,12 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 	sql_read_for(ch, "SELECT name, content FROM mud_info",
 		     [done = std::move(done)](P_char live, const sql_rows &rows)
 		     {
-			     mud_info_publish(rows);
+			     if (!mud_info_publish(rows))
+			     {
+				     send_to_char("News reload failed; previous news retained.\r\n",
+						  live);
+				     return;
+			     }
 			     done(live);
 		     });
 }
@@ -3825,6 +3799,8 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 string get_mud_info(const char *name)
 {
 	// An absent row is the normal state of an optional page, such as "lock".
+	if (name && !strcmp(name, "news"))
+		return current_news().text;
 	const auto found = mud_info.find(name ? name : "");
 	return found == mud_info.end() ? string() : found->second;
 }

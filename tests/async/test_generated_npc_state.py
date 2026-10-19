@@ -21,7 +21,7 @@ index_data indexes[3]={};
 P_index mob_index=indexes;
 char *str_dup(const char *s) { return strdup(s); }
 void str_free(const char *s) { free(const_cast<char *>(s)); }
-'''+extract_function('copyover.c','static bool write_generated_npc_state(')+'\n'+extract_function('copyover.c','static bool read_generated_npc_state(')+r'''
+'''+extract_function('copyover.c','static bool write_generated_npc_state(')+'\n'+r'''
 static void clear_strings(P_char mob) {
  str_free(mob->player.name); str_free(mob->player.short_descr); str_free(mob->player.long_descr);
  mob->player.name=mob->player.short_descr=mob->player.long_descr=nullptr;
@@ -56,7 +56,9 @@ int main() {
   assert((fuzzy_wallet == std::array<int32_t,4>{}));
   FILE *file=tmpfile(); assert(file);
   assert(write_generated_npc_state(file,&original)); rewind(file);
-  std::string from_file; assert(read_generated_npc_state(file,indexes[type].virtual_number,&from_file));
+  assert(!fseek(file,0,SEEK_END)); const long saved_bytes=ftell(file); assert(saved_bytes>static_cast<long>(sizeof(copyover_mob_record{}.equipment_uids)));
+  rewind(file); std::vector<char> saved(static_cast<size_t>(saved_bytes)); assert(fread(saved.data(),saved.size(),1,file)==1);
+  std::string from_file; assert(generated_npc_extension_decode(indexes[type].virtual_number,saved.data(),saved.size()-sizeof(copyover_mob_record{}.equipment_uids),&from_file));
   assert(from_file==encoded); fclose(file);
   std::string extension; assert(generated_npc_extension_encode(indexes[type].virtual_number,encoded,&extension));
   for(size_t size=0;size<extension.size();++size) {

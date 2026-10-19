@@ -2156,7 +2156,7 @@ void spell_single_polar_vortex(int level, P_char ch, char * /*arg*/, [[maybe_unu
 
 	if (((!IS_AFFECTED3(victim, AFF3_COLDSHIELD) && !NewSaves(victim, SAVING_PARA, 2)) ||
 	     (GET_RACE(victim) == RACE_THRIKREEN && !NewSaves(victim, SAVING_PARA, 0))) &&
-	    !check_freedom_of_movement(victim, number(0, 1)))
+	    !check_freedom_of_movement(victim))
 	{
 		struct affected_type af;
 
@@ -2929,12 +2929,10 @@ void spell_etheric_gust(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	if (tries >= 1000)
 		to_room = victim->in_room;
 
-	if (LIMITED_TELEPORT_ZONE(victim->in_room))
+	if (LIMITED_TELEPORT_ZONE(victim->in_room) && how_close(victim->in_room, to_room, 5) < 0)
 	{
-		if (how_close(victim->in_room, to_room, 5))
-			send_to_char(
-				"The magic gathers, but somehow fades away before taking effect.\n",
-				victim);
+		send_to_char("The magic gathers, but somehow fades away before taking effect.\n",
+			     victim);
 		return;
 	}
 

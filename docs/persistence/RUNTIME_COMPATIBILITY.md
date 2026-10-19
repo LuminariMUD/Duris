@@ -20,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0039_level_cap_sides`, and the contract
+The current head is `0046_nexus_phase1`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -40,9 +40,49 @@ migration 0035 gives every account bank the opening baseline boot requires. Migr
 0037 adds nullable account identity and staff-status snapshots to session audit outcomes.
 0039 adds `level_cap.level_good` and `level_evil`, the level each side has unlocked
 beyond the level open to all.
+0040 records killer-side ally counts on combat outcomes. 0041 widens legacy
+`pkill_info.log` columns to `MEDIUMTEXT` for 99,999-byte public combat snapshots;
+existing rows are preserved and canonical `MEDIUMTEXT` columns need no alteration.
+Unexpected `LONGTEXT` columns and other noncanonical metadata are preserved but refused before recording migration
+success; their metadata does not match the runtime contract.
 Fingerprints are measured on clean `mysql:8.0` and `mariadb:10.11` schemas with
 `tests/async/telemetry_rollup_schema_mysql.py --update-contract`; they must not be
 copied from a production-derived clone.
+
+0042 widens the ten base stats to signed shorts. 0043 adds
+`player_data.last_read_news_hash VARBINARY(64) NOT NULL DEFAULT ''` for the
+per-character unread-news marker. Both preserve existing player rows. The news
+migration is guarded, verifies the complete column shape and its position after
+`learned_flight_stops`, and refuses an incompatible pre-existing column. Apply it
+before starting the updated database-backed server; it adds no table.
+
+0044 adds nullable `artifact_domain_state.canonical_item_uid`, a unique UID key,
+and default-zero `identity_state` without replacing the existing nullable custody
+FK. An unclaimed NPC/ground item can have a physical identity before it has a
+custody row. States are 0 unresolved, 1 present, 2 retired and 3 proven absent;
+present/retired require a positive UID, while unresolved/absent have NULL. Legacy
+rows remain unresolved, with all timer/soul/custody evidence unchanged. Separate
+column/index guards permit interrupted DDL replay, and the verifier refuses
+incompatible shapes or inconsistent UID/state rather than rewriting evidence.
+This storage migration does not itself choose canonical copies or enforce
+admission; those runtime changes remain tracked in issue #67's plan.
+
+0045 appends nullable signed `pkill_info.webinfo_at_capture TINYINT DEFAULT NULL`.
+NULL preserves unknown historical consent; 0 denies publication; 1 permits the
+website to consider the captured equipment/log under its release and saved-toggle
+gates. Existing text is preserved, and old writers default to NULL. Deploy the
+compatible withholding reader first, then apply this additive migration before
+starting the v4 capture producer. Keep the column and reader gate during rollback;
+an older binary's exact schema contract will not accept this migration head.
+
+0046 inserts the missing Marduk and Enlil Nexus catalogue rows after checking both
+IDs and reserved names for conflicts. Existing matching configuration, alignment
+and touch timestamps remain unchanged. Both new rows start neutral with no stat
+benefit. The migration adds no table or column, so metadata fingerprints stay the
+same; the migration head, apply/verify checksums and history checksum advance.
+Apply it before starting the updated SQL-backed binary. See the
+[Nexus handoff](../records/nexus-stones-109-investigation.md) for world/ship
+dependencies, operator checks and the separate production acceptance work.
 
 An existing populated database must first be upgraded only on a disposable clone.
 Run the legacy convergence, then the immutable runner against the same clone before

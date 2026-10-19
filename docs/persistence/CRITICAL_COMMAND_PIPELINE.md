@@ -1,28 +1,32 @@
 # Critical Command Pipeline
 
-Non-idempotent gameplay work uses one bounded command contract. Each command has a
+Persisted domain commands use one bounded command contract. Each command has a
 cryptographically random 128-bit operation ID, a schema and payload version, a
 categorical source site and deadline, sorted affected entity keys, optional expected
 revisions, and owned payload bytes. It contains no live game pointers, SQL, Redis keys,
 paths, account names, or character names.
 
-The destination stores command identity and result in an InnoDB inbox, applies the typed
-domain mutation, and writes its outbox record in the same transaction. Outside mini mode,
-startup requires the verified critical-command schema; failure leaves critical gameplay
-stopped. The legacy item/scalar/large queues, their flat fallback log and the raw SQL
-executor are gone: nothing executes SQL text.
+In SQL-backed builds, the destination stores command identity and result in an
+InnoDB inbox, applies the typed domain mutation or history record, and writes its
+outbox record in the same transaction. Outside mini mode, SQL startup requires
+the verified critical-command schema. Flat-file builds select
+`flatfile_critical_command_repository_apply_selected` and do not start the SQL
+outbox worker; each domain still has its own capability and persistence rules.
+Coordinator initialization failure leaves critical gameplay stopped. Critical
+envelopes carry typed payloads; ordinary SQL-backed snapshots can still queue
+owned SQL statements through `sql_async`.
 
 ## Domains
 
 | Command | What its transaction commits | Entity keys |
 |---|---|---|
-| Item grant, operator repair and destruction | `item_current_owner`, `item_ownership_ledger` | item + owners |
+| Item grant, operator repair and destruction | Current owner (`item_current_owner`) and transfer history (`item_ownership_ledger`) | item + owners |
 | Auction | auction, custody and ledger rows | auction + item + players/accounts |
 | Collector | the listing, its item custody and ledger rows | listing + player/account + items |
 | Shop trade (flat-file backend only) | the trade and its item custody | player + shopkeeper + items |
 | Boon shop (flat-file backend only) | the purchase | player |
 | PvP/combat outcome | `pkill_event`, `pkill_info`, `combat_outcome`, frag and epic ledgers, frag leaderboard | all participant players |
-| Artifact/guild | domain state and outcome ledgers | actor + artifacts + guild |
+| Artifact/guild | captured reward history only; artifact/guild snapshots save state ([branch status below](#artifact-and-guild-rewards-live-in-memory)) | actor + artifacts + guild |
 | Boon reward | progress and bounded outcomes | player |
 | Zone touch | zone, history, alignment, participants | zone + participants |
 | Epic | `epic_ledger` history only; the balance is the save's ([below](#epic-points-and-frags-live-in-memory)) | player |
@@ -111,20 +115,20 @@ rg -n -F 'operation=PASTE_THE_32_DIGIT_REFERENCE' logs/log/file* logs/player-log
 
 Each record includes the operation ID, named command, numeric error, source category,
 and affected entity types/IDs. Large key lists explicitly count omitted keys. For
-artifact/guild state mismatches (`type=9 error=116`, `ESTALE`), it also includes the
-parent operation ID, actor PID, guild ID, source filename/line, and the failed check:
+artifact/guild history failures, it also includes the parent operation ID, source
+filename/line, payload version, and a named reason: `malformed_payload`,
+`identity_conflict`, `missing_parent`, `legacy_uncommitted`, or `storage_failure`.
+Decoded payloads include actor PID, guild ID and artifact count; malformed data
+is marked `decoded=0`. Artifact IDs are retained in the bounded command keys.
 
-- `artifact_expected_state`: artifact vnum and expected/actual timer, soul-owner PID,
-  and bind timer.
-- `artifact_mirror`: artifact vnum and the values read from the domain state and
-  legacy artifact/bind rows.
-- `guild_revision`: expected/actual guild revision.
+Payload-v2 history does not compare live timers, souls or guild revisions with SQL.
+Current mirror disagreement is a
+snapshot/reconciliation problem, not grounds to reject an earned reward.
 
 These values are captured at rejection, before rollback, so a missing
 `critical_operation_inbox` row does not remove the evidence. Search the parent
 operation ID to connect the reward to its originating operation. No raw SQL,
 credentials, character names, or arbitrary command payloads enter this report.
-The older numeric-only notices cannot identify which comparison failed after the fact.
 
 The database inbox stores the canonical command/key hashes and authoritative result.
 An identical duplicate returns that result; different bytes under the same operation ID
@@ -153,7 +157,7 @@ This is the required result at each boundary;
 
 | Boundary | Failure | Required result |
 |---|---|---|
-| Admission | queue full, coordinator unavailable, key fenced | reject before gameplay success; what the command took out of memory is given back |
+| Admission | queue full, coordinator unavailable, key fenced | state-changing commands reject before gameplay success and return what they took from memory; history-only submission failure does not undo a live reward |
 | DB acquire/begin | outage, timeout, pool close | the writer retries at the head of its queue; fences stay |
 | DB apply | deadlock or lock timeout | rollback and retry with the same operation ID |
 | DB commit | connection loss, ambiguous result | reread the inbox by operation ID; never resubmit under a new ID |
@@ -179,6 +183,15 @@ migrations/reconcile_phase02_domains.sh
 Any nonzero mismatch blocks a release. Do not repair with direct SQL: keep the inbox,
 ledger and current-row evidence, find the owning domain, and issue only a guarded
 idempotent command or a reviewed additive repair migration.
+
+`reconcile_artifact_guild_outcomes.sh` requires explicit
+`DB_HOST`, `DB_USER`, `DB_PASSWD`, `DB_NAME` and optional `DB_PORT`; it does not load
+the checkout's `.env`. Use disposable/local credentials. Its read-only snapshot
+checks artifact mirror agreement (including missing rows), item-owner references,
+outcome/ledger agreement, committed parent receipts, and parent/actor uniqueness.
+It does not equate reward-ledger totals with current timers or guild balances:
+transfers, timer adjustments and spending can legitimately change current state.
+It cannot observe unsaved memory or prove that the writer drained.
 
 Focused validation is `python3 tests/async/test_critical_command_admission.py`,
 `python3 tests/async/test_critical_command_coordinator.py`,
@@ -212,9 +225,115 @@ rows the coordinator would not queue. Focused validation is
 `tests/async/run_epic_transaction_schema_mysql.sh` and
 `tests/async/run_combat_outcome_schema_mysql.sh`.
 
+## Artifact and guild rewards live in memory
+
+For a new source award, the game thread captures eligible artifact feeds and guild
+prestige/construction from current memory, checks the combined bounds, applies
+them immediately, and publishes feedback. It queues artifact rows/souls and guild
+snapshots on the existing writer before submitting type-9 reward history. Later
+transfers, soul changes, removal, spending and settings capture their current
+state independently; history completion never changes that state or repeats feedback.
+
+Capture excludes all contributions from a repeated worn artifact vnum, and
+requires each other artifact to have a physical UID, match the live wearer and
+match the current memory record's tracked player. Exclusion preserves unrelated
+artifact and guild contributions and emits a rate-limited persistence alert with
+vnum/reason/source reference. Until canonical admission and reward validation are integrated,
+this is conservative conflict isolation: it does not establish the identity of
+a single copy whose legacy vnum record already names its wearer.
+
+Artifact and soul snapshots for a known artifact capture its complete current
+UID/state, timer and soul in one transaction, including all-souls resets. A failed
+UID change cannot be followed by a partial soul write that changes the old UID.
+Legacy mirrors preserve identity. Boot stages all artifact, soul and identity reads
+before publishing memory; malformed or failed input cannot publish a prefix.
+Administrative refresh preserves current identity on conflict and retries current
+snapshots. Clear requires a proven-absent identity; retirement evidence and known
+absence remain in memory even after legacy tracking is removed. These storage
+boundaries do not perform complete population classification or universal
+duplicate admission; that work remains in the issue #67 plan.
+
+Flat-file mode hydrates the same artifact/soul maps from the catalog before world
+population. Gameplay getters and mutations use those maps; complete immutable
+captures reach `artifact_catalog` through the existing persistence writer.
+An all-souls reset is one atomic catalog capture. The repository assigns record
+revisions, preserves untouched records, rejects conflicting UIDs across the
+resulting catalog, and makes exact capture replay a no-op. Storage failure leaves
+current gameplay state readable and dirty for retry. Refused admission, including
+a full writer, never performs a synchronous fallback. Flat reports still read
+persisted catalog state and may lag live state.
+
+Positive feeding feedback is `You feel a sense of satisfaction from above.`
+The live artifact/guild award publishes it once even when several artifacts feed;
+guild-only, ineligible, rejected and no-effect awards do not publish it. A valid
+capped feed retains its positive feedback. The monolith's direct feeding path
+uses the same wording per accepted artifact and checks its existing tracked-owner
+restriction before publishing feedback; its negative feedback is unchanged.
+Direct feeding keeps signed timer arithmetic separate from its diagnostic
+magnitude: a negative feed reduces the timer, an above-cap timer clamps to the
+current cap, and depletion leaves an expired timer instead of restarting it.
+
+New history uses payload v2 with parent/actor identity and calculated before/after
+facts. The repository records outcome/delta ledgers with history revisions, not
+gameplay approval revisions. It never compares current SQL timer/soul/guild totals
+to authorize a reward and never writes those gameplay fields. Committed v1 commands
+still decode for receipt replay; an uncommitted v1 command is refused with the named
+`legacy_uncommitted` reason. The existing v1 result/outbox format remains readable,
+and delivery invalidates caches without applying a reward.
+
+The pending history bound is 256 entries. Retries retain the original command
+identity and bytes and attempt at most eight unqueued entries per second. Admission
+or retention failure is reported separately from live success; it never reverses
+the reward. Missing history is not regenerated by granting again. Source publication
+guards own once-only live application; the coordinator's finite completion cache
+is not a permanent deduplication store. The producer fixture crosses the actual
+cache capacity and verifies that old completions cannot republish a benefit.
+
+Artifact and guild snapshots retain per-entity dirty metadata and a preallocated
+`sql_write_receipt`. Only acknowledgement of the current capture clears its dirty
+state. Admission, allocation or terminal write failure leaves it dirty; later
+bounded pulses capture the entity's latest state rather than the old reward values.
+Artifact removal retains a tombstone through deletion acknowledgement. Cache
+generations change on mutation and successful resubmission after failed admission,
+so an earlier read cannot become current after those changes.
+
+A guild with a pending kingdom payment captures its current realm in the same
+transaction as every guild snapshot, including a member-deletion snapshot.
+`payment_pending` lasts until the matching guild receipt confirms commit. Failed
+captures or transactions retry current values without another debit; an older
+receipt cannot settle a newer capture or a recreated realm. Later realm changes
+remain dirty after an earlier pair succeeds, so copyover flushes them after the
+payment drain and before the writer drain. Flat-file payments retain their shared
+recovery-journal transaction.
+
+Domain drains run before coordinator quiescence and again after final copyover
+saves. Failure aborts copyover through the existing resume guard; shutdown reports
+unresolved histories and dirty entities.
+`world persistence` displays domain live applications, capture failures, dirty
+snapshots, history results/loss/pending counts, admission failures and oldest
+pending-history age separately. Its age is not wizlog suppression age.
+
+The counts describe observations on the game thread, not fresh SQL queries. In
+particular, a history can have committed before its completion reaches that thread.
+Diagnostic stage/reason labels use the reporter's category fields and numeric
+substitutions retain the full opaque IDs; the string-redaction policy is unchanged.
+
+The staff `artifacts reset syncdb` repair keeps current memory if its asynchronous
+result overlaps a later artifact update or an unresolved snapshot failure. Existing
+dirty retries then capture fresh state. The result is processed after staff logout;
+only notification requires the same live staff character.
+Flat-file `syncdb` refuses live reconciliation pending a complete population
+audit: a player-only scan cannot select canonical physical identities across all
+storage domains. The audited repair workflow remains open in issue #67.
+
+History success and snapshot durability are distinct: either may fail independently.
+A crash may lose unsaved state, and restart loads persisted snapshots without
+re-awarding committed history. This change adds no schema migration, gameplay
+journal or new flat-file reward support; the MySQL capability check remains explicit.
+
 ## Money lives in memory
 
-Currency is no longer a critical command. `currency_transaction_submit()` and its
+Currency is not a critical command. `currency_transaction_submit()` and its
 variants change the character's wallet, and the bank view of every online character
 of its account and side, at once, then call their completion before returning:
 committed, or refused with `ENOSPC` when a balance would go below zero. The player's

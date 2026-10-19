@@ -66,7 +66,7 @@ int fill_word(char *) { return false; }
 int get_property(const char *, int fallback) { return fallback; }
 int get_innate_property(int, const char *, int fallback) { return fallback; }
 int CanDoFightMove(P_char, P_char) { return legal; }
-bool check_freedom_of_movement(P_char, bool) { return freedom; }
+bool check_freedom_of_movement(P_char) { return freedom; }
 int GET_CHAR_SKILL_P(P_char, int id) { return id == SKILL_EVADE && evading ? 100 : 0; }
 int number(int low, int high) {
     if (low == 1 && high == 100) { ++rolls; return roll; }
@@ -226,7 +226,9 @@ int main() {
             memcpy(&mob_saved, saved + sizeof(copyover_mob), sizeof(mob_saved));
         } else if (restore_path == 2) {
             FILE *fp = tmpfile(); assert(fp);
-            assert(write_mob_affects(fp, target)); rewind(fp);
+            assert(write_mob_entry(fp, target));
+            assert(write_mob_affects(fp, target));
+            assert(fseek(fp, sizeof(copyover_mob), SEEK_SET) == 0);
             assert(fread(&mob_saved, sizeof(mob_saved), 1, fp) == 1); fclose(fp);
         } else {
             updateShortAffects(target);
@@ -298,6 +300,7 @@ assert 'ADD_RACIAL_INNATE(INNATE_WEB_SPRAY, RACE_DRIDER, 31);' in innates
 production = '\n'.join(extract_function(file, signature) for file, signature in [
     ('utility.c', 'int BOUNDED('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'bool is_abbrev('),
+    ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
     ('innates.c', 'bool has_innate('), ('innates.c', 'bool can_use_innate('),
     ('innates.c', 'P_char parse_victim('), ('innates.c', 'bool check_innate_time('),
     ('affects.c', 'struct affected_type *get_spell_from_char('),
@@ -313,6 +316,7 @@ production = '\n'.join(extract_function(file, signature) for file, signature in 
 production += '\n' + table + '\n' + extract_function('innates.c', 'void do_innate(P_char ch,')
 copyover = source('copyover.c').read_text()
 restore = re.search(r'\t\tstruct affected_type af;\n\t\tmemset\(&af, 0, sizeof\(af\)\);\n\t\taf.type = aff_entry.type;.*?affect_to_char\(mob, &af\);', copyover, re.S).group()
+production += '\n' + extract_function('copyover.c', 'static int write_mob_entry(')
 production += '\n' + extract_function('copyover.c', 'static int write_mob_affects(')
 production += '\n' + extract_function('copyover.c', 'int copyover_write_mob_to_buffer(')
 production += '\nvoid restore_npc_affect(P_char mob, copyover_affect aff_entry) {\n' + restore + '\n}\n'

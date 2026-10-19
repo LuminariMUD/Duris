@@ -62,10 +62,15 @@ lifecycle tables, and all runtime tables. Nontransactional tables are rejected.
 Coordinate schema migrations/DDL with the backup window; a transactional data
 snapshot does not make concurrent DDL safe. Database capture checks runtime
 compatibility before and after the dump against the manifest frozen in the
-generation. Before an upgrade, set `RUNTIME_COMPATIBILITY_MANIFEST` to an absolute,
-owner-only copy of the deployed version's manifest when the checkout already
-requires a newer schema. Verify historical generations against their recorded
-manifest; do not relabel them with the checkout's current contract.
+generation. If the checkout's contract does not match the live database, capture
+automatically tries the last successful database backup's checksum-verified
+manifest and validates it against the live database. This lets backups continue
+when code is pulled ahead of deployment; once the database matches the checkout,
+new backups automatically use the new contract. No version pin is needed.
+An explicit `RUNTIME_COMPATIBILITY_MANIFEST` still selects only that absolute,
+owner-only manifest, including for a first backup of an older deployment. Verify
+historical generations against their recorded manifest; do not relabel them with
+the checkout's current contract.
 Ownership validation requires the host UID identities of every path ancestor.
 A namespaced per-user systemd service can map root-owned ancestors to `nobody`;
 the guard correctly rejects that execution context. The root-managed production
@@ -128,6 +133,35 @@ timers. The backup/health timers evaluate each minute; the drill timer evaluates
 hourly and runs a drill only when the policy's interval has elapsed, never when it is 0. Timer persistence
 catches missed invocations after host downtime. Test a deliberate invalid
 policy and verify that the failure reaches the responsible operator.
+
+`scripts/backup_alert.py` can be used as that existing alert target. It reuses
+the protected `.env` loader and `MAIL_HOST`, `MAIL_PORT`, `MAIL_TLS`,
+`MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_FROM` settings in `.env.example`.
+Use a sender verified with the configured SMTP account. Like account recovery,
+port 465 uses verified implicit TLS; other TLS-enabled ports require STARTTLS.
+Credentials are optional but must be supplied as a pair, and plaintext is allowed
+only for an unauthenticated loopback relay. SMTP authentication preserves UTF-8
+credential bytes using the relay's advertised CRAM-MD5, PLAIN, or LOGIN mechanism.
+The notifier does not use the host's shared sendmail relay or require a second
+password file. `MAIL_ENABLED` controls game account recovery only and does not
+disable an explicitly connected backup alert route.
+
+For a user service, the template's `ExecStart` can invoke:
+
+```ini
+ExecStart=/usr/bin/python3 /absolute/path/to/duris/scripts/backup_alert.py %i --recipient operator@example.com --env-file /absolute/path/to/duris/.env
+```
+
+The recovery command in the message uses the checkout containing `--env-file`,
+with shell quoting for paths containing spaces or apostrophes.
+It includes the unit's last 20 user-journal lines (or an explicit unavailable
+placeholder if journal collection fails, times out, or cannot be decoded).
+Quoted-printable encoding preserves non-ASCII text on relays without 8BITMIME.
+It suppresses repeats for one hour per unit under `~/.local/state/duris-backup-alert/`.
+Only an accepted SMTP submission creates/refreshes the stamp; rejected submission remains eligible to
+retry. Acceptance by the SMTP server is not proof of recipient receipt: verify
+that separately using the existing controlled-notification approval procedure.
+The focused executable check is `python3 tests/async/test_backup_alert_runtime.py`.
 
 stdout/stderr contain JSON with fixed result/error codes, generation IDs,
 aggregate age/bytes/counts, and separate replica status. When an unexpected

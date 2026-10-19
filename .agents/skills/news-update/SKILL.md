@@ -197,6 +197,10 @@ The newest changes come first. Later updates replace older rules.
 ```
 
 Place new material after the introduction and before the previous newest section.
+Give a later release on the same day its own top block; do not append it beneath
+an older, unrelated headline. The newest headline and main player-facing addition
+must appear on the first page at the game's default screen height. Shorten the
+introduction if needed, and check the color-stripped first-page preview.
 Use newest-first date blocks; split a long catch-up into useful weekly or monthly
 sections rather than one enormous update. Group by player topic within each block.
 Update the `Updated:` line and introductory coverage range to match what was
@@ -243,7 +247,17 @@ Before the live import, preserve the existing database news row in a protected,
 uncommitted recovery copy and double-check the reviewed diff and target. Use only
 `--news-only`, never the bulk mode or `--clean`. After success, verify stored news
 byte-for-byte against the file and reload cached news with plain `page` (no
-arguments); report if the in-game reload could not be performed. Stop on errors
-and inspect the result before retrying. Do not restart the game, change unrelated
-data, commit/push, or send announcements as part of this workflow. Details are in
-`docs/content/HELP_SYSTEM.md`, under "Publishing news only".
+arguments). If a separately authorized deployment already includes a reboot,
+perform the readback after that reboot instead of reloading beforehand.
+
+Log in and run the actual `news` command. Confirm that its first page shows the
+newest headline and main addition, then use the pager to read through the entire
+new section. Enable paging if needed and restore any preferences changed for
+verification. A matching database row, website API response or help lookup alone
+does not prove players see the update. If reload or player-visible readback cannot
+be completed, report publication and verification separately with the missing
+check; do not claim the update is fully verified. Quit and close the session.
+
+Stop on errors and inspect the result before retrying. Do not restart the game,
+change unrelated data, commit/push, or send announcements as part of this workflow.
+Details are in `docs/content/HELP_SYSTEM.md`, under "Publishing news only".

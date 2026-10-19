@@ -9,7 +9,8 @@ Memory is the authority. The database is a copy that catches up through one writ
 3. The writer is a single background thread (`src/player/player_save_worker.c`). It
    applies every queued save in capture order: player saves (with their pets),
    corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas,
-   critical commands and the game thread's SQL (see below).
+   critical commands, flat artifact/soul captures, and the game thread's SQL
+   (see below).
    A newer save of the same owner replaces its queued one only when that is the last
    job queued. Otherwise it is queued behind, because a job queued after the owner's
    save may rely on it being written first (the owner money or an item leaves is
@@ -19,9 +20,23 @@ Memory is the authority. The database is a copy that catches up through one writ
    five seconds. Any other failure is reported once, the job is dropped, and the
    owner is marked dirty so its next save carries the state again.
 
+Admission is bounded to 4,096 outstanding jobs (queued, in flight, or awaiting
+completion consumption) and 128 MiB of declared queued/in-flight capture bytes.
+At capacity, submission returns `unavailable` with `errno=ENOSPC`; admitted work
+keeps its order and is never evicted. A tail replacement uses the old capture's
+slot and only its net byte increase. Dirty-state callers retry a refused capture;
+other callers retain their existing refusal behavior, including logged SQL drops.
+The byte limit bounds reported payload sizes, not total process memory. It allows
+one maximum artifact catalog capture; these limits are not throughput guarantees.
+The artifact/guild lifecycle drain consumes writer completions before retrying
+dirty captures, releasing admission slots while the normal game loop is stopped.
+
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Nothing is journaled. A crash loses whatever had not reached the database,
-at most one 30-second `dirty-player-checkpoint`.
+operation. Nothing is journaled. A crash loses whatever had not reached durable
+storage. The 30-second `dirty-player-checkpoint` interval is a scheduling target,
+not an upper bound on loss: batching, refused admission, writer retries, or an
+outage can leave older state unwritten. Inspect the writer's oldest age and the
+player's written revision when assessing durability.
 
 ## Game-thread SQL
 
@@ -49,14 +64,28 @@ runs on the first pulse. After the writer start, a job the writer refuses is log
 
 Flight discoveries (`learned_flight_stops`) and EXP share `PLAYER_COMPONENT_STATUS`.
 A checkpoint saves both together, and unrelated component saves preserve them.
-Snapshot schema 8 retains field IDs and reads versions 1, 3, 5 and 7 with an empty
-discovery mask; no transport recovery or reward journal is required.
+Snapshot schema 9 retains field IDs and reads versions 1, 3, 5, 7 and 8. Versions
+before 8 receive an empty discovery mask; no transport recovery or reward journal
+is required. The appended `last_read_news_hash` status string defaults to empty
+for all older versions and records the SHA-256 identity acknowledged by `news`.
+It shares the status checkpoint, SQL player row, and flat-file snapshot. Other
+component saves preserve it. Malformed hash text becomes unread during load;
+structural snapshot corruption still refuses the load. An old binary cannot
+decode newly written schema-9 snapshots.
+
+Opening news queues the acknowledgement through the normal save pipeline.
+Admission failure restores the previous hash and leaves `(news)` visible;
+accepted work follows the normal worker retry and terminal-save rules. A crash
+before that save lands can show the reminder again. No per-prompt save or direct
+SQL update is performed.
 
 A player save writes the wallet, epic points, frags and old frags with the rest of the
 character; a bank change is its own `bank` job (see
 [Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory) and
 [Epic points and frags live in memory](CRITICAL_COMMAND_PIPELINE.md#epic-points-and-frags-live-in-memory)).
-A save never refuses. In one transaction it writes what its owner holds in memory and
+An admitted save applies its owner's captured state without a revision-conflict
+refusal. Submission can still be refused at the capacity bound described above.
+In one transaction it writes what its owner holds in memory and
 makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
 the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and
 commits it with the player file):
@@ -124,8 +153,10 @@ is only counted; the boot reap above deletes it once no payload carries the item
 the claim model that is every item picked up since the last login, until the next
 login.
 
-A load always succeeds with the rows that pass the filter; there is no degraded
-admission, no stale-row refusal threshold and no read-only quarantine. Logins never
+Stale ownership rows alone do not refuse the load; matching rows pass the filter.
+Malformed required components, storage errors, worker capacity, or a deadline can
+still refuse or time out the load. There is no degraded admission, stale-row refusal
+threshold, or read-only quarantine. Logins never
 block the game loop: the account menu submits the load and the descriptor waits in
 `CON_PLAYER_LOAD` until the load worker answers. If the worker refuses the request, the
 player is asked to try again. Copyover restore, which runs before the game loop starts,
@@ -242,12 +273,9 @@ starvation. The controlled retry/crash modes are documented in
 A death happens at once: `make_corpse()` moves the
 player's items into the corpse in memory, the corpse save claims them, the
 player's save follows, and the character is extracted. There is no recovery
-hold, corpse handoff batch or disputed-death disposition any more. The wallet
+hold, corpse handoff batch, or disputed-death disposition. The wallet
 becomes a coin pile in the corpse; the player's save, with the
 wallet empty, is queued before the corpse's, so a crash between them can lose
 the coins but never leave them in both places. See
 [the persistence reset decision](../adr/0002-persistence-reset-memory-is-the-authority.md)
-and `tests/async/test_deaths_happen_at_once.py`. Every server is treated as new, so
-the death evidence older servers stored is gone: migration 0034 drops
-`player_death_disposition` and `player_death_custody`, and the flat-file
-`player-deaths/` store is no longer created.
+and `tests/async/test_deaths_happen_at_once.py`.

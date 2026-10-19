@@ -9,6 +9,7 @@ provides the real socket client and server lifecycle, not mocked nanny handlers.
 from pathlib import Path
 import json
 import socket
+import re
 import subprocess
 import tempfile
 import time
@@ -224,15 +225,15 @@ def invitation_rejection(client, server, *, invited=False):
         reply(client, "", MENU)
         reply(client, "1", STAFF)
         reply(client, "1", "(Y/N)")
-        reply(client, "y", "<>")
-        response = reply(client, "invite on", "<>")
+        reply(client, "y", "< (news)>")
+        response = reply(client, "invite on", "< (news)>")
         require("Huh?" not in response, f"invitation command unavailable: {response}")
         if invited:
             # Invitation records use the legacy directory in this private runtime.
             invitation = server.run_root / "Players/Invited/t/taverek"
             invitation.parent.mkdir(parents=True)
             reply(client, "invite Taverek", "Invited.")
-            client.expect("<>")
+            client.expect("< (news)>")
             require(invitation.is_file(), "invitation command did not save its record")
         reply(client, "quit", "ACCOUNT MENU")
         client.expect(MENU)
@@ -354,6 +355,10 @@ def normal_after_hardcore(client, server):
     score = reply(client, "score", "Pos: standing >")
     require("HardCore pts:" not in score, "Normal choice retained the previous Hardcore flag")
     require("Taverek" in score, "score did not display the new character")
+    toggles = reply(client, "toggle", "Pos: standing >")
+    require(re.search(r"Web Info\s*:\s*ON\b", toggles),
+            "new character did not default to webinfo ON")
+    reply(client, "toggle webinfo off", "Pos: standing >")
     reply(client, "save", "Save complete for Taverek.")
     # A resident linkdead character reconnects immediately by design. Restart
     # the server to exercise disk reload and the saved-character confirmation.
@@ -376,6 +381,9 @@ def normal_after_hardcore(client, server):
         score = reply(other, "score", "Pos: standing >")
         require("Taverek" in score and "HardCore pts:" not in score,
                 "saved character did not reconnect with Normal mode")
+        toggles = reply(other, "toggle", "Pos: standing >")
+        require(re.search(r"Web Info\s*:\s*OFF\b", toggles),
+                "saved webinfo OFF preference was overwritten on reload")
     finally:
         other.close()
 

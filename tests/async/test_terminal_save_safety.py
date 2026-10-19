@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed source contracts for destructive character save transitions."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
@@ -15,7 +15,8 @@ rooms = read("specs.room.c")
 limits = read("limits.c")
 comm = read("comm.c")
 copyover = read("copyover.c")
-artifact = read("artifact.c")
+artifact_give = extract_function("artifact.c", "static void arti_files_give(")
+artifact_save_failure = artifact_give[artifact_give.index("if (!writeCharacter("):]
 lockers = read("storage_lockers.c")
 locker_leave = lockers[
     lockers.index("static bool locker_handle_leave"):
@@ -53,7 +54,9 @@ checks = {
         "persistence_save_character_terminal_database_acknowledged(" in copyover,
     # Shutdown always goes (step 8); only a failed copyover resumes the game.
     "shutdown always goes": "shutdown_cancelled=1" not in comm and "copyover_cancelled=1" in comm,
-    "artifact dummy retention": artifact.count("extract_refused=1") >= 2,
+    "artifact dummy retention": "extract_refused=1" in artifact_save_failure and
+        artifact_save_failure.index("return;") <
+        artifact_save_failure.index("release_offline_owner(owner);"),
     # A terminal locker save the async writer refused is asked for again; the locker
     # character keeps its items meanwhile and nothing saves on the loop.
     "refused locker save retries the writer":
@@ -107,11 +110,11 @@ checks["flat terminal saves queue except the first baseline"] = all(
 
 # Ghost extraction shares one fail-closed terminal-save helper across the named
 # and bulk command paths, and extraction remains ordered after that save gate.
-actwiz = read("actwiz.c")
+ghost_extract = extract_function("actwiz.c", "static void extractlink_attempt(P_char ch")
 checks["ghost extraction gate"] = (
-    actwiz.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 1
-    and actwiz.index("persistence_save_character_terminal(vict, RENT_LINKDEAD)")
-    < actwiz.index("extract_char_after_terminal_save(vict)")
+    ghost_extract.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 1
+    and ghost_extract.index("persistence_save_character_terminal(vict, RENT_LINKDEAD)")
+    < ghost_extract.index("extract_char_after_terminal_save(vict)")
 )
 
 # Every logout writes a log_entries row through sql_log(). The MariaDB build queues

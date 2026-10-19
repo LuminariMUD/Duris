@@ -3667,7 +3667,7 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 
 		// roll is number(0,100) - ensure that percent is 1,101
 		percent = BOUNDED(1, percent, 101); // percent 101 is a critical hit and
-			// roll 0 is a crit miss
+		// roll 0 is a crit miss
 		if (!failed && (trusted || (roll && (GET_LEVEL(ch) > 40) && (roll < percent))))
 		{ /* success */
 			if (IS_PC(victim) &&
@@ -4296,28 +4296,21 @@ void do_area(P_char ch, char *argument, int /*cmd*/)
 		zone_id = world[ch->in_room].zone;
 		zone = &zone_table[zone_id];
 
-		if (IS_TRUSTED(ch))
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "&+LZone Name: %s %d\r\n",
-				 pad_ansi(zone->name, 30).c_str(), zone_id);
-		}
-		else
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "&+LZone Name: %s\r\n",
-				 pad_ansi(zone->name, 30).c_str());
-		}
-
-		snprintf(buf2, MAX_STRING_LENGTH, "&+LAverage &+rmob&+L level in zone: &n%d\r\n ",
-			 zone->avg_mob_level);
-		strcat(buf, buf2);
-		if ((zone->avg_mob_level - GET_LEVEL(ch)) > 15)
-		{
-			snprintf(
-				buf2, MAX_STRING_LENGTH,
-				"&-L&+RWarning&-L, some mobs in this zone may be very hazardous for you! Travel with care!&n\r\n");
-			strcat(buf, buf2);
-		}
-		send_to_char(buf, ch);
+		std::string details = IS_TRUSTED(ch) ? " " + std::to_string(zone_id) : "";
+		details += "\r\n&+LAverage &+rmob&+L level in zone: &n";
+		details += zone->avg_mob_level >= 0  ? std::to_string(zone->avg_mob_level) :
+			   zone->avg_mob_level == -1 ? "not applicable" :
+						       "unknown";
+		details += "\r\n ";
+		if (zone->avg_mob_level >= 0 && (zone->avg_mob_level - GET_LEVEL(ch)) > 15)
+			details +=
+				"&-L&+RWarning&-L, some mobs in this zone may be very hazardous for you! Travel with care!&n\r\n";
+		// Reserve the complete suffix so a long name cannot hide the danger warning.
+		std::string response = "&+LZone Name: ";
+		response.append(pad_ansi(zone->name, 30), 0,
+				MAX_STRING_LENGTH - 1 - response.size() - details.size());
+		response += details;
+		send_to_char(response.c_str(), ch);
 		return;
 	}
 	// Immortal arguments:
@@ -5735,9 +5728,41 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_HINT_CHANNEL);
 		break;
 	case 52:
+	{
+		const auto before = PLR2_FLAGS(ch);
 		result = PLR2_TOG(PLR2_WEBINFO);
-		sql_webinfo_toggle(ch);
-		break;
+		if (result == -1)
+			break;
+		if (before == PLR2_FLAGS(ch))
+		{
+			send_to_char(
+				"Webinfo is already set that way; any pending save is still pending.\r\n",
+				send_ch);
+			return;
+		}
+		const int room = ch->in_room == NOWHERE ? NOWHERE : world[ch->in_room].number;
+		const auto saved =
+			player_save_pipeline_request(ch, PLAYER_COMPONENT_STATUS, RENT_CRASH, room);
+		if (saved != player_save_pipeline_result::queued &&
+		    saved != player_save_pipeline_result::coalesced)
+		{
+			PLR2_FLAGS(ch) = before;
+			send_to_char(
+				"Webinfo change did not take effect: unable to queue the save.\r\n",
+				send_ch);
+			return;
+		}
+		if (GET_PLAYER_LOG(ch))
+			GET_PLAYER_LOG(ch)->reset_export_window();
+		send_to_char(result ? "Webinfo ON for new PvP captures; save pending.\r\n" :
+				      "Webinfo OFF for new PvP captures; save pending.\r\n",
+			     send_ch);
+		send_to_char(
+			"Historical POV visibility uses the saved setting when enabled on the website.\r\n"
+			"Wait for save acknowledgement and refresh the page; see HELP TOGGLE_WEBINFO.\r\n",
+			send_ch);
+		return;
+	}
 	case 53:
 		result = PLR2_TOG(PLR2_ACC);
 		break;
@@ -5781,6 +5806,8 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		break;
 	case 64: /* gmcp */
 		result = gmcp_tog(PLR3_FLAGS(ch), arg);
+		if (result == 1)
+			gmcp_send_initial_state(send_ch);
 		break;
 	case 65: // jchat
 		result = plr_tog(PLR3_FLAGS(ch), PLR3_JESTROS, arg, 1);

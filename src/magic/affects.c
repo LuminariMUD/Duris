@@ -2820,6 +2820,7 @@ void initialize_links()
 	define_link(LNK_SNG_HEALING, "SONG_HEALING", song_broken, LNKFLG_AFFECT | LNKFLG_ROOM);
 	define_link(LNK_DRAGOON_MOUNT, "DRAGOON_MOUNT", charm_broken,
 		    LNKFLG_AFFECT | LNKFLG_EXCLUSIVE);
+	define_link(LNK_PLANT_PARALYSIS, "PLANT_PARALYSIS", NULL, LNKFLG_AFFECT);
 
 	define_olink(LNK_CEGILUNE, "CEGILUNES_SEARING", cegilunes_broken,
 		     LNKFLG_EXCLUSIVE | LNKFLG_REMOVE_AFF | LNKFLG_BREAK_REMOVE);
@@ -3917,9 +3918,8 @@ void affect_update(int pulse)
 			if (GET_VITALITY(i) < GET_MAX_VITALITY(i))
 				StartRegen(i, regen_resource::vitality);
 
-			if (GET_CLASS(i, CLASS_PSIONICIST) || GET_CLASS(i, CLASS_MINDFLAYER))
-				if (GET_MANA(i) < GET_MAX_MANA(i))
-					StartRegen(i, regen_resource::mana);
+			if (USES_MANA(i))
+				StartRegen(i, regen_resource::mana);
 
 			if (GET_WARD(i) < GET_MAX_WARD(i))
 				StartRegen(i, regen_resource::ward);

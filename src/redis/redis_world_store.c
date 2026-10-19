@@ -18,6 +18,7 @@
 #include "redis/redis_namespace.h"
 
 #include "world/world_recovery_pipeline.h"
+#include "world/world_recovery_codec.h"
 
 #include <hiredis/hiredis.h>
 #include <openssl/crypto.h>
@@ -32,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <memory>
 #include <string>
 #include <sys/time.h>
 #include <vector>
@@ -558,49 +560,129 @@ uint64_t redis_world_store_consume_clean_shutdown(const struct redis_world_store
 	return sequence;
 }
 
-bool redis_world_store_consume_generation(const struct redis_world_store_config *config,
-					  uint64_t sequence)
+bool redis_world_store_consume_generation(
+	const redis_world_store_config *config, uint64_t sequence,
+	const std::vector<unsigned char> &generation,
+	const std::vector<std::vector<unsigned char>> &floor_records)
 {
 	world_keys keys = {};
-	char generation[160];
-	if (!sequence || !build_keys(config, &keys) ||
-	    !generation_key(generation, sizeof generation, config, sequence))
+	char generation_key_buffer[160];
+	if (!sequence || generation.empty() || generation.size() > WORLD_RECOVERY_MAX_BYTES ||
+	    floor_records.size() > WORLD_RECOVERY_MAX_FLOOR_RECORDS || !build_keys(config, &keys) ||
+	    !generation_key(generation_key_buffer, sizeof generation_key_buffer, config, sequence))
 		return false;
-	redisContext *context = connect_bounded(config);
+	std::unique_ptr<redisContext, decltype(&redisFree)> context(connect_bounded(config, 500),
+								    redisFree);
 	if (!context || context->err)
-	{
-		if (context)
-			redisFree(context);
 		return false;
-	}
+	std::unique_ptr<redisReply, decltype(&freeReplyObject)> manifest(
+		bounded_string(context.get(), generation_key_buffer,
+			       REDIS_WORLD_GENERATION_MANIFEST_BYTES,
+			       REDIS_WORLD_GENERATION_MANIFEST_BYTES),
+		freeReplyObject);
+	size_t generation_size = 0, chunk_count = 0;
 	char upload_token[33] = {};
-	if (!manifest_upload_token(context, config, sequence, upload_token, sizeof upload_token))
+	unsigned char expected_digest[SHA256_DIGEST_LENGTH] = {},
+		      actual_digest[SHA256_DIGEST_LENGTH] = {};
+	if (!manifest ||
+	    !decode_manifest(config, sequence,
+			     reinterpret_cast<const unsigned char *>(manifest->str), manifest->len,
+			     &generation_size, &chunk_count, upload_token, sizeof upload_token,
+			     expected_digest) ||
+	    generation_size != generation.size() ||
+	    !SHA256(generation.data(), generation.size(), actual_digest) ||
+	    CRYPTO_memcmp(expected_digest, actual_digest, sizeof expected_digest))
+		return false;
+	// The head, authenticated manifest and every floor value must still equal
+	// the restored cut. A same-count replacement is a change, not permission to
+	// delete it. Every comparison precedes every write in this atomic script.
+	constexpr const char *script =
+		"if redis.call('GET',KEYS[1])~=ARGV[1] or redis.call('GET',KEYS[2])~=ARGV[2] then return 0 end "
+		"local n=tonumber(ARGV[3]) "
+		"if redis.call('HLEN',KEYS[8])~=n or redis.call('ZCARD',KEYS[9])~=n then return 0 end "
+		"for i=0,n-1 do local uid=ARGV[4+2*i] "
+		"if redis.call('HGET',KEYS[8],uid)~=ARGV[5+2*i] or not redis.call('ZSCORE',KEYS[9],uid) then return 0 end end "
+		"redis.call('DEL',KEYS[1],KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6],KEYS[7],KEYS[8],KEYS[9]) return 1";
+	try
 	{
-		redisFree(context);
+		const auto seq = std::to_string(sequence),
+			   count = std::to_string(floor_records.size());
+		std::vector<std::string> uids;
+		std::vector<uint64_t> roots;
+		uids.reserve(floor_records.size());
+		roots.reserve(floor_records.size());
+		size_t bytes = 0;
+		for (const auto &record : floor_records)
+		{
+			uint64_t uid = 0;
+			if (record.size() > WORLD_RECOVERY_MAX_FLOOR_BYTES - bytes ||
+			    !world_recovery_floor_object_root_uid(record.data(), record.size(),
+								  &uid))
+				return false;
+			bytes += record.size();
+			roots.push_back(uid);
+			uids.push_back(std::to_string(uid));
+		}
+		if (bytes > WORLD_RECOVERY_MAX_BYTES - generation.size())
+			return false;
+		std::sort(roots.begin(), roots.end());
+		if (std::adjacent_find(roots.begin(), roots.end()) != roots.end())
+			return false;
+		std::vector<const char *> arguments = { "EVAL",
+							script,
+							"9",
+							keys.current,
+							generation_key_buffer,
+							keys.timestamp,
+							keys.sequence,
+							keys.checksum,
+							keys.complete,
+							keys.clean_shutdown,
+							keys.floor_drops,
+							keys.floor_drop_index,
+							seq.c_str(),
+							manifest->str,
+							count.c_str() };
+		std::vector<size_t> lengths;
+		arguments.reserve(arguments.size() + 2 * floor_records.size());
+		for (size_t index = 0; index < floor_records.size(); ++index)
+		{
+			arguments.push_back(uids[index].c_str());
+			arguments.push_back(
+				reinterpret_cast<const char *>(floor_records[index].data()));
+		}
+		lengths.reserve(arguments.size());
+		for (size_t index = 0; index < 15; ++index)
+			lengths.push_back(index == 13 ? manifest->len : strlen(arguments[index]));
+		for (size_t index = 0; index < floor_records.size(); ++index)
+		{
+			lengths.push_back(uids[index].size());
+			lengths.push_back(floor_records[index].size());
+		}
+		redisReply *reply = static_cast<redisReply *>(
+			redisCommandArgv(context.get(), static_cast<int>(arguments.size()),
+					 arguments.data(), lengths.data()));
+		const bool consumed = reply && reply->type == REDIS_REPLY_INTEGER &&
+				      reply->integer == 1;
+		if (reply)
+			freeReplyObject(reply);
+		if (consumed)
+			delete_generation_artifacts(context.get(), config, sequence, upload_token,
+						    false);
+		return consumed;
+	}
+	catch (const std::bad_alloc &)
+	{
 		return false;
 	}
-	// Whoever holds the lease: a boot that restored the generation, with a crashed writer's
-	// lease still running, must not find it again at the next crash.
-	constexpr const char *script =
-		"if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end "
-		"redis.call('DEL',KEYS[1],KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6],KEYS[7]) "
-		"return 1";
-	redisReply *reply = command(context, "EVAL %b 7 %s %s %s %s %s %s %s %llu", script,
-				    strlen(script), keys.current, generation, keys.timestamp,
-				    keys.sequence, keys.checksum, keys.complete,
-				    keys.clean_shutdown, (unsigned long long)sequence);
-	const bool consumed = reply && reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
-	if (reply)
-		freeReplyObject(reply);
-	if (consumed)
-		delete_generation_artifacts(context, config, sequence, upload_token, false);
-	redisFree(context);
-	return consumed;
 }
 
 bool redis_world_store_read_generation(const struct redis_world_store_config *config,
-				       uint64_t sequence, std::vector<unsigned char> *generation)
+				       uint64_t sequence, std::vector<unsigned char> *generation,
+				       bool *transport_failure)
 {
+	if (transport_failure)
+		*transport_failure = false;
 	char manifest_key[160];
 	if (!config || !sequence || !generation ||
 	    !generation_key(manifest_key, sizeof manifest_key, config, sequence))
@@ -608,6 +690,8 @@ bool redis_world_store_read_generation(const struct redis_world_store_config *co
 	redisContext *context = connect_bounded(config, 500);
 	if (!context || context->err)
 	{
+		if (transport_failure)
+			*transport_failure = true;
 		if (context)
 			redisFree(context);
 		return false;
@@ -666,6 +750,8 @@ bool redis_world_store_read_generation(const struct redis_world_store_config *co
 		valid = SHA256(generation->data(), generation->size(), actual_digest) &&
 			CRYPTO_memcmp(actual_digest, generation_digest, SHA256_DIGEST_LENGTH) == 0;
 	}
+	if (transport_failure)
+		*transport_failure = context->err != 0;
 	redisFree(context);
 	if (!valid)
 		generation->clear();

@@ -4,6 +4,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
+#include "flatfile/flatfile_world_item_repository.h"
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <openssl/sha.h>
 
 #include <cstdlib>
 #include <filesystem>
@@ -117,6 +119,8 @@ static player_snapshot make_full(player_revision_t revision)
 	snapshot.trophies.push_back({ 12, 300 });
 	snapshot.recipes_are_external = true;
 	snapshot.output_preferences = "v1;m=1;12=27";
+	snapshot.status_strings.push_back(
+		{ player_status_string_field::last_read_news_hash, std::string(64, 'a') });
 	return snapshot;
 }
 
@@ -134,6 +138,8 @@ static player_snapshot make_status(player_revision_t revision, int level, int ro
 	snapshot.status_integers.push_back({ player_status_field::level, level, 0, false });
 	snapshot.status_strings.push_back({ player_status_string_field::name, "Player" });
 	snapshot.recipes_are_external = true;
+	snapshot.status_strings.push_back(
+		{ player_status_string_field::last_read_news_hash, std::string(64, 'b') });
 	return snapshot;
 }
 
@@ -158,6 +164,19 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	require(lock.acquire(root, &error), "inspect authority lock: " + error);
 	std::cout << "{\"revision\":" << snapshot.revision << ",\"intent\":" << snapshot.save_intent
 		  << ",\"room\":" << snapshot.room_vnum;
+	for (const auto &entry : snapshot.status_strings)
+		if (entry.field == player_status_string_field::last_read_news_hash)
+		{
+			require(entry.value.empty() ||
+					(entry.value.size() == 64 &&
+					 std::all_of(entry.value.begin(), entry.value.end(),
+						     [](unsigned char c) {
+							     return (c >= '0' && c <= '9') ||
+								    (c >= 'a' && c <= 'f');
+						     })),
+				"invalid acknowledgement in inspection fixture");
+			std::cout << ",\"last_read_news_hash\":\"" << entry.value << '"';
+		}
 	std::cout << ",\"snapshot_uids\":[";
 	for (size_t i = 0; i < snapshot.items.size(); ++i)
 	{
@@ -266,6 +285,288 @@ static void inspect_authority(const std::string &root, int32_t pid)
 			<< revision;
 	}
 	std::cout << "}\n";
+}
+
+static void inspect_world_items(const std::string &root, int argc, char **argv)
+{
+	std::string error;
+	std::vector<flatfile_corpse_record> corpses;
+	std::vector<flatfile_saved_world_item_record> saved_items;
+	require(flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
+			flatfile_world_item_result::ok,
+		"inspect world items: " + error);
+	std::cout << "{\"items\":[";
+	bool first = true;
+	for (const auto &corpse : corpses)
+		for (const auto &item : corpse.items)
+		{
+			bool requested = false;
+			for (int index = 3; index < argc; ++index)
+				requested |= item.vnum == std::stoi(argv[index]);
+			if (!requested)
+				continue;
+			if (!first)
+				std::cout << ',';
+			first = false;
+			std::cout << "{\"uid\":" << item.object_uid << ",\"vnum\":" << item.vnum;
+			for (const auto &description : item.extra_descriptions)
+				if (description.keyword == "DURIS_TRAP_STATE_V1")
+					std::cout << ",\"trap_state\":\"" << description.description
+						  << '"';
+			std::cout << '}';
+		}
+	std::cout << "]}\n";
+}
+
+static void source_id_gap_case(const fs::path &path)
+{
+	const std::string root = path.string();
+	for (const auto &directory : { path, path / "players", path / "domains",
+				       path / "identities", path / "identities/names" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	int32_t allocated = 0;
+	for (int i = 0; i < 42; ++i)
+		require(flatfile_identity_allocate_pid(root, &allocated, &error) ==
+				flatfile_identity_result::ok,
+			"source-gap PID");
+	require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
+			flatfile_identity_result::ok,
+		"source-gap identity");
+	auto original = make_full(1);
+	for (auto &item : original.items)
+		if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+			++item.parent_index;
+	player_item_snapshot held = {};
+	held.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	held.vnum = 900;
+	original.items.insert(original.items.begin(), held);
+	require(flatfile_player_snapshot_apply(root, original, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"source-gap seed");
+	player_load_request request = {};
+	request.request_id = 1;
+	request.pid = 42;
+	request.account_name = "Account-One";
+	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+	const auto loaded = flatfile_player_load_repository_execute(root, request);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 2 &&
+			loaded.item_identities[0].database_id == 2 &&
+			loaded.item_identities[1].database_id == 3 &&
+			loaded.item_sources[1].item_uid == loaded.item_identities[0].item_uid &&
+			loaded.item_sources[2].item_uid == loaded.item_identities[1].item_uid &&
+			loaded.item_sources[1].vnum == loaded.snapshot.items[0].vnum &&
+			loaded.item_sources[1].extra_flags_present &&
+			loaded.item_sources[1].quantity == 1 &&
+			loaded.item_sources[1].custody_owner_revision_found,
+		"filtered flat rows compacted original source IDs");
+}
+
+static void retained_roots_case(const fs::path &path, bool unknown_root)
+{
+	const std::string root = path.string();
+	for (const auto &directory : { path, path / "players", path / "domains",
+				       path / "identities", path / "identities/names" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	int32_t allocated = 0;
+	for (int i = 0; i < 42; ++i)
+		require(flatfile_identity_allocate_pid(root, &allocated, &error) ==
+				flatfile_identity_result::ok,
+			"retention fixture identity allocation");
+	require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
+			flatfile_identity_result::ok,
+		"retention fixture identity");
+	auto original = make_full(1);
+	player_item_snapshot unknown = {};
+	unknown.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	unknown.object_uid = unknown_root ? 0 : 500;
+	unknown.vnum = 900;
+	unknown.name = "retained legacy root";
+	unknown.values[7] = 77;
+	original.items.push_back(unknown);
+	player_item_snapshot child = {};
+	child.parent_index = 2;
+	child.object_uid = unknown_root ? 150 : 0;
+	child.vnum = 901;
+	original.items.push_back(child);
+	require(flatfile_player_snapshot_apply(root, original, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"legacy flat fixture seed: " + error);
+	// The valid UID inside the held graph now belongs to another player. A
+	// later save must retain the payload without claiming that UID back.
+	require(flatfile_identity_allocate_pid(root, &allocated, &error) ==
+				flatfile_identity_result::ok &&
+			allocated == 43 &&
+			flatfile_identity_claim(root, 43, "Other", "Account-One", &error) ==
+				flatfile_identity_result::ok,
+		"retention counterparty identity");
+	auto other = make_full(1);
+	other.pid = 43;
+	other.status_strings[0].value = "Other";
+	other.items = { unknown_root ? child : unknown };
+	other.items[0].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	other.pets.clear();
+	require(flatfile_player_snapshot_apply(root, other, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"retention counterparty save: " + error);
+	player_load_request request = {};
+	request.request_id = 1;
+	request.pid = 42;
+	request.account_name = "Account-One";
+	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+	const auto loaded = flatfile_player_load_repository_execute(root, request);
+	require(loaded.outcome == player_load_outcome::applied && loaded.snapshot.items.size() == 2,
+		"unidentified root and its descendants must be withheld together");
+	const auto foreign_source = std::find_if(
+		loaded.item_sources.begin(), loaded.item_sources.end(),
+		[&](const auto &source) { return source.item_uid == other.items[0].object_uid; });
+	require(foreign_source != loaded.item_sources.end() && foreign_source->custody_found &&
+			!foreign_source->custody_owner_revision_found &&
+			foreign_source->custody.owner_revision == 0,
+		"foreign flat revision was asserted as authoritative zero");
+	require(loaded.item_sources.size() == 4 && loaded.item_sources[0].custody_found &&
+			loaded.item_sources[0].root_item_uid == 100 &&
+			loaded.item_sources[0].custody.owner.id == 42 &&
+			loaded.item_sources[0].custody.owner_revision ==
+				loaded.item_owner_revision &&
+			loaded.item_sources[0].custody.state == item_custody_state::active &&
+			loaded.item_sources[1].root_item_uid == 100 &&
+			loaded.item_sources[1].custody.parent_item_uid == 100 &&
+			loaded.item_sources[0].bytes > 0,
+		"flat source cut lost custody, original ancestry or byte bounds");
+	require(loaded.item_sources[2].vnum == 900 && loaded.item_sources[2].quantity == 1 &&
+			loaded.item_sources[2].extra_flags_present &&
+			loaded.item_sources[2].extra_flags == unknown.extra_flags &&
+			loaded.item_sources[3].vnum == 901,
+		"flat inspection lost withheld raw source metadata");
+	auto partial = loaded.snapshot;
+	partial.revision = 2;
+	partial.components = PLAYER_COMPONENT_LANGUAGES;
+	partial.languages[0].value = 97;
+	require(flatfile_player_snapshot_apply(root, partial, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"partial save with retained source metadata: " + error);
+	auto saved = loaded.snapshot;
+	saved.revision = 3;
+	saved.components = PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY;
+	saved.items[0].values[0] = 99;
+	require(flatfile_player_snapshot_apply(root, saved, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"unrelated flat inventory save: " + error);
+	player_snapshot stored;
+	require(flatfile_player_snapshot_load(root, 42, &stored, &error) ==
+				flatfile_player_load_result::ok &&
+			stored.items.size() == 4 && stored.items[0].values[0] == 99 &&
+			stored.items[2].object_uid == unknown.object_uid &&
+			stored.items[2].name == unknown.name && stored.items[2].values[7] == 77 &&
+			stored.items[3].object_uid == child.object_uid &&
+			stored.items[3].parent_index == 2,
+		"flat save lost held source data or the independent valid update");
+	require(stored.retained_items.rows.empty(),
+		"in-process selectors became an on-disk authority");
+	saved.revision = 4;
+	saved.items.resize(1);
+	saved.items[0].values[0] = 123;
+	require(flatfile_player_snapshot_apply(root, saved, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"repeated save after valid prefix changed: " + error);
+	request.request_id = 2;
+	const auto again = flatfile_player_load_repository_execute(root, request);
+	require(again.outcome == player_load_outcome::applied && again.snapshot.items.size() == 1 &&
+			again.snapshot.retained_items.rows.size() == 2,
+		"retention did not rederive after reload");
+	auto retry = again.snapshot;
+	retry.revision = 5;
+	require(flatfile_player_snapshot_apply(root, retry, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"save after retention reload: " + error);
+	auto pet_overlap = retry;
+	pet_overlap.revision = 6;
+	pet_overlap.components = PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY |
+				 PLAYER_COMPONENT_PETS;
+	auto conflicting_pet = original.pets.front();
+	conflicting_pet.pet_uid = 70042;
+	conflicting_pet.items = { unknown_root ? child : unknown };
+	conflicting_pet.items[0].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	pet_overlap.pets = { conflicting_pet };
+	const auto pet_refused = flatfile_player_snapshot_apply(root, pet_overlap, &error);
+	require(pet_refused.outcome == player_save_apply_outcome::terminal_failure &&
+			pet_refused.error_code == ESTALE,
+		"active pet/held inventory UID overlap accepted");
+	// The revision and foreign custody checks below prove refusal was atomic.
+	retry.revision = 6;
+	retry.retained_items.rows.pop_back();
+	require(flatfile_player_snapshot_apply(root, retry, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"changed retained source selection was accepted");
+	require(flatfile_player_snapshot_load(root, 42, &stored, &error) ==
+				flatfile_player_load_result::ok &&
+			stored.revision == 5 && stored.items.size() == 3 &&
+			stored.items[1].object_uid == unknown.object_uid &&
+			stored.items[2].parent_index == 1,
+		"failed retained save changed the original source");
+	std::vector<flatfile_item_ownership_record> custody;
+	require(flatfile_item_repository_load_uids(root, { other.items[0].object_uid }, &custody,
+						   &error) == flatfile_item_repository_result::ok &&
+			custody.size() == 1 && custody[0].owner.type == item_owner_type::player &&
+			custody[0].owner.id == 43,
+		"saving retained payload stole foreign custody");
+	if (!unknown_root)
+	{
+		// Legacy files can contain two roots with the same foreign UID. Keep
+		// all matching evidence without making unrelated inventory unavailable.
+		stored.items.push_back(unknown);
+		std::vector<uint8_t> payload;
+		require(player_snapshot_encode(stored, &payload) ==
+				player_snapshot_codec_result::ok,
+			"encode duplicate-root fixture");
+		stored.encoded_size_bound = payload.size();
+		require(player_snapshot_encode(stored, &payload) ==
+				player_snapshot_codec_result::ok,
+			"normalize duplicate-root fixture");
+		unsigned char digest[SHA256_DIGEST_LENGTH];
+		SHA256(payload.data(), payload.size(), digest);
+		std::ofstream file(path / "players/42.snapshot",
+				   std::ios::binary | std::ios::trunc);
+		const auto number = [&](uint64_t value, size_t bytes)
+		{
+			for (size_t index = 0; index < bytes; ++index)
+				file.put(static_cast<char>(value >> (index * 8)));
+		};
+		const auto &magic = flatfile_player_snapshot_file::player_magic;
+		file.write(reinterpret_cast<const char *>(magic.data()), magic.size());
+		number(flatfile_player_snapshot_file::player_file_version, 4);
+		number(payload.size(), 4);
+		number(stored.pid, 4);
+		number(stored.revision, 8);
+		number(stored.components, 8);
+		file.write(reinterpret_cast<const char *>(digest), sizeof(digest));
+		file.write(reinterpret_cast<const char *>(payload.data()), payload.size());
+		file.close();
+		require(file.good(), "write duplicate-root fixture");
+		request.request_id = 3;
+		const auto aliased = flatfile_player_load_repository_execute(root, request);
+		require(aliased.outcome == player_load_outcome::applied &&
+				aliased.snapshot.items.size() == 1 &&
+				aliased.snapshot.retained_items.rows.size() == 3,
+			"foreign duplicate retained roots blocked unrelated inventory");
+		auto next = aliased.snapshot;
+		next.revision = 6;
+		require(flatfile_player_snapshot_apply(root, next, &error).outcome ==
+					player_save_apply_outcome::applied &&
+				flatfile_player_snapshot_load(root, 42, &stored, &error) ==
+					flatfile_player_load_result::ok &&
+				stored.items.size() == 4,
+			"save lost aliased retained roots");
+	}
 }
 
 // A save claims what the player holds in the same authority transaction that writes
@@ -452,6 +753,31 @@ static void saved_wallet_matrix(const fs::path &path)
 /** Inspect synthetic authority on request, otherwise exercise player repository durability and recovery. */
 int main(int argc, char **argv)
 {
+	if ((argc == 4 || argc == 5) && std::string(argv[2]) == "artifact-owner")
+	{
+		std::string error;
+		flatfile_artifact_record record;
+		require(flatfile_artifact_get(argv[1], std::stoi(argv[3]), &record, &error) ==
+				flatfile_artifact_result::ok,
+			"inspect artifact: " + error);
+		if (argc == 5)
+		{
+			// Only the isolated journey invokes this, with its server stopped.
+			record.location_type = std::stoi(argv[4]);
+			record.location = 88;
+			record.owned = record.location_type != FLATFILE_ARTIFACT_NOT_IN_GAME;
+			require(flatfile_artifact_snapshot_apply(argv[1], { record }, &error) ==
+					flatfile_artifact_result::ok,
+				"seed stale tracking: " + error);
+		}
+		std::cout << "{\"uid\":" << record.canonical_item_uid
+			  << ",\"identity\":" << static_cast<int>(record.identity_state)
+			  << ",\"owned\":" << record.owned << ",\"type\":" << record.location_type
+			  << ",\"location\":" << record.location << ",\"timer\":" << record.timer
+			  << ",\"soul\":" << record.bind_owner_pid
+			  << ",\"bind\":" << record.bind_timer << "}\n";
+		return 0;
+	}
 	if (argc == 3 && std::string(argv[2]) == "seed-creation-bank")
 	{
 		std::string error;
@@ -571,9 +897,18 @@ int main(int argc, char **argv)
 			"save seeded item: " + error);
 		if (item.extra_flags & (1U << 28))
 		{
-			const auto updated = flatfile_artifact_gameplay_update(
-				argv[1], item.vnum, true, FLATFILE_ARTIFACT_ON_PLAYER, 1,
-				time(nullptr) + 86400, 2, time(nullptr), &error);
+			const flatfile_artifact_record artifact = { item.vnum,
+								    true,
+								    FLATFILE_ARTIFACT_ON_PLAYER,
+								    1,
+								    time(nullptr) + 86400,
+								    2,
+								    time(nullptr),
+								    0,
+								    0,
+								    0 };
+			const auto updated =
+				flatfile_artifact_snapshot_apply(argv[1], { artifact }, &error);
 			require(updated == flatfile_artifact_result::ok,
 				"seed artifact catalog: " + error);
 		}
@@ -583,6 +918,11 @@ int main(int argc, char **argv)
 	if (argc == 4 && std::string(argv[2]) == "inspect")
 	{
 		inspect_authority(argv[1], std::stoi(argv[3]));
+		return 0;
+	}
+	if (argc >= 4 && std::string(argv[2]) == "inspect-world-items")
+	{
+		inspect_world_items(argv[1], argc, argv);
 		return 0;
 	}
 	require(argc == 2, "state root argument required");
@@ -632,6 +972,8 @@ int main(int argc, char **argv)
 			loaded.trophies[0].experience == 300 &&
 			loaded.output_preferences == full.output_preferences,
 		"full player snapshot did not round trip: " + error);
+	require(loaded.status_strings.back().value == std::string(64, 'a'),
+		"news acknowledgement did not round trip");
 	player_load_request load_request = {};
 	load_request.request_id = 1;
 	load_request.pid = 42;
@@ -703,6 +1045,8 @@ int main(int argc, char **argv)
 			found_flights = field.is_unsigned &&
 					field.unsigned_value == ((uint64_t{ 1 } << 26) | 1);
 	require(found_flights, "unrelated component save erased flight discoveries");
+	require(loaded.status_strings.back().value == std::string(64, 'a'),
+		"unrelated component erased news acknowledgement");
 	player_snapshot trophy_checkpoint = make_status(2, 51, 1202);
 	trophy_checkpoint.status_integers.push_back(
 		{ player_status_field::learned_flight_stops, 0, 7, true });
@@ -722,6 +1066,8 @@ int main(int argc, char **argv)
 			loaded.trophies[0].experience == 645 &&
 			loaded.trophies[1].experience == 678 && loaded.output_preferences.empty(),
 		"partial status merge discarded an untouched component");
+	require(loaded.status_strings.back().value == std::string(64, 'b'),
+		"status save did not replace news acknowledgement");
 
 	require(loaded.status_integers[1].unsigned_value == 7 &&
 			loaded.status_integers[2].signed_value == 12345,
@@ -783,6 +1129,9 @@ int main(int argc, char **argv)
 		"concurrent player writers left a torn player file");
 
 	item_consistency_matrix(root / "consistency");
+	source_id_gap_case(root / "source-gap");
+	retained_roots_case(root / "retention", true);
+	retained_roots_case(root / "retained-child", false);
 	require(flatfile_player_snapshot_apply(root.string(), make_full(10), &error).outcome ==
 			player_save_apply_outcome::applied,
 		"could not save the item fixture: " + error);

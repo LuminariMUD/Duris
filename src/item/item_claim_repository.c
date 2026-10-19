@@ -16,6 +16,7 @@
 
 #include "persistence/persistence_observability.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <set>
@@ -245,7 +246,8 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 	return 0;
 }
 
-unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted)
+unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted,
+				      const std::vector<uint64_t> *retained)
 {
 	if (!connection || !deleted)
 		return EINVAL;
@@ -268,6 +270,67 @@ unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted)
 	     { "player_items", "player_pet_items", "locker_items", "corpse_items", "saved_items" })
 		sql += std::string(" AND NOT EXISTS (SELECT 1 FROM ") + payload +
 		       " payload WHERE payload.obj_uid=own.item_uid)";
+	if (retained && !retained->empty())
+	{
+		if (!std::is_sorted(retained->begin(), retained->end()))
+			return EINVAL;
+		std::string select = sql;
+		select.replace(0, sizeof("DELETE own") - 1, "SELECT own.item_uid");
+		for (;;)
+		{
+			const uint64_t before = *deleted;
+			uint64_t cursor = 0;
+			for (;;)
+			{
+				if (const auto failed = execute(
+					    connection, select + " AND own.item_uid>" +
+								std::to_string(cursor) +
+								" ORDER BY own.item_uid LIMIT 256"))
+					return failed;
+				MYSQL_RES *page = mysql_store_result(connection);
+				if (!page)
+					return mysql_errno(connection) ? mysql_errno(connection) :
+									 EIO;
+				std::string eligible;
+				bool valid = true, found = false;
+				while (MYSQL_ROW row = mysql_fetch_row(page))
+				{
+					uint64_t uid = 0;
+					if (!parse_u64(row[0], &uid) || uid <= cursor)
+					{
+						valid = false;
+						break;
+					}
+					cursor = uid;
+					found = true;
+					if (!std::binary_search(retained->begin(), retained->end(),
+								uid))
+					{
+						if (!eligible.empty())
+							eligible += ',';
+						eligible += std::to_string(uid);
+					}
+				}
+				const auto error = mysql_errno(connection);
+				mysql_free_result(page);
+				if (!valid || error)
+					return error ? error : EINVAL;
+				if (!found)
+					break;
+				if (!eligible.empty())
+				{
+					// Recheck every original stale-row condition at deletion.
+					if (const auto failed = execute(
+						    connection, sql + " AND own.item_uid IN (" +
+									eligible + ')'))
+						return failed;
+					*deleted += mysql_affected_rows(connection);
+				}
+			}
+			if (*deleted == before)
+				return 0;
+		}
+	}
 	for (;;)
 	{
 		if (const unsigned int failed = execute(connection, sql))

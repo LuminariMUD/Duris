@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"c5508712a74ade2cfd1bd34e36c050ff30a350a1549d9e291c46b9c95944bf09";
+	"584eee807102151cffe0bd503d4bbc7599d51011b9a4bf06713b04e6b88671ea";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"e0d811dab0125be50a148689dd4e2924ec1301542865c713057bd8143238c35d";
+	"6a9c6e546ee14dc919584a64d77ae9a3f17b4498b0cf589a37680c1de98aeabb";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -96,15 +96,20 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * adds the learned flight stops mask to player status. Migration 0039 adds
  * level_cap.level_good and level_evil, the levels unlocked by each side.
  * Migration 0040 records the killer-side ally count on combat outcomes.
+ * Migration 0041 widens legacy pkill_info.log columns for full public combat logs.
+ * Migration 0042 widens all ten player base stats to signed shorts.
+ * Migration 0044 adds canonical artifact UID/state without replacing the custody FK.
+ * Migration 0045 adds nullable capture permission to PvP participant snapshots.
+ * Migration 0046 seeds two Nexus catalogue rows; structural fingerprints are unchanged.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0040_combat_outcome_allies";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 40;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0046_nexus_phase1";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 46;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e";
+	"40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa";
+	"bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"dd995ce9e89ed15e8299c2e705fdf9647d1ada360abfcd9d57e535fa80d98106";
+	"ea92ca173e8807c500ce07086baac1449f0a0855d82c775c7cb38cf6c49ca586";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

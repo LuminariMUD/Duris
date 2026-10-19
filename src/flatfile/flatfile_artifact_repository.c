@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  *  File: flatfile_artifact_repository.c                        Part of Duris
- *  Usage: flat-file artifact catalog: ownership, transfer, reconciliation
+ *  Usage: flat-file artifact catalog snapshots and player release
  *
  *  Copyright 1990, 1991 - see LICENSE for complete information
  *
@@ -19,10 +19,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <limits>
-#include <map>
 #include <new>
 #include <openssl/crypto.h>
 #include <openssl/sha.h>
@@ -31,9 +29,8 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'A', 'R', 'T', 'F', 0 };
-constexpr uint32_t catalog_version = 1;
+constexpr uint32_t catalog_version = 3;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
-constexpr size_t record_maximum = 1048576;
 constexpr const char *catalog_filename = "artifact_catalog";
 constexpr uint32_t artifact_extra_flag = 1U << 28;
 
@@ -118,19 +115,34 @@ bool valid_record(const flatfile_artifact_record &record)
 	return record.vnum > 0 && record.location_type >= FLATFILE_ARTIFACT_NOT_IN_GAME &&
 	       record.location_type <= FLATFILE_ARTIFACT_ON_CORPSE && record.timer >= 0 &&
 	       record.type >= 1 && record.type <= 3 && record.last_update >= 0 &&
-	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision;
+	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision &&
+	       artifact_identity_valid(record.canonical_item_uid, record.identity_state);
 }
 
 bool valid_records(const std::vector<flatfile_artifact_record> &records)
 {
-	if (records.size() > record_maximum ||
+	if (records.size() > ARTIFACT_IDENTITY_MAX_RECORDS ||
 	    !std::is_sorted(records.begin(), records.end(), record_less))
 		return false;
-	for (size_t index = 0; index < records.size(); ++index)
-		if (!valid_record(records[index]) ||
-		    (index && records[index - 1].vnum == records[index].vnum))
-			return false;
-	return true;
+	std::vector<uint64_t> identities;
+	try
+	{
+		identities.reserve(records.size());
+		for (size_t index = 0; index < records.size(); ++index)
+		{
+			if (!valid_record(records[index]) ||
+			    (index && records[index - 1].vnum == records[index].vnum))
+				return false;
+			if (records[index].canonical_item_uid)
+				identities.push_back(records[index].canonical_item_uid);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	std::sort(identities.begin(), identities.end());
+	return std::adjacent_find(identities.begin(), identities.end()) == identities.end();
 }
 
 bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes)
@@ -151,6 +163,9 @@ bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes
 		payload.number(record.bind_owner_pid);
 		payload.number(record.bind_timer);
 		payload.number(record.revision);
+		payload.number(record.canonical_item_uid);
+		payload.number(static_cast<uint8_t>(record.identity_state));
+		payload.number<uint8_t>(record.identity_only ? 1 : 0);
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -179,7 +194,7 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || version != catalog_version || !revision ||
+	    !header.number(&revision) || (version < 1 || version > catalog_version) || !revision ||
 	    payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
@@ -191,7 +206,7 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 	artifact_catalog decoded;
 	decoded.revision = revision;
 	uint32_t count = 0;
-	if (!payload.number(&count) || count > record_maximum)
+	if (!payload.number(&count) || count > ARTIFACT_IDENTITY_MAX_RECORDS)
 		return false;
 	try
 	{
@@ -207,7 +222,31 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 			    !payload.number(&record.bind_timer) ||
 			    !payload.number(&record.revision))
 				return false;
+			if (version >= 2)
+			{
+				uint8_t state = 0;
+				if (!payload.number(&record.canonical_item_uid) ||
+				    !payload.number(&state))
+					return false;
+				record.identity_state = static_cast<artifact_identity_state>(state);
+			}
 			record.owned = owned != 0;
+			if (version >= 3)
+			{
+				uint8_t identity_only = 0;
+				if (!payload.number(&identity_only) || identity_only > 1)
+					return false;
+				record.identity_only = identity_only != 0;
+			}
+			else
+				// Preserve the v1/v2 load rule; unresolved legacy rows cannot be
+				// distinguished from old reservations without an explicit marker.
+				record.identity_only =
+					!record.owned &&
+					record.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
+					(record.identity_state ==
+						 artifact_identity_state::retired ||
+					 record.identity_state == artifact_identity_state::absent);
 		}
 	}
 	catch (const std::bad_alloc &)
@@ -369,536 +408,84 @@ flatfile_artifact_result flatfile_artifact_get(const std::string &root, int32_t 
 	return flatfile_artifact_result::ok;
 }
 
-flatfile_artifact_result flatfile_artifact_erase(const std::string &root, int32_t vnum,
-						 std::string *error)
-{
-	if (root.empty() || vnum <= 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	const auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-					    [](const flatfile_artifact_record &candidate,
-					       int32_t sought) { return candidate.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-		return flatfile_artifact_result::not_found;
-	if (catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	catalog.records.erase(found);
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result flatfile_artifact_gameplay_update(const std::string &root, int32_t vnum,
-							   bool owned, int32_t location_type,
-							   int32_t location, int64_t timer,
-							   int32_t type, int64_t last_update,
-							   std::string *error)
-{
-	if (root.empty() || vnum <= 0 || location_type < FLATFILE_ARTIFACT_NOT_IN_GAME ||
-	    location_type > FLATFILE_ARTIFACT_ON_CORPSE || timer < 0 || type < 1 || type > 3 ||
-	    last_update < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-				      [](const flatfile_artifact_record &candidate, int32_t sought)
-				      { return candidate.vnum < sought; });
-	if (found != catalog.records.end() && found->vnum == vnum)
-	{
-		if (found->owned == owned && found->location_type == location_type &&
-		    found->location == location && found->timer == timer && found->type == type &&
-		    found->last_update == last_update)
-			return flatfile_artifact_result::unchanged;
-		if (found->revision == std::numeric_limits<uint64_t>::max())
-			return flatfile_artifact_result::invalid;
-		found->owned = owned;
-		found->location_type = location_type;
-		found->location = location;
-		found->timer = timer;
-		found->type = type;
-		found->last_update = last_update;
-		++found->revision;
-	}
-	else
-	{
-		const flatfile_artifact_record inserted = { vnum,  owned, location_type, location,
-							    timer, type,  last_update,	 0,
-							    0,	   1 };
-		try
-		{
-			catalog.records.insert(found, inserted);
-		}
-		catch (const std::bad_alloc &)
-		{
-			return flatfile_artifact_result::io_error;
-		}
-	}
-	if (catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result flatfile_artifact_remove_owned(const std::string &root, int32_t vnum,
-							int32_t corpse_pid, int32_t type,
-							int64_t last_update, std::string *error)
-{
-	if (root.empty() || vnum <= 0 || type < 1 || type > 3 || last_update < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-				      [](const flatfile_artifact_record &candidate, int32_t sought)
-				      { return candidate.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-	{
-		if (corpse_pid <= 0)
-			return flatfile_artifact_result::unchanged;
-		const flatfile_artifact_record inserted = { vnum,
-							    true,
-							    FLATFILE_ARTIFACT_ON_CORPSE,
-							    corpse_pid,
-							    0,
-							    type,
-							    last_update,
-							    -1,
-							    0,
-							    1 };
-		try
-		{
-			catalog.records.insert(found, inserted);
-		}
-		catch (const std::bad_alloc &)
-		{
-			return flatfile_artifact_result::io_error;
-		}
-	}
-	else
-	{
-		const bool on_corpse = corpse_pid > 0;
-		const int32_t location_type = on_corpse ? FLATFILE_ARTIFACT_ON_CORPSE :
-							  FLATFILE_ARTIFACT_NOT_IN_GAME;
-		const int32_t location = on_corpse ? corpse_pid : -1;
-		if (found->owned == on_corpse && found->location_type == location_type &&
-		    found->location == location && found->last_update == last_update &&
-		    found->bind_owner_pid == -1 && found->bind_timer == 0)
-			return flatfile_artifact_result::unchanged;
-		if (found->revision == std::numeric_limits<uint64_t>::max())
-			return flatfile_artifact_result::invalid;
-		found->owned = on_corpse;
-		found->location_type = location_type;
-		found->location = location;
-		found->last_update = last_update;
-		found->bind_owner_pid = -1;
-		found->bind_timer = 0;
-		++found->revision;
-	}
-	if (catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result flatfile_artifact_extend_timer(const std::string &root, int32_t vnum,
-							int64_t minimum_timer, int64_t last_update,
-							std::string *error)
-{
-	if (root.empty() || vnum <= 0 || minimum_timer <= 0 || last_update < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-				      [](const flatfile_artifact_record &candidate, int32_t sought)
-				      { return candidate.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-		return flatfile_artifact_result::not_found;
-	const int64_t timer = std::max(found->timer, minimum_timer);
-	if (found->timer == timer && found->last_update == last_update)
-		return flatfile_artifact_result::unchanged;
-	if (found->revision == std::numeric_limits<uint64_t>::max() ||
-	    catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	found->timer = timer;
-	found->last_update = last_update;
-	++found->revision;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result flatfile_artifact_find_next_expired(const std::string &root,
-							     int32_t after_vnum, int64_t now,
-							     flatfile_artifact_record *record,
-							     std::string *error)
-{
-	if (record)
-		*record = {};
-	if (root.empty() || after_vnum < 0 || now < 0 || !record)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	const auto first =
-		std::upper_bound(catalog.records.begin(), catalog.records.end(), after_vnum,
-				 [](int32_t sought, const flatfile_artifact_record &candidate)
-				 { return sought < candidate.vnum; });
-	const auto found = std::find_if(
-		first, catalog.records.end(), [=](const flatfile_artifact_record &candidate)
-		{ return candidate.owned && candidate.timer > 0 && candidate.timer < now; });
-	if (found == catalog.records.end())
-		return flatfile_artifact_result::not_found;
-	*record = *found;
-	return flatfile_artifact_result::ok;
-}
-
-flatfile_artifact_result flatfile_artifact_expire(const std::string &root, int32_t vnum,
-						  int64_t now, std::string *error)
-{
-	if (root.empty() || vnum <= 0 || now < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-				      [](const flatfile_artifact_record &candidate, int32_t sought)
-				      { return candidate.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-		return flatfile_artifact_result::not_found;
-	if (!found->owned || found->timer <= 0 || found->timer >= now)
-		return flatfile_artifact_result::unchanged;
-	if (found->revision == std::numeric_limits<uint64_t>::max() ||
-	    catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	found->owned = false;
-	found->location_type = FLATFILE_ARTIFACT_NOT_IN_GAME;
-	found->location = -1;
-	found->timer = 0;
-	found->last_update = now;
-	++found->revision;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
 flatfile_artifact_result
-flatfile_artifact_war_owners(const std::string &root, int32_t after_pid, size_t maximum,
-			     std::vector<flatfile_artifact_war_owner> *owners, std::string *error)
+flatfile_artifact_snapshot_apply(const std::string &root,
+				 const std::vector<flatfile_artifact_record> &records,
+				 std::string *error)
 {
-	if (owners)
-		owners->clear();
-	if (root.empty() || after_pid < 0 || !maximum || maximum > record_maximum || !owners)
+	if (root.empty() || records.empty() || records.size() > ARTIFACT_IDENTITY_MAX_RECORDS)
 		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
 	try
 	{
-		std::map<int32_t, flatfile_artifact_war_owner> grouped;
-		for (const auto &record : catalog.records)
+		auto captured = records;
+		for (auto &record : captured)
+			record.revision = 1;
+		std::sort(captured.begin(), captured.end(), record_less);
+		if (!valid_records(captured))
+			return flatfile_artifact_result::invalid;
+		flatfile_authority_lock lock;
+		if (!lock.acquire(root, error))
+			return flatfile_artifact_result::io_error;
+		const auto recovered = recover(root, lock, error);
+		if (recovered != flatfile_artifact_result::ok)
+			return recovered;
+		artifact_catalog catalog;
+		const auto loaded = load_catalog(root, &catalog, error);
+		if (loaded != flatfile_artifact_result::ok)
+			return loaded;
+		std::vector<flatfile_artifact_record> merged;
+		merged.reserve(std::min(ARTIFACT_IDENTITY_MAX_RECORDS,
+					catalog.records.size() + captured.size()));
+		auto old = catalog.records.begin();
+		auto next = captured.begin();
+		bool changed = false;
+		while (old != catalog.records.end() || next != captured.end())
 		{
-			if (record.location_type != FLATFILE_ARTIFACT_ON_PLAYER ||
-			    record.location <= after_pid)
+			if (merged.size() == ARTIFACT_IDENTITY_MAX_RECORDS)
+				return flatfile_artifact_result::invalid;
+			if (next == captured.end() ||
+			    (old != catalog.records.end() && old->vnum < next->vnum))
+			{
+				merged.push_back(*old++);
 				continue;
-			auto &owner = grouped[record.location];
-			owner.pid = record.location;
-			++owner.total;
-			if (record.type == 1)
-				++owner.major;
-			else if (record.type == 2)
-				++owner.unique;
+			}
+			auto desired = *next++;
+			if (old != catalog.records.end() && old->vnum == desired.vnum)
+			{
+				desired.revision = old->revision;
+				if (desired != *old)
+				{
+					if (desired.revision == UINT64_MAX)
+						return flatfile_artifact_result::invalid;
+					++desired.revision;
+					changed = true;
+				}
+				++old;
+			}
 			else
-				++owner.ioun;
+				changed = true;
+			merged.push_back(desired);
 		}
-		owners->reserve(std::min(maximum, grouped.size()));
-		for (const auto &[pid, owner] : grouped)
-		{
-			(void)pid;
-			if (owner.major <= 1 && owner.unique <= 1 && owner.ioun <= 1)
-				continue;
-			owners->push_back(owner);
-			if (owners->size() == maximum)
-				break;
-		}
+		if (!changed)
+			return flatfile_artifact_result::unchanged;
+		if (!valid_records(merged))
+			return flatfile_artifact_result::conflict;
+		if (catalog.revision == UINT64_MAX)
+			return flatfile_artifact_result::invalid;
+		catalog.records = std::move(merged);
+		++catalog.revision;
+		std::vector<uint8_t> bytes;
+		if (!encode_catalog(catalog, &bytes))
+			return flatfile_artifact_result::invalid;
+		return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes,
+					     error) ?
+			       flatfile_artifact_result::ok :
+			       flatfile_artifact_result::io_error;
 	}
 	catch (const std::bad_alloc &)
 	{
-		owners->clear();
 		return flatfile_artifact_result::io_error;
 	}
-	return flatfile_artifact_result::ok;
-}
-
-flatfile_artifact_result flatfile_artifact_apply_war_burn(const std::string &root, int32_t pid,
-							  int64_t now, double retained,
-							  int64_t last_update, std::string *error)
-{
-	if (root.empty() || pid <= 0 || now < 0 || !std::isfinite(retained) || retained < 0.0 ||
-	    retained > 1.0 || last_update < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	bool changed = false;
-	for (auto &record : catalog.records)
-	{
-		if (record.location_type != FLATFILE_ARTIFACT_ON_PLAYER || record.location != pid ||
-		    record.timer <= now)
-			continue;
-		if (record.revision == std::numeric_limits<uint64_t>::max())
-			return flatfile_artifact_result::invalid;
-		const int64_t remaining = record.timer - now;
-		const int64_t reduced = static_cast<int64_t>(
-			std::floor(static_cast<long double>(remaining) * retained));
-		record.timer = now + reduced;
-		record.last_update = last_update;
-		++record.revision;
-		changed = true;
-	}
-	if (!changed)
-		return flatfile_artifact_result::unchanged;
-	if (catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result flatfile_artifact_bind_get(const std::string &root, int32_t vnum,
-						    int32_t *owner_pid, int64_t *timer,
-						    std::string *error)
-{
-	if (owner_pid)
-		*owner_pid = 0;
-	if (timer)
-		*timer = 0;
-	if (root.empty() || vnum <= 0 || !owner_pid || !timer)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	const auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-					    [](const flatfile_artifact_record &record,
-					       int32_t sought) { return record.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-		return flatfile_artifact_result::not_found;
-	*owner_pid = found->bind_owner_pid;
-	*timer = found->bind_timer;
-	return flatfile_artifact_result::ok;
-}
-
-flatfile_artifact_result flatfile_artifact_bind_update(const std::string &root, int32_t vnum,
-						       int32_t owner_pid, int64_t timer,
-						       std::string *error)
-{
-	if (root.empty() || vnum <= 0 || owner_pid < -1 || timer < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	const auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-					    [](const flatfile_artifact_record &record,
-					       int32_t sought) { return record.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-		return flatfile_artifact_result::not_found;
-	if (found->bind_owner_pid == owner_pid && found->bind_timer == timer)
-		return flatfile_artifact_result::unchanged;
-	if (found->revision == std::numeric_limits<uint64_t>::max() ||
-	    catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	found->bind_owner_pid = owner_pid;
-	found->bind_timer = timer;
-	++found->revision;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result flatfile_artifact_bind_reset_all(const std::string &root,
-							  std::string *error)
-{
-	if (root.empty())
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	bool changed = false;
-	for (auto &record : catalog.records)
-	{
-		if (record.bind_owner_pid == -1 && record.bind_timer == 0)
-			continue;
-		if (record.revision == std::numeric_limits<uint64_t>::max())
-			return flatfile_artifact_result::invalid;
-		record.bind_owner_pid = -1;
-		record.bind_timer = 0;
-		++record.revision;
-		changed = true;
-	}
-	if (!changed)
-		return flatfile_artifact_result::unchanged;
-	if (catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
-}
-
-flatfile_artifact_result
-flatfile_artifact_repair_player_binding(const std::string &root, int32_t vnum,
-					int64_t artifact_timer, int64_t bind_timer,
-					int64_t last_update, std::string *error)
-{
-	if (root.empty() || vnum <= 0 || artifact_timer <= 0 || bind_timer < 0 || last_update < 0)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	auto found = std::lower_bound(catalog.records.begin(), catalog.records.end(), vnum,
-				      [](const flatfile_artifact_record &candidate, int32_t sought)
-				      { return candidate.vnum < sought; });
-	if (found == catalog.records.end() || found->vnum != vnum)
-		return flatfile_artifact_result::not_found;
-	if (found->location_type != FLATFILE_ARTIFACT_ON_PLAYER || found->location <= 0)
-		return flatfile_artifact_result::conflict;
-	if (found->bind_owner_pid == found->location)
-		return flatfile_artifact_result::unchanged;
-	if (found->revision == std::numeric_limits<uint64_t>::max() ||
-	    catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	found->timer = artifact_timer;
-	found->last_update = last_update;
-	found->bind_owner_pid = found->location;
-	found->bind_timer = bind_timer;
-	++found->revision;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
 }
 
 flatfile_artifact_result flatfile_artifact_prepare_player_release(
@@ -954,91 +541,6 @@ flatfile_artifact_result flatfile_artifact_prepare_player_release(
 	operation->filename = catalog_filename;
 	operation->bytes = std::move(bytes);
 	return flatfile_artifact_result::ok;
-}
-
-flatfile_artifact_result flatfile_artifact_reconcile_players(
-	const std::string &root, const std::vector<flatfile_artifact_player_item> &items,
-	int64_t reconciled_at, flatfile_artifact_reconcile_result *result, std::string *error)
-{
-	if (result)
-		*result = {};
-	if (root.empty() || reconciled_at < 0 || !result)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	const auto recovered = recover(root, lock, error);
-	if (recovered != flatfile_artifact_result::ok)
-		return recovered;
-	artifact_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_artifact_result::ok)
-		return loaded;
-	std::map<int32_t, int32_t> player_by_vnum;
-	for (const auto &item : items)
-	{
-		if (item.vnum <= 0 || item.pid <= 0)
-			return flatfile_artifact_result::invalid;
-		const auto artifact =
-			std::lower_bound(catalog.records.begin(), catalog.records.end(), item.vnum,
-					 [](const flatfile_artifact_record &candidate,
-					    int32_t sought) { return candidate.vnum < sought; });
-		if (artifact == catalog.records.end() || artifact->vnum != item.vnum)
-			continue;
-		if (!player_by_vnum.emplace(item.vnum, item.pid).second)
-			return flatfile_artifact_result::conflict;
-	}
-	bool changed = false;
-	for (auto &record : catalog.records)
-	{
-		const bool held = record.location_type == FLATFILE_ARTIFACT_ON_PLAYER ||
-				  record.location_type == FLATFILE_ARTIFACT_ON_CORPSE;
-		if (held)
-			++result->cleared;
-		const auto player = player_by_vnum.find(record.vnum);
-		if (player != player_by_vnum.end())
-			++result->updated;
-		flatfile_artifact_record desired = record;
-		if (player != player_by_vnum.end())
-		{
-			desired.owned = true;
-			desired.location_type = FLATFILE_ARTIFACT_ON_PLAYER;
-			desired.location = player->second;
-			desired.last_update = reconciled_at;
-			desired.bind_owner_pid = player->second;
-			desired.bind_timer = reconciled_at;
-		}
-		else
-		{
-			if (held)
-			{
-				desired.owned = false;
-				desired.location_type = FLATFILE_ARTIFACT_NOT_IN_GAME;
-				desired.location = 0;
-				desired.last_update = reconciled_at;
-			}
-			desired.bind_owner_pid = -1;
-			desired.bind_timer = 0;
-		}
-		if (desired == record)
-			continue;
-		if (record.revision == std::numeric_limits<uint64_t>::max())
-			return flatfile_artifact_result::invalid;
-		desired.revision = record.revision + 1;
-		record = desired;
-		changed = true;
-	}
-	if (!changed)
-		return flatfile_artifact_result::unchanged;
-	if (catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_artifact_result::invalid;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_artifact_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), catalog_filename, bytes, error) ?
-		       flatfile_artifact_result::ok :
-		       flatfile_artifact_result::io_error;
 }
 
 bool flatfile_artifact_room_transfer_allowed(const item_transfer_payload &payload)

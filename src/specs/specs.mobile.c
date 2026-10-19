@@ -686,7 +686,7 @@ void fetid_breath(P_char ch, P_char victim)
 	{
 		struct affected_type af;
 
-		if (!check_freedom_of_movement(victim, number(0, 1)))
+		if (!check_freedom_of_movement(victim))
 		{
 			bzero(&af, sizeof(af));
 			af.type = SPELL_MINOR_PARALYSIS;
@@ -6586,22 +6586,27 @@ int plant_attacks_paralysis(P_char ch, P_char pl, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
 
-	if (!ch || pl || cmd)
+	if (!ch)
 		return FALSE;
 
 	if (cmd == CMD_DEATH) /*
 	                       * unwrap vines upon death of vine
 	                       */
-		LOOP_THRU_PEOPLE(vict, ch)
-			if ((vict != ch) && affected_by_spell(vict, SPELL_MAJOR_PARALYSIS))
-				affect_from_char(vict, SPELL_MAJOR_PARALYSIS);
+	{
+		while ((vict = get_linking_char(ch, LNK_PLANT_PARALYSIS)))
+			unlink_char(vict, ch, LNK_PLANT_PARALYSIS);
+		return FALSE;
+	}
+
+	if (pl || cmd)
+		return FALSE;
 
 	duration_factor = 10;
 
 	LOOP_THRU_PEOPLE(vict, ch)
 		if ((vict != ch) && (IS_PC(vict) || IS_PC_PET(vict)) && !number(0, 2) &&
 		    !IS_AFFECTED2(vict, AFF2_MAJOR_PARALYSIS) && !saves_spell(vict, SAVING_PARA) &&
-		    !check_freedom_of_movement(vict, false))
+		    !check_freedom_of_movement(vict))
 		{
 			act("$n reach up and wrap themselves about you, making it difficult to move, or even breathe!",
 			    FALSE, ch, 0, vict, TO_VICT);
@@ -6612,7 +6617,7 @@ int plant_attacks_paralysis(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			af.flags = AFFTYPE_SHORT;
 			af.duration = duration_factor * WAIT_SEC;
 			af.bitvector2 = AFF2_MAJOR_PARALYSIS;
-			affect_join(vict, &af, FALSE, FALSE);
+			linked_affect_to_char(vict, &af, ch, LNK_PLANT_PARALYSIS);
 			flag = TRUE;
 		}
 	return flag;
@@ -9197,7 +9202,7 @@ int jotun_thrym(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 		if (!number(0, 2))
 		{
 			vict = GET_OPPONENT(ch);
-			if (!vict || check_freedom_of_movement(vict, true))
+			if (!vict || check_freedom_of_movement(vict))
 				return FALSE;
 
 			act("&+BA blue bolt of energy streaks from&n $N's&n&+B hands, encasing&n $n &n&+Bin a solid block of ice!",
@@ -10764,31 +10769,30 @@ int fooquest_mob(P_char ch, P_char pl, int cmd, char *arg)
 		if (!isname(arg, "transform"))
 			return FALSE;
 
-		/*
-		 * load agthrodos
-		 */
+		// Reserve the artifact before replacing the quest NPC or running boss setup.
+		item = read_object_for_creation(IS_RACEWAR_EVIL(ch) ? 21 : 22, VIRTUAL);
+		if (!item)
+		{
+			send_to_char("The artifact is unavailable; transformation cancelled.\r\n",
+				     pl);
+			return TRUE;
+		}
 		tempchar = read_mobile(142213, VIRTUAL);
 
 		if (!tempchar)
 		{
+			extract_obj(item, FALSE);
 			logit(LOG_EXIT, "assert: mob load failed in xexos()");
 			return FALSE;
 		}
-		/*
-		 * stick agthrodos in same room
-		 */
-		char_to_room(tempchar, ch->in_room, 0);
-
-		/*
-		 * transfer inventory to agthrodos
-		 */
-		if (IS_RACEWAR_EVIL(ch))
+		const uint64_t replacement_id = tempchar->runtime_id;
+		if (!char_to_room(tempchar, ch->in_room, 0))
 		{
-			item = read_object(21, VIRTUAL);
-		}
-		else
-		{
-			item = read_object(22, VIRTUAL);
+			// Room entry may destroy the new NPC before returning.
+			if (P_char remaining = find_character_by_runtime_id(replacement_id))
+				extract_char(remaining);
+			extract_obj(item, FALSE);
+			return TRUE;
 		}
 		obj_to_char(item, tempchar);
 

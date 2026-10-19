@@ -38,6 +38,22 @@
  * not drag the guild or world headers into unrelated translation units. */
 struct char_data;
 
+#ifndef __NO_MYSQL__
+#include "sql/sql_work.h"
+#include <memory>
+#include <string>
+#include <vector>
+struct sql_write_receipt;
+
+// Guild snapshots retain an unsettled kingdom payment in the same transaction.
+// These persistence hooks also work while the feature is disabled; already
+// accepted payments must keep their pairing. Only owned data enters the writer.
+bool kingdom_queue_guild_save(int assoc_id, std::vector<std::string> statements,
+			      std::shared_ptr<sql_write_receipt> receipt);
+sql_work kingdom_guild_save_work(int assoc_id, std::vector<std::string> statements);
+void kingdom_guild_save_completed(int assoc_id, const std::shared_ptr<sql_write_receipt> &receipt);
+#endif
+
 /* ------------------------------------------------------------------ *
  * Lifecycle -- called from the boot and shutdown paths
  * ------------------------------------------------------------------ */

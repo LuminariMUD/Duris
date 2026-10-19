@@ -8,6 +8,7 @@
  * ***************************************************************************
  */
 
+#include "guild/artifact_admission.h"
 #include "core/prototypes.h"
 #include "player/character_mechanics.h"
 #include "telemetry/telemetry_runtime.h"
@@ -233,8 +234,7 @@ void recalc_container_weight(P_obj cont)
  * the figure in either direction -- but between the move and the next capacity
  * check the number a player is carrying is simply wrong. Calling it here makes
  * "wrong until something asks" into "right immediately", and
- * propagate_weight_delta() inside add_weight() carries the correction up to
- * whoever is holding the bag.
+ * add_weight() carries the correction up to whoever is holding the bag.
  *
  * Gated on the reduction, not on being a container: this reads the prototype,
  * and every container that reduces nothing keeps the cheap incremental path it
@@ -1938,10 +1938,7 @@ void obj_to_char(P_obj object, P_char ch)
 	GET_CARRYING_W(ch) += encumbrance_weight(GET_OBJ_WEIGHT(object));
 	IS_CARRYING_N(ch)++;
 
-	if (IS_ARTIFACT(object))
-	{
-		artifact_update_location_sql(object);
-	}
+	artifact_update_location_sql(object);
 
 	if (object->g_key == 0 && IS_PC(ch) && GET_LEVEL(ch) < 57 && GET_PID(ch) < 10000000)
 	{
@@ -2070,10 +2067,7 @@ void equip_char(P_char ch, P_obj obj, int pos, int nodrop)
 	obj->loc.wearing = ch;
 	obj->loc_p = LOC_WORN;
 
-	if (IS_ARTIFACT(obj))
-	{
-		artifact_update_location_sql(obj);
-	}
+	artifact_update_location_sql(obj);
 
 	if (IS_PC(ch) && GET_ITEM_TYPE(ch->equipment[pos]) == ITEM_ARMOR)
 		ch->only.pc->prestige += obj->value[2];
@@ -2116,7 +2110,9 @@ P_obj unequip_char(P_char ch, int pos, bool saving)
 		return NULL;
 	}
 	obj = ch->equipment[pos];
-	item_actions_source_leaving(obj);
+	// Temporary unequip preserves actions until an actual source departure.
+	if (!saving)
+		item_actions_source_leaving(obj);
 
 	if (IS_PC(ch) && GET_ITEM_TYPE(ch->equipment[pos]) == ITEM_ARMOR)
 		ch->only.pc->prestige -= obj->value[2];
@@ -2703,10 +2699,7 @@ void obj_to_room(P_obj object, int room)
 	{
 		falling_obj(object, 1, false);
 	}
-	if (IS_ARTIFACT(object))
-	{
-		artifact_update_location_sql(object);
-	}
+	artifact_update_location_sql(object);
 }
 
 /*
@@ -2913,7 +2906,7 @@ void obj_to_obj(P_obj obj, P_obj obj_to)
 		}
 	}
 
-	add_weight(obj_to, obj->weight);
+	add_weight(obj_to, GET_OBJ_WEIGHT(obj));
 	resync_reducing_container(obj_to);
 	/* Broken out into a recursive function; neater and more correct for handling negative weights properly.
 	  wgt = GET_OBJ_WEIGHT(obj);
@@ -2937,6 +2930,7 @@ void obj_to_obj(P_obj obj, P_obj obj_to)
 	  }
 	*/
 	mark_container_dirty(obj_to);
+	artifact_update_location_sql(obj);
 }
 
 // appends obj to end of a linked list - used during load to preserve order
@@ -2993,10 +2987,11 @@ void obj_to_obj_at_end(P_obj obj, P_obj obj_to)
 	obj->loc.inside = obj_to;
 	append_obj_to_list(&obj_to->contains, obj);
 
-	add_weight(obj_to, obj->weight);
+	add_weight(obj_to, GET_OBJ_WEIGHT(obj));
 	resync_reducing_container(obj_to);
 
 	mark_container_dirty(obj_to);
+	artifact_update_location_sql(obj);
 }
 
 void obj_to_char_at_end(P_obj object, P_char ch)
@@ -3049,8 +3044,7 @@ void obj_to_char_at_end(P_obj object, P_char ch)
 	GET_CARRYING_W(ch) += encumbrance_weight(GET_OBJ_WEIGHT(object));
 	IS_CARRYING_N(ch)++;
 
-	if (IS_ARTIFACT(object))
-		artifact_update_location_sql(object);
+	artifact_update_location_sql(object);
 
 	if (object->g_key == 0 && IS_PC(ch) && GET_LEVEL(ch) < 57 && GET_PID(ch) < 10000000)
 		object->g_key = 1;
@@ -3107,7 +3101,7 @@ void obj_from_obj(P_obj obj)
 		tmp->next_content = obj->next_content;
 	}
 
-	add_weight(obj_from, -(obj->weight));
+	add_weight(obj_from, -(GET_OBJ_WEIGHT(obj)));
 
 	/* Safe here and nowhere earlier: `obj` has already been unlinked above,
 	 * so the fresh sum is of what actually remains inside. */
@@ -3181,7 +3175,7 @@ void extract_obj(P_obj obj, int gone_for_good)
 	ferry_forget_object(obj);
 
 	// remove from floor_drops if it was tracked
-	if (obj->obj_uid > 0)
+	if (obj->obj_uid > 0 && (!IS_ARTIFACT(obj) || artifact_is_canonical(obj)))
 		redis_remove_floor_drop(obj->obj_uid);
 
 	if (OBJ_ROOM(obj))
@@ -3258,6 +3252,8 @@ void extract_obj(P_obj obj, int gone_for_good)
 		if (obj->next)
 			obj->next->prev = obj->prev;
 	}
+
+	artifact_object_extracted(obj, gone_for_good);
 
 	obj->prev = NULL;
 	obj->next = NULL;
@@ -5042,63 +5038,35 @@ bool leave_safe_room(P_char ch)
 // This function adds weight to the object, then adds weight to its container/holder/wearer,
 //   but only the amount of weight above the magical weightlessness of said object.
 // This function handles adding a negative weight properly as well.
-// Worn objects apply half the propagated delta to carry_weight (matches equip_char / unequip_char).
-static void propagate_weight_delta(P_obj obj, int weight)
+// Worn objects contribute half their effective weight (matches equip_char / unequip_char).
+void add_weight(P_obj obj, int weight)
 {
 	if (!obj || !weight)
 	{
 		return;
 	}
 
+	const int old_weight = GET_OBJ_WEIGHT(obj);
+	obj->weight += weight;
+	const int new_weight = GET_OBJ_WEIGHT(obj);
+	const int carry_delta = new_weight - old_weight;
+
 	switch (obj->loc_p)
 	{
 	case LOC_WORN:
-		encumbrance_adjust(obj->loc.wearing, weight / 2);
+		// Round the old and new contributions, so odd-pound changes cannot drift.
+		encumbrance_adjust(obj->loc.wearing, new_weight / 2 - old_weight / 2);
 		break;
 	case LOC_CARRIED:
-		encumbrance_adjust(obj->loc.carrying, weight);
+		encumbrance_adjust(obj->loc.carrying, carry_delta);
 		break;
 	case LOC_INSIDE:
-		add_weight(obj->loc.inside, weight);
+		add_weight(obj->loc.inside, carry_delta);
 		break;
 	case LOC_ROOM:
 	case LOC_NOWHERE:
 	default:
 		break;
-	}
-}
-
-void add_weight(P_obj obj, int weight)
-{
-	int carry_delta;
-
-	if (!obj || !weight)
-	{
-		return;
-	}
-
-	// If we start with a negative weight.
-	if (obj->weight < 0)
-	{
-		obj->weight += weight;
-		if (obj->weight > 0)
-		{
-			carry_delta = obj->weight;
-			propagate_weight_delta(obj, carry_delta);
-		}
-	}
-	else
-	{
-		obj->weight += weight;
-		if (obj->weight > 0)
-		{
-			propagate_weight_delta(obj, weight);
-		}
-		else
-		{
-			carry_delta = weight - obj->weight;
-			propagate_weight_delta(obj, carry_delta);
-		}
 	}
 }
 

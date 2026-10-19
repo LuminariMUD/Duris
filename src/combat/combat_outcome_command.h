@@ -20,12 +20,21 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 
-constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 2;
+constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 4;
 constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 15;
 constexpr size_t COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES = 96;
-constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 128;
+constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 255;
+constexpr size_t COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES = 65535;
+constexpr size_t COMBAT_OUTCOME_LOG_MAX_BYTES = 99999;
 constexpr size_t COMBAT_OUTCOME_RESULT_BYTES = 1536;
+// Every participant can retain the legacy snapshots without losing the outcome
+// when a full group has long logs. The coordinator still enforces its byte budget.
+static_assert(COMBAT_OUTCOME_MAX_PARTICIPANTS * (COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES +
+						 COMBAT_OUTCOME_LOG_MAX_BYTES + 512) +
+		      128 <=
+	      CRITICAL_COMMAND_MAX_PAYLOAD_BYTES);
 
 enum class combat_participant_role : uint8_t
 {
@@ -41,6 +50,13 @@ enum combat_participant_flag : uint8_t
 	COMBAT_PARTICIPANT_IN_ROOM = UINT8_C(1) << 0,
 	COMBAT_PARTICIPANT_LEADER = UINT8_C(1) << 1,
 	COMBAT_PARTICIPANT_SPILL_BLOOD = UINT8_C(1) << 2,
+};
+
+enum class combat_webinfo : int8_t
+{
+	unknown = -1,
+	off = 0,
+	on = 1,
 };
 
 struct combat_outcome_participant
@@ -59,6 +75,9 @@ struct combat_outcome_participant
 	uint64_t expected_bank_revision;
 	std::array<char, CURRENCY_ACCOUNT_NAME_MAX_BYTES + 1> account_name;
 	std::array<char, COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES + 1> description;
+	combat_webinfo webinfo_at_capture = combat_webinfo::unknown;
+	std::string equipment;
+	std::string log;
 };
 
 struct combat_outcome_payload

@@ -30,6 +30,7 @@
 #include "core/structs.h"
 #include "telemetry/telemetry_runtime.h"
 #include "net/comm.h"
+#include "net/discord_bridge.h"
 #include "net/session_input.h"
 #include "net/output_style.h"
 #include "net/chat_presentation.h"
@@ -65,6 +66,7 @@
 #include <vector>
 #include <zlib.h>
 #include "guild/assocs.h"
+#include "guild/artifact_population_boot.h"
 #include "economy/auction_houses.h"
 #include "economy/boon.h"
 #include "persistence/copyover.h"
@@ -183,7 +185,6 @@ extern void checkpointing(void);
 long sentbytes = 0;
 long receivedbytes = 0;
 bool game_booted = FALSE;
-static std::vector<int32_t> maintenance_catalog_candidate;
 
 static bool hydrate_flatfile_system_item_owner(void)
 {
@@ -207,10 +208,18 @@ static bool hydrate_flatfile_system_item_owner(void)
 // leaves them for the next boot.
 static void reap_unheld_player_items_at_boot(void)
 {
+	const auto &population = artifact_population_boot_evidence();
+	if (!population.complete)
+	{
+		logit(LOG_STATUS,
+		      "Item ownership reap skipped: artifact population evidence is incomplete.");
+		return;
+	}
 	uint64_t deleted = 0;
 	if (persistence_mode_requires_mysql())
 	{
-		if (const unsigned int failed = reap_unheld_player_items(DB, &deleted))
+		if (const unsigned int failed =
+			    reap_unheld_player_items(DB, &deleted, &population.retained_uids))
 			logit(LOG_STATUS, "Item ownership reap failed: error=%u", failed);
 	}
 	else
@@ -218,7 +227,7 @@ static void reap_unheld_player_items_at_boot(void)
 		const char *root = persistence_mode_flatfile_root();
 		std::string error;
 		const auto result = flatfile_item_repository_reap_unheld_player_items(
-			root ? root : "", &deleted, &error);
+			root ? root : "", &deleted, &error, &population.retained_uids);
 		if (result != flatfile_item_repository_result::ok &&
 		    result != flatfile_item_repository_result::unchanged &&
 		    result != flatfile_item_repository_result::not_found)
@@ -301,38 +310,7 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 					ctf_delete_flag(criteria);
 				boon_notify_snapshot(id, racewar, pid, reason);
 			}
-		if (result.job_id != maintenance_job_id::epic_task_catalog)
-			continue;
-		if (result.outcome != maintenance_outcome::complete &&
-		    result.outcome != maintenance_outcome::more)
-		{
-			maintenance_catalog_candidate.clear();
-			continue;
-		}
-		bool valid = maintenance_catalog_candidate.size() + result.value_count <=
-			     EPIC_TASK_CATALOG_MAX;
-		for (size_t value = 0; valid && value < result.value_count; ++value)
-			if (result.values[value] <= 0 || result.values[value] > INT32_MAX)
-				valid = false;
-			else
-				maintenance_catalog_candidate.push_back(
-					static_cast<int32_t>(result.values[value]));
-		if (!valid)
-		{
-			maintenance_catalog_candidate.clear();
-			continue;
-		}
-		if (result.outcome == maintenance_outcome::complete)
-		{
-			if (!epic_task_catalog_publish(maintenance_catalog_candidate.data(),
-						       maintenance_catalog_candidate.size()))
-				logit(LOG_STATUS,
-				      "Epic task catalog refresh rejected: candidate_zones=%zu "
-				      "retained_zones=%zu; check zones.task_zone.",
-				      maintenance_catalog_candidate.size(),
-				      epic_task_catalog_size());
-			maintenance_catalog_candidate.clear();
-		}
+		epic_task_catalog_complete(result);
 	}
 }
 
@@ -721,9 +699,37 @@ int main(int argc, char **argv)
 	if (persistence_mode_requires_mysql() && !sql_hydrate_item_owner_revisions())
 		logit(LOG_STATUS,
 		      "Authoritative item owner revisions unavailable; movement fails closed.");
-	reap_unheld_player_items_at_boot();
-
+	if (copyover_boot && copyover_prepare_boot() != copyover_boot_result::ready)
+		fatal_boot_error(
+			"copyover",
+			"No validated copyover image is available; inspect the publication and .recovering paths before retrying");
 	redis_init();
+
+	// Pin recovery before any custody cleanup, including ordinary cold boots.
+	if (!copyover_boot)
+	{
+		const auto recovery = redis_world_prepare_boot();
+		if (recovery == redis_world_boot_result::ready)
+		{
+			redis_world_recovery_boot_set(true);
+			logit(LOG_STATUS,
+			      "%s recovery data pinned in redis; world state restores after boot",
+			      redis_world_clean_restart_boot() ? "Clean restart" : "Crash");
+		}
+		else if (recovery == redis_world_boot_result::failed)
+			logit(LOG_STATUS,
+			      "Redis recovery evidence unavailable or invalid; physical absence is unresolved");
+	}
+	const auto &population = artifact_population_prepare_boot(copyover_boot);
+	logit(LOG_STATUS, "Artifact population evidence: %s rows=%zu retained_uids=%zu.",
+	      population.complete ? "complete" : "incomplete", population.items.size(),
+	      population.retained_uids.size());
+	if (!population.complete)
+		logit(LOG_STATUS, "Artifact population unavailable sources: %s",
+		      population.unavailable_sources.empty() ?
+			      "allocation or unprepared input" :
+			      population.unavailable_sources.c_str());
+	reap_unheld_player_items_at_boot();
 
 	// Property hooks now also own main-thread item-action cancellation. Bind
 	// before loading them; the event pool is initialized later during world boot.
@@ -877,15 +883,7 @@ int run_the_game(int port, int sslport)
 
 	SetSpellCircles(); /* spells circlewise done with pure math */
 
-	// check for redis crash recovery before boot_db (so ne_init_events skips zone resets)
-	if (!copyover_boot && redis_runtime_enabled() && redis_world_runtime_enabled() &&
-	    redis_has_world_state())
-	{
-		redis_world_recovery_boot_set(true);
-		logit(LOG_STATUS,
-		      "%s recovery data found in redis; world state restores after boot",
-		      redis_world_clean_restart_boot() ? "Clean restart" : "Crash");
-	}
+	// Durable and recovery population evidence was pinned before custody cleanup.
 	if (!mini_mode)
 	{
 		/* Legacy raw event queues are retired. Historical fallback records are
@@ -916,9 +914,7 @@ int run_the_game(int port, int sslport)
 	{
 		fprintf(stderr, "-- Updating zone database.\n");
 		update_zone_db();
-		if (!epic_task_catalog_refresh())
-			logit(LOG_STATUS,
-			      "Epic task catalog unavailable or invalid; new zone tasks cannot be assigned. Check zones.task_zone.");
+		epic_task_catalog_refresh();
 	}
 	else
 	{
@@ -966,9 +962,6 @@ int run_the_game(int port, int sslport)
 
 		Guild::initialize();
 		fprintf(stderr, "-- Done loading guilds\n");
-		if (!artifact_guild_state_hydrate())
-			logit(LOG_FILE,
-			      "artifact_guild: component=hydration outcome=unavailable state=retained");
 
 		Guildhall::initialize();
 		fprintf(stderr, "-- Done loading guildhalls\n");
@@ -1141,6 +1134,7 @@ int run_the_game(int port, int sslport)
 		locker_async_drain(shutdown_writer_remaining_msec(2000));
 		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
 								   sql_pool_interrupt_borrowed));
+		artifact_guild_transaction_report_unsaved();
 		locker_async_shutdown();
 	}
 
@@ -1514,6 +1508,22 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
 	//PROFILE_END(process_signal_shutdown_pending);
 	persistence_log_poll();
 	checkpointing();
+	discord_bridge_poll();
+	static uint64_t discord_report_at = 0;
+	if (loop_monotonic_us() >= discord_report_at)
+	{
+		discord_report_at = loop_monotonic_us() + 60000000;
+		const auto bridge = discord_bridge_get_status();
+		if (bridge.listening)
+			logit(LOG_STATUS,
+			      "Discord bridge: connected=%d authenticated=%d queued=%zu sent=%llu dropped=%llu rejected=%llu clients_rejected=%llu auth_failed=%llu",
+			      bridge.connected, bridge.authenticated, bridge.queued_events,
+			      (unsigned long long)bridge.sent_events,
+			      (unsigned long long)bridge.dropped_events,
+			      (unsigned long long)bridge.rejected_records,
+			      (unsigned long long)bridge.rejected_clients,
+			      (unsigned long long)bridge.auth_failures);
+	}
 
 	if ((last_desc_per_hour_reset + 3600) <= time(0))
 	{
@@ -1940,6 +1950,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 
 static void run_output_phase(game_loop_pulse_context &ctx)
 {
+	discord_bridge_flush();
 	const uint64_t loop_tick = ctx.loop_tick;
 	P_desc point, next_point;
 
@@ -2138,6 +2149,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 	if (!(pulse % 2))
 	{
 		const uint64_t gmcp_begin_us = loop_monotonic_us();
+		gmcp_flush_initial_states();
 		gmcp_flush_dirty_rooms();
 		gmcp_flush_dirty_ship_contacts();
 		gmcp_flush_dirty_ship_info();
@@ -2187,6 +2199,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				     loop_tick);
 	}
 	sql_async_pulse();
+	artifact_guild_transaction_pulse();
 	if (!(pulse % (WAIT_SEC * 60)))
 		sql_mud_info_refresh();
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};
@@ -2265,16 +2278,11 @@ static void run_combat_phase(game_loop_pulse_context &ctx)
 										  ship->location);
 							if (n > 1)
 							{
-								// Render map and send via GMCP only (skip text by using websocket flag temporarily)
-								bool was_websocket =
-									t_ch->desc->websocket;
-								t_ch->desc->websocket =
-									1; // Force skip_text_output in display_map_room
+								/* MAP_AUTOMAP suppresses text for GMCP clients.
+								 * Preserve the actual transport while sending the map. */
 								display_map_room(t_ch,
 										 ship->location, n,
 										 MAP_AUTOMAP, 0);
-								t_ch->desc->websocket =
-									was_websocket;
 							}
 						}
 					}
@@ -2499,6 +2507,8 @@ void game_loop(int port, int sslport)
 			// recalculate avg mob level now that mobs are restored
 			calc_zone_mob_level();
 		}
+		// Failed recovery leaves the listeners invalid. The socket-selection
+		// branch below returns through normal shutdown, joining every worker.
 	}
 
 	// redis crash recovery - restore world state from redis snapshot
@@ -2596,6 +2606,11 @@ void game_loop(int port, int sslport)
 		}
 	}
 
+	// The JSON bridge is recreated after exec, never inherited as a player socket.
+	if (!discord_bridge_init())
+		logit(LOG_STATUS,
+		      "WARNING: Discord bridge failed to start; check DURIS_DISCORD settings or port availability");
+
 	// store in file-scope statics for copyover access
 	mother_desc = s;
 	mother_desc_ssl = S;
@@ -2683,6 +2698,8 @@ resume_game_loop:
 		return;
 	}
 
+	discord_bridge_shutdown();
+
 	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
 	// failure is reported, never a reason to keep running. The writer gets 30 s for
 	// what is queued; run_the_game() names whatever it could not write once nothing
@@ -2690,6 +2707,9 @@ resume_game_loop:
 	if (!_pwipe && item_creation_grant_batches_pending())
 		persistence_alert(AVATAR, "starter_grant", "shutdown", "none", "none",
 				  "kit_pending", "shutdown_cancelled=0");
+	if (!_pwipe && !artifact_guild_transaction_drain(3000))
+		persistence_alert(AVATAR, "artifact_guild", "shutdown", "none", "none",
+				  "drain_failed", "shutdown_cancelled=0");
 	critical_command_coordinator_quiesce();
 	critical_outbox_quiesce();
 	if (!_pwipe && !critical_command_coordinator_drain(3000))
@@ -2773,7 +2793,7 @@ resume_game_loop:
 						update_ingame_racewar(
 							-GET_RACEWAR(point->character));
 					}
-					extract_char(point->character);
+					extract_char_after_terminal_save(point->character);
 				}
 			}
 		}
@@ -4295,7 +4315,7 @@ void write_to_pc_log(P_char ch, const char *message, int log)
 		return;
 	}
 
-	GET_PLAYER_LOG(ch)->write(log, message);
+	GET_PLAYER_LOG(ch)->write(log, message, PLR2_FLAGGED(ch, PLR2_WEBINFO));
 }
 
 void initialize_logs(P_char ch, bool reset_logs)
@@ -4655,6 +4675,18 @@ static void process_line(P_desc t, char *in)
  */
 
 static char send_to_char_f_buf[MAX_STRING_LENGTH];
+bool send_paged_text(P_char ch, const std::string &text, int log)
+{
+	if (!ch || !ch->desc || executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON) ||
+	    strlen(command_output) != output_length ||
+	    text.size() >= MAX_COMMAND_OUTPUT - output_length)
+		return false;
+	const size_t before = output_length;
+	// Preserve authored text so the capacity check describes the bytes accepted.
+	send_to_char(text.c_str(), ch, log, OutputContext{});
+	return output_length == before + text.size();
+}
+
 void send_to_char_f(P_char ch, const char *fmt, ...)
 {
 	va_list args;

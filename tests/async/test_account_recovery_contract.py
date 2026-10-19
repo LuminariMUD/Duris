@@ -924,7 +924,7 @@ def test_environment_and_docs() -> None:
                  "MAIL_FROM=noreply@yourdomain.com"):
         check(line in env_lines, f".env.example carries {line}")
     check(
-        "# Account password recovery mail (libcurl SMTP). Set MAIL_ENABLED=TRUE to turn it on."
+        "# MAIL_ENABLED controls account password recovery only; backup alerts use OnFailure routing."
         in env_lines,
         ".env.example names MAIL_ENABLED as the switch in its comment",
     )

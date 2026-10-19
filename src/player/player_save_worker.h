@@ -17,6 +17,7 @@
 
 #include "player/player_snapshot.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -39,6 +40,10 @@ constexpr unsigned int PLAYER_SAVE_WORKER_DEFAULT_THREADS = 1;
 constexpr uint64_t PLAYER_SAVE_WORKER_MAX_AGE_MSEC = 5 * 60 * 1000;
 constexpr uint64_t PLAYER_SAVE_WORKER_RETRY_INITIAL_MSEC = 100;
 constexpr uint64_t PLAYER_SAVE_WORKER_RETRY_MAX_MSEC = 5000;
+// Completed jobs retain a slot until the game consumes their completion. Payload
+// bytes count queued and in-flight captures; completions no longer own a payload.
+constexpr size_t PLAYER_SAVE_WORKER_MAX_PENDING_JOBS = 4096;
+constexpr size_t PLAYER_SAVE_WORKER_MAX_PENDING_BYTES = 128 * 1024 * 1024;
 // How long an interrupted writer gets to stop before shutdown goes on without it.
 constexpr uint64_t PLAYER_SAVE_WORKER_STOP_GRACE_MSEC = 1000;
 
@@ -57,6 +62,8 @@ enum class persistence_job_kind : uint8_t
 	shopkeeper,
 	// Statements or a read the game thread queued (sql_async.c); each is its own owner.
 	sql,
+	// Complete flat-file artifact/soul captures, on the same ordered writer.
+	artifact,
 };
 
 enum class player_save_apply_outcome : uint8_t
@@ -74,6 +81,9 @@ struct player_save_apply_result
 	player_save_apply_outcome outcome;
 	player_revision_t durable_revision;
 	unsigned int error_code;
+	// Identifier only, never SQL or values. Empty when the backend cannot name a field.
+	std::array<char, 64> failed_field = {};
+	bool rolled_back = false;
 };
 
 struct player_save_completion
@@ -89,6 +99,8 @@ struct player_save_completion
 	uint64_t queued_at_usec;
 	uint64_t started_at_usec;
 	uint64_t completed_at_usec;
+	std::array<char, 64> failed_field = {};
+	bool rolled_back = false;
 };
 
 enum class player_save_submit_result : uint8_t
@@ -103,7 +115,9 @@ struct player_save_worker_health
 {
 	uint64_t queued_jobs;
 	uint64_t inflight_jobs;
+	uint64_t completion_jobs;
 	uint64_t queued_bytes;
+	uint64_t inflight_bytes;
 	uint64_t high_water_jobs;
 	uint64_t high_water_bytes;
 	uint64_t oldest_age_msec;
@@ -133,6 +147,7 @@ bool player_save_worker_init(player_save_apply_fn apply, void *context);
 // still queued are not written: persistence_writer_pending_owners() names them all.
 void player_save_worker_shutdown(void (*interrupt)(void) = nullptr);
 player_save_submit_result player_save_worker_submit(player_snapshot snapshot);
+// Capacity refusal returns unavailable with errno=ENOSPC, preserving admitted jobs.
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
 						    size_t bytes, persistence_job_write_fn write);
 size_t player_save_worker_pulse(player_save_completion *completions_out, size_t capacity);

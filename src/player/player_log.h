@@ -15,6 +15,7 @@
 #ifndef __PLAYER_LOG_H__
 #define __PLAYER_LOG_H__
 
+#include <cstdlib>
 #include <list>
 #include <string>
 #include <vector>
@@ -57,6 +58,7 @@ class PlayerLog
 
 	void clear()
 	{
+		reset_export_window();
 		for (int i = 0; i < NUM_LOGS; i++)
 		{
 			logs[i].clear();
@@ -64,9 +66,16 @@ class PlayerLog
 		}
 	}
 
-	void write(int log, const char *str)
+	void write(int log, const char *str, bool exportable = false)
 	{
 		check_log_index(log);
+		if (log == LOG_PUBLIC)
+		{
+			if (!exportable)
+				reset_export_window();
+			else if (export_entries < PUBLIC_LOG_SIZE)
+				++export_entries;
+		}
 		logs[log].push_back(string(str));
 		if (log_size[log] >= log_max_size[log])
 		{
@@ -102,6 +111,31 @@ class PlayerLog
 			read_buf += (*it);
 		}
 
+		return read_buf.c_str();
+	}
+
+	// Only the suffix received during the current uninterrupted opt-in may leave
+	// the game. Ordinary recall still includes messages from earlier intervals.
+	void reset_export_window() { export_entries = 0; }
+
+	const char *read_export(int bytes)
+	{
+		read_buf.clear();
+		if (bytes <= 0)
+			return read_buf.c_str();
+		auto first = logs[LOG_PUBLIC].end();
+		int size = 0;
+		for (int count = 0; count < export_entries; ++count)
+		{
+			auto previous = first;
+			--previous;
+			if (previous->size() >= static_cast<size_t>(bytes - size))
+				break;
+			size += previous->size();
+			first = previous;
+		}
+		for (; first != logs[LOG_PUBLIC].end(); ++first)
+			read_buf += *first;
 		return read_buf.c_str();
 	}
 
@@ -156,8 +190,8 @@ class PlayerLog
 	{
 		if (log < 0 || log >= NUM_LOGS)
 		{
-			throw "Invalid log index!";
-			return;
+			// Invalid indices are programming errors, not recoverable game input.
+			std::abort();
 		}
 	}
 
@@ -165,6 +199,7 @@ class PlayerLog
 	int log_size[NUM_LOGS];
 	int log_max_size[NUM_LOGS];
 	string read_buf;
+	int export_entries = 0;
 };
 
 #endif // __PLAYER_LOG_H__

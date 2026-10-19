@@ -53,6 +53,7 @@ bool shop_save_succeeds = true;
 int shops_saved = 0;
 int saved_shop_rooms[7] = { -1, -1, -1, -1, -1, -1, -1 };
 bool fail_shop_placement = false;
+bool entry_hazard = false;
 persistence_mode persistence_mode_get()
 {
 	return PERSISTENCE_MODE_MARIADB_PRIMARY;
@@ -152,8 +153,14 @@ void char_from_room(P_char ch)
 	ch->in_room = -1;
 	ch->next_in_room = nullptr;
 }
-bool char_to_room(P_char ch, int room, int)
+bool char_to_room(P_char ch, int room, int direction)
 {
+	// Ordinary room entry can extract a mob; recovery must skip those effects.
+	if (entry_hazard && direction >= 0)
+	{
+		extract_char(ch);
+		return false;
+	}
 	assert(room >= 0 && room <= top_of_world);
 	if (fail_shop_placement)
 	{
@@ -216,6 +223,19 @@ P_obj read_object(int v, int mode)
 	object_list = obj;
 	++obj_index[r].number;
 	return obj;
+}
+static int creation_budget = -1;
+static bool ordinary_extract_drops = false;
+P_obj read_object_for_creation(int v, int mode)
+{
+	if (creation_budget == 0)
+	{
+		errno = ENOMEM;
+		return nullptr;
+	}
+	if (creation_budget > 0)
+		--creation_budget;
+	return read_object(v, mode);
 }
 void obj_to_room(P_obj obj, int room)
 {
@@ -284,6 +304,19 @@ void extract_char(P_char ch)
 {
 	assert(!GET_RIDER(ch));
 	scheduled.erase(ch);
+	// Ordinary production NPC teardown drops items in a valid room.
+	if (ordinary_extract_drops && ch->in_room != NOWHERE)
+	{
+		while (ch->carrying)
+		{
+			auto *item = ch->carrying;
+			obj_from_char(item);
+			obj_to_room(item, ch->in_room);
+		}
+		for (int slot = 0; slot < MAX_WEAR; ++slot)
+			if (ch->equipment[slot])
+				obj_to_room(unequip_char(ch, slot), ch->in_room);
+	}
 	while (ch->carrying)
 		extract_obj(ch->carrying);
 	for (int i = 0; i < MAX_WEAR; ++i)
@@ -408,6 +441,31 @@ int main()
 	shops[0].number_items_produced = shops[1].number_items_produced = 1;
 	index_shopkeeper_prototypes();
 
+	// Failure after a restored slot must discard prior equipment and inventory,
+	// even though ordinary NPC extraction would drop them on the room floor.
+	{
+		auto *ordinary = read_mobile(3, REAL);
+		char_to_room(ordinary, 3, -1);
+		equip_char(ordinary, read_object(2, REAL), 0, 0);
+		equip_char(ordinary, read_object(3, REAL), 1, 0);
+		obj_to_char(read_object(4, REAL), ordinary);
+		obj_to_char(read_object(4, REAL), ordinary);
+		char bytes[4096];
+		const int size = copyover_write_mob_to_buffer(ordinary, bytes, sizeof(bytes));
+		assert(size > 0);
+		extract_char(ordinary);
+		for (const int successful_slots : { 1, 3 })
+		{
+			creation_budget = successful_slots;
+			ordinary_extract_drops = true;
+			size_t consumed = 0;
+			assert(!copyover_restore_mob_from_buffer(bytes, size, &consumed));
+			assert(!object_list && !rooms[3].contents && mob_index[3].number == 0);
+			ordinary_extract_drops = false;
+			creation_budget = -1;
+		}
+	}
+
 	// Cold boot and repeated initializer calls, including a missing sign.
 	initialize_transport();
 	initialize_transport();
@@ -511,7 +569,9 @@ int main()
 		assert(bytes > 0);
 		extract_char(keeper);
 		size_t consumed = 0;
+		entry_hazard = true;
 		keeper = copyover_restore_mob_from_buffer(snapshot, bytes, &consumed);
+		entry_hazard = false;
 		assert(keeper && consumed == static_cast<size_t>(bytes));
 		reconcile_shopkeepers(true);
 		assert(mob_index[2].number == 1 && obj_index[3].number == 1 &&

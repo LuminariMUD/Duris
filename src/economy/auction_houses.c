@@ -1834,7 +1834,6 @@ bool auction_list(P_char ch, char *args)
 {
 	char list_arg[MAX_STRING_LENGTH];
 	char where_str[MAX_STRING_LENGTH];
-	int i, count;
 	// Shown with the rows, which come on a later pulse.
 	string heading;
 
@@ -1868,14 +1867,13 @@ bool auction_list(P_char ch, char *args)
 
 		if (!*args)
 		{
-			count = snprintf(buff, MAX_STRING_LENGTH, "&+WValid keywords: &+Y%s",
-					 sorter->getKeyword(0).c_str());
-			for (i = 1; i < sorter->getSize(); i++)
+			snprintf(buff, sizeof(buff), "&+WValid keywords: &+Y%s",
+				 sorter->getKeyword(0).c_str());
+			for (int i = 1; i < sorter->getSize(); i++)
 			{
-				count += snprintf(buff + count, MAX_STRING_LENGTH, ", %s",
-						  sorter->getKeyword(i).c_str());
+				APPENDF(buff, ", %s", sorter->getKeyword(i).c_str());
 			}
-			snprintf(buff + count, MAX_STRING_LENGTH, ".\n\r");
+			APPENDF(buff, ".\n\r");
 			send_to_char(buff, ch);
 			return TRUE;
 		}
@@ -1917,14 +1915,13 @@ bool auction_list(P_char ch, char *args)
 			     " with the specified attributes (like lockers)\n\r"
 			     "auction list player <playername> - show all auctions by a player\n\r",
 			     ch);
-		count = snprintf(buff, MAX_STRING_LENGTH, "&+WValid keywords: &+Y%s",
-				 sorter->getKeyword(0).c_str());
-		for (i = 1; i < sorter->getSize(); i++)
+		snprintf(buff, sizeof(buff), "&+WValid keywords: &+Y%s",
+			 sorter->getKeyword(0).c_str());
+		for (int i = 1; i < sorter->getSize(); i++)
 		{
-			count += snprintf(buff + count, MAX_STRING_LENGTH, ", %s",
-					  sorter->getKeyword(i).c_str());
+			APPENDF(buff, ", %s", sorter->getKeyword(i).c_str());
 		}
-		snprintf(buff + count, MAX_STRING_LENGTH, ".\n\r");
+		APPENDF(buff, ".\n\r");
 		send_to_char(buff, ch);
 		return TRUE;
 	}

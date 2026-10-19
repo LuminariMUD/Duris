@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import ROOT, SRC, rel
+from _paths import ROOT, SRC, HARNESS_STUBS, rel
 
 
 def extract(source: Path, signature: str) -> str:
@@ -170,6 +170,7 @@ PRELUDE = r'''
 #define CMD_RENT 66
 #define CMD_QUIT 67
 #define CMD_CAMP 68
+#define CMD_BACKSTAB 69
 
 static const char *command[] = {
 	"get", "take", "drop", "put", "give", "wear", "wield", "grab", "hold",
@@ -180,7 +181,7 @@ static const char *command[] = {
 	"repair", "appraise", "lore", "write", "itemmana", "auction", "forge", "refine",
 	"enhance", "craft", "encrust", "spellbind", "fix", "mix", "mixpoison", "smelt",
 	"enchant", "make", "scribe", "disguise", "lock", "unlock", "pick", "rent", "quit",
-	"camp", "\n"
+	"camp", "backstab", "\n"
 };
 
 P_obj object_list = NULL;
@@ -559,6 +560,7 @@ int main()
 	assert(!input_allowed_while_item_moving("eat roast"));
 	assert(!input_allowed_while_item_moving("quaff potion"));
 	assert(!input_allowed_while_item_moving("recite scroll"));
+	assert(input_command_number("backstab target") == CMD_BACKSTAB);
 	assert(!input_allowed_while_item_moving("reload bow arrow"));
 	assert(!input_allowed_while_item_moving("use wand target"));
 	assert(!input_allowed_while_item_moving("ask bartender abandon"));
@@ -1186,7 +1188,7 @@ def main() -> int:
                 rel("critical_command.c"),
                 rel("player_snapshot_capture.c"),
                 rel("player_snapshot_codec.c"),
-                "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+                str(HARNESS_STUBS), "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
             ],
             cwd=ROOT,
             check=True,

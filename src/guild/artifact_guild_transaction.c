@@ -19,6 +19,8 @@
 #include "core/prototypes.h"
 #include "redis/redis_report_cache.h"
 #include "core/utils.h"
+#include "player/player_save_pipeline.h"
+#include "persistence/persistence_mode.h"
 
 #include <algorithm>
 #include <chrono>
@@ -26,6 +28,10 @@
 #include <new>
 #include <string>
 #include <unordered_map>
+#include <map>
+#include <thread>
+#include <cerrno>
+#include "sql/sql_async.h"
 
 namespace
 {
@@ -33,12 +39,15 @@ constexpr uint32_t ARTIFACT_GUILD_DERIVATION_DOMAIN = 0x41475431;
 
 struct pending_outcome
 {
-	uint32_t actor_pid;
-	artifact_guild_payload payload;
+	critical_command command;
 	uint64_t submitted_at_msec;
+	int epics;
+	int epic_type;
+	bool queued = false;
 };
 
-std::unordered_map<std::string, pending_outcome> pending;
+std::map<std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES>, pending_outcome> pending;
+uint64_t next_retry_msec = 0;
 artifact_guild_health health = {};
 std::mutex outbox_mutex;
 std::unordered_map<uint64_t, bool> outbox_publications;
@@ -50,10 +59,60 @@ uint64_t monotonic_msec()
 		.count();
 }
 
-std::string operation_key(const critical_operation_id &operation_id)
+void diagnostic(const critical_operation_id &operation, const critical_operation_id &parent,
+		const char *stage, const char *reason, unsigned int error, uint64_t age = 0)
 {
-	return std::string(reinterpret_cast<const char *>(operation_id.bytes.data()),
-			   operation_id.bytes.size());
+	// The reporter permits numeric substitutions only. Categories carry the
+	// controlled stage/reason; two big-endian words retain each full opaque ID.
+	uint64_t operation_words[2] = {}, parent_words[2] = {};
+	for (size_t i = 0; i < operation.bytes.size(); ++i)
+	{
+		operation_words[i / 8] = (operation_words[i / 8] << 8) | operation.bytes[i];
+		parent_words[i / 8] = (parent_words[i / 8] << 8) | parent.bytes[i];
+	}
+	char domain[64];
+	snprintf(domain, sizeof(domain), "artifact_guild/%s", stage);
+	persistence_alert(AVATAR, domain, "redacted", "none", "none", reason,
+			  "operation=%016llx%016llx parent=%016llx%016llx error=%u elapsed_ms=%llu",
+			  static_cast<unsigned long long>(operation_words[0]),
+			  static_cast<unsigned long long>(operation_words[1]),
+			  static_cast<unsigned long long>(parent_words[0]),
+			  static_cast<unsigned long long>(parent_words[1]), error,
+			  static_cast<unsigned long long>(age));
+}
+
+bool queue_history(pending_outcome &entry)
+{
+	critical_submit_result submitted;
+	try
+	{
+		errno = 0;
+		submitted = critical_command_coordinator_submit(entry.command);
+	}
+	catch (const std::bad_alloc &)
+	{
+		errno = ENOMEM;
+		submitted = critical_submit_result::overloaded;
+	}
+	if (critical_submit_result_keeps_operation(submitted))
+	{
+		entry.queued = true;
+		++health.submitted;
+		return true;
+	}
+	critical_operation_id parent = {};
+	std::copy_n(entry.command.payload.begin(), parent.bytes.size(), parent.bytes.begin());
+	const unsigned int error = errno;
+	diagnostic(entry.command.operation_id, parent, "history_admission",
+		   submitted == critical_submit_result::identity_conflict ? "identity_conflict" :
+		   submitted == critical_submit_result::invalid		  ? "malformed_payload" :
+		   error == ENOMEM					  ? "allocation_failure" :
+		   submitted == critical_submit_result::overloaded	  ? "queue_capacity" :
+									    "unavailable_or_quiesced",
+		   error, monotonic_msec() - entry.submitted_at_msec);
+	++health.submission_failures;
+	return submitted != critical_submit_result::invalid &&
+	       submitted != critical_submit_result::identity_conflict;
 }
 
 void publish_messages(P_char character, const artifact_guild_payload &payload)
@@ -76,57 +135,91 @@ void publish_messages(P_char character, const artifact_guild_payload &payload)
 		}
 	}
 	if (payload.artifact_count)
-		send_to_char("&+RYou feel a sense of satisfaction from your artifact(s).&n\r\n",
-			     character);
+		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", character);
 }
 } // namespace
 
+// New source publication only. The boon/combat/stone producers own live once-only
+// publication; a prepared command is retried below without recapturing or granting.
 bool artifact_guild_transaction_submit(P_char character,
 				       const critical_operation_id &parent_operation_id, int epics,
 				       int epic_type)
 {
-	if (!character || IS_NPC(character) || GET_PID(character) <= 0 ||
-	    pending.size() >= ARTIFACT_GUILD_PENDING_MAX)
+	if (!character || IS_NPC(character) || GET_PID(character) <= 0)
 		return false;
+	critical_operation_id operation_id = {};
+	if (!critical_operation_id_derive(parent_operation_id, ARTIFACT_GUILD_DERIVATION_DOMAIN,
+					  static_cast<uint64_t>(GET_PID(character)), &operation_id))
+		return false;
+	auto existing = pending.find(operation_id.bytes);
+	if (existing != pending.end())
+	{
+		if (existing->second.epics == epics && existing->second.epic_type == epic_type)
+			return true;
+		diagnostic(operation_id, parent_operation_id, "capture", "identity_conflict",
+			   EEXIST);
+		return false;
+	}
 	artifact_guild_payload payload = {};
-	const artifact_guild_capture_status captured = artifact_guild_state_capture(
-		character, epics, epic_type, parent_operation_id, &payload);
+	const auto captured = artifact_guild_state_capture(character, epics, epic_type,
+							   parent_operation_id, &payload);
 	if (captured == artifact_guild_capture_status::no_effect)
 		return true;
 	if (captured != artifact_guild_capture_status::ready)
 	{
 		++health.unavailable;
-		logit(LOG_FILE,
-		      "artifact_guild: component=capture outcome=unavailable actor=redacted");
+		diagnostic(operation_id, parent_operation_id, "capture",
+			   captured == artifact_guild_capture_status::invalid ?
+				   "invalid_bounds" :
+				   "unsupported_or_unavailable",
+			   EINVAL);
 		return false;
 	}
-	critical_operation_id operation_id = {};
-	critical_command command = {};
-	if (!critical_operation_id_derive(parent_operation_id, ARTIFACT_GUILD_DERIVATION_DOMAIN,
-					  static_cast<uint64_t>(GET_PID(character)),
-					  &operation_id) ||
-	    !artifact_guild_command_build(&command, operation_id, payload))
-		return false;
-	const std::string key = operation_key(operation_id);
+	artifact_guild_state_apply(character, payload);
+	publish_messages(character, payload);
+	++health.live_applied;
+	health.max_artifacts = std::max<uint64_t>(health.max_artifacts, payload.artifact_count);
+	// Both backends save live artifact/guild state through their existing stores.
+	// The derived SQL history is additional bookkeeping only on MariaDB.
+	if (!persistence_mode_requires_mysql())
+		return true;
+	if (pending.size() >= ARTIFACT_GUILD_PENDING_MAX)
+	{
+		++health.history_lost;
+		diagnostic(operation_id, parent_operation_id, "history_retention", "queue_capacity",
+			   ENOSPC);
+		return true;
+	}
 	try
 	{
-		pending.emplace(key, pending_outcome{ static_cast<uint32_t>(GET_PID(character)),
-						      payload, monotonic_msec() });
+		critical_command command = {};
+		if (!artifact_guild_command_build(&command, operation_id, payload))
+		{
+			++health.history_lost;
+			diagnostic(operation_id, parent_operation_id, "history_retention",
+				   "malformed_payload", EINVAL);
+			return true;
+		}
+		command.accepted_at_usec =
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch())
+				.count();
+		auto [entry, inserted] = pending.emplace(
+			operation_id.bytes, pending_outcome{ std::move(command), monotonic_msec(),
+							     epics, epic_type, false });
+		(void)inserted;
+		if (!queue_history(entry->second))
+		{
+			pending.erase(entry);
+			++health.history_lost;
+		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		return false;
+		++health.history_lost;
+		diagnostic(operation_id, parent_operation_id, "history_retention",
+			   "allocation_failure", ENOMEM);
 	}
-	const critical_submit_result submitted =
-		critical_command_coordinator_submit(std::move(command));
-	if (!critical_submit_result_keeps_operation(submitted))
-	{
-		pending.erase(key);
-		++health.submission_failures;
-		return false;
-	}
-	++health.submitted;
-	health.max_artifacts = std::max<uint64_t>(health.max_artifacts, payload.artifact_count);
 	health.pending = pending.size();
 	return true;
 }
@@ -138,33 +231,108 @@ void artifact_guild_transaction_handle_completions(const critical_completion *co
 		return;
 	for (size_t index = 0; index < count; ++index)
 	{
-		auto found = pending.find(operation_key(completions[index].operation_id));
+		auto found = pending.find(completions[index].operation_id.bytes);
 		if (found == pending.end())
 			continue;
 		artifact_guild_result result = {};
 		const bool decoded = artifact_guild_command_decode_result(
 			completions[index].result_payload.data(), completions[index].result_size,
 			&result);
-		const bool committed =
-			decoded &&
-			(completions[index].outcome == critical_apply_outcome::applied ||
-			 completions[index].outcome == critical_apply_outcome::already_applied);
-		if (committed)
-		{
-			artifact_guild_state_publish(result, found->second.payload);
-			publish_messages(find_player_by_pid(found->second.actor_pid),
-					 found->second.payload);
+		if (decoded &&
+		    (completions[index].outcome == critical_apply_outcome::applied ||
+		     completions[index].outcome == critical_apply_outcome::already_applied))
 			++health.committed;
-		}
 		else
 		{
 			++health.rejected;
-			if (!decoded)
+			const bool expected_result =
+				completions[index].outcome == critical_apply_outcome::applied ||
+				completions[index].outcome ==
+					critical_apply_outcome::already_applied;
+			if (!decoded && expected_result)
 				++health.malformed_completions;
+			critical_operation_id parent = {};
+			std::copy_n(found->second.command.payload.begin(), parent.bytes.size(),
+				    parent.bytes.begin());
+			diagnostic(completions[index].operation_id, parent, "history_completion",
+				   expected_result ? "malformed_completion" :
+				   completions[index].error_code == ENOENT ? "missing_parent" :
+				   completions[index].error_code == EEXIST ? "identity_conflict" :
+				   completions[index].error_code == EPROTONOSUPPORT ?
+									     "legacy_uncommitted" :
+									     "storage_failure",
+				   completions[index].error_code,
+				   monotonic_msec() - found->second.submitted_at_msec);
 		}
+		// Receipts never change memory, enqueue an old snapshot, or repeat feedback.
 		pending.erase(found);
 	}
 	health.pending = pending.size();
+}
+
+void artifact_guild_transaction_pulse()
+{
+	const uint64_t now = monotonic_msec();
+	const bool retry = now >= next_retry_msec;
+	health.dirty_artifacts = artifact_save_pulse(retry);
+	health.dirty_guilds = guild_save_pulse(retry);
+	if (!retry)
+		return;
+	next_retry_msec = now + 1000;
+	size_t attempts = 0;
+	for (auto entry = pending.begin(); entry != pending.end() && attempts < 8;)
+	{
+		if (!entry->second.queued)
+		{
+			++attempts;
+			if (!queue_history(entry->second))
+			{
+				entry = pending.erase(entry);
+				++health.history_lost;
+				continue;
+			}
+		}
+		++entry;
+	}
+	health.pending = pending.size();
+}
+
+// Run before coordinator quiescence, so parent completions can still publish
+// their derived histories. Failure keeps copyover live; shutdown reports it.
+bool artifact_guild_transaction_drain(uint64_t timeout_msec)
+{
+	const auto deadline =
+		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
+	do
+	{
+		// Completions retain writer admission slots. Consume them while the
+		// normal game loop is stopped so dirty snapshots can make progress.
+		player_save_pipeline_pulse();
+		critical_command_coordinator_drain(1);
+		// A committed character deletion must release its guild member before
+		// a fresh guild snapshot can retry without that deleted player's FK.
+		sql_async_pulse();
+		artifact_guild_transaction_pulse();
+		if (pending.empty() && !health.dirty_artifacts && !health.dirty_guilds &&
+		    !critical_command_coordinator_health_copy().inflight)
+			return true;
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	} while (std::chrono::steady_clock::now() < deadline);
+	return false;
+}
+
+void artifact_guild_transaction_report_unsaved()
+{
+	artifact_report_unsaved();
+	guild_report_unsaved();
+	for (const auto &[id, entry] : pending)
+	{
+		critical_operation_id parent = {};
+		std::copy_n(entry.command.payload.begin(), parent.bytes.size(),
+			    parent.bytes.begin());
+		diagnostic(entry.command.operation_id, parent, "shutdown", "history_unresolved",
+			   EIO, monotonic_msec() - entry.submitted_at_msec);
+	}
 }
 
 critical_outbox_delivery_result
@@ -233,7 +401,7 @@ void artifact_guild_transaction_reset_for_tests(void)
 {
 	pending.clear();
 	health = {};
-	artifact_guild_state_reset_for_tests();
+	next_retry_msec = 0;
 	std::lock_guard<std::mutex> lock(outbox_mutex);
 	outbox_publications.clear();
 }

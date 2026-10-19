@@ -27,7 +27,7 @@ descriptor_capture = copyover[descriptor_start:descriptor_end]
 save = body.index("persistence_save_character_terminal")
 flush = body.index("persistence_flush_all_character_saves")
 drain = body.index("player_save_pipeline_drain")
-publish = body.index("rename(copyover_tmp, COPYOVER_FILE)")
+publish = body.index("renameat2(AT_FDCWD, copyover_tmp")
 close = body.index("close(d->descriptor)")
 prepare_client = body.index("copyover_prepare_socket(d->descriptor)")
 progress_notice = body.index("*** Copyover in progress... ***")
@@ -88,7 +88,7 @@ checks = {
     "descriptor capture requires the player's actual pet link":
         "GET_MASTER(f->follower) == ch" in descriptor_capture,
     "world mob capture excludes every linked pet":
-        "ch->in_room >= 0 && !GET_MASTER(ch)" in body,
+        "copyover_world_mob(ch)" in body and "!GET_MASTER(mob)" in copyover,
     "minimal copyover preserves its world dataset":
         'execl(DMS_RUNTIME_BINARY, "dms", "--minimal", "-C", exec_buf' in body,
 }

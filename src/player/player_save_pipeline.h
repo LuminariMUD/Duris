@@ -93,6 +93,9 @@ size_t player_save_pipeline_dirty_count(void);
 bool player_save_pipeline_is_nonterminal_type(int save_intent);
 // A load of this character waits while its save is queued.
 bool player_save_pipeline_load_held(int pid);
+
+/** Game thread, when freeing a character: retire revision state once saves/completions resolve. */
+void player_save_pipeline_end_session(int pid);
 void player_save_pipeline_reset_for_tests(void);
 
 #endif

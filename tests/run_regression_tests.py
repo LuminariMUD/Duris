@@ -32,7 +32,9 @@ PROGRESS_SECONDS = 60
 RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
     {
         "test_account_recovery_journey.py",
+        "test_artifact_owner_restart_journey.py",
         "test_connection_limit_journey.py",
+        "test_corpse_trap_restart_journey.py",
         "test_creation_prompt_journey.py",
         "test_character_mechanics_journey.py",
         "test_game_loop_session_journey.py",
@@ -57,10 +59,18 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
 # The MySQL playtime journey needs a disposable database and --server, and invokes its
 # repository probe with that database's environment. make test-db runs it; the generic
 # test-all runner invokes every discovered script with no arguments.
+# The Discord game journey similarly needs an external Node checkout via --node-driver.
+# The artifact population reader requires the disposable SQL fixture in test-db.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
+        "test_artifact_population_repository.py",
+        "test_discord_game_journey.py",
+        "test_epic_task_catalog_mysql.py",
+        "test_epic_task_recovery_journey.py",
         "test_mysql_playtime_journey.py",
+        "test_mysql_nexus_journey.py",
         "test_playtime_mysql_repository.py",
+        "test_staff_poof_journey.py",
     }
 )
 

@@ -6,15 +6,24 @@
 #include "player/output_preferences.h"
 #include "player/output_message.h"
 #include "player/player_save_pipeline.h"
+#include "player/news.h"
 #include "net/gmcp.h"
 #include "net/chat_presentation.h"
+#include "world/specs.prototypes.h"
+#include "cmd/interp.h"
+#include "core/files.h"
+#include "combat/combat_outcome_command.h"
+#include "guild/alliances.h"
 #include <cjson/cJSON.h>
 #include <cassert>
+#include <algorithm>
 #include <cstdarg>
 #include <cstring>
 #include <functional>
 #include <vector>
 #include <tuple>
+#include <fstream>
+#include <filesystem>
 
 #ifdef COLORIZATION_BENCHMARK
 #include "colorization_benchmark_support.inc"
@@ -44,21 +53,31 @@ static bool visible = true;
 static P_char hidden_recipient = nullptr;
 static std::vector<std::pair<std::string, int>> logged;
 static std::function<void(P_char)> command_action;
-player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int)
+static player_save_pipeline_result save_result = player_save_pipeline_result::queued;
+static P_char saved_owner;
+static int save_calls;
+player_save_pipeline_result
+player_save_pipeline_request(P_char owner, player_component_mask_t components, int, int)
 {
-	return player_save_pipeline_result::queued;
+	assert(components == PLAYER_COMPONENT_STATUS);
+	saved_owner = owner;
+	++save_calls;
+	return save_result;
 }
 void command_interpreter(P_char ch, char *)
 {
 	command_action(ch);
 }
-int IS_MORPH(P_char)
+static P_char morphed;
+int IS_MORPH(P_char ch)
 {
-	return 0;
+	return ch == morphed;
 }
-void write_to_pc_log(P_char, const char *message, int policy)
+void production_write_to_pc_log(P_char, const char *, int);
+void write_to_pc_log(P_char ch, const char *message, int policy)
 {
 	logged.emplace_back(message, policy);
+	production_write_to_pc_log(ch, message, policy);
 }
 bool ac_can_see(P_char, P_char, bool)
 {
@@ -146,6 +165,72 @@ void gmcp_send(P_desc d, const char *package, const char *json)
 #include "world_output_stubs.inc"
 #include "combat_prompt_stubs.inc"
 #include "chat_presentation_stubs.inc"
+const auto race_names_table = []
+{
+	std::array<struct race_names, 256> names{};
+	for (auto &name : names)
+		name = { "Human", "Human", "Human", "H" };
+	return names;
+}();
+const char *command[] = { "\n" };
+void do_color_preferences(P_char, const char *)
+{
+	assert(false);
+}
+void show_toggles(P_char)
+{
+	assert(false);
+}
+void gmcp_send_initial_state(P_char)
+{
+	assert(false);
+}
+void quest_ask(P_char, P_char) {}
+int nq_action_check(P_char, P_char, char *)
+{
+	return 0;
+}
+int is_introd(P_char, P_char)
+{
+	return true;
+}
+char *skip_spaces(char *text)
+{
+	while (*text == ' ')
+		++text;
+	return text;
+}
+void gmcp_comm_channel(P_char, const char *, const char *, const char *) {}
+P_char get_char_room_vis(P_char ch, const char *name)
+{
+	for (auto *candidate = world[ch->in_room].people; candidate;
+	     candidate = candidate->next_in_room)
+		if (!strcasecmp(candidate->player.name, name))
+			return candidate;
+	return nullptr;
+}
+bool get_equipment_list(P_char, char *buffer, int)
+{
+	strcpy(buffer, "EQUIPMENT_FIXTURE\r\n");
+	return true;
+}
+const char *get_account_name_safe(P_char)
+{
+	return "privacy-fixture";
+}
+const char *get_class_name(P_char, P_char)
+{
+	return "Warrior";
+}
+struct PrivacyAlliance : Alliance
+{
+	void set(P_Guild guild) { forging_assoc = joining_assoc = guild; }
+};
+static PrivacyAlliance privacy_alliance;
+P_Alliance Guild::get_alliance()
+{
+	return &privacy_alliance;
+}
 #include "production_output.inc"
 
 static std::string drain(P_desc d)
@@ -160,9 +245,327 @@ static std::string drain(P_desc d)
 #include "world_output_checks.inc"
 #include "combat_prompt_checks.inc"
 #include "chat_presentation_checks.inc"
+#include "artifact_activation_checks.inc"
+#include "news_prompt_checks.inc"
 #ifdef COLORIZATION_BENCHMARK
 #include "colorization_benchmark.inc"
 #endif
+
+static void privacy_delivery_matrix()
+{
+	char_data a{}, b{}, observer{};
+	pc_only_data ap{}, bp{}, op{};
+	descriptor_data ad{}, bd{}, od{};
+	Guild guild;
+	privacy_alliance.set(&guild);
+	char an[] = "Alice", bn[] = "Bob", on[] = "Observer";
+	a.only.pc = &ap;
+	b.only.pc = &bp;
+	observer.only.pc = &op;
+	a.player.name = an;
+	b.player.name = bn;
+	observer.player.name = on;
+	a.desc = &ad;
+	b.desc = &bd;
+	observer.desc = &od;
+	ad.character = &a;
+	bd.character = &b;
+	od.character = &observer;
+	ad.next = &bd;
+	bd.next = &od;
+	descriptor_list = &ad;
+	ad.connected = bd.connected = od.connected = CON_PLAYING;
+	a.specials.position = b.specials.position = observer.specials.position =
+		POS_STANDING + STAT_NORMAL;
+	a.player.level = 30;
+	b.player.level = 30;
+	observer.player.level = 30;
+	ap.pid = 100;
+	bp.pid = 101;
+	op.pid = 102;
+	SET_BIT(a.specials.act, PLR_ECHO | PLR_GCC);
+	SET_BIT(b.specials.act, PLR_ECHO | PLR_GCC);
+	SET_BIT(a.specials.act2, PLR2_ACC);
+	SET_BIT(b.specials.act2, PLR2_ACC | PLR2_WEBINFO);
+	SET_BIT(observer.specials.act2, PLR2_WEBINFO);
+	a.specials.guild = b.specials.guild = &guild;
+	a.specials.guild_status = b.specials.guild_status = A_SF2 | A_NORMAL;
+	world[0].people = &a;
+	a.next_in_room = &b;
+	b.next_in_room = &observer;
+	struct group_list member
+	{
+	};
+	member.ch = &b;
+	a.group = &member;
+	language_override = nullptr;
+	for (bool sender_on : { false, true })
+	{
+		if (sender_on)
+			SET_BIT(a.specials.act2, PLR2_WEBINFO);
+		else
+			REMOVE_BIT(a.specials.act2, PLR2_WEBINFO);
+		for (auto command : { do_tell, do_whisper, do_ask, do_gsay, do_gcc, do_acc })
+		{
+			for (bool telepathic : { false, true })
+			{
+				a.player.race = b.player.race = telepathic ? RACE_ILLITHID :
+									     RACE_HUMAN;
+				for (bool echo : { true, false })
+				{
+					if (echo)
+						SET_BIT(a.specials.act, PLR_ECHO);
+					else
+						REMOVE_BIT(a.specials.act, PLR_ECHO);
+					char direct[] = "Bob PRIVATE_MARKER $n &+gtest&n";
+					char channel[] = "PRIVATE_MARKER $n &+gtest&n";
+					send_to_char("PUBLIC_CONTROL\r\n", &b);
+					drain(&bd);
+					command(&a,
+						(command == do_tell || command == do_whisper ||
+						 command == do_ask) ?
+							direct :
+							channel,
+						0);
+					auto sent = drain(&ad), received = drain(&bd),
+					     notice = drain(&od);
+					if (received.find("PRIVATE_MARKER") == std::string::npos)
+						fprintf(stderr,
+							"privacy delivery command=%s telepathic=%d echo=%d sent=%s received=%s\n",
+							command == do_tell    ? "tell" :
+							command == do_whisper ? "whisper" :
+							command == do_ask     ? "ask" :
+							command == do_gsay    ? "gsay" :
+							command == do_gcc     ? "gcc" :
+										"acc",
+							telepathic, echo, sent.c_str(),
+							received.c_str());
+					assert(received.find("PRIVATE_MARKER") !=
+					       std::string::npos);
+					assert((sent.find("PRIVATE_MARKER") != std::string::npos) ==
+					       echo);
+					assert(std::string(
+						       GET_PLAYER_LOG(&a)->read_export(MAX_LOG_LEN))
+						       .find("PRIVATE_MARKER") ==
+					       std::string::npos);
+					if (echo)
+						assert(std::string(
+							       GET_PLAYER_LOG(&a)->read(
+								       LOG_PRIVATE, MAX_LOG_LEN))
+							       .find("PRIVATE_MARKER") !=
+						       std::string::npos);
+					assert(notice.find("PRIVATE_MARKER") == std::string::npos);
+					if (!telepathic &&
+					    (command == do_whisper || command == do_ask))
+					{
+						assert(!notice.empty());
+						assert(std::string(
+							       GET_PLAYER_LOG(&observer)
+								       ->read_export(MAX_LOG_LEN))
+							       .find(command == do_whisper ?
+									     "whispers something" :
+									     "a question") !=
+						       std::string::npos);
+					}
+					assert(received.find("$n") != std::string::npos);
+					assert(std::string(GET_PLAYER_LOG(&b)->read(LOG_PRIVATE,
+										    MAX_LOG_LEN))
+						       .find("PRIVATE_MARKER") !=
+					       std::string::npos);
+					combat_outcome_payload payload{};
+					auto *entry = combat_outcome_add_participant(
+						&payload, &b, combat_participant_role::victim, true,
+						false);
+					assert(entry->webinfo_at_capture == combat_webinfo::on);
+					assert(entry->log.find("PRIVATE_MARKER") ==
+					       std::string::npos);
+					assert(entry->log.find("PUBLIC_CONTROL") !=
+					       std::string::npos);
+					assert(entry->equipment == "EQUIPMENT_FIXTURE\r\n");
+				}
+			}
+		}
+	}
+	char reply[] = "REPLY_PRIVATE";
+	do_reply(&b, reply, 0);
+	assert(drain(&ad).find("REPLY_PRIVATE") != std::string::npos);
+	assert(std::string(GET_PLAYER_LOG(&b)->read_export(MAX_LOG_LEN)).find("REPLY_PRIVATE") ==
+	       std::string::npos);
+	drain(&bd);
+	// Ordinary whisper/ask language transformation still delivers the translated
+	// body privately, including literal act metacharacters.
+	a.player.race = b.player.race = RACE_HUMAN;
+	SET_BIT(a.specials.act, PLR_ECHO);
+	language_override = "TRANSLATED_PRIVATE $n";
+	for (auto command : { do_whisper, do_ask })
+	{
+		char message[] = "Bob ORIGINAL_PRIVATE";
+		command(&a, message, 0);
+		const auto translated = drain(&bd);
+		assert(translated.find("TRANSLATED_PRIVATE") != std::string::npos);
+		assert(translated.find("$n") != std::string::npos);
+		assert(drain(&ad).find("ORIGINAL_PRIVATE") != std::string::npos);
+		assert(std::string(GET_PLAYER_LOG(&b)->read(LOG_PRIVATE, MAX_LOG_LEN))
+			       .find("TRANSLATED_PRIVATE") != std::string::npos);
+		assert(std::string(GET_PLAYER_LOG(&b)->read_export(MAX_LOG_LEN))
+			       .find("TRANSLATED_PRIVATE") == std::string::npos);
+		assert(std::string(GET_PLAYER_LOG(&a)->read_export(MAX_LOG_LEN))
+			       .find("ORIGINAL_PRIVATE") == std::string::npos);
+	}
+	language_override = nullptr;
+	// Switched delivery follows the owning player's consent, not the NPC body.
+	char_data body{};
+	npc_only_data body_pc{};
+	body.only.npc = &body_pc;
+	body.specials.act = ACT_ISNPC;
+	body.desc = &ad;
+	ad.original = &a;
+	REMOVE_BIT(a.specials.act2, PLR2_WEBINFO);
+	production_write_to_pc_log(&body, "SWITCHED_OFF", LOG_PUBLIC);
+	assert(std::string(GET_PLAYER_LOG(&a)->read_export(MAX_LOG_LEN)).empty());
+	SET_BIT(a.specials.act2, PLR2_WEBINFO);
+	production_write_to_pc_log(&body, "SWITCHED_ON", LOG_PUBLIC);
+	assert(std::string(GET_PLAYER_LOG(&a)->read_export(MAX_LOG_LEN)) == "SWITCHED_ON");
+	REMOVE_BIT(a.specials.act2, PLR2_WEBINFO);
+	ad.original = nullptr;
+	// Off-period equipment stays in personal recall but cannot enter a later capture.
+	send_to_char("OFF_EQUIPMENT_MARKER", &a);
+	SET_BIT(a.specials.act2, PLR2_WEBINFO);
+	send_to_char("ON_MARKER", &a);
+	combat_outcome_payload payload{};
+	auto *entry = combat_outcome_add_participant(&payload, &a, combat_participant_role::killer,
+						     true, false);
+	assert(entry->log == "ON_MARKER");
+	assert(std::string(GET_PLAYER_LOG(&a)->read(LOG_PUBLIC, MAX_LOG_LEN))
+		       .find("OFF_EQUIPMENT_MARKER") != std::string::npos);
+	// Optional handoff: replay these exact game-thread captures through the real
+	// SQL repository and the paired website. Only synthetic fixture messages exist.
+	if (const char *directory = getenv("PVP_CAPTURE_COMMAND_DIR"))
+	{
+		std::filesystem::create_directories(directory);
+		for (int battle = 0; battle < 5; ++battle)
+		{
+			for (P_char ch : { &a, &b })
+			{
+				const bool on = battle != 2 && (battle != 0 || ch == &a);
+				char setting[40];
+				strcpy(setting, on ? "webinfo on" : "webinfo off");
+				do_toggle(ch, setting, 0);
+				GET_PLAYER_LOG(ch)->reset_export_window();
+				if (battle != 3)
+					send_to_char(ch == &a ? "PUBLIC_A_LINE\r\n" :
+								"PUBLIC_B_LINE\r\n",
+						     ch);
+			}
+			char whisper[] = "Bob PRIVATE_HANDOFF_MARKER $n";
+			if (battle != 3)
+				do_whisper(&a, whisper, 0);
+			combat_outcome_payload handoff{};
+			handoff.victim_pid = battle == 1 ? ap.pid : bp.pid;
+			handoff.room_vnum = 1234;
+			strcpy(handoff.room_name.data(), "Synthetic privacy room");
+			combat_outcome_add_participant(&handoff, &a,
+						       battle == 1 ?
+							       combat_participant_role::victim :
+							       combat_participant_role::killer,
+						       true, true);
+			combat_outcome_add_participant(&handoff, &b,
+						       battle == 1 ?
+							       combat_participant_role::killer :
+							       combat_participant_role::victim,
+						       true, false);
+			critical_operation_id operation{};
+			assert(critical_operation_id_generate(&operation));
+			critical_command captured{};
+			assert(combat_outcome_command_build(&captured, operation, handoff));
+			captured.accepted_at_usec = 1;
+			if (battle == 4)
+			{
+				captured.payload_version = 3;
+				captured.payload.resize(captured.payload.size() -
+							handoff.participant_count);
+			}
+			std::vector<uint8_t> encoded;
+			assert(critical_command_encode(captured, &encoded) ==
+			       critical_command_codec_result::ok);
+			std::ofstream file(std::filesystem::path(directory) /
+						   (std::to_string(battle) + ".command"),
+					   std::ios::binary);
+			file.write(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+			assert(file.good());
+		}
+	}
+	for (P_char ch : { &a, &b, &observer })
+	{
+		delete GET_PLAYER_LOG(ch);
+		GET_PLAYER_LOG(ch) = nullptr;
+		drain(ch->desc);
+	}
+	descriptor_list = nullptr;
+	world[0].people = nullptr;
+}
+
+static void privacy_toggle_matrix()
+{
+	char_data ch{};
+	pc_only_data pc{};
+	descriptor_data d{};
+	ch.only.pc = &pc;
+	ch.desc = &d;
+	d.character = &ch;
+	ch.specials.position = POS_STANDING + STAT_NORMAL;
+	pc.pid = 201;
+	char name[] = "ToggleFixture";
+	ch.player.name = name;
+	ch.in_room = NOWHERE;
+	auto toggle = [&](const char *arg)
+	{
+		char command[100];
+		strcpy(command, arg);
+		do_toggle(&ch, command, 0);
+		return drain(&d);
+	};
+	SET_BIT(ch.specials.act2, PLR2_WEBINFO);
+	send_to_char("FIRST_INTERVAL", &ch);
+	drain(&d);
+	const int before = save_calls;
+	assert(toggle("webinfo on").find("already") != std::string::npos);
+	assert(save_calls == before &&
+	       std::string(GET_PLAYER_LOG(&ch)->read_export(MAX_LOG_LEN)).find("FIRST_INTERVAL") !=
+		       std::string::npos);
+	assert(toggle("webinfo invalid").find("boolean") != std::string::npos &&
+	       save_calls == before);
+	for (auto failure :
+	     { player_save_pipeline_result::invalid, player_save_pipeline_result::capture_failed,
+	       player_save_pipeline_result::unavailable })
+	{
+		save_result = failure;
+		assert(toggle("webinfo off").find("did not take effect") != std::string::npos);
+		assert(PLR2_FLAGGED(&ch, PLR2_WEBINFO));
+		assert(std::string(GET_PLAYER_LOG(&ch)->read_export(MAX_LOG_LEN))
+			       .find("FIRST_INTERVAL") != std::string::npos);
+	}
+	save_result = player_save_pipeline_result::queued;
+	assert(toggle("webinfo off").find("save pending") != std::string::npos);
+	assert(!PLR2_FLAGGED(&ch, PLR2_WEBINFO));
+	send_to_char("OFF_INTERVAL_EQUIPMENT", &ch);
+	drain(&d);
+	assert(std::string(GET_PLAYER_LOG(&ch)->read_export(MAX_LOG_LEN)).empty());
+	save_result = player_save_pipeline_result::coalesced;
+	assert(toggle("webinfo").find("save pending") != std::string::npos);
+	assert(PLR2_FLAGGED(&ch, PLR2_WEBINFO));
+	send_to_char("NEW_INTERVAL", &ch);
+	drain(&d);
+	auto exported = std::string(GET_PLAYER_LOG(&ch)->read_export(MAX_LOG_LEN));
+	assert(exported.find("NEW_INTERVAL") != std::string::npos &&
+	       exported.find("FIRST_INTERVAL") == std::string::npos &&
+	       exported.find("OFF_INTERVAL") == std::string::npos);
+	assert(std::string(GET_PLAYER_LOG(&ch)->read(LOG_PUBLIC, MAX_LOG_LEN))
+		       .find("OFF_INTERVAL") != std::string::npos);
+	delete GET_PLAYER_LOG(&ch);
+	GET_PLAYER_LOG(&ch) = nullptr;
+	save_result = player_save_pipeline_result::queued;
+}
 
 static void tell_command_matrix()
 {
@@ -264,6 +667,8 @@ int main()
 	colorization_benchmark();
 	return 0;
 #endif
+	privacy_delivery_matrix();
+	privacy_toggle_matrix();
 	chat_presentation_matrix();
 	char_data actor{}, viewer{}, observer{};
 	pc_only_data pc{}, pc2{}, pc3{};
@@ -703,5 +1108,7 @@ int main()
 	tell_command_matrix();
 	world_output_matrix();
 	combat_prompt_matrix();
+	artifact_activation_matrix();
+	news_prompt_matrix();
 	puts("Output integration: tell/reply, recipient profiles, sends, act, queue merging, privacy, paging and snoop passed");
 }

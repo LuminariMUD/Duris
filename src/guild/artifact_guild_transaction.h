@@ -23,6 +23,10 @@ constexpr size_t ARTIFACT_GUILD_PENDING_MAX = 256;
 
 struct artifact_guild_health
 {
+	uint64_t live_applied;
+	uint64_t history_lost;
+	uint64_t dirty_artifacts;
+	uint64_t dirty_guilds;
 	uint64_t submitted;
 	uint64_t committed;
 	uint64_t rejected;
@@ -34,6 +38,11 @@ struct artifact_guild_health
 	uint64_t oldest_age_msec;
 };
 
+void artifact_guild_transaction_pulse(void);
+bool artifact_guild_transaction_drain(uint64_t timeout_msec);
+void artifact_guild_transaction_report_unsaved(void);
+
+// New source awards only. History retries and receipt replay never call this.
 bool artifact_guild_transaction_submit(P_char character,
 				       const critical_operation_id &parent_operation_id, int epics,
 				       int epic_type);

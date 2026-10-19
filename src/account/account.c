@@ -18,6 +18,7 @@
 #include "core/structs.h"
 #include "telemetry/telemetry_runtime.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/db.h"
 #include "world/epic_transaction.h"
 #include "world/handler.h"
@@ -59,6 +60,7 @@
 #include "player/player_name.h"
 #include "player/player_playtime.h"
 #include "player/player_load_materialize.h"
+#include "player/player_load_items.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_revision_state.h"
 #include "player/player_save_pipeline.h"
@@ -216,7 +218,8 @@ class account_deletion_drain_guard
 			return false;
 		player_save_pipeline_quiesce();
 		player_quiesced_ = true;
-		return player_save_pipeline_drain(3000) && locker_async_drain(3000);
+		return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
+		       artifact_save_drain(3000);
 	}
 
     private:
@@ -2152,6 +2155,7 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	d->character = ch;
 	ch->specials.timer = 0;
 	STATE(d) = CON_PLAYING;
+	player_load_items_notify_retained(ch);
 	(void)telemetry_runtime_game_connection_transition(
 		ch, d, telemetry_connection_transition_kind::attached);
 	(void)telemetry_runtime_game_context(ch, d);
@@ -2178,6 +2182,7 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 		d->character->desc = d;
 		ch->desc = NULL;
 	}
+	gmcp_send_initial_state(d->character);
 	return 1;
 }
 
@@ -3027,6 +3032,8 @@ void verify_delete_account(P_desc d, char *arg)
 	if (deleted)
 	{
 		forget_deleted_account_characters(identities);
+		for (const auto &identity : identities)
+			artifacts_forget_deleted_account_character(identity.pid);
 		remove_deleted_account_characters(d, identities);
 		account_recovery_forget(account_name.c_str());
 	}

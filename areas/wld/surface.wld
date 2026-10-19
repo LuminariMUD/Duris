@@ -362056,7 +362056,7 @@ D3
 0 0 517243
 S
 #517245
-Acrium~
+Arcium~
 ~
 5000 134250688 0 0
 D0
@@ -362095,7 +362095,7 @@ D2
 D3
 ~
 ~
-0 0 35800
+0 0 85700
 S
 #517247
 &+gThe Magnificent Woodlands of Evermeet&n~
@@ -370458,7 +370458,7 @@ S
 D0
 ~
 ~
-0 0 35800
+0 0 85700
 D1
 ~
 ~
@@ -1008726,9 +1008726,9 @@ D3
 0 0 548050
 S
 #548052
-&+yRugged &+gHills of the &+yHearth &+gValley&n~
+Abandoned Elven Homestead~
 ~
-5000 0 0 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1008762,6 +1008762,10 @@ D2
 ~
 ~
 0 0 548453
+D3
+~
+~
+0 0 35800
 S
 #548054
 &+LAn &+WImmaculate &+LStone Highway&n~
@@ -1017120,7 +1017124,7 @@ S
 D0
 ~
 ~
-0 0 7102
+0 0 35800
 D1
 ~
 ~
@@ -1084615,7 +1084619,7 @@ S
 D0
 ~
 ~
-0 0 9288
+0 0 11300
 D1
 ~
 ~
@@ -1764291,10 +1764295,6 @@ D1
 ~
 ~
 0 0 584046
-D2
-~
-~
-0 0 584445
 D3
 ~
 ~
@@ -1772690,10 +1772690,6 @@ D0
 ~
 ~
 0 0 584044
-D1
-~
-~
-0 0 584445
 D2
 ~
 ~
@@ -1772704,9 +1772700,9 @@ D3
 0 0 584443
 S
 #584445
-&+gVast Plains of the &+yEagle Ridge &+gDelta&n~
+Turopolis~
 ~
-5000 0 2 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1772740,10 +1772736,6 @@ D2
 ~
 ~
 0 0 584846
-D3
-~
-~
-0 0 584445
 S
 #584447
 &+yRocky Hillside &+gof the &+yEagle Ridge &+gDelta&n~
@@ -1781110,7 +1781102,7 @@ S
 D0
 ~
 ~
-0 0 584445
+0 0 7102
 D1
 ~
 ~
@@ -1926604,8 +1926596,10 @@ D3
 S
 #591772
 &+LR&+Gug&+Lge&+Gd H&+Lill&+Gs Co&+Lv&+Ger&+Led i&+Gn V&+Li&+Gne&+Ls&n~
+   Vines cover the rugged hills below the black mountains to the north and
+west. The hills continue east, while the jungle spreads away to the south.
 ~
-5000 0 0 0
+5000 0 4 0
 D0
 ~
 ~
@@ -1926642,7 +1926636,7 @@ D2
 D3
 ~
 ~
-0 0 85700
+0 0 591772
 S
 #591774
 &+LR&+Gug&+Lge&+Gd H&+Lill&+Gs Co&+Lv&+Ger&+Led i&+Gn V&+Li&+Gne&+Ls&n~
@@ -1935009,7 +1935003,7 @@ S
 D0
 ~
 ~
-0 0 85700
+0 0 591772
 D1
 ~
 ~
@@ -2423807,10 +2423801,6 @@ D1
 ~
 ~
 0 0 615450
-D2
-~
-~
-0 0 615849
 D3
 ~
 ~
@@ -2432196,9 +2432186,9 @@ D3
 0 0 615847
 S
 #615849
-&+BTh&+be Wa&+Bte&+brs o&+Bf t&+bhe A&+Bby&+bss&n~
+Temple of Lizizania~
 ~
-5000 0 0 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -2440598,7 +2440588,7 @@ S
 D0
 ~
 ~
-0 0 11300
+0 0 9288
 D1
 ~
 ~

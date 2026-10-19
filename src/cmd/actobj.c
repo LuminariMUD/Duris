@@ -27,6 +27,7 @@
 #include "combat/justice.h"
 #include "classes/necromancy.h"
 #include "item/objmisc.h"
+#include "guild/artifact_admission.h"
 #include "persistence/persistence_checkpoint.h"
 #include "redis/redis_floor_runtime.h"
 #include "core/safe_format.h"
@@ -375,6 +376,18 @@ P_obj find_live_item_uid(uint64_t item_uid)
 	return NULL;
 }
 
+// Trap effects can extract the actor, move it, or remove its source container.
+static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj container,
+			     uint64_t container_uid)
+{
+	if (find_character_by_runtime_id(runtime_id) != actor || !IS_ALIVE(actor) ||
+	    actor->in_room != room || !IS_AWAKE(actor) || IS_IMMOBILE(actor))
+		return false;
+	return !container || (find_live_item_uid(container_uid) == container &&
+			      (OBJ_CARRIED_BY(container, actor) || OBJ_WORN_BY(container, actor) ||
+			       (OBJ_ROOM(container) && container->loc.room == room)));
+}
+
 static void publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool slip)
 {
 	obj_from_obj(o_obj);
@@ -435,7 +448,7 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 	char Gbuf3[MAX_STRING_LENGTH];
 	P_obj corpse = NULL;
 	bool slip = FALSE;
-	item_get_rejected = false;
+	item_get_rejected = true;
 	if (item_get_ack_publication)
 	{
 		if (s_obj && s_obj->type == ITEM_CORPSE && IS_SET(s_obj->value[1], PC_CORPSE))
@@ -452,6 +465,8 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 			   (void *)o_obj, (void *)s_obj, showit ? 1 : 0);
 		return;
 	}
+	if (s_obj && s_obj->type == ITEM_CORPSE && IS_SET(s_obj->value[1], PC_CORPSE))
+		corpse = s_obj;
 
 	if (account_bound_reward_owner(ch, o_obj) == false &&
 	    IS_OBJ_STAT2(o_obj, ITEM2_ACCOUNT_BOUND))
@@ -509,16 +524,11 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		return;
 	}
 
-	/* Trap check */
+	/* A triggered trap rejects pickup and may already have extracted ch. */
 	if (checkgetput(ch, o_obj))
 	{
-		GETDBG_LOG(
-			"GETDBG[get-deny:trap]: ch=%s room=%d obj=%s [%d] uid=%lu container=%s [%d]",
-			GET_NAME(ch), world[ch->in_room].number,
-			o_obj->short_description ? o_obj->short_description : "(null)",
-			OBJ_VNUM(o_obj), o_obj->obj_uid,
-			s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
-			s_obj ? OBJ_VNUM(s_obj) : -1);
+		if (corpse)
+			writeCorpse(corpse);
 		return;
 	}
 
@@ -553,9 +563,6 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		OBJ_WORN(o_obj) ? 1 : 0, OBJ_INSIDE(o_obj) ? 1 : 0, OBJ_ROOM(o_obj) ? 1 : 0,
 		s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
 		s_obj ? OBJ_VNUM(s_obj) : -1);
-
-	if (s_obj && (s_obj->type == ITEM_CORPSE) && IS_SET(s_obj->value[1], PC_CORPSE))
-		corpse = s_obj;
 
 	if (s_obj && IS_OBJ_STAT(s_obj, ITEM_NOSHOW))
 		showit = TRUE;
@@ -729,11 +736,6 @@ publish_after_ack:
 			}
 			send_to_char(Gbuf3, ch);
 			extract_obj(o_obj);
-			// DEFERRED: use-after-free — extract_obj frees o_obj, but callers in
-			// do_get_finalize_container_item and do_get_log_room_artifact_pickup
-			// still dereference the stale pointer (short_description, R_num, obj_uid).
-			// Fix requires obj_to_char/obj_to_room returning a freed-status, or a
-			// zombie flag, touching hundreds of call sites.
 			o_obj = NULL;
 		}
 
@@ -747,6 +749,8 @@ publish_after_ack:
 		{
 			writeCorpse(corpse);
 		}
+
+		item_get_rejected = false;
 
 		/* Send GMCP update for coin change */
 		gmcp_char_vitals(ch);
@@ -762,6 +766,7 @@ publish_after_ack:
 			return;
 		}
 
+		item_get_rejected = false;
 		publish_container_get(ch, o_obj, s_obj, showit, slip);
 	}
 	else
@@ -787,6 +792,7 @@ publish_after_ack:
 		if (showit && !slip)
 			act("$n gets $p.", 1, ch, o_obj, 0, TO_ROOM);
 		obj_to_char(o_obj, ch);
+		item_get_rejected = false;
 	}
 
 	if (corpse)
@@ -812,31 +818,41 @@ int fight_in_room(P_char ch)
 
 static bool do_get_commit_pickup_core(P_char ch, P_obj s_obj, P_obj o_obj, bool &found)
 {
+	const uint64_t item_uid = o_obj->obj_uid;
+	const bool money = GET_ITEM_TYPE(o_obj) == ITEM_MONEY;
 	get(ch, o_obj, s_obj, TRUE);
 	if (item_get_rejected)
 		return false;
+	// obj_to_char can consume crumble-on-loot items instead of delivering them.
+	if (!money && (find_live_item_uid(item_uid) != o_obj || !OBJ_CARRIED_BY(o_obj, ch)))
+	{
+		item_get_rejected = true;
+		return false;
+	}
 	found = TRUE;
 	return true;
 }
 
-static void do_get_finalize_pickup_core(P_char ch, P_obj s_obj, P_obj o_obj, bool &found,
+static bool do_get_finalize_pickup_core(P_char ch, P_obj s_obj, P_obj o_obj, bool &found,
 					int &total)
 {
 	if (!do_get_commit_pickup_core(ch, s_obj, o_obj, found))
-		return;
+		return false;
 	++total;
 	if (s_obj && (GET_ITEM_TYPE(s_obj) == ITEM_QUIVER))
 		if (s_obj->value[3] > 0)
 			s_obj->value[3]--;
+	return true;
 }
 
-static void do_get_finalize_container_item(P_char ch, P_obj s_obj, P_obj o_obj, int &total,
+static bool do_get_finalize_container_item(P_char ch, P_obj s_obj, P_obj o_obj, int &total,
 					   bool &found, const char *post_tag)
 {
 	const bool money = GET_ITEM_TYPE(o_obj) == ITEM_MONEY;
-	do_get_finalize_pickup_core(ch, s_obj, o_obj, found, total);
+	if (!do_get_finalize_pickup_core(ch, s_obj, o_obj, found, total))
+		return false;
 	if (money)
-		return;
+		return true;
 	GETDBG_LOG(
 		"%s: ch=%s room=%d obj=%s [%d] uid=%lu carried=%d container=%s [%d] cuid=%lu total=%d",
 		post_tag, GET_NAME(ch), world[ch->in_room].number,
@@ -844,6 +860,7 @@ static void do_get_finalize_container_item(P_char ch, P_obj s_obj, P_obj o_obj, 
 		o_obj->obj_uid, OBJ_CARRIED_BY(o_obj, ch) ? 1 : 0,
 		s_obj->short_description ? s_obj->short_description : "(none)", OBJ_VNUM(s_obj),
 		s_obj->obj_uid, total);
+	return true;
 }
 
 static void do_get_log_container_artifact_pickup(P_char ch, P_char hood, P_obj o_obj, P_obj s_obj);
@@ -858,18 +875,40 @@ do_get_finalize_container_success(P_char ch, P_char hood, P_obj s_obj, P_obj o_o
 				  bool &found, bool corpse_flag, const char *post_tag,
 				  const coin_get_submission_options *coin_options = NULL)
 {
-	if ((GET_ITEM_TYPE(o_obj) == ITEM_CORPSE) && IS_SET(o_obj->value[1], PC_CORPSE))
+	const int item_type = GET_ITEM_TYPE(o_obj);
+	const bool selected_coins = coin_options && coin_options->has_amount_limit &&
+				    item_type == ITEM_MONEY;
+	std::array<int32_t, CURRENCY_DENOMINATION_COUNT> coins = {};
+	if (item_type == ITEM_MONEY)
+		for (size_t i = 0; i < coins.size(); ++i)
+			coins[i] = selected_coins ?
+					   std::min(o_obj->value[i],
+						    std::max(coin_options->amount_limit[i], 0)) :
+					   o_obj->value[i];
+	if (selected_coins)
+	{
+		item_get_rejected = !take_coins(ch, o_obj, s_obj, TRUE, *coin_options);
+		if (item_get_rejected)
+		{
+			report_coin_get_rejection(ch, s_obj);
+			return;
+		}
+	}
+	else if (!do_get_finalize_container_item(ch, s_obj, o_obj, total, found, post_tag))
+		return;
+
+	if ((item_type == ITEM_CORPSE) && IS_SET(o_obj->value[1], PC_CORPSE))
 	{
 		logit(LOG_CORPSE, "%s%s: corpse of %s from %s", GET_NAME(ch),
 		      (hood == ch) ? "" : GET_NAME(hood), o_obj->action_description, s_obj->name);
 	}
 	else if (corpse_flag && o_obj)
 	{
-		if (o_obj->type == ITEM_MONEY)
+		if (item_type == ITEM_MONEY)
 		{
 			logit(LOG_CORPSE, "%s%s: %dp, %dg, %ds, %dc from %s", GET_NAME(ch),
-			      (hood == ch) ? "" : GET_NAME(hood), o_obj->value[3], o_obj->value[2],
-			      o_obj->value[1], o_obj->value[0], s_obj->action_description);
+			      (hood == ch) ? "" : GET_NAME(hood), coins[3], coins[2], coins[1],
+			      coins[0], s_obj->action_description);
 		}
 		else
 		{
@@ -877,7 +916,8 @@ do_get_finalize_container_success(P_char ch, P_char hood, P_obj s_obj, P_obj o_o
 			{
 				do_get_log_container_artifact_pickup(ch, hood, o_obj, s_obj);
 				// If the artifact was picked up across racewar lines.
-				if ((s_obj->value[5] != RACEWAR_NONE) &&
+				if (artifact_is_canonical(o_obj) &&
+				    (s_obj->value[5] != RACEWAR_NONE) &&
 				    (GET_RACEWAR(ch) != s_obj->value[5]))
 				{
 					int vnum = OBJ_VNUM(o_obj);
@@ -907,16 +947,6 @@ do_get_finalize_container_success(P_char ch, P_char hood, P_obj s_obj, P_obj o_o
 	{
 		CharWait(ch, PULSE_VIOLENCE);
 	}
-	if (coin_options && coin_options->has_amount_limit && o_obj &&
-	    GET_ITEM_TYPE(o_obj) == ITEM_MONEY)
-	{
-		item_get_rejected = !take_coins(ch, o_obj, s_obj, TRUE, *coin_options);
-		if (item_get_rejected)
-			report_coin_get_rejection(ch, s_obj);
-		return;
-	}
-
-	do_get_finalize_container_item(ch, s_obj, o_obj, total, found, post_tag);
 }
 
 static void do_get_log_room_artifact_pickup(P_char ch, P_obj o_obj)
@@ -1116,6 +1146,11 @@ static bool do_get_finalize_container_item_or_reject(P_char ch, P_char hood, P_o
 
 	do_get_finalize_container_success(ch, hood, s_obj, o_obj, total, found, corpse_flag,
 					  post_tag);
+	if (item_get_rejected)
+	{
+		fail = TRUE;
+		return FALSE;
+	}
 	return TRUE;
 }
 
@@ -1272,7 +1307,8 @@ static void do_get_reject_too_heavy(P_char ch, P_obj o_obj, bool &fail)
 static void do_get_finalize_room_item(P_char ch, P_obj o_obj, bool &found, int &total)
 {
 	const bool money = GET_ITEM_TYPE(o_obj) == ITEM_MONEY;
-	do_get_finalize_pickup_core(ch, 0, o_obj, found, total);
+	if (!do_get_finalize_pickup_core(ch, 0, o_obj, found, total))
+		return;
 	/* A complete coin pickup extracts the object inside get(). */
 	if (!money)
 		do_get_log_room_artifact_pickup(ch, o_obj);
@@ -1342,11 +1378,15 @@ static P_obj resolve_synchronous_get_item(const synchronous_get_item &selected,
 }
 
 /** Take each selected item; an earlier pickup's side effects can move or destroy a later one. */
-static void take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj container)
+static bool take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj container)
 {
+	const uint64_t runtime_id = actor->runtime_id;
 	bool found_item = false;
 	while (!state.synchronous_items.empty())
 	{
+		if (!get_can_continue(actor, runtime_id, state.room, container,
+				      state.container_uid))
+			return false;
 		const synchronous_get_item selected = state.synchronous_items.front();
 		state.synchronous_items.erase(state.synchronous_items.begin());
 		P_obj object = resolve_synchronous_get_item(selected, state, container);
@@ -1383,11 +1423,15 @@ static void take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj conta
 		else
 			do_get_finalize_room_item(actor, object, found_item, state.total);
 		item_get_ack_publication = false;
+		if (!get_can_continue(actor, runtime_id, state.room, container,
+				      state.container_uid))
+			return false;
 		if (item_get_rejected)
 			state.failed = true;
 		else
 			announce_corpse_bulk_get(actor, state, container);
 	}
+	return get_can_continue(actor, runtime_id, state.room, container, state.container_uid);
 }
 
 /** Snapshot rejection text now; rejected objects can disappear before publication. */
@@ -1449,6 +1493,9 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 	const bool scrap = object->condition <= 0;
 	if (!scrap && checkgetput(actor, object))
 	{
+		if (container && container->type == ITEM_CORPSE &&
+		    IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE))
+			writeCorpse(container);
 		state.failed = true;
 		return false;
 	}
@@ -1488,6 +1535,7 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 static void start_bulk_get(P_char actor, P_obj container, const char *filter, bool corpse)
 {
 	const uint32_t actor_pid = static_cast<uint32_t>(GET_PID(actor));
+	const uint64_t runtime_id = actor->runtime_id;
 	if (item_movement_transaction_player_busy(actor))
 	{
 		send_to_char("You are already moving an item; try again in a moment.\r\n", actor);
@@ -1512,17 +1560,32 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 		     object = next)
 		{
 			next = object->next_content;
+			const uint64_t next_uid = next ? next->obj_uid : 0;
 			bool stop = false;
-			select_bulk_get_item(actor, container, object, filter, container_local,
-					     carried_count, carried_weight, state, stop);
+			const bool selected = select_bulk_get_item(actor, container, object, filter,
+								   container_local, carried_count,
+								   carried_weight, state, stop);
+			// A rejected trap may have invalidated both the actor and the saved sibling.
+			if (!selected && !get_can_continue(actor, runtime_id, state.room, container,
+							   state.container_uid))
+				return;
 			if (stop)
 				break;
+			if (!selected && next)
+			{
+				next = resolve_synchronous_get_item({ next_uid, next, false },
+								    state, container);
+				if (!bulk_get_source_matches(state, container, next))
+					next = NULL;
+			}
 		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		send_to_char("You can't collect everything right now; please try again.\r\n",
-			     actor);
+		if (get_can_continue(actor, runtime_id, state.room, NULL, 0))
+			send_to_char(
+				"You can't collect everything right now; please try again.\r\n",
+				actor);
 		return;
 	}
 	if (container && !container->obj_uid)
@@ -1535,13 +1598,19 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 		auto [found, inserted] = bulk_gets.emplace(actor_pid, std::move(state));
 		if (!inserted)
 			return;
-		take_bulk_get_items(actor, found->second, container);
-		finish_bulk_get(actor, actor_pid);
+		if (take_bulk_get_items(actor, found->second, container))
+			finish_bulk_get(actor, actor_pid);
+		else
+			bulk_gets.erase(actor_pid);
 	}
 	catch (const std::bad_alloc &)
 	{
-		send_to_char("You can't collect everything right now; please try again.\r\n",
-			     actor);
+		item_get_ack_publication = false;
+		bulk_gets.erase(actor_pid);
+		if (get_can_continue(actor, runtime_id, state.room, NULL, 0))
+			send_to_char(
+				"You can't collect everything right now; please try again.\r\n",
+				actor);
 	}
 }
 
@@ -1576,6 +1645,9 @@ void do_get(P_char ch, char *argument, int cmd)
 	{
 		return;
 	}
+
+	const uint64_t runtime_id = ch->runtime_id;
+	const int get_room = ch->in_room;
 
 	if (IS_IMMOBILE(ch))
 	{
@@ -1655,6 +1727,7 @@ void do_get(P_char ch, char *argument, int cmd)
 		for (o_obj = world[ch->in_room].contents; o_obj; o_obj = next_obj)
 		{
 			next_obj = o_obj->next_content;
+			const uint64_t next_uid = next_obj ? next_obj->obj_uid : 0;
 			GETDBG_LOG(
 				"GETDBG[get-room-item]: ch=%s room=%d obj=%s [%d] type=%d wt=%d carry_n=%d carry_w=%d take=%d allowed=%d alldot=%d filter='%s'",
 				GET_NAME(ch), world[ch->in_room].number,
@@ -1694,6 +1767,19 @@ void do_get(P_char ch, char *argument, int cmd)
 						{
 							do_get_finalize_room_item(ch, o_obj, found,
 										  total);
+							if (!get_can_continue(ch, runtime_id,
+									      get_room, NULL, 0))
+								return;
+							if (item_get_rejected && next_obj)
+							{
+								next_obj = find_live_item_uid(
+									next_uid);
+								if (next_obj &&
+								    (!OBJ_ROOM(next_obj) ||
+								     next_obj->loc.room !=
+									     get_room))
+									next_obj = NULL;
+							}
 						}
 						else
 						{
@@ -1820,6 +1906,9 @@ void do_get(P_char ch, char *argument, int cmd)
 							}
 						}
 						do_get_finalize_room_item(ch, o_obj, found, total);
+						if (!get_can_continue(ch, runtime_id, get_room,
+								      NULL, 0))
+							return;
 					}
 					else
 					{
@@ -1929,6 +2018,7 @@ void do_get(P_char ch, char *argument, int cmd)
 					return;
 				}
 
+				const uint64_t container_uid = s_obj->obj_uid;
 				int container_safety = top_of_objt + 1;
 
 				GETDBG_LOG(
@@ -1960,6 +2050,7 @@ void do_get(P_char ch, char *argument, int cmd)
 					}
 
 					next_obj = o_obj->next_content;
+					const uint64_t next_uid = next_obj ? next_obj->obj_uid : 0;
 
 					if (!obj_is_in_container(o_obj, s_obj))
 					{
@@ -2005,6 +2096,16 @@ void do_get(P_char ch, char *argument, int cmd)
 						"GETDBG[get-all reject:carry-limit]",
 						"GETDBG[get-all reject:not-takeable]",
 						"GETDBG[get-container-post]", FALSE);
+					if (!get_can_continue(ch, runtime_id, get_room, s_obj,
+							      container_uid))
+						return;
+					if (item_get_rejected && next_obj)
+					{
+						next_obj = find_live_item_uid(next_uid);
+						if (next_obj && (!OBJ_INSIDE(next_obj) ||
+								 next_obj->loc.inside != s_obj))
+							next_obj = NULL;
+					}
 					if (stop_container_bulk)
 						break;
 				}
@@ -2077,6 +2178,7 @@ void do_get(P_char ch, char *argument, int cmd)
 						return;
 					}
 
+					const uint64_t container_uid = s_obj->obj_uid;
 					(void)do_get_try_container_item(
 						ch, hood, s_obj, o_obj, total, found, corpse_flag,
 						carried, stop_bulk, fail,
@@ -2085,6 +2187,9 @@ void do_get(P_char ch, char *argument, int cmd)
 						"GETDBG[get-container-single reject:carry-limit]",
 						"GETDBG[get-container-single reject:not-takeable]",
 						"GETDBG[get-container-single-post]", TRUE);
+					if (!get_can_continue(ch, runtime_id, get_room, s_obj,
+							      container_uid))
+						return;
 				}
 				else
 				{

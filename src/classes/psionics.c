@@ -2252,12 +2252,10 @@ void spell_depart(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vic
 	if (tries >= 1000)
 		to_room = victim->in_room;
 
-	if (LIMITED_TELEPORT_ZONE(victim->in_room))
+	if (LIMITED_TELEPORT_ZONE(victim->in_room) && how_close(victim->in_room, to_room, 5) < 0)
 	{
-		if (how_close(victim->in_room, to_room, 5))
-			send_to_char(
-				"The magic gathers, but somehow fades away before taking effect.\n",
-				victim);
+		send_to_char("The magic gathers, but somehow fades away before taking effect.\n",
+			     victim);
 		return;
 	}
 
@@ -2589,7 +2587,7 @@ void spell_innate_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	if (number(0, 1))
 		appear(ch);
 
-	if (check_freedom_of_movement(victim, number(0, 1)) && !IS_TRUSTED(ch))
+	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
 	{
 		send_to_char("&+CTheir movement magic prevented your spell!&n\r\n", ch);
 		return;

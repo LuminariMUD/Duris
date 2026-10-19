@@ -69,6 +69,7 @@
 #include "world/world_quest.h"
 #include "net/ws_handlers.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/assocs.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_death_enrollment.h"
 #include "economy/collector_presence.h"
@@ -91,6 +92,7 @@ extern P_obj object_list;
 extern P_room world;
 extern char debug_mode;
 extern const struct race_names race_names_table[];
+bool get_equipment_list(P_char ch, char *buf, int list_only);
 extern void event_wait(P_char ch, P_char victim, P_obj obj, void *data);
 void release_mob_mem(P_char ch, P_char victim, P_obj obj, void *data);
 
@@ -98,6 +100,7 @@ void release_mob_mem(P_char ch, P_char victim, P_obj obj, void *data);
 extern const struct stat_data stat_factor[];
 extern float fake_sqrt_table[];
 extern int pulse;
+extern unsigned long long ne_event_tick;
 extern int arena_hometown_location[];
 extern struct arena_data arena;
 extern struct agi_app_type agi_app[];
@@ -599,7 +602,7 @@ int vamp(P_char ch, double fhits, double fcap)
 		send_to_char(buf, ch);
 	}
 
-	update_groupies(ch, true);
+	gmcp_char_vitals(ch);
 
 	return hits;
 }
@@ -852,7 +855,24 @@ static combat_outcome_participant *combat_outcome_add_participant(combat_outcome
 	entry.expected_wallet_revision = ch->only.pc->wallet_revision;
 	entry.expected_bank_revision = ch->only.pc->bank_revision;
 	strlcpy(entry.account_name.data(), get_account_name_safe(ch), entry.account_name.size());
-	strlcpy(entry.description.data(), GET_NAME(ch), entry.description.size());
+	// Capture while the character and equipment still belong to the game loop.
+	// The worker receives owned text, never character or PlayerLog pointers.
+	const std::string association = GET_ASSOC(ch) ? GET_ASSOC(ch)->get_name() : "";
+	snprintf(entry.description.data(), entry.description.size(), "[%2d %s&n] %s &n%s &n(%s&n)",
+		 GET_LEVEL(ch), get_class_name(ch, ch), GET_NAME(ch), association.c_str(),
+		 race_names_table[GET_RACE(ch)].ansi);
+	static_assert(MAX_STRING_LENGTH - 1 == COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES);
+	static_assert(MAX_LOG_LEN - 1 == COMBAT_OUTCOME_LOG_MAX_BYTES);
+	entry.webinfo_at_capture = PLR2_FLAGGED(ch, PLR2_WEBINFO) ? combat_webinfo::on :
+								    combat_webinfo::off;
+	if (entry.webinfo_at_capture == combat_webinfo::on)
+	{
+		char equipment[MAX_STRING_LENGTH];
+		get_equipment_list(ch, equipment, 1);
+		entry.equipment = equipment;
+		if (GET_PLAYER_LOG(ch))
+			entry.log = GET_PLAYER_LOG(ch)->read_export(MAX_LOG_LEN);
+	}
 	return &entry;
 }
 
@@ -1382,6 +1402,8 @@ void update_pos(P_char ch)
 	/*
 	 * finally, set new position and status
 	 */
+	if (stat == STAT_RESTING && pos == POS_STANDING)
+		pos = POS_SITTING;
 
 	SET_POS(ch, pos + stat);
 	if (stat == STAT_DEAD)
@@ -3838,6 +3860,7 @@ bool can_hit_target(P_char ch, P_char vict)
  * damage API. It is provided for backward compatibility and should not be
  * used in the new code, call directly spell_damage and melee_damage instead.
  */
+// Stop the calling skill after either participant dies.
 bool damage(P_char ch, P_char victim, double dam, int attacktype)
 {
 	struct damage_messages tmsg;
@@ -3876,7 +3899,7 @@ bool damage(P_char ch, P_char victim, double dam, int attacktype)
 
 		return spell_damage(ch, victim, dam, type, flags, &tmsg);
 	}
-	else if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &tmsg) == DAM_VICTDEAD)
+	else if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &tmsg) != DAM_NONEDEAD)
 	{
 		return TRUE;
 	}
@@ -4550,7 +4573,7 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 					if (!IS_ELITE(ch) && !IS_GREATER_RACE(ch) &&
 					    (GET_LEVEL(ch) + 5) > GET_LEVEL(victim))
 					{
-						if (!check_freedom_of_movement(victim, false))
+						if (!check_freedom_of_movement(ch))
 						{
 							af.type = SPELL_MINOR_PARALYSIS;
 							af.bitvector2 = AFF2_MINOR_PARALYSIS;
@@ -5140,12 +5163,89 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::me
 	return connections;
 }
 
+/*
+ Holy Sacrifice: ch's blow of dam on owner heals each injured groupmate in the room by up
+ to vamping.holySacrifice of the damage, out of one budget the group shares. A blow's
+ budget is the smaller of a share of its damage and a share of the owner's max hp, and the
+ owner's combat round has its own limit. A player-controlled hit keeps both limits
+ scaled down for the rest of that round, including later NPC hits.
+ The neediest go last, so healing that the others cannot take still reaches them.
+*/
+// Observe actual incoming damage even when that hit cannot trigger healing.
+static void holy_sacrifice_note_hit(P_char ch, P_char owner)
+{
+	// Morphs keep their group and round allowance on the original player.
+	P_char holder = GET_PLYR(owner);
+	P_char source = GET_PLYR(ch);
+	if (P_char master = GET_MASTER(source))
+		source = GET_PLYR(master);
+	const unsigned long long round = ne_event_tick / PULSE_VIOLENCE;
+
+	if (holder->specials.holy_sacrifice_round != round)
+	{
+		holder->specials.holy_sacrifice_round = round;
+		holder->specials.holy_sacrifice_healed = 0;
+		holder->specials.holy_sacrifice_pvp = false;
+	}
+	if (IS_PC(source))
+		holder->specials.holy_sacrifice_pvp = true;
+}
+
+static void holy_sacrifice_heal(P_char owner, int dam)
+{
+	P_char holder = GET_PLYR(owner);
+	const double max_hit = GET_MAX_HIT(owner);
+	const double pvp_mod = holder->specials.holy_sacrifice_pvp ?
+				       get_property("vamping.holySacrifice.pvpMod", 0.5) :
+				       1.0;
+
+	double budget =
+		pvp_mod * MIN(static_cast<double>(dam) *
+				      get_property("vamping.holySacrifice.hitDamageCap", 0.9),
+			      max_hit * get_property("vamping.holySacrifice.hitMaxHpCap", 0.6));
+	budget = MIN(budget,
+		     pvp_mod * max_hit * get_property("vamping.holySacrifice.roundMaxHpCap", 1.2) -
+			     holder->specials.holy_sacrifice_healed);
+	// Hit points are whole: 90% of 1000 is 900, not the 899.99997 a float property gives.
+	budget = std::round(budget);
+	if (budget < 1)
+		return;
+
+	std::vector<P_char> injured;
+	for (struct group_list *group = holder->group; group; group = group->next)
+	{
+		P_char tch = group->ch;
+		if (IS_PC(tch) && tch->only.pc->switched)
+			tch = tch->only.pc->switched;
+		if (IS_ALIVE(tch) && tch->in_room == owner->in_room && tch != owner &&
+		    !IS_AFFECTED4(tch, AFF4_HOLY_SACRIFICE) &&
+		    !affected_by_spell(tch, SPELL_PLAGUE) && GET_HIT(tch) < GET_MAX_HIT(tch) &&
+		    std::find(injured.begin(), injured.end(), tch) == injured.end())
+			injured.push_back(tch);
+	}
+	std::stable_sort(injured.begin(), injured.end(), [](P_char a, P_char b)
+			 { return GET_MAX_HIT(a) - GET_HIT(a) < GET_MAX_HIT(b) - GET_HIT(b); });
+
+	const double gain = static_cast<double>(dam) * get_property("vamping.holySacrifice", 0.035);
+	for (size_t i = 0; i < injured.size() && budget >= 1; ++i)
+	{
+		P_char tch = injured[i];
+		const double share = budget / static_cast<double>(injured.size() - i);
+		// Never past max hp, and never more than this groupmate's share of the budget.
+		const int healed =
+			vamp(tch, gain,
+			     MIN(static_cast<double>(GET_MAX_HIT(tch)), GET_HIT(tch) + share));
+		budget -= healed;
+		holder->specials.holy_sacrifice_healed += healed;
+	}
+}
+
 void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 {
 	int dam = (int)fdam, vamped = 0, wdam;
 	struct group_list *group;
 	P_char tch;
-	double temp_dam = 0, bt_gain = 0, fcap = 0, fhits = 0, sac_gain = 0, can_mana = 0;
+	double temp_dam = 0, bt_gain = 0, fcap = 0, fhits = 0, can_mana = 0;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim) || (dam < 1))
 		return;
@@ -5442,20 +5542,7 @@ void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 	    || (EVIL_RACE(victim) && !EVIL_RACE(ch))))
 	*/
 	{
-		sac_gain = static_cast<double>(dam) * get_property("vamping.holySacrifice", 0.035);
-		for (group = victim->group; group; group = group->next)
-		{
-			tch = group->ch;
-
-			if (tch->in_room == victim->in_room && tch != victim &&
-			    !IS_AFFECTED4(tch, AFF4_HOLY_SACRIFICE) &&
-			    !affected_by_spell(tch, SPELL_PLAGUE))
-			{
-				vamp(tch, sac_gain,
-				     GET_MAX_HIT(
-					     tch)); // Holy Sac only vamps to max hp - Jexni 12/9/10
-			}
-		}
+		holy_sacrifice_heal(victim, dam);
 	}
 }
 
@@ -5679,7 +5766,13 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 
 			/* Send GMCP updates for combat */
 			gmcp_char_vitals(victim); /* Update victim's vitals */
-			gmcp_combat_target(ch, GET_OPPONENT(ch)); /* Update with actual opponent */
+			if (victim != ch)
+			{
+				if (GET_OPPONENT(ch) && GET_OPPONENT(ch) != victim)
+					gmcp_combat_target(ch, GET_OPPONENT(ch));
+				else
+					gmcp_combat_update(ch, victim, (int)dam, "unknown", 0);
+			}
 		}
 
 		if (IS_PC(victim) && victim->desc &&
@@ -5769,6 +5862,8 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		{
 			// Ahead of check_vamp, whose early returns must not stop the tithe.
 			blood_tithe_charge(ch, victim, dam);
+			if (dam > 0 && IS_AFFECTED4(victim, AFF4_HOLY_SACRIFICE))
+				holy_sacrifice_note_hit(ch, victim);
 			check_vamp(ch, victim, dam, flags);
 		}
 
@@ -5851,6 +5946,9 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 			if (number(0, 100) <= dam)
 			{
 				/* ok char if free */
+				if (auto *entangle = get_spell_from_char(victim, SPELL_ENTANGLE);
+				    entangle && IS_SET(entangle->bitvector, AFF_BOUND))
+					affect_remove(victim, entangle);
 				REMOVE_BIT(victim->specials.affected_by, AFF_BOUND);
 				act("$N's bindings are cut free!", FALSE, ch, 0, victim,
 				    TO_NOTVICT);
@@ -7773,6 +7871,8 @@ void set_fighting(P_char ch, P_char vict)
 		show_string(victim->desc, Gbuf);
 	}
 	GET_OPPONENT(ch) = victim;
+	gmcp_char_vitals(ch);
+	gmcp_combat_target(ch, victim);
 	ch->specials.next_fighting = combat_list;
 	combat_list = ch;
 	telemetry_combat_context_changed(ch);
@@ -8700,6 +8800,7 @@ void stop_fighting(P_char ch)
 	gmcp_combat_end(ch);
 
 	update_pos(ch);
+	gmcp_char_vitals(ch);
 }
 
 void event_windstrom(P_char ch, P_char vict, char *args)

@@ -86,7 +86,7 @@ Representative entry points by feature:
 - **Combat and effects:** `src/combat/fight.c`, `src/combat/mobcombat.c`,
   `src/magic/affects.c`, and the other modules under `combat/`.
 - **Magic, classes, and progression:** `src/magic/`, `src/classes/`,
-  `src/world/epic.c`, and `src/world/achievements.c`.
+  `src/world/epic.c`, and `src/world/achievements.c`; see [CLASSES.md](CLASSES.md).
 - **Objects and economy:** `src/cmd/actobj.c`, `src/item/`, and `src/economy/`.
   Batch transfer syntax and atomicity are documented in
   [BATCH_ITEM_COMMANDS.md](BATCH_ITEM_COMMANDS.md).
@@ -160,7 +160,8 @@ area identities; they do not gate or describe the new kingdom module.
 ## Configuration and data
 
 - Compile-time: `src/core/config.h` (ports, pulses, paths), `src/sql/sql.h`
-  (credentials), Makefile defines.
+  (SQL interface), Makefile defines. Credentials and runtime connection targets
+  come from the configured environment; see [CONFIGURATION.md](../operations/CONFIGURATION.md).
 - Runtime data: `lib/` — `duris.properties`, per-feature `*.cfg`
   (`crafting.cfg`, `mining.cfg`, `hardcore.cfg`, `frag_cap.cfg`,
   `account_rewards.cfg`, `creation_availability.cfg`, `random_equipment.cfg`,
@@ -187,21 +188,19 @@ tables. These signatures are load-bearing: a parameter may be unused by a given
 implementation, but the slot cannot be removed without breaking every table it
 is registered in.
 
-| Signature | Held in | Functions |
-|---|---|---:|
-| `(int, P_char, char *, int, P_char, P_obj)` | `skills[].spell_pointer` — spell dispatch | ~690 |
-| `(P_char, char *, int)` | command handlers (`src/cmd/interp.c` `CMD_*` table, `ACMD()`) | ~510 |
-| `(P_char, P_char, int, char *)` | mobile and room special procedures | ~455 |
-| `(P_char, P_char, P_obj, void *)` | event callbacks | ~210 |
-| `(P_obj, P_char, int, char *)` | object special procedures | ~150 |
-| `(void *, int, char *, int, int)` | `src/cmd/actset.c` `ac_*` setters, in `setBitTable::sb_func` | 18 |
-| `(descriptor_data *, cJSON *)` | WebSocket command handlers (`src/net/ws_handlers.c`) | ~10 |
+| Signature | Held in |
+| --- | --- |
+| `(int, P_char, char *, int, P_char, P_obj)` | `skills[].spell_pointer` — spell dispatch |
+| `(P_char, char *, int)` | command handlers (`src/cmd/interp.c` `CMD_*` table, `ACMD()`) |
+| `(P_char, P_char, int, char *)` | mobile and room special procedures |
+| `(P_char, P_char, P_obj, void *)` | event callbacks |
+| `(P_obj, P_char, int, char *)` | object special procedures |
+| `(void *, int, char *, int, int)` | `src/cmd/actset.c` `ac_*` setters, in `setBitTable::sb_func` |
+| `(descriptor_data *, cJSON *)` | WebSocket command handlers (`src/net/ws_handlers.c`) |
 
 When adding a handler to one of these families, register it in the owning table
-in the same change. A handler that compiles and is never dispatched is a silent
-defect — `ws_cmd_request_wholist` was written, authorization-guarded and
-documented, but never added to `ws_handle_command`, so backend who-list requests
-fell through to the unknown-command path until the compiler cleanup found it.
+in the same change. Compilation alone does not prove a handler is dispatched;
+verify its real command or event entry point.
 
 ## C++ conventions the warning profile enforces
 
@@ -310,10 +309,10 @@ checks each have a request-wide budget of 32. Previously completed targets are
 excluded from subsequent retries; a history-read error stops assignment.
 
 `createQuest()` distinguishes no eligible zone from no valid target. Bartender
-payments are admitted through the currency transaction coordinator; quest
-state changes happen only after the debit publishes, and a post-commit
-selection failure receives an asynchronous, rebasable refund. The deferred
-continuation stores the bartender's stable vnum rather than a live NPC pointer,
+payments use the currency transaction API: the debit changes the wallet in memory
+and invokes its completion before the API returns. A failed later selection
+refunds the fee in memory; player saves persist the wallet. The deferred
+quest continuation stores the bartender's stable vnum rather than a live NPC pointer,
 so disconnect/reconnect cannot resume against stale room state. Completion
 history still uses each backend's world-quest adapter. Reward selection uses
 the accepted quest level's cached pool, with the existing logged random-
@@ -351,8 +350,8 @@ which an epic teacher will teach.
 
 `src/world/difficulty.c` reads eighteen server-wide dials from the `[difficulty]`
 section of `lib/duris.properties`. Each runs from 1 to 10. Setting 5 is always an exact
-multiplier of 1.0 and every hook skips its arithmetic at 1.0, so a dial left at 5 is the
-game as it was; `difficulty.curve.NN` maps the other settings to multipliers. Dials on
+multiplier of 1.0 and every hook skips its arithmetic at 1.0;
+`difficulty.curve.NN` maps the other settings to multipliers. Dials on
 something players want (experience earned, loot drops and quality, mob gold, player
 regeneration, epic points, artefact feeding) use the reciprocal, so a higher setting is
 always harder. The dials stack on top of per-zone difficulty, and the mob dials apply
@@ -382,6 +381,42 @@ feeding in
 `sql_world_quest_can_do_another()` (never fewer than one a day) and the kill count in
 `createQuest()`.
 
+## PSP regeneration
+
+`mana_regen(ch, display_only)` supplies PSP admission, each recovery callback and staff
+`stat`. Rates are points per game tick (300 pulses, nominally 75 seconds). Dead, dying,
+incapacitated, fighting and sun-vulnerable characters in the existing suppressing light
+conditions have zero recovery, including with meditation or equipment bonuses. Twilight
+rooms and Globe of Darkness retain their existing sunlight exemptions.
+
+Eligible characters above maximum decay at `min(-1, (maximum - current) / 5)`. Otherwise
+the base is the integer conversion of `(POW + INT) / 2.5`, or `/ 0.2` while meditating,
+for both players and NPCs. Feeblemind quarters that base; sleeping doubles it and resting
+adds half. Posture does not change PSP. The signed flat `mana_reg` modifier is added once,
+then the recovery dial scales positive player gains only. There is no final square and
+no extra meditation-skill bonus. At POW=INT=100, neutral normal/resting/sleeping rates
+are 80/120/160; normal meditation is 1,000. Combat/sun suppression, status bonuses,
+feeblemind, equipment and difficulty now affect the callback as well as the displayed
+rate.
+
+At full PSP, display reports potential positive recovery but admission returns zero.
+A negative net rate can drain from full and stops at zero. Positive increments cap at
+maximum; negative increments preserve gradual over-cap decay and clamp at zero. The
+existing fractional accumulator, elapsed-pulse catch-up, duplicate suppression and NPC
+cadence remain. Blocked callbacks terminate and discard fractional credit; a later start
+begins with fresh elapsed accounting. Existing casting, meditation, rest, affect changes
+and periodic player affect updates supply restarts. Combat exit relies on the next
+eligible player affect tick, nominally within 75 seconds. That restart covers every
+`USES_MANA` character, including racial PSP users without a psionic class, and lets
+`StartRegen()` check the current rate at full or above-maximum PSP too. Negative
+equipment recovery therefore resumes after suppression even from full PSP.
+
+Movement retains its existing rates and cadence. Positive increments cap at maximum;
+vitality granted above maximum by restore spirit or Reaper drain decays gradually
+instead of losing all surplus at the first decrement. Delayed decay that crosses the
+maximum stops there, while negative equipment recovery below maximum still drains
+normally. A real rest command can start surplus decay after combat.
+
 ## Racial pulse
 
 Each race's action rates live in `lib/duris.properties`. `spellcast.pulse.racial.<Race>`
@@ -394,8 +429,7 @@ three decimals, and `pulse save`. Like the difficulty dials it routes through
 `properties set`, so a change applies at once (melee by re-totalling every character of that
 race) and stays in memory until saved.
 
-Player-obtainable gear carries negative `APPLY_COMBAT_PULSE` and `APPLY_SPELL_PULSE` applies
-again, as does the shaman spirit totem (spell pulse -1). Mob-only objects (no-show or
+Player-obtainable gear can carry negative `APPLY_COMBAT_PULSE` and `APPLY_SPELL_PULSE`
+applies, as does the shaman spirit totem (spell pulse -1). Mob-only objects (no-show or
 untakeable procs) keep theirs, as do spells and skills such as berserk and the reaver buffs.
-Existing saved gear retains its saved applies; the restored prototypes affect newly
-created gear. No existing-item migration is required.
+Saved gear retains its saved applies; current prototypes determine newly created gear.

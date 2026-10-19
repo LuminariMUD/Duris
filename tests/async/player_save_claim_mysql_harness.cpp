@@ -201,6 +201,27 @@ int main()
 	require(reap == 0 && reaped == 5,
 		"the rows no copy holds any more go: " + std::to_string(reaped));
 
+	// Recovery-only payloads have no row in those legacy joins. Keep their
+	// custody across bounded pages, while still deleting unrelated stale rows.
+	for (uint64_t uid = 900001; uid <= 900301; ++uid)
+		execute(test_connection,
+			"INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,owner_context_id,item_revision,vnum,state) VALUES(" +
+				std::to_string(uid) + ',' + std::to_string(uid) +
+				",1,2,0,1,900,1)");
+	execute(test_connection,
+		"INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,owner_id,owner_context_id,item_revision,vnum,state) VALUES(900400,900400,NULL,1,2,0,1,900,1),(900500,900400,900400,1,2,0,1,900,1)");
+	const std::vector<uint64_t> retained = { 900001, 900129, 900301 };
+	reap = reap_unheld_player_items(test_connection, &reaped, &retained);
+	require(!reap && reaped == 300,
+		"paged reap lost a retained recovery UID or failed to reap stale parent/child");
+	require(scalar(test_connection,
+		       "SELECT GROUP_CONCAT(item_uid ORDER BY item_uid) FROM item_current_owner WHERE item_uid>=900000") ==
+			"900001,900129,900301",
+		"recovery-only retained custody did not survive");
+	require(!reap_unheld_player_items(test_connection, &reaped, &retained) && !reaped,
+		"retained-only pages did not terminate");
+	execute(test_connection, "DELETE FROM item_current_owner WHERE item_uid>=900000");
+
 	// The ownership table disagrees with memory about almost everything pid 1 holds.
 	execute(test_connection,
 		"INSERT INTO item_current_owner (item_uid,root_item_uid,parent_item_uid,owner_type,"

@@ -1,7 +1,7 @@
 # Experience trophy observation and checkpoint persistence
 
-The first restoration stage tracks accepted PvE experience in memory. It does not
-reduce XP, apply familiarity decay, or enable the historical trophy penalties.
+The trophy observer tracks accepted PvE experience in memory. It does not
+reduce XP, apply familiarity decay, or impose trophy penalties.
 Tracking is off by default. The existing `trophy frags` command remains separate.
 
 ## Operation
@@ -40,9 +40,8 @@ unknown-zone label. These displays perform no zone metadata queries.
   a cache miss in the XP path.
 
 These are raw XP counters, not normalized familiarity, candidate multipliers, or
-immutable analytics events. Existing persisted totals are preserved and may
-include historical data. A later enforcement rollout must not assume that these
-counters form a clean baseline or silently reinterpret them as normalized units.
+immutable analytics events. Persisted totals retain their raw-counter meaning; they are not a normalized
+familiarity score.
 
 One character stores at most 1,024 zone entries. Each total saturates at `INT_MAX`
 to preserve the existing SQL and snapshot representation without overflow. New
@@ -65,8 +64,7 @@ Other explicit or terminal checkpoints can save earlier; a long cycle or queue
 backlog can save later. No second trophy timer or worker is introduced.
 
 SQL login now reads all trophy rows for the player in one query, with the same
-bounded load transaction as the other components. The full query budget increases
-from 23 to 24. Negative totals, invalid zone identifiers, or too many entries
+bounded load transaction as the other components. The full query budget is 24. Negative totals, invalid zone identifiers, or too many entries
 refuse the load rather than silently truncating saved state. Materialization also
 checks the entry bound, including flatfile loads.
 The trophy query returns at most 1,025 rows: 1,024 allowed entries plus one to
@@ -77,19 +75,14 @@ rows together. It performs one trophy `DELETE` and, for a nonempty collection,
 one batched `INSERT`, without one `SELECT` per zone. An empty component deletes
 old rows. Writing the same save again is harmless; with one writer there is no
 revision fence. Flatfile snapshots use
-the same trophy component and codec. There is no schema or snapshot-format change.
+the same trophy component and codec.
 
 Character resets and class changes clear the in-memory collection and mark XP/status
 and trophies dirty instead of deleting SQL rows behind the checkpoint writer.
 Existing character-erasure and fenced season-reset behavior remains responsible
 for global lifecycle cleanup.
 
-The old trophy modifier, intermediate XP hooks, legacy per-zone saver/loader, and
-database-only decay implementation are removed. The maintenance job ID remains
-reserved, disabled in the registry, and completes without SQL even if dispatched.
-`exp.zoneTrophy.enabled` and the old threshold/scale/reduction/update properties
-cannot reactivate penalties or a competing database writer. Epic trophies are
-unaffected.
+Epic trophies and `trophy frags` remain separate from zone-XP observation.
 
 Changes held only in memory can be lost before a durable checkpoint, and a crash
 loses a captured snapshot the writer had not yet applied. Observe actual unacknowledged age through existing save
@@ -119,4 +112,4 @@ existing SQL login harness including bounds and malformed trophy rows.
 
 Observation is accumulation only. Familiarity decay, a penalty curve and its
 enforcement, zone eligibility by `trophy_zone`, and player-facing multiplier feedback
-are not built. Do not restore the SQL decay sweeps.
+are not built.

@@ -741,97 +741,6 @@ void epic_publish_pvp_award(P_char ch, int amount)
 		epic_choose_new_epic_task(ch);
 }
 
-void epic_feed_artifacts(P_char ch, int epics, int epic_type)
-{
-	P_obj obj;
-
-	if (IS_TRUSTED(ch) || !IS_PC(ch))
-	{
-		return;
-	}
-
-	/* Disabled this code because we're feeding normal now and letting artis fight in artifact_wars().
-	int num_artis = 0;
-	for (int i = 0; i < MAX_WEAR; i++)
-	{
-	  if(ch->equipment[i] && (IS_ARTIFACT(ch->equipment[i]) || isname("powerunique", ch->equipment[i]->name)))
-	  {
-	    num_artis++;
-	  }
-	}
-	*/
-
-	int feed_seconds = (epics * get_property("artifact.feeding.epic.point.seconds", 3600));
-
-	switch (epic_type)
-	{
-	case EPIC_ZONE:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.zone", 1.0));
-		break;
-	case EPIC_PVP:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.pvp", 2.0));
-		break;
-	case EPIC_SHIP_PVP:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.pvpShip", 2.0));
-		break;
-	case EPIC_ELITE_MOB:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.eliteMob", 1.0));
-		break;
-	case EPIC_QUEST:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.quest", 1.0));
-		break;
-	case EPIC_RANDOM_ZONE:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.randomZone", 1.0));
-		break;
-	case EPIC_NEXUS_STONE:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.nexusStone", 1.0));
-		break;
-	// This can add up quickly for repeatable boons, so we use a value less than 1.
-	case EPIC_BOON:
-		feed_seconds = (int)(feed_seconds *
-				     get_property("artifact.feeding.epic.typeMod.boon", 0.25));
-		break;
-	case EPIC_STRAHDME:
-	case EPIC_RANDOMMOB:
-		break;
-	default:
-		feed_seconds = 0;
-		break;
-	}
-
-	/* Making feed normal because we have artifact_wars for chars with multiple artis now.
-	// Changed slope from x to 2x for num_artis, making it 3x as hard for 2 artis, 5x as hard for 3, 7x for 4, and so on.
-	if( num_artis > 0 )
-	{
-	  feed_seconds = (int) (feed_seconds / (2 * num_artis - 1));
-	}
-	*/
-
-	if (affected_by_spell(ch, TAG_PLR_RECENT_FRAG))
-	{
-		feed_seconds = (feed_seconds * 3) / 2;
-	}
-
-	for (int i = 0; i < MAX_WEAR; i++)
-	{
-		obj = ch->equipment[i];
-		if (obj && IS_ARTIFACT(obj))
-		{
-			artifact_feed_sql(ch, obj, feed_seconds,
-					  ((epic_type == EPIC_PVP || epic_type == EPIC_SHIP_PVP) ?
-						   TRUE :
-						   FALSE));
-		}
-	}
-}
-
 /* epic stones absorb smaller stones and level potions into themselves */
 void epic_stone_absorb(P_obj obj)
 {
@@ -1057,8 +966,9 @@ void epic_publish_stone_award(P_char ch, const zone_touch_result &result, size_t
 				     GET_LEVEL(ch) < get_property("epic.maxFreeLevel", 50);
 	epic_award_committed(ch, true, {}, 0, reinterpret_cast<const uint8_t *>(&context),
 			     sizeof(context));
-	// Spending for stone levels and boon completion follows the secured award.
-	if (!uses_free_level)
+	// Stone level purchases start at level 50; lower levels can still earn epics.
+	// Levels 46-49 retain their separate free-level handling in epic_award_committed().
+	if (!uses_free_level && GET_LEVEL(ch) >= get_property("epic.maxFreeLevel", 50))
 		epic_stone_level_char_from_level(result.stone_level, ch);
 	check_boon_completion(ch, nullptr, result.zone_number, BOPT_ZONE);
 }

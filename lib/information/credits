@@ -1,12 +1,11 @@
-3 September 2009
+Last Updated: October 15th, 2026
+
                           &+L*****************
                           &+L* &+RC R E D I T S &+L*
                           &+L*****************
 
 
-
 &+RZONE NAME                          LEVEL           CREATOR
-
 &+L***************************************************************
 
 &+YCourt of the Muse                 &+L* &+Y40-50      &+w-&+L=&+C  Cora
@@ -265,7 +264,6 @@
 &+gWorms                             &+L* &+g 1-30      &+w-&+L=&+C  Zaeru
 &+YZalkapfaan                        &+L* &+Y40-50      &+w-&+L=&+C  Gharl
 
-
                      &+L<&+m<&+L<   &+CHOMETOWNS   &+L>&+m>&+L>
     &+BHometowns = Good&N &+rHometowns = Evil &+gHometowns = Neutral&N
 &+L****************************************************************
@@ -282,7 +280,6 @@
 &+gNax'Varan               &+L* &+w<&+LMino&+rtaur&+w>              &+w-&+L=&+CScipio
 &+gHarpy Settlement        &+L* &+w<&n&+yEthermancers&+w>         &+w-&+L=&+CAlachest
 
-
                    &+L<<<   &+CDEFUNCT HOMETOWNS &+L>>>
 &+L*****************************************************************
 &+rBloodstone              &+L* &+w<&+CHumans&+w>                &+w-&+L=&+CGlantor
@@ -296,6 +293,7 @@
 &+BFort Marigot            &+L* &+w<&+gCen&+Ltaur&+w>               &+w-&+L=&+CMelkivar
 &+BStrathor                &+L*&+w<&+WS&+wt&+Wo&+wr&+Wm&+wG&+Wi&+wa&+Wnt&+w>            &+w-&+L=&+CTerauf
 
+---
 
                            &+WOriginal Diku Creators:
                            &+L***********************
@@ -310,6 +308,8 @@
                   &+bTorm, Mookie,Pizza, Rillifane, Miax, Cython, Requiem.
                     &+bCopyright  1994, 1995 - Sojourn Systems ltd.
 
+---
+
                                   &+BOLD DURIS
                                   &+L*********
 
@@ -322,6 +322,8 @@
 
                     Copyright  1995, 1996 - Duris Systems Ltd.
                        Creator of Custom DE Editor: &+cTavril
+
+---
 
                                 &+RDURIS - durismud.com
                                 &+L*************
@@ -342,25 +344,39 @@
 
       &+bCopyright 2000 - 2010 - Duris Mud Project&N
 
+      ---
 
                                 &+Community Duris
+                              mud.newduris.com:7777
                                 &+L*************
 
-      See: https://github.com/Community-Duris
+      See: https://github.com/Community-Duris &
+           https://newduris.com
 
+      ---
 
-                                &+DURIS SBS (this port) mud.duris.sbs:7777
-                                &+L*************
+                            &+DURIS SBS (this port)
+                              mud.duris.sbs:7777
+                            &+L********************
 
-      &+rDuris Currently Run, Hosted & Coded By: &+cZusuk
+      &+rDuris Currently Run, Hosted & Coded By:
+        &+cZusuk & Community
       
       Main website: https://duris.sbs/
       Open-Source code: https://github.com/LuminariMUD
       Project site: https://luminarimud.github.io/Duris/
 
-      &+bNO Copyrights, September 2026+ - LuminariMUD Organization&N
-      Duris SBS does not own any copyrights and use the name only from the context of the open-source project "Community Duris"
+      &+bNO Copyrights, NO Ownership
 
+      Forked September 2026+ - LuminariMUD Organization&N
+
+      Duris SBS does not own any copyrights and use the name only from
+        the context of the open-source project "Community Duris"
+
+      Any contributions made to this project from its forking date
+        is considered open-source Unilicense
+
+      ---
 
       Zones created for Duris: Land of BloodLust become the sole property of:
            Duris: Land of BloodLust and The Duris Mud Project

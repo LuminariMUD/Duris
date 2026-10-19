@@ -33,6 +33,8 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <strings.h>
@@ -236,8 +238,9 @@ const char *status_column(player_status_field field)
 
 const char *status_string_column(player_status_string_field field)
 {
-	static constexpr std::array<const char *, 7> columns = {
-		"name", "short_descr", "long_descr", "description", "title", "poof_in", "poof_out",
+	static constexpr std::array<const char *, 8> columns = {
+		"name",	 "short_descr", "long_descr", "description",
+		"title", "poof_in",	"poof_out",   "last_read_news_hash",
 	};
 	const size_t index = static_cast<size_t>(field);
 	return index < columns.size() ? columns[index] : nullptr;
@@ -566,18 +569,78 @@ query_result claim_graph(MYSQL *connection, const item_owner_identity &owner,
 	return { true, 0 };
 }
 
+// Validate and lock the complete retained component before claiming or deleting
+// anything. These rows remain untouched, including nullable fields and metadata.
+query_result retained_player_rows(MYSQL *connection, const player_snapshot &snapshot,
+				  std::string *ids)
+{
+	const auto &retained = snapshot.retained_items;
+	if (snapshot.items.size() > PLAYER_SNAPSHOT_MAX_OBJECTS ||
+	    retained.rows.size() > PLAYER_SNAPSHOT_MAX_OBJECTS - snapshot.items.size() ||
+	    retained.bytes > PLAYER_SNAPSHOT_MAX_BYTES || (retained.rows.empty() && retained.bytes))
+		return { false, EINVAL };
+	if (retained.rows.empty())
+		return { true, 0 };
+	std::unordered_set<uint64_t> protected_ids, active_uids;
+	for (const auto &item : snapshot.items)
+		if (item.object_uid)
+			active_uids.insert(item.object_uid);
+	if (snapshot.components & PLAYER_COMPONENT_PETS)
+		for (const auto &pet : snapshot.pets)
+			for (const auto &item : pet.items)
+				if (item.object_uid)
+					active_uids.insert(item.object_uid);
+	for (const auto &row : retained.rows)
+	{
+		if (!row.source_row_id || row.source_row_id > UINT32_MAX ||
+		    !protected_ids.insert(row.source_row_id).second)
+			return { false, EINVAL };
+		if (!ids->empty())
+			*ids += ',';
+		*ids += std::to_string(row.source_row_id);
+	}
+	const auto selected =
+		execute(connection, "SELECT id,container_id,obj_uid FROM player_items WHERE pid=" +
+					    std::to_string(snapshot.pid) + " AND (id IN (" + *ids +
+					    ") OR container_id IN (" + *ids + ")) FOR UPDATE");
+	if (!selected.ok)
+		return selected;
+	std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> rows(
+		mysql_store_result(connection), mysql_free_result);
+	if (!rows)
+		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+	if (mysql_num_rows(rows.get()) != protected_ids.size())
+		return { false, ESTALE };
+	while (MYSQL_ROW row = mysql_fetch_row(rows.get()))
+	{
+		const uint64_t id = strtoull(row[0], nullptr, 10);
+		const uint64_t parent = row[1] ? strtoull(row[1], nullptr, 10) : 0;
+		const uint64_t uid = row[2] ? strtoull(row[2], nullptr, 10) : 0;
+		if (!protected_ids.count(id) || (parent && !protected_ids.count(parent)) ||
+		    (uid && active_uids.count(uid)))
+			return { false, ESTALE };
+	}
+	return { true, 0 };
+}
+
 query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 			 std::vector<claimed_graph> *claims)
 {
 	const item_owner_identity owner = { item_owner_type::player,
 					    static_cast<uint64_t>(snapshot.pid), 0 };
-	std::vector<player_item_snapshot> written;
-	query_result result = claim_graph(connection, owner, snapshot.items, claims, &written);
+	std::string retained_ids;
+	query_result result = retained_player_rows(connection, snapshot, &retained_ids);
 	if (!result.ok)
 		return result;
-	// A save carries the whole item graph: the pipeline marks equipment and inventory together.
+	std::vector<player_item_snapshot> written;
+	result = claim_graph(connection, owner, snapshot.items, claims, &written);
+	if (!result.ok)
+		return result;
+	// Replace active roots while retained source components keep their original IDs.
 	result = execute(connection,
-			 "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid));
+			 "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid) +
+				 (retained_ids.empty() ? "" :
+							 " AND id NOT IN (" + retained_ids + ")"));
 	if (!result.ok)
 		return result;
 	return insert_item_rows(connection, written, std::to_string(snapshot.pid),
@@ -860,9 +923,24 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 						    " WHERE pid=" + std::to_string(snapshot.pid));
 	if (!query.ok)
 	{
+		player_save_apply_result result = failure(query.error_code);
+		// Numeric/truncation errors name the column. Copy only a bounded SQL identifier
+		// before ROLLBACK replaces mysql_error(); never publish SQL or player values.
+		const char *field = mysql_errno(connection) == query.error_code ?
+					    strstr(mysql_error(connection), " for column '") :
+					    nullptr;
+		if (field)
+		{
+			field += strlen(" for column '");
+			const size_t length = strspn(
+				field,
+				"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
+			if (length && length < result.failed_field.size() && field[length] == '\'')
+				memcpy(result.failed_field.data(), field, length);
+		}
 		if (!connection_error(query.error_code))
-			execute(connection, "ROLLBACK");
-		return failure(query.error_code);
+			result.rolled_back = execute(connection, "ROLLBACK").ok;
+		return result;
 	}
 	query = execute(connection, "COMMIT");
 	if (!query.ok)

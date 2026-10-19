@@ -192,7 +192,7 @@ for forbidden in ("redis_command", "redis_reconnect", "sql_save_player", "fork("
     assert forbidden not in flush
 print("[PASS] dirty marking and checkpoint capture do no Redis, SQL, filesystem, or fork work")
 
-world = section("bool redis_save_world_state(void)", "bool redis_has_world_state(void)", world_runtime)
+world = section("bool redis_save_world_state(void)", "redis_world_boot_result redis_world_prepare_boot(void)", world_runtime)
 assert "fork(" not in world
 assert "world_recovery_pipeline_request" in world
 assert "world_recovery_pipeline_busy" in world

@@ -376,6 +376,10 @@ int main(int argc, char **argv)
 					(version >= 5 ? full.output_preferences : "") &&
 				read_back.recipes_are_external,
 			"a version-" + std::to_string(version) + " snapshot did not decode");
+		require(read_back.status_strings.back().field ==
+					player_status_string_field::last_read_news_hash &&
+				read_back.status_strings.back().value.empty(),
+			"old snapshot did not default to unread news");
 
 		// Read the old payload through the real checksummed player-file envelope too.
 		using namespace flatfile_player_snapshot_file;
@@ -407,6 +411,38 @@ int main(int argc, char **argv)
 				read_back.status_integers.back().unsigned_value == 0,
 			"old player file did not load with empty flight discoveries: " + error);
 	}
+	const auto version8 = wire(8);
+	require(player_snapshot_decode(version8.data(), version8.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.status_strings.back().field ==
+				player_status_string_field::last_read_news_hash &&
+			read_back.status_strings.back().value.empty(),
+		"version 8 news default failed");
+	changed = full;
+	changed.status_strings.push_back(
+		{ player_status_string_field::last_read_news_hash, std::string(64, 'a') });
+	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok &&
+			player_snapshot_decode(other.data(), other.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.status_strings.back().value == std::string(64, 'a'),
+		"news acknowledgement round trip failed");
+	put32(other, 0, 8);
+	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
+			player_snapshot_codec_result::invalid_value,
+		"old wire version accepted a new status string ID");
+	put32(other, 0, PLAYER_SNAPSHOT_SCHEMA_VERSION);
+	const std::string hash_bytes(64, 'a');
+	const auto hash_at =
+		std::search(other.begin(), other.end(), hash_bytes.begin(), hash_bytes.end());
+	require(hash_at != other.end(), "encoded news fingerprint missing");
+	*(hash_at - 5) = static_cast<uint8_t>(player_status_string_field::poof_out);
+	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
+			player_snapshot_codec_result::invalid_value,
+		"duplicate status ID in wire data was accepted");
+	changed.status_strings.push_back(changed.status_strings.back());
+	require(player_snapshot_encode(changed, &other) ==
+			player_snapshot_codec_result::invalid_value,
+		"duplicate news acknowledgement was accepted");
 	changed = full;
 	changed.status_integers.push_back(
 		{ player_status_field::learned_flight_stops, 0, UINT64_MAX, true });
@@ -427,13 +463,19 @@ int main(int argc, char **argv)
 				player_snapshot_codec_result::ok &&
 			read_back.status_integers.empty(),
 		"old non-status save invented discovery state");
+	require(std::none_of(read_back.status_strings.begin(), read_back.status_strings.end(),
+			     [](const auto &entry) {
+				     return entry.field ==
+					    player_status_string_field::last_read_news_hash;
+			     }),
+		"old non-status save invented acknowledgement state");
 	// Version 3 ends in a boolean: every proper prefix of it is truncated as well.
 	const auto three = wire(3);
 	for (size_t length = 1; length < three.size(); ++length)
 		require(player_snapshot_decode(three.data(), length, &read_back) ==
 				player_snapshot_codec_result::truncated,
 			"a " + std::to_string(length) + "-byte version-3 prefix was not truncated");
-	for (uint32_t version : { 2u, 4u, 6u, 9u })
+	for (uint32_t version : { 2u, 4u, 6u, 10u })
 	{
 		auto bytes = current;
 		put32(bytes, 0, version);
@@ -462,7 +504,7 @@ int main(int argc, char **argv)
 		"the snapshot with status string field 0 did not encode");
 	bad = current;
 	bad[first_difference(current, other)] =
-		static_cast<uint8_t>(player_status_string_field::poof_out) + 1;
+		static_cast<uint8_t>(player_status_string_field::last_read_news_hash) + 1;
 	require(player_snapshot_decode(bad.data(), bad.size(), &read_back) ==
 			player_snapshot_codec_result::invalid_value,
 		"a status string field past the last was read");

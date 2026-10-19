@@ -35,7 +35,6 @@
 
 extern P_char character_list;
 extern P_desc descriptor_list;
-extern int max_descs;
 extern long boot_time;
 extern const char *month_name[];
 extern struct time_info_data time_info;
@@ -73,13 +72,11 @@ bool prepare_web_status(maintenance_request &request)
 	const struct time_info_data uptime = real_time_passed(now, boot_time);
 	const int written = snprintf(content, sizeof(content),
 				     "It is %d%s, on %s\nThe %d%s Day of the %s, Year %d.\n"
-				     "Time elapsed since boot-up: %d:%02d:%02d\n"
-				     "&+RRecord number of connections this boot: &+W%d&n\n",
+				     "Time elapsed since boot-up: %d:%02d:%02d\n",
 				     (time_info.hour % 12) ? (time_info.hour % 12) : 12,
 				     (time_info.hour > 11) ? "pm" : "am", weekdays[weekday], day,
 				     suffix, month_name[time_info.month], time_info.year,
-				     uptime.day * 24 + uptime.hour, uptime.minute, uptime.second,
-				     max_descs);
+				     uptime.day * 24 + uptime.hour, uptime.minute, uptime.second);
 	return written >= 0 && static_cast<size_t>(written) < sizeof(content) &&
 	       set_content(request, content);
 }

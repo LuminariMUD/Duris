@@ -46,6 +46,7 @@ bodies = '\n'.join([
     '#ifndef __NO_MYSQL__\n' + function(guild, 'std::vector<std::string> Guild::statements_without_member(') + '\n#endif',
     function(guild, 'void Guild::forget_deleted_member('),
     function(account, 'void remove_char_from_list('),
+    '#ifdef __NO_MYSQL__\n' + function(account, 'class account_deletion_drain_guard') + ';\n#endif',
     deletion,
     function(account, 'uint64_t wait_for_writer(P_desc d)'),
     function(account, 'P_desc writer_replied(uint64_t id)'),
@@ -64,6 +65,7 @@ prelude = r'''
 #include <cctype>
 #include <cstdint>
 #include <functional>
+#include <new>
 #include <string>
 #include <vector>
 #define TRUE 1
@@ -136,9 +138,27 @@ void logit(int kind, const char*,...) { if(kind==LOG_PLAYER) { assert(!durable_a
 void statuslog(int, const char *fmt,...) { if(strstr(fmt,"deleted")) { assert(!durable_active); ++audits; } }
 void persistence_alert(int,const char*,const char*,const char*,const char*,const char*,const char*,...) {}
 #ifdef __NO_MYSQL__
+static bool artifact_drain_ready = true;
+static size_t artifact_drain_calls = 0;
+bool artifact_save_drain(uint64_t) { ++artifact_drain_calls; return artifact_drain_ready; }
+void maintenance_scheduler_quiesce() {}
+void maintenance_scheduler_resume() {}
+void critical_command_coordinator_quiesce() {}
+void critical_command_coordinator_resume() {}
+void critical_outbox_quiesce() {}
+void critical_outbox_resume() {}
+void player_save_pipeline_quiesce() {}
+void player_save_pipeline_resume() {}
+bool maintenance_scheduler_drain(uint64_t) { return true; }
+bool critical_command_coordinator_drain(uint64_t) { return true; }
+bool critical_outbox_drain(uint64_t) { return true; }
+bool persistence_flush_all_character_saves() { return true; }
+bool player_save_pipeline_drain(uint64_t) { return true; }
+bool locker_async_drain(uint64_t) { return true; }
 const char *persistence_mode_flatfile_root() { return "fixture"; }
 enum class flatfile_character_delete_result { ok, already_deleted, io_error };
 flatfile_character_delete_result flatfile_character_delete(const std::string&, int, const std::string&, std::string*) {
+    assert(artifact_drain_ready && artifact_drain_calls);
     ++backend_calls;
     if (fail_stage) return flatfile_character_delete_result::io_error;
     durable_active=false; return flatfile_character_delete_result::ok;
@@ -147,6 +167,7 @@ flatfile_character_delete_result flatfile_character_delete(const std::string&, i
 // The writer: a queued job waits for the test's pulse, and runs its statements in one
 // staged transaction that commits only when every statement succeeded.
 struct MYSQL {};
+using sql_work = std::function<unsigned int(MYSQL *)>;
 using sql_row = std::vector<std::string>;
 using sql_rows = std::vector<sql_row>;
 static std::function<void()> pending;
@@ -155,6 +176,14 @@ static std::vector<std::string> executed;
 unsigned int sql_execute(MYSQL *, const std::string &statement) {
     if (++stage == fail_stage) return 1146;
     executed.push_back(statement); return 0;
+}
+// This fixture has no kingdom. The payment fixture exercises the real composed writer.
+sql_work kingdom_guild_save_work(int, std::vector<std::string> statements) {
+    return [statements](MYSQL *connection) {
+        for (const auto &statement : statements)
+            if (auto error = sql_execute(connection, statement)) return error;
+        return 0U;
+    };
 }
 #define sql_read_work(...) queue_job(__VA_ARGS__)
 bool queue_job(std::function<unsigned int(MYSQL*, sql_rows*)> work,
@@ -174,8 +203,10 @@ std::vector<std::string> remove_all_artifacts_sql(int) { return {"release artifa
 std::string sql_delete_locker_statement(int, int) { return "delete locker"; }
 std::string sql_delete_ship_statement(const char *) { return "delete ship"; }
 // The guild is saved as it will be: without the member, its frags and top fragger.
+static bool fail_guild_capture = false;
 std::vector<std::string> sql_save_guild_statements(Guild *g) {
     assert(!g->members && g->member_count==1 && g->frags.frags==0 && !g->frags.topfragger[0]);
+    if (fail_guild_capture) throw std::bad_alloc();
     ++guild_rows; return {"guild row", "guild members"};
 }
 bool sql_delete_ship(const char *) { assert(!durable_active); ++ship_rows; return true; }
@@ -236,6 +267,18 @@ static void dispose(Account &a) {
 int main() {
     Account a; Descriptor d;
 #ifndef __NO_MYSQL__
+    reset(a,d);
+    Character capture; capture.player={const_cast<char *>("Fixture"),10};
+    fail_guild_capture=true;
+    bool threw=false;
+    try { fixture_guild.statements_without_member(&capture); }
+    catch (const std::bad_alloc &) { threw=true; }
+    assert(threw);
+    kept(a);
+    assert(fixture_guild.frags.top_frags==7 &&
+           !strcmp(fixture_guild.frags.topfragger,"Fixture"));
+    fail_guild_capture=false;
+    dispose(a);
     // The job's statements: two tombstones, locker access, two artifact statements, two
     // guild statements, the locker, the ship and the player row.
     constexpr int statements = 10;
@@ -263,6 +306,14 @@ int main() {
         dispose(a);
     }
 #else
+    // Both actual flat deletion entry points must refuse while the artifact fence is held.
+    artifact_drain_ready=false;
+    { account_deletion_drain_guard guard; assert(!guard.drain()); }
+    reset(a,d); input(&d,"1"); input(&d,"yes"); released(d); kept(a);
+    assert(!backend_calls && artifact_drain_calls >= 2);
+    artifact_drain_ready=true;
+    { account_deletion_drain_guard guard; assert(guard.drain()); }
+    input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
     reset(a,d); fail_stage=1; input(&d,"1"); input(&d,"yes"); released(d); kept(a);
     fail_stage=0; input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
 #endif

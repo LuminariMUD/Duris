@@ -10,11 +10,14 @@ import hmac
 import json
 import os
 import re
+import secrets
 import select
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -45,6 +48,25 @@ ONLINE_LEVEL_CAP_VERIFY = "a9cbde7decfc928629dc2a88baead64305c55a67b919b2dbe5ce3
 ONLINE_COMBAT_ALLIES_ID = "0040_combat_outcome_allies"
 ONLINE_COMBAT_ALLIES_APPLY = "a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e"
 ONLINE_COMBAT_ALLIES_VERIFY = "da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa"
+ONLINE_NEXUS_ID = "0046_nexus_phase1"
+ONLINE_NEXUS_APPLY = "40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6"
+ONLINE_NEXUS_VERIFY = "bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f"
+ONLINE_PLAYER_UPDATES = (
+    ("0042_player_base_stats",
+     "a5698a97f953e175fee3030fd7408fff5a7cdb53d15d6bd8bfb5136f203ec78f",
+     "5210ecad75bcd7948718ece18d6033cd34770c5091c6a7a24551f95d338f0533"),
+    ("0043_news_acknowledgement",
+     "fb6243dd098b4f017fbda8d9aeb422f606a3aa7c5a96969c2ed4d369a154ef60",
+     "2cca57fdb73c604aecf44d3e75295510eddbbdadbf4b2da50ca74e2328faba6a"),
+)
+ONLINE_ARTIFACT_PVP = (
+    ("0044_artifact_canonical_identity",
+     "1d64797c4ad6c448c4a771262fd08e0ee4e79b3db0f84ba3143db9856395afce",
+     "d008062231aaab96090ad593fb281bb7876a080948cfe5742b575b0f5697be84"),
+    ("0045_pkill_webinfo_at_capture",
+     "9ec4164a7f70796409f6e88e483b1e90044eae1ff8ef9c3151397dba9e24e110",
+     "0d3f5cf89844a00fdba5e0be9cec79bd6b91bcb79c20bd94157d57f43e0a96d1"),
+)
 
 
 class MigrationContractError(Exception):
@@ -344,14 +366,21 @@ class MysqlExecutor:
     def __init__(self, manifest: Manifest, confirmed_production_target: str | None = None,
                  production_backup: Path | None = None,
                  online_level_cap_sides: bool = False,
-                 online_combat_outcome_allies: bool = False):
+                 online_combat_outcome_allies: bool = False,
+                 online_player_updates: bool = False,
+                 online_artifact_pvp: bool = False,
+                 online_nexus_phase1: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
         socket_path = os.environ.get("DB_SOCKET", "")
         self.production = environment == "production"
         self.online_migration: Migration | None = None
+        self.online_player_updates = online_player_updates
+        self.online_artifact_pvp = online_artifact_pvp
         self.lock_process = None
+        self.lock_errors = None
+        self.lock_connection_id = 0
         if self.production:
             expected_target = f"{host}/{database}"
             if confirmed_production_target is None or not hmac.compare_digest(
@@ -378,16 +407,37 @@ class MysqlExecutor:
         for name in ("DB_USER", "DB_PASSWD", "DB_NAME"):
             if not os.environ.get(name):
                 raise MigrationContractError(f"missing migration credential: {name}")
-        if online_level_cap_sides and online_combat_outcome_allies:
+        if sum((online_level_cap_sides, online_combat_outcome_allies,
+                online_player_updates, online_artifact_pvp, online_nexus_phase1)) > 1:
             raise MigrationContractError("select only one reviewed online migration")
-        if online_level_cap_sides or online_combat_outcome_allies:
+        if online_player_updates:
+            reviewed = tuple((step.migration_id, step.apply_checksum, step.verify_checksum)
+                             for step in manifest.migrations[-2:])
+            if not self.production or len(manifest.migrations) != 43 or \
+                    reviewed != ONLINE_PLAYER_UPDATES:
+                raise MigrationContractError(
+                    "online migration requires the reviewed production 0042/0043 manifest")
+            self.online_migration = manifest.migrations[-1]
+            self.online_table = "player_data"
+        if online_artifact_pvp:
+            reviewed = tuple((step.migration_id, step.apply_checksum, step.verify_checksum)
+                             for step in manifest.migrations[-2:])
+            if not self.production or len(manifest.migrations) != 45 or \
+                    reviewed != ONLINE_ARTIFACT_PVP:
+                raise MigrationContractError(
+                    "online migration requires the reviewed production 0044/0045 manifest")
+            self.online_migration = manifest.migrations[-1]
+        if online_level_cap_sides or online_combat_outcome_allies or online_nexus_phase1:
             if online_level_cap_sides:
                 reviewed = (ONLINE_LEVEL_CAP_ID, ONLINE_LEVEL_CAP_APPLY, ONLINE_LEVEL_CAP_VERIFY)
                 count, self.online_table = 39, "level_cap"
-            else:
+            elif online_combat_outcome_allies:
                 reviewed = (ONLINE_COMBAT_ALLIES_ID, ONLINE_COMBAT_ALLIES_APPLY,
                             ONLINE_COMBAT_ALLIES_VERIFY)
                 count, self.online_table = 40, "combat_outcome"
+            else:
+                reviewed = (ONLINE_NEXUS_ID, ONLINE_NEXUS_APPLY, ONLINE_NEXUS_VERIFY)
+                count, self.online_table = 46, "nexus_stones"
             head = manifest.migrations[-1] if manifest.migrations else None
             if not self.production or head is None or len(manifest.migrations) != count or \
                     (head.migration_id, head.apply_checksum, head.verify_checksum) != reviewed:
@@ -422,13 +472,20 @@ class MysqlExecutor:
                         "-N", "-B", database]
 
     def sql(self, statement: str, input_payload: bytes | None = None) -> str:
-        if self.lock_process is not None and self.lock_process.poll() is not None:
-            raise MigrationContractError("online migration lock connection was lost")
+        self.require_lock()
+        if self.lock_process is not None:
+            # Apply and history writes must use the session holding GET_LOCK.
+            # KILL/connection loss then stops the SQL itself, not just the next step.
+            result = self.locked_sql(input_payload.decode() if input_payload is not None
+                                     else statement)
+            self.require_lock()
+            return result
         environment = dict(os.environ)
         environment["MYSQL_PWD"] = os.environ["DB_PASSWD"]
         result = subprocess.run(self.command + (["-e", statement] if input_payload is None
                                                 else []), input=input_payload,
                                 capture_output=True, env=environment, check=False)
+        self.require_lock()
         if result.returncode:
             detail = result.stderr.decode(errors="replace").strip().splitlines()
             raise MigrationContractError(
@@ -436,44 +493,94 @@ class MysqlExecutor:
                 (f": {detail[-1]}" if detail else ""))
         return result.stdout.decode().strip()
 
+    def locked_sql(self, payload: str) -> str:
+        marker = 'migration_result_' + secrets.token_hex(16)
+        write_errors = []
+
+        def write():
+            try:
+                self.lock_process.stdin.write(payload + f"\n;\nSELECT '{marker}';\n")
+                self.lock_process.stdin.flush()
+            except OSError as error:
+                write_errors.append(error)
+
+        # Drain output while feeding SQL: a migration can exceed the pipe buffer
+        # in both directions. The mysql client handles DELIMITER and batch errors.
+        writer = threading.Thread(target=write)
+        writer.start()
+        output = []
+        for line in self.lock_process.stdout:
+            if line.rstrip('\n') == marker:
+                writer.join()
+                if not write_errors:
+                    return ''.join(output).strip()
+                break
+            output.append(line)
+        writer.join()
+        self.lock_process.wait()
+        self.lock_errors.seek(0)
+        detail = self.lock_errors.read().decode(errors='replace').strip().splitlines()
+        raise MigrationContractError(
+            'database migration command failed or lock connection was lost' +
+            (f': {detail[-1]}' if detail else ''))
+
     def acquire_lock(self) -> None:
-        if self.online_migration is not None:
-            # Keep this connection open through apply, verification and recording.
-            # A one-shot mysql -e GET_LOCK releases its lock as soon as it exits.
-            environment = dict(os.environ, MYSQL_PWD=os.environ["DB_PASSWD"])
+        # The lock's session must outlive apply, verification and history recording.
+        environment = dict(os.environ, MYSQL_PWD=os.environ["DB_PASSWD"])
+        # Error output must not block the client while stdout carries SQL results.
+        self.lock_errors = tempfile.TemporaryFile()
+        try:
             self.lock_process = subprocess.Popen(
                 self.command + ["--unbuffered", "--skip-reconnect", "--connect-timeout=5"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.lock_errors,
                 text=True, env=environment)
-            try:
-                self.lock_process.stdin.write("SELECT GET_LOCK('duris_immutable_migration',5);\n")
-                self.lock_process.stdin.flush()
-                readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
-                if not readable or self.lock_process.stdout.readline().strip() != "1":
-                    raise MigrationContractError("migration lock unavailable")
-            except (OSError, MigrationContractError) as error:
-                self.release_lock()
-                raise MigrationContractError("migration lock unavailable") from error
-            return
-        if self.sql("SELECT GET_LOCK('duris_immutable_migration',5);") != "1":
-            raise MigrationContractError("migration lock unavailable")
+            self.lock_process.stdin.write(
+                "SELECT GET_LOCK('duris_immutable_migration',5), CONNECTION_ID();\n")
+            self.lock_process.stdin.flush()
+            readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
+            result = self.lock_process.stdout.readline().strip() if readable else ""
+            if not re.fullmatch(r"1\t[1-9][0-9]*", result):
+                raise MigrationContractError("migration lock unavailable")
+            self.lock_connection_id = int(result.split("\t")[1])
+        except (OSError, MigrationContractError) as error:
+            self.release_lock()
+            raise MigrationContractError("migration lock unavailable") from error
+
+    def require_lock(self) -> None:
+        if self.lock_process is None:
+            return  # Standalone inspection/verifier calls do not acquire a lock.
+        if self.lock_process.poll() is not None:
+            raise MigrationContractError("migration lock connection was lost")
+        try:
+            # A server-side KILL may leave the client idle/alive. Check the session,
+            # not just its process, before and after each database operation.
+            self.lock_process.stdin.write(
+                "SELECT IS_USED_LOCK('duris_immutable_migration')=CONNECTION_ID();\n")
+            self.lock_process.stdin.flush()
+            readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
+            if not readable or self.lock_process.stdout.readline().strip() != "1":
+                raise MigrationContractError("migration lock connection was lost")
+        except OSError as error:
+            raise MigrationContractError("migration lock connection was lost") from error
 
     def release_lock(self) -> None:
+        self.lock_connection_id = 0
         if self.lock_process is not None:
             process = self.lock_process
             self.lock_process = None
-            process.stdin.close()
+            try:
+                process.stdin.close()
+            except BrokenPipeError:
+                pass
             process.stdin = None
             try:
                 process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.communicate()
-            return
-        try:
-            self.sql("SELECT RELEASE_LOCK('duris_immutable_migration');")
-        except MigrationContractError:
-            pass
+        if self.lock_errors is not None:
+            self.lock_errors.close()
+            self.lock_errors = None
 
     def require_quiescent(self) -> None:
         connections = self.sql(
@@ -522,6 +629,13 @@ class MysqlExecutor:
     def apply(self, migration: Migration) -> None:
         if self.online_migration is not None:
             reviewed = self.online_migration
+            if self.online_player_updates and migration.migration_id == ONLINE_PLAYER_UPDATES[0][0]:
+                reviewed = self.manifest.migrations[-2]
+            if self.online_artifact_pvp:
+                if migration.migration_id == ONLINE_ARTIFACT_PVP[0][0]:
+                    reviewed = self.manifest.migrations[-2]
+                self.online_table = ("artifact_domain_state" if reviewed.sequence == 44
+                                     else "pkill_info")
             if (migration.migration_id, migration.apply_checksum, migration.verify_checksum) != \
                     (reviewed.migration_id, reviewed.apply_checksum, reviewed.verify_checksum):
                 raise MigrationContractError(
@@ -536,9 +650,27 @@ class MysqlExecutor:
                                    "migration apply")
             if checksum(payload) != reviewed.apply_checksum:
                 raise MigrationContractError("online migration apply checksum changed")
-            # Execute the sealed SQL unchanged, with no table-rebuild fallback and
-            # a bounded wait for the brief metadata locks needed by instant DDL.
-            self.sql("", b"SET SESSION alter_algorithm='INSTANT';\n"
+            algorithm = b"INSTANT"
+            if self.online_artifact_pvp:
+                # Strengthen only the sealed statements to LOCK=NONE. NOCOPY
+                # permits the unique index but refuses a clustered-table rebuild.
+                old = f"'ALTER TABLE {self.online_table} ".encode()
+                if payload.count(old) != (3 if migration.sequence == 44 else 1):
+                    raise MigrationContractError("reviewed artifact/PvP ALTER was not found")
+                payload = payload.replace(old, old.replace(b"ALTER TABLE", b"ALTER ONLINE TABLE"))
+                if migration.sequence == 44:
+                    algorithm = b"NOCOPY"
+            if self.online_player_updates and migration.sequence == 42:
+                # Widening TINYINT requires COPY. On 11.8, ONLINE requires LOCK=NONE
+                # and refuses unsupported shapes instead of blocking live writers.
+                # Keep the sealed file and ledger checksum intact; strengthen only
+                # this exact checked statement's execution lock requirement.
+                old = b"'ALTER TABLE player_data '"
+                if payload.count(old) != 1:
+                    raise MigrationContractError("reviewed base-stat ALTER was not found")
+                payload = payload.replace(old, b"'ALTER ONLINE TABLE player_data '")
+                algorithm = b"COPY"
+            self.sql("", b"SET SESSION alter_algorithm='" + algorithm + b"';\n"
                      b"SET SESSION lock_wait_timeout=1;\n"
                      b"SET SESSION innodb_lock_wait_timeout=1;\n" + payload)
             return
@@ -548,6 +680,7 @@ class MysqlExecutor:
                                   "migration apply"))
 
     def verify(self, migration: Migration) -> None:
+        self.require_lock()
         environment = dict(os.environ)
         if self.socket_path:
             # Immutable verifier files are checksum-sealed and carry explicit
@@ -563,6 +696,7 @@ class MysqlExecutor:
             self.engine = engine_of(self.sql("SELECT VERSION();"))
         result = subprocess.run([str(migration.verifier(self.engine))], capture_output=True,
                                 env=environment, check=False)
+        self.require_lock()
         if result.returncode:
             detail = (result.stderr or result.stdout).decode(errors="replace").strip().splitlines()
             raise MigrationContractError(
@@ -622,12 +756,23 @@ def main() -> int:
     online.add_argument("--online-combat-outcome-allies", action="store_true",
                         help="apply only reviewed 0040 on MariaDB 11.8 using INSTANT DDL; "
                              "requires production confirmation, backup and compatible live writers")
+    online.add_argument("--online-player-updates", action="store_true",
+                        help="apply only reviewed 0042/0043 on MariaDB 11.8 using online COPY "
+                             "and INSTANT DDL; requires production confirmation and backup")
+    online.add_argument("--online-artifact-pvp", action="store_true",
+                        help="apply only reviewed 0044/0045 on MariaDB 11.8 using online "
+                             "NOCOPY/INSTANT DDL; requires production confirmation and backup")
+    online.add_argument("--online-nexus-phase1", action="store_true",
+                        help="apply only reviewed 0046 Nexus inserts on MariaDB 11.8 InnoDB; "
+                             "requires production confirmation, backup and compatible live writers")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
     try:
         manifest = load_manifest(arguments.manifest)
-        if (arguments.online_level_cap_sides or arguments.online_combat_outcome_allies) and \
+        if (arguments.online_level_cap_sides or arguments.online_combat_outcome_allies or
+                arguments.online_player_updates or arguments.online_artifact_pvp or
+                arguments.online_nexus_phase1) and \
                 arguments.command != "run":
             raise MigrationContractError("online migration option requires run")
         if arguments.command == "inspect":
@@ -645,7 +790,9 @@ def main() -> int:
                 "production migration options are valid only with the run command")
         executor = MysqlExecutor(manifest, arguments.confirm_production_target,
                                  arguments.production_backup, arguments.online_level_cap_sides,
-                                 arguments.online_combat_outcome_allies)
+                                 arguments.online_combat_outcome_allies,
+                                 arguments.online_player_updates, arguments.online_artifact_pvp,
+                                 arguments.online_nexus_phase1)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")

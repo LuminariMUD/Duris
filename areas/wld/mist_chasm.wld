@@ -521,7 +521,8 @@ S
 &+wworn away to the granite of the cliffs, the &+Gtreeline&+w allowing only a portion
 &+wof the ground to be visible and able for movement.  Seeming to ooze from the
 &+wforest sides, &+Mflowers&+w of all kinds and colorations grow one atop the other.
-&+wThe trail continues to the east and south.&n
+&+wThe trail continues to the east and south. A stone stair winds down through
+&+wthe cliff into the deep tunnels of the Underdark.&n
 ~
 150 41943040 4
 D1
@@ -534,6 +535,11 @@ D2
 ~
 ~
 0 0 15016
+D5
+   Steps cut into the rock descend through a long, winding passage.
+~
+~
+0 0 834025
 E
 mist fog smoke~
    Thick white fog swells and moves around the forest like a recently uncaged

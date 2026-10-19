@@ -290,9 +290,9 @@ critical_submit_result reserve_locked(const std::string &identity, const critica
 			operations.erase(inserted);
 		}
 		++health.overloads;
+		errno = ENOMEM;
 		return critical_submit_result::overloaded;
 	}
-	++health.accepted;
 	update_depth();
 	return critical_submit_result::accepted;
 }
@@ -305,12 +305,28 @@ bool queue_on_writer(const std::string &identity, writer_job job)
 		std::lock_guard<std::mutex> lock(coordinator_mutex);
 		owner = ++writer_sequence;
 	}
-	const player_save_submit_result submitted =
-		persistence_writer_submit(persistence_job_kind::critical, owner, bytes,
-					  [job = std::move(job)]() { return execute(job); });
-	if (submitted == player_save_submit_result::accepted)
-		return true;
+	player_save_submit_result submitted = player_save_submit_result::unavailable;
+	try
+	{
+		submitted = persistence_writer_submit(persistence_job_kind::critical, owner, bytes,
+						      [job = std::move(job)]()
+						      { return execute(job); });
+	}
+	catch (const std::bad_alloc &)
+	{
+		// Constructing the owned callback can fail after reservation, before the
+		// writer sees it. Release the operation below just as for refused admission.
+		errno = ENOMEM;
+	}
+	const unsigned int error = errno;
 	std::lock_guard<std::mutex> lock(coordinator_mutex);
+	if (submitted == player_save_submit_result::accepted)
+	{
+		++health.accepted;
+		return true;
+	}
+	if (error == ENOMEM)
+		++health.overloads;
 	auto found = operations.find(identity);
 	if (found != operations.end())
 	{
@@ -373,7 +389,10 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 	{
 		std::lock_guard<std::mutex> lock(coordinator_mutex);
 		if (!health.initialized || !health.accepting)
+		{
+			errno = ESHUTDOWN;
 			return critical_submit_result::unavailable;
+		}
 		auto completed = completed_cache.find(identity);
 		if (completed != completed_cache.end())
 		{
@@ -403,6 +422,7 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 		    encoded.size() > CRITICAL_COORDINATOR_MAX_BYTES - health.retained_bytes)
 		{
 			++health.overloads;
+			errno = ENOSPC;
 			return critical_submit_result::overloaded;
 		}
 		const critical_submit_result reserved =

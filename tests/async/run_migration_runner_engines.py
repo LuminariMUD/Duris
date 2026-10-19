@@ -13,17 +13,214 @@ then stops the runner.
 Usage: run_migration_runner_engines.py [image ...]; the default is all three.
 """
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 import migration_runner as runner  # noqa: E402
 
 IMAGES = ("mariadb:11.8", "mariadb:10.11", "mysql:8.0")
+
+
+def check_lock(environment, sql):
+    """Two ordinary executors exclude each other and detect server-side lock loss."""
+    with mock.patch.dict(os.environ, environment):
+        first = runner.MysqlExecutor(runner.load_manifest())
+        second = runner.MysqlExecutor(runner.load_manifest())
+        connection = None
+        try:
+            first.acquire_lock()
+            assert sql("SELECT IS_USED_LOCK('duris_immutable_migration')") == str(first.lock_connection_id)
+            first.require_quiescent()  # Its own lock session is not another writer.
+            try:
+                second.acquire_lock()
+            except runner.MigrationContractError as error:
+                assert 'lock unavailable' in str(error)
+            else:
+                raise AssertionError('two normal runners acquired the migration lock')
+            assert first.sql('SELECT 42') == '42'
+            assert first.sql('SELECT CONNECTION_ID()') == str(first.lock_connection_id)
+            # Both SQL input and output can exceed a pipe buffer without deadlocking.
+            assert first.sql('', ("SELECT REPEAT('x',131072);\n/*" + 'y' * 131072 +
+                                  "*/\nSELECT 7;\n").encode()) == 'x' * 131072 + '\n7'
+
+            connection = subprocess.Popen(first.command + ['--unbuffered'],
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, env=environment, text=True)
+            connection.stdin.write('SELECT CONNECTION_ID();\n')
+            connection.stdin.flush()
+            assert connection.stdout.readline().strip().isdigit()
+            try:
+                first.require_quiescent()
+            except runner.MigrationContractError as error:
+                assert 'every other database connection' in str(error)
+            else:
+                raise AssertionError('ordinary quiescence ignored another connection')
+            connection.communicate(timeout=5)
+            connection = None
+            first.require_quiescent()
+
+            # Kill the owner while apply is in flight, then let a competing runner
+            # acquire the lock. No statement after the killed query may execute.
+            with tempfile.TemporaryDirectory() as temporary, ThreadPoolExecutor() as pool:
+                apply_path = Path(temporary) / 'interrupted.sql'
+                apply_path.write_text(
+                    "SELECT SLEEP(4) /* migration_lock_inflight */;\n"
+                    "CREATE TABLE lock_loss_must_not_write(id INT);\n")
+                migration = runner.replace(runner.load_manifest().migrations[0],
+                                           apply_path=apply_path)
+                operation = pool.submit(first.apply, migration)
+                deadline = time.monotonic() + 10
+                while sql("SELECT COUNT(*) FROM information_schema.PROCESSLIST "
+                          "WHERE INFO LIKE 'SELECT SLEEP(4)%'") != '1':
+                    assert time.monotonic() < deadline, 'migration did not enter its long query'
+                    time.sleep(0.05)
+                sql(f'KILL {first.lock_connection_id}')
+                second.acquire_lock()
+                try:
+                    operation.result(timeout=10)
+                except runner.MigrationContractError:
+                    pass
+                else:
+                    raise AssertionError('killed migration reported success')
+                assert sql("SELECT COUNT(*) FROM information_schema.tables WHERE "
+                           "table_schema=DATABASE() AND table_name='lock_loss_must_not_write'") == '0', \
+                    'migration continued writing after its advisory lock was released'
+                first.release_lock()
+                second.release_lock()
+                first.acquire_lock()
+
+            sql(f'KILL {first.lock_connection_id}')
+            try:
+                first.sql('CREATE TABLE lock_loss_must_not_write(id INT)')
+            except runner.MigrationContractError as error:
+                assert 'lock connection was lost' in str(error)
+            else:
+                raise AssertionError('lost server lock allowed another operation')
+            assert sql("SELECT COUNT(*) FROM information_schema.tables WHERE "
+                       "table_schema=DATABASE() AND table_name='lock_loss_must_not_write'") == '0'
+            first.release_lock()
+            second.acquire_lock()
+            second.require_quiescent()
+        finally:
+            if connection is not None:
+                connection.kill()
+                connection.communicate()
+            first.release_lock()
+            second.release_lock()
+
+
+def check_nexus_seed(sql, migrate, environment):
+    """Run the real seed/preflight/verifier against empty, played and conflicting data."""
+    manifest = runner.load_manifest()
+    step = next(step for step in manifest.migrations if step.migration_id == '0046_nexus_phase1')
+    columns = 'id,name,room_vnum,align,stat_affect,affect_amount,bonus,last_touched_at'
+    values = {
+        1: "(1,'Marduk',130199,2,0,0,1,'2026-10-01 12:00:00')",
+        3: "(3,'Enlil',130399,-3,0,0,3,'2026-10-02 12:00:00')",
+    }
+
+    def snapshot():
+        return sql('SELECT ' + columns + ' FROM nexus_stones ORDER BY id')
+
+    # The actual runner may complete 0045, but cannot record a conflicting 0046.
+    sql(f'INSERT INTO nexus_stones({columns}) VALUES' + values[1])
+    sql('UPDATE nexus_stones SET room_vnum=42 WHERE id=1')
+    before = snapshot()
+    failed = migrate('run')
+    assert failed.returncode == 2 and 'Nexus stone 1 conflicts in room_vnum' in failed.stderr
+    assert snapshot() == before
+    assert sql('SELECT applied_count FROM mud_schema_migration_state') == str(step.sequence - 1)
+
+    with mock.patch.dict(os.environ, environment):
+        executor = runner.MysqlExecutor(manifest)
+        executor.acquire_lock()
+        try:
+            for stone_id in (1, 3):
+                for field, bad_value in (('name', "'Wrong'"), ('room_vnum', '42'),
+                                         ('stat_affect', '1'), ('affect_amount', '1'),
+                                         ('bonus', '2'), ('align', '4')):
+                    sql('DELETE FROM nexus_stones')
+                    sql(f'INSERT INTO nexus_stones({columns}) VALUES' + values[stone_id])
+                    sql(f'UPDATE nexus_stones SET {field}={bad_value} WHERE id={stone_id}')
+                    before = snapshot()
+                    try:
+                        executor.apply(step)
+                    except runner.MigrationContractError as error:
+                        assert f'Nexus stone {stone_id} conflicts in {field}' in str(error)
+                        # A batch SQL error terminates the lock-owning client.
+                        # Each independent retry needs a newly acquired session.
+                        executor.release_lock()
+                        executor.acquire_lock()
+                    else:
+                        raise AssertionError('conflicting seed applied: ' + field)
+                    assert snapshot() == before, 'preflight changed data before refusing'
+
+            for name in ('Marduk', 'Enlil'):
+                sql('DELETE FROM nexus_stones')
+                sql(f"INSERT INTO nexus_stones(id,name) VALUES(9,'{name}')")
+                before = snapshot()
+                try:
+                    executor.apply(step)
+                except runner.MigrationContractError as error:
+                    assert 'conflicting ID 9' in str(error)
+                    executor.release_lock()
+                    executor.acquire_lock()
+                else:
+                    raise AssertionError('reserved name on another ID was accepted')
+                assert snapshot() == before
+
+            for present in ((), (1,), (3,), (1, 3)):
+                sql('DELETE FROM nexus_stones')
+                sql("INSERT INTO nexus_stones(id,name,align) VALUES(9,'Unrelated',-1)")
+                for stone_id in present:
+                    sql(f'INSERT INTO nexus_stones({columns}) VALUES' + values[stone_id])
+                preserved = snapshot().splitlines()
+                executor.apply(step)
+                executor.verify(step)
+                seeded = snapshot()
+                assert all(row in seeded.splitlines() for row in preserved)
+                assert sql('SELECT GROUP_CONCAT(id ORDER BY id) FROM nexus_stones') == '1,3,9'
+                for stone_id in {1, 3} - set(present):
+                    assert sql(f'SELECT align,last_touched_at IS NULL FROM nexus_stones WHERE id={stone_id}') == '0\t1'
+                executor.apply(step)
+                executor.verify(step)
+                assert snapshot() == seeded
+
+            # Explicit verification rejects drift, without resetting live state.
+            sql('UPDATE nexus_stones SET stat_affect=1 WHERE id=3')
+            before = snapshot()
+            try:
+                executor.verify(step)
+            except runner.MigrationContractError:
+                pass
+            else:
+                raise AssertionError('verifier accepted changed Nexus catalogue')
+            assert snapshot() == before
+            sql('DELETE FROM nexus_stones')
+
+            # Legacy table operations are also retryable; no transaction is assumed.
+            sql('ALTER TABLE nexus_stones ENGINE=MyISAM')
+            sql(f'INSERT INTO nexus_stones({columns}) VALUES' + values[1])
+            before = snapshot()
+            executor.apply(step)
+            executor.verify(step)
+            assert before in snapshot().splitlines()
+            seeded = snapshot()
+            executor.apply(step)
+            assert snapshot() == seeded
+            sql('ALTER TABLE nexus_stones ENGINE=InnoDB')
+            sql('DELETE FROM nexus_stones')
+            assert sql('SELECT applied_count FROM mud_schema_migration_state') == str(step.sequence - 1)
+        finally:
+            executor.release_lock()
 
 
 def check(image: str, expected_head: str) -> None:
@@ -58,18 +255,103 @@ def check(image: str, expected_head: str) -> None:
         version = sql("SELECT VERSION();", None)
         sql("CREATE DATABASE runner_engines CHARACTER SET utf8mb4 "
             "COLLATE utf8mb4_unicode_ci;", None)
+        check_lock(environment, sql)
+        print(f'[PASS] {image}: normal runner lock exclusion, quiescence and server-side loss', flush=True)
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+
+        # Reproduce the real pre-0044 shape and an interrupted/incorrect partial
+        # apply. Existing evidence must survive; a failed verifier cannot advance
+        # the ledger. The fresh-bootstrap shape is checked by the runtime leg.
+        sql("ALTER TABLE artifact_domain_state DROP INDEX uq_artifact_canonical_uid, "
+            "DROP COLUMN identity_state, DROP COLUMN canonical_item_uid")
+        sql("INSERT INTO artifact_domain_state(vnum,owned,loc_type,location,timer_epoch,"
+            "artifact_type,bind_owner_pid,bind_timer_epoch) "
+            "VALUES(2147483000,0,2,81,1234,1,-1,17)")
+        sql("INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,"
+            "item_revision,vnum,state) VALUES(555,555,3,1200,8,2147482999,1)")
+        sql("INSERT INTO artifact_domain_state(vnum,owned,loc_type,location,timer_epoch,"
+            "artifact_type,bind_owner_pid,bind_timer_epoch,item_uid,item_revision) "
+            "VALUES(2147482999,1,4,1200,4321,2,42,71,555,8)")
+        sql("ALTER TABLE artifact_domain_state ADD canonical_item_uid BIGINT UNSIGNED NULL "
+            "AFTER updated_at, ADD identity_state SMALLINT UNSIGNED NOT NULL DEFAULT 0 "
+            "AFTER canonical_item_uid")
 
         def migrate(*arguments):
             return subprocess.run([sys.executable, "scripts/migration_runner.py", *arguments],
                                   cwd=ROOT, env=environment, capture_output=True, text=True)
 
-        for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-            result = migrate(*arguments)
-            assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
+        result = migrate("adopt", "--kind", "fresh_bootstrap")
+        assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
+        refused = migrate("run")
+        assert refused.returncode == 2 and 'artifact canonical identity schema differs' in refused.stderr, \
+            f"{image}: incompatible identity column was not refused: {refused.stderr}"
+        assert sql("SELECT applied_count FROM mud_schema_migration_state") == '43'
+        assert sql("SELECT timer_epoch,bind_timer_epoch,canonical_item_uid IS NULL,identity_state "
+                   "FROM artifact_domain_state WHERE vnum=2147483000") == '1234\t17\t1\t0'
+        sql("ALTER TABLE artifact_domain_state MODIFY identity_state "
+            "TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER canonical_item_uid")
+        check_nexus_seed(sql, migrate, environment)
+        print(f'[PASS] {image}: Nexus preflight, empty/partial/played seed, replay, drift and legacy engine', flush=True)
+        result = migrate("run")
+        assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
         head = sql("SELECT applied_count, LOWER(HEX(history_checksum)) FROM "
                    "mud_schema_migration_state WHERE state_id=1;")
         assert head == expected_head, f"{image} ({version}) stopped at {head}"
+        sql("UPDATE nexus_stones SET align=-2,last_touched_at='2026-10-03 12:00:00' WHERE id=1")
+        nexus_after_play = sql('SELECT id,align,last_touched_at FROM nexus_stones ORDER BY id')
+        assert sql('SELECT item_uid,item_revision,canonical_item_uid IS NULL,identity_state,'
+                   'timer_epoch,bind_owner_pid,bind_timer_epoch FROM artifact_domain_state '
+                   'WHERE vnum=2147482999') == '555\t8\t1\t0\t4321\t42\t71'
+
+        def refused_sql(statement, code):
+            result = subprocess.run(mysql + ['runner_engines'], input=statement, text=True,
+                                    env=environment, capture_output=True)
+            assert result.returncode != 0 and 'ERROR ' + str(code) in result.stderr, \
+                f'{image}: expected database refusal {code}'
+
+        # Canonical identity exists before custody (NPC/ground) and after physical
+        # retirement. Keep the existing nullable custody FK, without fake owners.
+        uid = 18446744073709551600
+        refused_sql(f'UPDATE artifact_domain_state SET item_uid={uid} WHERE vnum=2147483000', 1452)
+        sql(f'UPDATE artifact_domain_state SET canonical_item_uid={uid},identity_state=1 '
+            'WHERE vnum=2147483000')
+        assert sql('SELECT canonical_item_uid,identity_state,item_uid IS NULL FROM '
+                   'artifact_domain_state WHERE vnum=2147483000') == f'{uid}\t1\t1'
+        sql('INSERT INTO artifact_domain_state(vnum) VALUES(2147483001)')
+        refused_sql(f'UPDATE artifact_domain_state SET canonical_item_uid={uid},identity_state=1 '
+                    'WHERE vnum=2147483001', 1062)
+        sql('UPDATE artifact_domain_state SET identity_state=2 WHERE vnum=2147483000')
+        sql('UPDATE artifact_domain_state SET identity_state=3 WHERE vnum=2147483001')
+        assert sql('SELECT timer_epoch,bind_timer_epoch FROM artifact_domain_state '
+                   'WHERE vnum=2147483000') == '1234\t17'
+        result = migrate('run')  # exact replay preserves both identity states
+        assert result.returncode == 0, f'{image}: exact identity replay failed'
+        assert sql('SELECT id,align,last_touched_at FROM nexus_stones ORDER BY id') == nexus_after_play
+        step = next(step for step in runner.load_manifest().migrations
+                    if step.migration_id == '0044_artifact_canonical_identity')
+
+        def verify():
+            return subprocess.run(['bash', str(step.verify_path)], cwd=ROOT,
+                                  env=environment, capture_output=True, text=True)
+
+        assert verify().returncode == 0
+        for state, canonical in ((0, str(uid)), (1, 'NULL'), (2, '0'), (4, 'NULL')):
+            sql(f'UPDATE artifact_domain_state SET identity_state={state},'
+                f'canonical_item_uid={canonical} WHERE vnum=2147483000')
+            assert verify().returncode != 0, f'{image}: inconsistent UID/state accepted'
+        sql(f'UPDATE artifact_domain_state SET identity_state=2,canonical_item_uid={uid} '
+            'WHERE vnum=2147483000')
+        for key in ('KEY uq_artifact_canonical_uid(canonical_item_uid)',
+                    'UNIQUE KEY uq_artifact_canonical_uid(canonical_item_uid,vnum)'):
+            sql('ALTER TABLE artifact_domain_state DROP INDEX uq_artifact_canonical_uid, ADD ' + key)
+            assert verify().returncode != 0, f'{image}: incorrect canonical UID key accepted'
+        sql('ALTER TABLE artifact_domain_state DROP INDEX uq_artifact_canonical_uid, '
+            'ADD UNIQUE KEY uq_artifact_canonical_uid(canonical_item_uid)')
+        assert verify().returncode == 0
+        assert sql('SELECT canonical_item_uid,identity_state,timer_epoch,bind_timer_epoch FROM '
+                   'artifact_domain_state WHERE vnum=2147483000') == f'{uid}\t2\t1234\t17'
+        print(f'[PASS] {image}: artifact UID FK/null/unknown/present/retired/absent, partial '
+              'apply, verifier refusal, replay and evidence preservation', flush=True)
         sql("UPDATE mud_schema_history SET description='edited' WHERE sequence_number=31;")
         refused = migrate("run")
         assert refused.returncode == 2 and "history" in refused.stderr, \

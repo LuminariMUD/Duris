@@ -578,6 +578,66 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e",
       "verify_checksum": "da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa"
+    },
+    {
+      "id": "0041_pkill_log_capacity",
+      "sequence": 41,
+      "description": "Widen legacy PvP log storage for 99999-byte public combat snapshots",
+      "apply": "immutable/0041_pkill_log_capacity.sql",
+      "verify": "immutable/0041_pkill_log_capacity.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "7c5300d246864439c408ff3a823827b2b43518db7a8e894e0ee326e38d6c4bda",
+      "verify_checksum": "85c971ffc757e04320134462bb91adc74d95a14052facc463d8d13ac4d100ce7"
+    },
+    {
+      "id": "0042_player_base_stats",
+      "sequence": 42,
+      "description": "Store all ten player base stats as signed shorts",
+      "apply": "immutable/0042_player_base_stats.sql",
+      "verify": "immutable/0042_player_base_stats.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "a5698a97f953e175fee3030fd7408fff5a7cdb53d15d6bd8bfb5136f203ec78f",
+      "verify_checksum": "5210ecad75bcd7948718ece18d6033cd34770c5091c6a7a24551f95d338f0533"
+    },
+    {
+      "id": "0043_news_acknowledgement",
+      "sequence": 43,
+      "description": "Persist the last news content acknowledged by each character",
+      "apply": "immutable/0043_news_acknowledgement.sql",
+      "verify": "immutable/0043_news_acknowledgement.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "fb6243dd098b4f017fbda8d9aeb422f606a3aa7c5a96969c2ed4d369a154ef60",
+      "verify_checksum": "2cca57fdb73c604aecf44d3e75295510eddbbdadbf4b2da50ca74e2328faba6a"
+    },
+    {
+      "id": "0044_artifact_canonical_identity",
+      "sequence": 44,
+      "description": "Persist canonical artifact identity separately from nullable custody projection",
+      "apply": "immutable/0044_artifact_canonical_identity.sql",
+      "verify": "immutable/0044_artifact_canonical_identity.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "1d64797c4ad6c448c4a771262fd08e0ee4e79b3db0f84ba3143db9856395afce",
+      "verify_checksum": "d008062231aaab96090ad593fb281bb7876a080948cfe5742b575b0f5697be84"
+    },
+    {
+      "id": "0045_pkill_webinfo_at_capture",
+      "sequence": 45,
+      "description": "Capture immutable per-participant PvP publication permission",
+      "apply": "immutable/0045_pkill_webinfo_at_capture.sql",
+      "verify": "immutable/0045_pkill_webinfo_at_capture.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "9ec4164a7f70796409f6e88e483b1e90044eae1ff8ef9c3151397dba9e24e110",
+      "verify_checksum": "0d3f5cf89844a00fdba5e0be9cec79bd6b91bcb79c20bd94157d57f43e0a96d1"
+    },
+    {
+      "id": "0046_nexus_phase1",
+      "sequence": 46,
+      "description": "Seed Marduk and Enlil without overwriting Nexus ownership",
+      "apply": "immutable/0046_nexus_phase1.sql",
+      "verify": "immutable/0046_nexus_phase1.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6",
+      "verify_checksum": "bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f"
     }
   ],
   "engine_verifiers": [

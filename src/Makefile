@@ -99,6 +99,7 @@ SHIP_OBJS = $(SHIP_SRCS:%.c=ships/%.o)
 
 OBJS =  $(SHIP_OBJS) \
 				 item/item_actions.o \
+				 item/legacy_object_identity.o \
 				 item/native_artifact_actions.o \
 				 item/tsunami_actions.o \
 				 item/ioun_actions.o \
@@ -150,6 +151,11 @@ OBJS =  $(SHIP_OBJS) \
 				 world/falling_policy.o \
 				 combat/arena.o \
 				 guild/artifact.o \
+				 guild/artifact_population.o \
+				 guild/artifact_population_boot.o \
+				 guild/artifact_population_repository.o \
+				 guild/artifact_population_flatfile.o \
+				 guild/artifact_population_recovery.o \
 				 guild/artifact_cache_codec.o \
 				 persistence/report_cache_codec.o \
 				 economy/donation_event.o \
@@ -196,6 +202,8 @@ OBJS =  $(SHIP_OBJS) \
 				combat/chaos_config.o \
 				net/command_latency.o \
 				 net/comm.o \
+				 net/discord_bridge.o \
+				 net/discord_petition.o \
 				 persistence/copyover.o \
 				 core/common.o \
 				 world/condition.o \
@@ -259,6 +267,7 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/mail.o \
 				 world/map.o \
 				 net/mccp.o \
+				 net/mssp.o \
 				 net/mail_sender.o \
 				 classes/memorize.o \
 				 core/memory.o \
@@ -409,7 +418,7 @@ OBJS =  $(SHIP_OBJS) \
 				 world/world_recovery_npc_items.o \
 				 world/world_recovery_pipeline.o \
 				 player/player_snapshot_repository.o \
-				 player/output_preferences.o player/output_message.o player/player_snapshot_capture.o \
+				 player/news.o player/output_preferences.o player/output_message.o player/player_snapshot_capture.o \
 				 player/player_snapshot_codec.o \
 				 persistence/latency_trace.o \
 				 sql/sql_pool.o \

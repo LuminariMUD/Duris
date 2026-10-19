@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import statistics
 import subprocess
 import tempfile
@@ -89,6 +90,14 @@ def authority(backend, runtime):
         for action in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
             subprocess.run(["python3", "scripts/migration_runner.py", *action],
                            cwd=ROOT, env=environment, check=True)
+        (runtime / "scripts").mkdir()
+        importer = runtime / "scripts/import_help_to_prod.sh"
+        shutil.copy2(ROOT / "scripts/import_help_to_prod.sh", importer)
+        subprocess.run(["bash", str(importer), "--dry-run"], env=environment,
+                       check=True, capture_output=True, timeout=90)
+        imported = subprocess.run(["bash", str(importer), "--local"], input="yes\n",
+                                  text=True, env=environment, capture_output=True, timeout=90)
+        journey.require(imported.returncode == 0, imported.stdout[-2000:] + imported.stderr[-2000:])
         yield environment, publish
     finally:
         sql("DROP DATABASE " + database, False)
@@ -175,6 +184,7 @@ def run(binary, backend):
     with tempfile.TemporaryDirectory(prefix="information-journey-") as temporary:
         runtime = Path(temporary)
         journey.make_fixture(runtime)
+        (runtime / "help").symlink_to(ROOT / "help", target_is_directory=True)
         # Keep both test players in a quiet room, away from combat/scavenging.
         zone = runtime / "areas_mini/mini.zon"
         zone.write_text(re.sub(r"^[MG] .*\n", "", zone.read_text(), flags=re.M))
@@ -210,6 +220,18 @@ def run(binary, backend):
                                                  email=account.lower() + "@example.invalid")
                         client.expect(PROMPT, timeout=30)
                         response(client, "toggle paging no", "mode off.")
+                    for topic, marker in (("web-spray", "innate web_spray"),
+                                          ("quickstep", "powerful blow"),
+                                          ("seadog", "passive seafaring")):
+                        transcript_start = len(clients[0].transcript)
+                        response(clients[0], "help " + topic, marker)
+                        if topic == "seadog":
+                            help_text = bytes(clients[0].transcript[transcript_start:]).decode(errors="replace")
+                            for meaning in ("owner with Seadog", "anywhere aboard",
+                                            "person operating the panel", "bonus will not persist",
+                                            "10% more proceeds"):
+                                journey.require(meaning in help_text, "Seadog help missing " + meaning)
+                    response(clients[0], "area", "Average")
                     result = exercise(*clients, publish)
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)

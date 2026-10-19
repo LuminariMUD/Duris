@@ -19,6 +19,7 @@
 #include "player/player_playtime.h"
 #include "player/player_snapshot_codec.h"
 #include "player/pet_restore_runtime.h"
+#include "sql/item_extra_descr_codec.h"
 #include "classes/necromancy.h"
 
 #include "core/prototypes.h"
@@ -124,7 +125,9 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	    !add_status_string(snapshot, budget, player_status_string_field::poof_in,
 			       ch->only.pc->poofIn) ||
 	    !add_status_string(snapshot, budget, player_status_string_field::poof_out,
-			       ch->only.pc->poofOut))
+			       ch->only.pc->poofOut) ||
+	    !add_status_string(snapshot, budget, player_status_string_field::last_read_news_hash,
+			       ch->only.pc->last_read_news_hash))
 		return false;
 
 	snapshot.output_preferences = encode_output_preferences(ch->only.pc->output_preferences);
@@ -485,6 +488,9 @@ capture_item_tree(const obj_data *object, int parent_index, int equipment_slot,
 	{
 		if (!description_seen.insert(description).second)
 			return player_snapshot_capture_result::object_cycle;
+		if (description->keyword &&
+		    !strcmp(description->keyword, SQL_ITEM_TRAP_STATE_KEYWORD))
+			continue;
 		const bool spellbook = description->keyword && strlen(description->keyword) == 3 &&
 				       description->keyword[0] == 3 &&
 				       description->keyword[1] == 1 && description->keyword[2] == 3;
@@ -527,6 +533,21 @@ capture_item_tree(const obj_data *object, int parent_index, int equipment_slot,
 				row.extra_descriptions[spellbook_index].spell_ids.push_back(
 					skill_id);
 			}
+	if (object->trap_eff || object->trap_dam || object->trap_charge || object->trap_level)
+	{
+		if (!budget.add(sizeof(player_item_extra_description_snapshot), 1))
+			return player_snapshot_capture_result::limit_exceeded;
+		std::array<char, 64> encoded = {};
+		if (!sql_encode_item_trap_state(object->trap_eff, object->trap_dam,
+						object->trap_charge, object->trap_level,
+						encoded.data(), encoded.size()))
+			return player_snapshot_capture_result::malformed_source;
+		player_item_extra_description_snapshot trap = {};
+		if (!copy_string(SQL_ITEM_TRAP_STATE_KEYWORD, trap.keyword, budget) ||
+		    !copy_string(encoded.data(), trap.description, budget))
+			return player_snapshot_capture_result::limit_exceeded;
+		row.extra_descriptions.push_back(std::move(trap));
+	}
 
 	const int row_index = static_cast<int>(target.size());
 	target.push_back(std::move(row));
@@ -820,6 +841,20 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		}
 		if (components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
 		{
+			if (ch->only.pc->retained_items)
+			{
+				const auto &retained = *ch->only.pc->retained_items;
+				if (retained.rows.size() >
+					    PLAYER_SNAPSHOT_MAX_OBJECTS - budget.objects ||
+				    retained.bytes > PLAYER_SNAPSHOT_MAX_BYTES ||
+				    !budget.add(retained.bytes +
+							retained.rows.size() *
+								sizeof(player_retained_item_row),
+						retained.rows.size()))
+					return player_snapshot_capture_result::limit_exceeded;
+				budget.objects += retained.rows.size();
+				snapshot.retained_items = retained;
+			}
 			CHARACTER_MECHANIC_SITE(equipment_capture);
 			const auto result = capture_items(ch, snapshot.items, budget,
 							  components & PLAYER_COMPONENT_EQUIPMENT,

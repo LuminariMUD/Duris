@@ -23,18 +23,17 @@ existing link remain unchanged.
 
 ## Racial hatred affect removal and race bounds
 
-The hatred event now removes each matching affect individually while traversing
-the list, emits the removal message before release, and stops scanning a hated-race
-row at its sentinel or bound. The old bulk removal released the next node before
-the loop visited it; the race loop also read index 5 of a five-element row.
+The branch's original traversal/bounds repair is superseded by master's Hatred
+watcher and lifecycle repair (#209/#210/#212). The merge retains the current
+visible-enemy matching, bounded race scan, transient paired affects, one watcher,
+and removal message before release.
 
-`test_character_mechanics.py` uses the real Mountain Dwarf grant, native hated-race
-table, visibility predicate, affect application/message/removal and event body.
-It checks paired combat/spell-pulse effects, refresh without stacking, safe cleanup
-with an unrelated affect retained, one message and event rearm. Separate variants
-restore the released-node traversal and row overrun; ASan and UBSan reject them.
-The fixture records scheduling and bounds derived pulse recalculation, so it does
-not claim full-world hatred acquisition or pulse-rate behavior.
+`test_innate_hatred.py` qualifies that current production behavior and scheduler
+under ASan/UBSan. The character-mechanics fixture also executes the current helper
+functions with the real racial grants/table, visibility and affect operations;
+its two negative cases still detect released-node reads and race-table overruns.
+Its scheduling boundary only records rearming and cancellation requests. Full
+watcher delivery remains covered by the focused Hatred regression.
 
 ## Phantasmal form removal message lifetime
 
@@ -76,8 +75,10 @@ existing birth semantics. The capture regression runs real generic removal
 before death-intent capture; stat/light updates, linked events and the allocator
 are fixture boundaries. The world journey now includes both bare-hand staff
 kill and mortal combat with the temple ice golem, checking the terminal save and
-resurrection after restart. Crowns and transport are supplied by staff; ordinary
-item acquisition remains outside this fixture.
+resurrection after restart. The initial crown and transport are supplied by staff; ordinary
+item acquisition remains outside this fixture. After the first death/restart,
+the second death case retrieves that same crown from the recovered corpse,
+preserving master's artifact uniqueness guard instead of loading a duplicate.
 
 ## Multiclass session playtime
 
@@ -147,6 +148,113 @@ legacy/restricted combinations' denials, and the override. Exhaustive traversal 
 defined race/class/slot inputs checks memory safety, not an independently specified
 policy matrix. It does not exercise teachers, costs, specialization mutation, or
 persistence, and reads no environment file or database.
+## PSP consistency and gradual movement decay (#57)
+
+Delayed surplus movement decay also stops at the maximum: after 120/100 becomes
+119/100 at pulse 61, a 1,200-pulse callback delay must leave 100/100. Negative
+equipment recovery below the maximum still drains normally. The native sanitizer
+regression covers both cases at recovery dials 1, 5 and 10.
+
+The same native test executes real `affect_update()`, `StartRegen()`, policy and
+callbacks after combat and sunlight suppression. It covers Human/Pillithid/Illithid
+PSP users, including racial warriors and sorcerers, missing/full/over-cap PSP,
+negative recovery at full, fresh elapsed credit and duplicate suppression. An
+ordinary human warrior remains excluded. The full-world combat case uses a
+Pillithid warrior to verify the periodic restart beyond psionic classes.
+Its disposable runtime creates the launcher's `logs/log/.since` marker so log
+retention does not archive the callback trace as an unknown-age log set.
+
+`python3 tests/async/test_psp_move_regen.py` compiles the real PSP/movement rate
+functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` under
+ASan/UBSan. It checks the POW+INT base and truncation, recovery dials 1/5/10,
+PC/NPC behavior, signed equipment modifiers, feeblemind, sunlight exemptions,
+all six statuses crossed with all four postures and meditation, combat entry with
+fractional credit, delayed callbacks, full/zero/over-cap bounds, one completion
+message, psionicist/mindflayer casting restarts, duplicate starts and NPC cadence.
+One- and four-pulse recovery agrees with the rate within one point of float credit.
+
+The fixture queue and ordinary engine dependencies are stubs. Meditation flags and
+combat state are seeded. The existing `test_nevent_scheduler_runtime.py` now also
+executes the real PSP callback and admission on the production queue, with a controlled
+rate: duplicate suppression, NPC first/recurring cadence, delayed events, combat
+termination, fresh restart payload and full termination pass under ASan/UBSan.
+Every queued callback asserts its elapsed interval: one/four pulses for PCs and
+four initially then five for NPCs. Four-pulse delays use the previous callback tick,
+so advancing the heartbeat cannot introduce a three- or five-pulse interval.
+Existing difficulty, HP decay and tick spreading controls pass as well.
+
+The same harness executes `spell_restore_spirit()` to grant 20 surplus vitality in
+combat, then `do_rest()` after combat to admit recovery. At 120/100, the first
+decrement at pulse 61 must leave 119, and later decrements approach 100 progressively.
+It preserves positive 99/100 capping, full-event termination, signed/NPC rates and
+neutral fed/hydrated standing/resting/sleeping rates 80/229/632, with one- and
+four-pulse callbacks. Spell damage and saving throws are stubbed; the vitality grant,
+rest command, rate and callback are actual source functions.
+
+`run_psp_regen_journey.py --binary bin/server/dms_issue57_flatfile --output
+bin/analysis/issue57-plan/journey.json` drives a fresh flat-file full-world server via
+Telnet; run `make world` first to generate the authored world in a clean checkout.
+Against production sources `0b245add9223f12bd483cd451a15d805a37733a6`,
+current POW=INT=100, no equipment/boons/rested bonus, dials 5/1/10 display 80/160/40
+and gain 33/65/17 PSP over 123 traced callbacks each (staff snapshots bound elapsed
+time at 120–126 pulses). Rest/meditate displays 1,500, fills reserves, sends one
+completion message and ends callbacks. Actual will/cast dispatch restarts PSP for
+both Psionicist and MindFlayer. Training-dummy combat blocks recovery; after staff
+tranquilize and player wake/stand, the existing periodic path recovers within 42.014
+seconds. A signed affect change from zero net recovery to 90/tick restarts via
+`balance_affects()`/`affect_total()`. All 569 player PSP callbacks have unique pulse
+identities. Setup uses staff commands on a disposable character; player data and
+runtime settings are temporary and removed afterwards. The full server is a normal
+development build, with sanitizers confined to the native harnesses.
+
+The CLI creates missing output directories before retaining the JSON result.
+`test_psp_regen_journey_output.py` executes its argument parsing and result writing
+with the full journey stubbed, checking a missing nested parent and an existing file.
+
+See `docs/ongoing-projects/plan-issue-57.md` for exact build commands, binary hash and review
+stack. No migration, production rollout or shared-player changes were performed.
+
+## Combined log-review integration qualification
+
+The combined server/world/schema at `8b2681862` incorporates master `c6a95a470`
+and PRs #70 → #73 → #74 → #75. The following commands passed on that stable tree:
+
+```sh
+make -C src -j16
+make -C src pfile -j16
+make -C migrations/tools all affects pfile_converter -j16
+make -B -C migrations/tools all affects pfile_converter -j16
+./scripts/format.sh --all --check
+make test-all -j16 TEST_JOBS=16
+make test-db
+python3 tests/async/test_documentation_contract.py
+npm test --prefix site
+```
+
+Results: **736/736 regressions**, 591.84 seconds; **77/77 database legs** in one
+707-second run; **14 documentation checks**, **15 site tests**, and formatting
+of all 1052 tracked C/C++ files. Every artifact/guild gameplay variant passes:
+Summon Ghasts/boons, crash before artifact save, crash after artifact save, crash
+after history commit, blocked shutdown and actual PvP/restart. Standard gameplay
+also verifies canceled blocked copyover, successful drained copyover and clean
+restart. Native/SQL checks retain the full ES-01–ES-05 acceptance matrix; the
+following sections describe their individual boundaries. Final logs are under
+`bin/analysis/review-final/`, including the build, pfile, migration tools, formatting,
+regression, database and site output. Per-database-leg output is in `bin/tests/db/`.
+
+This run includes the corrected connection observer test from `d4fe27272` and
+the MySQL/MariaDB kingdom-interface repair from `b6a8ecb4c`. The latter also
+passes actual MySQL 8.0.46 server/pfile/migration-tool builds, the flat-file boot
+preflight, and `make security-check`; its before/after script reports **1/1
+catches**. See the client-interface section below for the proof boundary.
+
+Earlier qualification at `42b7afb17` passed 736 regressions in 567.56 seconds
+and 77 database legs in 710 seconds, with logs retained in
+`bin/analysis/integrated/`. The corrected observer's separate journey and
+deterministic before/after probe remain there too. The newer full run above
+supersedes that aggregate. Final handoff commits change documentation only.
+No production deployment, historical data repair or owner-deferred investigation
+is claimed by this qualification.
 
 ## Statistics across restarts and interrupted output
 
@@ -188,6 +296,348 @@ including the flight journey; `scripts/check_tests_catch.sh 81b8350e1 1e735655e`
 reports that the changed scheduler regression catches the pre-fix behavior.
 `make test-db` passed all 75 isolated database checks in 459 seconds, including
 the statistics matrix and the MariaDB flight journey.
+
+## Kingdom persistence interface across SQL clients
+
+PR #70's hosted MySQL 8 build exposed a MariaDB-only forward declaration in
+`kingdom.h`: its `st_mysql *` callback could not be assigned to the public
+`MYSQL *` callback used by character deletion. The header now uses the existing
+`sql_work` type, matching the implementation. Flat-file mode still excludes
+the SQL interface. No payment, deletion or reward behavior changes.
+
+`python3 tests/async/test_compiler_warning_profile.py` compiles the actual header
+against the different public MySQL/MariaDB type declarations and a flat-file
+fixture that rejects any MySQL header inclusion. The MySQL case fails before
+the repair; all three pass afterward. Server and pfile builds also pass against
+the actual Ubuntu MySQL 8.0.46 headers/library, extracted under ignored
+`bin/analysis/review-final/mysql-client/` without replacing the installed MariaDB
+development package. The MariaDB server build, real guild snapshot/payment and
+character-deletion regressions, flat-file boot/shutdown preflight and
+`make security-check` pass. Logs are under `bin/analysis/review-final/`.
+These checks repair the build failure; they are not a new CodeQL or Trivy scan.
+
+## Guild member deletion capture failure
+
+Building a member-deletion snapshot temporarily removes that member and their
+frag totals. An allocation failure used to leave those temporary changes in
+live memory. `Guild::statements_without_member()` now restores membership and
+all frag fields before propagating an exception, just as it does after capture.
+
+`python3 tests/async/test_account_character_delete_runtime.py` executes the actual
+capture method with a failing SQL builder. It fails before the repair at the
+retained-membership assertion and passes afterward, alongside the existing
+MariaDB and flat-file account-menu deletion cases. This allocation case does
+not run a server or a real database.
+
+## Artifact and guild rewards
+
+Integration with master `67ca142ff` (PRs #69/#72/#76), 2026-10-14: all-level
+awards and deferred task recovery coexist with immediate memory rewards. History
+rejections carry their reason, full operation/parent identity and decoded entity
+context through the generic repository and coordinator. SQL vetoes of current
+artifact/guild state remain removed. The SQL harness checks diagnostics after
+rollback for malformed payload, both identity-conflict routes, missing parent
+and unsupported uncommitted v1 history; it retains v1 receipt/outbox compatibility
+and actual mirror/reload/order checks.
+
+Focused integration commands passed:
+
+```sh
+make -C src -j16
+./scripts/format.sh --all --check
+python3 scripts/epic_zone_seed.py check
+python3 tests/async/test_epic_gain_runtime.py
+python3 tests/async/test_epic_skill_level_gate.py
+python3 tests/async/test_epic_bonus_hot_path.py
+python3 tests/async/test_set_based_gameplay_reads.py
+python3 tests/async/test_persistence_severity.py
+python3 tests/async/test_persistence_log.py
+python3 tests/async/test_persistence_log_hygiene.py
+python3 tests/async/test_critical_command_coordinator.py
+python3 tests/async/test_critical_transaction_contract.py
+python3 tests/async/test_artifact_guild_transactional_cutover.py
+python3 tests/async/test_artifact_guild_rewards_runtime.py
+python3 tests/async/test_combat_artifact_persistence.py
+python3 tests/async/test_artifact_cache_codec.py
+tests/async/with_disposable_mariadb.sh bash tests/async/run_artifact_guild_schema_mysql.sh
+python3 tests/async/test_documentation_contract.py
+npm test --prefix site
+```
+
+The regenerated manifest changes only `src/world/epic.h`'s source hash. No payout,
+group size or override policy changed. Build evidence is retained in the isolated
+integration worktree's `bin/analysis/integration/build.log`. This focused pass is
+not final combined-stack qualification or production rollout; full-server fault
+journeys and the broad gates remain due after #73–#75 integration.
+
+Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
+[qualification record](../records/log-server-review.md#qualification-update-2026-10-14)
+maps the acceptance criteria to tests, records local logs and separates review
+readiness from production rollout.
+
+`python3 tests/async/test_artifact_guild_rewards_runtime.py` links real reward
+capture/application, transaction submission and codec code, with controlled writer
+and unrelated engine services. Three feeds change memory before any completion;
+same-guild awards accumulate prestige and cross construction thresholds. Caps,
+eligibility, invalid combined arithmetic, pending duplicates, late completions and
+bounded history refusal/retry do not revert current state. It passes in the worktree
+and fails against `0ccec836e` at the first pre-completion timer assertion.
+
+`python3 tests/async/test_artifact_guild_snapshots.py` uses real artifact storage,
+guild methods and SQL capture bodies with controlled commit receipts. It passes
+current-state retry, old-acknowledgement exclusion, allocation/admission failures,
+removal/recreation, bounded retry fairness, guild spending/settings and cache
+generation cases. A read started after failed admission could previously publish
+stale data after retry; the added case failed before retry invalidation and now
+passes. These tests do not boot a server or prove SQL restart durability.
+
+`tests/async/with_disposable_mariadb.sh bash tests/async/run_artifact_guild_schema_mysql.sh`
+passed captured-history bursts, immutable replay, preservation of newer gameplay
+snapshots, cap no-op, identity/malformed/missing-parent diagnostics, committed v1
+receipt/outbox delivery, and history after artifact removal. The actual reconciliation
+script accepts legitimate live/history divergence and detects mirror mismatches and
+missing rows. The fixture-only return-type/header correction also passes on rerun.
+
+The runtime fixture now also links the actual stone publication code to artifact
+capture/application, covering offline return, derived identity, duplicate completion
+and reconnect after child completion, and recovered claims without re-awarding.
+The snapshot fixture passes bulk soul-reset acknowledgement and failure recovery.
+`test_player_save_worker.py` injects every admission allocation failure and proves
+no partial job/index survives refusal. Against `0ccec836e`, it compiles and fails
+because a refused job remains queued; the repaired writer passes and replaces its
+tail without allocating. Commit `dfecafbda` passes the before/after check.
+The coordinator's allocation walk additionally exposed a reserved operation/fence
+with no writer job when callback construction failed. `532fe0653` releases it and
+counts acceptance only after dispatch; the native fault, identity, retry, ordering
+and capacity tests pass.
+
+`tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_artifact_guild_reward_journey.py`
+passes a full-world Summon Ghasts cast, three actual kills and epic boon awards.
+With the artifact row locked, all live rewards apply while SQL retains the original
+timer and 85/0 guild totals; health reports three pending histories. Copyover fails
+and the server remains live. Releasing the writer yields +10,800 seconds, 115/1
+and three consistent histories. A subsequent copyover and clean restart preserve
+state without re-awarding. This is registered in the database gate. The recorded
+binary predated the coordinator allocation fix; the final qualification below covers the later repairs.
+
+The journey now also passes crashes before the artifact save, between artifact
+and guild saves, and after a real history COMMIT before completion (a test-only
+library interposer holds that boundary). Only the persisted prefix loads after
+restart. Blocked shutdown exits in 36.65 seconds, names the unsaved artifact/guild
+and all three operation/parent pairs, and reloads without replaying rewards.
+The standard copyover/clean-restart leg passes again.
+
+The shutdown test caught diagnostic formats whose `%s` substitutions the actual
+persistence reporter intentionally suppresses. Transaction and snapshot categories
+now carry the controlled labels; numeric fields preserve both full opaque IDs.
+The severity and snapshot fixtures execute the real reporter and retain its privacy
+checks. Repository diagnostics go directly to the metadata worker. An independent
+native producer test drives the actual coordinator cache past 256 entries and
+proves the real boon/combat/stone handlers do not republish duplicate completions.
+
+The staff artifact sync callback also had a reproduced stale-state overwrite.
+Its generation/dirty check retains and resaves newer memory, and state publication
+no longer depends on the staff character staying online. Native cases and the
+normal full-server command/query journey pass.
+
+The real PvP death variant also passes: with a controlled 100-epic award and
+artifact write held, it applies the feed and guild reward immediately, then saves
++720,000 seconds and 105/1. One child references its type-8 combat parent; save and
+restart preserve that result. The fixture retains the genuine soul/ownership
+checks and uses a free soul for this positive case.
+
+The snapshot fixture now links the real kingdom payment/guild writers. It covers
+pending-through-commit behavior, later rewards/settings/spending, old receipts,
+failed admission/allocation, current-state retry, late resource changes and realm
+recreation. The disposable SQL wrapper also runs it with real transactions: a
+trigger fails the realm update after guild statements, both roll back, and retry
+captures the latest values without another treasury debit. The optional missing
+garrison table remains compatible. Writer scheduling/receipts are controlled;
+this payment matrix does not boot a full game.
+
+The expanded state-ordering fixture also runs transfer/soul changes, the actual
+staff timer command and artifact-war callback, corpse moves, expiry/removal and
+recreation around feeds. Real SQL drains and the production boot-row decoder
+retain the final state; the domain mirror agrees. Room/inventory movement and
+writer scheduling are fixture boundaries.
+
+Final production-source qualification passed all 731 regressions in 695.94 seconds
+and all six full-server artifact journey variants. The 76-leg database run passed
+68 and found eight harness linker failures for the metadata-log callback; those
+eight passed after the shared weak fixture adapter, as did the expanded artifact
+SQL leg. This is 76 distinct passing legs across the run and reruns, not a claim
+that the original make invocation exited successfully. Full-tree formatting,
+maintained builds and all 15 site tests pass.
+
+## Recovery placement and room-entry hazards
+
+A full-server artifact journey crashed after announcing copyover completion. The
+kernel address resolved to transport recovery reading an NPC whose room-entry
+hook had removed it. An unchanged rerun passed: the triggering world state was
+intermittent. File and buffer recovery now use the existing placement mode that
+skips movement hazards and procs for restored players and NPCs.
+
+`python3 tests/async/test_world_singletons.py` runs the production buffer restorer
+under ASan/UBSan. Its room-entry adapter extracts on ordinary movement; before
+the fix the next state write is a heap-use-after-free. With recovery placement,
+five restore cycles preserve the NPC, stock and equipment. File/player call-site
+checks accompany the native test. All six full-server artifact/database variants
+then passed on the repaired source. The native test controls entry effects and
+does not execute the entire room handler. `scripts/check_tests_catch.sh
+15ccfdd56 07d3e2835` reports 1/1 passing after and failing before the fix.
+
+## Epic boon completion and actual award result
+
+After #69 removed the gain-level gate, LR-02 follows `gain_epic()`'s synchronous
+result. Completed boons remain consumed, failed awards explicitly report no
+points, and successful awards retain their existing feedback at every level.
+
+`python3 tests/async/test_epic_gain_runtime.py` retains the actual boon completion,
+publication, award preparation and balance paths under ASan/UBSan. The boon
+fixture covers levels 1/29/30/49/50/56, ID-generation failure, balance overflow,
+ledger refusal after a successful live award, non-epic EXP and duplicate/replayed
+completion. Balance/revision, feedback, pending/completed state and companion
+artifact/guild publication count must agree. SQL results and unrelated engine
+services are controlled adapters; full-server persistence is covered separately.
+The original gain-level test and its policy are superseded; the separate
+`test_epic_skill_level_gate.py` still requires level 30 for skill purchases.
+The three focused epic gain/skill/training tests, server build, formatting and
+14 documentation checks pass on the integrated #73 tree. The disposable
+`test_mysql_epic_training_journey.py --server bin/server/dms_new` also passes
+Human Warrior and Illithid Psionicist HP/GMCP/purchase/save/restart coverage after
+`make world`. The first attempt lacked generated world files and failed at boot;
+the successful rerun and build are retained under `bin/analysis/integration/`
+in the integration worktree. Final combined-stack gates remain due.
+
+`scripts/check_tests_catch.sh 2ec958e83 5e75d025a` reports 2/4 catches: native
+boon/award and teacher regressions fail before and pass after. The two database
+journeys skip without explicit settings, so their catch-script status is not
+proof; the separately executed disposable training journey supplies that evidence.
+
+## Paid epic training feedback and immediate HP
+
+LR-03–LR-05 qualify the existing level-30 teacher policy and fix two purchase
+results: reaching 100 now announces mastery, and learned stats are rebuilt with
+`affect_total()` before GMCP vitals and the character save. Prices, increments,
+eligibility, missing-HP semantics and memory-first balance changes are retained.
+
+`python3 tests/async/test_epic_training.py` executes the actual teacher, purchase
+callback and epic transaction under ASan/UBSan. It covers 29/30/31, configured
+39/40/41, class/prerequisite/funds/cap refusals, intermediate and final purchases,
+repeat at mastery, and refresh/publication/save ordering. Cash, refresh, save
+and client output are adapters; they do not prove the HP formula. The old
+source compiles and fails at the missing mastery announcement.
+
+`tests/async/with_disposable_mariadb.sh python3
+tests/async/test_mysql_epic_training_journey.py` covers the actual paid command
+and persistence with teacher 80862 in an isolated world. Before the fix, learning
+Toughness 10 charged 150 epics and 1,000,000 copper but left HP at 233/263 instead
+of 243/273. After it, full and injured Human Warriors and Illithid Psionicists
+receive the proper bonus immediately in score/prompt and GMCP. Later pulses and
+repeated refreshes add nothing, refused purchases charge nothing, and both clean
+restarts preserve skills, balances, derived HP and injury. The journey is part
+of `make test-db`. Evidence and binary hash are retained under ignored
+`bin/analysis/epic-training/`. The server build and full-tree formatting pass;
+the batch is locally qualified in PR #73. Its full database run passed 76/77;
+the artifact PvP caster aborted before spell completion. The fixture now retries
+only confirmed aborts, with a five-attempt bound, and the affected PvP rerun passes.
+The aggregate is 77 distinct passing database checks; the original make command
+exited nonzero. Server sources match the passing 733-regression gate.
+
+## Zone average sentinels and missing help searches
+
+Review repair after parent integration `b89150407`: a 65,500-byte name overflows
+basic `do_area()`'s old `strcat` under ASan. The response now caps the name only
+after reserving the complete average, optional staff zone ID and danger warning.
+`python3 tests/async/test_zone_average_display.py` passes ASan/UBSan for short and
+oversized plain/colored names, numeric/sentinel values, staff no-argument output
+and the +15/+16 warning boundary. Original failure output is retained in the top
+checkout's `bin/analysis/area-before.log`.
+
+Seadog help now distinguishes the aboard owner's persistent +2 speed from the
+panel actor's order/display maximum. An isolated native probe exercises actual
+order/max-speed/aboard-owner code and the tick clamp: a non-owner's bonus is lost,
+an aboard owner's persists, and a non-Seadog sailor cannot order that owner's
+full maximum. Display's actor selection, innate availability and seller's 10%
+bonus are traced in production source. No sailing mechanic changes.
+`python3 tests/async/test_flatfile_help_catalog.py` and
+`python3 tests/async/test_help_import_live_parser.py` pass. The disposable
+`test_information_cache_journey.py --backend mariadb --server bin/server/dms_new`
+passes corrected Seadog text through actual import/cache/player help alongside
+Web Spray and Quickstep. Its initial adapter error was corrected to inspect the
+client transcript, not the timing return. Server build and 14 documentation
+checks pass. Integration build/help/probe evidence is under
+`bin/analysis/integration/` in the isolated integration worktree. Final combined
+stack qualification remains due; the following broad results are historical.
+
+LR-06's display now preserves -2/-1 internally while rendering `unknown` and
+`not applicable`. `python3 tests/async/test_zone_average_display.py` executes the
+actual basic `do_area()` branch under ASan/UBSan, covering real averages, zero,
+empty/unknown sentinels, +15/+16 danger boundaries, subsequent value changes and
+staff no-argument output. It compiles before and fails on the negative display.
+Padding/morph adapters and omitted staff search subcommands bound this proof;
+original-zone attribution and its catalog investigation remain open.
+
+LR-08 supplies searchable Web Spray, Quickstep and Seadog topics. The existing
+flat-file help test proves rendering; the MariaDB information journey dry-runs
+and imports into its disposable schema before actual player help queries and
+cache publication. It retains the existing Quick Step title and adds no import
+or redirect mechanism. Both focused checks pass. PR #74 is ready with 734 regression and 77 database
+passes in single full runs. Direct base-data lookup fails specifically at the
+missing Web Spray topic and passes after; the before/after script also reports
+2/2 catches, with its information-journey summary ending in an unrelated runtime
+warning. The original zone attribution remains open.
+
+## Damage death results, healing posture and graph distance
+
+**Limited-zone spell callers, 2026-10-16 (#106).**
+`python3 tests/async/test_graph_distance_runtime.py` now also executes the actual
+Teleport, Depart, and Etheric Gust bodies with the real graph and room structs.
+Each previously returned unconditionally in virtual rooms 5700–5999, rejecting
+even an adjacent destination. Each now rejects only a negative distance result,
+retaining the five-room cap. Self/distinct targets, zero/one/five/six/far distances,
+unreachable destinations, ordinary zones, combat cleanup/preservation, wait, and
+queue reuse pass under ASan/UBSan. Restoring each original caller separately
+fails at the adjacent-room assertion. RNG, eligibility, presentation, movement
+endpoints, and wait are adapters; no live cast, production rollout, or historical
+attribution is claimed. The development server build and eight related focused
+zone/movement/lifecycle/latency tests pass. Evidence and remaining original
+acceptance are in [the continuation plan](../records/plan-issue-106.md).
+
+The legacy physical `damage()` wrapper now stops a skill after either
+participant dies, matching its spell branch. Previously simultaneous death
+fell through into fighting/counterattack setup and `cleave()` could request a
+short affect for its dead NPC target. `test_damage_death_result.py` executes the
+actual wrapper and cleave under ASan/UBSan, controlling lower-layer death
+outcomes and unrelated eligibility. It proves live effects, victim/both/actor
+death stopping, and fresh storage reuse; real scheduler/cancellation harnesses
+retain dead-owner rejection, extraction cleanup and owner reuse. This is a
+producer reproduction, not a full lower-layer combat journey or exact
+attribution of the original logged NPC schedule.
+
+The existing posture test now executes `calculate_ch_state()`/`update_pos()`.
+An upright humanoid can remain standing at -3 HP/incapacitated and heal to -2;
+the producer now selects sitting/resting instead of standing/resting. Native
+cases preserve lower postures, normal standing and standing sleep, then verify
+stand/rest state and regeneration-start/feedback observations. Random falling,
+combat/wake and unrelated services are adapters. The original player's precise
+transition remains unknown.
+
+`test_graph_distance_runtime.py` runs the actual `how_close()`/queue/mark bodies
+and edge macros. Maximum distance now precedes target acceptance: distance four
+with limit three, and distance one with limit zero, are refused. Exact/below/
+above, negative limits, invalid rooms, door eligibility, ocean/NOWHERE exclusions,
+unchanged room cap, one diagnostic per bounded exit, queue cleanup and reuse
+pass. Allocation/logging are adapters. Original reported caller/source/target
+attribution remains unavailable.
+
+All three native checks fail on `b2982e75e` and pass on `f8e302270` in the formal
+before/after script (3/3). Focused sanitizer runs, command-latency/budget and
+real scheduler/cancellation checks pass. Final qualification on `7ab77e895`
+passes all 736 regressions in 869.90 s and all 77 database checks in one 775 s
+run, including the full connection journey and every artifact/reward variant.
+The separate native cure-spell producer probe also fails before and passes after;
+its heal arithmetic is an adapter, while cure/update/stand/rest are actual code.
 
 ## Crumbling equipment removal
 
@@ -643,6 +1093,18 @@ website client that sends a login every 25 s is still open at 130 s; a banned ad
 and TLS connections to a full server. It takes about three minutes (173 s in a loaded
 gate).
 
+The LR-11 extension measures another 2,001 sequential plain/TLS/WebSocket
+attempts and separate incomplete handshakes on the isolated server. Its focused
+qualification took 80.835 s (24.75/s), kept descriptors at 10 before/after with a
+peak of 26, and grew peak RSS by 1,012 KiB. Process CPU was 9.02 s; 2,563 lines /
+261,011 bytes were logged, with no pulse above 250 ms. An authenticated account
+menu responded throughout (maximum 216.93 ms) and the burst address could log in
+afterward. Held WebSocket/TLS handshakes expired at 27.16/37.54 s. Assertions cap
+resource/log growth for the stream and verify cleanup and reconnect. A fixture
+context-manager error after the first resource measurement was corrected; the
+focused rerun passes. No admission/rate-control source changed; these local
+measurements are not an unlimited-load guarantee or privileged host audit.
+
 ## Copyover state path and failure output
 
 `COPYOVER_STATE_FILE` selects the state file shared by capture, listener-header
@@ -693,17 +1155,42 @@ python3 tests/async/test_corpse_haul.py
 python3 tests/async/test_bulk_get_publication.py
 python3 tests/async/test_money_carry_count.py
 python3 tests/async/test_take_coins.py
+python3 tests/async/test_get_trap_lifecycle.py
 python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/mariadb/server   # in make test-db
+python3 tests/async/test_corpse_trap_restart_journey.py   # flat-file; in make test
+python3 tests/async/test_corpse_trap_restart_journey.py /absolute/path/to/mariadb/server mariadb   # in make test-db
 ```
 
 `test_corpse_haul.py` runs the production selection, pickup and reporting under
 ASan/UBSan: NPC and player presentation, coin-only and mixed loot, scrap, a later pile
 with nothing to take, the count cap, a malformed sibling cycle, failed live delivery and
-strict NPC publication. The MariaDB journey uses three real accounts: the looter kills
+strict NPC publication. Its extraction fixture releases PC data, clears the descriptor
+and live runtime identity, and moves the actor to NOWHERE. Lethal, sleep, teleport,
+removed/moved source and sibling cases cover first/middle/last/only traps, filtered and
+unfiltered corpse/floor selection, surviving traps, cancellation after insertion,
+allocation failure, and another get by a new runtime identity with the same PID.
+Finalizers and combat remain stubbed here; full command/death coverage requires the
+server journey. `test_get_trap_lifecycle.py` compiles the production `get()` and
+finalizers with actual character/object structures. It verifies that lethal, teleport
+and sleep traps stop container and floor pickup before delivery, logs, waits or lighting;
+that surviving traps reject their item; and that ordinary/ioun, crumble-on-loot, full,
+partial and capped coin, refusal and NPC paths report only actual delivery. Its lethal
+fixture releases PC data and removes the actor's live runtime identity under ASan/UBSan.
+The MariaDB journey uses three real accounts: the looter kills
 Raoul in combat, a second player at the corpse sees the haul start, and a third in the
 next room sees nothing. After a real player death it repeats a mixed equipment-and-coin
 haul on the player's corpse. Each stage asserts the haul, observer output, and the saved
 custody and wallet; a reconnect keeps the inventory without replaying the haul.
+
+The trap restart journey creates a player corpse whose ordinary and ioun items precede
+a lethal object-triggered room-fire trap. It runs the real `get all corpse`, checks that
+the actor and a same-room mortal bystander receive the room effect and return to their
+account menus while a durable same-room NPC, a remote staff client and the server remain
+live, and reconnects the actor to prove the abandoned batch does not replay. It then
+restarts the server and verifies that the original corpse retains the same item UIDs and
+the trap's consumed charge on MariaDB and flat-file authority. A final direct pickup
+proves the spent trap did not rearm. The journey uses only synthetic accounts and a
+private world; the MariaDB leg is registered in `make test-db`.
 
 ## Falling: Safe Fall, Climb and breakable floors
 
@@ -819,6 +1306,26 @@ flat-file server cannot run it.
 Not covered: the full random-world generator (the journeys use controlled instances of
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
+
+## Guardian rescue all and guarding two people
+
+A Guardian's `rescue <friend> all` (level 46 and up) leaves them unable to act for 6
+seconds, down from two combat rounds (8 seconds); a normal rescue still costs one round.
+Guardians now guard two people at once, as Cavaliers and Demonic Riders do: a third
+`guard` drops one of the other two. Other warriors still guard one person. The help
+entries had said rescue all arrived at level 51 and belonged to every specialized warrior.
+
+```sh
+python3 tests/async/test_guardian_rescue_all_and_guard.py
+```
+
+The test evaluates the real `rescue()` lag expression against `config.h` and runs the
+real `do_guard()` and guard-list helpers under ASan/UBSan with the shipped
+`skill.guard.max*` properties, for a Guardian, a Cavalier, unspecialized, Swordsman and
+Swashbuckler warriors, and a non-warrior with the Guardian spec number. The link
+functions, room lookup and skill check are stand-ins, and no journey drives a live fight.
+It also checks the `guard`, `guardian` and rescue-all help entries in both help catalogs
+and `help_index`.
 
 ## Item race restrictions and races without a bit
 
@@ -1363,3 +1870,30 @@ Not covered: the original report, an intermittent full-world crash in room 40200
 purging an apprentice and running `zresetfull`, was never attributed to this defect by a
 core or sanitizer trace. A full-world sanitizer journey with a real summoned
 master-and-follower chain would settle it.
+
+## Connection timeout observer cleanup
+
+The LR-11 churn fixture used to close incomplete TLS/WebSocket sockets before
+joining their timeout observers. A fast churn loop could therefore count its own
+cleanup as a server expiry or race the receiver. The fixture now retains and
+joins both observers through their existing 45-second deadlines, asserts both
+results, then closes the sockets in `finally`. No server code changes.
+
+A controlled before/after probe executes the actual `connection_churn` function:
+the former version closes sockets before observations finish; the repaired version
+waits for delayed server expiries, and an unexpired handshake fails before cleanup.
+The exact repaired test bytes also pass the full isolated server journey via:
+
+```sh
+PYTHONPATH=tests/async DURIS_REGRESSION_BUILD_CACHE=bin/regression-artifacts python3 bin/analysis/integrated/connection-fixed.py
+```
+
+The outside-tree copy kept the qualification tree stable and is byte-identical to
+`tests/async/test_connection_limit_journey.py`. The real run observed 2,001 attempts,
+TLS/WebSocket expiry at 37.53/27.25 seconds, successful reconnect, peak RSS +372 KiB,
+33 peak descriptors against 20 initially (10 after cleanup), 264,876 log bytes,
+maximum menu response 193.81 ms and no 250 ms pulse overrun. Evidence is retained
+in `bin/analysis/integrated/observer-probe.log` and `connection-fixed.log`.
+The controlled scheduling probe supplies the regression's before/after evidence;
+a normal timely server can pass the old fixture, so its green result alone does
+not establish correct observer cleanup.
