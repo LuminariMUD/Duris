@@ -33,8 +33,9 @@ float get_property(const char *key, double fallback)
 {
 	return std::string(key) == "epic.skills.minLevel" ? minimum : fallback;
 }
-int get_property(const char *, int fallback)
+int get_property(const char *key, int fallback)
 {
+	// TRAINING_PROPERTIES
 	return fallback;
 }
 int GET_CHAR_SKILL_P(P_char ch, int skill)
@@ -147,6 +148,44 @@ static void bought(int before, int learned)
 	       pc.skills[SKILL_TOUGHNESS].taught == learned);
 	assert(cash_charges == 1 && saves == 1 && waits == 1 && ledger.size() == 1);
 }
+static void documented_cost(int skill, const char *name, int first_epics, int first_plat,
+			    int total_epics, int total_plat)
+{
+	epic_teacher_skill *entry = epic_teachers;
+	while (entry->vnum && entry->skill != skill)
+		++entry;
+	assert(entry->vnum);
+	epic_reward *reward = epic_rewards;
+	while (reward->type && reward->value != skill)
+		++reward;
+	assert(reward->type);
+	skills[skill].name = const_cast<char *>(name);
+	int charged_epics = 0, charged_coins = 0;
+	for (int learned = 0; learned < 100; learned += get_property("epic.skillGain", 10))
+	{
+		reset(30, 0, entry->vnum);
+		pupil.player.m_class = reward->classes ? reward->classes & (~reward->classes + 1) :
+							 CLASS_WARRIOR;
+		pc.skills[SKILL_TOUGHNESS].learned = 100;
+		pc.skills[skill].learned = pc.skills[skill].taught = learned;
+		if (entry->pre_requisite)
+			pc.skills[entry->pre_requisite].learned = 100;
+		pc.epics = 1000000;
+		pupil.points.cash[0] = 1000000000;
+		practice(name);
+		assert(ledger.size() == 1 && cash_charges == 1);
+		const int epics = 1000000 - pc.epics;
+		const int coins = 1000000000 - GET_MONEY(&pupil);
+		if (learned == 0)
+			assert(epics == first_epics && (coins + 999) / 1000 == first_plat);
+		charged_epics += epics;
+		charged_coins += coins;
+	}
+	if (charged_epics != total_epics || (charged_coins + 999) / 1000 != total_plat)
+		fprintf(stderr, "%s: charged %d epics, %d plat; help says %d epics, %d plat\n",
+			name, charged_epics, (charged_coins + 999) / 1000, total_epics, total_plat);
+	assert(charged_epics == total_epics && (charged_coins + 999) / 1000 == total_plat);
+}
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
@@ -221,6 +260,10 @@ int main(int argc, char **argv)
 		practice();
 		unchanged(100);
 		assert(feedback.find("already mastered this skill") != std::string::npos);
+	}
+	else if (mode == "costs")
+	{
+		// DOCUMENTED_COSTS
 	}
 	else
 	{
