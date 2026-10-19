@@ -7,7 +7,7 @@ load. No database migration is required.
 
 After changing/importing help content, a greater god runs `page help` to queue
 a refresh and `page help status` to inspect readiness, generation, pending work,
-and the last error. These subcommands return before the legacy news/MOTD page
+and the last error. These subcommands return before the news/MOTD page
 reload. A queued message means accepted, not completed: confirm the generation
 advances. Concurrent refresh requests coalesce into one follow-up load; the earlier candidate
 is discarded so it cannot satisfy a later refresh request. Failures preserve the entire
@@ -25,7 +25,9 @@ Limits: 20,000 pages, 256-byte titles, 128 KiB per complete page record, 32 MiB
 total source data, 101 search results, and eight redirect lookups. Invalid,
 empty, oversized, or incomplete catalogs (including a missing default `help`
 page) do not replace working content. Source content and edit metadata are
-cached; race/class/skill details still render from current game state. SQL limits the
+cached; pages in dynamic race/class/spec/skill categories append current code
+details. The maintained importer assigns category 0, so its imported pages use
+their complete authored text instead. SQL limits the
 returned row payload and aggregate source bytes before libmysql allocates receive
 buffers. The active and candidate catalogs can coexist (up to 64 MiB of source data
 plus bounded container/string overhead); this is not a 32 MiB process-memory cap.
@@ -37,8 +39,7 @@ emulated. Redirects support complete multiword titles and fail safely on cycles.
 The flat-file build retains its existing startup catalog and local file behavior;
 `page help` reports that it uses the startup catalog. Restart after flat-file
 help changes. Both builds allow normal repeated help/info/rules browsing without
-`help.cooldown.secs` or character recovery. Existing input/output bounds still
-apply. The obsolete property is ignored if retained in a private properties file.
+character recovery. Existing input/output bounds still apply.
 
 Validation includes a held-worker test allowing 10,000 simulated other-player
 operations, actual help lookup/render regression bodies, and a MySQL loader

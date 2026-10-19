@@ -1,17 +1,20 @@
 # Critical Command Pipeline
 
-Non-idempotent gameplay work uses one bounded command contract. Each command has a
+Persisted domain commands use one bounded command contract. Each command has a
 cryptographically random 128-bit operation ID, a schema and payload version, a
 categorical source site and deadline, sorted affected entity keys, optional expected
 revisions, and owned payload bytes. It contains no live game pointers, SQL, Redis keys,
 paths, account names, or character names.
 
-The destination stores command identity and result in an InnoDB inbox, applies the typed
-domain mutation or history record, and writes its outbox record in the same transaction. Outside mini mode,
-startup requires the verified critical-command schema; failure leaves critical gameplay
-stopped. The legacy item/scalar/large queues, their flat fallback log and the raw SQL
-command executor are gone. Critical envelopes carry typed payloads; ordinary
-snapshots can still queue owned SQL statements through `sql_async`.
+In SQL-backed builds, the destination stores command identity and result in an
+InnoDB inbox, applies the typed domain mutation or history record, and writes its
+outbox record in the same transaction. Outside mini mode, SQL startup requires
+the verified critical-command schema. Flat-file builds select
+`flatfile_critical_command_repository_apply_selected` and do not start the SQL
+outbox worker; each domain still has its own capability and persistence rules.
+Coordinator initialization failure leaves critical gameplay stopped. Critical
+envelopes carry typed payloads; ordinary SQL-backed snapshots can still queue
+owned SQL statements through `sql_async`.
 
 ## Domains
 
@@ -118,16 +121,14 @@ filename/line, payload version, and a named reason: `malformed_payload`,
 Decoded payloads include actor PID, guild ID and artifact count; malformed data
 is marked `decoded=0`. Artifact IDs are retained in the bounded command keys.
 
-New v2 history does not compare live timers, souls or guild revisions with SQL.
-The former `artifact_expected_state`, `artifact_mirror` and `guild_revision`
-rejections describe pre-cutover behavior only. Current mirror disagreement is a
+Payload-v2 history does not compare live timers, souls or guild revisions with SQL.
+Current mirror disagreement is a
 snapshot/reconciliation problem, not grounds to reject an earned reward.
 
 These values are captured at rejection, before rollback, so a missing
 `critical_operation_inbox` row does not remove the evidence. Search the parent
 operation ID to connect the reward to its originating operation. No raw SQL,
 credentials, character names, or arbitrary command payloads enter this report.
-The older numeric-only notices cannot identify which comparison failed after the fact.
 
 The database inbox stores the canonical command/key hashes and authoritative result.
 An identical duplicate returns that result; different bytes under the same operation ID
@@ -183,7 +184,7 @@ Any nonzero mismatch blocks a release. Do not repair with direct SQL: keep the i
 ledger and current-row evidence, find the owning domain, and issue only a guarded
 idempotent command or a reviewed additive repair migration.
 
-For the #58 branch, `reconcile_artifact_guild_outcomes.sh` requires explicit
+`reconcile_artifact_guild_outcomes.sh` requires explicit
 `DB_HOST`, `DB_USER`, `DB_PASSWD`, `DB_NAME` and optional `DB_PORT`; it does not load
 the checkout's `.env`. Use disposable/local credentials. Its read-only snapshot
 checks artifact mirror agreement (including missing rows), item-owner references,
@@ -226,12 +227,6 @@ rows the coordinator would not queue. Focused validation is
 
 ## Artifact and guild rewards live in memory
 
-This section describes the locally qualified #58 implementation. Runtime,
-snapshot, SQL rollback/reload and producer-replay tests pass, together with the
-full-server boon/PvP, crash, shutdown, copyover and restart cases. Evidence and
-fixture boundaries are recorded in
-[log-server-review.md](../records/log-server-review.md#qualification-update-2026-10-14).
-
 For a new source award, the game thread captures eligible artifact feeds and guild
 prestige/construction from current memory, checks the combined bounds, applies
 them immediately, and publishes feedback. It queues artifact rows/souls and guild
@@ -266,8 +261,7 @@ revisions, preserves untouched records, rejects conflicting UIDs across the
 resulting catalog, and makes exact capture replay a no-op. Storage failure leaves
 current gameplay state readable and dirty for retry. Refused admission, including
 a full writer, never performs a synchronous fallback. Flat reports still read
-persisted catalog state and may lag live state. The obsolete direct file-backed
-gameplay mutators have been removed.
+persisted catalog state and may lag live state.
 
 Positive feeding feedback is `You feel a sense of satisfaction from above.`
 The live artifact/guild award publishes it once even when several artifacts feed;
@@ -314,7 +308,7 @@ recovery-journal transaction.
 
 Domain drains run before coordinator quiescence and again after final copyover
 saves. Failure aborts copyover through the existing resume guard; shutdown reports
-unresolved histories and dirty entities. The full-server lifecycle cases pass.
+unresolved histories and dirty entities.
 `world persistence` displays domain live applications, capture failures, dirty
 snapshots, history results/loss/pending counts, admission failures and oldest
 pending-history age separately. Its age is not wizlog suppression age.
@@ -339,7 +333,7 @@ journal or new flat-file reward support; the MySQL capability check remains expl
 
 ## Money lives in memory
 
-Currency is no longer a critical command. `currency_transaction_submit()` and its
+Currency is not a critical command. `currency_transaction_submit()` and its
 variants change the character's wallet, and the bank view of every online character
 of its account and side, at once, then call their completion before returning:
 committed, or refused with `ENOSPC` when a balance would go below zero. The player's
