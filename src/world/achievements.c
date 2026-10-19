@@ -775,7 +775,7 @@ void update_addicted_to_blood(P_char ch, P_char victim)
 					}
 				}
 				gain_exp(ch, victim, GET_EXP(victim) * bonus / (allies * 100),
-					 EXP_KILL);
+					 EXP_KILL_BONUS);
 			}
 			// Cap at 45 kills and 20% bonus exp.
 			if (af->modifier < 45)

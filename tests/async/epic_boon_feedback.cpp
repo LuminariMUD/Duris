@@ -23,6 +23,7 @@
 #include <cstdarg>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 P_room world = nullptr;
 zone_data *zone_table = nullptr;
@@ -47,6 +48,9 @@ static affected_type gain_tag = {};
 static std::string feedback;
 static std::vector<critical_command> commands;
 static int artifact_awards = 0, dirty = 0, experience = 0;
+static std::string flat_root;
+static bool online = true, fail_acknowledgement = false;
+static int nested_submissions = 0;
 
 float get_property(const char *, double fallback)
 {
@@ -106,7 +110,7 @@ void send_to_char_f(P_char, const char *format, ...)
 }
 P_char find_player_by_pid(int pid)
 {
-	return pid == 42 ? &actor : nullptr;
+	return online && pid == 42 ? &actor : nullptr;
 }
 void mark_player_dirty_components(int, player_component_mask_t)
 {
@@ -114,6 +118,8 @@ void mark_player_dirty_components(int, player_component_mask_t)
 }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
+	command.accepted_at_usec = commands.size() + 1;
+	assert(critical_command_normalize(&command));
 	commands.push_back(std::move(command));
 	return refuse_history ? critical_submit_result::unavailable :
 				critical_submit_result::accepted;
@@ -122,20 +128,26 @@ bool artifact_guild_transaction_submit(P_char, const critical_operation_id &, in
 {
 	assert(amount == 4 && type == EPIC_BOON);
 	++artifact_awards;
+	while (nested_submissions > 0)
+	{
+		--nested_submissions;
+		assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	}
+	if (fail_acknowledgement)
+	{
+		fail_acknowledgement = false;
+		std::filesystem::rename(flat_root + "/domains", flat_root + "/unavailable");
+	}
 	return true;
 }
 persistence_mode persistence_mode_get()
 {
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
+	return flat_root.empty() ? PERSISTENCE_MODE_MARIADB_PRIMARY :
+				   PERSISTENCE_MODE_FLATFILE_PRIMARY;
 }
 const char *persistence_mode_flatfile_root()
 {
-	return nullptr;
-}
-flatfile_boon_result flatfile_boon_acknowledge_reward(const std::string &,
-						      const critical_operation_id &, std::string *)
-{
-	std::abort();
+	return flat_root.empty() ? nullptr : flat_root.c_str();
 }
 int gain_exp(P_char, P_char, int amount, int)
 {
@@ -182,7 +194,7 @@ void obj_to_char(P_obj, P_char)
 // EPIC_AWARD_FUNCTIONS
 // BOON_PUBLICATION
 
-static void publication_case(int level, int type, int failure)
+static void reset_actor(int level, int64_t epics)
 {
 	boon_reward_transaction_reset_for_tests();
 	actor = {};
@@ -190,8 +202,7 @@ static void publication_case(int level, int type, int failure)
 	gain_tag = {};
 	actor.only.pc = &pc;
 	pc.pid = 42;
-	pc.epics = failure == 2 ? std::numeric_limits<int64_t>::max() : 100;
-	const auto initial = pc.epics;
+	pc.epics = epics;
 	actor.player.name = const_cast<char *>("Boonfixture");
 	actor.player.level = level;
 	actor.player.racewar = RACEWAR_GOOD;
@@ -201,6 +212,15 @@ static void publication_case(int level, int type, int failure)
 	feedback.clear();
 	commands.clear();
 	artifact_awards = dirty = experience = 0;
+	online = true;
+	fail_acknowledgement = false;
+	nested_submissions = 0;
+}
+
+static void publication_case(int level, int type, int failure)
+{
+	reset_actor(level, failure == 2 ? std::numeric_limits<int64_t>::max() : 100);
+	const auto initial = pc.epics;
 	assert(boon_reward_transaction_submit(&actor, nullptr, 1, BOPT_LEVEL));
 	assert(commands.size() == 1 && boon_reward_transaction_health_copy().pending == 1);
 	const auto parent = commands.front().operation_id;
@@ -247,13 +267,117 @@ static void publication_case(int level, int type, int failure)
 	assert(pc.epics == initial + (rewarded ? 4 : 0) && artifact_awards == rewarded);
 }
 
-int main()
+static void flat_publication_case(const std::string &root, int ordering, bool fail_ack)
 {
+	reset_actor(20, 100);
+	flat_root = root;
+	std::filesystem::create_directories(flat_root + "/domains");
+	std::filesystem::permissions(flat_root, std::filesystem::perms::owner_all);
+	std::filesystem::permissions(flat_root + "/domains", std::filesystem::perms::owner_all);
+	flatfile_boon_definition definition;
+	definition.id = 7;
+	definition.type = BTYPE_EPIC;
+	definition.option = BOPT_LEVEL;
+	definition.criteria = 20;
+	definition.bonus = 4;
+	definition.active = true;
+	definition.author = "test";
+	std::string error;
+	assert(flatfile_boon_establish(flat_root, { definition }, &error) ==
+	       flatfile_boon_result::ok);
+	assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	const auto command = commands.front();
+	const auto applied = flatfile_boon_repository_apply(flat_root, command);
+	assert(applied.outcome == critical_apply_outcome::applied);
+	critical_completion completion = {};
+	completion.operation_id = command.operation_id;
+	completion.outcome = applied.outcome;
+	completion.result_size = applied.result_size;
+	completion.result_payload = applied.result_payload;
+	fail_acknowledgement = fail_ack;
+	if (ordering == 0)
+	{
+		// Login sees the durable receipt while the live completion is outstanding.
+		boon_reward_transaction_player_ready(&actor);
+		assert(pc.epics == 104 && artifact_awards == 1);
+	}
+	else if (ordering == 1)
+		online = false; // Completion drains while the player is disconnected.
+	else if (ordering == 2)
+		boon_reward_transaction_reset_for_tests(); // Recovery after a process restart.
+	boon_reward_transaction_handle_completions(&completion, 1);
+	online = true;
+	if (ordering != 0)
+		boon_reward_transaction_player_ready(&actor);
+	assert(pc.epics == 104 && artifact_awards == 1 && dirty == 1);
+	if (fail_ack)
+	{
+		assert(boon_reward_transaction_health_copy().pending == 1);
+		std::filesystem::rename(flat_root + "/unavailable", flat_root + "/domains");
+		flatfile_boon_pending_reward reward;
+		assert(flatfile_boon_find_pending_reward(flat_root, 42, &reward, &error) ==
+		       flatfile_boon_result::ok);
+	}
+	const auto messages = feedback;
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		boon_reward_transaction_player_ready(&actor);
+		completion.outcome = critical_apply_outcome::already_applied;
+		boon_reward_transaction_handle_completions(&completion, 1);
+	}
+	assert(pc.epics == 104 && artifact_awards == 1 && dirty == 1 && feedback == messages);
+	assert(feedback.find("completed boon # 7") != std::string::npos);
+	assert(feedback.find("completed boon # 7", feedback.find("completed boon # 7") + 1) ==
+	       std::string::npos);
+	assert(boon_reward_transaction_health_copy().pending == 0);
+	flatfile_boon_pending_reward reward;
+	assert(flatfile_boon_find_pending_reward(flat_root, 42, &reward, &error) ==
+	       flatfile_boon_result::not_found);
+	flat_root.clear();
+}
+
+static void nested_publication_case()
+{
+	reset_actor(20, 100);
+	assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	boon_reward_result result = {};
+	result.pid = 42;
+	result.entry_count = 1;
+	result.entries[0].boon_id = 7;
+	result.entries[0].type = BTYPE_EPIC;
+	result.entries[0].flags = BOON_RESULT_COMPLETED;
+	result.entries[0].bonus = 4;
+	std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+	assert(boon_reward_command_encode_result(result, &bytes));
+	critical_completion completion = {};
+	completion.operation_id = commands.front().operation_id;
+	completion.outcome = critical_apply_outcome::applied;
+	completion.result_size = bytes.size();
+	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+	nested_submissions = 128; // Award-side level-ups can submit more boon operations.
+	boon_reward_transaction_handle_completions(&completion, 1);
+	assert(boon_reward_transaction_health_copy().pending == 128);
+	const auto messages = feedback;
+	boon_reward_transaction_handle_completions(&completion, 1);
+	assert(pc.epics == 104 && artifact_awards == 1 && feedback == messages);
+	assert(boon_reward_transaction_health_copy().pending == 128);
+}
+
+int main(int argc, char **argv)
+{
+	assert(argc == 2);
 	for (int level : { 1, 29, 30, 49, 50, 56 })
 		for (int failure : { 0, 1, 2, 3 })
 		{
 			publication_case(level, BTYPE_EPIC, failure);
 			publication_case(level, BTYPE_EXP, failure);
 		}
-	puts("PASS real boon completion -> all-level award result; ID/overflow failure, ledger refusal, non-epic rewards and replay");
+	for (int ordering : { 0, 1, 2, 3 })
+		for (bool fail_ack : { false, true })
+			flat_publication_case(std::string(argv[1]) + "/" +
+						      std::to_string(ordering) +
+						      (fail_ack ? "-fail" : "-ok"),
+					      ordering, fail_ack);
+	nested_publication_case();
+	puts("PASS boon rewards: all-level awards, failures, reconnect orderings, acknowledgement retries and nested submissions");
 }

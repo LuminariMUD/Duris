@@ -34,6 +34,7 @@ struct pending_reward
 	uint32_t pid;
 	boon_reward_payload payload;
 	uint64_t submitted_at_msec;
+	bool published = false;
 };
 
 std::unordered_map<std::string, pending_reward> pending;
@@ -64,6 +65,41 @@ bool acknowledge_flat_reward(const critical_operation_id &operation_id)
 	persistence_alert(AVATAR, "boon_reward", "player", "unknown", "acknowledge",
 			  "flat_write_failed", "error=%s", error.c_str());
 	return false;
+}
+
+bool publish_reward(P_char character, const critical_operation_id &operation_id, double data,
+		    const boon_reward_result &result)
+{
+	const std::string key = operation_key(operation_id);
+	bool publish;
+	try
+	{
+		auto [entry, inserted] = pending.try_emplace(
+			key, pending_reward{ result.pid, {}, monotonic_msec() });
+		publish = !entry->second.published;
+		if (publish)
+		{
+			// Publication may submit more boons and rehash pending. Consume the award
+			// first and use its key, rather than this iterator, after calling out.
+			entry->second.published = true;
+			if (!inserted)
+				++health.committed;
+			health.max_results =
+				std::max<uint64_t>(health.max_results, result.entry_count);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	if (publish)
+		boon_publish_transaction_result(character, data, result);
+	// Keep the published marker until acknowledgement succeeds so reconnect only
+	// retries the receipt, never the reward, after a failed write.
+	if (!acknowledge_flat_reward(operation_id))
+		return false;
+	pending.erase(key);
+	return true;
 }
 } // namespace
 
@@ -137,19 +173,25 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 		if (committed)
 		{
 			P_char character = find_player_by_pid(found->second.pid);
-			if (character)
+			if (character || found->second.published)
 			{
-				boon_publish_transaction_result(character,
-								found->second.payload.data, result);
-				acknowledge_flat_reward(completions[index].operation_id);
+				const double data = found->second.payload.data;
+				publish_reward(character, completions[index].operation_id, data,
+					       result);
 			}
-			health.max_results =
-				std::max<uint64_t>(health.max_results, result.entry_count);
-			++health.committed;
+			else
+			{
+				health.max_results =
+					std::max<uint64_t>(health.max_results, result.entry_count);
+				++health.committed;
+				pending.erase(found);
+			}
 		}
 		else
+		{
 			++health.rejected;
-		pending.erase(found);
+			pending.erase(found);
+		}
 	}
 	health.pending = pending.size();
 }
@@ -177,10 +219,11 @@ void boon_reward_transaction_player_ready(P_char character)
 					  error.c_str());
 			break;
 		}
-		boon_publish_transaction_result(character, reward.event_data, reward.result);
-		if (!acknowledge_flat_reward(reward.operation_id))
+		if (!publish_reward(character, reward.operation_id, reward.event_data,
+				    reward.result))
 			break;
 	}
+	health.pending = pending.size();
 }
 
 critical_outbox_delivery_result
