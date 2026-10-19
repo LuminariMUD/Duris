@@ -2,7 +2,7 @@
 
 Tracking: [issue #166](https://github.com/LuminariMUD/Duris/issues/166).
 Implementation branch: `branch/issue-166-hatred`.
-Status: planning complete; implementation and runtime acceptance remain open.
+Status: implementation in progress; runtime acceptance remains open.
 Reviewed on 2026-10-18 against `origin/master` at
 `9017ce1ca940cbe74a6162fca3d4d8c113eeb8b6`.
 The issue body and its empty comment thread were read on that date.
@@ -34,7 +34,45 @@ A code repair can be ready while root-cause and live acceptance criteria stay op
 
 Non-goals: racial rebalance, area-wide race rewrites, a new affect/event framework,
 new telemetry service, schema migrations, production changes, deployment, or a restart.
-This publication contains documentation only.
+The original publication contained documentation only.
+
+## Active implementation handoff (2026-10-19)
+
+- Delivery remains on `branch/issue-166-hatred`. Master `a32d6a4f3` was merged
+  at `366095875`, preserving this plan byte-for-byte during conflict resolution.
+  Master's previous active document is preserved byte-for-byte as
+  [plan-issue-57.md](plan-issue-57.md). Issue #166 is still open with no comments.
+- Outcome: bounded same-room race matching, exactly one transient combat/spell
+  pulse pair, one message per transition, and one recoverable watcher per resident.
+  Non-goals remain those above; no production mutations or deployment are included.
+- Ablation: retain the existing race table, eligibility/visibility rules, effect
+  APIs and scheduler. No second allowlist, persistent active flag, movement hook,
+  timer service, or general event/affect abstraction is required. Keep lifecycle
+  handling with the watcher and existing entry/recovery paths.
+- Expected files: `innates.c`, `nanny.c`, `prototypes.h`, `duris.properties`,
+  copyover recovery only if its entry trace proves a missing start, and focused
+  Hatred harness/journey files. Proof uses the production callback, table,
+  eligibility, visibility, affect removal/messaging and scheduler with ASan/UBSan,
+  followed by both server builds and disposable gameplay/persistence journeys.
+- Chunk 1 repairs bounded table matching, canonical pair repair and safe removal.
+  It preserves the existing finite duration/refresh until the watcher lifetime
+  change is qualified in a dependent PR. The callback clears stale state after
+  temporary eligibility loss and continues checking its living owner.
+- Baseline `366095875` independently fails three production-code harness cases:
+  UBSan reports column 5 outside `int[5]`; ASan reports a freed affect read during
+  cleanup; an existing single combat modifier stays incomplete. Logs and the
+  baseline runner are private under ignored `bin/analysis/issue166/`.
+- Chunk 1 proof passed: `python3 tests/async/test_innate_hatred.py` (seven modes,
+  ASan/UBSan, real eligibility/visibility, effect removal/messaging and scheduler),
+  `test_affect_wear_off_message_contract.py`, `test_innate_reflection.py`,
+  `test_race_innate_help_sync.py` and `make -C src -j4`.
+  The harness replaces world services and stat recalculation; pulse contributions
+  use the real `affect_modify`. Running-server journeys remain required.
+- Next: publish chunk 1 for review; qualify unlimited transient duration,
+  idempotent start/rearm, failure cleanup, level-unlock/temporary-ineligibility
+  recovery and the missing copyover entry start. Then run both backend journeys.
+- The production build, effective overrides and offending NPC trace are still
+  unavailable. Keep the live root-cause gate open unless direct evidence resolves it.
 
 ## What the current code actually does
 
