@@ -74,7 +74,7 @@ The CLI creates missing output directories before retaining the JSON result.
 `test_psp_regen_journey_output.py` executes its argument parsing and result writing
 with the full journey stubbed, checking a missing nested parent and an existing file.
 
-See `docs/ongoing-projects/plan.md` for exact build commands, binary hash and review
+See `docs/ongoing-projects/plan-issue-57.md` for exact build commands, binary hash and review
 stack. No migration, production rollout or shared-player changes were performed.
 
 ## Combined log-review integration qualification
