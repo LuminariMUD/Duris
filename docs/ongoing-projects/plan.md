@@ -59,7 +59,11 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Upstream sync, 2026-10-19
 
-Final publication refresh also merges master `fcb54a1d068015f7ab3887944ba8929208568c0d` (October 19 player news). This follow-up changes only the news content and this note; the validated source, test, world and OpenSpec trees are unchanged. The news reload regression passes on both SQL and flat-file builds.
+Merged the ordinary-documentation cleanup from master. Current zone contracts
+and their historical record live under `docs/`; gameplay, regression tests and
+the paused character-mechanics checkpoint are unchanged.
+
+Final publication refresh also merges master `fcb54a1d068015f7ab3887944ba8929208568c0d` (October 19 player news). This follow-up changes only the news content and this note; the validated source, test, world and documentation trees are unchanged. The news reload regression passes on both SQL and flat-file builds.
 
 Merged master `f1c21a92f79d0bf429d5e241c2b890dce27e342d` without changing the paused feature scope. Preserve the item-restriction checkpoint and first-work-on-resume instructions below. Master now supplies the Hatred watcher/lifecycle repair, retained-item capture, Holy Sacrifice limits, object-template updates and weight propagation fixes. The older Hatred implementation and mutation descriptions below are historical; the focused upstream Hatred regression owns current watcher/effect behavior. Conflict resolution retains the mechanics bindings alongside the newer production behavior.
 
