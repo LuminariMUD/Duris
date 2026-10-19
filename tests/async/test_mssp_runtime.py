@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 COMM = (SRC / "comm.c").read_text()
-assert "gmcp_negotiate(newd);\n\tmssp_advertise(newd);" in COMM
+assert "mssp_advertise" not in COMM
 
 HARNESS = r'''
 #include "net/mssp.h"
@@ -50,36 +50,25 @@ static void require(bool condition, int code)
 		std::exit(code);
 }
 
-static std::string mssp_pair(const char *var, const char *val)
-{
-	return std::string(1, MSSP_VAR) + var + std::string(1, MSSP_VAL) + val;
-}
-
 int main()
 {
 	int tests = 0;
 	char request[] = { (char)IAC, (char)DO, TELOPT_MSSP };
 	char decline[] = { (char)IAC, (char)DONT, TELOPT_MSSP };
 
-	// 1. Telnet clients are offered MSSP; WebSockets and null descriptors are not.
+	// 1. MSSP is disabled; WebSocket and null descriptors emit nothing.
 	{
 		descriptor_data websocket = {};
 		websocket.websocket = 1;
 		writes = 0;
-		mssp_advertise(nullptr);
-		mssp_advertise(&websocket);
+		mssp_send(nullptr);
 		require(parse_telnet_options(&websocket, request, sizeof request) == 3, 11);
 		require(writes == 0, 1);
-
-		descriptor_data d = {};
-		mssp_advertise(&d);
-		const unsigned char expected[] = { IAC, WILL, TELOPT_MSSP };
-		require(sent == std::string(reinterpret_cast<const char *>(expected), 3), 2);
 	}
 	tests++;
 
-	// 2. The reply is one IAC SB MSSP ... IAC SE block that counts only playing mortals,
-	//    judging switched or morphed players by their real character.
+	// 2. Fragmented requests wait for completion, then receive only WONT,
+	//    regardless of mortal, immortal, switched, or morphed presence.
 	descriptor_data crawler = {};
 	{
 		char_data mortal = {}, immortal = {}, low_mob = {}, high_mob = {};
@@ -110,19 +99,8 @@ int main()
 		require(writes == 0 && !crawler.mssp_sent, 14);
 		require(parse_telnet_options(&crawler, request, sizeof request) == 3, 15);
 		require(writes == 1, 16);
-		require(sent.size() > 5, 3);
-		require((unsigned char)sent[0] == IAC && (unsigned char)sent[1] == SB &&
-				(unsigned char)sent[2] == TELOPT_MSSP,
-			4);
-		require((unsigned char)sent[sent.size() - 2] == IAC &&
-				(unsigned char)sent[sent.size() - 1] == SE,
-			5);
-		require(sent.find(mssp_pair("PLAYERS", "2")) != std::string::npos, 6);
-		require(sent.find(mssp_pair("UPTIME", "1761631200")) != std::string::npos, 7);
-		require(sent.find(mssp_pair("NAME", "DurisMUD")) != std::string::npos, 8);
-
-		// No stray IAC inside the payload, which would end the block early.
-		require(sent.find(static_cast<char>(IAC), 1) == sent.size() - 2, 9);
+		const unsigned char expected[] = { IAC, WONT, TELOPT_MSSP };
+		require(sent == std::string(reinterpret_cast<const char *>(expected), 3), 2);
 		descriptor_list = nullptr;
 	}
 	tests++;
@@ -148,7 +126,8 @@ int main()
 		require(writes == 0 && !fresh.mssp_sent, 21);
 		require(parse_telnet_options(&fresh, request, sizeof request) == 3, 22);
 		require(writes == 1 && fresh.mssp_sent, 23);
-		require(sent.find(mssp_pair("PLAYERS", "0")) != std::string::npos, 24);
+		const unsigned char expected[] = { IAC, WONT, TELOPT_MSSP };
+		require(sent == std::string(reinterpret_cast<const char *>(expected), 3), 24);
 	}
 	tests++;
 

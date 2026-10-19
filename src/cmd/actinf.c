@@ -118,7 +118,6 @@ extern int avail_descs;
 extern int help_array[27][2];
 extern int info_array[27][2];
 extern int max_descs;
-extern int max_descs_this_hour;
 extern const int curr_ingame_good;
 extern const int max_ingame_good;
 extern const int curr_ingame_evil;
@@ -7813,22 +7812,6 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 					"&+rRecord number of connections this boot: %d.&n\n",
 					max_descs);
 			}
-			else
-			{
-				checked_snprintf(
-					who_output + strlen(who_output),
-					MAX_STRING_LENGTH - strlen(who_output),
-					"&+rRecord number of connections this hour: %d.&n\n",
-					max_descs_this_hour);
-			}
-			if ((curr_ingame_good > 0) && !IS_RACEWAR_GOOD(ch) && !IS_TRUSTED(ch))
-				checked_snprintf(who_output + strlen(who_output),
-						 MAX_STRING_LENGTH - strlen(who_output),
-						 "There are &+Ygood(s)&N online.\n");
-			if ((curr_ingame_evil > 0) && !IS_RACEWAR_EVIL(ch) && !IS_TRUSTED(ch))
-				checked_snprintf(who_output + strlen(who_output),
-						 MAX_STRING_LENGTH - strlen(who_output),
-						 "There are &+Revil(s)&N online.\n");
 		}
 		send_to_char(who_output, ch, LOG_NONE);
 		strcpy(who_output, "");
@@ -9941,18 +9924,13 @@ void do_scan(P_char ch, char *argument, int /*cmd*/)
 
 void web_info(void)
 {
-	char *tmstr;
 	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH];
 	char Gbuf3[MAX_STRING_LENGTH];
 	const char *suf;
 	int weekday, day;
 	long ct;
-	struct tm *lt;
 	struct time_info_data uptime;
 	FILE *opf;
-	P_char t_ch;
-	int number_player = 0;
-	int nb_good = 0, nb_evil = 0;
 
 	Gbuf1[0] = 0;
 	Gbuf2[0] = 0;
@@ -10002,31 +9980,6 @@ void web_info(void)
 	snprintf(Gbuf2, MAX_STRING_LENGTH, "Time elapsed since boot-up: %d:%s%d:%s%d\n",
 		 uptime.day * 24 + uptime.hour, (uptime.minute > 9) ? "" : "0", uptime.minute,
 		 (uptime.second > 9) ? "" : "0", uptime.second);
-
-	strcat(Gbuf3, Gbuf2);
-
-	lt = localtime(&ct);
-	tmstr = asctime(lt);
-	*(tmstr + strlen(tmstr) - 1) = '\0';
-	//  snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (%s)\n",
-	//          tmstr, (lt->tm_isdst <= 0) ? "EDT" : "EDT");
-
-	//  strcat(Gbuf3, Gbuf2);
-
-	for (t_ch = character_list; t_ch; t_ch = t_ch->next)
-	{
-		if (!IS_NPC(t_ch) && t_ch->desc)
-		{
-			number_player++;
-			if (EVIL_RACE(t_ch))
-				nb_evil++;
-			else
-				nb_good++;
-		}
-	}
-
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "&+RRecord number of connections this boot: &+W%d&n\n",
-		 max_descs);
 
 	strcat(Gbuf3, Gbuf2);
 
