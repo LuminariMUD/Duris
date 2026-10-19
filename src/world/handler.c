@@ -233,8 +233,7 @@ void recalc_container_weight(P_obj cont)
  * the figure in either direction -- but between the move and the next capacity
  * check the number a player is carrying is simply wrong. Calling it here makes
  * "wrong until something asks" into "right immediately", and
- * propagate_weight_delta() inside add_weight() carries the correction up to
- * whoever is holding the bag.
+ * add_weight() carries the correction up to whoever is holding the bag.
  *
  * Gated on the reduction, not on being a container: this reads the prototype,
  * and every container that reduces nothing keeps the cheap incremental path it
@@ -5031,33 +5030,7 @@ bool leave_safe_room(P_char ch)
 // This function adds weight to the object, then adds weight to its container/holder/wearer,
 //   but only the amount of weight above the magical weightlessness of said object.
 // This function handles adding a negative weight properly as well.
-// Round the old and new worn contributions separately, as equip_char / unequip_char do.
-static void propagate_weight_delta(P_obj obj, int old_weight, int new_weight)
-{
-	if (!obj || old_weight == new_weight)
-	{
-		return;
-	}
-	const int weight = new_weight - old_weight;
-
-	switch (obj->loc_p)
-	{
-	case LOC_WORN:
-		encumbrance_adjust(obj->loc.wearing, new_weight / 2 - old_weight / 2);
-		break;
-	case LOC_CARRIED:
-		encumbrance_adjust(obj->loc.carrying, weight);
-		break;
-	case LOC_INSIDE:
-		add_weight(obj->loc.inside, weight);
-		break;
-	case LOC_ROOM:
-	case LOC_NOWHERE:
-	default:
-		break;
-	}
-}
-
+// Worn objects contribute half their effective weight (matches equip_char / unequip_char).
 void add_weight(P_obj obj, int weight)
 {
 	if (!obj || !weight)
@@ -5067,5 +5040,24 @@ void add_weight(P_obj obj, int weight)
 
 	const int old_weight = GET_OBJ_WEIGHT(obj);
 	obj->weight += weight;
-	propagate_weight_delta(obj, old_weight, GET_OBJ_WEIGHT(obj));
+	const int new_weight = GET_OBJ_WEIGHT(obj);
+	const int carry_delta = new_weight - old_weight;
+
+	switch (obj->loc_p)
+	{
+	case LOC_WORN:
+		// Round the old and new contributions, so odd-pound changes cannot drift.
+		encumbrance_adjust(obj->loc.wearing, new_weight / 2 - old_weight / 2);
+		break;
+	case LOC_CARRIED:
+		encumbrance_adjust(obj->loc.carrying, carry_delta);
+		break;
+	case LOC_INSIDE:
+		add_weight(obj->loc.inside, carry_delta);
+		break;
+	case LOC_ROOM:
+	case LOC_NOWHERE:
+	default:
+		break;
+	}
 }

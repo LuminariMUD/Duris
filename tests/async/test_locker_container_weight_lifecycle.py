@@ -22,7 +22,6 @@ handler = "\n".join(extract_function("world/handler.c", signature) for signature
     "static void encumbrance_adjust(",
     "void recalc_container_weight(",
     "static void resync_reducing_container(",
-    "static void propagate_weight_delta(",
     "void add_weight(P_obj obj, int weight)\n{",
     "bool obj_can_nest(",
     "bool obj_is_in_container(",
@@ -162,53 +161,93 @@ static void movement(bool append) {
     extract_obj(item, TRUE);
 }
 
-static void worn_movement(bool append, int reduction) {
-    P_obj bag = read_object(5, REAL);
-    bag->value[4] = reduction;
-    char_data wearer = {};
-    bag->loc_p = LOC_WORN;
-    bag->loc.wearing = &wearer;
-    GET_CARRYING_W(&wearer) = 102; // Other equipment contributes 100, the shell 2.
-    P_obj items[3];
-    const int item_weight = reduction ? 2 : 1;
-    for (P_obj &item : items) {
-        item = read_object(3, REAL);
-        item->weight = item_weight;
-    }
+static void worn_movement(bool append, bool nested) {
     auto put = append ? obj_to_obj_at_end : obj_to_obj;
-    for (int cycle = 0; cycle < 50; ++cycle) {
-        for (int count = 1; count <= 3; ++count) {
-            put(items[count - 1], bag);
-            const int contents = count * item_weight;
-            assert(bag->weight == 4 + contents - contents * reduction / 100);
-            assert(GET_CARRYING_W(&wearer) == 100 + bag->weight / 2);
+    for (int reduction : {0, 50}) {
+        // Model the four-pound #494 gathering bag, directly worn or inside
+        // another worn container. Preserve eleven pounds of unrelated load.
+        char_data carrier = {};
+        obj_data outer = {};
+        outer.type = ITEM_CONTAINER;
+        outer.R_num = 4;
+        outer.weight = 10;
+        outer.loc_p = LOC_WORN;
+        outer.loc.wearing = &carrier;
+        P_obj bag = read_object(5, REAL);
+        bag->value[4] = reduction;
+        bag->loc_p = LOC_WORN;
+        bag->loc.wearing = &carrier;
+        GET_CARRYING_W(&carrier) = 11 + (nested ? 5 : 2);
+        if (nested) {
+            bag->loc_p = LOC_NOWHERE;
+            put(bag, &outer);
         }
-        for (int count = 2; count >= 0; --count) {
-            obj_from_obj(items[count]);
-            const int contents = count * item_weight;
-            assert(bag->weight == 4 + contents - contents * reduction / 100);
-            assert(GET_CARRYING_W(&wearer) == 100 + bag->weight / 2);
+        auto check = [&](int count) {
+            const int bag_weight = 4 + count * 2 - count * 2 * reduction / 100;
+            const int worn_weight = (nested ? 10 : 0) + bag_weight;
+            assert(bag->weight == bag_weight);
+            if (nested) assert(outer.weight == worn_weight);
+            assert(GET_CARRYING_W(&carrier) == 11 + worn_weight / 2);
+        };
+        for (int cycle = 0; cycle < 50; ++cycle) {
+            P_obj items[3];
+            for (int i = 0; i < 3; ++i) {
+                items[i] = read_object(3, REAL);
+                items[i]->weight = 2;
+                put(items[i], bag);
+                check(i + 1);
+            }
+            for (int i = 2; i >= 0; --i) {
+                obj_from_obj(items[i]);
+                check(i);
+                extract_obj(items[i], TRUE);
+            }
         }
-        assert(bag->weight == 4 && GET_CARRYING_W(&wearer) == 102);
+        if (nested) {
+            obj_from_obj(bag);
+            assert(outer.weight == 10 && GET_CARRYING_W(&carrier) == 16);
+        }
+        extract_obj(bag, TRUE);
     }
-    for (P_obj item : items) extract_obj(item, TRUE);
-    extract_obj(bag, TRUE);
 }
 
-static void worn_weight_boundaries() {
-    obj_data bag = {};
-    char_data wearer = {};
-    bag.weight = -4;
-    bag.loc_p = LOC_WORN;
-    bag.loc.wearing = &wearer;
-    GET_CARRYING_W(&wearer) = 100;
+static void weight_changes(bool worn) {
+    char_data carrier = {};
+    obj_data obj = {};
+    obj.weight = -3;
+    obj.loc_p = worn ? LOC_WORN : LOC_CARRIED;
+    if (worn) obj.loc.wearing = &carrier;
+    else obj.loc.carrying = &carrier;
+    GET_CARRYING_W(&carrier) = 11;
     for (int cycle = 0; cycle < 50; ++cycle) {
-        for (int weight : {-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0, -1, -4}) {
-            add_weight(&bag, weight - bag.weight);
-            assert(bag.weight == weight);
-            assert(GET_CARRYING_W(&wearer) == 100 + (weight > 0 ? weight / 2 : 0));
+        int expected = -3;
+        for (int delta : {2, 2, 1, 1, -1, -1, -2, -2, 4, -4}) {
+            expected += delta;
+            add_weight(&obj, delta);
+            assert(obj.weight == expected);
+            assert(GET_CARRYING_W(&carrier) == 11 + (expected > 0 ? expected : 0) / (worn ? 2 : 1));
         }
+        assert(obj.weight == -3 && GET_CARRYING_W(&carrier) == 11);
     }
+    add_weight(nullptr, 1);
+    add_weight(&obj, 0);
+    assert(obj.weight == -3 && GET_CARRYING_W(&carrier) == 11);
+}
+
+static void worn_recalculation() {
+    char_data carrier = {};
+    P_obj bag = read_object(5, REAL);
+    bag->loc_p = LOC_WORN;
+    bag->loc.wearing = &carrier;
+    for (int stale : {7, 1, -3}) {
+        bag->weight = stale;
+        GET_CARRYING_W(&carrier) = 11 + (stale > 0 ? stale : 0) / 2;
+        recalc_container_weight(bag);
+        assert(bag->weight == 4 && GET_CARRYING_W(&carrier) == 13);
+        recalc_container_weight(bag);
+        assert(bag->weight == 4 && GET_CARRYING_W(&carrier) == 13);
+    }
+    extract_obj(bag, TRUE);
 }
 
 static sql_row item_row(int id, int vnum, int parent, int weight, int reduction = 0) {
@@ -262,11 +301,13 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "sorting")) sorting();
     else if (!strcmp(argv[1], "insert")) movement(false);
     else if (!strcmp(argv[1], "append")) movement(true);
-    else if (!strcmp(argv[1], "worn-insert")) worn_movement(false, 50);
-    else if (!strcmp(argv[1], "worn-append")) worn_movement(true, 50);
-    else if (!strcmp(argv[1], "worn-plain-insert")) worn_movement(false, 0);
-    else if (!strcmp(argv[1], "worn-plain-append")) worn_movement(true, 0);
-    else if (!strcmp(argv[1], "worn-boundaries")) worn_weight_boundaries();
+    else if (!strcmp(argv[1], "worn-insert")) worn_movement(false, false);
+    else if (!strcmp(argv[1], "worn-append")) worn_movement(true, false);
+    else if (!strcmp(argv[1], "worn-nested-insert")) worn_movement(false, true);
+    else if (!strcmp(argv[1], "worn-nested-append")) worn_movement(true, true);
+    else if (!strcmp(argv[1], "worn-weight-changes")) weight_changes(true);
+    else if (!strcmp(argv[1], "carried-weight-changes")) weight_changes(false);
+    else if (!strcmp(argv[1], "worn-recalculation")) worn_recalculation();
     else if (!strcmp(argv[1], "public-load")) loading(false);
     else if (!strcmp(argv[1], "private-load")) loading(true);
     else std::abort();
@@ -288,8 +329,8 @@ with tempfile.TemporaryDirectory(prefix="locker-container-weight-", dir=build) a
     ], check=True)
     failed = []
     for case in ("sorting", "insert", "append", "public-load", "private-load",
-                 "worn-insert", "worn-append", "worn-plain-insert", "worn-plain-append",
-                 "worn-boundaries"):
+                 "worn-insert", "worn-append", "worn-nested-insert", "worn-nested-append",
+                 "worn-weight-changes", "carried-weight-changes", "worn-recalculation"):
         result = subprocess.run([str(binary), case], timeout=20,
                                 env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"})
         if result.returncode:
