@@ -196,6 +196,7 @@ LEVEL_ADAPTERS = r'''
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
 struct test_pc { int epics = 100; };
 struct test_character
 {
@@ -225,13 +226,16 @@ static long new_exp_table[60] = {};
 static int spends = 0, payouts = 0, object_lookups = 0;
 static int64_t spend_delta = 0;
 static epic_level_context spend_context = {};
+static std::string messages;
 int sql_level_cap(int) { return 56; }
 int get_property(const char *name, int fallback)
 {
+ // Level 44 is intentionally unconfigured, matching lib/duris.properties.
+ if (std::strcmp(name,"epic.forLevel.44")==0) return fallback;
  if (std::strncmp(name,"epic.forLevel.",14)==0) return 100;
  return fallback;
 }
-void send_to_char(const char *,P_char) {}
+void send_to_char(const char *message,P_char) { messages += message; }
 void debug(const char *,...) {}
 void logit(const char *,const char *,...) {}
 void epiclog(int,const char *,...) {}
@@ -295,10 +299,20 @@ int main()
  epic_publish_stone_award(&character,result,0);
  assert(spends==2 && payouts==prior_payouts);
  result.recovered_claim=false;
- character.level=48; new_exp_table[49]=1000; result.stone_level=49;
- epic_publish_stone_award(&character,result,0);
- assert(spends==2); // free-level publication must not also buy a stone level
- character.level=50;
+ // Regression: level 43 previously tried to resolve the missing epic.forLevel.44,
+ // printed "Error in epic leveling", and confused a successfully awarded touch.
+ // A stone must publish awards at every level without purchasing early levels.
+ for (int level : {30,43,44,45,46,47,48,49}) {
+   character.level=level; character.experience=1000; pc.epics=100;
+   new_exp_table[level+1]=1000; result.stone_level=level+1;
+   const int prior_spends=spends, prior_payouts=payouts;
+   messages.clear();
+   epic_publish_stone_award(&character,result,0);
+   assert(payouts==prior_payouts+1 && spends==prior_spends);
+   assert(messages.find("Error in epic leveling")==std::string::npos);
+ }
+ // The level-50 epic purchase must still work, including direct object callers.
+ character.level=50; character.experience=1000; pc.epics=100;
  test_object stone; stone.value[3]=51;
  epic_stone_level_char(&stone,&character);
  assert(spends==3); // existing direct object callers still use the same policy
