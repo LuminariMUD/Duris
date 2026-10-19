@@ -1,11 +1,71 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 18, 2026&n
+&+WUpdated: October 19, 2026&n
 
-Welcome back! Marduk and Enlil return, and your mental reserves recover
-more reliably. Newest changes come first; later updates replace older rules.
+Welcome back! Your bags balance better, old hatreds wake up, and familiar
+roads find new homes. Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/19/26&n &+L-&n &+YBags in balance, grudges in working order&n
+&+W----------------------------------------------------------------------&n
+
+&+CYour pack tells the truth&n
+&+Y-&n Moving items through nested bags and weight-reducing containers now
+  keeps your carried weight accurate, including worn bags and odd-weight
+  items. Bags loaded from lockers also recover their proper weight.
+&+Y-&n Locker sorting keeps containers and corpses out of equipment and ore
+  chests, even when their bonuses or names would otherwise match.
+&+Y-&n Firing ammunition from a quiver no longer subtracts its weight twice
+  from your load.
+
+&+COld grudges, honest rewards&n
+&+Y-&n Racial Hatred now recognizes visible enemies of the appropriate races
+  in your room. Its combat and spell speed benefits stay active while
+  such an enemy is visible and clear when none remains. Reconnecting,
+  gaining the innate or changing form no longer leaves it stuck or doubled.
+&+Y-&n Bonus experience from Addicted to Blood no longer counts the same
+  victim twice toward kill and race boons. You still receive the bonus XP.
+&+Y-&n Reconnecting no longer repeats a boon reward already delivered when
+  the game could not finish recording its receipt.
+&+Y-&n Epic stones no longer try to buy stone levels below &+Ylevel 50&n.
+  Lower-level epic awards and the separate free levels at &+Y46-49&n remain.
+
+&+CWho is out there?&n
+&+Y-&n Ordinary &+C'who'&n keeps its familiar visible names and count, but no
+  longer reveals the global hourly connection record or whether the
+  opposing side has anyone online. Public MUD directory status replies
+  are disabled, and the game's exported status report omits population.
+
+&+CBetter help for your next choice&n
+&+Y-&n Class and specialization help now gives fuller skill, spell, innate,
+  race and progression information. Start with &+C'help classes'&n,
+  &+C'help <class>'&n, &+C'help <class> skills'&n or &+C'help specialization'&n.
+  This refresh describes the existing rules; it does not rebalance classes.
+&+Y-&n &+C'Help epic skill cost'&n lists all &+Y45&n skills alphabetically with
+  corrected first-step and full-training totals. Prices have not changed.
+  Training starts at &+Ylevel 30&n; secondary-class-only training still
+  costs twice the epics and three times the platinum. Ask your teacher
+  for the exact price of your next step.
+
+&+R10/18/26&n &+L-&n &+YFamiliar places, corrected paths&n
+&+W----------------------------------------------------------------------&n
+
+&+CRoads and landmarks&n
+&+Y-&n Arcium now occupies the former Abandoned Elven Homestead site in the
+  Evermeet woodlands. The Homestead moves to Turopolis's former site in
+  Hearth Valley, keeping both its east and south wilderness approaches.
+&+Y-&n Turopolis moves to Eagle Ridge Delta; its Zoo connection remains.
+  Outcasts Tower takes the former Temple of Lizizania approach south of
+  Kimordril and keeps its Underworld route. Lizizania moves to the Evil
+  Continent south of Torg. Map labels and return paths match these moves.
+  These locations replace the earlier route announcements below.
+
+&+CA little stagecraft for staff&n
+&+Y-&n Staff arrival and departure messages preview as they appear during
+  travel, keep the default message when cleared, and accept up to
+  &+Y512 characters&n including color codes. Name approval no longer
+  replaces a custom arrival message with "Accepted".
 
 &+R10/18/26&n &+L-&n &+YTwo stones, two sides, fresh battles&n
 &+W----------------------------------------------------------------------&n
