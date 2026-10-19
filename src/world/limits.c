@@ -1126,6 +1126,10 @@ int exp_level_percent_modifier(P_char killer, P_char victim)
 
 int gain_exp(P_char ch, P_char victim, const int value, int type)
 {
+	// Bonus XP retains kill modifiers and feedback without counting another victim.
+	const bool kill_bonus = type == EXP_KILL_BONUS;
+	if (kill_bonus)
+		type = EXP_KILL;
 	int goodcap = get_property("exp.level.cap.good", 15);
 	int evilcap = get_property("exp.level.cap.evil", 15);
 	int levelcap = sql_level_cap(GET_RACEWAR(ch));
@@ -1469,8 +1473,11 @@ int gain_exp(P_char ch, P_char victim, const int value, int type)
 			XP *= exp_level_percent_modifier(ch, victim) / 100.;
 			// debug("kill 8 exp gain (%d)", (int)XP);
 		}
-		check_boon_completion(ch, victim, XP, BOPT_MOB);
-		check_boon_completion(ch, victim, XP, BOPT_RACE);
+		if (!kill_bonus)
+		{
+			check_boon_completion(ch, victim, XP, BOPT_MOB);
+			check_boon_completion(ch, victim, XP, BOPT_RACE);
+		}
 	}
 	else if (type == EXP_WORLD_QUEST)
 	{
