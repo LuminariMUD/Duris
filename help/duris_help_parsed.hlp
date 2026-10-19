@@ -7844,68 +7844,200 @@ From level 51 onwards, you must seek out a specific stone (listed above)  and to
 #0
 
 Epic skill cost
-Epic skill cost - Last Edited: 2026-10-15 18:50:00 by Claude
+Epic skill cost - Last Edited: 2026-10-19 09:00:00 by Claude
 ============================================================
+
 Each epic skill is bought from its teacher in steps of 10%, from 0 up to
-100. Every step costs epics and platinum. The cost of each step rises as
-your skill goes up, so the later steps are more expensive.
+100. Each step costs epics and platinum, and later steps cost more. Platinum
+is rounded up to the nearest whole plat.
 
-"First step" is the cost of going from 0 to 10%. "Total" is the cost of
-going from 0 to 100.
+First 10% is the cost of the first step, 0 to 10%. Total is the cost of
+going from 0 to 100%. Figures are for a character whose class can learn the
+skill. If only your secondary class can learn it, epics cost twice as much
+and platinum costs three times as much.
 
-  First step: 30 epics, 200 plat
-  Total:      741 epics, 4,999 plat, 9 gold, 9 silver, 4 copper
-  Shield Combat, Indomitable Rage
+Advanced Meditation
+  First 10%: 75 epics, 500 plat
+  Total:     1650 epics, 11000 plat
 
-  First step: 45 epics, 300 plat
-  Total:      1,119 epics, 7,499 plat, 9 gold, 9 silver, 6 copper
-  Scribe Mastery
+Anatomy
+  First 10%: 75 epics, 500 plat
+  Total:     1650 epics, 11000 plat
 
-  First step: 75 epics, 500 plat
-  Total:      1,866 epics, 12,499 plat, 9 gold, 9 silver, 4 copper
-  Advanced Meditation, Anatomy, Two-Weapon
+Chant Mastery
+  First 10%: 225 epics, 1500 plat
+  Total:     4950 epics, 33000 plat
 
-  First step: 150 epics, 1,000 plat
-  Total:      3,741 epics, 24,999 plat, 9 gold, 9 silver, 4 copper
-  Empower Song, Fix, Improved Listen, Improved Shield Combat,
-  Improved Track, Infuse Life, Silent Spell, Summon Blizzard,
-  Summon Familiar, Toughness, and all nine epic stats: Epic Strength,
-  Epic Power, Epic Agility, Epic Intelligence, Epic Dexterity, Epic Wisdom,
-  Epic Constitution, Epic Charisma, Epic Luck
+Devastating Critical
+  First 10%: 225 epics, 1500 plat
+  Total:     4950 epics, 33000 plat
 
-  First step: 150 epics, 100 plat
-  Total:      3,741 epics, 2,499 plat, 9 gold, 9 silver, 4 copper
-  Smelt
+Devotion
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
 
-  First step: 225 epics, 1,500 plat
-  Total:      5,619 epics, 37,499 plat, 9 gold, 9 silver, 8 copper
-  Chant Mastery, Devastating Critical, Jin Touch, Nature's Ruin,
-  Nature's Sanctity, Totemic Mastery
+Empower Song
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
 
-  First step: 240 epics, 16,000 plat
-  Total:      5,991 epics, 399,999 plat, 9 gold, 9 silver, 4 copper
-  Ship Damage Control
+Encrust
+  First 10%: 600 epics, 4000 plat
+  Total:     13200 epics, 88000 plat
 
-  First step: 300 epics, 2,000 plat
-  Total:      7,491 epics, 49,999 plat, 9 gold, 9 silver, 4 copper
-  Devotion, Improved Endurance, Improved Two-Weapon, Infuse Magical Device,
-  Ki Strike, Sneaky Strike, Spatial Focus
+Epic Agility
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
 
-  First step: 300 epics, 40 plat
-  Total:      7,491 epics, 999 plat, 9 gold, 9 silver, 4 copper
-  Epic Warding Faith
+Epic Charisma
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
 
-  First step: 600 epics, 4,000 plat
-  Total:      14,991 epics, 99,999 plat, 9 gold, 9 silver, 4 copper
-  Encrust, Expert Parry, Expert Riposte, Spell Penetration
+Epic Constitution
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Epic Dexterity
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Epic Intelligence
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Epic Luck
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Epic Power
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Epic Strength
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Epic Warding Faith
+  First 10%: 300 epics, 40 plat
+  Total:     6600 epics, 880 plat
+
+Epic Wisdom
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Expert Parry
+  First 10%: 600 epics, 4000 plat
+  Total:     13200 epics, 88000 plat
+
+Expert Riposte
+  First 10%: 600 epics, 4000 plat
+  Total:     13200 epics, 88000 plat
+
+Fix
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Improved Endurance
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
+
+Improved Listen
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Improved Shield Combat
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Improved Track
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Improved Two Weapon Fighting
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
+
+Indomitable Rage
+  First 10%: 30 epics, 200 plat
+  Total:     660 epics, 4400 plat
+
+Infuse Life
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Infuse Magical Device
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
+
+Jin Touch
+  First 10%: 225 epics, 1500 plat
+  Total:     4950 epics, 33000 plat
+
+Ki Strike
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
+
+Natures Ruin
+  First 10%: 225 epics, 1500 plat
+  Total:     4950 epics, 33000 plat
+
+Natures Sanctity
+  First 10%: 225 epics, 1500 plat
+  Total:     4950 epics, 33000 plat
+
+Scribe Mastery
+  First 10%: 45 epics, 300 plat
+  Total:     990 epics, 6600 plat
+
+Shield Combat
+  First 10%: 30 epics, 200 plat
+  Total:     660 epics, 4400 plat
+
+Ship Damage Control
+  First 10%: 240 epics, 16000 plat
+  Total:     5280 epics, 352000 plat
+
+Silent Spell
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Smelt
+  First 10%: 150 epics, 100 plat
+  Total:     3300 epics, 2200 plat
+
+Sneaky Strike
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
+
+Spatial Focus
+  First 10%: 300 epics, 2000 plat
+  Total:     6600 epics, 44000 plat
+
+Spell Penetration
+  First 10%: 600 epics, 4000 plat
+  Total:     13200 epics, 88000 plat
+
+Summon Blizzard
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Summon Familiar
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Totemic Mastery
+  First 10%: 225 epics, 1500 plat
+  Total:     4950 epics, 33000 plat
+
+Toughness
+  First 10%: 150 epics, 1000 plat
+  Total:     3300 epics, 22000 plat
+
+Two Weapon Fighting
+  First 10%: 75 epics, 500 plat
+  Total:     1650 epics, 11000 plat
 
 Notes:
 * Training starts at level 30.
-* The costs above are for a character whose class can learn the skill. If
-  only your secondary class can learn it, epics cost twice as much and
-  platinum costs three times as much.
-* Each step is rounded down, which is why some totals end in 9 gold,
-  9 silver, 4 copper.
 * Ask the teacher about a skill to see the exact cost of your next step.
 
 ==See also==
