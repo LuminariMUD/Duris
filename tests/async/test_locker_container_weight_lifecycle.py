@@ -57,11 +57,11 @@ harness = r'''
 int top_of_objt = 1000;
 static index_data indices[10] = {};
 P_index obj_index = indices;
-static int prototype_weights[] = {0, 5, -3000, 20, 10};
+static int prototype_weights[] = {0, 5, -3000, 20, 10, 4};
 
 int real_object(const int vnum) { return vnum; }
 P_obj read_object(int rnum, int) {
-    assert(rnum >= 0 && rnum < 5);
+    assert(rnum >= 0 && rnum < 6);
     P_obj obj = new obj_data{};
     obj->R_num = rnum;
     obj->type = rnum == 3 ? ITEM_TREASURE : ITEM_CONTAINER;
@@ -162,6 +162,55 @@ static void movement(bool append) {
     extract_obj(item, TRUE);
 }
 
+static void worn_movement(bool append, int reduction) {
+    P_obj bag = read_object(5, REAL);
+    bag->value[4] = reduction;
+    char_data wearer = {};
+    bag->loc_p = LOC_WORN;
+    bag->loc.wearing = &wearer;
+    GET_CARRYING_W(&wearer) = 102; // Other equipment contributes 100, the shell 2.
+    P_obj items[3];
+    const int item_weight = reduction ? 2 : 1;
+    for (P_obj &item : items) {
+        item = read_object(3, REAL);
+        item->weight = item_weight;
+    }
+    auto put = append ? obj_to_obj_at_end : obj_to_obj;
+    for (int cycle = 0; cycle < 50; ++cycle) {
+        for (int count = 1; count <= 3; ++count) {
+            put(items[count - 1], bag);
+            const int contents = count * item_weight;
+            assert(bag->weight == 4 + contents - contents * reduction / 100);
+            assert(GET_CARRYING_W(&wearer) == 100 + bag->weight / 2);
+        }
+        for (int count = 2; count >= 0; --count) {
+            obj_from_obj(items[count]);
+            const int contents = count * item_weight;
+            assert(bag->weight == 4 + contents - contents * reduction / 100);
+            assert(GET_CARRYING_W(&wearer) == 100 + bag->weight / 2);
+        }
+        assert(bag->weight == 4 && GET_CARRYING_W(&wearer) == 102);
+    }
+    for (P_obj item : items) extract_obj(item, TRUE);
+    extract_obj(bag, TRUE);
+}
+
+static void worn_weight_boundaries() {
+    obj_data bag = {};
+    char_data wearer = {};
+    bag.weight = -4;
+    bag.loc_p = LOC_WORN;
+    bag.loc.wearing = &wearer;
+    GET_CARRYING_W(&wearer) = 100;
+    for (int cycle = 0; cycle < 50; ++cycle) {
+        for (int weight : {-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0, -1, -4}) {
+            add_weight(&bag, weight - bag.weight);
+            assert(bag.weight == weight);
+            assert(GET_CARRYING_W(&wearer) == 100 + (weight > 0 ? weight / 2 : 0));
+        }
+    }
+}
+
 static sql_row item_row(int id, int vnum, int parent, int weight, int reduction = 0) {
     sql_row row;
     row.fields.resize(40);
@@ -213,6 +262,11 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "sorting")) sorting();
     else if (!strcmp(argv[1], "insert")) movement(false);
     else if (!strcmp(argv[1], "append")) movement(true);
+    else if (!strcmp(argv[1], "worn-insert")) worn_movement(false, 50);
+    else if (!strcmp(argv[1], "worn-append")) worn_movement(true, 50);
+    else if (!strcmp(argv[1], "worn-plain-insert")) worn_movement(false, 0);
+    else if (!strcmp(argv[1], "worn-plain-append")) worn_movement(true, 0);
+    else if (!strcmp(argv[1], "worn-boundaries")) worn_weight_boundaries();
     else if (!strcmp(argv[1], "public-load")) loading(false);
     else if (!strcmp(argv[1], "private-load")) loading(true);
     else std::abort();
@@ -233,7 +287,9 @@ with tempfile.TemporaryDirectory(prefix="locker-container-weight-", dir=build) a
         "-I", str(ROOT / "src"), str(source), "-o", str(binary),
     ], check=True)
     failed = []
-    for case in ("sorting", "insert", "append", "public-load", "private-load"):
+    for case in ("sorting", "insert", "append", "public-load", "private-load",
+                 "worn-insert", "worn-append", "worn-plain-insert", "worn-plain-append",
+                 "worn-boundaries"):
         result = subprocess.run([str(binary), case], timeout=20,
                                 env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"})
         if result.returncode:

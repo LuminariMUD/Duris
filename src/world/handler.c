@@ -5031,18 +5031,19 @@ bool leave_safe_room(P_char ch)
 // This function adds weight to the object, then adds weight to its container/holder/wearer,
 //   but only the amount of weight above the magical weightlessness of said object.
 // This function handles adding a negative weight properly as well.
-// Worn objects apply half the propagated delta to carry_weight (matches equip_char / unequip_char).
-static void propagate_weight_delta(P_obj obj, int weight)
+// Round the old and new worn contributions separately, as equip_char / unequip_char do.
+static void propagate_weight_delta(P_obj obj, int old_weight, int new_weight)
 {
-	if (!obj || !weight)
+	if (!obj || old_weight == new_weight)
 	{
 		return;
 	}
+	const int weight = new_weight - old_weight;
 
 	switch (obj->loc_p)
 	{
 	case LOC_WORN:
-		encumbrance_adjust(obj->loc.wearing, weight / 2);
+		encumbrance_adjust(obj->loc.wearing, new_weight / 2 - old_weight / 2);
 		break;
 	case LOC_CARRIED:
 		encumbrance_adjust(obj->loc.carrying, weight);
@@ -5059,34 +5060,12 @@ static void propagate_weight_delta(P_obj obj, int weight)
 
 void add_weight(P_obj obj, int weight)
 {
-	int carry_delta;
-
 	if (!obj || !weight)
 	{
 		return;
 	}
 
-	// If we start with a negative weight.
-	if (obj->weight < 0)
-	{
-		obj->weight += weight;
-		if (obj->weight > 0)
-		{
-			carry_delta = obj->weight;
-			propagate_weight_delta(obj, carry_delta);
-		}
-	}
-	else
-	{
-		obj->weight += weight;
-		if (obj->weight > 0)
-		{
-			propagate_weight_delta(obj, weight);
-		}
-		else
-		{
-			carry_delta = weight - obj->weight;
-			propagate_weight_delta(obj, carry_delta);
-		}
-	}
+	const int old_weight = GET_OBJ_WEIGHT(obj);
+	obj->weight += weight;
+	propagate_weight_delta(obj, old_weight, GET_OBJ_WEIGHT(obj));
 }
