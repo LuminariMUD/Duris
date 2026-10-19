@@ -293,7 +293,9 @@ static void privacy_delivery_matrix()
 	world[0].people = &a;
 	a.next_in_room = &b;
 	b.next_in_room = &observer;
-	struct group_list member{};
+	struct group_list member
+	{
+	};
 	member.ch = &b;
 	a.group = &member;
 	language_override = nullptr;

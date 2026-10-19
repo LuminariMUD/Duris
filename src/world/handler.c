@@ -233,8 +233,7 @@ void recalc_container_weight(P_obj cont)
  * the figure in either direction -- but between the move and the next capacity
  * check the number a player is carrying is simply wrong. Calling it here makes
  * "wrong until something asks" into "right immediately", and
- * propagate_weight_delta() inside add_weight() carries the correction up to
- * whoever is holding the bag.
+ * add_weight() carries the correction up to whoever is holding the bag.
  *
  * Gated on the reduction, not on being a container: this reads the prototype,
  * and every container that reduces nothing keeps the cheap incremental path it
@@ -2906,7 +2905,7 @@ void obj_to_obj(P_obj obj, P_obj obj_to)
 		}
 	}
 
-	add_weight(obj_to, obj->weight);
+	add_weight(obj_to, GET_OBJ_WEIGHT(obj));
 	resync_reducing_container(obj_to);
 	/* Broken out into a recursive function; neater and more correct for handling negative weights properly.
 	  wgt = GET_OBJ_WEIGHT(obj);
@@ -2987,7 +2986,7 @@ void obj_to_obj_at_end(P_obj obj, P_obj obj_to)
 	obj->loc.inside = obj_to;
 	append_obj_to_list(&obj_to->contains, obj);
 
-	add_weight(obj_to, obj->weight);
+	add_weight(obj_to, GET_OBJ_WEIGHT(obj));
 	resync_reducing_container(obj_to);
 
 	mark_container_dirty(obj_to);
@@ -3101,7 +3100,7 @@ void obj_from_obj(P_obj obj)
 		tmp->next_content = obj->next_content;
 	}
 
-	add_weight(obj_from, -(obj->weight));
+	add_weight(obj_from, -(GET_OBJ_WEIGHT(obj)));
 
 	/* Safe here and nowhere earlier: `obj` has already been unlinked above,
 	 * so the fresh sum is of what actually remains inside. */
@@ -5031,62 +5030,34 @@ bool leave_safe_room(P_char ch)
 // This function adds weight to the object, then adds weight to its container/holder/wearer,
 //   but only the amount of weight above the magical weightlessness of said object.
 // This function handles adding a negative weight properly as well.
-// Worn objects apply half the propagated delta to carry_weight (matches equip_char / unequip_char).
-static void propagate_weight_delta(P_obj obj, int weight)
+// Worn objects contribute half their effective weight (matches equip_char / unequip_char).
+void add_weight(P_obj obj, int weight)
 {
 	if (!obj || !weight)
 	{
 		return;
 	}
 
+	const int old_weight = GET_OBJ_WEIGHT(obj);
+	obj->weight += weight;
+	const int new_weight = GET_OBJ_WEIGHT(obj);
+	const int carry_delta = new_weight - old_weight;
+
 	switch (obj->loc_p)
 	{
 	case LOC_WORN:
-		encumbrance_adjust(obj->loc.wearing, weight / 2);
+		// Round the old and new contributions, so odd-pound changes cannot drift.
+		encumbrance_adjust(obj->loc.wearing, new_weight / 2 - old_weight / 2);
 		break;
 	case LOC_CARRIED:
-		encumbrance_adjust(obj->loc.carrying, weight);
+		encumbrance_adjust(obj->loc.carrying, carry_delta);
 		break;
 	case LOC_INSIDE:
-		add_weight(obj->loc.inside, weight);
+		add_weight(obj->loc.inside, carry_delta);
 		break;
 	case LOC_ROOM:
 	case LOC_NOWHERE:
 	default:
 		break;
-	}
-}
-
-void add_weight(P_obj obj, int weight)
-{
-	int carry_delta;
-
-	if (!obj || !weight)
-	{
-		return;
-	}
-
-	// If we start with a negative weight.
-	if (obj->weight < 0)
-	{
-		obj->weight += weight;
-		if (obj->weight > 0)
-		{
-			carry_delta = obj->weight;
-			propagate_weight_delta(obj, carry_delta);
-		}
-	}
-	else
-	{
-		obj->weight += weight;
-		if (obj->weight > 0)
-		{
-			propagate_weight_delta(obj, weight);
-		}
-		else
-		{
-			carry_delta = weight - obj->weight;
-			propagate_weight_delta(obj, carry_delta);
-		}
 	}
 }
