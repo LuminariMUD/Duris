@@ -83,6 +83,7 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_epic_task_catalog_mysql.py",
     "test_epic_task_recovery_journey.py",
     "test_mysql_playtime_journey.py",
+    "test_mysql_locker_grant_journey.py",
     "test_mysql_nexus_journey.py",
     "test_playtime_mysql_repository.py",
     "test_staff_poof_journey.py",
