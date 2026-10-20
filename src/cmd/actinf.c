@@ -7812,6 +7812,14 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 					"&+rRecord number of connections this boot: %d.&n\n",
 					max_descs);
 			}
+			if ((curr_ingame_good > 0) && !IS_RACEWAR_GOOD(ch) && !IS_TRUSTED(ch))
+				checked_snprintf(who_output + strlen(who_output),
+						 MAX_STRING_LENGTH - strlen(who_output),
+						 "There are &+Ygood(s)&N online.\n");
+			if ((curr_ingame_evil > 0) && !IS_RACEWAR_EVIL(ch) && !IS_TRUSTED(ch))
+				checked_snprintf(who_output + strlen(who_output),
+						 MAX_STRING_LENGTH - strlen(who_output),
+						 "There are &+Revil(s)&N online.\n");
 		}
 		send_to_char(who_output, ch, LOG_NONE);
 		strcpy(who_output, "");

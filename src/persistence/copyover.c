@@ -1843,6 +1843,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				d->character = ch;
 				ch->desc = d;
 				d->connected = CON_PLAYING;
+				if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+					update_ingame_racewar(GET_RACEWAR(ch));
 
 #ifdef USE_ACCOUNT
 				// restore account for preserved telnet connections

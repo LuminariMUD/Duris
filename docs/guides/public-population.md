@@ -1,14 +1,16 @@
 # Public population privacy
 
 [Issue #207](https://github.com/LuminariMUD/Duris/issues/207) protects current
-opposing-faction and global presence. The MUD omits these public statistics;
-the paired DurisWeb change publishes an existing historical hourly estimate.
+opposing-faction and global presence, except for the in-game `who` messages
+indicating whether goods or evils are online. The MUD otherwise omits these
+public statistics; the paired DurisWeb change publishes an existing historical
+hourly estimate.
 There is no new MUD collection, history store, or publication timer.
 
 | Surface | Population definition and access | Behavior |
 | --- | --- | --- |
 | Telnet MSSP | Previously current playing mortal descriptors, counting switched originals, before login | Not advertised; unsolicited `DO MSSP` receives `WONT` once per connection. WebSockets emit nothing. |
-| Ordinary `who` | Faction-visible characters under existing command filters | Live list and visible count retained; global hourly socket peak and opponent-presence booleans omitted. |
+| Ordinary `who` | Faction-visible characters under existing command filters | Live list and visible count retained; the original good/evil presence messages are restored without names or counts. Global hourly socket peak remains omitted. |
 | Trusted `who` / `world stats` | Live in-game connections, socket peaks and operational faction totals | Unchanged. |
 | `lib/reports/status` | Formerly current boot socket peak | Both maintenance and legacy `web_info()` producers now export only game time and uptime. |
 | Internal SQL statistics / Redis / authenticated MUD bridge | Live samples and raw character/faction presence | Unchanged; website administration remains privileged. |
@@ -37,7 +39,9 @@ staff-only, not public statistics.
 
 Verification: `python3 tests/async/test_mssp_runtime.py` executes the production
 Telnet parser and responder; `python3 tests/async/test_public_population.py`
-executes the production visibility rule, command summary and both report
-producers with synthetic populations. The latter is not a complete login/gameplay
-journey. Run `make -C src` as well. These tests do not establish deployment;
+executes the production visibility rule, command summary, copyover descriptor
+recovery and both report producers with synthetic populations. Recovery checks
+cover both factions, staff exclusion, failed restores and later logout/login
+counter updates. The latter is not a complete login/gameplay journey.
+Run `make -C src` as well. These tests do not establish deployment;
 prepared PRs do not alter a running server.
