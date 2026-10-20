@@ -10294,7 +10294,7 @@ bool builder_list_parse(P_char ch, const char *argument, const char *command,
 		scope.zone = world[ch->in_room].zone;
 	}
 	if (!IS_SET(ch->specials.act, PLR_PAGING_ON))
-		return error("please tog page on to read results.");
+		return error("use toggle paging to enable paging for results.");
 	return true;
 }
 
@@ -10409,7 +10409,7 @@ void do_rlist(P_char ch, char *argument, int /*cmd*/)
 		return;
 	builder_list_header(ch, "Room", scope);
 	send_to_char(
-		"|      Zone|      VNUM| Name                                     | Sector               |\r\n",
+		"|  Zone|      VNUM| Name                             | Sector             |\r\n",
 		ch);
 	int first = 0, last = top_of_world;
 	if (scope.zone >= 0)
@@ -10443,9 +10443,9 @@ void do_rlist(P_char ch, char *argument, int /*cmd*/)
 						 zone_table[at->zone].number :
 						 -1;
 			char buf[512];
-			snprintf(buf, sizeof(buf), "|%10d|%10d| %s &n| %s &n|\r\n", zone,
-				 at->number, builder_list_name(at->name, 40).c_str(),
-				 builder_list_name(sector ? sector : "Unknown", 20).c_str());
+			snprintf(buf, sizeof(buf), "|%6d|%10d| %s &n| %s &n|\r\n", zone, at->number,
+				 builder_list_name(at->name, 32).c_str(),
+				 builder_list_name(sector ? sector : "Unknown", 18).c_str());
 			send_to_char(buf, ch);
 			++shown;
 		}

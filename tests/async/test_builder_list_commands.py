@@ -103,7 +103,13 @@ static string run(int kind, const string &argument) {
 }
 static int row_count(const string &text) {
     istringstream lines(text); int rows=0;
-    for(string line;getline(lines,line);) if(line.size()>1 && line[0]=='|' && line[10]>='0' && line[10]<='9') ++rows;
+    for(string line;getline(lines,line);) if(line.size()>1 && line[0]=='|') {
+        const auto end=line.find('|',1); const auto first=line.substr(1,end-1);
+        if(first.find_first_not_of(" 0123456789")==string::npos && first.find_first_of("0123456789")!=string::npos) {
+            ++rows;
+            assert(strip_ansi(line.c_str()).size()<=80);
+        }
+    }
     return rows;
 }
 static void shown(int kind,const string &arg,int count,bool truncated=false) {
@@ -125,7 +131,7 @@ int main() {
                 shown(kind,"",min(matches,500),matches>500);
                 shown(kind,"  \t ",min(matches,500),matches>500);
                 assert(output.find("zone 83")!=string::npos);
-                if(kind==0) assert(output.find("|        83|")!=string::npos);
+                if(kind==0) assert(output.find("|    83|")!=string::npos);
             }
             if(matches>500) {
                 const string next=string(commands[kind])+" zone 83 100500 2147483647";
@@ -168,7 +174,7 @@ int main() {
         REMOVE_BIT(staff.specials.act,PLR_PAGING_ON);
         assert(run(kind,"?").find("Usage:")!=string::npos);
         assert(run(kind,"help").find("Usage:")!=string::npos);
-        assert(run(kind,"1").find(string(commands[kind])+": please tog page on")!=string::npos);
+        assert(run(kind,"1").find(string(commands[kind])+": use toggle paging")!=string::npos);
         SET_BIT(staff.specials.act,ACT_ISNPC);
         assert(run(kind,"?").empty() && run(kind,"0 100000").empty());
         fixture(1);

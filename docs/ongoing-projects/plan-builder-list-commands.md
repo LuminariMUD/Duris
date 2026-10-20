@@ -17,7 +17,8 @@ OpenSpec change: `openspec/changes/issue-231-builder-lists/` (spec-driven).
 Loader PR: [#232](https://github.com/LuminariMUD/Duris/pull/232), branch
 `branch/issue-231-builder-lists`, commit `c69506ea7` (pushed).
 The commands are on `branch/issue-231-builder-list-commands`, based on that commit;
-the dependent PR will target the loader branch.
+dependent PR [#233](https://github.com/LuminariMUD/Duris/pull/233) targets the loader
+branch. Initial command commit `fae9f2c83` is pushed; runtime acceptance is pending.
 No release tag is appropriate for unmerged review work. No deployment is included.
 
 Ablation: retain existing `desc2` ownership and normal loaders; no duplicate cache,
@@ -64,7 +65,15 @@ diff with Ablation, then publish the command PR. An existing local server is lef
 running. The acceptance runtime uses a disposable MariaDB container cloned from
 local `duris_dev`, isolated runtime/ports/journals, and Redis disabled. The original
 database is read only for the clone. No credentials are recorded in tracked files.
-Production and the reported live slowdown remain unverified.
+The first exact clone failed closed on existing incompatible saved shop 543
+(mob 101, room 132767). The acceptance fixture therefore keeps the configured
+staff account but clears copied persisted item/stock tables in its disposable DB;
+world files and original DB are unchanged. Native full-world boot then succeeded.
+The pager journey exposed two related output issues, repaired in the command PR:
+the paging recovery instruction now uses the actual `toggle paging` command, and
+room columns fit an 80-column terminal. The executable test enforces row width.
+Final rebuilt-binary journey is in progress. Production and the reported live
+slowdown remain unverified.
 
 ## Outcome and scope
 
