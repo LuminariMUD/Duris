@@ -174,7 +174,7 @@ for title, (_, entry) in parsed_map.items():
         if re.match(r"^[^:\n]+: level \d+", line):
             raise AssertionError(f"Old innate format in {title}: {line}")
         match = re.match(
-            r"^[ *]&\+c[^\n]+&n(?: \(obtained at level &\+c(\d+)&n\))?$", line
+            r"^[ *]&\+c[^&\n]+&n(?: \(obtained at level &\+c(\d+)&n\))?$", line
         )
         if match:
             innate_levels.append(int(match[1] or 1))
