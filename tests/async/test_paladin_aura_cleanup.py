@@ -29,6 +29,7 @@ assert "aura_type <= LAST_AURA" not in body[scan.start() :]
 PRELUDE = r'''
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -39,6 +40,9 @@ struct affected_type {
 };
 struct char_data {
     struct { int spec = 0; } player;
+    struct pc_data { int time_unspecced = 0; };
+    struct { pc_data *pc = nullptr; } only;
+    bool npc = false;
     affected_type *affected = nullptr;
     struct { unsigned affected_by3 = 0; } specials;
     std::vector<std::string> messages;
@@ -58,15 +62,20 @@ struct aura_description {
 #define AFF3_PALADIN_AURA (1u << 6)
 #define MAX_STRING_LENGTH 1024
 #define REMOVE_BIT(bits, flag) ((bits) &= ~(flag))
+#define IS_NPC(ch) ((ch)->npc)
+#define IS_SPECIALIZED(ch) ((ch)->player.spec != 0)
 
 char _buff[MAX_STRING_LENGTH];
 aura_description auras[LAST_AURA - FIRST_AURA + 1] = {};
 void send_to_char(const char *message, P_char ch) { ch->messages.emplace_back(message); }
 struct epic_command_result {};
 static int purges = 0, updates = 0, forgotten = 0;
+static P_char updated = nullptr, selected = nullptr;
 void purge_linked_auras(P_char) { ++purges; }
-void update_skills(P_char) { ++updates; }
+void update_skills(P_char ch) { ++updates; updated = ch; }
 void forget_spells(P_char, int) { ++forgotten; }
+char *one_argument(const char *text, char *word) { std::strcpy(word, text); return word; }
+P_char get_char_room_vis(P_char, const char *) { return selected; }
 '''
 
 
@@ -137,6 +146,12 @@ int main() {
     assert(healer.player.spec == 2 && purges == 0 && updates == 0 && forgotten == 0);
     unspecialize_committed(&healer, true, result, 0, nullptr, 0);
     assert(healer.player.spec == 0 && purges == 1 && updates == 1 && forgotten == 1);
+    healer.player.spec = 2;
+    char_data staff;
+    selected = &healer;
+    char argument[] = "healer";
+    do_unspec(&staff, argument, 0);
+    assert(healer.player.spec == 0 && purges == 2 && updated == &healer);
     std::puts("paladin aura cleanup regression passed");
 }
 '''
@@ -147,6 +162,7 @@ harness = (
     + body
     + "\n}\n"
     + extract_function("specializations.c", "void unspecialize_committed(")
+    + extract_function("actwiz.c", "void do_unspec(")
     + DRIVER
 )
 with tempfile.TemporaryDirectory(prefix="paladin-aura-cleanup-") as directory:

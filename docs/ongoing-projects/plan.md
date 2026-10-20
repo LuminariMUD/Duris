@@ -521,3 +521,13 @@ Aura-respecialization repair validation passed: `make -C src -j4`,
 `test_paladin_aura_cleanup.py`, format and whitespace. It is a separate focused
 review chunk above #225. Uncommitted qualification fixture/journey files are
 intentional work in progress and will be delivered in a subsequent PR.
+
+The parallel staff unspecialization path had the same outgoing-aura leak and
+updated the staff member's skills instead of the target's. The expanded executable
+regression failed against that path before the fix, then passed after purging the
+target's auras and updating its skills after clearing specialization. This related
+repair belongs with PR #226. Ordinary successful and failed transactions remain
+covered. The first flatfile combined journey passed real prepared-Vital rejection,
+Healer aura activation, parser self-target restriction and seven timers surviving
+save/restart without renewal (2,618 -> 2,600 -> 2,589 pulses). MariaDB qualification
+is rerun after correcting a fixture assertion's spelling of “don't know”.
