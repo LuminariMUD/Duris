@@ -7817,10 +7817,11 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 					max_descs);
 			}
 			if (max_descs_previous_hour_valid)
-				checked_snprintf(who_output + strlen(who_output),
-						 MAX_STRING_LENGTH - strlen(who_output),
-						 "&+rPeak simultaneous connections in the previous completed hour: %d.&n\n",
-						 max_descs_previous_hour);
+				checked_snprintf(
+					who_output + strlen(who_output),
+					MAX_STRING_LENGTH - strlen(who_output),
+					"&+rPeak simultaneous connections in the previous completed hour: %d.&n\n",
+					max_descs_previous_hour);
 			if ((curr_ingame_good > 0) && !IS_RACEWAR_GOOD(ch) && !IS_TRUSTED(ch))
 				checked_snprintf(who_output + strlen(who_output),
 						 MAX_STRING_LENGTH - strlen(who_output),
