@@ -1038,7 +1038,7 @@ void recovery_cases(const std::vector<artifact_population_template> &prototypes)
  extract_obj(first,FALSE); expected_procedure_uid=0;
  assert(!artifact_rows.at(900).live_object && writes.empty());
  artifact_rows.at(900).identity_state=artifact_identity_state::retired;
- assert(artifact_player_source_error(player)==ENODATA && !read_object_for_recovery(player));
+ assert(artifact_player_source_error(player)==EIDRM && !read_object_for_recovery(player));
  artifact_rows.at(900).identity_state=artifact_identity_state::present;
  // A canonical UID cannot become ordinary by changing its payload vnum.
  auto foreign_vnum=player; foreign_vnum.vnum=901; foreign_vnum.extra_flags=0;
@@ -1170,6 +1170,18 @@ void offline_expiry_cases() {
  assert(offline_callbacks.size()==1);
  offline_callbacks.front()(nullptr); offline_callbacks.clear(); owner_loading=false;
  assert(artifact_rows.at(900).owned && artifact_rows.at(900).canonical_item_uid==81000 && writes.empty());
+ // Expiry follows the qualified boot source while its holder stays offline,
+ // even when the legacy location is a room or a different player.
+ artifact_payload_projection saved_holder={}; saved_holder.domain=artifact_payload_domain::player;
+ saved_holder.item_uid=81000; saved_holder.payload_owner={item_owner_type::player,77,0};
+ offline.canonical_payloads={saved_holder};
+ for(const int stale_type : {ARTIFACT_ONGROUND,ARTIFACT_ON_PC}) {
+  offline.locType=stale_type; offline.location=99;
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(offline_callbacks.size()==1 && offline.timer==1 && offline.location==99);
+  offline_callbacks.front()(nullptr); offline_callbacks.clear();
+ }
  // Qualified absence may clear obsolete timer tracking, preserving configured availability.
  artifact_rows.clear(); artifact_binds.clear();
  auto &absent=artifact_rows[900]; absent.type=ARTIFACT_MAJOR; absent.identity_state=artifact_identity_state::absent;

@@ -638,6 +638,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6",
       "verify_checksum": "bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f"
+    },
+    {
+      "id": "0047_artifact_rejected_identities",
+      "sequence": 47,
+      "description": "Persist rejected artifact UIDs with automatic canonical recovery",
+      "apply": "immutable/0047_artifact_rejected_identities.sql",
+      "verify": "immutable/0047_artifact_rejected_identities.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "5692e9ddcaef423f6b1d487005f0fdafc50b6bccbd85c66fc5ce8875c218bb4b",
+      "verify_checksum": "c88ba4baed7333bfa6f39a5df551bae5b08d267a7d8a929a659b09125004b4a8"
     }
   ],
   "engine_verifiers": [

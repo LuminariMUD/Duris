@@ -129,14 +129,14 @@ struct vnum_evidence
 } // namespace
 
 unsigned int
-artifact_population_classify(const std::vector<artifact_payload_projection> &items,
+artifact_population_classify(const std::vector<artifact_payload_projection> &raw_items,
 			     const std::vector<artifact_population_template> &prototypes,
 			     const std::vector<artifact_population_identity> &previous,
 			     bool complete, std::vector<artifact_population_decision> *decisions)
 {
 	if (!decisions)
 		return EINVAL;
-	if (items.size() > ARTIFACT_IDENTITY_MAX_RECORDS ||
+	if (raw_items.size() > ARTIFACT_IDENTITY_MAX_RECORDS ||
 	    prototypes.size() > ARTIFACT_IDENTITY_MAX_RECORDS ||
 	    previous.size() > ARTIFACT_IDENTITY_MAX_RECORDS)
 		return E2BIG;
@@ -152,16 +152,54 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			if (prototype.extra_flags & ITEM_ARTIFACT)
 				evidence[prototype.vnum].previous.vnum = prototype.vnum;
 		}
+		// A successfully decoded legacy auction blob omits O_U_EXTRA when it
+		// inherits the prototype's flags. This is a defined saved representation,
+		// unlike a missing flag column in a numeric source.
+		auto items = raw_items;
+		for (auto &item : items)
+			if (!item.extra_flags_present &&
+			    (item.domain == artifact_payload_domain::auction ||
+			     item.domain == artifact_payload_domain::auction_legacy ||
+			     item.domain == artifact_payload_domain::auction_pickup))
+			{
+				const auto prototype = flags.find(item.vnum);
+				if (prototype != flags.end())
+				{
+					item.extra_flags = prototype->second;
+					item.extra_flags_present = true;
+				}
+			}
 		std::set<int32_t> prior_vnums;
 		std::map<uint64_t, int32_t> prior_uids;
 		for (const auto &identity : previous)
 		{
 			if (identity.vnum <= 0 ||
+			    identity.rejected_item_uids.size() > ARTIFACT_IDENTITY_MAX_RECORDS ||
+			    !std::is_sorted(identity.rejected_item_uids.begin(),
+					    identity.rejected_item_uids.end()) ||
+			    std::adjacent_find(identity.rejected_item_uids.begin(),
+					       identity.rejected_item_uids.end()) !=
+				    identity.rejected_item_uids.end() ||
+			    (!identity.rejected_item_uids.empty() &&
+			     !identity.rejected_item_uids.front()) ||
+			    (identity.state == artifact_identity_state::present &&
+			     std::binary_search(identity.rejected_item_uids.begin(),
+						identity.rejected_item_uids.end(),
+						identity.canonical_item_uid)) ||
 			    !artifact_identity_valid(identity.canonical_item_uid, identity.state) ||
 			    !prior_vnums.insert(identity.vnum).second ||
 			    (identity.canonical_item_uid &&
 			     !prior_uids.emplace(identity.canonical_item_uid, identity.vnum).second))
 				return EINVAL;
+			for (uint64_t uid : identity.rejected_item_uids)
+			{
+				const auto [found, inserted] =
+					prior_uids.emplace(uid, identity.vnum);
+				if (!inserted && found->second != identity.vnum)
+					return EINVAL;
+			}
+			if (prior_uids.size() > ARTIFACT_IDENTITY_MAX_RECORDS)
+				return E2BIG;
 			evidence[identity.vnum].previous = identity;
 		}
 		// A UID used for different current vnums cannot qualify either object.
@@ -238,15 +276,24 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 		{
 			artifact_population_decision decision;
 			decision.identity = entry.previous;
+			const auto rejected = [&](uint64_t uid)
+			{
+				return (entry.previous.state == artifact_identity_state::retired &&
+					uid == entry.previous.canonical_item_uid) ||
+				       std::binary_search(entry.previous.rejected_item_uids.begin(),
+							  entry.previous.rejected_item_uids.end(),
+							  uid);
+			};
 			std::map<uint64_t, std::vector<size_t>> candidates;
 			// Foreign-vnum evidence must reserve the prior identity as well.
 			bool uncertain =
 				conflicting_uids.count(entry.previous.canonical_item_uid) != 0;
-			bool retired_payload = false;
 			std::set<uint64_t> unqualified_uids;
 			for (const auto index : entry.payloads)
 			{
 				const auto &row = items[index];
+				if (rejected(row.item_uid))
+					continue;
 				if (row.role == artifact_payload_role::reconstruction ||
 				    superseded(row))
 					continue;
@@ -255,12 +302,6 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 					// Retained templates/history do not prove physical presence.
 					// Active/quarantined custody without a current body is still
 					// contradictory evidence, handled after candidate correlation.
-					continue;
-				}
-				if (entry.previous.state == artifact_identity_state::retired &&
-				    row.item_uid == entry.previous.canonical_item_uid)
-				{
-					retired_payload = true;
 					continue;
 				}
 				const auto prototype = flags.find(vnum);
@@ -329,6 +370,11 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			for (const auto index : entry.payloads)
 			{
 				const auto &row = items[index];
+				if (rejected(row.item_uid))
+					continue;
+				if (row.extra_flags_present && !(row.extra_flags & ITEM_ARTIFACT) &&
+				    row.item_uid != entry.previous.canonical_item_uid)
+					continue;
 				if (row.role == artifact_payload_role::history &&
 				    (row.source_quarantined ||
 				     (row.item_uid && !row.custody_examined) ||
@@ -340,6 +386,55 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 			}
 			for (const auto uid : unqualified_uids)
 				uncertain = uncertain || !candidates.count(uid);
+			// Legacy records already name the current holder. Recover its unique
+			// qualified UID instead of reserving every copy indefinitely. An
+			// established canonical UID always takes precedence over this hint.
+			auto tracked = candidates.end();
+			if (complete && !uncertain &&
+			    entry.previous.state == artifact_identity_state::unresolved &&
+			    item_owner_identity_valid(entry.previous.tracked_owner))
+				for (auto candidate = candidates.begin();
+				     candidate != candidates.end(); ++candidate)
+					if (item_owner_identity_equal(
+						    items[candidate->second.front()].payload_owner,
+						    entry.previous.tracked_owner))
+					{
+						if (tracked != candidates.end())
+						{
+							tracked = candidates.end();
+							break;
+						}
+						tracked = candidate;
+					}
+			// A stale world location can survive shutdown while the soul-bound
+			// holder's qualified player save remains. Use that binding only when
+			// no candidate matches the recorded current holder.
+			if (complete && !uncertain &&
+			    entry.previous.state == artifact_identity_state::unresolved &&
+			    entry.previous.bound_player_pid &&
+			    std::none_of(
+				    candidates.begin(), candidates.end(),
+				    [&](const auto &candidate)
+				    {
+					    return item_owner_identity_equal(
+						    items[candidate.second.front()].payload_owner,
+						    entry.previous.tracked_owner);
+				    }))
+				for (auto candidate = candidates.begin();
+				     candidate != candidates.end(); ++candidate)
+				{
+					const auto &owner =
+						items[candidate->second.front()].payload_owner;
+					if (owner.type != item_owner_type::player ||
+					    owner.id != entry.previous.bound_player_pid)
+						continue;
+					if (tracked != candidates.end())
+					{
+						tracked = candidates.end();
+						break;
+					}
+					tracked = candidate;
+				}
 			const auto known = candidates.find(entry.previous.canonical_item_uid);
 			if (entry.previous.state == artifact_identity_state::present &&
 			    known != candidates.end())
@@ -356,16 +451,19 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 					decision.identity.state =
 						artifact_identity_state::unresolved;
 			}
-			else if (!uncertain && candidates.size() == 1 && !retired_payload &&
+			else if (!uncertain &&
+				 (candidates.size() == 1 || tracked != candidates.end()) &&
 				 (entry.previous.state == artifact_identity_state::unresolved ||
 				  entry.previous.state == artifact_identity_state::absent))
 			{
-				decision.identity.canonical_item_uid = candidates.begin()->first;
+				const auto selected =
+					tracked != candidates.end() ? tracked : candidates.begin();
+				decision.identity.canonical_item_uid = selected->first;
 				decision.identity.state = artifact_identity_state::present;
 				decision.reason = artifact_population_reason::complete;
-				decision.canonical_payloads = candidates.begin()->second;
+				decision.canonical_payloads = selected->second;
 			}
-			else if (!uncertain && candidates.empty() && !retired_payload)
+			else if (!uncertain && candidates.empty())
 			{
 				if (entry.previous.state != artifact_identity_state::retired)
 				{
@@ -387,9 +485,23 @@ artifact_population_classify(const std::vector<artifact_payload_projection> &ite
 						   artifact_identity_state::retired) &&
 					  !candidates.empty())) ?
 						artifact_population_reason::conflicting_identities :
-					retired_payload ?
-						artifact_population_reason::retired_payload :
 						artifact_population_reason::unqualified_payload;
+			}
+			if (decision.identity.state == artifact_identity_state::present &&
+			    !decision.canonical_payloads.empty())
+			{
+				// Persist the decision with the winner. Old payloads may outlive
+				// their owners' next save, but can never become a later generation.
+				for (const auto &[uid, payloads] : candidates)
+					if (uid != decision.identity.canonical_item_uid)
+						decision.identity.rejected_item_uids.push_back(uid);
+				auto &rejected_uids = decision.identity.rejected_item_uids;
+				std::sort(rejected_uids.begin(), rejected_uids.end());
+				rejected_uids.erase(std::unique(rejected_uids.begin(),
+								rejected_uids.end()),
+						    rejected_uids.end());
+				if (rejected_uids.size() > ARTIFACT_IDENTITY_MAX_RECORDS)
+					return E2BIG;
 			}
 			staged.push_back(std::move(decision));
 		}

@@ -2143,6 +2143,7 @@ CREATE TABLE `artifact_domain_state` (
   `updated_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   `canonical_item_uid` bigint unsigned DEFAULT NULL,
   `identity_state` tinyint unsigned NOT NULL DEFAULT '0',
+  `rejected_item_uids` longtext DEFAULT NULL,
   PRIMARY KEY (`vnum`), KEY `idx_artifact_domain_owner` (`loc_type`,`location`,`vnum`),
   KEY `idx_artifact_domain_item` (`item_uid`),
   UNIQUE KEY `uq_artifact_canonical_uid` (`canonical_item_uid`),

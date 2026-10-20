@@ -15,6 +15,11 @@ struct artifact_population_identity
 	int32_t vnum = 0;
 	uint64_t canonical_item_uid = 0;
 	artifact_identity_state state = artifact_identity_state::unresolved;
+	// Legacy tracking can identify the current holder before a UID was recorded.
+	// It is only a tie-breaker between fully qualified physical candidates.
+	item_owner_identity tracked_owner = {};
+	std::vector<uint64_t> rejected_item_uids = {};
+	uint64_t bound_player_pid = 0;
 };
 
 enum class artifact_population_reason : uint8_t
@@ -23,7 +28,6 @@ enum class artifact_population_reason : uint8_t
 	incomplete,
 	unqualified_payload,
 	conflicting_identities,
-	retired_payload,
 };
 
 struct artifact_population_decision

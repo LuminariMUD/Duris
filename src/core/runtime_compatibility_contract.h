@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"584eee807102151cffe0bd503d4bbc7599d51011b9a4bf06713b04e6b88671ea";
+	"f7f71f2907cc93dba84addc3a51fffeafe0e89bb0391ea3545e1438ce223e571";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"6a9c6e546ee14dc919584a64d77ae9a3f17b4498b0cf589a37680c1de98aeabb";
+	"5e5f29e41eeef69216b52b75e56bc07afc3ae59ea84c6c57841c1390315d8588";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -101,15 +101,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0044 adds canonical artifact UID/state without replacing the custody FK.
  * Migration 0045 adds nullable capture permission to PvP participant snapshots.
  * Migration 0046 seeds two Nexus catalogue rows; structural fingerprints are unchanged.
+ * Migration 0047 retains rejected artifact UIDs across canonical generations.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0046_nexus_phase1";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 46;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0047_artifact_rejected_identities";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 47;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6";
+	"5692e9ddcaef423f6b1d487005f0fdafc50b6bccbd85c66fc5ce8875c218bb4b";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f";
+	"c88ba4baed7333bfa6f39a5df551bae5b08d267a7d8a929a659b09125004b4a8";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"ea92ca173e8807c500ce07086baac1449f0a0855d82c775c7cb38cf6c49ca586";
+	"49e21b2e63dcf3ad49351aa6f0927b2c98b0d284d9701f7683976d501f8144bb";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

@@ -29,7 +29,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'A', 'R', 'T', 'F', 0 };
-constexpr uint32_t catalog_version = 3;
+constexpr uint32_t catalog_version = 4;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
 constexpr const char *catalog_filename = "artifact_catalog";
 constexpr uint32_t artifact_extra_flag = 1U << 28;
@@ -116,7 +116,16 @@ bool valid_record(const flatfile_artifact_record &record)
 	       record.location_type <= FLATFILE_ARTIFACT_ON_CORPSE && record.timer >= 0 &&
 	       record.type >= 1 && record.type <= 3 && record.last_update >= 0 &&
 	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision &&
-	       artifact_identity_valid(record.canonical_item_uid, record.identity_state);
+	       artifact_identity_valid(record.canonical_item_uid, record.identity_state) &&
+	       record.rejected_item_uids.size() <= ARTIFACT_IDENTITY_MAX_RECORDS &&
+	       std::is_sorted(record.rejected_item_uids.begin(), record.rejected_item_uids.end()) &&
+	       (record.identity_state != artifact_identity_state::present ||
+		!std::binary_search(record.rejected_item_uids.begin(),
+				    record.rejected_item_uids.end(), record.canonical_item_uid)) &&
+	       std::adjacent_find(record.rejected_item_uids.begin(),
+				  record.rejected_item_uids.end()) ==
+		       record.rejected_item_uids.end() &&
+	       (record.rejected_item_uids.empty() || record.rejected_item_uids.front());
 }
 
 bool valid_records(const std::vector<flatfile_artifact_record> &records)
@@ -166,6 +175,9 @@ bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes
 		payload.number(record.canonical_item_uid);
 		payload.number(static_cast<uint8_t>(record.identity_state));
 		payload.number<uint8_t>(record.identity_only ? 1 : 0);
+		payload.number<uint32_t>(record.rejected_item_uids.size());
+		for (uint64_t uid : record.rejected_item_uids)
+			payload.number(uid);
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -247,6 +259,19 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 					(record.identity_state ==
 						 artifact_identity_state::retired ||
 					 record.identity_state == artifact_identity_state::absent);
+			if (version >= 4)
+			{
+				uint32_t rejected_count = 0;
+				if (!payload.number(&rejected_count) ||
+				    rejected_count > ARTIFACT_IDENTITY_MAX_RECORDS ||
+				    rejected_count >
+					    (payload.size - payload.offset) / sizeof(uint64_t))
+					return false;
+				record.rejected_item_uids.resize(rejected_count);
+				for (auto &uid : record.rejected_item_uids)
+					if (!payload.number(&uid))
+						return false;
+			}
 		}
 	}
 	catch (const std::bad_alloc &)
