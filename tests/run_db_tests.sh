@@ -31,6 +31,7 @@ xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
 artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server $SERVER
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server $SERVER
 epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server $SERVER
+locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py --server $SERVER
 nexus_journey $DB python3 tests/async/test_mysql_nexus_journey.py --server $SERVER
 hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server $SERVER
 epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server $SERVER
