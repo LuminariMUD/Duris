@@ -25,6 +25,37 @@
 extern P_room world;
 extern P_index obj_index;
 
+void apply_tsunami_vitality(int wielder_level, P_char actor, P_char target)
+{
+	if (!IS_ALIVE(actor) || !IS_ALIVE(target) || actor->in_room != target->in_room ||
+	    (target != actor && (!actor->group || actor->group != target->group)) ||
+	    (IS_NPC(target) && GET_VNUM(target) == IMAGE_REFLECTION_VNUM) ||
+	    affected_by_spell(target, SPELL_MIELIKKI_VITALITY) ||
+	    affected_by_spell(target, SPELL_FALUZURES_VITALITY) ||
+	    affected_by_spell(target, SPELL_ESHABALAS_VITALITY))
+		return;
+
+	const int power = MIN(wielder_level + 15, 60);
+	for (auto *af = target->affected; af; af = af->next)
+	{
+		if (af->type != SPELL_VITALITY)
+			continue;
+		if (af->modifier < 4 * power)
+		{
+			affected_type replacement = *af;
+			replacement.modifier = 4 * power;
+			replacement.duration = 15;
+			affect_remove(target, af);
+			affect_to_char(target, &replacement);
+			update_pos(target);
+		}
+		else
+			af->duration = 15;
+		return;
+	}
+	spell_vitality(power, actor, nullptr, SPELL_TYPE_SPELL, target, nullptr);
+}
+
 namespace
 {
 constexpr int TSUNAMI = 31514;
@@ -112,20 +143,7 @@ class tsunami_adapter final : public item_action_adapter
 				continue;
 			if (command == CMD_TAP)
 			{
-				// Both initial application and refresh are restricted to self/group.
-				if (target != actor &&
-				    (!actor->group || actor->group != target->group))
-					continue;
-				if (affected_by_spell(target, SPELL_VITALITY))
-				{
-					for (auto *affect = target->affected; affect;
-					     affect = affect->next)
-						if (affect->type == SPELL_VITALITY)
-							affect->duration = 15;
-				}
-				else
-					spell_vitality(level, actor, nullptr, SPELL_TYPE_SPELL,
-						       target, nullptr);
+				apply_tsunami_vitality(level, actor, target);
 				continue; // Native spells may remove any participant; reacquire next iteration.
 			}
 			if (!native_artifact_hostile(actor, target) ||
