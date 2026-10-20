@@ -1893,6 +1893,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 			case CON_GET_CLASS:
 			case CON_GET_RACE:
 			case CON_REROLL:
+			case CON_STAT_METHOD:
 			case CON_APPROPRIATE_NAME:
 			case CON_NAME_CONF:
 			case CON_GET_SEX:

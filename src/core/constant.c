@@ -794,6 +794,7 @@ const char *connected_types[TOTAL_CON + 2] = { "PLAYING",
 					       "ACCT_RESET_CODE",
 					       "ACCT_RESET_NEWPW",
 					       "ACCT_RESET_NEWPW2",
+					       "STAT_METHOD",
 					       "\n" };
 
 /*

@@ -1,6 +1,8 @@
 # Issue #107: Choose a stat rolling system before rolling
 
-Status: implementation plan, 2026-10-20. No gameplay changes implemented.
+Status: implementation in progress, 2026-10-20. Working in `/home/aiwithapex/projects/duris-issue107-plan`. The owner explicitly instructed no OpenSpec; this task uses this plan and executable tests.
+
+First chunk: shared roller and Telnet prompt/bonus handling. Next: stacked WebSocket protocol, required DurisWeb companion, then paired browser acceptance. Nothing deployed or merged.
 Tracking: [Duris #107](https://github.com/LuminariMUD/Duris/issues/107).
 Implementation branch: `branch/issue-107-stat-choice`.
 Duris source baseline: [master `e19537cced99`](https://github.com/LuminariMUD/Duris/commit/e19537cced993bc8de3de1abd76027e8d40b389a).
@@ -380,3 +382,35 @@ checks. Report exact commands/results and any missing browser/persistence proof.
 - [ ] Implement and prove the DurisWeb companion changes.
 - [ ] Complete paired browser/persistence acceptance and implementation review.
 - [ ] Publish final implementation evidence and close #107 when both halves pass.
+
+### Telnet implementation evidence (2026-10-20)
+
+Implemented the shared Advanced roller, all three Telnet method-prompt routes,
+Default Enter choice, Advanced reroll/accept, capped-bonus retry, state name/idle
+classification, creation copy and affected executable helpers. The helper updates
+use distinct bonus targets because a Default stat starting at 90 caps after two
+awards. The fixed-home route fixtures use Duergar Warrior and Thri-Kreen Warrior;
+good races also offer tutorial homes and do not exercise those direct paths.
+
+Validation:
+- `make -C src -j8`: passed (normal MariaDB-enabled development binary).
+- `python3 tests/async/test_character_stat_choice.py`: passed under ASan/UBSan;
+  production formulas, both extrema, ten base/current assignments, existing bad/
+  mob rolls and mob floors, partial cap, no-cost rejection, luck/karma and four
+  bonuses.
+- `python3 tests/async/test_creation_prompt_journey.py`: the initial run exposed
+  fixture assumptions; after repair, all 16 scenarios passed against the same
+  built flat-file binary `bin/tests/stat-choice/dms_telnet`. The final test-only
+  extension separately passed `keep_confirmation` for real cap retry, rejected
+  karma and repeated swaps including luck. No server behavior changed between
+  those runs. Existing-character reload and preference preservation passed.
+- `test_character_creation_idle_timeout.py`, `test_creation_availability_contract.py`,
+  `test_creation_all_races_toggle.py`, `test_creation_all_classes_toggle.py`,
+  `test_chaos_hardcore_creation.py`, `test_racewar_admission.py`: passed.
+- `./scripts/format.sh --check`, Python compilation and `git diff --check`: passed.
+
+The deterministic native test proves numeric formulas; the socket journeys prove
+reachability. Exact saved-stat parity and Advanced restart/relogin remain in the
+combined persistence qualification. The server protocol, DurisWeb wizard and
+paired browser acceptance are still required. No merge, tag, migration or
+production action is part of this review delivery.
