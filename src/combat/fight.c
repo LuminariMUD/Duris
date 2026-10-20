@@ -575,8 +575,9 @@ int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 		}
 	}
 
-	if (allow_improved_healing && IS_PC(ch) && !GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER) &&
-	    IS_AFFECTED3(ch, AFF3_PALADIN_AURA) && has_aura(ch, AURA_HEALING))
+	const bool eligible = allow_improved_healing && IS_PC(ch);
+	const bool non_healer = eligible && !GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER);
+	if (non_healer && IS_AFFECTED3(ch, AFF3_PALADIN_AURA) && has_aura(ch, AURA_HEALING))
 	{
 		// This stops the massive healing when used with the following: Nov08 -Lucrot
 		if (!IS_SET(ch->specials.affected_by4, AFF4_REGENERATION) &&
