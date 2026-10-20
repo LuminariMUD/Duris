@@ -1664,7 +1664,9 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 					    statuslog(56, "WebSocket: New account created");
 
 					    STATE(completed_desc) = CON_ACCT_SELECT_CHAR;
-					    ws_send_auth_success(completed_desc, "registered");
+					    ws_send_auth_success(
+						    completed_desc,
+						    completed_desc->account->acct_name);
 				    });
 		    }))
 	{
@@ -2421,6 +2423,12 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	/* set connection state before entering game */
 	STATE(d) = CON_PLAYING;
 	enter_game(d);
+	/* Entry raises a new character from level 0 to 1; publish that projection too. */
+	const int projection_room = ch->in_room >= 0 && ch->in_room <= top_of_world ?
+					    world[ch->in_room].number :
+					    ch->specials.was_in_room;
+	if (!sync_account_character_projection(ch, projection_room, TRUE))
+		statuslog(56, "WebSocket new-character account projection save failed");
 	d->prompt_mode = !item_creation_grant_blocks_commands(ch);
 
 	/* send full game state via gmcp */
@@ -2435,8 +2443,8 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	cJSON_AddStringToObject(response, "race", race_names_table[race_id].normal);
 	cJSON_AddStringToObject(response, "class", class_names_table[class_id].normal);
 	cJSON_AddStringToObject(response, "faction", (alignment == 1) ? "good" : "evil");
-	cJSON_AddBoolToObject(response, "hardcore", is_hardcore ? cJSON_True : cJSON_False);
-	cJSON_AddBoolToObject(response, "newbie", is_newbie ? cJSON_True : cJSON_False);
+	cJSON_AddBoolToObject(response, "hardcore", is_hardcore);
+	cJSON_AddBoolToObject(response, "newbie", is_newbie);
 	if (actual_hometown >= 0 && actual_hometown <= LAST_HOME)
 	{
 		cJSON_AddStringToObject(response, "hometown", town_name_list[actual_hometown]);
@@ -2596,7 +2604,7 @@ void ws_cmd_get_hometowns(struct descriptor_data *d, cJSON *data)
 	cJSON_AddItemToObject(response, "options", options);
 	cJSON_AddNumberToObject(response, "count", count);
 	/* if count == 1, frontend can skip selection */
-	cJSON_AddBoolToObject(response, "hasChoice", count > 1 ? cJSON_True : cJSON_False);
+	cJSON_AddBoolToObject(response, "hasChoice", count > 1);
 
 	json_str = cJSON_PrintUnformatted(response);
 	if (json_str)
