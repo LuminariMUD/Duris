@@ -7,6 +7,13 @@
     "description": "Set up your first local world."
   },
   {
+    "slug": "new-player-retention",
+    "source": "docs/ongoing-projects/new-player-retention.md",
+    "title": "New player retention",
+    "group": "Getting started",
+    "description": "A clear first session, a next task, and a plan to measure retention."
+  },
+  {
     "slug": "architecture",
     "source": "docs/reference/ARCHITECTURE.md",
     "title": "Architecture",
