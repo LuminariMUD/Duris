@@ -796,7 +796,7 @@ def test_attempt_counter_ownership() -> None:
 
 def test_connection_states() -> None:
     for name, value in (("CON_ACCT_RESET_CODE", 90), ("CON_ACCT_RESET_NEWPW", 91),
-                        ("CON_ACCT_RESET_NEWPW2", 92), ("TOTAL_CON", 92)):
+                        ("CON_ACCT_RESET_NEWPW2", 92), ("CON_STAT_METHOD", 93), ("TOTAL_CON", 93)):
         check(
             re.search(r"#define\s+" + name + r"\s+" + str(value) + r"\b", structs) is not None,
             f"structs.h defines {name} {value}",
@@ -816,8 +816,9 @@ def test_connection_states() -> None:
         f"names={len(names) - 1} TOTAL_CON+1={total_con + 1}",
     )
     check(
-        names[-5:-1] == ["PLAYER_LOAD", "ACCT_RESET_CODE", "ACCT_RESET_NEWPW", "ACCT_RESET_NEWPW2"],
-        "the three reset states follow PLAYER_LOAD at the end of connected_types",
+        names[-6:-1] == ["PLAYER_LOAD", "ACCT_RESET_CODE", "ACCT_RESET_NEWPW", "ACCT_RESET_NEWPW2",
+                         "STAT_METHOD"],
+        "the three reset states follow PLAYER_LOAD before STAT_METHOD in connected_types",
     )
     check('#include "account/account_recovery.h"' in nanny_c, "nanny.c includes account_recovery.h")
     verification = ifdef_regions(nanny_c, "REQUIRE_EMAIL_VERIFICATION")
