@@ -141,7 +141,48 @@ healing_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_healing\s*\}',
                          (SRC / "innates.c").read_text())
 assert healing_aura, "Healing aura command registration is missing"
 for entries in (parsed_map, index_map):
-    assert f"{healing_aura[1]}: level 1" in entries["healer"][1], \
+    assert f"&+c{healing_aura[1]}&n" in entries["healer"][1], \
         "Healer help must use the registered healing aura command"
+
+
+# Specialization deltas use the same ANSI progression layout as class skillsets:
+# ascending spell circles / skill levels and colored spell and skill names.
+for title, (_, entry) in parsed_map.items():
+    if "==Spell changes==" not in entry:
+        continue
+    for section_name, unit in (("Skill changes", "Level"), ("Spell changes", "Circle")):
+        match = re.search(
+            rf"=={section_name}==\n(.*?)(?=\n==|\Z)", entry, re.S
+        )
+        assert match, f"Missing {section_name} section in {title}"
+        lines = match[1].splitlines()
+        numbers = []
+        for line in lines:
+            if re.match(r"^[^:\n]+: (?:circle|level) \d+", line):
+                raise AssertionError(f"Old progression format in {title}: {line}")
+            row = re.match(rf"^&\+b(\d+)(?:st|nd|rd|th) {unit}: &\+c.*&n$", line)
+            if row:
+                numbers.append(int(row[1]))
+            if line.startswith("    &+c"):
+                assert line.endswith("&n"), f"Unterminated color in {title}: {line}"
+        assert numbers == sorted(set(numbers)), f"Unsorted {unit} progression in {title}"
+
+    innates = re.search(r"==Innate additions==\n(.*?)(?=\n==|\Z)", entry, re.S)
+    assert innates, f"Missing Innate additions in {title}"
+    innate_levels = []
+    for line in innates[1].splitlines():
+        if re.match(r"^[^:\n]+: level \d+", line):
+            raise AssertionError(f"Old innate format in {title}: {line}")
+        match = re.match(
+            r"^[ *]&\+c[^\n]+&n(?: \(obtained at level &\+c(\d+)&n\))?$", line
+        )
+        if match:
+            innate_levels.append(int(match[1] or 1))
+    assert innate_levels == sorted(innate_levels), f"Unsorted innates in {title}"
+
+    if title in index_map:
+        parsed_body = "\n".join(entry.strip().splitlines()[3:]).strip()
+        index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
+        assert parsed_body == index_body, f"Divergent specialization help source: {title}"
 
 print("All 30 class help files, Bard progression, and specialization help contracts passed!")
