@@ -43,6 +43,8 @@ struct char_data {
     struct pc_data { int time_unspecced = 0; };
     struct { pc_data *pc = nullptr; } only;
     bool npc = false;
+    std::vector<char_data *> aura_recipients;
+    bool aura_event = false;
     affected_type *affected = nullptr;
     struct { unsigned affected_by3 = 0; } specials;
     std::vector<std::string> messages;
@@ -75,7 +77,21 @@ void send_to_char(const char *message, P_char ch) { ch->messages.emplace_back(me
 struct epic_command_result {};
 static int purges = 0, updates = 0, forgotten = 0;
 static P_char updated = nullptr, selected = nullptr;
-void purge_linked_auras(P_char) { ++purges; }
+#define LNK_PALADIN_AURA 1
+void event_apply_group_auras(P_char, P_char, void *, void *) {}
+P_char get_linking_char(P_char ch, int type) {
+    assert(type == LNK_PALADIN_AURA);
+    return ch->aura_recipients.empty() ? nullptr : ch->aura_recipients.back();
+}
+void unlink_char(P_char recipient, P_char provider, int type) {
+    assert(type == LNK_PALADIN_AURA && recipient == provider->aura_recipients.back());
+    provider->aura_recipients.pop_back();
+}
+void disarm_char_nevents(P_char ch, decltype(&event_apply_group_auras) callback) {
+    assert(callback == event_apply_group_auras);
+    ch->aura_event = false;
+    ++purges;
+}
 void update_skills(P_char ch) { ++updates; updated = ch; }
 void forget_spells(P_char, int) { ++forgotten; }
 char *one_argument(const char *text, char *word) { std::strcpy(word, text); return word; }
@@ -144,27 +160,38 @@ int main() {
     test_unrelated_high_affect_does_not_keep_bit();
     test_invalid_broken_affect_is_ignored();
     char_data healer;
+    char_data group_member;
+    healer.aura_recipients = {&healer, &group_member};
+    healer.aura_event = true;
     healer.player.spec = 2;
     epic_command_result result;
     unspecialize_committed(&healer, false, result, 0, nullptr, 0);
     assert(healer.player.spec == 2 && purges == 0 && updates == 0 && forgotten == 0);
+    assert(healer.aura_recipients.size() == 2 && healer.aura_event);
     unspecialize_committed(&healer, true, result, 0, nullptr, 0);
     assert(healer.player.spec == 0 && purges == 1 && updates == 1 && forgotten == 1);
+    assert(healer.aura_recipients.empty() && !healer.aura_event);
     healer.player.spec = 2;
+    healer.aura_recipients = {&healer, &group_member};
+    healer.aura_event = true;
     char_data staff;
     selected = &healer;
     char argument[] = "healer";
     do_unspec(&staff, argument, 0);
     assert(healer.player.spec == 0 && purges == 2 && updated == &healer);
+    assert(healer.aura_recipients.empty() && !healer.aura_event);
     // Both these classes keep their aura entitlement when their spec is removed.
     for (unsigned cls : {CLASS_PALADIN, CLASS_ANTIPALADIN}) {
         healer.player.m_class = cls;
+        healer.aura_recipients = {&healer, &group_member};
+        healer.aura_event = true;
         healer.player.spec = 1;
         unspecialize_committed(&healer, true, result, 0, nullptr, 0);
         assert(healer.player.spec == 0 && purges == 2);
         healer.player.spec = 1;
         do_unspec(&staff, argument, 0);
         assert(healer.player.spec == 0 && purges == 2 && updated == &healer);
+        assert(healer.aura_recipients.size() == 2 && healer.aura_event);
     }
     std::puts("paladin aura cleanup regression passed");
 }
@@ -175,6 +202,7 @@ harness = (
     + "void aura_broken(struct char_link_data *cld)\n{\n"
     + body
     + "\n}\n"
+    + extract_function("paladins.c", "void purge_linked_auras(")
     + extract_function("specializations.c", "void unspecialize_committed(")
     + extract_function("actwiz.c", "void do_unspec(")
     + DRIVER
