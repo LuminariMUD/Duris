@@ -558,6 +558,14 @@ The final restored-expiry leg shortens only disposable saved timers to 40 pulses
 it verifies materialization/expiry while the scheduler regression proves the
 2,640-pulse contract. No gameplay safeguard was weakened.
 
+The sequential merge rerun exposed a fixture failure on MariaDB: a level-36
+Miracle cast triggered the normal random highest-circle concentration abort.
+The cast path compares a 0..100 roll against agility / 2 + 50, independent of
+trained concentration. The journey now sets only its Human caster's base agility
+to 100 through the existing staff fixture command and records that stat in its
+JSON. No retry loop or gameplay change is needed; unlock rejection, normal spell
+completion and all effect/persistence assertions remain in place.
+
 ### Remaining acceptance
 
 Implementation, local builds, focused regressions, both persistence journeys and

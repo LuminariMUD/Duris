@@ -99,7 +99,7 @@ def run(binary, backend, inspector):
                         'level': 56, 'race': 'Human', 'gear': 'creation gear; no boons',
                         'properties': {'rechargeTime': 240,
                                        'healer.healing.mod': 1.2, 'white_aura': .2},
-                        'pilot': False}
+                        'pilot': False, 'caster_agility': 100}
 
             def login(name, account=None):
                 client = journey.reconnect_character(server.port, expected_room=None,
@@ -182,6 +182,9 @@ def run(binary, backend, inspector):
                 evidence['staff_unspec_revokes_aura'] = True
                 print('Aura entitlement and staff cleanup passed', flush=True)
                 command(staff, 'setbit room here flag NO_HEAL 1')
+                # At unlock levels, casting can randomly abort below 100 agility.
+                # Fix this fixture stat while retaining real casts and eligibility.
+                command(staff, 'setbit char Clerica agi 100')
                 # Keep the ordinary caster in the staff-led fixture party.
                 # Current eligibility takes precedence over stored Miracle slots.
                 command(staff, 'setbit char Clerica level 35')
