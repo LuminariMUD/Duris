@@ -84,6 +84,24 @@ Database pages explicitly assigned dynamic categories receive code-generated
 sections: race `25`, class `9`, specialization `16`, and class-skillset `10`.
 Do not duplicate those sections in the authored body of a dynamic page.
 
+## Specialization progression layout
+
+Use numeric progression rows in specialization change sections rather than one
+`ability: circle N` or `ability: level N` entry per line. Group spells by
+circle and skills by level, in ascending numeric order; alphabetize names within
+each group. Render circle and level labels in dark blue (`&+b`) and names in
+cyan (`&+c`), resetting at the end of each row (`&n`). Wrap long groups to
+four-space-indented cyan continuation lines.
+
+Keep skill caps beside individual skill names (e.g. `parry (cap 90%)`). For
+innate additions, use one cyan name per line, a leading `*` for passive
+abilities, and `(obtained at level N)` where N is greater than 1, followed by
+the passive-ability legend. Order innates by level, then name. Preserve
+descriptions, headings, requirements, and all other authored prose.
+
+For mirrored specialization topics, maintain identical bodies in
+`help/duris_help_parsed.hlp` and `lib/information/help_index`.
+
 ## Verification and publication
 
 Check title collisions and parser output with
