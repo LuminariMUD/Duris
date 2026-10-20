@@ -482,20 +482,20 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Orc, Githyanki, Tiefling.
+&+W*&n &+LOrc&n, &+GGith&+Wyanki&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- summon mount (obtained at level 8)
-*anti-good
-*vampiric touch
- drain life (obtained at level 36)
-*decrepify
- aura_of_protection
- aura_of_precision (obtained at level 10)
- aura_of_battlelust (obtained at level 45)
- aura_of_endurance (obtained at level 15)
- aura_of_vigor (obtained at level 30)
+*&+canti-good&n
+ &+caura_of_protection&n
+*&+cdecrepify&n
+*&+cvampiric touch&n
+ &+csummon mount&n (obtained at level &+c8&n)
+ &+caura_of_precision&n (obtained at level &+c10&n)
+ &+caura_of_endurance&n (obtained at level &+c15&n)
+ &+caura_of_vigor&n (obtained at level &+c30&n)
+ &+cdrain life&n (obtained at level &+c36&n)
+ &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Specializations==
 * Dark Knight
@@ -998,11 +998,11 @@ None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- god call (obtained at level 21)
-*eyeless
-*magic resistance
-*holy light
-*command aura (obtained at level 36)
+*&+ceyeless&n
+*&+choly light&n
+*&+cmagic resistance&n
+ &+cgod call&n (obtained at level &+c21&n)
+*&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 ==Specializations==
 * Lightbringer
@@ -1147,8 +1147,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Gnome, Githzerai, Drow Elf, Orc, Githyanki, Goblin,
-Kobold, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
+  &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -1361,7 +1361,7 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Barbarian, Mountain Dwarf, Duergar Dwarf, Troll, Orc, Minotaur.
+&+W*&n &+CHuman&n, &+BBarbarian&n, &+YDwarf&n, &+rDuergar&n, &+gTroll&n, &+LOrc&n, &+LMino&+rtaur&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -2429,12 +2429,12 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Mountain Dwarf, Halfling, Gnome, Githzerai, Drow Elf, Duergar
-Dwarf, Orc, Githyanki, Goblin, Kobold, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+rDuergar&n, &+LOrc&n,
+  &+GGith&+Wyanki&n, &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- god call
+ &+cgod call&n
 '*' Designates passive ability.
 ==Specializations==
 * Zealot
@@ -2818,8 +2818,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Gnome, Githzerai, Drow Elf, Orc, Githyanki, Goblin,
-Kobold, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
+  &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -4351,9 +4351,9 @@ None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
-*eyeless
-*acid blood
-*command aura (obtained at level 36)
+*&+cacid blood&n
+*&+ceyeless&n
+*&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 ==Specializations==
 * Deathlord
@@ -4456,14 +4456,14 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Centaur, Githzerai.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+gCen&+Ltaur&n, &+WGith&+Gzerai&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- plane shift (obtained at level 41)
- charm animal (obtained at level 21)
- shapechange (obtained at level 11)
-*forest sight
+*&+cforest sight&n
+ &+cshapechange&n (obtained at level &+c11&n)
+ &+ccharm animal&n (obtained at level &+c21&n)
+ &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Specializations==
 * Forest Druid
@@ -5252,12 +5252,12 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Githzerai, Drow Elf, Orc, Githyanki, Goblin,
-Kobold, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n,
+  &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
-*fly
+*&+cfly&n
 '*' Designates passive ability.
 ==Specializations==
 * Tempest Magus
@@ -8547,8 +8547,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Gnome, Githzerai, Drow Elf, Orc, Githyanki, Goblin,
-Kobold, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
+  &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -10064,13 +10064,13 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Barbarian, Grey Elf, Mountain Dwarf, Halfling, Gnome, Drow Elf, Duergar
-Dwarf, Troll, Orc, Goblin, Kobold, Minotaur, Tiefling.
+&+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+RGnome&n, &+mDrow Elf&n, &+rDuergar&n, &+gTroll&n,
+  &+LOrc&n, &+GGoblin&n, &+LKobold&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
-*entrapment (obtained at level 45)
-*rapier and dirk
+*&+crapier and dirk&n
+*&+centrapment&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Specializations==
 * Brigand
@@ -10360,11 +10360,11 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Orc, Tiefling.
+&+W*&n &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
-*calming
+*&+ccalming&n
 '*' Designates passive ability.
 ==Specializations==
 * Red Dragon
@@ -10797,7 +10797,7 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Gnome, Githzerai, Drow Elf, Orc, Githyanki, Goblin, Kobold, Drider.
+&+W*&n &+CHuman&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LKobold&n, &+mDri&+Lder&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -11219,19 +11219,19 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Githzerai, Tiefling.
+&+W*&n &+CHuman&n, &+WGith&+Gzerai&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- summon mount (obtained at level 8)
-*anti-evil
- lay hands
- aura_of_protection
- aura_of_precision (obtained at level 10)
- aura_of_battlelust (obtained at level 45)
- aura_of_endurance (obtained at level 15)
- aura_of_improved_healing (obtained at level 30)
-*holy combat (obtained at level 21)
+*&+canti-evil&n
+ &+caura_of_protection&n
+ &+clay hands&n
+ &+csummon mount&n (obtained at level &+c8&n)
+ &+caura_of_precision&n (obtained at level &+c10&n)
+ &+caura_of_endurance&n (obtained at level &+c15&n)
+*&+choly combat&n (obtained at level &+c21&n)
+ &+caura_of_improved_healing&n (obtained at level &+c30&n)
+ &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Specializations==
 * Crusader
@@ -11913,7 +11913,7 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Githzerai, Githyanki.
+&+W*&n &+WGith&+Gzerai&n, &+GGith&+Wyanki&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -12500,12 +12500,12 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Centaur, Githzerai, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
-*outdoor sneak
-*dual wielding master (obtained at level 41)
+*&+coutdoor sneak&n
+*&+cdual wielding master&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Specializations==
 * Blademaster
@@ -12634,7 +12634,7 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Drow Elf, Duergar Dwarf, Orc, Githyanki, Goblin, Drider, Tiefling.
+&+W*&n &+mDrow Elf&n, &+rDuergar&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+mDri&+Lder&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -13074,8 +13074,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Barbarian, Grey Elf, Mountain Dwarf, Halfling, Drow Elf, Duergar Dwarf,
-Troll, Orc, Githyanki, Goblin, Tiefling.
+&+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+mDrow Elf&n, &+rDuergar&n, &+gTroll&n, &+LOrc&n,
+  &+GGith&+Wyanki&n, &+GGoblin&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -13602,8 +13602,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Barbarian, Grey Elf, Halfling, Gnome, Centaur, Firbolg, Drow Elf, Ogre,
-Troll, Orc, Goblin, Kobold, Minotaur, Tiefling.
+&+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+gCen&+Ltaur&n, &+yFir&+cbolg&n, &+mDrow Elf&n,
+  &+bOgre&n, &+gTroll&n, &+LOrc&n, &+GGoblin&n, &+LKobold&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -14353,10 +14353,10 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 2h bludgeon, bandage, carve, climb, fishing, kick,
-    lore, mix, mount, parry, retreat, salvage, throwpotion
-11th Level: double attack
-51st Level: remix
+&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, fishing, kick, lore&n
+    &+cmix, mount, parry, retreat, salvage, throwpotion&n
+&+b11th Level: &+cdouble attack&n
+&+b51st Level: &+cremix&n
 ==Spells==
 None.
 ==See also==
@@ -14372,40 +14372,39 @@ The following is a list of all skills and spells available to the Anti-Paladin c
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- summon mount (obtained at level 8)
-*anti-good
-*vampiric touch
- drain life (obtained at level 36)
-*decrepify
- aura_of_protection
- aura_of_precision (obtained at level 10)
- aura_of_battlelust (obtained at level 45)
- aura_of_endurance (obtained at level 15)
- aura_of_vigor (obtained at level 30)
+*&+canti-good&n
+ &+caura_of_protection&n
+*&+cdecrepify&n
+*&+cvampiric touch&n
+ &+csummon mount&n (obtained at level &+c8&n)
+ &+caura_of_precision&n (obtained at level &+c10&n)
+ &+caura_of_endurance&n (obtained at level &+c15&n)
+ &+caura_of_vigor&n (obtained at level &+c30&n)
+ &+cdrain life&n (obtained at level &+c36&n)
+ &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,
-    climb, double attack, fishing, kick, meditate, mount, parry, quick chant,
-    retreat, riposte, salvage, swim, switch opponents, unarmed damage
-10th Level: clerical spell knowledge, mounted combat,
-    sorcerous spell knowledge
-11th Level: taunt
-20th Level: guard
-31st Level: rescue
-36th Level: cleave
-41st Level: skewer
-56th Level: triple attack
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve, climb&n
+    &+cdouble attack, fishing, kick, meditate, mount, parry, quick chant, retreat&n
+    &+criposte, salvage, swim, switch opponents, unarmed damage&n
+&+b10th Level: &+cclerical spell knowledge, mounted combat, sorcerous spell knowledge&n
+&+b11th Level: &+ctaunt&n
+&+b20th Level: &+cguard&n
+&+b31st Level: &+crescue&n
+&+b36th Level: &+ccleave&n
+&+b41st Level: &+cskewer&n
+&+b56th Level: &+ctriple attack&n
 ==Spells==
-3rd Circle: armor, cause light, protection from good
-4th Circle: dispel good
-5th Circle: cause serious, fear, invigorate
-6th Circle: blindness, cause critical, curse
-7th Circle: harm, soulshield
-8th Circle: battle ecstasy, darkness, enervation, wither
-9th Circle: unholy word
-10th Circle: vortex of fear
-11th Circle: apocalypse, energy drain, taint
-12th Circle: bleak foeman
+&+b3rd Circle: &+carmor, cause light, protection from good&n
+&+b4th Circle: &+cdispel good&n
+&+b5th Circle: &+ccause serious, fear, invigorate&n
+&+b6th Circle: &+cblindness, cause critical, curse&n
+&+b7th Circle: &+charm, soulshield&n
+&+b8th Circle: &+cbattle ecstasy, darkness, enervation, wither&n
+&+b9th Circle: &+cunholy word&n
+&+b10th Circle: &+cvortex of fear&n
+&+b11th Circle: &+capocalypse, energy drain, taint&n
+&+b12th Circle: &+cbleak foeman&n
 ==See also==
 * Anti-Paladin
 * Specialization
@@ -14419,31 +14418,31 @@ The following is a list of all skills and spells available to the Avenger class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- god call (obtained at level 21)
-*eyeless
-*magic resistance
-*holy light
-*command aura (obtained at level 36)
+*&+ceyeless&n
+*&+choly light&n
+*&+cmagic resistance&n
+ &+cgod call&n (obtained at level &+c21&n)
+*&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 2h bludgeon, 2h slashing, bandage, carve, clerical spell knowledge,
-    climb, double attack, fishing, hitall, kick, meditate, parry, retreat,
-    riposte, salvage, swim, unarmed damage
-11th Level: flank, holy smite
-21st Level: gaze
-26th Level: holy blade, switch opponents
-46th Level: triple attack
-51st Level: battle orders
-56th Level: quadruple attack
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, clerical spell knowledge&n
+    &+cclimb, double attack, fishing, hitall, kick, meditate, parry, retreat&n
+    &+criposte, salvage, swim, unarmed damage&n
+&+b11th Level: &+cflank, holy smite&n
+&+b21st Level: &+cgaze&n
+&+b26th Level: &+choly blade, switch opponents&n
+&+b46th Level: &+ctriple attack&n
+&+b51st Level: &+cbattle orders&n
+&+b56th Level: &+cquadruple attack&n
 ==Spells==
-4th Circle: bless
-5th Circle: protection from evil
-7th Circle: atonement
-8th Circle: turn undead
-9th Circle: divine power
-10th Circle: destroy undead
-11th Circle: holy sword
-12th Circle: celestial aura
+&+b4th Circle: &+cbless&n
+&+b5th Circle: &+cprotection from evil&n
+&+b7th Circle: &+catonement&n
+&+b8th Circle: &+cturn undead&n
+&+b9th Circle: &+cdivine power&n
+&+b10th Circle: &+cdestroy undead&n
+&+b11th Circle: &+choly sword&n
+&+b12th Circle: &+ccelestial aura&n
 ==See also==
 * Avenger
 * Specialization
@@ -14459,37 +14458,37 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h piercing, 1h slashing, awareness, backstab, bandage, carve,
-    climb, concentration, double attack, fishing, hide, kick, meditate, mount,
-    parry, quick chant, retreat, salvage, scribe, shield block, sneak, swim,
-    unarmed damage
-10th Level: appraise, lore, sorcerous spell knowledge
-11th Level: taunt
-15th Level: listen
-36th Level: legend lore
+&+b1st Level: &+c1h piercing, 1h slashing, awareness, backstab, bandage, carve, climb&n
+    &+cconcentration, double attack, fishing, hide, kick, meditate, mount, parry&n
+    &+cquick chant, retreat, salvage, scribe, shield block, sneak, swim&n
+    &+cunarmed damage&n
+&+b10th Level: &+cappraise, lore, sorcerous spell knowledge&n
+&+b11th Level: &+ctaunt&n
+&+b15th Level: &+clisten&n
+&+b36th Level: &+clegend lore&n
 ==Spells==
-2nd Circle: mirror image
-3rd Circle: magic missile
-4th Circle: burning hands, minor creation
-5th Circle: concealment
-6th Circle: dispel magic, infravision, lightning bolt, ray of enfeeblement
-7th Circle: dimension door, fireball, slowness
-8th Circle: bigbys clenched fist
-9th Circle: feeblemind
-10th Circle: detect invisibility
-11th Circle: freedom of movement, rope trick
-12th Circle: enlarge, sirens song
+&+b2nd Circle: &+cmirror image&n
+&+b3rd Circle: &+cmagic missile&n
+&+b4th Circle: &+cburning hands, minor creation&n
+&+b5th Circle: &+cconcealment&n
+&+b6th Circle: &+cdispel magic, infravision, lightning bolt, ray of enfeeblement&n
+&+b7th Circle: &+cdimension door, fireball, slowness&n
+&+b8th Circle: &+cbigbys clenched fist&n
+&+b9th Circle: &+cfeeblemind&n
+&+b10th Circle: &+cdetect invisibility&n
+&+b11th Circle: &+cfreedom of movement, rope trick&n
+&+b12th Circle: &+cenlarge, sirens song&n
 ==Songs==
-6th Level: song of sleep
-16th Level: song of calming, song of discord, song of harmony
-21st Level: song of cowardice, song of forgetfulness, song of protection
-26th Level: song of dissonance, song of peace
-31st Level: song of flight, song of healing
-36th Level: song of charming, song of dragons, song of harming
-41st Level: song of heroism, song of storms
-46th Level: song of chaos, song of revelation
+&+b6th Level: &+csong of sleep&n
+&+b16th Level: &+csong of calming, song of discord, song of harmony&n
+&+b21st Level: &+csong of cowardice, song of forgetfulness, song of protection&n
+&+b26th Level: &+csong of dissonance, song of peace&n
+&+b31st Level: &+csong of flight, song of healing&n
+&+b36th Level: &+csong of charming, song of dragons, song of harming&n
+&+b41st Level: &+csong of heroism, song of storms&n
+&+b46th Level: &+csong of chaos, song of revelation&n
 ==Instruments==
-5th Level: drums, flute, harp, horn, lyre, mandolin
+&+b5th Level: &+cdrums, flute, harp, horn, lyre, mandolin&n
 ==See also==
 * Bard
 * Specialization
@@ -14505,15 +14504,15 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h flaying, 2h bludgeon, bandage, berserk, carve,
-    climb, fishing, kick, mount, parry, retreat, salvage, unarmed damage
-6th Level: blindfighting, rage, riposte
-11th Level: double attack, dual wield, hitall, taunt
-26th Level: war cry
-30th Level: maul
-36th Level: rampage
-41st Level: infuriate
-51st Level: rush, triple attack, vicious strike
+&+b1st Level: &+c1h bludgeon, 1h flaying, 2h bludgeon, bandage, berserk, carve, climb&n
+    &+cfishing, kick, mount, parry, retreat, salvage, unarmed damage&n
+&+b6th Level: &+cblindfighting, rage, riposte&n
+&+b11th Level: &+cdouble attack, dual wield, hitall, taunt&n
+&+b26th Level: &+cwar cry&n
+&+b30th Level: &+cmaul&n
+&+b36th Level: &+crampage&n
+&+b41st Level: &+cinfuriate&n
+&+b51st Level: &+crush, triple attack, vicious strike&n
 ==Spells==
 None.
 ==See also==
@@ -14529,33 +14528,33 @@ The following is a list of all skills and spells available to the Cleric class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- god call
+ &+cgod call&n
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h bludgeon, bandage, carve, clerical spell knowledge, climb,
-    concentration, fishing, kick, meditate, mount, quick chant, retreat,
-    salvage, shield block, swim
-40th Level: age corpse
+&+b1st Level: &+c1h bludgeon, bandage, carve, clerical spell knowledge, climb&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+    &+csalvage, shield block, swim&n
+&+b40th Level: &+cage corpse&n
 ==Spells==
-1st Circle: armor, bless, cause light, cure light, detect evil, detect good,
-    detect magic, turn undead
-2nd Circle: blindness, cause serious, cure serious, preserve,
-    protection from cold, protection from fire, slow poison, word of command
-3rd Circle: cause critical, cure blind, cure critic, dispel evil, dispel good,
-    earthquake, remove poison, sense life
-4th Circle: cure disease, invigorate, protection from acid,
-    protection from evil, protection from gas, protection from good,
-    protection from lightning, remove curse, self comprehension, summon
-5th Circle: destroy undead, heal, soulshield, vitality
-6th Circle: continual light, curse, darkness, fear, flame strike, harm,
-    mass preserve, negative energy barrier
-7th Circle: full heal, lesser resurrect, water breathing
-8th Circle: dispel magic, mass heal, miracle
-9th Circle: holy word, plane shift, resurrect, silence, unholy word,
-    word of recall
-10th Circle: accelerated healing, full harm, taint, true seeing
-11th Circle: divine warding, freedom of movement, group recall
-12th Circle: mass purification
+&+b1st Circle: &+carmor, bless, cause light, cure light, detect evil, detect good&n
+    &+cdetect magic, turn undead&n
+&+b2nd Circle: &+cblindness, cause serious, cure serious, preserve&n
+    &+cprotection from cold, protection from fire, slow poison, word of command&n
+&+b3rd Circle: &+ccause critical, cure blind, cure critic, dispel evil, dispel good&n
+    &+cearthquake, remove poison, sense life&n
+&+b4th Circle: &+ccure disease, invigorate, protection from acid&n
+    &+cprotection from evil, protection from gas, protection from good&n
+    &+cprotection from lightning, remove curse, self comprehension, summon&n
+&+b5th Circle: &+cdestroy undead, heal, soulshield, vitality&n
+&+b6th Circle: &+ccontinual light, curse, darkness, fear, flame strike, harm&n
+    &+cmass preserve, negative energy barrier&n
+&+b7th Circle: &+cfull heal, lesser resurrect, water breathing&n
+&+b8th Circle: &+cdispel magic, mass heal, miracle&n
+&+b9th Circle: &+choly word, plane shift, resurrect, silence, unholy word&n
+    &+cword of recall&n
+&+b10th Circle: &+caccelerated healing, full harm, taint, true seeing&n
+&+b11th Circle: &+cdivine warding, freedom of movement, group recall&n
+&+b12th Circle: &+cmass purification&n
 ==See also==
 * Cleric
 * Specialization
@@ -14571,29 +14570,29 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    concentration, fishing, kick, meditate, mount, quick chant, retreat,
-    salvage, scribe, sorcerous spell knowledge, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+    &+csalvage, scribe, sorcerous spell knowledge, swim&n
 ==Spells==
-1st Circle: detect magic, magic missile, minor creation
-2nd Circle: burning hands, chill touch, mirror image, sleep
-3rd Circle: agility, concealment, dispel magic, mage flame, shocking grasp,
-    strength
-4th Circle: enchant weapon, infravision, levitate, lightning bolt,
-    ray of enfeeblement, reveal true name, wall of force
-5th Circle: coldshield, conjure elemental, fireshield, identify,
-    sense follower, slowness, wall of stone
-6th Circle: color spray, feeblemind, minor globe of invulnerability,
-    stone skin, teleport, wall of iron
-7th Circle: airy water, cone of cold, dimension door, fireball, haste,
-    ice storm, stornogs metamagic shroud, wall of flames, wall of ice, web
-8th Circle: detect invisibility, disintegrate, globe of invulnerability,
-    invisibility, prismatic spray
-9th Circle: fly, gate, relocate
-10th Circle: farsee, group stone skin, stornogs shimmering starshell
-11th Circle: conjure greater elemental, group globe of invulnerability,
-    prismatic cube, stornogs spheres
-12th Circle: group stornogs spheres
+&+b1st Circle: &+cdetect magic, magic missile, minor creation&n
+&+b2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
+&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp&n
+    &+cstrength&n
+&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt&n
+    &+cray of enfeeblement, reveal true name, wall of force&n
+&+b5th Circle: &+ccoldshield, conjure elemental, fireshield, identify, sense follower&n
+    &+cslowness, wall of stone&n
+&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability, stone skin&n
+    &+cteleport, wall of iron&n
+&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste&n
+    &+cice storm, stornogs metamagic shroud, wall of flames, wall of ice, web&n
+&+b8th Circle: &+cdetect invisibility, disintegrate, globe of invulnerability&n
+    &+cinvisibility, prismatic spray&n
+&+b9th Circle: &+cfly, gate, relocate&n
+&+b10th Circle: &+cfarsee, group stone skin, stornogs shimmering starshell&n
+&+b11th Circle: &+cconjure greater elemental, group globe of invulnerability&n
+    &+cprismatic cube, stornogs spheres&n
+&+b12th Circle: &+cgroup stornogs spheres&n
 ==See also==
 * Conjurer
 * Specialization
@@ -14607,20 +14606,20 @@ The following is a list of all skills and spells available to the Dreadlord clas
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
-*eyeless
-*acid blood
-*command aura (obtained at level 36)
+*&+cacid blood&n
+*&+ceyeless&n
+*&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 2h bludgeon, 2h slashing, bandage, carve, climb, double attack,
-    fishing, hitall, kick, mount, parry, retreat, riposte, salvage, swim,
-    unarmed damage
-11th Level: battle senses, flank
-21st Level: call of the grave, gaze
-26th Level: switch opponents, tainted blade
-46th Level: triple attack
-51st Level: battle orders
-56th Level: dread wrath, quadruple attack
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, climb, double attack&n
+    &+cfishing, hitall, kick, mount, parry, retreat, riposte, salvage, swim&n
+    &+cunarmed damage&n
+&+b11th Level: &+cbattle senses, flank&n
+&+b21st Level: &+ccall of the grave, gaze&n
+&+b26th Level: &+cswitch opponents, tainted blade&n
+&+b46th Level: &+ctriple attack&n
+&+b51st Level: &+cbattle orders&n
+&+b56th Level: &+cdread wrath, quadruple attack&n
 ==Spells==
 None.
 ==See also==
@@ -14636,28 +14635,28 @@ The following is a list of all skills and spells available to the Druid class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- plane shift (obtained at level 41)
- charm animal (obtained at level 21)
- shapechange (obtained at level 11)
-*forest sight
+*&+cforest sight&n
+ &+cshapechange&n (obtained at level &+c11&n)
+ &+ccharm animal&n (obtained at level &+c21&n)
+ &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h bludgeon, 1h slashing, bandage, carve, clerical spell knowledge,
-    climb, concentration, double attack, fishing, kick, mount, retreat,
-    salvage, swim
+&+b1st Level: &+c1h bludgeon, 1h slashing, bandage, carve, clerical spell knowledge&n
+    &+cclimb, concentration, double attack, fishing, kick, mount, retreat, salvage&n
+    &+cswim&n
 ==Spells==
-1st Circle: animal friendship, barkskin, fortitude, pulchritude
-2nd Circle: aid, disease, sticks to snakes
-3rd Circle: faerie fire, faerie fog, flame blade, protection from animals
-4th Circle: create spring, lightning bolt, poison, serendipity
-5th Circle: earthquake, natures touch, tranquility
-6th Circle: earthen maul, endurance, regeneration
-7th Circle: cyclone, dispel magic, mielikki vitality
-8th Circle: animal vision, pass without trace
-9th Circle: consecrate land, sunray, wandering woods
-10th Circle: creeping doom, moonwell, natures blessing
-11th Circle: elemental aura, freedom of movement
-12th Circle: moonstone, nova
+&+b1st Circle: &+canimal friendship, barkskin, fortitude, pulchritude&n
+&+b2nd Circle: &+caid, disease, sticks to snakes&n
+&+b3rd Circle: &+cfaerie fire, faerie fog, flame blade, protection from animals&n
+&+b4th Circle: &+ccreate spring, lightning bolt, poison, serendipity&n
+&+b5th Circle: &+cearthquake, natures touch, tranquility&n
+&+b6th Circle: &+cearthen maul, endurance, regeneration&n
+&+b7th Circle: &+ccyclone, dispel magic, mielikki vitality&n
+&+b8th Circle: &+canimal vision, pass without trace&n
+&+b9th Circle: &+cconsecrate land, sunray, wandering woods&n
+&+b10th Circle: &+ccreeping doom, moonwell, natures blessing&n
+&+b11th Circle: &+celemental aura, freedom of movement&n
+&+b12th Circle: &+cmoonstone, nova&n
 ==See also==
 * Druid
 * Specialization
@@ -14671,24 +14670,24 @@ The following is a list of all skills and spells available to the Ethermancer cl
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
-*fly
+*&+cfly&n
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 1h slashing, bandage, carve,
-    clerical spell knowledge, climb, concentration, double attack, fishing,
-    kick, meditate, mount, quick chant, retreat, salvage, shield block, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve&n
+    &+cclerical spell knowledge, climb, concentration, double attack, fishing&n
+    &+ckick, meditate, mount, quick chant, retreat, salvage, shield block, swim&n
 ==Spells==
-1st Circle: faerie fire, ice missile, vapor armor
-2nd Circle: chill touch, detect magic, purify spirit
-3rd Circle: faerie fog, frost bolt, wind blade
-4th Circle: coldshield, cone of cold, faerie sight, lightning bolt
-5th Circle: ice storm, static discharge, storm empathy, vapor strike
-6th Circle: frost beacon, frostbite, lightning curtain, lightning shield
-7th Circle: cold snap, dispel magic, windwalk
-8th Circle: ethereal form, ethereal recharge
-9th Circle: arcane whirlwind, plane shift
-10th Circle: frost beam, induce tupor, purge
-11th Circle: mass fly, tempest terrain
+&+b1st Circle: &+cfaerie fire, ice missile, vapor armor&n
+&+b2nd Circle: &+cchill touch, detect magic, purify spirit&n
+&+b3rd Circle: &+cfaerie fog, frost bolt, wind blade&n
+&+b4th Circle: &+ccoldshield, cone of cold, faerie sight, lightning bolt&n
+&+b5th Circle: &+cice storm, static discharge, storm empathy, vapor strike&n
+&+b6th Circle: &+cfrost beacon, frostbite, lightning curtain, lightning shield&n
+&+b7th Circle: &+ccold snap, dispel magic, windwalk&n
+&+b8th Circle: &+cethereal form, ethereal recharge&n
+&+b9th Circle: &+carcane whirlwind, plane shift&n
+&+b10th Circle: &+cfrost beam, induce tupor, purge&n
+&+b11th Circle: &+cmass fly, tempest terrain&n
 ==See also==
 * Ethermancer
 * Specialization
@@ -14704,22 +14703,22 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    fishing, kick, meditate, mount, quick chant, retreat, salvage, scribe,
-    sorcerous spell knowledge, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, scribe&n
+    &+csorcerous spell knowledge, swim&n
 ==Spells==
-1st Circle: detect magic, magic missile, minor creation, phantom armor
-2nd Circle: burning hands, continual light, darkness, dispel magic
-3rd Circle: blindness, concealment, mirror image, shadow monster
-4th Circle: farsee, infravision, insects, levitate, sleep
-5th Circle: boulder, illusionary wall, shadow travel
-6th Circle: nightmare, reflection, stunning visions
-7th Circle: dispel invisible, hammer, reveal true name
-8th Circle: fly, mask, shadow shield, vanish
-9th Circle: asphyxiate, detect illusion, dream travel, mass invisibility
-10th Circle: clone form, delirium, imprisonment
-11th Circle: flicker, nonexistence, titan
-12th Circle: dragon, mirage
+&+b1st Circle: &+cdetect magic, magic missile, minor creation, phantom armor&n
+&+b2nd Circle: &+cburning hands, continual light, darkness, dispel magic&n
+&+b3rd Circle: &+cblindness, concealment, mirror image, shadow monster&n
+&+b4th Circle: &+cfarsee, infravision, insects, levitate, sleep&n
+&+b5th Circle: &+cboulder, illusionary wall, shadow travel&n
+&+b6th Circle: &+cnightmare, reflection, stunning visions&n
+&+b7th Circle: &+cdispel invisible, hammer, reveal true name&n
+&+b8th Circle: &+cfly, mask, shadow shield, vanish&n
+&+b9th Circle: &+casphyxiate, detect illusion, dream travel, mass invisibility&n
+&+b10th Circle: &+cclone form, delirium, imprisonment&n
+&+b11th Circle: &+cflicker, nonexistence, titan&n
+&+b12th Circle: &+cdragon, mirage&n
 ==See also==
 * Illusionist
 * Specialization
@@ -14733,20 +14732,20 @@ The following is a list of all skills and spells available to the Mercenary clas
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
-*entrapment (obtained at level 45)
-*rapier and dirk
+*&+crapier and dirk&n
+*&+centrapment&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,
-    2h flaying, 2h slashing, backstab, bandage, carve, climb, double attack,
-    dual wield, fishing, headbutt, hide, kick, mount, parry, retreat, riposte,
-    salvage, shield block, swim, track, unarmed damage
-10th Level: rescue
-20th Level: appraise, tackle
-30th Level: reach weapons
-51st Level: switch opponents, throat crush
-53rd Level: triple attack
-56th Level: double headbutt
+&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon&n
+    &+c2h flaying, 2h slashing, backstab, bandage, carve, climb, double attack&n
+    &+cdual wield, fishing, headbutt, hide, kick, mount, parry, retreat, riposte&n
+    &+csalvage, shield block, swim, track, unarmed damage&n
+&+b10th Level: &+crescue&n
+&+b20th Level: &+cappraise, tackle&n
+&+b30th Level: &+creach weapons&n
+&+b51st Level: &+cswitch opponents, throat crush&n
+&+b53rd Level: &+ctriple attack&n
+&+b56th Level: &+cdouble headbutt&n
 ==Spells==
 None.
 ==See also==
@@ -14762,17 +14761,17 @@ The following is a list of all skills and spells available to the Monk class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
-*calming
+*&+ccalming&n
 '*' Designates passive ability.
 ==Skills==
-1st Level: awareness, bandage, blindfighting, calm, chant, climb, diamond soul,
-    dragon punch, feign death, fishing, heroism, kick, martial arts, mount,
-    retreat, roundkick, safe fall, salvage, springleap, swim, switch opponents,
-    unarmed damage
-10th Level: combination attack, quivering palm
-15th Level: buddha palm
-20th Level: regenerate
-21st Level: chi purge
+&+b1st Level: &+cawareness, bandage, blindfighting, calm, chant, climb, diamond soul&n
+    &+cdragon punch, feign death, fishing, heroism, kick, martial arts, mount&n
+    &+cretreat, roundkick, safe fall, salvage, springleap, swim, switch opponents&n
+    &+cunarmed damage&n
+&+b10th Level: &+ccombination attack, quivering palm&n
+&+b15th Level: &+cbuddha palm&n
+&+b20th Level: &+cregenerate&n
+&+b21st Level: &+cchi purge&n
 ==Spells==
 None.
 ==See also==
@@ -14790,30 +14789,30 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h piercing, carve, climb, concentration, feign death, fishing,
-    kick, meditate, mount, quick chant, retreat, salvage, scribe,
-    sorcerous spell knowledge, swim
-20th Level: age corpse
+&+b1st Level: &+c1h piercing, carve, climb, concentration, feign death, fishing, kick&n
+    &+cmeditate, mount, quick chant, retreat, salvage, scribe&n
+    &+csorcerous spell knowledge, swim&n
+&+b20th Level: &+cage corpse&n
 ==Spells==
-1st Circle: detect magic, minor creation, preserve, protection from undead,
-    slashing darkness
-2nd Circle: chill touch, protection from cold, protection from living, sleep,
-    vampiric touch
-3rd Circle: animate dead, dispel magic, embalm, sense follower
-4th Circle: life leech, rejuvenate minor, strength, wither
-5th Circle: coldshield, concealment, feeblemind, fireshield, heal undead,
-    levitate, raise spectre, teleport
-6th Circle: cone of cold, enervation, minor globe of invulnerability,
-    rejuvenate major, vitalize undead
-7th Circle: knock, protect undead, raise wraith, reveal true name
-8th Circle: detect invisibility, dispel invisible, haste, invisibility,
-    negative concussion blast
-9th Circle: age, dimension door, energy drain, globe of darkness,
-    raise vampire, undeath to death
-10th Circle: blackmantle, cloak of fear, compact corpse, fly, mass embalm,
-    raise lich, vampiric trance
-11th Circle: corpseform, create dracolich, power word kill, summon ghasts
-12th Circle: create greater dracolich
+&+b1st Circle: &+cdetect magic, minor creation, preserve, protection from undead&n
+    &+cslashing darkness&n
+&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep&n
+    &+cvampiric touch&n
+&+b3rd Circle: &+canimate dead, dispel magic, embalm, sense follower&n
+&+b4th Circle: &+clife leech, rejuvenate minor, strength, wither&n
+&+b5th Circle: &+ccoldshield, concealment, feeblemind, fireshield, heal undead&n
+    &+clevitate, raise spectre, teleport&n
+&+b6th Circle: &+ccone of cold, enervation, minor globe of invulnerability&n
+    &+crejuvenate major, vitalize undead&n
+&+b7th Circle: &+cknock, protect undead, raise wraith, reveal true name&n
+&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility&n
+    &+cnegative concussion blast&n
+&+b9th Circle: &+cage, dimension door, energy drain, globe of darkness, raise vampire&n
+    &+cundeath to death&n
+&+b10th Circle: &+cblackmantle, cloak of fear, compact corpse, fly, mass embalm&n
+    &+craise lich, vampiric trance&n
+&+b11th Circle: &+ccorpseform, create dracolich, power word kill, summon ghasts&n
+&+b12th Circle: &+ccreate greater dracolich&n
 ==See also==
 * Necromancer
 * Specialization
@@ -14827,38 +14826,38 @@ The following is a list of all skills and spells available to the Paladin class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- summon mount (obtained at level 8)
-*anti-evil
- lay hands
- aura_of_protection
- aura_of_precision (obtained at level 10)
- aura_of_battlelust (obtained at level 45)
- aura_of_endurance (obtained at level 15)
- aura_of_improved_healing (obtained at level 30)
-*holy combat (obtained at level 21)
+*&+canti-evil&n
+ &+caura_of_protection&n
+ &+clay hands&n
+ &+csummon mount&n (obtained at level &+c8&n)
+ &+caura_of_precision&n (obtained at level &+c10&n)
+ &+caura_of_endurance&n (obtained at level &+c15&n)
+*&+choly combat&n (obtained at level &+c21&n)
+ &+caura_of_improved_healing&n (obtained at level &+c30&n)
+ &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,
-    climb, double attack, fishing, kick, meditate, mount, parry, quick chant,
-    rescue, retreat, riposte, salvage, swim, unarmed damage
-10th Level: clerical spell knowledge, mounted combat
-20th Level: guard
-36th Level: cleave
-41st Level: skewer
-51st Level: switch opponents
-56th Level: triple attack
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve, climb&n
+    &+cdouble attack, fishing, kick, meditate, mount, parry, quick chant, rescue&n
+    &+cretreat, riposte, salvage, swim, unarmed damage&n
+&+b10th Level: &+cclerical spell knowledge, mounted combat&n
+&+b20th Level: &+cguard&n
+&+b36th Level: &+ccleave&n
+&+b41st Level: &+cskewer&n
+&+b51st Level: &+cswitch opponents&n
+&+b56th Level: &+ctriple attack&n
 ==Spells==
-2nd Circle: bless
-3rd Circle: armor, cure light, protection from evil
-4th Circle: cure blind, dispel evil, remove poison
-5th Circle: cure serious, invigorate, turn undead
-6th Circle: cure critic, remove curse
-7th Circle: destroy undead, soulshield
-8th Circle: continual light, cure disease, heal
-9th Circle: dharma, holy word
-10th Circle: group heal, sanctuary
-11th Circle: accelerated healing, judgement
-12th Circle: righteous aura
+&+b2nd Circle: &+cbless&n
+&+b3rd Circle: &+carmor, cure light, protection from evil&n
+&+b4th Circle: &+ccure blind, dispel evil, remove poison&n
+&+b5th Circle: &+ccure serious, invigorate, turn undead&n
+&+b6th Circle: &+ccure critic, remove curse&n
+&+b7th Circle: &+cdestroy undead, soulshield&n
+&+b8th Circle: &+ccontinual light, cure disease, heal&n
+&+b9th Circle: &+cdharma, holy word&n
+&+b10th Circle: &+cgroup heal, sanctuary&n
+&+b11th Circle: &+caccelerated healing, judgement&n
+&+b12th Circle: &+crighteous aura&n
 ==See also==
 * Paladin
 * Specialization
@@ -14927,24 +14926,24 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    concentration, fishing, kick, meditate, mount, retreat, salvage, swim
-21st Level: 1h slashing
-36th Level: unarmed damage
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cconcentration, fishing, kick, meditate, mount, retreat, salvage, swim&n
+&+b21st Level: &+c1h slashing&n
+&+b36th Level: &+cunarmed damage&n
 ==Spells==
-1st Circle: adrenaline control, ego whip, excogitate
-2nd Circle: ballistic attack, enhance agility, enhance constitution,
-    enhance dexterity, enhance strength
-3rd Circle: aura sight, lend health, molecular agitation
-4th Circle: ego blast, energy containment, flesh armor
-5th Circle: inflict pain
-6th Circle: cell adjustment, create sound, flight, intellect fortress
-7th Circle: detonate, tower of iron will
-8th Circle: ectoplasmic form, molecular control
-9th Circle: ether warp, psychic crush
-10th Circle: death field, wormhole
-11th Circle: biofeedback
-12th Circle: enrage
+&+b1st Circle: &+cadrenaline control, ego whip, excogitate&n
+&+b2nd Circle: &+cballistic attack, enhance agility, enhance constitution&n
+    &+cenhance dexterity, enhance strength&n
+&+b3rd Circle: &+caura sight, lend health, molecular agitation&n
+&+b4th Circle: &+cego blast, energy containment, flesh armor&n
+&+b5th Circle: &+cinflict pain&n
+&+b6th Circle: &+ccell adjustment, create sound, flight, intellect fortress&n
+&+b7th Circle: &+cdetonate, tower of iron will&n
+&+b8th Circle: &+cectoplasmic form, molecular control&n
+&+b9th Circle: &+cether warp, psychic crush&n
+&+b10th Circle: &+cdeath field, wormhole&n
+&+b11th Circle: &+cbiofeedback&n
+&+b12th Circle: &+cenrage&n
 ==See also==
 * Psionicist
 * Specialization
@@ -14958,27 +14957,27 @@ The following is a list of all skills and spells available to the Ranger class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
-*outdoor sneak
-*dual wielding master (obtained at level 41)
+*&+coutdoor sneak&n
+*&+cdual wielding master&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h piercing, 1h slashing, awareness, bandage, blindfighting, carve,
-    climb, double attack, dual wield, fishing, kick, meditate, mount, parry,
-    quick chant, ranged weapons, retreat, riposte, salvage, springleap,
-    surprise, swim, switch opponents, track, unarmed damage
-10th Level: clerical spell knowledge, rescue, sorcerous spell knowledge
-16th Level: blade barrage
-51st Level: triple attack
-56th Level: vicious attack
+&+b1st Level: &+c1h piercing, 1h slashing, awareness, bandage, blindfighting, carve&n
+    &+cclimb, double attack, dual wield, fishing, kick, meditate, mount, parry&n
+    &+cquick chant, ranged weapons, retreat, riposte, salvage, springleap&n
+    &+csurprise, swim, switch opponents, track, unarmed damage&n
+&+b10th Level: &+cclerical spell knowledge, rescue, sorcerous spell knowledge&n
+&+b16th Level: &+cblade barrage&n
+&+b51st Level: &+ctriple attack&n
+&+b56th Level: &+cvicious attack&n
 ==Spells==
-3rd Circle: detect evil, detect good, detect magic
-4th Circle: protection from animals, protection from evil
-5th Circle: barkskin, invigorate
-6th Circle: cure blind, sense life
-7th Circle: infravision
-9th Circle: farsee, haste
-10th Circle: dazzle, tree
-11th Circle: animal vision, blur, freedom of movement
+&+b3rd Circle: &+cdetect evil, detect good, detect magic&n
+&+b4th Circle: &+cprotection from animals, protection from evil&n
+&+b5th Circle: &+cbarkskin, invigorate&n
+&+b6th Circle: &+ccure blind, sense life&n
+&+b7th Circle: &+cinfravision&n
+&+b9th Circle: &+cfarsee, haste&n
+&+b10th Circle: &+cdazzle, tree&n
+&+b11th Circle: &+canimal vision, blur, freedom of movement&n
 ==See also==
 * Ranger
 * Specialization
@@ -14994,26 +14993,26 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h flaying, 1h piercing, 1h slashing, bandage, carve,
-    climb, double attack, dual wield, fishing, kick, mount, retreat, salvage,
-    scribe, switch opponents, track
-10th Level: sorcerous spell knowledge
-11th Level: blindfighting, quick chant
-18th Level: parry
-21st Level: meditate
-26th Level: riposte, springleap
-51st Level: triple attack
+&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, bandage, carve&n
+    &+cclimb, double attack, dual wield, fishing, kick, mount, retreat, salvage&n
+    &+cscribe, switch opponents, track&n
+&+b10th Level: &+csorcerous spell knowledge&n
+&+b11th Level: &+cblindfighting, quick chant&n
+&+b18th Level: &+cparry&n
+&+b21st Level: &+cmeditate&n
+&+b26th Level: &+criposte, springleap&n
+&+b51st Level: &+ctriple attack&n
 ==Spells==
-2nd Circle: magic missile
-3rd Circle: chill touch, detect magic
-4th Circle: sleep
-5th Circle: baladors protection
-6th Circle: ray of enfeeblement
-7th Circle: ferrix precision
-8th Circle: dispel magic, kanchelsis fury
-9th Circle: detect invisibility, feeblemind
-10th Circle: haste
-11th Circle: bigbys clenched fist, dimension door, freedom of movement
+&+b2nd Circle: &+cmagic missile&n
+&+b3rd Circle: &+cchill touch, detect magic&n
+&+b4th Circle: &+csleep&n
+&+b5th Circle: &+cbaladors protection&n
+&+b6th Circle: &+cray of enfeeblement&n
+&+b7th Circle: &+cferrix precision&n
+&+b8th Circle: &+cdispel magic, kanchelsis fury&n
+&+b9th Circle: &+cdetect invisibility, feeblemind&n
+&+b10th Circle: &+chaste&n
+&+b11th Circle: &+cbigbys clenched fist, dimension door, freedom of movement&n
 ==See also==
 * Reaver
 * Specialization
@@ -15029,14 +15028,14 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h piercing, awareness, backstab, bandage, blindfighting, carve,
-    circle, climb, double attack, dual wield, fishing, hide, kick, mount,
-    pick lock, ranged weapons, retreat, safe fall, salvage, sneak, swim,
-    switch opponents, track, unarmed damage
-10th Level: appraise
-11th Level: taunt
-20th Level: parry, subterfuge
-46th Level: disguise
+&+b1st Level: &+c1h piercing, awareness, backstab, bandage, blindfighting, carve&n
+    &+ccircle, climb, double attack, dual wield, fishing, hide, kick, mount&n
+    &+cpick lock, ranged weapons, retreat, safe fall, salvage, sneak, swim&n
+    &+cswitch opponents, track, unarmed damage&n
+&+b10th Level: &+cappraise&n
+&+b11th Level: &+ctaunt&n
+&+b20th Level: &+cparry, subterfuge&n
+&+b46th Level: &+cdisguise&n
 ==Spells==
 None.
 ==See also==
@@ -15054,28 +15053,27 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 2h bludgeon, bandage, carve, climb, concentration,
-    fishing, kick, meditate, mount, quick chant, retreat, salvage,
-    shaman spell knowledge, swim
+&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, concentration&n
+    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage&n
+    &+cshaman spell knowledge, swim&n
 ==Spells==
-1st Circle: ice missile, spirit armor, transfer wellness, wolfspeed
-2nd Circle: flameburst, lesser mending, reveal spirit essence
-3rd Circle: cold ward, fire ward, molevision, purify spirit, pythonsting,
-    scalding blast, snailspeed
-4th Circle: hawkvision, mending, mousestrength, pantherspeed, scorching touch,
-    soul disturbance, summon beast
-5th Circle: bearstrength, malison, molten spray, sense spirit, shrewtameness
-6th Circle: earthen grasp, greater mending, lionrage, spirit anguish,
-    spirit sight, wellness
-7th Circle: elephantstrength, greater soul disturbance, ravenflight,
-    spirit ward
-8th Circle: corrosive blast, greater pythonsting, reveal true form,
-    scathing wind, spirit jump
-9th Circle: arieks shattering iceball, greater ravenflight,
-    greater spirit ward
-10th Circle: earthen rain, etherportal, gaseous cloud
-11th Circle: greater earthen grasp, greater spirit sight
-12th Circle: greater spirit anguish
+&+b1st Circle: &+cice missile, spirit armor, transfer wellness, wolfspeed&n
+&+b2nd Circle: &+cflameburst, lesser mending, reveal spirit essence&n
+&+b3rd Circle: &+ccold ward, fire ward, molevision, purify spirit, pythonsting&n
+    &+cscalding blast, snailspeed&n
+&+b4th Circle: &+chawkvision, mending, mousestrength, pantherspeed, scorching touch&n
+    &+csoul disturbance, summon beast&n
+&+b5th Circle: &+cbearstrength, malison, molten spray, sense spirit, shrewtameness&n
+&+b6th Circle: &+cearthen grasp, greater mending, lionrage, spirit anguish&n
+    &+cspirit sight, wellness&n
+&+b7th Circle: &+celephantstrength, greater soul disturbance, ravenflight&n
+    &+cspirit ward&n
+&+b8th Circle: &+ccorrosive blast, greater pythonsting, reveal true form&n
+    &+cscathing wind, spirit jump&n
+&+b9th Circle: &+carieks shattering iceball, greater ravenflight, greater spirit ward&n
+&+b10th Circle: &+cearthen rain, etherportal, gaseous cloud&n
+&+b11th Circle: &+cgreater earthen grasp, greater spirit sight&n
+&+b12th Circle: &+cgreater spirit anguish&n
 ==See also==
 * Shaman
 * Specialization
@@ -15091,26 +15089,26 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    concentration, fishing, kick, meditate, mount, quick chant, retreat,
-    salvage, scribe, sorcerous spell knowledge, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+    &+csalvage, scribe, sorcerous spell knowledge, swim&n
 ==Spells==
-1st Circle: detect magic, magic missile, minor creation
-2nd Circle: burning hands, chill touch, sleep, strength
-3rd Circle: acid blast, agility, concealment, shocking grasp
-4th Circle: dispel magic, farsee, infravision, levitate, lightning bolt,
-    minor paralysis, ray of enfeeblement, wizard eye
-5th Circle: coldshield, cone of cold, dimension door,
-    minor globe of invulnerability, slowness
-6th Circle: color spray, feeblemind, fireball, fireshield, ice storm, teleport
-7th Circle: bigbys clenched fist, detect invisibility, haste, invisibility,
-    power word blind, power word stun, reveal true name
-8th Circle: dispel invisible, fly, immolate, power word kill, shadow shield
-9th Circle: electrical execution, incendiary cloud, mass invisibility,
-    prismatic ray, relocate
-10th Circle: bigbys crushing hand, chain lightning, meteorswarm
-11th Circle: enlarge, reduce, solbeeps missile barrage
-12th Circle: deflect, globe of invulnerability
+&+b1st Circle: &+cdetect magic, magic missile, minor creation&n
+&+b2nd Circle: &+cburning hands, chill touch, sleep, strength&n
+&+b3rd Circle: &+cacid blast, agility, concealment, shocking grasp&n
+&+b4th Circle: &+cdispel magic, farsee, infravision, levitate, lightning bolt&n
+    &+cminor paralysis, ray of enfeeblement, wizard eye&n
+&+b5th Circle: &+ccoldshield, cone of cold, dimension door&n
+    &+cminor globe of invulnerability, slowness&n
+&+b6th Circle: &+ccolor spray, feeblemind, fireball, fireshield, ice storm, teleport&n
+&+b7th Circle: &+cbigbys clenched fist, detect invisibility, haste, invisibility&n
+    &+cpower word blind, power word stun, reveal true name&n
+&+b8th Circle: &+cdispel invisible, fly, immolate, power word kill, shadow shield&n
+&+b9th Circle: &+celectrical execution, incendiary cloud, mass invisibility&n
+    &+cprismatic ray, relocate&n
+&+b10th Circle: &+cbigbys crushing hand, chain lightning, meteorswarm&n
+&+b11th Circle: &+cenlarge, reduce, solbeeps missile barrage&n
+&+b12th Circle: &+cdeflect, globe of invulnerability&n
 ==See also==
 * Sorcerer
 * Specialization
@@ -15126,26 +15124,26 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    fishing, meditate, mount, quick chant, retreat, salvage,
-    sorcerous spell knowledge, swim
-10th Level: clerical spell knowledge
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cfishing, meditate, mount, quick chant, retreat, salvage&n
+    &+csorcerous spell knowledge, swim&n
+&+b10th Level: &+cclerical spell knowledge&n
 ==Spells==
-1st Circle: sense holiness, sleep, unholy wind
-2nd Circle: protection from cold, protection from living
-3rd Circle: blindness, invoke negative energy, protection from fire,
-    protection from good, remove poison
-4th Circle: dispel good, lifelust, unmaking
-5th Circle: devitalize, heal undead, purge living, remove curse
-6th Circle: cure blind, darkness, frostbite, negative energy barrier,
-    nether touch, slowness
-7th Circle: greater heal undead
-8th Circle: dispel lifeforce, dispel magic
-9th Circle: alter energy polarity, plane shift
-10th Circle: channel negative energy, hand of death, life ward, nether gate,
-    shadow gate
-11th Circle: entropy storm, shadow vision
-12th Circle: death blessing
+&+b1st Circle: &+csense holiness, sleep, unholy wind&n
+&+b2nd Circle: &+cprotection from cold, protection from living&n
+&+b3rd Circle: &+cblindness, invoke negative energy, protection from fire&n
+    &+cprotection from good, remove poison&n
+&+b4th Circle: &+cdispel good, lifelust, unmaking&n
+&+b5th Circle: &+cdevitalize, heal undead, purge living, remove curse&n
+&+b6th Circle: &+ccure blind, darkness, frostbite, negative energy barrier&n
+    &+cnether touch, slowness&n
+&+b7th Circle: &+cgreater heal undead&n
+&+b8th Circle: &+cdispel lifeforce, dispel magic&n
+&+b9th Circle: &+calter energy polarity, plane shift&n
+&+b10th Circle: &+cchannel negative energy, hand of death, life ward, nether gate&n
+    &+cshadow gate&n
+&+b11th Circle: &+centropy storm, shadow vision&n
+&+b12th Circle: &+cdeath blessing&n
 ==See also==
 * Warlock
 * Specialization
@@ -15161,15 +15159,15 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,
-    2h flaying, 2h slashing, bandage, bash, berserk, blindfighting, carve,
-    climb, disarm, double attack, dual wield, fishing, hitall, kick, mount,
-    parry, rescue, retreat, riposte, salvage, shield block, swim,
-    switch opponents, unarmed damage
-11th Level: taunt
-25th Level: reach weapons
-41st Level: guard
-51st Level: triple attack
+&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon&n
+    &+c2h flaying, 2h slashing, bandage, bash, berserk, blindfighting, carve&n
+    &+cclimb, disarm, double attack, dual wield, fishing, hitall, kick, mount&n
+    &+cparry, rescue, retreat, riposte, salvage, shield block, swim&n
+    &+cswitch opponents, unarmed damage&n
+&+b11th Level: &+ctaunt&n
+&+b25th Level: &+creach weapons&n
+&+b41st Level: &+cguard&n
+&+b51st Level: &+ctriple attack&n
 ==Spells==
 None.
 ==See also==
@@ -15905,8 +15903,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Gnome, Githzerai, Drow Elf, Orc, Githyanki, Goblin,
-Kobold, Drider, Minotaur, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
+  &+GGoblin&n, &+LKobold&n, &+mDri&+Lder&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -18502,9 +18500,9 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Barbarian, Grey Elf, Mountain Dwarf, Halfling, Gnome, Centaur,
-Githzerai, Firbolg, Drow Elf, Duergar Dwarf, Ogre, Troll, Orc, Githyanki,
-Goblin, Kobold, Drider, Thri-Kreen, Minotaur, Tiefling.
+&+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+RGnome&n, &+gCen&+Ltaur&n, &+WGith&+Gzerai&n,
+  &+yFir&+cbolg&n, &+mDrow Elf&n, &+rDuergar&n, &+bOgre&n, &+gTroll&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LKobold&n,
+  &+mDri&+Lder&n, &+GThri-&+YKreen&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -19737,13 +19735,13 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Githzerai, Drow Elf, Orc, Githyanki, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- summon mount
-*battle frenzy (obtained at level 16)
-*ophidian eyes
+*&+cophidian eyes&n
+ &+csummon mount&n
+*&+cbattle frenzy&n (obtained at level &+c16&n)
 '*' Designates passive ability.
 ==Specializations==
 * Dragon Hunter
@@ -19765,27 +19763,27 @@ The following is a list of all skills and spells available to the Dragoon class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- summon mount
-*battle frenzy (obtained at level 16)
-*ophidian eyes
+*&+cophidian eyes&n
+ &+csummon mount&n
+*&+cbattle frenzy&n (obtained at level &+c16&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h slashing, bandage, carve, climb, double attack, dragon breath,
-    dragon roar, dragon strike, fishing, kick, mount, mounted combat, parry,
-    quick chant, retreat, riposte, salvage, swim, unarmed damage
-10th Level: appraise, shaman spell knowledge
-15th Level: lore
-35th Level: reach weapons
-51st Level: switch opponents
+&+b1st Level: &+c1h slashing, bandage, carve, climb, double attack, dragon breath&n
+    &+cdragon roar, dragon strike, fishing, kick, mount, mounted combat, parry&n
+    &+cquick chant, retreat, riposte, salvage, swim, unarmed damage&n
+&+b10th Level: &+cappraise, shaman spell knowledge&n
+&+b15th Level: &+clore&n
+&+b35th Level: &+creach weapons&n
+&+b51st Level: &+cswitch opponents&n
 ==Spells==
-3rd Circle: animae cicatrix
-4th Circle: ensis unguis
-5th Circle: stigmata draconica
-6th Circle: aegis squamarum
-7th Circle: judicium fidei
-10th Circle: edictum cineris
-11th Circle: sigillum negati
-12th Circle: draconic apotheosis
+&+b3rd Circle: &+canimae cicatrix&n
+&+b4th Circle: &+censis unguis&n
+&+b5th Circle: &+cstigmata draconica&n
+&+b6th Circle: &+caegis squamarum&n
+&+b7th Circle: &+cjudicium fidei&n
+&+b10th Circle: &+cedictum cineris&n
+&+b11th Circle: &+csigillum negati&n
+&+b12th Circle: &+cdraconic apotheosis&n
 ==See also==
 * Dragoon
 * Specialization
@@ -19804,8 +19802,8 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Human, Grey Elf, Halfling, Gnome, Githzerai, Drow Elf, Orc, Githyanki, Goblin,
-Kobold, Tiefling.
+&+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
+  &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -19832,26 +19830,26 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    concentration, fishing, kick, meditate, mount, quick chant, retreat,
-    salvage, scribe, sorcerous spell knowledge, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+    &+csalvage, scribe, sorcerous spell knowledge, swim&n
 ==Spells==
-1st Circle: detect magic, magic missile, minor creation
-2nd Circle: burning hands, chill touch, mirror image, sleep
-3rd Circle: agility, concealment, dispel magic, mage flame, shocking grasp,
-    strength
-4th Circle: enchant weapon, infravision, levitate, lightning bolt,
-    ray of enfeeblement, reveal true name, wall of force
-5th Circle: coldshield, fireshield, identify, sense follower, slowness
-6th Circle: color spray, feeblemind, minor globe of invulnerability,
-    stone skin, teleport
-7th Circle: airy water, cone of cold, dimension door, fireball, haste,
-    ice storm, wall of flames, wall of ice, web
-8th Circle: detect invisibility, globe of invulnerability, invisibility,
-    prismatic spray
-9th Circle: fly, gate, prismatic ray, relocate
-10th Circle: farsee, group stone skin
-11th Circle: group globe of invulnerability, prismatic cube
+&+b1st Circle: &+cdetect magic, magic missile, minor creation&n
+&+b2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
+&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp&n
+    &+cstrength&n
+&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt&n
+    &+cray of enfeeblement, reveal true name, wall of force&n
+&+b5th Circle: &+ccoldshield, fireshield, identify, sense follower, slowness&n
+&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability, stone skin&n
+    &+cteleport&n
+&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste&n
+    &+cice storm, wall of flames, wall of ice, web&n
+&+b8th Circle: &+cdetect invisibility, globe of invulnerability, invisibility&n
+    &+cprismatic spray&n
+&+b9th Circle: &+cfly, gate, prismatic ray, relocate&n
+&+b10th Circle: &+cfarsee, group stone skin&n
+&+b11th Circle: &+cgroup globe of invulnerability, prismatic cube&n
 ==See also==
 * Summoner
 * Specialization
@@ -19896,29 +19894,29 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: carve, climb, feign death, fishing, kick, meditate, mount,
-    quick chant, retreat, scribe, sorcerous spell knowledge, swim
-20th Level: age corpse
+&+b1st Level: &+ccarve, climb, feign death, fishing, kick, meditate, mount&n
+    &+cquick chant, retreat, scribe, sorcerous spell knowledge, swim&n
+&+b20th Level: &+cage corpse&n
 ==Spells==
-1st Circle: detect magic, life bolt, minor creation, preserve,
-    protection from undead
-2nd Circle: chill touch, protection from cold, protection from living, sleep,
-    vampiric touch
-3rd Circle: call archon, dispel magic, embalm, sense follower
-4th Circle: rejuvenate minor, strength, wither
-5th Circle: call asura, coldshield, concealment, feeblemind, fireshield,
-    levitate, mend soul, teleport
-6th Circle: cone of cold, minor globe of invulnerability, rejuvenate major,
-    restore spirit, vitalize soul
-7th Circle: call bralani, holy aura, knock, protect soul, reveal true name
-8th Circle: detect invisibility, dispel invisible, haste, invisibility,
-    negative concussion blast
-9th Circle: age, call knight, dimension door, energy drain, holy light,
-    undeath to death, voice of creation
-10th Circle: angelic countenance, blackmantle, call liberator, cloak of fear,
-    fly, mass embalm
-11th Circle: aid of the heavens, call titan, corpseform, power word kill
-12th Circle: call avatar
+&+b1st Circle: &+cdetect magic, life bolt, minor creation, preserve&n
+    &+cprotection from undead&n
+&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep&n
+    &+cvampiric touch&n
+&+b3rd Circle: &+ccall archon, dispel magic, embalm, sense follower&n
+&+b4th Circle: &+crejuvenate minor, strength, wither&n
+&+b5th Circle: &+ccall asura, coldshield, concealment, feeblemind, fireshield&n
+    &+clevitate, mend soul, teleport&n
+&+b6th Circle: &+ccone of cold, minor globe of invulnerability, rejuvenate major&n
+    &+crestore spirit, vitalize soul&n
+&+b7th Circle: &+ccall bralani, holy aura, knock, protect soul, reveal true name&n
+&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility&n
+    &+cnegative concussion blast&n
+&+b9th Circle: &+cage, call knight, dimension door, energy drain, holy light&n
+    &+cundeath to death, voice of creation&n
+&+b10th Circle: &+cangelic countenance, blackmantle, call liberator, cloak of fear&n
+    &+cfly, mass embalm&n
+&+b11th Circle: &+caid of the heavens, call titan, corpseform, power word kill&n
+&+b12th Circle: &+ccall avatar&n
 ==See also==
 * Theurgist
 * Specialization
@@ -19937,13 +19935,13 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-Drow Elf, Orc, Githyanki, Goblin, Drider.
+&+W*&n &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+mDri&+Lder&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
- plane shift (obtained at level 41)
- shapechange (obtained at level 11)
-*forest sight
+*&+cforest sight&n
+ &+cshapechange&n (obtained at level &+c11&n)
+ &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Specializations==
 * Storm Bringer
@@ -19965,29 +19963,29 @@ The following is a list of all skills and spells available to the Blighter class
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
- plane shift (obtained at level 41)
- shapechange (obtained at level 11)
-*forest sight
+*&+cforest sight&n
+ &+cshapechange&n (obtained at level &+c11&n)
+ &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 1h slashing, bandage, carve,
-    clerical spell knowledge, climb, concentration, double attack, fishing,
-    kick, mount, quick chant, retreat, salvage, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve&n
+    &+cclerical spell knowledge, climb, concentration, double attack, fishing&n
+    &+ckick, mount, quick chant, retreat, salvage, swim&n
 ==Spells==
-1st Circle: cause light, detect magic, fortitude, thornskin
-2nd Circle: burning hands, cause serious, chill touch, unholy wind
-3rd Circle: acid blast, cause critical, darkness, faerie fire, faerie fog
-4th Circle: create pond, flame sphere, poison, ray of enfeeblement,
-    vampiric touch, wither
-5th Circle: animate dead, blight, drain nature, earthquake, harm, life leech
-6th Circle: firelance, flame strike, sap nature, waves of fatigue
-7th Circle: dispel magic, faluzures vitality, forbiddance, toxic fog,
-    wall of flames
-8th Circle: acid stream, shadow vision
-9th Circle: desecrate land, firestorm, horrid wilting
-10th Circle: acid rain, shadow gate, transmute rock to mud
-11th Circle: elemental aura, freedom of movement
-12th Circle: bloodstone, implosion, sandstorm
+&+b1st Circle: &+ccause light, detect magic, fortitude, thornskin&n
+&+b2nd Circle: &+cburning hands, cause serious, chill touch, unholy wind&n
+&+b3rd Circle: &+cacid blast, cause critical, darkness, faerie fire, faerie fog&n
+&+b4th Circle: &+ccreate pond, flame sphere, poison, ray of enfeeblement&n
+    &+cvampiric touch, wither&n
+&+b5th Circle: &+canimate dead, blight, drain nature, earthquake, harm, life leech&n
+&+b6th Circle: &+cfirelance, flame strike, sap nature, waves of fatigue&n
+&+b7th Circle: &+cdispel magic, faluzures vitality, forbiddance, toxic fog&n
+    &+cwall of flames&n
+&+b8th Circle: &+cacid stream, shadow vision&n
+&+b9th Circle: &+cdesecrate land, firestorm, horrid wilting&n
+&+b10th Circle: &+cacid rain, shadow gate, transmute rock to mud&n
+&+b11th Circle: &+celemental aura, freedom of movement&n
+&+b12th Circle: &+cbloodstone, implosion, sandstorm&n
 ==See also==
 * Blighter
 * Specialization
@@ -20009,7 +20007,7 @@ None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
-*spacial focus (obtained at level 46)
+*&+cspacial focus&n (obtained at level &+c46&n)
 '*' Designates passive ability.
 ==Specializations==
 No named specialization choices.
@@ -20027,27 +20025,27 @@ The following is a list of all skills and spells available to the MindFlayer cla
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
-*spacial focus (obtained at level 46)
+*&+cspacial focus&n (obtained at level &+c46&n)
 '*' Designates passive ability.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,
-    fishing, kick, meditate, mount, quick chant, retreat, salvage, swim
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, swim&n
 ==Spells==
-1st Circle: adrenaline control, combat mind, ego whip, excogitate
-2nd Circle: ballistic attack, cell adjustment, create sound, enhance agility,
-    enhance constitution, enhance dexterity, enhance strength
-3rd Circle: aura sight, lend health, molecular agitation
-4th Circle: awe, comprehend languages, energy containment, molecular control,
-    teleport
-5th Circle: flesh armor, flight, inflict pain, intellect fortress
-6th Circle: detonate, ectoplasmic form, enhance armor
-7th Circle: biofeedback, cannibalize, ether warp, inertial barrier,
-    tower of iron will
-8th Circle: displacement, mental anguish, radial navigation
-9th Circle: confuse, enrage, memory block, wormhole
-10th Circle: death field, psionic cloud
-11th Circle: mind travel
-12th Circle: mind blank, spinal corruption
+&+b1st Circle: &+cadrenaline control, combat mind, ego whip, excogitate&n
+&+b2nd Circle: &+cballistic attack, cell adjustment, create sound, enhance agility&n
+    &+cenhance constitution, enhance dexterity, enhance strength&n
+&+b3rd Circle: &+caura sight, lend health, molecular agitation&n
+&+b4th Circle: &+cawe, comprehend languages, energy containment, molecular control&n
+    &+cteleport&n
+&+b5th Circle: &+cflesh armor, flight, inflict pain, intellect fortress&n
+&+b6th Circle: &+cdetonate, ectoplasmic form, enhance armor&n
+&+b7th Circle: &+cbiofeedback, cannibalize, ether warp, inertial barrier&n
+    &+ctower of iron will&n
+&+b8th Circle: &+cdisplacement, mental anguish, radial navigation&n
+&+b9th Circle: &+cconfuse, enrage, memory block, wormhole&n
+&+b10th Circle: &+cdeath field, psionic cloud&n
+&+b11th Circle: &+cmind travel&n
+&+b12th Circle: &+cmind blank, spinal corruption&n
 ==See also==
 * MindFlayer
 * Specialization
@@ -20063,15 +20061,15 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h piercing, 1h slashing, apply poison, awareness, backstab,
-    bandage, blindfighting, carve, circle, climb, double attack, dual wield,
-    fishing, hide, mount, pick lock, ranged weapons, retreat, safe fall,
-    salvage, sneak, swim, switch opponents, track
-20th Level: appraise, garrote
-35th Level: spinal tap
-36th Level: parry
-45th Level: control flee
-51st Level: critical stab
+&+b1st Level: &+c1h piercing, 1h slashing, apply poison, awareness, backstab, bandage&n
+    &+cblindfighting, carve, circle, climb, double attack, dual wield, fishing&n
+    &+chide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, sneak&n
+    &+cswim, switch opponents, track&n
+&+b20th Level: &+cappraise, garrote&n
+&+b35th Level: &+cspinal tap&n
+&+b36th Level: &+cparry&n
+&+b45th Level: &+ccontrol flee&n
+&+b51st Level: &+ccritical stab&n
 ==Spells==
 None.
 ==See also==
@@ -20089,16 +20087,16 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-1st Level: 1h bludgeon, 1h piercing, awareness, backstab, bandage,
-    blindfighting, carve, circle, climb, dirt toss, double attack, fishing,
-    hide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, steal,
-    swim, switch opponents, track
-10th Level: appraise
-15th Level: listen
-16th Level: trip
-20th Level: parry, subterfuge
-46th Level: evade
-51st Level: hamstring, trap
+&+b1st Level: &+c1h bludgeon, 1h piercing, awareness, backstab, bandage&n
+    &+cblindfighting, carve, circle, climb, dirt toss, double attack, fishing&n
+    &+chide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, steal&n
+    &+cswim, switch opponents, track&n
+&+b10th Level: &+cappraise&n
+&+b15th Level: &+clisten&n
+&+b16th Level: &+ctrip&n
+&+b20th Level: &+cparry, subterfuge&n
+&+b46th Level: &+cevade&n
+&+b51st Level: &+chamstring, trap&n
 ==Spells==
 None.
 ==See also==
