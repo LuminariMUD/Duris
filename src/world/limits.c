@@ -452,9 +452,6 @@ int move_regen(P_char ch, bool display_only)
 float ward_regen(P_char ch, bool display_only)
 {
 	float gain = ch->points.ward_reg;
-	if (has_innate(ch, INNATE_WARDING_FAITH))
-		gain += ch->points.base_ward * PULSES_IN_TICK /
-			(get_property("innate.wardingFaith.rechargeTime", 240.0) * WAIT_SEC);
 
 	if (affected_by_spell(ch, TAG_BUILDING))
 	{

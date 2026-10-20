@@ -1091,7 +1091,7 @@ int melee_damage(P_char ch, P_char vict, double dam, int type, struct damage_mes
 		 int *damAccumulator = NULL);
 int PartySizeMod(int, int, int, int);
 int TryRiposte(P_char, P_char);
-int vamp(P_char, double, double);
+int vamp(P_char, double, double, bool allow_improved_healing = true);
 void heal(P_char, P_char, int, int);
 bool blind(P_char, P_char, int);
 void retarget_event(P_char ch, P_char victim, P_obj obj, void *data);

@@ -239,13 +239,19 @@ for title in ("minstrel", "blademaster", "swashbuckler"):
     index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
     assert index_body == parsed_body, f"Divergent specialization help source body for {title}"
 
-# Healer instructions must name the command registered by the innate dispatcher.
-healing_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_healing\s*\}',
-                         (SRC / "innates.c").read_text())
-assert healing_aura, "Healing aura command registration is missing"
+# Cleric spec help must reflect the currently registered defensive auras.
+spell_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_spell_protection\s*\}',
+                       (SRC / "innates.c").read_text())
+protection_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_protection\s*\}',
+                            (SRC / "innates.c").read_text())
+assert spell_aura and protection_aura, "Defensive aura command registration missing"
 for entries in (parsed_map, index_map):
-    assert f"&+c{healing_aura[1]}&n" in entries["healer"][1], \
-        "Healer help must use the registered healing aura command"
+    assert f"&+c{spell_aura[1]}&n" in entries["healer"][1], \
+        "Healer help must use the registered Spell Protection aura command"
+    assert f"&+c{protection_aura[1]}&n" in entries["zealot"][1], \
+        "Zealot help must use the registered Protection aura command"
+    assert "&+cwarding faith&n" not in entries["healer"][1].lower()
+    assert "&+caura_of_improved_healing&n" not in entries["healer"][1]
 
 
 # Specialization deltas use the same ANSI progression layout as class skillsets:

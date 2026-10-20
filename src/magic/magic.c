@@ -16976,7 +16976,8 @@ void spell_mass_heal(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 		int maxhits = IS_HARDCORE(ch) ? hardcore_config_get()->bonus_mass_heal_base : 100;
 
 		healed = vamp(tch, (int)maxhits + number(1, level / 3),
-			      GET_MAX_HIT(tch) - number(1, 4));
+			      GET_MAX_HIT(tch) - number(1, 4),
+			      !GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER));
 		if (GET_OPPONENT(tch))
 		{
 			gain_exp(ch, tch, healed, EXP_HEALING);

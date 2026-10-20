@@ -1,20 +1,30 @@
 #!/usr/bin/env python3
-"""Measure production ward rate/events and effective-healing refill in isolation."""
+"""Exercise Cleric healing exclusions and verify the retired ward cannot regenerate."""
 from pathlib import Path
 import subprocess
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
-properties = dict(line.split("=", 1) for line in (ROOT / "lib/duris.properties").read_text().splitlines()
-                  if "=" in line and not line.startswith("#"))
-assert float(properties["innate.wardingFaith.rechargeTime"]) == 240
+innates = source("innates.c").read_text()
+fight = source("fight.c").read_text()
 affects = source("affects.c").read_text()
-capacity = affects[affects.index("\tif (has_innate(ch, INNATE_WARDING_FAITH))"):]
-capacity = capacity[:capacity.index("\n\t// sure best")]
-assert "ward_reg" not in capacity, "Innate recovery must not be truncated into the integer rate"
-events = source("events.c").read_text()
-delays = "\n".join(line for line in events.splitlines()
-                   if line.startswith("#define MOB_") and "_REGEN_DELAY" in line)
+limits = source("limits.c").read_text()
+paladins = source("paladins.c").read_text()
+epic = source("epic_skills.c").read_text()
+assert "ADD_CLASS_INNATE(INNATE_WARDING_FAITH" not in innates
+assert "ADD_CLASS_INNATE(INNATE_AURA_HEALING, CLASS_CLERIC" not in innates
+assert "INNATE_AURA_SPELL_PROTECTION, CLASS_CLERIC, 1, SPEC_HEALER" in innates
+assert "INNATE_AURA_PROTECTION, CLASS_CLERIC, 1, SPEC_ZEALOT" in innates
+assert "ch->points.base_ward = 0;" in affects
+assert "BOUNDED(0, GET_MAX_WARD(ch) - t1, GET_MAX_WARD(ch))" in affects
+assert "has_innate(ch, INNATE_WARDING_FAITH)" not in limits
+assert "GET_WARD(healer) + (hits / 10)" not in fight
+assert "notch_skill(ch, SKILL_EPIC_WARDING_FAITH" not in fight
+assert "EPIC_REWARD_SKILL, SKILL_EPIC_WARDING_FAITH" not in epic
+assert "55168, SKILL_EPIC_WARDING_FAITH" not in epic
+assert "SKILL_CREATE(\"epic warding faith\", SKILL_EPIC_WARDING_FAITH" in epic
+assert "aura == AURA_HEALING && GET_SPEC(victim, CLASS_CLERIC, SPEC_HEALER)" in paladins
+assert "void remove_incoming_healing_aura(P_char victim)" in paladins
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -89,153 +99,83 @@ static void advance(int pulses) {
 }
 '''
 PRODUCTION = "\n".join(extract_function(file, signature) for file, signature in (
-    ("utility.c", "int BOUNDED("),
     ("paladins.c", "bool has_aura("),
     ("paladins.c", "int aura_mod("),
     ("fight.c", "int vamp("),
     ("fight.c", "void heal("),
     ("magic.c", "void spell_group_heal("),
-    ("limits.c", "float ward_regen("),
-    ("events.c", "static struct regen_event_state regen_state_from_data("),
-    ("events.c", "static unsigned long long regen_elapsed_ticks("),
-    ("events.c", "void event_ward_regen("),
-    ("events.c", "void StartRegen("),
 ))
 DRIVER = r'''
-static void init(char_data &ch) {
+static void init(char_data &ch, bool healer) {
     ch = {};
     ch.specials.position = STAT_NORMAL;
     ch.player.m_class = CLASS_CLERIC;
-    ch.player.spec = SPEC_HEALER;
+    ch.player.spec = healer ? SPEC_HEALER : SPEC_HOLYMAN;
     ch.player.level = 56;
     ch.in_room = 0;
     ch.points.max_hit = 10000;
-    ch.points.max_ward = 1000;
+    ch.points.max_ward = 0;
 }
 int main() {
-    char_data ch{}, enemy{}, mates[6]{};
-    init(ch); init(enemy);
-    for (int level : {30,36,46,51,56}) for (int skill : {0,32,33,65,66,98,99,100}) {
-        epic = skill;
-        ch.player.level = level;
-        capacity(&ch);
-        assert(ch.points.base_ward == level * (3 + skill / 33));
-        ch.points.max_ward = ch.points.base_ward;
-        ch.points.ward = 0;
-        assert(std::abs(ward_regen(&ch, true) - ch.points.base_ward * 300.0 / 960.0) < .001);
-        StartRegen(&ch, regen_resource::ward);
-        assert(queue.size() == 1);
-        StartRegen(&ch, regen_resource::ward);
-        assert(queue.size() == 1);
-        advance(959);
-        assert(GET_WARD(&ch) < GET_MAX_WARD(&ch));
-        advance(2);
-        assert(GET_WARD(&ch) == GET_MAX_WARD(&ch) && queue.empty());
+    advance(0);
+    char_data healer{}, holyman{}, warrior{}, mates[2]{};
+    init(healer, true);
+    init(holyman, false);
+    init(warrior, false);
+    warrior.player.m_class = CLASS_WARRIOR;
+    warrior.player.spec = 0;
+    affected_type white{};
+    white.type = AURA_HEALING;
+    white.modifier = 56;
+    healer.affected = &white;
+    warrior.affected = &white;
+    healer.specials.affected_by3 |= AFF3_PALADIN_AURA;
+    warrior.specials.affected_by3 |= AFF3_PALADIN_AURA;
+
+    assert(vamp(&healer, 100, 10000) == 100);
+    assert(vamp(&warrior, 100, 10000) == 111);
+    warrior.points.hit = 0;
+    assert(vamp(&warrior, 100, 10000, false) == 100);
+
+    healer.points.hit = 0;
+    heal(&healer, &healer, 100, 10000);
+    assert(healer.points.hit == 120 && healer.points.ward == 0);
+    warrior.points.hit = 0;
+    heal(&warrior, &healer, 100, 10000);
+    assert(warrior.points.hit == 120 && healer.points.ward == 0);
+    warrior.points.hit = 0;
+    heal(&warrior, &holyman, 100, 10000);
+    assert(warrior.points.hit == 111);
+    healer.points.hit = 0;
+    heal(&healer, &holyman, 100, 10000);
+    assert(healer.points.hit == 100);
+
+    group_list group[2]{};
+    for (int i = 0; i < 2; ++i) {
+        init(mates[i], false);
+        mates[i].player.m_class = CLASS_WARRIOR;
+        mates[i].player.spec = 0;
+        mates[i].affected = &white;
+        mates[i].specials.affected_by3 |= AFF3_PALADIN_AURA;
+        group[i] = {&mates[i], i == 0 ? &group[1] : nullptr};
     }
-    ch.points.ward = 0;
-    ch.specials.fighting = &enemy;
-    StartRegen(&ch, regen_resource::ward);
-    assert(ward_regen(&ch, false) == 0 && queue.empty());
-    ch.specials.fighting = nullptr;
-    rooms[0].room_flags = ROOM_NO_HEAL;
-    assert(ward_regen(&ch, false) == 0);
-    rooms[0].room_flags = ROOM_HEAL;
-    assert(ward_regen(&ch, false) > ch.points.base_ward * 300.0 / 960.0);
-    rooms[0].room_flags = 0;
-    ch.points.ward = ch.points.max_ward;
-    ch.points.ward_reg = -1000;
-    assert(ward_regen(&ch, false) < 0); // combined rate precedes full-ward early exit
-    ch.points.ward_reg = 0;
-    // Combat cancels the active chain; restart measures a fresh recovery span.
-    ch.points.ward = 0;
-    StartRegen(&ch, regen_resource::ward);
-    advance(200);
-    ch.specials.fighting = &enemy;
-    const int before = ch.points.ward;
-    advance(1);
-    assert(queue.empty() && ch.points.ward == before);
-    ch.specials.fighting = nullptr;
-    ch.points.ward = 0;
-    StartRegen(&ch, regen_resource::ward);
-    advance(961);
-    assert(ch.points.ward == ch.points.max_ward && queue.empty());
-    // NPC capacity keeps its existing doubled multiplier.
-    ch.specials.act |= ACT_ISNPC;
-    capacity(&ch);
-    assert(ch.points.base_ward == 56 * (3 + epic / 33) * 2);
-    ch.specials.act &= ~ACT_ISNPC;
-    init(ch);
-    for (bool combat : {false,true}) for (int effective : {0,1,9,10,19,20,200}) {
-        ch.points.ward = 0;
-        ch.points.hit = ch.points.max_hit - effective;
-        ch.specials.fighting = combat ? &enemy : nullptr;
-        heal(&ch, &ch, 1000, ch.points.max_hit);
-        assert(ch.points.ward == effective / 10);
-        heal(&ch, &ch, 1000, ch.points.max_hit); // overheal is zero
-        assert(ch.points.ward == effective / 10);
-    }
-    ch.specials.fighting = nullptr;
-    // Reduced effective healing is applied before refill. A direct vamp
-    // (Intercession) never refills ward.
-    affected_type plague{};
-    plague.type = SPELL_PLAGUE; plague.modifier = 10000;
-    ch.affected = &plague;
-    ch.points.ward = 0; ch.points.hit = 0;
-    heal(&ch, &ch, 100, ch.points.max_hit);
-    assert(ch.points.hit == 84 && ch.points.ward == 8);
-    ch.affected = nullptr;
-    ch.points.ward = 0;
-    assert(vamp(&ch, 100, ch.points.max_hit) == 100 && ch.points.ward == 0);
-    // Real Group Heal applies outgoing 1.2 and incoming white aura once, then
-    // rounds each recipient's effective HP independently for ward refill.
-    group_list group[6]{};
-    affected_type aura{}; aura.type = AURA_HEALING; aura.modifier = 56;
-    for (int size : {1,3,6}) {
-        init(ch); ch.group = group;
-        int expected = 14; // self: 120 * 1.2 = 144 effective, floor(/10)
-        for (int i = 0; i < size - 1; ++i) {
-            init(mates[i]);
-            mates[i].affected = &aura;
-            mates[i].specials.affected_by3 |= AFF3_PALADIN_AURA;
-            group[i] = {&mates[i], i + 1 < size - 1 ? &group[i+1] : nullptr};
-            expected += 16; // 144 + floor(144 * .112) = 160
-        }
-        if (size == 1) ch.group = nullptr;
-        spell_group_heal(56, &ch, nullptr, 0, nullptr, nullptr);
-        assert(ch.points.ward == expected);
-        printf("Group Heal size=%d ward_refill=%d\n", size, expected);
-    }
-    init(ch);
-    affected_type white{}; white.type = AURA_HEALING; white.modifier = 56;
-    affected_type excluded{}; excluded.next = &white;
-    ch.specials.affected_by3 |= AFF3_PALADIN_AURA;
-    for (int type : {0, SPELL_ACCEL_HEALING, SKILL_REGENERATE}) {
-        ch.points.hit = ch.points.ward = 0;
-        excluded.type = type;
-        ch.affected = type ? &excluded : &white;
-        ch.specials.affected_by4 = type ? 0 : AFF4_REGENERATION;
-        heal(&ch, &ch, 100, ch.points.max_hit);
-        assert(ch.points.hit == 120 && ch.points.ward == 12);
-    }
-    ch.specials.affected_by4 = 0;
-    ch.affected = &white;
-    ch.points.hit = ch.points.ward = 0;
-    heal(&ch, &ch, 100, ch.points.max_hit);
-    assert(ch.points.hit == 133 && ch.points.ward == 13);
-    ch.affected = nullptr;
-    ch.specials.affected_by3 = 0;
-    ch.points.ward = 995;
-    ch.points.hit = 0;
-    heal(&ch, &ch, 1000, ch.points.max_hit);
-    assert(ch.points.ward == 1000);
-    puts("Cleric capacity/rate/event recovery: 40 level/epic cases full within 960 +/- 1 pulses; effective heal/refill passed");
+    healer.group = group;
+    healer.points.hit = 0;
+    spell_group_heal(56, &healer, nullptr, 0, nullptr, nullptr);
+    assert(healer.points.hit == 144);
+    for (const auto &mate : mates)
+        assert(mate.points.hit == 144);
+    assert(healer.points.ward == 0);
+
+    puts("Healer ward retirement and Paladin aura healing exclusions passed");
 }
 '''
 output = ROOT / "bin/tests/cleric-ward"
 output.mkdir(parents=True, exist_ok=True)
 cpp, binary = output / "harness.cpp", output / "harness"
-cpp.write_text(PRELUDE + delays + "\nvoid capacity(P_char ch) {\n" + capacity + "\n}\n" + PRODUCTION + DRIVER)
-subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
-                "-fno-pie", "-no-pie", "-I" + str(ROOT / "src"), str(cpp), str(HARNESS_STUBS),
+cpp.write_text(PRELUDE + "\n" + PRODUCTION + DRIVER)
+subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+                "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                "-I" + str(ROOT / "src"), str(cpp), str(HARNESS_STUBS),
                 "-o", str(binary)], check=True)
 subprocess.run([str(binary)], check=True)

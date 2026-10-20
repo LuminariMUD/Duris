@@ -923,20 +923,8 @@ void apply_affs(P_char ch, int mode)
 		GET_C_LUK(ch) = GET_C_LUK(ch) + 10;
 	}
 
-	if (has_innate(ch, INNATE_WARDING_FAITH))
-	{
-		int multi = (int)get_property("innate.wardingFaith.multiplier", 3.0);
-		multi += (GET_CHAR_SKILL(ch, SKILL_EPIC_WARDING_FAITH) / 33);
-		if (IS_NPC(ch))
-		{
-			multi *= 2;
-		}
-		ch->points.base_ward = GET_LEVEL(ch) * multi;
-	}
-	else
-	{
-		ch->points.base_ward = 0;
-	}
+	// Warding Faith is retired; external ward affects remain supported.
+	ch->points.base_ward = 0;
 
 	// sure best if we store max_hp in pfile :(
 	// now lets use diff approach - store in pfile not HP, but difference max-curr HP
@@ -958,8 +946,8 @@ void apply_affs(P_char ch, int mode)
 	GET_MANA(ch) = GET_MAX_MANA(ch) - t1;
 
 	t1 = GET_MAX_WARD(ch) - GET_WARD(ch);
-	GET_MAX_WARD(ch) = ch->points.base_ward + ((mode) ? TmpAffs.Ward : 0);
-	GET_WARD(ch) = GET_MAX_WARD(ch) - t1;
+	GET_MAX_WARD(ch) = MAX(0, ch->points.base_ward + ((mode) ? TmpAffs.Ward : 0));
+	GET_WARD(ch) = BOUNDED(0, GET_MAX_WARD(ch) - t1, GET_MAX_WARD(ch));
 
 	ch->points.hit_reg = TmpAffs.hit_reg;
 	ch->points.move_reg = TmpAffs.move_reg;
