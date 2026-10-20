@@ -16,7 +16,9 @@ journey does that yet.
 `rlist`, `mlist`, and `olist` default to the standing zone, use the public zone
 numbers shown by `zlist`, and render at most 500 results. Explicit exact/range
 queries remain available; continuation preserves the zone and inclusive upper
-bound. Mobile/object ownership follows zone VNUM partitions rather than resets.
+bound. When duplicate room VNUMs cross a page boundary, `rlist` advice includes
+`offset <count>` to resume inside that group without repeating or omitting rooms.
+Mobile/object ownership follows zone VNUM partitions rather than resets.
 Listings read shared boot names and existing population/reset limits without
 instantiating entities or reading files/databases.
 
@@ -24,7 +26,9 @@ instantiating entities or reading files/databases.
 handlers and real parsing/ANSI helpers under ASan/UBSan. It covers syntax, public
 identity, missing location, empty tables, 0/1/199/499/500/501+ matches, reversed
 ranges and intersections, INT_MAX, help/paging/NPC behavior, empty/colorized/long/
-multiline names, 80-column rows and invalid sectors. Comparison/probe instrumentation checks a
+multiline names, 80-column rows and invalid sectors. Following the actual printed
+advice covers duplicate room groups larger than two pages, duplicates across zone
+ownership, maximum VNUMs and checked invalid offsets. Comparison/probe instrumentation checks a
 scope surrounded by 20,000 unrelated entries on either side; index and room
 snapshots remain unchanged and entity-loader stubs abort. Command registration
 must continue to require IMMORTAL. The harness does not emulate game dispatch,

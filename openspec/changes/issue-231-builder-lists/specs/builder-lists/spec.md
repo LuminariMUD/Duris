@@ -44,6 +44,14 @@ results, and truncation MUST provide a valid remaining range preserving scope.
 - **THEN** the count is exact for rendered entries and truncation appears only above 500
 - **AND** continuation includes the first unrendered VNUM and original upper bound
 
+#### Scenario: Duplicate room VNUM continuation
+- **WHEN** equal room VNUMs cross the result boundary, including groups larger than a page
+- **THEN** `rlist` advice includes `offset <count>` from the first room at that VNUM
+  within the selected room bounds
+- **AND** following it lists every matching room once, preserves scope, and still
+  renders at most 500 entries with at most one additional matching probe
+- **AND** malformed, overflowing and out-of-group offsets fail safely
+
 ### Requirement: Read-only cold names
 Mobile and object lists SHALL show existing shared short descriptions, current
 population, and reset limit even before instantiation. Listing MUST NOT create or

@@ -21,7 +21,11 @@ new index, general listing service, migrations, or global parser/pager changes.
 - Intersect room real bounds with VNUM lower bounds. Prototype zone bounds use
   the previous zone's top plus one through the selected zone's top.
 - Probe only the 501st match, then print the remaining inclusive VNUM range using
-  that match as its lower bound. No saved continuation state or total count pass.
+  that match as its lower bound. For duplicate room VNUMs, add a checked
+  `offset <count>` measured from that VNUM's lower bound within the selected
+  room bounds. Track the group start during normal traversal and skip by direct
+  pointer movement, including groups larger than 500. No saved continuation state,
+  group scan or total count pass.
 - Reuse ANSI formatting after bounding and flattening source text. Bound raw bytes
   as well as visible width so repeated color codes cannot exhaust the pager.
 

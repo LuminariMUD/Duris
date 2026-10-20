@@ -10211,6 +10211,7 @@ struct builder_list_scope
 	int zone = -1;
 	int first = 0;
 	int last = INT_MAX;
+	int offset = 0;
 };
 
 void builder_list_usage(P_char ch, const char *command)
@@ -10227,6 +10228,10 @@ void builder_list_usage(P_char ch, const char *command)
 		 "or current instance locations.\r\n",
 		 command, command, command);
 	send_to_char(buf, ch);
+	if (!strcmp(command, "rlist"))
+		send_to_char(
+			"rlist also accepts a trailing offset <count> to skip rooms at the starting VNUM.\r\n",
+			ch);
 }
 
 bool builder_list_number(const std::string &text, int &value)
@@ -10264,6 +10269,15 @@ bool builder_list_parse(P_char ch, const char *argument, const char *command,
 		builder_list_usage(ch, command);
 		return false;
 	};
+	if (!strcmp(command, "rlist") && tokens.size() >= 2 &&
+	    tokens[tokens.size() - 2] == "offset")
+	{
+		if (!builder_list_number(tokens.back(), scope.offset))
+			return error("expected a nonnegative room offset within int range.");
+		tokens.resize(tokens.size() - 2);
+		if (tokens.empty())
+			return error("room offsets require a starting VNUM.");
+	}
 	size_t i = 0;
 	if (!tokens.empty() && is_abbrev(tokens[0].c_str(), "zone"))
 	{
@@ -10286,6 +10300,8 @@ bool builder_list_parse(P_char ch, const char *argument, const char *command,
 		if (scope.first > scope.last)
 			std::swap(scope.first, scope.last);
 	}
+	else if (scope.offset)
+		return error("room offsets require a starting VNUM.");
 	else if (scope.zone < 0)
 	{
 		if (!world || ch->in_room < 0 || ch->in_room > top_of_world || !zone_table ||
@@ -10332,7 +10348,7 @@ void builder_list_header(P_char ch, const char *kind, const builder_list_scope &
 }
 
 void builder_list_footer(P_char ch, const char *command, const char *kind,
-			 const builder_list_scope &scope, int shown, int next)
+			 const builder_list_scope &scope, int shown, int next, int offset = 0)
 {
 	char buf[256];
 	if (!shown)
@@ -10342,12 +10358,15 @@ void builder_list_footer(P_char ch, const char *command, const char *kind,
 	send_to_char(buf, ch);
 	if (next < 0)
 		return;
+	char suffix[32] = "";
+	if (offset)
+		snprintf(suffix, sizeof(suffix), " offset %d", offset);
 	if (scope.zone >= 0)
-		snprintf(buf, sizeof(buf), "More matches exist. Continue: %s zone %d %d %d\r\n",
-			 command, zone_table[scope.zone].number, next, scope.last);
+		snprintf(buf, sizeof(buf), "More matches exist. Continue: %s zone %d %d %d%s\r\n",
+			 command, zone_table[scope.zone].number, next, scope.last, suffix);
 	else
-		snprintf(buf, sizeof(buf), "More matches exist. Continue: %s %d %d\r\n", command,
-			 next, scope.last);
+		snprintf(buf, sizeof(buf), "More matches exist. Continue: %s %d %d%s\r\n", command,
+			 next, scope.last, suffix);
 	send_to_char(buf, ch);
 }
 
@@ -10419,20 +10438,31 @@ void do_rlist(P_char ch, char *argument, int /*cmd*/)
 		if (zone_table[scope.zone].real_bottom < 0)
 			last = -1;
 	}
-	int shown = 0, next = -1;
+	int shown = 0, next = -1, offset = 0;
 	if (world && first <= last)
 	{
 		auto *end = world + last + 1;
 		auto *at = std::lower_bound(world + first, end, scope.first,
 					    [](const room_data &room, int vnum)
 					    { return room.number < vnum; });
+		if (scope.offset > end - at ||
+		    (scope.offset && at[scope.offset - 1].number != scope.first))
+		{
+			send_to_char("rlist: offset exceeds rooms at the starting VNUM.\r\n", ch);
+			return;
+		}
+		auto *group = at;
+		at += scope.offset;
 		for (; at != end && at->number <= scope.last; ++at)
 		{
+			if (at->number != group->number)
+				group = at;
 			if (scope.zone >= 0 && at->zone != scope.zone)
 				continue;
 			if (shown == BUILDER_LIST_LIMIT)
 			{
 				next = at->number;
+				offset = static_cast<int>(at - group);
 				break;
 			}
 			const char *sector = static_cast<unsigned>(at->sector_type) <
@@ -10450,7 +10480,7 @@ void do_rlist(P_char ch, char *argument, int /*cmd*/)
 			++shown;
 		}
 	}
-	builder_list_footer(ch, "rlist", "rooms", scope, shown, next);
+	builder_list_footer(ch, "rlist", "rooms", scope, shown, next, offset);
 }
 
 void do_olist(P_char ch, char *argument, int /*cmd*/)

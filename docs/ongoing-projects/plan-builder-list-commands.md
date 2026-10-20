@@ -5,9 +5,9 @@ The PR stack is ready for review; merge and production deployment are separate.
 Tracking: [issue #231](https://github.com/LuminariMUD/Duris/issues/231).
 Work branch: [`branch/issue-231-builder-lists`](https://github.com/LuminariMUD/Duris/tree/branch/issue-231-builder-lists),
 linked through the issue's Development section.
-Branch base: [master `2129ec429f20`](https://github.com/LuminariMUD/Duris/commit/2129ec429f20c6ad59ce883ffabda2b57585992e).
+Branch base: [master `0701b0e29`](https://github.com/LuminariMUD/Duris/commit/0701b0e290848124d676e61abe1c593596ad9dc1).
 Source baseline: [master `4eca0ea95245`](https://github.com/LuminariMUD/Duris/commit/4eca0ea95245dbcaf7cb8b5d2dd565323d9fd3fa).
-The inspected command, index-loading, and paging files are unchanged between the
+The builder-command, index-loading, and paging paths are unchanged between the
 source baseline and branch base. The existing `plan.md` belongs to issue #169 and
 is outside this change.
 
@@ -16,11 +16,40 @@ is outside this change.
 Review order:
 
 1. [PR #232](https://github.com/LuminariMUD/Duris/pull/232): loader names and
-   OpenSpec contract, `branch/issue-231-builder-lists`, code commit `c69506ea7`.
+   OpenSpec contract, `branch/issue-231-builder-lists`, rebased code commit `9cbd55e5d`.
 2. [PR #233](https://github.com/LuminariMUD/Duris/pull/233): commands, regressions
    and acceptance evidence, `branch/issue-231-builder-list-commands`, targeting
    the loader branch. Initial command commit `fae9f2c83`; runtime output repairs
    in `dfdf98b75`. The final continuation document is on this child branch.
+
+Review repair (2026-10-20): the sole review finding on #233 was valid. With the
+actual generated world's 253,261-room VNUM sequence, `rlist 51301 2147483647`
+puts the first room 51800 at row 500 and the second at the continuation boundary.
+The previous VNUM-only advice repeats the first room. A regression failed against
+the old handler before the repair.
+
+The existing parser/renderer now accepts `rlist ... offset <count>` to skip that
+many entries at the starting VNUM, within the selected room bounds. Advice adds
+the offset only when the next page begins inside an equal-VNUM group; this case
+continues with `rlist 51800 2147483647 offset 1`. Checked direct pointer movement
+keeps the 500-row/501-probe bound even for groups larger than a page. Invalid,
+overflowing and out-of-group offsets fail safely; mobile/object syntax is unchanged.
+This small stateless exception replaces the earlier assumption that a VNUM range
+alone can always identify the next room. No page buffering, duplicate-group scan,
+saved cursor, new index or global pager change is needed.
+
+Both branches were rebased onto master `0701b0e29`, preserving #232 as the loader
+parent. Parent source changes are unchanged by rebase. The review fix extends the
+existing command regression to follow printed advice across 501/1201-room scopes,
+duplicate groups before/at/after the boundary, zone scopes and mixed ownership,
+exact VNUMs, maximum VNUM and invalid offsets. Every room appears exactly once.
+ASan/UBSan and optimized runs pass, including a separate production-handler check
+against all actual generated room VNUMs and the exact reported 51800 boundary.
+The native MariaDB development and production builds, loader regression, minimal-boot contracts,
+14 documentation checks, public-population regression, strict warning-profile
+contract and changed-file formatting pass on the combined master/stack source.
+The actual-world check executes production handlers with real VNUMs and inert
+fixtures; the earlier network/gameplay journey below was not rerun for this repair.
 
 OpenSpec change: `openspec/changes/issue-231-builder-lists/` (spec-driven).
 All implementation/acceptance tasks are complete. Keep the change active until
@@ -129,13 +158,13 @@ The acceptance server binary SHA256 is
 its tracked source matches `dfdf98b75` (later changes are tests/documentation).
 No credentials, generated worlds or compiled artifacts are committed.
 
-Continuation: no implementation work remains. Review/merge #232 before #233,
-refresh moving master and validate the eventual merge tree, then archive OpenSpec.
-At closeout master had advanced to `0701b0e29` (who behavior and locker docs);
-`git merge-tree --write-tree HEAD origin/master` merged cleanly. The branches were
-not rewritten, and the combined master tree was not built or gameplay-tested.
-Do not equate these local acceptance results with deployment. The reported
-production slowdown remains unmeasured; CI is not a prerequisite for this closeout.
+Continuation: review/merge #232 before #233, using a linear-history-compatible
+squash for each focused PR. Both branches now include master `0701b0e29`, and
+the combined source is built and regression-tested. Refresh refs and check the
+merge tree again at merge time; if #232 is squash-merged, carry only the child
+commits onto the resulting master before merging #233. Archive OpenSpec after
+the stack lands. No release tag, merge or deployment is part of this repair.
+The reported production slowdown remains unmeasured; CI is not a prerequisite.
 
 ## Outcome and scope
 
@@ -232,9 +261,10 @@ shorthand and reversed-range normalization:
   matches. Display the selected scope and actual number shown. Say "No matching
   rooms/mobiles/objects" when empty.
 - On truncation, say more matches exist and give a valid next VNUM range,
-  preserving any zone filter and the original inclusive upper bound. No continuation
-  token, saved search, or new pagination subsystem is needed. Avoid overflow at
-  the maximum VNUM.
+  preserving any zone filter and the original inclusive upper bound. For rooms,
+  add `offset <count>` when resuming within a duplicate-VNUM group, counting
+  entries from that VNUM's lower bound in the selected room bounds. No saved
+  search or new pagination subsystem is needed. Avoid overflow at the maximum VNUM.
 - Keep compact, ANSI-aware, single-row output with bounded names; prevent embedded
   line breaks in names from producing extra rows. Room columns:
   public Zone, VNUM, Name, Sector. Mobile and object columns: VNUM, Name,

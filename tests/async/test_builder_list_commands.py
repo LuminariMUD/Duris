@@ -205,6 +205,68 @@ int main() {
     fixture(2);
     rooms[2].number=rooms[1].number; // Existing adjacent room VNUM overlap remains listable.
     shown(0,"100000",2);
+    // Follow the actual continuation advice: every duplicate must appear once,
+    // including groups larger than a page and the largest representable VNUM.
+    for(int matches : {501,1201}) for(int duplicate_start : {0,499,500}) {
+        fixture(matches,0,0);
+        vector<string> names(matches);
+        for(int i=0;i<matches;++i) {
+            names[i]="room-"+to_string(i)+"!";
+            rooms[i].name=names[i].data();
+            if(i>=duplicate_start) rooms[i].number=INT_MAX;
+        }
+        for(const string &scope : {string(""),string("zone 83 ")}) {
+            string argument=scope+"0 2147483647";
+            int consumed=0;
+            for(int page=0;consumed<matches;++page) {
+                assert(page<4);
+                const string text=run(0,argument);
+                const int count=min(500,matches-consumed);
+                assert(row_count(text)==count);
+                for(int i=0;i<matches;++i)
+                    assert((text.find(names[i])!=string::npos)==
+                           (i>=consumed && i<consumed+count));
+                consumed+=count;
+                const string marker="Continue: rlist ";
+                const auto next=text.find(marker);
+                if(consumed==matches) assert(next==string::npos);
+                else {
+                    assert(next!=string::npos);
+                    const auto start=next+marker.size();
+                    argument=text.substr(start,text.find("\r\n",start)-start);
+                }
+            }
+        }
+    }
+    fixture(2,0,0);
+    rooms[1].number=rooms[0].number;
+    shown(0,"100000 offset 1",1);
+    shown(0,"zone 83 100000 offset 1",1);
+    shown(0,"100000 offset 2",0);
+    for(const char *arg : {"100000 offset -1","100000 offset x",
+                           "100000 offset 2147483648","offset 1",
+                           "zone 83 offset 1","100000 offset 1 junk"}) {
+        const auto text=run(0,arg);
+        assert(text.find("Usage: rlist")!=string::npos && row_count(text)==0);
+    }
+    for(const char *arg : {"100000 offset 3","100000 offset 2147483647",
+                           "100001 offset 1","2147483647 offset 1"}) {
+        const auto text=run(0,arg);
+        assert(text.find("offset exceeds")!=string::npos && row_count(text)==0);
+    }
+    for(int kind : {1,2})
+        assert(run(kind,"100000 offset 1").find("Usage:")!=string::npos);
+    // The same VNUM may straddle two owning zones. Global continuation counts
+    // the whole group; zone-specific offsets use only that zone's room bounds.
+    fixture(501,0,1);
+    for(size_t i=0;i<rooms.size();++i) rooms[i].number=51300+int(i);
+    rooms.back().number=rooms[500].number;
+    const auto first_page=run(0,"51301 2147483647");
+    assert(row_count(first_page)==500);
+    assert(first_page.find("rlist 51800 2147483647 offset 1")!=string::npos);
+    shown(0,"51800 2147483647 offset 1",1);
+    shown(0,"zone 83 51800",1);
+    shown(0,"zone 145 51800",1);
     fixture(501);
     rooms[1].sector_type=255; rooms[2].sector_type=1;
     assert(run(0,"100000 100001").find("Unknown")!=string::npos);
