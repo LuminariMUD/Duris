@@ -213,6 +213,9 @@ static void tsunami_cases() {
         if(enabled) { assert(calls.empty() && item_action_active(s.actor)); assert(reserves[100].reserve==70); advance(); }
         assert(calls.size()==1 && calls[0].id==SPELL_VITALITY && calls[0].target==s.actor->runtime_id);
         assert(calls[0].power==std::min(level+15,60));
+        assert(std::count_if(output.begin(),output.end(),[](const auto &text) {
+            return text.find("is bathed in Tsunami's vitalizing waters")!=std::string::npos;
+        })==(enabled?0:1));
         assert(s.source->timer[0]==wall); const int paid=debits; s.tsunami(CMD_TAP); advance(); assert(debits==paid);
     }
     for(bool enabled:{false,true}) for(int strength:{0,120,240,300}) {
@@ -244,14 +247,42 @@ static void tsunami_cases() {
         assert(af.modifier==120 && af.duration==2); // bystander excluded in both routes
         s.target->affected=nullptr;
     }
-    for(int deity:{SPELL_MIELIKKI_VITALITY,SPELL_FALUZURES_VITALITY,SPELL_ESHABALAS_VITALITY}) {
-        native_scene s;
+    for(bool enabled:{false,true}) for(int deity:{SPELL_MIELIKKI_VITALITY,SPELL_FALUZURES_VITALITY,SPELL_ESHABALAS_VITALITY}) {
+        native_scene s(31514,enabled);
+        real_vitality=true;
         affected_type af{}; af.type=SPELL_VITALITY; af.modifier=120; af.duration=2;
         affect_to_char(s.actor,&af);
         af.type=deity; affect_to_char(s.actor,&af);
         s.tsunami(CMD_TAP); advance();
         assert(s.actor->affected->next->modifier==120 && s.actor->affected->next->duration==2);
-        assert(calls.empty());
+        assert(std::any_of(output.begin(),output.end(),[](const auto &text) {
+            return text.find("prevents the vitality spell")!=std::string::npos ||
+                   text.find("denied by Eshabala")!=std::string::npos;
+        }));
+        assert(std::none_of(output.begin(),output.end(),[](const auto &text) {
+            return text.find("is bathed in Tsunami's vitalizing waters")!=std::string::npos;
+        }));
+        real_vitality=false;
+    }
+    for(bool enabled:{false,true}) {
+        native_scene s(31514,enabled);
+        group_list group{};
+        s.actor->group=s.target->group=&group;
+        npc_only_data reflection{};
+        index_data reflection_index{};
+        reflection_index.virtual_number=IMAGE_REFLECTION_VNUM;
+        mob_index=&reflection_index;
+        s.target->specials.act=ACT_ISNPC;
+        s.target->only.npc=&reflection;
+        s.tsunami(CMD_TAP); advance();
+        assert(!s.target->affected && calls.size()==1 && calls[0].target==s.actor->runtime_id);
+        assert(std::count_if(output.begin(),output.end(),[](const auto &text) {
+            return text.find("is bathed in Tsunami's vitalizing waters")!=std::string::npos;
+        })==(enabled?0:1));
+        s.actor->group=s.target->group=nullptr;
+        s.target->specials.act=0;
+        s.target->only.pc=&s.target_pc;
+        mob_index=nullptr;
     }
     for(bool enabled:{false,true}) for(bool linked:{false,true}) {
         native_scene s(31514,enabled);

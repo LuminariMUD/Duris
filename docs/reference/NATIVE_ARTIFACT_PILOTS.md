@@ -28,6 +28,10 @@ changes revive them. No production balance preset is enabled here.
 
 ## Tsunami: 31514, `SeaKingdom_Tsunami`
 
+The legacy tap announces vitalizing waters only after applying or refreshing
+Vitality. Deity exclusions retain the spell's existing rejection explanation;
+image reflections are skipped silently in both paths.
+
 | Ability | Legacy | Migrated contract |
 | --- | --- | --- |
 | `tap tsunami` / `tap trident` | Immediate Vitality for self/same non-null group; timer 0, 300 seconds. Vitality power is min(wielder level + 15, 60). Weaker existing Vitality upgrades; stronger effects stay stronger; refresh lasts 15 ticks. | Active 8-pulse windup with a progress beat, one configured mana cost and the same cooldown. Capture wielder level at activation and use min(captured level + 15, 60). Re-enumerate current room identities at release; both application and refresh require self or the same non-null group. Upgrade weaker existing Vitality without stacking or downgrading stronger HP modifiers; refresh lasts 15 ticks. Deity Vitality and reflection exclusions remain. |

@@ -26,17 +26,23 @@
 extern P_room world;
 extern P_index obj_index;
 
-void apply_tsunami_vitality(int wielder_level, P_char actor, P_char target)
+bool apply_tsunami_vitality(int wielder_level, P_char actor, P_char target)
 {
 	if (!IS_ALIVE(actor) || !IS_ALIVE(target) || actor->in_room != target->in_room ||
 	    (target != actor && (!actor->group || actor->group != target->group)) ||
-	    (IS_NPC(target) && GET_VNUM(target) == IMAGE_REFLECTION_VNUM) ||
-	    affected_by_spell(target, SPELL_MIELIKKI_VITALITY) ||
-	    affected_by_spell(target, SPELL_FALUZURES_VITALITY) ||
-	    affected_by_spell(target, SPELL_ESHABALAS_VITALITY))
-		return;
+	    (IS_NPC(target) && GET_VNUM(target) == IMAGE_REFLECTION_VNUM))
+		return false;
 
 	const int power = MIN(wielder_level + 15, 60);
+	if (affected_by_spell(target, SPELL_MIELIKKI_VITALITY) ||
+	    affected_by_spell(target, SPELL_FALUZURES_VITALITY) ||
+	    affected_by_spell(target, SPELL_ESHABALAS_VITALITY))
+	{
+		// Reuse the spell's existing deity-specific rejection explanation.
+		spell_vitality(power, actor, nullptr, SPELL_TYPE_SPELL, target, nullptr);
+		return false;
+	}
+
 	for (auto *af = target->affected; af; af = af->next)
 	{
 		if (af->type != SPELL_VITALITY)
@@ -52,9 +58,10 @@ void apply_tsunami_vitality(int wielder_level, P_char actor, P_char target)
 		af->duration = 15;
 		gmcp_char_vitals(target);
 		gmcp_char_affects(target);
-		return;
+		return true;
 	}
 	spell_vitality(power, actor, nullptr, SPELL_TYPE_SPELL, target, nullptr);
+	return true;
 }
 
 namespace

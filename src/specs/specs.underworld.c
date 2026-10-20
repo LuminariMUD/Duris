@@ -4296,9 +4296,9 @@ int SeaKingdom_Tsunami(P_obj obj, P_char ch, int cmd, char *arg)
 				{
 					if (vict != ch && (!ch->group || ch->group != vict->group))
 						continue;
-					apply_tsunami_vitality(GET_LEVEL(ch), ch, vict);
-					act("&+W$N is bathed in Tsunami's vitalizing waters!&n",
-					    FALSE, ch, obj, vict, TO_ROOM);
+					if (apply_tsunami_vitality(GET_LEVEL(ch), ch, vict))
+						act("&+W$N is bathed in Tsunami's vitalizing waters!&n",
+						    FALSE, ch, obj, vict, TO_ROOM);
 				}
 				send_to_room(
 					"\n&+WTsu&+Bna&+bmi&+L,&+b the trident of &+cstorms &+b vibrates &+Bviolently&+b and suddenly becomes &+Lstill.\n",
