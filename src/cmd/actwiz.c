@@ -10093,7 +10093,8 @@ void do_unspec(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 	victim->player.spec = 0;
-	purge_linked_auras(victim);
+	if (GET_CLASS(victim, CLASS_CLERIC))
+		purge_linked_auras(victim);
 	update_skills(victim);
 	send_to_char("You are no longer specialized.\n", victim);
 	send_to_char("They are no longer specialized.\n", ch);

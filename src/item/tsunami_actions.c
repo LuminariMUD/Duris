@@ -19,6 +19,7 @@
 #include "item/artifact_mana.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include <ctime>
 #include <vector>
 
@@ -42,15 +43,15 @@ void apply_tsunami_vitality(int wielder_level, P_char actor, P_char target)
 			continue;
 		if (af->modifier < 4 * power)
 		{
-			affected_type replacement = *af;
-			replacement.modifier = 4 * power;
-			replacement.duration = 15;
-			affect_remove(target, af);
-			affect_to_char(target, &replacement);
+			// Preserve source links and finish HP recalculation before observing position.
+			all_affects(target, FALSE);
+			af->modifier = 4 * power;
+			all_affects(target, TRUE);
 			update_pos(target);
 		}
-		else
-			af->duration = 15;
+		af->duration = 15;
+		gmcp_char_vitals(target);
+		gmcp_char_affects(target);
 		return;
 	}
 	spell_vitality(power, actor, nullptr, SPELL_TYPE_SPELL, target, nullptr);

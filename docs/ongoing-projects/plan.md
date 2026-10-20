@@ -234,6 +234,14 @@ other material combat behavior; it cannot supply the missing balance evidence.
   resulting effective healing and ward refill alongside the outgoing 1.20 scalar.
   Different existing aura types may coexist according to the existing rules.
 
+Aura lifecycle closeout for the access PR: ordinary and staff unspecialization
+now purge outgoing Cleric specialization auras and refresh the target's skills.
+Paladin and Anti-Paladin base auras remain available. The executable regression
+covers successful/failed transactions, the correct staff target, both retained
+base classes, and linked aura cleanup. This fix is included with the new Healer
+grant in #222 so it is independently safe to review. The later #226 repair is
+superseded by this integration.
+
 ### W4 — Ward seconds and effective-healing refill
 
 - [x] Set `innate.wardingFaith.rechargeTime` and its fallback to 240 seconds.
@@ -480,7 +488,7 @@ Full persistence/restart and matched combat balance gates remain open.
 W5 in progress on `branch/issue-169-tsunami-vitality`, stacked on PR #224
 (`ff8750dac`, remote verified). A single Tsunami-only helper handles both legacy
 and native application/refresh, using the captured native activation level.
-Existing weaker Vitality is replaced through affect APIs to recalculate HP;
+Existing weaker Vitality is strengthened in place with synchronous affect recalculation;
 equal/stronger buffs keep strength and refresh to 15 ticks. Fresh casts retain
 ordinary Vitality duration. Bystanders and incompatible deity/reflection effects
 are excluded before upgrade. Ordinary Miracle/Vitality is unchanged.
@@ -492,6 +500,15 @@ stronger effects, asserting a single HP modifier, duration, and captured native
 power after a level change. Both routes exclude a bystander with an existing
 buff; deity exclusions are checked on refresh. Actual max-HP recalculation still
 requires the full-server journey because harness affect storage is isolated.
+Review repair: Aramus's crown supplies a linked Vitality affect. Preserve that
+same affect and object link while raising its modifier; do not copy ownership
+flags onto an unlinked replacement. Recalculate before observing position and
+publish the resulting HP/affect state. The expanded ASan/UBSan test reuses the
+production HP recalculation block and real object-link cleanup. It reproduced
+negative HP at update_pos before the fix; afterward 10 HP becomes 70 HP while
+144 Vitality upgrades to 204, and crown-style removal still removes the same
+linked affect, in both pilot modes.
+
 Flatfile native build started for the full-server qualification phase.
 
 W5 full-server proof passed: extended `run_item_pilot_journey.py --binary
@@ -572,4 +589,7 @@ weaker-buff replacement losing Aramus crown object links and observing transient
 negative HP before its deferred recalculation. Trace and repair in place rather
 than copying linked affect ownership flags. PR #226's unconditional aura purge
 also needs narrowing so base Paladin/Anti-Paladin auras survive unspecialization.
-These findings are not yet claimed resolved.
+The Tsunami findings are repaired in #225 with in-place HP recalculation and
+source-link preservation. Base Paladin/Anti-Paladin aura preservation is covered
+by the lifecycle fix now folded into #222. The regressions failed before repair
+and pass afterward; #226 is superseded by the access-PR integration.

@@ -39,7 +39,7 @@ struct affected_type {
     affected_type *next = nullptr;
 };
 struct char_data {
-    struct { int spec = 0; } player;
+    struct { int spec = 0; unsigned m_class = 32; } player;
     struct pc_data { int time_unspecced = 0; };
     struct { pc_data *pc = nullptr; } only;
     bool npc = false;
@@ -64,6 +64,10 @@ struct aura_description {
 #define REMOVE_BIT(bits, flag) ((bits) &= ~(flag))
 #define IS_NPC(ch) ((ch)->npc)
 #define IS_SPECIALIZED(ch) ((ch)->player.spec != 0)
+#define CLASS_CLERIC 32u
+#define CLASS_PALADIN 8u
+#define CLASS_ANTIPALADIN 16u
+int GET_CLASS(P_char ch, unsigned cls) { return (ch->player.m_class & cls) != 0; }
 
 char _buff[MAX_STRING_LENGTH];
 aura_description auras[LAST_AURA - FIRST_AURA + 1] = {};
@@ -152,6 +156,16 @@ int main() {
     char argument[] = "healer";
     do_unspec(&staff, argument, 0);
     assert(healer.player.spec == 0 && purges == 2 && updated == &healer);
+    // Both these classes keep their aura entitlement when their spec is removed.
+    for (unsigned cls : {CLASS_PALADIN, CLASS_ANTIPALADIN}) {
+        healer.player.m_class = cls;
+        healer.player.spec = 1;
+        unspecialize_committed(&healer, true, result, 0, nullptr, 0);
+        assert(healer.player.spec == 0 && purges == 2);
+        healer.player.spec = 1;
+        do_unspec(&staff, argument, 0);
+        assert(healer.player.spec == 0 && purges == 2 && updated == &healer);
+    }
     std::puts("paladin aura cleanup regression passed");
 }
 '''

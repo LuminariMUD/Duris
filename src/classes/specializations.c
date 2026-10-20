@@ -757,7 +757,8 @@ void unspecialize_committed(P_char ch, bool committed, const epic_command_result
 	}
 	send_to_char("Your old habits fall away and you feel ready to learn new ways.\n", ch);
 	ch->player.spec = 0;
-	purge_linked_auras(ch);
+	if (GET_CLASS(ch, CLASS_CLERIC))
+		purge_linked_auras(ch);
 	update_skills(ch);
 	forget_spells(ch, -1);
 }
