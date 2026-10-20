@@ -156,7 +156,7 @@ void event_ward_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	struct regen_event_state state = regen_state_from_data(data);
 	unsigned long long elapsed_ticks = regen_elapsed_ticks(&state);
 	int regen_value_int;
-	int per_tick = ward_regen(ch, FALSE);
+	float per_tick = ward_regen(ch, FALSE);
 
 	if ((per_tick == 0) || (GET_WARD(ch) == GET_MAX_WARD(ch) && per_tick > 0))
 		return;
@@ -270,7 +270,8 @@ void event_hit_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 void StartRegen(P_char ch, regen_resource resource)
 {
 	event_func_type func;
-	int delay, per_tick;
+	int delay;
+	float per_tick;
 
 	if (resource == regen_resource::vitality)
 	{

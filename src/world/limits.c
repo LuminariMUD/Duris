@@ -447,18 +447,21 @@ int move_regen(P_char ch, bool display_only)
 	//  return (int) (gain * gain / 5);
 }
 
-/* * calculate ch's ward regeneration rate, return regen/minute */
+/* Ward points per PULSES_IN_TICK; retain fractional innate recovery. */
 
-int ward_regen(P_char ch, bool display_only)
+float ward_regen(P_char ch, bool display_only)
 {
-	int gain;
+	float gain = ch->points.ward_reg;
+	if (has_innate(ch, INNATE_WARDING_FAITH))
+		gain += ch->points.base_ward * PULSES_IN_TICK /
+			(get_property("innate.wardingFaith.rechargeTime", 240.0) * WAIT_SEC);
 
 	if (affected_by_spell(ch, TAG_BUILDING))
 	{
 		return 0;
 	}
 
-	if (ch->points.ward_reg >= 0 && GET_WARD(ch) == GET_MAX_WARD(ch) && !display_only)
+	if (gain >= 0 && GET_WARD(ch) == GET_MAX_WARD(ch) && !display_only)
 	{
 		return 0;
 	}
@@ -468,8 +471,6 @@ int ward_regen(P_char ch, bool display_only)
 		gain = (int)(GET_MAX_WARD(ch) - GET_WARD(ch)) / 10;
 		return MIN(-1, gain);
 	}
-
-	gain = ch->points.ward_reg;
 
 	/* * Position calculations    */
 	switch (GET_STAT(ch))

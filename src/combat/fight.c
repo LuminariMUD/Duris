@@ -651,7 +651,7 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 	if (GET_SPEC(healer, CLASS_CLERIC, SPEC_HEALER))
 	{
 		// healing replenishes ward
-		GET_WARD(healer) = BOUNDED(0, GET_WARD(healer) + (hits / 5), GET_MAX_WARD(healer));
+		GET_WARD(healer) = BOUNDED(0, GET_WARD(healer) + (hits / 10), GET_MAX_WARD(healer));
 	}
 	// debug("Hitting heal function in fight with (%d) hits.", hits);
 	if (IS_PC(healer) && IS_FIGHTING(ch))

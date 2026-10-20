@@ -58,7 +58,7 @@ static std::vector<scheduled_regen> queue;
 int move_regen(P_char, bool) { return rate; }
 int hit_regen(P_char, bool) { return rate; }
 int mana_regen(P_char, bool) { return rate; }
-int ward_regen(P_char, bool) { return rate; }
+float ward_regen(P_char, bool) { return rate; }
 void stop_meditation(P_char) {}
 int char_in_list(const P_char) { return 1; }
 void die(P_char, P_char) { assert(false); }

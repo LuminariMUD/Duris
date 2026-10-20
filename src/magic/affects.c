@@ -931,12 +931,7 @@ void apply_affs(P_char ch, int mode)
 		{
 			multi *= 2;
 		}
-		double rechargeTimeInSeconds =
-			get_property("innate.wardingFaith.rechargeTime", 120.0);
-
 		ch->points.base_ward = GET_LEVEL(ch) * multi;
-		TmpAffs.ward_reg += (int)(((double)ch->points.base_ward / rechargeTimeInSeconds) *
-					  PULSES_IN_TICK);
 	}
 	else
 	{
