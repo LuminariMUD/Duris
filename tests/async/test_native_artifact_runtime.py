@@ -71,6 +71,16 @@ char_obj_link_data *link_char_obj_with_affect(P_char actor,P_obj source,ush_int 
     link->ch=actor; link->obj=source; link->type=type; link->affect=af;
     link->next=actor->obj_linked; actor->obj_linked=link; return link;
 }
+static bool require_positive_update = false;
+void update_pos(P_char actor) { if(require_positive_update) assert(GET_HIT(actor) > 0); }
+void gmcp_char_affects(P_char actor) { if(require_positive_update) assert(GET_HIT(actor) > 0); }
+void all_affects(P_char ch, int mode) {
+    hold_data TmpAffs{};
+    int t1;
+    for(auto *af=ch->affected;af;af=af->next)
+        if(af->location==APPLY_HIT && !(af->flags&AFFTYPE_NOAPPLY)) TmpAffs.Hits+=af->modifier;
+    // INSERT_HP_RECALC
+}
 affected_type *affect_to_char(P_char actor,affected_type *af) {
     auto *copy=new affected_type(*af); copy->next=actor->affected; actor->affected=copy;
     actor->specials.affected_by2|=af->bitvector2;
@@ -82,11 +92,14 @@ affected_type *affect_to_char(P_char actor,affected_type *af) {
     return copy;
 }
 void affect_remove(P_char actor,affected_type *af) {
+    const bool hp_affect=af->location==APPLY_HIT;
+    if(hp_affect) all_affects(actor,FALSE);
     affected_type **entry=&actor->affected;
     while(*entry && *entry!=af) entry=&(*entry)->next;
     assert(*entry); *entry=af->next;
     if(af->flags&AFFTYPE_LINKED_OBJ) unlink_char_obj_affect(actor,af);
     delete af;
+    if(hp_affect) all_affects(actor,TRUE);
     actor->specials.affected_by2=actor->specials.affected_by4=0;
     for(auto *other=actor->affected;other;other=other->next) {
         actor->specials.affected_by2|=other->bitvector2;
@@ -138,7 +151,12 @@ bool artifact_mana_debit(P_obj source, uint64_t cost, bool passive, uint64_t tok
     tokens[source->obj_uid]=token; return true;
 }
 void hummer(P_obj) { ++hums; }
-void spell_vitality(int p,P_char a,char *s,int t,P_char v,P_obj o) { invoke(SPELL_VITALITY,p,a,s,t,v,o); }
+static bool real_vitality = false;
+static void real_spell_vitality(int, P_char, char *, int, P_char, P_obj);
+void spell_vitality(int p,P_char a,char *s,int t,P_char v,P_obj o) {
+    invoke(SPELL_VITALITY,p,a,s,t,v,o);
+    if(real_vitality) real_spell_vitality(p,a,s,t,v,o);
+}
 int spell_damage(P_char actor,P_char target,double amount,int type,uint flags,damage_messages *,int *) {
     assert(flags&SPLDAM_NODEFLECT); assert(amount==73 && type==SPELL_FIREBALL);
     ++reflected; reflected_target=target->runtime_id;
@@ -190,11 +208,104 @@ struct native_scene : scene {
 };
 
 static void tsunami_cases() {
-    for(bool enabled:{false,true}) {
-        native_scene s(31514,enabled); assert(s.tsunami(CMD_TAP));
+    for(bool enabled:{false,true}) for(int level:{30,36,44,45,46,56}) {
+        native_scene s(31514,enabled); s.actor->player.level=level; assert(s.tsunami(CMD_TAP));
         if(enabled) { assert(calls.empty() && item_action_active(s.actor)); assert(reserves[100].reserve==70); advance(); }
         assert(calls.size()==1 && calls[0].id==SPELL_VITALITY && calls[0].target==s.actor->runtime_id);
+        assert(calls[0].power==std::min(level+15,60));
+        assert(std::count_if(output.begin(),output.end(),[](const auto &text) {
+            return text.find("is bathed in Tsunami's vitalizing waters")!=std::string::npos;
+        })==(enabled?0:1));
         assert(s.source->timer[0]==wall); const int paid=debits; s.tsunami(CMD_TAP); advance(); assert(debits==paid);
+    }
+    for(bool enabled:{false,true}) for(int strength:{0,120,240,300}) {
+        native_scene s(31514,enabled);
+        real_vitality=true;
+        s.actor->player.level=36;
+        group_list group{};
+        s.actor->group=s.target->group=&group;
+        if(strength) {
+            affected_type af{}; af.type=SPELL_VITALITY; af.location=APPLY_HIT;
+            af.modifier=strength; af.duration=2;
+            affect_to_char(s.target,&af);
+        }
+        s.tsunami(CMD_TAP);
+        if(enabled) s.actor->player.level=56; // selected power stays at level 36
+        advance();
+        auto *af=s.target->affected;
+        assert(af && af->type==SPELL_VITALITY && !af->next);
+        assert(af->modifier==std::max(strength,204));
+        assert(af->duration==(strength?15:std::max(10,int(GET_LEVEL(s.actor))/4)));
+        s.actor->group=s.target->group=nullptr;
+        real_vitality=false;
+    }
+    for(bool enabled:{false,true}) {
+        native_scene s(31514,enabled);
+        affected_type af{}; af.type=SPELL_VITALITY; af.modifier=120; af.duration=2;
+        s.target->affected=&af;
+        s.tsunami(CMD_TAP); advance();
+        assert(af.modifier==120 && af.duration==2); // bystander excluded in both routes
+        s.target->affected=nullptr;
+    }
+    for(bool enabled:{false,true}) for(int deity:{SPELL_MIELIKKI_VITALITY,SPELL_FALUZURES_VITALITY,SPELL_ESHABALAS_VITALITY}) {
+        native_scene s(31514,enabled);
+        real_vitality=true;
+        affected_type af{}; af.type=SPELL_VITALITY; af.modifier=120; af.duration=2;
+        affect_to_char(s.actor,&af);
+        af.type=deity; affect_to_char(s.actor,&af);
+        s.tsunami(CMD_TAP); advance();
+        assert(s.actor->affected->next->modifier==120 && s.actor->affected->next->duration==2);
+        assert(std::any_of(output.begin(),output.end(),[](const auto &text) {
+            return text.find("prevents the vitality spell")!=std::string::npos ||
+                   text.find("denied by Eshabala")!=std::string::npos;
+        }));
+        assert(std::none_of(output.begin(),output.end(),[](const auto &text) {
+            return text.find("is bathed in Tsunami's vitalizing waters")!=std::string::npos;
+        }));
+        real_vitality=false;
+    }
+    for(bool enabled:{false,true}) {
+        native_scene s(31514,enabled);
+        group_list group{};
+        s.actor->group=s.target->group=&group;
+        npc_only_data reflection{};
+        index_data reflection_index{};
+        reflection_index.virtual_number=IMAGE_REFLECTION_VNUM;
+        mob_index=&reflection_index;
+        s.target->specials.act=ACT_ISNPC;
+        s.target->only.npc=&reflection;
+        s.tsunami(CMD_TAP); advance();
+        assert(!s.target->affected && calls.size()==1 && calls[0].target==s.actor->runtime_id);
+        assert(std::count_if(output.begin(),output.end(),[](const auto &text) {
+            return text.find("is bathed in Tsunami's vitalizing waters")!=std::string::npos;
+        })==(enabled?0:1));
+        s.actor->group=s.target->group=nullptr;
+        s.target->specials.act=0;
+        s.target->only.pc=&s.target_pc;
+        mob_index=nullptr;
+    }
+    for(bool enabled:{false,true}) for(bool linked:{false,true}) {
+        native_scene s(31514,enabled);
+        s.actor->player.level=36;
+        s.actor->points.base_hit=1000;
+        s.actor->points.max_hit=1144;
+        s.actor->points.hit=10;
+        affected_type af{}; af.type=SPELL_VITALITY; af.location=APPLY_HIT;
+        af.modifier=144; af.duration=10;
+        if(linked) af.flags=AFFTYPE_LINKED_OBJ|AFFTYPE_NOSAVE;
+        auto *original=affect_to_char(s.actor,&af);
+        char_obj_link_data *original_link=nullptr;
+        if(linked) original_link=link_char_obj_with_affect(s.actor,s.source,LNK_CHAR_OBJ_AFF,original);
+        require_positive_update=true;
+        s.tsunami(CMD_TAP); advance();
+        require_positive_update=false;
+        assert(s.actor->affected==original && original->modifier==204 && original->duration==15);
+        assert(s.actor->points.max_hit==1204 && s.actor->points.hit==70);
+        if(linked) {
+            assert(s.actor->obj_linked==original_link && original_link->affect==original);
+            clear_links(s.actor,s.source,LNKFLG_BREAK_REMOVE);
+            assert(!s.actor->affected && !s.actor->obj_linked);
+        }
     }
     for(int interruption=0;interruption<7;++interruption) {
         native_scene s; assert(s.tsunami(CMD_TAP));
@@ -350,12 +461,16 @@ callbacks = '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature)
     'void event_tsunamiwave(', 'int SeaKingdom_Tsunami(', 'int deflect_ioun('))
 callbacks += '\n' + function(ROOT / 'src/specs/specs.object.c', 'int living_necroplasm(')
 callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vampire(')
+callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vitality(').replace('void spell_vitality(', 'static void real_spell_vitality(', 1)
+hp_source = (ROOT / 'src/magic/affects.c').read_text()
+hp_start = hp_source.index('\tif (!mode && (GET_MAX_HIT(ch) == 0))')
+hp_recalc = hp_source[hp_start:hp_source.index('\n\tt1 = GET_MAX_VITALITY(ch)', hp_start)]
 affects = '\n'.join(function(ROOT / 'src/magic/affects.c', signature) for signature in (
     'void clear_links(P_char ch, P_obj obj, int flag)',
     'void unlink_char_obj_affect(P_char ch, struct affected_type *af)'))
 with tempfile.TemporaryDirectory(prefix='duris-native-artifacts-') as directory:
     source = Path(directory) / 'harness.cpp'; binary = Path(directory) / 'harness'
-    source.write_text(platform + fixture + boundary + HARNESS.replace('// INSERT_CALLBACKS', callbacks).replace('// INSERT_AFFECTS', affects))
+    source.write_text(platform + fixture + boundary + HARNESS.replace('// INSERT_CALLBACKS', callbacks).replace('// INSERT_AFFECTS', affects).replace('// INSERT_HP_RECALC', hp_recalc))
     subprocess.run(['g++', '-std=c++20', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-pthread',
                     '-I' + str(ROOT / 'src'), str(source), str(ROOT / 'src/persistence/latency_trace.c'),
