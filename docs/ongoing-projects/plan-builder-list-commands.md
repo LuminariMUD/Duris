@@ -1,6 +1,7 @@
 # Builder list commands: zone defaults, bounded output, and working olist
 
-Status: planning only, 2026-10-20. Implementation and runtime verification are pending.
+Status: implementation in progress, 2026-10-20. Boot-name chunk validated locally;
+command implementation and local gameplay acceptance remain pending.
 Tracking: [issue #231](https://github.com/LuminariMUD/Duris/issues/231).
 Work branch: [`branch/issue-231-builder-lists`](https://github.com/LuminariMUD/Duris/tree/branch/issue-231-builder-lists),
 linked through the issue's Development section.
@@ -9,6 +10,41 @@ Source baseline: [master `4eca0ea95245`](https://github.com/LuminariMUD/Duris/co
 The inspected command, index-loading, and paging files are unchanged between the
 source baseline and branch base. The existing `plan.md` belongs to issue #169 and
 is outside this change.
+
+## Current execution / continuation
+
+OpenSpec change: `openspec/changes/issue-231-builder-lists/` (spec-driven).
+The initial branch remains the loader PR; the command PR will stack on it.
+No release tag is appropriate for unmerged review work. No deployment is included.
+
+Ablation: retain existing `desc2` ownership and normal loaders; no duplicate cache,
+new index fields, service, configuration, or general pager changes. The existing
+plan is already minimal once these unnecessary alternatives are excluded.
+
+Completed locally:
+
+- `generate_indices` reads shared short descriptions at boot, preserves `pos`,
+  excludes the payload-free `#9999999` sentinel, and returns null/top -1 for an
+  empty file. All three call sites (normal, mini, material rarity) use this path.
+- Extended `test_newbie_object_template.py` executes the real generator, parser
+  and object publisher against sentinel/EOF and empty-name fixtures. It verifies
+  cold names, original positions, shared pointers and safe cleanup under ASan/UBSan.
+- `python3 tests/async/test_newbie_object_template.py`, `test_minimal_boot.py`,
+  `test_documentation_contract.py` (14 tests), `./scripts/format.sh --check`,
+  `make -C src -j4`, strict OpenSpec validation and `git diff --check` passed.
+- Actual full/mini mobile and object indices are strictly increasing. A separate
+  optimized harness compared the original and new production generators on the
+  same files: full mobs 17,680 records, 22.37/16.14 ms old/new, 488,202 name bytes;
+  full objects 19,149 records, 23.94/21.62 ms, 670,174 bytes; mini mobs 171 records,
+  0.097/0.114 ms, 4,166 bytes; mini objects 801 records, 4.14/0.571 ms, 24,047 bytes.
+  These single-run warm-cache-sensitive timings do not establish a speedup. Added
+  full-world string payload is 1,158,376 bytes plus allocator overhead, shared
+  with later instances. Evidence harness is local under `bin/tests/builder-boot-cost`.
+
+Next: implement the scope parser and three handlers with bounded traversal; add
+executable command tests and regression documentation, then perform a local/dev
+journey proving ordinary mobile loading, staff/mortal access, paging, responsiveness,
+and handler timings. Production and the reported live slowdown remain unverified.
 
 ## Outcome and scope
 
@@ -25,7 +61,8 @@ prototype framework is needed.
 
 ## Source findings
 
-Verified by source inspection; these are not claims of a live reproduction:
+Historical pre-change findings, verified by source inspection; these are not claims
+of a live reproduction:
 
 1. [`do_rlist` and `do_mlist`](../../src/cmd/actinf.c#L10195) leave their filters
    disabled for empty input and iterate every room/mobile index. Neither has a
@@ -208,7 +245,7 @@ journey to pass, with measured performance evidence and any remaining uncertaint
 stated explicitly. CI is not an acceptance prerequisite. Production deployment
 is a separate authorized operation.
 
-## Effort and planning closeout
+## Original effort and planning closeout (historical)
 
 Estimated implementation and local verification: **4-8 active engineering hours**,
 including the cold-name boot path and executable regression coverage. No migration
