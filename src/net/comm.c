@@ -420,6 +420,8 @@ int ipc_id = 0;
 pid_t lookup_host_process;
 int max_users_playing = 0;
 int used_descs = 0, avail_descs = 0, max_descs = 0, max_descs_this_hour = 0;
+int max_descs_previous_hour = 0;
+bool max_descs_previous_hour_valid = false;
 struct mm_ds *dead_desc_pool = NULL;
 int RUNNING_PORT = 0;
 int no_ferries = 0;
@@ -1480,6 +1482,27 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
  * durable completions remain after that event phase.
  */
 
+// Publish a socket high-water mark only after its server-relative hour ends.
+// Never expose a partial first hour or an hour lost to clock jumps/long stalls.
+static void update_completed_hour_connection_peak(long now, long &window_started)
+{
+	const long elapsed = now - window_started;
+	if (elapsed < 0 || elapsed >= 7200)
+	{
+		max_descs_previous_hour_valid = false;
+		max_descs_this_hour = used_descs;
+		window_started = now;
+		return;
+	}
+	if (elapsed >= 3600)
+	{
+		max_descs_previous_hour = max_descs_this_hour;
+		max_descs_previous_hour_valid = true;
+		max_descs_this_hour = used_descs;
+		window_started = now;
+	}
+}
+
 static bool run_connection_phase(game_loop_pulse_context &ctx)
 {
 	const int s = ctx.telnet_listener;
@@ -1525,11 +1548,7 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
 			      (unsigned long long)bridge.auth_failures);
 	}
 
-	if ((last_desc_per_hour_reset + 3600) <= time(0))
-	{
-		max_descs_this_hour = used_descs;
-		last_desc_per_hour_reset = time(0);
-	}
+	update_completed_hour_connection_peak(time(0), last_desc_per_hour_reset);
 	/*
 	    struct host_answer host_ans_buf;
 	*/
@@ -2627,6 +2646,9 @@ void game_loop(int port, int sslport)
 	fprintf(stderr, "Entering game loop.\n");
 	logit(LOG_STATUS, "Entering game loop.");
 	long last_desc_per_hour_reset = time(0);
+	// Recovery can leave live descriptors without any newly accepted socket.
+	max_descs_this_hour = used_descs;
+	max_descs_previous_hour_valid = false;
 	/* Main loop */
 resume_game_loop:
 	sql_game_loop_running(true);

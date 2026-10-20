@@ -33,6 +33,9 @@ harness = r'''
 #include <unistd.h>
 
 int max_descs = 42;
+int max_descs_this_hour = 0;
+int max_descs_previous_hour = 0;
+bool max_descs_previous_hour_valid = false;
 int curr_ingame_good = 0, curr_ingame_evil = 0;
 int max_ingame_good = 0, max_ingame_evil = 0;
 P_desc descriptor_list = nullptr;
@@ -108,9 +111,24 @@ int main()
     assert(ordinary.find("Total visible players: 3") != std::string::npos);
     assert(ordinary.find("connections") == std::string::npos);
     assert(ordinary.find("online") == std::string::npos);
+    max_descs_this_hour = 99; // Live socket peak must never appear in who.
+    assert(summary(&good) == ordinary);
     const auto trusted = summary(&staff);
     assert(trusted.find("connections this boot: 42") != std::string::npos);
     assert(trusted.find("Total in-game connections: 8") != std::string::npos);
+    const std::string last_hour_label =
+        "&+rPeak simultaneous connections in the previous completed hour: ";
+    for (int peak : { 0, 1, 7 }) {
+        max_descs_previous_hour = peak;
+        max_descs_previous_hour_valid = true;
+        const auto suffix = last_hour_label + std::to_string(peak) + ".&n\n";
+        assert(summary(&good) == ordinary + suffix);
+        assert(summary(&staff) == trusted + suffix);
+        max_descs_this_hour = peak + 100;
+        assert(summary(&good) == ordinary + suffix);
+    }
+    max_descs_previous_hour_valid = false;
+    assert(summary(&good) == ordinary);
     for (int good_count : { 0, 1, 7 }) {
         for (int evil_count : { 0, 1, 7 }) {
             curr_ingame_good = good_count;
