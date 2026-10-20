@@ -412,13 +412,13 @@ items above complete during this planning publication.
 All gameplay implementation is committed and pushed. Review the stack in order:
 
 1. [#222](https://github.com/LuminariMUD/Duris/pull/222), access/progression and
-   Healer aura lifecycle: `985ea366a`, base `master`.
+   Healer aura lifecycle and correct help command: `c09f4fa60`, base `master`.
 2. [#223](https://github.com/LuminariMUD/Duris/pull/223), timed self-only Warding
-   and remaining-time snapshots, including GMCP countdowns: `edb488c8e`, base #222 branch.
+   and remaining-time snapshots, including GMCP countdowns: `1b01d5fe5`, base #222 branch.
 3. [#224](https://github.com/LuminariMUD/Duris/pull/224), passive recovery and
-   effective-healing refill: `403096deb`, base #223 branch.
+   effective-healing refill: `ff94ba4f9`, base #223 branch.
 4. [#225](https://github.com/LuminariMUD/Duris/pull/225), both Tsunami paths:
-   `8ce856948`, base #224 branch.
+   `58a410f2b`, base #224 branch.
 5. [#229](https://github.com/LuminariMUD/Duris/pull/229), narrow implementation
    regression and final handoff, base #225 branch.
 
@@ -472,6 +472,12 @@ The aura regression now executes the real purge function and checks outgoing
 links and event cancellation. The Python 3.11 review finding in #229 was
 reproduced with Python 3.11.14; changing the two SQL f-strings' outer quotes
 preserves the queries and allows compilation and `--help` on that interpreter.
+The later #222 help finding was also reproduced: both Healer entries used an
+unregistered aura command. They now use `aura_of_improved_healing`; the existing
+class-help contract derives that name from `do_aura_healing`'s registration and
+failed before the help edit, then passed. This help/test-only follow-up was
+carried through each successor with no change under `src/`, preserving the
+native build and both running-server journey results below.
 
 Evidence boundaries:
 
