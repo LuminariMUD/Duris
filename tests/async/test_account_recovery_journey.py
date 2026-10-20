@@ -375,7 +375,7 @@ class IsolatedServer:
         journal_root = self.run_root / "journals"
         (journal_root / "players").mkdir(parents=True, mode=0o700)
         (journal_root / "critical").mkdir(mode=0o700)
-        self.plain_port, tls_port, websocket_port = available_ports()
+        self.plain_port, tls_port, self.websocket_port = available_ports()
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "ENVIRONMENT": "local",
@@ -385,7 +385,7 @@ class IsolatedServer:
             "LISTEN_ADDRESS": "127.0.0.1",
             "DURIS_TLS_PORT": str(tls_port),
             "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket_port),
+            "DURIS_WEBSOCKET_PORT": str(self.websocket_port),
             "REDIS": "FALSE",
             "CHAOS_MUD": "FALSE",
         }

@@ -2,7 +2,11 @@
 
 Status: implementation in progress, 2026-10-20. Working in `/home/aiwithapex/projects/duris-issue107-plan`. The owner explicitly instructed no OpenSpec; this task uses this plan and executable tests.
 
-First chunk: shared roller and Telnet prompt/bonus handling. Next: stacked WebSocket protocol, required DurisWeb companion, then paired browser acceptance. Nothing deployed or merged.
+Telnet chunk: [PR #236](https://github.com/LuminariMUD/Duris/pull/236), head `fcbdf4310`, ready for review.
+Current branch: `branch/issue-107-websocket-stat-choice`, stacked on that PR.
+WebSocket protocol implementation and qualification are in progress. The required
+DurisWeb companion is in `/home/aiwithapex/projects/durisweb-issue107` on
+`branch/issue-107-stat-choice`. Paired browser acceptance remains. Nothing deployed or merged.
 Tracking: [Duris #107](https://github.com/LuminariMUD/Duris/issues/107).
 Implementation branch: `branch/issue-107-stat-choice`.
 Duris source baseline: [master `e19537cced99`](https://github.com/LuminariMUD/Duris/commit/e19537cced993bc8de3de1abd76027e8d40b389a).
@@ -378,7 +382,7 @@ checks. Report exact commands/results and any missing browser/persistence proof.
 - [x] Trace current roller callers, all three Telnet entries, WebSocket handlers,
   descriptor/state consumers, browser callers, and available test fixtures.
 - [x] Apply ablation and write this plan; preserve the earlier plan.
-- [ ] Implement and prove the Duris changes.
+- [x] Implement and prove the Duris changes (Telnet #236 plus stacked WebSocket PR).
 - [ ] Implement and prove the DurisWeb companion changes.
 - [ ] Complete paired browser/persistence acceptance and implementation review.
 - [ ] Publish final implementation evidence and close #107 when both halves pass.
@@ -414,3 +418,56 @@ reachability. Exact saved-stat parity and Advanced restart/relogin remain in the
 combined persistence qualification. The server protocol, DurisWeb wizard and
 paired browser acceptance are still required. No merge, tag, migration or
 production action is part of this review delivery.
+
+### WebSocket implementation evidence (2026-10-20)
+
+Implemented descriptor method/phase and four-award enforcement. Wire contract:
+- `chargen_options`: `statMethods: ["default", "advanced"]`, `bonusCount: 4`;
+  reads never reset an attempt.
+- `roll_stats`: `{race, method?}`; missing method selects Default. Success returns
+  `type: "roll_stats"`, ten qualitative `stats`, `bonusRemaining`, `method` and
+  `phase`. Only same-race/same-method Advanced in `rolling` can reroll.
+- `accept_stats`: no data; returns `type: "stats_accepted"` and the same fields.
+  Duplicate acceptance preserves the current count/stats/phase.
+- `add_bonus`: only `bonuses`, four successful selections; `bonus_added` retains
+  existing fields and adds method/phase. `swap_stats`: only `ready`, with existing
+  `stats_swapped` fields plus method/phase. Karma is excluded.
+- `create_character`: only `ready`, zero bonuses and matching race, before any
+  allocation or persistence. Name/admission errors retain the valid attempt.
+- `reset_chargen`: no data; clears every descriptor creation field and returns
+  `{type: "chargen_reset"}`. Reset also runs on login/account replacement,
+  registration replacement, accepted saved-character entry and successful creation.
+- Mutations require an authenticated account menu and no attached character.
+  Actual quit/death return uses `CON_DISPLAY_ACCT_MENU`; login uses
+  `CON_ACCT_SELECT_CHAR`. Both are accepted. Registration now explicitly enters
+  the account-menu state before its success response. Pending auth/write guards
+  remain in dispatch.
+
+Validation:
+- `make -C src -j8` and `make -C src PERSISTENCE_BACKEND=flatfile -j8`: passed.
+- `python3 tests/async/test_character_stat_choice.py`: passed with ASan/UBSan,
+  now also exercising actual WebSocket handlers against controlled dice. It
+  asserts exact numeric descriptor preservation for rejected requests, Advanced
+  replacement of all ten values, duplicate acceptance, counts, cap/karma,
+  swapping, resets and authenticated/playing/menu state gates. The quality-label
+  dependency is the active `STAT_INDEX`, not its commented historical version.
+- `python3 tests/async/test_character_stat_choice_journey.py`: all three actual
+  WebSocket journeys passed: explicit Default, Advanced, and legacy missing-method
+  Default. Each covers registration, pre-roll errors, reset in all three phases,
+  reconnect and account replacement, options preserving attempts, race/method
+  conflicts, acceptance order/duplicates, four bonuses, early/fifth bonus and
+  karma errors, repeated luck swaps, wrong-race creation, creation while playing,
+  save, restart, saved-character entry and unchanged ten numeric base stats.
+  Each then quits to the actual account menu, proves consumed attempts cannot be
+  reused, starts a second character, rejects a real saved-name collision without
+  altering that character, and successfully retries with a new name.
+- The existing read-only flat-file inspector now returns authoritative base stats;
+  its own repository regression passes when building it for these journeys.
+- Creation availability/race/class/Hardcore/racewar contracts still pass.
+  Changed-file formatting and whitespace checks pass.
+
+The journey explicitly enables its isolated WebSocket listener and waits for the
+restarted server's readiness. Only its synthetic offline character is promoted
+with the existing fixture to let quit finish immediately; its base stats remain
+untouched. No shared database, account, listener or production environment is used.
+The website and paired browser qualification remain required.

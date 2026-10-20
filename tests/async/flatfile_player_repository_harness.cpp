@@ -178,6 +178,14 @@ static void inspect_authority(const std::string &root, int32_t pid)
 				"invalid acknowledgement in inspection fixture");
 			std::cout << ",\"last_read_news_hash\":\"" << entry.value << '"';
 		}
+	std::cout << ",\"base_stats\":[";
+	for (size_t i = 0; i < domains.domains.base_stats.size(); ++i)
+	{
+		if (i)
+			std::cout << ',';
+		std::cout << domains.domains.base_stats[i];
+	}
+	std::cout << ']';
 	std::cout << ",\"snapshot_uids\":[";
 	for (size_t i = 0; i < snapshot.items.size(); ++i)
 	{
