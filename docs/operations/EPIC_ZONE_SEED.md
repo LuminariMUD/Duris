@@ -15,6 +15,10 @@ zone tables also need the separately reviewed [curated task-zone provisioning](E
 - `migrations/epic-zone-payout.sql` supplies the explicit historical payouts and
   the group-size policy of 100. The generator accepts only its known grammar;
   duplicate assignments or an unrecognized statement are errors.
+- `migrations/seeds/epic_zone_payout_overrides.json` supplies reviewed positive
+  additions only for historically unconfigured/disabled zones. Duplicate IDs,
+  invalid payouts, positive-historical overwrites, and zones without active
+  stones cause the generator to fail rather than silently apply.
 - `areas/AREA` and its `areas/zon/*.zon` files identify active zone numbers,
   names, and stone load directives. Object numbers (currently 358, 359, 360)
   and type values are derived from `src/world/epic.h`, not a parallel mapping. Generated
@@ -23,11 +27,10 @@ zone tables also need the separately reviewed [curated task-zone provisioning](E
   manifest. It contains input SHA-256 hashes, zone coverage, and exceptions.
   No private backup or player/account data is needed to regenerate it.
 - At introduction: 119 stone load directives in 110 zones; **107 positive
-  payouts**. Ironstar (1389) is explicitly disabled. Ravenloft Catacombs (590)
-  and Grumbar's Domain (1312) have no source payout: their manifest payout is `null`,
-  **not an invented zero-valued policy**. The generator reports assignments
-  with no active stone load separately and does not seed them. Currently this
-  includes zone 4200 (historical payout 850), also visible in the SQL audit.
+  payouts**. Ironstar (1389) was disabled and Ravenloft Catacombs (590) and
+  Grumbar's Domain (1312) lacked payouts. The approved additions now give
+  all 110 active stone-bearing zones positive source payouts. Zone 4200
+  remains excluded because it has no active stone load.
 - A historical production dump dated 2026-06-23 corroborated all 107 positive
   payouts and group size 100. It was evidence, not the seed input. This does
   not establish when or how current deployments lost their configured values.
@@ -37,6 +40,51 @@ bootstrap checksums. It changes data only. Do not reseal historical schema
 migrations, modify the legacy payout SQL, or replay the full legacy migration
 merely to repair these values. The old SQL is still an unconditional legacy
 policy update and does not have this seed's override-preservation semantics.
+
+## Approved zone payout additions
+
+| Zone | Number | Base payout | Suggested group size |
+| --- | ---: | ---: | ---: |
+| Ancient Halls of Ironstar | 1389 | 300 | 100 |
+| Ravenloft Catacombs | 590 | 1200 | 100 |
+| Grumbar's Domain | 1312 | 700 | 100 |
+
+`epic zones` now sorts directly by ascending `epic_payout` with stable ties.
+Its player-visible columns are unchanged: zone name, alignment and completion.
+Actual credited epics may vary due to existing stone modifiers. Ironstar was
+historically marked `broken`; verify its stone and progression during live
+acceptance before enabling claims.
+
+The standard `sql-apply` seed repairs only missing rows and exact (0, 1)
+defaults; it intentionally preserves (0, 100) and all other overrides. The
+following is **only an operator-reviewed template** for already-existing
+zero-payout rows with group size 1 or 100; the existing database must be
+backed up, identified and stopped beforehand. It must not run automatically:
+
+```sql
+START TRANSACTION;
+UPDATE zones SET epic_payout = 300, suggested_group_size = 100
+ WHERE number = 1389 AND epic_type = 2
+   AND epic_payout = 0 AND suggested_group_size IN (1, 100);
+SELECT ROW_COUNT() AS ironstar_updated;
+UPDATE zones SET epic_payout = 1200, suggested_group_size = 100
+ WHERE number = 590 AND epic_type = 3
+   AND epic_payout = 0 AND suggested_group_size IN (1, 100);
+SELECT ROW_COUNT() AS catacombs_updated;
+UPDATE zones SET epic_payout = 700, suggested_group_size = 100
+ WHERE number = 1312 AND epic_type = 3
+   AND epic_payout = 0 AND suggested_group_size IN (1, 100);
+SELECT ROW_COUNT() AS grumbar_updated;
+SELECT number, epic_type, epic_payout, suggested_group_size FROM zones
+ WHERE number IN (1389, 590, 1312) ORDER BY number;
+-- Operator: inspect three unique records, update counts and readback.
+-- COMMIT only when verified; otherwise ROLLBACK.
+```
+
+If a row is absent, duplicated, has another epic type or has a nonzero
+override, stop and investigate instead of running a broad update. The
+template is not an automatic migration or boot-time operation. Restart
+normally after the verified, approved database change to reload payouts.
 
 ## Exact mutation contract
 

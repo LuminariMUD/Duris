@@ -74,23 +74,21 @@ def run(image: str) -> None:
         populated_defaults()
         query("UPDATE zones SET alignment=7,reset_perc=23,last_touch='2026-01-02 00:00:00' WHERE number=14;")
         all_other_fields = query(protected_query).stdout
-        protected_before = query("SELECT * FROM zones WHERE number IN (1389,590,999999) "
-                                 "OR name LIKE '%Grumbar%' ORDER BY number;").stdout
+        protected_before = query("SELECT * FROM zones WHERE number=999999;").stdout
         query(sql)
         assert query(protected_query).stdout == all_other_fields
-        assert sum(r[-1] == "matches" for r in audit()) == 107
+        assert sum(r[-1] == "matches" for r in audit()) == 110
         excluded = [r for r in audit() if r[0] == "4200"]
         assert len(excluded) == 1 and excluded[0][-1] == "outside-active-source-no-seed"
         assert excluded[0][3] == "850" and excluded[0][6:8] == ["17", "4"]
-        assert protected_before == query("SELECT * FROM zones WHERE number IN (1389,590,999999) "
-                                         "OR name LIKE '%Grumbar%' ORDER BY number;").stdout
+        assert protected_before == query("SELECT * FROM zones WHERE number=999999;").stdout
         for z in known:
             assert query(f"SELECT epic_payout,suggested_group_size FROM zones "
                          f"WHERE number={z['number']};").stdout.strip() == f"{z['epic_payout']}\t100"
         first = snapshot()
         query(sql)
         assert snapshot() == first
-        print(f"{image}: populated defaults, 107 exact payouts, exceptions/sentinel and replay PASS")
+        print(f"{image}: populated defaults, 110 exact payouts, unrelated sentinel and replay PASS")
 
         populated_defaults()
         query("UPDATE zones SET epic_payout=999,suggested_group_size=7 WHERE number=14;"
@@ -100,18 +98,27 @@ def run(image: str) -> None:
         before = query("SELECT * FROM zones WHERE number IN (14,24,68,1389) ORDER BY number;").stdout
         query(sql)
         assert before == query("SELECT * FROM zones WHERE number IN (14,24,68,1389) ORDER BY number;").stdout
+        assert sum(r[-1] == "override-preserved" for r in audit()) == 4
+        print(f"{image}: positive tuning, prior disabled override and partial config preserved PASS")
+
+        populated_defaults()
+        query("UPDATE zones SET suggested_group_size=100 WHERE number IN (590,1312,1389);")
+        before = query("SELECT * FROM zones WHERE number IN (590,1312,1389) "
+                       "ORDER BY number;").stdout
+        query(sql)
+        assert before == query("SELECT * FROM zones WHERE number IN (590,1312,1389) "
+                               "ORDER BY number;").stdout
         assert sum(r[-1] == "override-preserved" for r in audit()) == 3
-        print(f"{image}: positive tuning, intentional zero, partial config and disabled override preserved PASS")
+        print(f"{image}: approved zones with (0,100) remain operator-managed PASS")
 
         query("DROP TABLE zones;" + ddl)
         query(sql)
-        assert query("SELECT COUNT(*) FROM zones;").stdout.strip() == "107"
-        assert all(r[-1] in {"matches", "disabled-no-seed", "unresolved-no-seed",
-                            "outside-active-source-no-seed"} for r in audit())
+        assert query("SELECT COUNT(*) FROM zones;").stdout.strip() == "110"
+        assert all(r[-1] in {"matches", "outside-active-source-no-seed"} for r in audit())
         first = snapshot()
         query(sql)
         assert snapshot() == first
-        print(f"{image}: pre-first-boot empty table seeded, missing exceptions untouched, replay PASS")
+        print(f"{image}: pre-first-boot empty table seeded, all 110 zones, replay PASS")
 
         populated_defaults()
         before = snapshot()
