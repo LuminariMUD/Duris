@@ -261,6 +261,21 @@ touch the absent stones. The two inserts can therefore run while it stays online
 with activation at the scheduled reboot. Check the live catalogue and writers
 again before reuse; this option does not authorize arbitrary online migrations.
 
+`run --online-artifact-rejections` accepts only the sealed manifest ending at
+0047, with all 46 earlier steps applied. It adds the nullable `rejected_item_uids`
+column to InnoDB `artifact_domain_state` on MariaDB 11.8, preserving the production
+target, allow-list, backup, checksum, advisory-lock, history and verifier safeguards.
+It executes the checksum-checked ALTER as `ALTER ONLINE TABLE` with
+`alter_algorithm=INSTANT` and one-second metadata and row-lock timeouts. Unsupported
+online DDL or lock contention fails without an offline fallback; the sealed file
+and recorded checksum remain unchanged.
+
+The pre-0047 artifact readers and writers name their columns explicitly. Existing
+rows and inserts receive NULL for the new field, which the new code treats as an
+empty rejection set; old updates leave it untouched. Check the deployed writers
+before reuse. Applying this schema migration leaves the game running; activating
+the new artifact recovery code is a separate deployment.
+
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size
 limits and rejects duplicate JSON keys, invalid paths, missing/duplicate/reordered IDs,
