@@ -151,6 +151,9 @@ jobs:
           sudo apt-get install --yes ./bin/packages/duris-build-deps_1.0_all.deb
       - name: Check formatting
         run: ./scripts/format.sh --all --check
+      - name: Show formatting difference (read-only diagnostic)
+        if: failure()
+        run: clang-format src/combat/fight.c | diff -u src/combat/fight.c - || true
       - name: Check strict warning profile
         run: python3 tests/async/test_compiler_warning_profile.py
       - name: Verify deferred legacy starter grants
