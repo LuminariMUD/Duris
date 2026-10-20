@@ -1895,7 +1895,10 @@ int storage_locker_room_hook(int /*room*/, P_char ch, int cmd, char *arg)
 	// }
 
 	// check for guild locker
-	if (!str_cmp(enterWho, "guild"))
+	const std::string guild_name =
+		GET_ASSOC(ch) ? "guild." + std::to_string(GET_ASSOC(ch)->get_id()) : "";
+	if (!str_cmp(enterWho, "guild") ||
+	    (GET_ASSOC(ch) && (guild_name == enterWho || guild_name + ".locker" == enterWho)))
 	{ /* guild lockers are named:  guild.x.locker where 'x' is the assoc number */
 		if (!GET_ASSOC(ch) || !IS_MEMBER(GET_A_BITS(ch)) ||
 		    (IS_PC(ch) && !GT_PAROLE(GET_A_BITS(ch))))

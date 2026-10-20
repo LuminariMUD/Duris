@@ -261,6 +261,47 @@ def run(binary):
                 leave(OWNER)
                 assert contents() == before_restart
                 check('account-grant revocation and legacy owner access; contents and item identities unchanged')
+
+                # Guild creation requires level 25; the actor remains a mortal.
+                command(clients[GOD], f'setbit char {OWNER} level 30')
+                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                assert sql(f"SELECT level FROM player_data WHERE name='{OWNER}'") == '30'
+                act(GOD, f'supervise found {OWNER} n Lockerjourney', 'new association is set up')
+                deadline = time.monotonic() + 30
+                while True:
+                    guild_id = sql("SELECT id FROM guilds WHERE TRIM(name)='Lockerjourney'")
+                    if guild_id.isdecimal():
+                        break
+                    assert time.monotonic() < deadline, 'new guild snapshot never landed'
+                    time.sleep(.1)
+                guild_target = f'guild.{guild_id}'
+                act(GOD, f'supervise setbit {guild_id} prestige 500', 'prestige points to 500')
+                denied(VISITOR, guild_target + '.locker')
+                enter(OWNER, guild_target.upper() + '.LoCkEr', items=0)
+                denied(VISITOR, guild_target + '.locker')
+                leave(OWNER)
+                command(clients[GOD], 'load obj 677')
+                act(GOD, 'give mace ' + OWNER, 'Ok.')
+                enter(OWNER, 'guild', items=0)
+                act(OWNER, 'drop mace', 'You drop')
+                leave(OWNER)
+                for target in (guild_target, guild_target.upper() + '.LoCkEr', 'guild'):
+                    response = enter(OWNER, target, items=1)
+                    assert '2 copper' in response, response
+                    leave(OWNER)
+                act(GOD, f'supervise setbit {guild_id} prestige 0', 'prestige points to 0')
+                for target in ('guild', guild_target, guild_target + '.locker'):
+                    act(OWNER, 'enter locker ' + target, 'not yet prestigious enough')
+                act(GOD, f'supervise setbit {guild_id} prestige 500', 'prestige points to 500')
+                denied(OWNER, f'guild.{int(guild_id) + 1}.locker')
+                act(GOD, f'supervise govern {guild_id}', 'You are now a god of')
+                act(GOD, 'society punish ' + OWNER, 'on parole')
+                for target in ('guild', guild_target, guild_target + '.locker'):
+                    act(OWNER, 'enter locker ' + target, 'Try becoming part of a guild first')
+                assert sql(f"SELECT COUNT(*) FROM lockers WHERE locker_name='{guild_target}.locker'") == '1'
+                assert sql(f"SELECT COUNT(*) FROM locker_access WHERE owner='{guild_target}.locker'") == '0'
+                assert contents() == before_restart
+                check('canonical guild membership, creation, contents and fees match guild; nonmember/prestige/parole gates hold')
                 stop()
                 target = ROOT / 'bin/analysis/issue-234'
                 target.mkdir(parents=True, exist_ok=True)

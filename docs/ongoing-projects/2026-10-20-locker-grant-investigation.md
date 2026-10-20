@@ -180,6 +180,40 @@ passed on the rebased checkout. Validation commands are listed above; the latest
 logs are under `bin/analysis/issue-234/review-owner-*` (generated, untracked).
 The full repository suite and live production acceptance were not run.
 
+## Canonical guild review repair (2026-10-20)
+
+The subsequent guild finding is valid: only the exact `guild` keyword selected
+guild membership, parole, prestige and pricing. A canonical target for the same
+guild instead entered the ordinary grant-validation path. The bank hook now
+recognizes exact `guild.<own-id>` and `guild.<own-id>.locker` aliases and sends
+them through the existing guild branch. It adds no parser or authorization
+layer, and other explicit targets retain their existing access checks.
+
+Both maintained LOCKER help sources explain these own-guild aliases. The
+flat-file journey now creates its guild locker through a mixed-case canonical
+name, then re-enters through the suffixless canonical name and the keyword.
+The disposable full-world MariaDB journey adds a mortal guild member and checks
+creation without personal grants, shared contents and the guild fee for all
+three forms, nonmember occupancy privacy, prestige refusal, foreign-guild
+refusal and parole refusal. The owner is raised to level 30 only for this final
+guild stage because founding a guild requires level 25.
+
+The pre-fix flat-file server reproduced `You don't have access to that locker!`
+for first entry through `GuIlD.1.LoCkEr`. With the repair, both backend builds,
+all 18 locker regressions, and all nine stages of the expanded full-world
+MariaDB journey passed. The guild stage proved a single guild locker with no
+personal grants, one item shared by all three forms, the same two-copper fee,
+and all refusal cases above. The fixture waits for the authoritative `guilds`
+snapshot using its trimmed name before querying the new guild ID.
+
+The sanitizer regression, root-runner contracts, 14 documentation checks,
+help-import/parser checks, flat-file help catalog, formatting and changed-line
+clang-tidy also passed. Five optional help-import DB cases were skipped; the
+gameplay journey imports and renders the actual help catalog. Logs are under
+`bin/analysis/issue-234/review-guild-*` (generated, untracked). Master remained
+unchanged, so publication uses one fast-forward repair commit; no tag or extra
+stack is needed. Full-suite and production acceptance remain untested.
+
 ## Original investigation (pre-fix)
 
 Investigated on 2026-10-20 UTC against checkout

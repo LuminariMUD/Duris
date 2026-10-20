@@ -9566,8 +9566,9 @@ Canonical account and guild locker names may include their final '.locker'.
 You still need access and must be on the same racewar side. Wait until the
 owner has left and the locker has finished saving before trying to enter.
 
-To enter a communal guild locker, you must type 'enter locker guild'. You 
-must be a member of the guild to enter! Only one person is allowed in any 
+To enter your communal guild locker, type 'enter locker guild', or use
+'guild.<your-guild-id>' with an optional '.locker' suffix. Both forms use the
+same membership, parole and prestige checks. Only one person is allowed in any
 locker, including guild lockers, at any one time. 
 
 The Storage Locker Safety Commission, a group of other-world agents 
