@@ -185,4 +185,42 @@ for title, (_, entry) in parsed_map.items():
         index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
         assert parsed_body == index_body, f"Divergent specialization help source: {title}"
 
+
+# Static specialization race-permission rows must use the canonical in-game
+# race ANSI strings and keep the two imported help sources synchronized.
+race_ansi = dict(re.findall(
+    r'\{\s*"([^"]+)",\s*"[^"]+",\s*"([^"]+)",\s*"[^"]+"\s*\}',
+    COMMON_C,
+))
+canonical_race_tokens = set(race_ansi.values())
+for title, (_, entry) in parsed_map.items():
+    if ("==Allowed races==" not in entry or
+            "These permissions apply to an existing character" not in entry):
+        continue
+    assert "==Race permission rows==" not in entry, title
+    section = re.search(r"==Allowed races==\n(.*?)(?=\n==|\Z)", entry, re.S)
+    assert section, title
+    list_lines = []
+    for line in section[1].splitlines():
+        if line.startswith("These permissions apply"):
+            break
+        list_lines.append(line)
+    if list_lines[0].startswith("None."):
+        continue
+    assert list_lines[0].startswith("&+W*&n "), f"Missing bullet in {title}"
+    assert all(len(re.sub(r"&(?:\+[A-Za-z]|[nN])", "", line)) <= 79 for line in list_lines), title
+    assert all(line.startswith("  ") for line in list_lines[1:]), title
+    rendered = " ".join([list_lines[0][len("&+W*&n "):]] +
+                        [line.strip() for line in list_lines[1:]])
+    for race in rendered.split(", "):
+        assert race in canonical_race_tokens, f"Noncanonical race ANSI in {title}: {race}"
+    if title in index_map:
+        body = "\n".join(entry.strip().splitlines()[3:]).strip()
+        mirror = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
+        assert body == mirror, f"Divergent race help source: {title}"
+
+assert race_ansi["Goblin"] == "&+GGoblin&n"
+assert race_ansi["Githzerai"] == "&+WGith&+Gzerai&n"
+assert race_ansi["Githyanki"] == "&+GGith&+Wyanki&n"
+
 print("All 30 class help files, Bard progression, and specialization help contracts passed!")
