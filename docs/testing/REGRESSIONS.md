@@ -11,6 +11,35 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Bounded builder inspection (#231)
+
+`rlist`, `mlist`, and `olist` default to the standing zone, use the public zone
+numbers shown by `zlist`, and render at most 500 results. Explicit exact/range
+queries remain available; continuation preserves the zone and inclusive upper
+bound. When duplicate room VNUMs cross a page boundary, `rlist` advice includes
+`offset <count>` to resume inside that group without repeating or omitting rooms.
+Mobile/object ownership follows zone VNUM partitions rather than resets.
+Listings read shared boot names and existing population/reset limits without
+instantiating entities or reading files/databases.
+
+`python3 tests/async/test_builder_list_commands.py` executes all three production
+handlers and real parsing/ANSI helpers under ASan/UBSan. It covers syntax, public
+identity, missing location, empty tables, 0/1/199/499/500/501+ matches, reversed
+ranges and intersections, INT_MAX, help/paging/NPC behavior, empty/colorized/long/
+multiline names, 80-column rows and invalid sectors. Following the actual printed
+advice covers duplicate room groups larger than two pages, duplicates across zone
+ownership, maximum VNUMs and checked invalid offsets. Comparison/probe instrumentation checks a
+scope surrounded by 20,000 unrelated entries on either side; index and room
+snapshots remain unchanged and entity-loader stubs abort. Command registration
+must continue to require IMMORTAL. The harness does not emulate game dispatch,
+network paging, events, or a database.
+
+`python3 tests/async/test_newbie_object_template.py` also runs the real index
+builder, parser, and object instantiation against cold names, empty text, sentinel
+and EOF termination, preserved positions, shared pointers and cleanup. The local
+staff/mortal and timing evidence is recorded in the
+[continuation plan](../ongoing-projects/plan-builder-list-commands.md).
+
 ## PSP consistency and gradual movement decay (#57)
 
 Delayed surplus movement decay also stops at the maximum: after 120/100 becomes
