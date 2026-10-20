@@ -1684,6 +1684,14 @@ struct txt_q
 
 #define TOTAL_CON 93
 
+enum ws_chargen_phase
+{
+	CHARGEN_UNSTARTED,
+	CHARGEN_ROLLING,
+	CHARGEN_BONUSES,
+	CHARGEN_READY
+};
+
 /* modes of confirmation- SAM 7-94 */
 #define CONFIRM_NONE 0
 #define CONFIRM_AWAIT 1
@@ -1839,6 +1847,8 @@ struct descriptor_data
 	/* chargen state for webclient */
 	struct stat_data chargen_stats;
 	int chargen_race;
+	int chargen_method;
+	ws_chargen_phase chargen_phase;
 	int chargen_bonus_remaining;
 	int chargen_hometown;
 	int chargen_hardcore;

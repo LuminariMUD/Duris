@@ -1129,6 +1129,19 @@ void ws_send_system(struct descriptor_data *d, const char *status, const char *m
 	cJSON_Delete(root);
 }
 
+/* Clear the descriptor-owned attempt when its session or character changes. */
+static void ws_reset_chargen(struct descriptor_data *d)
+{
+	d->chargen_stats = {};
+	d->chargen_race = 0;
+	d->chargen_method = ROLL_NORMAL;
+	d->chargen_phase = CHARGEN_UNSTARTED;
+	d->chargen_bonus_remaining = 0;
+	d->chargen_hometown = 0;
+	d->chargen_hardcore = 0;
+	d->chargen_newbie = 0;
+}
+
 /* handle login command */
 void ws_cmd_login(struct descriptor_data *d, cJSON *data)
 {
@@ -1184,6 +1197,7 @@ void ws_cmd_login(struct descriptor_data *d, cJSON *data)
 		tmp_name[i] = tolower(tmp_name[i]);
 	}
 
+	ws_reset_chargen(d);
 	if (d->account)
 	{
 		d->account = free_account(d->account);
@@ -1439,6 +1453,7 @@ void ws_cmd_enter(struct descriptor_data *d, cJSON *data)
 		}
 	}
 
+	ws_reset_chargen(d);
 	/* store selection and use nanny flow to enter game */
 	if (d->selected_char_name)
 	{
@@ -1578,6 +1593,7 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
+	ws_reset_chargen(d);
 	/* allocate new account - if one exists, free it first to avoid memory leaks */
 	if (d->account)
 	{
@@ -1647,6 +1663,7 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 
 					    statuslog(56, "WebSocket: New account created");
 
+					    STATE(completed_desc) = CON_ACCT_SELECT_CHAR;
 					    ws_send_auth_success(completed_desc, "registered");
 				    });
 		    }))
@@ -1723,6 +1740,9 @@ void ws_cmd_chargen_options(struct descriptor_data *d, cJSON * /*data*/)
 	}
 
 	cJSON_AddStringToObject(response, "type", "chargen_options");
+	const char *methods[] = { "default", "advanced" };
+	cJSON_AddItemToObject(response, "statMethods", cJSON_CreateStringArray(methods, 2));
+	cJSON_AddNumberToObject(response, "bonusCount", 4);
 	races_array = cJSON_AddArrayToObject(response, "races");
 
 	/* loop over playable_races[] array */
@@ -1801,73 +1821,118 @@ static sh_int *get_chargen_stat_ptr(stat_data *stats, const char *name)
 	return NULL;
 }
 
-/* handle roll stats command */
+/* Creation mutations are allowed only after completed account authentication. */
+static bool ws_chargen_allowed(struct descriptor_data *d)
+{
+	if (!d || !d->account || d->character ||
+	    (STATE(d) != CON_ACCT_SELECT_CHAR && STATE(d) != CON_DISPLAY_ACCT_MENU))
+	{
+		ws_send_system(d, "error", "Character creation requires the account menu");
+		return false;
+	}
+	return true;
+}
+
+static void add_chargen_state(cJSON *response, struct descriptor_data *d)
+{
+	const char *phase = d->chargen_phase == CHARGEN_ROLLING ? "rolling" :
+			    d->chargen_phase == CHARGEN_BONUSES ? "bonuses" :
+								  "ready";
+	cJSON_AddStringToObject(response, "method",
+				d->chargen_method == ROLL_ADVANCED ? "advanced" : "default");
+	cJSON_AddStringToObject(response, "phase", phase);
+}
+
+static void ws_send_chargen_stats(struct descriptor_data *d, const char *type)
+{
+	cJSON *response = cJSON_CreateObject();
+	cJSON_AddStringToObject(response, "type", type);
+	cJSON_AddItemToObject(response, "stats", build_chargen_stats_json(&d->chargen_stats));
+	cJSON_AddNumberToObject(response, "bonusRemaining", d->chargen_bonus_remaining);
+	add_chargen_state(response, d);
+	char *json = cJSON_PrintUnformatted(response);
+	if (json)
+	{
+		websocket_send_text(d, json);
+		free(json);
+	}
+	cJSON_Delete(response);
+}
+
+/* Initial Default rolls are accepted immediately; only unaccepted Advanced rolls repeat. */
 void ws_cmd_roll_stats(struct descriptor_data *d, cJSON *data)
 {
-	cJSON *response;
-	cJSON *race_item;
-	int race_id;
-	char *json_str;
-	P_char temp_ch;
-
-	if (!d || !d->account)
-	{
-		ws_send_system(d, "error", "Not authenticated");
+	if (!ws_chargen_allowed(d))
 		return;
-	}
-
-	/* get race from request */
-	race_item = cJSON_GetObjectItem(data, "race");
-	if (!race_item || !cJSON_IsNumber(race_item))
-	{
-		ws_send_system(d, "error", "Missing or invalid race");
-		return;
-	}
-	race_id = race_item->valueint;
-
-	/* validate race is playable */
-	if (!ws_is_playable_race(race_id))
+	cJSON *race = cJSON_GetObjectItem(data, "race");
+	cJSON *method = cJSON_GetObjectItem(data, "method");
+	if (!cJSON_IsNumber(race) || race->valuedouble != race->valueint ||
+	    !ws_is_playable_race(race->valueint))
 	{
 		ws_send_system(d, "error", "Invalid race selection");
 		return;
 	}
+	int roll_type = ROLL_NORMAL;
+	if (method)
+	{
+		if (!cJSON_IsString(method) || (strcmp(method->valuestring, "default") &&
+						strcmp(method->valuestring, "advanced")))
+		{
+			ws_send_system(d, "error", "Invalid stat rolling method");
+			return;
+		}
+		if (!strcmp(method->valuestring, "advanced"))
+			roll_type = ROLL_ADVANCED;
+	}
+	if (d->chargen_phase != CHARGEN_UNSTARTED &&
+	    (d->chargen_phase != CHARGEN_ROLLING || roll_type != ROLL_ADVANCED ||
+	     d->chargen_method != roll_type || d->chargen_race != race->valueint))
+	{
+		ws_send_system(
+			d, "error",
+			"Stats already selected. Reset character creation or reconnect "
+			"before changing race/method; only unaccepted Advanced stats can reroll");
+		return;
+	}
 
-	/* create temporary character for stat rolling */
-	temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
+	P_char temp_ch = (P_char)calloc(1, sizeof(struct char_data));
 	if (!temp_ch)
 	{
 		ws_send_system(d, "error", "Server error: memory allocation failed");
 		return;
 	}
-	memset(temp_ch, 0, sizeof(struct char_data));
-
-	/* set race and roll stats */
-	GET_RACE(temp_ch) = race_id;
-	roll_basic_attributes(temp_ch, 0);
-
-	/* store rolled stats in descriptor for later use */
+	GET_RACE(temp_ch) = race->valueint;
+	roll_basic_attributes(temp_ch, roll_type);
 	d->chargen_stats = temp_ch->base_stats;
-	d->chargen_race = race_id;
-	d->chargen_bonus_remaining = 5;
-
-	/* build response - send only quality labels, not numbers */
-	response = cJSON_CreateObject();
-	cJSON_AddStringToObject(response, "type", "roll_stats");
-
-	cJSON_AddItemToObject(response, "stats", build_chargen_stats_json(&temp_ch->base_stats));
-
-	cJSON_AddNumberToObject(response, "bonusRemaining", d->chargen_bonus_remaining);
-
 	free(temp_ch);
+	d->chargen_race = race->valueint;
+	d->chargen_method = roll_type;
+	d->chargen_phase = roll_type == ROLL_ADVANCED ? CHARGEN_ROLLING : CHARGEN_BONUSES;
+	d->chargen_bonus_remaining = 4;
+	ws_send_chargen_stats(d, "roll_stats");
+}
 
-	json_str = cJSON_PrintUnformatted(response);
-	if (json_str)
+void ws_cmd_accept_stats(struct descriptor_data *d, cJSON *)
+{
+	if (!ws_chargen_allowed(d))
+		return;
+	if (d->chargen_method != ROLL_ADVANCED || d->chargen_phase == CHARGEN_UNSTARTED)
 	{
-		websocket_send_text(d, json_str);
-		free(json_str);
+		ws_send_system(d, "error", "No Advanced stats to accept");
+		return;
 	}
+	if (d->chargen_phase == CHARGEN_ROLLING)
+		d->chargen_phase = CHARGEN_BONUSES;
+	/* Duplicate acceptance acknowledges the current state, preserving bonuses. */
+	ws_send_chargen_stats(d, "stats_accepted");
+}
 
-	cJSON_Delete(response);
+void ws_cmd_reset_chargen(struct descriptor_data *d, cJSON *)
+{
+	if (!ws_chargen_allowed(d))
+		return;
+	ws_reset_chargen(d);
+	websocket_send_text(d, "{\"type\":\"chargen_reset\"}");
 }
 
 /* handle add bonus command - adds +5 to specified stat */
@@ -1878,9 +1943,11 @@ void ws_cmd_add_bonus(struct descriptor_data *d, cJSON *data)
 	const char *stat_name;
 	sh_int *stat_ptr = NULL;
 
-	if (!d || !d->account)
+	if (!ws_chargen_allowed(d))
+		return;
+	if (d->chargen_phase != CHARGEN_BONUSES)
 	{
-		ws_send_system(d, "error", "Not authenticated");
+		ws_send_system(d, "error", "Complete the preceding stat creation steps first");
 		return;
 	}
 
@@ -1918,11 +1985,14 @@ void ws_cmd_add_bonus(struct descriptor_data *d, cJSON *data)
 	/* add bonus (+5, capped at 100) */
 	*stat_ptr = BOUNDED(1, *stat_ptr + 5, 100);
 	d->chargen_bonus_remaining--;
+	if (d->chargen_bonus_remaining == 0)
+		d->chargen_phase = CHARGEN_READY;
 
 	/* build response with updated stats */
 	response = cJSON_CreateObject();
 	cJSON_AddStringToObject(response, "type", "bonus_added");
 
+	add_chargen_state(response, d);
 	cJSON_AddItemToObject(response, "stats", build_chargen_stats_json(&d->chargen_stats));
 	cJSON_AddNumberToObject(response, "bonusRemaining", d->chargen_bonus_remaining);
 	cJSON_AddStringToObject(response, "boostedStat", stat_name);
@@ -1946,9 +2016,11 @@ void ws_cmd_swap_stats(struct descriptor_data *d, cJSON *data)
 	sh_int *stat1_ptr = NULL, *stat2_ptr = NULL;
 	sh_int temp;
 
-	if (!d || !d->account)
+	if (!ws_chargen_allowed(d))
+		return;
+	if (d->chargen_phase != CHARGEN_READY)
 	{
-		ws_send_system(d, "error", "Not authenticated");
+		ws_send_system(d, "error", "Complete the preceding stat creation steps first");
 		return;
 	}
 
@@ -1995,6 +2067,7 @@ void ws_cmd_swap_stats(struct descriptor_data *d, cJSON *data)
 	response = cJSON_CreateObject();
 	cJSON_AddStringToObject(response, "type", "stats_swapped");
 
+	add_chargen_state(response, d);
 	cJSON_AddItemToObject(response, "stats", build_chargen_stats_json(&d->chargen_stats));
 	cJSON_AddStringToObject(response, "swapped1", stat1_name);
 	cJSON_AddStringToObject(response, "swapped2", stat2_name);
@@ -2022,9 +2095,11 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	int class_align_req;
 	const char *faction;
 
-	if (!d || !d->account)
+	if (!ws_chargen_allowed(d))
+		return;
+	if (d->chargen_phase != CHARGEN_READY)
 	{
-		ws_send_system(d, "error", "Not authenticated");
+		ws_send_system(d, "error", "Complete the preceding stat creation steps first");
 		return;
 	}
 	if (bannedsite(d->host, 1))
@@ -2071,6 +2146,12 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 
 	name = name_item->valuestring;
 	race_id = race_item->valueint;
+	if (race_item->valuedouble != race_id || race_id != d->chargen_race ||
+	    d->chargen_bonus_remaining != 0)
+	{
+		ws_send_system(d, "error", "Race must match the completed stat selection");
+		return;
+	}
 	class_id = class_item->valueint;
 	sex = sex_item->valueint;
 
@@ -2336,6 +2417,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	logit(LOG_NEW, "%s [%s] new WebSocket player.", GET_NAME(ch), d->host);
 	statuslog(ch->player.level, "%s [%s] new WebSocket player.", GET_NAME(ch), d->host);
 
+	ws_reset_chargen(d);
 	/* set connection state before entering game */
 	STATE(d) = CON_PLAYING;
 	enter_game(d);
@@ -3742,6 +3824,8 @@ void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 		{ "game", ws_cmd_game },
 		{ "chargen_options", ws_cmd_chargen_options },
 		{ "roll_stats", ws_cmd_roll_stats },
+		{ "accept_stats", ws_cmd_accept_stats },
+		{ "reset_chargen", ws_cmd_reset_chargen },
 		{ "add_bonus", ws_cmd_add_bonus },
 		{ "validate_name", ws_cmd_validate_name },
 		{ "get_hometowns", ws_cmd_get_hometowns },
