@@ -1,9 +1,10 @@
 # Issue #169: Cleric rebalance implementation plan
 
-Status: implementation complete and published for review, 2026-10-20.
-Owner review and separately authorized production acceptance remain open.
+Status: implementation and local qualification complete, 2026-10-20.
+Owner-authorized merge closeout is recorded below; separately authorized
+production acceptance remains open.
 Tracking: [issue #169](https://github.com/LuminariMUD/Duris/issues/169).
-Implementation branch: `branch/issue-169-cleric-rebalance`.
+Delivery target: `master`; final qualification is in [PR #229](https://github.com/LuminariMUD/Duris/pull/229).
 Source baseline: [master `b81715f3a146`](https://github.com/LuminariMUD/Duris/commit/b81715f3a146388e91fd320e2070baef95a63cc7).
 
 This plan uses the issue body together with the
@@ -59,7 +60,7 @@ Divine Warding needs event-safe refresh; ward recovery needs fractional rate
 handling; Tsunami has two real callers and currently cannot strengthen an existing
 Vitality affect. Solve those paths directly, without broad cleanup.
 
-The current implementation request authorizes local development and review-ready PRs. Production deployment,
+The owner authorized local development and sequential PR merges. Production deployment,
 property reload, help import, restart, and live account changes require separate
 operational authorization. Repository-required local checks take precedence over
 the issue's older instruction to wait for CI.
@@ -409,36 +410,39 @@ items above complete during this planning publication.
 
 ### Current delivery and continuation
 
-All gameplay implementation is committed and pushed. Review the stack in order:
+The owner authorized sequential merge closeout on 2026-10-20. The delivery order is:
 
-1. [#222](https://github.com/LuminariMUD/Duris/pull/222), access/progression and
-   Healer aura lifecycle and correct help command: `c09f4fa60`, base `master`.
-2. [#223](https://github.com/LuminariMUD/Duris/pull/223), timed self-only Warding
-   and remaining-time snapshots, including GMCP countdowns: `1b01d5fe5`, base #222 branch.
+1. [#222](https://github.com/LuminariMUD/Duris/pull/222), access/progression,
+   Healer aura lifecycle and help command: merged as `e0d9aad6360a`.
+2. [#223](https://github.com/LuminariMUD/Duris/pull/223), timed self-only Warding,
+   remaining-time snapshots and GMCP countdowns: merged as `bc01d5d32f73`.
 3. [#224](https://github.com/LuminariMUD/Duris/pull/224), passive recovery and
-   effective-healing refill: `ff94ba4f9`, base #223 branch.
+   effective-healing refill: merged as `924d8d319dcc`.
 4. [#225](https://github.com/LuminariMUD/Duris/pull/225), both Tsunami paths:
-   `280fede86`, base #224 branch.
+   merged as `4eca0ea95245`.
 5. [#229](https://github.com/LuminariMUD/Duris/pull/229), narrow implementation
-   regression and final handoff, base #225 branch.
+   regression and final handoff, follows #225; its linked PR records its merge commit.
 
-The superseded aura-only [#226](https://github.com/LuminariMUD/Duris/pull/226) is
-closed; its corrected implementation is folded into #222. The countdown repair
-and tests from [#227](https://github.com/LuminariMUD/Duris/pull/227) are folded into
-#223, and #227 is closed as superseded. All five active PRs remain open/non-draft.
-They were rebased sequentially onto master `2315cb687` with explicit leases,
-removing integration merges without duplicating repairs. That master includes
-the already-merged retention documentation PR #228. No gameplay merge, release
-tag, production operation or issue closure has occurred. Release tags belong to
-an accepted release. Merge in the listed order and rebase/retarget each successor
-onto master after its predecessor is squash-merged, excluding the old parent
-branch's commits so the predecessor is not replayed.
+The superseded aura-only [#226](https://github.com/LuminariMUD/Duris/pull/226)
+remains closed with its complete repair in #222. The countdown repair and tests
+from [#227](https://github.com/LuminariMUD/Duris/pull/227) are in #223; #227 also
+remains closed as superseded. Source comparisons confirm both replacements.
+The already-merged retention documentation [#228](https://github.com/LuminariMUD/Duris/pull/228)
+is present and all three of its files remain unchanged.
 
-This review pass uses the isolated worktree
-`/home/aiwithapex/projects/duris-pr-review`; its detached HEAD publishes to
-`branch/issue-169-qualification-proof`. Existing checkouts and local branches
-are preserved; they may still refer to the pre-rebase history. Use this explicit
-worktree for the recorded binaries and evidence.
+Each successor was rebased onto the preceding squash merge, excluding its old
+parent commits, then retargeted to master. Explicit push leases preserved
+concurrent work. Rebased gameplay trees match the reviewed trees. Each merge
+was guarded by its exact head and verified for tested-tree equality, expected
+single parent, clean worktree and remote parity 0/0. No release tag or production
+operation is part of this closeout. Issue #169 remains open for production
+acceptance; GitHub's premature automatic closure after #222 was reversed.
+
+The merge pass uses `/home/aiwithapex/projects/duris-pr222-229-merge`.
+Existing checkouts and local branches were preserved. Earlier review evidence
+below remains in `/home/aiwithapex/projects/duris-pr-review`. Merge-pass journey
+results are ignored `bin/pr225-tsunami-journey.json` and
+`bin/pr229-{flatfile,mariadb}.json`, with corresponding journey logs under `bin/`.
 
 Qualification changes extend the existing flatfile inspector, add one narrow disposable
 server journey, and check incoming white-aura exclusions. They reuse the current
@@ -557,9 +561,9 @@ it verifies materialization/expiry while the scheduler regression proves the
 ### Remaining acceptance
 
 Implementation, local builds, focused regressions, both persistence journeys and
-publication are complete. All five active PR bases/heads and remote parity were read
-back; the task worktree is clean after publication. No CI wait is required by
-repository instructions. Normal owner review remains required. No full burn-in
+publication are complete. Each sequential merge verifies the exact base/head,
+merged tree and remote parity, with a clean task worktree. The owner authorized
+these merges. No CI wait is required by repository instructions. No full burn-in
 or production deployment was run.
 
 The owner explicitly excluded balance measurements from this task. Do not claim
