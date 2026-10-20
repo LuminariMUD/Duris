@@ -1,5 +1,221 @@
 # Qua / Zyx locker grant investigation
 
+Issue: [#234 - Fix named locker entry rejecting valid account-locker grants](https://github.com/LuminariMUD/Duris/issues/234)
+
+Work branch: [`branch/issue-234-locker-grant-entry`](https://github.com/LuminariMUD/Duris/tree/branch/issue-234-locker-grant-entry)
+
+Pull request: [#235 - Fix character-name entry into account lockers](https://github.com/LuminariMUD/Duris/pull/235)
+
+Status: Review finding addressed and locally verified; ready to merge. Production
+acceptance remains pending.
+
+## Implementation decisions
+
+Bare character names resolve through the active, unblocked account-character
+mapping to the owner's account locker and racewar side. This takes precedence over
+a coexisting legacy personal locker. Full `<character>.locker` names explicitly
+select legacy lockers; canonical account and guild names accept the final suffix
+with no duplicate `.locker`. Without an active mapping, a bare character name
+retains the legacy personal target. No contents or grants are moved or rewritten.
+
+MariaDB resolution runs on the existing persistence worker; flat-file resolution
+reads the identity catalog. Both precede normal locker entry, so occupancy and
+pending saves use the resolved identity. Named owner entry keeps
+account ownership; visitors still need the selected locker's grants and racewar
+side. Authorization precedes every occupied/pending-save response.
+
+Scope: locker entry, LOCKER/GRANT help, focused executable regressions, and a
+disposable MariaDB mortal gameplay journey covering the acceptance checks below.
+No schema change or production operation is needed. Historical findings below
+describe the pre-fix checkout.
+
+## Implementation and local validation (2026-10-20)
+
+The real gameplay check also reproduced an existing occupancy defect: locker
+characters stay in holding room 65201, while their `StorageLocker` wrappers live
+in the private rooms. Looking for a wrapper in the character's holding room
+classified an occupied locker as stale and loaded a second copy. Busy detection
+and occupant lookup now search the bounded private locker rooms. Authorization
+runs before every busy response, including in-flight entries and deferred saves,
+and opposite-side grants fail before occupant disclosure.
+
+Both maintained LOCKER/GRANT help sources explain the supported forms. The new
+MariaDB journey is registered in `tests/run_db_tests.sh` and excluded from the
+ordinary runner that has no disposable database.
+
+Passed:
+
+```sh
+make -C src -j2
+make -C src -j2 PERSISTENCE_BACKEND=flatfile \
+  DMS_BINARY="$PWD/bin/server/dms_issue234_flatfile"
+python3 tests/async/test_locker_named_entry_runtime.py
+tests/async/with_disposable_mariadb.sh \
+  python3 tests/async/test_mysql_locker_grant_journey.py
+```
+
+- The ASan/UBSan executable regression covers holding/private-room occupancy,
+  pending saves and entries, delayed name resolution, legacy fallback,
+  move-away/worker admission failure, owner/visitor grants and racewar verdicts.
+- The full-world MariaDB journey uses three level-20 mortal characters with
+  different character/account names. It proves grant -> leave -> mixed-case
+  named entry, account-first precedence, separate legacy contents/grants,
+  canonical targeting with/without the suffix, owner entry, character/account
+  grants and revocation, unauthorized entry, occupancy privacy, a real inn
+  logout/reconnect, and a clean server restart. Post-restart opposite-side checks
+  use a neutral Ixarkon counter, so town admission cannot mask locker checks.
+  All seven journey stages passed. All three stored item UIDs and both lockers'
+  grants survived restart unchanged; account-grant revocation still denied entry.
+- Journey evidence: `bin/analysis/issue-234/journey.json` (generated, untracked).
+  Tested MariaDB binary SHA-256:
+  `c2f438692df517d474c88d107430d0f3331722ca06d9388fddb9664480f2f66b`.
+- The existing flat-file locker journey also passed using
+  `bin/server/dms_issue234_flatfile` and a freshly built coin/death inspector.
+  It preserved account contents through restart/retrieval and guild contents
+  through re-entry. Re-run after building the flat-file executable above:
+
+  ```sh
+  python3 tests/async/test_flatfile_player_repository.py \
+    --build-inspector bin/tests/coin-death-inspector
+  PYTHONPATH=tests/async python3 -c 'from pathlib import Path; from test_flatfile_locker_journey import run; run(Path("bin/server/dms_issue234_flatfile").resolve())'
+  ```
+
+- Relevant existing locker result, ownership, boot-room, async pipeline,
+  leave-during-save, saved-with-occupant, container-weight, terminal fallback,
+  worker lifecycle, legacy repair and save-room regressions passed. The
+  save-room fixture initially lacked the new short-affect capture link hooks
+  from master; separate commit `125239fbf` restores its empty fixture hooks.
+- Root-runner, help import/parser, flat-file help and 14 documentation checks
+  passed. The help-import atomic suite passed its three local tests and skipped
+  five optional database cases; the actual help import and rendered LOCKER/GRANT
+  help were exercised by the disposable gameplay journey.
+
+The full repository suite was not run. Review/merge, deployment and live Qua/Zyx
+acceptance remain pending; this work performed no production operation.
+
+## PR #235 review repair (2026-10-20)
+
+The flat-file review finding was reproduced with the real server: after saving
+the banana in the account locker and restarting, `enter locker tAVEREK` selected
+the missing legacy locker and returned `You don't have access to that locker!`.
+The same journey passes after the repair, including retrieval and another restart.
+
+Bare names now use the flat-file identity repository when MariaDB is absent.
+Active, unblocked identities select the account and side; missing, blocked or
+deleted identities retain legacy targeting. Catalog failures stop entry rather
+than silently selecting another locker. Both backends share the existing target
+and entry callback.
+
+Tracing the complete entrance also showed that flat-file locker reads supplied
+no access verdict. Resolving the name alone would therefore still reject mortal
+visitors. Entry now reads the existing locker/access catalog together and honors
+typed account ownership, stable personal ownership, direct character grants and
+account grants on the matching racewar side. The existing admission code checks
+that verdict before occupied/pending-save responses. No repository format,
+stored contents or grant record is changed.
+
+Local review validation:
+
+```sh
+make -C src -j2
+make -C src -j2 PERSISTENCE_BACKEND=flatfile \
+  DMS_BINARY="$PWD/bin/server/dms_issue234_flatfile"
+python3 tests/async/test_locker_named_entry_runtime.py
+python3 tests/run_regression_tests.py --match locker --jobs 2
+tests/async/with_disposable_mariadb.sh \
+  python3 tests/async/test_mysql_locker_grant_journey.py
+python3 tests/async/test_root_test_harness.py
+python3 tests/async/test_documentation_contract.py
+./scripts/format.sh --check
+./scripts/tidy.sh
+```
+
+Both builds passed. All 18 locker regressions, root-runner contracts, all 14
+documentation tests, formatting and changed-line clang-tidy passed. The extended
+ASan/UBSan harness uses real on-disk identity and locker repositories for mixed-case
+resolution, blocked/deleted fallback, both grant forms, ownership, racewar and
+corrupt-catalog failure. Its item loader is a fixture; the real flat-file gameplay
+journey proves named routing, item retrieval, restart persistence and guild re-entry.
+All seven stages of the disposable full-world MariaDB mortal journey also passed
+again, including opposite-side occupancy privacy and unchanged item identities
+and grants across a cold restart.
+
+Git inspection found the branch current with master and no dependent PRs. A
+focused repair commit preserves the existing review history; no rebase, retarget,
+release tag or additional stack is needed. The PR can be squash-merged when the
+owner chooses to merge. The full repository suite and production acceptance
+remain outside this local review qualification.
+
+## Subsequent review findings (2026-10-20)
+
+Master advanced through PRs #232 and #233 after the first repair. The work branch
+was rebased onto `e19537cced993bc8de3de1abd76027e8d40b389a` without conflicts;
+`git range-diff` confirmed all five existing commits retained their patches.
+
+The mixed-case `.locker` finding is not a reachable defect. Before the suffix
+check, `argument_interpreter()` lowercases the entire owner argument in
+`src/cmd/interp.c:2565-2569`. The existing mortal gameplay journey already enters
+`VaUlToWnEr.LoCkEr` successfully. That regression remains, and the extended journey
+also uses `AcCoUnT.Guestacct.1.LoCkEr`. No suffix-handling patch is needed.
+
+The first-time named owner finding was reproduced: a level-20 mortal entering
+its own fresh canonical account locker received `You don't have access to that
+locker!`. An exact authenticated account-and-side target now uses default owner
+entry on both backends, including creation when absent. This handles both a
+resolved character name and a canonical account name, while visitor, legacy,
+opposite-side and malformed targets keep their access checks. The now-redundant
+SQL account-owner flag was removed instead of adding another creation exception.
+
+The disposable MariaDB journey now checks fresh named and mixed-case canonical
+owner creation, and verifies that visitor, wrong-side, malformed and legacy
+targets cannot create account lockers. The flat-file journey's first visit is
+also by character name, before any account locker exists. Existing grant,
+occupancy, legacy-coexistence and restart checks remain in both journeys.
+
+Both backend builds, all 18 locker regressions (including the flat-file journey),
+all eight stages of the expanded disposable MariaDB journey, the sanitizer
+harness, 14 documentation checks, root-runner contracts, formatting and
+changed-line clang-tidy passed. The builder-list executable regression also
+passed on the rebased checkout. Validation commands are listed above; the latest
+logs are under `bin/analysis/issue-234/review-owner-*` (generated, untracked).
+The full repository suite and live production acceptance were not run.
+
+## Canonical guild review repair (2026-10-20)
+
+The subsequent guild finding is valid: only the exact `guild` keyword selected
+guild membership, parole, prestige and pricing. A canonical target for the same
+guild instead entered the ordinary grant-validation path. The bank hook now
+recognizes exact `guild.<own-id>` and `guild.<own-id>.locker` aliases and sends
+them through the existing guild branch. It adds no parser or authorization
+layer, and other explicit targets retain their existing access checks.
+
+Both maintained LOCKER help sources explain these own-guild aliases. The
+flat-file journey now creates its guild locker through a mixed-case canonical
+name, then re-enters through the suffixless canonical name and the keyword.
+The disposable full-world MariaDB journey adds a mortal guild member and checks
+creation without personal grants, shared contents and the guild fee for all
+three forms, nonmember occupancy privacy, prestige refusal, foreign-guild
+refusal and parole refusal. The owner is raised to level 30 only for this final
+guild stage because founding a guild requires level 25.
+
+The pre-fix flat-file server reproduced `You don't have access to that locker!`
+for first entry through `GuIlD.1.LoCkEr`. With the repair, both backend builds,
+all 18 locker regressions, and all nine stages of the expanded full-world
+MariaDB journey passed. The guild stage proved a single guild locker with no
+personal grants, one item shared by all three forms, the same two-copper fee,
+and all refusal cases above. The fixture waits for the authoritative `guilds`
+snapshot using its trimmed name before querying the new guild ID.
+
+The sanitizer regression, root-runner contracts, 14 documentation checks,
+help-import/parser checks, flat-file help catalog, formatting and changed-line
+clang-tidy also passed. Five optional help-import DB cases were skipped; the
+gameplay journey imports and renders the actual help catalog. Logs are under
+`bin/analysis/issue-234/review-guild-*` (generated, untracked). Master remained
+unchanged, so publication uses one fast-forward repair commit; no tag or extra
+stack is needed. Full-suite and production acceptance remain untested.
+
+## Original investigation (pre-fix)
+
 Investigated on 2026-10-20 UTC against checkout
 `fcb54a1d068015f7ab3887944ba8929208568c0d`, using read-only production SQL,
 local logs, source inspection, and an isolated executable routing probe.
@@ -181,7 +397,7 @@ Expected from the inspected snapshots: one account-locker row on side `1`,
 one direct grant to `zyx`, and `1` from the runtime's direct grant predicate.
 There is no personal-locker row.
 
-## Follow-up repair and acceptance checks
+## Original repair requirements
 
 Resolve the documented character-name entry to the intended account locker
 before the existing grant check. Define precedence when a legacy personal
@@ -199,5 +415,6 @@ opposite-side entry, occupancy privacy, and coexistence with a legacy
 personal locker. Staff entry alone is insufficient because it bypasses grant
 validation.
 
-No runtime fix, production data change, migration, restart, or player login
-was performed. The repository change is this findings document.
+The initial investigation made no runtime fix, production data change, migration,
+restart, or player login. The branch now implements the repair and records its
+local validation above; production deployment and live acceptance remain separate.
