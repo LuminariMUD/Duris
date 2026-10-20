@@ -5,6 +5,10 @@ onboarding path. This directory holds the development, architecture, operations,
 database, and builder references. Open work lives in the
 plan under `ongoing-projects/`, not here.
 
+The [new player retention strategy](ongoing-projects/new-player-retention.md)
+contains the source analysis, agreed game rules, diagrams, and proposed measurements
+for the first session and later returns.
+
 ```
 docs/
   reference/     how the server works          persistence/  durability and data lifecycle
