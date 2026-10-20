@@ -1,5 +1,11 @@
 # Qua / Zyx locker grant investigation
 
+Issue: [#234 - Fix named locker entry rejecting valid account-locker grants](https://github.com/LuminariMUD/Duris/issues/234)
+
+Work branch: [`branch/issue-234-locker-grant-entry`](https://github.com/LuminariMUD/Duris/tree/branch/issue-234-locker-grant-entry)
+
+Status: Investigation complete; repair and gameplay acceptance pending.
+
 Investigated on 2026-10-20 UTC against checkout
 `fcb54a1d068015f7ab3887944ba8929208568c0d`, using read-only production SQL,
 local logs, source inspection, and an isolated executable routing probe.
