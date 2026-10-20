@@ -152,7 +152,7 @@ for class_name in class_names:
             r"==Innate abilities==\n(.*?)(?=\n==|\Z)", entry, re.S
         )
         assert innates, f"Missing innate section: {topic}"
-        assert_innates(innates[1].strip(), topic)
+        assert_innates(innates[1].rstrip(), topic)
     for section, unit in (("Skills", "Level"), ("Spells", "Circle")):
         match = re.search(
             rf"=={section}==\n(.*?)(?=\n==|\Z)", skill_help, re.S
