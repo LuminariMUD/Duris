@@ -511,6 +511,37 @@ Screenshots and redacted evidence are outside both repositories under
 `stat-choice-mobile.png`, `stat-choice-advanced-review.png`,
 `stat-choice-fresh-entry.png`, `stat-choice-browser-evidence.json`.
 
+## Review repairs (2026-10-20)
+
+Both reported findings reproduced and were addressed in review order:
+- #236: the recovery contract expected `TOTAL_CON=92` and recovery states at the
+  end of the connection-name table. It now checks `CON_STAT_METHOD=93`,
+  `TOTAL_CON=93` and the updated ordering, retaining recovery IDs 90–92.
+- #237 and #238 had no actionable review findings. The #236 repair was carried
+  through each parent branch and into #239 without rewriting published history.
+- #239: a second uncached build in the fixed journey build directory failed with
+  `flat build did not select __NO_MYSQL__`. Each invocation now owns a temporary
+  directory below `bin/tests`, retained until its journeys finish and then cleaned
+  up. The existing verified artifact helper, cache and `--binary` path are reused.
+
+The recovery/stat sanitizer harnesses and all 16 Telnet prompt journeys passed on
+#236. The three WebSocket lifecycle/persistence journeys passed on #237. All five
+full-world Telnet/WebSocket journeys and the disposable MariaDB account projection
+harness passed on #238. On #239, consecutive direct invocations with
+`DURIS_REGRESSION_BUILD_CACHE` unset passed all five full-world and all five minimal
+journeys, including post-kit vitals. The cached runner also passed:
+`make test-all -j8 TEST_JOBS=2 TEST_MATCH=character_stat_choice` (normal/production
+builds, editor/area tools, world, native signals and two focused Python entries;
+not the complete Python suite).
+
+The build-artifact, starter-grant batch/reconciliation/lifecycle/plan/readiness,
+transaction/item input-queue and ASan/UBSan prompt/output regressions passed.
+Formatting against `origin/master`, Python compilation and whitespace checks
+passed. Master remains `6a323feaab1a`; each updated parent is carried into its
+child. Keep the review order #236 → #237 → #238 → #239 and squash when integrating
+into linear-history master. No release tag, merge or deployment is part of this
+review repair. GitHub CI is not a completion gate for this local qualification.
+
 ## Next owner action and limits
 
 No implementation or required local acceptance remains. All PRs are left for

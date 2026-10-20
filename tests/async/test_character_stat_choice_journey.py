@@ -8,6 +8,7 @@ from pathlib import Path
 import socket
 import struct
 import subprocess
+import tempfile
 import time
 
 from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD, ROOT, build_flatfile_server
@@ -292,10 +293,13 @@ if __name__ == "__main__":
     parser.add_argument("--binary", type=Path, help="use an already-built flat-file server")
     parser.add_argument("--full-world", action="store_true", help="qualify the actual tutorial rooms and world")
     args = parser.parse_args()
-    binary = args.binary.resolve() if args.binary else build_flatfile_server(ROOT / "bin/tests/stat-choice/flatfile-build")
-    inspector = ROOT / "bin/tests/stat-choice/inspector"
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector", str(inspector)], cwd=ROOT, check=True)
-    for method in ("default", "advanced"):
-        run_telnet(binary, inspector, method, full_world=args.full_world)
-    for method, legacy in (("default", False), ("advanced", False), ("default", True)):
-        run(binary, inspector, method, legacy=legacy, full_world=args.full_world)
+    build_root = ROOT / "bin/tests"
+    build_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="stat-choice-build-", dir=build_root) as build_tmp:
+        binary = args.binary.resolve() if args.binary else build_flatfile_server(Path(build_tmp))
+        inspector = ROOT / "bin/tests/stat-choice/inspector"
+        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector", str(inspector)], cwd=ROOT, check=True)
+        for method in ("default", "advanced"):
+            run_telnet(binary, inspector, method, full_world=args.full_world)
+        for method, legacy in (("default", False), ("advanced", False), ("default", True)):
+            run(binary, inspector, method, legacy=legacy, full_world=args.full_world)
