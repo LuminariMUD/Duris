@@ -5084,7 +5084,7 @@ void initialize_skills()
 			 "&+CThe spirits no longer protect you.&n");
 	// SPELL_ADD(CLASS_SHAMAN, 9);
 
-	SPELL_CREATE("divine warding", SPELL_DIVINE_WARDING, PULSE_SPELLCAST * 4, TAR_CHAR_ROOM,
+	SPELL_CREATE("divine warding", SPELL_DIVINE_WARDING, PULSE_SPELLCAST * 4, TAR_SELF_ONLY,
 		     spell_divine_warding);
 	SPELL_ADD(CLASS_CLERIC, 11);
 

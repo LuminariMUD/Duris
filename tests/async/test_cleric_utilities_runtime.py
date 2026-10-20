@@ -6,6 +6,7 @@ from _paths import ROOT, extract_function
 from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
+#include "world/new_events.c"
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "net/comm.h"
@@ -13,6 +14,51 @@ PRELUDE = r'''
 #include <cassert>
 #include <cstdio>
 #include <strings.h>
+
+
+P_char character_list = nullptr;
+P_obj object_list = nullptr;
+P_index mob_index = nullptr, obj_index = nullptr;
+static room_data rooms[6]{};
+P_room world = rooms;
+extern const int top_of_world = 5;
+int pulse = 0;
+bool after_events_call = false;
+static mm_ds event_pool{};
+bool nevent_periodic_begin(P_nevent) { return false; }
+void nevent_periodic_complete(P_nevent) {}
+void nevent_periodic_watchdog() {}
+bool nevent_periodic_event_is_valid(P_nevent) { return true; }
+long nevent_periodic_integrity_errors(bool) { return 0; }
+float get_property(const char *, double fallback) { return fallback; }
+void *__malloc(size_t size, const char *, const char *, int) { return std::malloc(size); }
+void __free(void *p, const char *, int) { std::free(p); }
+void *_mm_get(mm_ds *pool, const char *, int) {
+    ++pool->objs_used;
+    return std::calloc(1, sizeof(nevent_data));
+}
+void mm_release(mm_ds *pool, void *p) { --pool->objs_used; std::free(p); }
+const char *event_name_registry_lookup(const void *) { return nullptr; }
+char_link_data *link_char(P_char, P_char, ush_int) { std::abort(); }
+void remove_link(P_char, char_link_data *) { std::abort(); }
+#define LABEL(name) void name(P_char, P_char, P_obj, void *) {}
+LABEL(release_mob_mem)
+LABEL(event_hit_regen)
+LABEL(event_move_regen)
+LABEL(event_ward_regen)
+LABEL(event_spellcast)
+LABEL(event_item_action_active)
+LABEL(event_memorize)
+LABEL(event_balance_affects)
+LABEL(event_mob_mundane)
+LABEL(event_reset_zone)
+LABEL(event_autosave)
+LABEL(event_wait)
+#undef LABEL
+void wear_off_message(P_char, affected_type *) {}
+static void advance(int pulses) {
+    for (int i = 0; i < pulses; ++i) { ne_events(); nevent_advance_tick(); }
+}
 
 bool affected_by_spell(P_char ch, int type) {
     for (auto *af = ch->affected; af; af = af->next)
@@ -37,6 +83,13 @@ void affect_remove(P_char ch, affected_type *target) {
     for (auto **p = &ch->affected; *p; p = &(*p)->next) {
         if (*p != target) continue;
         *p = target->next;
+        if (target->flags & AFFTYPE_SHORT)
+            for (auto *e = ch->nevents; e; e = e->next_char_nev)
+                if (e->func == event_short_affect && e->data &&
+                    static_cast<event_short_affect_data *>(e->data)->af == target) {
+                    nevent_cancel(nevent_handle_from_event(e));
+                    break;
+                }
         delete target;
         rebuild_bits(ch);
         return;
@@ -100,35 +153,78 @@ int main() {
     remote.in_room = 6;
     dead.specials.position = STAT_DEAD;
 
-    // Warding affects only the selected living target in the room.
-    add(&ally, SPELL_BLESS);
-    spell_divine_warding(30, &caster, nullptr, 0, &ally, nullptr);
-    const int protections[] = {SPELL_PROTECT_FROM_FIRE, SPELL_PROTECT_FROM_COLD,
-        SPELL_PROTECT_FROM_ACID, SPELL_PROTECT_FROM_GAS, SPELL_PROTECT_FROM_LIGHTNING,
-        SPELL_PROTECT_FROM_GOOD, SPELL_PROTECT_FROM_EVIL};
-    assert(count(&ally) == 8 && count(&caster) == 0 && count(&stranger) == 0);
-    for (int type : protections) assert(affected_by_spell(&ally, type));
+    nevent_bind_game_thread();
+    ne_dead_event_pool = &event_pool;
+    character_list = &caster;
+    // Explicit non-self and invalid targets never receive any protection.
     spell_divine_warding(56, &caster, nullptr, 0, &ally, nullptr);
-    assert(count(&ally) == 8);
-    for (auto *af = ally.affected; af; af = af->next)
-        assert(af->duration == (af->type == SPELL_BLESS ? 7 : 56));
-    affect_from_char(&ally, SPELL_PROTECT_FROM_FIRE);
-    assert(count(&ally) == 7 && affected_by_spell(&ally, SPELL_PROTECT_FROM_COLD));
-    spell_divine_warding(56, &caster, nullptr, 0, &ally, nullptr);
-    assert(count(&ally) == 8 && affected_by_spell(&ally, SPELL_PROTECT_FROM_FIRE));
-    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
-    assert(count(&caster) == 7);
     spell_divine_warding(56, &caster, nullptr, 0, &remote, nullptr);
     spell_divine_warding(56, &caster, nullptr, 0, &dead, nullptr);
     spell_divine_warding(56, nullptr, nullptr, 0, &stranger, nullptr);
-    spell_divine_warding(56, &dead, nullptr, 0, &stranger, nullptr);
     spell_divine_warding(56, &caster, nullptr, 0, nullptr, nullptr);
-    assert(count(&remote) == 0 && count(&dead) == 0 && count(&stranger) == 0);
-    for (auto *ch : characters) clear(ch);
-    caster.in_room = stranger.in_room = NOWHERE;
-    spell_divine_warding(56, &caster, nullptr, 0, &stranger, nullptr);
-    assert(count(&stranger) == 0);
-    caster.in_room = stranger.in_room = 5;
+    for (auto *ch : characters) assert(count(ch) == 0);
+    caster.in_room = NOWHERE;
+    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+    assert(count(&caster) == 0);
+    caster.in_room = 5;
+    const int protections[] = {SPELL_PROTECT_FROM_FIRE, SPELL_PROTECT_FROM_COLD,
+        SPELL_PROTECT_FROM_ACID, SPELL_PROTECT_FROM_GAS, SPELL_PROTECT_FROM_LIGHTNING,
+        SPELL_PROTECT_FROM_GOOD, SPELL_PROTECT_FROM_EVIL};
+    using spell_func = void (*)(int, P_char, char *, int, P_char, P_obj);
+    const spell_func individual[] = {spell_protection_from_fire, spell_protection_from_cold,
+        spell_protection_from_acid, spell_protection_from_gas, spell_protection_from_lightning,
+        spell_protection_from_good, spell_protection_from_evil};
+    for (int phase : {0, 1, 299}) {
+        advance(phase);
+        add(&caster, SPELL_BLESS);
+        // Tick-based individual protection becomes an elapsed-time bundle member.
+        spell_protection_from_fire(56, &caster, nullptr, 0, &caster, nullptr);
+        spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+        assert(count(&caster) == 8 && ne_event_counter == 7);
+        for (auto *af = caster.affected; af; af = af->next)
+            if (af->type != SPELL_BLESS) {
+                assert(af->flags & AFFTYPE_SHORT);
+                assert(af->duration == 2640);
+                assert(!(af->flags & AFFTYPE_NODISPEL));
+            }
+        advance(2640);
+        assert(count(&caster) == 8); // due pulse has not been dispatched yet
+        advance(1);
+        assert(count(&caster) == 1 && affected_by_spell(&caster, SPELL_BLESS));
+        clear(&caster);
+    }
+    // Bundle recasts cancel old callbacks; dispelling one effect leaves six.
+    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+    advance(1000);
+    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+    assert(count(&caster) == 7 && ne_event_counter == 7);
+    affect_from_char(&caster, SPELL_PROTECT_FROM_FIRE);
+    assert(count(&caster) == 6 && ne_event_counter == 6);
+    advance(1641); // canceled original deadline cannot remove refreshed members
+    assert(count(&caster) == 6);
+    for (int i = 1; i < 7; ++i) {
+        individual[i](46, &caster, nullptr, 0, &caster, nullptr);
+        auto *af = caster.affected;
+        while (af && af->type != protections[i]) af = af->next;
+        assert(af && af->duration == 46 && !(af->flags & AFFTYPE_SHORT));
+    }
+    assert(ne_event_counter == 0);
+    advance(3000);
+    assert(count(&caster) == 6); // later ordinary casts have no old bundle expiry
+    clear(&caster);
+    // Removal/extraction cancels all timers; no callback retains freed affects.
+    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+    clear(&caster);
+    assert(ne_event_counter == 0);
+    advance(2641);
+    assert(count(&caster) == 0);
+    // A real scheduler admission failure must not leave permanent protections.
+    const auto sequence = ne_event_sequence;
+    ne_event_sequence = ULLONG_MAX;
+    spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
+    assert(count(&caster) == 0 && ne_event_counter == 0);
+    ne_event_sequence = sequence;
 
     // Solo purification works, preserves unrelated effects and never heals.
     ailments(&caster);
@@ -174,8 +270,11 @@ int main() {
 }
 '''
 
-functions = [extract_function("magic.c", "void spell_protection_from_" + name + "(")
+functions = [extract_function("magic.c", "static void set_protection_duration(")]
+functions += [extract_function("magic.c", "void spell_protection_from_" + name + "(")
              for name in ("fire", "cold", "acid", "gas", "lightning", "good", "evil")]
+functions += [extract_function("affects.c", "void event_short_affect(").replace(
+    "PROFILE_START(short_affect_liveness);", "").replace("PROFILE_END(short_affect_liveness);", "")]
 functions += [extract_function("handler.c", "int poison_common_remove(")]
 functions += [extract_function("magic.c", signature) for signature in (
     "void spell_cure_blind(", "void spell_cure_disease(", "void spell_divine_warding(",
@@ -186,6 +285,7 @@ harness = output / "harness.cpp"
 harness.write_text(PRELUDE + "\n".join(functions) + DRIVER)
 binary = output / "harness"
 subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-                "-fsanitize=address,undefined", "-I" + str(ROOT / "src"),
-                str(harness), str(HARNESS_STUBS), "-o", str(binary)], check=True)
+                "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
+                "-fsanitize=address,undefined", "-fno-pie", "-no-pie", "-I" + str(ROOT / "src"),
+                str(harness), str(ROOT / "src/persistence/latency_trace.c"), str(HARNESS_STUBS), "-o", str(binary)], check=True)
 subprocess.run([str(binary)], check=True)

@@ -308,6 +308,20 @@ player_snapshot_capture_result capture_affects(P_char ch, player_snapshot &snaps
 		player_affect_snapshot row = {};
 		row.type = affect->type;
 		row.duration = affect->duration;
+		if (IS_SET(affect->flags, AFFTYPE_SHORT))
+		{
+			P_nevent event;
+			LOOP_EVENTS_CH(event, ch->nevents)
+			{
+				if (event->func == event_short_affect && event->data &&
+				    static_cast<event_short_affect_data *>(event->data)->af ==
+					    affect)
+				{
+					row.duration = ne_event_time(event);
+					break;
+				}
+			}
+		}
 		row.flags = affect->flags;
 		row.modifier = affect->modifier;
 		row.location = affect->location;

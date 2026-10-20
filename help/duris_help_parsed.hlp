@@ -24222,18 +24222,19 @@ None.
 Divine Warding
 Divine Warding - Last Edited: 2026-09-13
 Cleric circle: 11th
-Area of effect: <target>
+Area of effect: <self>
 Aggressive: No
 Cumulative: No
 Type of spell: Protection
 
-Divine Warding grants one target all seven base cleric protection spells:
+Divine Warding grants the caster all seven base cleric protection spells:
 protection from fire, cold, acid, gas, lightning, good, and evil. Each
-protection has its normal strength and duration and can be dispelled
-individually. Recasting refreshes the protections rather than stacking them.
-The target must be in the same room; the caster may target themselves.
+protection has its normal strength and lasts 11 elapsed minutes. Each can be
+dispelled independently. Recasting resets all seven timers without stacking.
+This spell only affects the caster. An individual protection cast afterward
+replaces that protection's timer with its ordinary level-based duration.
 
-Usage: cast 'divine warding' <target>
+Usage: cast 'divine warding'
 
 See also: Protection from Fire, Protection from Cold, Protection from Evil
 
