@@ -30,6 +30,10 @@ P_index mob_index = nullptr, obj_index = nullptr;
 zone_data *zone_table = nullptr;
 int top_of_world = -1, top_of_mobt = -1, top_of_objt = -1, top_of_zone_table = -1;
 const char *sector_types[NUM_SECT_TYPES] = {"Inside"};
+static char_data entity_sentinel{};
+static obj_data object_sentinel{};
+P_char character_list = &entity_sentinel;
+P_obj object_list = &object_sentinel;
 static string output;
 static int comparisons, probes;
 void send_to_char(const char *text, P_char) { output += text; }
@@ -91,11 +95,18 @@ static void fixture(int matches, int prefix = 1, int suffix = 1) {
 }
 static string run(int kind, const string &argument) {
     auto before_rooms=rooms; auto before_mobiles=mobiles; auto before_objects=objects;
+    const auto before_staff=staff;
+    const auto before_entity=entity_sentinel;
+    const auto before_object=object_sentinel;
     output.clear(); comparisons=probes=0;
     string input=argument;
     handlers[kind](&staff,input.data(),0);
     assert(comparisons<=18 && probes<=502);
     assert(output.size()<15*MAX_STRING_LENGTH); // Existing command pager capacity.
+    assert(character_list==&entity_sentinel && object_list==&object_sentinel);
+    assert(memcmp(&staff,&before_staff,sizeof(staff))==0);
+    assert(memcmp(&entity_sentinel,&before_entity,sizeof(entity_sentinel))==0);
+    assert(memcmp(&object_sentinel,&before_object,sizeof(object_sentinel))==0);
     assert(memcmp(rooms.data(),before_rooms.data(),rooms.size()*sizeof(room_data))==0);
     assert(memcmp(mobiles.data(),before_mobiles.data(),mobiles.size()*sizeof(index_data))==0);
     assert(memcmp(objects.data(),before_objects.data(),objects.size()*sizeof(index_data))==0);
@@ -105,7 +116,7 @@ static int row_count(const string &text) {
     istringstream lines(text); int rows=0;
     for(string line;getline(lines,line);) if(line.size()>1 && line[0]=='|') {
         const auto end=line.find('|',1); const auto first=line.substr(1,end-1);
-        if(first.find_first_not_of(" 0123456789")==string::npos && first.find_first_of("0123456789")!=string::npos) {
+        if(first.find_first_not_of(" -0123456789")==string::npos && first.find_first_of("0123456789")!=string::npos) {
             ++rows;
             assert(strip_ansi(line.c_str()).size()<=80);
         }
@@ -166,6 +177,7 @@ int main() {
         assert(run(kind,"").find("no valid current zone")!=string::npos);
         staff.in_room=0; rooms[0].zone=USHRT_MAX;
         assert(run(kind,"").find("no valid current zone")!=string::npos);
+        if(kind==0) shown(kind,"0",1); // Explicit searches can show a room with no valid zone.
         const vector<string> bad={"-", "-1", "+1", "1x", "2147483648", "99999999999999999999999999", "1 -2", "1 2 3", "zone", "zone -1", "zone 1", "zone 0", "zone 83 x", "zone 83 1 2 3", "help x", "? x"};
         for(const auto &arg:bad) {
             const auto text=run(kind,arg);
@@ -190,6 +202,9 @@ int main() {
         assert(run(kind,"zone 83").find("unknown public zone")!=string::npos);
         assert(run(kind,"").find("no valid current zone")!=string::npos);
     }
+    fixture(2);
+    rooms[2].number=rooms[1].number; // Existing adjacent room VNUM overlap remains listable.
+    shown(0,"100000",2);
     fixture(501);
     rooms[1].sector_type=255; rooms[2].sector_type=1;
     assert(run(0,"100000 100001").find("Unknown")!=string::npos);

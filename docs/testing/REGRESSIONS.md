@@ -24,7 +24,7 @@ instantiating entities or reading files/databases.
 handlers and real parsing/ANSI helpers under ASan/UBSan. It covers syntax, public
 identity, missing location, empty tables, 0/1/199/499/500/501+ matches, reversed
 ranges and intersections, INT_MAX, help/paging/NPC behavior, empty/colorized/long/
-multiline names and invalid sectors. Comparison/probe instrumentation checks a
+multiline names, 80-column rows and invalid sectors. Comparison/probe instrumentation checks a
 scope surrounded by 20,000 unrelated entries on either side; index and room
 snapshots remain unchanged and entity-loader stubs abort. Command registration
 must continue to require IMMORTAL. The harness does not emulate game dispatch,
