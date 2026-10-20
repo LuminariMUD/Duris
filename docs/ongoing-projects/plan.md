@@ -1,14 +1,19 @@
 # Issue #107: Choose a stat rolling system before rolling
 
-Status: implementation in progress, 2026-10-20. Working in `/home/aiwithapex/projects/duris-issue107-plan`. The owner explicitly instructed no OpenSpec; this task uses this plan and executable tests.
+Status: implementation and local acceptance complete; ready for review, 2026-10-20.
+OpenSpec is not used. Worktree: `/home/aiwithapex/projects/duris-issue107-plan`.
 
-Telnet chunk: [PR #236](https://github.com/LuminariMUD/Duris/pull/236), head `fcbdf4310`, ready for review.
-Protocol: [PR #237](https://github.com/LuminariMUD/Duris/pull/237), stacked on #236.
-Current branch: `branch/issue-107-creation-response-fixes`, stacked on #237 for
-creation-response defects reproduced during acceptance.
-WebSocket protocol implementation and focused qualification pass. The required
-DurisWeb companion [PR #73](https://github.com/LuminariMUD/DurisWeb/pull/73) is in `/home/aiwithapex/projects/durisweb-issue107` on
-`branch/issue-107-stat-choice`. Paired browser acceptance remains. Nothing deployed or merged.
+Review order: [Telnet #236](https://github.com/LuminariMUD/Duris/pull/236), then
+[WebSocket #237](https://github.com/LuminariMUD/Duris/pull/237), then
+[creation responses #238](https://github.com/LuminariMUD/Duris/pull/238), followed
+by the focused first-entry vitals PR on the current branch
+`branch/issue-107-first-entry-vitals`.
+The required website companion is [DurisWeb #73](https://github.com/LuminariMUD/DurisWeb/pull/73),
+worktree `/home/aiwithapex/projects/durisweb-issue107`, branch
+`branch/issue-107-stat-choice`. Both browser methods, full-world persistence and
+review qualification pass. Merge/release remain owner review steps; no production
+operation, merge or release tag was performed. #107 stays open for integration.
+
 Tracking: [Duris #107](https://github.com/LuminariMUD/Duris/issues/107).
 Implementation branch: `branch/issue-107-stat-choice`.
 Duris source baseline: [master `e19537cced99`](https://github.com/LuminariMUD/Duris/commit/e19537cced993bc8de3de1abd76027e8d40b389a).
@@ -571,3 +576,30 @@ notes. No point-buy, new numeric-stat display, balance adjustment, generic
 workflow layer, persisted method, migration or deployment was added. OpenSpec is
 not used. Existing saved characters follow their ordinary entry path and keep
 their base stats.
+
+### First-entry vitals repair
+
+Final browser review found that the first-entry GMCP snapshot still showed 1/1 HP
+while the ready character had 34/34 or 35/35. Reconnecting refreshed it, confirming
+the browser parser was correct. The detached starter kit changes derived vitals
+after the initial WebSocket snapshot; its ready notification did not publish the
+updated values. A separate focused branch `branch/issue-107-first-entry-vitals`
+adds the existing `gmcp_char_vitals` call at the two successful blocking-kit
+completion paths. It changes no stat roll, item, save or transaction semantics.
+The real stat-choice socket journey now asserts final full HP after the readiness
+boundary, before the first save/quit/reconnect can mask stale first-entry data.
+
+The first-entry vitals repair passes both builds, creation-grant batch/reconciliation
+contracts, the native input-queue regression and the ASan/UBSan prompt/output
+runtime. All three full-world WebSocket method/legacy journeys and the minimal
+Default journey pass with the new post-kit vitals assertion. Prior full-world
+Telnet/stat-formula/persistence results remain valid: this delta changes only the
+client notification after successful kit publication.
+
+A fresh browser character on the final producer path received 1/1 during entry,
+then 35/35 at starter readiness, and rendered 35/35 before any reconnect. No
+application console error occurred. The separate saved-stat acceptance above
+remains unchanged. `stat-choice-fresh-entry.png` and the updated redacted JSON
+record this final display check. All required implementation and local acceptance
+work is complete; remaining actions are review/integration and separately
+requested deployment/news publication, not additional feature work.

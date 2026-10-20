@@ -184,6 +184,12 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             while "Save complete for Taverek" not in json.dumps(save):
                 require(time.monotonic() < deadline, "no durable save acknowledgement")
                 save = client.receive()
+            # The initial entry snapshot precedes detached kit publication. The
+            # readiness boundary must publish the resulting derived HP before play.
+            vitals = [m["data"] for m in client.messages if m.get("package") == "Char.Vitals"]
+            require(len(vitals) >= 2 and (not full_world or vitals[-1]["maxHp"] > 1)
+                    and vitals[-1]["hp"] == vitals[-1]["maxHp"],
+                    f"starter readiness left the browser's pre-kit vitals stale: {vitals}")
             before = inspect_stats(server, inspector)
             account_info = client.command("account_info", expected="account")
             require(account_info["data"]["characters"][0]["level"] == 1,
