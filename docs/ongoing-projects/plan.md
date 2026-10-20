@@ -1,13 +1,13 @@
 # Issue #107: Choose a stat rolling system before rolling
 
 Status: implementation and local acceptance complete; ready for review, 2026-10-20.
-OpenSpec is not used. Worktree: `/home/aiwithapex/projects/duris-issue107-plan`.
+This change includes no OpenSpec workflow files. Worktree: `/home/aiwithapex/projects/duris-issue107-plan`.
 
 Review order: [Telnet #236](https://github.com/LuminariMUD/Duris/pull/236), then
 [WebSocket #237](https://github.com/LuminariMUD/Duris/pull/237), then
-[creation responses #238](https://github.com/LuminariMUD/Duris/pull/238), followed
-by the focused first-entry vitals PR on the current branch
-`branch/issue-107-first-entry-vitals`.
+[creation responses #238](https://github.com/LuminariMUD/Duris/pull/238), then
+[first-entry vitals #239](https://github.com/LuminariMUD/Duris/pull/239) on the current
+branch `branch/issue-107-first-entry-vitals`.
 The required website companion is [DurisWeb #73](https://github.com/LuminariMUD/DurisWeb/pull/73),
 worktree `/home/aiwithapex/projects/durisweb-issue107`, branch
 `branch/issue-107-stat-choice`. Both browser methods, full-world persistence and
@@ -392,7 +392,7 @@ checks. Report exact commands/results and any missing browser/persistence proof.
 - [x] Implement and prove the Duris changes (Telnet #236 plus stacked WebSocket PR).
 - [x] Implement and prove the DurisWeb companion changes (PR #73).
 - [x] Complete paired browser/persistence acceptance and implementation review.
-- [ ] Publish final implementation evidence and link the review stack; keep #107 open
+- [x] Publish final implementation evidence and link the review stack; keep #107 open
   while its server/website PRs await review and integration.
 
 ### Telnet implementation evidence (2026-10-20)
@@ -603,3 +603,29 @@ remains unchanged. `stat-choice-fresh-entry.png` and the updated redacted JSON
 record this final display check. All required implementation and local acceptance
 work is complete; remaining actions are review/integration and separately
 requested deployment/news publication, not additional feature work.
+
+### Publication and continuation reference
+
+All five PRs are open and ready for review. Server order is #236 → #237 → #238 →
+#239; DurisWeb #73 follows the server protocol. The issue resolution/status was
+updated and the final evidence was posted/read back in
+[issue comment 6295870664](https://github.com/LuminariMUD/Duris/issues/107#issuecomment-6295870664).
+
+Qualified code pins:
+- Duris: `8e95a2b85034998b6e030e61f2267940cb8993e1` (#239); subsequent closeout edits change documentation only.
+- DurisWeb: `461ca507ea8e0207b18765214aa74da356a56470` (#73).
+- Flat-file server SHA-256: `aee0cb9b8f765d71a6f8e0300479211f90b0fcd3f5a207cc7d14620009574b6e`.
+
+The original requested branch remains the first review chunk; the current
+continuation branch is `branch/issue-107-first-entry-vitals` in this worktree.
+Use this branch's plan and #107's current status rather than treating an older
+chunk's progress snapshot as outstanding implementation work. The plan intentionally
+keeps dated intermediate evidence; this final status and the qualified pins govern
+continuation. No implementation or required local acceptance is outstanding.
+
+Review/integration is the next owner action. Keep #107 open until the server stack
+and required website companion are integrated. Production deployment, any operator
+acceptance and publication of the website changelog require their normal separate
+authorization. The full MariaDB game-server/browser journey and full burn-in were
+not part of this focused local qualification; the normal server build and isolated
+account-projection MariaDB behavior check are the database-side evidence here.
