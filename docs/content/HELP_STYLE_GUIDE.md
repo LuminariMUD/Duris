@@ -99,6 +99,16 @@ abilities, and `(obtained at level N)` where N is greater than 1, followed by
 the passive-ability legend. Order innates by level, then name. Preserve
 descriptions, headings, requirements, and all other authored prose.
 
+For the `==Allowed races==` section, preserve the existing race-permission
+set, but print each race with the exact ANSI string in
+`race_names_table` (`src/core/common.c`). Use a white `*` bullet and
+wrap long lists at 79 visible characters (excluding ANSI codes), indenting
+continuation lines by two spaces. This keeps split-colour names such as
+Githzerai (`&+WGith&+Gzerai&n`) and Githyanki
+(`&+GGith&+Wyanki&n`) intact, while Goblin uses
+`&+GGoblin&n`. Preserve the explanation distinguishing character race
+permissions from initial creation choices.
+
 For mirrored specialization topics, maintain identical bodies in
 `help/duris_help_parsed.hlp` and `lib/information/help_index`.
 
