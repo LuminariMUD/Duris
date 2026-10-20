@@ -815,8 +815,9 @@ Air Magus
 Air Magus - Last Edited: 2026-10-18
 ============================================================
 Air Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -1074,8 +1075,9 @@ Animalist
 Animalist - Last Edited: 2026-10-18
 ============================================================
 Animalist is a Shaman specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Centaur, Drow Elf, Firbolg, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Ogre, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDrow Elf&n, &+yFir&+cbolg&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+bOgre&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -2534,7 +2536,7 @@ Battle-Forger
 Battle-Forger - Last Edited: 2026-10-18
 ============================================================
 Battle-Forger is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -2889,7 +2891,7 @@ Blacksmith
 Blacksmith - Last Edited: 2026-10-18
 ============================================================
 Blacksmith is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -2912,8 +2914,8 @@ Blademaster
 Blademaster - Last Edited: 2026-10-18
 ============================================================
 Blademaster is a Ranger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Centaur, Githzerai, Grey Elf, Halfling, Human, Tiefling.
+==Allowed races==
+&+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Class mechanics==
 Blademasters receive a 10% bonus to the defensive parry value and a 5% bonus
@@ -3042,8 +3044,8 @@ Shock Reaver
 Shock Reaver - Last Edited: 2026-10-18
 ============================================================
 Shock Reaver is a Reaver specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h piercing (cap 100%), 1h slashing (cap 100%)&n
@@ -3246,8 +3248,9 @@ Bounty Hunter
 Bounty Hunter - Last Edited: 2026-10-18
 ============================================================
 Bounty Hunter is a Mercenary specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Drow Elf, Duergar Dwarf, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Mountain Dwarf, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+mDrow Elf&n, &+rDuergar&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+ctrack (cap 100%)&n
@@ -3304,8 +3307,8 @@ Swashbuckler
 Swashbuckler - Last Edited: 2026-10-18
 ============================================================
 Swashbuckler is a Warrior specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Class mechanics==
 Swashbucklers receive a 10% bonus to both the defensive parry value and the
@@ -3407,8 +3410,9 @@ Brigand
 Brigand - Last Edited: 2026-10-18
 ============================================================
 Brigand is a Mercenary specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Drow Elf, Duergar Dwarf, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Mountain Dwarf, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+mDrow Elf&n, &+rDuergar&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b35th Level: &+csneak (cap 60%)&n
@@ -3768,8 +3772,8 @@ Cavalier
 Cavalier - Last Edited: 2026-10-18
 ============================================================
 Cavalier is a Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Githzerai, Grey Elf, Human, Mountain Dwarf, Tiefling.
+==Allowed races==
+&+W*&n &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Class mechanics==
 Cavaliers can guard two people at once under the checked-in multi-guard limit. Guard still requires an eligible nearby target and the ordinary guard skill; server properties can change the simultaneous-target limit.
@@ -5054,8 +5058,9 @@ Star Magus
 Star Magus - Last Edited: 2026-10-18
 ============================================================
 Star Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n
+  &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -5318,8 +5323,8 @@ Crusader
 Crusader - Last Edited: 2026-10-18
 ============================================================
 Crusader is a Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Centaur, Githzerai, Grey Elf, Human, Mountain Dwarf, Tiefling.
+==Allowed races==
+&+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+csmite evil (cap 100%), taunt (cap 80%)&n
@@ -5571,8 +5576,9 @@ Dark Dreamer
 Dark Dreamer - Last Edited: 2026-10-18
 ============================================================
 Dark Dreamer is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -5595,8 +5601,8 @@ Dark Knight
 Dark Knight - Last Edited: 2026-10-18
 ============================================================
 Dark Knight is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b36th Level: &+cskewer (cap 100%)&n
@@ -5739,7 +5745,7 @@ Deathlord
 Deathlord - Last Edited: 2026-10-18
 ============================================================
 Deathlord is a Dreadlord specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -5846,8 +5852,8 @@ Demonic Rider
 Demonic Rider - Last Edited: 2026-10-18
 ============================================================
 Demonic Rider is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Class mechanics==
 Demonic Riders can guard two people at once under the checked-in multi-guard limit. Guard still requires an eligible nearby target and the ordinary guard skill; server properties can change the simultaneous-target limit.
@@ -6100,8 +6106,9 @@ Diabolis
 Diabolis - Last Edited: 2026-10-18
 ============================================================
 Diabolis is a Necromancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Human, Kobold, Lich, Orc.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+CHuman&n, &+LKobold&n, &+LL&+mic&+Lh&n
+  &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+cexhume (cap 100%)&n
@@ -6297,8 +6304,9 @@ Disharmonist
 Disharmonist - Last Edited: 2026-10-18
 ============================================================
 Disharmonist is a Bard specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+criff (cap 100%)&n
@@ -7123,8 +7131,9 @@ Earth Magus
 Earth Magus - Last Edited: 2026-10-18
 ============================================================
 Earth Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -7276,8 +7285,8 @@ Elaphidist
 Elaphidist - Last Edited: 2026-10-18
 ============================================================
 Elaphidist is a Monk specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+cflurry of blows (cap 100%)&n
@@ -7415,8 +7424,9 @@ Elementalist
 Elementalist - Last Edited: 2026-10-18
 ============================================================
 Elementalist is a Shaman specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Centaur, Drow Elf, Firbolg, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Ogre, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDrow Elf&n, &+yFir&+cbolg&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+bOgre&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -7739,8 +7749,8 @@ Enslaver
 Enslaver - Last Edited: 2026-10-18
 ============================================================
 Enslaver is a Psionicist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -8703,8 +8713,9 @@ Fire Magus
 Fire Magus - Last Edited: 2026-10-18
 ============================================================
 Fire Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -8917,8 +8928,8 @@ Flame Reaver
 Flame Reaver - Last Edited: 2026-10-18
 ============================================================
 Flame Reaver is a Reaver specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h flaying (cap 100%), 1h slashing (cap 95%)&n
@@ -9256,8 +9267,8 @@ Forest Druid
 Forest Druid - Last Edited: 2026-10-18
 ============================================================
 Forest Druid is a Druid specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Centaur, Githzerai, Grey Elf, Halfling, Human, Mountain Dwarf, Tiefling.
+==Allowed races==
+&+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+cshield block (cap 60%)&n
@@ -9480,8 +9491,9 @@ Frost Magus
 Frost Magus - Last Edited: 2026-10-18
 ============================================================
 Frost Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n
+  &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -11348,8 +11360,10 @@ Guardian
 Guardian - Last Edited: 2026-10-18
 ============================================================
 Guardian is a Warrior specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Centaur, Drider, Drow Elf, Duergar Dwarf, Firbolg, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Mountain Dwarf, Ogre, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+yFir&+cbolg&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n
+  &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+bOgre&n, &+LOrc&n
+  &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Class mechanics==
 Guardians can guard two people at once. The checked-in multi-guard limit is two; server properties can change it. From level 46, rescue <character> all attempts to take that character's attackers and applies six seconds of lag after a successful rescue. Guardian's Bulwark is granted at level 41 and reduces incoming damage while a shield is worn; its checked-in reduction factor is 0.850.
@@ -11860,8 +11874,9 @@ Healer
 Healer - Last Edited: 2026-10-18
 ============================================================
 Healer is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Duergar Dwarf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Mountain Dwarf, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 No specialization overrides; ordinary Cleric Kick remains trainable to 40%.
@@ -12275,8 +12290,9 @@ Holyman
 Holyman - Last Edited: 2026-10-18
 ============================================================
 Holyman is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Duergar Dwarf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Mountain Dwarf, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+cshield block (cap 90%)&n
@@ -12467,8 +12483,8 @@ Huntsman
 Huntsman - Last Edited: 2026-10-18
 ============================================================
 Huntsman is a Ranger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Centaur, Githzerai, Grey Elf, Halfling, Human, Tiefling.
+==Allowed races==
+&+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+ctrack (cap 100%)&n
@@ -13748,7 +13764,7 @@ Lightbringer
 Lightbringer - Last Edited: 2026-10-18
 ============================================================
 Lightbringer is a Avenger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -14228,8 +14244,9 @@ Magician
 Magician - Last Edited: 2026-10-18
 ============================================================
 Magician is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b41st Level: &+cexpedited retreat (cap 80%)&n
@@ -14434,8 +14451,8 @@ Marshall
 Marshall - Last Edited: 2026-10-18
 ============================================================
 Marshall is a Ranger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Centaur, Githzerai, Grey Elf, Halfling, Human, Tiefling.
+==Allowed races==
+&+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h bludgeon (cap 100%)&n
@@ -14604,8 +14621,8 @@ Mauler
 Mauler - Last Edited: 2026-10-18
 ============================================================
 Mauler is a Berserker specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Duergar Dwarf, Human, Minotaur, Mountain Dwarf, Orc, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+rDuergar&n, &+CHuman&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b41st Level: &+cboiling blood (cap 100%)&n
@@ -14974,8 +14991,9 @@ Minstrel
 Minstrel - Last Edited: 2026-10-18
 ============================================================
 Minstrel is a Bard specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+criff (cap 100%)&n
@@ -15795,8 +15813,9 @@ Necrolyte
 Necrolyte - Last Edited: 2026-10-18
 ============================================================
 Necrolyte is a Necromancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Human, Kobold, Lich, Orc.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+CHuman&n, &+LKobold&n, &+LL&+mic&+Lh&n
+  &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h bludgeon (cap 100%), 2h bludgeon (cap 90%)&n
@@ -17945,8 +17964,8 @@ Psycheporter
 Psycheporter - Last Edited: 2026-10-18
 ============================================================
 Psycheporter is a Psionicist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -18166,8 +18185,8 @@ Pyrokinetic
 Pyrokinetic - Last Edited: 2026-10-18
 ============================================================
 Pyrokinetic is a Psionicist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b41st Level: &+cdisperse flames (cap 100%)&n
@@ -18403,8 +18422,8 @@ Ragelord
 Ragelord - Last Edited: 2026-10-18
 ============================================================
 Ragelord is a Berserker specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Duergar Dwarf, Human, Minotaur, Mountain Dwarf, Orc, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+rDuergar&n, &+CHuman&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+c2h flaying (cap 95%)&n
@@ -18843,8 +18862,9 @@ Reaper
 Reaper - Last Edited: 2026-10-18
 ============================================================
 Reaper is a Necromancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Human, Kobold, Lich, Orc.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+CHuman&n, &+LKobold&n, &+LL&+mic&+Lh&n
+  &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h piercing (cap 95%), 1h slashing (cap 90%)&n
@@ -19041,8 +19061,8 @@ Red Dragon
 Red Dragon - Last Edited: 2026-10-18
 ============================================================
 Red Dragon is a Monk specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b46th Level: &+cfist of dragon (cap 100%)&n
@@ -19927,8 +19947,9 @@ Scoundrel
 Scoundrel - Last Edited: 2026-10-18
 ============================================================
 Scoundrel is a Bard specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+chide (cap 90%)&n
@@ -20307,8 +20328,9 @@ Shadowmage
 Shadowmage - Last Edited: 2026-10-18
 ============================================================
 Shadowmage is a Sorcerer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24361,8 +24383,10 @@ Swordsman
 Swordsman - Last Edited: 2026-10-18
 ============================================================
 Swordsman is a Warrior specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Centaur, Drider, Drow Elf, Duergar Dwarf, Firbolg, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Mountain Dwarf, Ogre, Orc, Thri-Kreen, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+yFir&+cbolg&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n
+  &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+bOgre&n, &+LOrc&n
+  &+GThri-&+YKreen&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+cbash (cap 70%)&n
@@ -24387,8 +24411,8 @@ Violator
 Violator - Last Edited: 2026-10-18
 ============================================================
 Violator is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+cdouble attack (cap 100%)&n
@@ -24420,8 +24444,9 @@ Zealot
 Zealot - Last Edited: 2026-10-18
 ============================================================
 Zealot is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Duergar Dwarf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Mountain Dwarf, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+ckick (cap 90%)&n
@@ -24453,8 +24478,8 @@ Storm Druid
 Storm Druid - Last Edited: 2026-10-18
 ============================================================
 Storm Druid is a Druid specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Centaur, Githzerai, Grey Elf, Halfling, Human, Mountain Dwarf, Tiefling.
+==Allowed races==
+&+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b25th Level: &+cshield block (cap 80%)&n
@@ -24479,8 +24504,9 @@ Spiritualist
 Spiritualist - Last Edited: 2026-10-18
 ============================================================
 Spiritualist is a Shaman specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Centaur, Drow Elf, Firbolg, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Ogre, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDrow Elf&n, &+yFir&+cbolg&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+bOgre&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24507,8 +24533,9 @@ Wildmage
 Wildmage - Last Edited: 2026-10-18
 ============================================================
 Wildmage is a Sorcerer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24532,8 +24559,9 @@ Wizard
 Wizard - Last Edited: 2026-10-18
 ============================================================
 Wizard is a Sorcerer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Minotaur, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n
+  &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+carcane block (cap 100%)&n
@@ -24559,8 +24587,9 @@ Water Magus
 Water Magus - Last Edited: 2026-10-18
 ============================================================
 Water Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24587,8 +24616,9 @@ Rogue Assassin
 Rogue Assassin - Last Edited: 2026-10-18
 ============================================================
 Assassin is a Rogue specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Grey Elf, Halfling, Human, Mountain Dwarf, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+c1h piercing (cap 100%), appraise (cap 90%), awareness (cap 70%)&n
@@ -24619,8 +24649,9 @@ Rogue Thief
 Rogue Thief - Last Edited: 2026-10-18
 ============================================================
 Thief is a Rogue specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Barbarian, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Grey Elf, Halfling, Human, Mountain Dwarf, Orc, Tiefling, Troll.
+==Allowed races==
+&+W*&n &+BBarbarian&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+cbackstab (cap 90%), circle (cap 100%), dirt toss (cap 100%)&n
@@ -24655,7 +24686,7 @@ Shadow Archer
 Shadow Archer - Last Edited: 2026-10-18
 ============================================================
 Shadow Archer is a Rogue specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -24682,8 +24713,8 @@ Ice Reaver
 Ice Reaver - Last Edited: 2026-10-18
 ============================================================
 Ice Reaver is a Reaver specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h bludgeon (cap 100%)&n
@@ -24710,8 +24741,8 @@ Earth Reaver
 Earth Reaver - Last Edited: 2026-10-18
 ============================================================
 Earth Reaver is a Reaver specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b30th Level: &+c1h bludgeon (cap 100%)&n
@@ -24739,8 +24770,8 @@ Storm Bringer
 Storm Bringer - Last Edited: 2026-10-18
 ============================================================
 Storm Bringer is a Blighter specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24763,8 +24794,8 @@ Scourge
 Scourge - Last Edited: 2026-10-18
 ============================================================
 Scourge is a Blighter specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24787,8 +24818,8 @@ Ruiner
 Ruiner - Last Edited: 2026-10-18
 ============================================================
 Ruiner is a Blighter specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drider, Drow Elf, Duergar Dwarf, Githyanki, Goblin, Orc.
+==Allowed races==
+&+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24810,7 +24841,7 @@ Shadowlord
 Shadowlord - Last Edited: 2026-10-18
 ============================================================
 Shadowlord is a Dreadlord specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -24834,8 +24865,9 @@ Tempest Magus
 Tempest Magus - Last Edited: 2026-10-18
 ============================================================
 Tempest Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n
+  &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24863,7 +24895,7 @@ Inquisitor
 Inquisitor - Last Edited: 2026-10-18
 ============================================================
 Inquisitor is a Avenger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -24885,7 +24917,7 @@ Medium
 Medium - Last Edited: 2026-10-18
 ============================================================
 Medium is a Theurgist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -24910,7 +24942,7 @@ Templar
 Templar - Last Edited: 2026-10-18
 ============================================================
 Templar is a Theurgist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -24935,7 +24967,7 @@ Thaumaturge
 Thaumaturge - Last Edited: 2026-10-18
 ============================================================
 Thaumaturge is a Theurgist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
+==Allowed races==
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
@@ -24960,8 +24992,9 @@ Controller
 Controller - Last Edited: 2026-10-18
 ============================================================
 Controller is a Summoner specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -24983,8 +25016,9 @@ Mentalist
 Mentalist - Last Edited: 2026-10-18
 ============================================================
 Mentalist is a Summoner specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -25009,8 +25043,9 @@ Naturalist
 Naturalist - Last Edited: 2026-10-18
 ============================================================
 Naturalist is a Summoner specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n
+  &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 None beyond the base-class registrations.
@@ -25035,8 +25070,8 @@ Dragon Hunter
 Dragon Hunter - Last Edited: 2026-10-18
 ============================================================
 Dragon Hunter is a Dragoon specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Grey Elf, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+c1h piercing (cap 95%)&n
@@ -25062,8 +25097,8 @@ Dragon Priest
 Dragon Priest - Last Edited: 2026-10-18
 ============================================================
 Dragon Priest is a Dragoon specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Drow Elf, Githyanki, Githzerai, Grey Elf, Tiefling.
+==Allowed races==
+&+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+c1h bludgeon (cap 70%)&n
@@ -25087,8 +25122,8 @@ Dragon Lancer
 Dragon Lancer - Last Edited: 2026-10-18
 ============================================================
 Dragon Lancer is a Dragoon specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
-==Race permission rows==
-Githyanki, Githzerai, Human, Orc, Tiefling.
+==Allowed races==
+&+W*&n &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+c1h flaying (cap 95%)&n
