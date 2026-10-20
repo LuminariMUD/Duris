@@ -22,6 +22,9 @@ HARNESS = r'''
 #include <iostream>
 
 bool training_dummy_capture_target_allowed(P_char) { return true; }
+// This fixture has no scheduled affects; snapshot capture still links their hooks.
+void event_short_affect(P_char, P_char, P_obj, void *) {}
+int ne_event_time(nevent_data *) { return 0; }
 
 index_data indexes[1] = {};
 P_index obj_index = indexes;
