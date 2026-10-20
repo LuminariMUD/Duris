@@ -1,7 +1,7 @@
 # Issue #169: Cleric rebalance implementation plan
 
-Status: implementation published for review; final qualification in progress, 2026-10-20.
-Production and balance acceptance remain open.
+Status: implementation complete and published for review, 2026-10-20.
+Owner review and separately authorized production acceptance remain open.
 Tracking: [issue #169](https://github.com/LuminariMUD/Duris/issues/169).
 Implementation branch: `branch/issue-169-cleric-rebalance`.
 Source baseline: [master `b81715f3a146`](https://github.com/LuminariMUD/Duris/commit/b81715f3a146388e91fd320e2070baef95a63cc7).
@@ -210,7 +210,7 @@ other material combat behavior; it cannot supply the missing balance evidence.
   both refresh orders, repeated recasts, partial dispel, removal/extraction,
   canceled old callbacks, and a scheduling failure without a permanent buff.
   Confirm unrelated effects and individual protection casts retain their behavior.
-- [ ] Prove remaining-time display and persistence. Existing
+- [x] Prove remaining-time display and persistence. Existing
   `src/core/files.c:updateShortAffects()` obtains event time before saving;
   snapshot capture copies affect duration and materialization uses the existing
   affect APIs. Trace the real callers and test flatfile and MariaDB
@@ -313,11 +313,12 @@ superseded by this integration.
   `docs/reference/NATIVE_ARTIFACT_PILOTS.md` and Healer capability text in
   `docs/reference/CLASS-POINTS.md`. Leave historical rankings and source snapshots
   unchanged. Keep published player news/help import for the authorized release.
-- [ ] Run help/progression contracts. Use disposable existing-character fixtures
-  for full/pending Vital and Miracle preparations, old ordinary protection
-  affects, new timed protections, trained Kick, and all Cleric specs across both
-  persistence backends. Preserve IDs and existing source attribution; add no
-  bulk SQL/pfile cleanup unless a demonstrated compatibility failure requires it.
+- [x] Help/progression contracts pass. Disposable existing-character fixtures
+  prove saved full/pending Vital/Miracle eligibility, restored Cleric specs,
+  buff order and timed protection save/copyover/restart/expiry on both backends.
+  Existing eligibility/runtime fixtures cover Kick, old ordinary protections and
+  both timer-unit transitions. Preserve IDs and source attribution; no bulk
+  player-data cleanup or migration was needed.
 
 ### W7 — Implementation verification and release follow-up
 
@@ -327,10 +328,10 @@ and wall-clock recovery campaign are removed from this task. Do not restart them
 in a continuation session without a new request. Existing focused ward timing
 regressions remain necessary correctness proof of the requested 240-second rate.
 
-- [ ] Complete the narrow saved-spell/aura/buff/timer journey on disposable
+- [x] Complete the narrow saved-spell/aura/buff/timer journey on disposable
   flatfile and MariaDB backends. Record source and binary identity and actual
   results; this verifies implementation and persistence, not balance.
-- [ ] Publish final qualification and the current handoff, verify PR head/base,
+- [x] Publish final qualification and the current handoff, verify PR head/base,
   remote parity and a clean task worktree. Leave the implementation ready for
   review without merging or deploying it.
 - [ ] After separately authorized deployment, record the deployed revision and
@@ -420,15 +421,18 @@ All gameplay implementation is committed and pushed. Review the stack in order:
    `416a388e2`, base #224 branch.
 5. [#227](https://github.com/LuminariMUD/Duris/pull/227), short-affect GMCP
    duration: `aa2a3ccc7`, base #225 branch.
+6. [#229](https://github.com/LuminariMUD/Duris/pull/229), narrow implementation
+   regression and final handoff, base #227 branch. Qualification commit
+   `9a0a9bbda`; subsequent handoff-only update records the MariaDB pass.
 
 The superseded aura-only [#226](https://github.com/LuminariMUD/Duris/pull/226) is
 closed; its corrected implementation is folded into #222. Dependent branches
-include that repair using merges, preserving published history. All five active
+include that repair using merges, preserving published history. All six active
 PRs are open/non-draft. All five material review threads are resolved after
 publication and focused regression proof; the #223 display repair is in #227. No merge, release tag, production operation, or issue
 closure has occurred. Release tags belong to an accepted release.
 
-Qualification uses the isolated worktree
+Completed qualification uses the isolated worktree
 `/home/aiwithapex/projects/duris-issue169-qualification`, branch
 `branch/issue-169-qualification-proof`, based on `aa2a3ccc7`. The original shared
 checkout's unrelated documentation edits are preserved. Use the explicit
@@ -517,25 +521,30 @@ python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_cler
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_new --backend mariadb --output bin/cleric-mariadb-qualification.json
 ```
 
-Flatfile journey passed in full on the final gameplay binary: saved Vital denial;
+Both flatfile and MariaDB journeys passed on the final gameplay binaries: saved Vital denial;
 Healer-only activation; staff and ordinary aura removal; Miracle 35 denial/36
 success; True Seeing 45 denial/46 success; Miracle/Tsunami upgrade 144 to 204;
 10 HP becomes 70 HP while standing; stronger level-62 Vitality is preserved;
 self-only Warding; all seven timers save/copyover/restart at 2,620 -> 2,601 ->
 2,590 remaining pulses; restored shortened test timers expire. Component proof
-separately checks the real 2,640-pulse duration. MariaDB journey is running and
-must be recorded separately when it finishes. Fixture
-corrections: canonical permanent prepared flags/duration -1; both mini/generated
-object inputs; explicit wield/tap; `score` for affect display; canonical saved
-training. The actual staff command is `resetspec`, not the C++ handler name. The discarded offense fixture had NPC interruption/resistance controls;
-it is not part of the delivered checks. No gameplay safeguard was weakened.
+separately checks the real 2,640-pulse duration. Both backends produced identical
+remaining-time sequences and passed ordinary unspecialization and restored expiry.
+Results are `bin/cleric-{flatfile,mariadb}-qualification.json`; transcripts use
+the corresponding `.log` paths. Both runs exited zero and cleaned their servers
+and disposable database authorities.
+
+Fixture saved preparations use canonical permanent flags and duration -1.
+The final restored-expiry leg shortens only disposable saved timers to 40 pulses;
+it verifies materialization/expiry while the scheduler regression proves the
+2,640-pulse contract. No gameplay safeguard was weakened.
 
 ### Remaining acceptance
 
-Finish the running-server checks, record actual results here, publish the
-qualification PR, and read back exact PR head/base and remote parity. Preserve
-unverified checklist items explicitly. Do not start unrelated cleanup or a new
-balance service.
+Implementation, local builds, focused regressions, both persistence journeys and
+publication are complete. All six PR bases/heads and remote parity were read
+back; the task worktree is clean after publication. No CI wait is required by
+repository instructions. Normal owner review remains required. No full burn-in
+or production deployment was run.
 
 The owner explicitly excluded balance measurements from this task. Do not claim
 that implementation checks establish competitive balance, and do not expand this
