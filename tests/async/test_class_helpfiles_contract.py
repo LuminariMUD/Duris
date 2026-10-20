@@ -220,8 +220,9 @@ for kind, section in (("SONG", "Songs"), ("INSTRUMENT", "Instruments")):
 minstrel_help = parsed_map["minstrel"][1]
 song_changes = re.search(r"==Song changes==\n(.*?)(?=\n==|\Z)", minstrel_help, re.S)
 assert song_changes, "Missing Minstrel song progression"
-listed = {name: (int(level), int(cap)) for name, level, cap in re.findall(
-    r"(?m)^([^\n:]+): level (\d+), skill cap (\d+)%$", song_changes[1])}
+listed = {name: (int(level), int(cap)) for level, name, cap in re.findall(
+    r"(?m)^&\+b(\d+)(?:st|nd|rd|th) Level: &\+c(.+?) \(cap (\d+)%\)&n$",
+    song_changes[1])}
 assert minstrel_grants and listed == minstrel_grants, "Minstrel songs differ from skills.c"
 
 # These specialization bonuses are implemented in fight.c, outside grant tables.
