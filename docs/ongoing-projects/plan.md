@@ -629,3 +629,16 @@ acceptance and publication of the website changelog require their normal separat
 authorization. The full MariaDB game-server/browser journey and full burn-in were
 not part of this focused local qualification; the normal server build and isolated
 account-projection MariaDB behavior check are the database-side evidence here.
+
+### Moving-master integration
+
+Master advanced during publication to `6a323feaab1a` (locker named-entry repairs
+and the updated player MOTD). The first PR merged that current base, then each
+child merged its updated parent, preserving all published history and the linear
+review dependency order. No history was rewritten. The combined tree is being
+qualified with both server builds and the full-world creation journey.
+
+The standalone stat-choice journey now acquires the existing verified flat-file
+build when no `--binary` override is supplied. Its documented direct command
+therefore does not assume that the normal MariaDB-enabled `bin/server/dms_new`
+has been replaced manually; all generated test builds remain below `bin/`.

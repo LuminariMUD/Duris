@@ -10,7 +10,7 @@ import struct
 import subprocess
 import time
 
-from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD, ROOT
+from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD, ROOT, build_flatfile_server
 import test_creation_prompt_journey as telnet
 from test_creation_prompt_journey import reboot
 from test_flatfile_combat_journey import make_overlord
@@ -289,12 +289,13 @@ def run_telnet(binary, inspector, method, *, full_world=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=ROOT / "bin/server/dms_new")
+    parser.add_argument("--binary", type=Path, help="use an already-built flat-file server")
     parser.add_argument("--full-world", action="store_true", help="qualify the actual tutorial rooms and world")
     args = parser.parse_args()
+    binary = args.binary.resolve() if args.binary else build_flatfile_server(ROOT / "bin/tests/stat-choice/flatfile-build")
     inspector = ROOT / "bin/tests/stat-choice/inspector"
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector", str(inspector)], cwd=ROOT, check=True)
     for method in ("default", "advanced"):
-        run_telnet(args.binary.resolve(), inspector, method, full_world=args.full_world)
+        run_telnet(binary, inspector, method, full_world=args.full_world)
     for method, legacy in (("default", False), ("advanced", False), ("default", True)):
-        run(args.binary.resolve(), inspector, method, legacy=legacy, full_world=args.full_world)
+        run(binary, inspector, method, legacy=legacy, full_world=args.full_world)
