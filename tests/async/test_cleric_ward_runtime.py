@@ -205,6 +205,25 @@ int main() {
         assert(ch.points.ward == expected);
         printf("Group Heal size=%d ward_refill=%d\n", size, expected);
     }
+    init(ch);
+    affected_type white{}; white.type = AURA_HEALING; white.modifier = 56;
+    affected_type excluded{}; excluded.next = &white;
+    ch.specials.affected_by3 |= AFF3_PALADIN_AURA;
+    for (int type : {0, SPELL_ACCEL_HEALING, SKILL_REGENERATE}) {
+        ch.points.hit = ch.points.ward = 0;
+        excluded.type = type;
+        ch.affected = type ? &excluded : &white;
+        ch.specials.affected_by4 = type ? 0 : AFF4_REGENERATION;
+        heal(&ch, &ch, 100, ch.points.max_hit);
+        assert(ch.points.hit == 120 && ch.points.ward == 12);
+    }
+    ch.specials.affected_by4 = 0;
+    ch.affected = &white;
+    ch.points.hit = ch.points.ward = 0;
+    heal(&ch, &ch, 100, ch.points.max_hit);
+    assert(ch.points.hit == 133 && ch.points.ward == 13);
+    ch.affected = nullptr;
+    ch.specials.affected_by3 = 0;
     ch.points.ward = 995;
     ch.points.hit = 0;
     heal(&ch, &ch, 1000, ch.points.max_hit);
