@@ -11888,7 +11888,7 @@ group heal: circle 10
 healing salve: circle 6
 regeneration: circle 8
 ==Innate additions==
-aura_of_healing: level 1
+aura_of_improved_healing: level 1
 *warding faith: level 30
 The white Improved Healing aura unlocks when you specialize at level 30.
 All ordinary Cleric offensive spells and sixth-circle Negative Energy Barrier remain available, with their normal restrictions.

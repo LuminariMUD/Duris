@@ -136,4 +136,12 @@ for title in ("minstrel", "blademaster", "swashbuckler"):
     index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
     assert index_body == parsed_body, f"Divergent specialization help source body for {title}"
 
+# Healer instructions must name the command registered by the innate dispatcher.
+healing_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_healing\s*\}',
+                         (SRC / "innates.c").read_text())
+assert healing_aura, "Healing aura command registration is missing"
+for entries in (parsed_map, index_map):
+    assert f"{healing_aura[1]}: level 1" in entries["healer"][1], \
+        "Healer help must use the registered healing aura command"
+
 print("All 30 class help files, Bard progression, and specialization help contracts passed!")
