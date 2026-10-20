@@ -80,11 +80,11 @@ def create_character(client: journey.MudClient) -> None:
     client.send("g")
     client.expect("Your selection")
     client.send("p")
-    client.expect("Press return to continue")
+    client.expect("Your stat rolling system [D]:")
     client.send("")
-    for label in ("first bonus", "second bonus", "third bonus", "fourth bonus"):
+    for label, stat in zip(("first bonus", "second bonus", "third bonus", "fourth bonus"), "sdal"):
         client.expect(label)
-        client.send("s")
+        client.send(stat)
     client.expect("swap stats")
     client.send("n")
     client.expect("keep this character")

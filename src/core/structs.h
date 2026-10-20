@@ -1676,12 +1676,13 @@ struct txt_q
 #define CON_ACCT_RESET_CODE 90 // account recovery: waiting for the emailed code (or CANCEL)
 #define CON_ACCT_RESET_NEWPW 91 // account recovery: waiting for the new password
 #define CON_ACCT_RESET_NEWPW2 92 // account recovery: waiting for the confirmation
+#define CON_STAT_METHOD 93 // choose starting stat distribution before rolling
 
 #define PLAYER_LOAD_MODE_NONE 0
 #define PLAYER_LOAD_MODE_ACCOUNT 1
 #define PLAYER_LOAD_MODE_ACCOUNT_DELETE 3
 
-#define TOTAL_CON 92
+#define TOTAL_CON 93
 
 /* modes of confirmation- SAM 7-94 */
 #define CONFIRM_NONE 0

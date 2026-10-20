@@ -19,7 +19,7 @@ assert "#define WAIT_SEC 4" in config
 assert "point->wait > 240" in short_bucket
 assert "point->wait > 2400" in creation_bucket
 
-for state in ("CON_APPROPRIATE_NAME", "CON_NAME_CONF", "CON_GET_SEX"):
+for state in ("CON_APPROPRIATE_NAME", "CON_NAME_CONF", "CON_GET_SEX", "CON_STAT_METHOD"):
     assert state not in short_bucket, f"{state} still times out after one minute"
     assert state in creation_bucket, f"{state} is not covered by the ten-minute timeout"
 
