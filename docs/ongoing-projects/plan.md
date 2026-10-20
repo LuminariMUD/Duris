@@ -377,7 +377,7 @@ python3 tests/async/test_tick_work_spread.py
 python3 tests/async/test_psp_move_regen.py
 python3 tests/async/test_cleric_ward_runtime.py
 python3 tests/async/test_gui_gmcp_contract.py
-python3 tests/async/test_gmcp_prompt.py
+python3 tests/async/test_gmcp_prompt_regressions.py
 python3 tests/async/test_nevent_scheduler_runtime.py
 python3 tests/async/test_nevent_cancellation_runtime.py
 python3 tests/async/test_native_artifact_runtime.py
@@ -386,9 +386,9 @@ python3 tests/async/test_healing_spell_precedence_runtime.py
 python3 tests/async/test_class_helpfiles_contract.py
 python3 tests/async/test_player_snapshot_capture.py
 python3 tests/async/test_documentation_contract.py
-make -C src -j4
-make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_cleric_flatfile
-./scripts/format.sh --check
+make -C src -j12
+make -C src -j12 PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_cleric_flatfile
+./scripts/format.sh --check --rev origin/branch/issue-169-tsunami-vitality
 git diff --check
 ```
 
@@ -412,31 +412,33 @@ items above complete during this planning publication.
 All gameplay implementation is committed and pushed. Review the stack in order:
 
 1. [#222](https://github.com/LuminariMUD/Duris/pull/222), access/progression and
-   Healer aura lifecycle: `54381c26c`, base `master`.
+   Healer aura lifecycle: `985ea366a`, base `master`.
 2. [#223](https://github.com/LuminariMUD/Duris/pull/223), timed self-only Warding
-   and remaining-time snapshots: `bcdbc5b05`, base #222 branch.
+   and remaining-time snapshots, including GMCP countdowns: `edb488c8e`, base #222 branch.
 3. [#224](https://github.com/LuminariMUD/Duris/pull/224), passive recovery and
-   effective-healing refill: `2810635e0`, base #223 branch.
+   effective-healing refill: `403096deb`, base #223 branch.
 4. [#225](https://github.com/LuminariMUD/Duris/pull/225), both Tsunami paths:
-   `416a388e2`, base #224 branch.
-5. [#227](https://github.com/LuminariMUD/Duris/pull/227), short-affect GMCP
-   duration: `aa2a3ccc7`, base #225 branch.
-6. [#229](https://github.com/LuminariMUD/Duris/pull/229), narrow implementation
-   regression and final handoff, base #227 branch. Qualification commit
-   `9a0a9bbda`; subsequent handoff-only update records the MariaDB pass.
+   `8ce856948`, base #224 branch.
+5. [#229](https://github.com/LuminariMUD/Duris/pull/229), narrow implementation
+   regression and final handoff, base #225 branch.
 
 The superseded aura-only [#226](https://github.com/LuminariMUD/Duris/pull/226) is
-closed; its corrected implementation is folded into #222. Dependent branches
-include that repair using merges, preserving published history. All six active
-PRs are open/non-draft. All five material review threads are resolved after
-publication and focused regression proof; the #223 display repair is in #227. No merge, release tag, production operation, or issue
-closure has occurred. Release tags belong to an accepted release.
+closed; its corrected implementation is folded into #222. The countdown repair
+and tests from [#227](https://github.com/LuminariMUD/Duris/pull/227) are folded into
+#223, and #227 is closed as superseded. All five active PRs remain open/non-draft.
+They were rebased sequentially onto master `2315cb687` with explicit leases,
+removing integration merges without duplicating repairs. That master includes
+the already-merged retention documentation PR #228. No gameplay merge, release
+tag, production operation or issue closure has occurred. Release tags belong to
+an accepted release. Merge in the listed order and rebase/retarget each successor
+onto master after its predecessor is squash-merged, excluding the old parent
+branch's commits so the predecessor is not replayed.
 
-Completed qualification uses the isolated worktree
-`/home/aiwithapex/projects/duris-issue169-qualification`, branch
-`branch/issue-169-qualification-proof`, based on `aa2a3ccc7`. The original shared
-checkout's unrelated documentation edits are preserved. Use the explicit
-worktree path for commands; the app cannot attach this UNC worktree.
+This review pass uses the isolated worktree
+`/home/aiwithapex/projects/duris-pr-review`; its detached HEAD publishes to
+`branch/issue-169-qualification-proof`. Existing checkouts and local branches
+are preserved; they may still refer to the pre-rebase history. Use this explicit
+worktree for the recorded binaries and evidence.
 
 Qualification changes extend the existing flatfile inspector, add one narrow disposable
 server journey, and check incoming white-aura exclusions. They reuse the current
@@ -455,17 +457,21 @@ The substantive access/Tsunami review findings were reproduced and fixed:
   runs before position is observed: 10 HP with a 144-point buff becomes 70 HP
   after upgrading to 204. The Aramus crown object link remains intact, and real
   link removal still removes that affect. Both pilot modes pass ASan/UBSan.
-- The GMCP finding on #223 is addressed by dependent #227. The old serializer
+- The GMCP finding is addressed directly in #223 using the repair from #227. The old serializer
   reported 158,400 seconds for 2,640 pulses. It now reports 660 then 430 seconds
   from the expiry event and preserves ordinary duration display. Divine Warding
   publishes its final state after all seven timers exist.
 
-Final focused checks passed on assembled source `aa2a3ccc7`: progression,
+Focused checks passed on the rebased stack: progression,
 saved-spell eligibility, Cleric utility timing, Cleric ward runtime, aura cleanup,
 GUI GMCP serialization, player snapshot capture, tick work spread, PSP/movement
 regeneration, scheduler and cancellation, native artifacts, Holy Sacrifice/vamp
 cap, healing precedence, GMCP prompt, class help and documentation (14 cases).
 Commands are listed above. Final fixture formatting and whitespace pass.
+The aura regression now executes the real purge function and checks outgoing
+links and event cancellation. The Python 3.11 review finding in #229 was
+reproduced with Python 3.11.14; changing the two SQL f-strings' outer quotes
+preserves the queries and allows compilation and `--help` on that interpreter.
 
 Evidence boundaries:
 
@@ -489,19 +495,15 @@ Evidence boundaries:
 
 ### Builds and running-server qualification
 
-Both final native builds passed using the commands above. Built source is
-`aa2a3ccc7`; subsequent changes are test/doc only. SHA-256:
+Both native builds passed on the rebased #225 source `8ce856948`; #229 changes
+only tests and documentation. The native source and binary hashes match the
+previously qualified assembled implementation. SHA-256:
 
 - MariaDB `bin/server/dms_new`:
   `795e8b0d1f229b562d2b687b53c75c24d4c53ed0389a8fbf9610101b8bc1b6dd`.
 - Flatfile `bin/server/dms_cleric_flatfile`:
   `1928dde1dd373977da01a34e30d2b75a4d4c93e7e00e48cd69a624d22718ed47`.
-- Baseline `b81715f3a146`, `bin/server/dms_cleric_baseline`:
-  `38ec98a1711b7d5ecc0ff50c554fbd4eea4d12376b860a8c5234ec64eea12d84`.
-  The clean temporary baseline worktree was removed after the owner excluded
-  measurements. The ignored binary is retained only as historical evidence.
-
-Build logs are ignored `bin/cleric-final-{mariadb,flatfile}-build.log`.
+Build logs are ignored `bin/cleric-review-{mariadb,flatfile}-build.log`.
 Runtime JSON/transcripts also stay under ignored `bin/`; no credentials, player
 data or generated outputs belong in commits.
 
@@ -517,8 +519,10 @@ Current command-level qualification:
 
 ```sh
 python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/cleric-inspector
-python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_cleric_flatfile --output bin/cleric-flatfile-qualification.json
-tests/async/with_disposable_mariadb.sh python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_new --backend mariadb --output bin/cleric-mariadb-qualification.json
+uv run --no-project --python 3.11 python -m py_compile tests/async/run_cleric_rebalance_journey.py
+uv run --no-project --python 3.11 python tests/async/run_cleric_rebalance_journey.py --help
+uv run --no-project --python 3.11 python tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_cleric_flatfile --output bin/cleric-review-flatfile.json
+tests/async/with_disposable_mariadb.sh uv run --no-project --python 3.11 python tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_new --backend mariadb --output bin/cleric-review-mariadb.json
 ```
 
 Both flatfile and MariaDB journeys passed on the final gameplay binaries: saved Vital denial;
@@ -529,7 +533,7 @@ self-only Warding; all seven timers save/copyover/restart at 2,620 -> 2,601 ->
 2,590 remaining pulses; restored shortened test timers expire. Component proof
 separately checks the real 2,640-pulse duration. Both backends produced identical
 remaining-time sequences and passed ordinary unspecialization and restored expiry.
-Results are `bin/cleric-{flatfile,mariadb}-qualification.json`; transcripts use
+Results are `bin/cleric-review-{flatfile,mariadb}.json`; transcripts use
 the corresponding `.log` paths. Both runs exited zero and cleaned their servers
 and disposable database authorities.
 
@@ -541,7 +545,7 @@ it verifies materialization/expiry while the scheduler regression proves the
 ### Remaining acceptance
 
 Implementation, local builds, focused regressions, both persistence journeys and
-publication are complete. All six PR bases/heads and remote parity were read
+publication are complete. All five active PR bases/heads and remote parity were read
 back; the task worktree is clean after publication. No CI wait is required by
 repository instructions. Normal owner review remains required. No full burn-in
 or production deployment was run.

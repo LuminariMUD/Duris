@@ -63,11 +63,11 @@ def seed_cleric(sql, inspector, state, pid, spec, level):
     for number in SPELLS:
         sql(f'INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{number},100,100)')
         for _ in range(2 if number in (spell_id('SPELL_DIVINE_WARDING'),spell_id('SPELL_MIRACLE')) else 1):
-            sql(f'INSERT INTO player_affects(pid,type,duration,flags,modifier) VALUES({pid},{spell_id('TAG_MEMORIZE')},-1,{MEM_STORE | MEM_FULL},{number})')
+            sql(f"INSERT INTO player_affects(pid,type,duration,flags,modifier) VALUES({pid},{spell_id('TAG_MEMORIZE')},-1,{MEM_STORE | MEM_FULL},{number})")
     for number in (spell_id('SKILL_SPELL_KNOWLEDGE_CLERICAL'), spell_id('SKILL_QUICK_CHANT'), spell_id('SKILL_CONCENTRATION')):
         sql(f'INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{number},100,100) ON DUPLICATE KEY UPDATE learned=100,taught=100')
     for number in (spell_id('SPELL_VITAL_INTERCESSION'), spell_id('SPELL_MIRACLE')):
-        sql(f'INSERT INTO player_affects(pid,type,duration,flags,modifier) VALUES({pid},{spell_id('TAG_MEMORIZE')},-1,{MEM_STORE},{number})')
+        sql(f"INSERT INTO player_affects(pid,type,duration,flags,modifier) VALUES({pid},{spell_id('TAG_MEMORIZE')},-1,{MEM_STORE},{number})")
 
 
 def run(binary, backend, inspector):
