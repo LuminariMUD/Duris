@@ -1,6 +1,6 @@
 # Issue #169: Cleric rebalance implementation plan
 
-Status: planning only, 2026-10-20. Gameplay implementation and acceptance remain open.
+Status: implementation in progress, 2026-10-20. Production and balance acceptance remain open.
 Tracking: [issue #169](https://github.com/LuminariMUD/Duris/issues/169).
 Implementation branch: `branch/issue-169-cleric-rebalance`.
 Source baseline: [master `b81715f3a146`](https://github.com/LuminariMUD/Duris/commit/b81715f3a146388e91fd320e2070baef95a63cc7).
@@ -57,7 +57,7 @@ Divine Warding needs event-safe refresh; ward recovery needs fractional rate
 handling; Tsunami has two real callers and currently cannot strengthen an existing
 Vitality affect. Solve those paths directly, without broad cleanup.
 
-This publication authorizes the plan and branch only. Production deployment,
+The current implementation request authorizes local development and review-ready PRs. Production deployment,
 property reload, help import, restart, and live account changes require separate
 operational authorization. Repository-required local checks take precedence over
 the issue's older instruction to wait for CI.
@@ -159,14 +159,14 @@ other material combat behavior; it cannot supply the missing balance evidence.
 
 ### W1 — Spell access, progression, and retained Intercession
 
-- [ ] In `src/classes/skills.c`, remove only Vital Intercession's Holyman grant;
+- [x] In `src/classes/skills.c`, remove only Vital Intercession's Holyman grant;
   retain its ID, handler, shared helpers, and Holy's circle-10 grant. Retain
   existing Vital affects until their ordinary expiry; prohibit preparing or
   casting new copies through normal Cleric access, including saved prepared ones.
   Preserve internal/item/NPC uses unless a traced path bypasses this requirement.
-- [ ] Set Cleric Miracle to circle 8 and True Seeing to circle 10, leaving
+- [x] Set Cleric Miracle to circle 8 and True Seeing to circle 10, leaving
   underlying buffs and other classes' access unchanged.
-- [ ] Remove the 13 Healer offensive exclusions: Cause Light (circle 1); Cause
+- [x] Remove the 13 Healer offensive exclusions: Cause Light (circle 1); Cause
   Serious (2); Cause Critical, Earthquake, Dispel Evil, Dispel Good (3); Destroy
   Undead (5); Harm and Flame Strike (6); Holy Word and Unholy Word (9); Full Harm
   and Taint (10). Restore Negative Energy Barrier at circle 6 and Kick's ordinary
@@ -220,7 +220,7 @@ other material combat behavior; it cannot supply the missing balance evidence.
 
 ### W3 — Healer's existing white aura
 
-- [ ] Add `ADD_CLASS_INNATE(INNATE_AURA_HEALING, CLASS_CLERIC, 1, SPEC_HEALER)`
+- [x] Add `ADD_CLASS_INNATE(INNATE_AURA_HEALING, CLASS_CLERIC, 1, SPEC_HEALER)`
   alongside the existing class/spec grants. The real unlock is specialization
   at level 30. Leave the Paladin level-30 grant and aura coefficient unchanged.
 - [ ] Exercise the innate command as an ordinary Cleric, Healer, Holyman,
@@ -398,3 +398,29 @@ preserved #166 file matches the baseline, create the linked issue-development
 branch from refreshed master, commit only these two plan files, push, and read
 back the remote commit and issue linkage. Do not mark the implementation work
 items above complete during this planning publication.
+
+## Implementation handoff — 2026-10-20
+
+The worktree started clean at `808d45117`; refreshed `origin/master` remains
+`b81715f3a`. The revised issue discussion was rechecked. No existing PR uses this
+branch. First delivery: W1 grant changes and W3 Healer aura entitlement, with
+matching help and executable eligibility proof. Outcome: preserve existing spell
+and aura mechanics while changing only access/progression. Non-goals: production
+operations and global spell/aura changes. Files: class grant tables, maintained
+help, capability reference and existing focused tests. Proof: source-derived
+grants through actual eligibility functions, aura cleanup, help contracts and
+required native build. Further runtime journeys remain explicit open gates below.
+
+Ablation: no migration, new balance framework or spell implementation is needed
+for grant-table changes. Existing saved-spell eligibility already checks current
+circles before honoring a full prepared slot; extend that proof for #169.
+
+First chunk validation passed: `make -C src -j4` (MariaDB development binary),
+`test_memorized_spell_eligibility.py` (ASan/UBSan, source-derived grants and real
+eligibility/innate functions), `test_cleric_spell_progression.py`,
+`test_paladin_aura_cleanup.py`, `test_class_helpfiles_contract.py`,
+`test_documentation_contract.py` (14 cases), `./scripts/format.sh --check`, and
+`git diff --check`. Exact build output: ignored `bin/cleric-build.log`.
+No release tag is appropriate for an unmerged gameplay change.
+W1 command/combat and W3 group/lifetime journeys remain open; the tests above do
+not claim that coverage. Next implementation chunk is W2.

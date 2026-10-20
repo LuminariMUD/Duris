@@ -12,7 +12,8 @@ for block in re.split(r"\n\s*SPELL_CREATE", source)[1:]:
     if name and assignment:
         circles[name[1]] = int(assignment[1])
 
-assert circles["miracle"] == 7, "Clerics must receive Miracle at seventh circle"
+assert circles["miracle"] == 8, "Clerics must receive Miracle at level 36/eighth circle"
+assert circles["true seeing"] == 10
 assert circles["divine warding"] == 11
 assert circles["mass purification"] == 12
 assert circles["mass preserve"] == 6
@@ -49,7 +50,7 @@ for path in ("help/duris_help_parsed.hlp",
             if name.strip():
                 assert name.strip() not in listed, (path, name)
                 listed[name.strip()] = int(match[1])
-    for name in ("miracle", "mass preserve", "divine warding", "mass purification"):
+    for name in ("miracle", "true seeing", "mass preserve", "divine warding", "mass purification"):
         assert listed[name] == circles[name], (path, name)
     full_help = (ROOT / path).read_text().lower()
     assert "cast 'divine warding'" in full_help, path
