@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute the who summary/visibility and both public status producers."""
+"""Execute who visibility, copyover population recovery and public status producers."""
 
 from _paths import ROOT, SRC, extract_function
 from pathlib import Path
@@ -13,24 +13,69 @@ summary = who[start:end]
 # The command still applies the real visibility rule before constructing its list.
 assert 'if (!who_visible_to(ch, tch)' in who
 assert 'max_descs_this_hour' not in who
+recover = extract_function('copyover.c', 'int copyover_recover(')
+restore_start = recover.index('\t// restore descriptors')
+restore = recover[restore_start:recover.index('\n\tif (header.version >= 15)', restore_start)]
 
 harness = r'''
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
 #include "persistence/maintenance_snapshot.h"
+#include "persistence/copyover.h"
+#include "core/mm.h"
+#include "net/ttype.h"
 #include <cassert>
 #include <cstring>
 #include <string>
+#include <sys/socket.h>
+#include <netinet/tcp.h>
+#include <unistd.h>
 
 int max_descs = 42;
 int curr_ingame_good = 0, curr_ingame_evil = 0;
+int max_ingame_good = 0, max_ingame_evil = 0;
+P_desc descriptor_list = nullptr;
+P_char character_list = nullptr;
+mm_ds *dead_desc_pool = nullptr;
+int used_descs = 0, top_of_world = 0;
+char_data restored[6] = {};
 long boot_time = 0;
 time_info_data time_info = {};
 const char *weekdays[] = { "day", "day", "day", "day", "day", "day", "day" };
 const char *month_name[] = { "month" };
 time_info_data real_time_passed(time_t, time_t) { return {}; }
-void logit(const char *, const char *, ...) { assert(false); }
+void logit(const char *, const char *, ...) {}
+void *_mm_get(mm_ds *, const char *, int) { return new descriptor_data{}; }
+void mm_release(mm_ds *, void *d) { delete static_cast<P_desc>(d); }
+void nonblock(int) {}
+void check_cp437(P_desc) {}
+void account_read(P_desc d, const char *, account_read_done done) { done(d, true, nullptr); }
+bool char_to_room(P_char ch, int room, int) { ch->in_room = room; return true; }
+void player_load_pets_place(P_char) {}
+void epic_bonus_hydrate(P_char) {}
+bool start_hatred_check(P_char) { return true; }
+void raw_write_to_fd(int, const char *) {}
+P_char copyover_load_player(const char *name, P_desc, std::string *) {
+    for (auto &ch : restored)
+        if (!strcmp(GET_NAME(&ch), name)) return &ch;
+    return nullptr;
+}
+
+@UPDATE_POPULATION@
+
+bool restore_descriptors(FILE *fp, int count) {
+    copyover_header header = {};
+    header.num_descriptors = count;
+    copyover_desc desc_entry = {};
+    P_desc d;
+    P_char ch;
+    int i, save_room;
+    @RESTORE@
+    return true;
+copyover_recover_fail:
+    return false;
+}
 
 @MORPH@
 @VISIBLE@
@@ -78,6 +123,53 @@ int main()
         }
     }
     curr_ingame_good = curr_ingame_evil = 0;
+    // Exercise the production recovery loop with live sockets, both factions,
+    // the mortal/staff boundary, an invalid socket and a failed player load.
+    FILE *image = tmpfile();
+    assert(image);
+    int peers[7];
+    for (int i = 0; i < 7; ++i) {
+        int sockets[2];
+        assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+        peers[i] = sockets[1];
+        copyover_desc entry = {};
+        entry.fd = sockets[0];
+        snprintf(entry.player_name, sizeof(entry.player_name), "player%d", i);
+        if (i < 6) {
+            restored[i].player.name = strdup(entry.player_name);
+            restored[i].player.level = i < 4 ? MINLVLIMMORTAL - 1 : MINLVLIMMORTAL;
+            GET_RACEWAR(&restored[i]) = i % 2 == 0 ? RACEWAR_GOOD : RACEWAR_EVIL;
+        }
+        assert(fwrite(&entry, sizeof(entry), 1, image) == 1);
+    }
+    copyover_desc invalid = {};
+    invalid.fd = -1;
+    assert(fwrite(&invalid, sizeof(invalid), 1, image) == 1);
+    rewind(image);
+    assert(restore_descriptors(image, 8));
+    fclose(image);
+    assert(used_descs == 6 && curr_ingame_good == 2 && curr_ingame_evil == 2);
+    assert(max_ingame_good == 2 && max_ingame_evil == 2);
+    assert(summary(&good) == ordinary + "There are &+Revil(s)&N online.\n");
+    assert(summary(&evil) == ordinary + "There are &+Ygood(s)&N online.\n");
+    assert(summary(&staff) == trusted);
+    for (int i = 0; i < 4; ++i) {
+        assert(restored[i].desc && STATE(restored[i].desc) == CON_PLAYING);
+        update_ingame_racewar(-GET_RACEWAR(&restored[i]));
+    }
+    assert(curr_ingame_good == 0 && curr_ingame_evil == 0);
+    assert(summary(&good) == ordinary && summary(&evil) == ordinary);
+    update_ingame_racewar(RACEWAR_EVIL);
+    assert(summary(&good) == ordinary + "There are &+Revil(s)&N online.\n");
+    update_ingame_racewar(-RACEWAR_EVIL);
+    while (descriptor_list) {
+        P_desc d = descriptor_list;
+        descriptor_list = d->next;
+        close(d->descriptor);
+        delete d;
+    }
+    for (int fd : peers) close(fd);
+    for (auto &ch : restored) free(ch.player.name);
     for (int peak : { 0, 1, 99 }) {
         max_descs = peak;
         assert(summary(&good) == ordinary);
@@ -105,6 +197,8 @@ for marker, code in {
     '@STATUS@': extract_function('maintenance_snapshot.c', 'bool prepare_web_status('),
     '@LEGACY@': extract_function('actinf.c', 'void web_info('),
     '@SUMMARY@': summary,
+    '@UPDATE_POPULATION@': extract_function('nanny.c', 'void update_ingame_racewar('),
+    '@RESTORE@': restore,
 }.items():
     harness = harness.replace(marker, code)
 

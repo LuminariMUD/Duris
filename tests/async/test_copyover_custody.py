@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,6 +49,9 @@ for signature in (
 support = support.replace("bool fallback_fixture = false;", "bool fallback_fixture = false;\nbool restoring_npc_items = false;")
 support = support.replace("return vnum == 2000 ? 0 : -1;", "return vnum == 2000 || vnum == 1255 ? 0 : -1;")
 support = support.replace("void obj_to_room(P_obj object, int room)\n{", "void obj_to_room(P_obj object, int room)\n{\n    assert(!(restoring_npc_items && object->obj_uid>=910 && object->obj_uid<=914));")
+support += '\nint curr_ingame_good = 0, curr_ingame_evil = 0;\n'
+support += 'int max_ingame_good = 0, max_ingame_evil = 0;\n'
+support += extract_function('nanny.c', 'void update_ingame_racewar(')
 
 HARNESS = r'''
 P_obj read_object_for_creation(int, int) { std::abort(); }

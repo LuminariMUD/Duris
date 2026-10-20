@@ -39,7 +39,9 @@ staff-only, not public statistics.
 
 Verification: `python3 tests/async/test_mssp_runtime.py` executes the production
 Telnet parser and responder; `python3 tests/async/test_public_population.py`
-executes the production visibility rule, command summary and both report
-producers with synthetic populations. The latter is not a complete login/gameplay
-journey. Run `make -C src` as well. These tests do not establish deployment;
+executes the production visibility rule, command summary, copyover descriptor
+recovery and both report producers with synthetic populations. Recovery checks
+cover both factions, staff exclusion, failed restores and later logout/login
+counter updates. The latter is not a complete login/gameplay journey.
+Run `make -C src` as well. These tests do not establish deployment;
 prepared PRs do not alter a running server.
