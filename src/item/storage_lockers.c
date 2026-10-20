@@ -2739,7 +2739,6 @@ struct locker_entry
 	std::string locker, visitor;
 	int visitor_pid, visitor_racewar;
 	bool check_access; // entering someone else's locker
-	bool account_owner; // an authenticated owner may also enter by an explicit name
 	bool read_contents; // false while the locker is in use: only the access verdict
 	bool create; // an own account or guild locker is created if it is missing
 	int owner_assoc_id, racewar, race; // for a created locker's row
@@ -2782,18 +2781,17 @@ static unsigned int locker_entry_read(MYSQL *connection, const locker_entry &ent
 		if (!found.empty() && entry.visitor_racewar == atoi(found[0][2]))
 		{
 			sql_rows owner;
-			if (!entry.account_owner)
-				error_code = sql_select(
-					connection,
-					sql_format(
-						"SELECT 1 FROM lockers l JOIN account_characters ac ON ac.pid=l.owner_pid "
-						"WHERE l.locker_name='%s' AND l.owner_pid=%d AND l.owner_assoc_id IS NULL "
-						"AND l.racewar=%d AND ac.racewar=l.racewar AND ac.blocked=0 "
-						"AND ac.deleted_at IS NULL LIMIT 1",
-						entry.locker.c_str(), entry.visitor_pid,
-						entry.visitor_racewar),
-					&owner);
-			granted = entry.account_owner || !owner.empty();
+			error_code = sql_select(
+				connection,
+				sql_format(
+					"SELECT 1 FROM lockers l JOIN account_characters ac ON ac.pid=l.owner_pid "
+					"WHERE l.locker_name='%s' AND l.owner_pid=%d AND l.owner_assoc_id IS NULL "
+					"AND l.racewar=%d AND ac.racewar=l.racewar AND ac.blocked=0 "
+					"AND ac.deleted_at IS NULL LIMIT 1",
+					entry.locker.c_str(), entry.visitor_pid,
+					entry.visitor_racewar),
+				&owner);
+			granted = !owner.empty();
 			if (!error_code && !granted)
 				error_code = locker_granted(connection, entry.locker, entry.visitor,
 							    atoi(found[0][2]), &granted);
@@ -2971,6 +2969,16 @@ static void locker_enter(P_char ch, const char *locker_name, int bValidate, lock
 	const bool busy = lockerName_is_inuse(const_cast<char *>(locker_name)) > 0;
 	const std::string name = locker_name;
 	const int room = ch->in_room;
+	const char *account = get_account_name_safe(ch);
+	const bool account_owner =
+		account && strcmp(account, "Unknown") &&
+		!str_cmp(locker_name, ("account." + locker_entry_key(account) + "." +
+				       std::to_string(GET_RACEWAR(ch)) + ".locker")
+					      .c_str());
+	// An exact authenticated account/side target has the same creation rights as
+	// default entry, whether it came from a character name or a canonical name.
+	if (account_owner)
+		bValidate = 0;
 	// Flat-file reads the stored locker here.
 	if (!DB)
 	{
@@ -2992,8 +3000,6 @@ static void locker_enter(P_char ch, const char *locker_name, int bValidate, lock
 				     GET_PID(ch),
 				     GET_RACEWAR(ch),
 				     bValidate && !god,
-				     !strn_cmp(locker_name, "account.", 8) &&
-					     esc_locker_name_matches_player(locker_name, ch),
 				     !busy,
 				     !bValidate,
 				     strncmp(locker_name, "guild.", 6) ? 0 : atoi(locker_name + 6),

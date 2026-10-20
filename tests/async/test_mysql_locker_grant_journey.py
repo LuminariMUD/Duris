@@ -154,6 +154,15 @@ def run(binary):
                 for name in (OWNER, VISITOR, OTHER):
                     assert sql(f"SELECT level FROM player_data WHERE name='{name}'") == '20'
                 check('separate owner/visitor accounts and three level-20 mortal actors at a real bank')
+                assert sql(f"SELECT COUNT(*) FROM lockers WHERE locker_name='{ACCOUNT_LOCKER}'") == '0'
+                denied(VISITOR)
+                denied(OTHER, 'account.Otheracct.2')
+                denied(OTHER, 'account.Otheracct.1junk')
+                denied(OTHER, OTHER + '.locker')
+                assert sql("SELECT COUNT(*) FROM lockers WHERE locker_name LIKE 'account.%'") == '0'
+                enter(VISITOR, 'AcCoUnT.Guestacct.1.LoCkEr', items=0)
+                leave(VISITOR)
+                assert sql("SELECT COUNT(*) FROM lockers WHERE locker_name='account.guestacct.1.locker'") == '1'
                 # The live starter-kit catalog may already supply a mace. Keep the
                 # two fixture lockers' marker counts independent of that catalog.
                 command(clients[OWNER], 'drop all.mace')
@@ -161,7 +170,9 @@ def run(binary):
                 for _ in range(3):
                     command(clients[GOD], 'load obj 677')
                     act(GOD, 'give mace ' + OWNER, 'Ok.')
-                enter(OWNER, items=0)
+                enter(OWNER, OWNER, items=0)
+                assert sql(f"SELECT COUNT(*) FROM lockers WHERE locker_name='{ACCOUNT_LOCKER}'") == '1'
+                check('first named and mixed-case canonical owner entry creates only the authenticated account side')
                 act(OWNER, 'drop mace', 'You drop')
                 act(OWNER, 'grant add ' + VISITOR, 'given access')
                 help_text = act(OWNER, 'help locker', 'account locker takes precedence')

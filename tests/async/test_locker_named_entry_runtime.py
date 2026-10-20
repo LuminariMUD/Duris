@@ -164,7 +164,7 @@ int main(int argc, char **argv)
     locker_enter_character(&visitor, "ownerchar", {});
     assert(enters == 2 && feedback.find("could not be opened") != std::string::npos);
 
-    locker_entry entry{"account.owner.1.locker", "visitor", 42, 1, true, false,
+    locker_entry entry{"account.owner.1.locker", "visitor", 42, 1, true,
                        false, false, 0, 1, 3};
     auto verdict = [&](bool allowed) {
         sql_rows rows;
@@ -188,13 +188,8 @@ int main(int argc, char **argv)
     owner = true;
     verdict(true); // Stable personal ownership still works.
     owner = false;
-    entry.account_owner = true;
-    verdict(true);
-    entry.visitor_racewar = 2;
-    verdict(false);
-    entry.visitor_racewar = 1;
     present = false;
-    verdict(false); // Explicit names do not create missing lockers, even for their owner.
+    verdict(false); // A visitor's explicit name cannot create a missing locker.
     fail_read = 2013;
     sql_rows rows;
     assert(locker_entry_read(nullptr, entry, &rows) == 2013 && rows.empty());

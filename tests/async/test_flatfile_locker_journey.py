@@ -137,7 +137,8 @@ def run(binary: pathlib.Path) -> None:
 
             process = boot(binary, run_root, environment, plain_port)
             client = journey.reconnect_character(plain_port)
-            enter_locker(client, 0)
+            # First named owner entry must create the same locker as default entry.
+            enter_locker(client, 0, journey.CHARACTER)
             client.send("drop banana")
             client.expect("You drop a banana.", timeout=10)
             leave(client)

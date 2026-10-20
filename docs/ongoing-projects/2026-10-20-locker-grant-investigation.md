@@ -146,6 +146,40 @@ release tag or additional stack is needed. The PR can be squash-merged when the
 owner chooses to merge. The full repository suite and production acceptance
 remain outside this local review qualification.
 
+## Subsequent review findings (2026-10-20)
+
+Master advanced through PRs #232 and #233 after the first repair. The work branch
+was rebased onto `e19537cced993bc8de3de1abd76027e8d40b389a` without conflicts;
+`git range-diff` confirmed all five existing commits retained their patches.
+
+The mixed-case `.locker` finding is not a reachable defect. Before the suffix
+check, `argument_interpreter()` lowercases the entire owner argument in
+`src/cmd/interp.c:2565-2569`. The existing mortal gameplay journey already enters
+`VaUlToWnEr.LoCkEr` successfully. That regression remains, and the extended journey
+also uses `AcCoUnT.Guestacct.1.LoCkEr`. No suffix-handling patch is needed.
+
+The first-time named owner finding was reproduced: a level-20 mortal entering
+its own fresh canonical account locker received `You don't have access to that
+locker!`. An exact authenticated account-and-side target now uses default owner
+entry on both backends, including creation when absent. This handles both a
+resolved character name and a canonical account name, while visitor, legacy,
+opposite-side and malformed targets keep their access checks. The now-redundant
+SQL account-owner flag was removed instead of adding another creation exception.
+
+The disposable MariaDB journey now checks fresh named and mixed-case canonical
+owner creation, and verifies that visitor, wrong-side, malformed and legacy
+targets cannot create account lockers. The flat-file journey's first visit is
+also by character name, before any account locker exists. Existing grant,
+occupancy, legacy-coexistence and restart checks remain in both journeys.
+
+Both backend builds, all 18 locker regressions (including the flat-file journey),
+all eight stages of the expanded disposable MariaDB journey, the sanitizer
+harness, 14 documentation checks, root-runner contracts, formatting and
+changed-line clang-tidy passed. The builder-list executable regression also
+passed on the rebased checkout. Validation commands are listed above; the latest
+logs are under `bin/analysis/issue-234/review-owner-*` (generated, untracked).
+The full repository suite and live production acceptance were not run.
+
 ## Original investigation (pre-fix)
 
 Investigated on 2026-10-20 UTC against checkout
