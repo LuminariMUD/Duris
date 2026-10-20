@@ -4,7 +4,92 @@ Issue: [#234 - Fix named locker entry rejecting valid account-locker grants](htt
 
 Work branch: [`branch/issue-234-locker-grant-entry`](https://github.com/LuminariMUD/Duris/tree/branch/issue-234-locker-grant-entry)
 
-Status: Investigation complete; repair and gameplay acceptance pending.
+Status: Implemented and locally verified; PR review and production acceptance pending.
+
+## Implementation decisions
+
+Bare character names resolve through the active, unblocked account-character
+mapping to the owner's account locker and racewar side. This takes precedence over
+a coexisting legacy personal locker. Full `<character>.locker` names explicitly
+select legacy lockers; canonical account and guild names accept the final suffix
+with no duplicate `.locker`. Without an active mapping, a bare character name
+retains the legacy personal target. No contents or grants are moved or rewritten.
+
+Resolution runs on the existing persistence worker before normal locker entry,
+so occupancy and pending saves use the resolved identity. Named owner entry keeps
+account ownership; visitors still need the selected locker's grants and racewar
+side. Authorization precedes every occupied/pending-save response.
+
+Scope: locker entry, LOCKER/GRANT help, focused executable regressions, and a
+disposable MariaDB mortal gameplay journey covering the acceptance checks below.
+No schema change or production operation is needed. Historical findings below
+describe the pre-fix checkout.
+
+## Implementation and local validation (2026-10-20)
+
+The real gameplay check also reproduced an existing occupancy defect: locker
+characters stay in holding room 65201, while their `StorageLocker` wrappers live
+in the private rooms. Looking for a wrapper in the character's holding room
+classified an occupied locker as stale and loaded a second copy. Busy detection
+and occupant lookup now search the bounded private locker rooms. Authorization
+runs before every busy response, including in-flight entries and deferred saves,
+and opposite-side grants fail before occupant disclosure.
+
+Both maintained LOCKER/GRANT help sources explain the supported forms. The new
+MariaDB journey is registered in `tests/run_db_tests.sh` and excluded from the
+ordinary runner that has no disposable database.
+
+Passed:
+
+```sh
+make -C src -j2
+make -C src -j2 PERSISTENCE_BACKEND=flatfile \
+  DMS_BINARY="$PWD/bin/server/dms_issue234_flatfile"
+python3 tests/async/test_locker_named_entry_runtime.py
+tests/async/with_disposable_mariadb.sh \
+  python3 tests/async/test_mysql_locker_grant_journey.py
+```
+
+- The ASan/UBSan executable regression covers holding/private-room occupancy,
+  pending saves and entries, delayed name resolution, legacy fallback,
+  move-away/worker admission failure, owner/visitor grants and racewar verdicts.
+- The full-world MariaDB journey uses three level-20 mortal characters with
+  different character/account names. It proves grant -> leave -> mixed-case
+  named entry, account-first precedence, separate legacy contents/grants,
+  canonical targeting with/without the suffix, owner entry, character/account
+  grants and revocation, unauthorized entry, occupancy privacy, a real inn
+  logout/reconnect, and a clean server restart. Post-restart opposite-side checks
+  use a neutral Ixarkon counter, so town admission cannot mask locker checks.
+  All seven journey stages passed. All three stored item UIDs and both lockers'
+  grants survived restart unchanged; account-grant revocation still denied entry.
+- Journey evidence: `bin/analysis/issue-234/journey.json` (generated, untracked).
+  Tested MariaDB binary SHA-256:
+  `c2f438692df517d474c88d107430d0f3331722ca06d9388fddb9664480f2f66b`.
+- The existing flat-file locker journey also passed using
+  `bin/server/dms_issue234_flatfile` and a freshly built coin/death inspector.
+  It preserved account contents through restart/retrieval and guild contents
+  through re-entry. Re-run after building the flat-file executable above:
+
+  ```sh
+  python3 tests/async/test_flatfile_player_repository.py \
+    --build-inspector bin/tests/coin-death-inspector
+  PYTHONPATH=tests/async python3 -c 'from pathlib import Path; from test_flatfile_locker_journey import run; run(Path("bin/server/dms_issue234_flatfile").resolve())'
+  ```
+
+- Relevant existing locker result, ownership, boot-room, async pipeline,
+  leave-during-save, saved-with-occupant, container-weight, terminal fallback,
+  worker lifecycle, legacy repair and save-room regressions passed. The
+  save-room fixture initially lacked the new short-affect capture link hooks
+  from master; separate commit `125239fbf` restores its empty fixture hooks.
+- Root-runner, help import/parser, flat-file help and 14 documentation checks
+  passed. The help-import atomic suite passed its three local tests and skipped
+  five optional database cases; the actual help import and rendered LOCKER/GRANT
+  help were exercised by the disposable gameplay journey.
+
+The full repository suite was not run. Review/merge, deployment and live Qua/Zyx
+acceptance remain pending; this work performed no production operation.
+
+## Original investigation (pre-fix)
 
 Investigated on 2026-10-20 UTC against checkout
 `fcb54a1d068015f7ab3887944ba8929208568c0d`, using read-only production SQL,
@@ -187,7 +272,7 @@ Expected from the inspected snapshots: one account-locker row on side `1`,
 one direct grant to `zyx`, and `1` from the runtime's direct grant predicate.
 There is no personal-locker row.
 
-## Follow-up repair and acceptance checks
+## Original repair requirements
 
 Resolve the documented character-name entry to the intended account locker
 before the existing grant check. Define precedence when a legacy personal
@@ -205,5 +290,6 @@ opposite-side entry, occupancy privacy, and coexistence with a legacy
 personal locker. Staff entry alone is insufficient because it bypasses grant
 validation.
 
-No runtime fix, production data change, migration, restart, or player login
-was performed. The repository change is this findings document.
+The initial investigation made no runtime fix, production data change, migration,
+restart, or player login. The branch now implements the repair and records its
+local validation above; production deployment and live acceptance remain separate.

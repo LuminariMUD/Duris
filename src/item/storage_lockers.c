@@ -1759,6 +1759,22 @@ static int save_locker_char(P_char chInLocker, int bTerminal);
 static bool check_for_artisInRoom(P_char ch, int rroom);
 static int lockerName_is_inuse(char *lockerName);
 
+/* Locker characters stay in the holding room; their wrappers belong to the private
+ * rooms occupied by players. Look there before allowing another copy to load. */
+static StorageLocker *active_locker_for(P_char locker)
+{
+	for (int vnum = LOCKERS_START + 1; vnum < LOCKERS_START + LOCKERS_MAX; ++vnum)
+	{
+		const int room = real_room0(vnum);
+		if (room == NOWHERE || world[room].funct != storage_locker)
+			continue;
+		StorageLocker *active = GetChestList(room);
+		if (active && active->GetLockerChar() == locker)
+			return active;
+	}
+	return NULL;
+}
+
 static int locker_grantcmd(P_char ch, char *arg);
 static int locker_equipcmd(P_char ch, char *arg);
 static int locker_chestcmd(P_char ch, char *arg);
@@ -1777,6 +1793,7 @@ static bool locker_ready_to_enter(P_char ch);
 /* The rest of an entrance, once ch is at the door of the loaded locker. */
 using locker_entered = std::function<void(P_char ch, P_char chLocker, int locker_room)>;
 static void locker_enter(P_char ch, const char *locker_name, int bValidate, locker_entered entered);
+static void locker_enter_character(P_char ch, const char *name, locker_entered entered);
 static void storage_locker_entered(P_char ch, P_char chLocker, int locker_room,
 				   int is_guild_locker);
 static void guild_locker_entered(P_char ch, P_char chLocker, int locker_room);
@@ -1917,9 +1934,18 @@ int storage_locker_room_hook(int /*room*/, P_char ch, int cmd, char *arg)
 	else
 	{
 		bValidate = 1;
+		if (DB && !strchr(enterWho, '.'))
+		{
+			locker_enter_character(
+				ch, enterWho, [](P_char entrant, P_char chLocker, int locker_room)
+				{ storage_locker_entered(entrant, chLocker, locker_room, 0); });
+			return TRUE;
+		}
 	}
 
-	checked_snprintf(lockerName, 500, "%s.locker", enterWho);
+	const size_t name_length = strlen(enterWho);
+	const bool full_name = name_length >= 7 && !strcmp(enterWho + name_length - 7, ".locker");
+	checked_snprintf(lockerName, 500, "%s%s", enterWho, full_name ? "" : ".locker");
 
 	locker_enter(ch, lockerName, bValidate,
 		     [is_guild_locker](P_char entrant, P_char chLocker, int locker_room)
@@ -2712,6 +2738,7 @@ struct locker_entry
 	std::string locker, visitor;
 	int visitor_pid, visitor_racewar;
 	bool check_access; // entering someone else's locker
+	bool account_owner; // an authenticated owner may also enter by an explicit name
 	bool read_contents; // false while the locker is in use: only the access verdict
 	bool create; // an own account or guild locker is created if it is missing
 	int owner_assoc_id, racewar, race; // for a created locker's row
@@ -2751,20 +2778,21 @@ static unsigned int locker_entry_read(MYSQL *connection, const locker_entry &ent
 	if (entry.check_access)
 	{
 		bool granted = false;
-		if (!found.empty())
+		if (!found.empty() && entry.visitor_racewar == atoi(found[0][2]))
 		{
 			sql_rows owner;
-			error_code = sql_select(
-				connection,
-				sql_format(
-					"SELECT 1 FROM lockers l JOIN account_characters ac ON ac.pid=l.owner_pid "
-					"WHERE l.locker_name='%s' AND l.owner_pid=%d AND l.owner_assoc_id IS NULL "
-					"AND l.racewar=%d AND ac.racewar=l.racewar AND ac.blocked=0 "
-					"AND ac.deleted_at IS NULL LIMIT 1",
-					entry.locker.c_str(), entry.visitor_pid,
-					entry.visitor_racewar),
-				&owner);
-			granted = !owner.empty();
+			if (!entry.account_owner)
+				error_code = sql_select(
+					connection,
+					sql_format(
+						"SELECT 1 FROM lockers l JOIN account_characters ac ON ac.pid=l.owner_pid "
+						"WHERE l.locker_name='%s' AND l.owner_pid=%d AND l.owner_assoc_id IS NULL "
+						"AND l.racewar=%d AND ac.racewar=l.racewar AND ac.blocked=0 "
+						"AND ac.deleted_at IS NULL LIMIT 1",
+						entry.locker.c_str(), entry.visitor_pid,
+						entry.visitor_racewar),
+					&owner);
+			granted = entry.account_owner || !owner.empty();
 			if (!error_code && !granted)
 				error_code = locker_granted(connection, entry.locker, entry.visitor,
 							    atoi(found[0][2]), &granted);
@@ -2931,6 +2959,8 @@ static void locker_enter(P_char ch, const char *locker_name, int bValidate, lock
 				     GET_PID(ch),
 				     GET_RACEWAR(ch),
 				     bValidate && !god,
+				     !strn_cmp(locker_name, "account.", 8) &&
+					     esc_locker_name_matches_player(locker_name, ch),
 				     !busy,
 				     !bValidate,
 				     strncmp(locker_name, "guild.", 6) ? 0 : atoi(locker_name + 6),
@@ -2964,6 +2994,35 @@ static void locker_enter(P_char ch, const char *locker_name, int bValidate, lock
 		send_to_char("The locker could not be opened right now.  Please try later.\r\n",
 			     ch);
 	}
+}
+
+/* Character names address their active account locker, even when an older personal
+ * locker exists. Its full <character>.locker name remains an explicit target. Resolve
+ * before locker_enter() so occupancy and pending saves use the canonical identity. */
+static void locker_enter_character(P_char ch, const char *name, locker_entered entered)
+{
+	const int room = ch->in_room;
+	const std::string personal = std::string(name) + ".locker";
+	if (!sql_read_for(
+		    ch,
+		    "SELECT account_name, racewar FROM account_characters WHERE LOWER(char_name)=LOWER('" +
+			    escape_str(name) + "') AND blocked=0 AND deleted_at IS NULL LIMIT 1",
+		    [room, personal, entered](P_char entrant, const sql_rows &rows)
+		    {
+			    if (entrant->in_room != room)
+			    {
+				    send_to_char("You have moved away from the locker.\r\n",
+						 entrant);
+				    return;
+			    }
+			    const std::string target =
+				    rows.empty() ? personal :
+						   "account." + locker_entry_key(rows[0][0]) + "." +
+							   rows[0][1] + ".locker";
+			    locker_enter(entrant, target.c_str(), 1, entered);
+		    }))
+		send_to_char("The locker could not be opened right now.  Please try later.\r\n",
+			     ch);
 }
 
 /* The private chests an entry read, each put in the room with its items. */
@@ -3190,6 +3249,12 @@ static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAc
 	// check if locker is currently in use
 	if (busy || lockerName_is_inuse(esc_locker_name) > 0)
 	{
+		// Deny before disclosing an occupant, an in-flight entry, or a pending save.
+		if (bValidateAccess && !bPlayerIsGod && !has_access)
+		{
+			send_to_char("You don't have access to that locker!\r\n", ch);
+			return NULL;
+		}
 		// Check if this is a pending deferred save rather than an
 		// active user, and give a more appropriate message.
 		bool deferred_save_pending = false;
@@ -3217,34 +3282,20 @@ static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAc
 			// use at all - just deny access.
 
 			// Find the locker char in memory to check access.
-			P_char active_locker_char = NULL;
 			StorageLocker *pOcc = NULL;
 			for (P_char chk = character_list; chk; chk = chk->next)
 			{
 				if (chk && GET_NAME(chk) &&
-				    !str_cmp(esc_locker_name, GET_NAME(chk)) &&
-				    chk->in_room != NOWHERE && IS_ROOM(chk->in_room, ROOM_LOCKER))
+				    !str_cmp(esc_locker_name, GET_NAME(chk)))
 				{
-					pOcc = GetChestList(chk->in_room);
-					if (pOcc && pOcc->GetLockerChar() == chk)
-					{
-						active_locker_char = chk;
+					pOcc = active_locker_for(chk);
+					if (pOcc)
 						break;
-					}
 				}
 			}
 
-			if (active_locker_char)
+			if (pOcc)
 			{
-				if (bValidateAccess && !bPlayerIsGod && !has_access)
-				{
-					// No access - don't reveal anything about the
-					// locker's state or its occupant.
-					send_to_char("You don't have access to that locker!\r\n",
-						     ch);
-					return NULL;
-				}
-
 				P_char occupant = pOcc->GetLockerUser();
 
 				// Player has access (or is staff / entering own locker).
@@ -3663,10 +3714,7 @@ static int lockerName_is_inuse(char *lockerName)
 			 * It must be counted as "in use" to prevent the player from
 			 * re-entering the same locker and loading a duplicate before
 			 * the save event fires. */
-			StorageLocker *pLocker = NULL;
-
-			if (chLocker->in_room != NOWHERE && IS_ROOM(chLocker->in_room, ROOM_LOCKER))
-				pLocker = GetChestList(chLocker->in_room);
+			StorageLocker *pLocker = active_locker_for(chLocker);
 
 			if (pLocker && pLocker->GetLockerChar() == chLocker)
 			{
