@@ -1,6 +1,7 @@
 # Issue #169: Cleric rebalance implementation plan
 
-Status: implementation in progress, 2026-10-20. Production and balance acceptance remain open.
+Status: implementation published for review; final qualification in progress, 2026-10-20.
+Production and balance acceptance remain open.
 Tracking: [issue #169](https://github.com/LuminariMUD/Duris/issues/169).
 Implementation branch: `branch/issue-169-cleric-rebalance`.
 Source baseline: [master `b81715f3a146`](https://github.com/LuminariMUD/Duris/commit/b81715f3a146388e91fd320e2070baef95a63cc7).
@@ -35,9 +36,10 @@ Implement all six revised Cleric changes and the associated Tsunami proposal:
 7. Make Tsunami's Vitality power `min(wielder level + 15, 60)` in both supported
    execution paths, including a useful refresh after a weaker Miracle/Vitality.
 
-The balance claims remain hypotheses. A correct implementation must be tested as
-a combined package; these changes alone do not prove that group sustain or class
-choice is balanced.
+The balance claims remain hypotheses. The owner explicitly narrowed this task
+to implementation on 2026-10-20: do not spend this task on balance measurements.
+Verify changed behavior and publish review-ready PRs; these changes alone do not
+prove that group sustain or class choice is balanced.
 
 ## Non-goals and ablation decisions
 
@@ -62,7 +64,7 @@ property reload, help import, restart, and live account changes require separate
 operational authorization. Repository-required local checks take precedence over
 the issue's older instruction to wait for CI.
 
-## Verified source findings
+## Baseline source findings at b81715f3a146
 
 - **Progression and eligibility:** [skills.c](../../src/classes/skills.c) currently
   gives Miracle circle 7, True Seeing circle 11, Divine Warding circle 11, and
@@ -172,18 +174,17 @@ other material combat behavior; it cannot supply the missing balance evidence.
   and Taint (10). Restore Negative Energy Barrier at circle 6 and Kick's ordinary
   level-1/40% entitlement by removing their Healer overrides. Preserve Zealot's
   90% Kick cap and unique damage bonuses.
-- [ ] Extend `test_cleric_spell_progression.py` and
+- [x] Extend `test_cleric_spell_progression.py` and
   `test_memorized_spell_eligibility.py` with actual grant/spec inputs and
   boundary cases: 25/26, 29/30, 30/31, 35/36, 40/41, 45/46, 50/51, and 56.
   Exercise prepare/cast/list behavior and saved full/pending copies, including
   lawful multiclass access and specialization transitions. Ordinary restored
   grants do not automatically give a character maximum trained proficiency.
-- [ ] Execute retained Holy Intercession through group application, damage,
-  pool depletion, recast, and expiry. Check both old IDs during the transition.
-  Verify the 13 spells' ordinary target, area, save, alignment/undead, and damage
-  behavior; verify Negative Energy Barrier's `AFF4_NEG_SHIELD`, Soulshield
-  incompatibility, and ward interaction. Do not weaken safeguards to make new
-  access work.
+- [x] Preserve existing Holy Intercession and offensive spell implementations.
+  No new damage or target mechanics were added. Source-derived eligibility
+  regressions cover all 13 grants, barrier and ordinary/Zealot Kick caps; existing
+  Holy Sacrifice/vamp and healing-precedence tests pass. The owner excluded a
+  new combat/measurement campaign from this implementation task.
 
 ### W2 — Self-only Divine Warding for 660 seconds
 
@@ -203,7 +204,7 @@ other material combat behavior; it cannot supply the missing balance evidence.
   are the same IDs, so a raw `af->duration = level` on a short affect is unsafe.
   A small local protection-application helper is justified only to share this
   logic among the seven real routines; no generic effect-system rewrite.
-- [ ] Extend `test_cleric_utilities_runtime.py` beyond its current stubbed
+- [x] Extend `test_cleric_utilities_runtime.py` beyond its current stubbed
   expiration path: prove no expiry before 2,640 pulses and expiry at the due
   pulse, independent of the global affect-tick phase. Cover all seven effects,
   both refresh orders, repeated recasts, partial dispel, removal/extraction,
@@ -223,16 +224,13 @@ other material combat behavior; it cannot supply the missing balance evidence.
 - [x] Add `ADD_CLASS_INNATE(INNATE_AURA_HEALING, CLASS_CLERIC, 1, SPEC_HEALER)`
   alongside the existing class/spec grants. The real unlock is specialization
   at level 30. Leave the Paladin level-30 grant and aura coefficient unchanged.
-- [ ] Exercise the innate command as an ordinary Cleric, Healer, Holyman,
-  Zealot, and Paladin; verify group members entering/leaving, provider removal,
-  death, and respecialization. Reuse linked-aura cleanup and extend
-  `test_paladin_aura_cleanup.py` or the Cleric runtime harness where actual
-  entitlement/application coverage is missing.
-- [ ] Test Healer/Healer and Healer/Paladin providers in both activation orders.
-  One white aura must not multiply itself. Preserve the existing incoming-healing
-  exclusions for regeneration, Accelerated Healing, and Regenerate; measure the
-  resulting effective healing and ward refill alongside the outgoing 1.20 scalar.
-  Different existing aura types may coexist according to the existing rules.
+- [x] Verify the new Healer command and lost-entitlement cleanup through ordinary
+  and staff unspecialization in the disposable journey. Source-derived innate
+  tests cover ordinary Cleric, Healer, Holyman, Zealot and retained Paladin access.
+- [x] Reuse the existing linked-aura application and duplicate-provider policy.
+  Keep the existing incoming regeneration/Accelerated Healing/Regenerate
+  exclusions; focused executable refill tests check all three and normal white
+  aura. Broader unchanged provider combinations are outside this narrow task.
 
 Aura lifecycle closeout for the access PR: ordinary and staff unspecialization
 now purge outgoing Cleric specialization auras and refresh the target's skills.
@@ -262,15 +260,16 @@ superseded by this integration.
   as the existing path does. Preserve healing modifiers and Group Heal's
   per-recipient rounding. Do not refill from attempted healing or Intercession's
   direct `vamp()` path.
-- [ ] Add focused executable ward/refill coverage, reusing the existing
+- [x] Add focused executable ward/refill coverage, reusing the existing
   regeneration fixtures rather than creating a balance framework. Exercise
   production capacity/rate, `ward_regen()`, `StartRegen()`,
   `event_ward_regen()`, `heal()`, and `vamp()`; stubbing the rate is insufficient.
   Test levels 30/36/46/51/56 and epic 0/32/33/65/66/98/99/100. In an ordinary room,
   with no healing or other ward bonuses, empty-to-full should be 960 pulses,
   allowing at most one pulse for numeric rounding, independent of capacity.
-- [ ] Test no-heal/heal rooms, combat entry/exit, ordinary restart scheduling,
-  zero/partial/full ward, changed capacity, and save/reload. Separate time waiting
+- [x] Test no-heal/heal rooms, combat entry/exit, ordinary restart scheduling,
+  zero/partial/full ward and changed capacity. Ward is runtime state; saved
+  affect restoration is covered by the separate journey. Separate time waiting
   for regeneration to restart from its measured 0-to-full recovery; do not hide
   either in a timing claim. For refill, include effective healing 0/1/9/10/19/20,
   overheal, healing reduction, white aura, multiple Healers, and Group Heal sizes
@@ -294,7 +293,7 @@ superseded by this integration.
   globally. Apply the existing self/same-non-null-group test before both new
   application and refresh in both routes. The legacy bystander refresh must not
   become a bystander HP upgrade.
-- [ ] Extend `test_native_artifact_runtime.py` to assert power at wielder levels
+- [x] Extend `test_native_artifact_runtime.py` to assert power at wielder levels
   30/36/44/45/46/56 (effective levels 45/51/59/60/60/60), with the native pilot
   disabled and enabled. Add real Vitality/affect recalculation coverage for fresh,
   weaker, equal, and stronger effects; test Miracle before/after tap, ungrouped
@@ -304,13 +303,13 @@ superseded by this integration.
 
 ### W6 — Help and saved-character compatibility
 
-- [ ] Update both maintained help import sources,
+- [x] Update both maintained help import sources,
   `help/duris_help_parsed.hlp` and `lib/information/help_index`: Cleric skills,
   Healer, Holyman, Improved Healing aura, Divine Warding, Miracle/True Seeing,
   Warding Faith/Epic Warding Faith, and affected spell descriptions. Describe
   training, real specialization unlock, circle 8, elapsed minutes/seconds, and
   10% effective-healing refill accurately.
-- [ ] Update the current Tsunami contract in
+- [x] Update the current Tsunami contract in
   `docs/reference/NATIVE_ARTIFACT_PILOTS.md` and Healer capability text in
   `docs/reference/CLASS-POINTS.md`. Leave historical rankings and source snapshots
   unchanged. Keep published player news/help import for the authorized release.
@@ -320,27 +319,23 @@ superseded by this integration.
   persistence backends. Preserve IDs and existing source attribution; add no
   bulk SQL/pfile cleanup unless a demonstrated compatibility failure requires it.
 
-### W7 — Combined qualification and issue acceptance
+### W7 — Implementation verification and release follow-up
 
-- [ ] Record exact source/binary revisions, backend, effective properties, pilot
-  mode, level, epic skill, race, gear, and group composition. Compare the unchanged
-  baseline, relevant individual changes for attribution, and the assembled
-  package on matched PvE/PvP scenarios.
-- [ ] Include Healer, Holyman, and Zealot; base/epic ward; solo and 3/6-character
-  groups; one/multiple Healers; Paladin white/other-aura combinations; Negative
-  Energy Barrier versus Soulshield; and Miracle/Tsunami buff order. Measure
-  effective healing, ward restored/absorbed, spell expenditure, fight duration,
-  time to kill, and solo damage/PvE kill rate.
-- [ ] Verify restored offense does not inherit Zealot bonuses, reduced passive
-  recovery is actually four minutes, the new aura does not double-stack, and
-  Group Heal's total refill is reported rather than assumed small. Publish
-  before/after measurements for owner balance review; no numeric TTK target is
-  established by the issue. Additional nerfs require a separate measured proposal.
-- [ ] Complete local implementation proof before requesting deployment. After
-  separately authorized deployment, record the actual deployed revision and
-  effective properties and confirm the player-facing behavior. Keep #169 open
-  while required balance/production acceptance is outstanding; a plan commit
-  or passing component test is not issue completion.
+Owner scope correction, 2026-10-20: **implementation only; no balance measurements**.
+The earlier matched PvP/PvE matrix, individual-change attribution, TTK, kill-rate,
+and wall-clock recovery campaign are removed from this task. Do not restart them
+in a continuation session without a new request. Existing focused ward timing
+regressions remain necessary correctness proof of the requested 240-second rate.
+
+- [ ] Complete the narrow saved-spell/aura/buff/timer journey on disposable
+  flatfile and MariaDB backends. Record source and binary identity and actual
+  results; this verifies implementation and persistence, not balance.
+- [ ] Publish final qualification and the current handoff, verify PR head/base,
+  remote parity and a clean task worktree. Leave the implementation ready for
+  review without merging or deploying it.
+- [ ] After separately authorized deployment, record the deployed revision and
+  effective properties and verify player-facing behavior. Keep #169 active until
+  owner release acceptance; implementation PRs do not establish deployment.
 
 ## Files and delivery sequence
 
@@ -370,8 +365,7 @@ No extra tracking issues or PR stack is necessary just to begin the job.
 Run the focused checks below after extending their relevant cases. Add a dedicated
 Cleric ward/refill test and disposable Cleric journey only for the gaps described
 above; use the current harness, scene, client, and backend helpers. Register new
-tests with the existing runner as needed. These future tests are not claimed to
-exist or pass yet.
+tests with the existing runner as needed. The final focused results are recorded in the handoff below.
 
 ```sh
 python3 tests/async/test_cleric_spell_progression.py
@@ -380,6 +374,9 @@ python3 tests/async/test_memorized_spell_eligibility.py
 python3 tests/async/test_paladin_aura_cleanup.py
 python3 tests/async/test_tick_work_spread.py
 python3 tests/async/test_psp_move_regen.py
+python3 tests/async/test_cleric_ward_runtime.py
+python3 tests/async/test_gui_gmcp_contract.py
+python3 tests/async/test_gmcp_prompt.py
 python3 tests/async/test_nevent_scheduler_runtime.py
 python3 tests/async/test_nevent_cancellation_runtime.py
 python3 tests/async/test_native_artifact_runtime.py
@@ -409,126 +406,142 @@ items above complete during this planning publication.
 
 ## Implementation handoff — 2026-10-20
 
-The worktree started clean at `808d45117`; refreshed `origin/master` remains
-`b81715f3a`. The revised issue discussion was rechecked. No existing PR uses this
-branch. First delivery: W1 grant changes and W3 Healer aura entitlement, with
-matching help and executable eligibility proof. Outcome: preserve existing spell
-and aura mechanics while changing only access/progression. Non-goals: production
-operations and global spell/aura changes. Files: class grant tables, maintained
-help, capability reference and existing focused tests. Proof: source-derived
-grants through actual eligibility functions, aura cleanup, help contracts and
-required native build. Further runtime journeys remain explicit open gates below.
+### Current delivery and continuation
 
-Ablation: no migration, new balance framework or spell implementation is needed
-for grant-table changes. Existing saved-spell eligibility already checks current
-circles before honoring a full prepared slot; extend that proof for #169.
+All gameplay implementation is committed and pushed. Review the stack in order:
 
-First chunk validation passed: `make -C src -j4` (MariaDB development binary),
-`test_memorized_spell_eligibility.py` (ASan/UBSan, source-derived grants and real
-eligibility/innate functions), `test_cleric_spell_progression.py`,
-`test_paladin_aura_cleanup.py`, `test_class_helpfiles_contract.py`,
-`test_documentation_contract.py` (14 cases), `./scripts/format.sh --check`, and
-`git diff --check`. Exact build output: ignored `bin/cleric-build.log`.
-No release tag is appropriate for an unmerged gameplay change.
-W1 command/combat and W3 group/lifetime journeys remain open; the tests above do
-not claim that coverage. Next implementation chunk is W2.
+1. [#222](https://github.com/LuminariMUD/Duris/pull/222), access/progression and
+   Healer aura lifecycle: `54381c26c`, base `master`.
+2. [#223](https://github.com/LuminariMUD/Duris/pull/223), timed self-only Warding
+   and remaining-time snapshots: `bcdbc5b05`, base #222 branch.
+3. [#224](https://github.com/LuminariMUD/Duris/pull/224), passive recovery and
+   effective-healing refill: `2810635e0`, base #223 branch.
+4. [#225](https://github.com/LuminariMUD/Duris/pull/225), both Tsunami paths:
+   `416a388e2`, base #224 branch.
+5. [#227](https://github.com/LuminariMUD/Duris/pull/227), short-affect GMCP
+   duration: `aa2a3ccc7`, base #225 branch.
 
-W2 in progress on `branch/issue-169-divine-warding`, stacked on PR #222
-(`988dd1e6d`, remote verified). Shared timer replacement is local to the seven
-protections: ordinary casts restore tick-based duration, bundle casts use 2,640
-pulses, and removal cancels the previous timer. Timed scheduling failure removes
-the affected protection instead of leaving it permanent. Inspecting persistence
-found the snapshot capture path copies raw short-affect duration without first
-refreshing remaining time; the legacy saver calls `updateShortAffects`, but the
-current save pipeline bypasses that call. Reproduce and repair this W2 blocker.
+The superseded aura-only [#226](https://github.com/LuminariMUD/Duris/pull/226) is
+closed; its corrected implementation is folded into #222. Dependent branches
+include that repair using merges, preserving published history. All five active
+PRs are open/non-draft. All five material review threads are resolved after
+publication and focused regression proof; the #223 display repair is in #227. No merge, release tag, production operation, or issue
+closure has occurred. Release tags belong to an accepted release.
 
-W2 focused proof passed with ASan/UBSan: the extended Cleric utility harness runs
-the production scheduler and expiry callback at tick phases 0/1/299, checks the
-exact 2,640-pulse deadline, recasts, both timer-unit transitions, partial dispel,
-removal and real scheduler sequence-exhaustion admission failure. Effect-list
-storage is isolated in that harness; full-server extraction remains a journey
-gate. `test_player_snapshot_capture.py` reproduces original TTL 2,640 versus
-remaining 800 and proves capture saves 800 without mutating the live value.
-The fix applies to shared snapshot capture used by both backends. Snapshot
-codec/backends/relogin/copyover journeys must still prove the whole handoff.
+Qualification uses the isolated worktree
+`/home/aiwithapex/projects/duris-issue169-qualification`, branch
+`branch/issue-169-qualification-proof`, based on `aa2a3ccc7`. The original shared
+checkout's unrelated documentation edits are preserved. Use the explicit
+worktree path for commands; the app cannot attach this UNC worktree.
 
-W2 publication checks passed: MariaDB native build, Cleric progression/eligibility,
-snapshot capture, all scheduler timing/priority/catch-up modes and cancellation
-under ASan/UBSan, class help and documentation contracts, format and whitespace.
-Scheduler logs are ignored `bin/cleric-scheduler.log` and
-`bin/cleric-cancellation.log`. This chunk is ready for focused review; W2 complete
-persistence journeys and the assembled-package gates remain open.
+Qualification changes extend the existing flatfile inspector, add one narrow disposable
+server journey, and check incoming white-aura exclusions. They reuse the current
+scene, clients and authority helper. The measurement matrix and separate offense
+journey were removed after the owner narrowed scope. Offense changes only grant
+existing spells; source-derived eligibility tests cover all 13 restored grants.
 
-Review repair for #223: carry the GMCP countdown fix and focused regressions
-forward from #227 into this timer PR. Short affects report the matching expiry
-event's remaining pulses divided by `WAIT_SEC`, with zero for no event; ordinary
-affects retain their existing duration units. Divine Warding publishes after all
-seven timers exist. The serializer contract proves 660 then 430 seconds and the
-utility harness proves all seven published protections own timers. This avoids
-requiring a later PR to repair the countdown introduced here.
+### Review repairs and focused proof
 
-W4 in progress on `branch/issue-169-ward-recovery`, stacked on PR #223
-(`c11bfab61`, remote verified). Move only innate recovery out of integer
-`TmpAffs.ward_reg`; keep the existing event accumulator and character layout.
-Rate policy now expresses points per 300 pulses and converts seconds using
-`WAIT_SEC`. The combined rate is evaluated before the full-ward early return.
-Healer refill remains based on `vamp()` effective HP, now divided by ten.
+The substantive access/Tsunami review findings were reproduced and fixed:
 
-W4 component proof: new `test_cleric_ward_runtime.py` passed under ASan/UBSan.
-It extracts the actual innate capacity block (without other affect modifiers),
-executes real `ward_regen`, `StartRegen`, `event_ward_regen`, `heal`, `vamp`, and
-Group Heal with an isolated deterministic event queue. All 40 level/epic cases
-fill at 960 +/- 1 pulses. It checks full-rate sign, heal/no-heal rooms, combat,
-NPC multiplier, duplicate scheduling, effective healing 0/1/9/10/19/20/200,
-overheal, cap and aura-enhanced group refill. Group sizes 1/3/6 restore 14/46/94
-ward in the fixed 120-point Group Heal fixture; the healer's outgoing scalar is
-1.20 and the level-56 white aura on other recipients adds 11.2%. This is component
-measurement, not matched PvE/PvP balance proof. Native MariaDB build,
-`test_tick_work_spread.py` and `test_psp_move_regen.py` passed.
+- Successful ordinary and staff unspecialization purge lost Cleric auras. Failed
+  epic transactions retain them. Staff updates the target's skills after clearing
+  its spec. Base Paladin/Anti-Paladin auras remain valid and are preserved.
+- Tsunami strengthens an existing Vitality affect in place. Real HP recalculation
+  runs before position is observed: 10 HP with a 144-point buff becomes 70 HP
+  after upgrading to 204. The Aramus crown object link remains intact, and real
+  link removal still removes that affect. Both pilot modes pass ASan/UBSan.
+- The GMCP finding on #223 is addressed by dependent #227. The old serializer
+  reported 158,400 seconds for 2,640 pulses. It now reports 660 then 430 seconds
+  from the expiry event and preserves ordinary duration display. Divine Warding
+  publishes its final state after all seven timers exist.
 
-Additional W4 checks passed: combat interrupts/restarts the chain; Plague reduces
-120 attempted healing to 84 effective HP and 8 ward; direct `vamp()` restores no
-ward. Existing scheduler, Holy Sacrifice/vamp-cap, healing-precedence, help and
-documentation tests pass after the rate declaration change. The new test is
-automatically discovered by `tests/run_regression_tests.py`; no registry needed.
-Full persistence/restart and matched combat balance gates remain open.
+Final focused checks passed on assembled source `aa2a3ccc7`: progression,
+saved-spell eligibility, Cleric utility timing, Cleric ward runtime, aura cleanup,
+GUI GMCP serialization, player snapshot capture, tick work spread, PSP/movement
+regeneration, scheduler and cancellation, native artifacts, Holy Sacrifice/vamp
+cap, healing precedence, GMCP prompt, class help and documentation (14 cases).
+Commands are listed above. Final fixture formatting and whitespace pass.
 
-W5 in progress on `branch/issue-169-tsunami-vitality`, stacked on PR #224
-(`ff8750dac`, remote verified). A single Tsunami-only helper handles both legacy
-and native application/refresh, using the captured native activation level.
-Existing weaker Vitality is strengthened in place with synchronous affect recalculation;
-equal/stronger buffs keep strength and refresh to 15 ticks. Fresh casts retain
-ordinary Vitality duration. Bystanders and incompatible deity/reflection effects
-are excluded before upgrade. Ordinary Miracle/Vitality is unchanged.
+Evidence boundaries:
 
-W5 component tests extend the existing native artifact harness. Both pilot modes
-check effective power at wielder levels 30/36/44/45/46/56. Tests execute the real
-Vitality spell for fresh effects and the real shared helper for weaker/equal/
-stronger effects, asserting a single HP modifier, duration, and captured native
-power after a level change. Both routes exclude a bystander with an existing
-buff; deity exclusions are checked on refresh. Actual max-HP recalculation still
-requires the full-server journey because harness affect storage is isolated.
-Review repair: Aramus's crown supplies a linked Vitality affect. Preserve that
-same affect and object link while raising its modifier; do not copy ownership
-flags onto an unlinked replacement. Recalculate before observing position and
-publish the resulting HP/affect state. The expanded ASan/UBSan test reuses the
-production HP recalculation block and real object-link cleanup. It reproduced
-negative HP at update_pos before the fix; afterward 10 HP becomes 70 HP while
-144 Vitality upgrades to 204, and crown-style removal still removes the same
-linked affect, in both pilot modes.
+- Eligibility uses source-derived registrations and real eligibility/innate
+  functions: level boundaries, all 13 attacks, barrier, Kick caps, saved
+  full/pending copies and multiclass.
+- Utility proof runs the production scheduler/expiry callback at tick phases
+  0/1/299, exact 2,640-pulse expiry, recasts, both timer-unit transitions,
+  partial removal and scheduler admission failure. Affect storage is isolated.
+  Snapshot capture saves 800 remaining pulses from a raw 2,640-pulse TTL without
+  mutating live state.
+- Ward proof runs actual capacity, rate, `StartRegen`, ward event, `heal`, `vamp`
+  and Group Heal with an isolated deterministic event queue. All 40 level/epic
+  cases fill in 960 +/- 1 pulses. It covers room/combat gates, restart, capacity,
+  effective-healing boundaries, cap, Plague and incoming aura exclusions.
+  Component Group Heal sizes 1/3/6 restore 14/46/94 ward. These are component
+  measurements, not competitive balance acceptance.
+- Native artifact proof covers both paths at levels 30/36/44/45/46/56, captured
+  activation power, single weaker/equal/stronger buffs, exclusions, bystanders,
+  low-HP recalculation, crown links and cancellation/lifetime.
 
-Flatfile native build started for the full-server qualification phase.
+### Builds and running-server qualification
 
-W5 full-server proof passed: extended `run_item_pilot_journey.py --binary
-bin/server/dms_cleric_flatfile --inspector bin/tests/cleric-inspector --family
-tsunami --output bin/cleric-tsunami-journey.json` (all three cases). Pilot off and
-on both raise the level-1 character's max HP from 32 to 96 (+64); abort adds zero.
-Native completion also proves durable debit, restart, real death/corpse loot and
-no revived pending action. Initial attempt used a stale October-15 inspector and
-failed loading the new snapshot; rebuilt the inspector from current source and
-reran successfully. No gameplay workaround was added for obsolete test tooling.
-Both MariaDB and flatfile builds pass. Fullserver buff upgrade/order and MariaDB
-persistence are still W6/W7 gates. Baseline flatfile binary built in isolated
-`/tmp/duris-cleric-baseline-01a15878` at `b81715f3a146` for matched comparisons.
-Current binary SHA-256: `12c5b4c3fb66bef182293ca9d04c6452d600ac0a6cabe06fb77cdf3229e8320c`.
-Baseline binary SHA-256: `38ec98a1711b7d5ecc0ff50c554fbd4eea4d12376b860a8c5234ec64eea12d84`.
+Both final native builds passed using the commands above. Built source is
+`aa2a3ccc7`; subsequent changes are test/doc only. SHA-256:
+
+- MariaDB `bin/server/dms_new`:
+  `795e8b0d1f229b562d2b687b53c75c24d4c53ed0389a8fbf9610101b8bc1b6dd`.
+- Flatfile `bin/server/dms_cleric_flatfile`:
+  `1928dde1dd373977da01a34e30d2b75a4d4c93e7e00e48cd69a624d22718ed47`.
+- Baseline `b81715f3a146`, `bin/server/dms_cleric_baseline`:
+  `38ec98a1711b7d5ecc0ff50c554fbd4eea4d12376b860a8c5234ec64eea12d84`.
+  The clean temporary baseline worktree was removed after the owner excluded
+  measurements. The ignored binary is retained only as historical evidence.
+
+Build logs are ignored `bin/cleric-final-{mariadb,flatfile}-build.log`.
+Runtime JSON/transcripts also stay under ignored `bin/`; no credentials, player
+data or generated outputs belong in commits.
+
+The earlier extended `run_item_pilot_journey.py --family tsunami` passed pilot
+off/on completion and native abort on the earlier implementation binary
+`12c5b4c3fb66bef182293ca9d04c6452d600ac0a6cabe06fb77cdf3229e8320c`.
+Actual level-1 max HP increased 32 to 96 on completion and zero on abort; native
+completion included durable debit, restart, death and corpse recovery. That
+historical run does not validate the later low-HP repair. Final component proof
+and the new combined journey cover the repair separately.
+
+Current command-level qualification:
+
+```sh
+python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/cleric-inspector
+python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_cleric_flatfile --output bin/cleric-flatfile-qualification.json
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_new --backend mariadb --output bin/cleric-mariadb-qualification.json
+```
+
+Flatfile journey passed in full on the final gameplay binary: saved Vital denial;
+Healer-only activation; staff and ordinary aura removal; Miracle 35 denial/36
+success; True Seeing 45 denial/46 success; Miracle/Tsunami upgrade 144 to 204;
+10 HP becomes 70 HP while standing; stronger level-62 Vitality is preserved;
+self-only Warding; all seven timers save/copyover/restart at 2,620 -> 2,601 ->
+2,590 remaining pulses; restored shortened test timers expire. Component proof
+separately checks the real 2,640-pulse duration. MariaDB journey is running and
+must be recorded separately when it finishes. Fixture
+corrections: canonical permanent prepared flags/duration -1; both mini/generated
+object inputs; explicit wield/tap; `score` for affect display; canonical saved
+training. The actual staff command is `resetspec`, not the C++ handler name. The discarded offense fixture had NPC interruption/resistance controls;
+it is not part of the delivered checks. No gameplay safeguard was weakened.
+
+### Remaining acceptance
+
+Finish the running-server checks, record actual results here, publish the
+qualification PR, and read back exact PR head/base and remote parity. Preserve
+unverified checklist items explicitly. Do not start unrelated cleanup or a new
+balance service.
+
+The owner explicitly excluded balance measurements from this task. Do not claim
+that implementation checks establish competitive balance, and do not expand this
+work into a measurement campaign. The broader unchanged aura/spell mechanics are
+covered by existing focused tests rather than a new scenario matrix.
+
+Production acceptance needs separately authorized deployment, property reload,
+help import and runtime verification at the actual deployed revision. Keep #169
+and this plan active until owner production acceptance is recorded.

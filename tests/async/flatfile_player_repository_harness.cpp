@@ -9,6 +9,7 @@
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
 #include "core/defines.h"
+#include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include <algorithm>
 #include <cstring>
@@ -883,6 +884,109 @@ int main(int argc, char **argv)
 	if (argc == 4 && std::string(argv[2]) == "inspect")
 	{
 		inspect_authority(argv[1], std::stoi(argv[3]));
+		return 0;
+	}
+	if (argc >= 4 && std::string(argv[2]).starts_with("cleric-"))
+	{
+		// This command is used only against the journey's disposable saved players.
+		std::string error;
+		player_snapshot snapshot;
+		require(flatfile_player_snapshot_load(argv[1], std::stoi(argv[3]), &snapshot,
+						      &error) == flatfile_player_load_result::ok,
+			"Cleric fixture load: " + error);
+		if (std::string(argv[2]) == "cleric-inspect")
+		{
+			std::cout << '[';
+			bool first = true;
+			for (const auto &af : snapshot.affects)
+			{
+				if (!first)
+					std::cout << ',';
+				first = false;
+				std::cout << "[" << af.type << ',' << af.duration << ',' << af.flags
+					  << ',' << af.modifier << ',' << int(af.location) << ']';
+			}
+			std::cout << "]\n";
+			return 0;
+		}
+		if (std::string(argv[2]) == "cleric-expire")
+		{
+			for (auto &af : snapshot.affects)
+				if (af.flags & AFFTYPE_SHORT)
+					af.duration = 40;
+		}
+		else
+		{
+			require(argc == 6 && std::string(argv[2]) == "cleric-seed",
+				"Cleric seed expects PID, specialization, level");
+			for (auto &field : snapshot.status_integers)
+			{
+				int value;
+				switch (field.field)
+				{
+				case player_status_field::class_primary:
+					value = CLASS_CLERIC;
+					break;
+				case player_status_field::class_secondary:
+					value = 0;
+					break;
+				case player_status_field::specialization:
+					value = std::stoi(argv[4]);
+					break;
+				case player_status_field::level:
+				case player_status_field::highest_level:
+					value = std::stoi(argv[5]);
+					break;
+				case player_status_field::base_hit:
+					value = 2000;
+					break;
+				case player_status_field::hit_difference:
+					value = 500;
+					break;
+				default:
+					continue;
+				}
+				field.signed_value = field.unsigned_value = value;
+			}
+			const int spells[] = { SPELL_MIRACLE, SPELL_TRUE_SEEING,
+					       SPELL_DIVINE_WARDING, SPELL_VITAL_INTERCESSION };
+			snapshot.skills.clear();
+			snapshot.affects.clear();
+			for (int spell : spells)
+			{
+				snapshot.skills.push_back({ spell, 100, 100 });
+				for (int i = 0; i < ((spell == SPELL_DIVINE_WARDING ||
+						      spell == SPELL_MIRACLE) ?
+							     2 :
+							     1);
+				     ++i)
+				{
+					player_affect_snapshot af{};
+					af.type = TAG_MEMORIZE;
+					af.flags = AFFTYPE_STORE | AFFTYPE_PERM | MEMTYPE_FULL;
+					af.duration = -1;
+					af.modifier = spell;
+					snapshot.affects.push_back(af);
+				}
+			}
+			for (int skill : { SKILL_SPELL_KNOWLEDGE_CLERICAL, SKILL_QUICK_CHANT,
+					   SKILL_CONCENTRATION })
+				snapshot.skills.push_back({ skill, 100, 100 });
+			player_affect_snapshot pending{};
+			pending.type = TAG_MEMORIZE;
+			pending.flags = AFFTYPE_STORE | AFFTYPE_PERM;
+			pending.duration = -1;
+			pending.modifier = SPELL_VITAL_INTERCESSION;
+			snapshot.affects.push_back(pending);
+			pending.modifier = SPELL_MIRACLE;
+			snapshot.affects.push_back(pending);
+		}
+		++snapshot.revision;
+		snapshot.components = PLAYER_CHECKPOINT_COMPONENT_ALL;
+		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+		require(flatfile_player_snapshot_apply(argv[1], snapshot, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"Cleric fixture save: " + error);
 		return 0;
 	}
 	if (argc >= 4 && std::string(argv[2]) == "inspect-world-items")
