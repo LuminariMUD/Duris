@@ -25147,3 +25147,21 @@ Requirements are registration values, not automatic learning or preparation. Bas
 * Dragoon Skills
 * Specialization
 * Unspecialization
+
+#0
+
+Warding Faith
+Warding Faith - Last Edited: 2026-10-20
+============================================================
+Warding Faith is a passive Healer ability, available on specialization at level 30.
+It absorbs damage using a separate ward pool. In an ordinary room with no other
+modifiers, an empty ward recovers fully over 240 seconds. Passive recovery stops
+in combat and no-heal rooms; healing rooms improve recovery. Epic Warding Faith
+increases capacity without extending that baseline recovery time.
+
+A Healer's healing also restores ward equal to 10% of HP actually restored,
+rounded down for each recipient and capped at maximum ward, including in combat.
+Overhealing restores no ward. Group Heal can refill ward for each healed member.
+
+==See also==
+Healer, Epic Warding Faith

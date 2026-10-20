@@ -223,7 +223,7 @@ int mana_regen(P_char ch, bool) {
 }
 int move_regen(P_char, bool) { return 0; }
 int hit_regen(P_char, bool) { return 0; }
-int ward_regen(P_char, bool) { return 0; }
+float ward_regen(P_char, bool) { return 0; }
 int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 void stop_meditation(P_char ch) { REMOVE_BIT(ch->specials.affected_by, AFF_MEDITATE); }
 void gmcp_char_vitals(P_char) {}
