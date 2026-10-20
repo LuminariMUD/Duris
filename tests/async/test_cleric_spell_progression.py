@@ -68,7 +68,7 @@ assert int(dict(ids)[last_spell]) >= int(dict(ids)["SPELL_MASS_PURIFICATION"])
 first_skill = int(re.search(r"^#define FIRST_SKILL (\d+)", header, re.M)[1])
 assert int(dict(ids)[last_spell]) < first_skill
 for name, spell_id, target in (
-    ("divine warding", "SPELL_DIVINE_WARDING", "TAR_CHAR_ROOM"),
+    ("divine warding", "SPELL_DIVINE_WARDING", "TAR_SELF_ONLY"),
     ("mass purification", "SPELL_MASS_PURIFICATION", "TAR_IGNORE"),
 ):
     assert re.search(r'SPELL_CREATE\("' + name + r'", ' + spell_id +

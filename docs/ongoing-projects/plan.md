@@ -187,16 +187,16 @@ other material combat behavior; it cannot supply the missing balance evidence.
 
 ### W2 — Self-only Divine Warding for 660 seconds
 
-- [ ] Keep circle 11 and use the existing `TAR_SELF_ONLY` target convention.
+- [x] Keep circle 11 and use the existing `TAR_SELF_ONLY` target convention.
   Enforce self-only behavior inside `spell_divine_warding()` as well, because
   direct/item calls do not all traverse the player parser. Reject an explicit
   non-self target without applying any of the seven effects; retain living-caster
   and valid-room checks.
-- [ ] Reuse the seven protection effects and the existing short-affect lifecycle.
+- [x] Reuse the seven protection effects and the existing short-affect lifecycle.
   Set their bundle duration to `11 * 60 * WAIT_SEC` (2,640 pulses). Preserve
   bitvectors, strength, visibility, and independent dispelling; do not add one
   undispellable umbrella buff or simply change the routines' level argument to 11.
-- [ ] Make refresh replace/cancel the old timed instance safely. A bundle recast
+- [x] Make refresh replace/cancel the old timed instance safely. A bundle recast
   resets each protection to 660 seconds, including a protection originally cast
   individually. A later individual cast restores its ordinary level-based
   duration and cancels the bundle expiry for that instance. These protections
@@ -424,3 +424,29 @@ eligibility/innate functions), `test_cleric_spell_progression.py`,
 No release tag is appropriate for an unmerged gameplay change.
 W1 command/combat and W3 group/lifetime journeys remain open; the tests above do
 not claim that coverage. Next implementation chunk is W2.
+
+W2 in progress on `branch/issue-169-divine-warding`, stacked on PR #222
+(`988dd1e6d`, remote verified). Shared timer replacement is local to the seven
+protections: ordinary casts restore tick-based duration, bundle casts use 2,640
+pulses, and removal cancels the previous timer. Timed scheduling failure removes
+the affected protection instead of leaving it permanent. Inspecting persistence
+found the snapshot capture path copies raw short-affect duration without first
+refreshing remaining time; the legacy saver calls `updateShortAffects`, but the
+current save pipeline bypasses that call. Reproduce and repair this W2 blocker.
+
+W2 focused proof passed with ASan/UBSan: the extended Cleric utility harness runs
+the production scheduler and expiry callback at tick phases 0/1/299, checks the
+exact 2,640-pulse deadline, recasts, both timer-unit transitions, partial dispel,
+removal and real scheduler sequence-exhaustion admission failure. Effect-list
+storage is isolated in that harness; full-server extraction remains a journey
+gate. `test_player_snapshot_capture.py` reproduces original TTL 2,640 versus
+remaining 800 and proves capture saves 800 without mutating the live value.
+The fix applies to shared snapshot capture used by both backends. Snapshot
+codec/backends/relogin/copyover journeys must still prove the whole handoff.
+
+W2 publication checks passed: MariaDB native build, Cleric progression/eligibility,
+snapshot capture, all scheduler timing/priority/catch-up modes and cancellation
+under ASan/UBSan, class help and documentation contracts, format and whitespace.
+Scheduler logs are ignored `bin/cleric-scheduler.log` and
+`bin/cleric-cancellation.log`. This chunk is ready for focused review; W2 complete
+persistence journeys and the assembled-package gates remain open.
