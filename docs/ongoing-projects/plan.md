@@ -458,3 +458,11 @@ under ASan/UBSan, class help and documentation contracts, format and whitespace.
 Scheduler logs are ignored `bin/cleric-scheduler.log` and
 `bin/cleric-cancellation.log`. This chunk is ready for focused review; W2 complete
 persistence journeys and the assembled-package gates remain open.
+
+Review repair for #223: carry the GMCP countdown fix and focused regressions
+forward from #227 into this timer PR. Short affects report the matching expiry
+event's remaining pulses divided by `WAIT_SEC`, with zero for no event; ordinary
+affects retain their existing duration units. Divine Warding publishes after all
+seven timers exist. The serializer contract proves 660 then 430 seconds and the
+utility harness proves all seven published protections own timers. This avoids
+requiring a later PR to repair the countdown introduced here.

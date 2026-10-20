@@ -56,6 +56,20 @@ LABEL(event_autosave)
 LABEL(event_wait)
 #undef LABEL
 void wear_off_message(P_char, affected_type *) {}
+static int published_short_affects = 0;
+void gmcp_char_affects(P_char ch) {
+    published_short_affects = 0;
+    for (auto *af = ch->affected; af; af = af->next) {
+        if (!(af->flags & AFFTYPE_SHORT)) continue;
+        bool scheduled = false;
+        for (auto *event = ch->nevents; event; event = event->next_char_nev)
+            if (event->func == event_short_affect && event->data &&
+                static_cast<event_short_affect_data *>(event->data)->af == af)
+                scheduled = true;
+        assert(scheduled);
+        ++published_short_affects;
+    }
+}
 static void advance(int pulses) {
     for (int i = 0; i < pulses; ++i) { ne_events(); nevent_advance_tick(); }
 }
@@ -181,6 +195,7 @@ int main() {
         spell_protection_from_fire(56, &caster, nullptr, 0, &caster, nullptr);
         spell_divine_warding(56, &caster, nullptr, 0, &caster, nullptr);
         assert(count(&caster) == 8 && ne_event_counter == 7);
+        assert(published_short_affects == 7);
         for (auto *af = caster.affected; af; af = af->next)
             if (af->type != SPELL_BLESS) {
                 assert(af->flags & AFFTYPE_SHORT);

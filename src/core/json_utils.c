@@ -8,6 +8,7 @@
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
+#include "world/events.h"
 #include "core/utils.h"
 #include "core/json_utils.h"
 #include <ctype.h>
@@ -1036,7 +1037,25 @@ char *json_build_char_affects(struct char_data *ch)
 			cJSON_AddStringToObject(affect_obj, "name", skills[aff->type].name);
 			cJSON_AddNumberToObject(affect_obj, "id", aff->type);
 			/* Send duration in seconds for frontend countdown timer */
-			cJSON_AddNumberToObject(affect_obj, "duration", aff->duration * 60);
+			int seconds;
+			if (aff->flags & AFFTYPE_SHORT)
+			{
+				seconds = 0;
+				P_nevent event;
+				LOOP_EVENTS_CH(event, ch->nevents)
+				{
+					if (event->func == event_short_affect && event->data &&
+					    static_cast<event_short_affect_data *>(event->data)
+							    ->af == aff)
+					{
+						seconds = ne_event_time(event) / WAIT_SEC;
+						break;
+					}
+				}
+			}
+			else
+				seconds = aff->duration * 60;
+			cJSON_AddNumberToObject(affect_obj, "duration", seconds);
 			cJSON_AddStringToObject(affect_obj, "icon", "shield"); /* Default icon */
 			cJSON_AddItemToArray(root, affect_obj);
 		}
