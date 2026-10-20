@@ -436,7 +436,6 @@ int check_damage_ward(P_char attacker, P_char ch, int dam)
 		    FALSE, attacker, 0, ch, TO_VICT | ACT_NOTTERSE);
 		act("&+CThe ward around&n $N&+C flashes briefly as it absorbs your assault!&n",
 		    FALSE, attacker, 0, ch, TO_CHAR | ACT_NOTTERSE);
-
 	}
 
 	return (int)ceil(absorbed / wardMitigation);
