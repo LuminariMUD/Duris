@@ -244,10 +244,10 @@ superseded by this integration.
 
 ### W4 — Ward seconds and effective-healing refill
 
-- [ ] Set `innate.wardingFaith.rechargeTime` and its fallback to 240 seconds.
+- [x] Set `innate.wardingFaith.rechargeTime` and its fallback to 240 seconds.
   Preserve the existing capacity calculation, epic integer steps, NPC capacity
   multiplier, and other ward modifiers.
-- [ ] Keep fractional Warding Faith rate until event accumulation. The required
+- [x] Keep fractional Warding Faith rate until event accumulation. The required
   contribution, in points per 300-pulse tick, is
   `base_ward * PULSES_IN_TICK / (240.0 * WAIT_SEC)`.
   A narrow implementation is to move that contribution from integer
@@ -257,7 +257,7 @@ superseded by this integration.
   contribution in one place; retain the existing event accumulator and integer
   ward balance. No persisted character layout or other resource's rate needs to
   change. Evaluate the combined rate before full/negative-rate early exits.
-- [ ] Change only the Healer refill in `heal()` from `hits / 5` to `hits / 10`,
+- [x] Change only the Healer refill in `heal()` from `hits / 5` to `hits / 10`,
   retaining the effective-HP source and ward cap. Use it both in and out of combat,
   as the existing path does. Preserve healing modifiers and Group Heal's
   per-recipient rounding. Do not refill from attempted healing or Intercession's
@@ -466,3 +466,29 @@ affects retain their existing duration units. Divine Warding publishes after all
 seven timers exist. The serializer contract proves 660 then 430 seconds and the
 utility harness proves all seven published protections own timers. This avoids
 requiring a later PR to repair the countdown introduced here.
+
+W4 in progress on `branch/issue-169-ward-recovery`, stacked on PR #223
+(`c11bfab61`, remote verified). Move only innate recovery out of integer
+`TmpAffs.ward_reg`; keep the existing event accumulator and character layout.
+Rate policy now expresses points per 300 pulses and converts seconds using
+`WAIT_SEC`. The combined rate is evaluated before the full-ward early return.
+Healer refill remains based on `vamp()` effective HP, now divided by ten.
+
+W4 component proof: new `test_cleric_ward_runtime.py` passed under ASan/UBSan.
+It extracts the actual innate capacity block (without other affect modifiers),
+executes real `ward_regen`, `StartRegen`, `event_ward_regen`, `heal`, `vamp`, and
+Group Heal with an isolated deterministic event queue. All 40 level/epic cases
+fill at 960 +/- 1 pulses. It checks full-rate sign, heal/no-heal rooms, combat,
+NPC multiplier, duplicate scheduling, effective healing 0/1/9/10/19/20/200,
+overheal, cap and aura-enhanced group refill. Group sizes 1/3/6 restore 14/46/94
+ward in the fixed 120-point Group Heal fixture; the healer's outgoing scalar is
+1.20 and the level-56 white aura on other recipients adds 11.2%. This is component
+measurement, not matched PvE/PvP balance proof. Native MariaDB build,
+`test_tick_work_spread.py` and `test_psp_move_regen.py` passed.
+
+Additional W4 checks passed: combat interrupts/restarts the chain; Plague reduces
+120 attempted healing to 84 effective HP and 8 ward; direct `vamp()` restores no
+ward. Existing scheduler, Holy Sacrifice/vamp-cap, healing-precedence, help and
+documentation tests pass after the rate declaration change. The new test is
+automatically discovered by `tests/run_regression_tests.py`; no registry needed.
+Full persistence/restart and matched combat balance gates remain open.

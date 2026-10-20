@@ -21647,7 +21647,7 @@ See also: epic power, epic constitution, epic luck, toughness
 #
 "EPIC WARDING FAITH" (Skill)
 ===========================================================================
-"Epic warding faith" is the summit of the cleric's shielding devotion, deepening the divine ward that blazes forth to drink an enemy's assault. With each degree of mastery the holy bulwark grows mightier and gathers its strength anew the faster, standing twice as firm at its height as at its first awakening. The ward's flash of protection hones the skill further with every blow it absorbs.
+Epic Warding Faith increases Warding Faith's capacity in steps. At full mastery the ward holds twice its base capacity. Passive recovery from empty still takes 240 seconds in an ordinary room without other modifiers. Healing by the Healer restores ward equal to 10% of effective HP restored, rounded down separately for each recipient and capped at maximum ward.
 ===========================================================================
 See also: devotion, warding faith, prayer, aura of rebirth
 #
@@ -24602,4 +24602,20 @@ white aura. Nearby group members become more receptive to healing spells.
 Multiple Improved Healing auras do not stack.
 
 See also: HEALER, PALADIN
+#
+
+#
+"WARDING FAITH" (Innate)
+===========================================================================
+Warding Faith is a passive Healer ability, available on specialization at level 30.
+It absorbs damage using a separate ward pool. In an ordinary room with no other
+modifiers, an empty ward recovers fully over 240 seconds. Passive recovery stops
+in combat and no-heal rooms; healing rooms improve recovery. Epic Warding Faith
+increases capacity without extending that baseline recovery time.
+
+A Healer's healing also restores ward equal to 10% of HP actually restored,
+rounded down for each recipient and capped at maximum ward, including in combat.
+Overhealing restores no ward. Group Heal can refill ward for each healed member.
+
+See also: HEALER, EPIC WARDING FAITH
 #
