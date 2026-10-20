@@ -234,6 +234,14 @@ other material combat behavior; it cannot supply the missing balance evidence.
   resulting effective healing and ward refill alongside the outgoing 1.20 scalar.
   Different existing aura types may coexist according to the existing rules.
 
+Aura lifecycle closeout for the access PR: ordinary and staff unspecialization
+now purge outgoing Cleric specialization auras and refresh the target's skills.
+Paladin and Anti-Paladin base auras remain available. The executable regression
+covers successful/failed transactions, the correct staff target, both retained
+base classes, and linked aura cleanup. This fix is included with the new Healer
+grant in #222 so it is independently safe to review. The later #226 repair is
+superseded by this integration.
+
 ### W4 — Ward seconds and effective-healing refill
 
 - [x] Set `innate.wardingFaith.rechargeTime` and its fallback to 240 seconds.
