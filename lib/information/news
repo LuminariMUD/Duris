@@ -3,9 +3,26 @@
 &+W======================================================================&n
 &+WUpdated: October 20, 2026&n
 
-Welcome back! Choose your starting stats, revisit the Cleric toolkit, and
-find your shared locker. Newest first; later updates replace older rules.
+Welcome back! Recover your rightful artifacts and choose your next beginning.
+Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/20/26&n &+L-&n &+YOne artifact, its rightful owner&n
+&+W----------------------------------------------------------------------&n
+
+&+CArtifacts find their way back&n
+&+Y-&n At restart, artifacts held back by conflicting old records can now
+  return when saved ownership identifies one valid copy. Your recorded
+  holder takes priority; a soul-bound owner's saved copy can also resolve
+  an outdated location. Unclear ownership still keeps an artifact withheld.
+&+Y-&n Once the valid copy is established, obsolete duplicates stay retired
+  across later restarts and replacements. Retired copies are removed when
+  loading your character; items inside a retired container are preserved.
+&+Y-&n Older auction saves now recognize artifact status inherited from the
+  original item, helping valid auctioned artifacts survive recovery.
+&+Y-&n Artifact expiry now follows the verified saved holder when old
+  records name a room or former owner, so being offline no longer leaves
+  the expiry check looking in the wrong place.
 
 &+R10/20/26&n &+L-&n &+YYour next beginning, your next blessing&n
 &+W----------------------------------------------------------------------&n
