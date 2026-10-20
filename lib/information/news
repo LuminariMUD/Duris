@@ -1,11 +1,87 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 19, 2026&n
+&+WUpdated: October 20, 2026&n
 
-Welcome back! Your bags balance better, old hatreds wake up, and familiar
-roads find new homes. Newest first; later updates replace older rules.
+Welcome back! Choose your starting stats, revisit the Cleric toolkit, and
+find your shared locker. Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/20/26&n &+L-&n &+YYour next beginning, your next blessing&n
+&+W----------------------------------------------------------------------&n
+
+&+CChoose your starting stats&n
+&+Y-&n New characters can choose &+YDefault&n for consistently strong stats
+  and a quick start, or &+YAdvanced&n for a wider range and rerolling
+  until you accept a set. Both methods give &+Yfour +5 bonuses&n and
+  let you swap stats afterward. A stat already at 100 uses no bonus.
+&+Y-&n Browser connections follow the same four-bonus sequence. Accept
+  Advanced rolls before adding bonuses; finish bonuses before swapping
+  stats or entering the world. Reset creation to change race or method
+  after accepting stats. Your new character's account listing and vital
+  displays now catch up correctly after first entry and starter equipment.
+
+&+CClerics bring the whole toolkit&n
+&+Y-&n Healers regain ordinary Cleric offensive spells, sixth-circle
+  Negative Energy Barrier, and Kick training up to &+Y40%&n. Specializing
+  as a Healer at &+Ylevel 30&n also grants the white Improved Healing
+  aura: use &+C'innate aura_of_improved_healing'&n. It helps nearby
+  groupmates receive healing, and multiple copies do not stack.
+&+Y-&n For all Clerics, Miracle moves from seventh to &+Yeighth circle&n
+  (level 36), while True Seeing moves from eleventh to &+Ytenth circle&n.
+  Holymen no longer receive Vital Intercession. Leaving a Cleric
+  specialization now clears its linked auras properly.
+&+Y-&n &+Ccast 'divine warding'&n now protects only you. Its seven protections
+  each last &+Y11 elapsed minutes&n, can be dispelled separately, and
+  keep their remaining duration when saved. Recasting refreshes all seven;
+  casting an individual protection afterward gives that protection its
+  ordinary duration instead.
+&+Y-&n A Healer's Warding Faith now refills from empty in &+Y240 seconds&n
+  in an ordinary room without other modifiers. Passive recovery stops
+  in combat and no-heal rooms; healing rooms improve it. Epic training
+  increases capacity without extending that baseline refill time.
+&+Y-&n Your healing now refills your ward by &+Y10%&n of HP actually restored,
+  down from 20%, rounded down separately for each recipient. Overhealing
+  adds nothing. This refill still works in combat and on group healing.
+  See &+C'help healer'&n, &+C'help warding faith'&n and
+  &+C'help divine warding'&n for the revised rules.
+
+&+CStorms and stone rewards&n
+&+Y-&n Tapping &+MTsunami&n grants Vitality at your level plus &+Y15&n,
+  capped at level &+Y60&n. It strengthens weaker ordinary Vitality and
+  refreshes its duration without weakening a stronger one. Only you and
+  groupmates in the room benefit; reflections and deity-specific Vitality
+  remain excluded.
+&+Y-&n Epic stone base payouts are now &+Y300&n for Ancient Halls of
+  Ironstar, &+Y1200&n for Ravenloft Catacombs, and &+Y700&n for Grumbar's
+  Domain. Existing stone modifiers can change the final award.
+  &+C'Epic zones'&n now lists zones in ascending order of base payout.
+
+&+CThe right locker, the right company&n
+&+Y-&n &+C'Enter locker <character>'&n now finds that character's account
+  locker even when their account has a different name. It takes precedence
+  over an old personal locker; use &+C'enter locker <character>.locker'&n
+  to select the old locker explicitly. Their contents and grants stay
+  separate. Full account and guild locker names accept a final .locker.
+&+Y-&n Grants still require the same racewar side. Grant a character name
+  for one visitor, or an account name for that account's characters on
+  your side. Leave the locker and let its save finish before your visitor
+  enters. &+C'Enter locker guild'&n and your guild's numbered name apply
+  the same membership, parole and prestige checks. Occupied lockers no
+  longer risk loading a second copy. See &+C'help locker'&n and &+C'help grant'&n.
+&+Y-&n Ordinary &+C'who'&n once again says when the opposing side has
+  someone online, without giving its population. This replaces yesterday's
+  removal of that message; public status replies still omit population.
+
+&+CAt the noticeboard and the builder's desk&n
+&+Y-&n The welcome screen now carries the pwipe announcement for
+  &+YOctober 28 at 18:00 UTC&n, plus links for feedback, Mudlet upgrades,
+  the website and Discord. Bring your crew and your best grudges.
+&+Y-&n Staff &+C'rlist'&n, &+C'mlist'&n and &+C'olist'&n default to your current
+  zone, accept explicit zone numbers or inclusive VNUM ranges, and show
+  at most &+Y500 entries&n. Enable paging for results. These lists read
+  names without creating creatures or items; use each command's help
+  for its syntax and &+C'rlist'&n offsets.
 
 &+R10/19/26&n &+L-&n &+YBags in balance, grudges in working order&n
 &+W----------------------------------------------------------------------&n
