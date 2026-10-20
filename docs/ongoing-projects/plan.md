@@ -522,7 +522,8 @@ A real W3 lifecycle blocker was found: successful ordinary unspecialization clea
 `player.spec` and prepared spells but never purges the provider's linked auras or
 its recurring application event. This newly permits a former Healer to keep
 providing white aura after losing entitlement. Repair the successful commit
-callback with the existing `purge_linked_auras()` API; failed epic transactions
+callback with the existing `purge_linked_auras()` API for Clerics only;
+Paladin and Anti-Paladin aura grants survive specialization removal; failed epic transactions
 must leave the aura intact. The extended aura cleanup regression executes that
 actual callback and checks successful/failed transaction branches.
 
