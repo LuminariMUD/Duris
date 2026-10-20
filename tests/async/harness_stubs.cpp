@@ -45,6 +45,7 @@ HARNESS_STUB player_save_submit_result persistence_writer_submit(persistence_job
 	errno = ESHUTDOWN;
 	return player_save_submit_result::unavailable;
 }
+HARNESS_STUB void gmcp_char_vitals(P_char) {}
 HARNESS_STUB void debug(const char *, ...) {}
 HARNESS_STUB void wizlog(int, const char *, ...) {}
 HARNESS_STUB void statuslog(int, const char *, ...) {}

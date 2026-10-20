@@ -1,14 +1,19 @@
 # Issue #107: Choose a stat rolling system before rolling
 
-Status: implementation in progress, 2026-10-20. Working in `/home/aiwithapex/projects/duris-issue107-plan`. The owner explicitly instructed no OpenSpec; this task uses this plan and executable tests.
+Status: implementation and local acceptance complete; ready for review, 2026-10-20.
+This change includes no OpenSpec workflow files. Worktree: `/home/aiwithapex/projects/duris-issue107-plan`.
 
-Telnet chunk: [PR #236](https://github.com/LuminariMUD/Duris/pull/236), head `fcbdf4310`, ready for review.
-Protocol: [PR #237](https://github.com/LuminariMUD/Duris/pull/237), stacked on #236.
-Current branch: `branch/issue-107-creation-response-fixes`, stacked on #237 for
-creation-response defects reproduced during acceptance.
-WebSocket protocol implementation and focused qualification pass. The required
-DurisWeb companion [PR #73](https://github.com/LuminariMUD/DurisWeb/pull/73) is in `/home/aiwithapex/projects/durisweb-issue107` on
-`branch/issue-107-stat-choice`. Paired browser acceptance remains. Nothing deployed or merged.
+Review order: [Telnet #236](https://github.com/LuminariMUD/Duris/pull/236), then
+[WebSocket #237](https://github.com/LuminariMUD/Duris/pull/237), then
+[creation responses #238](https://github.com/LuminariMUD/Duris/pull/238), then
+[first-entry vitals #239](https://github.com/LuminariMUD/Duris/pull/239) on the current
+branch `branch/issue-107-first-entry-vitals`.
+The required website companion is [DurisWeb #73](https://github.com/LuminariMUD/DurisWeb/pull/73),
+worktree `/home/aiwithapex/projects/durisweb-issue107`, branch
+`branch/issue-107-stat-choice`. Both browser methods, full-world persistence and
+review qualification pass. Merge/release remain owner review steps; no production
+operation, merge or release tag was performed. #107 stays open for integration.
+
 Tracking: [Duris #107](https://github.com/LuminariMUD/Duris/issues/107).
 Implementation branch: `branch/issue-107-stat-choice`.
 Duris source baseline: [master `e19537cced99`](https://github.com/LuminariMUD/Duris/commit/e19537cced993bc8de3de1abd76027e8d40b389a).
@@ -83,7 +88,7 @@ guarantee against scripts repeatedly starting new characters.
   policies. Broad creation cleanup and unrelated defects are separate work.
   Production deployment and live player changes are outside this planning task.
 
-## Verified source findings
+## Historical baseline source findings
 
 These are code observations at the baselines above, not runtime test results.
 The DurisWeb working checkout was behind master; the five affected implementation
@@ -144,7 +149,10 @@ files were compared with fetched `origin/master` and had no differences.
   The request carries only `race`; responses carry labels and `bonusRemaining`.
   No website database or backend route is needed for this socket protocol change.
 
-## Implementation work and files
+## Implemented contract and files
+
+The following requirements are implemented in the review stack. They remain the
+contract for reviewing or continuing this work.
 
 ### 1. Shared roller and Telnet flow
 
@@ -350,224 +358,206 @@ Run journeys in isolated local/dev fixtures; compiled artifacts stay under
 `bin/` and are not committed. Do not wait for CI to substitute for these local
 checks. Report exact commands/results and any missing browser/persistence proof.
 
-## Delivery, documentation, and estimate
+## Completed delivery and continuation
 
-- First publish this documentation-only plan on the linked issue branch.
-  Preserve the earlier plan and keep #107 open. Planning verification consists
-  of current-source/caller inspection, link/path checks, preservation checks,
-  whitespace review, and remote branch/issue-link readback.
-- Implement the server/Telnet/protocol work with focused tests, then publish a
-  reviewable Duris PR. Implement the required DurisWeb companion and publish its
-  PR with a cross-repository link. Keep this plan's progress and exact proof
-  current. Review the final diff with the same ablation test.
-- Update the historical research document's decision/status introduction to
-  point to the accepted design while keeping its dated historical evidence
-  intact. Record the final selected rules and PR links on #107 so its stale
-  “no replacement selected” wording no longer obscures the decision.
-- Complete both implementations and paired local acceptance before closing
-  #107. Merge/release order is MUD protocol first, website second; releases need
-  their normal separate authorization. No migration is planned. Validate that
-  older clients can still create Default characters during the transition.
-  If the server is rolled back, the website must use its old-server behavior.
-- **Estimate: 12-18 focused engineering hours, roughly 2-3 working days** for one
-  engineer: 4-6 hours for the shared roller, Telnet and protocol/lifecycle work;
-  3-4 hours for the website wiring and tests; 4-6 hours for executable journeys,
-  persistence and browser acceptance; 1-2 hours for review repairs/docs/delivery.
-  This is an estimate, not measured implementation time. Review turnaround and
-  production deployment are excluded. The main uncertainty is extending the
-  existing isolated fixture to cover authenticated WebSocket creation and both
-  repositories together, not implementing either dice formula.
+- [x] Implement the two distributions and every Telnet entry route.
+- [x] Enforce the WebSocket attempt/phase/count/reset contract and legacy Default.
+- [x] Implement the required DurisWeb companion and old-server fallback.
+- [x] Complete full-world create/save/restart/relogin in both clients and methods.
+- [x] Complete desktop/phone browser acceptance and repair reproduced defects.
+- [x] Publish all chunks, update #107 and leave a clean review handoff.
 
-## Progress
+Review order, with every PR open and ready for review:
+1. [Duris #236](https://github.com/LuminariMUD/Duris/pull/236): shared roller and
+   Telnet choice/caps/copy, on `branch/issue-107-stat-choice`.
+2. [Duris #237](https://github.com/LuminariMUD/Duris/pull/237): descriptor-owned
+   WebSocket method/phase and four-bonus authority, stacked on #236.
+3. [Duris #238](https://github.com/LuminariMUD/Duris/pull/238): creation response,
+   account projection and full-world qualification repairs, stacked on #237.
+4. [Duris #239](https://github.com/LuminariMUD/Duris/pull/239): first-entry vitals
+   notification and executable-test build handling, stacked on #238.
+5. [DurisWeb #73](https://github.com/LuminariMUD/DurisWeb/pull/73): required website
+   companion; integrate/release after the server stack.
 
-- [x] Read the issue resolution and confirm the selected scope with the owner.
-- [x] Trace current roller callers, all three Telnet entries, WebSocket handlers,
-  descriptor/state consumers, browser callers, and available test fixtures.
-- [x] Apply ablation and write this plan; preserve the earlier plan.
-- [x] Implement and prove the Duris changes (Telnet #236 plus stacked WebSocket PR).
-- [x] Implement and prove the DurisWeb companion changes (PR #73).
-- [x] Complete paired browser/persistence acceptance and implementation review.
-- [ ] Publish final implementation evidence and link the review stack; keep #107 open
-  while its server/website PRs await review and integration.
+Current continuation worktree is `/home/aiwithapex/projects/duris-issue107-plan`,
+branch `branch/issue-107-first-entry-vitals`. This branch's plan is authoritative;
+an older chunk's progress snapshot does not represent outstanding implementation.
+The website worktree is `/home/aiwithapex/projects/durisweb-issue107`, branch
+`branch/issue-107-stat-choice`. Its handoff and unpublished local changelog JSON
+are `docs/ongoing-projects/issue-107-*`.
 
-### Telnet implementation evidence (2026-10-20)
+Qualified code pins:
+- Duris: `7586f75654b06be23da197c3e250f9a7bccdd0d7`; later closeout commits change documentation only.
+- DurisWeb: `461ca507ea8e0207b18765214aa74da356a56470`.
+- Flat-file artifact: `bin/tests/stat-choice/flatfile-build/server/dms_new`, SHA-256 `e228b01725c07af172cb4f99de4a292fb607f377db44b91649275aa8f675d283`.
 
-Implemented the shared Advanced roller, all three Telnet method-prompt routes,
-Default Enter choice, Advanced reroll/accept, capped-bonus retry, state name/idle
-classification, creation copy and affected executable helpers. The helper updates
-use distinct bonus targets because a Default stat starting at 90 caps after two
-awards. The fixed-home route fixtures use Duergar Warrior and Thri-Kreen Warrior;
-good races also offer tutorial homes and do not exercise those direct paths.
+Master advanced during the work to `6a323feaab1a` with locker repairs and the new
+player MOTD. Each feature branch merged its updated parent, bringing that current
+base through the stack without rewriting published history. The combined tree
+passed the normal build, verified flat-file build, all five full-world stat-choice
+journeys and the named-locker runtime regression. The source tree under `src/`
+at this code pin equals the source tree used by that combined qualification.
+Earlier browser/formula results remain applicable: the upstream delta affects
+locker commands and MOTD text, not the stat or browser protocol paths.
 
-Validation:
-- `make -C src -j8`: passed (normal MariaDB-enabled development binary).
-- `python3 tests/async/test_character_stat_choice.py`: passed under ASan/UBSan;
-  production formulas, both extrema, ten base/current assignments, existing bad/
-  mob rolls and mob floors, partial cap, no-cost rejection, luck/karma and four
-  bonuses.
-- `python3 tests/async/test_creation_prompt_journey.py`: the initial run exposed
-  fixture assumptions; after repair, all 16 scenarios passed against the same
-  built flat-file binary `bin/tests/stat-choice/dms_telnet`. The final test-only
-  extension separately passed `keep_confirmation` for real cap retry, rejected
-  karma and repeated swaps including luck. No server behavior changed between
-  those runs. Existing-character reload and preference preservation passed.
-- `test_character_creation_idle_timeout.py`, `test_creation_availability_contract.py`,
-  `test_creation_all_races_toggle.py`, `test_creation_all_classes_toggle.py`,
-  `test_chaos_hardcore_creation.py`, `test_racewar_admission.py`: passed.
-- `./scripts/format.sh --check`, Python compilation and `git diff --check`: passed.
+## Final protocol names
 
-The deterministic native test proves numeric formulas; the socket journeys prove
-reachability. Exact saved-stat parity and Advanced restart/relogin remain in the
-combined persistence qualification. The server protocol, DurisWeb wizard and
-paired browser acceptance are still required. No merge, tag, migration or
-production action is part of this review delivery.
+- `chargen_options` advertises `statMethods: ["default", "advanced"]` and
+  `bonusCount: 4`; it does not reset an attempt.
+- `roll_stats` takes `{race, method?}`; omitted method means Default. Its response
+  includes ten quality labels, `bonusRemaining`, `method` and `phase`.
+- Phases are `rolling`, `bonuses`, `ready`; only same-race/same-method Advanced in
+  `rolling` may reroll. Default's first roll is accepted immediately.
+- `accept_stats` returns `stats_accepted` with the same fields. Repeated acceptance
+  acknowledges current values without restoring awards or changing the roll.
+- `add_bonus` returns `bonus_added` with method/phase and existing fields. The
+  fourth successful selection reaches ready. `swap_stats` returns `stats_swapped`
+  with method/phase; creation requires ready, zero remaining and matching race.
+- `reset_chargen` takes no data and returns `{type: "chargen_reset"}` after
+  clearing every attempt field. Login/account replacement, accepted saved-character
+  entry and successful creation also clear attempts.
+- Mutations require completed authentication, no attached character, and either
+  actual account-menu state (`CON_ACCT_SELECT_CHAR` or `CON_DISPLAY_ACCT_MENU`).
+  Pending password/write guards remain in dispatch.
 
-### WebSocket implementation evidence (2026-10-20)
+## Verification evidence
 
-Implemented descriptor method/phase and four-award enforcement. Wire contract:
-- `chargen_options`: `statMethods: ["default", "advanced"]`, `bonusCount: 4`;
-  reads never reset an attempt.
-- `roll_stats`: `{race, method?}`; missing method selects Default. Success returns
-  `type: "roll_stats"`, ten qualitative `stats`, `bonusRemaining`, `method` and
-  `phase`. Only same-race/same-method Advanced in `rolling` can reroll.
-- `accept_stats`: no data; returns `type: "stats_accepted"` and the same fields.
-  Duplicate acceptance preserves the current count/stats/phase.
-- `add_bonus`: only `bonuses`, four successful selections; `bonus_added` retains
-  existing fields and adds method/phase. `swap_stats`: only `ready`, with existing
-  `stats_swapped` fields plus method/phase. Karma is excluded.
-- `create_character`: only `ready`, zero bonuses and matching race, before any
-  allocation or persistence. Name/admission errors retain the valid attempt.
-- `reset_chargen`: no data; clears every descriptor creation field and returns
-  `{type: "chargen_reset"}`. Reset also runs on login/account replacement,
-  registration replacement, accepted saved-character entry and successful creation.
-- Mutations require an authenticated account menu and no attached character.
-  Actual quit/death return uses `CON_DISPLAY_ACCT_MENU`; login uses
-  `CON_ACCT_SELECT_CHAR`. Both are accepted. Registration now explicitly enters
-  the account-menu state before its success response. Pending auth/write guards
-  remain in dispatch.
+Passed local server checks:
+- `make -C src -j8` (normal MariaDB-enabled development build).
+- Flat-file build, both through `make -C src PERSISTENCE_BACKEND=flatfile -j8`
+  during implementation and the verified fixture builder on the combined tree.
+- `python3 tests/async/test_character_stat_choice.py`: production functions under
+  ASan/UBSan, exact dice parameters/extrema, all ten base/current assignments,
+  unchanged bad/mob rolls and mob floors, partial/full caps, luck/karma, counts,
+  exact descriptor preservation, reroll replacement, reset and session gates.
+- The 16-scenario creation-prompt suite passed against its built flat-file binary;
+  the added live cap/karma/repeated-luck-swap leg passed separately.
+- `python3 tests/async/test_character_stat_choice_journey.py --full-world`: all
+  five cases pass on the integrated current-master tree: Telnet Default/Advanced,
+  WebSocket Default/Advanced/legacy missing-method Default. They cover real
+  dispatch, registration, capabilities, reset in each phase, reconnect/account
+  replacement, invalid order/method/race, duplicate acceptance, four awards,
+  forbidden karma/fifth bonus, repeated swaps, matching-race creation, playing
+  guards, name collision/retry, successful-attempt consumption and another new
+  character, tutorial room 22800, durable numeric stats, restart and saved entry.
+- Post-kit vitals checks pass for all three full-world WebSocket cases and a
+  minimal Default case. A saved character bypasses the method prompt and retains
+  its stats. The inspector reads the authoritative base-stat domain.
+- Creation timeout, availability, all-races, all-classes, Chaos/Hardcore and
+  racewar admission contracts pass.
+- Account projection contracts and `tests/async/with_disposable_mariadb.sh
+  tests/async/run_account_character_projection_mysql.sh` pass using a disposable
+  container/schema. This is focused SQL evidence, not a full MariaDB game journey.
+- Creation-grant batch/reconciliation contracts, native input queue, ASan/UBSan
+  prompt/output runtime and the integrated named-locker runtime pass.
+- Changed-file formatting, Python compilation and whitespace checks pass.
 
-Validation:
-- `make -C src -j8` and `make -C src PERSISTENCE_BACKEND=flatfile -j8`: passed.
-- `python3 tests/async/test_character_stat_choice.py`: passed with ASan/UBSan,
-  now also exercising actual WebSocket handlers against controlled dice. It
-  asserts exact numeric descriptor preservation for rejected requests, Advanced
-  replacement of all ten values, duplicate acceptance, counts, cap/karma,
-  swapping, resets and authenticated/playing/menu state gates. The quality-label
-  dependency is the active `STAT_INDEX`, not its commented historical version.
-- `python3 tests/async/test_character_stat_choice_journey.py`: all three actual
-  WebSocket journeys passed: explicit Default, Advanced, and legacy missing-method
-  Default. Each covers registration, pre-roll errors, reset in all three phases,
-  reconnect and account replacement, options preserving attempts, race/method
-  conflicts, acceptance order/duplicates, four bonuses, early/fifth bonus and
-  karma errors, repeated luck swaps, wrong-race creation, creation while playing,
-  save, restart, saved-character entry and unchanged ten numeric base stats.
-  Each then quits to the actual account menu, proves consumed attempts cannot be
-  reused, starts a second character, rejects a real saved-name collision without
-  altering that character, and successfully retries with a new name.
-- The existing read-only flat-file inspector now returns authoritative base stats;
-  its own repository regression passes when building it for these journeys.
-- Creation availability/race/class/Hardcore/racewar contracts still pass.
-  Changed-file formatting and whitespace checks pass.
+The standalone stat-choice journey builds/acquires the existing verified flat-file
+artifact when `--binary` is omitted. It does not depend on manually replacing the
+normal `bin/server/dms_new`. All generated test builds, including the older prompt
+suite's temporary build directory, are below `bin/`. Full-world fixtures copy lib,
+use their own authority/journals/ports, and use generated authored world inputs;
+`make -j8 world` passed. Generated outputs are not committed.
 
-The journey explicitly enables its isolated WebSocket listener and waits for the
-restarted server's readiness. Only its synthetic offline character is promoted
-with the existing fixture to let quit finish immediately; its base stats remain
-untouched. No shared database, account, listener or production environment is used.
-The website and paired browser qualification remain required.
+Passed website checks:
+- Eight focused wizard/actual-Pinia/socket tests plus five existing credential
+  tests: 13 total. They cover preselection/no premature roll, method payload,
+  acknowledgement ordering, caps/error recovery, reset/back/cancel, no overlapping
+  mutations, unrelated metadata/error handling, hometown waiting/retry and legacy
+  server fallback.
+- `pnpm --dir frontend format:check`, `lint`, `type-check` and `build` pass with
+  explicit local public endpoints. Build output remains ignored.
 
-### Paired qualification updates
+## Paired browser acceptance
 
-- DurisWeb implementation is published as PR #73, head `63ce948`, with six new
-  focused tests and 11 including the existing socket/credential suite; frontend
-  format/lint/type-check/build pass. Its own handoff and unpublished local
-  changelog payload are in `docs/ongoing-projects/issue-107-*` there.
-- Browser acceptance exposed registration responding with the literal account
-  name "registered" and creation flags serialized incorrectly: cJSON_False is
-  nonzero and must not be passed as a C boolean. The response now uses the actual
-  account name and booleans for Hardcore, newbie and single-hometown choice.
-  Full-world socket journeys assert these responses along with tutorial room
-  22800; all three WebSocket method/legacy cases pass.
-- Recovery's isolated fixture now offers `full_world=True`, retaining its
-  default minimal behavior. `make -j8 world` built authored world inputs in this
-  task checkout; generated outputs remain ignored/uncommitted. Paired acceptance
-  uses this world because the minimal fixture falls back to Cage of Smoke when
-  tutorial room data is absent. Full-world Telnet numeric/persistence checks are
-  being added to the same stat-choice journey driver.
-- Full-world browser Default creation passed four bonuses, a luck swap, correct
-  normal/newbie response flags, real entry into tutorial 22800 and durable save.
-  Restart/relogin and the separate Advanced mobile journey remain in progress.
-  Screenshots and peripheral HTTP fixture details will be recorded at closeout.
+Regular Playwright drove installed Chrome 155.0.8059.41 because the Browser plugin
+is unavailable. URL: `http://127.0.0.1:5179/play`; viewports 1280x900 and 320x568.
+The actual Vue wizard/store/composable talked to the changed isolated full-world
+MUD with synthetic accounts. Peripheral website HTTP bootstrap/map-data and the
+backend-notification socket were fixtures. No MUD creation message was mocked.
 
-- Full-world Telnet Default and Advanced numeric save/restart/relogin checks now
-  pass in the shared journey driver, using the same four distinct bonus targets
-  and the same authoritative saved-stat bounds as WebSocket. Full-world browser
-  Default also reloaded into tutorial 22800 with identical saved numeric stats:
-  `[92,94,92,90,88,89,90,90,89,93]` in Str/Dex/Agi/Con/Pow/Int/Wis/Cha/Kar/Luk order.
-- The browser's post-restart account card showed level 0 although the saved player
-  was level 1. New-character entry raised the level after adding the account
-  projection. The WebSocket entry path now reuses the existing projection sync
-  after `enter_game`; focused journey assertions cover its in-session and durable
-  level-1 summary. These response/projection repairs form their own stacked PR.
+Both methods completed four bonuses, swaps, creation, tutorial 22800, durable save,
+server restart, account login and saved-character entry without a creation prompt.
+Authoritative base stats were identical before/after restart, in Str/Dex/Agi/Con/
+Pow/Int/Wis/Cha/Kar/Luk order:
+- Default: `[92,94,92,90,88,89,90,90,89,93]`.
+- Advanced: `[96,86,91,82,86,88,84,82,85,92]`.
 
-### Final local acceptance (2026-10-20)
+Additional actual-browser proof: no pre-choice roll, Default without Reroll,
+Advanced reroll/acceptance, cap-error recovery, repeated luck swaps, acknowledged
+Back/Cancel, a fresh default choice after cancellation, keyboard Space/arrow
+selection, short-screen vertical scrolling and no horizontal overflow.
 
-The separate response/projection repair is stacked on #237. It fixes three
-creation journey defects found in the actual browser: the registered account
-identity, false booleans incorrectly serialized as true, and level-0 account
-metadata after the character entered at level 1. It reuses the existing account
-projection synchronizer. It adds no new persistence mechanism or schema.
+The browser exposed and qualified these separate repairs:
+- Registration returns the actual account identity; C booleans serialize correctly;
+  the account card durably shows level 1 after first entry.
+- Race selection waits for hometown metadata, clears stale options, deduplicates
+  options requests and retains a failed lookup for retry. Rapid navigation now
+  reaches the hometown step before method selection.
+- Starter equipment is published after the initial client snapshot. Successful
+  blocking-kit completion now sends the existing vitals update. A fresh browser
+  character rendered 35/35 after its entry 1/1 snapshot, before reconnect.
 
-All five `--full-world` journeys pass on the repaired server: Telnet Default and
-Advanced, plus WebSocket explicit Default, Advanced and legacy missing-method
-Default. Both normal and flat-file builds pass. Account projection source
-contracts and `tests/async/with_disposable_mariadb.sh
- tests/async/run_account_character_projection_mysql.sh` also pass; that harness
-uses its own container/schema and does not read checkout credentials. This is
-focused account-projection SQL coverage, not a full MariaDB game-server journey.
+Final game-entry/relogin checks have no app console errors or framework overlay.
+The existing Vue Router next() deprecation warning remains a baseline warning.
+The radio library selects during an asynchronous focus callback; keyboard checks
+used physical key-down duration and no custom keyboard workaround. The first map
+error was an incorrect peripheral test response, fixed to the actual nodes/edges
+API shape; no map product code changed.
 
-Actual browser acceptance used Chrome 155.0.8059.41 and the unchanged application
-route `http://127.0.0.1:5179/play`, with 1280x900 and 320x568 viewports. The Browser
-plugin is unavailable, so regular Playwright drove installed Chrome. The MUD was
-the changed flat-file binary with the full authored world, isolated synthetic
-accounts, journals, ports and state. The site's unrelated HTTP bootstrap/map-data
-and backend-notification socket were fixtures; no MUD creation command or response
-was mocked. The explicit user-proxy setting routed only this browser to loopback.
-
-Both browser methods completed four bonuses, swaps, creation, durable save,
-server restart, account login and saved-character entry into tutorial 22800 with
-no method prompt and unchanged exact base stats (Str/Dex/Agi/Con/Pow/Int/Wis/Cha/
-Kar/Luk):
-- Default: `[92,94,92,90,88,89,90,90,89,93]` before and after restart.
-- Advanced: `[96,86,91,82,86,88,84,82,85,92]` before and after restart.
-
-Additional browser proof: no pre-choice roll; Default has no Reroll; Advanced
-rerolls and waits for acceptance; cap rejection keeps controls/count available;
-repeated luck swaps; Back and Cancel wait for reset acknowledgements; a new
-wizard resets the choice and rolls no stale set; keyboard Space/arrow selection;
-short-screen vertical scrolling and no horizontal overflow. Fast navigation
-exposed a real hometown metadata race. The website now waits for that response,
-clears stale hometowns, deduplicates options requests and retains the race step
-on lookup errors. Two focused regressions cover the repair (13 tests including
-existing credential tests). The rapid real-browser retry passes.
-
-After correcting the peripheral map-data fixture to its actual nodes/edges shape,
-final game-entry/relogin runs have no application console errors or framework
-overlay. The existing Vue Router next() deprecation warning remains a baseline
-warning. Keyboard arrows were exercised with physical key-down duration, because
-the existing radio library selects on an asynchronous focus callback. No custom
-keyboard workaround was added.
-
-Screenshots and a redacted protocol trace are outside the repositories under
+Screenshots and redacted evidence are outside both repositories under
 `C:/Users/apexw/.codex/visualizations/2026/10/20/01a159e0-f002-79e3-9650-209e90903eb9/`:
 `stat-choice-desktop.png`, `stat-choice-default-review.png`,
-`stat-choice-mobile.png`, `stat-choice-advanced-review.png`, and
-`stat-choice-browser-evidence.json`. These are local acceptance artifacts, not
-production evidence. No production operation, migration, release tag, merge or
-live news publication was performed.
+`stat-choice-mobile.png`, `stat-choice-advanced-review.png`,
+`stat-choice-fresh-entry.png`, `stat-choice-browser-evidence.json`.
 
-Final ablation review retained only existing-path protocol/UI/persistence fixes,
-necessary lifecycle state, human copy, focused regression evidence and handoff
-notes. No point-buy, new numeric-stat display, balance adjustment, generic
-workflow layer, persisted method, migration or deployment was added. OpenSpec is
-not used. Existing saved characters follow their ordinary entry path and keep
-their base stats.
+## Review repairs (2026-10-20)
+
+Both reported findings reproduced and were addressed in review order:
+- #236: the recovery contract expected `TOTAL_CON=92` and recovery states at the
+  end of the connection-name table. It now checks `CON_STAT_METHOD=93`,
+  `TOTAL_CON=93` and the updated ordering, retaining recovery IDs 90–92.
+- #237 and #238 had no actionable review findings. The #236 repair was carried
+  through each parent branch and into #239 without rewriting published history.
+- #239: a second uncached build in the fixed journey build directory failed with
+  `flat build did not select __NO_MYSQL__`. Each invocation now owns a temporary
+  directory below `bin/tests`, retained until its journeys finish and then cleaned
+  up. The existing verified artifact helper, cache and `--binary` path are reused.
+
+The recovery/stat sanitizer harnesses and all 16 Telnet prompt journeys passed on
+#236. The three WebSocket lifecycle/persistence journeys passed on #237. All five
+full-world Telnet/WebSocket journeys and the disposable MariaDB account projection
+harness passed on #238. On #239, consecutive direct invocations with
+`DURIS_REGRESSION_BUILD_CACHE` unset passed all five full-world and all five minimal
+journeys, including post-kit vitals. The cached runner also passed:
+`make test-all -j8 TEST_JOBS=2 TEST_MATCH=character_stat_choice` (normal/production
+builds, editor/area tools, world, native signals and two focused Python entries;
+not the complete Python suite).
+
+The build-artifact, starter-grant batch/reconciliation/lifecycle/plan/readiness,
+transaction/item input-queue and ASan/UBSan prompt/output regressions passed.
+Formatting against `origin/master`, Python compilation and whitespace checks
+passed. Master remains `6a323feaab1a`; each updated parent is carried into its
+child. Keep the review order #236 → #237 → #238 → #239 and squash when integrating
+into linear-history master. No release tag, merge or deployment is part of this
+review repair. GitHub CI is not a completion gate for this local qualification.
+
+## Next owner action and limits
+
+No implementation or required local acceptance remains. All PRs are left for
+review/integration. The issue introduction records the selected rules and review
+stack, with the [final evidence comment](https://github.com/LuminariMUD/Duris/issues/107#issuecomment-6295870664).
+Keep #107 open until both repositories are integrated. Server protocol lands and
+releases before the website. No production operation, migration, merge, release
+tag or live changelog publication was performed. The release-note JSON is an
+unpublished local draft for the normally authorized deployment/news process.
+
+A full MariaDB game-server/browser journey and full burn-in were outside this
+focused qualification. The normal server build plus the isolated account SQL
+check are the database-side evidence. No balance certification or live production
+acceptance is claimed. The original checkout and unrelated work were preserved.
+
+Final ablation retained the required existing-path changes, narrow lifecycle
+state, copy, focused regressions and this handoff. No point-buy, numeric stat
+screen, balance change, generic workflow, saved method history, migration or new
+service was added. This change adds no OpenSpec workflow files.

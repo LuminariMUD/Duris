@@ -477,5 +477,7 @@ def run_journeys(binary):
 
 
 if __name__ == "__main__":
-    with tempfile.TemporaryDirectory(prefix="creation-prompts-build-") as build_tmp:
+    build_root = Path(__file__).resolve().parents[2] / "bin/tests"
+    build_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="creation-prompts-build-", dir=build_root) as build_tmp:
         run_journeys(build_flatfile_server(Path(build_tmp)))
