@@ -71,6 +71,16 @@ char_obj_link_data *link_char_obj_with_affect(P_char actor,P_obj source,ush_int 
     link->ch=actor; link->obj=source; link->type=type; link->affect=af;
     link->next=actor->obj_linked; actor->obj_linked=link; return link;
 }
+static bool require_positive_update = false;
+void update_pos(P_char actor) { if(require_positive_update) assert(GET_HIT(actor) > 0); }
+void gmcp_char_affects(P_char actor) { if(require_positive_update) assert(GET_HIT(actor) > 0); }
+void all_affects(P_char ch, int mode) {
+    hold_data TmpAffs{};
+    int t1;
+    for(auto *af=ch->affected;af;af=af->next)
+        if(af->location==APPLY_HIT && !(af->flags&AFFTYPE_NOAPPLY)) TmpAffs.Hits+=af->modifier;
+    // INSERT_HP_RECALC
+}
 affected_type *affect_to_char(P_char actor,affected_type *af) {
     auto *copy=new affected_type(*af); copy->next=actor->affected; actor->affected=copy;
     actor->specials.affected_by2|=af->bitvector2;
@@ -82,11 +92,14 @@ affected_type *affect_to_char(P_char actor,affected_type *af) {
     return copy;
 }
 void affect_remove(P_char actor,affected_type *af) {
+    const bool hp_affect=af->location==APPLY_HIT;
+    if(hp_affect) all_affects(actor,FALSE);
     affected_type **entry=&actor->affected;
     while(*entry && *entry!=af) entry=&(*entry)->next;
     assert(*entry); *entry=af->next;
     if(af->flags&AFFTYPE_LINKED_OBJ) unlink_char_obj_affect(actor,af);
     delete af;
+    if(hp_affect) all_affects(actor,TRUE);
     actor->specials.affected_by2=actor->specials.affected_by4=0;
     for(auto *other=actor->affected;other;other=other->next) {
         actor->specials.affected_by2|=other->bitvector2;
@@ -239,6 +252,29 @@ static void tsunami_cases() {
         s.tsunami(CMD_TAP); advance();
         assert(s.actor->affected->next->modifier==120 && s.actor->affected->next->duration==2);
         assert(calls.empty());
+    }
+    for(bool enabled:{false,true}) for(bool linked:{false,true}) {
+        native_scene s(31514,enabled);
+        s.actor->player.level=36;
+        s.actor->points.base_hit=1000;
+        s.actor->points.max_hit=1144;
+        s.actor->points.hit=10;
+        affected_type af{}; af.type=SPELL_VITALITY; af.location=APPLY_HIT;
+        af.modifier=144; af.duration=10;
+        if(linked) af.flags=AFFTYPE_LINKED_OBJ|AFFTYPE_NOSAVE;
+        auto *original=affect_to_char(s.actor,&af);
+        char_obj_link_data *original_link=nullptr;
+        if(linked) original_link=link_char_obj_with_affect(s.actor,s.source,LNK_CHAR_OBJ_AFF,original);
+        require_positive_update=true;
+        s.tsunami(CMD_TAP); advance();
+        require_positive_update=false;
+        assert(s.actor->affected==original && original->modifier==204 && original->duration==15);
+        assert(s.actor->points.max_hit==1204 && s.actor->points.hit==70);
+        if(linked) {
+            assert(s.actor->obj_linked==original_link && original_link->affect==original);
+            clear_links(s.actor,s.source,LNKFLG_BREAK_REMOVE);
+            assert(!s.actor->affected && !s.actor->obj_linked);
+        }
     }
     for(int interruption=0;interruption<7;++interruption) {
         native_scene s; assert(s.tsunami(CMD_TAP));
@@ -395,12 +431,15 @@ callbacks = '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature)
 callbacks += '\n' + function(ROOT / 'src/specs/specs.object.c', 'int living_necroplasm(')
 callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vampire(')
 callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vitality(').replace('void spell_vitality(', 'static void real_spell_vitality(', 1)
+hp_source = (ROOT / 'src/magic/affects.c').read_text()
+hp_start = hp_source.index('\tif (!mode && (GET_MAX_HIT(ch) == 0))')
+hp_recalc = hp_source[hp_start:hp_source.index('\n\tt1 = GET_MAX_VITALITY(ch)', hp_start)]
 affects = '\n'.join(function(ROOT / 'src/magic/affects.c', signature) for signature in (
     'void clear_links(P_char ch, P_obj obj, int flag)',
     'void unlink_char_obj_affect(P_char ch, struct affected_type *af)'))
 with tempfile.TemporaryDirectory(prefix='duris-native-artifacts-') as directory:
     source = Path(directory) / 'harness.cpp'; binary = Path(directory) / 'harness'
-    source.write_text(platform + fixture + boundary + HARNESS.replace('// INSERT_CALLBACKS', callbacks).replace('// INSERT_AFFECTS', affects))
+    source.write_text(platform + fixture + boundary + HARNESS.replace('// INSERT_CALLBACKS', callbacks).replace('// INSERT_AFFECTS', affects).replace('// INSERT_HP_RECALC', hp_recalc))
     subprocess.run(['g++', '-std=c++20', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-pthread',
                     '-I' + str(ROOT / 'src'), str(source), str(ROOT / 'src/persistence/latency_trace.c'),
