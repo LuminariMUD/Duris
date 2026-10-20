@@ -64,6 +64,7 @@
 #include "world/weather.h"
 #include "net/ws_handlers.h"
 #include "core/safe_format.h"
+#include "classes/paladins.h"
 
 /*
  * external variables
@@ -10085,8 +10086,6 @@ void do_unspec(P_char ch, char *argument, int /*cmd*/)
 	if (IS_NPC(victim))
 		return;
 
-	update_skills(ch);
-
 	if (!IS_SPECIALIZED(victim))
 	{
 		victim->only.pc->time_unspecced = 0;
@@ -10094,6 +10093,9 @@ void do_unspec(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 	victim->player.spec = 0;
+	if (GET_CLASS(victim, CLASS_CLERIC))
+		purge_linked_auras(victim);
+	update_skills(victim);
 	send_to_char("You are no longer specialized.\n", victim);
 	send_to_char("They are no longer specialized.\n", ch);
 }

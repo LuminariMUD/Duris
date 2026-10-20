@@ -1942,7 +1942,7 @@ Syntax:         innate aura of improved healing
 * Aggressive:     No
 * Cumulative:     No
 * Duration:       Instantaneous
-When affected by this aura, members of the paladin's group are more receptive to healing spells cast upon them.
+Paladins at level 30 and Clerics who specialize as Healers can radiate this white aura. Nearby group members become more receptive to healing spells. Multiple Improved Healing auras do not stack.
 ==See also==
 Aura of Vigor, Aura of Precision, Aura of Protection, Aura of Endurance, Aura of Battle Lust, Paladin auras
 
@@ -4379,12 +4379,12 @@ Learning, preparation, equipment, and current ability conditions still apply.
 5th Circle: destroy undead, heal, soulshield, vitality
 6th Circle: continual light, curse, darkness, fear, flame strike, harm,
     mass preserve, negative energy barrier
-7th Circle: full heal, lesser resurrect, miracle, water breathing
-8th Circle: dispel magic, mass heal
+7th Circle: full heal, lesser resurrect, water breathing
+8th Circle: dispel magic, mass heal, miracle
 9th Circle: holy word, plane shift, resurrect, silence, unholy word,
     word of recall
-10th Circle: accelerated healing, full harm, taint
-11th Circle: divine warding, freedom of movement, group recall, true seeing
+10th Circle: accelerated healing, full harm, taint, true seeing
+11th Circle: divine warding, freedom of movement, group recall
 12th Circle: mass purification
 ==See also==
 * Cleric
@@ -11879,7 +11879,7 @@ Healer is a Cleric specialization. Selection requires level 30, an eligible race
 Drow Elf, Duergar Dwarf, Githyanki, Githzerai, Gnome, Goblin, Grey Elf, Halfling, Human, Kobold, Mountain Dwarf, Orc, Tiefling.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
-kick: no grant in this specialization
+No specialization overrides; ordinary Cleric Kick remains trainable to 40%.
 ==Spell changes==
 aura of rebirth: circle 12
 divine font: circle 11
@@ -11887,22 +11887,11 @@ endurance: circle 7
 group heal: circle 10
 healing salve: circle 6
 regeneration: circle 8
-cause critical: no grant in this specialization
-cause light: no grant in this specialization
-cause serious: no grant in this specialization
-destroy undead: no grant in this specialization
-dispel evil: no grant in this specialization
-dispel good: no grant in this specialization
-earthquake: no grant in this specialization
-flame strike: no grant in this specialization
-full harm: no grant in this specialization
-harm: no grant in this specialization
-holy word: no grant in this specialization
-negative energy barrier: no grant in this specialization
-taint: no grant in this specialization
-unholy word: no grant in this specialization
 ==Innate additions==
+aura_of_improved_healing: level 1
 *warding faith: level 30
+The white Improved Healing aura unlocks when you specialize at level 30.
+All ordinary Cleric offensive spells and sixth-circle Negative Energy Barrier remain available, with their normal restrictions.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 ==See also==
 * Cleric
@@ -12311,7 +12300,6 @@ lesser sanctuary: circle 11
 prayer: circle 12
 protection from undead: circle 8
 virtue: circle 8
-vital intercession: circle 6
 ==Innate additions==
 aura_of_protection: level 1
 aura_of_spell_protection: level 1
@@ -15022,6 +15010,8 @@ Miracle - Last Edited: 2007-04-19 19:17:13 by Unknown
 "Miracle" is just that, a miracle. Casting this potent spell grants
 everyone in the Cleric"s group the spells "Vitality", "Armor", and "Bless".
 	See also:vitality ,armor ,bless
+
+Clerics receive Miracle at level 36 (eighth circle).
 
 #0
 
