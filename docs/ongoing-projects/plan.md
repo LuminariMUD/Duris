@@ -62,7 +62,7 @@ property reload, help import, restart, and live account changes require separate
 operational authorization. Repository-required local checks take precedence over
 the issue's older instruction to wait for CI.
 
-## Verified source findings
+## Baseline source findings at b81715f3a146
 
 - **Progression and eligibility:** [skills.c](../../src/classes/skills.c) currently
   gives Miracle circle 7, True Seeing circle 11, Divine Warding circle 11, and
@@ -531,3 +531,45 @@ covered. The first flatfile combined journey passed real prepared-Vital rejectio
 Healer aura activation, parser self-target restriction and seven timers surviving
 save/restart without renewal (2,618 -> 2,600 -> 2,589 pulses). MariaDB qualification
 is rerun after correcting a fixture assertion's spelling of “don't know”.
+
+Current delivery stack (all open/non-draft, no merge or deployment):
+- #222 access/aura/progression: `988dd1e6d`, base master.
+- #223 Divine Warding/timer snapshot: `c11bfab61`, base #222 branch.
+- #224 ward recovery/refill: `ff8750dac`, base #223 branch.
+- #225 Tsunami: `c6bf37236`, base #224 branch.
+- #226 aura respecialization: `c8abe9805`, base #225 branch.
+
+Current checkout: `branch/issue-169-cleric-qualification`, based on #226.
+Qualification work in progress: `tests/async/run_cleric_rebalance_journey.py` and
+Cleric-only fixture commands in the existing flatfile repository harness. These
+are not yet published. First combined flatfile run passed core W1/W2/W3 save and
+restart behavior; expanded flatfile and MariaDB buff-order runs failed the
+Tsunami-upgrade HP assertion. The fixture did not assert that a character wearing
+creation gear actually equipped the trident; add explicit remove/equip/tap
+checks and capture transcripts before deciding whether this is a game defect.
+Current fresh rerun logs: ignored `bin/cleric-flatfile-qualification.log`,
+`bin/cleric-mariadb-qualification.log`; prior passing first-leg evidence was
+replaced by expanded runs and must not be represented as a current full pass.
+Baseline binary/worktree remains `/tmp/duris-cleric-baseline-01a15878`.
+Still required: finish these journeys, restored short expiry/copyover, actual
+spell/Intercession/barrier and aura lifecycle proof, matched group/PvE/PvP
+measurements, complete focused final checks, publish the qualification PR and
+read back every head/base/parity. Owner balance/production acceptance stays open.
+
+A W2 display defect was reproduced by the existing GMCP serializer contract:
+pulse-timed effects were always multiplied by 60, so 2,640 pulses appeared as
+158,400 seconds. The serializer now reads the matching expiry event and divides
+remaining pulses by WAIT_SEC; ordinary display behavior is preserved. Divine
+Warding publishes its final GMCP state after all seven event timers exist.
+The new serializer regression failed before the fix and passes afterward at
+660 and 430 remaining seconds, no-timer zero, and unchanged ordinary duration.
+`test_cleric_utilities_runtime.py` verifies the final seven published protections
+all have their owned timers. MariaDB native build passes. Publish separately
+from the still-in-progress combined qualification fixtures.
+
+New remote review findings (checked against PR heads) also identify Tsunami's
+weaker-buff replacement losing Aramus crown object links and observing transient
+negative HP before its deferred recalculation. Trace and repair in place rather
+than copying linked affect ownership flags. PR #226's unconditional aura purge
+also needs narrowing so base Paladin/Anti-Paladin auras survive unspecialization.
+These findings are not yet claimed resolved.

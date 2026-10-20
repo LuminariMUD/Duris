@@ -34,6 +34,12 @@ static std::map<P_desc, std::map<std::string, std::string>> ws_wire;
 int top_of_zone_table = 0;
 index_data *mob_index, *obj_index;
 Skill skills[MAX_SKILLS];
+static int affect_remaining_pulses = 2640;
+int ne_event_time(P_nevent)
+{
+	return affect_remaining_pulses;
+}
+void event_short_affect(P_char, P_char, P_obj, void *) {}
 char *get_class_string(P_char, char *buf)
 {
 	std::strcpy(buf, "Warrior");
@@ -430,6 +436,34 @@ int main()
 	skills[1].name = "bless";
 	gmcp_char_affects(&a);
 	emit(&ad, "Char.Affects");
+	// Pulse-timed protections must report remaining elapsed seconds, including
+	// after the stored duration has become stale while the event counts down.
+	affect.flags = AFFTYPE_SHORT;
+	affect.duration = 2640;
+	event_short_affect_data timed_data{ &a, &affect };
+	nevent_data timed_event{};
+	timed_event.func = event_short_affect;
+	timed_event.data = &timed_data;
+	a.nevents = &timed_event;
+	auto affect_seconds = [&]()
+	{
+		char *encoded = json_build_char_affects(&a);
+		cJSON *decoded = cJSON_Parse(encoded);
+		assert(decoded);
+		int duration =
+			cJSON_GetObjectItem(cJSON_GetArrayItem(decoded, 0), "duration")->valueint;
+		cJSON_Delete(decoded);
+		free(encoded);
+		return duration;
+	};
+	assert(affect_seconds() == 660);
+	affect_remaining_pulses = 1720;
+	assert(affect_seconds() == 430);
+	a.nevents = nullptr;
+	assert(affect_seconds() == 0);
+	affect.flags = 0;
+	affect.duration = 3;
+	assert(affect_seconds() == 180); // ordinary display behavior stays unchanged
 	quest_mob.player.short_descr = const_cast<char *>("bronze guardian");
 	apc.quest_active = 1;
 	apc.quest_type = FIND_AND_KILL;

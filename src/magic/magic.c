@@ -11,6 +11,7 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -9526,6 +9527,8 @@ void spell_divine_warding(int level, P_char ch, char * /*arg*/, int type, P_char
 				    SPELL_PROTECT_FROM_EVIL };
 	for (int spell : protections)
 		set_protection_duration(victim, spell, 11 * 60 * WAIT_SEC, true);
+	// Publish after all seven durations have their elapsed-time events.
+	gmcp_char_affects(victim);
 }
 
 static void purify_group_member(int level, P_char ch, int type, P_char victim)
