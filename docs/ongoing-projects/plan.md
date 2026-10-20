@@ -418,7 +418,7 @@ All gameplay implementation is committed and pushed. Review the stack in order:
 3. [#224](https://github.com/LuminariMUD/Duris/pull/224), passive recovery and
    effective-healing refill: `ff94ba4f9`, base #223 branch.
 4. [#225](https://github.com/LuminariMUD/Duris/pull/225), both Tsunami paths:
-   `58a410f2b`, base #224 branch.
+   `280fede86`, base #224 branch.
 5. [#229](https://github.com/LuminariMUD/Duris/pull/229), narrow implementation
    regression and final handoff, base #225 branch.
 
@@ -478,6 +478,13 @@ class-help contract derives that name from `do_aura_healing`'s registration and
 failed before the help edit, then passed. This help/test-only follow-up was
 carried through each successor with no change under `src/`, preserving the
 native build and both running-server journey results below.
+The later #225 feedback finding was reproduced and repaired separately. The
+Tsunami helper returns application success; the legacy callback announces only
+successful application/refresh. Deity exclusions reuse the spell's rejection
+messages, while image reflections remain silent. Both modes, all three deity
+buffs, reflection exclusion and normal success announcements pass the extended
+ASan/UBSan artifact test. Both native binaries were rebuilt and their disposable
+journeys rerun after this compiled-source change.
 
 Evidence boundaries:
 
@@ -501,14 +508,13 @@ Evidence boundaries:
 
 ### Builds and running-server qualification
 
-Both native builds passed on the rebased #225 source `8ce856948`; #229 changes
-only tests and documentation. The native source and binary hashes match the
-previously qualified assembled implementation. SHA-256:
+Both native builds passed on #225 source `280fede86`; #229 changes only tests and
+documentation. SHA-256:
 
 - MariaDB `bin/server/dms_new`:
-  `795e8b0d1f229b562d2b687b53c75c24d4c53ed0389a8fbf9610101b8bc1b6dd`.
+  `8994afa2d2a283183041f3e54efbe20d8a144950e41ffc3085d7d93572a2a05c`.
 - Flatfile `bin/server/dms_cleric_flatfile`:
-  `1928dde1dd373977da01a34e30d2b75a4d4c93e7e00e48cd69a624d22718ed47`.
+  `86a56cc2bdaf1502292de004e833562cc9dd16fd27375fdb1be76fec13120897`.
 Build logs are ignored `bin/cleric-review-{mariadb,flatfile}-build.log`.
 Runtime JSON/transcripts also stay under ignored `bin/`; no credentials, player
 data or generated outputs belong in commits.
