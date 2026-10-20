@@ -46,6 +46,7 @@ struct flatfile_artifact_record
 	uint64_t canonical_item_uid = 0;
 	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 	bool identity_only = false; // retain reservations without inventing legacy gameplay rows
+	std::vector<uint64_t> rejected_item_uids = {};
 	bool operator==(const flatfile_artifact_record &) const = default;
 };
 

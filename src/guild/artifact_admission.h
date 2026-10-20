@@ -10,6 +10,7 @@ bool artifact_begin_creation(P_obj object);
 struct artifact_payload_projection;
 // Materialized player payloads use a consistent source cut plus current custody.
 // Zero also covers ordinary objects; a known canonical UID cannot clear its flag.
+// EIDRM identifies a durably retired copy: omit it and preserve its contents.
 unsigned int artifact_player_source_error(const artifact_payload_projection &source,
 					  P_obj object = nullptr);
 // Qualified owned or pinned ground payload: saved UID/flags precede procedures.

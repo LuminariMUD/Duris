@@ -264,7 +264,7 @@ P_obj read_object_for_creation_repair(const artifact_payload_projection &source)
     ++creation_repair_reads; return read_object_for_recovery(source);
 }
 unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj) {
-    return refused_artifact_vnum && source.vnum==refused_artifact_vnum ? EEXIST : 0;
+    return refused_artifact_vnum && source.vnum==refused_artifact_vnum ? refused_artifact_errno : 0;
 }
 P_obj read_object(int rnum, int)
 {
@@ -500,7 +500,28 @@ int main()
         // Raw and repaired ancestry can connect otherwise separate source roots.
         result=original; result.item_sources[2].parent_row_id=0;
         assert(!player_load_items_qualify(&result) && result.snapshot.retained_items.rows.size()==3 && result.snapshot.items.size()==1);
-        refused_artifact_vnum=0;
+        // Definitively retired copies are omitted without withholding their
+        // containers or contents. A normal save can now remove the stale payload.
+        refused_artifact_errno=EIDRM;
+        result=original;
+        assert(!player_load_items_qualify(&result));
+        assert(result.snapshot.retained_items.rows.empty());
+        assert(result.snapshot.items.size()==3 && result.authoritative_item_count==3);
+        assert(result.snapshot.items[0].object_uid==1000);
+        assert(result.snapshot.items[1].object_uid==1002 && result.snapshot.items[1].parent_index==-1);
+        assert(result.item_identities[1].root_item_uid==1002 && !result.item_identities[1].parent_item_uid);
+        assert(player_load_items_materialize(&owner.character,result,&metrics));
+        player_load_items_discard(&owner.character);
+        // Retiring the root preserves the entire nested subtree with repaired roots.
+        reset_test_state();
+        result=original; result.snapshot.items[0].vnum=103; result.snapshot.items[1].vnum=100;
+        assert(!player_load_items_qualify(&result));
+        assert(result.snapshot.retained_items.rows.empty() && result.snapshot.items.size()==3);
+        assert(result.snapshot.items[0].object_uid==1001 && result.snapshot.items[0].parent_index==-1);
+        assert(result.snapshot.items[1].parent_index==0 && result.item_identities[1].root_item_uid==1001);
+        assert(player_load_items_materialize(&owner.character,result,&metrics));
+        player_load_items_discard(&owner.character);
+        refused_artifact_vnum=0; refused_artifact_errno=EEXIST;
     }
     {
         reset_test_state(); test_character owner(42);

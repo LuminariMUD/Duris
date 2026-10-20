@@ -138,6 +138,7 @@ struct artifact_row
 	artifact_save save = {};
 	bool removed = false;
 	uint64_t canonical_item_uid = 0;
+	std::vector<uint64_t> rejected_item_uids = {};
 	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 	artifact_population_reason population_reason = artifact_population_reason::incomplete;
 	std::vector<artifact_payload_projection> canonical_payloads = {};
@@ -169,7 +170,7 @@ const char ARTIFACT_ROWS_QUERY[] =
 const char ARTIFACT_BINDS_QUERY[] = "SELECT 'b', vnum, owner_pid, timer FROM artifact_bind";
 const char ARTIFACT_IDENTITIES_QUERY[] =
 	"SELECT 'i',vnum,IF(owned,'Y','N'),loc_type,location,timer_epoch,artifact_type,"
-	"canonical_item_uid,identity_state FROM artifact_domain_state";
+	"canonical_item_uid,identity_state,rejected_item_uids FROM artifact_domain_state";
 
 /* artifact_domain_state repeats each artifact's row and soul for persistence
  * reconciliation and item ownership references, so every
@@ -242,6 +243,28 @@ template <typename Row> bool artifact_row_read(const Row &row, std::map<int, art
 	{
 		records.at(vnum).canonical_item_uid = uid;
 		records.at(vnum).identity_state = static_cast<artifact_identity_state>(state);
+		auto &rejected = records.at(vnum).rejected_item_uids;
+		rejected.clear();
+		if (row[9])
+		{
+			const char *cursor = row[9], *end = cursor + strlen(cursor);
+			while (cursor != end)
+			{
+				uint64_t rejected_uid = 0;
+				const auto parsed = std::from_chars(cursor, end, rejected_uid);
+				if (parsed.ec != std::errc{} || !rejected_uid ||
+				    (state == static_cast<unsigned>(
+						      artifact_identity_state::present) &&
+				     rejected_uid == uid) ||
+				    (!rejected.empty() && rejected_uid <= rejected.back()) ||
+				    rejected.size() == ARTIFACT_IDENTITY_MAX_RECORDS ||
+				    (parsed.ptr != end &&
+				     (*parsed.ptr != ',' || parsed.ptr + 1 == end)))
+					return false;
+				rejected.push_back(rejected_uid);
+				cursor = parsed.ptr == end ? end : parsed.ptr + 1;
+			}
+		}
 	}
 	return records.size() <= ARTIFACT_IDENTITY_MAX_RECORDS;
 }
@@ -316,18 +339,26 @@ std::vector<std::string> artifact_snapshot_statements(int vnum, const artifact_r
 		return { soul, artifact_bind_domain_mirror(vnum) };
 	// Capture the complete domain row from game memory. It must remain
 	// writable even when its legacy artifact projection no longer exists.
+	std::string rejected;
+	for (uint64_t uid : row->rejected_item_uids)
+	{
+		if (!rejected.empty())
+			rejected += ',';
+		rejected += std::to_string(uid);
+	}
 	const std::string domain = sql_format(
 		"INSERT INTO artifact_domain_state (vnum,owned,loc_type,location,timer_epoch,"
-		"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state) "
-		"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u) ON DUPLICATE KEY UPDATE "
+		"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state,rejected_item_uids) "
+		"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u,'%s') ON DUPLICATE KEY UPDATE "
 		"owned=VALUES(owned),loc_type=VALUES(loc_type),location=VALUES(location),"
 		"timer_epoch=VALUES(timer_epoch),artifact_type=VALUES(artifact_type),"
 		"bind_owner_pid=VALUES(bind_owner_pid),bind_timer_epoch=VALUES(bind_timer_epoch),"
-		"canonical_item_uid=VALUES(canonical_item_uid),identity_state=VALUES(identity_state)",
+		"canonical_item_uid=VALUES(canonical_item_uid),identity_state=VALUES(identity_state),"
+		"rejected_item_uids=VALUES(rejected_item_uids)",
 		vnum, row->owned ? 1u : 0u, row->locType, row->location,
 		static_cast<long long>(row->timer), row->type, bind.owner_pid, bind.timer,
 		row->canonical_item_uid ? std::to_string(row->canonical_item_uid).c_str() : "NULL",
-		static_cast<unsigned>(row->identity_state));
+		static_cast<unsigned>(row->identity_state), rejected.c_str());
 	if (row->removed)
 		return { soul, domain, sql_format("DELETE FROM artifacts WHERE vnum=%d", vnum),
 			 sql_format("DELETE FROM artifacts_mortal WHERE vnum=%d", vnum) };
@@ -358,7 +389,8 @@ flatfile_artifact_record artifact_flat_capture(int vnum, const artifact_row &row
 		 0,
 		 row.canonical_item_uid,
 		 row.identity_state,
-		 row.removed };
+		 row.removed,
+		 row.rejected_item_uids };
 }
 
 bool artifact_queue_flat(std::vector<flatfile_artifact_record> records,
@@ -736,6 +768,7 @@ bool artifacts_load(void)
 			auto &row = records.at(record.vnum);
 			row.canonical_item_uid = record.canonical_item_uid;
 			row.identity_state = record.identity_state;
+			row.rejected_item_uids = record.rejected_item_uids;
 			row.removed = record.identity_only;
 			binds[record.vnum] = { record.bind_owner_pid,
 					       static_cast<int>(record.bind_timer) };
@@ -789,7 +822,26 @@ bool artifacts_stage_population(const std::vector<artifact_payload_projection> &
 		std::vector<artifact_population_identity> previous;
 		previous.reserve(artifact_rows.size());
 		for (const auto &[vnum, row] : artifact_rows)
-			previous.push_back({ vnum, row.canonical_item_uid, row.identity_state });
+		{
+			item_owner_identity tracked_owner = {};
+			if (!row.removed && row.owned && row.location > 0)
+			{
+				if (row.locType == ARTIFACT_ON_PC)
+					tracked_owner = { item_owner_type::player,
+							  static_cast<uint64_t>(row.location), 0 };
+				else if (row.locType == ARTIFACT_ONGROUND)
+					tracked_owner = { item_owner_type::room,
+							  static_cast<uint64_t>(row.location), 0 };
+			}
+			const auto bind = artifact_binds.find(vnum);
+			const uint64_t bound_player =
+				!row.removed && row.owned && bind != artifact_binds.end() &&
+						bind->second.owner_pid > 0 ?
+					static_cast<uint64_t>(bind->second.owner_pid) :
+					0;
+			previous.push_back({ vnum, row.canonical_item_uid, row.identity_state,
+					     tracked_owner, row.rejected_item_uids, bound_player });
+		}
 		std::vector<artifact_population_decision> decisions;
 		if (artifact_population_classify(items, prototypes, previous, complete, &decisions))
 			return false;
@@ -808,10 +860,12 @@ bool artifacts_stage_population(const std::vector<artifact_payload_projection> &
 					true; // identity-only row, no invented legacy location
 			}
 			if (inserted || row.canonical_item_uid != identity.canonical_item_uid ||
-			    row.identity_state != identity.state)
+			    row.identity_state != identity.state ||
+			    row.rejected_item_uids != identity.rejected_item_uids)
 			{
 				row.canonical_item_uid = identity.canonical_item_uid;
 				row.identity_state = identity.state;
+				row.rejected_item_uids = identity.rejected_item_uids;
 				row.save = {};
 				row.save.dirty = true;
 			}
@@ -888,6 +942,21 @@ bool artifact_begin_creation(P_obj object)
 		// Reserve the soul slot before publishing the claim. Placement/rollback
 		// can then update the existing entry without another allocation.
 		artifact_binds.try_emplace(vnum, artifact_bind_row{ 0, 0 });
+		if (row.identity_state == artifact_identity_state::retired)
+		{
+			const auto at = std::lower_bound(row.rejected_item_uids.begin(),
+							 row.rejected_item_uids.end(),
+							 row.canonical_item_uid);
+			if (at == row.rejected_item_uids.end() || *at != row.canonical_item_uid)
+			{
+				if (row.rejected_item_uids.size() >= ARTIFACT_IDENTITY_MAX_RECORDS)
+				{
+					errno = EOVERFLOW;
+					return false;
+				}
+				row.rejected_item_uids.insert(at, row.canonical_item_uid);
+			}
+		}
 		++arti_cache_generation;
 		row.previous_uid = row.canonical_item_uid;
 		row.previous_state = row.identity_state;
@@ -908,8 +977,14 @@ static auto artifact_row_for_uid(uint64_t uid)
 {
 	if (!uid)
 		return artifact_rows.cend();
-	return std::find_if(artifact_rows.cbegin(), artifact_rows.cend(), [&](const auto &entry)
-			    { return entry.second.canonical_item_uid == uid; });
+	return std::find_if(artifact_rows.cbegin(), artifact_rows.cend(),
+			    [&](const auto &entry)
+			    {
+				    return entry.second.canonical_item_uid == uid ||
+					   std::binary_search(
+						   entry.second.rejected_item_uids.begin(),
+						   entry.second.rejected_item_uids.end(), uid);
+			    });
 }
 
 static item_owner_type artifact_source_owner_type(artifact_payload_domain domain)
@@ -945,6 +1020,12 @@ static unsigned int artifact_owned_source_error(const artifact_payload_projectio
 	const auto identity = artifact_row_for_uid(source.item_uid);
 	if (identity != artifact_rows.cend() && identity->first != source.vnum)
 		return ESTALE;
+	if (identity != artifact_rows.cend() &&
+	    (std::binary_search(identity->second.rejected_item_uids.begin(),
+				identity->second.rejected_item_uids.end(), source.item_uid) ||
+	     (identity->second.identity_state == artifact_identity_state::retired &&
+	      identity->second.canonical_item_uid == source.item_uid)))
+		return EIDRM;
 	const auto found = artifact_rows.find(source.vnum);
 	if (!(source.extra_flags & ITEM_ARTIFACT) &&
 	    (found == artifact_rows.end() || found->second.canonical_item_uid != source.item_uid))
@@ -1009,6 +1090,10 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	if (!object)
 		return false;
 	const auto identity = artifact_row_for_uid(object->obj_uid);
+	if (identity != artifact_rows.cend() &&
+	    std::binary_search(identity->second.rejected_item_uids.begin(),
+			       identity->second.rejected_item_uids.end(), object->obj_uid))
+		return refuse(ENODATA, "superseded_identity");
 	if (object->R_num >= 0 && identity != artifact_rows.cend() &&
 	    identity->first != OBJ_VNUM(object))
 		return refuse(ESTALE, "canonical_vnum_mismatch");
@@ -3553,9 +3638,21 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 					  "vnum=%d tracking_retained=1", vnum);
 			continue;
 		}
-		if (row.locType == ARTIFACT_ON_PC && row.location > 0)
+		// Boot qualification knows the saved holder even when legacy tracking
+		// still names a room or an earlier owner. Placement clears these sources,
+		// so they cannot override a later live transfer.
+		int location = row.locType == ARTIFACT_ON_PC ? row.location : 0;
+		for (const auto &source : row.canonical_payloads)
+			if (source.domain == artifact_payload_domain::player &&
+			    source.item_uid == row.canonical_item_uid &&
+			    source.payload_owner.type == item_owner_type::player &&
+			    source.payload_owner.id > 0 && source.payload_owner.id <= INT_MAX)
+			{
+				location = static_cast<int>(source.payload_owner.id);
+				break;
+			}
+		if (location > 0)
 		{
-			const int location = row.location;
 			if (!is_pid_online(location, TRUE) &&
 			    !player_load_pipeline_pid_pending(location) &&
 			    !poof_offline_artifact(vnum, location))
@@ -4008,7 +4105,9 @@ void arti_clear_sql(P_char ch, char *arg)
 
 	// Keep the deletion dirty until its current capture is acknowledged.
 	auto &removed = artifact_rows[vnum];
+	auto rejected = std::move(removed.rejected_item_uids);
 	removed = { false, ARTIFACT_NOTINGAME, 0, 0, removed.type };
+	removed.rejected_item_uids = std::move(rejected);
 	removed.identity_state = artifact_identity_state::absent;
 	removed.removed = true;
 	removed.save.dirty = true;

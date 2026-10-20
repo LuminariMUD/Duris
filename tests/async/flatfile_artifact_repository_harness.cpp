@@ -141,12 +141,14 @@ static void identity_storage(const fs::path &root)
 			roundtrip == states,
 		"identity states changed on reload");
 
-	// Materialize the actual v1 wire shape: v2 added UID/state, v3 the marker.
+	// Materialize legacy wire shapes: v2 added UID/state, v3 the marker,
+	// and v4 the rejected UID list.
 	// Legacy bytes have no identity evidence and must never decode as absent.
 	std::ifstream input(root / "domains/artifact_catalog", std::ios::binary);
 	std::vector<uint8_t> legacy{ std::istreambuf_iterator<char>(input), {} };
-	require(legacy.size() == 56 + 4 + 63 && legacy[8] == 3,
+	require(legacy.size() == 56 + 4 + 63 + 4 && legacy[8] == 4,
 		"unexpected single-record artifact catalog wire shape");
+	legacy.resize(legacy.size() - 4);
 	auto version_two = legacy;
 	version_two.pop_back();
 	version_two[8] = 2;
@@ -195,6 +197,34 @@ static void identity_storage(const fs::path &root)
 			present.timer == 9100 && !present.canonical_item_uid &&
 			present.identity_state == artifact_identity_state::unresolved,
 		"v1 rewrite lost state or promoted unresolved identity");
+	// Rejections must survive expiry, replacement, another process opening the
+	// catalog, and repeated snapshots without modifying timer or soul data.
+	loaded.rejected_item_uids = { 121, 122 };
+	require(flatfile_artifact_snapshot_apply(root.string(), { loaded }, &error) ==
+			flatfile_artifact_result::ok,
+		"rejected identities were not saved");
+	flatfile_artifact_record rejected;
+	require(flatfile_artifact_get(root.string(), 100, &rejected, &error) ==
+				flatfile_artifact_result::ok &&
+			rejected.rejected_item_uids == loaded.rejected_item_uids &&
+			rejected.timer == loaded.timer &&
+			rejected.bind_owner_pid == loaded.bind_owner_pid,
+		"rejection snapshot lost identity, timer or soul");
+	rejected.identity_state = artifact_identity_state::retired;
+	require(flatfile_artifact_snapshot_apply(root.string(), { rejected }, &error) ==
+			flatfile_artifact_result::ok,
+		"retirement lost rejections");
+	rejected.identity_state = artifact_identity_state::present;
+	rejected.canonical_item_uid = 124;
+	rejected.rejected_item_uids.push_back(123);
+	require(flatfile_artifact_snapshot_apply(root.string(), { rejected }, &error) ==
+				flatfile_artifact_result::ok &&
+			flatfile_artifact_get(root.string(), 100, &loaded, &error) ==
+				flatfile_artifact_result::ok &&
+			loaded.rejected_item_uids == rejected.rejected_item_uids &&
+			flatfile_artifact_snapshot_apply(root.string(), { loaded }, &error) ==
+				flatfile_artifact_result::unchanged,
+		"replacement or repeated capture forgot retired identities");
 }
 
 static void snapshot_captures(const fs::path &root)

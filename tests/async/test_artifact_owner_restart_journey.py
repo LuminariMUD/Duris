@@ -25,7 +25,7 @@ PLAYER, ACCOUNT = 'Ownerwearer', 'Ownerplayer'
 ARTIFACT = 900000
 
 
-def run(binary, backend, inspector):
+def run(binary, backend, inspector, conflicts_only=False):
     with tempfile.TemporaryDirectory(prefix='artifact-owner-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
@@ -97,7 +97,7 @@ def run(binary, backend, inspector):
 
             def artifact():
                 if sql:
-                    fields = sql(f'SELECT canonical_item_uid,identity_state,owned,loc_type,location,timer_epoch,bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
+                    fields = sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state,owned,loc_type,location,timer_epoch,bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
                     return dict(zip(('uid', 'identity', 'owned', 'type', 'location', 'timer', 'soul', 'bind'), map(int, fields.split('\t'))))
                 return json.loads(subprocess.check_output([str(inspector), env['FLATFILE_STATE_DIR'], 'artifact-owner', str(ARTIFACT)], text=True))
 
@@ -110,8 +110,8 @@ def run(binary, backend, inspector):
                     assert sum(item['uid'] == uid for item in state['player_items']) == 1
                     assert all(item['uid'] != uid for item in state['room_items'])
 
-            def settle(predicate, label):
-                deadline = time.monotonic() + 30
+            def settle(predicate, label, timeout=30):
+                deadline = time.monotonic() + timeout
                 while not predicate():
                     assert time.monotonic() < deadline, label + ': actual=' + repr(artifact())
                     time.sleep(.1)
@@ -158,7 +158,8 @@ def run(binary, backend, inspector):
                 assert artifact() == initial, 'shutdown changed artifact owner/timer/soul'
                 custody(initial['uid'])
 
-                for stale_type in (4, 2, 1, 3):
+                expected = initial
+                for stale_type in (() if conflicts_only else (4, 2, 1, 3)):
                     before = artifact()
                     if sql:
                         owned = int(stale_type != 1)
@@ -202,6 +203,60 @@ def run(binary, backend, inspector):
                 target.mkdir(parents=True, exist_ok=True)
                 (target / (backend + '.json')).write_text(json.dumps(evidence, indent=2) + '\n')
                 print(f'PASS {backend}: fresh restart retained UID, timer, soul and custody; no owner mismatch', flush=True)
+                if sql:
+                    # Reproduce the production conflict in private accounts: two
+                    # qualified saved UIDs, legacy holder tracking, no canonical UID.
+                    god_pid = int(sql(f"SELECT pid FROM player_data WHERE name='{GOD}'"))
+                    old_uid = initial['uid']
+                    duplicate_uid = old_uid + 1000000000
+                    columns = [line.split('\t')[0] for line in sql('SHOW COLUMNS FROM player_items').splitlines()]
+                    columns.remove('id')
+                    replacements = {'pid': str(god_pid), 'obj_uid': str(duplicate_uid),
+                                    'container_id': 'NULL', 'equip_slot': '-1'}
+                    sql('INSERT INTO player_items (' + ','.join(columns) + ') SELECT ' +
+                        ','.join(replacements.get(c, c) for c in columns) +
+                        f' FROM player_items WHERE obj_uid={old_uid} AND pid={pid}')
+                    sql('INSERT INTO item_current_owner '
+                        '(item_uid,root_item_uid,parent_item_uid,owner_type,owner_id,owner_context_id,item_revision,vnum,state) '
+                        f'VALUES({duplicate_uid},{duplicate_uid},NULL,1,{god_pid},0,1,{ARTIFACT},1)')
+                    sql(f'UPDATE artifact_domain_state SET canonical_item_uid=NULL,identity_state=0,rejected_item_uids=NULL WHERE vnum={ARTIFACT}')
+                    boot()
+                    player = login(PLAYER, ACCOUNT)
+                    assert 'ioun stone' in command(player, 'equipment')
+                    settle(lambda: artifact() == expected, 'legacy conflict failed to recover tracked holder')
+                    assert sql(f'SELECT rejected_item_uids FROM artifact_domain_state WHERE vnum={ARTIFACT}') == str(duplicate_uid)
+                    save(player, PLAYER)
+                    stop()
+                    # Expire the canonical holder while offline, then restart with
+                    # the rejected payload still saved under the other account.
+                    sql(f'UPDATE artifact_domain_state SET timer_epoch=1,loc_type=4,location=88 WHERE vnum={ARTIFACT}')
+                    sql(f'UPDATE artifacts SET timer=FROM_UNIXTIME(1),locType=4,location=88 WHERE vnum={ARTIFACT}')
+                    boot()
+                    # The first scheduled expiry runs 35 seconds after boot.
+                    settle(lambda: artifact()['identity'] == 2, 'offline recovered identity did not expire', timeout=90)
+                    assert artifact()['uid'] == old_uid
+                    stop()
+                    assert sql(f'SELECT COUNT(*) FROM player_items WHERE obj_uid={duplicate_uid}') == '1'
+                    boot()
+                    god = login(GOD, GOD_ACCOUNT)
+                    assert artifact()['identity'] == 2
+                    assert 'staff review' not in bytes(god.transcript).decode(errors='replace')
+                    save(god, GOD)
+                    assert sql(f'SELECT COUNT(*) FROM player_items WHERE obj_uid={duplicate_uid}') == '0'
+                    assert 'You have created' in command(god, f'load obj {ARTIFACT}')
+                    settle(lambda: artifact()['identity'] == 1 and artifact()['uid'] not in (old_uid, duplicate_uid),
+                           'retired copies blocked a fresh generation')
+                    generation = artifact()['uid']
+                    save(god, GOD)
+                    stop()
+                    boot()
+                    god = login(GOD, GOD_ACCOUNT)
+                    assert artifact()['uid'] == generation
+                    assert sql(f'SELECT rejected_item_uids FROM artifact_domain_state WHERE vnum={ARTIFACT}') == ','.join(map(str, sorted((old_uid, duplicate_uid))))
+                    stop()
+                    logs = ''.join(p.read_text(errors='replace') for p in (runtime / 'logs').rglob('*') if p.is_file())
+                    assert 'canonical_identity_unavailable' not in logs
+                    print('PASS mariadb: automatic conflict recovery, offline expiry with saved duplicates, automatic duplicate cleanup, fresh generation and repeated restart', flush=True)
             except Exception:
                 target = ROOT / 'bin/analysis/artifact-owner' / (backend + '-failure-' + str(time.time_ns()))
                 target.mkdir(parents=True)
@@ -226,7 +281,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
     parser.add_argument('--server', type=Path)
+    parser.add_argument('--conflicts-only', action='store_true', help='run the legacy duplicate recovery journey without repeating stale-owner feeding cases')
     args = parser.parse_args()
+    assert not args.conflicts_only or args.backend == 'mariadb'
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='artifact-owner-build-', dir=ROOT / 'bin/tests') as temporary:
         build = Path(temporary)
@@ -238,4 +295,4 @@ if __name__ == '__main__':
         else:
             assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
             binary = journey.build_flatfile_server(build / 'server')
-        run(binary, args.backend, inspector)
+        run(binary, args.backend, inspector, args.conflicts_only)
