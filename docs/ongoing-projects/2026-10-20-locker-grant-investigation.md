@@ -4,6 +4,8 @@ Issue: [#234 - Fix named locker entry rejecting valid account-locker grants](htt
 
 Work branch: [`branch/issue-234-locker-grant-entry`](https://github.com/LuminariMUD/Duris/tree/branch/issue-234-locker-grant-entry)
 
+Pull request: [#235 - Fix character-name entry into account lockers](https://github.com/LuminariMUD/Duris/pull/235)
+
 Status: Implemented and locally verified; PR review and production acceptance pending.
 
 ## Implementation decisions
