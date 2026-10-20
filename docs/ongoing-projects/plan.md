@@ -3,9 +3,11 @@
 Status: implementation in progress, 2026-10-20. Working in `/home/aiwithapex/projects/duris-issue107-plan`. The owner explicitly instructed no OpenSpec; this task uses this plan and executable tests.
 
 Telnet chunk: [PR #236](https://github.com/LuminariMUD/Duris/pull/236), head `fcbdf4310`, ready for review.
-Current branch: `branch/issue-107-websocket-stat-choice`, stacked on that PR.
-WebSocket protocol implementation and qualification are in progress. The required
-DurisWeb companion is in `/home/aiwithapex/projects/durisweb-issue107` on
+Protocol: [PR #237](https://github.com/LuminariMUD/Duris/pull/237), stacked on #236.
+Current branch: `branch/issue-107-creation-response-fixes`, stacked on #237 for
+creation-response defects reproduced during acceptance.
+WebSocket protocol implementation and focused qualification pass. The required
+DurisWeb companion [PR #73](https://github.com/LuminariMUD/DurisWeb/pull/73) is in `/home/aiwithapex/projects/durisweb-issue107` on
 `branch/issue-107-stat-choice`. Paired browser acceptance remains. Nothing deployed or merged.
 Tracking: [Duris #107](https://github.com/LuminariMUD/Duris/issues/107).
 Implementation branch: `branch/issue-107-stat-choice`.
@@ -383,9 +385,10 @@ checks. Report exact commands/results and any missing browser/persistence proof.
   descriptor/state consumers, browser callers, and available test fixtures.
 - [x] Apply ablation and write this plan; preserve the earlier plan.
 - [x] Implement and prove the Duris changes (Telnet #236 plus stacked WebSocket PR).
-- [ ] Implement and prove the DurisWeb companion changes.
-- [ ] Complete paired browser/persistence acceptance and implementation review.
-- [ ] Publish final implementation evidence and close #107 when both halves pass.
+- [x] Implement and prove the DurisWeb companion changes (PR #73).
+- [x] Complete paired browser/persistence acceptance and implementation review.
+- [ ] Publish final implementation evidence and link the review stack; keep #107 open
+  while its server/website PRs await review and integration.
 
 ### Telnet implementation evidence (2026-10-20)
 
@@ -471,3 +474,100 @@ restarted server's readiness. Only its synthetic offline character is promoted
 with the existing fixture to let quit finish immediately; its base stats remain
 untouched. No shared database, account, listener or production environment is used.
 The website and paired browser qualification remain required.
+
+### Paired qualification updates
+
+- DurisWeb implementation is published as PR #73, head `63ce948`, with six new
+  focused tests and 11 including the existing socket/credential suite; frontend
+  format/lint/type-check/build pass. Its own handoff and unpublished local
+  changelog payload are in `docs/ongoing-projects/issue-107-*` there.
+- Browser acceptance exposed registration responding with the literal account
+  name "registered" and creation flags serialized incorrectly: cJSON_False is
+  nonzero and must not be passed as a C boolean. The response now uses the actual
+  account name and booleans for Hardcore, newbie and single-hometown choice.
+  Full-world socket journeys assert these responses along with tutorial room
+  22800; all three WebSocket method/legacy cases pass.
+- Recovery's isolated fixture now offers `full_world=True`, retaining its
+  default minimal behavior. `make -j8 world` built authored world inputs in this
+  task checkout; generated outputs remain ignored/uncommitted. Paired acceptance
+  uses this world because the minimal fixture falls back to Cage of Smoke when
+  tutorial room data is absent. Full-world Telnet numeric/persistence checks are
+  being added to the same stat-choice journey driver.
+- Full-world browser Default creation passed four bonuses, a luck swap, correct
+  normal/newbie response flags, real entry into tutorial 22800 and durable save.
+  Restart/relogin and the separate Advanced mobile journey remain in progress.
+  Screenshots and peripheral HTTP fixture details will be recorded at closeout.
+
+- Full-world Telnet Default and Advanced numeric save/restart/relogin checks now
+  pass in the shared journey driver, using the same four distinct bonus targets
+  and the same authoritative saved-stat bounds as WebSocket. Full-world browser
+  Default also reloaded into tutorial 22800 with identical saved numeric stats:
+  `[92,94,92,90,88,89,90,90,89,93]` in Str/Dex/Agi/Con/Pow/Int/Wis/Cha/Kar/Luk order.
+- The browser's post-restart account card showed level 0 although the saved player
+  was level 1. New-character entry raised the level after adding the account
+  projection. The WebSocket entry path now reuses the existing projection sync
+  after `enter_game`; focused journey assertions cover its in-session and durable
+  level-1 summary. These response/projection repairs form their own stacked PR.
+
+### Final local acceptance (2026-10-20)
+
+The separate response/projection repair is stacked on #237. It fixes three
+creation journey defects found in the actual browser: the registered account
+identity, false booleans incorrectly serialized as true, and level-0 account
+metadata after the character entered at level 1. It reuses the existing account
+projection synchronizer. It adds no new persistence mechanism or schema.
+
+All five `--full-world` journeys pass on the repaired server: Telnet Default and
+Advanced, plus WebSocket explicit Default, Advanced and legacy missing-method
+Default. Both normal and flat-file builds pass. Account projection source
+contracts and `tests/async/with_disposable_mariadb.sh
+ tests/async/run_account_character_projection_mysql.sh` also pass; that harness
+uses its own container/schema and does not read checkout credentials. This is
+focused account-projection SQL coverage, not a full MariaDB game-server journey.
+
+Actual browser acceptance used Chrome 155.0.8059.41 and the unchanged application
+route `http://127.0.0.1:5179/play`, with 1280x900 and 320x568 viewports. The Browser
+plugin is unavailable, so regular Playwright drove installed Chrome. The MUD was
+the changed flat-file binary with the full authored world, isolated synthetic
+accounts, journals, ports and state. The site's unrelated HTTP bootstrap/map-data
+and backend-notification socket were fixtures; no MUD creation command or response
+was mocked. The explicit user-proxy setting routed only this browser to loopback.
+
+Both browser methods completed four bonuses, swaps, creation, durable save,
+server restart, account login and saved-character entry into tutorial 22800 with
+no method prompt and unchanged exact base stats (Str/Dex/Agi/Con/Pow/Int/Wis/Cha/
+Kar/Luk):
+- Default: `[92,94,92,90,88,89,90,90,89,93]` before and after restart.
+- Advanced: `[96,86,91,82,86,88,84,82,85,92]` before and after restart.
+
+Additional browser proof: no pre-choice roll; Default has no Reroll; Advanced
+rerolls and waits for acceptance; cap rejection keeps controls/count available;
+repeated luck swaps; Back and Cancel wait for reset acknowledgements; a new
+wizard resets the choice and rolls no stale set; keyboard Space/arrow selection;
+short-screen vertical scrolling and no horizontal overflow. Fast navigation
+exposed a real hometown metadata race. The website now waits for that response,
+clears stale hometowns, deduplicates options requests and retains the race step
+on lookup errors. Two focused regressions cover the repair (13 tests including
+existing credential tests). The rapid real-browser retry passes.
+
+After correcting the peripheral map-data fixture to its actual nodes/edges shape,
+final game-entry/relogin runs have no application console errors or framework
+overlay. The existing Vue Router next() deprecation warning remains a baseline
+warning. Keyboard arrows were exercised with physical key-down duration, because
+the existing radio library selects on an asynchronous focus callback. No custom
+keyboard workaround was added.
+
+Screenshots and a redacted protocol trace are outside the repositories under
+`C:/Users/apexw/.codex/visualizations/2026/10/20/01a159e0-f002-79e3-9650-209e90903eb9/`:
+`stat-choice-desktop.png`, `stat-choice-default-review.png`,
+`stat-choice-mobile.png`, `stat-choice-advanced-review.png`, and
+`stat-choice-browser-evidence.json`. These are local acceptance artifacts, not
+production evidence. No production operation, migration, release tag, merge or
+live news publication was performed.
+
+Final ablation review retained only existing-path protocol/UI/persistence fixes,
+necessary lifecycle state, human copy, focused regression evidence and handoff
+notes. No point-buy, new numeric-stat display, balance adjustment, generic
+workflow layer, persisted method, migration or deployment was added. OpenSpec is
+not used. Existing saved characters follow their ordinary entry path and keep
+their base stats.

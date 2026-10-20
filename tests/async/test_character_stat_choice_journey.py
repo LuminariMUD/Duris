@@ -11,6 +11,7 @@ import subprocess
 import time
 
 from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD, ROOT
+import test_creation_prompt_journey as telnet
 from test_creation_prompt_journey import reboot
 from test_flatfile_combat_journey import make_overlord
 from test_connection_limit_journey import upgrade
@@ -20,6 +21,7 @@ class WebSocketClient:
     """Small uncompressed socket client for the server's existing JSON protocol."""
     def __init__(self, port):
         self.socket = socket.create_connection(("127.0.0.1", port), timeout=5)
+        self.messages = []
         self.buffer = bytearray(upgrade(self.socket, "127.0.0.1"))
 
     def close(self):
@@ -57,7 +59,9 @@ class WebSocketClient:
             if opcode == 9:
                 self.send_frame(10, payload)
             elif opcode == 1:
-                return json.loads(payload)
+                message = json.loads(payload)
+                self.messages.append(message)
+                return message
             elif opcode == 8:
                 raise AssertionError("server closed WebSocket: " + repr(payload))
 
@@ -78,12 +82,15 @@ class WebSocketClient:
 def inspect_stats(server, inspector):
     snapshots = list((server.state_root / "players").glob("*.snapshot"))
     require(len(snapshots) == 1, f"expected one synthetic saved character: {snapshots}")
-    return json.loads(subprocess.check_output([str(inspector), str(server.state_root),
-                                              "inspect", snapshots[0].stem], text=True))["base_stats"]
+    record = json.loads(subprocess.check_output([str(inspector), str(server.state_root),
+                                                "inspect", snapshots[0].stem], text=True))
+    if server.full_world:
+        require(record["room"] == 22800, f"character did not save in the selected tutorial: {record['room']}")
+    return record["base_stats"]
 
 
-def run(binary, inspector, method, *, legacy=False):
-    with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}) as server:
+def run(binary, inspector, method, *, legacy=False, full_world=False):
+    with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}, full_world=full_world) as server:
         client = WebSocketClient(server.websocket_port)
         try:
             for cmd, data in (("roll_stats", {"race": 1}), ("add_bonus", {"stat": "str"}),
@@ -92,7 +99,7 @@ def run(binary, inspector, method, *, legacy=False):
                 client.command(cmd, data, "error")
             auth = client.command("register", {"account": "Statjourney", "password": OLD_PASSWORD,
                                               "email": "stats@example.invalid"}, "auth")
-            require(auth["status"] == "success", f"registration failed: {auth}")
+            require(auth["status"] == "success" and auth["data"]["account"] == "Statjourney", f"registration failed: {auth}")
             options = client.command("chargen_options")
             require(options["statMethods"] == ["default", "advanced"] and options["bonusCount"] == 4,
                     f"bad capabilities: {options}")
@@ -100,6 +107,9 @@ def run(binary, inspector, method, *, legacy=False):
             warrior = next(c for c in race["classes"] if c["name"].lower() == "warrior")
             homes = client.command("get_hometowns", {"race": 1}, "hometowns")
             hometown = next(h for h in homes["options"] if "Plane" in h["name"])
+            single_home = client.command("get_hometowns", {"race": 6}, "hometowns")
+            require(single_home["count"] == 1 and single_home["hasChoice"] is False,
+                    "single hometown was incorrectly advertised as a choice")
             creation = {"name": "Taverek", "race": 1, "class": warrior["id"], "sex": 1,
                         "alignment": "good", "hometown": hometown["id"], "newbie": True}
             for cmd, data in (("add_bonus", {"stat": "str"}), ("accept_stats", {}),
@@ -164,13 +174,20 @@ def run(binary, inspector, method, *, legacy=False):
             client.command("swap_stats", {"stat1": "str", "stat2": "luk"}, "stats_swapped")
             client.command("create_character", {**creation, "race": 5}, "error")
             created = client.command("create_character", creation)
-            require(created["status"] == "created", f"creation failed: {created}")
+            require(created["status"] == "created" and created["hardcore"] is False
+                    and created["newbie"] is True, f"creation failed or returned incorrect flags: {created}")
+            if full_world:
+                rooms = [m["data"]["num"] for m in client.messages if m.get("package") == "Room.Info"]
+                require(rooms and rooms[-1] == 22800, f"new character missed the selected tutorial: {rooms}")
             save = client.command("game", "save", "text")
             deadline = time.monotonic() + 15
             while "Save complete for Taverek" not in json.dumps(save):
                 require(time.monotonic() < deadline, "no durable save acknowledgement")
                 save = client.receive()
             before = inspect_stats(server, inspector)
+            account_info = client.command("account_info", expected="account")
+            require(account_info["data"]["characters"][0]["level"] == 1,
+                    "new character account summary retained its pre-entry level")
             low, high = (87, 90) if method == "default" else (80, 95)
             for index, stat in enumerate(before):
                 require(low + (5 if index in (0,1,2,9) else 0) <= stat <= min(100, high + (5 if index in (0,1,2,9) else 0)),
@@ -195,7 +212,8 @@ def run(binary, inspector, method, *, legacy=False):
                 time.sleep(0.1)
             client = WebSocketClient(server.websocket_port)
             auth = client.command("login", {"account": "Statjourney", "password": OLD_PASSWORD}, "auth")
-            require(auth["status"] == "success", f"restart login failed: {auth}")
+            require(auth["status"] == "success" and auth["data"]["characters"][0]["level"] == 1,
+                    f"restart login failed or lost new-character projection: {auth}")
             client.command("enter", {"character": "Taverek"}, "gmcp")
             # The saved-character path must load unchanged stats and bypass method choice.
             save = client.command("game", "save", "text")
@@ -221,7 +239,44 @@ def run(binary, inspector, method, *, legacy=False):
             retried = client.command("create_character", {**creation, "name": "Veralis"})
             require(retried["status"] == "created", "name correction could not reuse valid attempt")
             server.shutdown()
-            print(f"PASS real WebSocket {method}{' legacy' if legacy else ''}: ordering, lifecycle, create/save/restart/relogin and ten saved numeric stats", flush=True)
+            print(f"PASS {'full-world' if full_world else 'minimal-world'} real WebSocket {method}{' legacy' if legacy else ''}: ordering, lifecycle, create/save/restart/relogin and ten saved numeric stats", flush=True)
+        finally:
+            client.close()
+
+
+def run_telnet(binary, inspector, method, *, full_world=False):
+    with IsolatedServer(binary, {}, full_world=full_world) as server:
+        client = telnet.MudClient(server.plain_port)
+        try:
+            telnet.reach_race(client)
+            telnet.finish_character_choices(client, method="a" if method == "advanced" else "d")
+            telnet.reply(client, "y", "PRESS RETURN")
+            telnet.reply(client, "", "Your starter kit is ready")
+            client.expect("Pos: standing >")
+            telnet.reply(client, "save", "Save complete for Taverek.")
+            before = inspect_stats(server, inspector)
+            low, high = (87, 90) if method == "default" else (80, 95)
+            for index, value in enumerate(before):
+                bonus = 5 if index in (0, 1, 2, 9) else 0
+                require(low + bonus <= value <= min(100, high + bonus),
+                        f"Telnet {method} saved stats did not preserve its formula/bonuses: {before}")
+            client.close()
+            server.shutdown()
+            reboot(server)
+            client = telnet.MudClient(server.plain_port)
+            telnet.enter_account_name(client)
+            client.expect("Please enter your password:")
+            telnet.reply(client, telnet.OLD_PASSWORD, "PRESS RETURN")
+            telnet.reply(client, "", telnet.MENU)
+            telnet.reply(client, "1", "Taverek")
+            telnet.reply(client, "1", "(Y/N)")
+            telnet.reply(client, "y", "Pos: standing >")
+            telnet.reply(client, "save", "Save complete for Taverek.")
+            require(inspect_stats(server, inspector) == before,
+                    "Telnet saved stats changed across restart/relogin")
+            server.shutdown()
+            print(f"PASS {'full-world' if full_world else 'minimal-world'} real Telnet {method}: "
+                  "create/save/restart/relogin and ten saved numeric stats", flush=True)
         finally:
             client.close()
 
@@ -229,8 +284,11 @@ def run(binary, inspector, method, *, legacy=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, default=ROOT / "bin/server/dms_new")
+    parser.add_argument("--full-world", action="store_true", help="qualify the actual tutorial rooms and world")
     args = parser.parse_args()
     inspector = ROOT / "bin/tests/stat-choice/inspector"
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector", str(inspector)], cwd=ROOT, check=True)
+    for method in ("default", "advanced"):
+        run_telnet(args.binary.resolve(), inspector, method, full_world=args.full_world)
     for method, legacy in (("default", False), ("advanced", False), ("default", True)):
-        run(args.binary.resolve(), inspector, method, legacy=legacy)
+        run(args.binary.resolve(), inspector, method, legacy=legacy, full_world=args.full_world)

@@ -327,9 +327,10 @@ class IsolatedServer:
     """One booted flat-file server with its own state, run root, ports, and output file."""
 
     def __init__(self, binary: pathlib.Path, mail_environment: dict[str, str] | None,
-                 prepare_run_root=None) -> None:
+                 prepare_run_root=None, *, full_world=False) -> None:
         """prepare_run_root, if given, is called with the run root before the boot."""
         self.binary = binary
+        self.full_world = full_world
         self.mail_environment = mail_environment or {}
         self.prepare_run_root = prepare_run_root
         self.state_tmp = tempfile.TemporaryDirectory(prefix="duris-recovery-state-")
@@ -396,7 +397,8 @@ class IsolatedServer:
         self.environment = environment
         self.output = self.output_path.open("w", encoding="utf-8")
         self.process = subprocess.Popen(
-            [str(self.binary), "--minimal", "-s", "-d", str(self.run_root), str(self.plain_port)],
+            [str(self.binary), *([] if self.full_world else ["--minimal", "-s"]),
+             "-d", str(self.run_root), str(self.plain_port)],
             cwd=self.run_root,
             env=environment,
             text=True,
