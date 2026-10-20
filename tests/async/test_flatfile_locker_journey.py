@@ -159,7 +159,8 @@ def run(binary: pathlib.Path) -> None:
             # The account locker comes back holding the banana; the character takes it.
             process = boot(binary, run_root, environment, plain_port)
             client = journey.reconnect_character(plain_port)
-            enter_locker(client, 1)
+            # A character name must reach the same account locker after restart.
+            enter_locker(client, 1, journey.CHARACTER.swapcase())
             client.send("get banana chest")
             client.expect("You get a banana", timeout=10)
             leave(client)

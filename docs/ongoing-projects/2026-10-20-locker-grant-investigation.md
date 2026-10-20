@@ -6,7 +6,8 @@ Work branch: [`branch/issue-234-locker-grant-entry`](https://github.com/Luminari
 
 Pull request: [#235 - Fix character-name entry into account lockers](https://github.com/LuminariMUD/Duris/pull/235)
 
-Status: Implemented and locally verified; PR review and production acceptance pending.
+Status: Review finding addressed and locally verified; ready to merge. Production
+acceptance remains pending.
 
 ## Implementation decisions
 
@@ -17,8 +18,9 @@ select legacy lockers; canonical account and guild names accept the final suffix
 with no duplicate `.locker`. Without an active mapping, a bare character name
 retains the legacy personal target. No contents or grants are moved or rewritten.
 
-Resolution runs on the existing persistence worker before normal locker entry,
-so occupancy and pending saves use the resolved identity. Named owner entry keeps
+MariaDB resolution runs on the existing persistence worker; flat-file resolution
+reads the identity catalog. Both precede normal locker entry, so occupancy and
+pending saves use the resolved identity. Named owner entry keeps
 account ownership; visitors still need the selected locker's grants and racewar
 side. Authorization precedes every occupied/pending-save response.
 
@@ -90,6 +92,59 @@ tests/async/with_disposable_mariadb.sh \
 
 The full repository suite was not run. Review/merge, deployment and live Qua/Zyx
 acceptance remain pending; this work performed no production operation.
+
+## PR #235 review repair (2026-10-20)
+
+The flat-file review finding was reproduced with the real server: after saving
+the banana in the account locker and restarting, `enter locker tAVEREK` selected
+the missing legacy locker and returned `You don't have access to that locker!`.
+The same journey passes after the repair, including retrieval and another restart.
+
+Bare names now use the flat-file identity repository when MariaDB is absent.
+Active, unblocked identities select the account and side; missing, blocked or
+deleted identities retain legacy targeting. Catalog failures stop entry rather
+than silently selecting another locker. Both backends share the existing target
+and entry callback.
+
+Tracing the complete entrance also showed that flat-file locker reads supplied
+no access verdict. Resolving the name alone would therefore still reject mortal
+visitors. Entry now reads the existing locker/access catalog together and honors
+typed account ownership, stable personal ownership, direct character grants and
+account grants on the matching racewar side. The existing admission code checks
+that verdict before occupied/pending-save responses. No repository format,
+stored contents or grant record is changed.
+
+Local review validation:
+
+```sh
+make -C src -j2
+make -C src -j2 PERSISTENCE_BACKEND=flatfile \
+  DMS_BINARY="$PWD/bin/server/dms_issue234_flatfile"
+python3 tests/async/test_locker_named_entry_runtime.py
+python3 tests/run_regression_tests.py --match locker --jobs 2
+tests/async/with_disposable_mariadb.sh \
+  python3 tests/async/test_mysql_locker_grant_journey.py
+python3 tests/async/test_root_test_harness.py
+python3 tests/async/test_documentation_contract.py
+./scripts/format.sh --check
+./scripts/tidy.sh
+```
+
+Both builds passed. All 18 locker regressions, root-runner contracts, all 14
+documentation tests, formatting and changed-line clang-tidy passed. The extended
+ASan/UBSan harness uses real on-disk identity and locker repositories for mixed-case
+resolution, blocked/deleted fallback, both grant forms, ownership, racewar and
+corrupt-catalog failure. Its item loader is a fixture; the real flat-file gameplay
+journey proves named routing, item retrieval, restart persistence and guild re-entry.
+All seven stages of the disposable full-world MariaDB mortal journey also passed
+again, including opposite-side occupancy privacy and unchanged item identities
+and grants across a cold restart.
+
+Git inspection found the branch current with master and no dependent PRs. A
+focused repair commit preserves the existing review history; no rebase, retarget,
+release tag or additional stack is needed. The PR can be squash-merged when the
+owner chooses to merge. The full repository suite and production acceptance
+remain outside this local review qualification.
 
 ## Original investigation (pre-fix)
 

@@ -63,6 +63,7 @@
 #include "persistence/locker_async.h"
 #include "persistence/persistence_mode.h"
 #include "flatfile/flatfile_corpse_ownership.h"
+#include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_locker_repository.h"
 #include "player/player_load_items.h"
 #include "item/item_movement_transaction.h"
@@ -1934,7 +1935,7 @@ int storage_locker_room_hook(int /*room*/, P_char ch, int cmd, char *arg)
 	else
 	{
 		bValidate = 1;
-		if (DB && !strchr(enterWho, '.'))
+		if (!strchr(enterWho, '.'))
 		{
 			locker_enter_character(
 				ch, enterWho, [](P_char entrant, P_char chLocker, int locker_room)
@@ -2868,19 +2869,51 @@ static const sql_row *locker_row(const sql_rows &rows, const char *tag)
 
 /* Flat-file: the stored locker named name as an entry read gives it (no rows when there is
  * none), with its public chest. Private chests are MariaDB's. */
-static bool flat_locker_read(const std::string &name, sql_rows *rows, flat_locker_chest *chest)
+static bool flat_locker_read(P_char ch, const std::string &name, sql_rows *rows,
+			     flat_locker_chest *chest)
 {
 	const char *root = persistence_mode_flatfile_root();
 	if (!root)
 		return false;
-	flatfile_locker_record locker;
+	std::vector<flatfile_locker_record> lockers;
+	std::vector<flatfile_locker_access_record> access;
 	std::string error;
-	const auto found = flatfile_locker_find(root, name, &locker, &error);
+	const auto found = flatfile_locker_list(root, &lockers, &access, &error);
 	if (found == flatfile_locker_result::not_found)
 		return true;
+	if (found != flatfile_locker_result::ok)
+	{
+		logit(LOG_FILE, "Flat locker %s could not be read: %s", name.c_str(),
+		      error.c_str());
+		return false;
+	}
+	const std::string key = locker_entry_key(name.c_str());
+	const auto target = std::find_if(lockers.begin(), lockers.end(), [&](const auto &entry)
+					 { return entry.locker_name == key; });
+	if (target == lockers.end())
+		return true;
+	const auto &locker = *target;
+	const char *account = get_account_name_safe(ch);
+	const bool granted =
+		GET_RACEWAR(ch) == locker.racewar &&
+		((locker.owner_pid == GET_PID(ch) && locker.owner_pid > 0 &&
+		  !locker.owner_assoc_id) ||
+		 (locker.account_owner && account &&
+		  !str_cmp(locker.account_owner->account_name.c_str(), account) &&
+		  locker.account_owner->racewar_side == GET_RACEWAR(ch)) ||
+		 std::any_of(access.begin(), access.end(),
+			     [&](const auto &grant)
+			     {
+				     return !str_cmp(grant.owner_name.c_str(), name.c_str()) &&
+					    (!str_cmp(grant.visitor_name.c_str(), GET_NAME(ch)) ||
+					     (account &&
+					      !str_cmp(grant.visitor_name.c_str(), account)));
+			     }));
+	rows->push_back(locker_outcome("access"));
+	rows->back().fields.emplace_back(granted ? "1" : "0");
 	const auto stored = std::find_if(locker.chests.begin(), locker.chests.end(),
 					 [](const auto &entry) { return entry.is_public; });
-	if (found == flatfile_locker_result::ok && stored != locker.chests.end())
+	if (stored != locker.chests.end())
 	{
 		chest->owner = { item_owner_type::locker, locker.locker_id, stored->chest_id };
 		if (flatfile_world_load_item_ownership(root, chest->owner, stored->items,
@@ -2943,7 +2976,7 @@ static void locker_enter(P_char ch, const char *locker_name, int bValidate, lock
 	{
 		sql_rows rows;
 		flat_locker_chest chest;
-		if (!flat_locker_read(name, &rows, &chest))
+		if (!flat_locker_read(ch, name, &rows, &chest))
 		{
 			send_to_char(
 				"The locker could not be opened right now.  Please try later.\r\n",
@@ -3003,24 +3036,46 @@ static void locker_enter_character(P_char ch, const char *name, locker_entered e
 {
 	const int room = ch->in_room;
 	const std::string personal = std::string(name) + ".locker";
+	const auto resolved = [room, personal, entered](P_char entrant, const sql_rows &rows)
+	{
+		if (entrant->in_room != room)
+		{
+			send_to_char("You have moved away from the locker.\r\n", entrant);
+			return;
+		}
+		const std::string target = rows.empty() ?
+						   personal :
+						   "account." + locker_entry_key(rows[0][0]) + "." +
+							   rows[0][1] + ".locker";
+		locker_enter(entrant, target.c_str(), 1, entered);
+	};
+	if (!DB)
+	{
+		const char *root = persistence_mode_flatfile_root();
+		flatfile_identity_record identity;
+		std::string error;
+		const auto result =
+			root ? flatfile_identity_lookup_name(root, name, &identity, &error) :
+			       flatfile_identity_result::io_error;
+		if (result != flatfile_identity_result::ok &&
+		    result != flatfile_identity_result::not_found)
+		{
+			send_to_char(
+				"The locker could not be opened right now.  Please try later.\r\n",
+				ch);
+			return;
+		}
+		sql_rows rows;
+		if (result == flatfile_identity_result::ok && identity.active && !identity.blocked)
+			rows.push_back({ { identity.account, std::to_string(identity.racewar) } });
+		resolved(ch, rows);
+		return;
+	}
 	if (!sql_read_for(
 		    ch,
 		    "SELECT account_name, racewar FROM account_characters WHERE LOWER(char_name)=LOWER('" +
 			    escape_str(name) + "') AND blocked=0 AND deleted_at IS NULL LIMIT 1",
-		    [room, personal, entered](P_char entrant, const sql_rows &rows)
-		    {
-			    if (entrant->in_room != room)
-			    {
-				    send_to_char("You have moved away from the locker.\r\n",
-						 entrant);
-				    return;
-			    }
-			    const std::string target =
-				    rows.empty() ? personal :
-						   "account." + locker_entry_key(rows[0][0]) + "." +
-							   rows[0][1] + ".locker";
-			    locker_enter(entrant, target.c_str(), 1, entered);
-		    }))
+		    resolved))
 		send_to_char("The locker could not be opened right now.  Please try later.\r\n",
 			     ch);
 }
