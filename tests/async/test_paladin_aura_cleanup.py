@@ -6,7 +6,7 @@ import re
 import subprocess
 import tempfile
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from _source_contract import function_body
 
 
@@ -28,6 +28,7 @@ assert "aura_type <= LAST_AURA" not in body[scan.start() :]
 
 PRELUDE = r'''
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -37,6 +38,7 @@ struct affected_type {
     affected_type *next = nullptr;
 };
 struct char_data {
+    struct { int spec = 0; } player;
     affected_type *affected = nullptr;
     struct { unsigned affected_by3 = 0; } specials;
     std::vector<std::string> messages;
@@ -60,6 +62,11 @@ struct aura_description {
 char _buff[MAX_STRING_LENGTH];
 aura_description auras[LAST_AURA - FIRST_AURA + 1] = {};
 void send_to_char(const char *message, P_char ch) { ch->messages.emplace_back(message); }
+struct epic_command_result {};
+static int purges = 0, updates = 0, forgotten = 0;
+void purge_linked_auras(P_char) { ++purges; }
+void update_skills(P_char) { ++updates; }
+void forget_spells(P_char, int) { ++forgotten; }
 '''
 
 
@@ -123,6 +130,13 @@ int main() {
     test_other_aura_keeps_bit();
     test_unrelated_high_affect_does_not_keep_bit();
     test_invalid_broken_affect_is_ignored();
+    char_data healer;
+    healer.player.spec = 2;
+    epic_command_result result;
+    unspecialize_committed(&healer, false, result, 0, nullptr, 0);
+    assert(healer.player.spec == 2 && purges == 0 && updates == 0 && forgotten == 0);
+    unspecialize_committed(&healer, true, result, 0, nullptr, 0);
+    assert(healer.player.spec == 0 && purges == 1 && updates == 1 && forgotten == 1);
     std::puts("paladin aura cleanup regression passed");
 }
 '''
@@ -132,6 +146,7 @@ harness = (
     + "void aura_broken(struct char_link_data *cld)\n{\n"
     + body
     + "\n}\n"
+    + extract_function("specializations.c", "void unspecialize_committed(")
     + DRIVER
 )
 with tempfile.TemporaryDirectory(prefix="paladin-aura-cleanup-") as directory:

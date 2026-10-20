@@ -26,6 +26,7 @@ using namespace std;
 #include "world/epic.h"
 #include "world/epic_transaction.h"
 #include "classes/specializations.h"
+#include "classes/paladins.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 
@@ -756,6 +757,7 @@ void unspecialize_committed(P_char ch, bool committed, const epic_command_result
 	}
 	send_to_char("Your old habits fall away and you feel ready to learn new ways.\n", ch);
 	ch->player.spec = 0;
+	purge_linked_auras(ch);
 	update_skills(ch);
 	forget_spells(ch, -1);
 }

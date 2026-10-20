@@ -507,3 +507,17 @@ persistence are still W6/W7 gates. Baseline flatfile binary built in isolated
 `/tmp/duris-cleric-baseline-01a15878` at `b81715f3a146` for matched comparisons.
 Current binary SHA-256: `12c5b4c3fb66bef182293ca9d04c6452d600ac0a6cabe06fb77cdf3229e8320c`.
 Baseline binary SHA-256: `38ec98a1711b7d5ecc0ff50c554fbd4eea4d12376b860a8c5234ec64eea12d84`.
+
+Combined qualification is in progress. W5 is published as PR #225 at `c6bf37236`.
+A real W3 lifecycle blocker was found: successful ordinary unspecialization clears
+`player.spec` and prepared spells but never purges the provider's linked auras or
+its recurring application event. This newly permits a former Healer to keep
+providing white aura after losing entitlement. Repair the successful commit
+callback with the existing `purge_linked_auras()` API; failed epic transactions
+must leave the aura intact. The extended aura cleanup regression executes that
+actual callback and checks successful/failed transaction branches.
+
+Aura-respecialization repair validation passed: `make -C src -j4`,
+`test_paladin_aura_cleanup.py`, format and whitespace. It is a separate focused
+review chunk above #225. Uncommitted qualification fixture/journey files are
+intentional work in progress and will be delivered in a subsequent PR.
