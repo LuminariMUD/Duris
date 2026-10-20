@@ -138,7 +138,12 @@ bool artifact_mana_debit(P_obj source, uint64_t cost, bool passive, uint64_t tok
     tokens[source->obj_uid]=token; return true;
 }
 void hummer(P_obj) { ++hums; }
-void spell_vitality(int p,P_char a,char *s,int t,P_char v,P_obj o) { invoke(SPELL_VITALITY,p,a,s,t,v,o); }
+static bool real_vitality = false;
+static void real_spell_vitality(int, P_char, char *, int, P_char, P_obj);
+void spell_vitality(int p,P_char a,char *s,int t,P_char v,P_obj o) {
+    invoke(SPELL_VITALITY,p,a,s,t,v,o);
+    if(real_vitality) real_spell_vitality(p,a,s,t,v,o);
+}
 int spell_damage(P_char actor,P_char target,double amount,int type,uint flags,damage_messages *,int *) {
     assert(flags&SPLDAM_NODEFLECT); assert(amount==73 && type==SPELL_FIREBALL);
     ++reflected; reflected_target=target->runtime_id;
@@ -190,11 +195,50 @@ struct native_scene : scene {
 };
 
 static void tsunami_cases() {
-    for(bool enabled:{false,true}) {
-        native_scene s(31514,enabled); assert(s.tsunami(CMD_TAP));
+    for(bool enabled:{false,true}) for(int level:{30,36,44,45,46,56}) {
+        native_scene s(31514,enabled); s.actor->player.level=level; assert(s.tsunami(CMD_TAP));
         if(enabled) { assert(calls.empty() && item_action_active(s.actor)); assert(reserves[100].reserve==70); advance(); }
         assert(calls.size()==1 && calls[0].id==SPELL_VITALITY && calls[0].target==s.actor->runtime_id);
+        assert(calls[0].power==std::min(level+15,60));
         assert(s.source->timer[0]==wall); const int paid=debits; s.tsunami(CMD_TAP); advance(); assert(debits==paid);
+    }
+    for(bool enabled:{false,true}) for(int strength:{0,120,240,300}) {
+        native_scene s(31514,enabled);
+        real_vitality=true;
+        s.actor->player.level=36;
+        group_list group{};
+        s.actor->group=s.target->group=&group;
+        if(strength) {
+            affected_type af{}; af.type=SPELL_VITALITY; af.location=APPLY_HIT;
+            af.modifier=strength; af.duration=2;
+            affect_to_char(s.target,&af);
+        }
+        s.tsunami(CMD_TAP);
+        if(enabled) s.actor->player.level=56; // selected power stays at level 36
+        advance();
+        auto *af=s.target->affected;
+        assert(af && af->type==SPELL_VITALITY && !af->next);
+        assert(af->modifier==std::max(strength,204));
+        assert(af->duration==(strength?15:std::max(10,int(GET_LEVEL(s.actor))/4)));
+        s.actor->group=s.target->group=nullptr;
+        real_vitality=false;
+    }
+    for(bool enabled:{false,true}) {
+        native_scene s(31514,enabled);
+        affected_type af{}; af.type=SPELL_VITALITY; af.modifier=120; af.duration=2;
+        s.target->affected=&af;
+        s.tsunami(CMD_TAP); advance();
+        assert(af.modifier==120 && af.duration==2); // bystander excluded in both routes
+        s.target->affected=nullptr;
+    }
+    for(int deity:{SPELL_MIELIKKI_VITALITY,SPELL_FALUZURES_VITALITY,SPELL_ESHABALAS_VITALITY}) {
+        native_scene s;
+        affected_type af{}; af.type=SPELL_VITALITY; af.modifier=120; af.duration=2;
+        affect_to_char(s.actor,&af);
+        af.type=deity; affect_to_char(s.actor,&af);
+        s.tsunami(CMD_TAP); advance();
+        assert(s.actor->affected->next->modifier==120 && s.actor->affected->next->duration==2);
+        assert(calls.empty());
     }
     for(int interruption=0;interruption<7;++interruption) {
         native_scene s; assert(s.tsunami(CMD_TAP));
@@ -350,6 +394,7 @@ callbacks = '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature)
     'void event_tsunamiwave(', 'int SeaKingdom_Tsunami(', 'int deflect_ioun('))
 callbacks += '\n' + function(ROOT / 'src/specs/specs.object.c', 'int living_necroplasm(')
 callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vampire(')
+callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vitality(').replace('void spell_vitality(', 'static void real_spell_vitality(', 1)
 affects = '\n'.join(function(ROOT / 'src/magic/affects.c', signature) for signature in (
     'void clear_links(P_char ch, P_obj obj, int flag)',
     'void unlink_char_obj_affect(P_char ch, struct affected_type *af)'))

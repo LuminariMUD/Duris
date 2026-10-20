@@ -270,18 +270,18 @@ other material combat behavior; it cannot supply the missing balance evidence.
 
 ### W5 — Tsunami Vitality in both execution paths
 
-- [ ] Apply `min(level + 15, 60)` to Vitality only in the legacy callback and
+- [x] Apply `min(level + 15, 60)` to Vitality only in the legacy callback and
   native adapter. Preserve native activation-time level capture, delay,
   cancellation, ownership checks, mana cost, and the 300-second tap cooldown.
   Leave thrust/raise, waves, item stats, and pilot defaults unchanged.
-- [ ] Handle an existing weaker Vitality explicitly; changing the argument to
+- [x] Handle an existing weaker Vitality explicitly; changing the argument to
   `spell_vitality()` alone does not do so. For an eligible recipient, use the
   existing affect mutation/replacement APIs to retain exactly one Vitality with
   the greater of its current HP modifier and `4 * min(wielder level + 15, 60)`.
   Preserve the current refresh duration of 15 ticks and ordinary fresh-cast
   duration. Never downgrade a stronger existing effect or stack HP modifiers.
   Preserve incompatible deity Vitality restrictions and reflection exclusions.
-- [ ] Share only the needed Tsunami application logic between the two real
+- [x] Share only the needed Tsunami application logic between the two real
   callers if otherwise duplicated; do not change ordinary Vitality or Miracle
   globally. Apply the existing self/same-non-null-group test before both new
   application and refresh in both routes. The legacy bystander refresh must not
@@ -476,3 +476,34 @@ ward. Existing scheduler, Holy Sacrifice/vamp-cap, healing-precedence, help and
 documentation tests pass after the rate declaration change. The new test is
 automatically discovered by `tests/run_regression_tests.py`; no registry needed.
 Full persistence/restart and matched combat balance gates remain open.
+
+W5 in progress on `branch/issue-169-tsunami-vitality`, stacked on PR #224
+(`ff8750dac`, remote verified). A single Tsunami-only helper handles both legacy
+and native application/refresh, using the captured native activation level.
+Existing weaker Vitality is replaced through affect APIs to recalculate HP;
+equal/stronger buffs keep strength and refresh to 15 ticks. Fresh casts retain
+ordinary Vitality duration. Bystanders and incompatible deity/reflection effects
+are excluded before upgrade. Ordinary Miracle/Vitality is unchanged.
+
+W5 component tests extend the existing native artifact harness. Both pilot modes
+check effective power at wielder levels 30/36/44/45/46/56. Tests execute the real
+Vitality spell for fresh effects and the real shared helper for weaker/equal/
+stronger effects, asserting a single HP modifier, duration, and captured native
+power after a level change. Both routes exclude a bystander with an existing
+buff; deity exclusions are checked on refresh. Actual max-HP recalculation still
+requires the full-server journey because harness affect storage is isolated.
+Flatfile native build started for the full-server qualification phase.
+
+W5 full-server proof passed: extended `run_item_pilot_journey.py --binary
+bin/server/dms_cleric_flatfile --inspector bin/tests/cleric-inspector --family
+tsunami --output bin/cleric-tsunami-journey.json` (all three cases). Pilot off and
+on both raise the level-1 character's max HP from 32 to 96 (+64); abort adds zero.
+Native completion also proves durable debit, restart, real death/corpse loot and
+no revived pending action. Initial attempt used a stale October-15 inspector and
+failed loading the new snapshot; rebuilt the inspector from current source and
+reran successfully. No gameplay workaround was added for obsolete test tooling.
+Both MariaDB and flatfile builds pass. Fullserver buff upgrade/order and MariaDB
+persistence are still W6/W7 gates. Baseline flatfile binary built in isolated
+`/tmp/duris-cleric-baseline-01a15878` at `b81715f3a146` for matched comparisons.
+Current binary SHA-256: `12c5b4c3fb66bef182293ca9d04c6452d600ac0a6cabe06fb77cdf3229e8320c`.
+Baseline binary SHA-256: `38ec98a1711b7d5ecc0ff50c554fbd4eea4d12376b860a8c5234ec64eea12d84`.

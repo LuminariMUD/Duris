@@ -4294,47 +4294,11 @@ int SeaKingdom_Tsunami(P_obj obj, P_char ch, int cmd, char *arg)
 				for (vict = world[ch->in_room].people; vict;
 				     vict = vict->next_in_room)
 				{
-					if (!affected_by_spell(vict, SPELL_VITALITY))
-					{
-						if ((ch->group && (ch->group == vict->group)))
-						{
-							act("&+W$N&+L is &+Bvit&+Cal&+Wiz&+Ced by &+WTsu&+Bna&+bmi's&+W power&+W!",
-							    FALSE, ch, obj, vict, TO_ROOM);
-							spell_vitality(GET_LEVEL(ch), ch, 0,
-								       SPELL_TYPE_SPELL, vict, 0);
-						}
-						else if (vict == ch)
-						{
-							act("&+W$n&+L is &+Bvit&+Cal&+Wiz&+Ced by &+WTsu&+Bna&+bmi's&+W power&+W!",
-							    FALSE, ch, obj, vict, TO_ROOM);
-							spell_vitality(GET_LEVEL(ch), ch, 0,
-								       SPELL_TYPE_SPELL, ch, 0);
-						}
-					}
-					else
-					{
-						struct affected_type *af1;
-						for (af1 = vict->affected; af1; af1 = af1->next)
-						{
-							if (af1->type == SPELL_VITALITY)
-							{
-								af1->duration = 15;
-							}
-						}
-						if (vict == ch)
-						{
-							act("&+bThe &+Bwater&+b from $q&+b flows around &+Wyou&+b, refreshing your &+Wvitality&+b!",
-							    TRUE, ch, obj, NULL, TO_CHAR);
-						}
-						else
-						{
-							act("&+bThe &+Bwater &+bfrom $q&+b flows around &+W$N&+b, refreshing your &+Wvitality&+b!",
-							    TRUE, ch, obj, vict, TO_CHAR);
-						}
-
-						act("&+bThe &+Bwater &+bfrom $q &+bflows around &+W$N&+b, refreshing your &+Wvitality&+b!",
-						    TRUE, ch, obj, vict, TO_ROOM);
-					}
+					if (vict != ch && (!ch->group || ch->group != vict->group))
+						continue;
+					apply_tsunami_vitality(GET_LEVEL(ch), ch, vict);
+					act("&+W$N is bathed in Tsunami's vitalizing waters!&n",
+					    FALSE, ch, obj, vict, TO_ROOM);
 				}
 				send_to_room(
 					"\n&+WTsu&+Bna&+bmi&+L,&+b the trident of &+cstorms &+b vibrates &+Bviolently&+b and suddenly becomes &+Lstill.\n",
