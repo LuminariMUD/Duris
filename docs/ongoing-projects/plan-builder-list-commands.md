@@ -1,7 +1,7 @@
 # Builder list commands: zone defaults, bounded output, and working olist
 
-Status: implementation in progress, 2026-10-20. Boot-name chunk validated locally;
-command implementation and local gameplay acceptance remain pending.
+Status: implementation in progress, 2026-10-20. Boot-name PR published; command
+implementation and focused regressions pass, local gameplay acceptance is in progress.
 Tracking: [issue #231](https://github.com/LuminariMUD/Duris/issues/231).
 Work branch: [`branch/issue-231-builder-lists`](https://github.com/LuminariMUD/Duris/tree/branch/issue-231-builder-lists),
 linked through the issue's Development section.
@@ -14,7 +14,10 @@ is outside this change.
 ## Current execution / continuation
 
 OpenSpec change: `openspec/changes/issue-231-builder-lists/` (spec-driven).
-The initial branch remains the loader PR; the command PR will stack on it.
+Loader PR: [#232](https://github.com/LuminariMUD/Duris/pull/232), branch
+`branch/issue-231-builder-lists`, commit `c69506ea7` (pushed).
+The commands are on `branch/issue-231-builder-list-commands`, based on that commit;
+the dependent PR will target the loader branch.
 No release tag is appropriate for unmerged review work. No deployment is included.
 
 Ablation: retain existing `desc2` ownership and normal loaders; no duplicate cache,
@@ -41,10 +44,27 @@ Completed locally:
   full-world string payload is 1,158,376 bytes plus allocator overhead, shared
   with later instances. Evidence harness is local under `bin/tests/builder-boot-cost`.
 
-Next: implement the scope parser and three handlers with bounded traversal; add
-executable command tests and regression documentation, then perform a local/dev
-journey proving ordinary mobile loading, staff/mortal access, paging, responsiveness,
-and handler timings. Production and the reported live slowdown remain unverified.
+Command implementation now uses shared checked syntax, public zone identity,
+lower-bound lookup, zone room bounds, and one additional matching probe. It never
+loads entities. All three handlers report actual shown counts, empty results,
+selected scope and usable continuation. Names are bounded/flattened before existing
+ANSI formatting, including color fragments cut by the byte limit; sector access
+is guarded. `test_builder_list_commands.py` passes under ASan/UBSan, including all
+boundary counts and 20,000 unrelated prefix/suffix entries. Native build passes.
+Regression documentation is in `docs/testing/REGRESSIONS.md`.
+
+Room-data prerequisite check found one existing adjacent duplicate VNUM 51800 in
+`areas/wld/hell_two_dis.wld` and `hell_three_minauros.wld`. The 253,261 full-world
+room records are nondecreasing (mini rooms also sorted); lower-bound lookup works
+with this content overlap and displays both rows. Room uniqueness is not required
+by this listing algorithm; content edits remain outside scope.
+
+Next: finish local/dev gameplay and performance acceptance, recheck the final
+diff with Ablation, then publish the command PR. An existing local server is left
+running. The acceptance runtime uses a disposable MariaDB container cloned from
+local `duris_dev`, isolated runtime/ports/journals, and Redis disabled. The original
+database is read only for the clone. No credentials are recorded in tracked files.
+Production and the reported live slowdown remain unverified.
 
 ## Outcome and scope
 
