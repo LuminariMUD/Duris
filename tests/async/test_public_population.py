@@ -12,8 +12,7 @@ end = who.index('\n\t\t}\n\t\tsend_to_char(who_output', start)
 summary = who[start:end]
 # The command still applies the real visibility rule before constructing its list.
 assert 'if (!who_visible_to(ch, tch)' in who
-for name in ('curr_ingame_good', 'curr_ingame_evil', 'max_descs_this_hour'):
-    assert name not in who
+assert 'max_descs_this_hour' not in who
 
 harness = r'''
 #include "core/prototypes.h"
@@ -25,6 +24,7 @@ harness = r'''
 #include <string>
 
 int max_descs = 42;
+int curr_ingame_good = 0, curr_ingame_evil = 0;
 long boot_time = 0;
 time_info_data time_info = {};
 const char *weekdays[] = { "day", "day", "day", "day", "day", "day", "day" };
@@ -63,8 +63,21 @@ int main()
     assert(ordinary.find("Total visible players: 3") != std::string::npos);
     assert(ordinary.find("connections") == std::string::npos);
     assert(ordinary.find("online") == std::string::npos);
-    assert(summary(&staff).find("connections this boot: 42") != std::string::npos);
-    assert(summary(&staff).find("Total in-game connections: 8") != std::string::npos);
+    const auto trusted = summary(&staff);
+    assert(trusted.find("connections this boot: 42") != std::string::npos);
+    assert(trusted.find("Total in-game connections: 8") != std::string::npos);
+    for (int good_count : { 0, 1, 7 }) {
+        for (int evil_count : { 0, 1, 7 }) {
+            curr_ingame_good = good_count;
+            curr_ingame_evil = evil_count;
+            assert(summary(&good) == ordinary +
+                   (evil_count > 0 ? "There are &+Revil(s)&N online.\n" : ""));
+            assert(summary(&evil) == ordinary +
+                   (good_count > 0 ? "There are &+Ygood(s)&N online.\n" : ""));
+            assert(summary(&staff) == trusted);
+        }
+    }
+    curr_ingame_good = curr_ingame_evil = 0;
     for (int peak : { 0, 1, 99 }) {
         max_descs = peak;
         assert(summary(&good) == ordinary);
