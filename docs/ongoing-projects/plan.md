@@ -767,3 +767,7 @@ forms, both weaker and stronger, plus an ordinary level-46 NPC.
   the cleanse-only patch. Use standalone patch with an applied-content check,
   repair previously skipped caches, and reject identical original/cleanse-only
   source or binary hashes. Historical paired-baseline claims are withdrawn.
+- The refreshed solo NPC run exposed an actor-driver timeout after a normal
+  knockdown left the Assassin sitting. The bounded combat loop now stands and
+  attacks through real commands until death or its existing 60-second deadline;
+  the NPC profile and production combat behavior are unchanged.

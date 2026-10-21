@@ -336,18 +336,20 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     assert npc_hp and int(npc_hp[1]) == 50 and int(npc_hp[2]) == 50, npc_stats
     actor_before = hp(staff, "Shadeblade")[0]
     started = time.monotonic()
+    npc_start = len(assassin.transcript)
     assassin.send("backstab assassinsentinel")
     deadline = started + 60
     while True:
-        remaining = deadline - time.monotonic()
-        assert remaining > 0, "solo Assassin did not finish the reference NPC"
-        outcome, _ = assassin.expect_any(
-            ("is dead! R.I.P.", "You stumble, but recover in time!",
-             "You stumble in your attack, and jab at",
-             "You stumble in your attack, and hit yourself!"), timeout=remaining)
-        if outcome == "is dead! R.I.P.":
+        assassin._receive()
+        outcome = bytes(assassin.transcript[npc_start:]).decode(errors="replace")
+        if "is dead! R.I.P." in outcome:
             break
+        assert time.monotonic() < deadline, "solo Assassin did not finish the reference NPC"
+        # A normal NPC knockdown can leave the actor sitting indefinitely.
+        # Recover through real commands rather than waiting only for stab text.
+        command(assassin, "stand")
         assassin.send("hit assassinsentinel")
+        time.sleep(.5)
     result["solo_pve"] = {"npc_level": 46, "reference_hp": 50,
                           "seconds_to_kill": round(time.monotonic()-started, 2),
                           "survived": hp(staff, "Shadeblade")[0] > 0,
