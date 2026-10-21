@@ -21,58 +21,56 @@
 
 namespace
 {
-	constexpr char HEX[] = "0123456789abcdef";
-	constexpr std::string_view CHARACTER_DOMAIN = "duris:posthog:character:v1";
+constexpr char HEX[] = "0123456789abcdef";
+constexpr std::string_view CHARACTER_DOMAIN = "duris:posthog:character:v1";
 
-	bool has_key(const telemetry_posthog_identity_key &key) noexcept
-	{
-		return std::any_of(key.begin(), key.end(),
-				   [](std::uint8_t byte) { return byte != 0U; });
-	}
+bool has_key(const telemetry_posthog_identity_key &key) noexcept
+{
+	return std::any_of(key.begin(), key.end(), [](std::uint8_t byte) { return byte != 0U; });
+}
 
-	int hex_digit(char digit) noexcept
-	{
-		if (digit >= '0' && digit <= '9')
-			return digit - '0';
-		if (digit >= 'a' && digit <= 'f')
-			return digit - 'a' + 10;
-		if (digit >= 'A' && digit <= 'F')
-			return digit - 'A' + 10;
-		return -1;
-	}
+int hex_digit(char digit) noexcept
+{
+	if (digit >= '0' && digit <= '9')
+		return digit - '0';
+	if (digit >= 'a' && digit <= 'f')
+		return digit - 'a' + 10;
+	if (digit >= 'A' && digit <= 'F')
+		return digit - 'A' + 10;
+	return -1;
+}
 
-	void append_be64(std::uint8_t *output, std::uint64_t value) noexcept
-	{
-		for (unsigned int index = 0U; index < 8U; ++index)
-			output[index] = static_cast<std::uint8_t>(value >> ((7U - index) * 8U));
-	}
+void append_be64(std::uint8_t *output, std::uint64_t value) noexcept
+{
+	for (unsigned int index = 0U; index < 8U; ++index)
+		output[index] = static_cast<std::uint8_t>(value >> ((7U - index) * 8U));
+}
 
-	bool scoped_id(const char *prefix, telemetry_environment_id environment,
-		       telemetry_season_id season, const telemetry_producer_id &producer,
-		       telemetry_sequence sequence, telemetry_posthog_scoped_identity &output)
-		noexcept
+bool scoped_id(const char *prefix, telemetry_environment_id environment, telemetry_season_id season,
+	       const telemetry_producer_id &producer, telemetry_sequence sequence,
+	       telemetry_posthog_scoped_identity &output) noexcept
+{
+	output.fill('\0');
+	if (environment == 0U || season == 0U || !telemetry_producer_id_is_valid(producer) ||
+	    sequence == 0U)
+		return false;
+	std::memcpy(output.data(), prefix, 3U);
+	char *cursor = output.data() + 3U;
+	for (const auto value :
+	     { environment, season, producer.boot_id, producer.process_id, sequence })
 	{
-		output.fill('\0');
-		if (environment == 0U || season == 0U ||
-		    !telemetry_producer_id_is_valid(producer) || sequence == 0U)
-			return false;
-		std::memcpy(output.data(), prefix, 3U);
-		char *cursor = output.data() + 3U;
-		for (const auto value :
-		     { environment, season, producer.boot_id, producer.process_id, sequence })
+		*cursor++ = ':';
+		const auto result =
+			std::to_chars(cursor, output.data() + output.size() - 1U, value);
+		if (result.ec != std::errc{})
 		{
-			*cursor++ = ':';
-			const auto result =
-				std::to_chars(cursor, output.data() + output.size() - 1U, value);
-			if (result.ec != std::errc{})
-			{
-				output.fill('\0');
-				return false;
-			}
-			cursor = result.ptr;
+			output.fill('\0');
+			return false;
 		}
-		return true;
+		cursor = result.ptr;
 	}
+	return true;
+}
 
 } // namespace
 
