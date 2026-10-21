@@ -49,4 +49,87 @@ bool telemetry_posthog_event_uuid(telemetry_posthog_uuid &output) noexcept;
 bool telemetry_posthog_format_timestamp(telemetry_utc_usec utc,
 					telemetry_posthog_timestamp &output) noexcept;
 
+inline constexpr std::size_t TELEMETRY_POSTHOG_MAX_EVENTS = 128U;
+inline constexpr std::size_t TELEMETRY_POSTHOG_MAX_EVENT_BYTES = 32U * 1024U;
+inline constexpr std::size_t TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES = 512U * 1024U;
+inline constexpr telemetry_duration_usec TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC = 120'000'000U;
+
+struct telemetry_posthog_reducer_config
+{
+	telemetry_environment_id environment_id = 0U;
+	telemetry_season_id season_id = 0U;
+	telemetry_producer_id producer{};
+	telemetry_posthog_identity_key identity_key{};
+	std::uint32_t window_seconds = 900U;
+	/* Empty for ordinary data; printable ASCII only, at most 64 characters. */
+	std::array<char, 65U> test_run{};
+};
+
+struct telemetry_posthog_reducer_health
+{
+	std::array<std::uint64_t, 9U> consumed_by_kind{};
+	std::uint64_t invalid_records = 0U;
+	std::uint64_t reduction_refusals = 0U;
+	std::uint64_t input_sequence_gaps = 0U;
+	std::uint64_t unsupported_records = 0U;
+	std::uint64_t session_refusals = 0U;
+	std::uint64_t abandoned_sessions = 0U;
+	std::uint64_t configuration_refusals = 0U;
+	std::uint64_t missing_configuration_rows = 0U;
+	std::uint64_t counter_overflow_rows = 0U;
+	std::uint64_t checkpoint_conflicts = 0U;
+	std::uint64_t stale_checkpoints = 0U;
+	std::uint64_t native_gaps = 0U;
+	std::uint64_t native_dropped_records = 0U;
+	std::uint64_t native_gap_known_usec = 0U;
+	std::uint64_t unattributed_time_fragments = 0U;
+	std::uint64_t xp_attribution_overflows = 0U;
+	std::uint64_t created_events = 0U;
+	std::uint64_t output_suppressed = 0U;
+	std::uint64_t output_expired = 0U;
+	std::uint64_t serialization_failures = 0U;
+	std::uint64_t clock_failures = 0U;
+	std::uint64_t http_acknowledged = 0U;
+	std::uint64_t ambiguous_events = 0U;
+	std::uint32_t sessions = 0U;
+	std::uint32_t configurations = 0U;
+	std::uint32_t output_events = 0U;
+	std::uint32_t output_bytes = 0U;
+};
+
+struct telemetry_posthog_output
+{
+	std::string_view json{};
+	telemetry_monotonic_usec sealed_at = 0U;
+	bool health = false;
+};
+
+enum class telemetry_posthog_output_disposition : std::uint8_t
+{
+	http_acknowledged,
+	suppressed,
+	ambiguous,
+};
+
+/* Single worker owner. Init/reset is legal only outside an active lifecycle.
+ * The runtime remains unconnected until HTTP/quota/lifecycle integration is
+ * complete. Encounter/combat reduction is the next slice; consume explicitly
+ * refuses those kinds for now rather than pretending they were exported. */
+bool telemetry_posthog_reducer_init(const telemetry_posthog_reducer_config &config) noexcept;
+void telemetry_posthog_reducer_reset() noexcept;
+bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monotonic_usec now,
+			       telemetry_utc_usec utc) noexcept;
+/* Call after consuming through the native admitted-tail fence. force seals
+ * remaining fragments for a lifecycle deadline; it does not perform I/O. */
+void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_usec utc,
+				    bool force = false) noexcept;
+/* Views remain immutable while appending. Retiring/expiring/reset invalidates
+ * all borrowed views; the sender must resolve its retry prefix first. */
+telemetry_posthog_output telemetry_posthog_output_peek(std::size_t offset = 0U) noexcept;
+bool telemetry_posthog_output_retire(std::size_t count,
+				     telemetry_posthog_output_disposition disposition) noexcept;
+void telemetry_posthog_output_expire(telemetry_monotonic_usec now) noexcept;
+/* Worker-only value copy; runtime will publish it through its cached health. */
+telemetry_posthog_reducer_health telemetry_posthog_reducer_health_copy() noexcept;
+
 #endif

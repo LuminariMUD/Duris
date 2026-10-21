@@ -61,8 +61,8 @@ a historical game-wipe number. Change the season when a wipe/reset starts a new
 character population, not on deployment or restart. Tag cloud test runs separately
 and exclude their environment IDs from production dashboard queries.
 
-These settings reserve reporting identities only. PostHog encodings and fixtures
-are implemented; the exporter is not connected to the runtime yet. Setting either
+These settings reserve reporting identities only. PostHog encodings and character
+reduction are implemented; the exporter is not connected to the runtime yet. Setting either
 variable does not enable telemetry. The SQL-specific sections below describe the
 existing native path; this section defines its replacement export contract.
 
@@ -90,6 +90,9 @@ Each sealed JSON row has `event`, `uuid`, an explicit UTC `timestamp`, and
 Generate UUID v4 once with OpenSSL randomness when sealing the row. Persist it
 in the bounded in-memory serialized output; retry exactly those bytes, without
 new IDs, timestamps, properties or reducer input. No payload spool is introduced.
+For a duration summary the timestamp is its first known occurrence, so a fragment
+ending exactly at midnight retains the day in which its time occurred. Explicit
+occurrence bounds and allocation fields remain authoritative for reports.
 
 Common properties are:
 
@@ -101,7 +104,7 @@ Common properties are:
 | `duris_identity_key_version` | JSON integer `1`; rotation requires an explicit version/identity decision. |
 | `duris_character_id`, `duris_session_id`, `duris_run_id` | Canonical identities below; null when not applicable or not captured. |
 | `distinct_id` | Character pseudonym for character/player rows; pet actor identity for pet rows; scoped system/run identity for health/config/run rows. Never count these latter identities as characters. |
-| `duris_config_id` | Captured unsigned decimal string, or null with missing-configuration coverage. |
+| `duris_config_id` | Captured unsigned decimal string, null only when no identity was captured. Missing metadata keeps the captured ID and adds missing-configuration coverage. |
 | `classifier_version`, `policy_version` | Captured JSON integers, null when unavailable. Configuration events also carry build/content/property versions and the validated fingerprint. |
 | `class_id`, `race_id`, `faction_id`, `level_band` | Captured JSON integers; null when unknown. Exact before/after levels are available only on progression. |
 | `duris_quality_flags` | Native captured quality mask as a JSON integer. |
@@ -194,13 +197,28 @@ authority. Before/after levels and threshold XP remain separate level-change dat
 Within a summary, retain at most 32 time-allocation buckets keyed by captured
 class/race/faction/level-band/zone/group-size/activity context and 32 XP buckets
 keyed by captured class/race/faction/level-band/zone/group-size plus
-source/reason/modifier mask/observation status. The summary's captured
-class/race/faction/level-band, config and classifier/policy identities are stable:
-seal affected data before any of these change. Preserve time and XP arrays
+source/reason/modifier mask/observation status. Seal affected data on known
+character-dimension, config, classifier/policy
+or exact observed-XP-level changes, including a change within one level band.
+`xp_observed_level` applies to XP observations only; it never invents an exact
+level for time intervals. Unknown context dimensions stay unattributed within the
+fragment, without triggering extra periodic rows. If any character dimensions
+are unknown, summary-level character dimensions are null with explicit coverage;
+known time/XP allocation buckets retain their own captured dimensions. Preserve time and XP arrays
 independently; expanding both in one report join would multiply their totals.
 Overflow adds known values to explicit unattributed totals and marks lost detail.
 Checked-arithmetic overflow makes that metric unavailable with overflow coverage;
 never wrap, round or invent a zero.
+Known overall totals remain available if only a signed allocation bucket
+overflows; that bucket becomes null with overflow/attribution coverage.
+
+The reconciliation object includes the latest checkpoint revision/time/quality,
+absolute counters, observed counters through that checkpoint, and a separate
+missing-detail difference only when comparison is valid. A logical entry must
+have been observed by this producer; a post-copyover/reconnect checkpoint does
+not establish a zero baseline. Detail delivered after the checkpoint but before
+sealing updates its observed comparison. Stale revisions cannot regress it;
+conflicting/nonmonotonic totals are refused with local coverage counters.
 
 There are 256 session slots, at most two retained window fragments per session,
 64 complete configuration identities, 128 active encounter runs and a separate
@@ -213,6 +231,11 @@ joins do not consume the active-run allowance. Test both bounds simultaneously.
 Unavailable encounter character/session dimensions remain null; do not look up
 the current character. Run duration and participation are distinct. Pet and player
 contributions remain separate, and unwired control effects remain null.
+If a native lifecycle exit is lost, 3,720 seconds of complete input silence for
+that session seals retained data with unknown-tail coverage and releases its
+slot. This combines the maximum native cadence and queue allowance; it invents
+no logout or logical entry. Later data retains the same logical identity while
+checkpoint comparison remains unavailable without a locally observed entry.
 
 Initial export windows are 900 seconds (1800 when the full measured mix requires
 it), split at UTC midnight and required lifecycle/config/level boundaries.
@@ -221,6 +244,10 @@ An older row arriving after sealing creates a new uniquely identified partial
 fragment, coalesced until the next flush; it cannot mutate an immutable retry.
 Unknown UTC retains monotonic totals as unallocated evidence. Extra fragments
 count toward both loss reporting and the volume budget.
+Per-record splitting is bounded to 64 windows. An extreme interval extending
+farther retains its remaining duration as unknown-UTC allocation with explicit
+coverage rather than looping over unbounded calendar history. This is a fault
+bound, not a substitute for splitting ordinary intervals at their boundaries.
 
 Serialized output, including retries, is bounded by 128 events / 512 KiB total,
 32 KiB per event, and a 120-second maximum age. Batches contain at most 64 events /
@@ -228,6 +255,15 @@ Serialized output, including retries, is bounded by 128 events / 512 KiB total,
 count/bytes/age/quota cannot retain output; continue draining native capture.
 Keep consumed/reduced/suppressed/attempted/HTTP-acknowledged counts separate.
 HTTP acceptance does not prove query-visible ingestion.
+The character reducer exposes worker-only output views; appending preserves
+them, while retirement, expiry and reset invalidate them. The sender must resolve
+its immutable retry prefix before these operations. The packed 512 KiB arena
+reserves 512 bytes for batch framing and counts terminating NULs; there is no
+second retained event buffer. Scratch JSON construction is separately bounded
+by bucket counts and the 32 KiB serializer cap. Known native gap counts/durations
+are saturating lower bounds; zero known duration never certifies an empty gap.
+Encounter/combat reduction, hourly/incident health export and runtime HTTP/quota
+integration are still pending. Current component tests do not prove ingestion.
 
 ### Complete event-volume fixture (#59)
 
