@@ -61,8 +61,197 @@ a historical game-wipe number. Change the season when a wipe/reset starts a new
 character population, not on deployment or restart. Tag cloud test runs separately
 and exclude their environment IDs from production dashboard queries.
 
-These settings reserve reporting identities only. The PostHog exporter remains
-unimplemented, and setting either variable does not enable telemetry.
+These settings reserve reporting identities only. PostHog encodings and fixtures
+are implemented; the exporter is not connected to the runtime yet. Setting either
+variable does not enable telemetry. The SQL-specific sections below describe the
+existing native path; this section defines its replacement export contract.
+
+### Compact PostHog export schema 1 (#59)
+
+The native record schema remains unchanged. Worker reduction produces six event
+families, rather than forwarding native rows. These mappings cover all eight
+native kinds:
+
+| Native kind | External meaning |
+| --- | --- |
+| `interval` | Add deltas to `duris_character_summary`, retaining observed category and historical allocation. |
+| `session_lifecycle` | `duris_session` with `transition` equal to `logical_entry`, `logical_exit`, `connection_attached` or `connection_detached`. Only logical entries count as entries. |
+| `session_checkpoint` | Latest absolute counters/revision are reconciliation evidence on a later summary/lifecycle event. No periodic checkpoint event and no addition to interval deltas. |
+| `coverage_gap` | Mark affected family coverage and coalesce bounded incident evidence into `duris_telemetry_health`. Process-wide unknown scope stays unknown. |
+| `configuration` | `duris_configuration` once when first required or changed. Validate the complete fingerprint; do not repeat the full object on activity events. |
+| `progression` | XP attempts reduce into character summaries. Observed level advance/loss emits `duris_level_change`. Threshold consumption is separate from awarded XP. |
+| `encounter` | Start/join/leave maintain bounded state. Terminal `duris_encounter_summary` rows use `row_type=run` or `participant`. |
+| `combat_summary` | Join player/pet contributions into terminal participant rows. Unsupported NPC detail is suppressed with accounting; no raw combat stream. |
+
+Each sealed JSON row has `event`, `uuid`, an explicit UTC `timestamp`, and
+`properties`. At batch level use only the capture project token (`api_key`) and
+`batch`; the project ID is administrative metadata. Set
+`$process_person_profile=false` in every row. `duris_event_id` equals `uuid`.
+Generate UUID v4 once with OpenSSL randomness when sealing the row. Persist it
+in the bounded in-memory serialized output; retry exactly those bytes, without
+new IDs, timestamps, properties or reducer input. No payload spool is introduced.
+
+Common properties are:
+
+| Property | Representation / meaning |
+| --- | --- |
+| `duris_schema_version` | JSON integer `1`, independent of native schema. |
+| `duris_environment_id`, `duris_season_id` | Nonzero unsigned decimal strings. |
+| `duris_event_id` | Canonical lowercase UUID matching `uuid`; report deduplication key. |
+| `duris_identity_key_version` | JSON integer `1`; rotation requires an explicit version/identity decision. |
+| `duris_character_id`, `duris_session_id`, `duris_run_id` | Canonical identities below; null when not applicable or not captured. |
+| `distinct_id` | Character pseudonym for character/player rows; pet actor identity for pet rows; scoped system/run identity for health/config/run rows. Never count these latter identities as characters. |
+| `duris_config_id` | Captured unsigned decimal string, or null with missing-configuration coverage. |
+| `classifier_version`, `policy_version` | Captured JSON integers, null when unavailable. Configuration events also carry build/content/property versions and the validated fingerprint. |
+| `class_id`, `race_id`, `faction_id`, `level_band` | Captured JSON integers; null when unknown. Exact before/after levels are available only on progression. |
+| `duris_quality_flags` | Native captured quality mask as a JSON integer. |
+| `duris_coverage` | Bounded array of export coverage names listed below; empty only when no export coverage fault is known. |
+| `occurrence_start_utc_usec`, `occurrence_end_utc_usec` | Signed decimal strings, or null when UTC attribution is unknown. Durations always come from monotonic observations. |
+| `timestamp_basis` | `occurrence` or `emitted_at`. The latter uses a known sealing clock solely for transport, retains null occurrence bounds, and is excluded from occurrence-day totals. |
+| `duris_test_run` | Null for normal data; bounded synthetic run identifier for cloud fixtures. Production reports require environment `1`, the selected season/schema and null test tag. |
+
+Export coverage names are `native_gap`, `unattributed_time`, `unattributed_xp`,
+`missing_configuration`, `counter_overflow`, `incomplete_terminal`,
+`output_suppressed`, `unclosed_tail`, `occurrence_utc_unknown`, `late_fragment`,
+`historical_dimensions_unavailable` and `unsupported_actor`. Emit each at most
+once per row; retain scope-specific detail in bounded health counters. These
+flags describe known evidence and do not certify a missing producer as healthy.
+
+Identity encodings are implemented in
+[`telemetry_posthog.c`](../../src/telemetry/telemetry_posthog.c) and independently
+checked against [golden vectors](../../tests/async/fixtures/telemetry/posthog/encodings.json):
+
+- `TELEMETRY_IDENTITY_KEY` is exactly 64 hexadecimal characters encoding 32 random
+  bytes. Reject missing, wrong-length, nonhex and all-zero keys. It is independent
+  of the project token, never exported/logged, and must be preserved privately
+  through restart/restore. Parsing failure clears the output key; no raw-ID fallback.
+- Character pseudonym: `dc1_` followed by 64 lowercase hexadecimal digits from
+  HMAC-SHA-256. Its message is the ASCII bytes `duris:posthog:character:v1` with
+  **no trailing NUL**, then environment, season and native subject ID, each as
+  exactly eight unsigned big-endian bytes. The subject is the captured character
+  identity, never the account. No decimal-string concatenation or native padding.
+- Logical session: `ds1:<environment>:<season>:<boot>:<process>:<session_sequence>`.
+  Run: `dr1:<environment>:<season>:<boot>:<process>:<run_sequence>`. Each component
+  uses unsigned decimal without leading zeroes and must be nonzero. Retain the
+  original session/run producer across copyover; the current exporter producer
+  does not replace it. Maximum length is 108 bytes, plus a NUL in native storage.
+- Health/configuration use scoped system identity `dh1:<environment>:<season>`;
+  run-only rows use their run ID. A pet's `dp1_` pseudonym uses HMAC-SHA-256 over
+  ASCII `duris:posthog:pet:v1` without NUL followed by environment, season,
+  original run boot/process/sequence and native actor ID, all eight-byte unsigned
+  big-endian integers. Pet rows also carry the owner's character pseudonym.
+  Pet/system encodings will be implemented with the corresponding reducer rows.
+- UTC format is exactly `YYYY-MM-DDTHH:MM:SS.ffffffZ`, years 0001–9999, independent
+  of the process timezone. Zero is the epoch, negative microseconds use floor
+  seconds, and `TELEMETRY_UTC_UNKNOWN` is rejected. No clock value may silently
+  become a server-assigned timestamp. Invalid encodings clear the output buffer.
+
+All 64-bit IDs, XP values, counters, durations, revisions and UTC microseconds are
+decimal JSON **strings**, including small values of these types. Signed values
+have an optional minus sign; unsigned values never do; zero is `"0"`. This avoids
+cJSON's double precision limit and keeps one type per property. Small enums,
+versions, dimensions and masks fit JSON numbers. Unknown/unavailable values are
+JSON null, never the string `"null"` or a fabricated zero. Reports must perform
+explicit signed/unsigned integer conversion and deduplicate by `duris_event_id`
+before summing. Live read-only literal/JSON queries in project `678214` on
+2026-10-21 verified `toInt` for signed 64-bit values and
+`accurateCastOrNull(value, 'UInt64')` for unsigned values. `toUInt64` is not a
+supported HogQL spelling; `toDecimal` cannot hold unsigned 64-bit maximum.
+Use `accurateCastOrNull(value, 'Int128')` / `'UInt128'` before sums to avoid
+64-bit aggregate overflow. Null/invalid inputs remain null. Count unavailable
+inputs separately so an all-missing aggregate cannot appear as a measured zero.
+These [supported conversion functions](https://posthog.com/docs/sql/clickhouse-functions)
+were checked with the following queries; actual ingested-property/dashboard
+round trips remain a separate cloud acceptance gate:
+
+```sql
+SELECT
+    toString(accurateCastOrNull(
+        JSONExtractString('{"v":"18446744073709551615"}', 'v'), 'UInt64'
+    )) AS unsigned_max,
+    toString(toInt(JSONExtractString('{"v":"-9223372036854775808"}', 'v'))) AS signed_min,
+    toInt(JSONExtractString('{"v":null}', 'v')) AS unavailable,
+    toInt('invalid') AS invalid
+-- 18446744073709551615 | -9223372036854775808 | NULL | NULL
+
+SELECT toString(sum(accurateCastOrNull(v, 'UInt128'))) AS unsigned_sum
+FROM (SELECT arrayJoin(['18446744073709551615', '1']) AS v)
+-- 18446744073709551616
+
+SELECT toString(sum(accurateCastOrNull(v, 'Int128'))) AS signed_sum
+FROM (SELECT arrayJoin(['-9223372036854775808', '-9223372036854775808']) AS v)
+-- -18446744073709551616
+```
+
+Character summaries retain connected/active/idle/unknown/linkdead and resident
+microsecond deltas; `connected = active + idle + unknown` and
+`resident = connected + linkdead`. They also retain requested/computed/applied XP,
+attempts and zero-applied attempts. Absolute checkpoints/revisions stay in a
+separate reconciliation object; missing detail is not attributed to a guessed
+dimension or added again to the observed totals. Observed XP is not committed-save
+authority. Before/after levels and threshold XP remain separate level-change data.
+
+Within a summary, retain at most 32 time-allocation buckets keyed by captured
+class/race/faction/level-band/zone/group-size/activity context and 32 XP buckets
+keyed by source/reason/modifier mask/observation status. The summary's captured
+class/race/faction/level-band, config and classifier/policy identities are stable:
+seal affected data before any of these change. Preserve time and XP arrays
+independently; expanding both in one report join would multiply their totals.
+Overflow adds known values to explicit unattributed totals and marks lost detail.
+Checked-arithmetic overflow makes that metric unavailable with overflow coverage;
+never wrap, round or invent a zero.
+
+There are 256 session slots, at most two retained window fragments per session,
+64 complete configuration identities, and the existing 128 encounter runs × 64
+actors. A terminal run waits for its participant/combat evidence and a captured
+native-queue fence, or closes after 120 seconds with explicit missing coverage.
+Unavailable encounter character/session dimensions remain null; do not look up
+the current character. Run duration and participation are distinct. Pet and player
+contributions remain separate, and unwired control effects remain null.
+
+Initial export windows are 900 seconds (1800 when the full measured mix requires
+it), split at UTC midnight and required lifecycle/config/level boundaries.
+Consume native rows once through the admitted-tail fence before timer sealing.
+An older row arriving after sealing creates a new uniquely identified partial
+fragment, coalesced until the next flush; it cannot mutate an immutable retry.
+Unknown UTC retains monotonic totals as unallocated evidence. Extra fragments
+count toward both loss reporting and the volume budget.
+
+Serialized output, including retries, is bounded by 128 events / 512 KiB total,
+32 KiB per event, and a 120-second maximum age. Batches contain at most 64 events /
+256 KiB and flush within two seconds after sealing. Suppress with coverage when
+count/bytes/age/quota cannot retain output; continue draining native capture.
+Keep consumed/reduced/suppressed/attempted/HTTP-acknowledged counts separate.
+HTTP acceptance does not prove query-visible ingestion.
+
+### Complete event-volume fixture (#59)
+
+[`volume.json`](../../tests/async/fixtures/telemetry/posthog/volume.json) is a
+declared 31-day workload oracle, **not measured player capacity**. It includes
+all six families, two percent additional detached residents, lifecycle edges,
+extra boundary summaries, encounters, configuration, health, retries and the
+entire 100-attempt cloud fixture. Its assumptions are explicit: three logical
+entries and one reconnect per average connected character/day, two extra summary
+boundaries per character/day, one level change and one encounter per two
+character-days, six terminal rows per encounter (run, four players, one pet),
+two copyovers, two configuration rows/day, hourly health plus four incidents/day,
+and two percent retries on game traffic. Cloud test attempts are already inclusive
+of their retries and are not charged twice in this forecast.
+
+| Average connected | Window | All submissions / 31 days | ≤450,000 target |
+| --- | --- | ---: | --- |
+| 50 | 15 minutes | 186,792 | Fits this fixture |
+| 100 | 15 minutes | 372,535 | Fits this fixture |
+| 200 | 15 minutes | 744,021 | Fails |
+| 200 | 30 minutes | 434,398 | Fits this fixture |
+
+The fixture does not establish a production window or daily burst headroom.
+Actual emitted counts, late/boundary fragments, retry/fault rates and performance
+must qualify the real reducer/gameplay mix. Retain the 20,000/day shared hard
+ceiling, 100 reserved health attempts, explicit sender allocations, durable
+pre-send reservations, and no payload backlog at exhaustion. Thirty-one days
+can touch 32 UTC dates, so the hard bound is 640,000, not necessarily 620,000.
+Full implementation, fake-receiver and ≤100-attempt cloud proof remain pending.
 
 ### Native record units and identity
 

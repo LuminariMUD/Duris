@@ -12,7 +12,8 @@ The intervening Assassin plan from master is preserved byte-for-byte in
 
 - Preparation is ready for review in [PR #252](https://github.com/LuminariMUD/Duris/pull/252),
   branch `issue-59-posthog-telemetry`. Subsequent chunks stack on this branch.
-- The first implementation chunk, branch `issue-59-posthog-percentiles`, repairs
+- The first implementation chunk, [PR #253](https://github.com/LuminariMUD/Duris/pull/253),
+  branch `issue-59-posthog-percentiles`, repairs
   both performance-gate percentile helpers. Both now use integer per-mille ranks
   (`990` = p99, `999` = p99.9), with deterministic Python and native regressions
   that distinguish p99.9 from the maximum at 2,000 observations.
@@ -23,10 +24,40 @@ The intervening Assassin plan from master is preserved byte-for-byte in
 - `./scripts/format.sh --check` and `git diff --check` passed. The full SQL build
   passed with `nice -n 10 make -C src -j2 PERSISTENCE_BACKEND=mariadb
   BIN_ROOT="$PWD/bin/issue59/mariadb"`; log: `bin/issue59/build-mariadb.log`.
-- Exporter, compact fixtures, quota, SQL decoupling, gameplay journeys, cloud
-  ingestion and reports are still unimplemented. The next chunk freezes the
-  concrete encodings and complete volume fixture, then implements worker
-  reduction. The isolation limitation below still applies.
+- The second chunk, branch `issue-59-posthog-encodings`, implements worker-side
+  character HMAC pseudonyms, canonical session/run IDs, one-time UUID v4 creation
+  and timezone-independent microsecond UTC formatting in `telemetry_posthog.*`.
+  It links into both builds but is not connected to capture/delivery yet.
+- The compact mapping, concrete encodings, integer/null representation, reducer
+  bounds and complete declared volume fixture are in `docs/telemetry/CONTRACT.md`.
+  `tests/async/fixtures/telemetry/posthog/{encodings,volume}.json` and
+  `test_telemetry_posthog.py` check native encodings against independent Python
+  HMAC vectors, integer limits, invalid inputs and the six-family volume forecast.
+  Both MariaDB and flat-file component variants passed under UBSan.
+  The forecast is 372,535 submissions at 100 average connected characters with
+  15-minute windows, 744,021 at 200, and 434,398 at 200 with 30-minute windows.
+  These are explicit fixture assumptions, not production or reducer measurements.
+- Second-chunk verification passed: `python3 tests/async/test_telemetry_posthog.py`,
+  `python3 tests/async/test_telemetry_contract_headers.py` and
+  `python3 tests/async/test_telemetry_contract_fixtures.py`. Native encoding
+  children use an allowlisted local environment and synthetic keys; the
+  pre-existing contract checks covered ten fixtures / 40 records and standalone
+  headers in both build modes. Full low-priority `make -C src -j2` builds passed
+  with `PERSISTENCE_BACKEND=mariadb` and `flatfile`, respectively, using
+  `BIN_ROOT="$PWD/bin/issue59/<backend>"`. Logs:
+  `bin/issue59/build-{mariadb,flatfile}-encodings.log`. No executable was deployed.
+- Authenticated read-only PostHog literal/JSON queries verified lossless signed
+  and unsigned 64-bit conversion, null handling and 128-bit aggregate sums.
+  `toUInt64` is unsupported in HogQL, and `toDecimal` returns null for unsigned
+  maximum. Use `toInt` / `accurateCastOrNull(..., 'UInt64')` for values and
+  `accurateCastOrNull(..., 'Int128'/'UInt128')` before sums. Exact successful
+  queries/results are recorded in the contract; no cloud events were submitted.
+- Worker reduction/serialization, HTTP, quota, SQL decoupling, gameplay journeys,
+  cloud ingestion and reports are still unimplemented. Continue in this module
+  with bounded accumulators and immutable sealed output, then replace the
+  SQL-specific transport/runtime contract. Pet/system identities are specified
+  but remain to be implemented with their corresponding rows. The isolation
+  limitation below still applies.
 - No live game operation or cloud event has been performed. Production enablement
   is separately authorized; this work prepares reviewable implementation PRs.
 
@@ -59,7 +90,7 @@ linkage, automatic balancing or new gameplay metric is required. PostHog MCP is
 an administrative tool for this work; the game never depends on it.
 
 Production deployment/enablement is a separate, explicitly authorized operation.
-This planning pass performed no game login, server restart, migration, database
+Work through the encoding chunk performed no game login, server restart, migration, database
 mutation, event capture or PostHog dashboard mutation.
 
 ## Verified starting facts
@@ -224,7 +255,7 @@ Initial limits, to be enforced by constants and fixtures:
 | XP allocation | Up to 32 `(class,race,faction,level-band,zone,group-size,source,reason,modifier-flags,observation-status)` buckets per character window, with requested/computed/applied totals, attempt count and zero-applied count; overflow preserves overall totals/counts and marks attribution unavailable. |
 | Encounter reduction | Separate bounds of 128 active runs and 128 pending terminal joins, each with at most 64 retained actors. Producer close frees its active slot immediately; reducer pending state cannot consume the active-run allowance. A close waits at most 120 seconds. If pending capacity is full, finalize its oldest join early with incomplete-terminal coverage and known-prefix totals before accepting another close; later evidence is explicit late loss. |
 | Configuration cache | 64 full identities, matching the capture registry; collision/missing/full states are reported, never silently aliased or evicted into false completeness. |
-| Sealed output | At most 128 events and 512 KiB serialized storage, including the immutable retry batch. At most 32 KiB per event. Limits include nested buckets and framing, not `sizeof(native_record)`. |
+| Sealed output | At most 128 events and 512 KiB serialized storage, including the immutable retry batch. At most 32 KiB per event and 120 seconds retained age for all output. Limits include nested buckets and framing, not `sizeof(native_record)`. |
 | HTTP batch | At most 64 events and 256 KiB, flush within 2 seconds after rows are sealed. Flush timing does not generate extra periodic character rows. |
 
 Important ordering and accounting rules:
