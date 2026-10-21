@@ -50,6 +50,11 @@ role, not the checkout directory name. Fresh isolated test worlds use distinct
 non-production IDs starting at `1000`; never reuse an exported world's identity
 for a restored or independently created world. Keep that identity stable across
 reconnects, process restarts, and copyover within the same world.
+Before export can be enabled, require an explicit nonzero environment ID and
+validate its role: production `1`, staging `2`, local `3` or an isolated-world ID
+at least `1000`. Missing, malformed or role-mismatched IDs disable export; the
+current runtime's independent production-valued default must not reach the new
+exporter. This validation remains required implementation work.
 
 `TELEMETRY_SEASON_ID=1` starts the first PostHog reporting season; it does not claim
 a historical game-wipe number. Change the season when a wipe/reset starts a new

@@ -1,8 +1,8 @@
 # Issue #59: PostHog gameplay telemetry implementation plan
 
 Status: **planning complete; implementation and acceptance have not started.**
-Evidence checked on 2026-10-21 UTC against branch
-`issue-59-posthog-telemetry`, commit `2527671f1732ae6ed1eafbea0fb5690e3d28814e`.
+Source evidence checked on 2026-10-21 UTC against retained
+[master `9090518ba091`](https://github.com/LuminariMUD/Duris/commit/9090518ba091abc15b8fb2df4675b9ee3d83bd08).
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
 The previous plan is preserved in [plan-issue-107.md](plan-issue-107.md).
 
@@ -175,6 +175,12 @@ Fresh isolated worlds receive distinct IDs starting at `1000`; a test-run tag
 is additional filtering, not a replacement for namespace isolation. A restored
 independent world receives a new identity. A restart/deployment is not a season
 change. Season `1` is not a claim about the historical wipe number.
+Enabled export must require an explicit nonzero `TELEMETRY_ENVIRONMENT_ID` and
+validate it against `ENVIRONMENT`: production `1`, staging `2`, local `3` or a
+dedicated isolated-world ID at least `1000`. Missing, malformed or role-mismatched
+scope disables export without affecting gameplay. The current runtime defaults
+to `1` independently of the role; replacing that fallback is required before
+connecting the exporter, with regression cases for every role and missing scope.
 
 ## Reducer: bounded work without changing observed meaning
 
@@ -190,8 +196,8 @@ Initial limits, to be enforced by constants and fixtures:
 | Summary window | 900 seconds; configurable to 1,800 if measured volume requires it. This is separate from native capture/checkpoint/classifier timing. |
 | Character accumulators | 256 session slots, each with at most two window fragments to tolerate a boundary crossed by a deferred native interval. Flush affected data on identity/configuration/level boundaries and lifecycle exit. A sealed row must be queued or explicitly suppressed before its slot is reused. |
 | Historical allocation | Up to 32 `(class,race,faction,level-band,zone,group-size,activity-context)` buckets per character window. Overflow preserves category totals in an explicit unattributed bucket. |
-| XP allocation | Up to 32 `(source,reason,modifier-flags,observation-status)` buckets per character window, with requested/computed/applied totals, attempt count and zero-applied count; overflow preserves overall totals/counts and marks attribution unavailable. |
-| Encounter reduction | At most the existing 128 runs × 64 retained actors. Assemble terminal rows across native batch boundaries; a close remains pending for at most 120 seconds awaiting expected participant/combat evidence. |
+| XP allocation | Up to 32 `(class,race,faction,level-band,zone,group-size,source,reason,modifier-flags,observation-status)` buckets per character window, with requested/computed/applied totals, attempt count and zero-applied count; overflow preserves overall totals/counts and marks attribution unavailable. |
+| Encounter reduction | Separate bounds of 128 active runs and 128 pending terminal joins, each with at most 64 retained actors. Producer close frees its active slot immediately; reducer pending state cannot consume the active-run allowance. A close waits at most 120 seconds. If pending capacity is full, finalize its oldest join early with incomplete-terminal coverage and known-prefix totals before accepting another close; later evidence is explicit late loss. |
 | Configuration cache | 64 full identities, matching the capture registry; collision/missing/full states are reported, never silently aliased or evicted into false completeness. |
 | Sealed output | At most 128 events and 512 KiB serialized storage, including the immutable retry batch. At most 32 KiB per event. Limits include nested buckets and framing, not `sizeof(native_record)`. |
 | HTTP batch | At most 64 events and 256 KiB, flush within 2 seconds after rows are sealed. Flush timing does not generate extra periodic character rows. |
@@ -226,7 +232,11 @@ Important ordering and accounting rules:
    `connected = active + idle + unknown` and `resident = connected + linkdead`.
 6. Finalize run/participant/combat joins after expected terminal evidence has
    arrived and the captured queue fence is consumed, or at the 120-second close
-   deadline with missing pieces marked unavailable. A native close row alone
+   deadline or pending-capacity pressure with missing pieces marked unavailable.
+   Pressure finalization is explicitly incomplete even if its fence has not yet
+   been consumed. Test 128 pending closes plus 128 new active runs, then pending
+   overflow, preserving known contributions and counting missing/late evidence.
+   A native close row alone
    does not prove all combat rows followed. Finalize output incrementally within
    the bounded output capacity. Late terminal data after finalization is explicit
    late loss, not a second counted run. Missing run state, actor/roster overflow
@@ -237,8 +247,11 @@ Important ordering and accounting rules:
 
 ## HTTP delivery and failure states
 
-POST JSON to `https://us.i.posthog.com/batch/` using the existing libcurl/cJSON
-dependencies, with the project token at batch level and event name, distinct ID,
+Construct `/batch/` from validated `POSTHOG_HOST`, allowing only
+`https://us.i.posthog.com` or `https://eu.i.posthog.com`; the configured project's
+region determines the endpoint. Reject missing/invalid hosts rather than falling
+back to another region. Use the existing libcurl/cJSON dependencies, with the
+project token at batch level and event name, distinct ID,
 timestamp, UUID and properties per event. Validate required fields locally.
 The [capture API](https://posthog.com/docs/api/capture) documents batching and
 anonymous capture, and explicitly warns that HTTP 200 can accompany discarded
@@ -437,8 +450,13 @@ establish ingestion. No event is sent during this planning task.
    dashboard only once access/budget checks pass.
 6. **Write the operational handoff.** Update `.env.example`, `CONTRACT.md`,
    `TRANSPORT.md`, `OUTAGE_STORAGE.md`, `CONFIG_CONTEXT.md`, `REPORTS.md`,
-   `PERFORMANCE_GATE.md`, and mark superseded SQL guidance in the readiness
-   review. Record exact evidence, remaining limitations, enable/disable/recovery,
+   `PERFORMANCE_GATE.md`, the canonical operator
+   [configuration table](../operations/CONFIGURATION.md),
+   [runbook](../operations/RUNBOOK.md) and
+   [regression descriptions](../testing/REGRESSIONS.md). Replace active
+   SQL-writer/backend instructions when retiring that path; label retained
+   historical SQL tools explicitly offline. Mark superseded SQL guidance in the
+   readiness review. Record exact evidence, remaining limitations, enable/disable/recovery,
    active sender allocations and deployed version identities. Keep production
    disabled until separately authorized.
 
@@ -492,8 +510,8 @@ token, after mock tests pass, with a hard total of 100 submissions including ret
 | Gate | Required executable evidence |
 | --- | --- |
 | Semantics | All eight native kinds; zero/applied/negative XP and threshold consumption; config/level/window/day boundaries; reconnect; checkpoints versus deltas; captured dimensions; identity stability/isolation; integer limits; late records; array overflow; no forbidden payload fields. |
-| Native/output capacity | 256/257 resident sessions, 64/65 configs, full pending config FIFO, run/actor/256-roster-event exhaustion and terminal bursts, queue/control reserve, bucket and JSON byte limits. Failures visible even when HTTP is healthy and queue empty. |
-| HTTP | Valid batch, malformed row, permanent auth/config error, 413, 429 with Retry-After, 5xx, slow connect/response, cancellation, retry exhaustion/recovery and receiver-accepted/lost-response ambiguity. Frozen retry identity and bounded memory/work. |
+| Native/output capacity | 256/257 resident sessions, 64/65 configs, full pending config FIFO, 128 pending closes plus 128 active runs, pending overflow/late terminals, run/actor/256-roster-event exhaustion and terminal bursts, queue/control reserve, bucket and JSON byte limits. Failures visible even when HTTP is healthy and queue empty. |
+| HTTP | US/EU configured-host selection and invalid-host refusal; missing/invalid/role-mismatched environment refusal; valid batch, malformed row, permanent auth/config error, 413, 429 with Retry-After, 5xx, slow connect/response, cancellation, retry exhaustion/recovery and receiver-accepted/lost-response ambiguity. Frozen retry identity and bounded memory/work. |
 | Quota/storage | Tiny allowance with reserved health, every attempted event counted, midnight crossing and clock rollback, restart/copyover, missing/corrupt/pending state, stale restore, writer contention, disk-full/fsync/rename failure, archive rollover and non-resetting reservations. Gameplay remains available. |
 | Real gameplay | SQL and flat-file login, recognized action, idle/linkdead, combat and XP, level transition, groups/pets, save/reload, disconnect/reconnect, successful and failed copyover, shutdown and unknown crash tail. Assert captured payloads and conserved totals, not just helper return values. |
 | SQL decoupling | Fresh supported schemas with the nine legacy tables intact, absent and drifted; unchanged gameplay drift rejection and immutable migration validation; SQL telemetry credentials absent/invalid cannot affect PostHog or gameplay. Flat-file binary has no telemetry SQL requirement. |
