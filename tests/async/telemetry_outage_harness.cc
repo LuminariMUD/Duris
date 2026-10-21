@@ -388,6 +388,176 @@ void pending_chain()
 	std::puts("outage pending chain refuses altered identities and rewritten history passed");
 }
 
+telemetry_quota_binding quota_binding()
+{
+	return { 678214U, 1U, 20U, 30U, 8U, 2U, 10U };
+}
+
+constexpr telemetry_utc_usec QUOTA_UTC = 1'728'000'000'000'000LL;
+constexpr telemetry_utc_usec DAY = 86'400'000'000LL;
+
+void quota_accounting()
+{
+	fixture f;
+	telemetry_outage_journal j{};
+	const auto b = quota_binding();
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+	assert(telemetry_outage_quota_check(&j, b) == result::invalid);
+	assert(j.error_code == ENODATA);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 1U, 0U) == result::invalid);
+	assert(telemetry_outage_quota_initialize(&j, b, QUOTA_UTC) == result::ready);
+	assert(j.count == 0U && j.quota.day == QUOTA_UTC / DAY);
+	assert(fs::file_size(f.path / "outages.owner") == 48U);
+	assert((fcntl(j.directory_fd, F_GETFD) & FD_CLOEXEC) != 0);
+	assert((fcntl(j.ownership_fd, F_GETFD) & FD_CLOEXEC) != 0);
+	assert(telemetry_outage_quota_initialize(&j, b, QUOTA_UTC) == result::invalid);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 5U, 1U) == result::ready);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 2U, 1U) ==
+	       result::ready); // Retried attempts are charged again.
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 1U, 0U) == result::ready);
+	const auto full = bytes(f.path / "outages.ledger");
+	assert(j.quota.normal_reserved == 8U && j.quota.health_reserved == 2U);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 1U, 0U) == result::invalid);
+	assert(j.error_code == EDQUOT);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 0U, 1U) == result::invalid);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC - DAY, 1U, 0U) == result::invalid);
+	assert(j.error_code == ERANGE);
+	assert(telemetry_outage_quota_reserve(&j, b, TELEMETRY_UTC_UNKNOWN, 1U, 0U) ==
+	       result::invalid);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, UINT32_MAX, UINT32_MAX) ==
+	       result::invalid);
+	auto wrong = b;
+	++wrong.sender_id;
+	assert(telemetry_outage_quota_check(&j, wrong) == result::invalid);
+	assert(j.error_code == EINVAL);
+	assert(bytes(f.path / "outages.ledger") == full);
+	telemetry_outage_journal rival{};
+	assert(telemetry_outage_read(&rival, f.path.c_str()) == result::owned_elsewhere);
+	telemetry_outage_close(&j);
+	assert(telemetry_outage_open(&j, f.path.c_str(), registration()) == result::ready);
+	assert(j.quota.normal_reserved == 8U && j.quota.health_reserved == 2U);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC + DAY, 2U, 0U) == result::ready);
+	assert(j.quota.normal_reserved == 2U && j.quota.health_reserved == 0U);
+	const auto recovery_generation = j.generation;
+	const auto before = bytes(f.path / "outages.ledger");
+	assert(telemetry_outage_quota_exhaust_day(&j, b, QUOTA_UTC + DAY) == result::ready);
+	assert(bytes(f.path / ("outages.ledger.recovery." + std::to_string(recovery_generation))) ==
+	       before);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC + DAY, 1U, 0U) == result::invalid);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC + DAY, 0U, 1U) == result::invalid);
+	telemetry_outage_close(&j);
+	auto bad_registration = registration(2U);
+	++bad_registration.environment_id;
+	assert(telemetry_outage_open(&j, f.path.c_str(), bad_registration) == result::invalid);
+	std::puts(
+		"quota initialization, retry charging, limits, clock and restore recovery passed");
+}
+
+void quota_publication_faults()
+{
+	const auto b = quota_binding();
+	for (unsigned int step = 0U; step < 5U; ++step)
+	{
+		fixture f;
+		telemetry_outage_journal j{};
+		assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+		assert(telemetry_outage_quota_initialize(&j, b, QUOTA_UTC) == result::ready);
+		if (step == 0U)
+			fail_write.store(true);
+		else if (step == 4U)
+			fail_rename.store(true);
+		else
+			fail_fsync_call.store(step);
+		assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 3U, 0U) ==
+		       result::io_failure);
+		assert(j.quota_poisoned);
+		assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 1U, 0U) == result::corrupt);
+		fail_write.store(false);
+		fail_rename.store(false);
+		fail_fsync_call.store(0U);
+		telemetry_outage_close(&j);
+		assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+		assert(j.quota.normal_reserved == (step <= 1U ? 0U : 3U));
+		assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 1U, 0U) == result::ready);
+		telemetry_outage_close(&j);
+	}
+	std::puts("quota write, file/owner/directory fsync and rename failures passed");
+}
+
+void quota_rollback()
+{
+	const auto b = quota_binding();
+	fixture f;
+	telemetry_outage_journal j{};
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+	assert(telemetry_outage_quota_initialize(&j, b, QUOTA_UTC) == result::ready);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 2U, 0U) == result::ready);
+	const auto previous = bytes(f.path / "outages.ledger");
+	const auto previous_marker = bytes(f.path / "outages.owner");
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 2U, 0U) == result::ready);
+	const auto latest = bytes(f.path / "outages.ledger");
+	telemetry_outage_close(&j);
+	replace(f.path / "outages.ledger", previous);
+	assert(telemetry_outage_read(&j, f.path.c_str()) ==
+	       result::corrupt); // Partial backup rollback.
+	replace(f.path / "outages.ledger", latest);
+	auto conflict = latest;
+	word(conflict, 96U, 0U); // Same generation, lower normal count, valid frame checksum.
+	checksum(conflict);
+	replace(f.path / "outages.ledger", conflict);
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::corrupt);
+	replace(f.path / "outages.ledger", latest);
+	auto pending = latest;
+	word(pending, 8U, j.generation + 1U);
+	word(pending, 96U, 1U);
+	checksum(pending);
+	replace(f.path / "outages.pending", pending);
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::corrupt);
+	assert(bytes(f.path / "outages.pending") == pending);
+	fs::remove(f.path / "outages.pending");
+	replace(f.path / "outages.ledger", previous);
+	replace(f.path / "outages.owner",
+		previous_marker); // Full rollback is inherently undetectable.
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+	assert(telemetry_outage_quota_exhaust_day(&j, b, QUOTA_UTC) == result::ready);
+	assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 1U, 0U) == result::invalid);
+	telemetry_outage_close(&j);
+	std::puts(
+		"quota partial/same-generation/pending rollback refusal and full-restore exhaustion passed");
+}
+
+void quota_rotation()
+{
+	fixture f;
+	telemetry_outage_journal j{};
+	const auto b = quota_binding();
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+	assert(telemetry_outage_quota_initialize(&j, b, QUOTA_UTC) == result::ready);
+	telemetry_outage_close(&j);
+	for (std::uint64_t incarnation = 1U; incarnation <= TELEMETRY_OUTAGE_MAX_PRODUCERS;
+	     ++incarnation)
+	{
+		assert(telemetry_outage_open(&j, f.path.c_str(), registration(incarnation)) ==
+		       result::ready);
+		if (incarnation == 1U)
+			assert(telemetry_outage_quota_reserve(&j, b, QUOTA_UTC, 5U, 1U) ==
+			       result::ready);
+		terminate_cleanly(j, incarnation);
+	}
+	fail_fsync_call.store(7U); // Pending registration after durable archive, before rename.
+	assert(telemetry_outage_open(&j, f.path.c_str(), registration(257U)) == result::io_failure);
+	fail_fsync_call.store(0U);
+	assert(telemetry_outage_read(&j, f.path.c_str()) == result::ready);
+	assert(j.count == 1U && j.observations[0].producer.process_id == 257U);
+	assert(j.quota.normal_reserved == 5U && j.quota.health_reserved == 1U);
+	telemetry_outage_close(&j);
+	assert(telemetry_outage_open(&j, f.path.c_str(), registration(258U)) == result::ready);
+	assert(j.count == 2U && j.quota.normal_reserved == 5U);
+	telemetry_outage_close(&j);
+	std::puts(
+		"quota survives producer archive rotation and interrupted next registration passed");
+}
+
 void wait_success(pid_t child)
 {
 	int status = 0;
@@ -481,7 +651,8 @@ void rotation()
 			telemetry_outage_close(&journal);
 	}
 	const auto full = bytes(f.path / "outages.ledger");
-	assert(full.size() == TELEMETRY_OUTAGE_MAX_BYTES);
+	assert(full.size() ==
+	       64U + TELEMETRY_OUTAGE_MAX_PRODUCERS * TELEMETRY_OUTAGE_DISK_WORDS * 8U);
 	// Lifetime 257 keeps the full chain as an archive, with the killed producer
 	// closed as an unknown tail, and starts a new chain with itself.
 	assert(telemetry_outage_open(&journal, f.path.c_str(), registration(257)) == result::ready);
@@ -489,7 +660,7 @@ void rotation()
 	terminate_cleanly(journal, 257);
 	assert(fs::file_size(f.path / "outages.ledger") == 384U);
 	const auto archive = f.path / "outages.ledger.1000.512";
-	assert(fs::exists(archive) && fs::file_size(archive) == TELEMETRY_OUTAGE_MAX_BYTES);
+	assert(fs::exists(archive) && fs::file_size(archive) == full.size());
 	std::size_t files = 0U;
 	for (const auto &entry : fs::directory_iterator(f.path))
 		files += entry.path().filename().string().rfind("outages.ledger.", 0) == 0 ? 1U :
@@ -550,5 +721,9 @@ int main(int argc, char **argv)
 	abrupt_kill();
 	process_exec(argv[0]);
 	rotation();
+	quota_accounting();
+	quota_publication_faults();
+	quota_rollback();
+	quota_rotation();
 	std::puts("telemetry durable outage evidence qualification passed");
 }
