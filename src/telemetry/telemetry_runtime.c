@@ -57,906 +57,971 @@ extern float get_property(const char *, double) __attribute__((weak));
 
 namespace
 {
+	constexpr std::uint16_t MAX_STATE_SLOTS =
+		static_cast<std::uint16_t>(TELEMETRY_SESSION_STATE_MAX_SLOTS);
+	constexpr std::uint32_t QUEUE_CAPACITY =
+		static_cast<std::uint32_t>(TELEMETRY_QUEUE_CAPACITY_PROPOSAL);
+	constexpr std::uint32_t CONTROL_RESERVE =
+		static_cast<std::uint32_t>(TELEMETRY_CONTROL_RESERVE_PROPOSAL);
+	constexpr std::uint16_t MAX_BATCH_RECORDS =
+		static_cast<std::uint16_t>(TELEMETRY_BATCH_MAX_RECORDS_PROPOSAL);
+	constexpr std::uint32_t MAX_BATCH_BYTES =
+		static_cast<std::uint32_t>(TELEMETRY_BATCH_MAX_BYTES_PROPOSAL);
+	constexpr telemetry_duration_usec FLUSH_OLDEST_USEC = TELEMETRY_FLUSH_OLDEST_USEC_PROPOSAL;
+	constexpr telemetry_duration_usec RETIRE_AFTER_USEC =
+		TELEMETRY_ACTIVE_WINDOW_USEC_MAX_PROPOSAL;
+	constexpr telemetry_duration_usec WORKER_WAIT_USEC = 50'000U;
+	constexpr std::uint16_t GAME_GROUP_MAX_NODES = 256U;
+	constexpr std::size_t REVIEWED_PROPERTY_CATALOG_MAX = 64U;
+	constexpr std::size_t REVIEWED_PROPERTY_DIGEST_TEXT_BYTES =
+		TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES * 2U;
 
-constexpr std::uint16_t MAX_STATE_SLOTS =
-	static_cast<std::uint16_t>(TELEMETRY_SESSION_STATE_MAX_SLOTS);
-constexpr std::uint32_t QUEUE_CAPACITY =
-	static_cast<std::uint32_t>(TELEMETRY_QUEUE_CAPACITY_PROPOSAL);
-constexpr std::uint32_t CONTROL_RESERVE =
-	static_cast<std::uint32_t>(TELEMETRY_CONTROL_RESERVE_PROPOSAL);
-constexpr std::uint16_t MAX_BATCH_RECORDS =
-	static_cast<std::uint16_t>(TELEMETRY_BATCH_MAX_RECORDS_PROPOSAL);
-constexpr std::uint32_t MAX_BATCH_BYTES =
-	static_cast<std::uint32_t>(TELEMETRY_BATCH_MAX_BYTES_PROPOSAL);
-constexpr telemetry_duration_usec FLUSH_OLDEST_USEC = TELEMETRY_FLUSH_OLDEST_USEC_PROPOSAL;
-constexpr telemetry_duration_usec RETIRE_AFTER_USEC = TELEMETRY_ACTIVE_WINDOW_USEC_MAX_PROPOSAL;
-constexpr telemetry_duration_usec WORKER_WAIT_USEC = 50'000U;
-constexpr std::uint16_t GAME_GROUP_MAX_NODES = 256U;
-constexpr std::size_t REVIEWED_PROPERTY_CATALOG_MAX = 64U;
-constexpr std::size_t REVIEWED_PROPERTY_DIGEST_TEXT_BYTES =
-	TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES * 2U;
-
-struct reviewed_property_catalog_entry
-{
-	std::uint8_t digest[TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES];
-	std::uint32_t property_version;
-	std::uint32_t stable_namespace;
-	std::uint32_t stable_version;
-};
-
-struct reviewed_property_catalog
-{
-	reviewed_property_catalog_entry entries[REVIEWED_PROPERTY_CATALOG_MAX];
-	std::uint16_t count;
-	std::uint8_t loaded;
-	std::uint8_t reserved;
-};
-
-reviewed_property_catalog REVIEWED_CATALOG{};
-
-bool ascii_space(char value) noexcept
-{
-	return value == ' ' || value == '	' || value == '\r' || value == '\n' ||
-	       value == '\f' || value == '\v';
-}
-
-int hex_digit(char value) noexcept
-{
-	if (value >= '0' && value <= '9')
-		return value - '0';
-	if (value >= 'a' && value <= 'f')
-		return value - 'a' + 10;
-	if (value >= 'A' && value <= 'F')
-		return value - 'A' + 10;
-	return -1;
-}
-
-bool parse_property_digest(const char *text,
-			   std::uint8_t digest[TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES]) noexcept
-{
-	if (text == nullptr || digest == nullptr ||
-	    std::strlen(text) != REVIEWED_PROPERTY_DIGEST_TEXT_BYTES)
-		return false;
-	for (std::size_t index = 0U; index < TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES; ++index)
+	struct reviewed_property_catalog_entry
 	{
-		const int high = hex_digit(text[index * 2U]);
-		const int low = hex_digit(text[index * 2U + 1U]);
-		if (high < 0 || low < 0)
-			return false;
-		digest[index] = static_cast<std::uint8_t>((high << 4) | low);
+		std::uint8_t digest[TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES];
+		std::uint32_t property_version;
+		std::uint32_t stable_namespace;
+		std::uint32_t stable_version;
+	};
+
+	struct reviewed_property_catalog
+	{
+		reviewed_property_catalog_entry entries[REVIEWED_PROPERTY_CATALOG_MAX];
+		std::uint16_t count;
+		std::uint8_t loaded;
+		std::uint8_t reserved;
+	};
+
+	reviewed_property_catalog REVIEWED_CATALOG{};
+
+	bool ascii_space(char value) noexcept
+	{
+		return value == ' ' || value == '	' || value == '\r' || value == '\n' ||
+		       value == '\f' || value == '\v';
 	}
-	return true;
-}
 
-bool load_reviewed_property_catalog(const char *path) noexcept
-{
-	REVIEWED_CATALOG = {};
-	if (path == nullptr || *path == '\0')
-		return false;
-	FILE *file = std::fopen(path, "r");
-	if (file == nullptr)
-		return false;
-
-	bool valid = true;
-	char line[256]{};
-	while (valid && std::fgets(line, sizeof(line), file) != nullptr)
+	int hex_digit(char value) noexcept
 	{
-		const char *first = line;
-		while (*first != '\0' && ascii_space(*first))
-			++first;
-		if (*first == '\0' || *first == '#')
-			continue;
+		if (value >= '0' && value <= '9')
+			return value - '0';
+		if (value >= 'a' && value <= 'f')
+			return value - 'a' + 10;
+		if (value >= 'A' && value <= 'F')
+			return value - 'A' + 10;
+		return -1;
+	}
 
-		char digest_text[REVIEWED_PROPERTY_DIGEST_TEXT_BYTES + 1U]{};
-		unsigned long long property_version = 0U;
-		unsigned long long stable_namespace = 0U;
-		unsigned long long stable_version = 0U;
-		char extra = '\0';
-		std::uint8_t parsed_digest[TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES]{};
-		const int fields = std::sscanf(line, " %64s %llu %llu %llu %c", digest_text,
-					       &property_version, &stable_namespace,
-					       &stable_version, &extra);
-		if (fields != 4 || !parse_property_digest(digest_text, parsed_digest) ||
-		    property_version == 0U ||
-		    property_version > std::numeric_limits<std::uint32_t>::max() ||
-		    stable_namespace == 0U ||
-		    stable_namespace > std::numeric_limits<std::uint32_t>::max() ||
-		    stable_version == 0U ||
-		    stable_version > std::numeric_limits<std::uint32_t>::max() ||
-		    REVIEWED_CATALOG.count >= REVIEWED_PROPERTY_CATALOG_MAX)
+	bool parse_property_digest(const char *text,
+				   std::uint8_t digest[TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES])
+		noexcept
+	{
+		if (text == nullptr || digest == nullptr ||
+		    std::strlen(text) != REVIEWED_PROPERTY_DIGEST_TEXT_BYTES)
+			return false;
+		for (std::size_t index = 0U; index < TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES;
+		     ++index)
 		{
-			valid = false;
-			break;
+			const int high = hex_digit(text[index * 2U]);
+			const int low = hex_digit(text[index * 2U + 1U]);
+			if (high < 0 || low < 0)
+				return false;
+			digest[index] = static_cast<std::uint8_t>((high << 4) | low);
 		}
-		reviewed_property_catalog_entry candidate{};
-		std::memcpy(candidate.digest, parsed_digest, sizeof(candidate.digest));
-		candidate.property_version = static_cast<std::uint32_t>(property_version);
-		candidate.stable_namespace = static_cast<std::uint32_t>(stable_namespace);
-		candidate.stable_version = static_cast<std::uint32_t>(stable_version);
-		for (std::size_t index = 0U; index < REVIEWED_CATALOG.count; ++index)
+		return true;
+	}
+
+	bool load_reviewed_property_catalog(const char *path) noexcept
+	{
+		REVIEWED_CATALOG = {};
+		if (path == nullptr || *path == '\0')
+			return false;
+		FILE *file = std::fopen(path, "r");
+		if (file == nullptr)
+			return false;
+
+		bool valid = true;
+		char line[256]{};
+		while (valid && std::fgets(line, sizeof(line), file) != nullptr)
 		{
-			const auto &prior = REVIEWED_CATALOG.entries[index];
-			if (std::memcmp(prior.digest, candidate.digest, sizeof(candidate.digest)) ==
-				    0 ||
-			    prior.property_version == candidate.property_version)
+			const char *first = line;
+			while (*first != '\0' && ascii_space(*first))
+				++first;
+			if (*first == '\0' || *first == '#')
+				continue;
+
+			char digest_text[REVIEWED_PROPERTY_DIGEST_TEXT_BYTES + 1U]{};
+			unsigned long long property_version = 0U;
+			unsigned long long stable_namespace = 0U;
+			unsigned long long stable_version = 0U;
+			char extra = '\0';
+			std::uint8_t parsed_digest[TELEMETRY_CONFIG_PROPERTY_DIGEST_BYTES]{};
+			const int fields = std::sscanf(line, " %64s %llu %llu %llu %c", digest_text,
+						       &property_version, &stable_namespace,
+						       &stable_version, &extra);
+			if (fields != 4 || !parse_property_digest(digest_text, parsed_digest) ||
+			    property_version == 0U ||
+			    property_version > std::numeric_limits<std::uint32_t>::max() ||
+			    stable_namespace == 0U ||
+			    stable_namespace > std::numeric_limits<std::uint32_t>::max() ||
+			    stable_version == 0U ||
+			    stable_version > std::numeric_limits<std::uint32_t>::max() ||
+			    REVIEWED_CATALOG.count >= REVIEWED_PROPERTY_CATALOG_MAX)
 			{
-				/* One full digest has one mapping, and a public version may
-				 * never alias a different full digest. */
 				valid = false;
 				break;
 			}
+			reviewed_property_catalog_entry candidate{};
+			std::memcpy(candidate.digest, parsed_digest, sizeof(candidate.digest));
+			candidate.property_version = static_cast<std::uint32_t>(property_version);
+			candidate.stable_namespace = static_cast<std::uint32_t>(stable_namespace);
+			candidate.stable_version = static_cast<std::uint32_t>(stable_version);
+			for (std::size_t index = 0U; index < REVIEWED_CATALOG.count; ++index)
+			{
+				const auto &prior = REVIEWED_CATALOG.entries[index];
+				if (std::memcmp(prior.digest, candidate.digest,
+						sizeof(candidate.digest)) == 0 ||
+				    prior.property_version == candidate.property_version)
+				{
+					/* One full digest has one mapping, and a public version may
+				 * never alias a different full digest. */
+					valid = false;
+					break;
+				}
+			}
+			if (valid)
+				REVIEWED_CATALOG.entries[REVIEWED_CATALOG.count++] = candidate;
 		}
-		if (valid)
-			REVIEWED_CATALOG.entries[REVIEWED_CATALOG.count++] = candidate;
-	}
-	if (std::ferror(file) != 0)
-		valid = false;
-	std::fclose(file);
-	if (!valid || REVIEWED_CATALOG.count == 0U)
-	{
-		REVIEWED_CATALOG = {};
-		return false;
-	}
-	REVIEWED_CATALOG.loaded = 1U;
-	return true;
-}
-
-bool reviewed_property_catalog_resolve(
-	void *context, const telemetry_config_property_snapshot *snapshot,
-	const std::uint8_t *digest,
-	telemetry_config_property_catalog_resolution *resolution) noexcept
-{
-	if (context == nullptr || snapshot == nullptr || digest == nullptr || resolution == nullptr)
-		return false;
-	const auto *catalog = static_cast<const reviewed_property_catalog *>(context);
-	if (catalog->loaded == 0U)
-		return false;
-	for (std::size_t index = 0U; index < catalog->count; ++index)
-	{
-		const auto &entry = catalog->entries[index];
-		if (std::memcmp(entry.digest, digest, sizeof(entry.digest)) != 0)
-			continue;
-		*resolution = {};
-		resolution->property_version = entry.property_version;
-		resolution->stable_namespace = entry.stable_namespace;
-		resolution->stable_version = entry.stable_version;
-		std::memcpy(resolution->digest, entry.digest, sizeof(resolution->digest));
-		return true;
-	}
-	return false;
-}
-
-struct runtime_state
-{
-	bool initialized = false;
-	bool enabled = false;
-	bool transport_started = false;
-	bool shutdown_pending = false;
-	bool has_last_health = false;
-	telemetry_health_snapshot last_health{};
-	telemetry_health_monitor_config health_monitor_config{};
-	telemetry_health_monitor_state health_monitor{};
-	telemetry_producer_id producer{};
-	telemetry_config_snapshot config{};
-	telemetry_config_property_capture property_capture{};
-	telemetry_config_capture_input capture_input{};
-	bool property_capture_enabled = false;
-	bool config_available = false;
-	telemetry_config_revision reload_revision = 0U;
-	telemetry_season_id session_scope_season_id = TELEMETRY_UNKNOWN_ID;
-	telemetry_environment_id session_scope_environment_id = TELEMETRY_UNKNOWN_ID;
-	telemetry_record_sequence next_record_sequence = 1U;
-	telemetry_connection_sequence next_connection_sequence = 1U;
-	telemetry_session_sequence next_session_sequence = 1U;
-	telemetry_sequence next_encounter_sequence = 1U;
-	telemetry_session_state session{};
-	telemetry_activity_state activity{};
-	telemetry_progression_state progression{};
-	telemetry_encounter_state encounter{};
-	telemetry_combat_summary_state combat_summary{};
-	telemetry_storage_backend worker_backend{};
-	std::mutex posthog_health_mutex{};
-	telemetry_runtime_posthog_health posthog_health{};
-	std::thread worker{};
-	std::atomic<bool> worker_stop{ false };
-	std::atomic<bool> worker_done{ false };
-	std::atomic<bool> worker_final_flush{ false };
-	std::atomic<telemetry_monotonic_usec> worker_deadline{ 0U };
-	std::atomic<std::uint64_t> wake_generation{ 0U };
-	std::atomic<std::uint64_t> flush_requested{ 0U };
-	std::atomic<std::uint64_t> flush_completed{ 0U };
-	std::atomic<telemetry_monotonic_usec> flush_deadline{ 0U };
-	std::atomic<bool> flush_durable{ false };
-	std::condition_variable wake_condition{};
-	std::mutex wake_mutex{};
-};
-
-runtime_state R;
-// Process-lifetime ledger, deliberately NOT reset by final_reap. Reject rather
-// than evict an old identity or restart its attempted record sequence at one.
-telemetry_producer_id used_producers[256]{};
-std::size_t used_producer_count = 0U;
-
-bool reserve_runtime_producer(telemetry_producer_id producer) noexcept
-{
-	for (std::size_t index = 0U; index < used_producer_count; ++index)
-		if (used_producers[index].boot_id == producer.boot_id &&
-		    used_producers[index].process_id == producer.process_id)
+		if (std::ferror(file) != 0)
+			valid = false;
+		std::fclose(file);
+		if (!valid || REVIEWED_CATALOG.count == 0U)
+		{
+			REVIEWED_CATALOG = {};
 			return false;
-	if (used_producer_count == sizeof(used_producers) / sizeof(used_producers[0]))
-		return false;
-	used_producers[used_producer_count++] = producer;
-	return true;
-}
-
-struct worker_done_guard
-{
-	~worker_done_guard() noexcept
-	{
-		R.worker_done.store(true, std::memory_order_release);
-		R.wake_condition.notify_all();
+		}
+		REVIEWED_CATALOG.loaded = 1U;
+		return true;
 	}
-};
 
-bool session_equal(const telemetry_session_ref &left, const telemetry_session_ref &right) noexcept
-{
-	return left.id.producer.boot_id == right.id.producer.boot_id &&
-	       left.id.producer.process_id == right.id.producer.process_id &&
-	       left.id.session_seq == right.id.session_seq && left.subject_id == right.subject_id &&
-	       left.pid == right.pid && left.season_id == right.season_id &&
-	       left.environment_id == right.environment_id;
-}
-
-bool handoff_is_zero(const telemetry_session_handoff &handoff) noexcept
-{
-	return telemetry_session_ref_is_zero(handoff.session) &&
-	       telemetry_producer_id_is_zero(handoff.previous_producer) &&
-	       handoff.last_checkpoint_revision == 0U && handoff.cumulative.connected_usec == 0U &&
-	       handoff.cumulative.active_usec == 0U && handoff.cumulative.idle_usec == 0U &&
-	       handoff.cumulative.unknown_usec == 0U && handoff.cumulative.resident_usec == 0U &&
-	       handoff.cumulative.linkdead_usec == 0U &&
-	       handoff.quality_flags == TELEMETRY_QUALITY_NONE;
-}
-
-char ascii_lower(char value) noexcept
-{
-	return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) : value;
-}
-
-bool environment_text_is(const char *value, const char *expected) noexcept
-{
-	if (value == nullptr || expected == nullptr)
-		return false;
-	while (*value != '\0' && *expected != '\0')
+	bool reviewed_property_catalog_resolve(
+		void *context, const telemetry_config_property_snapshot *snapshot,
+		const std::uint8_t *digest,
+		telemetry_config_property_catalog_resolution *resolution) noexcept
 	{
-		if (ascii_lower(*value) != ascii_lower(*expected))
+		if (context == nullptr || snapshot == nullptr || digest == nullptr ||
+		    resolution == nullptr)
 			return false;
-		++value;
-		++expected;
-	}
-	return *value == '\0' && *expected == '\0';
-}
-
-template <typename T, typename Minimum, typename Maximum>
-bool environment_unsigned(const char *name, T default_value, Minimum minimum, Maximum maximum,
-			  T *value) noexcept
-{
-	if (value == nullptr)
+		const auto *catalog = static_cast<const reviewed_property_catalog *>(context);
+		if (catalog->loaded == 0U)
+			return false;
+		for (std::size_t index = 0U; index < catalog->count; ++index)
+		{
+			const auto &entry = catalog->entries[index];
+			if (std::memcmp(entry.digest, digest, sizeof(entry.digest)) != 0)
+				continue;
+			*resolution = {};
+			resolution->property_version = entry.property_version;
+			resolution->stable_namespace = entry.stable_namespace;
+			resolution->stable_version = entry.stable_version;
+			std::memcpy(resolution->digest, entry.digest, sizeof(resolution->digest));
+			return true;
+		}
 		return false;
-	const char *text = std::getenv(name);
-	if (text == nullptr || *text == '\0')
+	}
+
+	struct runtime_state
 	{
-		*value = default_value;
+		bool initialized = false;
+		bool enabled = false;
+		bool transport_started = false;
+		bool shutdown_pending = false;
+		bool has_last_health = false;
+		telemetry_health_snapshot last_health{};
+		telemetry_health_monitor_config health_monitor_config{};
+		telemetry_health_monitor_state health_monitor{};
+		telemetry_producer_id producer{};
+		telemetry_config_snapshot config{};
+		telemetry_config_property_capture property_capture{};
+		telemetry_config_capture_input capture_input{};
+		bool property_capture_enabled = false;
+		bool config_available = false;
+		telemetry_config_revision reload_revision = 0U;
+		telemetry_season_id session_scope_season_id = TELEMETRY_UNKNOWN_ID;
+		telemetry_environment_id session_scope_environment_id = TELEMETRY_UNKNOWN_ID;
+		telemetry_record_sequence next_record_sequence = 1U;
+		telemetry_connection_sequence next_connection_sequence = 1U;
+		telemetry_session_sequence next_session_sequence = 1U;
+		telemetry_sequence next_encounter_sequence = 1U;
+		telemetry_session_state session{};
+		telemetry_activity_state activity{};
+		telemetry_progression_state progression{};
+		telemetry_encounter_state encounter{};
+		telemetry_combat_summary_state combat_summary{};
+		telemetry_storage_backend worker_backend{};
+		std::mutex posthog_health_mutex{};
+		telemetry_runtime_posthog_health posthog_health{};
+		std::thread worker{};
+		std::atomic<bool> worker_stop{ false };
+		std::atomic<bool> worker_done{ false };
+		std::atomic<bool> worker_final_flush{ false };
+		std::atomic<telemetry_monotonic_usec> worker_deadline{ 0U };
+		std::atomic<std::uint64_t> wake_generation{ 0U };
+		std::atomic<std::uint64_t> flush_requested{ 0U };
+		std::atomic<std::uint64_t> flush_completed{ 0U };
+		std::atomic<telemetry_monotonic_usec> flush_deadline{ 0U };
+		std::atomic<bool> flush_durable{ false };
+		std::condition_variable wake_condition{};
+		std::mutex wake_mutex{};
+	};
+
+	runtime_state R;
+	// Process-lifetime ledger, deliberately NOT reset by final_reap. Reject rather
+	// than evict an old identity or restart its attempted record sequence at one.
+	telemetry_producer_id used_producers[256]{};
+	std::size_t used_producer_count = 0U;
+
+	bool reserve_runtime_producer(telemetry_producer_id producer) noexcept
+	{
+		for (std::size_t index = 0U; index < used_producer_count; ++index)
+			if (used_producers[index].boot_id == producer.boot_id &&
+			    used_producers[index].process_id == producer.process_id)
+				return false;
+		if (used_producer_count == sizeof(used_producers) / sizeof(used_producers[0]))
+			return false;
+		used_producers[used_producer_count++] = producer;
 		return true;
 	}
-	if (*text == '-')
-		return false;
-	errno = 0;
-	char *end = nullptr;
-	const unsigned long long parsed = std::strtoull(text, &end, 10);
-	if (errno == ERANGE || end == text || end == nullptr || *end != '\0' ||
-	    parsed < static_cast<unsigned long long>(minimum) ||
-	    parsed > static_cast<unsigned long long>(maximum))
-		return false;
-	*value = static_cast<T>(parsed);
-	return true;
-}
 
-bool environment_backend(telemetry_storage_backend default_backend,
-			 telemetry_storage_backend *backend) noexcept
-{
-	if (backend == nullptr)
-		return false;
-	const char *text = std::getenv("TELEMETRY_BACKEND");
-	if (text == nullptr || *text == '\0')
+	struct worker_done_guard
 	{
-		*backend = default_backend;
+		~worker_done_guard() noexcept
+		{
+			R.worker_done.store(true, std::memory_order_release);
+			R.wake_condition.notify_all();
+		}
+	};
+
+	bool session_equal(const telemetry_session_ref &left, const telemetry_session_ref &right)
+		noexcept
+	{
+		return left.id.producer.boot_id == right.id.producer.boot_id &&
+		       left.id.producer.process_id == right.id.producer.process_id &&
+		       left.id.session_seq == right.id.session_seq &&
+		       left.subject_id == right.subject_id && left.pid == right.pid &&
+		       left.season_id == right.season_id &&
+		       left.environment_id == right.environment_id;
+	}
+
+	bool handoff_is_zero(const telemetry_session_handoff &handoff) noexcept
+	{
+		return telemetry_session_ref_is_zero(handoff.session) &&
+		       telemetry_producer_id_is_zero(handoff.previous_producer) &&
+		       handoff.last_checkpoint_revision == 0U &&
+		       handoff.cumulative.connected_usec == 0U &&
+		       handoff.cumulative.active_usec == 0U && handoff.cumulative.idle_usec == 0U &&
+		       handoff.cumulative.unknown_usec == 0U &&
+		       handoff.cumulative.resident_usec == 0U &&
+		       handoff.cumulative.linkdead_usec == 0U &&
+		       handoff.quality_flags == TELEMETRY_QUALITY_NONE;
+	}
+
+	char ascii_lower(char value) noexcept
+	{
+		return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) :
+						      value;
+	}
+
+	bool environment_text_is(const char *value, const char *expected) noexcept
+	{
+		if (value == nullptr || expected == nullptr)
+			return false;
+		while (*value != '\0' && *expected != '\0')
+		{
+			if (ascii_lower(*value) != ascii_lower(*expected))
+				return false;
+			++value;
+			++expected;
+		}
+		return *value == '\0' && *expected == '\0';
+	}
+
+	template<typename T, typename Minimum, typename Maximum> bool environment_unsigned(
+		const char *name, T default_value, Minimum minimum, Maximum maximum, T *value)
+		noexcept
+	{
+		if (value == nullptr)
+			return false;
+		const char *text = std::getenv(name);
+		if (text == nullptr || *text == '\0')
+		{
+			*value = default_value;
+			return true;
+		}
+		if (*text == '-')
+			return false;
+		errno = 0;
+		char *end = nullptr;
+		const unsigned long long parsed = std::strtoull(text, &end, 10);
+		if (errno == ERANGE || end == text || end == nullptr || *end != '\0' ||
+		    parsed < static_cast<unsigned long long>(minimum) ||
+		    parsed > static_cast<unsigned long long>(maximum))
+			return false;
+		*value = static_cast<T>(parsed);
 		return true;
 	}
-	if (environment_text_is(text, "posthog"))
-		*backend = telemetry_storage_backend::posthog;
-	else if (environment_text_is(text, "flatfile_disabled") ||
-		 environment_text_is(text, "disabled") || environment_text_is(text, "off"))
-		*backend = telemetry_storage_backend::flatfile_disabled;
-	else
-		return false;
-	return true;
-}
 
-bool environment_enabled(bool *enabled) noexcept
-{
-	if (enabled == nullptr)
-		return false;
-	const char *text = std::getenv("TELEMETRY_ENABLED");
-	if (text == nullptr || *text == '\0' || environment_text_is(text, "false") ||
-	    environment_text_is(text, "off") || environment_text_is(text, "0") ||
-	    environment_text_is(text, "no"))
+	bool environment_backend(telemetry_storage_backend default_backend,
+				 telemetry_storage_backend * backend) noexcept
 	{
-		*enabled = false;
-		return true;
-	}
-	if (environment_text_is(text, "true") || environment_text_is(text, "on") ||
-	    environment_text_is(text, "1") || environment_text_is(text, "yes"))
-	{
-		*enabled = true;
-		return true;
-	}
-	return false;
-}
-
-bool production_property_reader(void *, const char *key, float *value) noexcept
-{
-	if (key == nullptr || value == nullptr || get_property == nullptr)
-		return false;
-	std::size_t count = 0U;
-	const telemetry_config_property_definition *registry =
-		telemetry_config_property_registry(&count);
-	if (registry == nullptr)
-		return false;
-	for (std::size_t index = 0U; index < count; ++index)
-	{
-		const auto &definition = registry[index];
-		if (definition.role != telemetry_config_property_role::effective ||
-		    definition.source_key == nullptr ||
-		    std::strcmp(definition.source_key, key) != 0)
-			continue;
-		float declared_default = 0.0F;
-		if (definition.kind == telemetry_config_property_kind::float32)
-			std::memcpy(&declared_default, &definition.default_value,
-				    sizeof(declared_default));
+		if (backend == nullptr)
+			return false;
+		const char *text = std::getenv("TELEMETRY_BACKEND");
+		if (text == nullptr || *text == '\0')
+		{
+			*backend = default_backend;
+			return true;
+		}
+		if (environment_text_is(text, "posthog"))
+			*backend = telemetry_storage_backend::posthog;
+		else if (environment_text_is(text, "flatfile_disabled") ||
+			 environment_text_is(text, "disabled") || environment_text_is(text, "off"))
+			*backend = telemetry_storage_backend::flatfile_disabled;
 		else
-			declared_default = static_cast<float>(definition.default_value);
-		/* This calls the game's normal double overload, so absent properties
-		 * receive the same declared fallback as gameplay. */
-		*value = get_property(definition.source_key, static_cast<double>(declared_default));
-		return true;
-	}
-	return false;
-}
-
-telemetry_config_capture_input
-capture_input_for(const telemetry_config_snapshot &config,
-		  const telemetry_config_property_capture &properties) noexcept
-{
-	telemetry_config_capture_input input{};
-	input.schema_version = config.schema_version;
-	input.revision = config.revision;
-	input.build_version = config.build_version;
-	input.content_version = config.content_version;
-	input.classifier_version = config.classifier_version;
-	input.policy_version = config.policy_version;
-	input.season_id = config.season_id;
-	input.environment_id = config.environment_id;
-	input.effective_utc_usec = config.effective_utc_usec;
-	input.interval_usec = config.interval_usec;
-	input.checkpoint_interval_usec = config.checkpoint_interval_usec;
-	input.active_window_usec = config.active_window_usec;
-	input.context_segments_per_minute = config.context_segments_per_minute;
-	input.pulse_slot_count = config.pulse_slot_count;
-	input.backend = config.backend;
-	input.enabled = config.enabled;
-	input.properties = properties;
-	return input;
-}
-
-bool build_effective_snapshot(const telemetry_config_snapshot &base,
-			      const telemetry_config_property_capture &properties,
-			      telemetry_config_revision revision,
-			      telemetry_utc_usec effective_utc_usec,
-			      telemetry_config_property_snapshot *property_snapshot,
-			      telemetry_config_snapshot *snapshot) noexcept
-{
-	if (property_snapshot == nullptr || snapshot == nullptr)
-		return false;
-	telemetry_config_capture_input input = capture_input_for(base, properties);
-	input.revision = revision;
-	input.effective_utc_usec = effective_utc_usec;
-	return telemetry_config_snapshot_build(&input, property_snapshot, snapshot) ==
-	       telemetry_config_build_outcome::built;
-}
-
-void refresh_config_identity(telemetry_config_snapshot &config) noexcept
-{
-	std::uint8_t fingerprint[TELEMETRY_CONFIG_FINGERPRINT_BYTES]{};
-	if (!telemetry_config_compute_fingerprint(config, fingerprint, sizeof(fingerprint)))
-		return;
-	std::memcpy(config.fingerprint, fingerprint, sizeof(config.fingerprint));
-	config.config_id = telemetry_config_id_from_fingerprint(config.fingerprint,
-								sizeof(config.fingerprint));
-}
-
-telemetry_config_snapshot disabled_config(telemetry_config_snapshot config) noexcept
-{
-	config.enabled = 0U;
-	if (config.property_version == 0U)
-		config.property_version = 1U;
-	refresh_config_identity(config);
-	return config;
-}
-
-bool saturating_add_u16(std::uint16_t &value, std::uint16_t amount) noexcept
-{
-	if (amount > std::numeric_limits<std::uint16_t>::max() - value)
-	{
-		value = std::numeric_limits<std::uint16_t>::max();
-		return false;
-	}
-	value = static_cast<std::uint16_t>(value + amount);
-	return true;
-}
-
-bool saturating_add_u32(std::uint32_t &value, std::uint32_t amount) noexcept
-{
-	if (amount > std::numeric_limits<std::uint32_t>::max() - value)
-	{
-		value = std::numeric_limits<std::uint32_t>::max();
-		return false;
-	}
-	value += amount;
-	return true;
-}
-
-void wake_worker() noexcept
-{
-	R.wake_generation.fetch_add(1U, std::memory_order_release);
-	R.wake_condition.notify_one();
-}
-
-bool production_clock_now(void *, telemetry_monotonic_usec *monotonic_usec,
-			  telemetry_utc_usec *utc_usec) noexcept
-{
-	if (monotonic_usec == nullptr || utc_usec == nullptr)
-		return false;
-	try
-	{
-		const auto monotonic = std::chrono::duration_cast<std::chrono::microseconds>(
-					       std::chrono::steady_clock::now().time_since_epoch())
-					       .count();
-		const auto utc = std::chrono::duration_cast<std::chrono::microseconds>(
-					 std::chrono::system_clock::now().time_since_epoch())
-					 .count();
-		if (monotonic < 0 || utc < std::numeric_limits<telemetry_utc_usec>::min() ||
-		    utc > std::numeric_limits<telemetry_utc_usec>::max())
 			return false;
-		*monotonic_usec = static_cast<telemetry_monotonic_usec>(monotonic);
-		*utc_usec = static_cast<telemetry_utc_usec>(utc);
 		return true;
 	}
-	catch (...)
+
+	bool environment_enabled(bool *enabled) noexcept
 	{
+		if (enabled == nullptr)
+			return false;
+		const char *text = std::getenv("TELEMETRY_ENABLED");
+		if (text == nullptr || *text == '\0' || environment_text_is(text, "false") ||
+		    environment_text_is(text, "off") || environment_text_is(text, "0") ||
+		    environment_text_is(text, "no"))
+		{
+			*enabled = false;
+			return true;
+		}
+		if (environment_text_is(text, "true") || environment_text_is(text, "on") ||
+		    environment_text_is(text, "1") || environment_text_is(text, "yes"))
+		{
+			*enabled = true;
+			return true;
+		}
 		return false;
 	}
-}
 
-bool production_monotonic_now(telemetry_monotonic_usec *monotonic_usec) noexcept
-{
-	telemetry_utc_usec ignored_utc = TELEMETRY_UTC_UNKNOWN;
-	return production_clock_now(nullptr, monotonic_usec, &ignored_utc);
-}
-
-telemetry_runtime_outcome wait_for_copyover_flush(
-	std::uint64_t generation, telemetry_monotonic_usec deadline,
-	bool (*monotonic_now)(telemetry_monotonic_usec *) noexcept = production_monotonic_now)
-{
-	telemetry_monotonic_usec now = 0U;
-	for (;;)
+	bool production_property_reader(void *, const char *key, float *value) noexcept
 	{
-		// Snapshot acknowledgement BEFORE sampling time: a descheduled caller
-		// must not accept a late publication using an earlier clock reading.
-		const auto completed = R.flush_completed.load(std::memory_order_acquire);
-		const bool durable = R.flush_durable.load(std::memory_order_relaxed);
-		if (!monotonic_now(&now) || now >= deadline)
-			return telemetry_runtime_outcome::queue_full;
-		if (completed == generation)
-			return durable ? telemetry_runtime_outcome::accepted :
-					 telemetry_runtime_outcome::queue_full;
-		std::this_thread::sleep_for(std::chrono::microseconds(1'000U));
+		if (key == nullptr || value == nullptr || get_property == nullptr)
+			return false;
+		std::size_t count = 0U;
+		const telemetry_config_property_definition *registry =
+			telemetry_config_property_registry(&count);
+		if (registry == nullptr)
+			return false;
+		for (std::size_t index = 0U; index < count; ++index)
+		{
+			const auto &definition = registry[index];
+			if (definition.role != telemetry_config_property_role::effective ||
+			    definition.source_key == nullptr ||
+			    std::strcmp(definition.source_key, key) != 0)
+				continue;
+			float declared_default = 0.0F;
+			if (definition.kind == telemetry_config_property_kind::float32)
+				std::memcpy(&declared_default, &definition.default_value,
+					    sizeof(declared_default));
+			else
+				declared_default = static_cast<float>(definition.default_value);
+			/* This calls the game's normal double overload, so absent properties
+		 * receive the same declared fallback as gameplay. */
+			*value = get_property(definition.source_key,
+					      static_cast<double>(declared_default));
+			return true;
+		}
+		return false;
 	}
-}
 
-bool worker_finished_by(telemetry_monotonic_usec deadline) noexcept
-{
-	if (!R.worker.joinable() || R.worker_done.load(std::memory_order_acquire))
+	telemetry_config_capture_input capture_input_for(
+		const telemetry_config_snapshot &config,
+		const telemetry_config_property_capture &properties) noexcept
+	{
+		telemetry_config_capture_input input{};
+		input.schema_version = config.schema_version;
+		input.revision = config.revision;
+		input.build_version = config.build_version;
+		input.content_version = config.content_version;
+		input.classifier_version = config.classifier_version;
+		input.policy_version = config.policy_version;
+		input.season_id = config.season_id;
+		input.environment_id = config.environment_id;
+		input.effective_utc_usec = config.effective_utc_usec;
+		input.interval_usec = config.interval_usec;
+		input.checkpoint_interval_usec = config.checkpoint_interval_usec;
+		input.active_window_usec = config.active_window_usec;
+		input.context_segments_per_minute = config.context_segments_per_minute;
+		input.pulse_slot_count = config.pulse_slot_count;
+		input.backend = config.backend;
+		input.enabled = config.enabled;
+		input.properties = properties;
+		return input;
+	}
+
+	bool build_effective_snapshot(const telemetry_config_snapshot &base,
+				      const telemetry_config_property_capture &properties,
+				      telemetry_config_revision revision,
+				      telemetry_utc_usec effective_utc_usec,
+				      telemetry_config_property_snapshot *property_snapshot,
+				      telemetry_config_snapshot *snapshot) noexcept
+	{
+		if (property_snapshot == nullptr || snapshot == nullptr)
+			return false;
+		telemetry_config_capture_input input = capture_input_for(base, properties);
+		input.revision = revision;
+		input.effective_utc_usec = effective_utc_usec;
+		return telemetry_config_snapshot_build(&input, property_snapshot, snapshot) ==
+		       telemetry_config_build_outcome::built;
+	}
+
+	void refresh_config_identity(telemetry_config_snapshot & config) noexcept
+	{
+		std::uint8_t fingerprint[TELEMETRY_CONFIG_FINGERPRINT_BYTES]{};
+		if (!telemetry_config_compute_fingerprint(config, fingerprint, sizeof(fingerprint)))
+			return;
+		std::memcpy(config.fingerprint, fingerprint, sizeof(config.fingerprint));
+		config.config_id = telemetry_config_id_from_fingerprint(config.fingerprint,
+									sizeof(config.fingerprint));
+	}
+
+	telemetry_config_snapshot disabled_config(telemetry_config_snapshot config) noexcept
+	{
+		config.enabled = 0U;
+		if (config.property_version == 0U)
+			config.property_version = 1U;
+		refresh_config_identity(config);
+		return config;
+	}
+
+	bool saturating_add_u16(std::uint16_t &value, std::uint16_t amount) noexcept
+	{
+		if (amount > std::numeric_limits<std::uint16_t>::max() - value)
+		{
+			value = std::numeric_limits<std::uint16_t>::max();
+			return false;
+		}
+		value = static_cast<std::uint16_t>(value + amount);
 		return true;
-	for (;;)
+	}
+
+	bool saturating_add_u32(std::uint32_t &value, std::uint32_t amount) noexcept
+	{
+		if (amount > std::numeric_limits<std::uint32_t>::max() - value)
+		{
+			value = std::numeric_limits<std::uint32_t>::max();
+			return false;
+		}
+		value += amount;
+		return true;
+	}
+
+	void wake_worker() noexcept
+	{
+		R.wake_generation.fetch_add(1U, std::memory_order_release);
+		R.wake_condition.notify_one();
+	}
+
+	bool production_clock_now(void *, telemetry_monotonic_usec *monotonic_usec,
+				  telemetry_utc_usec *utc_usec) noexcept
+	{
+		if (monotonic_usec == nullptr || utc_usec == nullptr)
+			return false;
+		try
+		{
+			const auto monotonic =
+				std::chrono::duration_cast<std::chrono::microseconds>(
+					std::chrono::steady_clock::now().time_since_epoch())
+					.count();
+			const auto utc =
+				std::chrono::duration_cast<std::chrono::microseconds>(
+					std::chrono::system_clock::now().time_since_epoch())
+					.count();
+			if (monotonic < 0 || utc < std::numeric_limits<telemetry_utc_usec>::min() ||
+			    utc > std::numeric_limits<telemetry_utc_usec>::max())
+				return false;
+			*monotonic_usec = static_cast<telemetry_monotonic_usec>(monotonic);
+			*utc_usec = static_cast<telemetry_utc_usec>(utc);
+			return true;
+		}
+		catch(...)
+		{
+			return false;
+		}
+	}
+
+	bool production_monotonic_now(telemetry_monotonic_usec * monotonic_usec) noexcept
+	{
+		telemetry_utc_usec ignored_utc = TELEMETRY_UTC_UNKNOWN;
+		return production_clock_now(nullptr, monotonic_usec, &ignored_utc);
+	}
+
+	telemetry_runtime_outcome wait_for_copyover_flush(
+		std::uint64_t generation, telemetry_monotonic_usec deadline,
+		bool (*monotonic_now)(telemetry_monotonic_usec *)
+			noexcept = production_monotonic_now)
 	{
 		telemetry_monotonic_usec now = 0U;
-		if (!production_monotonic_now(&now) || now >= deadline)
+		for (;;)
+		{
+			// Snapshot acknowledgement BEFORE sampling time: a descheduled caller
+			// must not accept a late publication using an earlier clock reading.
+			const auto completed = R.flush_completed.load(std::memory_order_acquire);
+			const bool durable = R.flush_durable.load(std::memory_order_relaxed);
+			if (!monotonic_now(&now) || now >= deadline)
+				return telemetry_runtime_outcome::queue_full;
+			if (completed == generation)
+				return durable ? telemetry_runtime_outcome::accepted :
+						 telemetry_runtime_outcome::queue_full;
+			std::this_thread::sleep_for(std::chrono::microseconds(1'000U));
+		}
+	}
+
+	bool worker_finished_by(telemetry_monotonic_usec deadline) noexcept
+	{
+		if (!R.worker.joinable() || R.worker_done.load(std::memory_order_acquire))
+			return true;
+		for (;;)
+		{
+			telemetry_monotonic_usec now = 0U;
+			if (!production_monotonic_now(&now) || now >= deadline)
+				return false;
+			std::unique_lock<std::mutex> lock(R.wake_mutex);
+			if (R.worker_done.load(std::memory_order_acquire))
+				return true;
+			R.wake_condition.wait_for(
+				lock, std::chrono::microseconds(deadline - now),
+				[] { return R.worker_done.load(std::memory_order_acquire); });
+			if (R.worker_done.load(std::memory_order_acquire))
+				return true;
+		}
+	}
+
+	bool allocate_record_key(void *, telemetry_record_kind kind, telemetry_record_key *key)
+		noexcept
+	{
+		(void)kind;
+		if (key == nullptr || !telemetry_producer_id_is_valid(R.producer) ||
+		    R.next_record_sequence == 0U)
 			return false;
-		std::unique_lock<std::mutex> lock(R.wake_mutex);
-		if (R.worker_done.load(std::memory_order_acquire))
-			return true;
-		R.wake_condition.wait_for(
-			lock, std::chrono::microseconds(deadline - now),
-			[] { return R.worker_done.load(std::memory_order_acquire); });
-		if (R.worker_done.load(std::memory_order_acquire))
-			return true;
-	}
-}
-
-bool allocate_record_key(void *, telemetry_record_kind kind, telemetry_record_key *key) noexcept
-{
-	(void)kind;
-	if (key == nullptr || !telemetry_producer_id_is_valid(R.producer) ||
-	    R.next_record_sequence == 0U)
-		return false;
-	*key = { R.producer, R.next_record_sequence };
-	if (R.next_record_sequence == std::numeric_limits<telemetry_record_sequence>::max())
-		R.next_record_sequence = 0U;
-	else
-		++R.next_record_sequence;
-	return true;
-}
-
-bool allocate_connection_id(void *, telemetry_connection_id *id) noexcept
-{
-	if (id == nullptr || !telemetry_producer_id_is_valid(R.producer) ||
-	    R.next_connection_sequence == 0U)
-		return false;
-	*id = { R.producer, R.next_connection_sequence };
-	if (R.next_connection_sequence == std::numeric_limits<telemetry_connection_sequence>::max())
-		R.next_connection_sequence = 0U;
-	else
-		++R.next_connection_sequence;
-	return true;
-}
-
-bool allocate_encounter_id(telemetry_encounter_id *id) noexcept
-{
-	if (id == nullptr || !telemetry_producer_id_is_valid(R.producer) ||
-	    R.next_encounter_sequence == 0U)
-		return false;
-	*id = { R.producer, R.next_encounter_sequence };
-	if (R.next_encounter_sequence == std::numeric_limits<telemetry_sequence>::max())
-		R.next_encounter_sequence = 0U;
-	else
-		++R.next_encounter_sequence;
-	return true;
-}
-
-bool enqueue_record(void *, const telemetry_record *record) noexcept
-{
-	if (record == nullptr)
-		return false;
-	const telemetry_enqueue_result result = telemetry_transport_enqueue(*record);
-	const bool accepted = result.admission == telemetry_queue_admission::accepted_detail ||
-			      result.admission ==
-				      telemetry_queue_admission::accepted_control_reserve;
-	if (accepted)
-		wake_worker();
-	return accepted;
-}
-
-telemetry_transport_config transport_config_for(const telemetry_config_snapshot &config) noexcept
-{
-	telemetry_transport_config transport{};
-	transport.backend = config.backend;
-	transport.schema_version = TELEMETRY_SCHEMA_VERSION;
-	transport.queue_capacity = QUEUE_CAPACITY;
-	transport.control_reserve = CONTROL_RESERVE;
-	transport.max_batch_records = MAX_BATCH_RECORDS;
-	transport.max_batch_bytes = MAX_BATCH_BYTES;
-	transport.flush_oldest_after_usec = FLUSH_OLDEST_USEC;
-	transport.fresh_producer = R.producer;
-	return transport;
-}
-
-bool activity_outcome_success(telemetry_activity_outcome outcome) noexcept
-{
-	return outcome == telemetry_activity_outcome::accepted ||
-	       outcome == telemetry_activity_outcome::accepted_degraded ||
-	       outcome == telemetry_activity_outcome::idempotent ||
-	       outcome == telemetry_activity_outcome::retired;
-}
-
-bool session_outcome_success(telemetry_session_state_outcome outcome) noexcept
-{
-	return outcome == telemetry_session_state_outcome::accepted ||
-	       outcome == telemetry_session_state_outcome::accepted_unclosed_recovery ||
-	       outcome == telemetry_session_state_outcome::idempotent ||
-	       outcome == telemetry_session_state_outcome::retired;
-}
-
-bool map_runtime_evidence_kind(telemetry_runtime_evidence_kind runtime_kind,
-			       telemetry_activity_evidence_kind *activity_kind) noexcept;
-telemetry_capture_result game_capture_invalid() noexcept;
-
-telemetry_capture_result capture_from_activity(const telemetry_activity_result &source) noexcept
-{
-	telemetry_capture_result result{};
-	result.outcome = telemetry_runtime_outcome::invalid;
-	result.admission = telemetry_queue_admission::rejected_invalid;
-	result.records_emitted = source.records_accepted;
-	result.records_dropped = source.records_dropped;
-	result.quality_flags = source.quality_flags;
-	if (source.records_accepted != 0U)
-		result.admission = telemetry_queue_admission::accepted_detail;
-	if (source.outcome == telemetry_activity_outcome::sink_rejected ||
-	    source.outcome == telemetry_activity_outcome::allocator_exhausted ||
-	    source.outcome == telemetry_activity_outcome::capacity_full ||
-	    source.outcome == telemetry_activity_outcome::config_capacity_full)
-	{
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		if (source.records_accepted == 0U)
-			result.admission = telemetry_queue_admission::rejected_detail_full;
-	}
-	else if (source.outcome == telemetry_activity_outcome::not_found ||
-		 source.outcome == telemetry_activity_outcome::invalid ||
-		 source.outcome == telemetry_activity_outcome::clock_unavailable)
-		result.outcome = telemetry_runtime_outcome::invalid;
-	else if (activity_outcome_success(source.outcome))
-		result.outcome = telemetry_runtime_outcome::accepted;
-	else
-		result.outcome = telemetry_runtime_outcome::invalid;
-	return result;
-}
-
-telemetry_capture_result capture_from_session(const telemetry_session_state_result &source) noexcept
-{
-	telemetry_capture_result result{};
-	result.outcome = telemetry_runtime_outcome::invalid;
-	result.admission = telemetry_queue_admission::rejected_invalid;
-	result.records_emitted = source.records_accepted;
-	result.records_dropped = source.records_dropped;
-	result.quality_flags = source.quality_flags;
-	if (source.records_accepted != 0U)
-		result.admission = telemetry_queue_admission::accepted_control_reserve;
-	if (source.outcome == telemetry_session_state_outcome::sink_rejected ||
-	    source.outcome == telemetry_session_state_outcome::allocator_exhausted ||
-	    source.outcome == telemetry_session_state_outcome::capacity_full)
-	{
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		if (source.records_accepted == 0U)
-			result.admission = telemetry_queue_admission::rejected_control_full;
-	}
-	else if (source.outcome == telemetry_session_state_outcome::not_found ||
-		 source.outcome == telemetry_session_state_outcome::invalid ||
-		 source.outcome == telemetry_session_state_outcome::clock_unavailable)
-		result.outcome = telemetry_runtime_outcome::invalid;
-	else if (session_outcome_success(source.outcome))
-		result.outcome = telemetry_runtime_outcome::accepted;
-	else
-		result.outcome = telemetry_runtime_outcome::invalid;
-	return result;
-}
-
-telemetry_capture_result
-capture_from_progression(const telemetry_progression_result &source) noexcept
-{
-	telemetry_capture_result result{};
-	result.outcome = telemetry_runtime_outcome::invalid;
-	result.admission = telemetry_queue_admission::rejected_invalid;
-	result.records_emitted = source.outcome == telemetry_progression_outcome::accepted ? 1U :
-											     0U;
-	result.records_dropped =
-		(source.outcome == telemetry_progression_outcome::sink_rejected ||
-		 source.outcome == telemetry_progression_outcome::allocator_exhausted) ?
-			1U :
-			0U;
-	result.first_record = source.record;
-	result.last_record = source.record;
-	result.quality_flags = source.quality_flags;
-	if (source.outcome == telemetry_progression_outcome::accepted)
-	{
-		result.outcome = telemetry_runtime_outcome::accepted;
-		result.admission = telemetry_queue_admission::accepted_detail;
-	}
-	else if (source.outcome == telemetry_progression_outcome::sink_rejected)
-	{
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		result.admission = telemetry_queue_admission::rejected_detail_full;
-	}
-	else if (source.outcome == telemetry_progression_outcome::allocator_exhausted)
-	{
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		result.admission = telemetry_queue_admission::rejected_detail_full;
-	}
-	return result;
-}
-
-struct encounter_emit_context
-{
-	telemetry_capture_result result{};
-};
-
-bool emit_encounter_event(void *raw_context, const telemetry_encounter_event &event) noexcept
-{
-	if (raw_context == nullptr)
-		return false;
-	auto &result = static_cast<encounter_emit_context *>(raw_context)->result;
-	result.quality_flags |= event.quality_flags;
-	if (!telemetry_encounter_payload_is_valid(event))
-	{
-		result.outcome = telemetry_runtime_outcome::invalid;
-		result.admission = telemetry_queue_admission::rejected_invalid;
-		++result.records_dropped;
-		return false;
-	}
-	telemetry_record record{};
-	record.header.schema_version = TELEMETRY_SCHEMA_VERSION;
-	record.header.kind = telemetry_record_kind::encounter;
-	record.header.reserved = 0U;
-	record.header.occurrence_utc_usec = event.at_utc_usec;
-	if (!allocate_record_key(nullptr, record.header.kind, &record.header.key))
-	{
-		result.outcome = telemetry_runtime_outcome::invalid;
-		result.admission = telemetry_queue_admission::rejected_invalid;
-		++result.records_dropped;
-		return false;
-	}
-	record.payload.encounter = event;
-	const telemetry_enqueue_result admission = telemetry_transport_enqueue(record);
-	const bool accepted = admission.admission == telemetry_queue_admission::accepted_detail ||
-			      admission.admission ==
-				      telemetry_queue_admission::accepted_control_reserve;
-	if (!accepted)
-	{
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		result.admission = admission.admission;
-		++result.records_dropped;
-		return false;
-	}
-	if (result.records_emitted == 0U)
-		result.first_record = record.header.key;
-	result.last_record = record.header.key;
-	++result.records_emitted;
-	result.outcome = telemetry_runtime_outcome::accepted;
-	result.admission = admission.admission;
-	wake_worker();
-	return true;
-}
-
-struct combat_summary_emit_context
-{
-	telemetry_capture_result result{};
-};
-
-bool emit_combat_summary(void *raw_context,
-			 const telemetry_combat_summary_payload &summary) noexcept
-{
-	if (raw_context == nullptr)
-		return false;
-	auto &result = static_cast<combat_summary_emit_context *>(raw_context)->result;
-	result.quality_flags |= summary.quality_flags;
-	if (!telemetry_combat_summary_payload_is_valid(summary))
-	{
-		result.outcome = telemetry_runtime_outcome::invalid;
-		result.admission = telemetry_queue_admission::rejected_invalid;
-		++result.records_dropped;
-		return false;
-	}
-	telemetry_record record{};
-	record.header.schema_version = TELEMETRY_SCHEMA_VERSION;
-	record.header.kind = telemetry_record_kind::combat_summary;
-	record.header.reserved = 0U;
-	record.header.occurrence_utc_usec = summary.end_utc_usec;
-	if (!allocate_record_key(nullptr, record.header.kind, &record.header.key))
-	{
-		result.outcome = telemetry_runtime_outcome::invalid;
-		result.admission = telemetry_queue_admission::rejected_invalid;
-		++result.records_dropped;
-		return false;
-	}
-	record.payload.combat_summary = summary;
-	const telemetry_enqueue_result admission = telemetry_transport_enqueue(record);
-	const bool accepted = admission.admission == telemetry_queue_admission::accepted_detail ||
-			      admission.admission ==
-				      telemetry_queue_admission::accepted_control_reserve;
-	if (!accepted)
-	{
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		result.admission = admission.admission;
-		++result.records_dropped;
-		return false;
-	}
-	if (result.records_emitted == 0U)
-		result.first_record = record.header.key;
-	result.last_record = record.header.key;
-	++result.records_emitted;
-	result.outcome = telemetry_runtime_outcome::accepted;
-	result.admission = admission.admission;
-	wake_worker();
-	return true;
-}
-
-telemetry_capture_result disabled_capture(telemetry_runtime_outcome outcome) noexcept
-{
-	telemetry_capture_result result{};
-	result.outcome = outcome;
-	result.admission = outcome == telemetry_runtime_outcome::stopping ?
-				   telemetry_queue_admission::rejected_stopping :
-				   telemetry_queue_admission::rejected_disabled;
-	result.quality_flags = TELEMETRY_QUALITY_DISABLED;
-	return result;
-}
-
-void merge_capture(telemetry_capture_result &target,
-		   const telemetry_capture_result &source) noexcept
-{
-	const bool target_empty = target.records_emitted == 0U && target.records_dropped == 0U &&
-				  target.first_record.record_seq == 0U &&
-				  target.last_record.record_seq == 0U;
-	if (target_empty)
-		target = source;
-	else
-	{
-		(void)saturating_add_u16(target.records_emitted, source.records_emitted);
-		(void)saturating_add_u16(target.records_dropped, source.records_dropped);
-		target.quality_flags |= source.quality_flags;
-		if (target.first_record.record_seq == 0U)
-			target.first_record = source.first_record;
-		if (source.last_record.record_seq != 0U)
-			target.last_record = source.last_record;
-		if (source.outcome == telemetry_runtime_outcome::queue_full)
-			target.outcome = telemetry_runtime_outcome::queue_full;
-		else if (target.outcome == telemetry_runtime_outcome::accepted &&
-			 source.outcome != telemetry_runtime_outcome::accepted)
-			target.outcome = source.outcome;
-		if (target.admission == telemetry_queue_admission::rejected_invalid &&
-		    source.admission != telemetry_queue_admission::rejected_invalid)
-			target.admission = source.admission;
-	}
-}
-
-void fill_capture_keys(telemetry_capture_result &capture, const telemetry_record_key &first,
-		       const telemetry_record_key &last) noexcept
-{
-	capture.first_record = first;
-	capture.last_record = last;
-}
-
-bool publish_activity_config(const telemetry_config_snapshot &config) noexcept
-{
-	if (!config.enabled || config.backend == telemetry_storage_backend::flatfile_disabled)
-		return false;
-	if (telemetry_activity_state_config_is_admitted(&R.activity, config.config_id))
+		*key = { R.producer, R.next_record_sequence };
+		if (R.next_record_sequence == std::numeric_limits<telemetry_record_sequence>::max())
+			R.next_record_sequence = 0U;
+		else
+			++R.next_record_sequence;
 		return true;
-	const telemetry_activity_result result =
-		telemetry_activity_state_publish_config(&R.activity, config);
-	return result.outcome == telemetry_activity_outcome::accepted ||
-	       result.outcome == telemetry_activity_outcome::idempotent;
-}
+	}
 
-bool adopt_visible_config(const telemetry_config_snapshot &visible) noexcept
-{
-	if (!telemetry_config_is_valid(visible) || visible.enabled == 0U)
-		return false;
-	R.config = visible;
-	R.config_available = true;
-	if (!publish_activity_config(visible))
-		return false;
-	return telemetry_activity_state_config_is_admitted(&R.activity, visible.config_id);
-}
-
-bool retry_pending_config(telemetry_config_state *state) noexcept
-{
-	if (state == nullptr)
-		return false;
-	for (std::size_t attempt = 0U;
-	     attempt < TELEMETRY_CONFIG_PENDING_MAX && state->pending_count != 0U; ++attempt)
+	bool allocate_connection_id(void *, telemetry_connection_id *id) noexcept
 	{
-		const telemetry_config_snapshot pending = state->pending[0].snapshot;
-		const telemetry_capture_result retried = telemetry_config_publish(pending);
+		if (id == nullptr || !telemetry_producer_id_is_valid(R.producer) ||
+		    R.next_connection_sequence == 0U)
+			return false;
+		*id = { R.producer, R.next_connection_sequence };
+		if (R.next_connection_sequence ==
+		    std::numeric_limits<telemetry_connection_sequence>::max())
+			R.next_connection_sequence = 0U;
+		else
+			++R.next_connection_sequence;
+		return true;
+	}
+
+	bool allocate_encounter_id(telemetry_encounter_id * id) noexcept
+	{
+		if (id == nullptr || !telemetry_producer_id_is_valid(R.producer) ||
+		    R.next_encounter_sequence == 0U)
+			return false;
+		*id = { R.producer, R.next_encounter_sequence };
+		if (R.next_encounter_sequence == std::numeric_limits<telemetry_sequence>::max())
+			R.next_encounter_sequence = 0U;
+		else
+			++R.next_encounter_sequence;
+		return true;
+	}
+
+	bool enqueue_record(void *, const telemetry_record *record) noexcept
+	{
+		if (record == nullptr)
+			return false;
+		const telemetry_enqueue_result result = telemetry_transport_enqueue(*record);
+		const bool accepted =
+			result.admission == telemetry_queue_admission::accepted_detail ||
+			result.admission == telemetry_queue_admission::accepted_control_reserve;
+		if (accepted)
+			wake_worker();
+		return accepted;
+	}
+
+	telemetry_transport_config transport_config_for(const telemetry_config_snapshot &config)
+		noexcept
+	{
+		telemetry_transport_config transport{};
+		transport.backend = config.backend;
+		transport.schema_version = TELEMETRY_SCHEMA_VERSION;
+		transport.queue_capacity = QUEUE_CAPACITY;
+		transport.control_reserve = CONTROL_RESERVE;
+		transport.max_batch_records = MAX_BATCH_RECORDS;
+		transport.max_batch_bytes = MAX_BATCH_BYTES;
+		transport.flush_oldest_after_usec = FLUSH_OLDEST_USEC;
+		transport.fresh_producer = R.producer;
+		return transport;
+	}
+
+	bool activity_outcome_success(telemetry_activity_outcome outcome) noexcept
+	{
+		return outcome == telemetry_activity_outcome::accepted ||
+		       outcome == telemetry_activity_outcome::accepted_degraded ||
+		       outcome == telemetry_activity_outcome::idempotent ||
+		       outcome == telemetry_activity_outcome::retired;
+	}
+
+	bool session_outcome_success(telemetry_session_state_outcome outcome) noexcept
+	{
+		return outcome == telemetry_session_state_outcome::accepted ||
+		       outcome == telemetry_session_state_outcome::accepted_unclosed_recovery ||
+		       outcome == telemetry_session_state_outcome::idempotent ||
+		       outcome == telemetry_session_state_outcome::retired;
+	}
+
+	bool map_runtime_evidence_kind(telemetry_runtime_evidence_kind runtime_kind,
+				       telemetry_activity_evidence_kind * activity_kind) noexcept;
+	telemetry_capture_result game_capture_invalid() noexcept;
+
+	telemetry_capture_result capture_from_activity(const telemetry_activity_result &source)
+		noexcept
+	{
+		telemetry_capture_result result{};
+		result.outcome = telemetry_runtime_outcome::invalid;
+		result.admission = telemetry_queue_admission::rejected_invalid;
+		result.records_emitted = source.records_accepted;
+		result.records_dropped = source.records_dropped;
+		result.quality_flags = source.quality_flags;
+		if (source.records_accepted != 0U)
+			result.admission = telemetry_queue_admission::accepted_detail;
+		if (source.outcome == telemetry_activity_outcome::sink_rejected ||
+		    source.outcome == telemetry_activity_outcome::allocator_exhausted ||
+		    source.outcome == telemetry_activity_outcome::capacity_full ||
+		    source.outcome == telemetry_activity_outcome::config_capacity_full)
+		{
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			if (source.records_accepted == 0U)
+				result.admission = telemetry_queue_admission::rejected_detail_full;
+		}
+		else if (source.outcome == telemetry_activity_outcome::not_found ||
+			 source.outcome == telemetry_activity_outcome::invalid ||
+			 source.outcome == telemetry_activity_outcome::clock_unavailable)
+			result.outcome = telemetry_runtime_outcome::invalid;
+		else if (activity_outcome_success(source.outcome))
+			result.outcome = telemetry_runtime_outcome::accepted;
+		else
+			result.outcome = telemetry_runtime_outcome::invalid;
+		return result;
+	}
+
+	telemetry_capture_result capture_from_session(const telemetry_session_state_result &source)
+		noexcept
+	{
+		telemetry_capture_result result{};
+		result.outcome = telemetry_runtime_outcome::invalid;
+		result.admission = telemetry_queue_admission::rejected_invalid;
+		result.records_emitted = source.records_accepted;
+		result.records_dropped = source.records_dropped;
+		result.quality_flags = source.quality_flags;
+		if (source.records_accepted != 0U)
+			result.admission = telemetry_queue_admission::accepted_control_reserve;
+		if (source.outcome == telemetry_session_state_outcome::sink_rejected ||
+		    source.outcome == telemetry_session_state_outcome::allocator_exhausted ||
+		    source.outcome == telemetry_session_state_outcome::capacity_full)
+		{
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			if (source.records_accepted == 0U)
+				result.admission = telemetry_queue_admission::rejected_control_full;
+		}
+		else if (source.outcome == telemetry_session_state_outcome::not_found ||
+			 source.outcome == telemetry_session_state_outcome::invalid ||
+			 source.outcome == telemetry_session_state_outcome::clock_unavailable)
+			result.outcome = telemetry_runtime_outcome::invalid;
+		else if (session_outcome_success(source.outcome))
+			result.outcome = telemetry_runtime_outcome::accepted;
+		else
+			result.outcome = telemetry_runtime_outcome::invalid;
+		return result;
+	}
+
+	telemetry_capture_result capture_from_progression(
+		const telemetry_progression_result &source) noexcept
+	{
+		telemetry_capture_result result{};
+		result.outcome = telemetry_runtime_outcome::invalid;
+		result.admission = telemetry_queue_admission::rejected_invalid;
+		result.records_emitted =
+			source.outcome == telemetry_progression_outcome::accepted ? 1U : 0U;
+		result.records_dropped =
+			(source.outcome == telemetry_progression_outcome::sink_rejected ||
+			 source.outcome == telemetry_progression_outcome::allocator_exhausted) ?
+				1U :
+				0U;
+		result.first_record = source.record;
+		result.last_record = source.record;
+		result.quality_flags = source.quality_flags;
+		if (source.outcome == telemetry_progression_outcome::accepted)
+		{
+			result.outcome = telemetry_runtime_outcome::accepted;
+			result.admission = telemetry_queue_admission::accepted_detail;
+		}
+		else if (source.outcome == telemetry_progression_outcome::sink_rejected)
+		{
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			result.admission = telemetry_queue_admission::rejected_detail_full;
+		}
+		else if (source.outcome == telemetry_progression_outcome::allocator_exhausted)
+		{
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			result.admission = telemetry_queue_admission::rejected_detail_full;
+		}
+		return result;
+	}
+
+	struct encounter_emit_context
+	{
+		telemetry_capture_result result{};
+	};
+
+	bool emit_encounter_event(void *raw_context, const telemetry_encounter_event &event)
+		noexcept
+	{
+		if (raw_context == nullptr)
+			return false;
+		auto &result = static_cast<encounter_emit_context *>(raw_context)->result;
+		result.quality_flags |= event.quality_flags;
+		if (!telemetry_encounter_payload_is_valid(event))
+		{
+			result.outcome = telemetry_runtime_outcome::invalid;
+			result.admission = telemetry_queue_admission::rejected_invalid;
+			++result.records_dropped;
+			return false;
+		}
+		telemetry_record record{};
+		record.header.schema_version = TELEMETRY_SCHEMA_VERSION;
+		record.header.kind = telemetry_record_kind::encounter;
+		record.header.reserved = 0U;
+		record.header.occurrence_utc_usec = event.at_utc_usec;
+		if (!allocate_record_key(nullptr, record.header.kind, &record.header.key))
+		{
+			result.outcome = telemetry_runtime_outcome::invalid;
+			result.admission = telemetry_queue_admission::rejected_invalid;
+			++result.records_dropped;
+			return false;
+		}
+		record.payload.encounter = event;
+		const telemetry_enqueue_result admission = telemetry_transport_enqueue(record);
+		const bool accepted =
+			admission.admission == telemetry_queue_admission::accepted_detail ||
+			admission.admission == telemetry_queue_admission::accepted_control_reserve;
+		if (!accepted)
+		{
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			result.admission = admission.admission;
+			++result.records_dropped;
+			return false;
+		}
+		if (result.records_emitted == 0U)
+			result.first_record = record.header.key;
+		result.last_record = record.header.key;
+		++result.records_emitted;
+		result.outcome = telemetry_runtime_outcome::accepted;
+		result.admission = admission.admission;
+		wake_worker();
+		return true;
+	}
+
+	struct combat_summary_emit_context
+	{
+		telemetry_capture_result result{};
+	};
+
+	bool emit_combat_summary(void *raw_context, const telemetry_combat_summary_payload &summary)
+		noexcept
+	{
+		if (raw_context == nullptr)
+			return false;
+		auto &result = static_cast<combat_summary_emit_context *>(raw_context)->result;
+		result.quality_flags |= summary.quality_flags;
+		if (!telemetry_combat_summary_payload_is_valid(summary))
+		{
+			result.outcome = telemetry_runtime_outcome::invalid;
+			result.admission = telemetry_queue_admission::rejected_invalid;
+			++result.records_dropped;
+			return false;
+		}
+		telemetry_record record{};
+		record.header.schema_version = TELEMETRY_SCHEMA_VERSION;
+		record.header.kind = telemetry_record_kind::combat_summary;
+		record.header.reserved = 0U;
+		record.header.occurrence_utc_usec = summary.end_utc_usec;
+		if (!allocate_record_key(nullptr, record.header.kind, &record.header.key))
+		{
+			result.outcome = telemetry_runtime_outcome::invalid;
+			result.admission = telemetry_queue_admission::rejected_invalid;
+			++result.records_dropped;
+			return false;
+		}
+		record.payload.combat_summary = summary;
+		const telemetry_enqueue_result admission = telemetry_transport_enqueue(record);
+		const bool accepted =
+			admission.admission == telemetry_queue_admission::accepted_detail ||
+			admission.admission == telemetry_queue_admission::accepted_control_reserve;
+		if (!accepted)
+		{
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			result.admission = admission.admission;
+			++result.records_dropped;
+			return false;
+		}
+		if (result.records_emitted == 0U)
+			result.first_record = record.header.key;
+		result.last_record = record.header.key;
+		++result.records_emitted;
+		result.outcome = telemetry_runtime_outcome::accepted;
+		result.admission = admission.admission;
+		wake_worker();
+		return true;
+	}
+
+	telemetry_capture_result disabled_capture(telemetry_runtime_outcome outcome) noexcept
+	{
+		telemetry_capture_result result{};
+		result.outcome = outcome;
+		result.admission = outcome == telemetry_runtime_outcome::stopping ?
+					   telemetry_queue_admission::rejected_stopping :
+					   telemetry_queue_admission::rejected_disabled;
+		result.quality_flags = TELEMETRY_QUALITY_DISABLED;
+		return result;
+	}
+
+	void merge_capture(telemetry_capture_result & target,
+			   const telemetry_capture_result &source) noexcept
+	{
+		const bool target_empty =
+			target.records_emitted == 0U && target.records_dropped == 0U &&
+			target.first_record.record_seq == 0U && target.last_record.record_seq == 0U;
+		if (target_empty)
+			target = source;
+		else
+		{
+			(void)saturating_add_u16(target.records_emitted, source.records_emitted);
+			(void)saturating_add_u16(target.records_dropped, source.records_dropped);
+			target.quality_flags |= source.quality_flags;
+			if (target.first_record.record_seq == 0U)
+				target.first_record = source.first_record;
+			if (source.last_record.record_seq != 0U)
+				target.last_record = source.last_record;
+			if (source.outcome == telemetry_runtime_outcome::queue_full)
+				target.outcome = telemetry_runtime_outcome::queue_full;
+			else if (target.outcome == telemetry_runtime_outcome::accepted &&
+				 source.outcome != telemetry_runtime_outcome::accepted)
+				target.outcome = source.outcome;
+			if (target.admission == telemetry_queue_admission::rejected_invalid &&
+			    source.admission != telemetry_queue_admission::rejected_invalid)
+				target.admission = source.admission;
+		}
+	}
+
+	void fill_capture_keys(telemetry_capture_result & capture,
+			       const telemetry_record_key &first, const telemetry_record_key &last)
+		noexcept
+	{
+		capture.first_record = first;
+		capture.last_record = last;
+	}
+
+	bool publish_activity_config(const telemetry_config_snapshot &config) noexcept
+	{
+		if (!config.enabled ||
+		    config.backend == telemetry_storage_backend::flatfile_disabled)
+			return false;
+		if (telemetry_activity_state_config_is_admitted(&R.activity, config.config_id))
+			return true;
+		const telemetry_activity_result result =
+			telemetry_activity_state_publish_config(&R.activity, config);
+		return result.outcome == telemetry_activity_outcome::accepted ||
+		       result.outcome == telemetry_activity_outcome::idempotent;
+	}
+
+	bool adopt_visible_config(const telemetry_config_snapshot &visible) noexcept
+	{
+		if (!telemetry_config_is_valid(visible) || visible.enabled == 0U)
+			return false;
+		R.config = visible;
+		R.config_available = true;
+		if (!publish_activity_config(visible))
+			return false;
+		return telemetry_activity_state_config_is_admitted(&R.activity, visible.config_id);
+	}
+
+	bool retry_pending_config(telemetry_config_state * state) noexcept
+	{
+		if (state == nullptr)
+			return false;
+		for (std::size_t attempt = 0U;
+		     attempt < TELEMETRY_CONFIG_PENDING_MAX && state->pending_count != 0U;
+		     ++attempt)
+		{
+			const telemetry_config_snapshot pending = state->pending[0].snapshot;
+			const telemetry_capture_result retried = telemetry_config_publish(pending);
+			const telemetry_config_snapshot visible = telemetry_config_snapshot_copy();
+			if (adopt_visible_config(visible))
+			{
+				telemetry_config_reload_request_clear(state);
+				R.reload_revision = 0U;
+				return true;
+			}
+			if (retried.outcome != telemetry_runtime_outcome::accepted)
+				return false;
+		}
+		return false;
+	}
+
+	bool capture_reloaded_config(telemetry_config_state * state) noexcept
+	{
+		if (state == nullptr || state->initialized == 0U ||
+		    !telemetry_config_reload_requested(state))
+			return false;
+		if (retry_pending_config(state))
+			return true;
+		if (state->pending_count != 0U || !R.property_capture_enabled)
+			return false;
+
+		if (R.reload_revision == 0U || R.reload_revision <= state->highest_revision)
+		{
+			if (state->highest_revision ==
+			    std::numeric_limits<telemetry_config_revision>::max())
+				return false;
+			R.reload_revision = state->highest_revision + 1U;
+		}
+		telemetry_monotonic_usec ignored_monotonic = 0U;
+		telemetry_utc_usec effective_utc = R.capture_input.effective_utc_usec;
+		if (production_clock_now(nullptr, &ignored_monotonic, &effective_utc))
+			R.capture_input.effective_utc_usec = effective_utc;
+		telemetry_config_capture_input input = R.capture_input;
+		input.revision = R.reload_revision;
+		input.effective_utc_usec = effective_utc;
+		telemetry_config_property_snapshot properties{};
+		telemetry_config_snapshot candidate{};
+		if (telemetry_config_snapshot_build(&input, &properties, &candidate) !=
+		    telemetry_config_build_outcome::built)
+			return false;
+
+		const telemetry_capture_result published = telemetry_config_publish(candidate);
 		const telemetry_config_snapshot visible = telemetry_config_snapshot_copy();
 		if (adopt_visible_config(visible))
 		{
@@ -964,576 +1029,547 @@ bool retry_pending_config(telemetry_config_state *state) noexcept
 			R.reload_revision = 0U;
 			return true;
 		}
-		if (retried.outcome != telemetry_runtime_outcome::accepted)
-			return false;
-	}
-	return false;
-}
-
-bool capture_reloaded_config(telemetry_config_state *state) noexcept
-{
-	if (state == nullptr || state->initialized == 0U ||
-	    !telemetry_config_reload_requested(state))
-		return false;
-	if (retry_pending_config(state))
-		return true;
-	if (state->pending_count != 0U || !R.property_capture_enabled)
-		return false;
-
-	if (R.reload_revision == 0U || R.reload_revision <= state->highest_revision)
-	{
-		if (state->highest_revision ==
-		    std::numeric_limits<telemetry_config_revision>::max())
-			return false;
-		R.reload_revision = state->highest_revision + 1U;
-	}
-	telemetry_monotonic_usec ignored_monotonic = 0U;
-	telemetry_utc_usec effective_utc = R.capture_input.effective_utc_usec;
-	if (production_clock_now(nullptr, &ignored_monotonic, &effective_utc))
-		R.capture_input.effective_utc_usec = effective_utc;
-	telemetry_config_capture_input input = R.capture_input;
-	input.revision = R.reload_revision;
-	input.effective_utc_usec = effective_utc;
-	telemetry_config_property_snapshot properties{};
-	telemetry_config_snapshot candidate{};
-	if (telemetry_config_snapshot_build(&input, &properties, &candidate) !=
-	    telemetry_config_build_outcome::built)
-		return false;
-
-	const telemetry_capture_result published = telemetry_config_publish(candidate);
-	const telemetry_config_snapshot visible = telemetry_config_snapshot_copy();
-	if (adopt_visible_config(visible))
-	{
-		telemetry_config_reload_request_clear(state);
-		R.reload_revision = 0U;
-		return true;
-	}
-	/* A rejected sink leaves the exact candidate in the bounded pending FIFO.
+		/* A rejected sink leaves the exact candidate in the bounded pending FIFO.
 	 * Capacity/identity/revision rejection establishes a newer floor for the
 	 * next attempt; it must not be retried with the same rejected revision. */
-	if (published.outcome != telemetry_runtime_outcome::queue_full ||
-	    state->pending_count == 0U)
-		R.reload_revision = 0U;
-	return false;
-}
-
-bool ensure_current_config() noexcept
-{
-	if (!R.enabled || R.shutdown_pending)
+		if (published.outcome != telemetry_runtime_outcome::queue_full ||
+		    state->pending_count == 0U)
+			R.reload_revision = 0U;
 		return false;
-	telemetry_config_state *state = telemetry_config_global_state();
-	if (state == nullptr || state->initialized == 0U)
-		return false;
-	if (telemetry_config_reload_requested(state))
-		return capture_reloaded_config(state);
+	}
 
-	telemetry_config_snapshot visible = telemetry_config_snapshot_copy();
-	if (!telemetry_config_is_valid(visible) || visible.enabled == 0U)
-		return retry_pending_config(state);
-	return adopt_visible_config(visible);
-}
+	bool ensure_current_config() noexcept
+	{
+		if (!R.enabled || R.shutdown_pending)
+			return false;
+		telemetry_config_state *state = telemetry_config_global_state();
+		if (state == nullptr || state->initialized == 0U)
+			return false;
+		if (telemetry_config_reload_requested(state))
+			return capture_reloaded_config(state);
 
-void reload_observer(void *context) noexcept
-{
-	telemetry_config_state *state = static_cast<telemetry_config_state *>(context);
-	telemetry_config_reload_observer(state);
-	/* R.config is an admitted effective snapshot, never a fallback for a
+		telemetry_config_snapshot visible = telemetry_config_snapshot_copy();
+		if (!telemetry_config_is_valid(visible) || visible.enabled == 0U)
+			return retry_pending_config(state);
+		return adopt_visible_config(visible);
+	}
+
+	void reload_observer(void *context) noexcept
+	{
+		telemetry_config_state *state = static_cast<telemetry_config_state *>(context);
+		telemetry_config_reload_observer(state);
+		/* R.config is an admitted effective snapshot, never a fallback for a
 	 * post-reload capture.  Keep session scope separately so detach/exit/
 	 * handoff can still identify the logical session while attribution is
 	 * honestly unavailable. */
-	R.config = {};
-	R.config_available = false;
-	R.reload_revision = 0U;
-	(void)capture_reloaded_config(state);
-}
+		R.config = {};
+		R.config_available = false;
+		R.reload_revision = 0U;
+		(void)capture_reloaded_config(state);
+	}
 
-bool all_admitted_records_durable() noexcept
-{
-	const auto health = telemetry_transport_health_copy();
-	const auto limit = std::numeric_limits<std::uint64_t>::max();
-	// A drained queue can contain permanently rejected records. Never mistake
-	// those, a disabled writer, or saturating accounting for durability.
-	if (health.backend != telemetry_storage_backend::sql || health.invalid_records != 0U ||
-	    health.conflict_records != 0U ||
-	    health.admitted_detail >= limit - health.admitted_control ||
-	    health.applied_records >= limit - health.duplicate_records)
-		return false;
-	const auto applied = health.applied_records + health.duplicate_records;
-	if (applied >= limit - health.stale_checkpoint_records)
-		return false;
-	return health.admitted_detail + health.admitted_control ==
-	       applied + health.stale_checkpoint_records;
-}
-
-telemetry_storage_check storage_check_for(telemetry_outage_result result) noexcept
-{
-	switch (result)
+	bool all_admitted_records_durable() noexcept
 	{
-	case telemetry_outage_result::ready:
-		return telemetry_storage_check::none;
-	case telemetry_outage_result::invalid:
-		return telemetry_storage_check::directory;
-	case telemetry_outage_result::unsafe_storage:
-		return telemetry_storage_check::protection;
-	case telemetry_outage_result::owned_elsewhere:
-		return telemetry_storage_check::owner;
-	case telemetry_outage_result::corrupt:
-		return telemetry_storage_check::ledger;
-	case telemetry_outage_result::io_failure:
+		const auto health = telemetry_transport_health_copy();
+		const auto limit = std::numeric_limits<std::uint64_t>::max();
+		// A drained queue can contain permanently rejected records. Never mistake
+		// those, a disabled writer, or saturating accounting for durability.
+		if (health.backend != telemetry_storage_backend::sql ||
+		    health.invalid_records != 0U || health.conflict_records != 0U ||
+		    health.admitted_detail >= limit - health.admitted_control ||
+		    health.applied_records >= limit - health.duplicate_records)
+			return false;
+		const auto applied = health.applied_records + health.duplicate_records;
+		if (applied >= limit - health.stale_checkpoint_records)
+			return false;
+		return health.admitted_detail + health.admitted_control ==
+		       applied + health.stale_checkpoint_records;
+	}
+
+	telemetry_storage_check storage_check_for(telemetry_outage_result result) noexcept
+	{
+		switch (result)
+		{
+		case telemetry_outage_result::ready:
+			return telemetry_storage_check::none;
+		case telemetry_outage_result::invalid:
+			return telemetry_storage_check::directory;
+		case telemetry_outage_result::unsafe_storage:
+			return telemetry_storage_check::protection;
+		case telemetry_outage_result::owned_elsewhere:
+			return telemetry_storage_check::owner;
+		case telemetry_outage_result::corrupt:
+			return telemetry_storage_check::ledger;
+		case telemetry_outage_result::io_failure:
+			return telemetry_storage_check::io;
+		}
 		return telemetry_storage_check::io;
 	}
-	return telemetry_storage_check::io;
-}
 
-struct worker_outage_guard
-{
-	telemetry_outage_journal journal{};
-	bool failed = false;
-
-	bool refuse(telemetry_monotonic_usec now, telemetry_outage_result result) noexcept
+	struct worker_outage_guard
 	{
-		failed = true;
-		telemetry_transport_fail_storage_for_worker(now,
-							    journal.error_code != 0U ?
-								    journal.error_code :
-								    static_cast<std::uint32_t>(EIO),
-							    storage_check_for(result));
-		return false;
-	}
+		telemetry_outage_journal journal{};
+		bool failed = false;
 
-	bool start() noexcept
-	{
-		const char *directory = std::getenv("TELEMETRY_OUTAGE_LEDGER_DIR");
-		if ((directory == nullptr || *directory == '\0') &&
-		    telemetry_transport_uses_test_repository())
-			return true;
-		telemetry_outage_observation registration{};
-		registration.producer = R.producer;
-		registration.health.backend = R.worker_backend;
-		registration.environment_id = R.session_scope_environment_id;
-		registration.season_id = R.session_scope_season_id;
-		if (!production_clock_now(nullptr, &registration.registered_monotonic_usec,
-					  &registration.registered_utc_usec))
-			return refuse(0U, telemetry_outage_result::io_failure);
-		registration.observed_monotonic_usec = registration.registered_monotonic_usec;
-		registration.observed_utc_usec = registration.registered_utc_usec;
-		const auto opened = telemetry_outage_open(&journal, directory, registration);
-		if (opened != telemetry_outage_result::ready)
-			return refuse(registration.observed_monotonic_usec, opened);
-		return true;
-	}
-
-	bool checkpoint(bool terminal = false, bool incident = false) noexcept
-	{
-		if (journal.current >= journal.count || failed)
-			return !failed;
-		auto observation = journal.observations[journal.current];
-		telemetry_monotonic_usec now = 0U;
-		telemetry_utc_usec utc = TELEMETRY_UTC_UNKNOWN;
-		// No fresh trustworthy clock/sample means no invented boundary. On exit
-		// leave the last running watermark for unknown-tail classification.
-		if (!production_clock_now(nullptr, &now, &utc) ||
-		    now < observation.observed_monotonic_usec ||
-		    (!terminal && !incident &&
-		     now - observation.observed_monotonic_usec <
-			     (R.worker_backend == telemetry_storage_backend::posthog ?
-				      60'000'000U :
-				      1'000'000U)) ||
-		    !telemetry_transport_outage_copy_for_worker(&observation))
-			return true;
-		observation.observed_monotonic_usec = now;
-		observation.observed_utc_usec = utc;
-		if (!terminal && !incident &&
-		    R.worker_backend == telemetry_storage_backend::posthog &&
-		    observation.health.last_admitted_record_seq ==
-			    journal.observations[journal.current].health.last_admitted_record_seq &&
-		    observation.health.dropped_detail ==
-			    journal.observations[journal.current].health.dropped_detail &&
-		    observation.health.dropped_control ==
-			    journal.observations[journal.current].health.dropped_control)
-			return true;
-		if (terminal)
-			observation.phase = telemetry_outage_terminal_phase(observation);
-		const auto result = telemetry_outage_checkpoint(&journal, observation);
-		if (result != telemetry_outage_result::ready &&
-		    R.worker_backend == telemetry_storage_backend::posthog)
-			return refuse(now, result);
-		return true;
-	}
-
-	~worker_outage_guard() noexcept
-	{
-		(void)checkpoint(true);
-		telemetry_outage_close(&journal);
-	}
-};
-
-bool start_posthog(telemetry_outage_journal &journal) noexcept
-{
-	telemetry_posthog_reducer_config config{};
-	config.producer = R.producer;
-	config.environment_id = R.session_scope_environment_id;
-	config.season_id = R.session_scope_season_id;
-	config.window_seconds = 1800U;
-	const auto *key = std::getenv("TELEMETRY_IDENTITY_KEY");
-	const auto *token = std::getenv("POSTHOG_API_KEY");
-	const auto *host = std::getenv("POSTHOG_HOST");
-	const auto *test = std::getenv("TELEMETRY_TEST_RUN");
-	if (key == nullptr || token == nullptr || host == nullptr ||
-	    !telemetry_posthog_parse_identity_key(key, config.identity_key))
-		return false;
-	if (test != nullptr)
-	{
-		if (std::strlen(test) >= config.test_run.size())
+		bool refuse(telemetry_monotonic_usec now, telemetry_outage_result result) noexcept
+		{
+			failed = true;
+			telemetry_transport_fail_storage_for_worker(
+				now,
+				journal.error_code != 0U ? journal.error_code :
+							   static_cast<std::uint32_t>(EIO),
+				storage_check_for(result));
 			return false;
-		std::memcpy(config.test_run.data(), test, std::strlen(test));
-	}
-	const bool production = config.environment_id == 1U;
-	// Real cloud fixtures have their own scope, tag and <=100 total attempts.
-	if ((!production && (config.environment_id < 1000U || config.test_run[0] == '\0')) ||
-	    (production && config.test_run[0] != '\0'))
-		return false;
-	telemetry_quota_binding binding{};
-	binding.environment_id = config.environment_id;
-	binding.season_id = config.season_id;
-	const std::uint32_t total = production ? 19900U : 100U;
-	const std::uint32_t normal = production ? 19800U : 90U;
-	const std::uint32_t health = production ? 100U : 10U;
-	if (!environment_unsigned("POSTHOG_PROJECT_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
-				  &binding.project_id) ||
-	    binding.project_id != 678214U ||
-	    !environment_unsigned("POSTHOG_SENDER_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
-				  &binding.sender_id) ||
-	    !environment_unsigned("POSTHOG_DAILY_LIMIT", total, 1U, total, &binding.total_limit) ||
-	    !environment_unsigned("POSTHOG_NORMAL_LIMIT", normal, 1U, normal,
-				  &binding.normal_limit) ||
-	    !environment_unsigned("POSTHOG_HEALTH_LIMIT", health, 1U, health,
-				  &binding.health_limit))
-		return false;
-	const bool initialized = telemetry_posthog_reducer_init(config);
-	OPENSSL_cleanse(config.identity_key.data(), config.identity_key.size());
-	if (!initialized || !telemetry_posthog_sender_init(host, token, binding, &journal))
-		return false;
+		}
+
+		bool start() noexcept
+		{
+			const char *directory = std::getenv("TELEMETRY_OUTAGE_LEDGER_DIR");
+			if ((directory == nullptr || *directory == '\0') &&
+			    telemetry_transport_uses_test_repository())
+				return true;
+			telemetry_outage_observation registration{};
+			registration.producer = R.producer;
+			registration.health.backend = R.worker_backend;
+			registration.environment_id = R.session_scope_environment_id;
+			registration.season_id = R.session_scope_season_id;
+			if (!production_clock_now(nullptr, &registration.registered_monotonic_usec,
+						  &registration.registered_utc_usec))
+				return refuse(0U, telemetry_outage_result::io_failure);
+			registration.observed_monotonic_usec =
+				registration.registered_monotonic_usec;
+			registration.observed_utc_usec = registration.registered_utc_usec;
+			const auto opened =
+				telemetry_outage_open(&journal, directory, registration);
+			if (opened != telemetry_outage_result::ready)
+				return refuse(registration.observed_monotonic_usec, opened);
+			return true;
+		}
+
+		bool checkpoint(bool terminal = false, bool incident = false) noexcept
+		{
+			if (journal.current >= journal.count || failed)
+				return !failed;
+			auto observation = journal.observations[journal.current];
+			telemetry_monotonic_usec now = 0U;
+			telemetry_utc_usec utc = TELEMETRY_UTC_UNKNOWN;
+			// No fresh trustworthy clock/sample means no invented boundary. On exit
+			// leave the last running watermark for unknown-tail classification.
+			if (!production_clock_now(nullptr, &now, &utc) ||
+			    now < observation.observed_monotonic_usec ||
+			    (!terminal && !incident &&
+			     now - observation.observed_monotonic_usec <
+				     (R.worker_backend == telemetry_storage_backend::posthog ?
+					      60'000'000U :
+					      1'000'000U)) ||
+			    !telemetry_transport_outage_copy_for_worker(&observation))
+				return true;
+			observation.observed_monotonic_usec = now;
+			observation.observed_utc_usec = utc;
+			if (!terminal && !incident &&
+			    R.worker_backend == telemetry_storage_backend::posthog &&
+			    observation.health.last_admitted_record_seq ==
+				    journal.observations[journal.current]
+					    .health.last_admitted_record_seq &&
+			    observation.health.dropped_detail ==
+				    journal.observations[journal.current].health.dropped_detail &&
+			    observation.health.dropped_control ==
+				    journal.observations[journal.current].health.dropped_control)
+				return true;
+			if (terminal)
+				observation.phase = telemetry_outage_terminal_phase(observation);
+			const auto result = telemetry_outage_checkpoint(&journal, observation);
+			if (result != telemetry_outage_result::ready &&
+			    R.worker_backend == telemetry_storage_backend::posthog)
+				return refuse(now, result);
+			return true;
+		}
+
+		~worker_outage_guard() noexcept
+		{
+			(void)checkpoint(true);
+			telemetry_outage_close(&journal);
+		}
+	};
+
+	bool start_posthog(telemetry_outage_journal & journal) noexcept
+	{
+		telemetry_posthog_reducer_config config{};
+		config.producer = R.producer;
+		config.environment_id = R.session_scope_environment_id;
+		config.season_id = R.session_scope_season_id;
+		config.window_seconds = 1800U;
+		const auto *key = std::getenv("TELEMETRY_IDENTITY_KEY");
+		const auto *token = std::getenv("POSTHOG_API_KEY");
+		const auto *host = std::getenv("POSTHOG_HOST");
+		const auto *test = std::getenv("TELEMETRY_TEST_RUN");
+		if (key == nullptr || token == nullptr || host == nullptr ||
+		    !telemetry_posthog_parse_identity_key(key, config.identity_key))
+			return false;
+		if (test != nullptr)
+		{
+			if (std::strlen(test) >= config.test_run.size())
+				return false;
+			std::memcpy(config.test_run.data(), test, std::strlen(test));
+		}
+		const bool production = config.environment_id == 1U;
+		// Real cloud fixtures have their own scope, tag and <=100 total attempts.
+		if ((!production &&
+		     (config.environment_id < 1000U || config.test_run[0] == '\0')) ||
+		    (production && config.test_run[0] != '\0'))
+			return false;
+		telemetry_quota_binding binding{};
+		binding.environment_id = config.environment_id;
+		binding.season_id = config.season_id;
+		const std::uint32_t total = production ? 19900U : 100U;
+		const std::uint32_t normal = production ? 19800U : 90U;
+		const std::uint32_t health = production ? 100U : 10U;
+		if (!environment_unsigned("POSTHOG_PROJECT_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
+					  &binding.project_id) ||
+		    binding.project_id != 678214U ||
+		    !environment_unsigned("POSTHOG_SENDER_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
+					  &binding.sender_id) ||
+		    !environment_unsigned("POSTHOG_DAILY_LIMIT", total, 1U, total,
+					  &binding.total_limit) ||
+		    !environment_unsigned("POSTHOG_NORMAL_LIMIT", normal, 1U, normal,
+					  &binding.normal_limit) ||
+		    !environment_unsigned("POSTHOG_HEALTH_LIMIT", health, 1U, health,
+					  &binding.health_limit))
+			return false;
+		const bool initialized = telemetry_posthog_reducer_init(config);
+		OPENSSL_cleanse(config.identity_key.data(), config.identity_key.size());
+		if (!initialized || !telemetry_posthog_sender_init(host, token, binding, &journal))
+			return false;
 #ifdef TELEMETRY_POSTHOG_TESTING
-	if (const char *port = std::getenv("DURIS_TEST_POSTHOG_PORT"))
-	{
-		(void)port;
-		std::uint16_t parsed_port = 0U;
-		const auto *ca = std::getenv("DURIS_TEST_POSTHOG_CA");
-		if (production || !environment_text_is(std::getenv("ENVIRONMENT"), "local") ||
-		    ca == nullptr ||
-		    !environment_unsigned("DURIS_TEST_POSTHOG_PORT", parsed_port, 1U, 65535U,
-					  &parsed_port) ||
-		    !telemetry_posthog_sender_test_endpoint(parsed_port, ca))
-			return false;
-	}
+		if (const char *port = std::getenv("DURIS_TEST_POSTHOG_PORT"))
+		{
+			(void)port;
+			std::uint16_t parsed_port = 0U;
+			const auto *ca = std::getenv("DURIS_TEST_POSTHOG_CA");
+			if (production ||
+			    !environment_text_is(std::getenv("ENVIRONMENT"), "local") ||
+			    ca == nullptr ||
+			    !environment_unsigned("DURIS_TEST_POSTHOG_PORT", parsed_port, 1U,
+						  65535U, &parsed_port) ||
+			    !telemetry_posthog_sender_test_endpoint(parsed_port, ca))
+				return false;
+		}
 #endif
-	return true;
-}
-
-void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
-{
-	telemetry_runtime_posthog_health health{};
-	telemetry_outage_observation observation{};
-	if (!telemetry_transport_outage_copy_for_worker(&observation))
-		return;
-	health.native = observation.health;
-	health.reducer = telemetry_posthog_reducer_health_copy();
-	health.sender = telemetry_posthog_sender_health_copy();
-	health.quota_day = journal.quota.day;
-	health.normal_reserved = journal.quota.normal_reserved;
-	health.health_reserved = journal.quota.health_reserved;
-	health.total_limit = journal.quota.binding.total_limit;
-	(void)production_monotonic_now(&health.observed_at);
-	const auto state = health.sender.state;
-	if (state != telemetry_posthog_sender_state::ready &&
-	    state != telemetry_posthog_sender_state::sending &&
-	    state != telemetry_posthog_sender_state::stopped)
-	{
-		health.native.state = telemetry_health_state::degraded;
-		health.native.last_error_code =
-			health.sender.quota_error != 0U ? health.sender.quota_error :
-			health.sender.curl_error != 0U	? health.sender.curl_error :
-							  health.sender.http_status;
-		health.native.last_failure_class = telemetry_failure_class::transient_connection;
-		health.native.last_failure_monotonic_usec = health.observed_at;
+		return true;
 	}
-	std::lock_guard<std::mutex> lock(R.posthog_health_mutex);
-	R.posthog_health = health;
-}
 
-void posthog_worker_loop(worker_outage_guard &outage) noexcept
-{
-	struct close_sender
+	void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
 	{
-		worker_outage_guard &outage;
-		~close_sender()
-		{
-			telemetry_posthog_sender_close();
-			const auto remaining =
-				telemetry_posthog_reducer_health_copy().output_events;
-			if (remaining != 0U)
-				(void)telemetry_posthog_output_retire(
-					remaining,
-					telemetry_posthog_output_disposition::suppressed);
-			publish_posthog_health(outage.journal);
-		}
-	} closer{ outage };
-	if (!start_posthog(outage.journal))
-	{
-		(void)outage.refuse(0U, telemetry_outage_result::invalid);
-		return;
-	}
-	telemetry_transport_posthog_start_for_worker();
-	auto previous_phase = telemetry_posthog_sender_state::ready;
-	for (;;)
-	{
-		telemetry_monotonic_usec now = 0U;
-		telemetry_utc_usec utc = TELEMETRY_UTC_UNKNOWN;
-		if (!production_clock_now(nullptr, &now, &utc))
-			return;
-		const bool stopping = R.worker_stop.load(std::memory_order_acquire);
-		const auto flush = R.flush_requested.load(std::memory_order_acquire);
-		const bool flushing = flush != R.flush_completed.load(std::memory_order_acquire);
-		const auto deadline = stopping ? R.worker_deadline.load(std::memory_order_acquire) :
-				      flushing ? R.flush_deadline.load(std::memory_order_acquire) :
-						 0U;
-		if (stopping &&
-		    (!R.worker_final_flush.load(std::memory_order_acquire) || deadline == 0U))
-			return;
-		const bool consumed = telemetry_transport_posthog_pulse_for_worker(
-			now, utc, deadline, flushing || stopping);
+		telemetry_runtime_posthog_health health{};
 		telemetry_outage_observation observation{};
-		if (telemetry_transport_outage_copy_for_worker(&observation))
-			(void)telemetry_posthog_observe_health(observation.health, now, utc);
-		publish_posthog_health(outage.journal);
-		const auto reducer = telemetry_posthog_reducer_health_copy();
-		const bool empty = consumed &&
-				   telemetry_transport_health_copy().queue_depth == 0U &&
-				   reducer.output_events == 0U;
-		telemetry_monotonic_usec after = 0U;
-		const bool expired = !production_monotonic_now(&after) ||
-				     (deadline != 0U && after >= deadline);
-		auto phase = telemetry_posthog_sender_health_copy().state;
-		if (phase == telemetry_posthog_sender_state::sending)
-			phase = telemetry_posthog_sender_state::ready;
-		const bool incident = phase != previous_phase;
-		previous_phase = phase;
-		if (!outage.checkpoint(false,
-				       incident || ((flushing || stopping) && (empty || expired))))
+		if (!telemetry_transport_outage_copy_for_worker(&observation))
 			return;
-		if (flushing && (empty || expired))
+		health.native = observation.health;
+		health.reducer = telemetry_posthog_reducer_health_copy();
+		health.sender = telemetry_posthog_sender_health_copy();
+		health.quota_day = journal.quota.day;
+		health.normal_reserved = journal.quota.normal_reserved;
+		health.health_reserved = journal.quota.health_reserved;
+		health.total_limit = journal.quota.binding.total_limit;
+		(void)production_monotonic_now(&health.observed_at);
+		const auto state = health.sender.state;
+		if (state != telemetry_posthog_sender_state::ready &&
+		    state != telemetry_posthog_sender_state::sending &&
+		    state != telemetry_posthog_sender_state::stopped)
 		{
-			R.flush_durable.store(empty && !expired &&
-						      reducer.output_suppressed == 0U &&
-						      reducer.ambiguous_events == 0U &&
-						      reducer.reduction_refusals == 0U,
-					      std::memory_order_relaxed);
-			R.flush_completed.store(flush, std::memory_order_release);
-			// A failed exec resumes this same process. Deadline cancellation
-			// must not permanently stop its otherwise valid sender.
-			if (telemetry_posthog_sender_health_copy().state ==
-			    telemetry_posthog_sender_state::stopped)
-				telemetry_posthog_sender_resume();
+			health.native.state = telemetry_health_state::degraded;
+			health.native.last_error_code =
+				health.sender.quota_error != 0U ? health.sender.quota_error :
+				health.sender.curl_error != 0U	? health.sender.curl_error :
+								  health.sender.http_status;
+			health.native.last_failure_class =
+				telemetry_failure_class::transient_connection;
+			health.native.last_failure_monotonic_usec = health.observed_at;
 		}
-		if (stopping && (empty || expired))
-			return;
-		std::unique_lock<std::mutex> lock(R.wake_mutex);
-		R.wake_condition.wait_for(
-			lock,
-			std::chrono::microseconds(flushing || stopping ? 1000U : WORKER_WAIT_USEC));
+		std::lock_guard<std::mutex> lock(R.posthog_health_mutex);
+		R.posthog_health = health;
 	}
-}
 
-void worker_loop() noexcept
-{
-	worker_done_guard done;
-	worker_outage_guard outage;
-	if (!outage.start())
-		return;
-	if (R.worker_backend == telemetry_storage_backend::posthog)
+	void posthog_worker_loop(worker_outage_guard & outage) noexcept
 	{
-		posthog_worker_loop(outage);
-		return;
-	}
-	for (;;)
-	{
-		if (R.worker_stop.load(std::memory_order_acquire))
-			break;
-		telemetry_monotonic_usec now = 0U;
-		if (!production_monotonic_now(&now))
-			now = 0U;
-		const auto flush = R.flush_requested.load(std::memory_order_acquire);
-		if (flush != R.flush_completed.load(std::memory_order_acquire))
+		struct close_sender
 		{
-			const auto deadline = R.flush_deadline.load(std::memory_order_acquire);
-			telemetry_transport_drain_result drained{};
-			drained.outcome = telemetry_transport_outcome::deadline_reached;
-			if (production_monotonic_now(&now) && now < deadline)
-				drained = telemetry_transport_drain_until(deadline);
-			const bool durable = drained.pending == 0U &&
-					     drained.outcome ==
-						     telemetry_transport_outcome::drained &&
-					     all_admitted_records_durable();
-			// A synchronous repository callback can outlive the deadline even
-			// when transport reports a fully drained queue. Check after both
-			// the callback and accounting, against this generation's deadline.
-			const bool expired = !production_monotonic_now(&now) || now >= deadline;
-			if (drained.pending == 0U || expired)
+			worker_outage_guard &outage;
+			~close_sender()
 			{
-				R.flush_durable.store(durable && !expired,
+				telemetry_posthog_sender_close();
+				const auto remaining =
+					telemetry_posthog_reducer_health_copy().output_events;
+				if (remaining != 0U)
+					(void)telemetry_posthog_output_retire(
+						remaining,
+						telemetry_posthog_output_disposition::suppressed);
+				publish_posthog_health(outage.journal);
+			}
+		} closer{ outage };
+		if (!start_posthog(outage.journal))
+		{
+			(void)outage.refuse(0U, telemetry_outage_result::invalid);
+			return;
+		}
+		telemetry_transport_posthog_start_for_worker();
+		auto previous_phase = telemetry_posthog_sender_state::ready;
+		for (;;)
+		{
+			telemetry_monotonic_usec now = 0U;
+			telemetry_utc_usec utc = TELEMETRY_UTC_UNKNOWN;
+			if (!production_clock_now(nullptr, &now, &utc))
+				return;
+			const bool stopping = R.worker_stop.load(std::memory_order_acquire);
+			const auto flush = R.flush_requested.load(std::memory_order_acquire);
+			const bool flushing = flush !=
+					      R.flush_completed.load(std::memory_order_acquire);
+			const auto deadline =
+				stopping ? R.worker_deadline.load(std::memory_order_acquire) :
+				flushing ? R.flush_deadline.load(std::memory_order_acquire) :
+					   0U;
+			if (stopping && (!R.worker_final_flush.load(std::memory_order_acquire) ||
+					 deadline == 0U))
+				return;
+			const bool consumed = telemetry_transport_posthog_pulse_for_worker(
+				now, utc, deadline, flushing || stopping);
+			telemetry_outage_observation observation{};
+			if (telemetry_transport_outage_copy_for_worker(&observation))
+				(void)telemetry_posthog_observe_health(observation.health, now,
+								       utc);
+			publish_posthog_health(outage.journal);
+			const auto reducer = telemetry_posthog_reducer_health_copy();
+			const bool empty = consumed &&
+					   telemetry_transport_health_copy().queue_depth == 0U &&
+					   reducer.output_events == 0U;
+			telemetry_monotonic_usec after = 0U;
+			const bool expired = !production_monotonic_now(&after) ||
+					     (deadline != 0U && after >= deadline);
+			auto phase = telemetry_posthog_sender_health_copy().state;
+			if (phase == telemetry_posthog_sender_state::sending)
+				phase = telemetry_posthog_sender_state::ready;
+			const bool incident = phase != previous_phase;
+			previous_phase = phase;
+			if (!outage.checkpoint(false, incident || ((flushing || stopping) &&
+								   (empty || expired))))
+				return;
+			if (flushing && (empty || expired))
+			{
+				R.flush_durable.store(empty && !expired &&
+							      reducer.output_suppressed == 0U &&
+							      reducer.ambiguous_events == 0U &&
+							      reducer.reduction_refusals == 0U,
 						      std::memory_order_relaxed);
 				R.flush_completed.store(flush, std::memory_order_release);
+				// A failed exec resumes this same process. Deadline cancellation
+				// must not permanently stop its otherwise valid sender.
+				if (telemetry_posthog_sender_health_copy().state ==
+				    telemetry_posthog_sender_state::stopped)
+					telemetry_posthog_sender_resume();
 			}
+			if (stopping && (empty || expired))
+				return;
+			std::unique_lock<std::mutex> lock(R.wake_mutex);
+			R.wake_condition.wait_for(
+				lock, std::chrono::microseconds(
+					      flushing || stopping ? 1000U : WORKER_WAIT_USEC));
 		}
-		else
-			(void)telemetry_transport_pulse(now);
-		if (!outage.checkpoint())
+	}
+
+	void worker_loop() noexcept
+	{
+		worker_done_guard done;
+		worker_outage_guard outage;
+		if (!outage.start())
 			return;
-		const std::uint64_t observed_generation =
-			R.wake_generation.load(std::memory_order_acquire);
-		std::unique_lock<std::mutex> lock(R.wake_mutex);
-		R.wake_condition.wait_for(
-			lock, std::chrono::microseconds(WORKER_WAIT_USEC),
-			[&]
+		if (R.worker_backend == telemetry_storage_backend::posthog)
+		{
+			posthog_worker_loop(outage);
+			return;
+		}
+		for (;;)
+		{
+			if (R.worker_stop.load(std::memory_order_acquire))
+				break;
+			telemetry_monotonic_usec now = 0U;
+			if (!production_monotonic_now(&now))
+				now = 0U;
+			const auto flush = R.flush_requested.load(std::memory_order_acquire);
+			if (flush != R.flush_completed.load(std::memory_order_acquire))
 			{
-				return R.worker_stop.load(std::memory_order_acquire) ||
-				       R.wake_generation.load(std::memory_order_acquire) !=
-					       observed_generation;
-			});
+				const auto deadline =
+					R.flush_deadline.load(std::memory_order_acquire);
+				telemetry_transport_drain_result drained{};
+				drained.outcome = telemetry_transport_outcome::deadline_reached;
+				if (production_monotonic_now(&now) && now < deadline)
+					drained = telemetry_transport_drain_until(deadline);
+				const bool durable = drained.pending == 0U &&
+						     drained.outcome ==
+							     telemetry_transport_outcome::drained &&
+						     all_admitted_records_durable();
+				// A synchronous repository callback can outlive the deadline even
+				// when transport reports a fully drained queue. Check after both
+				// the callback and accounting, against this generation's deadline.
+				const bool expired = !production_monotonic_now(&now) ||
+						     now >= deadline;
+				if (drained.pending == 0U || expired)
+				{
+					R.flush_durable.store(durable && !expired,
+							      std::memory_order_relaxed);
+					R.flush_completed.store(flush, std::memory_order_release);
+				}
+			}
+			else
+				(void)telemetry_transport_pulse(now);
+			if (!outage.checkpoint())
+				return;
+			const std::uint64_t observed_generation =
+				R.wake_generation.load(std::memory_order_acquire);
+			std::unique_lock<std::mutex> lock(R.wake_mutex);
+			R.wake_condition.wait_for(
+				lock, std::chrono::microseconds(WORKER_WAIT_USEC),
+				[&]
+				{
+					return R.worker_stop.load(std::memory_order_acquire) ||
+					       R.wake_generation.load(std::memory_order_acquire) !=
+						       observed_generation;
+				});
+		}
+
+		if (!R.worker_final_flush.load(std::memory_order_acquire))
+			return;
+		const telemetry_monotonic_usec deadline =
+			R.worker_deadline.load(std::memory_order_acquire);
+		if (deadline == 0U)
+			return;
+		for (;;)
+		{
+			telemetry_monotonic_usec now = 0U;
+			if (!production_monotonic_now(&now))
+				return;
+			if (now > deadline)
+				return;
+			const telemetry_transport_drain_result drained =
+				telemetry_transport_drain_until(deadline);
+			if (drained.pending == 0U ||
+			    drained.outcome == telemetry_transport_outcome::drained ||
+			    drained.outcome == telemetry_transport_outcome::flatfile_disabled)
+				return;
+			std::this_thread::sleep_for(std::chrono::microseconds(1'000U));
+		}
 	}
 
-	if (!R.worker_final_flush.load(std::memory_order_acquire))
-		return;
-	const telemetry_monotonic_usec deadline = R.worker_deadline.load(std::memory_order_acquire);
-	if (deadline == 0U)
-		return;
-	for (;;)
+	telemetry_health_snapshot fallback_health() noexcept
 	{
-		telemetry_monotonic_usec now = 0U;
-		if (!production_monotonic_now(&now))
-			return;
-		if (now > deadline)
-			return;
-		const telemetry_transport_drain_result drained =
-			telemetry_transport_drain_until(deadline);
-		if (drained.pending == 0U ||
-		    drained.outcome == telemetry_transport_outcome::drained ||
-		    drained.outcome == telemetry_transport_outcome::flatfile_disabled)
-			return;
-		std::this_thread::sleep_for(std::chrono::microseconds(1'000U));
-	}
-}
-
-telemetry_health_snapshot fallback_health() noexcept
-{
-	telemetry_health_snapshot health{};
-	health.schema_version = TELEMETRY_SCHEMA_VERSION;
-	health.state = telemetry_health_state::disabled;
-	health.backend = R.config.backend;
-	health.queue_capacity = QUEUE_CAPACITY;
-	health.producer = R.producer;
-	health.advisory_lock_state = R.config.backend ==
-						     telemetry_storage_backend::flatfile_disabled ?
-					     telemetry_advisory_lock_state::not_applicable :
-					     telemetry_advisory_lock_state::unavailable;
-	health.disabled_reason = R.config.backend == telemetry_storage_backend::flatfile_disabled ?
-					 telemetry_disabled_reason::flatfile_authority :
-					 telemetry_disabled_reason::not_initialized;
-	return health;
-}
-
-bool valid_runtime_options(const telemetry_runtime_options &options) noexcept
-{
-	return telemetry_producer_id_is_valid(options.producer) &&
-	       telemetry_config_is_valid(options.config);
-}
-
-telemetry_capture_result capture_not_ready() noexcept
-{
-	if (!R.initialized)
-		return disabled_capture(telemetry_runtime_outcome::not_initialized);
-	if (!R.enabled)
-		return disabled_capture(
+		telemetry_health_snapshot health{};
+		health.schema_version = TELEMETRY_SCHEMA_VERSION;
+		health.state = telemetry_health_state::disabled;
+		health.backend = R.config.backend;
+		health.queue_capacity = QUEUE_CAPACITY;
+		health.producer = R.producer;
+		health.advisory_lock_state =
 			R.config.backend == telemetry_storage_backend::flatfile_disabled ?
-				telemetry_runtime_outcome::flatfile_disabled :
-				telemetry_runtime_outcome::disabled);
-	return disabled_capture(telemetry_runtime_outcome::stopping);
-}
+				telemetry_advisory_lock_state::not_applicable :
+				telemetry_advisory_lock_state::unavailable;
+		health.disabled_reason =
+			R.config.backend == telemetry_storage_backend::flatfile_disabled ?
+				telemetry_disabled_reason::flatfile_authority :
+				telemetry_disabled_reason::not_initialized;
+		return health;
+	}
 
-telemetry_activity_context context_to_activity(telemetry_activity_context context) noexcept
-{
-	return context;
-}
-
-std::uint32_t context_flags_for(telemetry_activity_context context) noexcept
-{
-	switch (context)
+	bool valid_runtime_options(const telemetry_runtime_options &options) noexcept
 	{
-	case telemetry_activity_context::combat:
-		return TELEMETRY_ACTIVITY_CONTEXT_COMBAT;
-	case telemetry_activity_context::travel:
-		return TELEMETRY_ACTIVITY_CONTEXT_TRAVEL;
-	case telemetry_activity_context::crafting:
-		return TELEMETRY_ACTIVITY_CONTEXT_CRAFTING;
-	case telemetry_activity_context::social:
-		return TELEMETRY_ACTIVITY_CONTEXT_SOCIAL;
-	case telemetry_activity_context::administration:
-		return TELEMETRY_ACTIVITY_CONTEXT_ADMINISTRATION;
-	case telemetry_activity_context::other:
-		return TELEMETRY_ACTIVITY_CONTEXT_OTHER;
-	case telemetry_activity_context::none:
-		return TELEMETRY_ACTIVITY_CONTEXT_NONE;
-	case telemetry_activity_context::unknown:
-	case telemetry_activity_context::overflow_unknown:
+		return telemetry_producer_id_is_valid(options.producer) &&
+		       telemetry_config_is_valid(options.config);
+	}
+
+	telemetry_capture_result capture_not_ready() noexcept
+	{
+		if (!R.initialized)
+			return disabled_capture(telemetry_runtime_outcome::not_initialized);
+		if (!R.enabled)
+			return disabled_capture(
+				R.config.backend == telemetry_storage_backend::flatfile_disabled ?
+					telemetry_runtime_outcome::flatfile_disabled :
+					telemetry_runtime_outcome::disabled);
+		return disabled_capture(telemetry_runtime_outcome::stopping);
+	}
+
+	telemetry_activity_context context_to_activity(telemetry_activity_context context) noexcept
+	{
+		return context;
+	}
+
+	std::uint32_t context_flags_for(telemetry_activity_context context) noexcept
+	{
+		switch (context)
+		{
+		case telemetry_activity_context::combat:
+			return TELEMETRY_ACTIVITY_CONTEXT_COMBAT;
+		case telemetry_activity_context::travel:
+			return TELEMETRY_ACTIVITY_CONTEXT_TRAVEL;
+		case telemetry_activity_context::crafting:
+			return TELEMETRY_ACTIVITY_CONTEXT_CRAFTING;
+		case telemetry_activity_context::social:
+			return TELEMETRY_ACTIVITY_CONTEXT_SOCIAL;
+		case telemetry_activity_context::administration:
+			return TELEMETRY_ACTIVITY_CONTEXT_ADMINISTRATION;
+		case telemetry_activity_context::other:
+			return TELEMETRY_ACTIVITY_CONTEXT_OTHER;
+		case telemetry_activity_context::none:
+			return TELEMETRY_ACTIVITY_CONTEXT_NONE;
+		case telemetry_activity_context::unknown:
+		case telemetry_activity_context::overflow_unknown:
+			return TELEMETRY_ACTIVITY_CONTEXT_UNKNOWN;
+		}
 		return TELEMETRY_ACTIVITY_CONTEXT_UNKNOWN;
 	}
-	return TELEMETRY_ACTIVITY_CONTEXT_UNKNOWN;
-}
 
-void seed_activity_resume(const telemetry_session_resume &resume) noexcept
-{
-	for (std::size_t index = 0U; index < R.activity.max_slots; ++index)
+	void seed_activity_resume(const telemetry_session_resume &resume) noexcept
 	{
-		telemetry_activity_slot &slot = R.activity.slots[index];
-		if (slot.lifecycle == telemetry_activity_slot_lifecycle::empty ||
-		    !session_equal(slot.session, resume.entry.session))
-			continue;
-		slot.cumulative = resume.handoff.cumulative;
-		slot.quality_flags |= resume.handoff.quality_flags | resume.entry.quality_flags;
-		slot.entry_snapshot = resume.entry;
-		slot.connection = resume.entry.connection;
-		slot.connected = 1U;
-		slot.interval_start_monotonic_usec = resume.entry.at_monotonic_usec;
-		slot.interval_start_utc_usec = resume.entry.at_utc_usec;
-		slot.last_observed_monotonic_usec = resume.entry.at_monotonic_usec;
-		slot.last_observed_utc_usec = resume.entry.at_utc_usec;
-		slot.detached_since_monotonic_usec = 0U;
-		return;
+		for (std::size_t index = 0U; index < R.activity.max_slots; ++index)
+		{
+			telemetry_activity_slot &slot = R.activity.slots[index];
+			if (slot.lifecycle == telemetry_activity_slot_lifecycle::empty ||
+			    !session_equal(slot.session, resume.entry.session))
+				continue;
+			slot.cumulative = resume.handoff.cumulative;
+			slot.quality_flags |= resume.handoff.quality_flags |
+					      resume.entry.quality_flags;
+			slot.entry_snapshot = resume.entry;
+			slot.connection = resume.entry.connection;
+			slot.connected = 1U;
+			slot.interval_start_monotonic_usec = resume.entry.at_monotonic_usec;
+			slot.interval_start_utc_usec = resume.entry.at_utc_usec;
+			slot.last_observed_monotonic_usec = resume.entry.at_monotonic_usec;
+			slot.last_observed_utc_usec = resume.entry.at_utc_usec;
+			slot.detached_since_monotonic_usec = 0U;
+			return;
+		}
 	}
-}
 
-telemetry_capture_result
-capture_with_delta(const telemetry_activity_result &activity_result) noexcept
-{
-	telemetry_capture_result result = capture_from_activity(activity_result);
-	if (activity_result.has_delta != 0U)
+	telemetry_capture_result capture_with_delta(
+		const telemetry_activity_result &activity_result) noexcept
 	{
-		const telemetry_capture_result delivered =
-			telemetry_runtime_update_counters(activity_result.delta);
-		merge_capture(result, delivered);
+		telemetry_capture_result result = capture_from_activity(activity_result);
+		if (activity_result.has_delta != 0U)
+		{
+			const telemetry_capture_result delivered =
+				telemetry_runtime_update_counters(activity_result.delta);
+			merge_capture(result, delivered);
+		}
+		return result;
 	}
-	return result;
-}
 
-void add_pulse_capture(telemetry_pulse_result &pulse, const telemetry_capture_result &capture,
-		       bool lifecycle) noexcept
-{
-	(void)saturating_add_u32(pulse.records_dropped, capture.records_dropped);
-	if (lifecycle)
-		(void)saturating_add_u32(pulse.lifecycle_records, capture.records_emitted);
-	pulse.quality_flags |= capture.quality_flags;
-}
+	void add_pulse_capture(telemetry_pulse_result & pulse,
+			       const telemetry_capture_result &capture, bool lifecycle) noexcept
+	{
+		(void)saturating_add_u32(pulse.records_dropped, capture.records_dropped);
+		if (lifecycle)
+			(void)saturating_add_u32(pulse.lifecycle_records, capture.records_emitted);
+		pulse.quality_flags |= capture.quality_flags;
+	}
 
 } // namespace
 
@@ -1833,7 +1869,7 @@ telemetry_runtime_outcome telemetry_runtime_init(telemetry_runtime_options optio
 		{
 			R.worker = std::thread(worker_loop);
 		}
-		catch (...)
+		catch(...)
 		{
 			R.initialized = false;
 			(void)telemetry_config_reload_unregister(reload_observer,
@@ -2015,8 +2051,8 @@ telemetry_capture_result telemetry_runtime_update_counters(telemetry_counter_upd
 	    update.at_monotonic_usec != activity.interval_start_monotonic_usec)
 		return disabled_capture(telemetry_runtime_outcome::invalid);
 	const auto matches = [](telemetry_duration_usec classified,
-				telemetry_duration_usec accounted,
-				telemetry_duration_usec delta) noexcept
+				telemetry_duration_usec accounted, telemetry_duration_usec delta)
+				     noexcept
 	{ return classified >= accounted && classified - accounted == delta; };
 	const bool caught_up =
 		activity.cumulative.connected_usec == session.cumulative.connected_usec &&
@@ -2338,525 +2374,542 @@ bool telemetry_runtime_now(telemetry_monotonic_usec *monotonic_usec,
 
 namespace
 {
-
-telemetry_capture_result game_capture_not_ready() noexcept
-{
-	return capture_not_ready();
-}
-
-telemetry_capture_result game_capture_invalid() noexcept
-{
-	telemetry_capture_result result{};
-	result.outcome = telemetry_runtime_outcome::invalid;
-	result.admission = telemetry_queue_admission::rejected_invalid;
-	result.quality_flags = TELEMETRY_QUALITY_CONTEXT_UNKNOWN;
-	return result;
-}
-
-bool game_session_ref(const struct char_data *character, telemetry_session_ref *session) noexcept
-{
-	if (character == nullptr || session == nullptr || character->only.pc == nullptr ||
-	    character->only.pc->pid <= 0 || character->telemetry_session_sequence == 0U ||
-	    character->telemetry_session_producer_boot_id == 0U ||
-	    character->telemetry_session_producer_process_id == 0U)
-		return false;
-	*session = {};
-	session->id.producer.boot_id = character->telemetry_session_producer_boot_id;
-	session->id.producer.process_id = character->telemetry_session_producer_process_id;
-	session->id.session_seq = character->telemetry_session_sequence;
-	session->subject_id = static_cast<telemetry_subject_id>(character->only.pc->pid);
-	session->pid = static_cast<telemetry_pid>(character->only.pc->pid);
-	session->season_id = R.session_scope_season_id;
-	session->environment_id = R.session_scope_environment_id;
-	return telemetry_session_ref_is_valid(*session);
-}
-
-bool game_connection_id(const struct descriptor_data *descriptor,
-			telemetry_connection_id *connection) noexcept
-{
-	if (descriptor == nullptr || connection == nullptr ||
-	    descriptor->telemetry_connection_sequence == 0U ||
-	    descriptor->telemetry_connection_producer_boot_id == 0U ||
-	    descriptor->telemetry_connection_producer_process_id == 0U)
-		return false;
-	*connection = {};
-	connection->producer.boot_id = descriptor->telemetry_connection_producer_boot_id;
-	connection->producer.process_id = descriptor->telemetry_connection_producer_process_id;
-	connection->connection_seq = descriptor->telemetry_connection_sequence;
-	return telemetry_connection_id_is_valid(*connection);
-}
-
-bool game_connection_is_zero(const struct descriptor_data *descriptor) noexcept
-{
-	return descriptor != nullptr && descriptor->telemetry_connection_sequence == 0U &&
-	       descriptor->telemetry_connection_producer_boot_id == 0U &&
-	       descriptor->telemetry_connection_producer_process_id == 0U;
-}
-
-bool game_ids_are_zero(const struct char_data *character,
-		       const struct descriptor_data *descriptor) noexcept
-{
-	return character != nullptr && descriptor != nullptr &&
-	       character->telemetry_session_sequence == 0U &&
-	       character->telemetry_session_producer_boot_id == 0U &&
-	       character->telemetry_session_producer_process_id == 0U &&
-	       game_connection_is_zero(descriptor);
-}
-
-bool game_needs_presence(const struct char_data *character,
-			 const struct descriptor_data *descriptor) noexcept
-{
-	return descriptor != nullptr && (descriptor->telemetry_resume_pending != 0U ||
-					 game_ids_are_zero(character, descriptor) ||
-					 (character != nullptr && IS_PC(character) &&
-					  character->telemetry_session_sequence != 0U &&
-					  game_connection_is_zero(descriptor)));
-}
-
-bool game_entry_is_admitted(const telemetry_session_enter &entry) noexcept
-{
-	telemetry_session_state_view view{};
-	return telemetry_session_state_copy_view(&R.session, entry.session, &view) &&
-	       view.connected != 0U && view.closed == 0U &&
-	       view.connection.connection_seq == entry.connection.connection_seq &&
-	       view.connection.producer.boot_id == entry.connection.producer.boot_id &&
-	       view.connection.producer.process_id == entry.connection.producer.process_id;
-}
-
-void game_clear_pending_resume(struct descriptor_data *descriptor) noexcept
-{
-	if (descriptor != nullptr)
+	telemetry_capture_result game_capture_not_ready() noexcept
 	{
-		descriptor->telemetry_resume_pending = 0U;
-		descriptor->telemetry_pending_handoff = {};
+		return capture_not_ready();
 	}
-}
 
-bool game_zone_vnum(const struct char_data *character, std::int32_t *zone_vnum) noexcept
-{
-	if (zone_vnum == nullptr)
-		return false;
-	*zone_vnum = -1;
-	if (character == nullptr || world == nullptr || zone_table == nullptr ||
-	    character->in_room < 0 || character->in_room > top_of_world || top_of_zone_table < 0)
-		return false;
-	const unsigned int zone_index = world[character->in_room].zone;
-	if (zone_index > static_cast<unsigned int>(top_of_zone_table))
-		return false;
-	const int mapped_zone = zone_table[zone_index].number;
-	if (mapped_zone < -1)
-		return false;
-	*zone_vnum = static_cast<std::int32_t>(mapped_zone);
-	return true;
-}
-
-bool game_group_size(const struct char_data *character, std::uint32_t *group_size) noexcept
-{
-	if (character == nullptr || group_size == nullptr)
-		return false;
-	if (character->group == nullptr)
+	telemetry_capture_result game_capture_invalid() noexcept
 	{
-		/* A character outside a group is a stable one-player cohort. */
-		*group_size = 1U;
+		telemetry_capture_result result{};
+		result.outcome = telemetry_runtime_outcome::invalid;
+		result.admission = telemetry_queue_admission::rejected_invalid;
+		result.quality_flags = TELEMETRY_QUALITY_CONTEXT_UNKNOWN;
+		return result;
+	}
+
+	bool game_session_ref(const struct char_data *character, telemetry_session_ref *session)
+		noexcept
+	{
+		if (character == nullptr || session == nullptr || character->only.pc == nullptr ||
+		    character->only.pc->pid <= 0 || character->telemetry_session_sequence == 0U ||
+		    character->telemetry_session_producer_boot_id == 0U ||
+		    character->telemetry_session_producer_process_id == 0U)
+			return false;
+		*session = {};
+		session->id.producer.boot_id = character->telemetry_session_producer_boot_id;
+		session->id.producer.process_id = character->telemetry_session_producer_process_id;
+		session->id.session_seq = character->telemetry_session_sequence;
+		session->subject_id = static_cast<telemetry_subject_id>(character->only.pc->pid);
+		session->pid = static_cast<telemetry_pid>(character->only.pc->pid);
+		session->season_id = R.session_scope_season_id;
+		session->environment_id = R.session_scope_environment_id;
+		return telemetry_session_ref_is_valid(*session);
+	}
+
+	bool game_connection_id(const struct descriptor_data *descriptor,
+				telemetry_connection_id *connection) noexcept
+	{
+		if (descriptor == nullptr || connection == nullptr ||
+		    descriptor->telemetry_connection_sequence == 0U ||
+		    descriptor->telemetry_connection_producer_boot_id == 0U ||
+		    descriptor->telemetry_connection_producer_process_id == 0U)
+			return false;
+		*connection = {};
+		connection->producer.boot_id = descriptor->telemetry_connection_producer_boot_id;
+		connection->producer.process_id =
+			descriptor->telemetry_connection_producer_process_id;
+		connection->connection_seq = descriptor->telemetry_connection_sequence;
+		return telemetry_connection_id_is_valid(*connection);
+	}
+
+	bool game_connection_is_zero(const struct descriptor_data *descriptor) noexcept
+	{
+		return descriptor != nullptr && descriptor->telemetry_connection_sequence == 0U &&
+		       descriptor->telemetry_connection_producer_boot_id == 0U &&
+		       descriptor->telemetry_connection_producer_process_id == 0U;
+	}
+
+	bool game_ids_are_zero(const struct char_data *character,
+			       const struct descriptor_data *descriptor) noexcept
+	{
+		return character != nullptr && descriptor != nullptr &&
+		       character->telemetry_session_sequence == 0U &&
+		       character->telemetry_session_producer_boot_id == 0U &&
+		       character->telemetry_session_producer_process_id == 0U &&
+		       game_connection_is_zero(descriptor);
+	}
+
+	bool game_needs_presence(const struct char_data *character,
+				 const struct descriptor_data *descriptor) noexcept
+	{
+		return descriptor != nullptr && (descriptor->telemetry_resume_pending != 0U ||
+						 game_ids_are_zero(character, descriptor) ||
+						 (character != nullptr && IS_PC(character) &&
+						  character->telemetry_session_sequence != 0U &&
+						  game_connection_is_zero(descriptor)));
+	}
+
+	bool game_entry_is_admitted(const telemetry_session_enter &entry) noexcept
+	{
+		telemetry_session_state_view view{};
+		return telemetry_session_state_copy_view(&R.session, entry.session, &view) &&
+		       view.connected != 0U && view.closed == 0U &&
+		       view.connection.connection_seq == entry.connection.connection_seq &&
+		       view.connection.producer.boot_id == entry.connection.producer.boot_id &&
+		       view.connection.producer.process_id == entry.connection.producer.process_id;
+	}
+
+	void game_clear_pending_resume(struct descriptor_data * descriptor) noexcept
+	{
+		if (descriptor != nullptr)
+		{
+			descriptor->telemetry_resume_pending = 0U;
+			descriptor->telemetry_pending_handoff = {};
+		}
+	}
+
+	bool game_zone_vnum(const struct char_data *character, std::int32_t *zone_vnum) noexcept
+	{
+		if (zone_vnum == nullptr)
+			return false;
+		*zone_vnum = -1;
+		if (character == nullptr || world == nullptr || zone_table == nullptr ||
+		    character->in_room < 0 || character->in_room > top_of_world ||
+		    top_of_zone_table < 0)
+			return false;
+		const unsigned int zone_index = world[character->in_room].zone;
+		if (zone_index > static_cast<unsigned int>(top_of_zone_table))
+			return false;
+		const int mapped_zone = zone_table[zone_index].number;
+		if (mapped_zone < -1)
+			return false;
+		*zone_vnum = static_cast<std::int32_t>(mapped_zone);
 		return true;
 	}
-	std::uint32_t count = 0U;
-	bool contains_character = false;
-	std::uint16_t nodes = 0U;
-	for (const struct group_list *member = character->group; member != nullptr;
-	     member = member->next)
+
+	bool game_group_size(const struct char_data *character, std::uint32_t *group_size) noexcept
 	{
-		if (nodes == GAME_GROUP_MAX_NODES)
+		if (character == nullptr || group_size == nullptr)
+			return false;
+		if (character->group == nullptr)
+		{
+			/* A character outside a group is a stable one-player cohort. */
+			*group_size = 1U;
+			return true;
+		}
+		std::uint32_t count = 0U;
+		bool contains_character = false;
+		std::uint16_t nodes = 0U;
+		for (const struct group_list *member = character->group; member != nullptr;
+		     member = member->next)
+		{
+			if (nodes == GAME_GROUP_MAX_NODES)
+			{
+				*group_size = 0U;
+				return false;
+			}
+			++nodes;
+			if (member->ch == character)
+				contains_character = true;
+			if (member->ch == nullptr || (member->ch->specials.act & ACT_ISNPC) != 0U ||
+			    member->ch->only.pc == nullptr || member->ch->only.pc->pid <= 0)
+				continue;
+			if (count != std::numeric_limits<std::uint32_t>::max())
+				++count;
+		}
+		if (!contains_character || count == 0U)
 		{
 			*group_size = 0U;
 			return false;
 		}
-		++nodes;
-		if (member->ch == character)
-			contains_character = true;
-		if (member->ch == nullptr || (member->ch->specials.act & ACT_ISNPC) != 0U ||
-		    member->ch->only.pc == nullptr || member->ch->only.pc->pid <= 0)
-			continue;
-		if (count != std::numeric_limits<std::uint32_t>::max())
-			++count;
+		*group_size = count;
+		return true;
 	}
-	if (!contains_character || count == 0U)
+
+	void game_dimensions(const struct char_data *character, telemetry_dimensions *dimensions,
+			     telemetry_quality_mask *quality_flags) noexcept
 	{
-		*group_size = 0U;
-		return false;
+		*dimensions = {};
+		*dimensions = {
+			static_cast<std::uint16_t>(character->player.level == 0U ?
+							   0U :
+							   character->player.level / 5U + 1U),
+			static_cast<std::uint16_t>(character->player.m_class),
+			static_cast<std::uint16_t>(character->player.race),
+			static_cast<std::uint16_t>(character->player.racewar),
+			-1,
+			0U,
+		};
+		bool dimensions_complete =
+			character->player.level != 0U && character->player.m_class != 0U &&
+			character->player.race != 0U && character->player.racewar != 0U;
+		if (!game_zone_vnum(character, &dimensions->zone_vnum))
+			dimensions_complete = false;
+		if (!game_group_size(character, &dimensions->group_size))
+			dimensions_complete = false;
+		if (!dimensions_complete)
+			*quality_flags |= TELEMETRY_QUALITY_DIMENSION_UNKNOWN;
 	}
-	*group_size = count;
-	return true;
-}
 
-void game_dimensions(const struct char_data *character, telemetry_dimensions *dimensions,
-		     telemetry_quality_mask *quality_flags) noexcept
-{
-	*dimensions = {};
-	*dimensions = {
-		static_cast<std::uint16_t>(
-			character->player.level == 0U ? 0U : character->player.level / 5U + 1U),
-		static_cast<std::uint16_t>(character->player.m_class),
-		static_cast<std::uint16_t>(character->player.race),
-		static_cast<std::uint16_t>(character->player.racewar),
-		-1,
-		0U,
-	};
-	bool dimensions_complete = character->player.level != 0U &&
-				   character->player.m_class != 0U &&
-				   character->player.race != 0U && character->player.racewar != 0U;
-	if (!game_zone_vnum(character, &dimensions->zone_vnum))
-		dimensions_complete = false;
-	if (!game_group_size(character, &dimensions->group_size))
-		dimensions_complete = false;
-	if (!dimensions_complete)
-		*quality_flags |= TELEMETRY_QUALITY_DIMENSION_UNKNOWN;
-}
-
-bool game_time(telemetry_monotonic_usec *monotonic_usec, telemetry_utc_usec *utc_usec) noexcept
-{
-	return telemetry_runtime_now(monotonic_usec, utc_usec);
-}
-
-bool game_allocate_session(struct char_data *character) noexcept
-{
-	if (character == nullptr || character->only.pc == nullptr || character->only.pc->pid <= 0)
-		return false;
-	telemetry_session_id session{};
-	if (!telemetry_runtime_next_session(&session))
-		return false;
-	character->telemetry_session_sequence = session.session_seq;
-	character->telemetry_session_producer_boot_id = session.producer.boot_id;
-	character->telemetry_session_producer_process_id = session.producer.process_id;
-	return true;
-}
-
-bool game_allocate_connection(struct descriptor_data *descriptor) noexcept
-{
-	if (descriptor == nullptr)
-		return false;
-	telemetry_connection_id connection{};
-	if (!telemetry_runtime_next_connection(&connection))
-		return false;
-	descriptor->telemetry_connection_sequence = connection.connection_seq;
-	descriptor->telemetry_connection_producer_boot_id = connection.producer.boot_id;
-	descriptor->telemetry_connection_producer_process_id = connection.producer.process_id;
-	return true;
-}
-
-void game_clear_connection(struct descriptor_data *descriptor) noexcept
-{
-	if (descriptor == nullptr)
-		return;
-	descriptor->telemetry_connection_sequence = 0U;
-	descriptor->telemetry_connection_producer_boot_id = 0U;
-	descriptor->telemetry_connection_producer_process_id = 0U;
-}
-
-void game_clear_session(struct char_data *character) noexcept
-{
-	if (character == nullptr)
-		return;
-	character->telemetry_session_sequence = 0U;
-	character->telemetry_session_producer_boot_id = 0U;
-	character->telemetry_session_producer_process_id = 0U;
-}
-
-bool game_enter_payload(const struct char_data *character, const struct descriptor_data *descriptor,
-			telemetry_session_enter *enter) noexcept
-{
-	if (enter == nullptr || !game_session_ref(character, &enter->session) ||
-	    !game_connection_id(descriptor, &enter->connection))
-		return false;
-	if (!game_time(&enter->at_monotonic_usec, &enter->at_utc_usec))
-		return false;
-	enter->dimensions = {};
-	enter->quality_flags = TELEMETRY_QUALITY_NONE;
-	game_dimensions(character, &enter->dimensions, &enter->quality_flags);
-	enter->config_id = R.config.config_id;
-	enter->classifier_version = R.config.classifier_version;
-	enter->policy_version = R.config.policy_version;
-	return telemetry_session_enter_is_valid(*enter);
-}
-
-bool game_transition_payload(const struct char_data *character,
-			     const struct descriptor_data *descriptor,
-			     telemetry_connection_transition_kind kind,
-			     telemetry_connection_transition *transition) noexcept
-{
-	if (transition == nullptr || !game_session_ref(character, &transition->session) ||
-	    !game_time(&transition->at_monotonic_usec, &transition->at_utc_usec))
-		return false;
-	transition->connection = {};
-	if (kind == telemetry_connection_transition_kind::attached)
+	bool game_time(telemetry_monotonic_usec * monotonic_usec, telemetry_utc_usec * utc_usec)
+		noexcept
 	{
-		if (!game_connection_id(descriptor, &transition->connection))
+		return telemetry_runtime_now(monotonic_usec, utc_usec);
+	}
+
+	bool game_allocate_session(struct char_data * character) noexcept
+	{
+		if (character == nullptr || character->only.pc == nullptr ||
+		    character->only.pc->pid <= 0)
 			return false;
-	}
-	else if (kind == telemetry_connection_transition_kind::detached)
-	{
-		if (!game_connection_id(descriptor, &transition->connection))
+		telemetry_session_id session{};
+		if (!telemetry_runtime_next_session(&session))
 			return false;
+		character->telemetry_session_sequence = session.session_seq;
+		character->telemetry_session_producer_boot_id = session.producer.boot_id;
+		character->telemetry_session_producer_process_id = session.producer.process_id;
+		return true;
 	}
-	else
-		return false;
-	transition->kind = kind;
-	transition->reserved[0] = 0U;
-	transition->reserved[1] = 0U;
-	transition->reserved[2] = 0U;
-	transition->quality_flags = TELEMETRY_QUALITY_NONE;
-	return telemetry_connection_transition_is_valid(*transition);
-}
 
-bool game_exit_payload(const struct char_data *character, const struct descriptor_data *descriptor,
-		       telemetry_session_end_reason reason, telemetry_session_exit *exit) noexcept
-{
-	if (exit == nullptr || !game_session_ref(character, &exit->session) ||
-	    !game_time(&exit->at_monotonic_usec, &exit->at_utc_usec))
-		return false;
-	exit->connection = {};
-	if (descriptor != nullptr && !game_connection_id(descriptor, &exit->connection))
-		return false;
-	exit->reason = reason;
-	exit->reserved[0] = 0U;
-	exit->reserved[1] = 0U;
-	exit->reserved[2] = 0U;
-	exit->quality_flags = descriptor == nullptr ? TELEMETRY_QUALITY_CONTEXT_UNKNOWN :
-						      TELEMETRY_QUALITY_NONE;
-	return telemetry_session_exit_is_valid(*exit);
-}
-
-bool map_runtime_evidence_kind(telemetry_runtime_evidence_kind runtime_kind,
-			       telemetry_activity_evidence_kind *activity_kind) noexcept
-{
-	if (activity_kind == nullptr)
-		return false;
-	switch (runtime_kind)
+	bool game_allocate_connection(struct descriptor_data * descriptor) noexcept
 	{
-	case telemetry_runtime_evidence_kind::player_action:
-		*activity_kind = telemetry_activity_evidence_kind::player_action;
+		if (descriptor == nullptr)
+			return false;
+		telemetry_connection_id connection{};
+		if (!telemetry_runtime_next_connection(&connection))
+			return false;
+		descriptor->telemetry_connection_sequence = connection.connection_seq;
+		descriptor->telemetry_connection_producer_boot_id = connection.producer.boot_id;
+		descriptor->telemetry_connection_producer_process_id =
+			connection.producer.process_id;
 		return true;
-	case telemetry_runtime_evidence_kind::movement:
-		*activity_kind = telemetry_activity_evidence_kind::movement;
-		return true;
-	case telemetry_runtime_evidence_kind::interaction:
-		*activity_kind = telemetry_activity_evidence_kind::interaction;
-		return true;
-	case telemetry_runtime_evidence_kind::communication:
-		*activity_kind = telemetry_activity_evidence_kind::communication;
-		return true;
-	case telemetry_runtime_evidence_kind::combat_participation:
-		*activity_kind = telemetry_activity_evidence_kind::combat_participation;
-		return true;
-	case telemetry_runtime_evidence_kind::automatic_combat:
-		*activity_kind = telemetry_activity_evidence_kind::automatic_combat;
-		return true;
-	case telemetry_runtime_evidence_kind::linkdead:
-		/* The public runtime enum is intentionally compact; the canonical
+	}
+
+	void game_clear_connection(struct descriptor_data * descriptor) noexcept
+	{
+		if (descriptor == nullptr)
+			return;
+		descriptor->telemetry_connection_sequence = 0U;
+		descriptor->telemetry_connection_producer_boot_id = 0U;
+		descriptor->telemetry_connection_producer_process_id = 0U;
+	}
+
+	void game_clear_session(struct char_data * character) noexcept
+	{
+		if (character == nullptr)
+			return;
+		character->telemetry_session_sequence = 0U;
+		character->telemetry_session_producer_boot_id = 0U;
+		character->telemetry_session_producer_process_id = 0U;
+	}
+
+	bool game_enter_payload(const struct char_data *character,
+				const struct descriptor_data *descriptor,
+				telemetry_session_enter *enter) noexcept
+	{
+		if (enter == nullptr || !game_session_ref(character, &enter->session) ||
+		    !game_connection_id(descriptor, &enter->connection))
+			return false;
+		if (!game_time(&enter->at_monotonic_usec, &enter->at_utc_usec))
+			return false;
+		enter->dimensions = {};
+		enter->quality_flags = TELEMETRY_QUALITY_NONE;
+		game_dimensions(character, &enter->dimensions, &enter->quality_flags);
+		enter->config_id = R.config.config_id;
+		enter->classifier_version = R.config.classifier_version;
+		enter->policy_version = R.config.policy_version;
+		return telemetry_session_enter_is_valid(*enter);
+	}
+
+	bool game_transition_payload(const struct char_data *character,
+				     const struct descriptor_data *descriptor,
+				     telemetry_connection_transition_kind kind,
+				     telemetry_connection_transition *transition) noexcept
+	{
+		if (transition == nullptr || !game_session_ref(character, &transition->session) ||
+		    !game_time(&transition->at_monotonic_usec, &transition->at_utc_usec))
+			return false;
+		transition->connection = {};
+		if (kind == telemetry_connection_transition_kind::attached)
+		{
+			if (!game_connection_id(descriptor, &transition->connection))
+				return false;
+		}
+		else if (kind == telemetry_connection_transition_kind::detached)
+		{
+			if (!game_connection_id(descriptor, &transition->connection))
+				return false;
+		}
+		else
+			return false;
+		transition->kind = kind;
+		transition->reserved[0] = 0U;
+		transition->reserved[1] = 0U;
+		transition->reserved[2] = 0U;
+		transition->quality_flags = TELEMETRY_QUALITY_NONE;
+		return telemetry_connection_transition_is_valid(*transition);
+	}
+
+	bool game_exit_payload(const struct char_data *character,
+			       const struct descriptor_data *descriptor,
+			       telemetry_session_end_reason reason, telemetry_session_exit *exit)
+		noexcept
+	{
+		if (exit == nullptr || !game_session_ref(character, &exit->session) ||
+		    !game_time(&exit->at_monotonic_usec, &exit->at_utc_usec))
+			return false;
+		exit->connection = {};
+		if (descriptor != nullptr && !game_connection_id(descriptor, &exit->connection))
+			return false;
+		exit->reason = reason;
+		exit->reserved[0] = 0U;
+		exit->reserved[1] = 0U;
+		exit->reserved[2] = 0U;
+		exit->quality_flags = descriptor == nullptr ? TELEMETRY_QUALITY_CONTEXT_UNKNOWN :
+							      TELEMETRY_QUALITY_NONE;
+		return telemetry_session_exit_is_valid(*exit);
+	}
+
+	bool map_runtime_evidence_kind(telemetry_runtime_evidence_kind runtime_kind,
+				       telemetry_activity_evidence_kind * activity_kind) noexcept
+	{
+		if (activity_kind == nullptr)
+			return false;
+		switch (runtime_kind)
+		{
+		case telemetry_runtime_evidence_kind::player_action:
+			*activity_kind = telemetry_activity_evidence_kind::player_action;
+			return true;
+		case telemetry_runtime_evidence_kind::movement:
+			*activity_kind = telemetry_activity_evidence_kind::movement;
+			return true;
+		case telemetry_runtime_evidence_kind::interaction:
+			*activity_kind = telemetry_activity_evidence_kind::interaction;
+			return true;
+		case telemetry_runtime_evidence_kind::communication:
+			*activity_kind = telemetry_activity_evidence_kind::communication;
+			return true;
+		case telemetry_runtime_evidence_kind::combat_participation:
+			*activity_kind = telemetry_activity_evidence_kind::combat_participation;
+			return true;
+		case telemetry_runtime_evidence_kind::automatic_combat:
+			*activity_kind = telemetry_activity_evidence_kind::automatic_combat;
+			return true;
+		case telemetry_runtime_evidence_kind::linkdead:
+			/* The public runtime enum is intentionally compact; the canonical
 		 * activity enum reserves 7-15 and assigns linkdead=16. */
-		*activity_kind = telemetry_activity_evidence_kind::linkdead;
-		return true;
+			*activity_kind = telemetry_activity_evidence_kind::linkdead;
+			return true;
+		}
+		return false;
 	}
-	return false;
-}
 
-bool game_evidence_payload(const struct char_data *character,
-			   const struct descriptor_data *descriptor,
-			   telemetry_runtime_evidence_kind kind,
-			   telemetry_runtime_evidence *evidence) noexcept
-{
-	if (evidence == nullptr || !game_session_ref(character, &evidence->session) ||
-	    !game_time(&evidence->at_monotonic_usec, &evidence->at_utc_usec))
-		return false;
-	evidence->connection = {};
-	if (kind != telemetry_runtime_evidence_kind::linkdead &&
-	    !game_connection_id(descriptor, &evidence->connection))
-		return false;
-	evidence->kind = kind;
-	evidence->reserved[0] = 0U;
-	evidence->reserved[1] = 0U;
-	evidence->reserved[2] = 0U;
-	evidence->quality_flags = TELEMETRY_QUALITY_NONE;
-	return telemetry_runtime_evidence_is_valid(*evidence);
-}
-
-telemetry_encounter_participant
-game_encounter_participant(const struct char_data *character) noexcept
-{
-	telemetry_encounter_participant participant{};
-	if (character != nullptr && character->only.pc != nullptr && character->only.pc->pid > 0)
+	bool game_evidence_payload(const struct char_data *character,
+				   const struct descriptor_data *descriptor,
+				   telemetry_runtime_evidence_kind kind,
+				   telemetry_runtime_evidence *evidence) noexcept
 	{
-		participant.pid = static_cast<telemetry_pid>(character->only.pc->pid);
-		participant.subject_id = static_cast<telemetry_subject_id>(character->only.pc->pid);
+		if (evidence == nullptr || !game_session_ref(character, &evidence->session) ||
+		    !game_time(&evidence->at_monotonic_usec, &evidence->at_utc_usec))
+			return false;
+		evidence->connection = {};
+		if (kind != telemetry_runtime_evidence_kind::linkdead &&
+		    !game_connection_id(descriptor, &evidence->connection))
+			return false;
+		evidence->kind = kind;
+		evidence->reserved[0] = 0U;
+		evidence->reserved[1] = 0U;
+		evidence->reserved[2] = 0U;
+		evidence->quality_flags = TELEMETRY_QUALITY_NONE;
+		return telemetry_runtime_evidence_is_valid(*evidence);
 	}
-	return participant;
-}
 
-telemetry_id game_encounter_group_key(const struct char_data *character) noexcept
-{
-	if (character != nullptr && character->group != nullptr &&
-	    character->group->ch != nullptr && character->group->ch->only.pc != nullptr &&
-	    character->group->ch->only.pc->pid > 0)
-		return static_cast<telemetry_id>(character->group->ch->only.pc->pid);
-	const auto participant = game_encounter_participant(character);
-	return participant.subject_id;
-}
-
-bool game_encounter_source(const struct char_data *character,
-			   telemetry_encounter_source *source) noexcept
-{
-	if (character == nullptr || character->only.pc == nullptr || source == nullptr)
-		return false;
-	telemetry_dimensions dimensions{};
-	telemetry_quality_mask quality = TELEMETRY_QUALITY_NONE;
-	game_dimensions(character, &dimensions, &quality);
-	*source = {
-		R.session_scope_environment_id,	    R.session_scope_season_id, R.config.config_id,
-		R.config.classifier_version,	    R.config.policy_version,   dimensions.zone_vnum,
-		game_encounter_group_key(character)
-	};
-	return telemetry_encounter_source_is_valid(*source);
-}
-
-std::uint16_t game_combat_power_band(const struct char_data *character) noexcept
-{
-	if (character == nullptr)
-		return 0U;
-	const int level = GET_LEVEL(character);
-	if (level <= 0)
-		return 0U;
-	return static_cast<std::uint16_t>(
-		std::min(static_cast<unsigned int>(level),
-			 static_cast<unsigned int>(std::numeric_limits<std::uint16_t>::max())));
-}
-
-telemetry_combat_actor_ref game_combat_actor(const struct char_data *character) noexcept
-{
-	telemetry_combat_actor_ref actor{};
-	if (character == nullptr)
-		return actor;
-	if (IS_PC(character) && character->only.pc != nullptr && character->only.pc->pid > 0)
+	telemetry_encounter_participant game_encounter_participant(
+		const struct char_data *character) noexcept
 	{
-		const telemetry_id pid = static_cast<telemetry_id>(character->only.pc->pid);
-		actor.actor_id = pid;
-		actor.actor_pid = static_cast<telemetry_pid>(character->only.pc->pid);
-		actor.owner_subject_id = pid;
-		actor.kind = telemetry_combat_actor_kind::player;
+		telemetry_encounter_participant participant{};
+		if (character != nullptr && IS_PC(character) && character->only.pc != nullptr &&
+		    character->only.pc->pid > 0)
+		{
+			participant.pid = static_cast<telemetry_pid>(character->only.pc->pid);
+			participant.subject_id =
+				static_cast<telemetry_subject_id>(character->only.pc->pid);
+		}
+		return participant;
+	}
+
+	telemetry_id game_encounter_group_key(const struct char_data *character) noexcept
+	{
+		if (character != nullptr && character->group != nullptr &&
+		    character->group->ch != nullptr && IS_PC(character->group->ch) &&
+		    character->group->ch->only.pc != nullptr &&
+		    character->group->ch->only.pc->pid > 0)
+			return static_cast<telemetry_id>(character->group->ch->only.pc->pid);
+		const auto participant = game_encounter_participant(character);
+		return participant.subject_id;
+	}
+
+	bool game_encounter_source(const struct char_data *character,
+				   telemetry_encounter_source *source) noexcept
+	{
+		if (character == nullptr || character->only.pc == nullptr || source == nullptr)
+			return false;
+		telemetry_dimensions dimensions{};
+		telemetry_quality_mask quality = TELEMETRY_QUALITY_NONE;
+		game_dimensions(character, &dimensions, &quality);
+		*source = { R.session_scope_environment_id,
+			    R.session_scope_season_id,
+			    R.config.config_id,
+			    R.config.classifier_version,
+			    R.config.policy_version,
+			    dimensions.zone_vnum,
+			    game_encounter_group_key(character) };
+		return telemetry_encounter_source_is_valid(*source);
+	}
+
+	std::uint16_t game_combat_power_band(const struct char_data *character) noexcept
+	{
+		if (character == nullptr)
+			return 0U;
+		const int level = GET_LEVEL(character);
+		if (level <= 0)
+			return 0U;
+		return static_cast<std::uint16_t>(std::min(
+			static_cast<unsigned int>(level),
+			static_cast<unsigned int>(std::numeric_limits<std::uint16_t>::max())));
+	}
+
+	telemetry_combat_actor_ref game_combat_actor(const struct char_data *character) noexcept
+	{
+		telemetry_combat_actor_ref actor{};
+		if (character == nullptr)
+			return actor;
+		if (IS_PC(character) && character->only.pc != nullptr &&
+		    character->only.pc->pid > 0)
+		{
+			const telemetry_id pid = static_cast<telemetry_id>(character->only.pc->pid);
+			actor.actor_id = pid;
+			actor.actor_pid = static_cast<telemetry_pid>(character->only.pc->pid);
+			actor.owner_subject_id = pid;
+			actor.kind = telemetry_combat_actor_kind::player;
+			actor.power_band = game_combat_power_band(character);
+			return actor;
+		}
+		if (!IS_NPC(character) || character->only.npc == nullptr)
+			return actor;
+		telemetry_id actor_id =
+			character->only.npc->idnum > 0 ?
+				static_cast<telemetry_id>(character->only.npc->idnum) :
+				0U;
+		if (actor_id == 0U && character->only.npc->R_num >= 0)
+			actor_id = static_cast<telemetry_id>(character->only.npc->R_num) + 1U;
+		if (actor_id == 0U)
+			return actor;
+		P_char mutable_character = const_cast<P_char>(character);
+		actor.actor_id = actor_id;
+		actor.actor_pid = TELEMETRY_UNKNOWN_PID;
+		actor.kind = IS_PC_PET(mutable_character) ? telemetry_combat_actor_kind::pet :
+							    telemetry_combat_actor_kind::npc;
+		if (actor.kind == telemetry_combat_actor_kind::pet)
+		{
+			const P_char master = GET_MASTER(mutable_character);
+			if (master == nullptr || !IS_PC(master) || master->only.pc == nullptr ||
+			    master->only.pc->pid <= 0)
+				return {};
+			actor.owner_subject_id =
+				static_cast<telemetry_subject_id>(master->only.pc->pid);
+		}
 		actor.power_band = game_combat_power_band(character);
 		return actor;
 	}
-	if (!IS_NPC(character) || character->only.npc == nullptr)
-		return actor;
-	telemetry_id actor_id = character->only.npc->idnum > 0 ?
-					static_cast<telemetry_id>(character->only.npc->idnum) :
-					0U;
-	if (actor_id == 0U && character->only.npc->R_num >= 0)
-		actor_id = static_cast<telemetry_id>(character->only.npc->R_num) + 1U;
-	if (actor_id == 0U)
-		return actor;
-	P_char mutable_character = const_cast<P_char>(character);
-	actor.actor_id = actor_id;
-	actor.actor_pid = TELEMETRY_UNKNOWN_PID;
-	actor.kind = IS_PC_PET(mutable_character) ? telemetry_combat_actor_kind::pet :
-						    telemetry_combat_actor_kind::npc;
-	if (actor.kind == telemetry_combat_actor_kind::pet)
+
+	std::uint32_t game_combat_modifier_flags(const telemetry_combat_actor_ref &source,
+						 const telemetry_combat_actor_ref &target,
+						 std::uint32_t supplied) noexcept
 	{
-		const P_char master = GET_MASTER(mutable_character);
-		if (master == nullptr || !IS_PC(master) || master->only.pc == nullptr ||
-		    master->only.pc->pid <= 0)
-			return {};
-		actor.owner_subject_id = static_cast<telemetry_subject_id>(master->only.pc->pid);
+		std::uint32_t flags = supplied;
+		if (source.kind == telemetry_combat_actor_kind::pet)
+			flags |= TELEMETRY_COMBAT_MODIFIER_PET;
+		if (source.kind == telemetry_combat_actor_kind::npc)
+			flags |= TELEMETRY_COMBAT_MODIFIER_NPC;
+		if (source.kind == telemetry_combat_actor_kind::player &&
+		    target.kind == telemetry_combat_actor_kind::player)
+			flags |= TELEMETRY_COMBAT_MODIFIER_PVP;
+		return flags & TELEMETRY_COMBAT_MODIFIER_KNOWN;
 	}
-	actor.power_band = game_combat_power_band(character);
-	return actor;
-}
 
-std::uint32_t game_combat_modifier_flags(const telemetry_combat_actor_ref &source,
-					 const telemetry_combat_actor_ref &target,
-					 std::uint32_t supplied) noexcept
-{
-	std::uint32_t flags = supplied;
-	if (source.kind == telemetry_combat_actor_kind::pet)
-		flags |= TELEMETRY_COMBAT_MODIFIER_PET;
-	if (source.kind == telemetry_combat_actor_kind::npc)
-		flags |= TELEMETRY_COMBAT_MODIFIER_NPC;
-	if (source.kind == telemetry_combat_actor_kind::player &&
-	    target.kind == telemetry_combat_actor_kind::player)
-		flags |= TELEMETRY_COMBAT_MODIFIER_PVP;
-	return flags & TELEMETRY_COMBAT_MODIFIER_KNOWN;
-}
+	std::uint32_t game_combat_self_flags(const telemetry_combat_actor_ref &actor) noexcept
+	{
+		if (actor.kind == telemetry_combat_actor_kind::pet)
+			return TELEMETRY_COMBAT_MODIFIER_PET;
+		if (actor.kind == telemetry_combat_actor_kind::npc)
+			return TELEMETRY_COMBAT_MODIFIER_NPC;
+		return TELEMETRY_COMBAT_MODIFIER_NONE;
+	}
 
-std::uint32_t game_combat_self_flags(const telemetry_combat_actor_ref &actor) noexcept
-{
-	if (actor.kind == telemetry_combat_actor_kind::pet)
-		return TELEMETRY_COMBAT_MODIFIER_PET;
-	if (actor.kind == telemetry_combat_actor_kind::npc)
-		return TELEMETRY_COMBAT_MODIFIER_NPC;
-	return TELEMETRY_COMBAT_MODIFIER_NONE;
-}
-
-telemetry_capture_result
-encounter_capture_from_update(const telemetry_encounter_update &update,
-			      const encounter_emit_context &emitter) noexcept
-{
-	telemetry_capture_result result = emitter.result;
-	result.quality_flags |= update.quality_flags;
-	if (result.records_emitted != 0U || result.records_dropped != 0U)
+	telemetry_capture_result encounter_capture_from_update(
+		const telemetry_encounter_update &update, const encounter_emit_context &emitter)
+		noexcept
+	{
+		telemetry_capture_result result = emitter.result;
+		result.quality_flags |= update.quality_flags;
+		if (result.records_emitted != 0U || result.records_dropped != 0U)
+			return result;
+		result.admission = telemetry_queue_admission::accepted_control_reserve;
+		switch (update.outcome)
+		{
+		case telemetry_encounter_update_outcome::accepted:
+		case telemetry_encounter_update_outcome::joined_existing:
+		case telemetry_encounter_update_outcome::idempotent:
+		case telemetry_encounter_update_outcome::not_found:
+			result.outcome = telemetry_runtime_outcome::accepted;
+			break;
+		case telemetry_encounter_update_outcome::capacity_full:
+		case telemetry_encounter_update_outcome::sink_rejected:
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			result.admission = telemetry_queue_admission::rejected_control_full;
+			break;
+		case telemetry_encounter_update_outcome::duplicate_conflict:
+		case telemetry_encounter_update_outcome::invalid:
+		case telemetry_encounter_update_outcome::bounded_overflow:
+			result.outcome = telemetry_runtime_outcome::invalid;
+			result.admission = telemetry_queue_admission::rejected_invalid;
+			break;
+		}
 		return result;
-	result.admission = telemetry_queue_admission::accepted_control_reserve;
-	switch (update.outcome)
-	{
-	case telemetry_encounter_update_outcome::accepted:
-	case telemetry_encounter_update_outcome::joined_existing:
-	case telemetry_encounter_update_outcome::idempotent:
-	case telemetry_encounter_update_outcome::not_found:
-		result.outcome = telemetry_runtime_outcome::accepted;
-		break;
-	case telemetry_encounter_update_outcome::capacity_full:
-	case telemetry_encounter_update_outcome::sink_rejected:
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		result.admission = telemetry_queue_admission::rejected_control_full;
-		break;
-	case telemetry_encounter_update_outcome::duplicate_conflict:
-	case telemetry_encounter_update_outcome::invalid:
-	case telemetry_encounter_update_outcome::bounded_overflow:
-		result.outcome = telemetry_runtime_outcome::invalid;
-		result.admission = telemetry_queue_admission::rejected_invalid;
-		break;
 	}
-	return result;
-}
 
-telemetry_capture_result
-combat_summary_capture_from_update(const telemetry_combat_summary_update &update,
-				   const combat_summary_emit_context &emitter) noexcept
-{
-	telemetry_capture_result result = emitter.result;
-	result.quality_flags |= update.quality_flags;
-	if (result.records_emitted != 0U || result.records_dropped != 0U)
-		return result;
-	result.records_emitted = update.rows_accepted;
-	result.records_dropped = update.rows_dropped;
-	result.admission = telemetry_queue_admission::accepted_control_reserve;
-	switch (update.outcome)
+	telemetry_capture_result combat_summary_capture_from_update(
+		const telemetry_combat_summary_update &update,
+		const combat_summary_emit_context &emitter) noexcept
 	{
-	case telemetry_combat_summary_outcome::accepted:
-	case telemetry_combat_summary_outcome::idempotent:
-	case telemetry_combat_summary_outcome::not_found:
-		result.outcome = telemetry_runtime_outcome::accepted;
-		break;
-	case telemetry_combat_summary_outcome::capacity_full:
-	case telemetry_combat_summary_outcome::sink_rejected:
-		result.outcome = telemetry_runtime_outcome::queue_full;
-		result.admission = telemetry_queue_admission::rejected_control_full;
-		break;
-	case telemetry_combat_summary_outcome::invalid:
-		result.outcome = telemetry_runtime_outcome::invalid;
-		result.admission = telemetry_queue_admission::rejected_invalid;
-		break;
+		telemetry_capture_result result = emitter.result;
+		result.quality_flags |= update.quality_flags;
+		if (result.records_emitted != 0U || result.records_dropped != 0U)
+			return result;
+		result.records_emitted = update.rows_accepted;
+		result.records_dropped = update.rows_dropped;
+		result.admission = telemetry_queue_admission::accepted_control_reserve;
+		switch (update.outcome)
+		{
+		case telemetry_combat_summary_outcome::accepted:
+		case telemetry_combat_summary_outcome::idempotent:
+		case telemetry_combat_summary_outcome::not_found:
+			result.outcome = telemetry_runtime_outcome::accepted;
+			break;
+		case telemetry_combat_summary_outcome::capacity_full:
+		case telemetry_combat_summary_outcome::sink_rejected:
+			result.outcome = telemetry_runtime_outcome::queue_full;
+			result.admission = telemetry_queue_admission::rejected_control_full;
+			break;
+		case telemetry_combat_summary_outcome::invalid:
+			result.outcome = telemetry_runtime_outcome::invalid;
+			result.admission = telemetry_queue_admission::rejected_invalid;
+			break;
+		}
+		return result;
 	}
-	return result;
-}
 
 } // namespace
 
@@ -2918,6 +2971,7 @@ telemetry_capture_result telemetry_runtime_game_presence(struct char_data *chara
 		return game_capture_not_ready();
 	if (character == nullptr || descriptor == nullptr || !IS_PC(character) ||
 	    character->only.pc == nullptr || descriptor->connected != CON_PLAYING ||
+	    IS_SET(character->runtime_flags, CHAR_RFLAG_TERMINAL_ITEMS_SAVED) ||
 	    (descriptor->original != nullptr ? descriptor->original : descriptor->character) !=
 		    character)
 		return game_capture_invalid();
@@ -3205,15 +3259,20 @@ telemetry_capture_result telemetry_runtime_game_encounter_begin(struct char_data
 {
 	if (!R.initialized || !R.enabled || R.shutdown_pending)
 		return game_capture_not_ready();
-	if (character == nullptr || character->only.pc == nullptr ||
+	if (character == nullptr)
+		return game_capture_invalid();
+	// Pets contribute to their owner's encounter while retaining a separate
+	// combat actor. Never read an ordinary NPC through the player-data union.
+	P_char owner = IS_PC(character) ? character : GET_MASTER(character);
+	if (owner == nullptr || !IS_PC(owner) || owner->only.pc == nullptr ||
 	    !telemetry_encounter_mode_is_valid(mode) || !ensure_current_config())
 		return game_capture_invalid();
 	telemetry_encounter_source source{};
-	telemetry_encounter_participant participant = game_encounter_participant(character);
+	telemetry_encounter_participant participant = game_encounter_participant(owner);
 	telemetry_monotonic_usec at = 0U;
 	telemetry_utc_usec at_utc = TELEMETRY_UTC_UNKNOWN;
 	if (!telemetry_encounter_participant_is_valid(participant) ||
-	    !game_encounter_source(character, &source) || !game_time(&at, &at_utc))
+	    !game_encounter_source(owner, &source) || !game_time(&at, &at_utc))
 		return game_capture_invalid();
 	telemetry_encounter_id encounter{};
 	if (!allocate_encounter_id(&encounter))
@@ -3233,7 +3292,10 @@ telemetry_capture_result telemetry_runtime_game_encounter_begin(struct char_data
 	{
 		(void)telemetry_combat_summary_begin(&R.combat_summary, update.encounter, source,
 						     mode, at, at_utc);
-		merge_capture(result, telemetry_runtime_game_encounter_group_sync(character));
+		merge_capture(result, telemetry_runtime_game_encounter_group_sync(owner));
+		if (owner != character)
+			(void)telemetry_combat_summary_add_actor(
+				&R.combat_summary, update.encounter, game_combat_actor(owner), at);
 		const auto actor = game_combat_actor(character);
 		if (telemetry_combat_actor_ref_is_valid(actor))
 			(void)telemetry_combat_summary_add_actor(&R.combat_summary,

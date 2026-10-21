@@ -1,229 +1,443 @@
 #!/usr/bin/env python3
-"""Manual #265 real-player journey; requires a fresh task-owned SQL fixture.
+"""Real PostHog gameplay/copyover journey in a disposable native world.
 
-Usage: run_telemetry_player_journey.py ABS_SQL_BINARY ENV_JSON
-The runner creates only synthetic player data in duris_265_*test, never .env.
-Use a network-isolated container and provision/bootstrap that database first.
+No .env, existing database, live player data or namespace/container is used.
+Both backend builds must exist below bin/issue59/<backend> before running.
 """
-from pathlib import Path
-import hashlib
+from __future__ import annotations
+
+import argparse
+import contextlib
+from http.server import BaseHTTPRequestHandler
 import json
+import math
 import os
+from pathlib import Path
 import re
+import shlex
 import shutil
+import signal
+import ssl
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 import run_copyover_runtime_journey as copyover
 import test_flatfile_combat_journey as journey
+from telemetry_posthog_http import Receiver
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+from persistence_restore import private_database
+from telemetry.outage import read_evidence
 
 
-def run(binary: Path, settings: Path) -> None:
-    cfg = json.loads(settings.read_text())
-    assert re.fullmatch(r"duris_265_[a-z0-9_]*test", cfg["DB_NAME"])
-    assert cfg["DB_HOST"] == "127.0.0.1" and cfg["ENVIRONMENT"] == "local"
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), **cfg}
-    env["MYSQL_PWD"] = cfg["DB_PASSWD"]
-    mysql = ["mysql", "--protocol=tcp", "-h127.0.0.1", "-P" + cfg["DB_PORT"],
-             "-u" + cfg["DB_USER"], "-N", "-B", cfg["DB_NAME"]]
+def mock_binary(backend: str, work: Path) -> tuple[Path, Path]:
+    """Relink the real game with only its two worker test seams compiled in."""
+    build = ROOT / "bin/issue59" / backend
+    env = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8"}
+    make = ["make", "--no-print-directory", "-C", "src", "-j1",
+            "PERSISTENCE_BACKEND=" + backend, "BIN_ROOT=" + str(build)]
+    with (work / "build.log").open("w") as log:
+        subprocess.run([*make, "all", "telemetry-state"], cwd=ROOT, env=env,
+                       stdout=log, stderr=subprocess.STDOUT, check=True)
+    config = subprocess.check_output([
+        *make, "-s", "--eval=.PHONY: telemetry-fixture-config",
+        "--eval=telemetry-fixture-config:;@echo FIXTURE_CC=$(CC); echo FIXTURE_FLAGS=$(CFLAGS) $(INCLUDES); echo FIXTURE_OBJS=$(DMS_OBJS); echo FIXTURE_LIBS=$(LDFLAGS) $(LIBS)",
+        "telemetry-fixture-config"], cwd=ROOT, env=env, text=True)
+    fields = dict(line.split("=", 1) for line in config.splitlines() if line.startswith("FIXTURE_"))
+    compiler = shlex.split(fields["FIXTURE_CC"])
+    flags = shlex.split(fields["FIXTURE_FLAGS"])
+    objects = shlex.split(fields["FIXTURE_OBJS"])
+    for name in ("telemetry_runtime", "telemetry_posthog"):
+        selected = [i for i, value in enumerate(objects) if value.endswith("/telemetry/" + name + ".o")]
+        assert len(selected) == 1
+        target = work / (name + ".o")
+        subprocess.run([*compiler, *flags, "-DTELEMETRY_POSTHOG_TESTING", "-c",
+                        "telemetry/" + name + ".c", "-o", str(target)],
+                       cwd=ROOT / "src", env=env, check=True)
+        objects[selected[0]] = str(target)
+    measure = work / "telemetry_gameplay_measure.o"
+    subprocess.run([*compiler, *flags, "-c", str(ROOT / "tests/async/telemetry_gameplay_measure.cc"),
+                    "-o", str(measure)], cwd=ROOT / "src", env=env, check=True)
+    binary = work / "dms_mock"
+    subprocess.run([*compiler, "-rdynamic", "-g", "-Wl,--wrap=_Z20latency_trace_recordPKcmm", "-Wl,--wrap=fsync",
+                    "-o", str(binary), *objects, str(measure),
+                    *shlex.split(fields["FIXTURE_LIBS"])], cwd=ROOT / "src", env=env, check=True)
+    return binary, build / "tools/telemetry-state"
 
-    def sql(statement):
-        return subprocess.check_output(mysql + ["-e", statement], env=env, text=True,
-                                       timeout=15).strip()
 
-    def until(predicate, label, timeout=20):
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if predicate():
-                return
-            time.sleep(0.1)
-        raise AssertionError(label)
+def until(predicate, label: str, timeout: float = 30) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.1)
+    raise AssertionError(label)
 
-    def reconnect():
-        connected = copyover.Client(port)
-        try:
-            entry, _ = connected.expect_any(("term type", "account name"))
-            if entry == "term type":
-                connected.send("9")
-                connected.expect("account name")
-            connected.send(journey.ACCOUNT)
-            connected.expect("enter your password")
-            connected.send(journey.PASSWORD)
-            connected.expect("PRESS RETURN")
-            connected.send("")
-            connected.expect("Please select an option")
-            connected.send("1")
-            connected.expect(journey.CHARACTER)
-            connected.send("1")
-            branch, _ = connected.expect_any(("Play as", "Reconnecting..."))
-            if branch == "Play as":
-                connected.send("y")
-            connected.send("look")
-            connected.expect("The Regression Arena", timeout=30)
-            return connected
-        except Exception:
-            connected.close()
-            raise
 
-    assert sql("SELECT COUNT(*) FROM player_data") == "0", "requires fresh synthetic DB"
-    assert sql("SELECT COUNT(*) FROM telemetry_interval") == "0"
-    with tempfile.TemporaryDirectory(prefix="telemetry265-player-") as temporary:
-        root = Path(temporary)
-        runtime = root / "runtime"
-        runtime.mkdir()
+def run(backend: str, performance: bool = False) -> None:
+    artifacts = ROOT / "bin/issue59/acceptance"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=backend + "-", dir=artifacts) as temporary, \
+            tempfile.TemporaryDirectory(prefix="duris-telemetry-db-") as database_temporary:
+        work = Path(temporary)
+        work.chmod(0o700)
+        binary, state_tool = mock_binary(backend, work)
+        runtime, state, ledger = work / "runtime", work / "state", work / "ledger"
+        runtime.mkdir(); state.mkdir(mode=0o700); ledger.mkdir(mode=0o700)
+        (state / "domains").mkdir(mode=0o700)
         journey.make_fixture(runtime)
         journey.generate_certificate(runtime)
-        # Reviewed registry-v1 fixture, not a catalog generated from arbitrary
-        # live properties. Source registry entries 1..14 include hard-coded
-        # policy values and the five effective properties pinned below; entries
-        # 15..19 are maintained-but-unused and excluded from identity.
-        properties = (runtime / "lib/duris.properties").read_text()
-        for key, expected in {
-            "exp.zoneTrophy.observe": 0.0,
-            "epic.touch.maxPayoutFactor": 10.0,
-            "epic.touch.PayoutFactor": 1.0,
-            "epic.zone.alignmentMod": 0.2,
-            "epic.alignment.minPercentage": 0.15,
-        }.items():
-            values = re.findall(r"^" + re.escape(key) + r"=([^\r\n]+)$", properties, re.M)
-            assert len(values) == 1 and float(values[0]) == expected, f"reviewed fixture drift: {key}"
-        catalog = root / "reviewed-properties.catalog"
-        catalog.touch(mode=0o600)
-        catalog.write_text("6f49b7e9b16055b6c7d48d83f4a9de789d89adeddabbb4bfc1f6d2c86f6b8792 265 265 1\n")
-        env["TELEMETRY_PROPERTY_CATALOG_FILE"] = str(catalog)
         for name in ("logs/log", "journals/critical", "bin/server"):
-            (runtime / name).mkdir(parents=True, exist_ok=True, mode=0o700)
+            (runtime / name).mkdir(parents=True, mode=0o700)
         for name in ("dms", "dms_new"):
             shutil.copy2(binary, runtime / "bin/server" / name)
-        state_file = root / "copyover-state/copyover.dat"
-        port, tls, websocket = journey.available_ports()
-        env.update(PERSISTENCE_MODE="mariadb-primary", PERSISTENCE_BACKEND="mariadb",
-                   CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
-                   COPYOVER_STATE_FILE=str(state_file), LISTEN_ADDRESS="127.0.0.1",
-                   DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
-                   DURIS_WEBSOCKET_PORT=str(websocket), REDIS="FALSE", CHAOS_MUD="FALSE",
-                   TELEMETRY_ENABLED="false", TELEMETRY_BACKEND="sql",
-                   TELEMETRY_INTERVAL_USEC="1000000", TELEMETRY_CHECKPOINT_INTERVAL_USEC="1000000",
-                   TELEMETRY_ACTIVE_WINDOW_USEC="3000000", TELEMETRY_CONTEXT_SEGMENTS_PER_MINUTE="64")
-        process = output = client = None
+        catalog = work / "reviewed-properties.catalog"
+        catalog.write_text("6f49b7e9b16055b6c7d48d83f4a9de789d89adeddabbb4bfc1f6d2c86f6b8792 265 265 1\n")
+        catalog.chmod(0o600)
+        cert, key = work / "capture.crt", work / "capture.key"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                        "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1",
+                        "-keyout", str(key), "-out", str(cert)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        received: list[dict] = []
+        attempts: list[int] = []
+        response = {"status": 200}
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_POST(self):
+                assert self.path == "/batch/"
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                assert body["api_key"] == "phc_native_gameplay"
+                attempts.append(len(body["batch"]))
+                status = response["status"]
+                if status == 200:
+                    received.extend(body["batch"])
+                self.send_response(status)
+                if status != 200:
+                    self.send_header("Retry-After", "1")
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+        receiver = Receiver(("127.0.0.1", 0), Handler)
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.load_cert_chain(cert, key)
+        receiver.socket = tls.wrap_socket(receiver.socket, server_side=True)
+        receiver_thread = threading.Thread(target=receiver.serve_forever,
+                                           kwargs={"poll_interval": 0.01}, daemon=True)
+        receiver_thread.start()
+        # The host's MariaDB confinement permits /tmp, but refuses a datadir in
+        # /home. Only the disposable database lives here; build outputs stay in bin/.
+        database = Path(database_temporary)
+        database_context = private_database(database) if backend == "mariadb" else contextlib.nullcontext({})
+        process = output = client = companion = None
+        transcripts = []
+        port, game_tls, websocket = journey.available_ports()
+        copyover_state = work / "copyover-state/copyover.dat"
 
         def stop():
-            nonlocal process, output, client
+            nonlocal client, companion, process, output
             if client:
-                client.close()
-                client = None
+                transcripts.append(bytes(client.transcript[-6000:]).decode(errors="replace"))
+                client.close(); client = None
+            if companion:
+                transcripts.append(bytes(companion.transcript[-6000:]).decode(errors="replace"))
+                companion.close(); companion = None
             if process and process.poll() is None:
                 process.terminate()
                 try:
-                    process.wait(timeout=30)
+                    process.wait(timeout=20)
                 except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
-                    raise AssertionError("fixture process did not shut down")
+                    process.kill(); process.wait(timeout=5)
+                    raise AssertionError("native game did not stop")
             if output:
-                output.close()
-
-        def boot():
-            nonlocal process, output
-            output = (runtime / "server.out").open("w")
-            process = subprocess.Popen([str(runtime / "bin/server/dms"), "--minimal", "-s", str(port)],
-                                       cwd=runtime, env=env, stdout=output, stderr=subprocess.STDOUT)
-            until(lambda: process.poll() is not None or "Entering game loop." in
-                  (runtime / "server.out").read_text(errors="replace"), "boot timed out", 90)
-            assert process.poll() is None, "server exited during boot"
-            assert hashlib.sha256(Path(f"/proc/{process.pid}/exe").read_bytes()).digest() == hashlib.sha256(binary.read_bytes()).digest()
+                output.close(); output = None
 
         try:
-            boot()
-            client = copyover.Client(port)
-            journey.create_character(client)
-            client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.")
-            client.send("quit")
-            client.expect("ACCOUNT MENU", timeout=30)
-            stop()
-            assert sql("SELECT COUNT(*) FROM telemetry_interval") == "0"
-            pid = int(sql("SELECT pid FROM player_data"))
-            sql(f"UPDATE player_data SET level=62 WHERE pid={pid}")
-            assert sql(f"SELECT level FROM player_data WHERE pid={pid}") == "62"
-            print("PASS disabled telemetry: create/login/save/quit; no telemetry facts", flush=True)
-            env["TELEMETRY_ENABLED"] = "true"
-            boot()
-            client = reconnect()
-            client.enable_compression()
-            until(lambda: int(sql("SELECT COUNT(*) FROM telemetry_session")) == 1,
-                  "enabled telemetry did not write session")
-            identity = sql("SELECT CONCAT(session_boot_id,':',session_process_id,':',session_seq) FROM telemetry_session")
-            until(lambda: int(sql("SELECT latest_revision FROM telemetry_session")) > 0,
-                  "no initial checkpoint")
-            client.send("shutdown copyover")
-            client.expect("Copyover FAILED", timeout=60)
-            client.send("look")
-            client.expect("The Regression Arena")
-            client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
-            before = int(sql("SELECT latest_revision FROM telemetry_session"))
-            until(lambda: int(sql("SELECT latest_revision FROM telemetry_session")) > before,
-                  "telemetry stopped after failed copyover")
-            print("PASS enabled failed-copyover: original MCCP socket, save, advancing checkpoint", flush=True)
-            state_file.parent.mkdir()
-            client.send("shutdown copyover")
-            client.expect("Copyover complete!", timeout=90)
-            client.send("look")
-            client.expect("The Regression Arena")
-            client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
-            until(lambda: int(sql("SELECT COUNT(DISTINCT boot_id,process_id) FROM telemetry_interval WHERE session_seq IS NOT NULL")) >= 2,
-                  "new producer did not emit resumed session facts")
-            assert sql("SELECT COUNT(*) FROM telemetry_session") == "1", "copyover opened duplicate logical session"
-            assert sql("SELECT CONCAT(session_boot_id,':',session_process_id,':',session_seq) FROM telemetry_session") == identity
-            print("PASS real exec: producer changed; logical session retained", flush=True)
-            client.close()
-            client = None
-            before = int(sql("SELECT latest_revision FROM telemetry_session"))
-            until(lambda: int(sql("SELECT latest_revision FROM telemetry_session")) > before,
-                  "detached checkpoint did not advance")
-            client = reconnect()
-            assert sql("SELECT COUNT(*) FROM telemetry_session") == "1"
-            client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
-            client.send("quit")
-            client.expect("ACCOUNT MENU", timeout=30)
-            until(lambda: sql("SELECT exited FROM telemetry_session") == "1", "logical exit not durable")
-            counters = list(map(int, sql("SELECT connected_usec,active_usec,idle_usec,unknown_usec,resident_usec,linkdead_usec FROM telemetry_session").split()))
-            connected, active, idle, unknown, resident, linkdead = counters
-            assert connected == active + idle + unknown and resident == connected + linkdead
-            assert active > 0 and linkdead > 0
-            print(json.dumps({"pass": "reconnect/exit conservation", "connected_usec": connected,
-                              "active_usec": active, "idle_usec": idle, "unknown_usec": unknown,
-                              "resident_usec": resident, "linkdead_usec": linkdead}), flush=True)
-            stop()
-            committed = sql("SELECT COUNT(*) FROM telemetry_interval")
-            # Fail only the private telemetry connection; authoritative gameplay
-            # SQL keeps its real fixture credentials and must remain usable.
-            env["TELEMETRY_DB_USER"] = "telemetry265_unavailable"
-            boot()
-            client = reconnect()
-            client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
-            client.send("quit")
-            client.expect("ACCOUNT MENU", timeout=30)
-            stop()
-            assert sql("SELECT COUNT(*) FROM telemetry_interval") == committed
-            print("PASS unavailable private telemetry SQL: login/look/save/quit; no new facts", flush=True)
+            with contextlib.ExitStack() as cleanup:
+                database_env = cleanup.enter_context(database_context)
+                cleanup.callback(stop)  # Writers must stop before their disposable DB.
+                env = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "ENVIRONMENT": "local", **database_env}
+                if backend == "mariadb":
+                    mysql = ["mysql", "--no-defaults", "--protocol=socket", "--socket=" + env["DB_SOCKET"],
+                             "-u" + env["DB_USER"], "-N", "-B", env["DB_NAME"]]
+
+                    def sql(statement):
+                        return subprocess.check_output(mysql, input=statement, env=env, text=True).strip()
+
+                    sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+                    for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
+                        subprocess.run([sys.executable, "scripts/migration_runner.py", *args],
+                                       cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+                else:
+                    subprocess.run([sys.executable, "tests/async/test_flatfile_player_repository.py",
+                                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True)
+                    subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
+                scope = "1001" if backend == "flatfile" else "1002"
+                env.update(PERSISTENCE_MODE=backend + "-primary", PERSISTENCE_BACKEND=backend,
+                           FLATFILE_STATE_DIR=str(state), CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+                           COPYOVER_STATE_FILE=str(copyover_state), LISTEN_ADDRESS="127.0.0.1",
+                           DURIS_TLS_PORT=str(game_tls), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
+                           DURIS_WEBSOCKET_PORT=str(websocket), REDIS="FALSE", CHAOS_MUD="FALSE",
+                           TELEMETRY_ENABLED="false", TELEMETRY_BACKEND="posthog", TELEMETRY_ENVIRONMENT_ID=scope,
+                           TELEMETRY_SEASON_ID="1", TELEMETRY_INTERVAL_USEC="1000000",
+                           TELEMETRY_CHECKPOINT_INTERVAL_USEC="1000000", TELEMETRY_ACTIVE_WINDOW_USEC="3000000",
+                           TELEMETRY_CONTEXT_SEGMENTS_PER_MINUTE="64", TELEMETRY_OUTAGE_LEDGER_DIR=str(ledger),
+                           TELEMETRY_PROPERTY_CATALOG_FILE=str(catalog), TELEMETRY_IDENTITY_KEY="01" * 32,
+                           TELEMETRY_TEST_RUN="native-gameplay-" + backend, POSTHOG_API_KEY="phc_native_gameplay",
+                           POSTHOG_HOST="https://us.i.posthog.com", POSTHOG_PROJECT_ID="678214", POSTHOG_SENDER_ID="99",
+                           DURIS_TEST_POSTHOG_PORT=str(receiver.server_port), DURIS_TEST_POSTHOG_CA=str(cert))
+                subprocess.run([str(state_tool), "initialize", str(ledger), "678214", "99", scope,
+                                "1", "100", "90", "10"], env=env, check=True, stdout=subprocess.DEVNULL)
+
+                def boot():
+                    nonlocal process, output
+                    output = (runtime / "server.out").open("w")
+                    process = subprocess.Popen([str(runtime / "bin/server/dms"), "--minimal", "-s", str(port)],
+                                               cwd=runtime, env=env, stdout=output, stderr=subprocess.STDOUT)
+                    until(lambda: process.poll() is not None or "Entering game loop." in
+                          (runtime / "server.out").read_text(errors="replace"), "game boot timeout", 90)
+                    assert process.poll() is None, (runtime / "server.out").read_text(errors="replace")[-6000:]
+
+                companion_name, companion_account = "Valerek", "Friendacct"
+
+                def reconnect(character=journey.CHARACTER, account=journey.ACCOUNT):
+                    original = journey.MudClient
+                    journey.MudClient = copyover.Client
+                    try:
+                        connected = journey.reconnect_character(port, expected_room=None,
+                                                               character=character, account=account)
+                        connected.send("look")
+                        connected.expect("The Regression Arena", timeout=30)
+                        return connected
+                    finally:
+                        journey.MudClient = original
+
+                def save():
+                    client.send("save")
+                    client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+
+                def health():
+                    client.send("world telemetry")
+                    snapshot = client.expect("coverage gaps=", timeout=30)
+                    assert "backend=posthog" in snapshot and "PostHog native_consumed=" in snapshot, snapshot
+                    used = re.search(r"used=(\d+)\+(\d+)/100", snapshot)
+                    assert used, snapshot
+                    return snapshot, int(used[1]) + int(used[2])
+
+                boot()
+                client = copyover.Client(port)
+                journey.create_character(client)
+                save()
+                companion = copyover.Client(port)
+                journey.create_character(companion, character=companion_name,
+                                         account=companion_account, email="companion@example.invalid")
+                companion.send("save")
+                companion.expect(f"Save complete for {companion_name}.")
+                companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
+                companion.close(); companion = None
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                stop()
+                assert not received, "disabled telemetry exported events"
+                print("PASS disabled save/reload fixture", backend, flush=True)
+                if backend == "flatfile":
+                    journey.make_overlord(state, journey.CHARACTER)
+                else:
+                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
+                env["TELEMETRY_ENABLED"] = "true"
+                if performance:
+                    measurements = []
+
+                    def p99(values):
+                        return sorted(values)[math.ceil(len(values) * 0.99) - 1]
+
+                    for pair in range(3):
+                        for enabled in ((False, True) if pair % 2 == 0 else (True, False)):
+                            env["TELEMETRY_ENABLED"] = str(enabled).lower()
+                            sample_path = work / f"latency-{pair}-{enabled}.txt"
+                            env["DURIS_TEST_LATENCY_FILE"] = str(sample_path)
+                            boot(); client = reconnect()
+                            time.sleep(10)
+                            command_us, save_us, snapshots, rss = [], [], [], []
+                            for _ in range(120):
+                                started = time.monotonic_ns()
+                                client.send("look"); client.expect("The Regression Arena")
+                                command_us.append((time.monotonic_ns() - started) // 1000)
+                                started = time.monotonic_ns()
+                                save()
+                                save_us.append((time.monotonic_ns() - started) // 1000)
+                                client.send("world persistence")
+                                snapshot = ""
+                                while True:
+                                    marker, page = client.expect_any(("oldest_save_age_ms=", "[Return to continue"), timeout=30)
+                                    snapshot += page
+                                    if marker == "oldest_save_age_ms=":
+                                        break
+                                    client.send("")
+                                client.expect("Pos: standing >", timeout=30)
+                                critical_age = re.search(r"critical_commands [^\n]*oldest_age_ms=(\d+)", snapshot)
+                                assert critical_age and int(critical_age[1]) <= 1000, snapshot
+                                snapshots.append(snapshot)
+                                status = Path(f"/proc/{process.pid}/status").read_text()
+                                rss.append(int(re.search(r"VmRSS:\s+(\d+)", status)[1]))
+                            if enabled:
+                                snapshot, _ = health()
+                                assert "reduction_refused=0" in snapshot and "quota_error=0" in snapshot, snapshot
+                            usage = Path(f"/proc/{process.pid}/stat").read_text().split()
+                            cpu_seconds = (int(usage[13]) + int(usage[14])) / os.sysconf("SC_CLK_TCK")
+                            client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                            stop()
+                            native = {}
+                            for line in sample_path.read_text().splitlines():
+                                section, overflow, *values = line.split()
+                                assert overflow == "0" and (section == "fsync" or len(values) >= 200), line[:100]
+                                native[section] = {"count": len(values), "p99_us": p99(list(map(int, values))) if values else None}
+                            measurements.append({"pair": pair, "enabled": enabled, "client_count": 1,
+                                                 "save_count": len(save_us), "save_p99_us": p99(save_us),
+                                                 "command_count": len(command_us), "command_p99_us": p99(command_us),
+                                                 "native": native, "cpu_seconds": cpu_seconds, "rss_kib_max": max(rss)})
+                            (artifacts / (backend + "-performance.json")).write_text(json.dumps(measurements, indent=2))
+                            print(json.dumps(measurements[-1]), flush=True)
+                            (artifacts / f"{backend}-persistence-{pair}-{enabled}.txt").write_text("\n".join(snapshots))
+                    for pair in range(3):
+                        off = next(row for row in measurements if row["pair"] == pair and not row["enabled"])
+                        on = next(row for row in measurements if row["pair"] == pair and row["enabled"])
+                        for key in ("save_p99_us",):
+                            assert on[key] <= off[key] * 1.05, (pair, key, off[key], on[key])
+                        assert on["native"]["total_tick"]["p99_us"] <= off["native"]["total_tick"]["p99_us"] * 1.05, (pair, off, on)
+                        assert on["native"]["total_tick"]["p99_us"] <= 250000
+                        assert on["native"]["ne_events"]["p99_us"] <= 25000
+                    print("PASS three paired gameplay/save performance comparisons")
+                    return
+                boot(); client = reconnect()
+                client.send("vis 0"); client.expect("You are now visible")
+                until(lambda: any(row["event"] == "duris_session" for row in received), "session not captured")
+                companion = reconnect(companion_name, companion_account)
+                companion.send("wield mace"); companion.expect("You wield")
+                companion.send("kill raoul")
+                deadline = time.monotonic() + 45
+                while True:
+                    outcome, _ = companion.expect_any(("is dead! R.I.P.", "You stumble"),
+                                                       timeout=max(1, deadline - time.monotonic()))
+                    if outcome == "is dead! R.I.P.":
+                        break
+                    assert time.monotonic() < deadline, "NPC combat did not finish"
+                    companion.send("kill raoul")
+                print("PASS mortal combat", backend, flush=True)
+                client.send("advance " + companion_name + " 10")
+                companion.expect("You advance to level 10.")
+                companion.send("consent " + journey.CHARACTER)
+                companion.expect("consent")
+                client.send("group " + companion_name)
+                client.expect("is now a member of your group.")
+                client.send("wield mace"); client.expect("You wield")
+                client.send("load mobile 11"); client.expect("You have created")
+                client.send("kill raoul"); client.expect("is dead! R.I.P.", timeout=45)
+                client.send("givepet " + journey.CHARACTER + " 22800")
+                # setup_pet already adds its follower to the owner's group.
+                client.expect("starts following you.")
+                client.send("load mobile 11"); client.expect("You have created")
+                client.send("order followers kill raoul")
+                client.expect("is dead! R.I.P.", timeout=45)
+                print("PASS level/group/player/pet gameplay", backend, flush=True)
+                response["status"] = 503
+                prior_attempts = len(attempts)
+                companion.send("save"); companion.expect(f"Save complete for {companion_name}.")
+                companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
+                companion.close(); companion = None
+                until(lambda: len(attempts) > prior_attempts, "outage did not reach capture endpoint")
+                save()
+                outage_health, before_copyover = health()
+                assert "http=503" in outage_health, outage_health
+                response["status"] = 200
+                print("PASS save during capture outage", backend, flush=True)
+                client.enable_compression()
+                time.sleep(4.2)
+                process.send_signal(signal.SIGUSR1)
+                client.expect("Copyover FAILED", timeout=60)
+                client.send("look"); client.expect("The Regression Arena")
+                save()
+                copyover_state.parent.mkdir()
+                process.send_signal(signal.SIGUSR1)
+                client.expect("Copyover complete!", timeout=90)
+                client.send("look"); client.expect("The Regression Arena")
+                save()
+                client.close(); client = None
+                time.sleep(2.2)
+                client = reconnect(); save()
+                _, after_copyover = health()
+                assert after_copyover >= before_copyover > 0
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                time.sleep(2.2)
+                stop()
+                if backend == "mariadb":
+                    assert sql("SELECT COUNT(*) FROM telemetry_interval") == "0"
+                summaries = [row["properties"] for row in received if row["event"] == "duris_character_summary"]
+                sessions = [row["properties"] for row in received if row["event"] == "duris_session"]
+                assert summaries and sessions
+                main_id = sessions[0]["duris_character_id"]
+                main_sessions = [row for row in summaries + sessions if row["duris_character_id"] == main_id]
+                assert len({row["duris_session_id"] for row in main_sessions}) == 1, [
+                    (row.get("transition", "summary"), row["duris_session_id"]) for row in main_sessions]
+                assert len({row["uuid"] for row in received}) == len(received)
+                encoded = json.dumps(received).lower()
+                for private in (journey.CHARACTER, journey.ACCOUNT, companion_name, companion_account,
+                                journey.PASSWORD, "127.0.0.1", "@example.invalid"):
+                    assert private.lower() not in encoded, "private gameplay value reached capture"
+                assert any(row["event"] == "duris_level_change" for row in received)
+                encounter_rows = [row["properties"] for row in received if row["event"] == "duris_encounter_summary"]
+                pets = [row for row in encounter_rows if row.get("actor_kind") == "pet"]
+                assert pets and any(int(row["combat"]["damage_dealt"]) > 0 for row in pets)
+                assert all(row["duris_owner_character_id"] == main_id and row["participant_usec"] is None
+                           for row in pets)
+                assert any(row.get("actor_kind") == "player" for row in encounter_rows), encounter_rows
+                assert any(bucket["group_size"] >= 2 for row in summaries for bucket in row["time_allocations"])
+                assert len({bucket["level_band"] for row in summaries for bucket in row["time_allocations"]}) >= 2
+                assert any(int(row["xp"]["applied_xp"]) > 0 for row in summaries), summaries
+                assert any(int(row["xp"]["zero_applied"]) > 0 for row in summaries), summaries
+                for row in summaries:
+                    for name, total in row["xp"].items():
+                        assert int(total) == sum(int(bucket[name]) for bucket in row["xp_allocations"]) + int(row["unattributed_xp"][name])
+                    for name, total in row["time"].items():
+                        assert int(total) == sum(int(bucket[name]) for bucket in row["time_allocations"]) + int(row["unattributed_time"][name])
+                evidence = read_evidence(ledger)
+                assert evidence["producer_count"] >= 2
+                quota = evidence["quota"]
+                reserved = quota["normal_reserved"] + quota["health_reserved"]
+                assert sum(attempts) <= reserved <= 100, (attempts, quota)
+                totals = {name: sum(int(row["time"][name]) for row in summaries)
+                          for name in ("connected_usec", "active_usec", "idle_usec", "unknown_usec", "resident_usec", "linkdead_usec")}
+                assert totals["connected_usec"] == totals["active_usec"] + totals["idle_usec"] + totals["unknown_usec"]
+                assert totals["resident_usec"] == totals["connected_usec"] + totals["linkdead_usec"]
+                assert totals["idle_usec"] > 0 and totals["linkdead_usec"] > 0, totals
+                (artifacts / (backend + "-events.json")).write_text(json.dumps(received, indent=2))
+                print(json.dumps({"backend": backend, "events": len(received), "attempted_events": sum(attempts),
+                                  "quota_reserved": reserved, "time": totals}))
+                print("PASS native gameplay/save/reload/reconnect/failed-and-successful-copyover")
         except Exception:
-            # Server logs contain synthetic fixture data only; never print env or authentication inputs.
-            diagnostics = (runtime / "server.out").read_text(errors="replace") + "\n" + journey.runtime_logs(runtime)
-            evidence = journey.ROOT / "bin/tests/telemetry265-journey-failure.log"
-            evidence.parent.mkdir(parents=True, exist_ok=True)
-            evidence.write_text(diagnostics)
-            print(diagnostics[-16000:])
+            (artifacts / (backend + "-failed-events.json")).write_text(json.dumps(received, indent=2))
+            diagnostics = (runtime / "server.out").read_text(errors="replace") if (runtime / "server.out").exists() else ""
+            diagnostics += "\n" + "\n".join(transcripts[-2:])
+            for connected in (client, companion):
+                if connected:
+                    diagnostics += "\n" + bytes(connected.transcript[-6000:]).decode(errors="replace")
+            (artifacts / (backend + "-failure.log")).write_text(diagnostics + "\n" + journey.runtime_logs(runtime))
             raise
         finally:
             stop()
+            receiver.shutdown(); receiver.server_close(); receiver_thread.join(timeout=1)
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
+    parser.add_argument("--performance", action="store_true", help="Run three paired ordinary-save workloads")
+    args = parser.parse_args()
+    run(args.backend, args.performance)
