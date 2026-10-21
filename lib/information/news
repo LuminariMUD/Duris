@@ -1,11 +1,67 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 20, 2026&n
+&+WUpdated: October 21, 2026&n
 
-Welcome back! Recover your rightful artifacts and choose your next beginning.
+Welcome back! Review your Cleric auras and put your poisons to work.
 Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/21/26&n &+L-&n &+YAuras, antidotes, and an escape route&n
+&+W----------------------------------------------------------------------&n
+
+&+CClerics choose their protection&n
+&+Y-&n Zealots now receive &+C'innate aura_of_protection'&n. Healers receive
+  &+C'innate aura_of_spell_protection'&n. Holymen retain both protections.
+&+Y-&n Warding Faith is retired: Healers no longer have its shield, passive
+  refill, or refill from healing. Epic Warding Faith is no longer taught.
+  Wards granted by other effects still work.
+&+Y-&n Healers no longer provide or receive Improved Healing, including
+  another character's aura. Healing cast by a Healer also receives no
+  Improved Healing bonus from the recipient's aura. Other eligible
+  characters can still benefit from a Paladin's Improved Healing.
+  These changes replace the Healer ward and aura rules announced below.
+
+&+CWatch your back, watch your blade&n
+&+Y-&n Trained &+C'awareness'&n now helps below 75% proficiency and counts
+  as awareness against backstabs. Mountain dwarf and duergar attackers
+  no longer bypass that protection. Critical stabs and unconscious
+  targets keep their existing exceptions.
+&+Y-&n Weapon coatings now follow the same rules for melee hits,
+  backstabs, and thrown weapons. A coating is spent on delivery even
+  when the target resists or already has that poison. Successful
+  poisoning gives the victim a clear warning.
+&+Y-&n In player combat, poisoned weapons allow a paralysis save, adjusted
+  by the level difference. Player dragon, demon, elemental, and undead
+  forms resist these coatings; transformed players retain their owner's
+  defenses. Poisoned darts now use their coating's ordinary effect.
+&+Y-&n Weapon-delivered Weakness uses the attacker's level for its strength
+  loss: &+Y5-10&n below level 41, &+Y5-15&n at levels 41-50, and &+Y5-20&n
+  at level 51 or higher. Slow Poison caps the loss at &+Y8&n. Existing
+  Weakness effects and other poison sources retain their old potency.
+&+Y-&n Slowness poison can now be cured properly. Curing or losing a poison
+  also stops its old timer from interfering with a later poisoning.
+&+Y-&n Assassin recipes now require level &+Y36&n for Moveleak, &+Y41&n for
+  Slowness, and &+Y46&n for Heart Toxin and Neurotoxin. Neurotoxin also
+  requires &+Y80%&n Mix Poison skill. Use &+C'mixpoison'&n to inspect
+  recipes available to you; their ingredients are unchanged.
+
+&+CChoose your exit&n
+&+Y-&n Rogues trained in Control Flee can use &+C'flee <direction>'&n to
+  request one safe exit. Success follows your skill, up to &+Y95%&n at
+  100% proficiency. Losing control falls back to a random safe exit;
+  invalid or blocked requested exits are rejected before the attempt.
+&+Y-&n Flee messages now follow where you actually went, including an
+  unexpected diversion, instead of claiming the intended escape worked.
+
+&+CAt a glance&n
+&+Y-&n &+C'Who'&n now shows the peak simultaneous connections from the
+  previous completed server hour. This counts connections, including
+  login screens, rather than unique players. A fresh boot needs a full
+  hour before a peak is available; the current hour stays private.
+&+Y-&n Class and specialization help now uses consistent colors and layout.
+  Read &+C'help healer'&n, &+C'help zealot'&n, and your skill help for the
+  current rules.
 
 &+R10/20/26&n &+L-&n &+YOne artifact, its rightful owner&n
 &+W----------------------------------------------------------------------&n

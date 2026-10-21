@@ -732,8 +732,8 @@ void deliver_weapon_poison(P_char ch, P_char victim, P_obj weapon)
 		return;
 
 	// Player morphs retain their owner's PvP defenses and attacker classification.
-	P_char player_victim = IS_MORPH(victim) ? MORPH_ORIG(victim) : victim;
-	P_char player_attacker = IS_MORPH(ch) ? MORPH_ORIG(ch) : ch;
+	P_char player_victim = IS_MORPH(victim) ? victim->only.npc->orig_char : victim;
+	P_char player_attacker = IS_MORPH(ch) ? ch->only.npc->orig_char : ch;
 	if (IS_PC(player_victim) && (IS_PC(player_attacker) || IS_PC_PET(ch)))
 	{
 		if (IS_DRAGON(victim) || IS_DEMON(victim) || IS_ELEMENTAL(victim) ||
