@@ -1,4 +1,30 @@
-# Telemetry performance and degradation gate (#272)
+# Telemetry performance and degradation gates
+
+## Current PostHog release fixture (#59)
+
+Run `nice -n 10 python3 tests/async/run_telemetry_player_journey.py --backend mariadb --performance`
+after the task-specific native build. This uses a disposable socket-only database,
+synthetic world and loopback HTTPS; it never sources the host environment. The
+release fixture is one client, three alternating off/on pairs, 120 ordinary saves
+per run after warmup. It is not 200-player capacity certification.
+
+Raw pulse/event/command and process-fsync samples, save/command p99, CPU/RSS,
+persistence backlog and sender health are recorded under `bin/issue59/acceptance/`.
+Required limits are <=5% pulse and save p99 regression, pulse p99 <=250ms,
+event callback p99 <=25ms and critical oldest age <=1,000ms. The maximum whole
+event pass bounds every callback inside it; failure of that bound leaves the
+callback claim unresolved. Fsync samples include other game-thread and worker
+persistence calls and are an upper bound, not isolated journal cost. No production
+instrumentation is added. Normal capture/budget loss and sustained backlog must
+be absent. Production external I/O stays in the worker.
+
+Performance results and emitted-volume reconciliation remain pending. Existing
+component forecasts are not measurement or concurrent-player proof. Keep all
+current release criteria; the broader historical capacity profiles below are
+optional follow-up, not issue #59 closure conditions.
+
+## Historical offline gate (#272)
+
 
 This gate is a local, offline evidence package for the telemetry transport and
 the pure rollup/report stages. It proves bounded behavior under matched

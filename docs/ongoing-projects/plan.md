@@ -557,3 +557,14 @@ performance proof remain uncompleted. No production activation.
   empty as expected. Billing remains free, reported analytics usage 0/1,000,000.
   Cloud ingestion/reconciliation is still pending. Report links and operation
   steps are in REPORTS.md and CONFIG_CONTEXT.md. No extra report/UI scope.
+
+- Deadline fixture repair is committed/pushed to acceptance PR #262 as
+  `32b4772f8`; 18/18 native runtime HTTPS cases pass. Full MariaDB gameplay now
+  passes with 37 events / 43 charged attempts (`gameplay-tight-mariadb.log`).
+  The flat-file fixture reached a real ENOEXEC but interrupted its paced HTTP
+  recovery with copyover's lossy deadline. It now waits for the recovered logical
+  exit before copyover; requalification is running. No production-code change.
+- The five saved report definitions and minimum operation handoff are ready for
+  review on the dependent reports branch. They execute successfully; actual
+  synthetic cloud reconciliation and the paired performance gate remain pending.
+  No repeated base synchronization, new environment, or extra report framework.

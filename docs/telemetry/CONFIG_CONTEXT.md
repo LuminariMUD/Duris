@@ -266,3 +266,37 @@ unadmitted pending attempts; the shared key owner must handle reservation
 cancellation without reusing an allocated replay key for a different payload.
 An accepted FIFO drain may concern an older config: dependent capture uses the
 public current-snapshot accessor, never the input or result payload alone.
+
+
+## PostHog enable, disable and recovery (#59)
+
+Production activation is a separate owner-authorized operation. Prepare the
+settings in `.env.example` without enabling export: fixed US host, project
+678214, explicitly allocated sender/environment/season, reviewed effective-property
+catalog, and a dedicated stable 32-byte hex identity key. Generate that key once
+with `openssl rand -hex 32`, store it privately with owner-only access, and back it
+up privately; never reuse the capture token or regenerate it on routine restart.
+Use the existing property catalog procedure above rather than inventing versions.
+
+With the worker stopped, create its private 0700 ledger directory and initialize
+its exact allocation using the executable command documented in
+[OUTAGE_STORAGE.md](OUTAGE_STORAGE.md#quota-setup-restore-and-season-rollover).
+For production the agreed limits are 19,900 total, 19,800 normal and 100 health
+attempts per UTC day. Tagged tests use distinct environment IDs >=1000 and at
+most 100 attempts; all other fixture traffic uses loopback mocks.
+
+Set `TELEMETRY_BACKEND=posthog` and `TELEMETRY_ENABLED=TRUE` only for the authorized
+activation, then start a process with those settings. Editing `.env` does not
+update a running process; copyover can inherit its old environment. Verify
+`world telemetry` reports backend `posthog`, consumed records, matching scope,
+quota, and no refusal/storage errors; then verify scoped cloud query receipt.
+No telemetry SQL credentials or SQL writer fallback are required.
+
+Rollback sets `TELEMETRY_ENABLED=FALSE` and starts a process with that environment.
+Preserve the identity key, ledger, witness and archives. Do not refund attempts,
+reinitialize quota, or resume the obsolete SQL writer. After a backup restore,
+stop the worker and use `exhaust-day` with the original binding before restart;
+for a new reporting season use `rollover-season`. Both preserve recovery evidence
+and exhaust the current day. Missing/corrupt/mismatched state needs a consistent
+backup and documented recovery, never a fresh allowance. Check local health
+while cloud reports are unavailable.

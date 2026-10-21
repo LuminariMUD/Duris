@@ -1,4 +1,56 @@
-# Administrator telemetry reports (#269)
+# Telemetry reports
+
+## Current PostHog reports (#59)
+
+[Duris gameplay telemetry](https://us.posthog.com/project/678214/dashboard/2240639)
+contains the five saved tables below. Their exact HogQL definitions are committed
+alongside this guide. These are noncanonical report definitions; the project had
+no governed metric matching these contracts when checked.
+
+| View | Saved insight | Definition |
+| --- | --- | --- |
+| Character activity and returns | [13125342](https://us.posthog.com/project/678214/insights/fLQxaU4I) | [activity.sql](posthog/activity.sql) |
+| Captured time allocation | [13125343](https://us.posthog.com/project/678214/insights/YdiFsxh1) | [time.sql](posthog/time.sql) |
+| Observed XP and levels | [13125344](https://us.posthog.com/project/678214/insights/4I6vFJOo) | [xp.sql](posthog/xp.sql) |
+| Encounters and separate pet contributions | [13125345](https://us.posthog.com/project/678214/insights/g8EmHskc) | [encounters.sql](posthog/encounters.sql) |
+| Delivery health and coverage | [13125346](https://us.posthog.com/project/678214/insights/Q1uzfy0I) | [health.sql](posthog/health.sql) |
+
+All five queries execute in project 678214. Cloud fixture reconciliation is still
+pending; empty production results are expected while production export is disabled.
+The starter dashboard is retained. Views select schema 1, environment 1, season 1,
+empty test tag and a rolling 31-day event window. Change the explicit SQL scope
+and bucket predicates for another authorized scope or captured cohort. Each query
+deduplicates immutable `duris_event_id` before aggregation or array expansion.
+
+Activity measures opaque characters and logical sessions, not accounts or people.
+Returning means more than one logical entry inside the selected window; it is not
+standard person retention. Reconnects/copyovers do not count as new entries.
+Time and XP arrays expand independently. Decimal(38, 0) sums return strings to
+preserve exact integers above 2^53. Unknown occurrence times have no UTC-day
+allocation. Window selection uses the exported fragment's event timestamp; it
+does not reconstruct interval endpoints inside that fragment.
+
+Time rows marked `checkpoint_gap_do_not_add` are reconciliation evidence and must
+never be added to interval deltas. XP is observed gameplay, not proof of a durable
+save. Encounter run and actor rows are separate: do not sum run duration over actor
+rows or add pet damage to owner damage. Native terminal completeness and observed
+cloud actor counts are independent. Partial/unknown evidence stays visible.
+The 500-row tables expose `total_rows_before_limit` where aggregation could be
+truncated; narrow the SQL predicates rather than summing a truncated table.
+
+Health selects the latest cumulative snapshot for each producer; summing heartbeat
+counters double-counts them. Producer reservations are not the complete durable
+UTC-day quota. During cloud loss, use `world telemetry` and the local journal as
+authoritative failure evidence. HTTP acknowledgement alone proves no query-visible
+receipt.
+
+## Historical SQL administrator reports (#269)
+
+The remaining interface describes historical rollup outputs. The #59 runtime does
+not activate the SQL writer or schedule these rollups/reports. Keep historical
+consumers where still needed; do not start old telemetry rollup/report jobs for
+the PostHog path. Existing SQL gameplay boot-schema prerequisites remain.
+
 
 This document describes the repository-local report interface built on the
 frozen #268 rollup outputs. It is a read-only administrator/reporting path, not
