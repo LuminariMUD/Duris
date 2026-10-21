@@ -1,6 +1,15 @@
 # Issue #59: fastest useful PostHog delivery
 
-Status: **replanned on 2026-10-21 UTC; implementation incomplete; production disabled.**
+> **DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+>
+> Owner directive: finish only the agreed reduced delivery. Reuse existing code
+> and valid evidence. No optional features, refactors, test matrices, new test
+> frameworks, repeated branch syncing, or extra qualification stages. Fix only
+> defects that prevent the agreed outcome; run the smallest relevant checks.
+> Deferred work must never become a condition for closing issue #59.
+> Preserve the agreed correctness and completion requirements; cut extra work.
+
+Status: **resumed by the owner; implementation incomplete; production disabled.**
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
 Working branch: `issue-59-posthog-reports`, based on acceptance PR #262.
 Runtime PR #261 is the preceding dependency.
@@ -14,35 +23,31 @@ Disposable native tests are the accepted environment. This plan supersedes the
 previous implementation sequence and its extra completion gates. Issue #59
 closes when this reduced delivery meets the completion criteria below. Deferred
 work is outside #59's closure requirements and remains optional follow-up.
-Implementation is active. The worker HTTPS component is in [PR #260](https://github.com/LuminariMUD/Duris/pull/260); runtime
+Implementation is active within the agreed reduced scope. The worker HTTPS component is in [PR #260](https://github.com/LuminariMUD/Duris/pull/260); runtime
 integration is ready for review in [PR #261](https://github.com/LuminariMUD/Duris/pull/261).
 Gameplay/report/performance acceptance remains incomplete. Production export remains disabled.
 
 ## Delivery target and estimate
 
-**Remaining estimate after runtime integration: 3–5 focused agent hours; target
-4 hours.** Both builds and the core real-server lifecycle journeys now pass.
-The remaining work is domain/failure gameplay acceptance, measured cost/volume,
-the bounded cloud test, saved reports and the handoff. A failed 5% performance
-comparison is the main uncertainty; this is not a guaranteed upper bound.
-Production deployment scheduling and reviewer availability are separate.
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
 
-| Remaining work | Focused time | Concrete exit |
-| --- | --- | --- |
-| Runtime/transport, copyover, quota and local health integration | Complete; #260/#261 ready for review | Existing worker sends reduced events in both builds; native lifecycle/storage fault cases pass. |
-| Native gameplay journeys and focused cost/volume evidence | 1.5–2.5 h | Both backends exercise the real capture path; measured fixture meets the retained performance and volume gates. |
-| Four report views, health query and cloud smoke | 0.75–1.5 h | Synthetic totals reconcile in PostHog, including duplicate IDs and incomplete evidence. |
-| Necessary docs, final diff review and handoff | 0.5–1 h | Reproducible queries, exact test commands and enable/disable/recovery steps are recorded. |
+**The repeated 3–5 hour remaining estimate is withdrawn. No replacement ETA
+has been validated.** Do not reset the estimate after time has elapsed or present
+historical passing results as proof for a changed revision. The owner has resumed implementation within the agreed scope.
 
-The remaining rows total 2.75–5 hours, rounded to 3–5. The original reduced
-estimate was 5–8 hours; the earlier 16–24 hour estimate
-included SQL boot-schema decoupling and broader qualification. The sender's
-known fixture failure and native database uncertainty have now been resolved by
-checks recorded below. Reuse those results unless subsequent changes affect them.
-There is no Docker setup, additional machine, new database installation, fixed
-soak period or CI wait on this delivery path. Required code review still applies.
+The remaining delivery is the existing gameplay/failure acceptance, the agreed
+performance/volume evidence, four report views plus health, one bounded cloud
+test, and the necessary handoff. Reuse passing component evidence. Investigate
+only the current failed assertions before rerunning affected checks. Production
+deployment scheduling and reviewer availability are separate.
+
+No Docker setup, additional machine, database installation, fixed soak period,
+CI wait, or extra qualification stage belongs on this delivery path. Required
+code review still applies.
 
 ### What “at least 75%” means here
+
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
 
 Retain every analytics domain named in the issue and the controls that make its
 data useful and affordable. The following is an explicit planning value model,
@@ -64,6 +69,9 @@ SQL gameplay and narrower capacity evidence. Core correctness, privacy and
 quota limits are acceptance conditions, not optional points to trade away.
 
 ## Scope decisions
+
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+The reduced scope below is the delivery boundary. Deferred work stays deferred.
 
 | Keep now | Simplify now | Defer beyond this delivery |
 | --- | --- | --- |
@@ -98,6 +106,9 @@ new-season exhaustion still publishes normally. Native, CLI and publication-faul
 regressions verify this follow-up review repair.
 
 ## Current state and quick checks
+
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Reuse valid evidence; repeat checks only for relevant changes or actual failures.
 
 The implemented pieces are on the existing stack. Preserve the current worktree;
 do not restart these components or reimplement their contracts.
@@ -147,6 +158,9 @@ results to claim real gameplay delivery, production performance or cloud totals.
 
 ## Contracts to reuse
 
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Reuse these contracts; do not redesign or expand them for this delivery.
+
 [CONTRACT.md](../telemetry/CONTRACT.md) is the implementation reference for event
 schemas, identity, reducer bounds, delivery and quota. Keep its completed behavior;
 update only actual integration changes. The old plan's duplicated design prose
@@ -189,7 +203,13 @@ is replaced by that reference and the following integration invariants.
 
 ## Implementation sequence
 
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+On an authorized resume, finish the existing sequence without adding stages.
+
 ### 1. Connect the existing worker and finish lifecycle behavior
+
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Preserve implemented behavior; change it only for a demonstrated delivery defect.
 
 Change `telemetry_runtime.*`, `telemetry_transport.*`, their private types,
 `telemetry_config.*`, `telemetry_health.*`, `src/Makefile` and the copyover call
@@ -232,6 +252,9 @@ unchanged for this delivery. Do not add a SQL fallback or permanent dual writing
 
 ### 2. Prove the real path with disposable native fixtures
 
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Use existing fixtures and the agreed checks. Do not add a broader test matrix.
+
 Adapt `tests/async/run_telemetry_player_journey.py` once for both backends and
 fake HTTPS, reusing existing combat, flat-file and copyover clients. Use an
 allowlisted environment, `ENVIRONMENT=local`, synthetic accounts/characters,
@@ -270,6 +293,9 @@ workload; broad 200-player capacity certification is deferred.
 
 ### 3. Publish the minimum useful reports and verify cloud ingestion
 
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Deliver the specified saved views; no presentation polish or additional reports.
+
 Use existing project **678214** and create one **Duris gameplay telemetry**
 dashboard. Keep the starter dashboard. Deliver four saved views plus the saved
 health/coverage query; a clear table or trend is enough. No custom UI or extra
@@ -301,6 +327,9 @@ cloud load campaign. Record saved query definitions/IDs in `REPORTS.md`.
 
 ### 4. Finish the handoff and stop at this milestone
 
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Document what is needed to operate this delivery, publish it, and stop.
+
 Update `.env.example`, `REPORTS.md`, and the affected sections of `CONTRACT.md`,
 `TRANSPORT.md`, `OUTAGE_STORAGE.md`, `CONFIG_CONTEXT.md` and
 `PERFORMANCE_GATE.md`. Mark superseded SQL guidance as historical with short
@@ -321,6 +350,9 @@ each test or document. Run required local checks and review the actual diff; do
 not wait for hosted CI. Do not drop other required review checks.
 
 ## Verification and completion
+
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Prove the five existing conditions below. Add no new completion gates.
 
 The initial quick checks are evidence about components only. For integration,
 run directly affected tests after their contracts change:
@@ -370,6 +402,12 @@ activation is separate and is not a condition for closing this implementation
 ticket.
 
 ## Implementation handoff — 2026-10-21 UTC
+
+**DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
+Implementation has resumed. Use the current revision and
+existing evidence; do not restart completed work or repeatedly chase moving PR
+bases. The older progress notes below are historical, not a fresh completion
+claim or a current ETA.
 
 Completed and pushed:
 
@@ -491,3 +529,31 @@ activation is separate. The user's PR 252–255 question was only a question:
   undisturbed. Use normal forward merges/pushes; no force push or history
   rewrite. The current aligned adapter regression under ASan/UBSan passes;
   full builds and requalification are still in progress.
+
+Current continuation (owner resumed): freeze revision `2be333750`; do not chase
+moving PR bases. Both aligned full builds and 57 reducer / 29 HTTPS component
+cases per backend pass. Latest real-game requalification failed captured group
+attribution and pre-exec delivery assertions; the native deadline test also
+failed intermittently before witnessing an active request. Investigating these
+existing failures only. The fixture now uses the native 60-second interval
+instead of an accelerated one-second cadence against its 64-segment/minute cap,
+waits for failed-exec sender recovery before successful replacement, and witnesses
+the held HTTP request before testing cancellation. Assertions remain intact.
+Reports are five SQL drafts under `docs/telemetry/posthog/`; cloud capture and
+performance proof remain uncompleted. No production activation.
+
+- Native runtime requalification now passes all 18 HTTPS cases under UBSan:
+  `runtime-tight-posthog.log`. The cancellation fixture waits for an independently
+  witnessed active request before starting its bounded flush; no assertion was
+  removed. Production code is unchanged.
+- The slower native capture cadence restores captured group_size=2 in both
+  gameplay captures. The original missing-directory fault stopped before telemetry
+  flush, so it could not prove failed-exec recovery. The runner now promotes a
+  synthetic invalid executable (ENOEXEC), restores its staged binary and removes
+  only its disposable handoff image before the subsequent successful exec.
+  Full journeys are rerunning; do not claim a pass yet.
+- Created dashboard 2240639 and five saved insights 13125342–13125346. All five
+  committed SQL definitions execute against project 678214; production views are
+  empty as expected. Billing remains free, reported analytics usage 0/1,000,000.
+  Cloud ingestion/reconciliation is still pending. Report links and operation
+  steps are in REPORTS.md and CONFIG_CONTEXT.md. No extra report/UI scope.

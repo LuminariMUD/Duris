@@ -85,6 +85,17 @@ int main(int argc, char **argv)
 			if (scenario == "storage")
 				std::filesystem::create_directory(std::filesystem::path(directory) /
 								  "outages.pending");
+			if (scenario == "deadline")
+			{
+				// Start the flush only after the receiver holds an active request.
+				const auto held = std::filesystem::path(directory) / "request-held";
+				const auto until =
+					std::chrono::steady_clock::now() + std::chrono::seconds(3);
+				while (!std::filesystem::exists(held) &&
+				       std::chrono::steady_clock::now() < until)
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				assert(std::filesystem::exists(held));
+			}
 			assert(telemetry_runtime_now(&now, &utc));
 			const auto start = std::chrono::steady_clock::now();
 			const auto flushed = telemetry_runtime_flush_for_copyover(now + 250'000U);

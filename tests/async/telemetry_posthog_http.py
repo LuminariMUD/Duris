@@ -228,6 +228,7 @@ def runtime_tests(binary: Path, root: Path) -> None:
                 value = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 received.extend(value["batch"])
                 if case == "deadline" and len(received) == len(value["batch"]):
+                    (journal / "request-held").touch()
                     time.sleep(0.6)
                 self.send_response(200)
                 self.send_header("Content-Length", "2")
