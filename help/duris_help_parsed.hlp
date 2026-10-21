@@ -894,8 +894,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, fishing, kick, lore&n
-    &+cmix, mount, parry, retreat, salvage, throwpotion&n
+&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, fishing, kick,&n
+    &+clore, mix, mount, parry, retreat, salvage, throwpotion&n
 &+b11th Level: &+cdouble attack&n
 &+b51st Level: &+cremix&n
 ==Spells==
@@ -1209,9 +1209,9 @@ The following is a list of all the skills and spells available to the Anti-Palad
  &+caura of battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve, climb&n
-    &+cdouble attack, fishing, kick, meditate, mount, parry, quick chant, retreat&n
-    &+criposte, salvage, swim, switch opponents, unarmed damage&n
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
+    &+cclimb, double attack, fishing, kick, meditate, mount, parry, quick chant,&n
+    &+cretreat, riposte, salvage, swim, switch opponents, unarmed damage&n
 &+b10th Level: &+cclerical spell knowledge, mounted combat, sorcerous spell knowledge&n
 &+b20th Level: &+cguard&n
 &+b31st Level: &+crescue&n
@@ -2064,8 +2064,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, clerical spell knowledge&n
-    &+cclimb, double attack, fishing, hitall, kick, meditate, parry, retreat&n
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, clerical spell knowledge,&n
+    &+cclimb, double attack, fishing, hitall, kick, meditate, parry, retreat,&n
     &+criposte, salvage, swim, unarmed damage&n
 &+b11th Level: &+cflank, holy smite&n
 &+b21st Level: &+cgaze&n
@@ -2411,9 +2411,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h piercing, 1h slashing, awareness, backstab, bandage, carve, climb&n
-    &+cconcentration, double attack, fishing, hide, kick, meditate, mount, parry&n
-    &+cquick chant, retreat, salvage, scribe, shield block, sneak, swim&n
+&+b1st Level: &+c1h piercing, 1h slashing, awareness, backstab, bandage, carve,&n
+    &+cclimb, concentration, double attack, fishing, hide, kick, meditate, mount,&n
+    &+cparry, quick chant, retreat, salvage, scribe, shield block, sneak, swim,&n
     &+cunarmed damage&n
 &+b10th Level: &+cappraise, lore, sorcerous spell knowledge&n
 &+b11th Level: &+ctaunt&n
@@ -2775,8 +2775,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 2h bludgeon, bandage, berserk, carve, climb&n
-    &+cfishing, kick, mount, parry, retreat, salvage, unarmed damage&n
+&+b1st Level: &+c1h bludgeon, 1h flaying, 2h bludgeon, bandage, berserk, carve,&n
+    &+cclimb, fishing, kick, mount, parry, retreat, salvage, unarmed damage&n
 &+b6th Level: &+cblindfighting, rage, riposte&n
 &+b11th Level: &+cdouble attack, dual wield, hitall, taunt&n
 &+b26th Level: &+cwar cry&n
@@ -3319,7 +3319,7 @@ to parry: the attacker's value in the defender's parry check is increased by
 conditions still apply.
 ==Skill changes==
 &+b1st Level: &+cawareness (cap 80%), retreat (cap 100%)&n
-&+b30th Level: &+cdual wield (cap 100%), legsweep (cap 100%)&n
+&+b30th Level: &+cdual wield (cap 100%), legsweep (cap 100%),&n
     &+cswitch opponents (cap 100%)&n
 &+b36th Level: &+cquick step (cap 100%)&n
 &+b41st Level: &+cevade (cap 25%), sneak (cap 60%), triple attack (cap 90%)&n
@@ -4362,26 +4362,26 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+cgod call&n
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, bandage, carve, clerical spell knowledge, climb&n
-    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+&+b1st Level: &+c1h bludgeon, bandage, carve, clerical spell knowledge, climb,&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, shield block, swim&n
 &+b40th Level: &+cage corpse&n
 ==Spells==
-&+b1st Circle: &+carmor, bless, cause light, cure light, detect evil, detect good&n
+&+b1st Circle: &+carmor, bless, cause light, cure light, detect evil, detect good,&n
     &+cdetect magic, turn undead&n
-&+b2nd Circle: &+cblindness, cause serious, cure serious, preserve&n
+&+b2nd Circle: &+cblindness, cause serious, cure serious, preserve,&n
     &+cprotection from cold, protection from fire, slow poison, word of command&n
-&+b3rd Circle: &+ccause critical, cure blind, cure critic, dispel evil, dispel good&n
+&+b3rd Circle: &+ccause critical, cure blind, cure critic, dispel evil, dispel good,&n
     &+cearthquake, remove poison, sense life&n
-&+b4th Circle: &+ccure disease, invigorate, protection from acid&n
-    &+cprotection from evil, protection from gas, protection from good&n
+&+b4th Circle: &+ccure disease, invigorate, protection from acid,&n
+    &+cprotection from evil, protection from gas, protection from good,&n
     &+cprotection from lightning, remove curse, self comprehension, summon&n
 &+b5th Circle: &+cdestroy undead, heal, soulshield, vitality&n
-&+b6th Circle: &+ccontinual light, curse, darkness, fear, flame strike, harm&n
+&+b6th Circle: &+ccontinual light, curse, darkness, fear, flame strike, harm,&n
     &+cmass preserve, negative energy barrier&n
 &+b7th Circle: &+cfull heal, lesser resurrect, water breathing&n
 &+b8th Circle: &+cdispel magic, mass heal, miracle&n
-&+b9th Circle: &+choly word, plane shift, resurrect, silence, unholy word&n
+&+b9th Circle: &+choly word, plane shift, resurrect, silence, unholy word,&n
     &+cword of recall&n
 &+b10th Circle: &+caccelerated healing, full harm, taint, true seeing&n
 &+b11th Circle: &+cdivine warding, freedom of movement, group recall&n
@@ -4823,27 +4823,27 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
-    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, scribe, sorcerous spell knowledge, swim&n
 ==Spells==
 &+b1st Circle: &+cdetect magic, magic missile, minor creation&n
 &+b2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
-&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp&n
+&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp,&n
     &+cstrength&n
-&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt&n
+&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt,&n
     &+cray of enfeeblement, reveal true name, wall of force&n
-&+b5th Circle: &+ccoldshield, conjure elemental, fireshield, identify, sense follower&n
-    &+cslowness, wall of stone&n
-&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability, stone skin&n
-    &+cteleport, wall of iron&n
-&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste&n
+&+b5th Circle: &+ccoldshield, conjure elemental, fireshield, identify,&n
+    &+csense follower, slowness, wall of stone&n
+&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability,&n
+    &+cstone skin, teleport, wall of iron&n
+&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste,&n
     &+cice storm, stornogs metamagic shroud, wall of flames, wall of ice, web&n
-&+b8th Circle: &+cdetect invisibility, disintegrate, globe of invulnerability&n
+&+b8th Circle: &+cdetect invisibility, disintegrate, globe of invulnerability,&n
     &+cinvisibility, prismatic spray&n
 &+b9th Circle: &+cfly, gate, relocate&n
 &+b10th Circle: &+cfarsee, group stone skin, stornogs shimmering starshell&n
-&+b11th Circle: &+cconjure greater elemental, group globe of invulnerability&n
+&+b11th Circle: &+cconjure greater elemental, group globe of invulnerability,&n
     &+cprismatic cube, stornogs spheres&n
 &+b12th Circle: &+cgroup stornogs spheres&n
 ==See also==
@@ -6723,8 +6723,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, climb, double attack&n
-    &+cfishing, hitall, kick, mount, parry, retreat, riposte, salvage, swim&n
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, climb, double attack,&n
+    &+cfishing, hitall, kick, mount, parry, retreat, riposte, salvage, swim,&n
     &+cunarmed damage&n
 &+b11th Level: &+cbattle senses, flank&n
 &+b21st Level: &+ccall of the grave, gaze&n
@@ -6915,9 +6915,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h slashing, bandage, carve, clerical spell knowledge&n
-    &+cclimb, concentration, double attack, fishing, kick, mount, retreat, salvage&n
-    &+cswim&n
+&+b1st Level: &+c1h bludgeon, 1h slashing, bandage, carve, clerical spell knowledge,&n
+    &+cclimb, concentration, double attack, fishing, kick, mount, retreat,&n
+    &+csalvage, swim&n
 ==Spells==
 &+b1st Circle: &+canimal friendship, barkskin, fortitude, pulchritude&n
 &+b2nd Circle: &+caid, disease, sticks to snakes&n
@@ -8297,8 +8297,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+cfly&n
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve&n
-    &+cclerical spell knowledge, climb, concentration, double attack, fishing&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve,&n
+    &+cclerical spell knowledge, climb, concentration, double attack, fishing,&n
     &+ckick, meditate, mount, quick chant, retreat, salvage, shield block, swim&n
 ==Spells==
 &+b1st Circle: &+cfaerie fire, ice missile, vapor armor&n
@@ -11369,7 +11369,7 @@ These permissions apply to an existing character; they do not enable a forbidden
 ==Class mechanics==
 Guardians can guard two people at once. The checked-in multi-guard limit is two; server properties can change it. From level 46, rescue <character> all attempts to take that character's attackers and applies six seconds of lag after a successful rescue. Guardian's Bulwark is granted at level 41 and reduces incoming damage while a shield is worn; its checked-in reduction factor is 0.850.
 ==Skill changes==
-&+b30th Level: &+cfollow-up riposte (cap 100%), guard (cap 100%)&n
+&+b30th Level: &+cfollow-up riposte (cap 100%), guard (cap 100%),&n
     &+cshield punch (cap 100%), taunt (cap 90%)&n
 &+b41st Level: &+cdreadnaught (cap 100%)&n
 &+b46th Level: &+ctriple attack (cap 100%)&n
@@ -12691,8 +12691,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
-    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, scribe&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, scribe,&n
     &+csorcerous spell knowledge, swim&n
 ==Spells==
 &+b1st Circle: &+cdetect magic, magic missile, minor creation, phantom armor&n
@@ -14764,9 +14764,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+centrapment&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon&n
-    &+c2h flaying, 2h slashing, backstab, bandage, carve, climb, double attack&n
-    &+cdual wield, fishing, headbutt, hide, kick, mount, parry, retreat, riposte&n
+&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
+    &+c2h flaying, 2h slashing, backstab, bandage, carve, climb, double attack,&n
+    &+cdual wield, fishing, headbutt, hide, kick, mount, parry, retreat, riposte,&n
     &+csalvage, shield block, swim, track, unarmed damage&n
 &+b10th Level: &+crescue&n
 &+b20th Level: &+cappraise, tackle&n
@@ -15243,9 +15243,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+ccalming&n
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+cawareness, bandage, blindfighting, calm, chant, climb, diamond soul&n
-    &+cdragon punch, feign death, fishing, heroism, kick, martial arts, mount&n
-    &+cretreat, roundkick, safe fall, salvage, springleap, swim, switch opponents&n
+&+b1st Level: &+cawareness, bandage, blindfighting, calm, chant, climb, diamond soul,&n
+    &+cdragon punch, feign death, fishing, heroism, kick, martial arts, mount,&n
+    &+cretreat, roundkick, safe fall, salvage, springleap, swim, switch opponents,&n
     &+cunarmed damage&n
 &+b10th Level: &+ccombination attack, quivering palm&n
 &+b15th Level: &+cbuddha palm&n
@@ -15876,27 +15876,27 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h piercing, carve, climb, concentration, feign death, fishing, kick&n
-    &+cmeditate, mount, quick chant, retreat, salvage, scribe&n
+&+b1st Level: &+c1h piercing, carve, climb, concentration, feign death, fishing,&n
+    &+ckick, meditate, mount, quick chant, retreat, salvage, scribe,&n
     &+csorcerous spell knowledge, swim&n
 &+b20th Level: &+cage corpse&n
 ==Spells==
-&+b1st Circle: &+cdetect magic, minor creation, preserve, protection from undead&n
+&+b1st Circle: &+cdetect magic, minor creation, preserve, protection from undead,&n
     &+cslashing darkness&n
-&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep&n
+&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep,&n
     &+cvampiric touch&n
 &+b3rd Circle: &+canimate dead, dispel magic, embalm, sense follower&n
 &+b4th Circle: &+clife leech, rejuvenate minor, strength, wither&n
-&+b5th Circle: &+ccoldshield, concealment, feeblemind, fireshield, heal undead&n
+&+b5th Circle: &+ccoldshield, concealment, feeblemind, fireshield, heal undead,&n
     &+clevitate, raise spectre, teleport&n
-&+b6th Circle: &+ccone of cold, enervation, minor globe of invulnerability&n
+&+b6th Circle: &+ccone of cold, enervation, minor globe of invulnerability,&n
     &+crejuvenate major, vitalize undead&n
 &+b7th Circle: &+cknock, protect undead, raise wraith, reveal true name&n
-&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility&n
+&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility,&n
     &+cnegative concussion blast&n
-&+b9th Circle: &+cage, dimension door, energy drain, globe of darkness, raise vampire&n
-    &+cundeath to death&n
-&+b10th Circle: &+cblackmantle, cloak of fear, compact corpse, fly, mass embalm&n
+&+b9th Circle: &+cage, dimension door, energy drain, globe of darkness,&n
+    &+craise vampire, undeath to death&n
+&+b10th Circle: &+cblackmantle, cloak of fear, compact corpse, fly, mass embalm,&n
     &+craise lich, vampiric trance&n
 &+b11th Circle: &+ccorpseform, create dracolich, power word kill, summon ghasts&n
 &+b12th Circle: &+ccreate greater dracolich&n
@@ -16644,9 +16644,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve, climb&n
-    &+cdouble attack, fishing, kick, meditate, mount, parry, quick chant, rescue&n
-    &+cretreat, riposte, salvage, swim, unarmed damage&n
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
+    &+cclimb, double attack, fishing, kick, meditate, mount, parry, quick chant,&n
+    &+crescue, retreat, riposte, salvage, swim, unarmed damage&n
 &+b10th Level: &+cclerical spell knowledge, mounted combat&n
 &+b20th Level: &+cguard&n
 &+b36th Level: &+ccleave&n
@@ -17936,13 +17936,13 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cconcentration, fishing, kick, meditate, mount, retreat, salvage, swim&n
 &+b21st Level: &+c1h slashing&n
 &+b36th Level: &+cunarmed damage&n
 ==Spells==
 &+b1st Circle: &+cadrenaline control, ego whip, excogitate&n
-&+b2nd Circle: &+cballistic attack, enhance agility, enhance constitution&n
+&+b2nd Circle: &+cballistic attack, enhance agility, enhance constitution,&n
     &+cenhance dexterity, enhance strength&n
 &+b3rd Circle: &+caura sight, lend health, molecular agitation&n
 &+b4th Circle: &+cego blast, energy containment, flesh armor&n
@@ -18699,9 +18699,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+cdual wielding master&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h piercing, 1h slashing, awareness, bandage, blindfighting, carve&n
-    &+cclimb, double attack, dual wield, fishing, kick, meditate, mount, parry&n
-    &+cquick chant, ranged weapons, retreat, riposte, salvage, springleap&n
+&+b1st Level: &+c1h piercing, 1h slashing, awareness, bandage, blindfighting, carve,&n
+    &+cclimb, double attack, dual wield, fishing, kick, meditate, mount, parry,&n
+    &+cquick chant, ranged weapons, retreat, riposte, salvage, springleap,&n
     &+csurprise, swim, switch opponents, track, unarmed damage&n
 &+b10th Level: &+cclerical spell knowledge, rescue, sorcerous spell knowledge&n
 &+b16th Level: &+cblade barrage&n
@@ -18926,8 +18926,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, bandage, carve&n
-    &+cclimb, double attack, dual wield, fishing, kick, mount, retreat, salvage&n
+&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, bandage, carve,&n
+    &+cclimb, double attack, dual wield, fishing, kick, mount, retreat, salvage,&n
     &+cscribe, switch opponents, track&n
 &+b10th Level: &+csorcerous spell knowledge&n
 &+b11th Level: &+cblindfighting, quick chant&n
@@ -19616,9 +19616,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h piercing, awareness, backstab, bandage, blindfighting, carve&n
-    &+ccircle, climb, double attack, dual wield, fishing, hide, kick, mount&n
-    &+cpick lock, ranged weapons, retreat, safe fall, salvage, sneak, swim&n
+&+b1st Level: &+c1h piercing, awareness, backstab, bandage, blindfighting, carve,&n
+    &+ccircle, climb, double attack, dual wield, fishing, hide, kick, mount,&n
+    &+cpick lock, ranged weapons, retreat, safe fall, salvage, sneak, swim,&n
     &+cswitch opponents, track, unarmed damage&n
 &+b10th Level: &+cappraise&n
 &+b11th Level: &+ctaunt&n
@@ -19954,7 +19954,7 @@ Scoundrel is a Bard specialization. Selection requires level 30, an eligible rac
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+chide (cap 90%)&n
-&+b30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%)&n
+&+b30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
     &+cdouble attack (cap 95%), dual wield (cap 70%), riff (cap 100%)&n
 &+b51st Level: &+cdisguise (cap 55%), trip (cap 90%)&n
 ==Spell changes==
@@ -20435,22 +20435,22 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, concentration&n
-    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage&n
+&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, concentration,&n
+    &+cfishing, kick, meditate, mount, quick chant, retreat, salvage,&n
     &+cshaman spell knowledge, swim&n
 ==Spells==
 &+b1st Circle: &+cice missile, spirit armor, transfer wellness, wolfspeed&n
 &+b2nd Circle: &+cflameburst, lesser mending, reveal spirit essence&n
-&+b3rd Circle: &+ccold ward, fire ward, molevision, purify spirit, pythonsting&n
+&+b3rd Circle: &+ccold ward, fire ward, molevision, purify spirit, pythonsting,&n
     &+cscalding blast, snailspeed&n
-&+b4th Circle: &+chawkvision, mending, mousestrength, pantherspeed, scorching touch&n
+&+b4th Circle: &+chawkvision, mending, mousestrength, pantherspeed, scorching touch,&n
     &+csoul disturbance, summon beast&n
 &+b5th Circle: &+cbearstrength, malison, molten spray, sense spirit, shrewtameness&n
-&+b6th Circle: &+cearthen grasp, greater mending, lionrage, spirit anguish&n
+&+b6th Circle: &+cearthen grasp, greater mending, lionrage, spirit anguish,&n
     &+cspirit sight, wellness&n
-&+b7th Circle: &+celephantstrength, greater soul disturbance, ravenflight&n
+&+b7th Circle: &+celephantstrength, greater soul disturbance, ravenflight,&n
     &+cspirit ward&n
-&+b8th Circle: &+ccorrosive blast, greater pythonsting, reveal true form&n
+&+b8th Circle: &+ccorrosive blast, greater pythonsting, reveal true form,&n
     &+cscathing wind, spirit jump&n
 &+b9th Circle: &+carieks shattering iceball, greater ravenflight, greater spirit ward&n
 &+b10th Circle: &+cearthen rain, etherportal, gaseous cloud&n
@@ -22386,22 +22386,22 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
-    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, scribe, sorcerous spell knowledge, swim&n
 ==Spells==
 &+b1st Circle: &+cdetect magic, magic missile, minor creation&n
 &+b2nd Circle: &+cburning hands, chill touch, sleep, strength&n
 &+b3rd Circle: &+cacid blast, agility, concealment, shocking grasp&n
-&+b4th Circle: &+cdispel magic, farsee, infravision, levitate, lightning bolt&n
+&+b4th Circle: &+cdispel magic, farsee, infravision, levitate, lightning bolt,&n
     &+cminor paralysis, ray of enfeeblement, wizard eye&n
-&+b5th Circle: &+ccoldshield, cone of cold, dimension door&n
+&+b5th Circle: &+ccoldshield, cone of cold, dimension door,&n
     &+cminor globe of invulnerability, slowness&n
 &+b6th Circle: &+ccolor spray, feeblemind, fireball, fireshield, ice storm, teleport&n
-&+b7th Circle: &+cbigbys clenched fist, detect invisibility, haste, invisibility&n
+&+b7th Circle: &+cbigbys clenched fist, detect invisibility, haste, invisibility,&n
     &+cpower word blind, power word stun, reveal true name&n
 &+b8th Circle: &+cdispel invisible, fly, immolate, power word kill, shadow shield&n
-&+b9th Circle: &+celectrical execution, incendiary cloud, mass invisibility&n
+&+b9th Circle: &+celectrical execution, incendiary cloud, mass invisibility,&n
     &+cprismatic ray, relocate&n
 &+b10th Circle: &+cbigbys crushing hand, chain lightning, meteorswarm&n
 &+b11th Circle: &+cenlarge, reduce, solbeeps missile barrage&n
@@ -23739,8 +23739,8 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+cbattle frenzy&n (obtained at level &+c16&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h slashing, bandage, carve, climb, double attack, dragon breath&n
-    &+cdragon roar, dragon strike, fishing, kick, mount, mounted combat, parry&n
+&+b1st Level: &+c1h slashing, bandage, carve, climb, double attack, dragon breath,&n
+    &+cdragon roar, dragon strike, fishing, kick, mount, mounted combat, parry,&n
     &+cquick chant, retreat, riposte, salvage, swim, unarmed damage&n
 &+b10th Level: &+cappraise, shaman spell knowledge&n
 &+b15th Level: &+clore&n
@@ -23803,22 +23803,22 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
-    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+    &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, scribe, sorcerous spell knowledge, swim&n
 ==Spells==
 &+b1st Circle: &+cdetect magic, magic missile, minor creation&n
 &+b2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
-&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp&n
+&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp,&n
     &+cstrength&n
-&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt&n
+&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt,&n
     &+cray of enfeeblement, reveal true name, wall of force&n
 &+b5th Circle: &+ccoldshield, fireshield, identify, sense follower, slowness&n
-&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability, stone skin&n
-    &+cteleport&n
-&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste&n
+&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability,&n
+    &+cstone skin, teleport&n
+&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste,&n
     &+cice storm, wall of flames, wall of ice, web&n
-&+b8th Circle: &+cdetect invisibility, globe of invulnerability, invisibility&n
+&+b8th Circle: &+cdetect invisibility, globe of invulnerability, invisibility,&n
     &+cprismatic spray&n
 &+b9th Circle: &+cfly, gate, prismatic ray, relocate&n
 &+b10th Circle: &+cfarsee, group stone skin&n
@@ -23869,26 +23869,26 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+ccarve, climb, feign death, fishing, kick, meditate, mount&n
+&+b1st Level: &+ccarve, climb, feign death, fishing, kick, meditate, mount,&n
     &+cquick chant, retreat, scribe, sorcerous spell knowledge, swim&n
 &+b20th Level: &+cage corpse&n
 ==Spells==
-&+b1st Circle: &+cdetect magic, life bolt, minor creation, preserve&n
+&+b1st Circle: &+cdetect magic, life bolt, minor creation, preserve,&n
     &+cprotection from undead&n
-&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep&n
+&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep,&n
     &+cvampiric touch&n
 &+b3rd Circle: &+ccall archon, dispel magic, embalm, sense follower&n
 &+b4th Circle: &+crejuvenate minor, strength, wither&n
-&+b5th Circle: &+ccall asura, coldshield, concealment, feeblemind, fireshield&n
+&+b5th Circle: &+ccall asura, coldshield, concealment, feeblemind, fireshield,&n
     &+clevitate, mend soul, teleport&n
-&+b6th Circle: &+ccone of cold, minor globe of invulnerability, rejuvenate major&n
+&+b6th Circle: &+ccone of cold, minor globe of invulnerability, rejuvenate major,&n
     &+crestore spirit, vitalize soul&n
 &+b7th Circle: &+ccall bralani, holy aura, knock, protect soul, reveal true name&n
-&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility&n
+&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility,&n
     &+cnegative concussion blast&n
-&+b9th Circle: &+cage, call knight, dimension door, energy drain, holy light&n
+&+b9th Circle: &+cage, call knight, dimension door, energy drain, holy light,&n
     &+cundeath to death, voice of creation&n
-&+b10th Circle: &+cangelic countenance, blackmantle, call liberator, cloak of fear&n
+&+b10th Circle: &+cangelic countenance, blackmantle, call liberator, cloak of fear,&n
     &+cfly, mass embalm&n
 &+b11th Circle: &+caid of the heavens, call titan, corpseform, power word kill&n
 &+b12th Circle: &+ccall avatar&n
@@ -23945,18 +23945,18 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve&n
-    &+cclerical spell knowledge, climb, concentration, double attack, fishing&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve,&n
+    &+cclerical spell knowledge, climb, concentration, double attack, fishing,&n
     &+ckick, mount, quick chant, retreat, salvage, swim&n
 ==Spells==
 &+b1st Circle: &+ccause light, detect magic, fortitude, thornskin&n
 &+b2nd Circle: &+cburning hands, cause serious, chill touch, unholy wind&n
 &+b3rd Circle: &+cacid blast, cause critical, darkness, faerie fire, faerie fog&n
-&+b4th Circle: &+ccreate pond, flame sphere, poison, ray of enfeeblement&n
+&+b4th Circle: &+ccreate pond, flame sphere, poison, ray of enfeeblement,&n
     &+cvampiric touch, wither&n
 &+b5th Circle: &+canimate dead, blight, drain nature, earthquake, harm, life leech&n
 &+b6th Circle: &+cfirelance, flame strike, sap nature, waves of fatigue&n
-&+b7th Circle: &+cdispel magic, faluzures vitality, forbiddance, toxic fog&n
+&+b7th Circle: &+cdispel magic, faluzures vitality, forbiddance, toxic fog,&n
     &+cwall of flames&n
 &+b8th Circle: &+cacid stream, shadow vision&n
 &+b9th Circle: &+cdesecrate land, firestorm, horrid wilting&n
@@ -24007,18 +24007,18 @@ Learning, preparation, equipment, and current ability conditions still apply.
 *&+cspacial focus&n (obtained at level &+c46&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, swim&n
 ==Spells==
 &+b1st Circle: &+cadrenaline control, combat mind, ego whip, excogitate&n
-&+b2nd Circle: &+cballistic attack, cell adjustment, create sound, enhance agility&n
+&+b2nd Circle: &+cballistic attack, cell adjustment, create sound, enhance agility,&n
     &+cenhance constitution, enhance dexterity, enhance strength&n
 &+b3rd Circle: &+caura sight, lend health, molecular agitation&n
-&+b4th Circle: &+cawe, comprehend languages, energy containment, molecular control&n
+&+b4th Circle: &+cawe, comprehend languages, energy containment, molecular control,&n
     &+cteleport&n
 &+b5th Circle: &+cflesh armor, flight, inflict pain, intellect fortress&n
 &+b6th Circle: &+cdetonate, ectoplasmic form, enhance armor&n
-&+b7th Circle: &+cbiofeedback, cannibalize, ether warp, inertial barrier&n
+&+b7th Circle: &+cbiofeedback, cannibalize, ether warp, inertial barrier,&n
     &+ctower of iron will&n
 &+b8th Circle: &+cdisplacement, mental anguish, radial navigation&n
 &+b9th Circle: &+cconfuse, enrage, memory block, wormhole&n
@@ -24074,10 +24074,10 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon&n
-    &+c2h flaying, 2h slashing, bandage, bash, berserk, blindfighting, carve&n
-    &+cclimb, disarm, double attack, dual wield, fishing, hitall, kick, mount&n
-    &+cparry, rescue, retreat, riposte, salvage, shield block, swim&n
+&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
+    &+c2h flaying, 2h slashing, bandage, bash, berserk, blindfighting, carve,&n
+    &+cclimb, disarm, double attack, dual wield, fishing, hitall, kick, mount,&n
+    &+cparry, rescue, retreat, riposte, salvage, shield block, swim,&n
     &+cswitch opponents, unarmed damage&n
 &+b11th Level: &+ctaunt&n
 &+b25th Level: &+creach weapons&n
@@ -24132,9 +24132,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, awareness, backstab, bandage&n
-    &+cblindfighting, carve, circle, climb, dirt toss, double attack, fishing&n
-    &+chide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, steal&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, awareness, backstab, bandage,&n
+    &+cblindfighting, carve, circle, climb, dirt toss, double attack, fishing,&n
+    &+chide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, steal,&n
     &+cswim, switch opponents, track&n
 &+b10th Level: &+cappraise&n
 &+b15th Level: &+clisten&n
@@ -24186,23 +24186,23 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb&n
-    &+cfishing, meditate, mount, quick chant, retreat, salvage&n
+&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+    &+cfishing, meditate, mount, quick chant, retreat, salvage,&n
     &+csorcerous spell knowledge, swim&n
 &+b10th Level: &+cclerical spell knowledge&n
 ==Spells==
 &+b1st Circle: &+csense holiness, sleep, unholy wind&n
 &+b2nd Circle: &+cprotection from cold, protection from living&n
-&+b3rd Circle: &+cblindness, invoke negative energy, protection from fire&n
+&+b3rd Circle: &+cblindness, invoke negative energy, protection from fire,&n
     &+cprotection from good, remove poison&n
 &+b4th Circle: &+cdispel good, lifelust, unmaking&n
 &+b5th Circle: &+cdevitalize, heal undead, purge living, remove curse&n
-&+b6th Circle: &+ccure blind, darkness, frostbite, negative energy barrier&n
+&+b6th Circle: &+ccure blind, darkness, frostbite, negative energy barrier,&n
     &+cnether touch, slowness&n
 &+b7th Circle: &+cgreater heal undead&n
 &+b8th Circle: &+cdispel lifeforce, dispel magic&n
 &+b9th Circle: &+calter energy polarity, plane shift&n
-&+b10th Circle: &+cchannel negative energy, hand of death, life ward, nether gate&n
+&+b10th Circle: &+cchannel negative energy, hand of death, life ward, nether gate,&n
     &+cshadow gate&n
 &+b11th Circle: &+centropy storm, shadow vision&n
 &+b12th Circle: &+cdeath blessing&n
@@ -24222,10 +24222,10 @@ Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 None.
 ==Skills==
-&+b1st Level: &+c1h piercing, 1h slashing, apply poison, awareness, backstab, bandage&n
-    &+cblindfighting, carve, circle, climb, double attack, dual wield, fishing&n
-    &+chide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, sneak&n
-    &+cswim, switch opponents, track&n
+&+b1st Level: &+c1h piercing, 1h slashing, apply poison, awareness, backstab,&n
+    &+cbandage, blindfighting, carve, circle, climb, double attack, dual wield,&n
+    &+cfishing, hide, mount, pick lock, ranged weapons, retreat, safe fall,&n
+    &+csalvage, sneak, swim, switch opponents, track&n
 &+b20th Level: &+cappraise, garrote&n
 &+b35th Level: &+cspinal tap&n
 &+b36th Level: &+cparry&n
@@ -24337,9 +24337,9 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve, climb&n
-    &+cdouble attack, fishing, kick, meditate, mount, parry, quick chant, retreat&n
-    &+criposte, salvage, swim, switch opponents, unarmed damage&n
+&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
+    &+cclimb, double attack, fishing, kick, meditate, mount, parry, quick chant,&n
+    &+cretreat, riposte, salvage, swim, switch opponents, unarmed damage&n
 &+b10th Level: &+cclerical spell knowledge, mounted combat, sorcerous spell knowledge&n
 &+b11th Level: &+ctaunt&n
 &+b20th Level: &+cguard&n
@@ -24449,7 +24449,7 @@ Zealot is a Cleric specialization. Selection requires level 30, an eligible race
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
 &+b1st Level: &+ckick (cap 90%)&n
-&+b30th Level: &+c1h bludgeon (cap 100%), 1h flaying (cap 95%)&n
+&+b30th Level: &+c1h bludgeon (cap 100%), 1h flaying (cap 95%),&n
     &+c2h bludgeon (cap 100%), switch opponents (cap 85%)&n
 &+b41st Level: &+cdouble attack (cap 95%)&n
 &+b51st Level: &+cdual wield (cap 80%)&n
@@ -24620,11 +24620,11 @@ Assassin is a Rogue specialization. Selection requires level 30, an eligible rac
   &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
-&+b1st Level: &+c1h piercing (cap 100%), appraise (cap 90%), awareness (cap 70%)&n
-    &+cbackstab (cap 100%), carve (cap 100%), circle (cap 100%)&n
-    &+cdouble attack (cap 90%), dual wield (cap 90%), hide (cap 90%)&n
+&+b1st Level: &+c1h piercing (cap 100%), appraise (cap 90%), awareness (cap 70%),&n
+    &+cbackstab (cap 100%), carve (cap 100%), circle (cap 100%),&n
+    &+cdouble attack (cap 90%), dual wield (cap 90%), hide (cap 90%),&n
     &+cparry (cap 60%), track (cap 100%)&n
-&+b30th Level: &+cambush (cap 100%), apply poison (cap 100%), disguise (cap 100%)&n
+&+b30th Level: &+cambush (cap 100%), apply poison (cap 100%), disguise (cap 100%),&n
     &+cgarrote (cap 100%), mixpoison (cap 100%)&n
 &+b35th Level: &+cspinal tap (cap 100%)&n
 &+b45th Level: &+ccontrol flee (cap 100%)&n
@@ -24653,14 +24653,14 @@ Thief is a Rogue specialization. Selection requires level 30, an eligible race, 
   &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
 ==Skill changes==
-&+b1st Level: &+cbackstab (cap 90%), circle (cap 100%), dirt toss (cap 100%)&n
-    &+cdual wield (cap 90%), hide (cap 100%), pick lock (cap 100%)&n
+&+b1st Level: &+cbackstab (cap 90%), circle (cap 100%), dirt toss (cap 100%),&n
+    &+cdual wield (cap 90%), hide (cap 100%), pick lock (cap 100%),&n
     &+cslip (cap 100%), sneak (cap 100%), steal (cap 100%)&n
 &+b16th Level: &+ctrip (cap 100%)&n
 &+b25th Level: &+cshield block (cap 80%)&n
 &+b30th Level: &+c1h slashing (cap 90%), disguise (cap 100%), listen (cap 100%)&n
 &+b41st Level: &+cshadowstep (cap 100%)&n
-&+b46th Level: &+cenchant arrows (cap 90%), evade (cap 100%)&n
+&+b46th Level: &+cenchant arrows (cap 90%), evade (cap 100%),&n
     &+cpoint blank shot (cap 90%)&n
 &+b51st Level: &+chamstring (cap 100%), trap (cap 100%)&n
 &+b52nd Level: &+cquick step (cap 75%)&n

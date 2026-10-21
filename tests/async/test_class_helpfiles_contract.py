@@ -111,7 +111,10 @@ def assert_progression(section, unit, topic):
             groups.append([int(header[1]), header[2]])
         elif continuation:
             assert groups, f"Orphan continuation in {topic}: {line}"
-            groups[-1][1] += ", " + continuation[1]
+            assert groups[-1][1].endswith(","), (
+                f"Missing separator before continuation in {topic}: {line}"
+            )
+            groups[-1][1] += " " + continuation[1]
         else:
             raise AssertionError(f"Unexpected {unit} progression in {topic}: {line}")
     assert groups, f"Empty {unit} progression in {topic}"
