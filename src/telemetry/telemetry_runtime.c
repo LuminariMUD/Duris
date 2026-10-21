@@ -3416,6 +3416,7 @@ telemetry_capture_result telemetry_runtime_game_encounter_observe(struct char_da
 	encounter_emit_context emitter{};
 	const auto update = telemetry_encounter_observe(&R.encounter, source, participant, at,
 							at_utc, emit_encounter_event, &emitter);
+	telemetry_capture_result result = encounter_capture_from_update(update, emitter);
 	if ((update.outcome == telemetry_encounter_update_outcome::accepted ||
 	     update.outcome == telemetry_encounter_update_outcome::idempotent ||
 	     update.outcome == telemetry_encounter_update_outcome::sink_rejected) &&
@@ -3423,10 +3424,28 @@ telemetry_capture_result telemetry_runtime_game_encounter_observe(struct char_da
 	{
 		const auto actor = game_combat_actor(character);
 		if (telemetry_combat_actor_ref_is_valid(actor))
-			(void)telemetry_combat_summary_add_actor(&R.combat_summary,
-								 update.encounter, actor, at);
+		{
+			if (update.outcome == telemetry_encounter_update_outcome::idempotent)
+				(void)telemetry_combat_summary_add_actor(
+					&R.combat_summary, update.encounter, actor, at);
+			else if (update.participants_active == 0U)
+			{
+				// Observing a zone change closes the native roster as withdrawal.
+				// Close its combat state at the same boundary too.
+				combat_summary_emit_context summary_emitter{};
+				const auto closed = telemetry_combat_summary_close(
+					&R.combat_summary, update.encounter,
+					telemetry_encounter_outcome::withdrawal, at, at_utc,
+					emit_combat_summary, &summary_emitter);
+				merge_capture(result, combat_summary_capture_from_update(
+							      closed, summary_emitter));
+			}
+			else
+				(void)telemetry_combat_summary_leave_actor(
+					&R.combat_summary, update.encounter, actor, at);
+		}
 	}
-	return encounter_capture_from_update(update, emitter);
+	return result;
 }
 
 telemetry_capture_result telemetry_runtime_game_encounter_leave(struct char_data *character,

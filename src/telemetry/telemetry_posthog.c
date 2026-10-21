@@ -299,7 +299,7 @@ constexpr reducer_counter REDUCER_COUNTERS[] = {
 	  true },
 	{ "native_gap_known_usec", &telemetry_posthog_reducer_health::native_gap_known_usec, true },
 	{ "unattributed_time_fragments",
-	  &telemetry_posthog_reducer_health::unattributed_time_fragments, true },
+	  &telemetry_posthog_reducer_health::unattributed_time_fragments, false },
 	{ "xp_attribution_overflows", &telemetry_posthog_reducer_health::xp_attribution_overflows,
 	  true },
 	{ "run_refusals", &telemetry_posthog_reducer_health::run_refusals, true },
@@ -1315,6 +1315,12 @@ void add_interval(character_state &character, const telemetry_interval_payload &
 		part.unattributed_time.category[category].add(duration);
 		part.coverage |= COVERAGE_TIME;
 		add_count(REDUCER.health.unattributed_time_fragments);
+		// Linkdead/unknown context is expected and remains visible in totals.
+		// Only lost attribution through an actual capacity limit is an incident.
+		if (!telemetry_dimensions_are_unknown(interval.dimensions) ||
+		    interval.context_quality == telemetry_context_quality::overflow ||
+		    (interval.quality_flags & TELEMETRY_QUALITY_CONTEXT_OVERFLOW) != 0U)
+			REDUCER.health_incident_pending = true;
 	}
 }
 
@@ -1368,6 +1374,7 @@ bool consume_interval(const telemetry_interval_payload &interval, telemetry_mono
 			add_count(part.interval_observations);
 			part.coverage |= COVERAGE_TIME | COVERAGE_CLOCK;
 			add_count(REDUCER.health.unattributed_time_fragments);
+			REDUCER.health_incident_pending = true;
 			break;
 		}
 		const auto boundary =

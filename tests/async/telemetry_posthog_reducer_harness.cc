@@ -1269,6 +1269,59 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
 		observe(health, false);
 	}
+	else if (name == "health-linkdead")
+	{
+		const auto health = native_health();
+		NOW = MONO;
+		observe(health);
+		for (std::uint64_t minute = 1U; minute <= 1'440U; ++minute)
+		{
+			auto record = interval((minute - 1U) * 60'000'000U, minute * 60'000'000U,
+					       telemetry_interval_category::resident_linkdead);
+			record.payload.interval.dimensions = { 0U, 0U, 0U, 0U, -1, 0U };
+			record.payload.interval.context = telemetry_activity_context::unknown;
+			record.payload.interval.context_quality =
+				telemetry_context_quality::unavailable;
+			record.payload.interval.quality_flags = TELEMETRY_QUALITY_DIMENSION_UNKNOWN;
+			NOW = MONO + minute * 60'000'000U;
+			emit(record);
+			observe(health, minute % 60U == 0U);
+		}
+	}
+	else if (name == "health-time-overflow" || name == "health-context-overflow" ||
+		 name == "health-split-overflow")
+	{
+		const auto health = native_health();
+		NOW = MONO;
+		observe(health);
+		if (name == "health-split-overflow")
+			emit(interval(0U, 900'000'000ULL * 1'000'000U));
+		else
+		{
+			for (std::uint32_t index = 0U; index < 33U; ++index)
+			{
+				auto record =
+					interval(index, index + 1U,
+						 telemetry_interval_category::connected_active,
+						 static_cast<std::int32_t>(index));
+				if (name == "health-context-overflow")
+				{
+					record.payload.interval.dimensions = { 0U, 0U, 0U,
+									       0U, -1, 0U };
+					record.payload.interval.context =
+						telemetry_activity_context::overflow_unknown;
+					record.payload.interval.context_quality =
+						telemetry_context_quality::overflow;
+					record.payload.interval.quality_flags =
+						TELEMETRY_QUALITY_CONTEXT_OVERFLOW |
+						TELEMETRY_QUALITY_DIMENSION_UNKNOWN;
+				}
+				emit(record);
+			}
+		}
+		NOW = MONO + TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health);
+	}
 	else if (name == "health-loss")
 	{
 		auto health = native_health();

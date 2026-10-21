@@ -121,7 +121,8 @@ def reducer_tests(binary: Path) -> None:
         "encounter-counter-overflow", "encounter-burst", "encounter-replay", "encounter-expiry",
         "encounter-capacity", "encounter-scope-clock", "flush-characters", "flush-encounters", "flush-bytes",
         "encounter-allocation-failure",
-        "health-cadence", "health-incidents", "health-loss", "health-capacity",
+        "health-cadence", "health-incidents", "health-linkdead", "health-time-overflow",
+        "health-context-overflow", "health-split-overflow", "health-loss", "health-capacity",
         "health-faults", "health-family-expiry",
     )
     observed = {}
@@ -473,6 +474,17 @@ def reducer_tests(binary: Path) -> None:
     assert cadence[0]["reducer"]["created_events"] == "1"  # Sample precedes its own insertion.
     assert cadence[1]["reducer"]["http_acknowledged"] == "2"
     assert cadence[1]["reducer"]["output_oldest_age_usec"] is None
+    linkdead = health_rows("health-linkdead")
+    assert len(linkdead) == 25  # Initial + hourly fits the 100/day health allowance.
+    assert [row["health_trigger"] for row in linkdead] == ["initial"] + ["hourly"] * 24
+    assert linkdead[-1]["reducer"]["unattributed_time_fragments"] == "1440"
+    linkdead_parts = summaries(observed["health-linkdead"][0])
+    assert sum(int(part["unattributed_time"]["linkdead_usec"]) for part in linkdead_parts) == 86400000000
+    assert all(not part["time_allocations"] for part in linkdead_parts)
+    for case in ("health-time-overflow", "health-context-overflow", "health-split-overflow"):
+        overflow = health_rows(case)
+        assert [row["health_trigger"] for row in overflow] == ["initial", "incident"]
+        assert int(overflow[-1]["reducer"]["unattributed_time_fragments"]) > 0
     incident = health_rows("health-incidents")
     assert len(incident) == 2 and incident[1]["health_trigger"] == "incident"
     assert incident[1]["native_transport"]["state"] == "healthy"

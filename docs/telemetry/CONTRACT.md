@@ -346,6 +346,10 @@ Transient native alert/recovery reasons survive coalescing even if current state
 has recovered. Missing clocks or output capacity count as local loss and retry
 only at the coalescing boundary. Counters are cumulative for the named producer;
 snapshot values precede insertion of the health row itself.
+Unknown dimensions during linkdead or unobserved context retain their time and
+coverage flags and increment `unattributed_time_fragments`, but do not trigger an
+incident. Attribution lost to bucket/context or interval-splitting limits still
+triggers an incident; ordinary unknown context stays on the hourly cadence.
 
 `native_transport` retains copied native state/counters, including its existing
 `applied_records`; this is separate from reducer `http_acknowledged` and makes no
