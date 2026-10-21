@@ -1211,11 +1211,14 @@ std::size_t find_expired_detached(const telemetry_activity_state *state,
 {
 	std::size_t found = state->max_slots;
 	telemetry_monotonic_usec oldest = std::numeric_limits<telemetry_monotonic_usec>::max();
-	for (std::size_t index = 0U; index < state->max_slots; ++index)
+	std::size_t remaining = state->resident_slots;
+	for (std::size_t index = 0U; index < state->max_slots && remaining != 0U; ++index)
 	{
 		const telemetry_activity_slot &slot = state->slots[index];
-		if (slot.lifecycle != telemetry_activity_slot_lifecycle::resident ||
-		    slot.connected != 0U || now < slot.detached_since_monotonic_usec ||
+		if (slot.lifecycle != telemetry_activity_slot_lifecycle::resident)
+			continue;
+		--remaining;
+		if (slot.connected != 0U || now < slot.detached_since_monotonic_usec ||
 		    now - slot.detached_since_monotonic_usec < state->detached_retire_after_usec)
 			continue;
 		if (found == state->max_slots || slot.detached_since_monotonic_usec < oldest)
@@ -1838,19 +1841,27 @@ telemetry_activity_state_pulse(telemetry_activity_state *state,
 	// Reserve caller-owned delivery slots BEFORE consuming any elapsed time.
 	// Otherwise #264 receives a later noncontiguous delta it cannot apply.
 	std::uint16_t required = 0U;
-	for (std::size_t index = 0U; index < state->max_slots; ++index)
-		if (state->slots[index].lifecycle == telemetry_activity_slot_lifecycle::resident &&
-		    index % state->pulse_slot_count == request.slot)
+	std::size_t remaining = state->resident_slots;
+	for (std::size_t index = 0U; index < state->max_slots && remaining != 0U; ++index)
+	{
+		if (state->slots[index].lifecycle != telemetry_activity_slot_lifecycle::resident)
+			continue;
+		--remaining;
+		if (index % state->pulse_slot_count == request.slot)
 			++required;
+	}
 	if (required != 0U && (request.deltas == nullptr || request.delta_capacity < required))
 		return pulse;
 	pulse.outcome = telemetry_activity_outcome::idempotent;
 	bool any_invalid = false;
-	for (std::size_t index = 0U; index < state->max_slots; ++index)
+	remaining = state->resident_slots;
+	for (std::size_t index = 0U; index < state->max_slots && remaining != 0U; ++index)
 	{
 		telemetry_activity_slot &slot = state->slots[index];
-		if (slot.lifecycle != telemetry_activity_slot_lifecycle::resident ||
-		    index % state->pulse_slot_count != request.slot)
+		if (slot.lifecycle != telemetry_activity_slot_lifecycle::resident)
+			continue;
+		--remaining;
+		if (index % state->pulse_slot_count != request.slot)
 			continue;
 		if (pulse.sessions_considered != std::numeric_limits<std::uint16_t>::max())
 			++pulse.sessions_considered;

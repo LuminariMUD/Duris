@@ -158,7 +158,9 @@ int main(int argc, char **argv)
 				std::this_thread::sleep_for(std::chrono::milliseconds(60));
 				assert(telemetry_runtime_now(&now, &utc));
 				(void)telemetry_runtime_pulse({ now, utc, 0U, 0U });
-				(void)telemetry_runtime_flush_for_copyover(now + 1'000'000U);
+				// Recovery must allow the sender's normal two-second HTTP attempt;
+				// the first copyover above still proves its 250ms cancellation bound.
+				(void)telemetry_runtime_flush_for_copyover(now + 5'000'000U);
 			}
 		}
 		assert(telemetry_runtime_now(&now, &utc));

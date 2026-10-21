@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """PostHog worker reducer, encoding regressions and declared volume fixture.
 
-No host .env, network, database, player data or live journal is used. The volume
-fixture is a forecast oracle; exporter-emitted counts must later match it before
-it can establish delivery volume or normal-load acceptance.
+No host .env, external network, database, player data or live journal is used.
+The serial release mix counts actual reducer output before scaling the explicit
+workload/retry frequencies. It does not establish concurrent-player capacity.
 """
 from __future__ import annotations
 
@@ -517,7 +517,19 @@ def reducer_tests(binary: Path) -> None:
     print(f"PostHog reducer: {len(cases)} executable semantic/capacity/fault scenarios PASS")
 
 
-def volume_tests() -> None:
+def volume_tests(binary: Path) -> None:
+    result = subprocess.run([str(binary), "reduce", "release-mix"], cwd=ROOT,
+                            env=TEST_ENV, text=True, capture_output=True, check=True, timeout=30)
+    rows = [json.loads(line) for line in result.stdout.splitlines()]
+    health = rows.pop()["_fixture_health"]
+    assert health["output_suppressed"] == health["reduction_refusals"] == 0, health
+    from collections import Counter
+    emitted = Counter(row["event"] for row in rows)
+    assert emitted == {"duris_configuration": 2, "duris_session": 10,
+                       "duris_character_summary": 50, "duris_level_change": 1,
+                       "duris_encounter_summary": 6, "duris_telemetry_health": 28}, emitted
+    assert sum(row["properties"].get("actor_kind") == "pet" for row in rows) == 1
+    print("emitted release mix: 48 periodic + 2 boundary summaries, 6 entry/exit + 2 reconnect + 2 copyover rows, 1 level, 6 encounter, 2 config, 28 health: PASS")
     fixture = json.loads((FIXTURES / "volume.json").read_text())
     days = fixture["days"]
     assumptions = fixture["assumptions"]
@@ -525,17 +537,15 @@ def volume_tests() -> None:
         population = profile["average_connected"]
         residents = population + math.ceil(population * assumptions["detached_percent"] / 100)
         counts = {
-            "periodic_summaries": residents * days * 86400 // profile["window_seconds"],
-            "boundary_summaries": population * days * assumptions["extra_summary_boundaries_per_character_day"],
-            "session": population * days * (
-                assumptions["logical_entries_per_character_day"] * 2
-                + assumptions["reconnects_per_character_day"] * 2
-            ) + population * assumptions["copyovers"],
-            "level_change": population * days // assumptions["character_days_per_level_change"],
-            "encounter": population * days * assumptions["encounter_rows_per_run"]
+            "periodic_summaries": residents * days * (emitted["duris_character_summary"] - 2) * 1800 // profile["window_seconds"],
+            "boundary_summaries": population * days * (emitted["duris_character_summary"] - 48),
+            "session": population * days * (emitted["duris_session"] - assumptions["copyovers"])
+            + population * assumptions["copyovers"],
+            "level_change": population * days * emitted["duris_level_change"] // assumptions["character_days_per_level_change"],
+            "encounter": population * days * emitted["duris_encounter_summary"]
             // assumptions["character_days_per_run"],
-            "configuration": days * assumptions["configuration_rows_per_day"],
-            "health": days * (24 + assumptions["health_incidents_per_day"]),
+            "configuration": days * emitted["duris_configuration"],
+            "health": days * emitted["duris_telemetry_health"],
             "cloud_test": assumptions["cloud_test_submissions"],
         }
         # Tests already count all their attempts; only the game mix gets retries.
@@ -545,7 +555,7 @@ def volume_tests() -> None:
         total = sum(counts.values())
         assert (total <= fixture["normal_target"]) == profile["fits_normal_target"]
         print(f"forecast: {population} average connected, {profile['window_seconds']}s, "
-              f"{total} submissions/31 days; fixture assumptions only")
+              f"{total} submissions/31 days; measured emitted shapes, assumed workload/retry frequencies")
     assert 24 + assumptions["health_incidents_per_day"] <= 100
     assert assumptions["cloud_test_submissions"] <= 100
     # A rolling 31-day billing window can touch 32 UTC dates.
@@ -577,7 +587,7 @@ def main() -> None:
             from telemetry_posthog_http import http_tests
             http_tests(binary, Path(directory) / (backend + "-http"), TEST_ENV)
             print(f"PostHog encodings ({backend}, UBSan): PASS")
-    volume_tests()
+    volume_tests(binary)
     print("PostHog encoding/reducer/forecast fixtures: PASS; delivery acceptance still pending")
 
 

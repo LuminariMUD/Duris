@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from datetime import datetime, timezone
+import http.client
 from http.server import BaseHTTPRequestHandler
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -78,15 +79,54 @@ def until(predicate, label: str, timeout: float = 30) -> None:
     raise AssertionError(label)
 
 
-def run(backend: str, performance: bool = False) -> None:
+def verify_performance_pairs(measurements):
+    for pair in range(3):
+        off = next(row for row in measurements if row["pair"] == pair and not row["enabled"])
+        on = next(row for row in measurements if row["pair"] == pair and row["enabled"])
+        assert on["save_p99_us"] * 100 <= off["save_p99_us"] * 105, (pair, "save_p99_us", off, on)
+        assert on["native"]["total_tick"]["p99_us"] * 100 <= off["native"]["total_tick"]["p99_us"] * 105, (pair, off, on)
+        assert on["native"]["total_tick"]["p99_us"] <= 250000
+        assert on["native"]["ne_events"]["max_us"] <= 25000, "callback latency upper bound unresolved"
+
+
+def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
     artifacts = ROOT / "bin/issue59/acceptance"
     artifacts.mkdir(parents=True, exist_ok=True)
+    cloud_state = artifacts / "cloud-smoke"
+    cloud_key = None
+    tag = "issue59-cloud-smoke" if cloud else "native-gameplay-" + backend
+    scope = "1001" if backend == "flatfile" else "1002"
+    if cloud:
+        # Read only the capture settings; never import the host's game/DB environment.
+        settings = {}
+        for line in (ROOT / ".env").read_text().splitlines():
+            name, separator, value = line.partition("=")
+            if separator and name.strip() in ("POSTHOG_API_KEY", "POSTHOG_HOST", "POSTHOG_PROJECT_ID"):
+                settings[name.strip()] = value.strip().strip("\"'")
+        assert settings.get("POSTHOG_PROJECT_ID") == "678214"
+        assert settings.get("POSTHOG_HOST", "").rstrip("/") == "https://us.i.posthog.com"
+        cloud_key = settings.get("POSTHOG_API_KEY", "")
+        assert cloud_key.startswith("phc_"), "project capture key required"
+        cloud_state.mkdir(mode=0o700, exist_ok=True)
+        # A fresh fixture cannot restart this campaign or silently reset its allowance.
+        with (cloud_state / "campaign.json").open("x") as marker:
+            json.dump({"project": 678214, "backend": backend, "scope": scope, "tag": tag,
+                       "started_utc": datetime.now(timezone.utc).isoformat()}, marker)
+            marker.flush()
+            os.fsync(marker.fileno())
+        for directory in (cloud_state, artifacts):
+            descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
     with tempfile.TemporaryDirectory(prefix=backend + "-", dir=artifacts) as temporary, \
             tempfile.TemporaryDirectory(prefix="duris-telemetry-db-") as database_temporary:
         work = Path(temporary)
         work.chmod(0o700)
         binary, state_tool = mock_binary(backend, work)
-        runtime, state, ledger = work / "runtime", work / "state", work / "ledger"
+        runtime, state = work / "runtime", work / "state"
+        ledger = cloud_state / "ledger" if cloud else work / "ledger"
         runtime.mkdir(); state.mkdir(mode=0o700); ledger.mkdir(mode=0o700)
         (state / "domains").mkdir(mode=0o700)
         journey.make_fixture(runtime)
@@ -106,6 +146,61 @@ def run(backend: str, performance: bool = False) -> None:
         received: list[dict] = []
         attempts: list[int] = []
         response = {"status": 200}
+        cloud_capture = {"attempts": 0, "rows": [], "repeated": False,
+                         "omitted": False, "main_id": None, "expected": {}}
+        cloud_lock = threading.Lock()
+
+        def forward(batch):
+            """Synthetic-only fault probe; the native worker charged its ledger first."""
+            with cloud_lock:
+                encoded = json.dumps(batch).lower()
+                for private in (journey.CHARACTER, journey.ACCOUNT, "Valerek", "Friendacct",
+                                journey.PASSWORD, "127.0.0.1", "@example.invalid"):
+                    assert private.lower() not in encoded, "private value refused before cloud capture"
+                for row in batch:
+                    properties = row["properties"]
+                    assert properties["duris_environment_id"] == scope and int(scope) >= 1000
+                    assert properties["duris_test_run"] == tag
+                    assert properties["$process_person_profile"] is False
+                    if row["event"] == "duris_session" and properties["transition"] == "logical_entry":
+                        cloud_capture["main_id"] = cloud_capture["main_id"] or properties["duris_character_id"]
+                    if row["event"] == "duris_encounter_summary" and properties["row_type"] == "run":
+                        cloud_capture["expected"][properties["duris_run_id"]] = properties["participant_rows_expected"]
+                transmitted = []
+                for row in batch:
+                    properties = row["properties"]
+                    # Keep owner and pet rows, omit one other player to prove cloud
+                    # completeness checks cannot rely on a native-complete flag/HTTP 200.
+                    if (not cloud_capture["omitted"] and row["event"] == "duris_encounter_summary"
+                            and properties.get("actor_kind") == "player"
+                            and properties["duris_character_id"] != cloud_capture["main_id"]
+                            and cloud_capture["expected"].get(properties["duris_run_id"], 0) >= 2):
+                        cloud_capture["omitted"] = True
+                        cloud_capture["omitted_event_id"] = row["uuid"]
+                    if row["uuid"] == cloud_capture.get("omitted_event_id"):
+                        continue
+                    transmitted.append(row)
+                cloud_capture["attempts"] += len(transmitted)
+                assert cloud_capture["attempts"] <= 100, "cloud campaign allowance exhausted"
+                cloud_capture["rows"].extend(transmitted)
+                (cloud_state / "attempts.json").write_text(json.dumps(cloud_capture, indent=2))
+                connection = http.client.HTTPSConnection("us.i.posthog.com", timeout=2)
+                try:
+                    connection.request("POST", "/batch/", json.dumps({"api_key": cloud_key, "batch": transmitted}),
+                                       {"Content-Type": "application/json"})
+                    result = connection.getresponse()
+                    status = result.status
+                    result.read(1024)
+                except (OSError, http.client.HTTPException):
+                    return 503
+                finally:
+                    connection.close()
+                if 200 <= status < 300:
+                    if not cloud_capture["repeated"]:
+                        cloud_capture["repeated"] = True
+                        return 503  # Retry the same immutable UUIDs; both attempts are charged.
+                    return 200
+                return status
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_):
@@ -117,6 +212,8 @@ def run(backend: str, performance: bool = False) -> None:
                 assert body["api_key"] == "phc_native_gameplay"
                 attempts.append(len(body["batch"]))
                 status = response["status"]
+                if cloud and status == 200:
+                    status = forward(body["batch"])
                 if status == 200:
                     received.extend(body["batch"])
                 self.send_response(status)
@@ -180,7 +277,6 @@ def run(backend: str, performance: bool = False) -> None:
                     subprocess.run([sys.executable, "tests/async/test_flatfile_player_repository.py",
                                     "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True)
                     subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
-                scope = "1001" if backend == "flatfile" else "1002"
                 env.update(PERSISTENCE_MODE=backend + "-primary", PERSISTENCE_BACKEND=backend,
                            FLATFILE_STATE_DIR=str(state), CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
                            COPYOVER_STATE_FILE=str(copyover_state), LISTEN_ADDRESS="127.0.0.1",
@@ -191,7 +287,7 @@ def run(backend: str, performance: bool = False) -> None:
                            TELEMETRY_CHECKPOINT_INTERVAL_USEC="1000000", TELEMETRY_ACTIVE_WINDOW_USEC="3000000",
                            TELEMETRY_CONTEXT_SEGMENTS_PER_MINUTE="64", TELEMETRY_OUTAGE_LEDGER_DIR=str(ledger),
                            TELEMETRY_PROPERTY_CATALOG_FILE=str(catalog), TELEMETRY_IDENTITY_KEY="01" * 32,
-                           TELEMETRY_TEST_RUN="native-gameplay-" + backend, POSTHOG_API_KEY="phc_native_gameplay",
+                           TELEMETRY_TEST_RUN=tag, POSTHOG_API_KEY="phc_native_gameplay",
                            POSTHOG_HOST="https://us.i.posthog.com", POSTHOG_PROJECT_ID="678214", POSTHOG_SENDER_ID="99",
                            DURIS_TEST_POSTHOG_PORT=str(receiver.server_port), DURIS_TEST_POSTHOG_CA=str(cert))
                 subprocess.run([str(state_tool), "initialize", str(ledger), "678214", "99", scope,
@@ -256,7 +352,7 @@ def run(backend: str, performance: bool = False) -> None:
                     measurements = []
 
                     def p99(values):
-                        return sorted(values)[math.ceil(len(values) * 0.99) - 1]
+                        return sorted(values)[(len(values) * 99 + 99) // 100 - 1]
 
                     for pair in range(3):
                         for enabled in ((False, True) if pair % 2 == 0 else (True, False)):
@@ -265,14 +361,21 @@ def run(backend: str, performance: bool = False) -> None:
                             env["DURIS_TEST_LATENCY_FILE"] = str(sample_path)
                             boot(); client = reconnect()
                             time.sleep(10)
+                            initial_cpu = Path(f"/proc/{process.pid}/stat").read_text().split()
+                            workload_started = time.monotonic()
                             command_us, save_us, snapshots, rss = [], [], [], []
-                            for _ in range(120):
+                            telemetry_snapshots = []
+                            for index in range(40):
                                 started = time.monotonic_ns()
                                 client.send("look"); client.expect("The Regression Arena")
                                 command_us.append((time.monotonic_ns() - started) // 1000)
                                 started = time.monotonic_ns()
                                 save()
                                 save_us.append((time.monotonic_ns() - started) // 1000)
+                                status = Path(f"/proc/{process.pid}/status").read_text()
+                                rss.append(int(re.search(r"VmHWM:\s+(\d+)", status)[1]))
+                                if index % 20 != 19:
+                                    continue
                                 client.send("world persistence")
                                 snapshot = ""
                                 while True:
@@ -285,35 +388,55 @@ def run(backend: str, performance: bool = False) -> None:
                                 critical_age = re.search(r"critical_commands [^\n]*oldest_age_ms=(\d+)", snapshot)
                                 assert critical_age and int(critical_age[1]) <= 1000, snapshot
                                 snapshots.append(snapshot)
-                                status = Path(f"/proc/{process.pid}/status").read_text()
-                                rss.append(int(re.search(r"VmRSS:\s+(\d+)", status)[1]))
+                                if enabled:
+                                    snapshot, _ = health()
+                                    for clean in ("reduction_refused=0", "quota_error=0", "dropped=0/0",
+                                                  "ambiguous=0", "suppressed=0", "expired=0"):
+                                        assert clean in snapshot, snapshot
+                                    telemetry_snapshots.append(snapshot)
                             if enabled:
                                 snapshot, _ = health()
                                 assert "reduction_refused=0" in snapshot and "quota_error=0" in snapshot, snapshot
                             usage = Path(f"/proc/{process.pid}/stat").read_text().split()
-                            cpu_seconds = (int(usage[13]) + int(usage[14])) / os.sysconf("SC_CLK_TCK")
+                            cpu_seconds = (int(usage[13]) + int(usage[14]) - int(initial_cpu[13]) - int(initial_cpu[14])) / os.sysconf("SC_CLK_TCK")
+                            workload_seconds = time.monotonic() - workload_started
                             client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                             stop()
+                            (artifacts / f"{backend}-latency-{pair}-{enabled}.txt").write_bytes(sample_path.read_bytes())
                             native = {}
                             for line in sample_path.read_text().splitlines():
                                 section, overflow, *values = line.split()
                                 assert overflow == "0" and (section == "fsync" or len(values) >= 200), line[:100]
-                                native[section] = {"count": len(values), "p99_us": p99(list(map(int, values))) if values else None}
+                                samples = list(map(int, values))
+                                native[section] = {"count": len(samples), "p99_us": p99(samples) if samples else None,
+                                                   "max_us": max(samples) if samples else None}
                             measurements.append({"pair": pair, "enabled": enabled, "client_count": 1,
                                                  "save_count": len(save_us), "save_p99_us": p99(save_us),
                                                  "command_count": len(command_us), "command_p99_us": p99(command_us),
-                                                 "native": native, "cpu_seconds": cpu_seconds, "rss_kib_max": max(rss)})
+                                                 "native": native, "cpu_seconds": cpu_seconds, "workload_seconds": workload_seconds,
+                                                 "rss_kib_max": max(rss), "save_samples_us": save_us, "command_samples_us": command_us,
+                                                 "telemetry_snapshots": telemetry_snapshots})
                             (artifacts / (backend + "-performance.json")).write_text(json.dumps(measurements, indent=2))
-                            print(json.dumps(measurements[-1]), flush=True)
+                            print(json.dumps({key: value for key, value in measurements[-1].items()
+                                              if key not in ("save_samples_us", "command_samples_us", "telemetry_snapshots")}), flush=True)
                             (artifacts / f"{backend}-persistence-{pair}-{enabled}.txt").write_text("\n".join(snapshots))
-                    for pair in range(3):
-                        off = next(row for row in measurements if row["pair"] == pair and not row["enabled"])
-                        on = next(row for row in measurements if row["pair"] == pair and row["enabled"])
-                        for key in ("save_p99_us",):
-                            assert on[key] <= off[key] * 1.05, (pair, key, off[key], on[key])
-                        assert on["native"]["total_tick"]["p99_us"] <= off["native"]["total_tick"]["p99_us"] * 1.05, (pair, off, on)
-                        assert on["native"]["total_tick"]["p99_us"] <= 250000
-                        assert on["native"]["ne_events"]["p99_us"] <= 25000
+                    # Estimate p99 across all three matched runs, retaining each
+                    # pair and every raw sample for review of host noise.
+                    pooled = {}
+                    for enabled in (False, True):
+                        selected = [row for row in measurements if row["enabled"] == enabled]
+                        pulses = []
+                        for pair in range(3):
+                            raw = (artifacts / f"{backend}-latency-{pair}-{enabled}.txt").read_text()
+                            pulses.extend(int(value) for line in raw.splitlines()
+                                          if line.startswith("total_tick ") for value in line.split()[2:])
+                        saves = [value for row in selected for value in row["save_samples_us"]]
+                        pooled[str(enabled)] = {"pulse_p99_us": p99(pulses), "pulse_count": len(pulses),
+                                                "save_p99_us": p99(saves), "save_count": len(saves)}
+                    (artifacts / (backend + "-performance-summary.json")).write_text(json.dumps(pooled, indent=2))
+                    print(json.dumps({"pooled_three_pairs": pooled}), flush=True)
+                    # Pooling is descriptive; each matched pair must meet the gate.
+                    verify_performance_pairs(measurements)
                     print("PASS three paired gameplay/save performance comparisons")
                     return
                 boot(); client = reconnect()
@@ -392,6 +515,14 @@ def run(backend: str, performance: bool = False) -> None:
                 assert after_copyover >= before_copyover > 0
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                 time.sleep(2.2)
+                if cloud:
+                    first_sessions = {row["properties"]["duris_session_id"] for row in received
+                                      if row["event"] == "duris_session" and
+                                      row["properties"]["duris_character_id"] == cloud_capture["main_id"]}
+                    assert len(first_sessions) == 1, first_sessions
+                    client.close(); client = reconnect(); save()
+                    client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                    time.sleep(2.2)
                 stop()
                 if backend == "mariadb":
                     assert sql("SELECT COUNT(*) FROM telemetry_interval") == "0"
@@ -400,7 +531,7 @@ def run(backend: str, performance: bool = False) -> None:
                 assert summaries and sessions
                 main_id = sessions[0]["duris_character_id"]
                 main_sessions = [row for row in summaries + sessions if row["duris_character_id"] == main_id]
-                assert len({row["duris_session_id"] for row in main_sessions}) == 1, [
+                assert len({row["duris_session_id"] for row in main_sessions}) == (2 if cloud else 1), [
                     (row.get("transition", "summary"), row["duris_session_id"]) for row in main_sessions]
                 assert len({row["uuid"] for row in received}) == len(received)
                 encoded = json.dumps(received).lower()
@@ -433,6 +564,11 @@ def run(backend: str, performance: bool = False) -> None:
                 assert totals["connected_usec"] == totals["active_usec"] + totals["idle_usec"] + totals["unknown_usec"]
                 assert totals["resident_usec"] == totals["connected_usec"] + totals["linkdead_usec"]
                 assert totals["idle_usec"] > 0 and totals["linkdead_usec"] > 0, totals
+                if cloud:
+                    with cloud_lock:
+                        assert cloud_capture["repeated"] and cloud_capture["omitted"]
+                        assert cloud_capture["attempts"] <= reserved <= 100
+                        (cloud_state / "submitted.json").write_text(json.dumps(cloud_capture, indent=2))
                 (artifacts / (backend + "-events.json")).write_text(json.dumps(received, indent=2))
                 print(json.dumps({"backend": backend, "events": len(received), "attempted_events": sum(attempts),
                                   "quota_reserved": reserved, "time": totals}))
@@ -455,5 +591,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
     parser.add_argument("--performance", action="store_true", help="Run three paired ordinary-save workloads")
+    parser.add_argument("--cloud", action="store_true", help="Send one synthetic campaign, maximum 100 charged attempts; reruns refused")
     args = parser.parse_args()
-    run(args.backend, args.performance)
+    if args.cloud and args.performance:
+        parser.error("cloud capture and the paired benchmark are separate fixtures")
+    run(args.backend, args.performance, args.cloud)

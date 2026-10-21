@@ -386,14 +386,22 @@ not also emit attach/detach rows. Copyover adds its retained-session attach row.
 | 200 | 15 minutes | 706,077 | Fails |
 | 200 | 30 minutes | 396,454 | Fits this fixture |
 
-The fixture does not establish a production window or daily burst headroom.
-Actual emitted counts, late/boundary fragments, retry/fault rates and performance
-must qualify the real reducer/gameplay mix. Retain the 20,000/day shared hard
-ceiling, 100 reserved health attempts, explicit sender allocations, durable
-pre-send reservations, and no payload backlog at exhaustion. Thirty-one days
-can touch 32 UTC dates, so the hard bound is 640,000, not necessarily 620,000.
-The loopback HTTPS sender fixture covers local delivery. Runtime integration and
-≤100-attempt cloud ingestion/report proof remain pending.
+The release uses 30-minute summaries. The serial `release-mix` native scenario
+counts 97 actual output rows: 48 periodic plus two boundary summaries, six
+entry/exit plus two reconnect plus two copyover rows, one level change, six
+encounter rows (run, four PCs, pet), two configurations and 28 health rows.
+Those measured shapes reconcile all four projections above without output
+suppression. Population, boundary and retry frequencies remain explicit workload
+assumptions; this serial stream does not prove concurrent capacity or daily burst
+headroom. Real native journeys cover both gameplay builds; the paired performance
+and bounded cloud/report acceptance are tracked in the active plan.
+
+Retain the 20,000/day shared hard ceiling, 100 reserved health attempts, explicit
+sender allocations, durable pre-send reservations, and no payload backlog at
+exhaustion. Thirty-one days can touch 32 UTC dates, so the hard bound is 640,000,
+not necessarily 620,000. Sender/runtime fixtures exercise actual HTTPS attempt
+charging and immutable retries; the forecast's two-percent retry frequency is
+an assumption, not a production observation.
 
 ### Worker HTTPS sender (#59)
 
