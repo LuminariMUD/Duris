@@ -11,10 +11,24 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/telemetry"))
 
-from benchmark_272 import DEFAULT_WORKLOADS, Toolchain, build_report  # noqa: E402
+from benchmark_272 import DEFAULT_WORKLOADS, Toolchain, build_report, distribution, percentile  # noqa: E402
+
+
+def test_percentiles() -> None:
+    samples = list(range(2000, 0, -1))
+    assert distribution(samples) == {
+        "sample_count": 2000, "p50_ns": 1000, "p95_ns": 1900,
+        "p99_ns": 1980, "p999_ns": 1998,
+    }
+    assert samples[0] == 2000  # Sorting must not mutate the observations.
+    assert percentile(list(range(1, 1002)), 999) == 1000
+    assert percentile([], 999) == 0
+    assert percentile([17], 999) == 17
+    assert percentile([7] * 2000, 999) == 7
 
 
 def main() -> int:
+    test_percentiles()
     repetitions = int(os.environ.get("TELEMETRY_272_REPETITIONS", "3"))
     assert 1 <= repetitions <= 8
     report = build_report(DEFAULT_WORKLOADS, repetitions, Toolchain.discover())

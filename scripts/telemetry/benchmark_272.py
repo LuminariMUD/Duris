@@ -196,20 +196,21 @@ def source_contract() -> dict[str, Any]:
     }
 
 
-def percentile(samples: Sequence[int], percent: int) -> int:
+def percentile(samples: Sequence[int], per_mille: int) -> int:
+    """Nearest-rank percentile; 990 means p99 and 999 means p99.9."""
     if not samples:
         return 0
     ordered = sorted(samples)
-    rank = (len(ordered) * percent + 99) // 100
+    rank = (len(ordered) * per_mille + 999) // 1000
     return ordered[min(len(ordered) - 1, max(0, rank - 1))]
 
 
 def distribution(samples: Sequence[int]) -> dict[str, int]:
     return {
         "sample_count": len(samples),
-        "p50_ns": percentile(samples, 50),
-        "p95_ns": percentile(samples, 95),
-        "p99_ns": percentile(samples, 99),
+        "p50_ns": percentile(samples, 500),
+        "p95_ns": percentile(samples, 950),
+        "p99_ns": percentile(samples, 990),
         "p999_ns": percentile(samples, 999),
     }
 
@@ -290,7 +291,7 @@ def python_stage_measure(
         **distribution(samples),
         "wall_ns": total_finished - total_started,
         "cpu_ns": total_cpu_finished - total_cpu_started,
-        "cpu_p99_ns": percentile(cpu_samples, 99),
+        "cpu_p99_ns": percentile(cpu_samples, 990),
         "peak_python_alloc_bytes": peak_alloc,
         "allocation_bytes": peak_alloc,
         "memory_bytes": peak_alloc,
