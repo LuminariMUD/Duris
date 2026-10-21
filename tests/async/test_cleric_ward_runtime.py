@@ -39,16 +39,10 @@ PRELUDE = r'''
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <vector>
-struct regen_event_state { float accumulated; unsigned long long last_tick; };
-unsigned long long ne_event_tick = 0;
 static room_data rooms[1]{};
 P_room world = rooms;
-static int epic = 0;
-static bool faith = true;
 float get_property(const char *, double fallback) { return fallback; }
-bool has_innate(P_char, int id) { return faith && id == INNATE_WARDING_FAITH; }
-int GET_CHAR_SKILL_P(P_char, int id) { return id == SKILL_EPIC_WARDING_FAITH ? epic : 0; }
+int GET_CHAR_SKILL_P(P_char, int) { return 0; }
 int GET_CLASS(P_char ch, uint cls) { return bool(ch->player.m_class & cls); }
 room_affect *get_spell_from_room(P_room, int) { return nullptr; }
 affected_type *get_spell_from_char(P_char ch, int id, void *, int) {
@@ -69,34 +63,10 @@ void update_achievements(P_char, P_char, int, int) {}
 int gain_exp(P_char, P_char, int, int) { return 0; }
 const hardcore_config *hardcore_config_get() { static hardcore_config cfg{}; return &cfg; }
 void telemetry_runtime_game_combat_healing(P_char, P_char, std::uint64_t, std::uint64_t, std::uint32_t) noexcept {}
-int move_regen(P_char, bool) { return 0; }
-int hit_regen(P_char, bool) { return 0; }
-int mana_regen(P_char, bool) { return 0; }
-void event_move_regen(P_char, P_char, P_obj, void *) { assert(false); }
-void event_hit_regen(P_char, P_char, P_obj, void *) { assert(false); }
-void event_mana_regen(P_char, P_char, P_obj, void *) { assert(false); }
-struct pending { P_char ch; event_func callback; unsigned long long due; regen_event_state state; };
-static std::vector<pending> queue;
-P_nevent get_scheduled(P_char ch, event_func callback) {
-    for (const auto &e : queue) if (e.ch == ch && e.callback == callback) return reinterpret_cast<P_nevent>(1);
-    return nullptr;
-}
-nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_char, P_obj, int,
-                                 const void *data, int size) {
-    if (size == sizeof(int)) return {}; // Nature's Touch schedules another wave.
-    assert(size == sizeof(regen_event_state));
-    queue.push_back({ch, callback, ne_event_tick + delay, *static_cast<const regen_event_state *>(data)});
+nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int,
+                                 const void *, int size) {
+    assert(size == sizeof(int)); // Nature's Touch schedules another wave.
     return {};
-}
-static void advance(int pulses) {
-    for (int i = 0; i < pulses; ++i) {
-        ++ne_event_tick;
-        for (size_t j = 0; j < queue.size();) {
-            if (queue[j].due > ne_event_tick) { ++j; continue; }
-            auto e = queue[j]; queue.erase(queue.begin() + j);
-            e.callback(e.ch, nullptr, nullptr, &e.state);
-        }
-    }
 }
 '''
 PRODUCTION = "\n".join(extract_function(file, signature) for file, signature in (
@@ -119,7 +89,6 @@ static void init(char_data &ch, bool healer) {
     ch.points.max_ward = 0;
 }
 int main() {
-    advance(0);
     char_data healer{}, holyman{}, warrior{}, mates[2]{};
     init(healer, true);
     init(holyman, false);
