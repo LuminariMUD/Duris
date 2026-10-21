@@ -21,7 +21,6 @@
 #include "telemetry/telemetry_combat_summary.h"
 #include "telemetry/telemetry_encounter.h"
 #include "telemetry/telemetry_progression.h"
-#include "telemetry/telemetry_repository.h"
 #include "telemetry/telemetry_session.h"
 #include "telemetry/telemetry_transport.h"
 #include "telemetry/telemetry_transport_private.h"
@@ -30,6 +29,7 @@
 extern P_char get_linked_char(P_char ch, ush_int type);
 
 #include <openssl/rand.h>
+#include <openssl/crypto.h>
 
 #include <algorithm>
 #include <atomic>
@@ -254,6 +254,9 @@ struct runtime_state
 	telemetry_progression_state progression{};
 	telemetry_encounter_state encounter{};
 	telemetry_combat_summary_state combat_summary{};
+	telemetry_storage_backend worker_backend{};
+	std::mutex posthog_health_mutex{};
+	telemetry_runtime_posthog_health posthog_health{};
 	std::thread worker{};
 	std::atomic<bool> worker_stop{ false };
 	std::atomic<bool> worker_done{ false };
@@ -370,8 +373,8 @@ bool environment_backend(telemetry_storage_backend default_backend,
 		*backend = default_backend;
 		return true;
 	}
-	if (environment_text_is(text, "sql"))
-		*backend = telemetry_storage_backend::sql;
+	if (environment_text_is(text, "posthog"))
+		*backend = telemetry_storage_backend::posthog;
 	else if (environment_text_is(text, "flatfile_disabled") ||
 		 environment_text_is(text, "disabled") || environment_text_is(text, "off"))
 		*backend = telemetry_storage_backend::flatfile_disabled;
@@ -924,7 +927,7 @@ void fill_capture_keys(telemetry_capture_result &capture, const telemetry_record
 
 bool publish_activity_config(const telemetry_config_snapshot &config) noexcept
 {
-	if (!config.enabled || config.backend != telemetry_storage_backend::sql)
+	if (!config.enabled || config.backend == telemetry_storage_backend::flatfile_disabled)
 		return false;
 	if (telemetry_activity_state_config_is_admitted(&R.activity, config.config_id))
 		return true;
@@ -1106,6 +1109,7 @@ struct worker_outage_guard
 			return true;
 		telemetry_outage_observation registration{};
 		registration.producer = R.producer;
+		registration.health.backend = R.worker_backend;
 		registration.environment_id = R.session_scope_environment_id;
 		registration.season_id = R.session_scope_season_id;
 		if (!production_clock_now(nullptr, &registration.registered_monotonic_usec,
@@ -1119,7 +1123,7 @@ struct worker_outage_guard
 		return true;
 	}
 
-	bool checkpoint(bool terminal = false) noexcept
+	bool checkpoint(bool terminal = false, bool incident = false) noexcept
 	{
 		if (journal.current >= journal.count || failed)
 			return !failed;
@@ -1130,18 +1134,30 @@ struct worker_outage_guard
 		// leave the last running watermark for unknown-tail classification.
 		if (!production_clock_now(nullptr, &now, &utc) ||
 		    now < observation.observed_monotonic_usec ||
-		    (!terminal && now - observation.observed_monotonic_usec < 1'000'000U) ||
+		    (!terminal && !incident &&
+		     now - observation.observed_monotonic_usec <
+			     (R.worker_backend == telemetry_storage_backend::posthog ?
+				      60'000'000U :
+				      1'000'000U)) ||
 		    !telemetry_transport_outage_copy_for_worker(&observation))
 			return true;
 		observation.observed_monotonic_usec = now;
 		observation.observed_utc_usec = utc;
+		if (!terminal && !incident &&
+		    R.worker_backend == telemetry_storage_backend::posthog &&
+		    observation.health.last_admitted_record_seq ==
+			    journal.observations[journal.current].health.last_admitted_record_seq &&
+		    observation.health.dropped_detail ==
+			    journal.observations[journal.current].health.dropped_detail &&
+		    observation.health.dropped_control ==
+			    journal.observations[journal.current].health.dropped_control)
+			return true;
 		if (terminal)
 			observation.phase = telemetry_outage_terminal_phase(observation);
-		// A sample that could not be written is evidence lost, not records: the
-		// records are durable in SQL whatever the ledger says, and the ledger's
-		// last good sample stays a running watermark. The next sample retries,
-		// or finds the journal poisoned and leaves the watermark alone.
-		(void)telemetry_outage_checkpoint(&journal, observation);
+		const auto result = telemetry_outage_checkpoint(&journal, observation);
+		if (result != telemetry_outage_result::ready &&
+		    R.worker_backend == telemetry_storage_backend::posthog)
+			return refuse(now, result);
 		return true;
 	}
 
@@ -1152,12 +1168,194 @@ struct worker_outage_guard
 	}
 };
 
+bool start_posthog(telemetry_outage_journal & journal) noexcept
+{
+	telemetry_posthog_reducer_config config{};
+	config.producer = R.producer;
+	config.environment_id = R.session_scope_environment_id;
+	config.season_id = R.session_scope_season_id;
+	config.window_seconds = 1800U;
+	const auto *key = std::getenv("TELEMETRY_IDENTITY_KEY");
+	const auto *token = std::getenv("POSTHOG_API_KEY");
+	const auto *host = std::getenv("POSTHOG_HOST");
+	const auto *test = std::getenv("TELEMETRY_TEST_RUN");
+	if (key == nullptr || token == nullptr || host == nullptr ||
+	    !telemetry_posthog_parse_identity_key(key, config.identity_key))
+		return false;
+	if (test != nullptr)
+	{
+		if (std::strlen(test) >= config.test_run.size())
+			return false;
+		std::memcpy(config.test_run.data(), test, std::strlen(test));
+	}
+	const bool production = config.environment_id == 1U;
+	// Real cloud fixtures have their own scope, tag and <=100 total attempts.
+	if ((!production && (config.environment_id < 1000U || config.test_run[0] == '\0')) ||
+	    (production && config.test_run[0] != '\0'))
+		return false;
+	telemetry_quota_binding binding{};
+	binding.environment_id = config.environment_id;
+	binding.season_id = config.season_id;
+	const std::uint32_t total = production ? 19900U : 100U;
+	const std::uint32_t normal = production ? 19800U : 90U;
+	const std::uint32_t health = production ? 100U : 10U;
+	if (!environment_unsigned("POSTHOG_PROJECT_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
+				  &binding.project_id) ||
+	    binding.project_id != 678214U ||
+	    !environment_unsigned("POSTHOG_SENDER_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
+				  &binding.sender_id) ||
+	    !environment_unsigned("POSTHOG_DAILY_LIMIT", total, 1U, total, &binding.total_limit) ||
+	    !environment_unsigned("POSTHOG_NORMAL_LIMIT", normal, 1U, normal,
+				  &binding.normal_limit) ||
+	    !environment_unsigned("POSTHOG_HEALTH_LIMIT", health, 1U, health,
+				  &binding.health_limit))
+		return false;
+	const bool initialized = telemetry_posthog_reducer_init(config);
+	OPENSSL_cleanse(config.identity_key.data(), config.identity_key.size());
+	if (!initialized || !telemetry_posthog_sender_init(host, token, binding, &journal))
+		return false;
+#ifdef TELEMETRY_POSTHOG_TESTING
+	if (const char *port = std::getenv("DURIS_TEST_POSTHOG_PORT"))
+	{
+		(void)port;
+		std::uint16_t parsed_port = 0U;
+		const auto *ca = std::getenv("DURIS_TEST_POSTHOG_CA");
+		if (production || !environment_text_is(std::getenv("ENVIRONMENT"), "local") ||
+		    ca == nullptr ||
+		    !environment_unsigned("DURIS_TEST_POSTHOG_PORT", parsed_port, 1U, 65535U,
+					  &parsed_port) ||
+		    !telemetry_posthog_sender_test_endpoint(parsed_port, ca))
+			return false;
+	}
+#endif
+	return true;
+}
+
+void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
+{
+	telemetry_runtime_posthog_health health{};
+	telemetry_outage_observation observation{};
+	if (!telemetry_transport_outage_copy_for_worker(&observation))
+		return;
+	health.native = observation.health;
+	health.reducer = telemetry_posthog_reducer_health_copy();
+	health.sender = telemetry_posthog_sender_health_copy();
+	health.quota_day = journal.quota.day;
+	health.normal_reserved = journal.quota.normal_reserved;
+	health.health_reserved = journal.quota.health_reserved;
+	health.total_limit = journal.quota.binding.total_limit;
+	(void)production_monotonic_now(&health.observed_at);
+	const auto state = health.sender.state;
+	if (state != telemetry_posthog_sender_state::ready &&
+	    state != telemetry_posthog_sender_state::sending &&
+	    state != telemetry_posthog_sender_state::stopped)
+	{
+		health.native.state = telemetry_health_state::degraded;
+		health.native.last_error_code =
+			health.sender.quota_error != 0U ? health.sender.quota_error :
+			health.sender.curl_error != 0U	? health.sender.curl_error :
+							  health.sender.http_status;
+		health.native.last_failure_class = telemetry_failure_class::transient_connection;
+		health.native.last_failure_monotonic_usec = health.observed_at;
+	}
+	std::lock_guard<std::mutex> lock(R.posthog_health_mutex);
+	R.posthog_health = health;
+}
+
+void posthog_worker_loop(worker_outage_guard & outage) noexcept
+{
+	struct close_sender
+	{
+		worker_outage_guard &outage;
+		~close_sender()
+		{
+			telemetry_posthog_sender_close();
+			const auto remaining =
+				telemetry_posthog_reducer_health_copy().output_events;
+			if (remaining != 0U)
+				(void)telemetry_posthog_output_retire(
+					remaining,
+					telemetry_posthog_output_disposition::suppressed);
+			publish_posthog_health(outage.journal);
+		}
+	} closer{ outage };
+	if (!start_posthog(outage.journal))
+	{
+		(void)outage.refuse(0U, telemetry_outage_result::invalid);
+		return;
+	}
+	telemetry_transport_posthog_start_for_worker();
+	auto previous_phase = telemetry_posthog_sender_state::ready;
+	for (;;)
+	{
+		telemetry_monotonic_usec now = 0U;
+		telemetry_utc_usec utc = TELEMETRY_UTC_UNKNOWN;
+		if (!production_clock_now(nullptr, &now, &utc))
+			return;
+		const bool stopping = R.worker_stop.load(std::memory_order_acquire);
+		const auto flush = R.flush_requested.load(std::memory_order_acquire);
+		const bool flushing = flush != R.flush_completed.load(std::memory_order_acquire);
+		const auto deadline = stopping ? R.worker_deadline.load(std::memory_order_acquire) :
+				      flushing ? R.flush_deadline.load(std::memory_order_acquire) :
+						 0U;
+		if (stopping &&
+		    (!R.worker_final_flush.load(std::memory_order_acquire) || deadline == 0U))
+			return;
+		const bool consumed = telemetry_transport_posthog_pulse_for_worker(
+			now, utc, deadline, flushing || stopping);
+		telemetry_outage_observation observation{};
+		if (telemetry_transport_outage_copy_for_worker(&observation))
+			(void)telemetry_posthog_observe_health(observation.health, now, utc);
+		publish_posthog_health(outage.journal);
+		const auto reducer = telemetry_posthog_reducer_health_copy();
+		const bool empty = consumed &&
+				   telemetry_transport_health_copy().queue_depth == 0U &&
+				   reducer.output_events == 0U;
+		telemetry_monotonic_usec after = 0U;
+		const bool expired = !production_monotonic_now(&after) ||
+				     (deadline != 0U && after >= deadline);
+		auto phase = telemetry_posthog_sender_health_copy().state;
+		if (phase == telemetry_posthog_sender_state::sending)
+			phase = telemetry_posthog_sender_state::ready;
+		const bool incident = phase != previous_phase;
+		previous_phase = phase;
+		if (!outage.checkpoint(false,
+				       incident || ((flushing || stopping) && (empty || expired))))
+			return;
+		if (flushing && (empty || expired))
+		{
+			R.flush_durable.store(empty && !expired &&
+						      reducer.output_suppressed == 0U &&
+						      reducer.ambiguous_events == 0U &&
+						      reducer.reduction_refusals == 0U,
+					      std::memory_order_relaxed);
+			R.flush_completed.store(flush, std::memory_order_release);
+			// A failed exec resumes this same process. Deadline cancellation
+			// must not permanently stop its otherwise valid sender.
+			if (telemetry_posthog_sender_health_copy().state ==
+			    telemetry_posthog_sender_state::stopped)
+				telemetry_posthog_sender_resume();
+		}
+		if (stopping && (empty || expired))
+			return;
+		std::unique_lock<std::mutex> lock(R.wake_mutex);
+		R.wake_condition.wait_for(
+			lock,
+			std::chrono::microseconds(flushing || stopping ? 1000U : WORKER_WAIT_USEC));
+	}
+}
+
 void worker_loop() noexcept
 {
 	worker_done_guard done;
 	worker_outage_guard outage;
 	if (!outage.start())
 		return;
+	if (R.worker_backend == telemetry_storage_backend::posthog)
+	{
+		posthog_worker_loop(outage);
+		return;
+	}
 	for (;;)
 	{
 		if (R.worker_stop.load(std::memory_order_acquire))
@@ -1370,11 +1568,9 @@ telemetry_runtime_options telemetry_runtime_default_options(void)
 	options.config.season_id = 1U;
 	options.config.environment_id = 1U;
 	options.config.effective_utc_usec = now_utc;
-	options.config.backend = telemetry_storage_backend::sql;
+	options.config.backend = telemetry_storage_backend::posthog;
 	options.config.enabled = 0U;
-#ifdef __NO_MYSQL__
-	options.config.backend = telemetry_storage_backend::flatfile_disabled;
-#endif
+
 	(void)telemetry_config_compute_fingerprint(options.config, options.config.fingerprint,
 						   sizeof(options.config.fingerprint));
 	options.config.config_id = telemetry_config_id_from_fingerprint(
@@ -1450,18 +1646,14 @@ telemetry_runtime_options telemetry_runtime_options_from_environment(void)
 	options.config.context_segments_per_minute = context_segments_per_minute;
 	options.config.pulse_slot_count = pulse_slot_count;
 	options.config.backend = backend;
-	options.config.enabled = backend == telemetry_storage_backend::sql ? 1U : 0U;
-#ifdef __NO_MYSQL__
-	options.config.backend = telemetry_storage_backend::flatfile_disabled;
-	options.config.enabled = 0U;
-#endif
+	options.config.enabled = backend == telemetry_storage_backend::posthog ? 1U : 0U;
 	if (options.config.enabled == 0U)
 	{
 		refresh_config_identity(options.config);
 		return options;
 	}
 
-	/* Enabled SQL telemetry is admitted only with a reviewed, preloaded full
+	/* Enabled telemetry is admitted only with a reviewed, preloaded full
 	 * digest catalog.  A missing/invalid file is a telemetry-only fail-closed
 	 * result; the caller still boots ordinary gameplay. */
 	if (!load_reviewed_property_catalog(std::getenv("TELEMETRY_PROPERTY_CATALOG_FILE")))
@@ -1482,10 +1674,13 @@ telemetry_runtime_options telemetry_runtime_options_from_environment(void)
 
 telemetry_runtime_outcome telemetry_runtime_init(telemetry_runtime_options options)
 {
-	if (R.initialized || !valid_runtime_options(options))
+	if (R.initialized || !valid_runtime_options(options) ||
+	    (options.config.enabled != 0U &&
+	     options.config.backend == telemetry_storage_backend::sql &&
+	     !telemetry_transport_uses_test_repository()))
 		return telemetry_runtime_outcome::invalid;
 	if (options.config.enabled != 0U &&
-	    options.config.backend == telemetry_storage_backend::sql &&
+	    options.config.backend != telemetry_storage_backend::flatfile_disabled &&
 	    options.property_capture_enabled != 0U)
 	{
 		telemetry_config_property_snapshot properties{};
@@ -1503,11 +1698,13 @@ telemetry_runtime_outcome telemetry_runtime_init(telemetry_runtime_options optio
 			options.config = effective;
 	}
 	if (options.config.enabled != 0U &&
-	    options.config.backend == telemetry_storage_backend::sql &&
+	    options.config.backend != telemetry_storage_backend::flatfile_disabled &&
 	    !reserve_runtime_producer(options.producer))
 		return telemetry_runtime_outcome::invalid;
 	R.producer = options.producer;
 	R.config = options.config;
+	R.worker_backend = options.config.backend;
+	R.posthog_health = {};
 	R.health_monitor_config = telemetry_health_monitor_default_config(
 		options.config.interval_usec, QUEUE_CAPACITY);
 	telemetry_health_monitor_reset(&R.health_monitor);
@@ -1606,7 +1803,7 @@ telemetry_runtime_outcome telemetry_runtime_init(telemetry_runtime_options optio
 	}
 
 	R.enabled = options.config.enabled != 0U &&
-		    options.config.backend == telemetry_storage_backend::sql;
+		    options.config.backend != telemetry_storage_backend::flatfile_disabled;
 	if (R.enabled)
 	{
 		const telemetry_transport_outcome transport =
@@ -2045,6 +2242,8 @@ telemetry_runtime_outcome telemetry_runtime_final_reap(void)
 	 * worker owns the borrowed repository binding until this join completes. */
 	if (R.worker.joinable())
 		R.worker.join();
+	if (R.worker_backend == telemetry_storage_backend::posthog)
+		telemetry_posthog_reducer_reset();
 	telemetry_transport_repository_shutdown_for_owner();
 	R.last_health = telemetry_transport_health_copy();
 	telemetry_transport_shutdown();
@@ -2064,10 +2263,27 @@ telemetry_runtime_outcome telemetry_runtime_final_reap(void)
 	return telemetry_runtime_outcome::accepted;
 }
 
+bool telemetry_runtime_posthog_health_copy(telemetry_runtime_posthog_health *output) noexcept
+{
+	if (output == nullptr)
+		return false;
+	std::unique_lock<std::mutex> lock(R.posthog_health_mutex, std::try_to_lock);
+	if (!lock.owns_lock())
+		return false;
+	*output = R.posthog_health;
+	return output->observed_at != 0U;
+}
+
 telemetry_health_snapshot telemetry_runtime_health_copy(void)
 {
 	if (R.transport_started)
+	{
+		telemetry_runtime_posthog_health health{};
+		if (R.worker_backend == telemetry_storage_backend::posthog &&
+		    telemetry_runtime_posthog_health_copy(&health))
+			return health.native;
 		return telemetry_transport_health_copy();
+	}
 	if (R.has_last_health)
 		return R.last_health;
 	return fallback_health();

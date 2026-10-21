@@ -25,10 +25,11 @@
  * watermark; an unknown tail never implies an exact loss count or crash time. */
 inline constexpr std::size_t TELEMETRY_OUTAGE_MAX_PRODUCERS = 256U;
 inline constexpr std::size_t TELEMETRY_OUTAGE_DISK_WORDS = 40U;
+inline constexpr std::size_t TELEMETRY_OUTAGE_POSTHOG_WORDS = 43U;
 inline constexpr std::size_t TELEMETRY_OUTAGE_QUOTA_WORDS = 10U;
 inline constexpr std::size_t TELEMETRY_OUTAGE_MAX_BYTES =
 	64U + TELEMETRY_OUTAGE_QUOTA_WORDS * 8U +
-	TELEMETRY_OUTAGE_MAX_PRODUCERS * TELEMETRY_OUTAGE_DISK_WORDS * 8U;
+	TELEMETRY_OUTAGE_MAX_PRODUCERS * TELEMETRY_OUTAGE_POSTHOG_WORDS * 8U;
 
 enum class telemetry_outage_phase : std::uint8_t
 {

@@ -2,8 +2,8 @@
 
 Status: **replanned on 2026-10-21 UTC; implementation incomplete; production disabled.**
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
-Working branch: `issue-59-posthog-http`, based on
-`a941a394fa85a917e81c4e8477f206fec9f9dcde`, with the worker HTTPS sender ready for review.
+Working branch: `issue-59-posthog-runtime`, based on
+`d540b778c04889cb848e2f3269741867fd1f1728` (sender PR #260).
 The earlier issue-107 plan remains in [plan-issue-107.md](plan-issue-107.md).
 
 The owner has authorized a smaller first delivery that retains at least 75% of
@@ -12,8 +12,8 @@ Disposable native tests are the accepted environment. This plan supersedes the
 previous implementation sequence and its extra completion gates. Issue #59
 closes when this reduced delivery meets the completion criteria below. Deferred
 work is outside #59's closure requirements and remains optional follow-up.
-Implementation is active. The worker HTTPS component is validated; runtime
-integration is next. Production export remains disabled.
+Implementation is active. The worker HTTPS component is in [PR #260](https://github.com/LuminariMUD/Duris/pull/260); runtime
+integration is in progress. Production export remains disabled.
 
 ## Delivery target and estimate
 
@@ -91,7 +91,7 @@ do not restart these components or reimplement their contracts.
 | Opaque identities, UTC/UUID/integer encodings and volume fixture | [PR 254](https://github.com/LuminariMUD/Duris/pull/254), `telemetry_posthog.*`, `fixtures/telemetry/posthog/{encodings,volume}.json`. |
 | Character, encounter/combat and health reduction | PRs [255](https://github.com/LuminariMUD/Duris/pull/255), [257](https://github.com/LuminariMUD/Duris/pull/257), [258](https://github.com/LuminariMUD/Duris/pull/258). |
 | Durable quota and native state tool | [PR 259](https://github.com/LuminariMUD/Duris/pull/259); existing outage-journal regressions include reservation, restart, corruption and publication failure. |
-| Worker HTTPS sender | Current branch, ready for review; component suite and both full builds pass. Runtime remains unconnected. |
+| Worker HTTPS sender | Current branch, ready for review; component suite and both full builds pass. Runtime integration is implemented on the next branch; acceptance is pending. |
 
 Checks completed during this replanning pass on 2026-10-21 UTC:
 
@@ -360,3 +360,32 @@ ticket.
 - Next chunk: replace the runtime SQL sink with the reducer/sender, preserve
   admission fences and logical copyover identity, then prove runtime failures.
   No production process, schema, credentials or player data was changed.
+
+- Active runtime chunk: `issue-59-posthog-runtime` replaces production repository
+  calls with direct, fenced, single-consumption reducer delivery; disables the
+  SQL writer link; enables PostHog independently of gameplay persistence; adds
+  cached local sender/reducer/quota health and preserves copyover handoffs on
+  failed delivery. Native HTTPS/lifecycle regressions and full builds are in
+  progress. This is not yet acceptance proof for real gameplay or performance.
+- Still required after this chunk: real two-backend gameplay/exec/persistence
+  journeys; matched performance and integrated volume evidence; four saved cloud
+  reports plus health and the <=100-submission query reconciliation; final
+  operational documentation. The five closure criteria remain unchanged.
+
+- Runtime proof now passes: `python3 tests/async/test_telemetry_runtime_integration.py
+  --posthog` runs nine native HTTPS cases per persistence build under UBSan:
+  delivery with exact time conservation, restart quota continuity, 250ms
+  cancellation plus failed-exec continuation, exhaustion, failed publication,
+  clock rollback, missing identity key/quota and conflicting journal ownership.
+  Evidence: `bin/issue59/fast-plan/runtime-posthog.log` (18 passes). These are
+  native runtime harnesses, not actual server gameplay/persistence journeys.
+- Integration fixes found by those tests: PostHog now passes the activity
+  module's former SQL-only detail gate; native consumption does not claim SQL
+  commit; a cancelled sender resumes without clearing a permanent circuit;
+  version-3 outage observations preserve backend/consumed count/sequence while
+  retaining unknown-tail semantics and v1/v2 compatibility.
+- Focused transport tests passed normal/ASan/UBSan/TSan; config, health,
+  standalone contract headers, copyover wire, activity/session integration,
+  existing runtime lifecycle/exhaustion/outage and gameplay adapters passed.
+  Logs are `bin/issue59/fast-plan/*runtime*.log`. Full final build checks are
+  finishing before this chunk is published. No production activation occurred.

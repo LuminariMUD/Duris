@@ -555,6 +555,7 @@ namespace
 		telemetry_outage_journal *journal = nullptr;
 		telemetry_quota_binding binding{};
 		telemetry_posthog_sender_health health{};
+		telemetry_posthog_sender_state resume_state = telemetry_posthog_sender_state::ready;
 		bool initialized = false;
 		bool active = false;
 		bool probing = false;
@@ -998,6 +999,9 @@ namespace
 		row.integer(object, "circuit_open_count", native.circuit_open_count);
 		row.integer(object, "last_admitted_record_seq", native.last_admitted_record_seq,
 			    native.last_admitted_record_seq != 0U);
+		row.integer(object, "consumed_records", native.consumed_records);
+		row.integer(object, "last_consumed_record_seq", native.last_consumed_record_seq,
+			    native.last_consumed_record_seq != 0U);
 		row.integer(object, "last_committed_record_seq", native.last_committed_record_seq,
 			    native.last_committed_record_seq != 0U);
 		row.integer(object, "last_success_age_usec",
@@ -2950,6 +2954,9 @@ void telemetry_posthog_sender_pulse(telemetry_monotonic_usec now, telemetry_utc_
 		return;
 	if (deadline != 0U && now >= deadline)
 	{
+		SENDER.resume_state = SENDER.health.state == sender_phase::permanent_failure ?
+					      sender_phase::permanent_failure :
+					      sender_phase::ready;
 		if (SENDER.active)
 			add_count(SENDER.health.cancellations);
 		http_release(http_unresolved());
@@ -3015,6 +3022,12 @@ void telemetry_posthog_sender_pulse(telemetry_monotonic_usec now, telemetry_utc_
 telemetry_posthog_sender_health telemetry_posthog_sender_health_copy() noexcept
 {
 	return SENDER.health;
+}
+
+void telemetry_posthog_sender_resume() noexcept
+{
+	if (SENDER.initialized && SENDER.health.state == sender_phase::stopped)
+		SENDER.health.state = SENDER.resume_state;
 }
 
 #ifdef TELEMETRY_POSTHOG_TESTING

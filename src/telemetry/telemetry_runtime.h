@@ -21,6 +21,7 @@
 #include "telemetry/telemetry_encounter.h"
 #include "telemetry/telemetry_health.h"
 #include "telemetry/telemetry_progression.h"
+#include "telemetry/telemetry_posthog.h"
 #include "telemetry/telemetry_types.h"
 
 #include <cstdint>
@@ -411,10 +412,9 @@ telemetry_runtime_game_progression(struct char_data *character, struct descripto
 				   telemetry_progression_observation observation);
 std::uint16_t telemetry_runtime_pulse_slot_count(void) noexcept;
 telemetry_capture_result telemetry_runtime_session_enter(telemetry_session_enter enter);
-/* Copyover owner only, after capturing its complete handoff batch while normal
- * game-loop admissions are paused. Waits at most 250ms for worker durability;
- * never stops/joins the writer. On failure serialize absent handoffs. Queue
- * emptiness alone is insufficient: in-flight/rejected records are checked. */
+/* Copyover owner only, after capturing handoffs. Waits at most 250ms for
+ * consumption/HTTP progress. A refused flush never invalidates logical identity;
+ * serialize valid handoffs with an incomplete-tail marker on failure. */
 telemetry_runtime_outcome telemetry_runtime_flush_for_copyover(telemetry_monotonic_usec deadline);
 /* Game-thread bounded export; accepted is a candidate until the batch flush. */
 telemetry_handoff_result telemetry_runtime_session_handoff_copy(telemetry_session_ref session);
@@ -451,6 +451,20 @@ telemetry_runtime_outcome telemetry_runtime_shutdown(telemetry_shutdown_request 
  * teardown. Idempotent after completion. */
 telemetry_runtime_outcome telemetry_runtime_final_reap(void);
 telemetry_health_snapshot telemetry_runtime_health_copy(void);
+struct telemetry_runtime_posthog_health
+{
+	telemetry_health_snapshot native{};
+	telemetry_posthog_reducer_health reducer{};
+	telemetry_posthog_sender_health sender{};
+	std::int64_t quota_day = TELEMETRY_UTC_UNKNOWN;
+	std::uint32_t normal_reserved = 0U;
+	std::uint32_t health_reserved = 0U;
+	std::uint32_t total_limit = 0U;
+	telemetry_monotonic_usec observed_at = 0U;
+};
+/* Nonblocking coherent cached copy; false if publication is in progress. */
+bool telemetry_runtime_posthog_health_copy(telemetry_runtime_posthog_health *output) noexcept;
+
 /* Game-loop observer: reads cached atomics only and never calls the SQL writer.
  * State transitions are emitted immediately; identical active failures are
  * rate-limited by the monitor. */

@@ -36,8 +36,9 @@ namespace
 	constexpr const char *LOCK = "outages.owner";
 	constexpr unsigned char MAGIC[] = { 'D', 'M', 'S', 'T', 'L', 'J', '0', '1' };
 	constexpr unsigned char QUOTA_MAGIC[] = { 'D', 'M', 'S', 'T', 'L', 'J', '0', '2' };
+	constexpr unsigned char POSTHOG_MAGIC[] = { 'D', 'M', 'S', 'T', 'L', 'J', '0', '3' };
 	constexpr unsigned char MARKER_MAGIC[] = { 'D', 'M', 'S', 'Q', 'W', '0', '0', '1' };
-	using words = std::array<std::uint64_t, TELEMETRY_OUTAGE_DISK_WORDS>;
+	using words = std::array<std::uint64_t, TELEMETRY_OUTAGE_POSTHOG_WORDS>;
 	constexpr std::uint64_t KNOWN_KINDS = (std::uint64_t{ 1U } << 9U) - 2U;
 	words encode(const telemetry_outage_observation &value);
 
@@ -92,6 +93,7 @@ namespace
 			       static_cast<std::uint8_t>(
 				       telemetry_failure_class::permanent_repository) &&
 		       h.last_committed_record_seq <= h.last_admitted_record_seq &&
+		       h.last_consumed_record_seq <= h.last_admitted_record_seq &&
 		       h.queue_depth <= TELEMETRY_QUEUE_CAPACITY_PROPOSAL &&
 		       value.inflight_records <= TELEMETRY_BATCH_MAX_RECORDS_PROPOSAL &&
 		       value.unattempted_records <= h.queue_depth &&
@@ -115,8 +117,9 @@ namespace
 		    value.record_kind_mask != 0U)
 			return false;
 		const auto fields = encode(value);
-		return std::all_of(fields.begin() + 10U, fields.end(),
-				   [](auto field) { return field == 0U; });
+		return std::all_of(fields.begin() + 10U, fields.begin() + 40U,
+				   [](auto field) { return field == 0U; }) &&
+		       fields[41] == 0U && fields[42] == 0U;
 	}
 
 	bool extends(const telemetry_outage_observation &previous,
@@ -130,7 +133,7 @@ namespace
 		    right[6] < left[6] || (right[9] & left[9]) != left[9])
 			return false;
 		for (const auto field : { 10U, 11U, 12U, 13U, 14U, 15U, 16U, 17U, 18U, 19U, 20U,
-					  21U, 28U, 29U, 30U, 31U, 39U })
+					  21U, 28U, 29U, 30U, 31U, 39U, 41U, 42U })
 			if (right[field] < left[field])
 				return false;
 		return true;
@@ -178,7 +181,10 @@ namespace
 			 h.last_failure_record_kind_mask,
 			 h.last_success_monotonic_usec,
 			 h.last_failure_monotonic_usec,
-			 h.circuit_open_count };
+			 h.circuit_open_count,
+			 h.backend == telemetry_storage_backend::posthog ? 3U : 0U,
+			 h.last_consumed_record_seq,
+			 h.consumed_records };
 	}
 
 	bool decode(const words &w, telemetry_outage_observation &v)
@@ -232,6 +238,12 @@ namespace
 		h.last_success_monotonic_usec = w[37];
 		h.last_failure_monotonic_usec = w[38];
 		h.circuit_open_count = w[39];
+		if (w[40] != 0U && w[40] != 3U)
+			return false;
+		if (w[40] == 3U)
+			h.backend = telemetry_storage_backend::posthog;
+		h.last_consumed_record_seq = w[41];
+		h.consumed_records = w[42];
 		return valid(v);
 	}
 
@@ -382,9 +394,16 @@ namespace
 		unsigned char digest[SHA256_DIGEST_LENGTH]{};
 		if (SHA256(data.data(), data.size() - sizeof(digest), digest) == nullptr)
 			return failure(j, telemetry_outage_result::io_failure, EIO);
+		const bool posthog_frame =
+			std::memcmp(data.data(), POSTHOG_MAGIC, sizeof(POSTHOG_MAGIC)) == 0;
 		const bool quota_frame =
-			std::memcmp(data.data(), QUOTA_MAGIC, sizeof(QUOTA_MAGIC)) == 0;
-		if ((!quota_frame && std::memcmp(data.data(), MAGIC, sizeof(MAGIC)) != 0) ||
+			std::memcmp(data.data(), QUOTA_MAGIC, sizeof(QUOTA_MAGIC)) == 0 ||
+			(posthog_frame &&
+			 read_word(data.data() + 24U) == TELEMETRY_OUTAGE_QUOTA_WORDS);
+		const auto disk_words = posthog_frame ? TELEMETRY_OUTAGE_POSTHOG_WORDS :
+							TELEMETRY_OUTAGE_DISK_WORDS;
+		if ((!quota_frame && !posthog_frame &&
+		     std::memcmp(data.data(), MAGIC, sizeof(MAGIC)) != 0) ||
 		    std::memcmp(data.data() + data.size() - sizeof(digest), digest,
 				sizeof(digest)) != 0)
 			return failure(j, telemetry_outage_result::corrupt, ENODATA);
@@ -394,7 +413,7 @@ namespace
 		if (generation == 0U || (!quota_frame && count == 0U) ||
 		    count > TELEMETRY_OUTAGE_MAX_PRODUCERS ||
 		    read_word(data.data() + 24U) != extra ||
-		    data.size() != 64U + extra * 8U + count * TELEMETRY_OUTAGE_DISK_WORDS * 8U)
+		    data.size() != 64U + extra * 8U + count * disk_words * 8U)
 			return failure(j, telemetry_outage_result::corrupt, EBADMSG);
 		j.quota = {};
 		if (quota_frame)
@@ -408,9 +427,9 @@ namespace
 		for (std::size_t index = 0U; index < count; ++index)
 		{
 			words fields{};
-			for (std::size_t field = 0U; field < fields.size(); ++field)
+			for (std::size_t field = 0U; field < disk_words; ++field)
 				fields[field] = read_word(data.data() + 32U + extra * 8U +
-							  (index * fields.size() + field) * 8U);
+							  (index * disk_words + field) * 8U);
 			if (!decode(fields, j.observations[index]) ||
 			    (index + 1U < count &&
 			     j.observations[index].phase == telemetry_outage_phase::running))
@@ -431,10 +450,19 @@ namespace
 					 std::uint64_t generation)
 	{
 		const bool quota = j.quota.binding.project_id != 0U;
-		const auto *magic = quota ? QUOTA_MAGIC : MAGIC;
+		const bool posthog = std::any_of(j.observations.begin(),
+						 j.observations.begin() + j.count,
+						 [](const auto &observation)
+						 {
+							 return observation.health.backend ==
+								telemetry_storage_backend::posthog;
+						 });
+		const auto disk_words = posthog ? TELEMETRY_OUTAGE_POSTHOG_WORDS :
+						  TELEMETRY_OUTAGE_DISK_WORDS;
+		const auto *magic = posthog ? POSTHOG_MAGIC : quota ? QUOTA_MAGIC : MAGIC;
 		std::vector<unsigned char> data(magic, magic + sizeof(MAGIC));
 		data.reserve(64U + (quota ? TELEMETRY_OUTAGE_QUOTA_WORDS * 8U : 0U) +
-			     j.count * TELEMETRY_OUTAGE_DISK_WORDS * 8U);
+			     j.count * disk_words * 8U);
 		append_word(data, generation);
 		append_word(data, j.count);
 		append_word(data, quota ? TELEMETRY_OUTAGE_QUOTA_WORDS : 0U);
@@ -442,8 +470,11 @@ namespace
 			for (const auto value : encode_quota(j.quota))
 				append_word(data, value);
 		for (std::size_t index = 0U; index < j.count; ++index)
-			for (const auto value : encode(j.observations[index]))
-				append_word(data, value);
+		{
+			const auto fields = encode(j.observations[index]);
+			for (std::size_t field = 0U; field < disk_words; ++field)
+				append_word(data, fields[field]);
+		}
 		unsigned char digest[SHA256_DIGEST_LENGTH]{};
 		if (SHA256(data.data(), data.size(), digest) == nullptr)
 			throw std::bad_alloc();

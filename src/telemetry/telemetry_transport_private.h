@@ -98,4 +98,12 @@ void telemetry_transport_fail_storage_for_worker(telemetry_monotonic_usec now,
  * The production binding always requires a protected ledger directory. */
 bool telemetry_transport_uses_test_repository(void);
 
+/* Production worker: consume each admitted record once, seal only after the
+ * captured queue tail, and pump HTTP between bounded groups. No SQL replay. */
+void telemetry_transport_posthog_start_for_worker(void);
+bool telemetry_transport_posthog_pulse_for_worker(telemetry_monotonic_usec now,
+						  telemetry_utc_usec utc,
+						  telemetry_monotonic_usec deadline = 0U,
+						  bool force = false);
+
 #endif
