@@ -1150,7 +1150,11 @@ struct worker_outage_guard
 		    observation.health.dropped_detail ==
 			    journal.observations[journal.current].health.dropped_detail &&
 		    observation.health.dropped_control ==
-			    journal.observations[journal.current].health.dropped_control)
+			    journal.observations[journal.current].health.dropped_control &&
+		    observation.health.last_consumed_record_seq ==
+			    journal.observations[journal.current].health.last_consumed_record_seq &&
+		    observation.health.consumed_records ==
+			    journal.observations[journal.current].health.consumed_records)
 			return true;
 		if (terminal)
 			observation.phase = telemetry_outage_terminal_phase(observation);
@@ -1478,8 +1482,7 @@ telemetry_health_snapshot fallback_health() noexcept
 	health.backend = R.config.backend;
 	health.queue_capacity = QUEUE_CAPACITY;
 	health.producer = R.producer;
-	health.advisory_lock_state = R.config.backend ==
-						     telemetry_storage_backend::flatfile_disabled ?
+	health.advisory_lock_state = R.config.backend != telemetry_storage_backend::sql ?
 					     telemetry_advisory_lock_state::not_applicable :
 					     telemetry_advisory_lock_state::unavailable;
 	health.disabled_reason = R.config.backend == telemetry_storage_backend::flatfile_disabled ?

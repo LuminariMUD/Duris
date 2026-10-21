@@ -392,6 +392,8 @@ void check_disabled_default()
 			telemetry_runtime_outcome::disabled;
 	assert(telemetry_runtime_init(options) == expected);
 	assert(telemetry_runtime_health_copy().state == telemetry_health_state::disabled);
+	assert(telemetry_runtime_health_copy().advisory_lock_state ==
+	       telemetry_advisory_lock_state::not_applicable);
 	assert(telemetry_runtime_shutdown({ 0U, 0U, {} }) == telemetry_runtime_outcome::accepted);
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);

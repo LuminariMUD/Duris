@@ -1751,8 +1751,12 @@ bool telemetry_transport_posthog_pulse_for_worker(telemetry_monotonic_usec now,
 	while (QUEUE.consumer_tail.load(std::memory_order_acquire) < POSTHOG_FENCE)
 	{
 		telemetry_record record{};
-		if (telemetry_posthog_reducer_health_copy().output_events >
-		    TELEMETRY_POSTHOG_MAX_EVENTS - 16U)
+		const auto output = telemetry_posthog_reducer_health_copy();
+		// A lifecycle/level transition can seal both retained character fragments
+		// and an occurrence. Keep another event's headroom for framing.
+		if (output.output_events > TELEMETRY_POSTHOG_MAX_EVENTS - 16U ||
+		    output.output_bytes > TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES -
+						  4U * TELEMETRY_POSTHOG_MAX_EVENT_BYTES)
 			return false;
 		if (!telemetry_queue_private::peek(&QUEUE, 0U, &record, nullptr, nullptr))
 			return false;
