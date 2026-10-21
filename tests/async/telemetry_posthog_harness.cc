@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstring>
 
+int telemetry_posthog_reducer_scenario(std::string_view name);
+
 namespace
 {
 
@@ -29,6 +31,8 @@ template <std::size_t Size> int report(bool valid, const std::array<char, Size> 
 
 int main(int argc, char **argv)
 {
+	if (argc == 3 && std::strcmp(argv[1], "reduce") == 0)
+		return telemetry_posthog_reducer_scenario(argv[2]);
 	if (argc == 2 && std::strcmp(argv[1], "uuid") == 0)
 	{
 		telemetry_posthog_uuid output{};
