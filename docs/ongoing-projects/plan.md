@@ -24,7 +24,8 @@ The intervening Assassin plan from master is preserved byte-for-byte in
 - `./scripts/format.sh --check` and `git diff --check` passed. The full SQL build
   passed with `nice -n 10 make -C src -j2 PERSISTENCE_BACKEND=mariadb
   BIN_ROOT="$PWD/bin/issue59/mariadb"`; log: `bin/issue59/build-mariadb.log`.
-- The second chunk, branch `issue-59-posthog-encodings`, implements worker-side
+- The second chunk, [PR #254](https://github.com/LuminariMUD/Duris/pull/254),
+  branch `issue-59-posthog-encodings`, implements worker-side
   character HMAC pseudonyms, canonical session/run IDs, one-time UUID v4 creation
   and timezone-independent microsecond UTC formatting in `telemetry_posthog.*`.
   It links into both builds but is not connected to capture/delivery yet.
@@ -52,6 +53,8 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   maximum. Use `toInt` / `accurateCastOrNull(..., 'UInt64')` for values and
   `accurateCastOrNull(..., 'Int128'/'UInt128')` before sums. Exact successful
   queries/results are recorded in the contract; no cloud events were submitted.
+  The account recheck confirmed project `678214`, free billing, no active
+  subscription, `ingested_event=false` and zero analytics usage.
 - Worker reduction/serialization, HTTP, quota, SQL decoupling, gameplay journeys,
   cloud ingestion and reports are still unimplemented. Continue in this module
   with bounded accumulators and immutable sealed output, then replace the
