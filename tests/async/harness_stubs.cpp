@@ -76,6 +76,16 @@ HARNESS_STUB void send_to_char(const char *, P_char, int) {}
 HARNESS_STUB void act(const char *, int, P_char, P_obj, void *, int) {}
 HARNESS_STUB void update_pos(P_char) {}
 HARNESS_STUB void updateShortAffects(P_char) {}
+// Snapshot fixtures without short affects only need these symbols to link.
+// Tests that exercise scheduled expiry supply their own implementations.
+HARNESS_STUB void event_short_affect(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
+HARNESS_STUB int ne_event_time(P_nevent)
+{
+	std::abort();
+}
 // Scheduler fixtures identify this callback but do not run mana regeneration.
 HARNESS_STUB void event_mana_regen(P_char, P_char, P_obj, void *)
 {
