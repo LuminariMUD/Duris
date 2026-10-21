@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: five implementation PRs open; comparative audit qualified locally and awaiting its final PR.
+Status: six stacked PRs open for review; comparative audit qualified locally.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -177,8 +177,9 @@ plan. The progress log below records subsequent implementation and proof.
   `branch/issue-187-weapon-poison`, head `bb6c0e7a5`, is open against #249.
   [PR #251](https://github.com/LuminariMUD/Duris/pull/251),
   `branch/issue-187-poison-progression`, current head `32d0b3d4a`, is open
-  against #250. Current continuation branch is `branch/issue-187-combat-audit`,
-  stacked on #251. No merges or tags.
+  against #250. [PR #256](https://github.com/LuminariMUD/Duris/pull/256),
+  `branch/issue-187-combat-audit`, is open against #251 with the final audit
+  tests and retained-behavior decisions. No merges or tags.
 - **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
   trained Awareness now enters the existing ordinary stab mitigation branch,
   once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
