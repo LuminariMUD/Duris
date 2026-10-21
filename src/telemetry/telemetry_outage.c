@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <new>
 #include <vector>
 
 #include <fcntl.h>
@@ -34,6 +35,8 @@ constexpr const char *LEDGER = "outages.ledger";
 constexpr const char *PENDING = "outages.pending";
 constexpr const char *LOCK = "outages.owner";
 constexpr unsigned char MAGIC[] = { 'D', 'M', 'S', 'T', 'L', 'J', '0', '1' };
+constexpr unsigned char QUOTA_MAGIC[] = { 'D', 'M', 'S', 'T', 'L', 'J', '0', '2' };
+constexpr unsigned char MARKER_MAGIC[] = { 'D', 'M', 'S', 'Q', 'W', '0', '0', '1' };
 using words = std::array<std::uint64_t, TELEMETRY_OUTAGE_DISK_WORDS>;
 constexpr std::uint64_t KNOWN_KINDS = (std::uint64_t{ 1U } << 9U) - 2U;
 words encode(const telemetry_outage_observation &value);
@@ -240,6 +243,93 @@ std::uint64_t read_word(const unsigned char *data)
 	return value;
 }
 
+using quota_words = std::array<std::uint64_t, TELEMETRY_OUTAGE_QUOTA_WORDS>;
+
+bool binding_valid(const telemetry_quota_binding &b)
+{
+	return b.project_id != 0U && b.sender_id != 0U && b.environment_id != 0U &&
+	       b.season_id != 0U && b.total_limit > 0U && b.total_limit <= 20'000U &&
+	       b.normal_limit <= b.total_limit && b.health_limit <= 100U &&
+	       b.health_limit <= b.total_limit && (b.normal_limit != 0U || b.health_limit != 0U);
+}
+
+quota_words encode_quota(const telemetry_quota_state &q)
+{
+	const auto &b = q.binding;
+	return { b.project_id,	    b.sender_id,
+		 b.environment_id,  b.season_id,
+		 b.normal_limit,    b.health_limit,
+		 b.total_limit,	    std::bit_cast<std::uint64_t>(q.day),
+		 q.normal_reserved, q.health_reserved };
+}
+
+bool decode_quota(const quota_words &w, telemetry_quota_state &q)
+{
+	if (w[4] > 20'000U || w[5] > 100U || w[6] > 20'000U || w[8] > 20'000U || w[9] > 100U)
+		return false;
+	q.binding = { w[0],
+		      w[1],
+		      w[2],
+		      w[3],
+		      static_cast<std::uint32_t>(w[4]),
+		      static_cast<std::uint32_t>(w[5]),
+		      static_cast<std::uint32_t>(w[6]) };
+	q.day = std::bit_cast<std::int64_t>(w[7]);
+	q.normal_reserved = static_cast<std::uint32_t>(w[8]);
+	q.health_reserved = static_cast<std::uint32_t>(w[9]);
+	return binding_valid(q.binding) && q.day >= -719162 && q.day <= 2932896 &&
+	       q.normal_reserved <= q.binding.normal_limit &&
+	       q.health_reserved <= q.binding.health_limit &&
+	       q.normal_reserved + q.health_reserved <= q.binding.total_limit;
+}
+
+bool quota_extends(const telemetry_quota_state &previous, const telemetry_quota_state &next)
+{
+	auto left = encode_quota(previous);
+	const auto right = encode_quota(next);
+	// An explicit season rollover may only publish an exhausted allowance.
+	if (left[3] != right[3] &&
+	    (next.normal_reserved + next.health_reserved == next.binding.total_limit ||
+	     (next.normal_reserved == next.binding.normal_limit &&
+	      next.health_reserved == next.binding.health_limit)))
+		left[3] = right[3];
+	return std::equal(left.begin(), left.begin() + 7U, right.begin()) &&
+	       next.day >= previous.day &&
+	       (next.day > previous.day || (next.normal_reserved >= previous.normal_reserved &&
+					    next.health_reserved >= previous.health_reserved));
+}
+
+bool marker_matches(const std::array<unsigned char, 48U> &marker, const telemetry_outage_journal &j)
+{
+	return std::memcmp(marker.data(), MARKER_MAGIC, sizeof(MARKER_MAGIC)) == 0 &&
+	       read_word(marker.data() + 8U) == j.generation &&
+	       std::memcmp(marker.data() + 16U, j.digest.data(), j.digest.size()) == 0;
+}
+
+bool write_marker(telemetry_outage_journal &j, std::uint64_t generation,
+		  const unsigned char *digest)
+{
+	std::vector<unsigned char> marker(std::begin(MARKER_MAGIC), std::end(MARKER_MAGIC));
+	append_word(marker, generation);
+	marker.insert(marker.end(), digest, digest + SHA256_DIGEST_LENGTH);
+	std::size_t offset = 0U;
+	while (offset < marker.size())
+	{
+		const auto written = pwrite(j.ownership_fd, marker.data() + offset,
+					    marker.size() - offset, static_cast<off_t>(offset));
+		if (written < 0 && errno == EINTR)
+			continue;
+		if (written <= 0)
+		{
+			if (written == 0)
+				errno = EIO;
+			return false;
+		}
+		offset += static_cast<std::size_t>(written);
+	}
+	return fsync(j.ownership_fd) == 0;
+}
+
 bool safe_file(int fd, struct stat &status)
 {
 	return fstat(fd, &status) == 0 && S_ISREG(status.st_mode) && status.st_uid == geteuid() &&
@@ -287,21 +377,32 @@ telemetry_outage_result load(telemetry_outage_journal &j, const char *name, bool
 	unsigned char digest[SHA256_DIGEST_LENGTH]{};
 	if (SHA256(data.data(), data.size() - sizeof(digest), digest) == nullptr)
 		return failure(j, telemetry_outage_result::io_failure, EIO);
-	if (std::memcmp(data.data(), MAGIC, sizeof(MAGIC)) != 0 ||
+	const bool quota_frame = std::memcmp(data.data(), QUOTA_MAGIC, sizeof(QUOTA_MAGIC)) == 0;
+	if ((!quota_frame && std::memcmp(data.data(), MAGIC, sizeof(MAGIC)) != 0) ||
 	    std::memcmp(data.data() + data.size() - sizeof(digest), digest, sizeof(digest)) != 0)
 		return failure(j, telemetry_outage_result::corrupt, ENODATA);
 	const auto generation = read_word(data.data() + 8U);
 	const auto count = read_word(data.data() + 16U);
-	if (generation == 0U || count == 0U || count > TELEMETRY_OUTAGE_MAX_PRODUCERS ||
-	    read_word(data.data() + 24U) != 0U ||
-	    data.size() != 64U + count * TELEMETRY_OUTAGE_DISK_WORDS * 8U)
+	const auto extra = quota_frame ? TELEMETRY_OUTAGE_QUOTA_WORDS : 0U;
+	if (generation == 0U || (!quota_frame && count == 0U) ||
+	    count > TELEMETRY_OUTAGE_MAX_PRODUCERS || read_word(data.data() + 24U) != extra ||
+	    data.size() != 64U + extra * 8U + count * TELEMETRY_OUTAGE_DISK_WORDS * 8U)
 		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+	j.quota = {};
+	if (quota_frame)
+	{
+		quota_words fields{};
+		for (std::size_t index = 0U; index < fields.size(); ++index)
+			fields[index] = read_word(data.data() + 32U + index * 8U);
+		if (!decode_quota(fields, j.quota))
+			return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+	}
 	for (std::size_t index = 0U; index < count; ++index)
 	{
 		words fields{};
 		for (std::size_t field = 0U; field < fields.size(); ++field)
-			fields[field] =
-				read_word(data.data() + 32U + (index * fields.size() + field) * 8U);
+			fields[field] = read_word(data.data() + 32U + extra * 8U +
+						  (index * fields.size() + field) * 8U);
 		if (!decode(fields, j.observations[index]) ||
 		    (index + 1U < count &&
 		     j.observations[index].phase == telemetry_outage_phase::running))
@@ -313,50 +414,40 @@ telemetry_outage_result load(telemetry_outage_journal &j, const char *name, bool
 	}
 	j.generation = generation;
 	j.count = static_cast<std::size_t>(count);
+	std::copy(std::begin(digest), std::end(digest), j.digest.begin());
 	return telemetry_outage_result::ready;
 }
 
-telemetry_outage_result persist(telemetry_outage_journal &j)
+std::vector<unsigned char> frame(const telemetry_outage_journal &j, std::uint64_t generation)
 {
-	struct stat directory = {};
-	struct stat owner = {};
-	struct stat linked_owner = {};
-	struct stat ledger = {};
-	if (fstat(j.directory_fd, &directory) != 0 || directory.st_uid != geteuid() ||
-	    (directory.st_mode & 07777U) != 0700U || !safe_file(j.ownership_fd, owner) ||
-	    owner.st_size != 0 ||
-	    fstatat(j.directory_fd, LOCK, &linked_owner, AT_SYMLINK_NOFOLLOW) != 0 ||
-	    linked_owner.st_dev != owner.st_dev || linked_owner.st_ino != owner.st_ino)
-		return failure(j, telemetry_outage_result::unsafe_storage, EPERM);
-	if (fstatat(j.directory_fd, LEDGER, &ledger, AT_SYMLINK_NOFOLLOW) == 0)
-	{
-		if (!S_ISREG(ledger.st_mode) || ledger.st_uid != geteuid() ||
-		    (ledger.st_mode & 07777U) != 0600U || ledger.st_nlink != 1U)
-			return failure(j, telemetry_outage_result::unsafe_storage, EPERM);
-	}
-	else if (errno != ENOENT || j.generation != 0U)
-		return failure(j, telemetry_outage_result::unsafe_storage, errno);
-	if (j.generation == UINT64_MAX)
-		return failure(j, telemetry_outage_result::io_failure, EOVERFLOW);
-	std::vector<unsigned char> data(std::begin(MAGIC), std::end(MAGIC));
-	data.reserve(64U + j.count * TELEMETRY_OUTAGE_DISK_WORDS * 8U);
-	append_word(data, j.generation + 1U);
+	const bool quota = j.quota.binding.project_id != 0U;
+	const auto *magic = quota ? QUOTA_MAGIC : MAGIC;
+	std::vector<unsigned char> data(magic, magic + sizeof(MAGIC));
+	data.reserve(64U + (quota ? TELEMETRY_OUTAGE_QUOTA_WORDS * 8U : 0U) +
+		     j.count * TELEMETRY_OUTAGE_DISK_WORDS * 8U);
+	append_word(data, generation);
 	append_word(data, j.count);
-	append_word(data, 0U);
+	append_word(data, quota ? TELEMETRY_OUTAGE_QUOTA_WORDS : 0U);
+	if (quota)
+		for (const auto value : encode_quota(j.quota))
+			append_word(data, value);
 	for (std::size_t index = 0U; index < j.count; ++index)
 		for (const auto value : encode(j.observations[index]))
 			append_word(data, value);
 	unsigned char digest[SHA256_DIGEST_LENGTH]{};
 	if (SHA256(data.data(), data.size(), digest) == nullptr)
-		return failure(j, telemetry_outage_result::io_failure, EIO);
+		throw std::bad_alloc();
 	data.insert(data.end(), std::begin(digest), std::end(digest));
-	const int fd = openat(j.directory_fd, PENDING,
+	return data;
+}
+
+telemetry_outage_result write_new(telemetry_outage_journal &j, const char *name,
+				  const std::vector<unsigned char> &data)
+{
+	const int fd = openat(j.directory_fd, name,
 			      O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
 	if (fd < 0)
 		return failure(j, telemetry_outage_result::io_failure, errno);
-	// Until the rename the pending file is this call's own staging copy. A
-	// failure before that leaves nothing worth keeping, so it is removed and
-	// the next sample simply writes again.
 	int error = 0;
 	std::size_t offset = 0U;
 	while (error == 0 && offset < data.size())
@@ -375,46 +466,153 @@ telemetry_outage_result persist(telemetry_outage_journal &j)
 		error = errno;
 	if (error != 0)
 	{
-		(void)unlinkat(j.directory_fd, PENDING, 0);
+		(void)unlinkat(j.directory_fd, name, 0);
 		return failure(j, telemetry_outage_result::io_failure, error);
 	}
+	return telemetry_outage_result::ready;
+}
+
+telemetry_outage_result persist(telemetry_outage_journal &j)
+{
+	struct stat directory = {};
+	struct stat owner = {};
+	struct stat linked_owner = {};
+	struct stat ledger = {};
+	if (fstat(j.directory_fd, &directory) != 0 || directory.st_uid != geteuid() ||
+	    (directory.st_mode & 07777U) != 0700U || !safe_file(j.ownership_fd, owner) ||
+	    (owner.st_size != 0 && owner.st_size != 48) ||
+	    fstatat(j.directory_fd, LOCK, &linked_owner, AT_SYMLINK_NOFOLLOW) != 0 ||
+	    linked_owner.st_dev != owner.st_dev || linked_owner.st_ino != owner.st_ino)
+		return failure(j, telemetry_outage_result::unsafe_storage, EPERM);
+	if (fstatat(j.directory_fd, LEDGER, &ledger, AT_SYMLINK_NOFOLLOW) == 0)
+	{
+		if (!S_ISREG(ledger.st_mode) || ledger.st_uid != geteuid() ||
+		    (ledger.st_mode & 07777U) != 0600U || ledger.st_nlink != 1U)
+			return failure(j, telemetry_outage_result::unsafe_storage, EPERM);
+	}
+	else if (errno != ENOENT || j.generation != 0U)
+		return failure(j, telemetry_outage_result::unsafe_storage, errno);
+	if (j.quota_poisoned)
+		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+	if (j.quota_marker && owner.st_size != 48)
+		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+	if (j.quota.binding.project_id != 0U && owner.st_size != 0)
+	{
+		std::array<unsigned char, 48U> marker{};
+		if (pread(j.ownership_fd, marker.data(), marker.size(), 0) !=
+			    static_cast<ssize_t>(marker.size()) ||
+		    !marker_matches(marker, j))
+			return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+	}
+	if (j.generation == UINT64_MAX)
+		return failure(j, telemetry_outage_result::io_failure, EOVERFLOW);
+	const auto data = frame(j, j.generation + 1U);
+	const auto written = write_new(j, PENDING, data);
+	if (written != telemetry_outage_result::ready)
+		return written;
+	const auto *digest = data.data() + data.size() - SHA256_DIGEST_LENGTH;
+	if (j.quota.binding.project_id != 0U && !write_marker(j, j.generation + 1U, digest))
+		return failure(j, telemetry_outage_result::io_failure, errno != 0 ? errno : EIO);
 	if (renameat(j.directory_fd, PENDING, j.directory_fd, LEDGER) != 0 ||
 	    fsync(j.directory_fd) != 0)
 		return failure(j, telemetry_outage_result::io_failure, errno);
 	++j.generation;
+	j.quota_marker = j.quota.binding.project_id != 0U;
+	std::copy(digest, digest + SHA256_DIGEST_LENGTH, j.digest.begin());
 	j.error_code = 0U;
 	return telemetry_outage_result::ready;
 }
 
-/* A full ledger is published once more, with its last running phase closed by
- * the caller, then kept as outages.ledger.<registered utc>.<generation>; the
- * chain starts again with the new registration as its only entry. */
-telemetry_outage_result archive(telemetry_outage_journal &j,
-				const telemetry_outage_observation &registration)
+telemetry_outage_result preserve_frame(telemetry_outage_journal &j, const char *name)
 {
-	const auto published = persist(j);
-	if (published != telemetry_outage_result::ready)
-		return published;
-	std::array<char, 80U> name{};
-	const auto stamp =
-		registration.registered_utc_usec != TELEMETRY_UTC_UNKNOWN ?
-			registration.registered_utc_usec :
-			static_cast<std::int64_t>(registration.registered_monotonic_usec);
-	std::snprintf(name.data(), name.size(), "%s.%lld.%llu", LEDGER,
-		      static_cast<long long>(stamp), static_cast<unsigned long long>(j.generation));
-	struct stat existing
+	telemetry_outage_journal existing{};
+	existing.directory_fd = j.directory_fd;
+	bool present = false;
+	const auto loaded = load(existing, name, present);
+	if (loaded != telemetry_outage_result::ready)
+		return failure(j, loaded, static_cast<int>(existing.error_code));
+	if (present)
 	{
-	};
-	if (fstatat(j.directory_fd, name.data(), &existing, AT_SYMLINK_NOFOLLOW) == 0)
-		return failure(j, telemetry_outage_result::unsafe_storage, EEXIST);
-	if (errno != ENOENT)
-		return failure(j, telemetry_outage_result::io_failure, errno);
-	if (renameat(j.directory_fd, LEDGER, j.directory_fd, name.data()) != 0 ||
-	    fsync(j.directory_fd) != 0)
-		return failure(j, telemetry_outage_result::io_failure, errno);
+		if (existing.generation != j.generation || existing.digest != j.digest)
+			return failure(j, telemetry_outage_result::unsafe_storage, EEXIST);
+		return fsync(j.directory_fd) == 0 ?
+			       telemetry_outage_result::ready :
+			       failure(j, telemetry_outage_result::io_failure, errno);
+	}
+	const auto written = write_new(j, name, frame(j, j.generation));
+	if (written != telemetry_outage_result::ready)
+		return written;
+	return fsync(j.directory_fd) == 0 ? telemetry_outage_result::ready :
+					    failure(j, telemetry_outage_result::io_failure, errno);
+}
+
+std::array<char, 80U> archive_name(const telemetry_outage_observation &observation,
+				   std::uint64_t generation)
+{
+	std::array<char, 80U> name{};
+	const auto stamp = observation.registered_utc_usec != TELEMETRY_UTC_UNKNOWN ?
+				   observation.registered_utc_usec :
+				   static_cast<std::int64_t>(observation.registered_monotonic_usec);
+	std::snprintf(name.data(), name.size(), "%s.%lld.%llu", LEDGER,
+		      static_cast<long long>(stamp), static_cast<unsigned long long>(generation));
+	return name;
+}
+
+/* Quota rotation retains the terminal full frame until registration commits.
+	 * Its generation and last producer give retries one stable archive name. */
+telemetry_outage_result archive(telemetry_outage_journal &j,
+				const telemetry_outage_observation &registration,
+				bool closed_running)
+{
+	const bool quota = j.quota.binding.project_id != 0U;
+	if (!quota || closed_running)
+	{
+		const auto published = persist(j);
+		if (published != telemetry_outage_result::ready)
+			return published;
+	}
+	const auto name =
+		archive_name(quota ? j.observations[j.count - 1U] : registration, j.generation);
+	if (j.quota.binding.project_id != 0U)
+	{
+		const auto preserved = preserve_frame(j, name.data());
+		if (preserved != telemetry_outage_result::ready)
+			return preserved;
+	}
+	else
+	{
+		struct stat existing
+		{
+		};
+		if (fstatat(j.directory_fd, name.data(), &existing, AT_SYMLINK_NOFOLLOW) == 0)
+			return failure(j, telemetry_outage_result::unsafe_storage, EEXIST);
+		if (errno != ENOENT)
+			return failure(j, telemetry_outage_result::io_failure, errno);
+		if (renameat(j.directory_fd, LEDGER, j.directory_fd, name.data()) != 0 ||
+		    fsync(j.directory_fd) != 0)
+			return failure(j, telemetry_outage_result::io_failure, errno);
+		j.generation = 0U;
+	}
 	j.count = 0U;
-	j.generation = 0U;
 	return telemetry_outage_result::ready;
+}
+
+bool archived_rotation(telemetry_outage_journal &j, const telemetry_outage_journal &staged)
+{
+	if (j.quota.binding.project_id == 0U || j.count != TELEMETRY_OUTAGE_MAX_PRODUCERS ||
+	    staged.count != 1U || !registration_is_empty(staged.observations[0]))
+		return false;
+	const auto &registration = staged.observations[0];
+	for (const auto &observation : j.observations)
+		if (observation.phase == telemetry_outage_phase::running ||
+		    same_producer(observation.producer, registration.producer))
+			return false;
+	const auto name = archive_name(j.observations[j.count - 1U], j.generation);
+	telemetry_outage_journal archived{};
+	archived.directory_fd = j.directory_fd;
+	bool present = false;
+	return load(archived, name.data(), present) == telemetry_outage_result::ready && present &&
+	       archived.generation == j.generation && archived.digest == j.digest;
 }
 
 telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directory)
@@ -442,13 +640,23 @@ telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directo
 		openat(j.directory_fd, LOCK, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
 	if (j.ownership_fd < 0)
 		return failure(j, telemetry_outage_result::io_failure, errno);
-	if (!safe_file(j.ownership_fd, status) || status.st_size != 0)
+	if (!safe_file(j.ownership_fd, status) || (status.st_size != 0 && status.st_size != 48))
 		return failure(j, telemetry_outage_result::unsafe_storage, EPERM);
 	if (flock(j.ownership_fd, LOCK_EX | LOCK_NB) != 0)
 		return failure(j, telemetry_outage_result::owned_elsewhere, errno);
+	const bool has_marker = status.st_size == 48;
+	j.quota_marker = has_marker;
+	std::array<unsigned char, 48U> marker{};
+	if (has_marker && (pread(j.ownership_fd, marker.data(), marker.size(), 0) !=
+				   static_cast<ssize_t>(marker.size()) ||
+			   std::memcmp(marker.data(), MARKER_MAGIC, sizeof(MARKER_MAGIC)) != 0))
+		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
 	j.count = 0U;
 	j.generation = 0U;
 	j.current = TELEMETRY_OUTAGE_MAX_PRODUCERS;
+	j.quota = {};
+	j.digest.fill(0U);
+	j.quota_poisoned = false;
 	bool present = false;
 	auto result = load(j, LEDGER, present);
 	if (result != telemetry_outage_result::ready)
@@ -457,6 +665,13 @@ telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directo
 	staged.directory_fd = j.directory_fd;
 	bool pending = false;
 	result = load(staged, PENDING, pending);
+	/* The marker independently detects restoring only the ledger, including
+	 * a same-generation replacement. A whole pending frame may match it. */
+	if ((j.quota.binding.project_id != 0U && !has_marker) ||
+	    (has_marker && !marker_matches(marker, j) &&
+	     !(pending && result == telemetry_outage_result::ready &&
+	       marker_matches(marker, staged))))
+		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
 	if (result == telemetry_outage_result::corrupt && staged.error_code == ENODATA)
 	{
 		// An interrupted write left a pending file that is not a whole frame. It
@@ -471,12 +686,15 @@ telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directo
 		return failure(j, result, static_cast<int>(staged.error_code));
 	if (pending)
 	{
+		const bool rotation = archived_rotation(j, staged);
 		// A whole pending publication may only extend this exact chain; one that
 		// decodes but does not is kept and refuses admission.
 		if (j.generation == UINT64_MAX || staged.generation != j.generation + 1U ||
-		    staged.count < j.count || staged.count > j.count + 1U)
+		    (!rotation && (staged.count < j.count || staged.count > j.count + 1U)))
 			return failure(j, telemetry_outage_result::corrupt, EBADMSG);
-		for (std::size_t index = 0U; index < j.count; ++index)
+		if (j.quota.binding.project_id != 0U && !quota_extends(j.quota, staged.quota))
+			return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+		for (std::size_t index = 0U; !rotation && index < j.count; ++index)
 		{
 			if (!extends(j.observations[index], staged.observations[index]))
 				return failure(j, telemetry_outage_result::corrupt, EBADMSG);
@@ -499,6 +717,9 @@ telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directo
 		file_guard pending_guard{ pending_fd };
 		if (!safe_file(pending_fd, status))
 			return failure(j, telemetry_outage_result::unsafe_storage, EPERM);
+		if (staged.quota.binding.project_id != 0U &&
+		    !write_marker(j, staged.generation, staged.digest.data()))
+			return failure(j, telemetry_outage_result::io_failure, errno);
 		if (fsync(pending_fd) != 0 ||
 		    renameat(j.directory_fd, PENDING, j.directory_fd, LEDGER) != 0 ||
 		    fsync(j.directory_fd) != 0)
@@ -506,6 +727,9 @@ telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directo
 		j.generation = staged.generation;
 		j.count = staged.count;
 		j.observations = staged.observations;
+		j.quota = staged.quota;
+		j.digest = staged.digest;
+		j.quota_marker = staged.quota.binding.project_id != 0U;
 	}
 	j.error_code = 0U;
 	return telemetry_outage_result::ready;
@@ -563,8 +787,19 @@ telemetry_outage_open(telemetry_outage_journal *journal, const char *directory,
 	auto result = telemetry_outage_read(journal, directory);
 	if (result != telemetry_outage_result::ready)
 		return result;
+	if (journal->quota.binding.project_id != 0U &&
+	    (registration.environment_id != journal->quota.binding.environment_id ||
+	     registration.season_id != journal->quota.binding.season_id))
+	{
+		result = failure(*journal, telemetry_outage_result::invalid, EINVAL);
+		telemetry_outage_close(journal);
+		return result;
+	}
 	try
 	{
+		const bool closed_running = journal->count == TELEMETRY_OUTAGE_MAX_PRODUCERS &&
+					    journal->observations[journal->count - 1U].phase ==
+						    telemetry_outage_phase::running;
 		for (std::size_t index = 0U; index < journal->count; ++index)
 		{
 			if (same_producer(registration.producer,
@@ -580,7 +815,7 @@ telemetry_outage_open(telemetry_outage_journal *journal, const char *directory,
 					telemetry_outage_phase::unknown_tail;
 		}
 		result = journal->count == TELEMETRY_OUTAGE_MAX_PRODUCERS ?
-				 archive(*journal, registration) :
+				 archive(*journal, registration, closed_running) :
 				 telemetry_outage_result::ready;
 		if (result == telemetry_outage_result::ready)
 		{
@@ -632,4 +867,167 @@ telemetry_outage_checkpoint(telemetry_outage_journal *journal,
 			journal->current = TELEMETRY_OUTAGE_MAX_PRODUCERS;
 	}
 	return result;
+}
+
+namespace
+{
+bool utc_day(telemetry_utc_usec utc, std::int64_t &day)
+{
+	if (utc < -62'135'596'800'000'000LL || utc > 253'402'300'799'999'999LL)
+		return false;
+	constexpr std::int64_t span = 86'400'000'000LL;
+	day = utc / span - (utc % span < 0 ? 1 : 0);
+	return true;
+}
+
+telemetry_outage_result publish_quota(telemetry_outage_journal &j,
+				      const telemetry_quota_state &next) noexcept
+{
+	telemetry_outage_result result;
+	try
+	{
+		j.quota = next;
+		result = persist(j);
+	}
+	catch (...)
+	{
+		result = failure(j, telemetry_outage_result::io_failure, ENOMEM);
+	}
+	/* An unsuccessful durable reservation never authorizes HTTP. Stop this
+	 * owner rather than guessing which publication reached stable storage. */
+	if (result != telemetry_outage_result::ready)
+		j.quota_poisoned = true;
+	return result;
+}
+} // namespace
+
+telemetry_outage_result
+telemetry_outage_quota_check(telemetry_outage_journal *journal,
+			     const telemetry_quota_binding &binding) noexcept
+{
+	if (!journal || journal->directory_fd < 0 || journal->ownership_fd < 0 ||
+	    !binding_valid(binding))
+		return telemetry_outage_result::invalid;
+	if (journal->quota_poisoned)
+		return failure(*journal, telemetry_outage_result::corrupt, EBADMSG);
+	if (journal->quota.binding.project_id == 0U)
+		return failure(*journal, telemetry_outage_result::invalid, ENODATA);
+	auto expected = journal->quota;
+	expected.binding = binding;
+	if (encode_quota(expected) != encode_quota(journal->quota))
+		return failure(*journal, telemetry_outage_result::invalid, EINVAL);
+	return telemetry_outage_result::ready;
+}
+
+telemetry_outage_result telemetry_outage_quota_initialize(telemetry_outage_journal *journal,
+							  const telemetry_quota_binding &binding,
+							  telemetry_utc_usec utc) noexcept
+{
+	std::int64_t day = 0;
+	if (!journal || journal->directory_fd < 0 || journal->ownership_fd < 0 ||
+	    !binding_valid(binding) || !utc_day(utc, day))
+		return telemetry_outage_result::invalid;
+	if (journal->quota.binding.project_id != 0U)
+		return failure(*journal, telemetry_outage_result::invalid, EEXIST);
+	for (std::size_t index = 0U; index < journal->count; ++index)
+		if (journal->observations[index].environment_id != binding.environment_id ||
+		    journal->observations[index].season_id != binding.season_id)
+			return failure(*journal, telemetry_outage_result::invalid, EINVAL);
+	return publish_quota(*journal, { binding, day, 0U, 0U });
+}
+
+telemetry_outage_result telemetry_outage_quota_reserve(telemetry_outage_journal *journal,
+						       const telemetry_quota_binding &binding,
+						       telemetry_utc_usec utc, std::uint32_t normal,
+						       std::uint32_t health) noexcept
+{
+	const auto checked = telemetry_outage_quota_check(journal, binding);
+	if (checked != telemetry_outage_result::ready)
+		return checked;
+	std::int64_t day = 0;
+	if (!utc_day(utc, day) || normal > 64U || health > 64U || normal + health == 0U ||
+	    normal + health > 64U)
+		return failure(*journal, telemetry_outage_result::invalid, EINVAL);
+	if (day < journal->quota.day)
+		return failure(*journal, telemetry_outage_result::invalid, ERANGE);
+	auto next = journal->quota;
+	if (day > next.day)
+	{
+		next.day = day;
+		next.normal_reserved = next.health_reserved = 0U;
+	}
+	if (normal > binding.normal_limit - next.normal_reserved ||
+	    health > binding.health_limit - next.health_reserved ||
+	    normal + health > binding.total_limit - next.normal_reserved - next.health_reserved)
+		return failure(*journal, telemetry_outage_result::invalid, EDQUOT);
+	next.normal_reserved += normal;
+	next.health_reserved += health;
+	return publish_quota(*journal, next);
+}
+
+namespace
+{
+telemetry_outage_result exhaust_day(telemetry_outage_journal *journal,
+				    const telemetry_quota_binding &binding,
+				    telemetry_utc_usec utc) noexcept
+{
+	std::int64_t day = 0;
+	if (!utc_day(utc, day))
+		return failure(*journal, telemetry_outage_result::invalid, EINVAL);
+	if (day < journal->quota.day)
+		return failure(*journal, telemetry_outage_result::invalid, ERANGE);
+	auto next = journal->quota;
+	next.binding = binding;
+	if (day > next.day)
+		next.normal_reserved = next.health_reserved = 0U;
+	next.day = day;
+	next.normal_reserved =
+		std::min(binding.normal_limit, binding.total_limit - next.health_reserved);
+	next.health_reserved =
+		std::min(binding.health_limit, binding.total_limit - next.normal_reserved);
+	if (encode_quota(next) == encode_quota(journal->quota))
+	{
+		// Complete a prior rename whose directory synchronization may have failed.
+		if (fsync(journal->directory_fd) != 0)
+			return failure(*journal, telemetry_outage_result::io_failure, errno);
+		journal->error_code = 0U;
+		return telemetry_outage_result::ready;
+	}
+	try
+	{
+		std::array<char, 80U> name{};
+		std::snprintf(name.data(), name.size(), "%s.recovery.%llu", LEDGER,
+			      static_cast<unsigned long long>(journal->generation));
+		const auto preserved = preserve_frame(*journal, name.data());
+		if (preserved != telemetry_outage_result::ready)
+			return preserved;
+	}
+	catch (...)
+	{
+		return failure(*journal, telemetry_outage_result::io_failure, ENOMEM);
+	}
+	return publish_quota(*journal, next);
+}
+}
+
+telemetry_outage_result telemetry_outage_quota_exhaust_day(telemetry_outage_journal *journal,
+							   const telemetry_quota_binding &binding,
+							   telemetry_utc_usec utc) noexcept
+{
+	const auto checked = telemetry_outage_quota_check(journal, binding);
+	return checked == telemetry_outage_result::ready ? exhaust_day(journal, binding, utc) :
+							   checked;
+}
+
+telemetry_outage_result telemetry_outage_quota_rollover(telemetry_outage_journal *journal,
+							const telemetry_quota_binding &binding,
+							telemetry_utc_usec utc) noexcept
+{
+	if (!journal || !binding_valid(binding))
+		return telemetry_outage_result::invalid;
+	auto previous = binding;
+	previous.season_id = journal->quota.binding.season_id;
+	const auto checked = telemetry_outage_quota_check(journal, previous);
+	return checked == telemetry_outage_result::ready ? exhaust_day(journal, binding, utc) :
+							   checked;
 }
