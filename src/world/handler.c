@@ -745,8 +745,8 @@ void deliver_weapon_poison(P_char ch, P_char victim, P_obj weapon)
 			return;
 	}
 
-	(skills[poison].spell_pointer)(GET_LEVEL(ch), ch, nullptr, SPELL_TYPE_WEAPON_POISON, victim,
-				       nullptr);
+	(skills[poison].spell_pointer)(GET_LEVEL(player_attacker), ch, nullptr,
+				       SPELL_TYPE_WEAPON_POISON, victim, nullptr);
 	if (!affected_by_spell(victim, poison))
 		return;
 

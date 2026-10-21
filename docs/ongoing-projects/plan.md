@@ -629,3 +629,8 @@ reveals a material lifecycle/persistence issue or expands the agreed scope.
 - Extend the existing sanitizer regression for morph save boundaries, active
   form immunities and morphed sources, and the isolated command journey for
   apply plus throw of a returning dart and victim-only neutral wording.
+
+PR #251 review correction: weapon poison captures the original player level for
+morphed attackers, matching the save classification. Ordinary NPCs retain their
+own level. Native regression cases cover level-30/46/56 players in mismatched
+forms, both weaker and stronger, plus an ordinary level-46 NPC.
