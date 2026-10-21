@@ -170,6 +170,10 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   export), `test_telemetry_runtime_outage.py` (both modes), transport normal/
   ASan/UBSan/TSan, contract headers/fixtures, both server builds and the native
   state-tool build passed. Review build logs are under ignored `bin/pr259/`.
+  Follow-up review reproduced redundant recovery archives on repeated commands.
+  Already-exhausted day/season recovery now succeeds without publication; native
+  and CLI retries verify unchanged generation, ledger, witness and file count,
+  including after a rename succeeded but directory fsync reported failure.
 - Quota proof: `test_telemetry_outage.py` covers the existing storage/exec/kill
   regression suite plus initialization, immutable binding, caps/retry charging,
   clock rollback, write/file/owner/directory-fsync/rename faults, pending recovery,

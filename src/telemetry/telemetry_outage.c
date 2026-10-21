@@ -985,6 +985,14 @@ telemetry_outage_result exhaust_day(telemetry_outage_journal *journal,
 		std::min(binding.normal_limit, binding.total_limit - next.health_reserved);
 	next.health_reserved =
 		std::min(binding.health_limit, binding.total_limit - next.normal_reserved);
+	if (encode_quota(next) == encode_quota(journal->quota))
+	{
+		// Complete a prior rename whose directory synchronization may have failed.
+		if (fsync(journal->directory_fd) != 0)
+			return failure(*journal, telemetry_outage_result::io_failure, errno);
+		journal->error_code = 0U;
+		return telemetry_outage_result::ready;
+	}
 	try
 	{
 		std::array<char, 80U> name{};

@@ -109,12 +109,19 @@ def main() -> None:
             exhausted = invoke("exhaust-day", binding)
             assert exhausted["normal_reserved"] == 19800 and exhausted["health_reserved"] == 100
             assert len(list(path.glob("outages.ledger.recovery.*"))) == 1
+            durable = {item.name: item.read_bytes() for item in path.iterdir()}
+            assert invoke("exhaust-day", binding) == exhausted
+            assert {item.name: item.read_bytes() for item in path.iterdir()} == durable
             before_rollover = (path / "outages.ledger").read_bytes()
             new_season = [*binding[:3], "2", *binding[4:]]
             invoke("rollover-season", ["678215", *new_season[1:]], valid=False)
             assert (path / "outages.ledger").read_bytes() == before_rollover
             rolled = invoke("rollover-season", new_season)
             assert rolled["normal_reserved"] == 19800 and rolled["health_reserved"] == 100
+            durable = {item.name: item.read_bytes() for item in path.iterdir()}
+            assert invoke("rollover-season", new_season) == rolled
+            assert invoke("exhaust-day", new_season) == rolled
+            assert {item.name: item.read_bytes() for item in path.iterdir()} == durable
             invoke("exhaust-day", binding, valid=False)
             packet = subprocess.run([sys.executable, str(ROOT / "scripts/telemetry/outage.py"), quota_directory],
                                     text=True, capture_output=True, check=True, timeout=10)

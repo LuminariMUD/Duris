@@ -686,6 +686,27 @@ void quota_season_rollover()
 			assert(j.error_code == EDQUOT);
 			assert(telemetry_outage_quota_reserve(&j, next, QUOTA_UTC, 0U, 1U) ==
 			       result::invalid);
+			const auto exhausted = bytes(f.path / "outages.ledger");
+			const auto owner = bytes(f.path / "outages.owner");
+			const auto exhausted_generation = j.generation;
+			const auto files = std::distance(fs::directory_iterator(f.path),
+							 fs::directory_iterator{});
+			fail_fsync_call = 1U;
+			assert(telemetry_outage_quota_rollover(&j, next, QUOTA_UTC) ==
+			       result::io_failure);
+			fail_fsync_call = 0U;
+			for (unsigned int retry = 0U; retry < 3U; ++retry)
+			{
+				assert(telemetry_outage_quota_rollover(&j, next, QUOTA_UTC) ==
+				       result::ready);
+				assert(telemetry_outage_quota_exhaust_day(&j, next, QUOTA_UTC) ==
+				       result::ready);
+				assert(j.generation == exhausted_generation && j.error_code == 0U);
+				assert(bytes(f.path / "outages.ledger") == exhausted);
+				assert(bytes(f.path / "outages.owner") == owner);
+				assert(std::distance(fs::directory_iterator(f.path),
+						     fs::directory_iterator{}) == files);
+			}
 			assert(telemetry_outage_quota_reserve(&j, next, QUOTA_UTC + DAY, 1U, 0U) ==
 			       result::ready);
 			assert(j.quota.normal_reserved == 1U && j.quota.health_reserved == 0U);

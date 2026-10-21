@@ -449,6 +449,10 @@ season or creating a directory never grants an additional project allocation.
 Interrupted rollover publications use the same validated pending recovery; a
 changed season is recoverable only with an exhausted allowance and unchanged
 project/sender/environment/limits. Clock rollback remains refused.
+Repeated recovery commands for the same already-exhausted day/season are
+idempotent: they create no archive or generation. Reopen and validate after a
+publication error before retrying; a successful rename may already have applied
+the requested state.
 Initialization/recovery against production belongs to separately authorized
 enablement/operations. No production journal was initialized by implementation
 tests. Worker cadence, exporter coverage watermarks and HTTP integration remain

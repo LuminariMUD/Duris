@@ -156,6 +156,11 @@ limits must stay unchanged. No same-day reservations are allowed; the next UTC
 day restores the normal allocation. Both commands refuse clock rollback and use
 the journal's validated pending-frame recovery after interruption. Independent
 directories or a season change never grant another project allocation.
+Repeating either command for an already exhausted current day and the same
+season succeeds without changing generation, ledger/witness bytes or archives.
+This also applies after reopening a publication whose rename succeeded but whose
+final directory synchronization reported an error. A later day or a different
+season still requires a new durable publication.
 
 ## Offline evidence export
 
