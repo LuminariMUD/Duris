@@ -528,12 +528,20 @@ See also: JUDGEMENT
 #
 "APPLY POISON" (Skill)
 ===========================================================================
-Syntax:         apply poison <weapon_name>
+Syntax:         apply <vial_name> <weapon_name>
 Aggressive:     No
 
-This skill allows the assassin to apply poison to a special weapon. If the
-poison application is successful, there will be a chance of poisoning the
-next creature attacked. This weapon must be re-poisoned after each battle.
+This skill lets an assassin coat a weapon or dart with one dose from a poison
+vial. A landed coated attack uses the coating, including when the poison is
+resisted or the same poison is already active. A missed attack keeps it.
+
+Player victims can resist weapon poison from another player or their pet using
+their paralysis saving throw, adjusted for the level difference. Dragon, demon,
+elemental and undead player forms are immune to that delivery. Other NPC
+delivery is unchanged. Different poison types can coexist; the same type does
+not stack.
+A newly established weapon poison immediately warns its victim without naming
+the recipe. Reapply a dose when you want to coat the weapon again.
 ===========================================================================
 See also: POISON
 

@@ -12,6 +12,7 @@
 #include "core/prototypes.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/item_actions.h"
+#include "item/objmisc.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/world_singletons.h"
@@ -716,6 +717,44 @@ int room_light(int room_nr, int flag)
 /*
  * common initial setup for poison
  */
+
+void deliver_weapon_poison(P_char ch, P_char victim, P_obj weapon)
+{
+	if (!weapon || !weapon->value[4] || !IS_ALIVE(ch) || !IS_ALIVE(victim))
+		return;
+
+	int poison = weapon->value[4];
+	weapon->value[4] = 0;
+	// Old coatings used a non-ID marker for Lifeleak.
+	if (!IS_POISON(poison))
+		poison = POISON_LIFELEAK;
+	if (!skills[poison].spell_pointer || affected_by_spell(victim, poison))
+		return;
+
+	// Match hit()'s PvP attacker classification, including a player's armed pet.
+	if (IS_PC(victim) && (IS_PC(ch) || IS_PC_PET(ch)))
+	{
+		if (IS_DRAGON(victim) || IS_DEMON(victim) || IS_ELEMENTAL(victim) ||
+		    IS_UNDEAD(victim))
+			return;
+		int mod = BOUNDED(-3, (GET_LEVEL(ch) - GET_LEVEL(victim)) / 5, 3);
+		if (NewSaves(victim, SAVING_PARA, mod))
+			return;
+	}
+
+	(skills[poison].spell_pointer)(GET_LEVEL(ch), ch, nullptr, 0, victim, nullptr);
+	if (!affected_by_spell(victim, poison))
+		return;
+
+	const char *noun = IS_DAGGER(weapon) || IS_SWORD(weapon) || IS_AXE(weapon) ? "blade" :
+										     "weapon";
+	char message[256];
+	snprintf(
+		message, sizeof(message),
+		"&+RYou feel a sharp burning sensation as &+gpoison&+R from your attacker's %s enters your bloodstream!&n\r\n",
+		noun);
+	send_to_char(message, victim);
+}
 
 // common function for removing all poisons
 int poison_common_remove(P_char ch)

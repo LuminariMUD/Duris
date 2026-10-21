@@ -3221,6 +3221,7 @@ void ttype_handle_subnegotiation(P_desc d, const unsigned char *data, int len);
 void check_cp437(P_desc d);
 
 /* poisons */
+void deliver_weapon_poison(P_char ch, P_char victim, P_obj weapon);
 void poison_lifeleak(int, P_char, char *, int, P_char, struct affected_type *);
 void poison_weakness(int, P_char, char *, int, P_char, struct affected_type *);
 void poison_neurotoxin(int, P_char, char *, int, P_char, struct affected_type *);

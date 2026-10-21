@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute production poisons, cures, affects and the real event scheduler.
+"""Execute weapon delivery, saves, poisons, cures, affects and the real scheduler.
 
 Unrelated stat/damage calculations and character links are narrow fixtures.
 Timers, cancellation, affect allocation/removal and deferred bit publication
@@ -7,11 +7,12 @@ run in production code under ASan/UBSan.
 """
 
 from pathlib import Path
+import json
 import os
 import subprocess
 import tempfile
 
-from _paths import ROOT, HARNESS_STUBS, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 
 PRELUDE = r'''
@@ -19,9 +20,15 @@ PRELUDE = r'''
 #include "net/comm.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
+#include "item/objmisc.h"
+#include "world/difficulty.h"
+#include "combat/guard.h"
+#include "cmd/interp.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <unordered_map>
 
 P_char character_list;
 P_obj object_list;
@@ -34,20 +41,23 @@ bool after_events_call;
 static mm_ds event_pool{}, affect_pool{};
 mm_ds *dead_affect_pool = &affect_pool;
 Skill skills[MAX_SKILLS]{};
-static char_data target{}, source{};
+static char_data target{}, source{}, owner{};
 static bool minimum_roll;
 static int waits, damage_calls;
+static int save_roll = 1, second_save_roll = 1, save_rolls;
+static bool quick_thinking;
+static std::string notice;
+static P_char notice_target;
+static bool combat_mode;
+static bool pet_attack;
+static int fallback_hits;
+static index_data objects[1]{};
 
 bool nevent_periodic_begin(P_nevent) { return false; }
 void nevent_periodic_complete(P_nevent) {}
 void nevent_periodic_watchdog() {}
 bool nevent_periodic_event_is_valid(P_nevent) { return true; }
 long nevent_periodic_integrity_errors(bool) { return 0; }
-float get_property(const char *key, double fallback) {
-    if (!strcmp(key, "poison.maxDuration.min")) return 4;
-    return fallback;
-}
-int get_property(const char *key, int fallback) { return get_property(key, double(fallback)); }
 void *__malloc(size_t size, const char *, const char *, int) { return std::malloc(size); }
 void __free(void *p, const char *, int) { std::free(p); }
 void *_mm_get(mm_ds *pool, const char *, int) {
@@ -95,11 +105,42 @@ int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }
 void unlink_char_affect(P_char, affected_type *) { assert(false); }
 void unlink_char_obj_affect(P_char, affected_type *) { assert(false); }
-int number(int low, int high) { return minimum_roll ? low : high; }
+int number(int low, int high) {
+    if (low == 1 && high == 100) { ++save_rolls; return save_rolls == 2 ? second_save_roll : save_roll; }
+    if (combat_mode && low == 0 && high == 100) return 1;
+    return minimum_roll ? low : high;
+}
+int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
+bool difficulty_world_npc(P_char) { return false; }
+double difficulty_multiplier(difficulty_dial) { return 1; }
+bool has_innate(P_char, int type) { return quick_thinking && type == INNATE_QUICK_THINKING; }
+P_char get_linked_char(P_char ch, ush_int type) {
+    return pet_attack && ch == &source && type == LNK_PET ? &owner : nullptr;
+}
+void send_to_char(const char *text, P_char ch) {
+    if (strstr(text, "bloodstream!")) { notice += text; notice_target = ch; }
+}
 void CharWait(P_char, int duration) { waits += duration; }
 int raw_damage(P_char, P_char, double, uint, damage_messages *, int *) { ++damage_calls; return DAM_NONEDEAD; }
 void berserk(P_char, int) {}
-int GET_CLASS(P_char, uint) { return 0; }
+int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
+int GET_CHAR_SKILL_P(P_char ch, int skill) { return ch == &source && skill == SKILL_BACKSTAB ? 100 : 0; }
+bool notch_skill(P_char, int, float) { return false; }
+int melee_damage(P_char, P_char, double, int, damage_messages *, int *) { return DAM_NONEDEAD; }
+int is_char_in_room(const P_char ch, int room) { return IS_ALIVE(ch) && ch->in_room == room; }
+int char_in_list(const P_char ch) { return IS_ALIVE(ch); }
+bool SanityCheck(P_char, const char *) { return true; }
+bool can_hit_target(P_char, P_char) { return true; }
+P_char guard_check(P_char, P_char victim) { return victim; }
+int get_takedown_size(P_char) { return SIZE_MEDIUM; }
+bool should_not_kill(P_char, P_char) { return false; }
+int CanDoFightMove(P_char, P_char) { return true; }
+P_char misfire_check(P_char, P_char victim, int) { return victim; }
+int on_front_line(P_char) { return true; }
+void set_fighting(P_char, P_char) {}
+void stop_fighting(P_char) {}
+void guardian_spirits_messages(P_char, P_char) {}
+bool hit(P_char, P_char, P_obj, int *) { ++fallback_hits; return false; }
 bool resists_spell(P_char, P_char) { return false; }
 bool saves_spell(P_char, int) { return false; }
 void appear(P_char, bool) {}
@@ -115,21 +156,56 @@ static void advance(int pulses) {
 
 
 def production():
-    return "\n".join(extract_function(file, signature) for file, signature in [
+    properties = {}
+    for line in (ROOT / "lib/duris.properties").read_text().splitlines():
+        if "=" not in line or line.startswith("#"):
+            continue
+        key, value = line.split("=", 1)
+        try:
+            properties[key] = float(value)
+        except ValueError:
+            pass
+    code = "static const std::unordered_map<std::string, double> properties = {\n"
+    code += ",\n".join("{" + json.dumps(key) + "," + str(value) + "}"
+                      for key, value in properties.items()) + "};\n"
+    code += '''float get_property(const char *key, double fallback) {
+        auto found = properties.find(key);
+        return found == properties.end() ? fallback : found->second;
+    }
+    int get_property(const char *key, int fallback) { return get_property(key, double(fallback)); }
+    int get_property(const char *key, int fallback, bool) { return get_property(key, fallback); }
+    '''
+    common = source("common.c").read_text()
+    for signature in ("const struct race_names race_names_table[LAST_RACE + 2] =",
+                      "const struct class_names class_names_table[] ="):
+        start = common.index(signature)
+        code += common[start:common.index("};", start) + 2] + "\n"
+    parser = source("sparser.c").read_text()
+    start = parser.index("typedef struct\n{\n\tconst char *name;")
+    code += parser[start:parser.index("/*", start)]
+    return code + "\n".join(extract_function(file, signature) for file, signature in [
+        ("utility.c", "int flag2idx("),
+        ("sparser.c", "void update_saving_throws("),
+        ("sparser.c", "int find_save("),
+        ("sparser.c", "bool NewSaves("),
         ("affects.c", "void balance_affects("),
         ("affects.c", "bool affected_by_spell("),
         ("affects.c", "struct affected_type *get_spell_from_char("),
         ("affects.c", "struct affected_type *affect_to_char("),
         ("affects.c", "void affect_remove("),
         ("affects.c", "void affect_from_char("),
+        ("affects.c", "void set_short_affected_by("),
         ("handler.c", "int poison_common_remove("),
         ("handler.c", "struct affected_type *poison_common("),
         ("handler.c", "void event_poison("),
+        ("handler.c", "void deliver_weapon_poison("),
         *[("handler.c", "void poison_" + name + "(") for name in
           ("lifeleak", "moveleak", "heart_toxin", "neurotoxin", "weakness", "slowness", "madness")],
         ("magic.c", "void spell_remove_poison("),
         ("magic.c", "static void purify_group_member("),
         ("magic.c", "void spell_slow("),
+        ("actoff.c", "bool single_stab("),
+        ("actoff.c", "bool backstab(P_char ch, P_char victim)"),
     ])
 
 
@@ -144,11 +220,15 @@ static void reset() {
     for (auto *ch : {&target, &source}) {
         SET_POS(ch, POS_STANDING + STAT_NORMAL);
         ch->in_room = 1; ch->player.level = 46;
+        ch->player.race = RACE_HUMAN; ch->player.m_class = CLASS_WARRIOR;
         ch->points.hit = ch->points.max_hit = 1000;
         GET_VITALITY(ch) = GET_MAX_VITALITY(ch) = 100;
     }
     character_list = &target; target.next = &source;
     minimum_roll = false; waits = damage_calls = 0;
+    save_roll = second_save_roll = 1; save_rolls = 0; quick_thinking = false;
+    notice.clear(); notice_target = nullptr;
+    combat_mode = pet_attack = false; fallback_hits = 0; obj_index = objects;
 }
 static void poison(int type, P_char ch = &target) {
     skills[type].spell_pointer(46, &source, nullptr, 0, ch, nullptr);
@@ -252,8 +332,129 @@ static void recurrence() {
     reset(); poison(POISON_NEUROTOXIN);
     disarm_char_nevents(&target, nullptr); advance(81); assert(waits == 0);
 }
+static obj_data coating(int type = POISON_LIFELEAK) {
+    obj_data obj{}; obj.type = ITEM_WEAPON; obj.value[0] = WEAPON_DAGGER;
+    obj.value[4] = type; return obj;
+}
+static void delivery() {
+    for (int type = FIRST_POISON; type <= LAST_POISON; ++type) {
+        reset(); auto obj = coating(type);
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(obj.value[4] == 0 && affected_by_spell(&target, type));
+        const char *message = "&+RYou feel a sharp burning sensation as &+gpoison&+R from your attacker's blade enters your bloodstream!&n\r\n";
+        assert(notice == message && notice_target == &target && save_rolls == 1);
+        obj.value[4] = type;
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(notice == message && save_rolls == 1 && obj.value[4] == 0);
+        reset(); save_roll = 100; obj = coating(type);
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(!target.affected && notice.empty() && obj.value[4] == 0 && save_rolls == 1);
+    }
+    reset(); auto obj = coating(); minimum_roll = true;
+    deliver_weapon_poison(&source, &target, &obj);
+    assert(!target.affected && notice.empty() && obj.value[4] == 0);
+    reset(); obj = coating(POISON_LIFELEAK);
+    deliver_weapon_poison(&source, &target, &obj);
+    obj.value[4] = POISON_MOVELEAK;
+    deliver_weapon_poison(&source, &target, &obj);
+    assert(affected_by_spell(&target, POISON_LIFELEAK) && affected_by_spell(&target, POISON_MOVELEAK));
+    assert(notice.find("bloodstream!") != notice.rfind("bloodstream!"));
+    for (int marker : {1, -1, MAX_SKILLS + 1000}) {
+        reset(); obj = coating(marker); deliver_weapon_poison(&source, &target, &obj);
+        assert(affected_by_spell(&target, POISON_LIFELEAK) && obj.value[4] == 0);
+    }
+    reset(); auto callback = skills[POISON_LIFELEAK].spell_pointer;
+    skills[POISON_LIFELEAK].spell_pointer = nullptr; obj = coating();
+    deliver_weapon_poison(&source, &target, &obj);
+    assert(obj.value[4] == 0 && notice.empty() && !target.affected);
+    skills[POISON_LIFELEAK].spell_pointer = callback;
+    for (int race : {RACE_LICH, RACE_UNDEAD, RACE_DRAGON, RACE_DEMON, RACE_F_ELEMENTAL}) {
+        reset(); target.player.race = race; obj = coating();
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(obj.value[4] == 0 && notice.empty() && !target.affected && !save_rolls);
+        // Existing NPC compatibility: neither the PvP save nor new immunity applies.
+        target.specials.act |= ACT_ISNPC; obj = coating();
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(affected_by_spell(&target, POISON_LIFELEAK) && !save_rolls);
+    }
+    reset(); source.specials.act |= ACT_ISNPC; save_roll = 100; obj = coating();
+    deliver_weapon_poison(&source, &target, &obj);
+    assert(affected_by_spell(&target, POISON_LIFELEAK) && !save_rolls);
+    reset(); source.specials.act |= ACT_ISNPC; pet_attack = true; save_roll = 100; obj = coating();
+    deliver_weapon_poison(&source, &target, &obj);
+    assert(!target.affected && obj.value[4] == 0 && save_rolls == 1);
+    // Darts and bludgeons receive the neutral wording.
+    for (bool dart : {false, true}) {
+        reset(); obj = coating(); obj.value[0] = WEAPON_MACE;
+        if (dart) { obj.type = ITEM_MISSILE; obj.value[3] = MISSILE_DART; }
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(notice.find("attacker's weapon enters") != std::string::npos);
+    }
+    reset(); poison(POISON_LIFELEAK); assert(notice.empty()); // Non-weapon sources keep their own symptoms.
+}
+static void calibration() {
+    for (int cls : {CLASS_WARRIOR, CLASS_CLERIC}) {
+        for (int level : {30, 36, 41, 46, 51, 56}) {
+            int saves = 0;
+            for (int boundary = 1; boundary <= 100; ++boundary) {
+                reset(); source.player.level = target.player.level = level;
+                target.player.m_class = cls; save_roll = boundary;
+                auto obj = coating(); deliver_weapon_poison(&source, &target, &obj);
+                saves += !affected_by_spell(&target, POISON_LIFELEAK);
+                assert(save_rolls == 1);
+            }
+            assert(saves == level + 20);
+            printf("PvP para save: class=%d level=%d gear=0 modifier=0 resisted=%d/100\n", cls, level, saves);
+        }
+    }
+    for (int gear : {-2, 2}) for (int difference : {-30, 30}) {
+        int saves = 0;
+        for (int boundary = 1; boundary <= 100; ++boundary) {
+            reset(); source.player.level = 46 + difference; target.player.level = 46;
+            target.specials.apply_saving_throw[SAVING_PARA] = gear;
+            save_roll = boundary; auto obj = coating();
+            deliver_weapon_poison(&source, &target, &obj);
+            saves += !affected_by_spell(&target, POISON_LIFELEAK);
+        }
+        assert(saves == 66 - gear * 5 - (difference > 0 ? 15 : -15));
+    }
+    reset(); quick_thinking = true; save_roll = 1; second_save_roll = 100;
+    auto obj = coating(); deliver_weapon_poison(&source, &target, &obj);
+    assert(!target.affected && save_rolls == 2 && notice.empty());
+    for (int race : {RACE_MOUNTAIN, RACE_DUERGAR, RACE_OROG, RACE_BARBARIAN, RACE_TROLL}) {
+        int saves = 0;
+        for (int boundary = 1; boundary <= 100; ++boundary) {
+            reset(); target.player.race = race; save_roll = boundary; obj = coating();
+            deliver_weapon_poison(&source, &target, &obj);
+            saves += !affected_by_spell(&target, POISON_LIFELEAK);
+        }
+        int penalty = race == RACE_OROG || race == RACE_BARBARIAN ? 10 : race == RACE_TROLL ? 15 : 0;
+        assert(saves == 66 - penalty);
+    }
+    reset(); target.player.level = 62; obj = coating();
+    deliver_weapon_poison(&source, &target, &obj);
+    assert(!target.affected && obj.value[4] == 0 && notice.empty());
+}
+static void stabbed_delivery() {
+    for (bool same : {false, true}) {
+        reset(); combat_mode = true;
+        source.player.m_class = CLASS_ROGUE; source.player.spec = SPEC_ASSASSIN;
+        source.curr_stats.Str = source.curr_stats.Dex = source.curr_stats.Agi = source.curr_stats.Luk = 100;
+        target.curr_stats.Luk = 100;
+        auto first = coating(), second = coating(same ? POISON_LIFELEAK : POISON_MOVELEAK);
+        for (auto *obj : {&first, &second}) { obj->value[1] = 4; obj->value[2] = 6; }
+        source.equipment[WIELD] = &first; source.equipment[SECONDARY_WEAPON] = &second;
+        assert(backstab(&source, &target));
+        assert(first.value[4] == 0 && second.value[4] == 0 && !fallback_hits);
+        assert(affected_by_spell(&target, POISON_LIFELEAK));
+        assert(affected_by_spell(&target, POISON_MOVELEAK) == !same);
+        assert((notice.find("bloodstream!") != notice.rfind("bloodstream!")) == !same);
+        assert(save_rolls == (same ? 1 : 2));
+    }
+}
 int main() {
     nevent_bind_game_thread(); ne_dead_event_pool = &event_pool;
+    update_saving_throws();
     skills[POISON_LIFELEAK].spell_pointer = reinterpret_cast<spell_func>(poison_lifeleak);
     skills[POISON_MOVELEAK].spell_pointer = reinterpret_cast<spell_func>(poison_moveleak);
     skills[POISON_HEART_TOXIN].spell_pointer = reinterpret_cast<spell_func>(poison_heart_toxin);
@@ -261,9 +462,9 @@ int main() {
     skills[POISON_WEAKNESS].spell_pointer = reinterpret_cast<spell_func>(poison_weakness);
     skills[POISON_SLOWNESS].spell_pointer = reinterpret_cast<spell_func>(poison_slowness);
     skills[POISON_MADNESS].spell_pointer = reinterpret_cast<spell_func>(poison_madness);
-    slowness(); replacement(); timers(); recurrence(); reset();
+    slowness(); replacement(); timers(); recurrence(); delivery(); calibration(); stabbed_delivery(); reset();
     assert(ne_event_counter == 0 && event_pool.objs_used == 0 && affect_pool.objs_used == 0);
-    puts("Poison lifecycle: cleansing and replacement event regressions passed");
+    puts("Weapon poison delivery, saves, feedback and lifecycle regressions passed");
 }
 '''
 

@@ -100,7 +100,7 @@ void set_fighting(P_char, P_char) {}
 void stop_fighting(P_char) {}
 void guardian_spirits_messages(P_char, P_char) {}
 bool hit(P_char, P_char, P_obj, int *) { ++fallback_hits; return false; }
-void poison_lifeleak(int, P_char, char *, int, P_char, affected_type *) { assert(false); }
+void deliver_weapon_poison(P_char, P_char, P_obj weapon) { assert(!weapon->value[4]); }
 '''
 
 
