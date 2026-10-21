@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: implementation in progress; four PRs open, recipe/Weakness chunk qualified for review.
+Status: six stacked PRs open for review; comparative audit qualified locally.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -175,8 +175,11 @@ plan. The progress log below records subsequent implementation and proof.
   `branch/issue-187-control-flee`, head `90fee72e8`, is open against #248.
   [PR #250](https://github.com/LuminariMUD/Duris/pull/250),
   `branch/issue-187-weapon-poison`, head `bb6c0e7a5`, is open against #249.
-  Current continuation branch is `branch/issue-187-poison-progression`, stacked
-  on #250. No merges or tags.
+  [PR #251](https://github.com/LuminariMUD/Duris/pull/251),
+  `branch/issue-187-poison-progression`, current head `32d0b3d4a`, is open
+  against #250. [PR #256](https://github.com/LuminariMUD/Duris/pull/256),
+  `branch/issue-187-combat-audit`, is open against #251 with the final audit
+  tests and retained-behavior decisions. No merges or tags.
 - **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
   trained Awareness now enters the existing ordinary stab mitigation branch,
   once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
@@ -354,10 +357,120 @@ plan. The progress log below records subsequent implementation and proof.
   `test_player_item_snapshot_codec.py`, `test_player_snapshot_capture.py`,
   `test_issue_551_crafting_conservation.py` and both poison native regressions.
   The earlier single/dual-stab, Control Flee and scheduler proofs remain valid.
-- **Next:** publish chunk 5,
-  then the integrated combat/cost and conditional balance audits.
-  Steps 2/3/5 remain partially/outstanding; no delivery/resistance, progression
-  or conditional extra-nerf completion is claimed.
+- **Audit outcome/files/proof:** resolve the remaining Critical Stab, recurrence,
+  mixed/dual coating, stock-transfer, NPC/solo and escape comparisons before any
+  extra nerf. Reuse `run_cleric_rebalance_journey.py` /
+  `run_paladin_balance_journey.py` / `run_item_pilot_journey.py` server, parsing,
+  HP and staff-fixture patterns. `setbit char` configures race, class, level,
+  registered skills and reference armor/HP; poison-save controls use a worn
+  disposable item because `setbit savthr` is recalculated away by
+  `balance_affects()`. No new production test control or balance service is
+  needed. Add only a focused Assassin
+  comparative journey, a test-only linker wrapper for seed 187, and this plan.
+- Compare pinned original `24a2776f1`, a correctness baseline containing only
+  Slowness cleansing and poison-timer cancellation, and the current patch. Build
+  archived source copies under ignored `bin/tests/` with the existing verified
+  flat-file build utility. The seed wrapper affects only qualification binaries;
+  retain checked-in combat properties. Native boundary proofs already isolate
+  each changed formula; real-server comparisons supply the missing integrated
+  combat/event/command evidence across the step-5 matrix. Synthetic reference
+  actor results will not be reported as live balance or optimal-play win rates.
+- Review qualification discovered that Git silently skipped the cleanse-only
+  patch inside the nested archive. The old original/cleanse-only source and
+  binary hashes were identical. Those historical comparisons do not establish
+  cleanse-only behavior and are withdrawn. The runner now applies the patch
+  outside Git's repository-prefix handling and rejects identical variants.
+  Fresh source/binary/runtime hashes and matrix results are required below.
+- Historical revised-only rows sampled all six levels, three attacker races
+  and Cleric/Ranger defenders. These remain reference openings rather than
+  rate or win-rate estimates; the refreshed comparison includes current master.
+- In the revised real-server scenario, matched dagger/leather gear gave a
+  landed critical opening for 16 delivered HP; an attacker ten levels lower
+  gave 9, and a better-armored defender at level 51 gave 6. Requested eastward
+  Control Flee escaped on its first eligible real movement. These seeded rows
+  measure only the reference actors and do not justify further critical tuning.
+- Full-server Heart Toxin caused its first six-second symptom and **43-47 net
+  HP** loss in the unwarded high-HP reference. A prepared Cleric began Remove
+  Poison after the delivery helper returned and completed after that first hit.
+  This driver does not measure the earliest possible cure window. The same
+  Cleric did remove actual weapon Slowness. That historical run also observed
+  Heart absorption by Healer Warding Faith. Master PR #242 subsequently retired
+  that ward, so its old absorption result is no longer applicable. The refreshed
+  scenario instead verifies that a legal Healer has no ward and receives Heart's
+  scheduled symptom; the current retention decision does not rely on ward absorption. A disposable worn
+  save-penalty item made delivery reachable for these command checks; native
+  tests enumerate the normal equal-level PvP save chance as 50/56/61/66/71/76%
+  across the six sampled levels. The native scheduler test proves Heart's
+  24/48-pulse first delay, 1-in-4 repeat, attacker link and terminal result;
+  Neurotoxin's first 20-second event, 2-4-second waits and Slow Poison's
+  60-second interval; and all-type cure/timer cancellation under ASan/UBSan.
+- The real two-weapon opening established Neurotoxin and Slowness together and
+  sent two victim notices. Recoating both weapons with Neurotoxin retained one
+  affect and sent one notice. The native test also established the four-type
+  Neurotoxin/Slowness/Moveleak/Weakness stack, consumed duplicate coatings and
+  cleared all timers on cure. A solo level-56 Assassin killed a disposable
+  level-46 **50-HP** NPC in **0.23 seconds** and survived; this is reachability,
+  not a live PvE time-to-kill estimate. Staff-supplied Madness still applied to
+  a level-30 Assassin's weapon, confirming crafting gates are not use gates.
+- Native Madness timing now proves immediate 2-4-second Berserk and a
+  15-second repeat interval (45 under Slow Poison). The existing `berserk()`
+  path raises Str/Con but penalizes Int/Wis for non-Berserkers; it is not
+  paralysis. Recipe inputs remain 2/3/3/4/3/4/6 plus a vial for three doses,
+  with eight seconds of mixing per recipe. Four distinct prepared coatings
+  therefore cost thirteen ingredients, four empty vials and about 32 seconds
+  of uninterrupted mixing before gathering/application time.
+
+## Conditional balance decisions
+
+- **C / Critical Stab — retain:** checked-in 11.5% coefficient and 0.30 bonus
+  multiplier keep a distinct critical; the native matched function delivered
+  67 ordinary, 40 mitigated, 87 critical and 20 recent-critical HP in its
+  level-56 fixture. Live Ranger Awareness reduced ordinary openings for each
+  sampled attacker race; the high-level live critical still landed. No further
+  base/offhand or critical multiplier change is supported by these reference
+  actors. The recent-stab quarter rule and five one-hit wards stay intact.
+- **Poison 4 / recurring control and Heart — retain:** Neurotoxin does not
+  interrupt on application and has long cast/movement windows between events;
+  Aid/Remove Poison and Slow Poison remain available. Heart reached its tick
+  before this fixture's cure completed; minimum cure latency is unmeasured.
+  The equal-level PvP application save, later cure and 1-in-4 repeat branch
+  constrain the realized outcome. No extra cooldown, repeat cap or damage cut
+  is justified by this isolated reference; production duel balance remains
+  unmeasured. A requested extra numeric restriction would be a separate owner
+  policy decision, not an outstanding correctness fix in this stack.
+- **Poison 6 / layering and supply — retain:** same-ID rejection works; distinct
+  dual and four-type stacks are real and consume separate coatings. Crafted
+  high-tier access follows the new level/skill table, while transferred vials
+  and already-coated weapons remain usable under the documented crafting-only
+  policy. The exact input/dose cost and PvP saves supply friction. No universal
+  one-poison cap, dual restriction, inventory invalidation or new use-level gate
+  is justified. Madness keeps its existing Berserk tradeoff and 51/100 recipe.
+- **Ablation result:** no further production layer is needed. The last chunk
+  contains only a pinned cleanse-only comparison patch, a test-only seed
+  wrapper, focused native/integrated qualification, and this handoff. The
+  reference actors use synthetic stats/HP and the 50-HP NPC is a reachability
+  fixture, so these are not live win rates or optimal-play duel results.
+
+Run the two independent audit legs with `python3
+tests/async/run_assassin_balance_journey.py --prepare` (all three seeded
+server binaries and the level/race matrix) and `python3
+tests/async/run_assassin_balance_journey.py --variant revised
+--scenarios-only` (equipment, escape, cure, Healer ward retirement, dual coating, solo NPC and
+transfer). Outputs and compiled artifacts stay under ignored `bin/tests/`.
+The baseline is `24a2776f1`, the checked-in cleanse-only fixture patch is
+`tests/async/fixtures/assassin_cleanse_only.patch` (SHA-256
+`3fc5b19b015e7005b04adc0a10b3a391052e3a4020eb05d6a1d6fed04a85b703`),
+and source/binary hashes are written to `binaries.json`. Every variant also
+records the shared runtime-input digest: copied lib and mini-world data, recipe
+prototypes, and the journey/character fixture code. Changing these inputs
+invalidates a prepared manifest and requires --prepare again.
+No production operation, migration, merge or tag has been performed.
+The old original/cleanse-only comparison is excluded from current proof because
+its archived patch had been skipped. Revised-only historical observations above
+are reference results; the refreshed review qualification records distinct
+source/binary hashes, runtime-input hashes and the complete rerun below.
+
+`make -C src -j4`, format, Python syntax and `git diff --check` passed.
 
 ## Implementation sequence and acceptance
 
@@ -634,3 +747,57 @@ PR #251 review correction: weapon poison captures the original player level for
 morphed attackers, matching the save classification. Ordinary NPCs retain their
 own level. Native regression cases cover level-30/46/56 players in mismatched
 forms, both weaker and stronger, plus an ordinary level-46 NPC.
+
+### PR #256 review and master refresh
+
+- Every dual-opening attempt explicitly casts Remove Poison and checks the saved
+  victim has no poison affects before recoating. Mixed and duplicate cases no
+  longer depend on prior expiry or random removal.
+- Prepared manifests pin runtime inputs as well as binary/source/seed hashes.
+  The focused input regression changes properties, mini-world data, recipe
+  prototypes and fixture code and verifies each invalidates the runtime digest.
+- Master 9090518ba retired Healer Warding Faith. Replace the obsolete absorption
+  assertion with a legal Healer's absent-ward/scheduled-Heart check. The earlier
+  ward results above are historical and do not support current balance claims.
+- Keep the offhand fixture at vnum 22813 so it does not collide with the new
+  returning-dart fixture at 22812. Preserve dart, morph and poison lifecycle tests
+  while carrying the audit onto the repaired stack.
+- Correct a further reproduced audit blocker: nested git apply silently skipped
+  the cleanse-only patch. Use standalone patch with an applied-content check,
+  repair previously skipped caches, and reject identical original/cleanse-only
+  source or binary hashes. Historical paired-baseline claims are withdrawn.
+- The refreshed solo NPC run exposed an actor-driver timeout after a normal
+  knockdown left the Assassin sitting. The bounded combat loop now stands and
+  attacks through real commands until death or its existing 60-second deadline;
+  the NPC profile and production combat behavior are unchanged.
+
+### Final review qualification
+
+All six PRs are prepared on master 9090518ba in dependency order. The five
+review findings are fixed, including the later original-player morph-potency
+finding in #251. The completed matrix records 12 original, 12 cleanse-only and
+36 revised cases (11/11/33 landed openings respectively). Original and
+cleanse-only source/binary hashes are distinct; the old skipped-patch comparison
+is excluded. The matrix and final scenario receipts retain their runtime-input
+manifests; the combat-prompt-only driver correction leaves the tested production
+source and binary hashes unchanged.
+
+The final canonical --prepare --variant revised --scenarios-only run passed
+matched/mismatched equipment, Control Flee, Heart timing/cure, Slowness cure,
+Healer ward retirement, mixed/duplicate openings, solo NPC survival/kill and
+traded Madness. Both dual cases succeeded on their first isolated attempt with
+two/one notices. The 50-HP NPC took 51.28 seconds with 272 actor HP lost in this
+run; neither this value nor prior fast kills is a live PvE balance estimate.
+Native builds, ASan/UBSan poison/morph/crafting regressions, input-digest tests,
+formatting and whitespace checks pass. No further numeric balance tuning, merge,
+release tag or production operation was performed.
+
+### Final merge review corrections
+
+The later audit review adds the state-inspector builder, harness and path resolver
+to pinned inputs. Preparation verifies cached original and cleanse-only files
+against a fresh BASE archive and the freshly applied patch, including unexpected
+compiled-source inputs. The solo NPC deadline is 180 seconds to leave margin over
+the observed 51.28-second run. Heart checks disable room regeneration, verify the
+room flag, and require an actual positive HP decrease before restoring normal
+regeneration for the solo NPC case. These are audit-only changes.
