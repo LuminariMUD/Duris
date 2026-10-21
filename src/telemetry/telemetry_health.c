@@ -40,6 +40,8 @@ std::uint64_t admitted_count(const telemetry_health_snapshot &health) noexcept
 
 std::uint64_t completed_count(const telemetry_health_snapshot &health) noexcept
 {
+	if (health.backend == telemetry_storage_backend::posthog)
+		return health.consumed_records;
 	std::uint64_t completed = saturating_add(health.applied_records, health.duplicate_records);
 	completed = saturating_add(completed, health.stale_checkpoint_records);
 	completed = saturating_add(completed, health.invalid_records);
@@ -118,12 +120,14 @@ void choose_affected_range(const telemetry_health_snapshot &health, telemetry_pr
 		*last = health.last_failure_last_record_seq;
 		return;
 	}
-	if (health.last_admitted_record_seq > health.last_committed_record_seq)
+	const auto resolved = health.backend == telemetry_storage_backend::posthog ?
+				      health.last_consumed_record_seq :
+				      health.last_committed_record_seq;
+	if (health.last_admitted_record_seq > resolved)
 	{
-		*first = health.last_committed_record_seq ==
-					 std::numeric_limits<telemetry_record_sequence>::max() ?
+		*first = resolved == std::numeric_limits<telemetry_record_sequence>::max() ?
 				 0U :
-				 health.last_committed_record_seq + 1U;
+				 resolved + 1U;
 		*last = health.last_admitted_record_seq;
 	}
 }
@@ -423,7 +427,8 @@ const char *telemetry_health_state_name(telemetry_health_state state) noexcept
 
 const char *telemetry_health_backend_name(telemetry_storage_backend backend) noexcept
 {
-	return backend == telemetry_storage_backend::sql	       ? "sql" :
+	return backend == telemetry_storage_backend::posthog	       ? "posthog" :
+	       backend == telemetry_storage_backend::sql	       ? "sql" :
 	       backend == telemetry_storage_backend::flatfile_disabled ? "flatfile-disabled" :
 									 "unknown";
 }
@@ -490,6 +495,10 @@ const char *telemetry_health_storage_check_name(telemetry_storage_check check) n
 		return "ledger";
 	case telemetry_storage_check::io:
 		return "io";
+	case telemetry_storage_check::configuration:
+		return "configuration";
+	case telemetry_storage_check::quota:
+		return "quota";
 	}
 	return "unknown";
 }

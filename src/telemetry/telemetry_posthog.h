@@ -201,9 +201,10 @@ void telemetry_posthog_reducer_reset() noexcept;
 bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monotonic_usec now,
 			       telemetry_utc_usec utc) noexcept;
 /* Call after consuming through the native admitted-tail fence. force seals
- * remaining fragments for a lifecycle deadline; it does not perform I/O. */
-void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_usec utc,
-				    bool force = false) noexcept;
+ * remaining fragments now. With discard=false, output pressure pauses sealing
+ * (false) until drained; runtime permits discard only at deadline expiry. */
+bool telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_usec utc,
+				    bool force = false, bool discard = true) noexcept;
 /* Worker-only copied native health. Initial/hourly snapshots and coalesced
  * incidents use the same bounded output arena. True means a row was sealed,
  * never that it was sent/ingested. Native applied_records is not an HTTP ack. */
@@ -232,6 +233,9 @@ void telemetry_posthog_sender_pulse(telemetry_monotonic_usec now, telemetry_utc_
 				    telemetry_monotonic_usec deadline = 0U,
 				    bool force = false) noexcept;
 void telemetry_posthog_sender_close() noexcept;
+/* Failed copyover exec: resume after a bounded flush cancelled the attempt.
+ * Retains counters, immutable configuration and the already-charged quota. */
+void telemetry_posthog_sender_resume() noexcept;
 telemetry_posthog_sender_health telemetry_posthog_sender_health_copy() noexcept;
 
 #ifdef TELEMETRY_POSTHOG_TESTING

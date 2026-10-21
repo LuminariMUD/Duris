@@ -392,6 +392,8 @@ void check_disabled_default()
 			telemetry_runtime_outcome::disabled;
 	assert(telemetry_runtime_init(options) == expected);
 	assert(telemetry_runtime_health_copy().state == telemetry_health_state::disabled);
+	assert(telemetry_runtime_health_copy().advisory_lock_state ==
+	       telemetry_advisory_lock_state::not_applicable);
 	assert(telemetry_runtime_shutdown({ 0U, 0U, {} }) == telemetry_runtime_outcome::accepted);
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
@@ -401,7 +403,9 @@ void check_environment_options()
 {
 	clear_telemetry_environment();
 	setenv("TELEMETRY_ENABLED", "TRUE", 1);
-	setenv("TELEMETRY_BACKEND", "sql", 1);
+	setenv("TELEMETRY_BACKEND", "posthog", 1);
+	setenv("ENVIRONMENT", "local", 1);
+	setenv("TELEMETRY_ENVIRONMENT_ID", "1000", 1);
 	setenv("TELEMETRY_INTERVAL_USEC", "1000000", 1);
 	setenv("TELEMETRY_CHECKPOINT_INTERVAL_USEC", "2000000", 1);
 	setenv("TELEMETRY_ACTIVE_WINDOW_USEC", "3000000", 1);
@@ -428,15 +432,29 @@ void check_environment_options()
 	assert(enabled.config.context_segments_per_minute == 8U);
 	assert(enabled.config.pulse_slot_count == 2U);
 	assert(telemetry_config_is_valid(enabled.config));
-#ifdef __NO_MYSQL__
-	assert(enabled.config.enabled == 0U);
-	assert(enabled.config.backend == telemetry_storage_backend::flatfile_disabled);
-#else
 	assert(enabled.config.enabled == 1U);
-	assert(enabled.config.backend == telemetry_storage_backend::sql);
+	assert(enabled.config.backend == telemetry_storage_backend::posthog);
 	assert(enabled.config.property_version == 0xA1B2C3D4U);
 	assert(enabled.property_capture_enabled == 1U);
-#endif
+	for (const auto *role : { "production", "staging", "local", "unknown", "" })
+		for (const auto *scope : { "", "0", "1", "2", "3", "1000", "bad" })
+		{
+			setenv("ENVIRONMENT", role, 1);
+			setenv("TELEMETRY_ENVIRONMENT_ID", scope, 1);
+			const bool valid =
+				(std::strcmp(role, "production") == 0 &&
+				 std::strcmp(scope, "1") == 0) ||
+				(std::strcmp(role, "staging") == 0 &&
+				 std::strcmp(scope, "2") == 0) ||
+				(std::strcmp(role, "local") == 0 &&
+				 (std::strcmp(scope, "3") == 0 || std::strcmp(scope, "1000") == 0));
+			assert((telemetry_runtime_options_from_environment().config.enabled !=
+				0U) == valid);
+		}
+	unsetenv("TELEMETRY_ENVIRONMENT_ID");
+	assert(telemetry_runtime_options_from_environment().config.enabled == 0U);
+	setenv("ENVIRONMENT", "local", 1);
+	setenv("TELEMETRY_ENVIRONMENT_ID", "1000", 1);
 
 	unsetenv("TELEMETRY_PROPERTY_CATALOG_FILE");
 	const telemetry_runtime_options missing_catalog =

@@ -23,8 +23,213 @@ static int runtime_test_random(unsigned char *bytes, int count)
 #include "telemetry_runtime_integration.cc"
 #undef main
 
+#include <filesystem>
+
 namespace
 {
+void check_posthog_byte_pressure()
+{
+	telemetry_transport_unbind_for_tests();
+	auto transport = make_transport_config();
+	transport.backend = telemetry_storage_backend::posthog;
+	transport.fresh_producer = { 903U, 904U };
+	assert(telemetry_transport_init(transport) == telemetry_transport_outcome::started);
+	telemetry_transport_posthog_start_for_worker();
+	telemetry_posthog_reducer_config reducer{};
+	reducer.producer = transport.fresh_producer;
+	reducer.environment_id = 1000U;
+	reducer.season_id = 1U;
+	reducer.identity_key.fill(1U);
+	assert(telemetry_posthog_reducer_init(reducer));
+	telemetry_record_sequence sequence = 0U;
+	telemetry_monotonic_usec now = 1'000'000U;
+	constexpr telemetry_utc_usec utc = 1'728'000'060'000'000LL;
+	assert(telemetry_transport_posthog_pulse_for_worker(now, utc));
+	assert(telemetry_transport_health_copy().last_success_monotonic_usec == 0U);
+	const auto consume = [&](telemetry_record record)
+	{
+		now += 1000U;
+		record.header = { TELEMETRY_SCHEMA_VERSION,
+				  record.header.kind,
+				  0U,
+				  { transport.fresh_producer, ++sequence },
+				  utc };
+		assert(telemetry_record_is_valid(record));
+		assert(telemetry_posthog_consume(record, now, utc));
+	};
+	telemetry_session_ref last_session{};
+	for (std::uint32_t subject = 1U;
+	     telemetry_posthog_reducer_health_copy().output_bytes <=
+	     TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES - 4U * TELEMETRY_POSTHOG_MAX_EVENT_BYTES;
+	     ++subject)
+	{
+		assert(subject < 100U);
+		last_session = { { transport.fresh_producer, subject },
+				 subject,
+				 static_cast<telemetry_pid>(subject),
+				 1U,
+				 1000U };
+		for (std::uint32_t bucket = 0U; bucket < 32U; ++bucket)
+		{
+			telemetry_record record{};
+			record.header.kind = telemetry_record_kind::interval;
+			auto &value = record.payload.interval;
+			value.session = last_session;
+			value.connection = { transport.fresh_producer, subject };
+			value.window = { now, now + 1000U, utc + bucket * 1000LL,
+					 utc + (bucket + 1U) * 1000LL };
+			value.duration_usec = 1000U;
+			value.category = telemetry_interval_category::connected_active;
+			value.context = telemetry_activity_context::combat;
+			value.context_quality = telemetry_context_quality::observed;
+			value.dimensions = { 1U, 1U, 1U, 1U, static_cast<std::int32_t>(bucket), 1U };
+			value.config_id = 1U;
+			value.classifier_version = 1U;
+			value.policy_version = 1U;
+			consume(record);
+		}
+		assert(telemetry_posthog_seal_through(now, utc, true));
+	}
+	const auto full = telemetry_posthog_reducer_health_copy();
+	assert(full.output_events < TELEMETRY_POSTHOG_MAX_EVENTS - 16U);
+	assert(full.output_suppressed == 0U);
+	telemetry_record exit{};
+	exit.header = { TELEMETRY_SCHEMA_VERSION,
+			telemetry_record_kind::session_lifecycle,
+			0U,
+			{ transport.fresh_producer, ++sequence },
+			utc };
+	exit.payload.lifecycle.session = last_session;
+	exit.payload.lifecycle.connection = { transport.fresh_producer,
+					      last_session.id.session_seq };
+	exit.payload.lifecycle.lifecycle = telemetry_lifecycle_kind::session_exited;
+	exit.payload.lifecycle.end_reason = telemetry_session_end_reason::logout;
+	exit.payload.lifecycle.at_monotonic_usec = now;
+	exit.payload.lifecycle.at_utc_usec = utc;
+	exit.payload.lifecycle.dimensions = { 1U, 1U, 1U, 1U, 1, 1U };
+	exit.payload.lifecycle.config_id = 1U;
+	exit.payload.lifecycle.classifier_version = 1U;
+	exit.payload.lifecycle.policy_version = 1U;
+	assert(telemetry_transport_enqueue(exit).admission ==
+	       telemetry_queue_admission::accepted_control_reserve);
+	assert(!telemetry_transport_posthog_pulse_for_worker(now, utc));
+	assert(telemetry_transport_health_copy().consumed_records == 0U);
+	assert(telemetry_transport_health_copy().queue_depth == 1U);
+	assert(telemetry_posthog_output_retire(
+		full.output_events, telemetry_posthog_output_disposition::http_acknowledged));
+	assert(telemetry_transport_posthog_pulse_for_worker(now, utc));
+	assert(telemetry_transport_health_copy().consumed_records == 1U);
+	assert(telemetry_transport_health_copy().queue_depth == 0U);
+	assert(telemetry_transport_health_copy().last_success_monotonic_usec == now);
+	assert(telemetry_transport_posthog_pulse_for_worker(now + 1000U, utc + 1000U));
+	assert(telemetry_transport_health_copy().last_success_monotonic_usec == now);
+	assert(telemetry_posthog_reducer_health_copy().output_suppressed == 0U);
+	telemetry_outage_journal journal{};
+	assert(telemetry_posthog_output_retire(telemetry_posthog_reducer_health_copy().output_events,
+					       telemetry_posthog_output_disposition::suppressed));
+	publish_posthog_health(journal);
+	assert(R.posthog_health.native.state == telemetry_health_state::degraded);
+	assert(R.posthog_health.native.last_failure_class ==
+	       telemetry_failure_class::transient_internal);
+	telemetry_record refused{};
+	refused.header = { TELEMETRY_SCHEMA_VERSION,
+			   telemetry_record_kind::configuration,
+			   0U,
+			   { transport.fresh_producer, ++sequence },
+			   utc };
+	refused.payload.configuration.config = make_enabled_options().config;
+	assert(telemetry_record_is_valid(refused));
+	assert(!telemetry_posthog_consume(refused, now, utc));
+	assert(telemetry_posthog_reducer_health_copy().reduction_refusals == 1U);
+	publish_posthog_health(journal);
+	assert(R.posthog_health.native.state == telemetry_health_state::degraded);
+	assert(R.posthog_health.native.last_failure_class ==
+	       telemetry_failure_class::invalid_record);
+	telemetry_health_monitor_state monitor{};
+	const auto monitor_config = telemetry_health_monitor_default_config(100'000U, 8192U);
+	const auto alert = telemetry_health_monitor_evaluate(&monitor, &monitor_config,
+							     R.posthog_health.native,
+							     R.posthog_health.observed_at + 1000U);
+	assert(alert.severity == telemetry_health_alert_severity::warning);
+	assert((alert.reason_mask & TELEMETRY_HEALTH_REASON_WRITER_DEGRADED) != 0U);
+	telemetry_posthog_reducer_reset();
+	(void)telemetry_transport_request_stop();
+	telemetry_transport_repository_shutdown_for_owner();
+	telemetry_transport_shutdown();
+	std::puts("PostHog byte pressure retains the native record until output drains");
+	std::puts(
+		"PostHog idle pulses never invent progress; reduction/output loss raises local warning");
+}
+
+void check_posthog_consumption_checkpoint()
+{
+	char directory[] = "/tmp/duris-consumption-checkpoint-XXXXXX";
+	assert(mkdtemp(directory) != nullptr);
+	setenv("TELEMETRY_OUTAGE_LEDGER_DIR", directory, 1);
+	telemetry_transport_unbind_for_tests();
+	auto transport = make_transport_config();
+	transport.backend = telemetry_storage_backend::posthog;
+	transport.fresh_producer = { 901U, 902U };
+	assert(telemetry_transport_init(transport) == telemetry_transport_outcome::started);
+	telemetry_transport_posthog_start_for_worker();
+	R.worker_backend = telemetry_storage_backend::posthog;
+	R.producer = transport.fresh_producer;
+	R.session_scope_environment_id = 1000U;
+	R.session_scope_season_id = 1U;
+	{
+		worker_outage_guard outage;
+		assert(outage.start());
+		telemetry_posthog_reducer_config reducer{};
+		reducer.producer = R.producer;
+		reducer.environment_id = 1000U;
+		reducer.season_id = 1U;
+		reducer.identity_key.fill(1U);
+		assert(telemetry_posthog_reducer_init(reducer));
+		auto config = make_enabled_options().config;
+		config.backend = telemetry_storage_backend::posthog;
+		config.environment_id = 1000U;
+		assert(telemetry_config_compute_fingerprint(config, config.fingerprint,
+							    sizeof(config.fingerprint)));
+		config.config_id = telemetry_config_id_from_fingerprint(config.fingerprint,
+									sizeof(config.fingerprint));
+		telemetry_record record{};
+		record.header = { TELEMETRY_SCHEMA_VERSION,
+				  telemetry_record_kind::configuration,
+				  0U,
+				  { R.producer, 1U },
+				  config.effective_utc_usec };
+		record.payload.configuration.config = config;
+		assert(telemetry_transport_enqueue(record).admission ==
+		       telemetry_queue_admission::accepted_control_reserve);
+		assert(outage.checkpoint(false, true));
+		assert(outage.journal.observations[outage.journal.current].health.consumed_records ==
+		       0U);
+		telemetry_monotonic_usec now = 0U;
+		telemetry_utc_usec utc = 0;
+		assert(production_clock_now(nullptr, &now, &utc));
+		assert(telemetry_transport_posthog_pulse_for_worker(now, utc));
+		// Advance only the cadence gate; no extra admission or incident occurs.
+		outage.journal.observations[outage.journal.current].observed_monotonic_usec -=
+			60'000'000U;
+		assert(outage.checkpoint());
+		const auto &saved = outage.journal.observations[outage.journal.current].health;
+		assert(saved.consumed_records == 1U && saved.last_consumed_record_seq == 1U);
+		assert(saved.last_admitted_record_seq == 1U);
+	}
+	telemetry_outage_journal persisted{};
+	assert(telemetry_outage_read(&persisted, directory) == telemetry_outage_result::ready);
+	assert(persisted.observations[persisted.count - 1U].health.last_consumed_record_seq == 1U);
+	assert(persisted.observations[persisted.count - 1U].health.consumed_records == 1U);
+	telemetry_outage_close(&persisted);
+	telemetry_posthog_reducer_reset();
+	(void)telemetry_transport_request_stop();
+	telemetry_transport_repository_shutdown_for_owner();
+	telemetry_transport_shutdown();
+	unsetenv("TELEMETRY_OUTAGE_LEDGER_DIR");
+	std::filesystem::remove_all(directory);
+	std::puts("PostHog consumption-only progress persists without new admission");
+}
+
 void check_copyover_caller_ack_race()
 {
 	R.flush_completed.store(0U);
@@ -434,6 +639,8 @@ void check_exhausted_lifecycle(bool exiting, bool reattaching = false)
 
 int main()
 {
+	check_posthog_byte_pressure();
+	check_posthog_consumption_checkpoint();
 	check_identity_fail_closed();
 	check_copyover_caller_ack_race();
 	check_copyover_generation_barrier_recovery();

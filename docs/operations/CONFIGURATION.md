@@ -43,14 +43,24 @@ this source performs no database access, and reads only the reviewed property
 catalog at bootstrap. `TELEMETRY_ENABLED` must be an accepted true value
 (`TRUE`, `1`, `YES`, or `ON`) before any telemetry worker starts. Unset, false,
 malformed, or out-of-range values fail closed to the default-disabled snapshot.
-A client-free (`__NO_MYSQL__`) build always returns `flatfile_disabled` and
-remains disabled, even when the opt-in variable is true.
+Both MariaDB and client-free (`__NO_MYSQL__`) gameplay builds use the PostHog
+worker. The legacy `sql` telemetry backend is rejected. Production export stays
+disabled until separately authorized; initialize the protected quota journal
+using [OUTAGE_STORAGE.md](../telemetry/OUTAGE_STORAGE.md) before opting in.
 
 | Variable | Default when opted in | Accepted values / range | Meaning |
 | --- | --- | --- | --- |
-| `TELEMETRY_ENABLED` | disabled | `TRUE`/`1`/`YES`/`ON`; false equivalents disable | Explicitly opt into the SQL telemetry writer. |
-| `TELEMETRY_BACKEND` | `sql` on SQL builds | `sql`, `flatfile_disabled`, `disabled`, `off` | Select SQL or the deliberate disabled backend; flat-file is not an observational sink. |
-| `TELEMETRY_PROPERTY_CATALOG_FILE` | required for enabled SQL | owner-readable reviewed catalog path | Full effective-property digest to stable property-version mapping; missing or invalid input disables telemetry only. |
+| `TELEMETRY_ENABLED` | disabled | `TRUE`/`1`/`YES`/`ON`; false equivalents disable | Explicitly opt into the PostHog telemetry worker. |
+| `TELEMETRY_BACKEND` | `posthog` | `posthog`, `flatfile_disabled`, `disabled`, `off` | PostHog delivery or the deliberate disabled backend. |
+| `TELEMETRY_PROPERTY_CATALOG_FILE` | required for enabled telemetry | owner-readable reviewed catalog path | Full effective-property digest to stable property-version mapping; missing or invalid input disables telemetry only. |
+| `POSTHOG_HOST` | required | `https://us.i.posthog.com` (optional trailing slash) | Fixed regional capture host. |
+| `POSTHOG_API_KEY` | required | project capture token beginning `phc_` | Never use a personal API key. |
+| `POSTHOG_PROJECT_ID` | required | `678214` | Project bound to the quota journal. |
+| `POSTHOG_SENDER_ID` | required | positive `uint64` | One authorized sender, matching the quota binding. |
+| `TELEMETRY_IDENTITY_KEY` | required | 64 hex digits, nonzero | Protected stable pseudonym key; never log it. |
+| `TELEMETRY_OUTAGE_LEDGER_DIR` | required | absolute protected directory | Durable quota reservations and exclusive worker ownership. |
+| `TELEMETRY_TEST_RUN` | absent in production | required nonempty tag in non-production scopes | `ENVIRONMENT=production` requires explicit environment ID `1`; staging requires `2`; local requires `3` or an isolated ID at least `1000`. Missing or mismatched IDs disable export. |
+| `POSTHOG_NORMAL_LIMIT`, `POSTHOG_HEALTH_LIMIT`, `POSTHOG_DAILY_LIMIT` | `19800`, `100`, `19900` in production; `90`, `10`, `100` in tests | positive values at or below those caps, matching the initialized binding | Every attempt, including retries, reserves quota first. |
 | `TELEMETRY_CONFIG_REVISION` | `1` | positive `uint64` | Reviewed effective configuration revision floor. |
 | `TELEMETRY_BUILD_VERSION`, `TELEMETRY_CONTENT_VERSION` | `1` | positive `uint32` | Versioned inputs included in the config identity. |
 | `TELEMETRY_CLASSIFIER_VERSION`, `TELEMETRY_POLICY_VERSION` | `1` | positive `uint32` | Classifier/policy identities attached to observations. |

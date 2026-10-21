@@ -119,7 +119,7 @@ def reducer_tests(binary: Path) -> None:
         "encounter-native", "encounter-missing",
         "encounter-orphan", "encounter-open", "encounter-conflict", "encounter-overflow",
         "encounter-counter-overflow", "encounter-burst", "encounter-replay", "encounter-expiry",
-        "encounter-capacity", "encounter-scope-clock",
+        "encounter-capacity", "encounter-scope-clock", "flush-characters", "flush-encounters", "flush-bytes",
         "encounter-allocation-failure",
         "health-cadence", "health-incidents", "health-loss", "health-capacity",
         "health-faults", "health-family-expiry",

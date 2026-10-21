@@ -257,12 +257,14 @@ int main(int argc, char **argv) {
         FILE *fp = saved();
         std::vector<telemetry_copyover_entry> entries;
         assert(read_telemetry_copyover_state(fp, 2, &entries));
-        assert(entries.size() == 2 && entries[0].handoff_valid == 0 && entries[1].handoff_valid == 0);
+        assert(entries.size() == 2 && entries[0].handoff_valid == 1 && entries[1].handoff_valid == 1);
         assert(flush_calls == 1);
         marker(fp); fclose(fp);
         b.next = nullptr;
         restore_telemetry_copyover_sessions(&entries);
-        exactly_once(0, 0);
+        assert(entries[0].handoff.quality_flags & TELEMETRY_QUALITY_UNCLOSED_TAIL);
+        assert(entries[1].handoff.quality_flags & TELEMETRY_QUALITY_UNCLOSED_TAIL);
+        exactly_once(11, 22);
     } else if (std::strcmp(scenario, "legacy") == 0) {
         b.next = nullptr;
         restore_telemetry_copyover_sessions(nullptr);
