@@ -98,7 +98,7 @@ void publish(const telemetry_config_snapshot &config, bool expected = true)
 	emit(record, expected);
 }
 
-void initialize(bool with_configuration = true)
+void initialize(bool with_configuration = true, std::uint32_t window_seconds = 900U)
 {
 	SEQUENCE = 0U;
 	DRAINED_EVENTS = 0U;
@@ -108,6 +108,7 @@ void initialize(bool with_configuration = true)
 	config.environment_id = 1000U;
 	config.season_id = 1U;
 	config.producer = PRODUCER;
+	config.window_seconds = window_seconds;
 	for (std::size_t index = 0U; index < config.identity_key.size(); ++index)
 		config.identity_key[index] = static_cast<std::uint8_t>(index);
 	std::strcpy(config.test_run.data(), "native-unit-fixture");
@@ -506,8 +507,121 @@ void finish()
 int telemetry_posthog_reducer_scenario(std::string_view name)
 {
 	initialize(name != "config-capacity" && name != "initial-gap" &&
-		   name != "config-allocation-failure");
-	if (name == "conservation")
+			   name != "config-allocation-failure",
+		   name == "release-mix" ? 1800U : 900U);
+	if (name == "release-mix")
+	{
+		// Count emitted shapes, then scale their explicitly declared frequencies.
+		// This serial unit stream is volume evidence, not concurrent capacity.
+		constexpr std::uint64_t window = 1'800'000'000ULL;
+		auto lifecycle =
+			[&](telemetry_lifecycle_kind kind, std::uint32_t subject, std::uint64_t at)
+		{
+			telemetry_record record{};
+			record.header.kind = telemetry_record_kind::session_lifecycle;
+			auto &v = record.payload.lifecycle;
+			v.session = session(subject);
+			v.connection = { PRODUCER, subject };
+			v.lifecycle = kind;
+			v.end_reason = kind == telemetry_lifecycle_kind::session_exited ?
+					       telemetry_session_end_reason::logout :
+					       telemetry_session_end_reason::unknown;
+			v.at_monotonic_usec = MONO + at;
+			v.at_utc_usec = BASE + static_cast<telemetry_utc_usec>(at);
+			v.dimensions = dimensions();
+			v.config_id = CONFIG.config_id;
+			v.classifier_version = v.policy_version = 1U;
+			emit(record);
+		};
+		for (std::uint32_t stint = 0; stint < 3U; ++stint)
+		{
+			const auto subject = 44U + stint;
+			lifecycle(telemetry_lifecycle_kind::session_entered, subject,
+				  stint * 16U * window);
+			for (std::uint64_t index = stint * 16U; index < (stint + 1U) * 16U; ++index)
+			{
+				const auto begin = index * window;
+				NOW = MONO + begin;
+				if (index == 1U || index == 2U)
+				{
+					emit(interval(begin, begin + window / 2U,
+						      telemetry_interval_category::connected_active,
+						      10, subject));
+					telemetry_posthog_seal_through(
+						NOW, BASE + begin + window / 2U, true);
+					drain_output();
+					emit(interval(begin + window / 2U, begin + window,
+						      telemetry_interval_category::connected_idle,
+						      10, subject));
+				}
+				else
+					emit(interval(begin, begin + window,
+						      telemetry_interval_category::connected_active,
+						      10, subject));
+				NOW = MONO + begin + window;
+				telemetry_posthog_seal_through(NOW, BASE + begin + window, false);
+				drain_output();
+			}
+			if (stint < 2U)
+				lifecycle(telemetry_lifecycle_kind::session_exited, subject,
+					  (stint + 1U) * 16U * window);
+			drain_output();
+		}
+		// One reconnect pair and two independently counted copyover attachments.
+		lifecycle(telemetry_lifecycle_kind::connection_detached, 46U, 48U * window);
+		for (unsigned index = 0; index < 3U; ++index)
+			lifecycle(telemetry_lifecycle_kind::connection_attached, 46U,
+				  48U * window + index);
+		auto level = xp(0, 0, 0, 46U);
+		level.payload.progression.kind = telemetry_progression_kind::level_advanced;
+		level.payload.progression.after_level = 13U;
+		level.payload.progression.reason = telemetry_progression_reason::level_threshold;
+		emit(level);
+		lifecycle(telemetry_lifecycle_kind::session_exited, 46U, 48U * window + 3U);
+		// Four PCs plus one pet produce six rows, including the run row.
+		emit(encounter(telemetry_encounter_event_kind::start));
+		emit(encounter(telemetry_encounter_event_kind::close, 1U, 44U, 4U));
+		for (unsigned index = 0; index < 4U; ++index)
+			emit(encounter(telemetry_encounter_event_kind::participant_summary, 1U,
+				       44U + index, 4U));
+		for (unsigned index = 0; index < 5U; ++index)
+		{
+			auto contribution =
+				combat(1U, index + 1U,
+				       index == 4U ? telemetry_combat_actor_kind::pet :
+						     telemetry_combat_actor_kind::player,
+				       44U + index, index == 4U ? 44U : 44U + index, 5U);
+			contribution.payload.combat_summary.unique_player_count = 4U;
+			emit(contribution);
+		}
+		drain_output();
+		publish(configuration(2U));
+		drain_output();
+		auto health = native_health();
+		for (unsigned hour = 0; hour < 24U; ++hour)
+		{
+			NOW += TELEMETRY_POSTHOG_HEALTH_INTERVAL_USEC;
+			observe(health);
+			drain_output();
+			if (hour < 4U)
+			{
+				health.state = hour % 2U == 0U ? telemetry_health_state::degraded :
+								 telemetry_health_state::healthy;
+				health.last_failure_class =
+					hour % 2U == 0U ?
+						telemetry_failure_class::transient_connection :
+						telemetry_failure_class::none;
+				health.last_failure_monotonic_usec = NOW;
+				health.last_success_monotonic_usec = NOW;
+				++NOW;
+				observe(health, false);
+				NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+				observe(health);
+				drain_output();
+			}
+		}
+	}
+	else if (name == "conservation")
 	{
 		life(telemetry_lifecycle_kind::session_entered);
 		emit(interval(0U, 20'000'000U));

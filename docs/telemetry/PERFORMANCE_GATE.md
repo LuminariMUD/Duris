@@ -6,7 +6,9 @@ Run `nice -n 10 python3 tests/async/run_telemetry_player_journey.py --backend ma
 after the task-specific native build. This uses a disposable socket-only database,
 synthetic world and loopback HTTPS; it never sources the host environment. The
 release fixture is one client, three alternating off/on pairs, 120 ordinary saves
-per run after warmup. It is not 200-player capacity certification.
+per run after warmup. Regression p99 uses pooled raw samples from all three
+matched runs, with each individual run retained to expose host noise. It is not
+200-player capacity certification.
 
 Raw pulse/event/command and process-fsync samples, save/command p99, CPU/RSS,
 persistence backlog and sender health are recorded under `bin/issue59/acceptance/`.
@@ -18,8 +20,15 @@ persistence calls and are an upper bound, not isolated journal cost. No producti
 instrumentation is added. Normal capture/budget loss and sustained backlog must
 be absent. Production external I/O stays in the worker.
 
-Performance results and emitted-volume reconciliation remain pending. Existing
-component forecasts are not measurement or concurrent-player proof. Keep all
+Performance results remain pending. A serial native reducer mix emits 97 rows:
+48 periodic + 2 boundary summaries, 10 lifecycle rows (6 entry/exit, 2 reconnect,
+2 copyover attachments), 1 level change, 6 encounter rows (run, 4 PCs, 1 pet),
+2 configurations and 28 health rows. These measured shapes reconcile the declared
+31-day forecast to 396,454 attempts at the selected 30-minute window, including
+2% retries and the entire 100-attempt cloud allowance. Workload/retry frequencies
+remain assumptions; neither this projection nor the hard quota proves concurrent
+player capacity. A 32-date billing span is bounded at 640,000 shared attempts,
+below 700,000, provided the documented shared allocation is respected. Keep all
 current release criteria; the broader historical capacity profiles below are
 optional follow-up, not issue #59 closure conditions.
 

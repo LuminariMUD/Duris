@@ -568,3 +568,19 @@ performance proof remain uncompleted. No production activation.
   review on the dependent reports branch. They execute successfully; actual
   synthetic cloud reconciliation and the paired performance gate remain pending.
   No repeated base synchronization, new environment, or extra report framework.
+
+- Flat-file real gameplay also passes: 38 events / 44 charged attempts, exact
+  time/XP conservation, captured group/level dimensions, positive separate pet
+  contributions, 503 save/recovery, stable identity through reconnect and actual
+  failed/successful exec. Evidence `gameplay-tight-flatfile.log`.
+- Reports are published for review in PR #263, stacked on #262. The bounded
+  MariaDB cloud campaign has started after mock journey proof; its persistent
+  campaign marker and ledger prevent reruns/resetting the 100-attempt allowance.
+- The serial native reducer mix emits exactly 97 rows across all six families;
+  actual shape counts reconcile all four volume profiles, including 396,454 at
+  the selected 30-minute window. These are workload-frequency projections,
+  not 200-player capacity certification. Evidence `release-mix-volume.log`.
+- The release benchmark is declared before collection: three alternating off/on
+  runs, 120 saves each; the 5% regression comparison pools all three matched raw
+  sample sets. Individual runs and host bounds remain recorded. No valid pair
+  has been collected yet. Cloud compilation/journeys finish before the benchmark.
