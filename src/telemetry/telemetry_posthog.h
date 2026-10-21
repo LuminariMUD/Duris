@@ -22,6 +22,7 @@ inline constexpr std::size_t TELEMETRY_POSTHOG_IDENTITY_KEY_BYTES = 32U;
 using telemetry_posthog_identity_key =
 	std::array<std::uint8_t, TELEMETRY_POSTHOG_IDENTITY_KEY_BYTES>;
 using telemetry_posthog_character_identity = std::array<char, 69U>;
+using telemetry_posthog_pet_identity = telemetry_posthog_character_identity;
 using telemetry_posthog_scoped_identity = std::array<char, 109U>;
 using telemetry_posthog_uuid = std::array<char, 37U>;
 using telemetry_posthog_timestamp = std::array<char, 28U>;
@@ -39,6 +40,10 @@ bool telemetry_posthog_session_id(const telemetry_session_ref &session,
 bool telemetry_posthog_run_id(telemetry_environment_id environment, telemetry_season_id season,
 			      const telemetry_encounter_id &run,
 			      telemetry_posthog_scoped_identity &output) noexcept;
+bool telemetry_posthog_pet_id(const telemetry_posthog_identity_key &key,
+			      telemetry_environment_id environment, telemetry_season_id season,
+			      const telemetry_encounter_id &run, telemetry_id actor,
+			      telemetry_posthog_pet_identity &output) noexcept;
 
 /* Generate once when sealing, then retain the UUID with the serialized row.
  * Retrying must never invoke this function again for that row. */
@@ -84,6 +89,13 @@ struct telemetry_posthog_reducer_health
 	std::uint64_t native_gap_known_usec = 0U;
 	std::uint64_t unattributed_time_fragments = 0U;
 	std::uint64_t xp_attribution_overflows = 0U;
+	std::uint64_t run_refusals = 0U;
+	std::uint64_t terminal_duplicates = 0U;
+	std::uint64_t terminal_conflicts = 0U;
+	std::uint64_t late_encounter_records = 0U;
+	std::uint64_t incomplete_runs = 0U;
+	std::uint64_t unsupported_npc_rows = 0U;
+	std::uint64_t actor_attribution_overflows = 0U;
 	std::uint64_t created_events = 0U;
 	std::uint64_t output_suppressed = 0U;
 	std::uint64_t output_expired = 0U;
@@ -93,6 +105,7 @@ struct telemetry_posthog_reducer_health
 	std::uint64_t ambiguous_events = 0U;
 	std::uint32_t sessions = 0U;
 	std::uint32_t configurations = 0U;
+	std::uint32_t runs = 0U;
 	std::uint32_t output_events = 0U;
 	std::uint32_t output_bytes = 0U;
 };
@@ -113,8 +126,7 @@ enum class telemetry_posthog_output_disposition : std::uint8_t
 
 /* Single worker owner. Init/reset is legal only outside an active lifecycle.
  * The runtime remains unconnected until HTTP/quota/lifecycle integration is
- * complete. Encounter/combat reduction is the next slice; consume explicitly
- * refuses those kinds for now rather than pretending they were exported. */
+ * complete. No function here performs network or disk I/O. */
 bool telemetry_posthog_reducer_init(const telemetry_posthog_reducer_config &config) noexcept;
 void telemetry_posthog_reducer_reset() noexcept;
 bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monotonic_usec now,

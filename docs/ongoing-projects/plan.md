@@ -62,8 +62,8 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   reduction and bounded immutable JSON output in the same module: 256 sessions,
   two fragments/session, 32 time and 32 XP buckets, 64 validated configurations,
   and 128 events / 512 KiB retained output. It consumes intervals, XP/levels,
-  lifecycle, checkpoints, configuration and gaps. It explicitly refuses encounter
-  and combat records until the next slice; the runtime is still unconnected.
+  lifecycle, checkpoints, configuration and gaps. The next chunk extends this
+  reducer to encounters/combat; the runtime is still unconnected.
 - Reducer evidence: `python3 tests/async/test_telemetry_posthog.py` passes 39
   executable scenarios in both build modes under UBSan. They cover conservation,
   checkpoint baselines/conflicts/late detail, level/config/dimension changes,
@@ -100,11 +100,48 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   an immutable prefix without making a second retained JSON copy. Context
   overflow stays inside summaries, avoiding per-minute exports. Explicit unknown
   dimensions remain in allocations rather than being filled from later data.
-- Next: implement bounded encounter/combat joining and health output, then the
+- The fourth chunk, [PR #257](https://github.com/LuminariMUD/Duris/pull/257),
+  branch `issue-59-posthog-encounters`, adds the native
+  encounter/combat join in the same module, bounded to 128 runs and 64 combined
+  player/pet identities per run. Close plus complete roster is insufficient:
+  all declared combat revisions, including suppressed NPC rows, must arrive
+  before the admitted-tail fence or the 120-second terminal deadline. Missing
+  evidence remains null with coverage. Run duration, reward credit and player
+  participation remain separate; pets carry run-scoped HMAC IDs and captured
+  owner pseudonyms without entering the owner's player totals. Unknown character
+  dimensions/session IDs are never filled from current game state. Native roster
+  mode can become mixed while combat retains its initial mode; merge this actual
+  captured evidence instead of rejecting valid terminal rows.
+  Cumulative effort observed at leave survives missing terminal rows as an
+  explicit lower bound; repeated leaves/rejoins never add that absolute total.
+- The output cursor pauses terminal bursts across worker drains and resumes
+  without resealing their immutable prefix. At the deadline, remaining rows are
+  explicit suppression. Combined actor overflow retains known player/pet totals
+  separately on the run; checked aggregate overflow is null. A bounded exact
+  terminal cache plus an evicted sequence prefix prevents replay from counting
+  another run. Existing older active runs remain valid; an unseen orphan older
+  than the prefix is conservative late loss because bounded state cannot
+  distinguish it from replay. Open runs are not closed just because they are
+  silent. The contract documents these fields and limits.
+- Fourth-chunk proof: `python3 tests/async/test_telemetry_posthog.py` covers 36
+  scenarios in both build modes under UBSan, including real native roster/combat
+  producers, terminal splitting, player/pet ownership, missing/orphan terminals,
+  conflicts/replay, 128/129 runs, 64-actor union overflow, arithmetic overflow,
+  incremental bursts, pending-output expiry and partial JSON allocation failure.
+  Both full low-priority builds passed; logs:
+  `bin/issue59/build-{mariadb,flatfile}-encounters.log`. Standalone header tests
+  passed. The native close, open-tail, burst, actor-overflow, replay and allocation
+  failure cases also passed ASan/UBSan with leak detection using
+  `bin/tests/telemetry-posthog-encounters-asan`; outputs are
+  `bin/tests/issue59-asan-encounter-*.jsonl`. Formatting and whitespace checks pass.
+- Ablation for this slice: reuse the existing reducer, native producer APIs,
+  checked counters and output arena. Retain only the identities/terminal evidence
+  needed to join bounded rows; add no SDK, queue, service or payload spool.
+- Next: implement health output, then the
   HTTPS sender and durable quota before connecting runtime/transport. Native
   queue admission age and the timer fence belong to that integration; occurrence
   age is not admission age. Resolve the sender's retained retry prefix before
-  retiring/expiring borrowed output views. Pet identity, HTTP/quota/lifecycle,
+  retiring/expiring borrowed output views. HTTP/quota/lifecycle,
   SQL removal, gameplay/cloud/report proofs remain open. The isolation gate
   below still applies; no production operation or cloud capture has occurred.
 - No live game operation or cloud event has been performed. Production enablement
