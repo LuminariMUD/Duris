@@ -95,6 +95,10 @@ def reducer_tests(binary: Path) -> None:
         "checkpoint", "checkpoint-late-detail", "dimension-unknown", "level-config",
         "gap-scope", "long-interval", "expiry", "allocation-failure", "missing-config",
         "clock-flag", "unimplemented-encounters", "initialization", "lost-exit",
+        "config-output-pressure", "config-byte-pressure", "config-allocation-failure",
+        "sealed-force", "sealed-age", "sealed-config", "sealed-dimensions",
+        "sealed-level", "sealed-eviction", "initial-gap", "unknown-xp-level",
+        "direct-unknown-dimensions",
     )
     observed = {}
     forbidden = {"pid", "subject_id", "actor_pid", "name", "email", "account_id", "ip",
@@ -282,6 +286,44 @@ def reducer_tests(binary: Path) -> None:
     assert "unclosed_tail" in abandoned[0]["duris_coverage"]
     assert abandoned[0]["duris_session_id"] == abandoned[1]["duris_session_id"]
     assert len([row for row in observed["lost-exit"][0] if row["event"] == "duris_session"]) == 1
+
+    for case in ("config-output-pressure", "config-byte-pressure", "config-allocation-failure"):
+        rows, health = observed[case]
+        assert [row["event"] for row in rows] == [
+            "duris_session", "duris_configuration", "duris_character_summary",
+        ], case
+        assert "missing_configuration" in rows[0]["properties"]["duris_coverage"], case
+        assert "missing_configuration" not in rows[1]["properties"]["duris_coverage"], case
+        assert "missing_configuration" not in rows[2]["properties"]["duris_coverage"], case
+        assert health["output_suppressed"] > 0 and health["missing_configuration_rows"] == 1
+    for case in ("sealed-force", "sealed-age", "sealed-config", "sealed-dimensions",
+                 "sealed-level", "sealed-eviction"):
+        parts = summaries(observed[case][0])
+        first_window = [part for part in parts
+                        if part["window_start_utc_usec"] == parts[0]["window_start_utc_usec"]]
+        assert len(first_window) >= 2, case
+        assert "late_fragment" not in first_window[0]["duris_coverage"], case
+        assert all("late_fragment" in part["duris_coverage"] for part in first_window[1:]), case
+        assert sum(int(part["time"]["active_usec"]) for part in parts) == (
+            3 if case == "sealed-eviction" else 1), case
+    assert observed["initial-gap"][1]["input_sequence_gaps"] == 1
+    unknown_levels = summaries(observed["unknown-xp-level"][0])
+    assert [part["xp_observed_level"] for part in unknown_levels] == [None, 12, None]
+    assert [part["xp"]["applied_xp"] for part in unknown_levels] == ["3", "3", "4"]
+    direct_rows = observed["direct-unknown-dimensions"][0]
+    direct = [row for row in direct_rows if row["event"] in ("duris_session", "duris_level_change")]
+    assert len(direct) == 8
+    for index, dimension in enumerate(("class_id", "race_id", "faction_id", "level_band")):
+        for row in direct[index * 2:index * 2 + 2]:
+            assert row["properties"][dimension] is None
+            assert "historical_dimensions_unavailable" in row["properties"]["duris_coverage"]
+    assert "historical_dimensions_unavailable" in summaries(direct_rows)[0]["duris_coverage"]
+    remainder = next(part for part in long_parts if part["window_start_utc_usec"] is None)
+    assert remainder["window_start_utc_usec"] is None
+    assert not remainder["time_allocations"]
+    assert remainder["unattributed_time"]["active_usec"] == str(900000000000000 - 64 * 900000000)
+    assert remainder["time"] == remainder["unattributed_time"]
+    assert {"unattributed_time", "occurrence_utc_unknown"} <= set(remainder["duris_coverage"])
     print(f"PostHog reducer: {len(cases)} executable semantic/capacity/fault scenarios PASS")
 
 

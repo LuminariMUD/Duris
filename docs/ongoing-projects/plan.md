@@ -57,13 +57,14 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   queries/results are recorded in the contract; no cloud events were submitted.
   The account recheck confirmed project `678214`, free billing, no active
   subscription, `ingested_event=false` and zero analytics usage.
-- The third chunk, branch `issue-59-posthog-reducer`, implements character
+- The third chunk, [PR #255](https://github.com/LuminariMUD/Duris/pull/255),
+  branch `issue-59-posthog-reducer`, implements character
   reduction and bounded immutable JSON output in the same module: 256 sessions,
   two fragments/session, 32 time and 32 XP buckets, 64 validated configurations,
   and 128 events / 512 KiB retained output. It consumes intervals, XP/levels,
   lifecycle, checkpoints, configuration and gaps. It explicitly refuses encounter
   and combat records until the next slice; the runtime is still unconnected.
-- Reducer evidence: `python3 tests/async/test_telemetry_posthog.py` passes 24
+- Reducer evidence: `python3 tests/async/test_telemetry_posthog.py` passes 36
   executable scenarios in both build modes under UBSan. They cover conservation,
   checkpoint baselines/conflicts/late detail, level/config/dimension changes,
   late windows, midnight, clock failure, signed/unsigned arithmetic and bucket
@@ -78,6 +79,15 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   Contract
   header and configuration tests also pass. Both full low-priority builds pass;
   logs: `bin/issue59/build-{mariadb,flatfile}-reducer.log`.
+- Review repair validates all six findings: configurations are cached only after
+  output retention; every known-window seal tracks subsequent late fragments;
+  the split-limit remainder is explicitly unattributed; missing initial sequence
+  prefixes are counted; unknown XP levels cannot inherit later known levels;
+  and direct character events flag incomplete dimensions. Twelve added scenarios
+  reproduce event/byte/allocation pressure, all sealing paths and the remaining
+  accounting cases using the existing harness. Both backend variants pass UBSan.
+  All 36 scenarios also pass ASan/UBSan with leak detection. Review build logs:
+  `bin/issue59/build-pr255-{mariadb,flatfile}.log`; both server builds pass.
 - Ablation: reuse the existing canonical configuration fingerprint; retain only
   typed accumulators, checked metrics and one packed output arena. HTTP can read
   an immutable prefix without making a second retained JSON copy. Context

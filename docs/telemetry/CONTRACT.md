@@ -212,6 +212,18 @@ never wrap, round or invent a zero.
 Known overall totals remain available if only a signed allocation bucket
 overflows; that bucket becomes null with overflow/attribution coverage.
 
+Unknown and known exact XP levels also form separate fragments; a later known
+level cannot label earlier observations whose level was unavailable. Direct
+lifecycle and level-change rows flag missing historical character dimensions,
+as do rows carrying the native unknown-dimension quality flag.
+
+A configuration enters the materialized cache only after its JSON row is
+retained in output. Event/byte pressure or JSON allocation failure leaves it
+unpublished; dependent rows retain missing-configuration coverage and a later
+publication of the same fingerprint can retry. Input sequence gaps include a
+missing prefix before the first consumed record, since producer sequences start
+at one.
+
 The reconciliation object includes the latest checkpoint revision/time/quality,
 absolute counters, observed counters through that checkpoint, and a separate
 missing-detail difference only when comparison is valid. A logical entry must
@@ -242,12 +254,14 @@ it), split at UTC midnight and required lifecycle/config/level boundaries.
 Consume native rows once through the admitted-tail fence before timer sealing.
 An older row arriving after sealing creates a new uniquely identified partial
 fragment, coalesced until the next flush; it cannot mutate an immutable retry.
+Every known-window seal advances this boundary, including eviction, forced/aged
+flushes and version changes, as well as completed timer windows.
 Unknown UTC retains monotonic totals as unallocated evidence. Extra fragments
 count toward both loss reporting and the volume budget.
 Per-record splitting is bounded to 64 windows. An extreme interval extending
-farther retains its remaining duration as unknown-UTC allocation with explicit
-coverage rather than looping over unbounded calendar history. This is a fault
-bound, not a substitute for splitting ordinary intervals at their boundaries.
+farther retains its remaining duration in `unattributed_time`, with unknown UTC
+and explicit coverage rather than looping over unbounded calendar history. This
+is a fault bound, not a substitute for splitting ordinary intervals at their boundaries.
 
 Serialized output, including retries, is bounded by 128 events / 512 KiB total,
 32 KiB per event, and a 120-second maximum age. Batches contain at most 64 events /

@@ -108,7 +108,8 @@ void initialize(bool with_configuration = true)
 		publish(CONFIG);
 }
 
-void life(telemetry_lifecycle_kind kind, std::uint32_t subject = 44U, bool expected = true)
+void life(telemetry_lifecycle_kind kind, std::uint32_t subject = 44U, bool expected = true,
+	  const telemetry_dimensions &captured = dimensions())
 {
 	telemetry_record record{};
 	record.header.kind = telemetry_record_kind::session_lifecycle;
@@ -123,7 +124,7 @@ void life(telemetry_lifecycle_kind kind, std::uint32_t subject = 44U, bool expec
 	const auto offset = kind == telemetry_lifecycle_kind::session_entered ? 0U : 45'000'000U;
 	value.at_monotonic_usec = MONO + offset;
 	value.at_utc_usec = BASE + offset;
-	value.dimensions = dimensions();
+	value.dimensions = captured;
 	value.config_id = CONFIG.config_id;
 	value.classifier_version = 1U;
 	value.policy_version = 1U;
@@ -253,7 +254,8 @@ void finish()
 
 int telemetry_posthog_reducer_scenario(std::string_view name)
 {
-	initialize(name != "config-capacity");
+	initialize(name != "config-capacity" && name != "initial-gap" &&
+		   name != "config-allocation-failure");
 	if (name == "conservation")
 	{
 		life(telemetry_lifecycle_kind::session_entered);
@@ -469,6 +471,144 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 	}
 	else if (name == "long-interval")
 		emit(interval(0U, 900'000'000ULL * 1'000'000U));
+	else if (name == "config-output-pressure" || name == "config-byte-pressure")
+	{
+		if (name == "config-output-pressure")
+			while (telemetry_posthog_reducer_health_copy().output_events < 128U)
+				life(telemetry_lifecycle_kind::connection_attached);
+		else
+			for (std::uint32_t subject = 44U; subject < 76U; ++subject)
+			{
+				for (std::uint32_t index = 0U; index < 32U; ++index)
+				{
+					emit(interval(index, index + 1U,
+						      telemetry_interval_category::connected_active,
+						      static_cast<std::int32_t>(index), subject));
+					auto experience = xp(10, 10, 10, subject);
+					experience.payload.progression.modifier_flags = index;
+					emit(experience);
+				}
+				telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+			}
+		std::uint32_t retained = 0U;
+		for (std::uint32_t version = 2U; version <= 64U; ++version)
+		{
+			const auto before = telemetry_posthog_reducer_health_copy();
+			CONFIG = configuration(version);
+			publish(CONFIG);
+			const auto after = telemetry_posthog_reducer_health_copy();
+			if (after.output_events == before.output_events)
+			{
+				CHECK(after.configurations == before.configurations);
+				retained = after.output_events;
+				break;
+			}
+		}
+		CHECK(retained > 0U);
+		CHECK(name != "config-byte-pressure" || retained < 128U);
+		CHECK(telemetry_posthog_output_retire(
+			retained, telemetry_posthog_output_disposition::http_acknowledged));
+		life(telemetry_lifecycle_kind::connection_attached);
+		publish(CONFIG);
+		emit(xp(1, 1, 1));
+	}
+	else if (name == "config-allocation-failure")
+	{
+		cJSON_Hooks hooks{};
+		hooks.malloc_fn = [](std::size_t bytes) -> void *
+		{
+			if (ALLOCATION_BUDGET == 0U)
+				return nullptr;
+			--ALLOCATION_BUDGET;
+			return std::malloc(bytes);
+		};
+		hooks.free_fn = std::free;
+		for (const auto budget : { 0U, 4U, 24U, 64U })
+		{
+			ALLOCATION_BUDGET = budget;
+			cJSON_InitHooks(&hooks);
+			publish(CONFIG);
+			cJSON_InitHooks(nullptr);
+			CHECK(telemetry_posthog_reducer_health_copy().configurations == 0U);
+		}
+		life(telemetry_lifecycle_kind::connection_attached);
+		publish(CONFIG);
+		emit(xp(1, 1, 1));
+	}
+	else if (name == "sealed-force" || name == "sealed-age" || name == "sealed-config" ||
+		 name == "sealed-dimensions" || name == "sealed-level" || name == "sealed-eviction")
+	{
+		emit(xp(1, 1, 1));
+		if (name == "sealed-force")
+			telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+		else if (name == "sealed-age")
+		{
+			NOW += 900'000'000U;
+			telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		}
+		else if (name == "sealed-config")
+		{
+			CONFIG = configuration(2U);
+			publish(CONFIG);
+			emit(xp(2, 2, 2));
+		}
+		else if (name == "sealed-dimensions")
+		{
+			auto changed = xp(2, 2, 2);
+			changed.payload.progression.dimensions.class_id = 6U;
+			emit(changed);
+		}
+		else if (name == "sealed-level")
+			emit(xp(2, 2, 2, 44U, 13U));
+		else
+		{
+			emit(interval(900'000'000U, 900'000'001U));
+			emit(interval(1'800'000'000U, 1'800'000'001U));
+		}
+		const auto saved = std::string(telemetry_posthog_output_peek(1U).json);
+		CHECK(!saved.empty());
+		emit(interval(0U, 1U));
+		CHECK(saved == telemetry_posthog_output_peek(1U).json);
+	}
+	else if (name == "initial-gap")
+	{
+		SEQUENCE = 2U;
+		publish(CONFIG);
+		emit(xp(1, 1, 1));
+	}
+	else if (name == "unknown-xp-level")
+	{
+		emit(xp(1, 1, 1, 44U, 0U));
+		emit(xp(2, 2, 2, 44U, 0U));
+		emit(xp(3, 3, 3, 44U, 12U));
+		emit(xp(4, 4, 4, 44U, 0U));
+	}
+	else if (name == "direct-unknown-dimensions")
+	{
+		for (std::uint32_t index = 0U; index < 4U; ++index)
+		{
+			auto captured = dimensions();
+			if (index == 0U)
+				captured.class_id = 0U;
+			else if (index == 1U)
+				captured.race_id = 0U;
+			else if (index == 2U)
+				captured.faction_id = 0U;
+			else
+				captured.level_band = 0U;
+			life(telemetry_lifecycle_kind::connection_attached, 44U, true, captured);
+			auto level = xp(0, 0, 0);
+			level.payload.progression.kind = telemetry_progression_kind::level_advanced;
+			level.payload.progression.after_level = 13U;
+			level.payload.progression.reason =
+				telemetry_progression_reason::level_threshold;
+			level.payload.progression.dimensions = captured;
+			emit(level);
+		}
+		auto flagged = xp(1, 1, 1);
+		flagged.payload.progression.quality_flags = TELEMETRY_QUALITY_DIMENSION_UNKNOWN;
+		emit(flagged);
+	}
 	else if (name == "expiry")
 	{
 		const auto first = telemetry_posthog_output_peek();
