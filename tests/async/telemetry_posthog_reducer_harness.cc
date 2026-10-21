@@ -307,7 +307,8 @@ void print_output()
 		const auto output = telemetry_posthog_output_peek(index);
 		CHECK(!output.json.empty());
 		CHECK(output.json.size() <= TELEMETRY_POSTHOG_MAX_EVENT_BYTES);
-		CHECK(!output.health);
+		CHECK(output.health == (output.json.find("\"event\":\"duris_telemetry_health\"") !=
+					std::string_view::npos));
 		std::fwrite(output.json.data(), 1U, output.json.size(), stdout);
 		std::putchar('\n');
 	}
@@ -408,6 +409,23 @@ void native_encounter()
 	CHECK(telemetry_posthog_reducer_health_copy().runs == 0U);
 }
 
+telemetry_health_snapshot native_health()
+{
+	telemetry_health_snapshot health{};
+	health.schema_version = TELEMETRY_SCHEMA_VERSION;
+	health.producer = PRODUCER;
+	health.state = telemetry_health_state::healthy;
+	health.backend = telemetry_storage_backend::sql;
+	health.queue_capacity = TELEMETRY_QUEUE_CAPACITY_PROPOSAL;
+	return health;
+}
+
+void observe(const telemetry_health_snapshot &health, bool expected = true,
+	     telemetry_utc_usec utc = BASE + 60'000'000)
+{
+	CHECK(telemetry_posthog_observe_health(health, NOW, utc) == expected);
+}
+
 void finish()
 {
 	telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
@@ -418,6 +436,7 @@ void finish()
 	cJSON_AddNumberToObject(values, "drained_events", DRAINED_EVENTS);
 #define HEALTH(name) cJSON_AddNumberToObject(values, #name, static_cast<double>(health.name))
 	HEALTH(invalid_records);
+	HEALTH(invalid_health_snapshots);
 	HEALTH(reduction_refusals);
 	HEALTH(input_sequence_gaps);
 	HEALTH(unsupported_records);
@@ -429,6 +448,8 @@ void finish()
 	HEALTH(checkpoint_conflicts);
 	HEALTH(stale_checkpoints);
 	HEALTH(native_gaps);
+	HEALTH(native_scoped_gaps);
+	HEALTH(native_process_gaps);
 	HEALTH(native_dropped_records);
 	HEALTH(native_gap_known_usec);
 	HEALTH(unattributed_time_fragments);
@@ -453,6 +474,21 @@ void finish()
 	HEALTH(output_events);
 	HEALTH(output_bytes);
 #undef HEALTH
+	auto *families = cJSON_AddArrayToObject(values, "by_family");
+	for (const auto &family : health.by_family)
+	{
+		auto *item = cJSON_CreateObject();
+		CHECK(cJSON_AddItemToArray(families, item));
+		cJSON_AddNumberToObject(item, "created", static_cast<double>(family.created));
+		cJSON_AddNumberToObject(item, "suppressed", static_cast<double>(family.suppressed));
+		cJSON_AddNumberToObject(item, "expired", static_cast<double>(family.expired));
+		cJSON_AddNumberToObject(item, "http_acknowledged",
+					static_cast<double>(family.http_acknowledged));
+		cJSON_AddNumberToObject(item, "ambiguous", static_cast<double>(family.ambiguous));
+	}
+	auto *kinds = cJSON_AddArrayToObject(values, "refused_by_kind");
+	for (const auto count : health.refused_by_kind)
+		CHECK(cJSON_AddItemToArray(kinds, cJSON_CreateNumber(static_cast<double>(count))));
 	char *encoded = cJSON_PrintUnformatted(object);
 	CHECK(encoded != nullptr);
 	std::puts(encoded);
@@ -867,6 +903,122 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 			emit(*record);
 		}
 		emit(combat());
+	}
+	else if (name == "health-cadence")
+	{
+		const auto health = native_health();
+		NOW = MONO;
+		observe(health);
+		drain_output();
+		NOW += TELEMETRY_POSTHOG_HEALTH_INTERVAL_USEC - 1U;
+		observe(health, false);
+		++NOW;
+		observe(health);
+		observe(health, false);
+	}
+	else if (name == "health-incidents")
+	{
+		auto health = native_health();
+		NOW = MONO;
+		observe(health);
+		NOW += 1U;
+		health.state = telemetry_health_state::degraded;
+		health.last_failure_class = telemetry_failure_class::transient_connection;
+		health.last_failure_monotonic_usec = NOW;
+		health.last_error_code = 123U;
+		observe(health, false);
+		NOW += 1U;
+		health.state = telemetry_health_state::healthy;
+		health.last_success_monotonic_usec = NOW;
+		observe(health, false);
+		NOW = MONO + TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health);
+		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health, false);
+	}
+	else if (name == "health-loss")
+	{
+		auto health = native_health();
+		health.applied_records = 9'007'199'254'740'993ULL;
+		health.admitted_detail = health.applied_records;
+		health.last_admitted_record_seq = std::numeric_limits<std::uint64_t>::max();
+		health.last_committed_record_seq = health.last_admitted_record_seq;
+		NOW = MONO;
+		observe(health);
+		emit(xp(1, 1, 1));
+		auto refused = xp(1, 1, 1);
+		refused.payload.progression.session.environment_id = 1U;
+		emit(refused, false);
+		telemetry_record gap{};
+		gap.header.kind = telemetry_record_kind::coverage_gap;
+		gap.payload.gap.reason = telemetry_gap_reason::detail_queue_drop;
+		gap.payload.gap.dropped_records = 3U;
+		gap.payload.gap.quality_flags = TELEMETRY_QUALITY_QUEUE_DROP;
+		emit(gap);
+		gap.payload.gap.session = session();
+		emit(gap);
+		NOW = MONO + TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health);
+	}
+	else if (name == "health-capacity")
+	{
+		for (std::uint32_t index = 0U; index < 127U; ++index)
+			life(telemetry_lifecycle_kind::connection_attached);
+		const auto health = native_health();
+		NOW = MONO;
+		observe(health, false);
+		observe(health, false);
+		CHECK(telemetry_posthog_reducer_health_copy().output_suppressed == 1U);
+		CHECK(telemetry_posthog_output_retire(
+			1U, telemetry_posthog_output_disposition::suppressed));
+		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health);
+	}
+	else if (name == "health-faults")
+	{
+		auto health = native_health();
+		auto invalid = health;
+		invalid.producer.boot_id = 99U;
+		observe(invalid, false);
+		invalid = health;
+		++invalid.schema_version;
+		observe(invalid, false);
+		invalid = health;
+		invalid.state = static_cast<telemetry_health_state>(255U);
+		observe(invalid, false);
+		NOW = 0U;
+		observe(health, false);
+		observe(health, false);
+		NOW = MONO;
+		limit_allocations(0U);
+		observe(health, false);
+		cJSON_InitHooks(nullptr);
+		observe(health, false);
+		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health, false, TELEMETRY_UTC_UNKNOWN);
+		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health);
+		--NOW;
+		observe(health, false);
+		observe(health, false);
+		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC + 1U;
+		observe(health);
+	}
+	else if (name == "health-family-expiry")
+	{
+		const auto health = native_health();
+		NOW = MONO;
+		observe(health);
+		CHECK(telemetry_posthog_output_retire(
+			1U, telemetry_posthog_output_disposition::http_acknowledged));
+		CHECK(telemetry_posthog_output_peek().health);
+		CHECK(telemetry_posthog_output_retire(
+			1U, telemetry_posthog_output_disposition::ambiguous));
+		NOW += TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC;
+		observe(health);
+		NOW += TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC;
+		telemetry_posthog_output_expire(NOW);
+		observe(health);
 	}
 	else if (name == "initialization")
 	{

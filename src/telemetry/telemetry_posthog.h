@@ -58,6 +58,31 @@ inline constexpr std::size_t TELEMETRY_POSTHOG_MAX_EVENTS = 128U;
 inline constexpr std::size_t TELEMETRY_POSTHOG_MAX_EVENT_BYTES = 32U * 1024U;
 inline constexpr std::size_t TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES = 512U * 1024U;
 inline constexpr telemetry_duration_usec TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC = 120'000'000U;
+inline constexpr telemetry_duration_usec TELEMETRY_POSTHOG_HEALTH_INTERVAL_USEC = 3'600'000'000ULL;
+inline constexpr telemetry_duration_usec TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC = 60'000'000U;
+
+enum class telemetry_posthog_family : std::uint8_t
+{
+	session,
+	character_summary,
+	level_change,
+	encounter_summary,
+	configuration,
+	health,
+	count,
+};
+
+inline constexpr std::size_t TELEMETRY_POSTHOG_FAMILY_COUNT =
+	static_cast<std::size_t>(telemetry_posthog_family::count);
+
+struct telemetry_posthog_family_health
+{
+	std::uint64_t created = 0U;
+	std::uint64_t suppressed = 0U;
+	std::uint64_t expired = 0U;
+	std::uint64_t http_acknowledged = 0U;
+	std::uint64_t ambiguous = 0U;
+};
 
 struct telemetry_posthog_reducer_config
 {
@@ -73,6 +98,9 @@ struct telemetry_posthog_reducer_config
 struct telemetry_posthog_reducer_health
 {
 	std::array<std::uint64_t, 9U> consumed_by_kind{};
+	std::array<std::uint64_t, 9U> refused_by_kind{};
+	std::array<telemetry_posthog_family_health, TELEMETRY_POSTHOG_FAMILY_COUNT> by_family{};
+	std::uint64_t invalid_health_snapshots = 0U;
 	std::uint64_t invalid_records = 0U;
 	std::uint64_t reduction_refusals = 0U;
 	std::uint64_t input_sequence_gaps = 0U;
@@ -85,6 +113,8 @@ struct telemetry_posthog_reducer_health
 	std::uint64_t checkpoint_conflicts = 0U;
 	std::uint64_t stale_checkpoints = 0U;
 	std::uint64_t native_gaps = 0U;
+	std::uint64_t native_scoped_gaps = 0U;
+	std::uint64_t native_process_gaps = 0U;
 	std::uint64_t native_dropped_records = 0U;
 	std::uint64_t native_gap_known_usec = 0U;
 	std::uint64_t unattributed_time_fragments = 0U;
@@ -135,6 +165,12 @@ bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monoton
  * remaining fragments for a lifecycle deadline; it does not perform I/O. */
 void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_usec utc,
 				    bool force = false) noexcept;
+/* Worker-only copied native health. Initial/hourly snapshots and coalesced
+ * incidents use the same bounded output arena. True means a row was sealed,
+ * never that it was sent/ingested. Native applied_records is not an HTTP ack. */
+bool telemetry_posthog_observe_health(const telemetry_health_snapshot &native,
+				      telemetry_monotonic_usec now,
+				      telemetry_utc_usec utc) noexcept;
 /* Views remain immutable while appending. Retiring/expiring/reset invalidates
  * all borrowed views; the sender must resolve its retry prefix first. */
 telemetry_posthog_output telemetry_posthog_output_peek(std::size_t offset = 0U) noexcept;

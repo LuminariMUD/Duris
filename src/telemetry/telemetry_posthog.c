@@ -9,6 +9,7 @@
 
 #include "telemetry/telemetry_posthog.h"
 #include "telemetry/telemetry_config_private.h"
+#include "telemetry/telemetry_health.h"
 
 #include <algorithm>
 #include <bit>
@@ -260,6 +261,77 @@ namespace
 	constexpr std::uint32_t COVERAGE_ACTOR = 1U << 10;
 	constexpr std::uint32_t COVERAGE_COMBAT = 1U << 11;
 	constexpr std::uint32_t COVERAGE_OUTPUT = 1U << 12;
+	constexpr const char *FAMILY_NAMES[] = { "duris_session",	"duris_character_summary",
+						 "duris_level_change",	"duris_encounter_summary",
+						 "duris_configuration", "duris_telemetry_health" };
+	static_assert(std::size(FAMILY_NAMES) == TELEMETRY_POSTHOG_FAMILY_COUNT);
+
+	/* One list supplies the cumulative JSON counters and selects loss changes
+	 * that need an incident. Ordinary traffic/acks/NPC filtering are not faults. */
+	struct reducer_counter
+	{
+		const char *name;
+		std::uint64_t telemetry_posthog_reducer_health::*member;
+		bool incident;
+	};
+	constexpr reducer_counter REDUCER_COUNTERS[] = {
+		{ "invalid_health_snapshots",
+		  &telemetry_posthog_reducer_health::invalid_health_snapshots, true },
+		{ "invalid_records", &telemetry_posthog_reducer_health::invalid_records, true },
+		{ "reduction_refusals", &telemetry_posthog_reducer_health::reduction_refusals,
+		  true },
+		{ "input_sequence_gaps", &telemetry_posthog_reducer_health::input_sequence_gaps,
+		  true },
+		{ "unsupported_records", &telemetry_posthog_reducer_health::unsupported_records,
+		  true },
+		{ "session_refusals", &telemetry_posthog_reducer_health::session_refusals, true },
+		{ "abandoned_sessions", &telemetry_posthog_reducer_health::abandoned_sessions,
+		  true },
+		{ "configuration_refusals",
+		  &telemetry_posthog_reducer_health::configuration_refusals, true },
+		{ "missing_configuration_rows",
+		  &telemetry_posthog_reducer_health::missing_configuration_rows, true },
+		{ "counter_overflow_rows", &telemetry_posthog_reducer_health::counter_overflow_rows,
+		  true },
+		{ "checkpoint_conflicts", &telemetry_posthog_reducer_health::checkpoint_conflicts,
+		  true },
+		{ "stale_checkpoints", &telemetry_posthog_reducer_health::stale_checkpoints,
+		  false },
+		{ "native_gaps", &telemetry_posthog_reducer_health::native_gaps, true },
+		{ "native_scoped_gaps", &telemetry_posthog_reducer_health::native_scoped_gaps,
+		  true },
+		{ "native_process_gaps", &telemetry_posthog_reducer_health::native_process_gaps,
+		  true },
+		{ "native_dropped_records",
+		  &telemetry_posthog_reducer_health::native_dropped_records, true },
+		{ "native_gap_known_usec", &telemetry_posthog_reducer_health::native_gap_known_usec,
+		  true },
+		{ "unattributed_time_fragments",
+		  &telemetry_posthog_reducer_health::unattributed_time_fragments, true },
+		{ "xp_attribution_overflows",
+		  &telemetry_posthog_reducer_health::xp_attribution_overflows, true },
+		{ "run_refusals", &telemetry_posthog_reducer_health::run_refusals, true },
+		{ "terminal_duplicates", &telemetry_posthog_reducer_health::terminal_duplicates,
+		  false },
+		{ "terminal_conflicts", &telemetry_posthog_reducer_health::terminal_conflicts,
+		  true },
+		{ "late_encounter_records",
+		  &telemetry_posthog_reducer_health::late_encounter_records, true },
+		{ "incomplete_runs", &telemetry_posthog_reducer_health::incomplete_runs, true },
+		{ "unsupported_npc_rows", &telemetry_posthog_reducer_health::unsupported_npc_rows,
+		  false },
+		{ "actor_attribution_overflows",
+		  &telemetry_posthog_reducer_health::actor_attribution_overflows, true },
+		{ "created_events", &telemetry_posthog_reducer_health::created_events, false },
+		{ "output_suppressed", &telemetry_posthog_reducer_health::output_suppressed, true },
+		{ "output_expired", &telemetry_posthog_reducer_health::output_expired, true },
+		{ "serialization_failures",
+		  &telemetry_posthog_reducer_health::serialization_failures, true },
+		{ "clock_failures", &telemetry_posthog_reducer_health::clock_failures, true },
+		{ "http_acknowledged", &telemetry_posthog_reducer_health::http_acknowledged,
+		  false },
+		{ "ambiguous_events", &telemetry_posthog_reducer_health::ambiguous_events, true },
+	};
 
 	template<typename Number> struct metric
 	{
@@ -372,6 +444,7 @@ namespace
 		std::size_t offset = 0U;
 		std::size_t bytes = 0U;
 		telemetry_monotonic_usec sealed_at = 0U;
+		telemetry_posthog_family family{};
 	};
 
 	struct combat_totals
@@ -443,6 +516,17 @@ namespace
 		std::array<telemetry_sequence, RUN_LIMIT> retired_runs{};
 		std::size_t retired_cursor = 0U;
 		telemetry_sequence retired_through = 0U;
+		telemetry_health_monitor_state native_monitor{};
+		telemetry_posthog_reducer_health reported_health{};
+		bool health_attempted = false;
+		bool health_reported = false;
+		bool health_incident_pending = false;
+		bool health_clock_fault = false;
+		telemetry_monotonic_usec health_last_observed = 0U;
+		telemetry_monotonic_usec health_last_attempt = 0U;
+		telemetry_monotonic_usec health_last_report = 0U;
+		std::uint32_t health_incident_reasons = 0U;
+		telemetry_health_alert_severity health_incident_severity{};
 		std::array<output_entry, TELEMETRY_POSTHOG_MAX_EVENTS> output{};
 		std::array<char, TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES> bytes{};
 	};
@@ -508,6 +592,7 @@ namespace
 		cJSON *properties = root == nullptr ? nullptr :
 						      cJSON_AddObjectToObject(root, "properties");
 		bool valid = properties != nullptr;
+		telemetry_posthog_family family{};
 
 		posthog_row() = default;
 		posthog_row(const posthog_row &) = delete;
@@ -704,12 +789,14 @@ namespace
 		return coverage;
 	}
 
-	void common_json(posthog_row & row, const char *event, const telemetry_session_ref *session,
-			 telemetry_config_id config, std::uint32_t classifier, std::uint32_t policy,
+	void common_json(posthog_row & row, telemetry_posthog_family family,
+			 const telemetry_session_ref *session, telemetry_config_id config,
+			 std::uint32_t classifier, std::uint32_t policy,
 			 const telemetry_dimensions *dimensions, telemetry_quality_mask quality,
 			 std::uint32_t coverage, telemetry_utc_usec first, telemetry_utc_usec last,
 			 telemetry_utc_usec sealing_utc) noexcept
 	{
+		row.family = family;
 		telemetry_posthog_uuid uuid{};
 		telemetry_posthog_timestamp timestamp{};
 		const bool occurrence = utc_valid(first) && utc_valid(last) && first <= last &&
@@ -722,7 +809,7 @@ namespace
 			if (!occurrence && !utc_valid(sealing_utc))
 				add_count(REDUCER.health.clock_failures);
 		}
-		row.text(row.root, "event", event);
+		row.text(row.root, "event", FAMILY_NAMES[static_cast<std::size_t>(family)]);
 		row.text(row.root, "uuid", uuid.data());
 		row.text(row.root, "timestamp", timestamp.data());
 		auto *properties = row.properties;
@@ -800,6 +887,8 @@ namespace
 		{
 			add_count(REDUCER.health.serialization_failures);
 			add_count(REDUCER.health.output_suppressed);
+			add_count(REDUCER.health.by_family[static_cast<std::size_t>(row.family)]
+					  .suppressed);
 			return false;
 		}
 		const std::size_t bytes = std::strlen(encoded.data()) + 1U;
@@ -809,14 +898,134 @@ namespace
 				    REDUCER.health.output_bytes)
 		{
 			add_count(REDUCER.health.output_suppressed);
+			add_count(REDUCER.health.by_family[static_cast<std::size_t>(row.family)]
+					  .suppressed);
 			return false;
 		}
 		auto &entry = REDUCER.output[REDUCER.health.output_events++];
-		entry = { REDUCER.health.output_bytes, bytes, now };
+		entry = { REDUCER.health.output_bytes, bytes, now, row.family };
 		std::memcpy(REDUCER.bytes.data() + entry.offset, encoded.data(), bytes);
 		REDUCER.health.output_bytes += static_cast<std::uint32_t>(bytes);
 		add_count(REDUCER.health.created_events);
+		add_count(REDUCER.health.by_family[static_cast<std::size_t>(row.family)].created);
 		return true;
+	}
+
+	void native_health_json(posthog_row & row, const telemetry_health_snapshot &native,
+				telemetry_monotonic_usec now) noexcept
+	{
+		auto *object = row.object(row.properties, "native_transport");
+		row.text(object, "state", telemetry_health_state_name(native.state));
+		row.text(object, "backend", telemetry_health_backend_name(native.backend));
+		row.number(object, "disabled_reason",
+			   static_cast<std::uint32_t>(native.disabled_reason));
+		row.number(object, "queue_capacity", native.queue_capacity);
+		row.integer(object, "queue_depth", native.queue_depth);
+		row.integer(object, "queue_high_water", native.queue_high_water);
+		row.integer(object, "admitted_detail", native.admitted_detail);
+		row.integer(object, "admitted_control", native.admitted_control);
+		row.integer(object, "dropped_detail", native.dropped_detail);
+		row.integer(object, "dropped_control", native.dropped_control);
+		row.integer(object, "applied_records", native.applied_records);
+		row.integer(object, "duplicate_records", native.duplicate_records);
+		row.integer(object, "stale_checkpoint_records", native.stale_checkpoint_records);
+		row.integer(object, "invalid_records", native.invalid_records);
+		row.integer(object, "conflict_records", native.conflict_records);
+		row.integer(object, "retryable_failures", native.retryable_failures);
+		row.integer(object, "ambiguous_commits", native.ambiguous_commits);
+		row.integer(object, "sequence_gap_count", native.sequence_gap_count);
+		row.integer(object, "unclosed_tail_count", native.unclosed_tail_count);
+		row.integer(object, "attributable_duration_usec",
+			    native.attributable_duration_usec);
+		row.integer(object, "unknown_duration_usec", native.unknown_duration_usec);
+		row.integer(object, "quarantined_records", native.quarantined_records);
+		row.integer(object, "circuit_open_count", native.circuit_open_count);
+		row.integer(object, "last_admitted_record_seq", native.last_admitted_record_seq,
+			    native.last_admitted_record_seq != 0U);
+		row.integer(object, "last_committed_record_seq", native.last_committed_record_seq,
+			    native.last_committed_record_seq != 0U);
+		row.integer(object, "last_success_age_usec",
+			    now - native.last_success_monotonic_usec,
+			    native.last_success_monotonic_usec != 0U &&
+				    now >= native.last_success_monotonic_usec);
+		row.integer(object, "last_failure_age_usec",
+			    now - native.last_failure_monotonic_usec,
+			    native.last_failure_monotonic_usec != 0U &&
+				    now >= native.last_failure_monotonic_usec);
+		row.text(object, "failure_class",
+			 telemetry_health_failure_class_name(native.last_failure_class));
+		row.text(object, "schema_check",
+			 telemetry_health_schema_check_name(native.last_schema_check));
+		row.text(object, "storage_check",
+			 telemetry_health_storage_check_name(native.last_storage_check));
+		row.number(object, "error_code", native.last_error_code);
+		row.integer(object, "failure_kind_mask", native.last_failure_record_kind_mask);
+		row.integer(object, "failure_first_record_seq",
+			    native.last_failure_first_record_seq,
+			    native.last_failure_first_record_seq != 0U);
+		row.integer(object, "failure_last_record_seq", native.last_failure_last_record_seq,
+			    native.last_failure_last_record_seq != 0U);
+		row.put(object, "inflight_active", cJSON_CreateBool(native.inflight_active != 0U));
+		row.integer(object, "inflight_first_record_seq", native.inflight_first_record_seq,
+			    native.inflight_active != 0U);
+		row.integer(object, "inflight_last_record_seq", native.inflight_last_record_seq,
+			    native.inflight_active != 0U);
+		row.integer(object, "inflight_kind_mask", native.inflight_record_kind_mask);
+		row.number(object, "inflight_retry_attempts", native.inflight_retry_attempts);
+		row.integer(object, "retry_backoff_remaining_usec",
+			    native.retry_backoff_remaining_usec);
+	}
+
+	bool health_loss_changed() noexcept
+	{
+		return std::any_of(std::begin(REDUCER_COUNTERS), std::end(REDUCER_COUNTERS),
+				   [](const auto &counter)
+				   {
+					   return counter.incident &&
+						  REDUCER.health.* counter.member !=
+							  REDUCER.reported_health.* counter.member;
+				   });
+	}
+
+	void reducer_health_json(posthog_row & row, telemetry_monotonic_usec now) noexcept
+	{
+		const auto &health = REDUCER.health;
+		auto *object = row.object(row.properties, "reducer");
+		for (const auto &counter : REDUCER_COUNTERS)
+			row.integer(object, counter.name, health.* counter.member);
+		row.number(object, "sessions", health.sessions);
+		row.number(object, "session_limit", SESSION_LIMIT);
+		row.number(object, "runs", health.runs);
+		row.number(object, "run_limit", RUN_LIMIT);
+		row.number(object, "configurations", health.configurations);
+		row.number(object, "configuration_limit", CONFIGURATION_LIMIT);
+		row.number(object, "output_events", health.output_events);
+		row.number(object, "output_event_limit", TELEMETRY_POSTHOG_MAX_EVENTS);
+		row.number(object, "output_bytes", health.output_bytes);
+		row.number(object, "output_byte_limit", TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES);
+		const auto oldest = health.output_events == 0U ? 0U : REDUCER.output[0].sealed_at;
+		row.integer(object, "output_oldest_age_usec", now - oldest,
+			    health.output_events != 0U && now >= oldest);
+		auto *kinds = row.array("native_reduction_by_kind");
+		for (std::size_t index = 1U; index < health.consumed_by_kind.size(); ++index)
+		{
+			auto *item = row.element(kinds);
+			row.number(item, "kind", static_cast<std::uint32_t>(index));
+			row.integer(item, "consumed", health.consumed_by_kind[index]);
+			row.integer(item, "refused", health.refused_by_kind[index]);
+		}
+		auto *families = row.array("output_by_family");
+		for (std::size_t index = 0U; index < health.by_family.size(); ++index)
+		{
+			const auto &family = health.by_family[index];
+			auto *item = row.element(families);
+			row.text(item, "event", FAMILY_NAMES[index]);
+			row.integer(item, "created", family.created);
+			row.integer(item, "suppressed", family.suppressed);
+			row.integer(item, "expired", family.expired);
+			row.integer(item, "http_acknowledged", family.http_acknowledged);
+			row.integer(item, "ambiguous", family.ambiguous);
+		}
 	}
 
 	character_state *character_for(const telemetry_session_ref &session,
@@ -933,8 +1142,8 @@ namespace
 			add_count(REDUCER.health.counter_overflow_rows);
 		}
 		posthog_row row;
-		common_json(row, "duris_character_summary", &character.session, part.config,
-			    part.classifier, part.policy,
+		common_json(row, telemetry_posthog_family::character_summary, &character.session,
+			    part.config, part.classifier, part.policy,
 			    (coverage & COVERAGE_DIMENSIONS) != 0U ? nullptr : &part.dimensions,
 			    part.quality, coverage, part.first, part.last, utc);
 		row.integer(row.properties, "window_start_utc_usec", part.window,
@@ -1170,10 +1379,10 @@ namespace
 			for (auto &part : character->fragments)
 				seal_fragment(*character, part, now, utc);
 			posthog_row row;
-			common_json(row, "duris_level_change", &xp.session, xp.config_id,
-				    xp.classifier_version, xp.policy_version, &xp.dimensions,
-				    xp.quality_flags, character->coverage, xp.at_utc_usec,
-				    xp.at_utc_usec, utc);
+			common_json(row, telemetry_posthog_family::level_change, &xp.session,
+				    xp.config_id, xp.classifier_version, xp.policy_version,
+				    &xp.dimensions, xp.quality_flags, character->coverage,
+				    xp.at_utc_usec, xp.at_utc_usec, utc);
 			row.number(row.properties, "before_level", xp.before_level);
 			row.number(row.properties, "after_level", xp.after_level);
 			row.number(row.properties, "transition",
@@ -1243,7 +1452,7 @@ namespace
 			for (auto &part : character->fragments)
 				seal_fragment(*character, part, now, utc);
 		posthog_row row;
-		common_json(row, "duris_session", &life.session, life.config_id,
+		common_json(row, telemetry_posthog_family::session, &life.session, life.config_id,
 			    life.classifier_version, life.policy_version, &life.dimensions,
 			    life.quality_flags, character->coverage, life.at_utc_usec,
 			    life.at_utc_usec, utc);
@@ -1345,7 +1554,7 @@ namespace
 		}
 		REDUCER.configurations[REDUCER.health.configurations++] = config;
 		posthog_row row;
-		common_json(row, "duris_configuration", nullptr, config.config_id,
+		common_json(row, telemetry_posthog_family::configuration, nullptr, config.config_id,
 			    config.classifier_version, config.policy_version, nullptr, 0U, 0U,
 			    config.effective_utc_usec, config.effective_utc_usec, utc);
 		char hex[65]{};
@@ -1692,10 +1901,10 @@ namespace
 			coverage |= COVERAGE_OVERFLOW;
 			add_count(REDUCER.health.counter_overflow_rows);
 		}
-		common_json(row, "duris_encounter_summary", nullptr, run.source.config_id,
-			    run.source.classifier_version, run.source.policy_version, nullptr,
-			    run.quality, coverage, run.start_utc,
-			    run.terminal ? run.end_utc : TELEMETRY_UTC_UNKNOWN, utc);
+		common_json(row, telemetry_posthog_family::encounter_summary, nullptr,
+			    run.source.config_id, run.source.classifier_version,
+			    run.source.policy_version, nullptr, run.quality, coverage,
+			    run.start_utc, run.terminal ? run.end_utc : TELEMETRY_UTC_UNKNOWN, utc);
 		telemetry_posthog_scoped_identity run_id{};
 		row.valid &= telemetry_posthog_run_id(REDUCER.config.environment_id,
 						      REDUCER.config.season_id, run.id, run_id);
@@ -1831,6 +2040,12 @@ namespace
 						break;
 					add_count(REDUCER.health.output_suppressed,
 						  run.actor_count + 1U - run.output_cursor);
+					add_count(REDUCER.health
+							  .by_family[static_cast<std::size_t>(
+								  telemetry_posthog_family::
+									  encounter_summary)]
+							  .suppressed,
+						  run.actor_count + 1U - run.output_cursor);
 					run.output_cursor = run.actor_count + 1U;
 					break;
 				}
@@ -1870,6 +2085,17 @@ void telemetry_posthog_reducer_reset() noexcept
 	REDUCER.retired_runs.fill(0U);
 	REDUCER.retired_cursor = 0U;
 	REDUCER.retired_through = 0U;
+	REDUCER.native_monitor = {};
+	REDUCER.reported_health = {};
+	REDUCER.health_attempted = false;
+	REDUCER.health_reported = false;
+	REDUCER.health_incident_pending = false;
+	REDUCER.health_clock_fault = false;
+	REDUCER.health_last_observed = 0U;
+	REDUCER.health_last_attempt = 0U;
+	REDUCER.health_last_report = 0U;
+	REDUCER.health_incident_reasons = 0U;
+	REDUCER.health_incident_severity = telemetry_health_alert_severity::none;
 	REDUCER.output.fill({});
 	REDUCER.bytes.fill('\0');
 }
@@ -1945,6 +2171,7 @@ bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monoton
 		add_count(REDUCER.health.native_gap_known_usec, gap.duration_usec);
 		if (!telemetry_session_ref_is_zero(gap.session))
 		{
+			add_count(REDUCER.health.native_scoped_gaps);
 			auto *character = character_for(gap.session, now);
 			if (character != nullptr)
 			{
@@ -1955,6 +2182,7 @@ bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monoton
 		}
 		else
 		{
+			add_count(REDUCER.health.native_process_gaps);
 			for (auto &character : REDUCER.characters)
 				if (character.used)
 					character.coverage |= COVERAGE_GAP |
@@ -1977,7 +2205,11 @@ bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monoton
 		break;
 	}
 	if (!accepted)
+	{
 		add_count(REDUCER.health.reduction_refusals);
+		add_count(REDUCER.health
+				  .refused_by_kind[static_cast<std::size_t>(record.header.kind)]);
+	}
 	return accepted;
 }
 
@@ -2025,13 +2257,92 @@ void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_
 	seal_encounters(now, utc, force);
 }
 
+bool telemetry_posthog_observe_health(const telemetry_health_snapshot &native,
+				      telemetry_monotonic_usec now, telemetry_utc_usec utc) noexcept
+{
+	if (!REDUCER.initialized || native.schema_version != TELEMETRY_SCHEMA_VERSION ||
+	    !same_producer(native.producer, REDUCER.config.producer) ||
+	    static_cast<unsigned int>(native.state) >
+		    static_cast<unsigned int>(telemetry_health_state::circuit_open))
+	{
+		add_count(REDUCER.health.invalid_health_snapshots);
+		return false;
+	}
+	if (now == 0U || now < REDUCER.health_last_observed)
+	{
+		if (!REDUCER.health_clock_fault)
+			add_count(REDUCER.health.clock_failures);
+		REDUCER.health_clock_fault = true;
+		REDUCER.health_incident_pending = true;
+		return false;
+	}
+	REDUCER.health_clock_fault = false;
+	REDUCER.health_last_observed = now;
+	auto config = telemetry_health_monitor_default_config(TELEMETRY_INTERVAL_USEC_PROPOSAL,
+							      native.queue_capacity);
+	config.repeat_after_usec = TELEMETRY_POSTHOG_HEALTH_INTERVAL_USEC;
+	const auto event =
+		telemetry_health_monitor_evaluate(&REDUCER.native_monitor, &config, native, now);
+	if (event.kind != telemetry_health_event_kind::none &&
+	    event.kind != telemetry_health_event_kind::reminder)
+	{
+		REDUCER.health_incident_pending = true;
+		REDUCER.health_incident_reasons |= event.reason_mask;
+		REDUCER.health_incident_severity =
+			std::max(REDUCER.health_incident_severity, event.severity);
+	}
+	REDUCER.health_incident_pending |= health_loss_changed();
+	const bool hourly = REDUCER.health_reported &&
+			    now - REDUCER.health_last_report >=
+				    TELEMETRY_POSTHOG_HEALTH_INTERVAL_USEC;
+	if ((REDUCER.health_reported && !hourly && !REDUCER.health_incident_pending) ||
+	    (REDUCER.health_attempted &&
+	     now - REDUCER.health_last_attempt < TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC))
+		return false;
+	REDUCER.health_attempted = true;
+	REDUCER.health_last_attempt = now;
+	posthog_row row;
+	common_json(row, telemetry_posthog_family::health, nullptr, 0U, 0U, 0U, nullptr, 0U, 0U,
+		    utc, utc, utc);
+	row.text(row.properties, "health_trigger",
+		 !REDUCER.health_reported	 ? "initial" :
+		 REDUCER.health_incident_pending ? "incident" :
+						   "hourly");
+	row.text(row.properties, "health_counter_basis", "cumulative_since_producer_start");
+	row.text(row.properties, "health_scope", "producer");
+	row.integer(row.properties, "producer_boot_id", REDUCER.config.producer.boot_id);
+	row.integer(row.properties, "producer_process_id", REDUCER.config.producer.process_id);
+	row.integer(row.properties, "sampled_monotonic_usec", now);
+	row.number(row.properties, "coalesced_reason_mask", REDUCER.health_incident_reasons);
+	row.text(row.properties, "coalesced_severity",
+		 telemetry_health_alert_severity_name(REDUCER.health_incident_severity));
+	const auto status =
+		telemetry_health_monitor_status_copy(&REDUCER.native_monitor, &config, native, now);
+	row.number(row.properties, "active_reason_mask", status.active_reason_mask);
+	row.text(row.properties, "active_severity",
+		 telemetry_health_alert_severity_name(status.active_severity));
+	row.integer(row.properties, "active_alert_duration_usec", status.active_alert_duration_usec,
+		    status.active_severity != telemetry_health_alert_severity::none);
+	native_health_json(row, native, now);
+	reducer_health_json(row, now);
+	if (!queue_row(row, now))
+		return false;
+	REDUCER.health_reported = true;
+	REDUCER.health_last_report = now;
+	REDUCER.health_incident_pending = false;
+	REDUCER.health_incident_reasons = 0U;
+	REDUCER.health_incident_severity = telemetry_health_alert_severity::none;
+	REDUCER.reported_health = REDUCER.health;
+	return true;
+}
+
 telemetry_posthog_output telemetry_posthog_output_peek(std::size_t offset) noexcept
 {
 	if (offset >= REDUCER.health.output_events)
 		return {};
 	const auto &entry = REDUCER.output[offset];
 	return { std::string_view(REDUCER.bytes.data() + entry.offset, entry.bytes - 1U),
-		 entry.sealed_at, false };
+		 entry.sealed_at, entry.family == telemetry_posthog_family::health };
 }
 
 bool telemetry_posthog_output_retire(std::size_t count,
@@ -2039,6 +2350,24 @@ bool telemetry_posthog_output_retire(std::size_t count,
 {
 	if (count == 0U || count > REDUCER.health.output_events)
 		return false;
+	for (std::size_t index = 0U; index < count; ++index)
+	{
+		auto &family =
+			REDUCER.health
+				.by_family[static_cast<std::size_t>(REDUCER.output[index].family)];
+		switch (disposition)
+		{
+		case telemetry_posthog_output_disposition::http_acknowledged:
+			add_count(family.http_acknowledged);
+			break;
+		case telemetry_posthog_output_disposition::suppressed:
+			add_count(family.suppressed);
+			break;
+		case telemetry_posthog_output_disposition::ambiguous:
+			add_count(family.ambiguous);
+			break;
+		}
+	}
 	const auto &last = REDUCER.output[count - 1U];
 	const auto removed_bytes = last.offset + last.bytes;
 	std::memmove(REDUCER.bytes.data(), REDUCER.bytes.data() + removed_bytes,
@@ -2077,6 +2406,11 @@ void telemetry_posthog_output_expire(telemetry_monotonic_usec now) noexcept
 	}
 	if (expired != 0U)
 	{
+		for (std::size_t index = 0U; index < expired; ++index)
+			add_count(REDUCER.health
+					  .by_family[static_cast<std::size_t>(
+						  REDUCER.output[index].family)]
+					  .expired);
 		(void)telemetry_posthog_output_retire(
 			expired, telemetry_posthog_output_disposition::suppressed);
 		add_count(REDUCER.health.output_expired, expired);

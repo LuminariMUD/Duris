@@ -309,8 +309,27 @@ reserves 512 bytes for batch framing and counts terminating NULs; there is no
 second retained event buffer. Scratch JSON construction is separately bounded
 by bucket counts and the 32 KiB serializer cap. Known native gap counts/durations
 are saturating lower bounds; zero known duration never certifies an empty gap.
-Hourly/incident health export and runtime HTTP/quota integration are still
-pending. Current component tests do not prove ingestion.
+`duris_telemetry_health` uses the same bounded arena and system identity. Its
+initial/hourly snapshots and incident changes are coalesced to at most one seal
+attempt per minute; quota enforcement still charges every eventual HTTP attempt.
+Transient native alert/recovery reasons survive coalescing even if current state
+has recovered. Missing clocks or output capacity count as local loss and retry
+only at the coalescing boundary. Counters are cumulative for the named producer;
+snapshot values precede insertion of the health row itself.
+
+`native_transport` retains copied native state/counters, including its existing
+`applied_records`; this is separate from reducer `http_acknowledged` and makes no
+PostHog durability claim. `reducer` reports current occupancy/limits and loss
+counters; `native_reduction_by_kind` separates consumed/refused records, and
+`output_by_family` separates created, suppressed, expired, HTTP-acknowledged and
+ambiguous events for all six families. Expiry is included in suppression.
+Scoped/process native gap counts stay distinct, with unknown duration remaining
+unknown despite a zero known-duration total. Health counters never count refusal
+attempts as distinct omitted players.
+
+Runtime integration, producer capacity/admission metrics, journal/quota/HTTP
+health and ingestion acceptance remain pending. Current component tests do not
+prove cloud delivery.
 
 ### Complete event-volume fixture (#59)
 
