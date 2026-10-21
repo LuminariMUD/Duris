@@ -86,7 +86,7 @@ PR #259 review carry-forward: the native `rollover-season` command preserves
 history and exhausts the current UTC day without changing the sender allocation.
 Failed registration retries reuse one terminal quota archive. The storage guide
 documents both wire versions, witness sizes and recovery. Focused journal, CLI,
-worker and sanitizer regressions passed; integrated PostHog reduction passes 55
+worker and sanitizer regressions passed; integrated PostHog reduction passes 57
 scenarios in each backend after carrying the earlier reducer fixes forward.
 
 Repeated `exhaust-day` and `rollover-season` commands for an already exhausted
