@@ -358,7 +358,55 @@ must qualify the real reducer/gameplay mix. Retain the 20,000/day shared hard
 ceiling, 100 reserved health attempts, explicit sender allocations, durable
 pre-send reservations, and no payload backlog at exhaustion. Thirty-one days
 can touch 32 UTC dates, so the hard bound is 640,000, not necessarily 620,000.
-Full implementation, fake-receiver and ≤100-attempt cloud proof remain pending.
+HTTP integration, fake-receiver and ≤100-attempt cloud proof remain pending.
+
+### Durable sender quota (#59)
+
+The existing native outage journal now supports wire version 2: the unchanged
+40-word historical observations plus ten quota words for project/sender/scope
+binding, normal/health/combined daily limits, UTC day high-water and reservation
+counts. Version 1 remains readable/writable when quota is absent. No payloads are
+stored. Each batch attempt must durably reserve its exact normal/health counts
+before HTTP, including retries; failed or ambiguous attempts receive no refund.
+The combined daily limit is at most 20,000 and health at most 100 per sender.
+Production's allocation is 19,900 combined: 19,800 normal plus 100 health; cloud
+tests share a separate declared allocation of at most 100 total attempts.
+Independent directories do not create additional authorized project allowances.
+
+Publication retains checksums, owner-only modes, exclusive ownership,
+close-on-exec descriptors, pending-frame validation, atomic rename and fsync.
+The owner file holds a 48-byte generation/digest witness for quota frames;
+restoring only a ledger or replacing its contents at the same generation is
+refused. Whole valid pending reservations may be recovered conservatively.
+Publication failure disables reservations for that open owner until reopen and
+validation. Missing initialization, binding/limit mismatch, exhausted allowance
+and clock rollback refuse export. Existing result categories use `error_code`
+`ENODATA`, `EINVAL`, `EDQUOT` and `ERANGE`, respectively. A valid new UTC day
+starts a fresh allowance without carryover. Producer archive rotation preserves
+quota and publication generation; a durable archive copy leaves the live frame
+available until the next producer's frame is committed.
+
+The one-shot native command uses this same implementation. Build with
+`make -C src telemetry-state`; the executable is `bin/tools/telemetry-state`
+(or under the chosen `BIN_ROOT`). Its argument order is:
+
+```text
+telemetry-state initialize DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH
+telemetry-state exhaust-day DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH
+```
+
+The absolute directory must already be private (`0700`) and owned by the sender.
+Initialize explicitly once before enablement; startup never creates allowance.
+Read quota with the existing `scripts/telemetry/outage.py DIRECTORY` exporter.
+After restoring every local file, a complete rollback is inherently undetectable:
+run `exhaust-day` with the original binding before resuming. It preserves the
+original frame as `outages.ledger.recovery.<generation>` and consumes the affected
+day's remaining allowance without sending. Corrupt/mismatched files stay refused;
+preserve them and restore a consistent backup before this conservative recovery.
+Initialization/recovery against production belongs to separately authorized
+enablement/operations. No production journal was initialized by implementation
+tests. Worker cadence, exporter coverage watermarks and HTTP integration remain
+open in the implementation plan.
 
 ### Native record units and identity
 

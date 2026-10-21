@@ -117,7 +117,8 @@ The previous plan is preserved in [plan-issue-107.md](plan-issue-107.md).
 - Ablation for this slice: reuse the existing reducer, native producer APIs,
   checked counters and output arena. Retain only the identities/terminal evidence
   needed to join bounded rows; add no SDK, queue, service or payload spool.
-- The fifth chunk, branch `issue-59-posthog-health`, implements initial/hourly
+- The fifth chunk, [PR #258](https://github.com/LuminariMUD/Duris/pull/258),
+  branch `issue-59-posthog-health`, implements initial/hourly
   health output and minute-coalesced incidents in the existing output arena.
   It reuses the native health monitor, preserves transient alert/recovery evidence,
   and keeps native `applied_records` separate from HTTP acknowledgement. Six-family
@@ -128,8 +129,25 @@ The previous plan is preserved in [plan-issue-107.md](plan-issue-107.md).
   clocks, allocation failure and family accounting after output compaction.
   Both full low-priority builds passed; logs:
   `bin/issue59/build-<backend>-health.log`. Formatting and whitespace checks pass.
-- Next: implement durable quota in the existing journal and the HTTPS sender
-  before connecting runtime/transport. Native
+- The sixth chunk, branch `issue-59-posthog-quota`, adds daily reservations to
+  the same protected journal and a one-shot native `telemetry-state` command
+  (`initialize` / `exhaust-day`). Wire version 2 retains historical observations;
+  version 1 remains supported. A generation/digest witness in the owner file
+  detects partial/same-generation rollback, while full backup restore requires
+  the explicit recovery command to preserve evidence and exhaust that day.
+  Retry attempts are charged again, and quota survives 256-producer archive
+  rotation, including an interrupted next registration. Quota errors reuse the
+  existing journal result/error-code contract; no runtime dispatch layer is added.
+  The contract records exact limits, command arguments and restore behavior.
+- Quota proof: `test_telemetry_outage.py` covers the existing storage/exec/kill
+  regression suite plus initialization, immutable binding, caps/retry charging,
+  clock rollback, write/file/owner/directory-fsync/rename faults, pending recovery,
+  rollback detection, native command roundtrip and wire-2 offline export under
+  UBSan. Both full low-priority builds and the native tool build passed, along
+  with formatting/whitespace checks; logs:
+  `bin/issue59/build-<backend>-quota.log`. Tests use disposable local files only.
+- Next: implement the HTTPS sender and connect runtime/transport. Worker dirty
+  checkpoint cadence and exporter coverage watermarks still need integration. Native
   queue admission age and the timer fence belong to that integration; occurrence
   age is not admission age. Resolve the sender's retained retry prefix before
   retiring/expiring borrowed output views. HTTP/quota/lifecycle,

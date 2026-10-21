@@ -25,8 +25,10 @@
  * watermark; an unknown tail never implies an exact loss count or crash time. */
 inline constexpr std::size_t TELEMETRY_OUTAGE_MAX_PRODUCERS = 256U;
 inline constexpr std::size_t TELEMETRY_OUTAGE_DISK_WORDS = 40U;
+inline constexpr std::size_t TELEMETRY_OUTAGE_QUOTA_WORDS = 10U;
 inline constexpr std::size_t TELEMETRY_OUTAGE_MAX_BYTES =
-	64U + TELEMETRY_OUTAGE_MAX_PRODUCERS * TELEMETRY_OUTAGE_DISK_WORDS * 8U;
+	64U + TELEMETRY_OUTAGE_QUOTA_WORDS * 8U +
+	TELEMETRY_OUTAGE_MAX_PRODUCERS * TELEMETRY_OUTAGE_DISK_WORDS * 8U;
 
 enum class telemetry_outage_phase : std::uint8_t
 {
@@ -44,6 +46,26 @@ enum class telemetry_outage_result : std::uint8_t
 	owned_elsewhere,
 	corrupt,
 	io_failure,
+};
+
+struct telemetry_quota_binding
+{
+	telemetry_id project_id = 0U;
+	telemetry_id sender_id = 0U;
+	telemetry_environment_id environment_id = 0U;
+	telemetry_season_id season_id = 0U;
+	std::uint32_t normal_limit = 0U;
+	std::uint32_t health_limit = 0U;
+	std::uint32_t total_limit = 0U;
+};
+
+struct telemetry_quota_state
+{
+	telemetry_quota_binding binding{};
+	/* Signed UTC day index, independent of producer archive/lifetime. */
+	std::int64_t day = TELEMETRY_UTC_UNKNOWN;
+	std::uint32_t normal_reserved = 0U;
+	std::uint32_t health_reserved = 0U;
 };
 
 struct telemetry_outage_observation
@@ -70,6 +92,10 @@ struct telemetry_outage_journal
 	std::size_t count = 0U;
 	std::size_t current = TELEMETRY_OUTAGE_MAX_PRODUCERS;
 	std::uint32_t error_code = 0U;
+	telemetry_quota_state quota{};
+	std::array<unsigned char, 32U> digest{};
+	bool quota_poisoned = false;
+	bool quota_marker = false;
 	std::array<telemetry_outage_observation, TELEMETRY_OUTAGE_MAX_PRODUCERS> observations{};
 };
 
@@ -89,5 +115,25 @@ telemetry_outage_checkpoint(telemetry_outage_journal *journal,
 void telemetry_outage_close(telemetry_outage_journal *journal) noexcept;
 telemetry_outage_phase
 telemetry_outage_terminal_phase(const telemetry_outage_observation &observation) noexcept;
+
+/* These share the journal's owner and atomic publication. No boot-time
+ * initialization: the native state command initializes once, before enablement.
+ * Reserve before EVERY HTTP attempt; never refund an ambiguous/failed attempt. */
+telemetry_outage_result telemetry_outage_quota_initialize(telemetry_outage_journal *journal,
+							  const telemetry_quota_binding &binding,
+							  telemetry_utc_usec utc) noexcept;
+telemetry_outage_result
+telemetry_outage_quota_check(telemetry_outage_journal *journal,
+			     const telemetry_quota_binding &binding) noexcept;
+telemetry_outage_result telemetry_outage_quota_reserve(telemetry_outage_journal *journal,
+						       const telemetry_quota_binding &binding,
+						       telemetry_utc_usec utc, std::uint32_t normal,
+						       std::uint32_t health) noexcept;
+/* Run after restoring all local files: consume today's allowance, preserve
+ * original evidence, and do not send. A full backup rollback is not detectable
+ * from those same restored files. */
+telemetry_outage_result telemetry_outage_quota_exhaust_day(telemetry_outage_journal *journal,
+							   const telemetry_quota_binding &binding,
+							   telemetry_utc_usec utc) noexcept;
 
 #endif
