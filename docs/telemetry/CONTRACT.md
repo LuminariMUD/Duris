@@ -42,6 +42,25 @@ telemetry, retention, account linkage or automatic balance changes are authorize
 
 ## Units, identity and time
 
+### Reporting scope reserved for PostHog (#59)
+
+Preparation reserves `TELEMETRY_ENVIRONMENT_ID=1` for production, `2` for staging,
+and `3` for the initial local development world. Match the configured environment
+role, not the checkout directory name. Fresh isolated test worlds use distinct
+non-production IDs starting at `1000`; never reuse an exported world's identity
+for a restored or independently created world. Keep that identity stable across
+reconnects, process restarts, and copyover within the same world.
+
+`TELEMETRY_SEASON_ID=1` starts the first PostHog reporting season; it does not claim
+a historical game-wipe number. Change the season when a wipe/reset starts a new
+character population, not on deployment or restart. Tag cloud test runs separately
+and exclude their environment IDs from production dashboard queries.
+
+These settings reserve reporting identities only. The PostHog exporter remains
+unimplemented, and setting either variable does not enable telemetry.
+
+### Native record units and identity
+
 All v1 durations and monotonic endpoints are unsigned **microseconds**; UTC
 occurrence labels are signed Unix-epoch microseconds. This deliberately chooses
 microseconds rather than the storage design's illustrative millisecond columns.
