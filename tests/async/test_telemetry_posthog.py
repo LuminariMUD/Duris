@@ -75,6 +75,22 @@ def encoding_tests(binary: Path) -> None:
             fields[index] = 0
             invoke(kind, *fields, valid=False)
 
+    pets = []
+    for fields in ((1000, 1, 11, 22, 1, 99), (1000, 1, 11, 22, 2, 99),
+                   (1001, 1, 11, 22, 1, 99), (1000, 2, 11, 22, 1, 99),
+                   (1000, 1, 12, 22, 1, 99), (1000, 1, 11, 23, 1, 99),
+                   (1000, 1, 11, 22, 1, 100), ((1 << 64) - 1,) * 6):
+        message = b"duris:posthog:pet:v1" + b"".join(field.to_bytes(8, "big") for field in fields)
+        reference = "dp1_" + hmac.new(bytes.fromhex(key), message, hashlib.sha256).hexdigest()
+        actual = invoke("pet", key, *fields)
+        assert actual == reference
+        pets.append(actual)
+    assert len(set(pets)) == len(pets)
+    for index in range(6):
+        fields = [1000, 1, 11, 22, 1, 99]
+        fields[index] = 0
+        invoke("pet", key, *fields, valid=False)
+
     for vector in fixture["timestamps"]:
         assert invoke("timestamp", vector["usec"]) == vector["expected"]
     for value in fixture["invalid_timestamps"]:
@@ -94,7 +110,11 @@ def reducer_tests(binary: Path) -> None:
         "buckets", "byte-capacity", "integer-overflow", "bucket-overflow", "sessions", "config-capacity",
         "checkpoint", "checkpoint-late-detail", "dimension-unknown", "level-config",
         "gap-scope", "long-interval", "expiry", "allocation-failure", "missing-config",
-        "clock-flag", "unimplemented-encounters", "initialization", "lost-exit",
+        "clock-flag", "initialization", "lost-exit", "encounter-native", "encounter-missing",
+        "encounter-orphan", "encounter-open", "encounter-conflict", "encounter-overflow",
+        "encounter-counter-overflow", "encounter-burst", "encounter-replay", "encounter-expiry",
+        "encounter-capacity", "encounter-scope-clock",
+        "encounter-allocation-failure",
     )
     observed = {}
     forbidden = {"pid", "subject_id", "actor_pid", "name", "email", "account_id", "ip",
@@ -102,7 +122,9 @@ def reducer_tests(binary: Path) -> None:
                  "$session_id", "$groups", "$set", "$set_once"}
     decimal_names = {"requested_xp", "computed_xp", "applied_xp", "threshold_xp", "attempts",
                      "zero_applied", "revision", "interval_observations", "duris_config_id",
-                     "duris_environment_id", "duris_season_id"}
+                     "duris_environment_id", "duris_season_id", "damage_dealt", "damage_taken",
+                     "healing_attempted", "effective_healing", "overhealing", "control_applications",
+                     "casting_attempts", "casting_completions", "casting_aborts"}
 
     def walk(value: object) -> None:
         if isinstance(value, dict):
@@ -126,7 +148,7 @@ def reducer_tests(binary: Path) -> None:
         assert not result.stderr, (case, result.stderr)
         decoded = [json.loads(line) for line in result.stdout.splitlines()]
         health = decoded.pop()["_fixture_health"]
-        assert health["output_events"] == len(decoded)
+        assert health["output_events"] + health["drained_events"] == len(decoded)
         assert health["output_events"] <= 128 and health["output_bytes"] <= 512 * 1024
         seen = set()
         for row in decoded:
@@ -144,10 +166,28 @@ def reducer_tests(binary: Path) -> None:
             assert len(json.dumps(row, separators=(",", ":"))) <= 32 * 1024
             if props["duris_character_id"] is not None:
                 assert props["distinct_id"] == props["duris_character_id"]
-                original = "7:8" if case == "checkpoint" else "11:22"
-                assert props["duris_session_id"].startswith(f"ds1:1000:1:{original}:")
+                if row["event"] == "duris_encounter_summary":
+                    assert props["duris_session_id"] is None
+                else:
+                    original = "7:8" if case == "checkpoint" else "11:22"
+                    assert props["duris_session_id"].startswith(f"ds1:1000:1:{original}:")
+            elif row["event"] == "duris_encounter_summary":
+                assert props["distinct_id"] == (props["duris_run_id"] if props["row_type"] == "run"
+                                                else props["duris_actor_id"])
             else:
                 assert props["distinct_id"] == "dh1:1000:1"
+            if row["event"] == "duris_encounter_summary":
+                assert props["duris_run_id"].startswith("dr1:1000:1:11:22:")
+                assert all(props[name] is None for name in ("class_id", "race_id", "faction_id",
+                                                            "level_band", "duris_session_id"))
+                assert "historical_dimensions_unavailable" in props["duris_coverage"]
+                assert props["control_applications_reason"] == "not_instrumented"
+                if props.get("actor_kind") == "pet":
+                    assert props["distinct_id"].startswith("dp1_")
+                    assert props["duris_owner_character_id"].startswith("dc1_")
+                    assert props["duris_character_id"] is None and props["participant_usec"] is None
+                if isinstance(props.get("combat"), dict):
+                    assert props["combat"]["control_applications"] is None
             if row["event"] == "duris_character_summary":
                 assert len(props["time_allocations"]) <= 32 and len(props["xp_allocations"]) <= 32
                 for metric, value in props["time"].items():
@@ -274,14 +314,80 @@ def reducer_tests(binary: Path) -> None:
     flagged_clock = summaries(observed["clock-flag"][0])[0]
     assert flagged_clock["timestamp_basis"] == "emitted_at" and flagged_clock["window_start_utc_usec"] is None
     assert flagged_clock["occurrence_start_utc_usec"] is None
-    assert observed["unimplemented-encounters"][1]["unsupported_records"] == 2
-    assert observed["unimplemented-encounters"][1]["reduction_refusals"] == 2
     assert not observed["initialization"][0] and observed["initialization"][1]["invalid_records"] == 1
     abandoned = summaries(observed["lost-exit"][0])
     assert len(abandoned) == 2 and observed["lost-exit"][1]["abandoned_sessions"] == 1
     assert "unclosed_tail" in abandoned[0]["duris_coverage"]
     assert abandoned[0]["duris_session_id"] == abandoned[1]["duris_session_id"]
     assert len([row for row in observed["lost-exit"][0] if row["event"] == "duris_session"]) == 1
+
+    def encounters(case: str, kind: str) -> list[dict]:
+        return [row["properties"] for row in observed[case][0]
+                if row["event"] == "duris_encounter_summary" and row["properties"]["row_type"] == kind]
+
+    run, = encounters("encounter-native", "run")
+    assert run["mode"] == 3  # Roster becomes mixed; native combat retains initial PvE.
+    assert run["native_terminal_complete"] is True and run["run_elapsed_usec"] == "10000000"
+    assert run["expected_reward_credit_count"] == 9 and run["roster_expected"] == run["roster_received"] == 2
+    assert run["combat_expected"] == run["combat_received"] == 3
+    assert run["unsupported_npc_rows"] == 1 and run["participant_rows_expected"] == 3
+    actors = encounters("encounter-native", "participant")
+    assert len(actors) == 3
+    player, = [actor for actor in actors if actor["actor_kind"] == "player" and actor["combat"] is not None]
+    pet, = [actor for actor in actors if actor["actor_kind"] == "pet"]
+    assert pet["duris_owner_character_id"] == player["duris_character_id"]
+    assert player["participant_usec"] == "5000000"
+    assert player["combat"]["damage_dealt"] == "11" and pet["combat"]["damage_dealt"] == "7"
+    assert player["combat"]["healing_attempted"] == "20"
+    assert player["combat"]["effective_healing"] == "12" and player["combat"]["overhealing"] == "8"
+    assert player["combat"]["casting_elapsed_usec"] == "5" and player["combat"]["tanking_usec"] == "9999995"
+    roster_only, = [actor for actor in actors if actor["combat"] is None]
+    assert roster_only["participant_usec"] == "10000000"
+    assert observed["encounter-native"][1]["unsupported_npc_rows"] == 1
+    assert observed["encounter-native"][1]["incomplete_runs"] == 0
+
+    run, = encounters("encounter-missing", "run")
+    assert run["native_terminal_complete"] is False and run["combat_expected"] is None
+    assert encounters("encounter-missing", "participant")[0]["combat"] is None
+    assert observed["encounter-missing"][1]["late_encounter_records"] == 1
+    run, = encounters("encounter-orphan", "run")
+    assert run["native_terminal_complete"] is False and run["expected_reward_credit_count"] is None
+    assert run["roster_expected"] is None and run["run_elapsed_usec"] == "10000000"
+    assert encounters("encounter-orphan", "participant")[0]["combat"]["damage_dealt"] == "10"
+    run, = encounters("encounter-open", "run")
+    assert run["run_elapsed_usec"] is None and run["outcome"] is None
+    assert {"unclosed_tail", "incomplete_terminal"} <= set(run["duris_coverage"])
+    actor, = encounters("encounter-open", "participant")
+    assert actor["participant_usec"] == "1000000" and actor["participant_time_basis"] == "observed_lower_bound"
+    conflict = observed["encounter-conflict"][1]
+    assert conflict["terminal_duplicates"] == 3 and conflict["terminal_conflicts"] == 1
+    assert len(encounters("encounter-conflict", "run")) == 1
+    assert len(encounters("encounter-conflict", "participant")) == 2
+
+    run, = encounters("encounter-overflow", "run")
+    assert run["native_terminal_complete"] is True and run["participant_rows_expected"] == 64
+    assert run["unattributed_pet_rows"] == 64 and run["unattributed_pet_combat"]["damage_dealt"] == "640"
+    assert observed["encounter-overflow"][1]["actor_attribution_overflows"] == 64
+    assert "unattributed_combat" in run["duris_coverage"]
+    run, = encounters("encounter-counter-overflow", "run")
+    assert run["unattributed_pet_combat"]["damage_dealt"] is None
+    assert "counter_overflow" in run["duris_coverage"]
+    assert observed["encounter-counter-overflow"][1]["counter_overflow_rows"] == 1
+    assert len(encounters("encounter-burst", "run")) == 8
+    assert len(encounters("encounter-burst", "participant")) == 8 * 17
+    assert observed["encounter-burst"][1]["output_suppressed"] == 0
+    assert len(encounters("encounter-replay", "run")) == 131
+    assert observed["encounter-replay"][1]["late_encounter_records"] == 2
+    assert observed["encounter-expiry"][1]["output_suppressed"] == 6
+    assert not encounters("encounter-expiry", "run")
+    assert observed["encounter-capacity"][1]["run_refusals"] == 1
+    assert observed["encounter-capacity"][1]["incomplete_runs"] == 128
+    assert observed["encounter-capacity"][1]["runs"] == 0
+    assert observed["encounter-scope-clock"][1]["reduction_refusals"] == 2
+    for row in encounters("encounter-scope-clock", "run"):
+        assert row["timestamp_basis"] == "emitted_at" and row["occurrence_start_utc_usec"] is None
+    assert observed["encounter-allocation-failure"][1]["serialization_failures"] == 8
+    assert observed["encounter-allocation-failure"][1]["output_suppressed"] == 8
     print(f"PostHog reducer: {len(cases)} executable semantic/capacity/fault scenarios PASS")
 
 
@@ -332,6 +438,8 @@ def main() -> None:
                 "-fno-sanitize-recover=all", *defines, "-I", str(ROOT / "src"),
                 str(ROOT / "src/telemetry/telemetry_posthog.c"),
                 str(ROOT / "src/telemetry/telemetry_config.c"),
+                str(ROOT / "src/telemetry/telemetry_encounter.c"),
+                str(ROOT / "src/telemetry/telemetry_combat_summary.c"),
                 str(ROOT / "tests/async/telemetry_posthog_harness.cc"),
                 str(ROOT / "tests/async/telemetry_posthog_reducer_harness.cc"),
                 "-lcrypto", "-lcjson", "-o", str(binary),

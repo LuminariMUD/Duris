@@ -114,6 +114,8 @@ Export coverage names are `native_gap`, `unattributed_time`, `unattributed_xp`,
 `historical_dimensions_unavailable` and `unsupported_actor`. Emit each at most
 once per row; retain scope-specific detail in bounded health counters. These
 flags describe known evidence and do not certify a missing producer as healthy.
+`unattributed_combat` marks a retained run whose combined roster/player/pet
+identity limit required keeping known contributions without actor attribution.
 
 Identity encodings are implemented in
 [`telemetry_posthog.c`](../../src/telemetry/telemetry_posthog.c) and independently
@@ -138,7 +140,8 @@ checked against [golden vectors](../../tests/async/fixtures/telemetry/posthog/en
   ASCII `duris:posthog:pet:v1` without NUL followed by environment, season,
   original run boot/process/sequence and native actor ID, all eight-byte unsigned
   big-endian integers. Pet rows also carry the owner's character pseudonym.
-  Pet/system encodings will be implemented with the corresponding reducer rows.
+  These encodings are implemented; pet vectors are independently checked with
+  Python HMAC, including each scope component and unsigned 64-bit maximum.
 - UTC format is exactly `YYYY-MM-DDTHH:MM:SS.ffffffZ`, years 0001–9999, independent
   of the process timezone. Zero is the epoch, negative microseconds use floor
   seconds, and `TELEMETRY_UTC_UNKNOWN` is rejected. No clock value may silently
@@ -221,6 +224,60 @@ native-queue fence, or closes after 120 seconds with explicit missing coverage.
 Unavailable encounter character/session dimensions remain null; do not look up
 the current character. Run duration and participation are distinct. Pet and player
 contributions remain separate, and unwired control effects remain null.
+The encounter reducer consumes native close, roster and combat rows across
+separate drains. Expected combat arrivals include unsupported NPCs: count their
+terminal revisions before dropping their identities/details. A close and complete
+roster alone cannot certify combat completion. `native_terminal_complete` means
+the locally observed start, close, roster and all declared combat revisions are
+present without a terminal conflict; it makes no claim about cloud delivery.
+Run mode merges captured evidence: the native roster can become mixed while
+combat retains its initial PvE/PvP classification. A later initial-mode combat
+row cannot regress an already observed mixed run.
+
+Run rows contain `run_elapsed_usec`, `expected_reward_credit_count`,
+`roster_expected`/`roster_received`, `combat_expected`/`combat_received`,
+`native_dropped_actor_attempts`, `unique_player_count`, `unsupported_npc_rows`
+and `participant_rows_expected`. Reward membership is separate from participation.
+The native dropped-actor count records refusal attempts, not distinct actors.
+Count durations/outcomes on run rows, and contributions on participant rows.
+`participant_rows_expected` permits detecting output or ingestion loss even if
+the run arrived. Every participant retains null character dimensions/session ID
+with reason `not_captured_in_native_encounter`; no current-character lookup occurs.
+
+Participant rows have `actor_kind=player|pet`, `duris_actor_id`, optional
+`duris_owner_character_id`, nullable `participant_usec`, and nullable `combat`.
+`participant_time_basis=terminal|observed_lower_bound` distinguishes a complete
+participant summary from known cumulative leave effort retained after terminal
+loss. Rejoins/repeated leaves never add absolute cumulative observations twice.
+Player IDs use the character pseudonym; pet IDs are run-scoped pseudonyms, with
+the captured owner's character pseudonym. Pet totals never enter player totals.
+The combat object contains decimal-string damage, healing, casting counts/time
+and tanking time, with `control_applications=null` and reason `not_instrumented`.
+Captured power bands, opponent count and modifier flags are separate properties.
+Native cardinality/saturation flags mark counters as lower bounds; checked reducer
+aggregate overflow instead becomes null with `counter_overflow` coverage.
+
+At most 64 combined player/pet identities are retained per run. If the union of
+native roster and combat actors exceeds this, run-row
+`unattributed_player_combat`, `unattributed_pet_combat`,
+`unattributed_player_rows`, `unattributed_pet_rows` and `unattributed_roster_usec`
+retain known overflow contributions separately. Add these only to the corresponding
+participant totals, once per run; they are not all-actor run totals. Missing
+combat/time evidence is null, not a fabricated zero. A terminal orphan preserves
+known combat/outcome/duration, with incomplete coverage and no invented roster.
+An open run remains open despite silence; forced lifecycle sealing marks its
+unclosed tail without inventing an end, duration or outcome.
+
+Terminal assembly waits at most 120 seconds from its first terminal observation.
+After the admitted-tail fence, complete runs serialize incrementally across
+output drains. A cursor prevents resealing the already immutable prefix; capacity
+at the deadline explicitly suppresses remaining rows. Finalized IDs use 128 exact
+tombstones and an evicted sequence prefix to prevent late data becoming a second
+run. Existing older active runs remain valid. An unseen orphan older than that
+prefix is conservatively refused and counted as late loss because bounded state
+can no longer distinguish it from a replay. Native runs close before copyover;
+new run IDs must belong to the current native producer, while session IDs retain
+their original producer across copyover.
 If a native lifecycle exit is lost, 3,720 seconds of complete input silence for
 that session seals retained data with unknown-tail coverage and releases its
 slot. This combines the maximum native cadence and queue allowance; it invents
@@ -252,8 +309,8 @@ reserves 512 bytes for batch framing and counts terminating NULs; there is no
 second retained event buffer. Scratch JSON construction is separately bounded
 by bucket counts and the 32 KiB serializer cap. Known native gap counts/durations
 are saturating lower bounds; zero known duration never certifies an empty gap.
-Encounter/combat reduction, hourly/incident health export and runtime HTTP/quota
-integration are still pending. Current component tests do not prove ingestion.
+Hourly/incident health export and runtime HTTP/quota integration are still
+pending. Current component tests do not prove ingestion.
 
 ### Complete event-volume fixture (#59)
 

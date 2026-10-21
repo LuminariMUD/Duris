@@ -1,5 +1,7 @@
 #include "telemetry/telemetry_posthog.h"
 #include "telemetry/telemetry_config_private.h"
+#include "telemetry/telemetry_encounter.h"
+#include "telemetry/telemetry_combat_summary.h"
 
 #include <cjson/cJSON.h>
 #include <cstdio>
@@ -18,6 +20,7 @@ telemetry_monotonic_usec NOW = 0U;
 telemetry_config_snapshot CONFIG{};
 telemetry_producer_id SESSION_PRODUCER = PRODUCER;
 std::size_t ALLOCATION_BUDGET = 0U;
+std::uint32_t DRAINED_EVENTS = 0U;
 
 void check(bool value, const char *expression, int line)
 {
@@ -93,6 +96,7 @@ void publish(const telemetry_config_snapshot &config, bool expected = true)
 void initialize(bool with_configuration = true)
 {
 	SEQUENCE = 0U;
+	DRAINED_EVENTS = 0U;
 	NOW = 0U;
 	SESSION_PRODUCER = PRODUCER;
 	telemetry_posthog_reducer_config config{};
@@ -106,6 +110,21 @@ void initialize(bool with_configuration = true)
 	CONFIG = configuration();
 	if (with_configuration)
 		publish(CONFIG);
+}
+
+void limit_allocations(std::size_t budget)
+{
+	ALLOCATION_BUDGET = budget;
+	cJSON_Hooks hooks{};
+	hooks.malloc_fn = [](std::size_t bytes) -> void *
+	{
+		if (ALLOCATION_BUDGET == 0U)
+			return nullptr;
+		--ALLOCATION_BUDGET;
+		return std::malloc(bytes);
+	};
+	hooks.free_fn = std::free;
+	cJSON_InitHooks(&hooks);
 }
 
 void life(telemetry_lifecycle_kind kind, std::uint32_t subject = 44U, bool expected = true)
@@ -198,9 +217,90 @@ void checkpoint(telemetry_cumulative_counters totals, std::uint64_t revision = 1
 	emit(record, expected);
 }
 
-void finish()
+telemetry_record
+encounter(telemetry_encounter_event_kind kind, std::uint64_t run = 1U, std::uint32_t subject = 44U,
+	  std::uint16_t count = 1U,
+	  telemetry_encounter_outcome outcome = telemetry_encounter_outcome::success)
 {
-	telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+	telemetry_record record{};
+	record.header.kind = telemetry_record_kind::encounter;
+	auto &value = record.payload.encounter;
+	value.encounter = { PRODUCER, run };
+	value.kind = kind;
+	value.mode = telemetry_encounter_mode::pve;
+	value.outcome = kind == telemetry_encounter_event_kind::start ||
+					kind == telemetry_encounter_event_kind::participant_join ?
+				telemetry_encounter_outcome::unknown :
+				outcome;
+	value.revision = 1U;
+	value.source = { 1000U, 1U, CONFIG.config_id, 1U, 1U, 10, 44U };
+	value.start_monotonic_usec = MONO;
+	value.start_utc_usec = BASE;
+	value.at_monotonic_usec =
+		kind == telemetry_encounter_event_kind::start ? MONO : MONO + 10'000'000U;
+	value.at_utc_usec = kind == telemetry_encounter_event_kind::start ? BASE :
+									    BASE + 10'000'000;
+	value.participant_count = count;
+	value.expected_credit_count = 9U; // Reward membership is not the roster denominator.
+	if (kind == telemetry_encounter_event_kind::participant_summary ||
+	    kind == telemetry_encounter_event_kind::participant_join ||
+	    kind == telemetry_encounter_event_kind::participant_leave)
+		value.participant = { subject, static_cast<telemetry_pid>(subject) };
+	if (kind == telemetry_encounter_event_kind::close)
+		value.elapsed_usec = 10'000'000U;
+	if (kind == telemetry_encounter_event_kind::participant_summary ||
+	    kind == telemetry_encounter_event_kind::participant_leave)
+		value.participant_usec = 1'000'000U;
+	return record;
+}
+
+telemetry_record combat(std::uint64_t run = 1U, std::uint16_t revision = 1U,
+			telemetry_combat_actor_kind kind = telemetry_combat_actor_kind::player,
+			std::uint64_t actor = 44U, std::uint64_t owner = 44U,
+			std::uint16_t count = 1U)
+{
+	telemetry_record record{};
+	record.header.kind = telemetry_record_kind::combat_summary;
+	auto &value = record.payload.combat_summary;
+	value.encounter = { PRODUCER, run };
+	value.source = { 1000U, 1U, CONFIG.config_id, 1U, 1U, 10, 44U };
+	value.mode = telemetry_encounter_mode::pve;
+	value.outcome = telemetry_encounter_outcome::success;
+	value.actor_kind = kind;
+	value.revision = revision;
+	value.actor_id = actor;
+	value.actor_pid = kind == telemetry_combat_actor_kind::player ?
+				  static_cast<telemetry_pid>(actor) :
+				  TELEMETRY_UNKNOWN_PID;
+	value.owner_subject_id = owner;
+	value.unique_player_count = 1U;
+	value.participant_count = count;
+	value.power_band = 3U;
+	value.opponent_power_band = 4U;
+	value.opponent_count = 1U;
+	value.start_monotonic_usec = MONO;
+	value.end_monotonic_usec = MONO + 10'000'000U;
+	value.start_utc_usec = BASE;
+	value.end_utc_usec = BASE + 10'000'000;
+	value.damage_dealt = 10U;
+	value.control_applications = 5U; // Deliberately nonzero: export must still be null.
+	return record;
+}
+
+void complete_encounter(std::uint64_t run, std::uint16_t players = 1U)
+{
+	emit(encounter(telemetry_encounter_event_kind::start, run));
+	emit(encounter(telemetry_encounter_event_kind::close, run, 44U, players));
+	for (std::uint16_t index = 0U; index < players; ++index)
+		emit(encounter(telemetry_encounter_event_kind::participant_summary, run,
+			       44U + index, players));
+	for (std::uint16_t index = 0U; index < players; ++index)
+		emit(combat(run, index + 1U, telemetry_combat_actor_kind::player, 44U + index,
+			    44U + index, players));
+}
+
+void print_output()
+{
 	const auto health = telemetry_posthog_reducer_health_copy();
 	for (std::size_t index = 0U; index < health.output_events; ++index)
 	{
@@ -212,8 +312,110 @@ void finish()
 		std::putchar('\n');
 	}
 	CHECK(telemetry_posthog_output_peek(health.output_events).json.empty());
+}
+
+void drain_output()
+{
+	print_output();
+	const auto count = telemetry_posthog_reducer_health_copy().output_events;
+	if (count != 0U)
+	{
+		CHECK(telemetry_posthog_output_retire(
+			count, telemetry_posthog_output_disposition::http_acknowledged));
+		DRAINED_EVENTS += count;
+	}
+}
+
+void native_encounter()
+{
+	static telemetry_encounter_state roster{};
+	static telemetry_combat_summary_state contributions{};
+	telemetry_encounter_state_init(&roster);
+	telemetry_combat_summary_state_init(&contributions);
+	const auto fixture = encounter(telemetry_encounter_event_kind::start);
+	const auto id = fixture.payload.encounter.encounter;
+	const auto source = fixture.payload.encounter.source;
+	const auto roster_sink = [](void *, const telemetry_encounter_event &value) noexcept
+	{
+		telemetry_record record{};
+		record.header.kind = telemetry_record_kind::encounter;
+		record.payload.encounter = value;
+		emit(record);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		return true;
+	};
+	const auto combat_sink = [](void *, const telemetry_combat_summary_payload &value) noexcept
+	{
+		telemetry_record record{};
+		record.header.kind = telemetry_record_kind::combat_summary;
+		record.payload.combat_summary = value;
+		emit(record);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		return true;
+	};
+	CHECK(telemetry_encounter_begin(&roster, id, source, telemetry_encounter_mode::pve,
+					{ 44U, 44 }, MONO, BASE, roster_sink, nullptr)
+		      .outcome == telemetry_encounter_update_outcome::accepted);
+	CHECK(telemetry_encounter_join_group(&roster, source, { 45U, 45 }, MONO, BASE, roster_sink,
+					     nullptr)
+		      .outcome == telemetry_encounter_update_outcome::accepted);
+	CHECK(telemetry_combat_summary_begin(&contributions, id, source,
+					     telemetry_encounter_mode::pve, MONO, BASE)
+		      .outcome == telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_encounter_begin(&roster, { PRODUCER, 2U }, source,
+					telemetry_encounter_mode::pvp, { 45U, 45 }, MONO + 1U,
+					BASE + 1, roster_sink, nullptr)
+		      .outcome == telemetry_encounter_update_outcome::idempotent);
+	const telemetry_combat_actor_ref player{ 44U, 44, 44U, telemetry_combat_actor_kind::player,
+						 {},  3U };
+	const telemetry_combat_actor_ref pet{ 99U, TELEMETRY_UNKNOWN_PID,
+					      44U, telemetry_combat_actor_kind::pet,
+					      {},  3U };
+	const telemetry_combat_actor_ref npc{ 100U, TELEMETRY_UNKNOWN_PID,
+					      0U,   telemetry_combat_actor_kind::npc,
+					      {},   4U };
+	for (const auto &actor : { player, pet, npc })
+		CHECK(telemetry_combat_summary_add_actor(&contributions, id, actor, MONO).outcome ==
+		      telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_combat_summary_record_damage(&contributions, player, npc, 11U, MONO + 1U,
+						     0U)
+		      .outcome == telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_combat_summary_record_damage(&contributions, pet, npc, 7U, MONO + 2U,
+						     TELEMETRY_COMBAT_MODIFIER_PET)
+		      .outcome == telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_combat_summary_record_healing(&contributions, player, player, 20U, 12U,
+						      MONO + 3U, 0U)
+		      .outcome == telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_combat_summary_cast_attempt(&contributions, player, 1, MONO + 4U, 0U)
+		      .outcome == telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_combat_summary_cast_complete(&contributions, player, MONO + 9U).outcome ==
+	      telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_combat_summary_record_tanking(&contributions, player, &npc, MONO + 5U, 0U)
+		      .outcome == telemetry_combat_summary_outcome::accepted);
+	CHECK(telemetry_encounter_leave(&roster, { 44U, 44 },
+					telemetry_encounter_outcome::withdrawal, MONO + 5'000'000U,
+					BASE + 5'000'000, roster_sink, nullptr)
+		      .outcome == telemetry_encounter_update_outcome::accepted);
+	CHECK(telemetry_encounter_close(&roster, id, telemetry_encounter_outcome::success, 9U,
+					MONO + 10'000'000U, BASE + 10'000'000, roster_sink, nullptr)
+		      .outcome == telemetry_encounter_update_outcome::accepted);
+	CHECK(telemetry_posthog_reducer_health_copy().output_events ==
+	      1U); // Close + complete roster are insufficient.
+	CHECK(telemetry_combat_summary_close(
+		      &contributions, id, telemetry_encounter_outcome::success, MONO + 10'000'000U,
+		      BASE + 10'000'000, combat_sink, nullptr)
+		      .rows_accepted == 3U);
+	CHECK(telemetry_posthog_reducer_health_copy().runs == 0U);
+}
+
+void finish()
+{
+	telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+	print_output();
+	const auto health = telemetry_posthog_reducer_health_copy();
 	cJSON *object = cJSON_CreateObject();
 	cJSON *values = cJSON_AddObjectToObject(object, "_fixture_health");
+	cJSON_AddNumberToObject(values, "drained_events", DRAINED_EVENTS);
 #define HEALTH(name) cJSON_AddNumberToObject(values, #name, static_cast<double>(health.name))
 	HEALTH(invalid_records);
 	HEALTH(reduction_refusals);
@@ -231,6 +433,13 @@ void finish()
 	HEALTH(native_gap_known_usec);
 	HEALTH(unattributed_time_fragments);
 	HEALTH(xp_attribution_overflows);
+	HEALTH(run_refusals);
+	HEALTH(terminal_duplicates);
+	HEALTH(terminal_conflicts);
+	HEALTH(late_encounter_records);
+	HEALTH(incomplete_runs);
+	HEALTH(unsupported_npc_rows);
+	HEALTH(actor_attribution_overflows);
 	HEALTH(created_events);
 	HEALTH(output_suppressed);
 	HEALTH(output_expired);
@@ -240,6 +449,7 @@ void finish()
 	HEALTH(ambiguous_events);
 	HEALTH(sessions);
 	HEALTH(configurations);
+	HEALTH(runs);
 	HEALTH(output_events);
 	HEALTH(output_bytes);
 #undef HEALTH
@@ -484,19 +694,9 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 	}
 	else if (name == "allocation-failure")
 	{
-		cJSON_Hooks hooks{};
-		hooks.malloc_fn = [](std::size_t bytes) -> void *
-		{
-			if (ALLOCATION_BUDGET == 0U)
-				return nullptr;
-			--ALLOCATION_BUDGET;
-			return std::malloc(bytes);
-		};
-		hooks.free_fn = std::free;
 		for (const auto budget : { 0U, 4U, 24U, 64U })
 		{
-			ALLOCATION_BUDGET = budget;
-			cJSON_InitHooks(&hooks);
+			limit_allocations(budget);
 			life(telemetry_lifecycle_kind::session_entered);
 			cJSON_InitHooks(nullptr);
 		}
@@ -516,30 +716,157 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 		record.payload.progression.quality_flags = TELEMETRY_QUALITY_CLOCK_DISCONTINUITY;
 		emit(record);
 	}
-	else if (name == "unimplemented-encounters")
+	else if (name == "encounter-native")
+		native_encounter();
+	else if (name == "encounter-allocation-failure")
 	{
-		telemetry_record record{};
-		record.header.kind = telemetry_record_kind::encounter;
-		auto &encounter = record.payload.encounter;
-		encounter.encounter = { PRODUCER, 1U };
-		encounter.kind = telemetry_encounter_event_kind::start;
-		encounter.mode = telemetry_encounter_mode::pve;
-		encounter.revision = 1U;
-		encounter.source = { 1000U, 1U, CONFIG.config_id, 1U, 1U, 10, 44U };
-		emit(record, false);
-		record = {};
-		record.header.kind = telemetry_record_kind::combat_summary;
-		auto &combat = record.payload.combat_summary;
-		combat.encounter = { PRODUCER, 1U };
-		combat.source = { 1000U, 1U, CONFIG.config_id, 1U, 1U, 10, 44U };
-		combat.mode = telemetry_encounter_mode::pve;
-		combat.outcome = telemetry_encounter_outcome::success;
-		combat.actor_kind = telemetry_combat_actor_kind::player;
-		combat.revision = 1U;
-		combat.actor_id = 44U;
-		combat.actor_pid = 44;
-		combat.owner_subject_id = 44U;
-		emit(record, false);
+		std::uint64_t run = 0U;
+		for (const auto budget : { 0U, 4U, 24U, 64U })
+		{
+			complete_encounter(++run);
+			limit_allocations(budget);
+			telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+			cJSON_InitHooks(nullptr);
+		}
+	}
+	else if (name == "encounter-missing")
+	{
+		emit(encounter(telemetry_encounter_event_kind::start));
+		emit(encounter(telemetry_encounter_event_kind::close));
+		const auto closed_at = NOW;
+		emit(encounter(telemetry_encounter_event_kind::participant_summary));
+		NOW = closed_at + TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC - 1U;
+		telemetry_posthog_seal_through(NOW, BASE + 120'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().output_events == 1U);
+		++NOW;
+		telemetry_posthog_seal_through(NOW, BASE + 120'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 0U);
+		emit(combat(), false); // No second run after a partial terminal was sealed.
+	}
+	else if (name == "encounter-orphan")
+	{
+		emit(combat()); // Lost start, close and roster: preserve what was captured.
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().output_events == 1U);
+	}
+	else if (name == "encounter-open")
+	{
+		emit(encounter(telemetry_encounter_event_kind::start));
+		auto leave =
+			encounter(telemetry_encounter_event_kind::participant_leave, 1U, 44U, 2U);
+		emit(leave);
+		emit(leave); // Cumulative observations are not additive.
+		NOW += 7'200'000'000ULL;
+		telemetry_posthog_seal_through(NOW, BASE + 7'200'000'000LL);
+		CHECK(telemetry_posthog_reducer_health_copy().runs ==
+		      1U); // Silence does not prove run closure.
+	}
+	else if (name == "encounter-conflict")
+	{
+		emit(encounter(telemetry_encounter_event_kind::start));
+		emit(encounter(telemetry_encounter_event_kind::close));
+		emit(encounter(telemetry_encounter_event_kind::close));
+		emit(encounter(telemetry_encounter_event_kind::participant_summary));
+		emit(encounter(telemetry_encounter_event_kind::participant_summary));
+		auto first = combat(1U, 1U, telemetry_combat_actor_kind::player, 44U, 44U, 2U);
+		emit(first);
+		emit(first);
+		auto pet = combat(1U, 2U, telemetry_combat_actor_kind::pet, 99U, 44U, 2U);
+		auto conflicting = pet;
+		++conflicting.payload.combat_summary.end_monotonic_usec;
+		emit(conflicting, false);
+		emit(pet);
+	}
+	else if (name == "encounter-overflow" || name == "encounter-counter-overflow")
+	{
+		emit(encounter(telemetry_encounter_event_kind::start));
+		emit(encounter(telemetry_encounter_event_kind::close, 1U, 44U, 64U));
+		for (std::uint32_t subject = 44U; subject < 108U; ++subject)
+			emit(encounter(telemetry_encounter_event_kind::participant_summary, 1U,
+				       subject, 64U));
+		const std::uint16_t count = name == "encounter-overflow" ? 64U : 2U;
+		for (std::uint16_t index = 0U; index < count; ++index)
+		{
+			auto row = combat(1U, index + 1U, telemetry_combat_actor_kind::pet,
+					  1000U + index, 44U, count);
+			if (name == "encounter-counter-overflow")
+				row.payload.combat_summary.damage_dealt =
+					std::numeric_limits<std::uint64_t>::max();
+			emit(row);
+		}
+	}
+	else if (name == "encounter-burst")
+	{
+		for (std::uint64_t run = 1U; run <= 8U; ++run)
+			complete_encounter(run, 17U);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().runs != 0U);
+		CHECK(telemetry_posthog_reducer_health_copy().output_suppressed == 0U);
+		const std::string first(telemetry_posthog_output_peek().json);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		CHECK(first == telemetry_posthog_output_peek().json);
+		drain_output();
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 0U);
+	}
+	else if (name == "encounter-replay")
+	{
+		emit(encounter(telemetry_encounter_event_kind::start, 1U));
+		for (std::uint64_t run = 2U; run <= 131U; ++run)
+		{
+			complete_encounter(run);
+			telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+			drain_output();
+		}
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 1U);
+		emit(encounter(telemetry_encounter_event_kind::close, 2U), false);
+		emit(encounter(telemetry_encounter_event_kind::close,
+			       1U)); // Active older run survives retired-prefix compaction.
+		emit(encounter(telemetry_encounter_event_kind::participant_summary, 1U));
+		emit(combat(1U));
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		emit(combat(1U), false);
+	}
+	else if (name == "encounter-expiry")
+	{
+		for (std::uint32_t index = 0U; index < 127U; ++index)
+			life(telemetry_lifecycle_kind::connection_attached);
+		CHECK(telemetry_posthog_reducer_health_copy().output_events == 128U);
+		for (std::uint64_t run = 1U; run <= 3U; ++run)
+			complete_encounter(run);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 3U);
+		const std::string first(telemetry_posthog_output_peek().json);
+		NOW += TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC;
+		telemetry_posthog_seal_through(NOW, BASE + 120'000'000);
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 0U);
+		CHECK(first == telemetry_posthog_output_peek().json);
+	}
+	else if (name == "encounter-capacity")
+	{
+		for (std::uint64_t run = 1U; run <= 128U; ++run)
+			emit(encounter(telemetry_encounter_event_kind::start, run));
+		emit(encounter(telemetry_encounter_event_kind::start, 129U), false);
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 128U);
+	}
+	else if (name == "encounter-scope-clock")
+	{
+		auto bad = combat();
+		bad.payload.combat_summary.source.environment_id = 1U;
+		emit(bad, false);
+		bad = combat();
+		bad.payload.combat_summary.encounter.producer.boot_id = 99U;
+		emit(bad, false);
+		auto start = encounter(telemetry_encounter_event_kind::start);
+		auto close = encounter(telemetry_encounter_event_kind::close);
+		auto participant = encounter(telemetry_encounter_event_kind::participant_summary);
+		for (auto *record : { &start, &close, &participant })
+		{
+			record->payload.encounter.quality_flags |=
+				TELEMETRY_QUALITY_CLOCK_DISCONTINUITY;
+			emit(*record);
+		}
+		emit(combat());
 	}
 	else if (name == "initialization")
 	{
