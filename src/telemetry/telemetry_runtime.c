@@ -1168,7 +1168,7 @@ struct worker_outage_guard
 	}
 };
 
-bool start_posthog(telemetry_outage_journal & journal) noexcept
+bool start_posthog(telemetry_outage_journal &journal) noexcept
 {
 	telemetry_posthog_reducer_config config{};
 	config.producer = R.producer;
@@ -1262,7 +1262,7 @@ void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
 	R.posthog_health = health;
 }
 
-void posthog_worker_loop(worker_outage_guard & outage) noexcept
+void posthog_worker_loop(worker_outage_guard &outage) noexcept
 {
 	struct close_sender
 	{
