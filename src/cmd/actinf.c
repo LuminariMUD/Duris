@@ -7791,7 +7791,8 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				}
 
 				strcat(who_output, "\n");
-				if (strlen(who_output) > (MAX_STRING_LENGTH - 175))
+				// Leave room for the warning and every optional summary line.
+				if (strlen(who_output) > (MAX_STRING_LENGTH - 512))
 				{
 					strcat(who_output,
 					       "-= List too long, use 'who <arg> =-'\n");

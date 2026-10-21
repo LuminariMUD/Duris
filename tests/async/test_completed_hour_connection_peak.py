@@ -9,7 +9,7 @@ import tempfile
 comm = source("comm.c").read_text(encoding="utf-8")
 who = extract_function("actinf.c", "void do_who(")
 rollover = extract_function("comm.c", "static void update_completed_hour_connection_peak(")
-assert "update_completed_hour_connection_peak(time(0), last_desc_per_hour_reset);" in comm
+assert "update_completed_hour_connection_peak(time(0), loop_monotonic_us()," in comm
 assert "max_descs_this_hour = used_descs;\n\tmax_descs_previous_hour_valid = false;" in comm
 assert "if (used_descs > max_descs_this_hour)" in comm
 assert "max_descs_this_hour" not in who
@@ -17,6 +17,7 @@ assert "max_descs_previous_hour_valid" in who
 
 harness = r"""
 #include <cassert>
+#include <cstdint>
 int used_descs = 0;
 int max_descs_this_hour = 0;
 int max_descs_previous_hour = 0;
@@ -27,45 +28,50 @@ bool max_descs_previous_hour_valid = false;
 int main()
 {
     long start = 1000;
+    uint64_t monotonic_start = 1000ULL * 1000000;
+    auto update = [&](long wall, uint64_t monotonic_seconds) {
+        update_completed_hour_connection_peak(wall, monotonic_seconds * 1000000,
+                                              start, monotonic_start);
+    };
     used_descs = 3;
     max_descs_this_hour = used_descs; // cold boot/recovery baseline
-    update_completed_hour_connection_peak(4599, start);
+    update(4599, 4599);
     assert(!max_descs_previous_hour_valid && max_descs_this_hour == 3);
     assert(start == 1000);
 
     // The highest accepted concurrency, not accumulated logins, is published.
     max_descs_this_hour = 7;
     used_descs = 2;
-    update_completed_hour_connection_peak(4600, start);
+    update(4600, 4600);
     assert(max_descs_previous_hour_valid && max_descs_previous_hour == 7);
     assert(max_descs_this_hour == 2 && start == 4600);
 
     // The published sample is frozen during the next reporting period.
     max_descs_this_hour = 12;
-    update_completed_hour_connection_peak(8199, start);
+    update(8199, 8199);
     assert(max_descs_previous_hour == 7 && max_descs_this_hour == 12);
     used_descs = 0;
-    update_completed_hour_connection_peak(8200, start);
+    update(8200, 8200);
     assert(max_descs_previous_hour_valid && max_descs_previous_hour == 12);
     assert(max_descs_this_hour == 0 && start == 8200);
 
     // No active socket and no new connection is a measured zero peak.
-    update_completed_hour_connection_peak(11800, start);
+    update(11800, 11800);
     assert(max_descs_previous_hour_valid && max_descs_previous_hour == 0);
 
     // Backwards wall-clock jumps cannot publish a partial/unknown hour.
     max_descs_this_hour = 15;
     used_descs = 4;
-    update_completed_hour_connection_peak(11000, start);
+    update(11000, 11801);
     assert(!max_descs_previous_hour_valid && start == 11000);
     assert(max_descs_this_hour == 4);
 
     // Long pauses also invalidate the old sample, rather than re-label it.
     max_descs_this_hour = 9;
-    update_completed_hour_connection_peak(18200, start);
+    update(18200, 19001);
     assert(!max_descs_previous_hour_valid && start == 18200);
     assert(max_descs_this_hour == 4);
-    update_completed_hour_connection_peak(21800, start);
+    update(21800, 22601);
     assert(max_descs_previous_hour_valid && max_descs_previous_hour == 4);
 
     // A fresh process/copyover starts without carrying an unverified sample.
@@ -73,10 +79,24 @@ int main()
     used_descs = 6;
     max_descs_this_hour = used_descs;
     start = 22000;
-    update_completed_hour_connection_peak(25599, start);
+    monotonic_start = 22000ULL * 1000000;
+    update(25599, 25599);
     assert(!max_descs_previous_hour_valid);
-    update_completed_hour_connection_peak(25600, start);
+    update(25600, 25600);
     assert(max_descs_previous_hour_valid && max_descs_previous_hour == 6);
+
+    // A forward wall-clock correction cannot publish a partial interval.
+    start = 30000;
+    monotonic_start = 30000ULL * 1000000;
+    max_descs_previous_hour_valid = false;
+    max_descs_this_hour = 11;
+    update(33600, 30005);
+    assert(!max_descs_previous_hour_valid && start == 33600);
+    assert(max_descs_this_hour == used_descs);
+    update(37199, 33604);
+    assert(!max_descs_previous_hour_valid);
+    update(37200, 33605);
+    assert(max_descs_previous_hour_valid && max_descs_previous_hour == used_descs);
 }
 """.replace("@ROLLOVER@", rollover)
 

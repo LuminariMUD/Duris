@@ -21,8 +21,9 @@ store or new publication timer.
 
 The `who` connection peak counts simultaneous accepted sockets, including
 pre-login connections, not unique logins or faction-specific players. The first
-partial hour after boot/copyover is withheld. Clock rollback or a gap of two
-hours or more invalidates the old snapshot until another full interval completes.
+partial hour after boot/copyover is withheld. Elapsed time uses the monotonic
+clock. A wall-clock jump or a gap of two hours or more invalidates the old
+snapshot until another full interval completes.
 No live socket peak is exposed to ordinary players.
 
 MSSP requires `PLAYERS` with current logged-in population. A delayed value would
