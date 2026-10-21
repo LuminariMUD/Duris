@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: implementation in progress; three PRs open, shared weapon poison qualified for review.
+Status: implementation in progress; four PRs open, recipe/Weakness chunk qualified for review.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -173,8 +173,10 @@ plan. The progress log below records subsequent implementation and proof.
   `branch/issue-187-poison-lifecycle`, head `52a72e1e0`, is open against #247.
   [PR #249](https://github.com/LuminariMUD/Duris/pull/249),
   `branch/issue-187-control-flee`, head `90fee72e8`, is open against #248.
-  Current continuation branch is `branch/issue-187-weapon-poison`, stacked on
-  #249. No merges or tags.
+  [PR #250](https://github.com/LuminariMUD/Duris/pull/250),
+  `branch/issue-187-weapon-poison`, head `bb6c0e7a5`, is open against #249.
+  Current continuation branch is `branch/issue-187-poison-progression`, stacked
+  on #250. No merges or tags.
 - **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
   trained Awareness now enters the existing ordinary stab mitigation branch,
   once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
@@ -297,8 +299,63 @@ plan. The progress log below records subsequent implementation and proof.
 - Chunk-4 adjacent gates pass: Assassin mechanics, Control Flee, Cleric
   utilities, crafting conservation, formatting and diff checks. Apply Poison
   help now states the actual two-object command `apply <vial> <weapon>`.
-- **Next:** publish chunk 4, then
-  progression/Weakness and integrated combat/cost audits.
+- **Chunk 5, progression/Weakness, qualified:** recipe gates now match
+  the planned matrix. Weapon-delivered Weakness stores the delivery level in
+  existing affect `level` and rolls 5-10 below 41, 5-15 at 41-50, 5-20 at 51+;
+  Slow Poison retains its 5-8 range. A weapon-poison casting-type constant
+  distinguishes this source without changing spell signatures or non-weapon
+  effects. Legacy/non-weapon zero-level affects retain 5-20. NPC weapon sources
+  use their own delivery level; the PvP-only application-save policy is separate.
+- Extended native poison tests pass for every Weakness ceiling boundary,
+  repeated events after attacker/victim level changes, source event cleanup,
+  Slow Poison and unchanged lower-level spell/legacy refreshes. Source confirms
+  existing snapshot capture/codec/materialization and MariaDB affect rows carry
+  `level`; no persistence schema changes.
+- New `python3 tests/async/test_poison_crafting_runtime.py` passes ASan/UBSan
+  for each recipe's immediately-below/at/above level and skill boundaries (100
+  is the maximum valid skill), eligible listing/no-argument ordering, missing
+  vial/ingredients and failed output creation without input loss, exact
+  multi-recipe input conservation, doses/weight, traded level-51 Madness at
+  level 30, coated weapon transfer, re-coating and last-dose transient cleanup.
+  It executes full mixing/apply/ingredient-selection functions with fixture
+  object allocation/custody and checked-in vial prototype values.
+- The same test reproduced a real null dereference while listing a recipe
+  whose output prototype cannot load; the minimal world lacks these seven
+  outputs. Add the crafting path's existing null check to listing too. A failed
+  listing omits only that unavailable output instead of crashing the server.
+- Exact preparation inputs: one vial plus Lifeleak 2, Weakness 3, Moveleak 3,
+  Slowness 4, Neurotoxin 3, Heart Toxin 4 or Madness 6 ingredients produces
+  **three doses**. Successful mixing waits twice for `PULSE_VIOLENCE`, **32
+  pulses / 8 seconds** at the current configuration. This measures recipe
+  consumption/action lag, not live foraging scarcity or acquisition time.
+  The actual crafted prototypes have zero effective weight; subsequent raw
+  negative weights from dose use are clamped by existing `GET_OBJ_WEIGHT`.
+  Do not claim weight limits prevent pre-stocking.
+- Final skill-table audit corrected the synthetic Assassin's unused Awareness
+  grant from 80 to its specialization cap of 70. This fixture never activated
+  that skill in the delivered poison/crafting/persistence journeys, so the
+  recorded outcomes remain applicable. Future Awareness combat comparisons
+  must use 70 for Assassins, 80 for Rangers/Swashbucklers and 100 for Monks.
+- Crafting-only progression remains the initial implemented policy: transfers
+  demonstrably bypass recipe gates; nothing is deleted/migrated and no new
+  use-level restriction is silently imposed. Final retain/change decision is
+  part of the remaining supply/low-level combat audit in step 5.
+- Extended real-server journey passes with current code: strict landed-backstab
+  text plus a poison notice, level-46 recipe listing without Madness, actual
+  ingredient/vial mixing, and weapon Weakness. Latest run: normal hit after
+  three attempts, landed backstab after one, Weakness **-9 STR** with real stat
+  recalculation matching its stored modifier. Its affect retains delivery level
+  **46** and modifier **-9** after the source advances to 56 and the victim
+  saves/quits/reconnects. A coating of ID **1537** also survives a real weapon
+  save/quit/reconnect. These are focused high-HP compatibility actors, not duel
+  balance evidence. Copied recipe prototypes are sorted in the isolated area's
+  object index; no area source/generated output is changed.
+- Passed `make -C src -j4`, formatting/diff checks,
+  `test_player_item_snapshot_codec.py`, `test_player_snapshot_capture.py`,
+  `test_issue_551_crafting_conservation.py` and both poison native regressions.
+  The earlier single/dual-stab, Control Flee and scheduler proofs remain valid.
+- **Next:** publish chunk 5,
+  then the integrated combat/cost and conditional balance audits.
   Steps 2/3/5 remain partially/outstanding; no delivery/resistance, progression
   or conditional extra-nerf completion is claimed.
 
@@ -572,3 +629,8 @@ reveals a material lifecycle/persistence issue or expands the agreed scope.
 - Extend the existing sanitizer regression for morph save boundaries, active
   form immunities and morphed sources, and the isolated command journey for
   apply plus throw of a returning dart and victim-only neutral wording.
+
+PR #251 review correction: weapon poison captures the original player level for
+morphed attackers, matching the save classification. Ordinary NPCs retain their
+own level. Native regression cases cover level-30/46/56 players in mismatched
+forms, both weaker and stronger, plus an ordinary level-46 NPC.

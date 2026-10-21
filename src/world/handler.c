@@ -745,7 +745,8 @@ void deliver_weapon_poison(P_char ch, P_char victim, P_obj weapon)
 			return;
 	}
 
-	(skills[poison].spell_pointer)(GET_LEVEL(ch), ch, nullptr, 0, victim, nullptr);
+	(skills[poison].spell_pointer)(GET_LEVEL(player_attacker), ch, nullptr,
+				       SPELL_TYPE_WEAPON_POISON, victim, nullptr);
 	if (!affected_by_spell(victim, poison))
 		return;
 
@@ -958,18 +959,28 @@ void poison_neurotoxin(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unu
 }
 
 /*
- * lose strength, lost value changes randomly from 5 to 20 every minute
+ * Weapon-delivered Weakness keeps the delivery level for each later strength roll.
  */
-void poison_weakness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
-		     P_char victim, struct affected_type *af)
+void poison_weakness(int level, P_char /*ch*/, char * /*arg*/, int type, P_char victim,
+		     struct affected_type *af)
 {
 	if (!af)
 	{
 		if (!(af = poison_common(victim, POISON_WEAKNESS)))
 			return;
 		af->location = APPLY_STR;
+		if (type == SPELL_TYPE_WEAPON_POISON)
+			af->level = level;
 	}
-	af->modifier = -1 * number(5, IS_AFFECTED(victim, AFF_SLOW_POISON) ? 8 : 20);
+	// Zero preserves the old potency for legacy affects and non-weapon sources.
+	int ceiling = 20;
+	if (af->level > 0 && af->level < 41)
+		ceiling = 10;
+	else if (af->level >= 41 && af->level < 51)
+		ceiling = 15;
+	if (IS_AFFECTED(victim, AFF_SLOW_POISON))
+		ceiling = MIN(ceiling, 8);
+	af->modifier = -number(5, ceiling);
 	balance_affects(victim);
 
 	if (number(0, 100))

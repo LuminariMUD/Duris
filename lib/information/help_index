@@ -543,6 +543,11 @@ delivery is unchanged. Different poison types can coexist; the same type does
 not stack.
 A newly established weapon poison immediately warns its victim without naming
 the recipe. Reapply a dose when you want to coat the weapon again.
+
+Weapon-delivered Weakness rolls a 5-10 strength penalty below attacker level 41,
+5-15 at levels 41-50, and 5-20 at 51 and above. Later pulses use the attacker's
+level at delivery. Slow Poison limits that penalty to 5-8. Other Weakness
+sources and already-active older affects keep their previous potency.
 ===========================================================================
 See also: POISON
 
@@ -21876,7 +21881,26 @@ See also: berserk, rage, vicious strike
 #
 "MIXPOISON" (Skill)
 ===========================================================================
-"Mixpoison" is the assassin's quiet chemistry: rare herbs, mushrooms, and stranger reagents combined within an empty poison vial until the brew turns potent. Recipes range from simple draughts of weakness and leaking life to heart-stopping toxins, slowing venoms, and the dreaded distillation of madness, each demanding greater skill and experience than the last. Speaking the word with a recipe in mind reveals which poisons the mixer's cunning can yet compound.
+"Mixpoison" is the assassin's quiet chemistry: rare herbs, mushrooms, and stranger reagents combined within a poison vial until the brew turns potent. Recipes range from simple draughts of weakness and leaking life to heart-stopping toxins, slowing venoms, and the dreaded distillation of madness, each demanding greater skill and experience than the last. Speaking the word with a recipe in mind reveals which poisons the mixer's cunning can yet compound.
+
+Syntax: mixpoison [list]
+
+Without an argument, you mix the first eligible recipe whose ingredients are
+in your inventory, using one poison vial and its ingredients to make
+three doses. Any argument lists recipes available at your level and mix skill.
+
+Recipe          Level   Mix skill
+Lifeleak          30        1
+Weakness          30        1
+Moveleak          36       50
+Slowness          41       70
+Neurotoxin        46       80
+Heart Toxin       46       80
+Madness           51      100
+
+These are crafting requirements. Traded vials and coated weapons remain usable;
+the recipient does not inherit the maker's level or need that recipe's mix skill.
+Apply a dose with: apply <vial> <weapon>.
 ===========================================================================
 See also: mix, poison, forage, assassinate
 #

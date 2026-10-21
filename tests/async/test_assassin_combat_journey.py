@@ -56,6 +56,15 @@ A small journey dart rests here.~
 2 100 100
 """
     objects.write_text(objects.read_text().replace("$~", additions + "$~"))
+    # Minimal worlds omit the seven production recipe outputs.
+    heavens = (ROOT / "areas/obj/heavens.obj").read_text()
+    recipes = "".join(re.search(rf"(?ms)^#{vnum}\n.*?(?=^#\d+\n)", heavens)[0]
+                      for vnum in range(470, 477))
+    objects.write_text(objects.read_text().replace("$~", recipes + "$~"))
+    # The area's object index is searched by vnum; keep the copied file ordered.
+    records = re.findall(r"(?ms)^#(\d+)\n(.*?)(?=^#\d+\n|^\$~)", objects.read_text())
+    objects.write_text("".join("#" + number + "\n" + body
+                               for number, body in sorted(records, key=lambda row: int(row[0]))) + "$~\n")
 
 
 def run(binary, build):
@@ -108,6 +117,14 @@ def run(binary, build):
                     process.wait(timeout=30)
                     assert process.returncode == 0, "isolated server shutdown failed"
 
+            def login(name, account):
+                client = journey.reconnect_character(plain, expected_room=None, account=account, character=name)
+                clients.append(client)
+                client.expect("Welcome to Duris", timeout=30)
+                client.expect_any(("Pos: standing >", "<>"), timeout=20)
+                command(client, "toggle paging no")
+                return client
+
             try:
                 boot()
                 for name, account in ACTORS:
@@ -120,13 +137,7 @@ def run(binary, build):
                 stop()
                 subprocess.run([str(fixture_binary), str(state)], check=True)
                 boot()
-                for name, account in ACTORS:
-                    client = journey.reconnect_character(plain, expected_room=None, account=account, character=name)
-                    clients.append(client)
-                    client.expect("Welcome to Duris", timeout=30)
-                    client.expect_any(("Pos: standing >", "<>"), timeout=20)
-                    command(client, "toggle paging no")
-                staff, assassin, victim = clients
+                staff, assassin, victim = (login(*actor) for actor in ACTORS)
                 for vnum, keyword in ((22810, "journeydagger"), (22811, "journeyvenom"), (22812, "journeydart")):
                     created = command(staff, "load obj " + str(vnum))
                     assert "created" in created, created
@@ -158,7 +169,7 @@ def run(binary, build):
                         command(victim, "score")
                         received = bytes(victim.transcript[before:]).decode(errors="replace")
                         assert received.count(expected_notice) <= 1, received
-                        if expected_notice in received:
+                        if expected_notice in received and (attack != "backstab" or "stabs you in the back" in received):
                             successes += 1
                             break
                     assert successes, attack + " never delivered a new weapon poison"
@@ -168,6 +179,73 @@ def run(binary, build):
                 assert DART_NOTICE not in assassin.transcript.decode(errors="replace")
                 assert DART_NOTICE not in staff.transcript.decode(errors="replace")
                 print("Assassin real-server weapon delivery and victim-only routing:", results, flush=True)
+                stop()
+
+                # Reconfigure only while stopped; now exercise the level-46 curve.
+                subprocess.run([str(fixture_binary), str(state), "46"], check=True)
+                boot()
+                staff, assassin, victim = (login(*actor) for actor in ACTORS)
+                listing = command(assassin, "mixpoison list").lower()
+                assert all(name in listing for name in ("lifeleak", "weakness", "moveleak", "slowness", "neurotoxin", "heart toxin")), listing
+                assert "madness" not in listing, listing
+                prototype_text = (runtime / "areas_mini/mini.obj").read_text()
+                for vnum in (102, 806, 808):
+                    keyword = re.search(rf"(?m)^#{vnum}\n([^~]+)~", prototype_text)[1].split()[0]
+                    assert "created" in command(staff, "load obj " + str(vnum))
+                    assert "Ok." in command(staff, "give " + keyword + " Shadeblade")
+                mixed = command(assassin, "mixpoison")
+                assert "finish mixing" in mixed, mixed
+                print("Assassin command journey: level-46 recipes and crafting passed", flush=True)
+                before_stats = command(staff, "stat mob Venomtarget")
+                baseline_strength = re.search(r"Str:\s*(\d+)\s*\(\s*(\d+)\)", before_stats)
+                assert baseline_strength, before_stats
+                for attempt in range(96):
+                    assert "monotone" in command(staff, "tranquilize Shadeblade")
+                    command(staff, "restore all")
+                    command(assassin, "wake"); command(assassin, "stand")
+                    if attempt % 3 == 0:
+                        assert "created" in command(staff, "load obj 471")
+                        assert "Ok." in command(staff, "give weakness Shadeblade")
+                    applied = command(assassin, "apply weakness journeydagger")
+                    assert "now drips" in applied, applied
+                    before = len(victim.transcript)
+                    command(assassin, "hit Venomtarget")
+                    assert "monotone" in command(staff, "tranquilize Shadeblade")
+                    command(victim, "score")
+                    if NOTICE in bytes(victim.transcript[before:]).decode(errors="replace"):
+                        break
+                else:
+                    raise AssertionError("level-46 Weakness never established")
+                victim.send("save"); victim.expect("Save complete for Venomtarget.")
+                saved = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
+                weakness = re.search(r"affect 3 1537 (\d+) (-\d+)", saved)
+                assert weakness and int(weakness[1]) == 46 and -15 <= int(weakness[2]) <= -5, saved
+                after_stats = command(staff, "stat mob Venomtarget")
+                weakened_strength = re.search(r"Str:\s*(\d+)\s*\(\s*(\d+)\)", after_stats)
+                assert weakened_strength, after_stats
+                assert int(weakened_strength[1]) - int(baseline_strength[1]) == int(weakness[2]), after_stats
+                # Raise the source, then reload the victim: delivery potency must remain 46.
+                advanced = command(staff, "advance Shadeblade 56")
+                assert "generous" in advanced, advanced
+                assert "created" in command(staff, "load obj 471")
+                assert "Ok." in command(staff, "give weakness Shadeblade")
+                command(assassin, "wake"); command(assassin, "stand")
+                assert "now drips" in command(assassin, "apply weakness journeydagger")
+                assassin.send("save"); assassin.expect("Save complete for Shadeblade.")
+                assassin.send("quit"); assassin.expect("ACCOUNT MENU", timeout=30)
+                assassin.send("0"); assassin.close(); clients.remove(assassin)
+                assassin = login(*ACTORS[1])
+                assassin.send("save"); assassin.expect("Save complete for Shadeblade.")
+                coated = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
+                assert "coating 2 1537" in coated, coated
+                victim.send("quit"); victim.expect("ACCOUNT MENU", timeout=30)
+                victim.send("0"); victim.close(); clients.remove(victim)
+                victim = login(*ACTORS[2])
+                victim.send("save"); victim.expect("Save complete for Venomtarget.")
+                restored = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
+                assert re.search(r"affect 3 1537 46 " + re.escape(weakness[2]) + r"\b", restored), restored
+                print("Assassin Weakness persisted delivery level 46 after source advance and victim reconnect:", weakness[2], flush=True)
+                print("Assassin coated weapon retained poison ID 1537 through real save/reconnect", flush=True)
                 stop()
             except Exception:
                 print(output_path.read_text(errors="replace")[-5000:])

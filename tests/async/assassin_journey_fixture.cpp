@@ -5,6 +5,9 @@
 #include "core/defines.h"
 #include "core/structs.h"
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <openssl/sha.h>
 
 template <class T> void append_number(std::vector<uint8_t> &out, T value)
@@ -15,15 +18,31 @@ template <class T> void append_number(std::vector<uint8_t> &out, T value)
 
 int main(int argc, char **argv)
 {
-	assert(argc == 2);
+	assert(argc == 2 || argc == 3);
 	const std::string root = argv[1];
+	const bool inspect = argc == 3 && !strcmp(argv[2], "inspect");
+	const int level = argc == 3 && !inspect ? std::atoi(argv[2]) : 56;
+	assert(level >= 30 && level <= 56);
 	for (int pid = 1; pid <= 3; ++pid)
 	{
 		player_snapshot snapshot;
 		std::string error;
 		assert(flatfile_player_snapshot_read(root, pid, &snapshot, &error) ==
 		       flatfile_player_load_result::ok);
+		if (inspect)
+		{
+			for (const auto &affect : snapshot.affects)
+				if (affect.type >= FIRST_POISON && affect.type <= LAST_POISON)
+					std::printf("affect %d %d %u %d\n", pid, affect.type,
+						    affect.level, affect.modifier);
+			for (const auto &item : snapshot.items)
+				if (item.vnum == 22810)
+					std::printf("coating %d %d\n", pid, item.values[4]);
+			continue;
+		}
 		snapshot.room_vnum = 22800;
+		if (argc == 3)
+			snapshot.affects.clear();
 		for (auto &field : snapshot.status_integers)
 		{
 			int value;
@@ -31,7 +50,7 @@ int main(int argc, char **argv)
 			{
 			case player_status_field::level:
 			case player_status_field::highest_level:
-				value = pid == 1 ? 62 : 56;
+				value = pid == 1 ? 62 : level;
 				break;
 			case player_status_field::class_primary:
 				value = pid == 2 ? CLASS_ROGUE : CLASS_WARRIOR;
@@ -66,9 +85,14 @@ int main(int argc, char **argv)
 			for (int skill : { SKILL_BACKSTAB, SKILL_1H_PIERCING, SKILL_APPLY_POISON,
 					   SKILL_MIXPOISON, SKILL_CONTROL_FLEE, SKILL_CRITICAL_STAB,
 					   SKILL_RANGE_WEAPONS, SKILL_DARTS })
+			{
+				if ((skill == SKILL_CONTROL_FLEE && level < 45) ||
+				    (skill == SKILL_CRITICAL_STAB && level < 51))
+					continue;
 				snapshot.skills.push_back({ skill, 100, 100 });
+			}
 			snapshot.skills.push_back({ SKILL_DUAL_WIELD, 90, 90 });
-			snapshot.skills.push_back({ SKILL_AWARENESS, 80, 80 });
+			snapshot.skills.push_back({ SKILL_AWARENESS, 70, 70 });
 		}
 		std::vector<uint8_t> payload, bytes;
 		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;

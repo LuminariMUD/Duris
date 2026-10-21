@@ -51,6 +51,7 @@ static std::string notice;
 static P_char notice_target;
 static bool combat_mode;
 static bool pet_attack;
+static bool weakness_minimum;
 static int fallback_hits;
 static index_data objects[1]{};
 
@@ -109,6 +110,7 @@ void unlink_char_obj_affect(P_char, affected_type *) { assert(false); }
 int number(int low, int high) {
     if (low == 1 && high == 100) { ++save_rolls; return save_rolls == 2 ? second_save_roll : save_roll; }
     if (combat_mode && low == 0 && high == 100) return 1;
+    if (weakness_minimum && low == 5 && high <= 20) return low;
     return minimum_roll ? low : high;
 }
 int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
@@ -230,7 +232,7 @@ static void reset() {
     minimum_roll = false; waits = damage_calls = 0;
     save_roll = second_save_roll = 1; save_rolls = 0; quick_thinking = false;
     notice.clear(); notice_target = nullptr;
-    combat_mode = pet_attack = false; fallback_hits = 0; obj_index = objects;
+    combat_mode = pet_attack = weakness_minimum = false; fallback_hits = 0; obj_index = objects;
 }
 static void poison(int type, P_char ch = &target) {
     skills[type].spell_pointer(46, &source, nullptr, 0, ch, nullptr);
@@ -490,6 +492,56 @@ static void stabbed_delivery() {
         assert(save_rolls == (same ? 1 : 2));
     }
 }
+static void weakness_potency() {
+    for (int level : {1, 29, 30, 40, 41, 50, 51, 56})
+    for (bool slowed : {false, true}) for (bool npc : {false, true}) {
+        reset(); source.player.level = level;
+        if (npc) source.specials.act |= ACT_ISNPC;
+        if (slowed) {
+            affected_type slow{}; slow.type = SPELL_SLOW_POISON; slow.bitvector = AFF_SLOW_POISON;
+            affect_to_char(&target, &slow);
+        }
+        int ceiling = slowed ? 8 : level < 41 ? 10 : level < 51 ? 15 : 20;
+        auto obj = coating(POISON_WEAKNESS);
+        deliver_weapon_poison(&source, &target, &obj);
+        auto *af = get_spell_from_char(&target, POISON_WEAKNESS);
+        assert(af && af->level == level && af->modifier == -ceiling && af->location == APPLY_STR);
+        source.player.level = 56; target.player.level = 10;
+        advance(241);
+        assert(af->modifier == -ceiling && af->level == level);
+        weakness_minimum = true; advance(240); assert(af->modifier == -5);
+        weakness_minimum = false;
+        // The same affect level survives source departure; no attacker link is retained.
+        disarm_char_nevents(&source, nullptr); advance(240);
+        assert(af->modifier == -ceiling);
+    }
+    // Preserve non-weapon sources and legacy zero-level affect refreshes.
+    for (int level : {1, 10, 30, 46, 56}) {
+        reset(); poison_weakness(level, &source, nullptr, SPELL_TYPE_SPELL, &target, nullptr);
+        auto *af = get_spell_from_char(&target, POISON_WEAKNESS);
+        assert(af->level == 0 && af->modifier == -20);
+        advance(241); assert(af->modifier == -20);
+    }
+}
+static void morph_weakness_potency() {
+    for (int level : {30, 46, 56}) {
+        reset(); owner = source; owner.player.level = level;
+        source.specials.act |= ACT_ISNPC;
+        source.player.level = level == 30 ? 56 : 1;
+        source_npc = {}; source_npc.orig_char = &owner; source.only.npc = &source_npc;
+        auto obj = coating(POISON_WEAKNESS);
+        deliver_weapon_poison(&source, &target, &obj);
+        auto *af = get_spell_from_char(&target, POISON_WEAKNESS);
+        assert(af && af->level == level);
+        assert(af->modifier == -(level < 41 ? 10 : level < 51 ? 15 : 20));
+    }
+    reset(); source.specials.act |= ACT_ISNPC;
+    source_npc = {}; source.only.npc = &source_npc;
+    source.player.level = 46;
+    auto obj = coating(POISON_WEAKNESS); deliver_weapon_poison(&source, &target, &obj);
+    auto *af = get_spell_from_char(&target, POISON_WEAKNESS);
+    assert(af && af->level == 46 && af->modifier == -15);
+}
 int main() {
     nevent_bind_game_thread(); ne_dead_event_pool = &event_pool;
     update_saving_throws();
@@ -500,7 +552,7 @@ int main() {
     skills[POISON_WEAKNESS].spell_pointer = reinterpret_cast<spell_func>(poison_weakness);
     skills[POISON_SLOWNESS].spell_pointer = reinterpret_cast<spell_func>(poison_slowness);
     skills[POISON_MADNESS].spell_pointer = reinterpret_cast<spell_func>(poison_madness);
-    slowness(); replacement(); timers(); recurrence(); delivery(); morph_delivery(); calibration(); stabbed_delivery(); reset();
+    slowness(); replacement(); timers(); recurrence(); delivery(); morph_delivery(); calibration(); stabbed_delivery(); weakness_potency(); morph_weakness_potency(); reset();
     assert(ne_event_counter == 0 && event_pool.objs_used == 0 && affect_pool.objs_used == 0);
     puts("Weapon poison delivery, saves, feedback and lifecycle regressions passed");
 }
