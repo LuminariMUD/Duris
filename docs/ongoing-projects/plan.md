@@ -9,7 +9,7 @@
 > Deferred work must never become a condition for closing issue #59.
 > Preserve the agreed correctness and completion requirements; cut extra work.
 
-Status: **resumed by the owner; implementation incomplete; production disabled.**
+Status: **all five reduced-delivery criteria pass; ready for review; production disabled.**
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
 Working branch: `issue-59-posthog-reports`, based on acceptance PR #262.
 Runtime PR #261 is the preceding dependency.
@@ -25,7 +25,8 @@ closes when this reduced delivery meets the completion criteria below. Deferred
 work is outside #59's closure requirements and remains optional follow-up.
 Implementation is active within the agreed reduced scope. The worker HTTPS component is in [PR #260](https://github.com/LuminariMUD/Duris/pull/260); runtime
 integration is ready for review in [PR #261](https://github.com/LuminariMUD/Duris/pull/261).
-Gameplay/report/performance acceptance remains incomplete. Production export remains disabled.
+Gameplay, failure, reports, volume and the retained performance gate all pass.
+The complete reduced delivery is ready for review. Production export remains disabled.
 
 ## Delivery target and estimate
 
@@ -35,11 +36,10 @@ Gameplay/report/performance acceptance remains incomplete. Production export rem
 has been validated.** Do not reset the estimate after time has elapsed or present
 historical passing results as proof for a changed revision. The owner has resumed implementation within the agreed scope.
 
-The remaining delivery is the existing gameplay/failure acceptance, the agreed
-performance/volume evidence, four report views plus health, one bounded cloud
-test, and the necessary handoff. Reuse passing component evidence. Investigate
-only the current failed assertions before rerunning affected checks. Production
-deployment scheduling and reviewer availability are separate.
+Implementation and all five acceptance criteria are complete. The final measured
+evidence is recorded below and in PERFORMANCE_GATE.md. Review and separately
+authorized production activation are the remaining external steps; deferred work
+is never a closure condition. Stop adding implementation or qualification work.
 
 No Docker setup, additional machine, database installation, fixed soak period,
 CI wait, or extra qualification stage belongs on this delivery path. Required
@@ -377,7 +377,7 @@ final C/C++ changes, sequentially with `nice -n 10`, `-j1` and the task-specific
 `BIN_ROOT` paths above. The adapted PostHog gameplay commands are `nice -n 10
 python3 tests/async/run_telemetry_player_journey.py --backend <mariadb|flatfile>`;
 add `--performance` for the paired release fixture. Bounded cloud/query and
-integrated volume assertions remain to be completed.
+integrated volume assertions pass; do not repeat the cloud campaign.
 No blanket rerun of unaffected repository suites is needed.
 
 This delivery is done only when:
@@ -405,97 +405,78 @@ ticket.
 
 **DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
 
-Implementation is active. Completion conditions 1–4 have direct native/cloud
-proof; condition 5 awaits the running performance gate and final publication.
-No additional acceptance stage is authorized or needed. Production is disabled.
+All five completion conditions pass. Native/cloud reconciliation, failure/quota
+proof, measured performance/volume and the operating handoff are complete.
+No further implementation or qualification stage remains. Production is disabled.
 
-Published review stack:
+Published review stack (all ready for review, mergeable at last readback):
 
 - #260 (`issue-59-posthog-http`, `d540b778c`): bounded worker sender.
-- #261 (`issue-59-posthog-runtime`): both-backend runtime integration.
-- #262 (`issue-59-posthog-acceptance`, `32b4772f8`): terminal logout/pet adapter
-  fixes, native gameplay fixture and deterministic held-request deadline test.
-- #263 (`issue-59-posthog-reports`, published `3bbc45741`): five saved report
-  definitions, exact cloud reconciliation, emitted-volume proof and operation
-  handoff. Local follow-up `d3f81a054` reduces extra benchmark sampling to 40
-  saves/run; push it with the final measured result.
+- #261 (`issue-59-posthog-runtime`, `079537906`): both-backend runtime integration.
+- #262 (`issue-59-posthog-acceptance`, `3ab15c720`): terminal logout/pet adapter
+  fixes, native gameplay fixture and independently witnessed active-request deadline.
+- #263 (`issue-59-posthog-reports`, final evidence commit after `d558e4bdc`): five saved report definitions,
+  cloud reconciliation, emitted-volume proof, resident-scan repair and runbook.
 
-Production source is unchanged from tested `2be333750`. Both full native builds
-and state tools pass in `bin/issue59/{mariadb,flatfile}/`; neither links the old
-SQL writer. Logs `fast-plan/build-aligned-final-<backend>.log` and the focused
-ASan/UBSan gameplay-adapter regression cover this source. Existing unaffected
-config/transport/storage/copyover/fault results remain valid; do not rerun them.
+The stack alignment is finished using normal merge commits, with no source
+change, force push or history rewrite. The task-owned alignment worktree was
+removed. Do not chase further moving review bases. Production source is exactly
+repair `18b163a20`; both full native builds and state tools pass in
+`bin/issue59/{mariadb,flatfile}/`. Neither links the old SQL writer.
 
 Current evidence under `bin/issue59/`:
 
 | Required proof | Authoritative result |
 | --- | --- |
-| Native runtime HTTPS | `fast-plan/runtime-tight-posthog.log`: 18/18 cases under UBSan, including independently witnessed active-request cancellation, quota, restart, storage, clock and ownership faults. |
-| Reducer/sender components | `fast-plan/posthog-aligned.log`: 57 reducer + 29 HTTPS cases per backend; later test-only release-mix scenario is independently verified below. |
-| MariaDB gameplay | `fast-plan/gameplay-tight-mariadb.log`: 37 events / 43 reservations; complete native journey passes. |
-| Flat-file gameplay | `fast-plan/gameplay-tight-flatfile.log`: 38 events / 44 reservations; complete native journey passes. |
-| Domain/lifecycle assertions | Both journeys conserve time/XP, capture group/level dimensions and positive separate pet damage/owner links, exclude private values, save during 503, preserve identity/quota across reconnect and real failed/successful exec, and leave old SQL intervals empty. |
-| Integrated emitted volume | `fast-plan/release-mix-volume.log`: 97 emitted rows across all six families, no suppression/refusal; scaled shapes reconcile 396,454 attempts/31 days at 30 minutes. Frequencies/retry rates remain explicit assumptions, not concurrent capacity proof. |
+| Both full builds | `fast-plan/slot-scan-build-<backend>.log`: MariaDB and flat-file builds/state tools pass after the final source repair. |
+| State/runtime regression | `fast-plan/slot-scan-state.log`: SQL/no-MySQL, golden and integration suites pass. `slot-scan-runtime.log`: 18/18 HTTPS cases under UBSan. |
+| Reducer/sender components | `fast-plan/posthog-aligned.log`: 57 reducer + 29 HTTPS cases per backend; unchanged component code. Focused ASan/UBSan gameplay adapters also pass. |
+| MariaDB gameplay | `fast-plan/slot-scan-gameplay-mariadb.log`: 38 events / 44 charged attempts; complete native journey passes. |
+| Flat-file gameplay | `fast-plan/slot-scan-gameplay-flatfile.log`: 36 events / 42 charged attempts; complete native journey passes. |
+| Domain/lifecycle assertions | Both journeys conserve time/XP, capture group/level dimensions and separate pet damage/owner links, exclude private values, save during 503, preserve identity/quota across reconnect and real failed/successful exec, and leave old SQL intervals empty. |
+| Integrated emitted volume | `fast-plan/release-mix-volume.log`: 97 emitted rows across all six families, no suppression/refusal; scaled shapes reconcile 396,454 attempts/31 days at 30 minutes. Frequencies/retries remain declared assumptions, not concurrent capacity proof. |
 | Actual cloud campaign | `fast-plan/gameplay-cloud-mariadb.log`: 41 real submissions / 40 unique IDs within 48 native reservations, scope 1002 / season 1 / tag `issue59-cloud-smoke`. Persistent campaign marker forbids another campaign/reset. |
-| Queried reports and health | `acceptance/cloud-smoke/{submitted,expected,query-evidence}.json`: exact reconciliation, repeated UUID, intentionally missing participant, all five doubled-input queries conserve results, all production queries exclude tests. REPORTS.md records totals and IDs. |
-| Saved dashboard | Project 678214, dashboard 2240639, five saved insights 13125342–13125346; dashboard readback verifies all five production definitions. |
-| Performance | `fast-plan/gameplay-release-performance.log` is running; do not claim a pass. Raw samples/results are written under `acceptance/mariadb-*performance*` and `mariadb-latency-*`. |
+| Queried reports and health | `acceptance/cloud-smoke/{submitted,expected,query-evidence}.json`: exact reconciliation, repeated UUID, deliberately missing participant, all five doubled-input queries conserve results, all production queries exclude tests. REPORTS.md records totals and IDs. |
+| Saved dashboard | Project 678214, dashboard 2240639, five saved insights 13125342–13125346; readback verifies all five production definitions. |
+| Performance | `fast-plan/slot-scan-performance.log` exits 0: pooled pulse p99 592 usec on / 630 off (-6.03%), save p99 1,758,746 / 1,759,044 usec (-0.017%); 1,032/1,028 pulse samples, 120 saves per condition. All host/health bounds pass. Raw samples: `acceptance/mariadb-*performance*`, `mariadb-latency-*`, persistence snapshots and event-budget evidence. |
 
-The native fixture uses its default 60-second interval with a 64-segment/minute
-cap; accelerating to one second exhausted that cap before group attribution.
-HTTP outage recovery is observed before copyover's lossy 250ms deadline. Failed
-exec uses only the private fixture's invalid staged binary (ENOEXEC); restores
-that binary and removes only its disposable handoff image before successful exec.
+First completed performance comparison FAILED: pulse p99 654 usec on / 557 off
+(+17.4%); save p99 1,759,083 / 1,759,045 usec (passes). Absolute host bounds passed.
+Raw failed evidence remains in `acceptance/performance-before-slot-scan-fix/`.
+The 10–15 minute completion estimate was withdrawn when this failed.
 
-Remaining actions, in order:
+Repair `18b163a20` stops activity/cohort, checkpoint and detached-retirement scans
+after visiting all residents using their existing counts. It retains all 256
+slots and sparse high-index residents. Only telemetry_activity.c,
+telemetry_session.c and telemetry_runtime.c changed; no new state, API, timing
+rule or reduced criterion. State, runtime HTTPS, both native builds and both real
+gameplay journeys pass again. Existing cloud/report/reducer evidence remains
+valid because those data contracts and reduction code did not change.
 
-1. Initial benchmark `57877` finished with a failed pulse gate. After the narrow
-   resident-scan repair, wait for the current live benchmark recorded below.
-   Three alternating off/on pairs, 40 ordinary saves/run, 120 saves per condition
-   for pooled p99. Keep the 5% pulse/save and host bounds. The earlier longer
-   collection stopped before a completed pair and is diagnostic only. No heavy
-   compilation/load job should overlap the running comparison.
-2. Record actual measured results in PERFORMANCE_GATE.md and this handoff. If a
-   gate fails, investigate that specific failure; do not expand qualification.
-3. Finish the already prepared Git alignment once, then publish final commits.
-   Base #261 was rebased to `079537906`; its tree is byte-identical to tested
-   predecessor `458b834ce`. A pending normal merge in task-owned worktree
-   `bin/issue59/final-stack` has first parent `079537906`, second `32b4772f8`, and
-   a staged tree byte-identical to tested `32b4772f8`. Commit with hooks, push to
-   #262, then merge that commit into the reports branch and push #263. No source
-   change, force push, new build matrix or further moving-base chase is needed.
-4. Finish narrow formatting/whitespace/diff checks, update PR/issue evidence and
-   leave the stack ready for review. Production activation remains separate.
+The repaired comparison finished successfully: all three alternating pairs,
+40 saves/run and 120 saves per condition. Individual pulse p99 off/on values
+were 615/725, 504/540 and 631/592 usec; the predeclared gate pools all raw
+samples. This proves the fixture gate, not a general speed improvement.
+Maximum enabled event pass was 188 usec; all critical oldest-age snapshots were
+0ms, with zero observed event-budget debt, capture loss, refusal or quota errors.
+Enabled game-process CPU was 0.392% of one core and maximum RSS 49,036 KiB.
+Detailed CPU/RSS, command latency, fsync and emitted-body sizes are recorded in
+PERFORMANCE_GATE.md. The fixed world and development build are not 200-player
+capacity certification. The earlier longer collection stopped before a pair and
+is diagnostic only; both complete comparisons remain preserved.
 
-Do not merge PRs 252–255: the owner's earlier message was a question, not an
-instruction. Deferred SQL boot-schema cleanup and broader capacity qualification
-remain outside closure. Preserve all five agreed completion conditions.
+Final verification: both full native builds/state tools, affected state/runtime
+and real gameplay journeys pass on repair `18b163a20`; unaffected component and
+cloud evidence is reused. Formatting, whitespace and final diff review accompany
+the final evidence commit. Existing PRs are published for required review; no CI
+wait, production activation, cloud rerun or broader qualification is required.
 
+The fixture uses a 60-second interval and 64-segment/minute cap. HTTP outage
+recovery is observed before copyover's lossy 250ms deadline. Failed exec uses
+only the private fixture's invalid staged binary (ENOEXEC), restores the binary
+and removes only its disposable handoff image before successful exec.
 
-Performance gate result: **FAILED**, source `2be333750`, pooled pulse p99
-654 usec on / 557 off (+17.4%); save p99 1,759,083 / 1,759,045 usec (passes).
-All absolute host bounds pass, but the 5% pulse criterion remains mandatory.
-Original raw evidence is preserved in `acceptance/performance-before-slot-scan-fix/`.
-The 10–15 minute completion estimate was explicitly withdrawn when this failed.
-
-Current narrow repair: activity pulse/cohort checks, checkpoint scans and detached
-retirement scans now stop after visiting all residents, using their existing
-resident counts. All 256 slots remain available, including sparse high-index
-residents. Changed files are only telemetry_activity.c, telemetry_session.c and
-telemetry_runtime.c. No new state, API, timing rule or reduced gate. Focused state,
-runtime HTTPS and both real-game journeys are requalifying; then repeat only the
-failed performance comparison. Existing cloud/report and reducer evidence stays
-valid because their data contract/reduction code is unchanged. Do not restart the
-cloud campaign or expand the fixture matrix.
-
-
-Resident-scan repair `18b163a20` is committed/pushed to PR #263. State suites pass
-(SQL, no-MySQL, golden and integration); runtime HTTPS is 18/18. Both real journeys
-pass again: MariaDB 38 events / 44 attempts, flat-file 36 / 42. Evidence:
-`fast-plan/slot-scan-{state,runtime,gameplay-mariadb,gameplay-flatfile}.log`.
-Both native full builds are rechecked in `slot-scan-build-<backend>.log` before
-starting the unchanged three-pair comparison, `slot-scan-performance.log`.
-Cloud/report evidence remains valid; no new capture campaign. Performance is
-still unproven; preserve its failed baseline rather than replacing the record.
-
-Current live comparison tool session: `95220`. Do not restart it while live.
+Do not merge PRs 252–255: the owner's message was a question, not an instruction.
+Deferred SQL boot-schema cleanup and broader capacity qualification remain
+outside closure. Preserve all five agreed completion conditions. Production
+activation remains separately authorized and is not a closure condition.
