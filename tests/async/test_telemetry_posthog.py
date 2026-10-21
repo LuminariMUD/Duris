@@ -557,22 +557,25 @@ def main() -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="telemetry-posthog-", dir=output_root) as directory:
         for backend, defines in (("mariadb", []), ("flatfile", ["-D__NO_MYSQL__"])):
-            binary = Path(directory) / backend
+            binary = output_root / ("telemetry-posthog-" + backend)
             subprocess.run([
                 *shlex.split(os.environ.get("CXX", "g++")), "-std=c++20", "-O1", "-g",
                 "-Wall", "-Wextra", "-Werror", "-pedantic", "-fsanitize=undefined",
-                "-fno-sanitize-recover=all", *defines, "-I", str(ROOT / "src"),
+                "-fno-sanitize-recover=all", "-DTELEMETRY_POSTHOG_TESTING", *defines, "-I", str(ROOT / "src"),
                 str(ROOT / "src/telemetry/telemetry_posthog.c"),
                 str(ROOT / "src/telemetry/telemetry_config.c"),
                 str(ROOT / "src/telemetry/telemetry_health.c"),
+                str(ROOT / "src/telemetry/telemetry_outage.c"),
                 str(ROOT / "src/telemetry/telemetry_encounter.c"),
                 str(ROOT / "src/telemetry/telemetry_combat_summary.c"),
                 str(ROOT / "tests/async/telemetry_posthog_harness.cc"),
                 str(ROOT / "tests/async/telemetry_posthog_reducer_harness.cc"),
-                "-lcrypto", "-lcjson", "-o", str(binary),
+                "-lcrypto", "-lcjson", "-lcurl", "-o", str(binary),
             ], cwd=ROOT, env=TEST_ENV, check=True, timeout=60)
             encoding_tests(binary)
             reducer_tests(binary)
+            from telemetry_posthog_http import http_tests
+            http_tests(binary, Path(directory) / (backend + "-http"), TEST_ENV)
             print(f"PostHog encodings ({backend}, UBSan): PASS")
     volume_tests()
     print("PostHog encoding/reducer/forecast fixtures: PASS; delivery acceptance still pending")

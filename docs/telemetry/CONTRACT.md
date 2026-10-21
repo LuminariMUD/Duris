@@ -352,7 +352,8 @@ snapshot values precede insertion of the health row itself.
 PostHog durability claim. `reducer` reports current occupancy/limits and loss
 counters; `native_reduction_by_kind` separates consumed/refused records, and
 `output_by_family` separates created, suppressed, expired, HTTP-acknowledged and
-ambiguous events for all six families. Expiry is included in suppression.
+ambiguous events for all six families. Expiry is included in suppression unless
+an attempted batch remains ambiguous.
 Scoped/process native gap counts stay distinct, with unknown duration remaining
 unknown despite a zero known-duration total. Health counters never count refusal
 attempts as distinct omitted players.
@@ -391,7 +392,61 @@ must qualify the real reducer/gameplay mix. Retain the 20,000/day shared hard
 ceiling, 100 reserved health attempts, explicit sender allocations, durable
 pre-send reservations, and no payload backlog at exhaustion. Thirty-one days
 can touch 32 UTC dates, so the hard bound is 640,000, not necessarily 620,000.
-HTTP integration, fake-receiver and ≤100-attempt cloud proof remain pending.
+The loopback HTTPS sender fixture covers local delivery. Runtime integration and
+≤100-attempt cloud ingestion/report proof remain pending.
+
+### Worker HTTPS sender (#59)
+
+`telemetry_posthog_sender_*` is owned by the existing worker. It streams a pinned
+prefix directly from the reducer arena to `https://us.i.posthog.com/batch/`;
+there is no second retained payload, SDK, service or disk spool. Required capture
+fields are validated before sealing. Appending remains safe while pinned;
+external retire/expiry refuses to compact a pinned prefix. Reset closes the
+sender before clearing the arena. The journal must outlive sender close.
+
+One easy/multi handle pair advances through nonblocking pulses. TLS peer/host
+checks stay enabled; redirects and environment proxies are disabled. HTTP/1.1
+with fresh connections prevents hidden connection-reuse retries from escaping
+per-attempt quota accounting. Requests have 1s connect / 2s total limits, shortened
+by lifecycle deadlines. Bodies and headers each have a 16 KiB receive cap;
+response payloads are discarded and never enter health/logs. The loopback endpoint
+and CA override exist only in `TELEMETRY_POSTHOG_TESTING` builds; TLS remains on.
+
+Each attempt reserves its exact event count durably first. Batches contain one
+contiguous health/non-health class, so refusing a normal batch cannot consume
+reserved health allowance. Missing/rollback clocks refuse delivery. Quota refusal
+discards the affected prefix; no old-day payload is held for tomorrow. Journal
+failure and permanent configuration/TLS/authentication/HTTP rejection open a
+circuit until reinitialization. An invalid clock cannot clear that circuit.
+
+Network failures, 408, 429 and 5xx retain exactly the original bytes/IDs for at
+most five attempts with 1/2/4/8s backoff. Valid delta/date `Retry-After` can extend
+that delay. A delay outside retention/deadline releases the payload with explicit
+loss/uncertainty and postpones recovery by at least that delay. Exhaustion allows
+one probe after 60s; another failure releases that probe and waits again.
+Successful HTTP acknowledgement resumes ordinary sending. It does not establish
+query-visible ingestion. Attempted transfers with unresolved acceptance are
+ambiguous; a permanent HTTP rejection with no prior uncertain attempt is known
+suppression. Deadlines stop the sender and release unresolved output.
+
+`http_delivery` health reports state, HTTP/curl/quota codes, pending batch bounds,
+reserved/submitted events and submitted bytes, attempts/retries/probes/refusals,
+cancellations, response-limit failures, last HTTP acknowledgement, next attempt
+and the current journal quota day/counts/limits. State numbers follow
+`telemetry_posthog_sender_state` in the public header. Counters describe admitted
+HTTP attempts, not bytes received by PostHog. Failure/recovery evidence requests
+a coalesced health incident through the existing reducer cadence.
+
+The installed libcurl 8.18.0 uses a threaded asynchronous resolver. Normal easy
+cleanup can join a pending lookup after cancellation; the sender requires async
+DNS, TLS, thread-safe global init and `CURLOPT_QUICK_EXIT` (7.87+). The fixture
+uses `stall.invalid` to avoid libcurl's localhost shortcut, records that the
+injected libc resolver ran, and stalls it for one second. It checks 250ms
+lifecycle cancellation, <100ms close and zero received requests. The cancelled
+resolver's private library context can live until
+its lookup returns; no telemetry worker is detached. This component test does
+not qualify all resolver resource behavior or the eventual gameplay shutdown
+path; those remain lifecycle/performance acceptance work.
 
 ### Durable sender quota (#59)
 

@@ -9,6 +9,11 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#ifdef TELEMETRY_POSTHOG_TESTING
+#include "telemetry/telemetry_outage_private.h"
+#include <chrono>
+#include <thread>
+#endif
 
 namespace
 {
@@ -1217,3 +1222,217 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 	finish();
 	return 0;
 }
+
+#ifdef TELEMETRY_POSTHOG_TESTING
+int telemetry_posthog_sender_scenario(std::string_view name, const char *directory,
+				      std::uint16_t port, const char *ca)
+{
+	initialize();
+	life(telemetry_lifecycle_kind::session_entered);
+	if (name == "batches")
+		for (std::uint32_t subject = 45U; subject < 140U; ++subject)
+			life(telemetry_lifecycle_kind::session_entered, subject);
+	if (name == "bytes")
+	{
+		for (std::uint32_t subject = 44U; subject < 64U; ++subject)
+		{
+			for (std::uint32_t bucket = 0U; bucket < 32U; ++bucket)
+			{
+				emit(interval(bucket, bucket + 1U,
+					      telemetry_interval_category::connected_active,
+					      static_cast<std::int32_t>(bucket), subject));
+				auto record = xp(10'000'000'000'000'000LL, 10'000'000'000'000'000LL,
+						 0, subject);
+				record.payload.progression.modifier_flags = bucket;
+				emit(record);
+			}
+		}
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+	}
+	telemetry_outage_journal journal{};
+	telemetry_quota_binding binding{ 678214U, 99U, 1000U, 1U, 19800U, 100U, 19900U };
+	if (name == "quota" || name == "quota-retry")
+		binding = { 678214U, 99U, 1000U, 1U, 2U, 10U, 12U };
+	CHECK(telemetry_outage_read(&journal, directory) == telemetry_outage_result::ready);
+	CHECK(!telemetry_posthog_sender_init("https://us.i.posthog.com", "phc_fixture", binding,
+					     &journal));
+	CHECK(telemetry_outage_quota_initialize(&journal, binding, BASE) ==
+	      telemetry_outage_result::ready);
+	CHECK(!telemetry_posthog_sender_init("http://us.i.posthog.com", "phc_fixture", binding,
+					     &journal));
+	CHECK(!telemetry_posthog_sender_init("https://us.i.posthog.com.evil", "phc_fixture",
+					     binding, &journal));
+	CHECK(!telemetry_posthog_sender_init("https://us.i.posthog.com", "phc_bad\"", binding,
+					     &journal));
+	CHECK(telemetry_posthog_sender_init("https://us.i.posthog.com/", "phc_fixture", binding,
+					    &journal));
+	CHECK(telemetry_posthog_sender_test_endpoint(port, ca, name == "dns"));
+	if (name == "storage")
+		journal.quota_poisoned =
+			true; // The quota fault suite proves publication failures poison ownership.
+	if (name == "quota")
+	{
+		life(telemetry_lifecycle_kind::session_entered, 45U);
+		NOW = MONO;
+		observe(native_health());
+	}
+	using clock = std::chrono::steady_clock;
+	const auto start = clock::now();
+	std::uint64_t jump = 0U;
+	std::uint64_t longest_pulse = 0U;
+	std::uint64_t delays[8]{};
+	std::size_t delay_count = 0U;
+	bool appended = false;
+	bool clock_recovered = false;
+	bool expired = false;
+	bool completed = false;
+	auto now = MONO;
+	auto deadline = (name == "deadline" || name == "dns") ? MONO + 250'000U : 0U;
+	if (name == "flush")
+	{
+		telemetry_posthog_sender_pulse(now, BASE, 0U, false);
+		CHECK(telemetry_posthog_sender_health_copy().attempted_batches == 0U);
+		jump = 2'000'000U;
+	}
+	for (unsigned int iteration = 0U; iteration < 5000U; ++iteration)
+	{
+		const auto elapsed = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start)
+				.count());
+		now = MONO + elapsed + jump;
+		const auto before = clock::now();
+		auto utc = BASE + static_cast<std::int64_t>(now - MONO);
+		if (name == "rollback")
+			utc -= 86'400'000'000LL;
+		if (name == "clock" && !clock_recovered)
+			utc = TELEMETRY_UTC_UNKNOWN;
+		telemetry_posthog_sender_pulse(now, utc, deadline, name != "flush");
+		const auto pulse = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - before)
+				.count());
+		longest_pulse = std::max(longest_pulse, pulse);
+		auto health = telemetry_posthog_sender_health_copy();
+		if (name == "mono" && health.batch_events != 0U)
+		{
+			telemetry_posthog_sender_pulse(now - 1U, utc);
+			completed = true;
+			break;
+		}
+		if (health.state == telemetry_posthog_sender_state::permanent_failure)
+		{
+			telemetry_posthog_sender_pulse(now, TELEMETRY_UTC_UNKNOWN);
+			CHECK(telemetry_posthog_sender_health_copy().state ==
+			      telemetry_posthog_sender_state::permanent_failure);
+		}
+		if (name == "clock" && !clock_recovered)
+		{
+			CHECK(health.clock_failures == 1U);
+			CHECK(health.attempted_batches == 0U);
+			NOW = now - 1000U;
+			life(telemetry_lifecycle_kind::session_entered, 45U);
+			clock_recovered = true;
+			continue;
+		}
+		if (name == "pin" && health.batch_events != 0U && !appended)
+		{
+			const std::string saved(telemetry_posthog_output_peek().json);
+			CHECK(!telemetry_posthog_output_retire(
+				1U, telemetry_posthog_output_disposition::suppressed));
+			telemetry_posthog_output_expire(now +
+							TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC);
+			NOW = now - 1000U;
+			life(telemetry_lifecycle_kind::session_entered, 45U);
+			CHECK(saved == telemetry_posthog_output_peek().json);
+			appended = true;
+		}
+		if (health.state == telemetry_posthog_sender_state::backoff)
+		{
+			if (name == "expire" && !expired)
+			{
+				jump += TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC;
+				expired = true;
+				continue;
+			}
+			CHECK(delay_count < 8U);
+			delays[delay_count++] = health.next_attempt - now;
+			jump += health.next_attempt - now;
+			continue;
+		}
+		if (health.state == telemetry_posthog_sender_state::recovery)
+		{
+			if (name != "exhaustion")
+			{
+				completed = true;
+				break;
+			}
+			CHECK(health.next_attempt > now);
+			CHECK(delay_count < 8U);
+			delays[delay_count++] = health.next_attempt - now;
+			jump += health.next_attempt - now;
+			NOW = MONO + jump + elapsed - 1000U;
+			life(telemetry_lifecycle_kind::session_entered,
+			     45U + static_cast<std::uint32_t>(delay_count));
+			continue;
+		}
+		const auto reduced = telemetry_posthog_reducer_health_copy();
+		if (health.state == telemetry_posthog_sender_state::permanent_failure ||
+		    health.state == telemetry_posthog_sender_state::stopped ||
+		    (name == "rollback" &&
+		     health.state == telemetry_posthog_sender_state::clock_blocked) ||
+		    (reduced.output_events == 0U && health.batch_events == 0U))
+		{
+			completed = true;
+			break;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(2));
+	}
+	CHECK(completed);
+	const auto health = telemetry_posthog_sender_health_copy();
+	const auto reduced = telemetry_posthog_reducer_health_copy();
+	const auto cleanup_start = clock::now();
+	telemetry_posthog_sender_close();
+	const auto cleanup =
+		std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - cleanup_start)
+			.count();
+	cJSON *report = cJSON_CreateObject();
+#define HTTP_FIELD(field) cJSON_AddNumberToObject(report, #field, static_cast<double>(health.field))
+	HTTP_FIELD(attempted_batches);
+	HTTP_FIELD(reserved_events);
+	HTTP_FIELD(submitted_events);
+	HTTP_FIELD(submitted_bytes);
+	HTTP_FIELD(retry_attempts);
+	HTTP_FIELD(retry_exhaustions);
+	HTTP_FIELD(recovery_probes);
+	HTTP_FIELD(quota_refusals);
+	HTTP_FIELD(storage_failures);
+	HTTP_FIELD(clock_failures);
+	HTTP_FIELD(cancellations);
+	HTTP_FIELD(response_limit_failures);
+	HTTP_FIELD(http_status);
+	HTTP_FIELD(next_attempt);
+	HTTP_FIELD(curl_error);
+#undef HTTP_FIELD
+	cJSON_AddNumberToObject(report, "state", static_cast<int>(health.state));
+	cJSON_AddNumberToObject(report, "acknowledged", reduced.http_acknowledged);
+	cJSON_AddNumberToObject(report, "suppressed", reduced.output_suppressed);
+	cJSON_AddNumberToObject(report, "ambiguous", reduced.ambiguous_events);
+	cJSON_AddNumberToObject(report, "expired", reduced.output_expired);
+	cJSON_AddNumberToObject(report, "created", reduced.created_events);
+	cJSON_AddNumberToObject(report, "output_events", reduced.output_events);
+	cJSON_AddNumberToObject(report, "normal_reserved", journal.quota.normal_reserved);
+	cJSON_AddNumberToObject(report, "health_reserved", journal.quota.health_reserved);
+	cJSON_AddNumberToObject(report, "longest_pulse_usec", static_cast<double>(longest_pulse));
+	cJSON_AddNumberToObject(report, "cleanup_usec", static_cast<double>(cleanup));
+	auto *delay_json = cJSON_AddArrayToObject(report, "delays");
+	for (std::size_t index = 0U; index < delay_count; ++index)
+		cJSON_AddItemToArray(delay_json,
+				     cJSON_CreateNumber(static_cast<double>(delays[index])));
+	char *encoded = cJSON_PrintUnformatted(report);
+	CHECK(encoded != nullptr);
+	std::puts(encoded);
+	cJSON_free(encoded);
+	cJSON_Delete(report);
+	telemetry_outage_close(&journal);
+	return 0;
+}
+#endif

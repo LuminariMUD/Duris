@@ -6,6 +6,10 @@
 #include <cstring>
 
 int telemetry_posthog_reducer_scenario(std::string_view name);
+#ifdef TELEMETRY_POSTHOG_TESTING
+int telemetry_posthog_sender_scenario(std::string_view name, const char *directory,
+				      std::uint16_t port, const char *ca);
+#endif
 
 namespace
 {
@@ -31,6 +35,15 @@ template <std::size_t Size> int report(bool valid, const std::array<char, Size> 
 
 int main(int argc, char **argv)
 {
+#ifdef TELEMETRY_POSTHOG_TESTING
+	if (argc == 6 && std::strcmp(argv[1], "send") == 0)
+	{
+		std::uint16_t port{};
+		if (!parse(argv[4], port))
+			return 2;
+		return telemetry_posthog_sender_scenario(argv[2], argv[3], port, argv[5]);
+	}
+#endif
 	if (argc == 3 && std::strcmp(argv[1], "reduce") == 0)
 		return telemetry_posthog_reducer_scenario(argv[2]);
 	if (argc == 2 && std::strcmp(argv[1], "uuid") == 0)
