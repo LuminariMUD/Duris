@@ -426,6 +426,7 @@ The one-shot native command uses this same implementation. Build with
 ```text
 telemetry-state initialize DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH
 telemetry-state exhaust-day DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH
+telemetry-state rollover-season DIRECTORY PROJECT SENDER ENVIRONMENT NEW_SEASON TOTAL NORMAL HEALTH
 ```
 
 The absolute directory must already be private (`0700`) and owned by the sender.
@@ -436,6 +437,18 @@ run `exhaust-day` with the original binding before resuming. It preserves the
 original frame as `outages.ledger.recovery.<generation>` and consumes the affected
 day's remaining allowance without sending. Corrupt/mismatched files stay refused;
 preserve them and restore a consistent backup before this conservative recovery.
+
+Stop the worker before any state command. At a documented world reset, keep the
+same directory and run `rollover-season` with the new season ID before restarting
+with the new `TELEMETRY_SEASON_ID`. Project, sender, environment and limits must
+match the existing allocation. This preserves the original frame under the same
+recovery naming scheme, changes only the quota season binding, and exhausts both
+classes for the current UTC day. Historical observations retain their old scopes
+and generation continues. Normal allowance resumes on the next UTC day; changing
+season or creating a directory never grants an additional project allocation.
+Interrupted rollover publications use the same validated pending recovery; a
+changed season is recoverable only with an exhausted allowance and unchanged
+project/sender/environment/limits. Clock rollback remains refused.
 Initialization/recovery against production belongs to separately authorized
 enablement/operations. No production journal was initialized by implementation
 tests. Worker cadence, exporter coverage watermarks and HTTP integration remain

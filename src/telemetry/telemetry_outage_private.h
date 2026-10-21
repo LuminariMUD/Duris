@@ -136,4 +136,10 @@ telemetry_outage_result telemetry_outage_quota_exhaust_day(telemetry_outage_jour
 							   const telemetry_quota_binding &binding,
 							   telemetry_utc_usec utc) noexcept;
 
+/* Offline season change: preserve evidence and exhaust today while keeping the
+ * project, sender, environment and limits unchanged. */
+telemetry_outage_result telemetry_outage_quota_rollover(telemetry_outage_journal *journal,
+							const telemetry_quota_binding &binding,
+							telemetry_utc_usec utc) noexcept;
+
 #endif

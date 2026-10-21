@@ -151,7 +151,7 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   `bin/issue59/build-<backend>-health.log`. Formatting and whitespace checks pass.
 - The sixth chunk, branch `issue-59-posthog-quota`, adds daily reservations to
   the same protected journal and a one-shot native `telemetry-state` command
-  (`initialize` / `exhaust-day`). Wire version 2 retains historical observations;
+  (`initialize` / `exhaust-day` / `rollover-season`). Wire version 2 retains historical observations;
   version 1 remains supported. A generation/digest witness in the owner file
   detects partial/same-generation rollback, while full backup restore requires
   the explicit recovery command to preserve evidence and exhaust that day.
@@ -159,6 +159,17 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   rotation, including an interrupted next registration. Quota errors reuse the
   existing journal result/error-code contract; no runtime dispatch layer is added.
   The contract records exact limits, command arguments and restore behavior.
+- PR #259 review: confirmed and repaired season rollover and duplicate full-frame
+  archives after failed registration. The explicit offline `rollover-season`
+  command preserves history and exhausts today's allowance while retaining the
+  project/sender/environment/limits; the next UTC day restores allowance. Full
+  quota archives use the outgoing terminal producer and unchanged generation so
+  fresh registration retries reuse one archive. The canonical outage storage
+  guide now describes both wire versions, witness sizing and quota recovery.
+  Local review proof: `test_telemetry_outage.py` (UBSan, native CLI and offline
+  export), `test_telemetry_runtime_outage.py` (both modes), transport normal/
+  ASan/UBSan/TSan, contract headers/fixtures, both server builds and the native
+  state-tool build passed. Review build logs are under ignored `bin/pr259/`.
 - Quota proof: `test_telemetry_outage.py` covers the existing storage/exec/kill
   regression suite plus initialization, immutable binding, caps/retry charging,
   clock rollback, write/file/owner/directory-fsync/rename faults, pending recovery,

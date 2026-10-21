@@ -109,9 +109,20 @@ def main() -> None:
             exhausted = invoke("exhaust-day", binding)
             assert exhausted["normal_reserved"] == 19800 and exhausted["health_reserved"] == 100
             assert len(list(path.glob("outages.ledger.recovery.*"))) == 1
+            before_rollover = (path / "outages.ledger").read_bytes()
+            new_season = [*binding[:3], "2", *binding[4:]]
+            invoke("rollover-season", ["678215", *new_season[1:]], valid=False)
+            assert (path / "outages.ledger").read_bytes() == before_rollover
+            rolled = invoke("rollover-season", new_season)
+            assert rolled["normal_reserved"] == 19800 and rolled["health_reserved"] == 100
+            invoke("exhaust-day", binding, valid=False)
+            packet = subprocess.run([sys.executable, str(ROOT / "scripts/telemetry/outage.py"), quota_directory],
+                                    text=True, capture_output=True, check=True, timeout=10)
+            assert json.loads(packet.stdout)["quota"]["season_id"] == 2
+            assert len(list(path.glob("outages.ledger.recovery.*"))) == 2
             for item in path.iterdir():
                 assert item.stat().st_mode & 0o777 == 0o600
-        print("quota native initialize/restore-exhaustion command and v2 offline export passed")
+        print("quota native initialize/restore-exhaustion/season-rollover commands and v2 offline export passed")
 
 
 if __name__ == "__main__":

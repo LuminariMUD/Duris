@@ -19,14 +19,15 @@ int main(int argc, char **argv)
 {
 	const bool initialize = argc == 10 && std::strcmp(argv[1], "initialize") == 0;
 	const bool exhaust = argc == 10 && std::strcmp(argv[1], "exhaust-day") == 0;
+	const bool rollover = argc == 10 && std::strcmp(argv[1], "rollover-season") == 0;
 	telemetry_quota_binding binding{};
-	if ((!initialize && !exhaust) || !parse(argv[3], binding.project_id) ||
+	if ((!initialize && !exhaust && !rollover) || !parse(argv[3], binding.project_id) ||
 	    !parse(argv[4], binding.sender_id) || !parse(argv[5], binding.environment_id) ||
 	    !parse(argv[6], binding.season_id) || !parse(argv[7], binding.total_limit) ||
 	    !parse(argv[8], binding.normal_limit) || !parse(argv[9], binding.health_limit))
 	{
 		std::fputs(
-			"Usage: telemetry-state initialize|exhaust-day DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH\n",
+			"Usage: telemetry-state initialize|exhaust-day|rollover-season DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH\n",
 			stderr);
 		return 2;
 	}
@@ -39,6 +40,8 @@ int main(int argc, char **argv)
 					 .count();
 		if (initialize)
 			result = telemetry_outage_quota_initialize(&journal, binding, utc);
+		else if (rollover)
+			result = telemetry_outage_quota_rollover(&journal, binding, utc);
 		else
 			result = telemetry_outage_quota_exhaust_day(&journal, binding, utc);
 	}
