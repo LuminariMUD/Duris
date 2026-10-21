@@ -4,7 +4,7 @@
 
 The historical investigation below is retained as dated evidence. Its open design
 questions are superseded by [issue #109](https://github.com/LuminariMUD/Duris/issues/109)
-and the [implementation plan](../ongoing-projects/plan.md). The current branch implements safe no-stat
+and the [implementation plan](../ongoing-projects/plan-issue-109.md). The current branch implements safe no-stat
 sage handling, neutral guardian cleanup and observable loading failures. Migration
 `0046_nexus_phase1` provides the insert-only seed. Migration and runtime compatibility
 qualification passed on MySQL 8.0, MariaDB 10.11 and MariaDB 11.8, including conflict

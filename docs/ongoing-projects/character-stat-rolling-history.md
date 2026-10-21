@@ -7,7 +7,7 @@ This is a source-history investigation; it changes no gameplay.
 Player review: [#107 — Choose a historical or hybrid character stat rolling system](https://github.com/LuminariMUD/Duris/issues/107).
 The [October 18 resolution](https://github.com/LuminariMUD/Duris/issues/107#issuecomment-6248090892)
 selected a choice of Default (F) and Advanced (E), with four bonuses and existing
-swaps for new characters. See the [implementation plan](plan.md) for current
+swaps for new characters. See the [implementation plan](plan-issue-107.md) for current
 progress and validation. The historical findings below describe the inspected
 October 15 baseline, not the status of implementation or production deployment.
 
