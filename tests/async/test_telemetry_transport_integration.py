@@ -17,7 +17,9 @@ def main():
             str(ROOT / "src/telemetry/telemetry_queue.c"),
             str(ROOT / "src/telemetry/telemetry_failure.c"),
             str(ROOT / "src/telemetry/telemetry_repository.c"),
-            "-o", executable,
+            *[str(ROOT / "src/telemetry" / name) for name in (
+                "telemetry_posthog.c", "telemetry_outage.c", "telemetry_config.c", "telemetry_health.c")],
+            "-lcrypto", "-lcurl", "-lcjson", "-o", executable,
         ]
         subprocess.run(command, cwd=ROOT, check=True, timeout=60)
         subprocess.run([executable], cwd=ROOT, check=True, timeout=15)

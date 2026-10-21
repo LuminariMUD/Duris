@@ -143,7 +143,7 @@ are not claimed to be allocation-free; hashing is outside per-action capture. Th
 the record sequence; #263 does not reconstruct historical properties with a
 private counter.
 
-For an enabled SQL snapshot:
+For an enabled PostHog snapshot (backend `3`, in either gameplay persistence build):
 
 1. Validate the full public representation and recompute SHA-256.
 2. Remember/check the `(config_id, fingerprint)` pair.
@@ -172,9 +172,10 @@ identity guard is full, the new context is rejected/degraded explicitly; no entr
 is overwritten. Repeated disabled and flat-file-disabled publications keep their
 disabled outcome and emit no record.
 
-A disabled SQL config is a valid `valid_disabled` snapshot but emits no control
-record. The flat-file backend is a valid `valid_flatfile_disabled` snapshot and
-also emits no hidden file. Both outcomes are exposed through the public runtime
+A disabled config is a valid `valid_disabled` snapshot and emits no control
+record. Historical backend `2` remains `valid_flatfile_disabled`; it is distinct
+from flat-file gameplay, which supports the PostHog sink. No hidden telemetry
+file is written. Both outcomes are exposed through the public runtime
 result and disabled quality state. No gameplay path is made dependent on the
 telemetry sink.
 

@@ -232,6 +232,9 @@ void telemetry_posthog_sender_pulse(telemetry_monotonic_usec now, telemetry_utc_
 				    telemetry_monotonic_usec deadline = 0U,
 				    bool force = false) noexcept;
 void telemetry_posthog_sender_close() noexcept;
+/* Failed copyover exec: resume after a bounded flush cancelled the attempt.
+ * Retains counters, immutable configuration and the already-charged quota. */
+void telemetry_posthog_sender_resume() noexcept;
 telemetry_posthog_sender_health telemetry_posthog_sender_health_copy() noexcept;
 
 #ifdef TELEMETRY_POSTHOG_TESTING

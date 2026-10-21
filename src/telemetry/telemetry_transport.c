@@ -15,6 +15,7 @@
 #include "telemetry/telemetry_transport_private.h"
 #include "telemetry/telemetry_queue_private.h"
 #include "telemetry/telemetry_failure.h"
+#include "telemetry/telemetry_posthog.h"
 
 #include <array>
 #include <atomic>
@@ -57,6 +58,11 @@ queue QUEUE{};
 std::array<telemetry_record, TELEMETRY_BATCH_MAX_RECORDS_PROPOSAL> INFLIGHT_RECORDS{};
 inflight_state INFLIGHT{};
 telemetry_transport_config SETTINGS{};
+// An unfinished timer cut keeps its original fence across worker pulses.
+bool POSTHOG_FENCE_ACTIVE = false;
+std::uint64_t POSTHOG_FENCE = 0U;
+telemetry_monotonic_usec POSTHOG_CUT = 0U;
+telemetry_utc_usec POSTHOG_CUT_UTC = TELEMETRY_UTC_UNKNOWN;
 telemetry_repository_config REPOSITORY_SETTINGS{};
 // Producer-only admission watermark; worker retries are a separate immutable path.
 telemetry_record_key LAST_ADMITTED_KEY{};
@@ -102,6 +108,8 @@ struct transport_health_atoms
 	std::atomic<std::uint64_t> producer_process_id{ 0U };
 	std::atomic<std::uint64_t> last_admitted_record_seq{ 0U };
 	std::atomic<std::uint64_t> last_committed_record_seq{ 0U };
+	std::atomic<std::uint64_t> last_consumed_record_seq{ 0U };
+	std::atomic<std::uint64_t> consumed_records{ 0U };
 	std::atomic<std::uint64_t> inflight_first_record_seq{ 0U };
 	std::atomic<std::uint64_t> inflight_last_record_seq{ 0U };
 	std::atomic<std::uint64_t> inflight_record_kind_mask{ 0U };
@@ -140,69 +148,6 @@ struct transport_health_atoms
 
 transport_health_atoms HEALTH{};
 
-telemetry_repository_outcome production_repository_init(void *,
-							telemetry_repository_config config) noexcept
-{
-	try
-	{
-		return telemetry_repository_init(config);
-	}
-	catch (...)
-	{
-		return telemetry_repository_outcome::unavailable;
-	}
-}
-
-telemetry_apply_batch_result production_repository_apply(void *, const telemetry_record *records,
-							 std::size_t count) noexcept
-{
-	try
-	{
-		return telemetry_repository_apply(records, count);
-	}
-	catch (...)
-	{
-		telemetry_apply_batch_result result{};
-		result.outcome = telemetry_batch_outcome::unavailable;
-		return result;
-	}
-}
-
-telemetry_repository_outcome production_repository_request_stop(void *) noexcept
-{
-	try
-	{
-		return telemetry_repository_request_stop();
-	}
-	catch (...)
-	{
-		return telemetry_repository_outcome::stopping;
-	}
-}
-
-void production_repository_shutdown(void *) noexcept
-{
-	try
-	{
-		telemetry_repository_shutdown();
-	}
-	catch (...)
-	{
-	}
-}
-
-telemetry_health_snapshot production_repository_health(void *) noexcept
-{
-	try
-	{
-		return telemetry_repository_health_copy();
-	}
-	catch (...)
-	{
-		return {};
-	}
-}
-
 bool production_clock_now(void *, telemetry_monotonic_usec *value) noexcept
 {
 	if (value == nullptr)
@@ -214,14 +159,7 @@ bool production_clock_now(void *, telemetry_monotonic_usec *value) noexcept
 	return true;
 }
 
-telemetry_transport_repository_binding DEFAULT_REPOSITORY = {
-	production_repository_init,
-	production_repository_apply,
-	production_repository_request_stop,
-	production_repository_shutdown,
-	nullptr,
-	production_repository_health,
-};
+telemetry_transport_repository_binding DEFAULT_REPOSITORY{};
 telemetry_transport_clock_binding DEFAULT_CLOCK = { production_clock_now, nullptr };
 telemetry_transport_repository_binding REPOSITORY = DEFAULT_REPOSITORY;
 telemetry_transport_clock_binding CLOCK = DEFAULT_CLOCK;
@@ -336,6 +274,8 @@ void reset_health(const telemetry_transport_config &config) noexcept
 					 std::memory_order_relaxed);
 	HEALTH.last_admitted_record_seq.store(0U, std::memory_order_relaxed);
 	HEALTH.last_committed_record_seq.store(0U, std::memory_order_relaxed);
+	HEALTH.last_consumed_record_seq.store(0U, std::memory_order_relaxed);
+	HEALTH.consumed_records.store(0U, std::memory_order_relaxed);
 	HEALTH.inflight_first_record_seq.store(0U, std::memory_order_relaxed);
 	HEALTH.inflight_last_record_seq.store(0U, std::memory_order_relaxed);
 	HEALTH.inflight_record_kind_mask.store(0U, std::memory_order_relaxed);
@@ -706,6 +646,9 @@ bool validate_full_result(const telemetry_apply_batch_result &result,
 bool ensure_repository(telemetry_monotonic_usec now) noexcept
 {
 	if (CIRCUIT_OPEN.load(std::memory_order_acquire))
+		return false;
+	// Only explicitly injected historical repository fixtures use this path.
+	if (REPOSITORY.init == nullptr)
 		return false;
 	if (REPOSITORY_READY.load(std::memory_order_acquire))
 		return true;
@@ -1390,6 +1333,7 @@ telemetry_transport_outcome telemetry_transport_init(telemetry_transport_config 
 	}
 
 	SETTINGS = config;
+	POSTHOG_FENCE_ACTIVE = false;
 	LAST_ADMITTED_KEY = {};
 	PRODUCER_SAMPLE_EPOCH.store(0U, std::memory_order_release);
 	OBSERVED_RECORD_KINDS.store(0U, std::memory_order_release);
@@ -1710,6 +1654,9 @@ telemetry_health_snapshot telemetry_transport_health_copy(void)
 		HEALTH.last_admitted_record_seq.load(std::memory_order_acquire);
 	result.last_committed_record_seq =
 		HEALTH.last_committed_record_seq.load(std::memory_order_acquire);
+	result.last_consumed_record_seq =
+		HEALTH.last_consumed_record_seq.load(std::memory_order_acquire);
+	result.consumed_records = HEALTH.consumed_records.load(std::memory_order_acquire);
 	result.inflight_first_record_seq =
 		HEALTH.inflight_first_record_seq.load(std::memory_order_acquire);
 	result.inflight_last_record_seq =
@@ -1774,4 +1721,68 @@ telemetry_health_snapshot telemetry_transport_health_copy(void)
 	result.last_failure_monotonic_usec =
 		HEALTH.last_failure_monotonic_usec.load(std::memory_order_acquire);
 	return result;
+}
+
+void telemetry_transport_posthog_start_for_worker(void)
+{
+	if (SETTINGS.backend != telemetry_storage_backend::posthog ||
+	    CIRCUIT_OPEN.load(std::memory_order_acquire))
+		return;
+	ADMISSION_READY.store(true, std::memory_order_release);
+	set_health_state(telemetry_health_state::healthy);
+}
+
+bool telemetry_transport_posthog_pulse_for_worker(telemetry_monotonic_usec now,
+						  telemetry_utc_usec utc,
+						  telemetry_monotonic_usec deadline, bool force)
+{
+	if (SETTINGS.backend != telemetry_storage_backend::posthog ||
+	    CIRCUIT_OPEN.load(std::memory_order_acquire))
+		return false;
+	// The fixed queue bounds the fence even if the producer keeps admitting.
+	if (!POSTHOG_FENCE_ACTIVE)
+	{
+		POSTHOG_FENCE = QUEUE.producer_head.load(std::memory_order_acquire);
+		POSTHOG_CUT = now;
+		POSTHOG_CUT_UTC = utc;
+		POSTHOG_FENCE_ACTIVE = true;
+	}
+	telemetry_posthog_sender_pulse(now, utc, deadline, force);
+	std::size_t processed = 0U;
+	while (QUEUE.consumer_tail.load(std::memory_order_acquire) < POSTHOG_FENCE)
+	{
+		telemetry_record record{};
+		if (telemetry_posthog_reducer_health_copy().output_events >
+		    TELEMETRY_POSTHOG_MAX_EVENTS - 16U)
+			return false;
+		if (!telemetry_queue_private::peek(&QUEUE, 0U, &record, nullptr, nullptr))
+			return false;
+		(void)telemetry_posthog_consume(record, now, utc);
+		saturating_add(HEALTH.consumed_records, std::uint64_t{ 1U });
+		HEALTH.last_consumed_record_seq.store(record.header.key.record_seq,
+						      std::memory_order_release);
+
+		if (!telemetry_queue_private::commit(
+			    &QUEUE, 1U,
+			    telemetry_record_kind_is_control(record.header.kind) ? 1U : 0U))
+		{
+			open_circuit(now, EPROTO, telemetry_failure_class::permanent_repository,
+				     &record, 1U, 0U);
+			return false;
+		}
+		if (++processed % 16U == 0U)
+		{
+			telemetry_monotonic_usec current = 0U;
+			if (!clock_now(current) || (deadline != 0U && current >= deadline))
+				return false;
+			telemetry_posthog_sender_pulse(current, utc, deadline, force);
+		}
+	}
+	telemetry_posthog_seal_through(POSTHOG_CUT, POSTHOG_CUT_UTC, force);
+	POSTHOG_FENCE_ACTIVE = false;
+	HEALTH.last_success_monotonic_usec.store(now, std::memory_order_release);
+	telemetry_monotonic_usec current = now;
+	(void)clock_now(current);
+	telemetry_posthog_sender_pulse(current, utc, deadline, force);
+	return true;
 }

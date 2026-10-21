@@ -401,7 +401,7 @@ void check_environment_options()
 {
 	clear_telemetry_environment();
 	setenv("TELEMETRY_ENABLED", "TRUE", 1);
-	setenv("TELEMETRY_BACKEND", "sql", 1);
+	setenv("TELEMETRY_BACKEND", "posthog", 1);
 	setenv("TELEMETRY_INTERVAL_USEC", "1000000", 1);
 	setenv("TELEMETRY_CHECKPOINT_INTERVAL_USEC", "2000000", 1);
 	setenv("TELEMETRY_ACTIVE_WINDOW_USEC", "3000000", 1);
@@ -428,15 +428,10 @@ void check_environment_options()
 	assert(enabled.config.context_segments_per_minute == 8U);
 	assert(enabled.config.pulse_slot_count == 2U);
 	assert(telemetry_config_is_valid(enabled.config));
-#ifdef __NO_MYSQL__
-	assert(enabled.config.enabled == 0U);
-	assert(enabled.config.backend == telemetry_storage_backend::flatfile_disabled);
-#else
 	assert(enabled.config.enabled == 1U);
-	assert(enabled.config.backend == telemetry_storage_backend::sql);
+	assert(enabled.config.backend == telemetry_storage_backend::posthog);
 	assert(enabled.config.property_version == 0xA1B2C3D4U);
 	assert(enabled.property_capture_enabled == 1U);
-#endif
 
 	unsetenv("TELEMETRY_PROPERTY_CATALOG_FILE");
 	const telemetry_runtime_options missing_catalog =
