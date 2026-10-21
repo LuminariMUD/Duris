@@ -83,6 +83,7 @@ P_nevent get_scheduled(P_char ch, event_func callback) {
 }
 nevent_schedule_result add_event(event_func callback, int delay, P_char ch, P_char, P_obj, int,
                                  const void *data, int size) {
+    if (size == sizeof(int)) return {}; // Nature's Touch schedules another wave.
     assert(size == sizeof(regen_event_state));
     queue.push_back({ch, callback, ne_event_tick + delay, *static_cast<const regen_event_state *>(data)});
     return {};
@@ -104,6 +105,7 @@ PRODUCTION = "\n".join(extract_function(file, signature) for file, signature in 
     ("fight.c", "int vamp("),
     ("fight.c", "void heal("),
     ("magic.c", "void spell_group_heal("),
+    ("magic.c", "void event_natures_touch("),
 ))
 DRIVER = r'''
 static void init(char_data &ch, bool healer) {
@@ -166,6 +168,14 @@ int main() {
     for (const auto &mate : mates)
         assert(mate.points.hit == 144);
     assert(healer.points.ward == 0);
+
+    int nature_wave = 100;
+    warrior.points.hit = 0;
+    event_natures_touch(&healer, &warrior, nullptr, &nature_wave);
+    assert(warrior.points.hit == 100);
+    warrior.points.hit = 0;
+    event_natures_touch(&holyman, &warrior, nullptr, &nature_wave);
+    assert(warrior.points.hit == 111);
 
     puts("Healer ward retirement and Paladin aura healing exclusions passed");
 }

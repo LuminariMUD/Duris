@@ -7148,7 +7148,7 @@ void event_natures_touch(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 		break;
 	}
 
-	x = vamp(vict, healpoints, GET_MAX_HIT(vict));
+	x = vamp(vict, healpoints, GET_MAX_HIT(vict), !GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER));
 	update_pos(vict);
 
 	if (x > 0 && IS_FIGHTING(vict))
