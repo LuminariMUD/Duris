@@ -193,7 +193,8 @@ authority. Before/after levels and threshold XP remain separate level-change dat
 
 Within a summary, retain at most 32 time-allocation buckets keyed by captured
 class/race/faction/level-band/zone/group-size/activity context and 32 XP buckets
-keyed by source/reason/modifier mask/observation status. The summary's captured
+keyed by captured class/race/faction/level-band/zone/group-size plus
+source/reason/modifier mask/observation status. The summary's captured
 class/race/faction/level-band, config and classifier/policy identities are stable:
 seal affected data before any of these change. Preserve time and XP arrays
 independently; expanding both in one report join would multiply their totals.
@@ -202,9 +203,13 @@ Checked-arithmetic overflow makes that metric unavailable with overflow coverage
 never wrap, round or invent a zero.
 
 There are 256 session slots, at most two retained window fragments per session,
-64 complete configuration identities, and the existing 128 encounter runs × 64
-actors. A terminal run waits for its participant/combat evidence and a captured
-native-queue fence, or closes after 120 seconds with explicit missing coverage.
+64 complete configuration identities, 128 active encounter runs and a separate
+128 pending terminal joins, each retaining at most 64 actors. A terminal run
+waits for its participant/combat evidence and a captured native-queue fence, or
+closes after 120 seconds with explicit missing coverage. If pending capacity is
+full, finalize its oldest known prefix early with incomplete-terminal coverage
+before accepting another close; later evidence is explicit late loss. Pending
+joins do not consume the active-run allowance. Test both bounds simultaneously.
 Unavailable encounter character/session dimensions remain null; do not look up
 the current character. Run duration and participation are distinct. Pet and player
 contributions remain separate, and unwired control effects remain null.
@@ -237,13 +242,16 @@ character-days, six terminal rows per encounter (run, four players, one pet),
 two copyovers, two configuration rows/day, hourly health plus four incidents/day,
 and two percent retries on game traffic. Cloud test attempts are already inclusive
 of their retries and are not charged twice in this forecast.
+Each logical login/logout emits two lifecycle rows (entry and exit). Each
+reconnect emits two additional rows (detach and attach); normal entry/exit does
+not also emit attach/detach rows. Copyover adds its retained-session attach row.
 
 | Average connected | Window | All submissions / 31 days | ≤450,000 target |
 | --- | --- | ---: | --- |
-| 50 | 15 minutes | 186,792 | Fits this fixture |
-| 100 | 15 minutes | 372,535 | Fits this fixture |
-| 200 | 15 minutes | 744,021 | Fails |
-| 200 | 30 minutes | 434,398 | Fits this fixture |
+| 50 | 15 minutes | 177,306 | Fits this fixture |
+| 100 | 15 minutes | 353,563 | Fits this fixture |
+| 200 | 15 minutes | 706,077 | Fails |
+| 200 | 30 minutes | 396,454 | Fits this fixture |
 
 The fixture does not establish a production window or daily burst headroom.
 Actual emitted counts, late/boundary fragments, retry/fault rates and performance

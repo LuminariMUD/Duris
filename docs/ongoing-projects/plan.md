@@ -35,9 +35,11 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   `test_telemetry_posthog.py` check native encodings against independent Python
   HMAC vectors, integer limits, invalid inputs and the six-family volume forecast.
   Both MariaDB and flat-file component variants passed under UBSan.
-  The forecast is 372,535 submissions at 100 average connected characters with
-  15-minute windows, 744,021 at 200, and 434,398 at 200 with 30-minute windows.
+  The forecast is 353,563 submissions at 100 average connected characters with
+  15-minute windows, 706,077 at 200, and 396,454 at 200 with 30-minute windows.
   These are explicit fixture assumptions, not production or reducer measurements.
+  Logical login/logout contributes two lifecycle rows, reconnect two additional
+  rows, and copyover one attach; the oracle follows the native session producer.
 - Second-chunk verification passed: `python3 tests/async/test_telemetry_posthog.py`,
   `python3 tests/async/test_telemetry_contract_headers.py` and
   `python3 tests/async/test_telemetry_contract_fixtures.py`. Native encoding

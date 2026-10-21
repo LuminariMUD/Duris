@@ -99,7 +99,7 @@ def volume_tests() -> None:
             "periodic_summaries": residents * days * 86400 // profile["window_seconds"],
             "boundary_summaries": population * days * assumptions["extra_summary_boundaries_per_character_day"],
             "session": population * days * (
-                assumptions["logical_entries_per_character_day"] * 4
+                assumptions["logical_entries_per_character_day"] * 2
                 + assumptions["reconnects_per_character_day"] * 2
             ) + population * assumptions["copyovers"],
             "level_change": population * days // assumptions["character_days_per_level_change"],

@@ -25,13 +25,13 @@
       "expected": {
         "periodic_summaries": 151776,
         "boundary_summaries": 3100,
-        "session": 21800,
+        "session": 12500,
         "level_change": 775,
         "encounter": 4650,
         "configuration": 62,
         "health": 868,
         "cloud_test": 100,
-        "retries": 3661
+        "retries": 3475
       },
       "fits_normal_target": true
     },
@@ -41,13 +41,13 @@
       "expected": {
         "periodic_summaries": 303552,
         "boundary_summaries": 6200,
-        "session": 43600,
+        "session": 25000,
         "level_change": 1550,
         "encounter": 9300,
         "configuration": 62,
         "health": 868,
         "cloud_test": 100,
-        "retries": 7303
+        "retries": 6931
       },
       "fits_normal_target": true
     },
@@ -57,13 +57,13 @@
       "expected": {
         "periodic_summaries": 607104,
         "boundary_summaries": 12400,
-        "session": 87200,
+        "session": 50000,
         "level_change": 3100,
         "encounter": 18600,
         "configuration": 62,
         "health": 868,
         "cloud_test": 100,
-        "retries": 14587
+        "retries": 13843
       },
       "fits_normal_target": false
     },
@@ -73,13 +73,13 @@
       "expected": {
         "periodic_summaries": 303552,
         "boundary_summaries": 12400,
-        "session": 87200,
+        "session": 50000,
         "level_change": 3100,
         "encounter": 18600,
         "configuration": 62,
         "health": 868,
         "cloud_test": 100,
-        "retries": 8516
+        "retries": 7772
       },
       "fits_normal_target": true
     }
