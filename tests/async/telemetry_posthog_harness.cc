@@ -97,5 +97,24 @@ int main(int argc, char **argv)
 								    { producer, sequence }, output);
 		return report(valid, output);
 	}
+	if (argc == 9 && std::strcmp(argv[1], "pet") == 0)
+	{
+		telemetry_posthog_identity_key key{};
+		telemetry_environment_id environment{};
+		telemetry_season_id season{};
+		telemetry_encounter_id run{};
+		telemetry_id actor{};
+		if (!telemetry_posthog_parse_identity_key(argv[2], key) ||
+		    !parse(argv[3], environment) || !parse(argv[4], season) ||
+		    !parse(argv[5], run.producer.boot_id) ||
+		    !parse(argv[6], run.producer.process_id) || !parse(argv[7], run.sequence) ||
+		    !parse(argv[8], actor))
+			return 2;
+		telemetry_posthog_pet_identity output{};
+		output.fill('x');
+		const bool valid =
+			telemetry_posthog_pet_id(key, environment, season, run, actor, output);
+		return report(valid, output);
+	}
 	return 2;
 }
