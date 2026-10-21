@@ -137,8 +137,19 @@ The intervening Assassin plan from master is preserved byte-for-byte in
 - Ablation for this slice: reuse the existing reducer, native producer APIs,
   checked counters and output arena. Retain only the identities/terminal evidence
   needed to join bounded rows; add no SDK, queue, service or payload spool.
-- Next: implement health output, then the
-  HTTPS sender and durable quota before connecting runtime/transport. Native
+- The fifth chunk, branch `issue-59-posthog-health`, implements initial/hourly
+  health output and minute-coalesced incidents in the existing output arena.
+  It reuses the native health monitor, preserves transient alert/recovery evidence,
+  and keeps native `applied_records` separate from HTTP acknowledgement. Six-family
+  creation/loss/expiry/ack/ambiguity counters and native consumed/refused counts
+  reconcile with their aggregate counters. Scoped/process gap counts stay distinct.
+  `test_telemetry_posthog.py` passes 42 scenarios in both modes under UBSan,
+  including cadence, transient recovery, scope/loss, full output, missing/rollback
+  clocks, allocation failure and family accounting after output compaction.
+  Both full low-priority builds passed; logs:
+  `bin/issue59/build-<backend>-health.log`. Formatting and whitespace checks pass.
+- Next: implement durable quota in the existing journal and the HTTPS sender
+  before connecting runtime/transport. Native
   queue admission age and the timer fence belong to that integration; occurrence
   age is not admission age. Resolve the sender's retained retry prefix before
   retiring/expiring borrowed output views. HTTP/quota/lifecycle,
