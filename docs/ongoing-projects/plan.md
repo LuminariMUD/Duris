@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: implementation in progress; Awareness correction qualified for review.
+Status: implementation in progress; Awareness PR open, poison lifecycle qualified for review.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -167,6 +167,10 @@ plan. The progress log below records subsequent implementation and proof.
 
 - Clean starting branch `923175b5e`; fetched `origin/master` is still
   `24a2776f1`. Environment is local. No unrelated changes were present.
+- **Delivery:** [PR #247](https://github.com/LuminariMUD/Duris/pull/247),
+  `branch/issue-187-assassin-rebalance`, head `48cb56a61`, is open for review
+  against master. Current continuation branch is
+  `branch/issue-187-poison-lifecycle`, stacked on #247. No merges or tags.
 - **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
   trained Awareness now enters the existing ordinary stab mitigation branch,
   once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
@@ -195,10 +199,32 @@ plan. The progress log below records subsequent implementation and proof.
   `test_freedom_of_movement_procs.py`. Full-server combat/normal tick expiry
   remains part of the integrated step-5 journey; the native fixture does not
   substitute for it. Chunk 1 can be reviewed independently of that later audit.
-- **Next:** publish chunk 1 after its local gates, then Slowness cleansing and
-  poison event ownership/delivery, progression/Weakness, Control Flee, and the
-  integrated combat/cost audits. Steps 2-5 remain outstanding. No poison,
-  progression, Control Flee or conditional extra-nerf completion is claimed.
+- **Chunk 2, cleansing/lifetime:** Slowness retains both stored poison/slow
+  bits and publishes Slow immediately. `affect_remove()` cancels matching
+  poison timers through the existing scheduler, including duplicate old timers,
+  while preserving other poison types. This is needed on every removal path
+  (cure, Aid, expiry and extraction), so cleanup belongs at affect removal.
+  No event payload, persistence format, poison cadence or scheduler changes.
+- `python3 tests/async/test_poison_lifecycle_runtime.py` first reproduced
+  uncured settled Slowness and Lifeleak's old timer damaging a replacement 10
+  pulses early. After repair it passes ASan/UBSan with production poison bodies,
+  affect operations and scheduler: all seven cure/reapply timelines, duplicate
+  timer cleanup, mixed-type isolation, Aid curing during active dispatch,
+  recurrence, Slow Poison's Neurotoxin delay, Heart Toxin attacker-link removal
+  and owner event cleanup. Remove Poison and Purification's member cure are
+  executed; independently cast Slow survives poison-only cleansing. Stats,
+  damage and character-link allocation are fixtures. Full death/reconnect and
+  actual tick expiry remain integrated-journey work.
+- Chunk-2 adjacent gates pass: `test_cleric_utilities_runtime.py`,
+  `test_freedom_of_movement_procs.py`, `test_nevent_cancellation_runtime.py`,
+  `test_spell_affect_regressions.py`, formatting, diff checks and
+  `make -C src -j4`. A weak aborting poison callback in `harness_stubs.cpp`
+  lets existing non-poison affect fixtures link; the poison harness supplies
+  the real callback.
+- **Next:** publish chunk 2, then shared weapon delivery/save/
+  feedback, progression/Weakness, Control Flee and integrated combat/cost audits.
+  Steps 2-5 remain partially/outstanding; no delivery/resistance, progression,
+  Control Flee or conditional extra-nerf completion is claimed.
 
 ## Implementation sequence and acceptance
 

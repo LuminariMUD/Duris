@@ -12866,7 +12866,8 @@ Cumulative:     No
 Duration:       Instantaneous
 Type of spell:  Generic
 
-This spell will remove the poison from the victim or object.
+This spell will remove the poison from the victim or object. Poison-induced
+Slowness is removed as well; a separately cast Slow spell is unaffected.
 ===========================================================================
 See also: POISON
 
