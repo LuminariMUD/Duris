@@ -5868,7 +5868,7 @@ See also: DREADLORD, SKILL_DREADLORD
 #
 FLEE (Command)
 ===========================================================================
-Syntax:         flee
+Syntax:         flee [direction]
 
 If, for instance, the minor daemon you so carefully considered turns out to 
 be a little more than you bargained for, you can attempt to escape by using 
@@ -21531,6 +21531,14 @@ See also: ground casting, aerial casting
 "CONTROL FLEE" (Skill)
 ===========================================================================
 "Control flee" lets a retreating rogue choose their escape rather than trust fortune. When flight grips the body, trained instincts steer the runner toward a named exit instead of a random door. Those without the talent bolt wherever panic pushes them.
+
+Use flee <direction> to request an available, safe exit. Abbreviations and
+diagonal directions work. At 100 skill, direction control succeeds 95% of the
+time. If panic makes you lose control, you are told and try a random safe exit.
+An invalid or blocked requested exit is refused without choosing another one.
+
+Choosing a direction is separate from escaping combat: even a controlled flee
+can fail to break away, and terrain, mounts or obstacles can still prevent it.
 ===========================================================================
 See also: flee, retreat, expeditious retreat
 #

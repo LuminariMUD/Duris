@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: implementation in progress; Awareness PR open, poison lifecycle qualified for review.
+Status: implementation in progress; Awareness/lifecycle PRs open, Control Flee qualified for review.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -169,8 +169,10 @@ plan. The progress log below records subsequent implementation and proof.
   `24a2776f1`. Environment is local. No unrelated changes were present.
 - **Delivery:** [PR #247](https://github.com/LuminariMUD/Duris/pull/247),
   `branch/issue-187-assassin-rebalance`, head `48cb56a61`, is open for review
-  against master. Current continuation branch is
-  `branch/issue-187-poison-lifecycle`, stacked on #247. No merges or tags.
+  against master. [PR #248](https://github.com/LuminariMUD/Duris/pull/248),
+  `branch/issue-187-poison-lifecycle`, head `52a72e1e0`, is open against #247.
+  Current continuation branch is `branch/issue-187-control-flee`, stacked on
+  #248. No merges or tags.
 - **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
   trained Awareness now enters the existing ordinary stab mitigation branch,
   once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
@@ -221,10 +223,41 @@ plan. The progress log below records subsequent implementation and proof.
   `make -C src -j4`. A weak aborting poison callback in `harness_stubs.cpp`
   lets existing non-poison affect fixtures link; the poison harness supplies
   the real callback.
-- **Next:** publish chunk 2, then shared weapon delivery/save/
-  feedback, progression/Weakness, Control Flee and integrated combat/cost audits.
-  Steps 2-5 remain partially/outstanding; no delivery/resistance, progression,
-  Control Flee or conditional extra-nerf completion is claimed.
+- **Chunk 3, E:** implement the planned skill-scaled 1-100 directional check,
+  independent of training success and the existing escape roll. Parse/validate
+  the requested token and trailing arguments before control training/RNG; cache
+  the existing eligible-exit checks for validation and random selection. Reject
+  zero safe exits before attempting a random range. Keep movement specials in
+  their existing dispatcher, once per actual movement attempt.
+- The movement-special tests exposed two relevant existing failures: a special
+  redirect could claim the named direction succeeded, and a special that frees
+  the mover left a post-movement dereference. Reuse `do_move()`'s removal-
+  generation/list check and the movement return value; report an unexpected
+  turn on a special redirect. No new movement preflight or liveness framework.
+- `python3 tests/async/test_control_flee_runtime.py` passes under ASan/UBSan.
+  Executes full `do_flee`, parser/direction helpers, `bad_flee_dir`,
+  `can_enter_room`, movement dispatcher and equipment-Sneak restoration.
+  Exact skill-45/60/80/90/100 roll enumeration passes with/without training;
+  fixed seed 187, 10,000 attempts gives **9,509 controlled**, **194 random
+  fallback coincidences** and **7,921 escapes**. Escape roll thresholds remain
+  78/80/86 for one/two/four-or-more exits with the original 0-100 comparison.
+  Also covers arguments/abbreviations/diagonals, zero/one/many exits, closed/
+  blocked/secret/drop exits, passdoor, flying mount, water/current eligibility,
+  random no-skill/non-Rogue/NPC/no-argument flee, grapple/woods refusal, one
+  special invocation, refusal/redirection/extraction, vitality and Sneak.
+  Final physical transition, combat and affect bookkeeping are fixtures;
+  full-server movement/combat coverage remains part of step 5.
+- Historical source `52a72e1e0` was compiled through the same flee fixture:
+  max-skill control was exactly **99/130 without notch** and **130/130 with
+  notch**; a redirected special falsely reported eastward; freeing the mover
+  reproduced ASan `heap-use-after-free`. These baseline failures are repaired
+  by chunk 3. Passed `make -C src -j4`, formatting/diff checks,
+  `test_combat_movement_feedback.py`, `test_movement_liveness_runtime.py`
+  (22 existing lifetime cases) and the Assassin mechanics regression.
+- **Next:** publish chunk 3 after local gates, then shared weapon delivery/save/
+  feedback, progression/Weakness and integrated combat/cost audits.
+  Steps 2/3/5 remain partially/outstanding; no delivery/resistance, progression
+  or conditional extra-nerf completion is claimed.
 
 ## Implementation sequence and acceptance
 

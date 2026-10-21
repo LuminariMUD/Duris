@@ -2483,6 +2483,7 @@ void do_flee(P_char ch, char *argument, int cmd)
 	int percent_chance;
 	int tmp_mv;
 	bool expeditious = false;
+	bool flee_exits[NUM_EXITS] = {};
 	P_char rider = get_linking_char(ch, LNK_RIDING);
 	P_char mount = get_linked_char(ch, LNK_RIDING);
 	P_char mount_opponent = mount ? GET_OPPONENT(mount) : NULL;
@@ -2614,12 +2615,38 @@ void do_flee(P_char ch, char *argument, int cmd)
 		if (world[ch->in_room].dir_option[i])
 			if (CAN_GO(ch, i) && !bad_flee_dir(ch, EXIT(ch, i)->to_room) &&
 			    can_enter_room(ch, EXIT(ch, i)->to_room, 0))
+			{
+				flee_exits[i] = true;
 				available_exits++;
+			}
 
 	attempted_dir = -1;
 	/* control flee skill tries to get attempted_dir */
-	if (argument)
-		one_argument(argument, arg);
+	char *remaining = one_argument(argument, arg);
+	while (remaining && isspace(*remaining))
+		remaining++;
+	int control_skill = IS_PC(ch) && GET_CLASS(ch, CLASS_ROGUE) ?
+				    GET_CHAR_SKILL(ch, SKILL_CONTROL_FLEE) :
+				    0;
+	if (*arg && control_skill)
+	{
+		attempted_dir = dir_from_keyword(arg);
+		if ((remaining && *remaining) || attempted_dir < 0)
+		{
+			send_to_char("Choose one escape direction: flee <direction>.\n", ch);
+			return;
+		}
+		if (!flee_exits[attempted_dir])
+		{
+			send_to_char("You cannot flee through that exit.\n", ch);
+			return;
+		}
+	}
+	if (!available_exits)
+	{
+		send_to_char("You cannot find a safe exit to flee through!\n", ch);
+		return;
+	}
 
 	// Expeditious retreat check. Apr09 -Lucrot
 	if (!IS_SET(ch->specials.act, ACT_MOUNT) && IS_FIGHTING(ch) &&
@@ -2627,16 +2654,14 @@ void do_flee(P_char ch, char *argument, int cmd)
 	     (GET_CHAR_SKILL(ch, SKILL_EXPEDITIOUS_RETREAT) > number(1, 100))))
 		expeditious = true;
 
-	if (*arg && IS_PC(ch))
+	if (attempted_dir >= 0)
 	{
-		if (GET_CLASS(ch, CLASS_ROGUE))
+		notch_skill(ch, SKILL_CONTROL_FLEE, get_property("skill.notch.offensive", 7));
+		int chance = control_skill * MAX_CHANCE_TO_CONTROL_FLEE / 100;
+		if (number(1, 100) > chance)
 		{
-			int skl = GET_CHAR_SKILL(ch, SKILL_CONTROL_FLEE);
-
-			if (skl && (notch_skill(ch, SKILL_CONTROL_FLEE,
-						get_property("skill.notch.offensive", 7)) ||
-				    skl > number(1, 130)))
-				attempted_dir = dir_from_keyword(argument);
+			send_to_char("You panic and lose control of your escape direction!\n", ch);
+			attempted_dir = -1;
 		}
 	}
 
@@ -2647,16 +2672,12 @@ void do_flee(P_char ch, char *argument, int cmd)
 
 		for (i = 0; i < NUM_EXITS; i++)
 		{
-			if (world[ch->in_room].dir_option[i])
+			if (flee_exits[i])
 			{
-				if (CAN_GO(ch, i) && !bad_flee_dir(ch, EXIT(ch, i)->to_room) &&
-				    can_enter_room(ch, EXIT(ch, i)->to_room, 0))
+				if (!picked--)
 				{
-					if (!picked--)
-					{
-						attempted_dir = i;
-						break;
-					}
+					attempted_dir = i;
+					break;
 				}
 			}
 		}
@@ -2703,10 +2724,11 @@ void do_flee(P_char ch, char *argument, int cmd)
 
 	ch->points.delay_move = 0;
 
+	const auto removal_before = character_removal_generation;
 	if (succeded)
-		do_simple_move(ch, attempted_dir, MVFLG_DRAG_FOLLOWERS | MVFLG_FLEE);
+		succeded = do_simple_move(ch, attempted_dir, MVFLG_DRAG_FOLLOWERS | MVFLG_FLEE);
 
-	if (!IS_ALIVE(ch))
+	if ((removal_before != character_removal_generation && !char_in_list(ch)) || !IS_ALIVE(ch))
 		return;
 
 	if (start_room == ch->in_room)
@@ -2741,8 +2763,13 @@ void do_flee(P_char ch, char *argument, int cmd)
 		else if (rider && mount && GET_VITALITY(mount) > 0)
 			GET_VITALITY(mount) = MAX(0, (GET_VITALITY(mount) - (number(30, 40))));
 
-		snprintf(buf, sizeof buf, "You flee %sward!\n", dirs[attempted_dir]);
-		send_to_char(buf, ch);
+		if (succeded)
+		{
+			snprintf(buf, sizeof buf, "You flee %sward!\n", dirs[attempted_dir]);
+			send_to_char(buf, ch);
+		}
+		else
+			send_to_char("Your escape takes an unexpected turn.\n", ch);
 
 		if (!affected_by_spell(ch, SKILL_AWARENESS))
 		{
