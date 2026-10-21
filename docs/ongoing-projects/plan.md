@@ -375,17 +375,15 @@ plan. The progress log below records subsequent implementation and proof.
   each changed formula; real-server comparisons supply the missing integrated
   combat/event/command evidence across the step-5 matrix. Synthetic reference
   actor results will not be reported as live balance or optimal-play win rates.
-- The first seeded, unarmored 12-row original and cleanse-only journeys
-  happened to match (10/12 landed; 124 summed delivered HP in each). A second
-  run on the same seed differed by a few HP in individual rows as live combat
-  pulse timing shifted. Do **not** treat these as paired deterministic damage
-  trials; the cleanse-only source diff and native matched-function tests isolate
-  that change. The revised 36-row journey sampled all six levels,
-  Human/Mountain Dwarf/Duergar attackers and Cleric/Ranger defenders (30/36
-  landed, two Critical Stabs in that first run). Ranger trained Awareness
-  reduction fired for each attacker race. These are single controlled openings,
-  not a rate or win-rate estimate; the audit runner also adds equal worn items
-  and a separate armor/level mismatch after the matrix.
+- Review qualification discovered that Git silently skipped the cleanse-only
+  patch inside the nested archive. The old original/cleanse-only source and
+  binary hashes were identical. Those historical comparisons do not establish
+  cleanse-only behavior and are withdrawn. The runner now applies the patch
+  outside Git's repository-prefix handling and rejects identical variants.
+  Fresh source/binary/runtime hashes and matrix results are required below.
+- Historical revised-only rows sampled all six levels, three attacker races
+  and Cleric/Ranger defenders. These remain reference openings rather than
+  rate or win-rate estimates; the refreshed comparison includes current master.
 - In the revised real-server scenario, matched dagger/leather gear gave a
   landed critical opening for 16 delivered HP; an attacker ten levels lower
   gave 9, and a better-armored defender at level 51 gave 6. Requested eastward
@@ -394,9 +392,11 @@ plan. The progress log below records subsequent implementation and proof.
 - Full-server Heart Toxin caused its first six-second symptom and **43-47 net
   HP** loss in the unwarded high-HP reference. A prepared Cleric began Remove
   Poison immediately but completed after that first hit on this host. The same
-  Cleric did remove actual weapon Slowness. Healer Warding Faith began at 168,
-  read 164-165 after the opening and 32-34 after Heart's scheduled hit; the
-  ward absorbed it, leaving no HP loss or sickness message. A disposable worn
+  Cleric did remove actual weapon Slowness. That historical run also observed
+  Heart absorption by Healer Warding Faith. Master PR #242 subsequently retired
+  that ward, so its old absorption result is no longer applicable. The refreshed
+  scenario instead verifies that a legal Healer has no ward and receives Heart's
+  scheduled symptom; the current retention decision does not rely on ward absorption. A disposable worn
   save-penalty item made delivery reachable for these command checks; native
   tests enumerate the normal equal-level PvP save chance as 50/56/61/66/71/76%
   across the six sampled levels. The native scheduler test proves Heart's
@@ -432,7 +432,7 @@ plan. The progress log below records subsequent implementation and proof.
   interrupt on application and has long cast/movement windows between events;
   Aid/Remove Poison and Slow Poison remain available. Heart's first hit can
   beat an immediately started prepared Cleric cure, but the equal-level PvP
-  application save, actual ward absorption, later cure and 1-in-4 repeat branch
+  application save, later cure and 1-in-4 repeat branch
   constrain the realized outcome. No extra cooldown, repeat cap or damage cut
   is justified by this isolated reference; production duel balance remains
   unmeasured. A requested extra numeric restriction would be a separate owner
@@ -454,14 +454,17 @@ Run the two independent audit legs with `python3
 tests/async/run_assassin_balance_journey.py --prepare` (all three seeded
 server binaries and the level/race matrix) and `python3
 tests/async/run_assassin_balance_journey.py --variant revised
---scenarios-only` (equipment, escape, cure, ward, dual coating, solo NPC and
+--scenarios-only` (equipment, escape, cure, Healer ward retirement, dual coating, solo NPC and
 transfer). Outputs and compiled artifacts stay under ignored `bin/tests/`.
 The baseline is `24a2776f1`, the checked-in cleanse-only fixture patch is
 `tests/async/fixtures/assassin_cleanse_only.patch` (SHA-256
 `3fc5b19b015e7005b04adc0a10b3a391052e3a4020eb05d6a1d6fed04a85b703`),
-and the revised source/binary hashes are written to `binaries.json`.
+and source/binary hashes are written to `binaries.json`. Every variant also
+records the shared runtime-input digest: copied lib and mini-world data, recipe
+prototypes, and the journey/character fixture code. Changing these inputs
+invalidates a prepared manifest and requires --prepare again.
 No production operation, migration, merge or tag has been performed.
-Audit gates: the six-level, three-race live matrix rows completed on the three
+Historical pre-refresh audit gates: the six-level, three-race live matrix rows completed on the three
 verified seeded binaries; the revised `--scenarios-only` journey passed every
 equipped, escape, cure, ward, dual, NPC and traded-vial case. The extended
 `test_poison_lifecycle_runtime.py` passed under ASan/UBSan, including four-type
@@ -745,3 +748,22 @@ PR #251 review correction: weapon poison captures the original player level for
 morphed attackers, matching the save classification. Ordinary NPCs retain their
 own level. Native regression cases cover level-30/46/56 players in mismatched
 forms, both weaker and stronger, plus an ordinary level-46 NPC.
+
+### PR #256 review and master refresh
+
+- Every dual-opening attempt explicitly casts Remove Poison and checks the saved
+  victim has no poison affects before recoating. Mixed and duplicate cases no
+  longer depend on prior expiry or random removal.
+- Prepared manifests pin runtime inputs as well as binary/source/seed hashes.
+  The focused input regression changes properties, mini-world data, recipe
+  prototypes and fixture code and verifies each invalidates the runtime digest.
+- Master 9090518ba retired Healer Warding Faith. Replace the obsolete absorption
+  assertion with a legal Healer's absent-ward/scheduled-Heart check. The earlier
+  ward results above are historical and do not support current balance claims.
+- Keep the offhand fixture at vnum 22813 so it does not collide with the new
+  returning-dart fixture at 22812. Preserve dart, morph and poison lifecycle tests
+  while carrying the audit onto the repaired stack.
+- Correct a further reproduced audit blocker: nested git apply silently skipped
+  the cleanse-only patch. Use standalone patch with an applied-content check,
+  repair previously skipped caches, and reject identical original/cleanse-only
+  source or binary hashes. Historical paired-baseline claims are withdrawn.

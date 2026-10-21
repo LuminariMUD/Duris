@@ -32,12 +32,29 @@ RACES = ("Human", "Mountain Dwarf", "Duergar Dwarf")
 NOTICE = "poison from your attacker's blade enters your bloodstream!"
 
 
-def source_digest(root):
+# These are copied or read by the shared runtime fixture and command helpers.
+RUNTIME_INPUTS = (
+    "lib", "areas_mini", "areas/obj/heavens.obj",
+    "tests/async/run_assassin_balance_journey.py",
+    "tests/async/test_assassin_combat_journey.py",
+    "tests/async/test_flatfile_combat_journey.py",
+    "tests/async/assassin_journey_fixture.cpp",
+    "tests/async/run_paladin_balance_journey.py",
+    "tests/async/run_divine_refusal_journey.py",
+    "tests/async/run_item_pilot_journey.py",
+    "tests/async/test_flight_network_journey.py",
+)
+
+
+def source_digest(root, inputs=("src",)):
     digest = hashlib.sha256()
-    for path in sorted((root / "src").rglob("*")):
-        if path.is_file():
-            digest.update(str(path.relative_to(root)).encode() + b"\0")
-            digest.update(path.read_bytes())
+    for name in inputs:
+        source = root / name
+        paths = sorted(source.rglob("*")) if source.is_dir() else [source]
+        for path in paths:
+            if path.is_file():
+                digest.update(str(path.relative_to(root)).encode() + b"\0")
+                digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
@@ -59,17 +76,26 @@ def prepare_binaries():
     patch = (Path(__file__).parent / "fixtures/assassin_cleanse_only.patch").read_bytes()
     if not cleansed.exists():
         shutil.copytree(original, cleansed, ignore=shutil.ignore_patterns("bin"))
-        subprocess.run(["git", "apply", "-"], cwd=cleansed, input=patch, check=True)
         (cleansed / "qualification-ref").write_text(BASE + "\n")
         (cleansed / "qualification-patch").write_bytes(patch)
     assert (cleansed / "qualification-ref").read_text().strip() == BASE
     assert (cleansed / "qualification-patch").read_bytes() == patch
+    # git apply can silently skip paths when this archive is nested in a worktree.
+    # Verify actual patch content, including caches written by the old runner.
+    reversed_patch = subprocess.run(
+        ["patch", "-p1", "--batch", "--reverse", "--forward", "--dry-run"], cwd=cleansed,
+        input=patch, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if reversed_patch.returncode:
+        subprocess.run(["patch", "-p1", "--batch", "--forward"], cwd=cleansed,
+                       input=patch, check=True)
+    assert source_digest(original) != source_digest(cleansed), "cleanse-only patch did not apply"
 
     seed = Path(__file__).with_name("assassin_seed_fixture.cpp")
     seed_sha = hashlib.sha256(seed.read_bytes()).hexdigest()
     seed_object = directory / f"seed-{seed_sha[:12]}.o"
     subprocess.run(["g++", "-std=c++20", "-c", str(seed), "-o", str(seed_object)], check=True)
     result = {}
+    runtime_sha = source_digest(ROOT, RUNTIME_INPUTS)
     for name, source in (("original", original), ("cleansed", cleansed), ("revised", ROOT)):
         utility_path = source / "tests/async/server_build_artifacts.py"
         spec = importlib.util.spec_from_file_location("assassin_builder_" + name, utility_path)
@@ -92,8 +118,10 @@ def prepare_binaries():
         result[name] = dict(binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                             source=BASE if name != "revised" else subprocess.check_output(
                                 ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-                            src_sha256=source_digest(source), seed=187, seed_fixture_sha256=seed_sha)
+                            src_sha256=source_digest(source), runtime_sha256=runtime_sha, seed=187, seed_fixture_sha256=seed_sha)
     result["cleansed"]["patch_sha256"] = hashlib.sha256(patch).hexdigest()
+    assert result["original"]["binary_sha256"] != result["cleansed"]["binary_sha256"], \
+        "original and cleanse-only binaries are identical"
     MANIFEST.write_text(json.dumps(result, indent=2) + "\n")
 
 
@@ -241,41 +269,32 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     result["slowness_cure"] = slowness
     print("revised Cleric cured Slowness", slowness, flush=True)
 
-    # A Healer Cleric has innate Warding Faith; Heart uses raw_damage's normal
-    # ward path rather than bypassing it. Observe the actual ward pool at six seconds.
+    # Current master retired Healer Warding Faith. A legal Healer must not
+    # acquire its old absorption pool during the Heart delivery/tick path.
     set_char("Venomtarget", "spec", "2")
     settle()
     enabled = command(victim, "display ward")
     assert "ON" in enabled, enabled
-    def ward():
-        prompt = command(victim, "score")
-        match = re.search(r"(\d+)/(\d+)W", prompt)
-        assert match, prompt
-        return int(match[1]), int(match[2])
-    ward_initial, ward_max = ward()
-    assert ward_initial > 0 and ward_max > 0
-    ward_symptom_start = len(victim.transcript)
-    warded = delivered(473, "heart")
-    ward_before = ward()[0]
-    warded_hp = hp(staff, "Venomtarget")[0]
+    assert not re.search(r"\d+(?:/\d+)?W\b", command(victim, "score"))
+    healer_symptom_start = len(victim.transcript)
+    healer_heart = delivered(473, "heart")
+    healer_hp = hp(staff, "Venomtarget")[0]
     time.sleep(6.5)
     victim._receive()
-    warded_symptom = "You suddenly feel sick" in bytes(
-        victim.transcript[ward_symptom_start:]).decode(errors="replace")
-    ward_after = ward()[0]
-    assert ward_after < ward_before, "Heart Toxin did not consume Warding Faith"
-    result["heart_ward"] = {"application": warded, "ward_initial": ward_initial,
-                            "ward_before_observation": ward_before,
-                            "ward_after": ward_after,
-                            "symptom_seen": warded_symptom,
-                            "hit_damage": warded_hp-hp(staff, "Venomtarget")[0]}
-    print("revised Heart warded tick", result["heart_ward"], flush=True)
+    healer_symptom = "You suddenly feel sick" in bytes(
+        victim.transcript[healer_symptom_start:]).decode(errors="replace")
+    assert healer_symptom, "Heart did not reach the unwarded Healer"
+    assert not re.search(r"\d+(?:/\d+)?W\b", command(victim, "score"))
+    result["healer_heart"] = {"application": healer_heart, "retired_ward_absent": True,
+                              "symptom_seen": healer_symptom,
+                              "observed_hit_change": healer_hp-hp(staff, "Venomtarget")[0]}
+    print("revised Healer Heart tick without retired ward", result["healer_heart"], flush=True)
 
     # A dual opening can establish two different coatings; a duplicate ID is
     # consumed but cannot establish a second affect or victim notice.
     set_char("Venomtarget", "spec", "0")
     settle()
-    give(22812, "offhand", "Shadeblade")
+    give(22813, "offhand", "Shadeblade")
     wielded = command(assassin, "wield offhand")
     assert "wield" in wielded.lower(), wielded
     for label, second_vnum, second_name, expected in (
@@ -283,6 +302,9 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
         ("duplicate_dual", 472, "neurotoxin", 1)):
         for attempt in range(12):
             settle()
+            # restore replenishes resources; explicitly cure all earlier poisons.
+            command(staff, "cast 'remove poison' Venomtarget")
+            assert "affect 3 " not in inspect(), "dual opening inherited a poison"
             give(472, "neurotoxin", "Shadeblade")
             if second_vnum != 472:
                 give(second_vnum, second_name, "Shadeblade")
@@ -369,7 +391,7 @@ S
 """
         world_path.write_text(world.replace("$~", refuge + "$~"))
         objects = runtime / "areas_mini/mini.obj"
-        offhand = """#22812
+        offhand = """#22813
 offhand auditdagger dagger~
 an offhand audit dagger~
 An offhand audit dagger rests here.~
@@ -532,6 +554,10 @@ def main():
     if options.prepare or not MANIFEST.exists():
         prepare_binaries()
     manifest = json.loads(MANIFEST.read_text())
+    assert manifest["original"]["src_sha256"] != manifest["cleansed"]["src_sha256"], \
+        "original and cleanse-only sources are identical; rerun --prepare"
+    assert manifest["original"]["binary_sha256"] != manifest["cleansed"]["binary_sha256"], \
+        "original and cleanse-only binaries are identical; rerun --prepare"
     fixture_binary = ROOT / "bin/tests/assassin-comparative/snapshot-fixture"
     subprocess.run(["g++", "-std=c++20", "-Isrc", "tests/async/assassin_journey_fixture.cpp",
                     "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
@@ -540,9 +566,11 @@ def main():
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
                     "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
     result = {}
+    runtime_sha = source_digest(ROOT, RUNTIME_INPUTS)
     for variant, entry in manifest.items():
         if selected != "all" and variant != selected:
             continue
+        assert entry.get("runtime_sha256") == runtime_sha, "runtime fixture inputs changed; rerun --prepare"
         assert entry["source"] == BASE or variant == "revised"
         assert entry["src_sha256"] == source_digest(ROOT if variant == "revised" else
                                                      MANIFEST.parent / f"{variant}-24a2776f1")
