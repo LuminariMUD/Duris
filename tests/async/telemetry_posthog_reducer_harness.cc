@@ -583,6 +583,18 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 		emit(xp(3, 3, 3, 44U, 12U));
 		emit(xp(4, 4, 4, 44U, 0U));
 	}
+	else if (name == "xp-dimensions")
+	{
+		emit(xp(1, 1, 1));
+		auto changed = xp(2, 2, 2);
+		changed.payload.progression.dimensions.zone_vnum = 11;
+		emit(changed);
+		changed = xp(3, 3, 3);
+		changed.payload.progression.dimensions.zone_vnum = 11;
+		changed.payload.progression.dimensions.group_size = 2U;
+		emit(changed);
+		emit(xp(4, 4, 4));
+	}
 	else if (name == "direct-unknown-dimensions")
 	{
 		for (std::uint32_t index = 0U; index < 4U; ++index)

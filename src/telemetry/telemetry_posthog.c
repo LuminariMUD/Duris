@@ -824,7 +824,7 @@ void seal_fragment(character_state &character, fragment &part, telemetry_monoton
 	{
 		const auto &bucket = part.xp_buckets[index];
 		auto *object = row.element(xps);
-		dimensions_json(row, object, &bucket.dimensions);
+		dimensions_json(row, object, &bucket.dimensions, true);
 		row.number(object, "source", static_cast<std::uint32_t>(bucket.source));
 		row.number(object, "reason", static_cast<std::uint32_t>(bucket.reason));
 		row.number(object, "observation_status",
@@ -1072,6 +1072,8 @@ bool consume_progression(const telemetry_progression_payload &xp, telemetry_mono
 	{
 		auto &bucket = part.xp_buckets[index];
 		if (same_character_dimensions(bucket.dimensions, xp.dimensions) &&
+		    bucket.dimensions.zone_vnum == xp.dimensions.zone_vnum &&
+		    bucket.dimensions.group_size == xp.dimensions.group_size &&
 		    bucket.source == xp.source && bucket.reason == xp.reason &&
 		    bucket.observation == xp.observation_status &&
 		    bucket.modifiers == xp.modifier_flags)

@@ -98,7 +98,7 @@ def reducer_tests(binary: Path) -> None:
         "config-output-pressure", "config-byte-pressure", "config-allocation-failure",
         "sealed-force", "sealed-age", "sealed-config", "sealed-dimensions",
         "sealed-level", "sealed-eviction", "initial-gap", "unknown-xp-level",
-        "direct-unknown-dimensions",
+        "direct-unknown-dimensions", "xp-dimensions",
     )
     observed = {}
     forbidden = {"pid", "subject_id", "actor_pid", "name", "email", "account_id", "ip",
@@ -310,6 +310,14 @@ def reducer_tests(binary: Path) -> None:
     unknown_levels = summaries(observed["unknown-xp-level"][0])
     assert [part["xp_observed_level"] for part in unknown_levels] == [None, 12, None]
     assert [part["xp"]["applied_xp"] for part in unknown_levels] == ["3", "3", "4"]
+    xp_dimensions = summaries(observed["xp-dimensions"][0])
+    assert len(xp_dimensions) == 1
+    assert xp_dimensions[0]["xp"]["applied_xp"] == "10"
+    assert xp_dimensions[0]["xp"]["attempts"] == "4"
+    allocations = xp_dimensions[0]["xp_allocations"]
+    assert [(part["zone"], part["group_size"], part["applied_xp"]) for part in allocations] == [
+        (10, 1, "5"), (11, 1, "2"), (11, 2, "3"),
+    ]
     direct_rows = observed["direct-unknown-dimensions"][0]
     direct = [row for row in direct_rows if row["event"] in ("duris_session", "duris_level_change")]
     assert len(direct) == 8
