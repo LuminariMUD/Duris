@@ -1039,7 +1039,11 @@ AWARENESS (Skill)
 Syntax:         awareness
 
 A person with awareness is protected somewhat from backstabs, bodyslams and
-being stolen from, as well as heightening the senses somewhat. 
+being stolen from, as well as heightening the senses somewhat. Training improves
+the skill's effect. While active, it gives the same chance to reduce ordinary
+backstab damage as other awareness effects, against attackers of every race.
+The two forms do not stack. Critical stabs bypass this ordinary protection;
+the separate protection after a recent backstab still applies to criticals.
 ===========================================================================
 See also: SNEAK, BACKSTAB, BODYSLAM, STEAL
 

@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: implementation plan; no gameplay changes or combat qualification performed.
+Status: implementation in progress; Awareness correction qualified for review.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -137,8 +137,10 @@ availability and the reported win/escape outcomes remain unverified.
   helper-only test cannot prove either caller actually uses it.
 - **Simplify:** reuse `poison_data[]`, `NewSaves`, existing affect `level`,
   `dir_from_keyword`, exit checks and native harness/journey utilities.
-  Keep poison spell signatures and existing event/affect machinery. Use
-  sequential focused commits on this branch; no stack or new work items needed.
+  Keep poison spell signatures and existing event/affect machinery. Publish
+  each qualified chunk as a focused PR, stacking later branches on the preceding
+  PR where they share this handoff or implementation. Do not create release tags
+  for unmerged feature work.
 - **Drop:** blanket base/offhand stab reductions, an 80% offhand multiplier,
   removal of dual-poison openings, universal one-poison caps, automatic critical
   nerfs, recipe-selection UI, random crafting failure, inventory invalidation,
@@ -158,7 +160,45 @@ Touch `src/cmd/actobj.c` only for an accepted use gate;
 `src/magic/affects.c` only if a lifecycle regression requires it.
 Read `skills.c`, `config.h`, `utility.c`, `actmove.c`, `guild.c`, `sparser.c`
 and `duris.properties` as dependencies; they do not need automatic edits.
-This planning commit changes only this document and the preserved #107 plan.
+The original planning commit changed only this document and the preserved #107
+plan. The progress log below records subsequent implementation and proof.
+
+## Progress and handoff (2026-10-21)
+
+- Clean starting branch `923175b5e`; fetched `origin/master` is still
+  `24a2776f1`. Environment is local. No unrelated changes were present.
+- **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
+  trained Awareness now enters the existing ordinary stab mitigation branch,
+  once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
+  exemption. Critical bypass, recent-stab quarter damage, knockout minimum,
+  five one-hit wards, stab probability and both weapon slots remain unchanged.
+- Ablation decision: use the existing mitigation branch and flags without
+  aliases or a new strength formula. The matched-function comparison supports
+  the plan's proposed trained/passive contract: neither stacks, while criticals
+  and recent-stab protection remain distinct. Additional critical tuning is
+  still conditional on step 5; this does not claim overall PvP balance.
+- New `python3 tests/async/test_assassin_mechanics_runtime.py` executes complete
+  production `do_awareness`, `single_stab`, `backstab`, stat indexing and affect
+  list operations under ASan/UBSan with checked-in backstab properties. Before
+  editing production it reproduced all sub-75 zero modifiers and the racial/
+  trained defense bypass. Matched level-56 fixture: ordinary 67, passive-aware
+  Human 40, critical 87, recent-critical 20. Before repair trained-only and
+  dwarf passive defense delivered 67; afterward all active forms/races deliver
+  40. Damage delivery/stat recalculation are fixtures, not a full-server duel.
+- Native qualification passed: modifier endpoints at 1/45/60/70/74/75/80/100,
+  refresh, low-INT zero duration, passive coexistence/removal, ordinary/critical/
+  recent/knockout/ward cases, both weapon slots, failed-stab melee fallback,
+  victim death and attacker departure. Also verifies a lost INT/opportunity roll
+  and mitigation on both slots of a complete trained-aware opening.
+- Passed `make -C src -j4`, `./scripts/format.sh --check`, `git diff --check`,
+  `test_combat_movement_feedback.py`, `test_spell_affect_regressions.py` and
+  `test_freedom_of_movement_procs.py`. Full-server combat/normal tick expiry
+  remains part of the integrated step-5 journey; the native fixture does not
+  substitute for it. Chunk 1 can be reviewed independently of that later audit.
+- **Next:** publish chunk 1 after its local gates, then Slowness cleansing and
+  poison event ownership/delivery, progression/Weakness, Control Flee, and the
+  integrated combat/cost audits. Steps 2-5 remain outstanding. No poison,
+  progression, Control Flee or conditional extra-nerf completion is claimed.
 
 ## Implementation sequence and acceptance
 
@@ -389,10 +429,11 @@ this document describe the final behavior. Report unavailable checks explicitly.
 Production deployment, migrations, player-data changes and live balance
 acceptance are separate owner-authorized operations.
 
-Planning validation performed here: current issue and both comments read;
+Historical planning validation (before implementation): issue and both comments read;
 baseline fetched; affected functions, callers, flags, properties, event/cure
-paths and existing test infrastructure inspected. No C/C++ changes, native
-build, regression execution or controlled PvP/PvE result is claimed by this plan.
+paths and existing test infrastructure inspected. That planning pass performed
+no C/C++ changes, native build, regression or controlled PvP/PvE execution;
+subsequent implementation evidence is recorded in the progress log above.
 Documentation checks pass: all 19 local links resolve, all twelve workstreams
 are mapped, the previous plan is byte-identical, and `git diff --check` is clean.
 
