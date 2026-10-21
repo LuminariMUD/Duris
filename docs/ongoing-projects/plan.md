@@ -3,7 +3,7 @@
 Status: **replanned on 2026-10-21 UTC; implementation incomplete; production disabled.**
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
 Working branch: `issue-59-posthog-acceptance`, based on
-`6ea2ab792a11d7b6a7eb0f0d2947c50c0346062d` (runtime PR #261).
+`8db892ac910828c588b795761986d2e37e002784` (runtime PR #261).
 The earlier issue-107 plan remains in [plan-issue-107.md](plan-issue-107.md).
 The intervening Assassin plan is preserved byte-for-byte in
 [plan-issue-187.md](plan-issue-187.md).
@@ -15,25 +15,27 @@ previous implementation sequence and its extra completion gates. Issue #59
 closes when this reduced delivery meets the completion criteria below. Deferred
 work is outside #59's closure requirements and remains optional follow-up.
 Implementation is active. The worker HTTPS component is in [PR #260](https://github.com/LuminariMUD/Duris/pull/260); runtime
-integration is in progress. Production export remains disabled.
+integration is ready for review in [PR #261](https://github.com/LuminariMUD/Duris/pull/261).
+Gameplay/report/performance acceptance remains incomplete. Production export remains disabled.
 
 ## Delivery target and estimate
 
-**Deliver useful, query-verified gameplay analytics in 5–8 further focused agent
-hours; use about 6 hours for scheduling.** This includes implementation, local
-validation, a bounded cloud smoke test, reports and the operational handoff.
-A material lifecycle defect or a failed performance comparison could extend it
-to roughly 8–10 hours; that is a contingency, not a guaranteed upper bound.
+**Remaining estimate after runtime integration: 3–5 focused agent hours; target
+4 hours.** Both builds and the core real-server lifecycle journeys now pass.
+The remaining work is domain/failure gameplay acceptance, measured cost/volume,
+the bounded cloud test, saved reports and the handoff. A failed 5% performance
+comparison is the main uncertainty; this is not a guaranteed upper bound.
 Production deployment scheduling and reviewer availability are separate.
 
 | Remaining work | Focused time | Concrete exit |
 | --- | --- | --- |
-| Runtime/transport, copyover, quota and local health integration | 2–3 h | Existing worker sends reduced events in both builds; lifecycle and storage failures preserve gameplay and report loss. |
+| Runtime/transport, copyover, quota and local health integration | Complete; #260/#261 ready for review | Existing worker sends reduced events in both builds; native lifecycle/storage fault cases pass. |
 | Native gameplay journeys and focused cost/volume evidence | 1.5–2.5 h | Both backends exercise the real capture path; measured fixture meets the retained performance and volume gates. |
 | Four report views, health query and cloud smoke | 0.75–1.5 h | Synthetic totals reconcile in PostHog, including duplicate IDs and incomplete evidence. |
 | Necessary docs, final diff review and handoff | 0.5–1 h | Reproducible queries, exact test commands and enable/disable/recovery steps are recorded. |
 
-The row totals are 4.75–8 hours, rounded to 5–8. The prior 16–24 hour estimate
+The remaining rows total 2.75–5 hours, rounded to 3–5. The original reduced
+estimate was 5–8 hours; the earlier 16–24 hour estimate
 included SQL boot-schema decoupling and broader qualification. The sender's
 known fixture failure and native database uncertainty have now been resolved by
 checks recorded below. Reuse those results unless subsequent changes affect them.
@@ -100,7 +102,7 @@ do not restart these components or reimplement their contracts.
 | Opaque identities, UTC/UUID/integer encodings and volume fixture | [PR 254](https://github.com/LuminariMUD/Duris/pull/254), `telemetry_posthog.*`, `fixtures/telemetry/posthog/{encodings,volume}.json`. |
 | Character, encounter/combat and health reduction | PRs [255](https://github.com/LuminariMUD/Duris/pull/255), [257](https://github.com/LuminariMUD/Duris/pull/257), [258](https://github.com/LuminariMUD/Duris/pull/258). |
 | Durable quota and native state tool | [PR 259](https://github.com/LuminariMUD/Duris/pull/259); existing outage-journal regressions include reservation, restart, corruption and publication failure. |
-| Worker HTTPS sender | Current branch, ready for review; component suite and both full builds pass. Runtime integration is implemented on the next branch; acceptance is pending. |
+| Worker HTTPS sender | PR #260 ready for review; component suite and both full builds pass. Runtime integration is in #261; acceptance work is on this branch. |
 
 Checks completed during this replanning pass on 2026-10-21 UTC:
 
@@ -161,7 +163,7 @@ is replaced by that reference and the following integration invariants.
   batch, and 120-second retained output/terminal wait limits.
 - Use **30-minute export summaries for the first release**. The reducer already
   accepts 1,800 seconds. The declared 200-average-character mix forecasts
-  **434,398 submissions/31 days**, versus **744,021** at 15 minutes. This selects
+  **396,454 submissions/31 days**, versus **706,077** at 15 minutes. This selects
   the issue's permitted volume fallback before spending time tuning two rollout
   configurations. It does not change native capture cadence or prove capacity.
   Lifecycle/level/configuration/day boundaries still flush as required.
@@ -334,9 +336,10 @@ git diff --check
 Run the existing gameplay-adapter/progression/encounter/combat/outage regressions
 when their code or integration contracts change. Run both full builds after the
 final C/C++ changes, sequentially with `nice -n 10`, `-j1` and the task-specific
-`BIN_ROOT` paths above. Add the adapted two-backend gameplay journey, paired
-performance comparison and bounded cloud/query assertions. Record their actual
-CLIs after adaptation; the current SQL-only runner is not yet a PostHog command.
+`BIN_ROOT` paths above. The adapted PostHog gameplay commands are `nice -n 10
+python3 tests/async/run_telemetry_player_journey.py --backend <mariadb|flatfile>`;
+add `--performance` for the paired release fixture. Bounded cloud/query and
+integrated volume assertions remain to be completed.
 No blanket rerun of unaffected repository suites is needed.
 
 This delivery is done only when:
@@ -362,62 +365,116 @@ ticket.
 
 ## Implementation handoff — 2026-10-21 UTC
 
-- Sender chunk: worker-only TLS batching, immutable retries, durable pre-send
-  quota, cancellation and cached sender health are implemented and reviewed
-  locally. Reused the passing component/full-build evidence above; formatting
-  and whitespace checks passed again before committing.
-- Next chunk: replace the runtime SQL sink with the reducer/sender, preserve
-  admission fences and logical copyover identity, then prove runtime failures.
-  No production process, schema, credentials or player data was changed.
+Completed and pushed:
 
-- Active runtime chunk: `issue-59-posthog-runtime` replaces production repository
-  calls with direct, fenced, single-consumption reducer delivery; disables the
-  SQL writer link; enables PostHog independently of gameplay persistence; adds
-  cached local sender/reducer/quota health and preserves copyover handoffs on
-  failed delivery. Native HTTPS/lifecycle regressions and full builds are in
-  progress. This is not yet acceptance proof for real gameplay or performance.
-- Still required after this chunk: real two-backend gameplay/exec/persistence
-  journeys; matched performance and integrated volume evidence; four saved cloud
-  reports plus health and the <=100-submission query reconciliation; final
-  operational documentation. The five closure criteria remain unchanged.
+- Sender [PR #260](https://github.com/LuminariMUD/Duris/pull/260), branch
+  `issue-59-posthog-http`, revision `d540b778c`, base quota PR #259: bounded
+  worker TLS batches, immutable retries, durable quota, cancellation and health.
+- Runtime [PR #261](https://github.com/LuminariMUD/Duris/pull/261), branch
+  `issue-59-posthog-runtime`, implementation `6ea2ab792`, latest handoff
+  `8db892ac9`, stacked on #260. Ready for review. Direct fenced reducer delivery
+  replaces the production SQL writer in both persistence builds. Copyover keeps
+  identity through failed delivery; cached health reports consumed records and
+  sender/quota state. Version-3 outage observations retain consumed sequence/
+  counts without claiming durable cloud ingestion; v1/v2 remain readable.
+- Native runtime HTTPS cases: `python3 tests/async/test_telemetry_runtime_integration.py
+  --posthog` passed nine cases per build under UBSan (18 total): exact time,
+  restart quota, cancellation/failed exec, exhaustion, storage publication,
+  clock rollback, missing identity/quota and journal ownership. Evidence:
+  `bin/issue59/fast-plan/runtime-posthog.log`.
+- Focused transport normal/ASan/UBSan/TSan, config, health, contract headers,
+  copyover wire, activity/session integration, legacy lifecycle/exhaustion/
+  outage, gameplay adapters and journal tests passed. Evidence:
+  `bin/issue59/fast-plan/*runtime*.log` and `copyover.log`.
+- Both full builds and the state tool passed at the final runtime revision:
+  `nice -n 10 make -C src -j1 PERSISTENCE_BACKEND=<backend>
+  BIN_ROOT="$PWD/bin/issue59/<backend>" all telemetry-state`.
+  Logs: `build-runtime-{mariadb,flatfile}-verified.log` in the same evidence
+  directory. Neither executable links `telemetry_repository_init`. Formatting,
+  whitespace and commit-hook clang-tidy passed. No production activation.
 
-- Runtime proof now passes: `python3 tests/async/test_telemetry_runtime_integration.py
-  --posthog` runs nine native HTTPS cases per persistence build under UBSan:
-  delivery with exact time conservation, restart quota continuity, 250ms
-  cancellation plus failed-exec continuation, exhaustion, failed publication,
-  clock rollback, missing identity key/quota and conflicting journal ownership.
-  Evidence: `bin/issue59/fast-plan/runtime-posthog.log` (18 passes). These are
-  native runtime harnesses, not actual server gameplay/persistence journeys.
-- Integration fixes found by those tests: PostHog now passes the activity
-  module's former SQL-only detail gate; native consumption does not claim SQL
-  commit; a cancelled sender resumes without clearing a permanent circuit;
-  version-3 outage observations preserve backend/consumed count/sequence while
-  retaining unknown-tail semantics and v1/v2 compatibility.
-- Focused transport tests passed normal/ASan/UBSan/TSan; config, health,
-  standalone contract headers, copyover wire, activity/session integration,
-  existing runtime lifecycle/exhaustion/outage and gameplay adapters passed.
-  Logs are `bin/issue59/fast-plan/*runtime*.log`. Full final build checks are
-  complete before publication. No production activation occurred.
+Current uncommitted chunk: `issue-59-posthog-acceptance`.
 
-- Runtime chunk committed/pushed as `6ea2ab792`, [PR #261](https://github.com/LuminariMUD/Duris/pull/261)
-  stacked on sender [PR #260](https://github.com/LuminariMUD/Duris/pull/260).
-  #261 is ready for review after both full builds and the state tool passed. The native
-  runtime suite has all 18 passes. The user asked only whether merging PRs
-  252–255 would disrupt ongoing work; do not undertake their merges/conflict
-  resolution. No PR 252–255 mutation was performed.
-- Acceptance implementation next: replace the SQL-only
-  `tests/async/run_telemetry_player_journey.py`. Reuse fixture/client helpers in
-  `test_flatfile_combat_journey.py` / `run_copyover_runtime_journey.py` and
-  `scripts/persistence_restore.py:private_database` for a fresh socket-only DB.
-  Avoid rebuilding the whole game for a mock endpoint: compile only runtime
-  and PostHog objects with `TELEMETRY_POSTHOG_TESTING` and relink the already
-  built backend objects into a task-owned test executable under `bin/`.
-  Production executables keep the override compiled out. No game journey has
-  run against the new exporter yet.
+- Adapted `tests/async/run_telemetry_player_journey.py` runs disposable native
+  games with `--backend flatfile` or `--backend mariadb`. It reuses the existing
+  combat/copyover clients and fixture, and the socket-only `private_database`
+  helper. Only the two test-seam worker objects are rebuilt before relinking
+  already-built game objects under `bin/`; production binaries are unchanged.
+- The core journey passed in both backends: save/reload, active/idle/linkdead,
+  reconnect, failed/successful exec, one logical session and exact time
+  conservation. Each received 13 events. Logs:
+  `bin/issue59/fast-plan/gameplay-posthog-{flatfile,mariadb}.log`; synthetic
+  payloads: `bin/issue59/acceptance/<backend>-events.json`.
+- Native MariaDB cannot write a datadir under this host's `/home`; the same
+  disposable helper works under a private `/tmp/duris-telemetry-db-*` directory.
+  Only the fixture location changed. No production permissions or DB helper
+  were changed. The runner now stops game writers before closing the private
+  database, including on failure.
+- Expanded domain/failure journey now passes in both backends. It adds a mortal
+  companion's combat XP and level transition, groups and separate player/pet
+  fights, mock HTTP 503 with continued saves, and durable quota across exec.
+  Fixture corrections so far: valid short account name, explicit `look` after
+  linkdead reconnect, staff `vis 0` before the companion grants consent, and
+  paginated health handling. Logs: `gameplay-posthog-{flatfile,mariadb}-domain.log`.
+  Received **36 / 35** events with **46 / 41** attempted/reserved events,
+  respectively; no retry duplicates were counted as new reductions. Assertions
+  prove one main logical session across exec/reconnect, exact time and XP
+  allocation conservation, captured group/level dimensions, positive separate
+  pet damage with owner linkage, no private gameplay values in payloads,
+  saves during HTTP 503, zero old SQL intervals and persisted quota/producers.
+- Expanded journeys reproduced two real adapter defects. Group/pet teardown
+  after terminal logout reopened phantom sessions; presence now refuses the
+  existing terminal-extraction flag. Pet-first attacks were not attached to an
+  owner's run, so their damage had no summary slot; begin now uses the owner
+  for the encounter and a separate pet combat actor, and NPC union data is
+  excluded from player participants/group keys. Focused adapter regression
+  passed under ASan/UBSan (`gameplay-terminal-pet-regression.log`). The full
+  game journeys then passed with both fixes. Final focused sanitizer/build
+  checks follow a small owner-lookup simplification; earlier successful full
+  builds are `build-gameplay-fix-<backend>.log`, final logs are
+  `build-acceptance-<backend>.log`.
+- Installed clang-format 21 treats `.c` as C while this translation unit builds
+  as C++. Its required whole-file check exposed pre-existing formatting drift.
+  The mechanically formatted baseline is isolated in commit `e75f017db`, so
+  the behavioral repair can be reviewed as a small separate diff. No formatter
+  configuration, namespaces, public interfaces or runtime behavior was changed
+  by that commit.
+- `--performance` runs three matched off/on pairs, alternating order, with one
+  client and 120 ordinary saves per run after warmup. A bounded test-link
+  wrapper at the existing pulse timer retains raw pulse/event/command samples;
+  process fsync samples give a conservative upper bound including journal and
+  gameplay persistence. Samples write only on exit. The runner records client
+  save/command p99, CPU/RSS and local health. This adds no production telemetry.
+  First attempt stopped at the health pager; fixed before collecting a valid
+  pair. Current log: `gameplay-posthog-mariadb-performance.log`. No performance
+  gate is claimed passed.
+- Pause performance collection while gameplay fixture compilation is active;
+  the interrupted attempt is diagnostic only. Use the MariaDB build for the
+  declared release performance fixture, matching this host's `mariadb-primary`
+  setting; both persistence builds still need the full gameplay journey. This
+  is the existing one-fixture gate, not a broad backend/capacity matrix.
+- Cloud readiness rechecked read-only: shared usage still 0/1,000,000 analytics
+  events, no existing Duris insights, one starter dashboard, empty governed
+  metric catalog. Standard query/report tools work; taxonomy/template tools
+  lack scopes. Use verified SQL inspection and plain saved tables. No cloud
+  captures or dashboard writes have occurred.
+- Constant-only HogQL checks confirmed that ordinary numeric result rendering
+  can round integers above 2^53. Exact report aggregation can use
+  `accurateCastOrNull(value, 'Decimal(38, 0)')` and return `toString(...)`;
+  unsigned 9223372036854775809 and signed -9223372036854775808 round-trip exactly.
+  This is representation proof, not event ingestion/report reconciliation.
 
-- Final runtime revision verification: sequential `nice -n 10 make -C src -j1
-  PERSISTENCE_BACKEND=<backend> BIN_ROOT="$PWD/bin/issue59/<backend>" all telemetry-state`
-  passed for MariaDB and flat-file. Logs:
-  `bin/issue59/fast-plan/build-runtime-{mariadb,flatfile}-verified.log`.
-  `nm -C` confirms neither executable links `telemetry_repository_init`.
-  Formatting, whitespace and commit-hook clang-tidy passed at `6ea2ab792`.
+Next: paired performance and the complete emitted volume mix;
+publish/query the five views with one <=100-attempt
+synthetic cloud fixture; update the operational docs and publish this chunk.
+The five closure criteria above remain outstanding where not proven. Production
+activation is separate. The user's PR 252–255 question was only a question:
+**do not undertake their merges or conflict resolution**; none was performed.
+
+- PR #262 is ready for review. Its base #261 moved to `f1aa582e1` during
+  acceptance work, including reviewed quota/reducer repairs and unrelated
+  upstream gameplay updates. Aligning with that base using a normal merge;
+  preserve all upstream files except this chunk's five explicit paths. The
+  existing 35/36-event journey results belong to `8d996b1fa`; rerun affected
+  proof on the aligned tree. The diagnostic benchmark was stopped before its
+  first valid pair. No performance pass is claimed.
