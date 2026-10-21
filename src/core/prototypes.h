@@ -3229,6 +3229,7 @@ void poison_moveleak(int, P_char, char *, int, P_char, struct affected_type *);
 void poison_slowness(int, P_char, char *, int, P_char, struct affected_type *);
 void poison_madness(int, P_char, char *, int, P_char, struct affected_type *);
 int poison_common_remove(P_char ch);
+void event_poison(P_char, P_char, P_obj, void *);
 
 void unspecialize(P_char ch, P_obj obj);
 

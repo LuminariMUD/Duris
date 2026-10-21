@@ -82,6 +82,10 @@ HARNESS_STUB void event_short_affect(P_char, P_char, P_obj, void *)
 {
 	std::abort();
 }
+HARNESS_STUB void event_poison(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
 HARNESS_STUB int ne_event_time(P_nevent)
 {
 	std::abort();

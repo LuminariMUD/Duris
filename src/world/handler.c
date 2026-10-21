@@ -955,7 +955,8 @@ void poison_slowness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unuse
 		if (!(af = poison_common(victim, POISON_SLOWNESS)))
 			return;
 		af->duration = 1;
-		af->bitvector2 = AFF2_SLOW;
+		af->bitvector2 |= AFF2_SLOW;
+		SET_BIT(victim->specials.affected_by2, AFF2_SLOW);
 
 		send_to_char("&+cYe feel a wave of strange weakness running through yer body.&n\n",
 			     victim);

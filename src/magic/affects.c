@@ -2078,6 +2078,19 @@ void affect_remove(P_char ch, struct affected_type *af)
 		unlink_char_obj_affect(ch, af);
 	}
 
+	// A cured/expired poison must not leave a timer that can target a new coating.
+	if (IS_POISON(af->type))
+	{
+		P_nevent next;
+		for (pnev = ch->nevents; pnev; pnev = next)
+		{
+			next = pnev->next_char_nev;
+			if (pnev->func == event_poison && pnev->data &&
+			    *((short int *)pnev->data) == af->type)
+				nevent_cancel(nevent_handle_from_event(pnev));
+		}
+	}
+
 	if (af->type == TAG_WEB_SPRAY)
 	{
 		disarm_char_nevents(ch, event_web_spray);
