@@ -2729,7 +2729,7 @@ namespace
 		const struct char_data *character) noexcept
 	{
 		telemetry_encounter_participant participant{};
-		if (character != nullptr && character->only.pc != nullptr &&
+		if (character != nullptr && IS_PC(character) && character->only.pc != nullptr &&
 		    character->only.pc->pid > 0)
 		{
 			participant.pid = static_cast<telemetry_pid>(character->only.pc->pid);
@@ -2742,7 +2742,8 @@ namespace
 	telemetry_id game_encounter_group_key(const struct char_data *character) noexcept
 	{
 		if (character != nullptr && character->group != nullptr &&
-		    character->group->ch != nullptr && character->group->ch->only.pc != nullptr &&
+		    character->group->ch != nullptr && IS_PC(character->group->ch) &&
+		    character->group->ch->only.pc != nullptr &&
 		    character->group->ch->only.pc->pid > 0)
 			return static_cast<telemetry_id>(character->group->ch->only.pc->pid);
 		const auto participant = game_encounter_participant(character);
@@ -2970,6 +2971,7 @@ telemetry_capture_result telemetry_runtime_game_presence(struct char_data *chara
 		return game_capture_not_ready();
 	if (character == nullptr || descriptor == nullptr || !IS_PC(character) ||
 	    character->only.pc == nullptr || descriptor->connected != CON_PLAYING ||
+	    IS_SET(character->runtime_flags, CHAR_RFLAG_TERMINAL_ITEMS_SAVED) ||
 	    (descriptor->original != nullptr ? descriptor->original : descriptor->character) !=
 		    character)
 		return game_capture_invalid();
@@ -3257,15 +3259,20 @@ telemetry_capture_result telemetry_runtime_game_encounter_begin(struct char_data
 {
 	if (!R.initialized || !R.enabled || R.shutdown_pending)
 		return game_capture_not_ready();
-	if (character == nullptr || character->only.pc == nullptr ||
+	if (character == nullptr)
+		return game_capture_invalid();
+	// Pets contribute to their owner's encounter while retaining a separate
+	// combat actor. Never read an ordinary NPC through the player-data union.
+	P_char owner = IS_PC(character) ? character : GET_MASTER(character);
+	if (owner == nullptr || !IS_PC(owner) || owner->only.pc == nullptr ||
 	    !telemetry_encounter_mode_is_valid(mode) || !ensure_current_config())
 		return game_capture_invalid();
 	telemetry_encounter_source source{};
-	telemetry_encounter_participant participant = game_encounter_participant(character);
+	telemetry_encounter_participant participant = game_encounter_participant(owner);
 	telemetry_monotonic_usec at = 0U;
 	telemetry_utc_usec at_utc = TELEMETRY_UTC_UNKNOWN;
 	if (!telemetry_encounter_participant_is_valid(participant) ||
-	    !game_encounter_source(character, &source) || !game_time(&at, &at_utc))
+	    !game_encounter_source(owner, &source) || !game_time(&at, &at_utc))
 		return game_capture_invalid();
 	telemetry_encounter_id encounter{};
 	if (!allocate_encounter_id(&encounter))
@@ -3285,7 +3292,10 @@ telemetry_capture_result telemetry_runtime_game_encounter_begin(struct char_data
 	{
 		(void)telemetry_combat_summary_begin(&R.combat_summary, update.encounter, source,
 						     mode, at, at_utc);
-		merge_capture(result, telemetry_runtime_game_encounter_group_sync(character));
+		merge_capture(result, telemetry_runtime_game_encounter_group_sync(owner));
+		if (owner != character)
+			(void)telemetry_combat_summary_add_actor(
+				&R.combat_summary, update.encounter, game_combat_actor(owner), at);
 		const auto actor = game_combat_actor(character);
 		if (telemetry_combat_actor_ref_is_valid(actor))
 			(void)telemetry_combat_summary_add_actor(&R.combat_summary,

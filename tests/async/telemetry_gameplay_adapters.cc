@@ -20,6 +20,13 @@ P_room world = nullptr;
 struct zone_data *zone_table = nullptr;
 int top_of_zone_table = -1;
 int top_of_world = -1;
+static P_char test_pet = nullptr;
+static P_char test_pet_owner = nullptr;
+
+P_char get_linked_char(P_char character, ush_int kind)
+{
+	return character == test_pet && kind == LNK_PET ? test_pet_owner : nullptr;
+}
 
 namespace
 {
@@ -33,6 +40,7 @@ struct fake_repository
 	bool saw_idle_combat = false;
 	std::vector<telemetry_interval_payload> intervals; // worker writes; read after join
 	std::vector<telemetry_session_lifecycle_payload> lifecycles;
+	std::vector<telemetry_combat_summary_payload> combat;
 };
 
 telemetry_repository_outcome fake_init(void *context, telemetry_repository_config) noexcept
@@ -66,6 +74,8 @@ telemetry_apply_batch_result fake_apply(void *context, const telemetry_record *r
 			fake->intervals.push_back(records[index].payload.interval);
 		if (records[index].header.kind == telemetry_record_kind::session_lifecycle)
 			fake->lifecycles.push_back(records[index].payload.lifecycle);
+		if (records[index].header.kind == telemetry_record_kind::combat_summary)
+			fake->combat.push_back(records[index].payload.combat_summary);
 		if (records[index].header.kind == telemetry_record_kind::interval &&
 		    records[index].payload.interval.context == telemetry_activity_context::combat)
 		{
@@ -244,12 +254,44 @@ void check_enabled_game_path()
 	assert(telemetry_runtime_game_context(&player, &descriptor).outcome ==
 	       telemetry_runtime_outcome::accepted);
 
+	char_data pet{}, opponent{};
+	npc_only_data pet_npc{}, opponent_npc{};
+	pet.only.npc = &pet_npc;
+	opponent.only.npc = &opponent_npc;
+	pet.specials.act = opponent.specials.act = ACT_ISNPC;
+	pet_npc.idnum = 55;
+	opponent_npc.idnum = 66;
+	pet.in_room = opponent.in_room = 0;
+	pet.player.level = opponent.player.level = 10;
+	test_pet = &pet;
+	test_pet_owner = &player;
+	group_list pet_node{ &pet, nullptr };
+	member_node.next = &pet_node;
+	pet.group = player.group;
+	assert(telemetry_runtime_game_encounter_begin(&pet, telemetry_encounter_mode::pve).outcome ==
+	       telemetry_runtime_outcome::accepted);
+	telemetry_runtime_game_combat_damage(&pet, &opponent, 7U, 0U);
+	assert(telemetry_runtime_game_encounter_complete(
+		       &player, telemetry_encounter_outcome::withdrawal, 0U)
+		       .outcome == telemetry_runtime_outcome::accepted);
+	test_pet = test_pet_owner = nullptr;
+
 	assert(telemetry_runtime_game_session_exit(&player, &descriptor,
 						   telemetry_session_end_reason::logout)
 		       .outcome == telemetry_runtime_outcome::accepted);
 	assert(player.telemetry_session_sequence == 0U);
 	assert(player.telemetry_session_producer_boot_id == 0U);
 	assert(player.telemetry_session_producer_process_id == 0U);
+	assert(descriptor.telemetry_connection_sequence == 0U);
+	// Terminal extraction removes groups/pets after the logical exit. Their
+	// context hooks must not turn the departing body into a fresh session.
+	player.runtime_flags |= CHAR_RFLAG_TERMINAL_ITEMS_SAVED;
+	assert(telemetry_runtime_game_context(&player, &descriptor).outcome ==
+	       telemetry_runtime_outcome::invalid);
+	assert(telemetry_runtime_game_evidence(&player, &descriptor,
+					       telemetry_runtime_evidence_kind::player_action)
+		       .outcome == telemetry_runtime_outcome::invalid);
+	assert(player.telemetry_session_sequence == 0U);
 	assert(descriptor.telemetry_connection_sequence == 0U);
 
 	telemetry_monotonic_usec now = 0U;
@@ -263,6 +305,26 @@ void check_enabled_game_path()
 	assert(fake.init_calls == 1U);
 	assert(fake.applied_records != 0U);
 	assert(fake.shutdown_calls == 1U);
+	bool saw_pet = false, saw_owner = false;
+	for (const auto &summary : fake.combat)
+	{
+		if (summary.actor_kind == telemetry_combat_actor_kind::pet)
+		{
+			assert(summary.actor_id == 55U && summary.owner_subject_id == 702U);
+			assert(summary.damage_dealt == 7U);
+			saw_pet = true;
+		}
+		if (summary.actor_kind == telemetry_combat_actor_kind::player)
+		{
+			assert(summary.actor_id == 702U || summary.actor_id == 703U);
+			if (summary.actor_id == 702U)
+			{
+				assert(summary.damage_dealt == 0U);
+				saw_owner = true;
+			}
+		}
+	}
+	assert(saw_pet && saw_owner);
 	telemetry_transport_unbind_for_tests();
 	world = nullptr;
 	zone_table = nullptr;
