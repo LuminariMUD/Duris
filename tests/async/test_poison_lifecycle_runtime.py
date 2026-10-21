@@ -45,6 +45,10 @@ static char_data target{}, source{}, owner{};
 static npc_only_data target_npc{}, source_npc{};
 static bool minimum_roll;
 static int waits, damage_calls;
+static int berserk_calls, berserk_duration;
+static double last_damage;
+static P_char last_damage_source;
+static int damage_result;
 static int save_roll = 1, second_save_roll = 1, save_rolls;
 static bool quick_thinking;
 static std::string notice;
@@ -124,8 +128,14 @@ void send_to_char(const char *text, P_char ch) {
     if (strstr(text, "bloodstream!")) { notice += text; notice_target = ch; }
 }
 void CharWait(P_char, int duration) { waits += duration; }
-int raw_damage(P_char, P_char, double, uint, damage_messages *, int *) { ++damage_calls; return DAM_NONEDEAD; }
-void berserk(P_char, int) {}
+int raw_damage(P_char attacker, P_char victim, double amount, uint, damage_messages *, int *) {
+    assert(victim == &target);
+    ++damage_calls; last_damage = amount; last_damage_source = attacker;
+    return damage_result;
+}
+void berserk(P_char ch, int duration) {
+    assert(ch == &target); ++berserk_calls; berserk_duration = duration;
+}
 int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 int GET_CHAR_SKILL_P(P_char ch, int skill) { return ch == &source && skill == SKILL_BACKSTAB ? 100 : 0; }
 bool notch_skill(P_char, int, float) { return false; }
@@ -229,7 +239,8 @@ static void reset() {
         GET_VITALITY(ch) = GET_MAX_VITALITY(ch) = 100;
     }
     character_list = &target; target.next = &source;
-    minimum_roll = false; waits = damage_calls = 0;
+    minimum_roll = false; waits = damage_calls = berserk_calls = berserk_duration = 0;
+    last_damage = 0; last_damage_source = nullptr; damage_result = DAM_NONEDEAD;
     save_roll = second_save_roll = 1; save_rolls = 0; quick_thinking = false;
     notice.clear(); notice_target = nullptr;
     combat_mode = pet_attack = weakness_minimum = false; fallback_hits = 0; obj_index = objects;
@@ -326,6 +337,30 @@ static void recurrence() {
     reset(); affected_type slow{}; slow.type = SPELL_SLOW_POISON; slow.bitvector = AFF_SLOW_POISON;
     affect_to_char(&target, &slow); poison(POISON_NEUROTOXIN);
     advance(81); assert(waits == 0); advance(160); assert(waits == 4 * WAIT_SEC);
+    reset(); poison(POISON_HEART_TOXIN);
+    auto due = get_scheduled(&target, event_poison)->due_tick;
+    assert(due - ne_event_tick == 3 * PULSE_VIOLENCE / 2);
+    advance(int(due - ne_event_tick + 1));
+    assert(damage_calls == 1 && last_damage == 3 * 46 + 40);
+    assert(last_damage_source == &source);
+    assert(!affected_by_spell(&target, POISON_HEART_TOXIN));
+    reset(); minimum_roll = true; poison(POISON_HEART_TOXIN);
+    due = get_scheduled(&target, event_poison)->due_tick;
+    advance(int(due - ne_event_tick + 1));
+    assert(damage_calls == 1 && last_damage == 3 * 46);
+    assert(get_scheduled(&target, event_poison));
+    due = get_scheduled(&target, event_poison)->due_tick;
+    advance(int(due - ne_event_tick + 1));
+    assert(damage_calls == 2);
+    reset(); affected_type heart_slow{}; heart_slow.type = SPELL_SLOW_POISON;
+    heart_slow.bitvector = AFF_SLOW_POISON; affect_to_char(&target, &heart_slow);
+    poison(POISON_HEART_TOXIN);
+    assert(get_scheduled(&target, event_poison)->due_tick - ne_event_tick == 3 * PULSE_VIOLENCE);
+    reset(); damage_result = DAM_VICTDEAD; poison(POISON_HEART_TOXIN);
+    due = get_scheduled(&target, event_poison)->due_tick;
+    advance(int(due - ne_event_tick + 1));
+    assert(damage_calls == 1 && last_damage_source == &source);
+    assert(!get_scheduled(&target, event_poison));
     // Attacker extraction breaks the existing scheduler link, canceling Heart Toxin.
     reset(); poison(POISON_HEART_TOXIN);
     auto *heart = get_scheduled(&target, event_poison);
@@ -475,6 +510,37 @@ static void calibration() {
     deliver_weapon_poison(&source, &target, &obj);
     assert(!target.affected && obj.value[4] == 0 && notice.empty());
 }
+static void mixed_stack() {
+    reset();
+    for (int type : {POISON_NEUROTOXIN, POISON_SLOWNESS, POISON_MOVELEAK, POISON_WEAKNESS}) {
+        auto obj = coating(type);
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(affected_by_spell(&target, type));
+        assert(obj.value[4] == 0);
+    }
+    auto notices = notice;
+    auto duplicate = coating(POISON_NEUROTOXIN);
+    deliver_weapon_poison(&source, &target, &duplicate);
+    assert(duplicate.value[4] == 0 && notice == notices);
+    for (int type : {POISON_NEUROTOXIN, POISON_SLOWNESS, POISON_MOVELEAK, POISON_WEAKNESS})
+        assert(affected_by_spell(&target, type));
+    assert(poison_common_remove(&target));
+    for (int type : {POISON_NEUROTOXIN, POISON_SLOWNESS, POISON_MOVELEAK, POISON_WEAKNESS})
+        assert(!affected_by_spell(&target, type));
+    assert(!get_scheduled(&target, event_poison));
+}
+static void madness_timing() {
+    reset(); poison(POISON_MADNESS);
+    assert(berserk_calls == 1 && berserk_duration == 4 * WAIT_SEC);
+    auto due = get_scheduled(&target, event_poison)->due_tick;
+    assert(due - ne_event_tick == 15 * WAIT_SEC);
+    advance(int(due - ne_event_tick + 1));
+    assert(berserk_calls == 2);
+    reset(); affected_type slow{}; slow.type = SPELL_SLOW_POISON;
+    slow.bitvector = AFF_SLOW_POISON; affect_to_char(&target, &slow);
+    poison(POISON_MADNESS);
+    assert(get_scheduled(&target, event_poison)->due_tick - ne_event_tick == 45 * WAIT_SEC);
+}
 static void stabbed_delivery() {
     for (bool same : {false, true}) {
         reset(); combat_mode = true;
@@ -552,7 +618,7 @@ int main() {
     skills[POISON_WEAKNESS].spell_pointer = reinterpret_cast<spell_func>(poison_weakness);
     skills[POISON_SLOWNESS].spell_pointer = reinterpret_cast<spell_func>(poison_slowness);
     skills[POISON_MADNESS].spell_pointer = reinterpret_cast<spell_func>(poison_madness);
-    slowness(); replacement(); timers(); recurrence(); delivery(); morph_delivery(); calibration(); stabbed_delivery(); weakness_potency(); morph_weakness_potency(); reset();
+    slowness(); replacement(); timers(); recurrence(); delivery(); morph_delivery(); calibration(); mixed_stack(); madness_timing(); stabbed_delivery(); weakness_potency(); morph_weakness_potency(); reset();
     assert(ne_event_counter == 0 && event_pool.objs_used == 0 && affect_pool.objs_used == 0);
     puts("Weapon poison delivery, saves, feedback and lifecycle regressions passed");
 }
