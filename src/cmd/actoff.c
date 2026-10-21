@@ -6244,18 +6244,7 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 		(*obj_index[weapon->R_num].func.obj)(weapon, ch, CMD_MELEE_HIT, (char *)victim);
 	}
 
-	if (weapon->value[4])
-	{
-		if (IS_POISON(weapon->value[4]))
-		{
-			(skills[weapon->value[4]].spell_pointer)(10, ch, 0, 0, victim, 0);
-		}
-		else
-		{
-			poison_lifeleak(10, ch, 0, 0, victim, 0);
-		}
-		weapon->value[4] = 0; /* remove on success */
-	}
+	deliver_weapon_poison(ch, victim, weapon);
 
 	// if(is_char_in_room(ch, room) && is_char_in_room(victim, room))
 	//   weapon_proc(weapon, ch, victim);

@@ -7531,14 +7531,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 			return TRUE;
 	}
 
-	if (weapon && weapon->value[4] != 0)
-	{
-		if (IS_POISON(weapon->value[4]))
-			(skills[weapon->value[4]].spell_pointer)(10, ch, 0, 0, victim, 0);
-		else
-			poison_lifeleak(10, ch, 0, 0, victim, 0);
-		weapon->value[4] = 0; /* remove on success */
-	}
+	deliver_weapon_poison(ch, victim, weapon);
 
 	if (weapon && is_char_in_room(ch, room) && is_char_in_room(victim, room) &&
 	    IS_ALIVE(victim) && (!IS_PC_PET(ch) || OBJ_VNUM(weapon) != 1251))

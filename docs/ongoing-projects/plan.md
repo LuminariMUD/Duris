@@ -1,6 +1,6 @@
 # Issue #187: Assassin mechanics and poison rebalance
 
-Status: implementation in progress; Awareness/lifecycle PRs open, Control Flee qualified for review.
+Status: implementation in progress; three PRs open, shared weapon poison qualified for review.
 Prepared 2026-10-21 for [issue #187](https://github.com/LuminariMUD/Duris/issues/187).
 Implementation branch: `branch/issue-187-assassin-rebalance`.
 Source baseline: [master `24a2776f13a2`](https://github.com/LuminariMUD/Duris/commit/24a2776f13a2f3580c91f945743b09f80144b829).
@@ -171,8 +171,10 @@ plan. The progress log below records subsequent implementation and proof.
   `branch/issue-187-assassin-rebalance`, head `48cb56a61`, is open for review
   against master. [PR #248](https://github.com/LuminariMUD/Duris/pull/248),
   `branch/issue-187-poison-lifecycle`, head `52a72e1e0`, is open against #247.
-  Current continuation branch is `branch/issue-187-control-flee`, stacked on
-  #248. No merges or tags.
+  [PR #249](https://github.com/LuminariMUD/Duris/pull/249),
+  `branch/issue-187-control-flee`, head `90fee72e8`, is open against #248.
+  Current continuation branch is `branch/issue-187-weapon-poison`, stacked on
+  #249. No merges or tags.
 - **Chunk 1, A/B:** repaired Awareness multiplication-before-division; active
   trained Awareness now enters the existing ordinary stab mitigation branch,
   once, alongside passive Awareness. Removed only the Mountain Dwarf/Duergar
@@ -254,8 +256,49 @@ plan. The progress log below records subsequent implementation and proof.
   by chunk 3. Passed `make -C src -j4`, formatting/diff checks,
   `test_combat_movement_feedback.py`, `test_movement_liveness_runtime.py`
   (22 existing lifetime cases) and the Assassin mechanics regression.
-- **Next:** publish chunk 3 after local gates, then shared weapon delivery/save/
-  feedback, progression/Weakness and integrated combat/cost audits.
+- **Chunk 4, D/resistance, qualified:** normal hit and `single_stab`
+  use one `deliver_weapon_poison()` in `handler.c`. It consumes a landed
+  coating before rejection, normalizes legacy Lifeleak markers, validates the
+  callback, rejects same-ID duplicates and sends the agreed victim-only notice
+  only after a new retained affect. Known dagger/sword/axe types say `blade`;
+  other eligible weapons/darts say `weapon`. Non-weapon sources keep their
+  existing messages/application behavior. No extra proc roll or configuration.
+- PvP calibration candidate is `NewSaves(SAVING_PARA, bounded level difference
+  / 5 within -3..3)`, with zero equal-level offset. Actual checked-in properties,
+  `find_save()` and `NewSaves()` enumerate **50/56/61/66/71/76%** resistance
+  for neutral-save Human Warrior/Cleric defenders at **30/36/41/46/51/56**.
+  Gear contributes the existing five percentage points per save unit; Quick
+  Thinking retains its existing second roll. No extra flat offset is needed
+  to establish meaningful resistance. Integrated outcomes still decide whether
+  this candidate preserves the full toolkit; these are exact application-save
+  probabilities, not duel win rates.
+- Compatibility decision: the additional save and Pythonsting's existing
+  dragon/demon/elemental/undead immunity categories apply to player victims
+  attacked by PCs or their armed pets, matching `hit()`'s existing PvP attacker
+  classification. This prevents handing a pet a coated weapon from bypassing
+  resistance. Do not import magical resistance or paralysis immunity. Unowned
+  NPC sources and all NPC targets retain their existing behavior to preserve PvE.
+  No generic immunity/save was added to `poison_common()`.
+- Extended `test_poison_lifecycle_runtime.py` passes ASan/UBSan for save/gear/
+  level boundaries, Quick Thinking, every poison's feedback/duplicate/save
+  behavior, self-removal, legacy/out-of-range markers, missing callback,
+  intrinsic PvP immunity/NPC compatibility, neutral wording and mixed/duplicate
+  complete dual-backstab openings. The real helper receives attacker level;
+  current non-Heart poison functions still ignore it pending Weakness work.
+- `make -C src -j4` passes. New isolated `test_assassin_combat_journey.py`
+  passes with a verified `__NO_MYSQL__` build and real sockets, apply/attack
+  commands and staff cleansing. One normal-hit attempt and four backstab-command
+  attempts produced one newly retained poison notice each, only to the victim;
+  the attacker and staff observer received none. This unseeded reachability run
+  is separate from the deterministic native single/dual-stab path coverage.
+  Synthetic 10,000-HP players are explicitly reachability fixtures, not balance
+  actors. The fixture patches only disposable saved snapshots with no server
+  running; it uses legitimate level-56 skill caps (including dual-wield 90).
+- Chunk-4 adjacent gates pass: Assassin mechanics, Control Flee, Cleric
+  utilities, crafting conservation, formatting and diff checks. Apply Poison
+  help now states the actual two-object command `apply <vial> <weapon>`.
+- **Next:** publish chunk 4, then
+  progression/Weakness and integrated combat/cost audits.
   Steps 2/3/5 remain partially/outstanding; no delivery/resistance, progression
   or conditional extra-nerf completion is claimed.
 
@@ -514,3 +557,18 @@ or an approved traded-item restriction may add **2-6 active hours**. Time awaiti
 owner policy decisions, review or separately requested deployment is elapsed
 time outside this estimate. Re-estimate only if the first executable baseline
 reveals a material lifecycle/persistence issue or expands the agreed scope.
+
+### PR #250 review corrections
+
+- Landed throws now use the same poison delivery as melee/backstab, including
+  darts and thrown coated weapons. Remove the old dart-only skill proc and
+  numeric-marker damage event: its only caller bypassed recipe effects, PvP
+  saves and immediate feedback. One landed attempt consumes one coating;
+  misses retain it. Returning projectiles keep their existing movement behavior.
+- Player morphs use their original player body for the paralysis save and
+  level adjustment, including morphed attackers. Immunity and poison application
+  use the active target form. Ordinary NPC sources/targets retain the helper's
+  existing treatment.
+- Extend the existing sanitizer regression for morph save boundaries, active
+  form immunities and morphed sources, and the isolated command journey for
+  apply plus throw of a returning dart and victim-only neutral wording.
