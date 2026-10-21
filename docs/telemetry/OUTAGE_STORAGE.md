@@ -58,14 +58,15 @@ a terminal boundary. UTC unknown is exported as `null`.
 
 ## Bounded publication and recovery
 
-Both wire versions store at most 256 producer lifetimes. Version 1 has a
+All three wire versions store at most 256 producer lifetimes. Version 1 has a
 64-byte frame overhead and 320 bytes per producer, capped at 81,984 bytes.
 Version 2 adds 80 bytes for quota binding, daily limits, UTC-day high-water and
 reservation counters, capped at 82,064 bytes; it may hold quota with no producers.
-The observation encoding is unchanged. Version 1 remains in use when quota is
-absent; initializing quota upgrades the live frame to version 2.
+Historical SQL observation encoding is unchanged. SQL frames use version 1
+without quota and version 2 after initialization. PostHog observations select
+version 3, whose additional three words per producer give the 88,208-byte cap.
 
-`outages.owner` is the stable exclusive lock file: empty for version 1, or a
+`outages.owner` is the stable exclusive lock file: empty without quota, or a
 48-byte generation/SHA-256 witness for quota-enabled storage. Each publication writes an
 owner-only `outages.pending` file, synchronizes it, renames it to `outages.ledger`,
 and synchronizes the directory. A SHA-256 checksum detects damaged frames;
@@ -105,14 +106,15 @@ normal gameplay startup remains available. The worker never deletes a ledger or
 reconstructs missing facts.
 
 During normal publication, ledger plus pending occupy at most 163,968 bytes for
-version 1 or 164,128 bytes for version 2, plus metadata and the 0/48-byte owner.
+version 1, 164,128 bytes for version 2 or 176,416 bytes for version 3, plus
+metadata and the 0/48-byte owner.
 Archives and recovery evidence require additional retained space.
 
 At 256 lifetimes, version 1 publishes the terminal frame once more (an unfinished
 lifetime becomes unknown), renames it to
 `outages.ledger.<incoming registered utc usec>.<generation>`, and resets generation
 for a new chain containing only the incoming producer.
-Version 2 publishes the terminal frame only when it must close a running phase,
+Quota-enabled version 2 or 3 publishes the terminal frame only when it must close a running phase,
 then copies it to `outages.ledger.<outgoing registered utc usec>.<generation>`.
 An unknown registration UTC uses registered monotonic time in either name.
 Quota and generation continue; the full live frame remains until the incoming
