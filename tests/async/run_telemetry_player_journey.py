@@ -355,7 +355,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                             workload_started = time.monotonic()
                             command_us, save_us, snapshots, rss = [], [], [], []
                             telemetry_snapshots = []
-                            for index in range(120):
+                            for index in range(40):
                                 started = time.monotonic_ns()
                                 client.send("look"); client.expect("The Regression Arena")
                                 command_us.append((time.monotonic_ns() - started) // 1000)

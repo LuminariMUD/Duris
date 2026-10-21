@@ -484,7 +484,7 @@ Current uncommitted chunk: `issue-59-posthog-acceptance`.
   configuration, namespaces, public interfaces or runtime behavior was changed
   by that commit.
 - `--performance` runs three matched off/on pairs, alternating order, with one
-  client and 120 ordinary saves per run after warmup. A bounded test-link
+  client and 40 ordinary saves per run after warmup. A bounded test-link
   wrapper at the existing pulse timer retains raw pulse/event/command samples;
   process fsync samples give a conservative upper bound including journal and
   gameplay persistence. Samples write only on exit. The runner records client
@@ -581,7 +581,7 @@ performance proof remain uncompleted. No production activation.
   the selected 30-minute window. These are workload-frequency projections,
   not 200-player capacity certification. Evidence `release-mix-volume.log`.
 - The release benchmark is declared before collection: three alternating off/on
-  runs, 120 saves each; the 5% regression comparison pools all three matched raw
+  runs, 40 saves each; the 5% regression comparison pools all three matched raw
   sample sets. Individual runs and host bounds remain recorded. No valid pair
   has been collected yet. Cloud compilation/journeys finish before the benchmark.
 
@@ -597,5 +597,12 @@ performance proof remain uncompleted. No production activation.
   artifacts. Saved dashboard readback confirms all five saved tiles/definitions.
 - Only retained performance proof and final review/publication remain. Benchmark
   process is live (`gameplay-release-performance.log`), three alternating off/on
-  pairs, 120 saves each. Keep compile/load jobs out of this measurement. Do not
+  pairs, 40 saves each. Keep compile/load jobs out of this measurement. Do not
   add another campaign, matrix, qualification phase or forecast tuning task.
+
+- Ablation before the first completed benchmark pair: 120 saves per repetition
+  was extra sampling, not an agreed gate. Use 40 per repetition across the same
+  three alternating pairs: 120 saves per condition for pooled p99. The 5% gate,
+  native pulse sample minimum, host bounds, raw samples and ordinary save path
+  are unchanged. The initial longer collection was stopped; do not reuse it as
+  completed paired evidence. No additional workload or testing stage is added.

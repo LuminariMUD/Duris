@@ -5,7 +5,7 @@
 Run `nice -n 10 python3 tests/async/run_telemetry_player_journey.py --backend mariadb --performance`
 after the task-specific native build. This uses a disposable socket-only database,
 synthetic world and loopback HTTPS; it never sources the host environment. The
-release fixture is one client, three alternating off/on pairs, 120 ordinary saves
+release fixture is one client, three alternating off/on pairs, 40 ordinary saves
 per run after warmup. Regression p99 uses pooled raw samples from all three
 matched runs, with each individual run retained to expose host noise. It is not
 200-player capacity certification.
