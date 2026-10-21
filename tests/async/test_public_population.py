@@ -13,6 +13,7 @@ summary = who[start:end]
 # The command still applies the real visibility rule before constructing its list.
 assert 'if (!who_visible_to(ch, tch)' in who
 assert 'max_descs_this_hour' not in who
+assert 'MAX_STRING_LENGTH - 512' in who
 recover = extract_function('copyover.c', 'int copyover_recover(')
 restore_start = recover.index('\t// restore descriptors')
 restore = recover[restore_start:recover.index('\n\tif (header.version >= 15)', restore_start)]
@@ -26,6 +27,7 @@ harness = r'''
 #include "core/mm.h"
 #include "net/ttype.h"
 #include <cassert>
+#include <climits>
 #include <cstring>
 #include <string>
 #include <sys/socket.h>
@@ -33,6 +35,9 @@ harness = r'''
 #include <unistd.h>
 
 int max_descs = 42;
+int max_descs_this_hour = 0;
+int max_descs_previous_hour = 0;
+bool max_descs_previous_hour_valid = false;
 int curr_ingame_good = 0, curr_ingame_evil = 0;
 int max_ingame_good = 0, max_ingame_evil = 0;
 P_desc descriptor_list = nullptr;
@@ -83,10 +88,12 @@ copyover_recover_fail:
 @STATUS@
 @LEGACY@
 
-std::string summary(P_char ch)
+std::string summary(P_char ch, const std::string &prefix = {})
 {
     char who_output[MAX_STRING_LENGTH] = {};
     int who_list_size = 2, who_gods_size = 1, total_ingame_connections = 8;
+    assert(prefix.size() < sizeof(who_output));
+    memcpy(who_output, prefix.c_str(), prefix.size());
     @SUMMARY@
     return who_output;
 }
@@ -108,9 +115,33 @@ int main()
     assert(ordinary.find("Total visible players: 3") != std::string::npos);
     assert(ordinary.find("connections") == std::string::npos);
     assert(ordinary.find("online") == std::string::npos);
+    max_descs_this_hour = 99; // Live socket peak must never appear in who.
+    assert(summary(&good) == ordinary);
     const auto trusted = summary(&staff);
     assert(trusted.find("connections this boot: 42") != std::string::npos);
     assert(trusted.find("Total in-game connections: 8") != std::string::npos);
+    const std::string last_hour_label =
+        "&+rPeak simultaneous connections in the previous completed hour: ";
+    for (int peak : { 0, 1, 7 }) {
+        max_descs_previous_hour = peak;
+        max_descs_previous_hour_valid = true;
+        const auto suffix = last_hour_label + std::to_string(peak) + ".&n\n";
+        assert(summary(&good) == ordinary + suffix);
+        assert(summary(&staff) == trusted + suffix);
+        max_descs_this_hour = peak + 100;
+        assert(summary(&good) == ordinary + suffix);
+    }
+    // The list cutoff must leave every trusted footer intact near capacity.
+    max_descs_previous_hour = INT_MAX;
+    const std::string near_limit(MAX_STRING_LENGTH - 513, 'x');
+    const auto peak_suffix = last_hour_label + std::to_string(INT_MAX) + ".&n\n";
+    assert(summary(&staff, near_limit) == near_limit + trusted + peak_suffix);
+    curr_ingame_evil = 1;
+    assert(summary(&good, near_limit) == near_limit + ordinary + peak_suffix +
+           "There are &+Revil(s)&N online.\n");
+    curr_ingame_evil = 0;
+    max_descs_previous_hour_valid = false;
+    assert(summary(&good) == ordinary);
     for (int good_count : { 0, 1, 7 }) {
         for (int evil_count : { 0, 1, 7 }) {
             curr_ingame_good = good_count;

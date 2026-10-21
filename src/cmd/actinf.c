@@ -120,6 +120,8 @@ extern int avail_descs;
 extern int help_array[27][2];
 extern int info_array[27][2];
 extern int max_descs;
+extern int max_descs_previous_hour;
+extern bool max_descs_previous_hour_valid;
 extern const int curr_ingame_good;
 extern const int max_ingame_good;
 extern const int curr_ingame_evil;
@@ -7789,7 +7791,8 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				}
 
 				strcat(who_output, "\n");
-				if (strlen(who_output) > (MAX_STRING_LENGTH - 175))
+				// Leave room for the warning and every optional summary line.
+				if (strlen(who_output) > (MAX_STRING_LENGTH - 512))
 				{
 					strcat(who_output,
 					       "-= List too long, use 'who <arg> =-'\n");
@@ -7814,6 +7817,12 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 					"&+rRecord number of connections this boot: %d.&n\n",
 					max_descs);
 			}
+			if (max_descs_previous_hour_valid)
+				checked_snprintf(
+					who_output + strlen(who_output),
+					MAX_STRING_LENGTH - strlen(who_output),
+					"&+rPeak simultaneous connections in the previous completed hour: %d.&n\n",
+					max_descs_previous_hour);
 			if ((curr_ingame_good > 0) && !IS_RACEWAR_GOOD(ch) && !IS_TRUSTED(ch))
 				checked_snprintf(who_output + strlen(who_output),
 						 MAX_STRING_LENGTH - strlen(who_output),

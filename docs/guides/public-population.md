@@ -5,17 +5,26 @@ opposing-faction and global presence, except for the in-game `who` messages
 indicating whether goods or evils are online. The MUD otherwise omits these
 public statistics; the paired DurisWeb change publishes an existing historical
 hourly estimate.
-There is no new MUD collection, history store, or publication timer.
+The MUD retains an in-memory snapshot of the existing socket peak after a
+completed server-relative 60-minute interval. There is no persistent history
+store or new publication timer.
 
 | Surface | Population definition and access | Behavior |
 | --- | --- | --- |
 | Telnet MSSP | Previously current playing mortal descriptors, counting switched originals, before login | Not advertised; unsolicited `DO MSSP` receives `WONT` once per connection. WebSockets emit nothing. |
-| Ordinary `who` | Faction-visible characters under existing command filters | Live list and visible count retained; the original good/evil presence messages are restored without names or counts. Global hourly socket peak remains omitted. |
+| Ordinary `who` | Faction-visible characters under existing command filters | Live list and visible count retained; the original good/evil presence messages are restored without names or counts. All players see the prior completed server-hour's peak simultaneous connections once a full hour has elapsed; the current-hour peak is never displayed. |
 | Trusted `who` / `world stats` | Live in-game connections, socket peaks and operational faction totals | Unchanged. |
 | `lib/reports/status` | Formerly current boot socket peak | Both maintenance and legacy `web_info()` producers now export only game time and uptime. |
 | Internal SQL statistics / Redis / authenticated MUD bridge | Live samples and raw character/faction presence | Unchanged; website administration remains privileged. |
 | DurisWeb `/api/status` | Previously current Redis presence count | Paired fix replaces `onlinePlayers` with a labeled delayed hourly estimate and explicit window timestamps; unavailable is null. |
 | DurisWeb faction charts/date index | Recorded faction counts | Existing completed-UTC-day restriction, minimum 24 hours, retained. |
+
+The `who` connection peak counts simultaneous accepted sockets, including
+pre-login connections, not unique logins or faction-specific players. The first
+partial hour after boot/copyover is withheld. Elapsed time uses the monotonic
+clock. A wall-clock jump or a gap of two hours or more invalidates the old
+snapshot until another full interval completes.
+No live socket peak is exposed to ordinary players.
 
 MSSP requires `PLAYERS` with current logged-in population. A delayed value would
 change that meaning, and zero would invent a measurement. MSSP is therefore
