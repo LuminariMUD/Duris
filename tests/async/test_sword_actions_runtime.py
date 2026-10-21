@@ -55,7 +55,7 @@ int spell_damage(P_char actor,P_char target,double amount,int type,uint flags,da
     if(call_mutation==2) discard_character(actor);
     return 0;
 }
-int vamp(P_char actor,double amount,double cap) {
+int vamp(P_char actor,double amount,double cap,bool) {
     healed_amount+=amount; GET_HIT(actor)=std::min(static_cast<int>(cap),GET_HIT(actor)+static_cast<int>(amount)); return 0;
 }
 void heal(P_char target,P_char actor,int points,int cap) {

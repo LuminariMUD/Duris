@@ -737,6 +737,8 @@ void do_specialize(P_char ch, char *argument, int /*cmd*/)
 				 GET_SPEC_NAME(ch->player.m_class, i));
 			ch->player.spec = i + 1;
 			update_skills(ch);
+			if (GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER))
+				remove_incoming_healing_aura(ch);
 			mobsay(teacher, buf);
 			return;
 		}

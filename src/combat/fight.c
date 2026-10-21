@@ -436,9 +436,6 @@ int check_damage_ward(P_char attacker, P_char ch, int dam)
 		    FALSE, attacker, 0, ch, TO_VICT | ACT_NOTTERSE);
 		act("&+CThe ward around&n $N&+C flashes briefly as it absorbs your assault!&n",
 		    FALSE, attacker, 0, ch, TO_CHAR | ACT_NOTTERSE);
-
-		if (GET_CHAR_SKILL(ch, SKILL_EPIC_WARDING_FAITH) > 0)
-			notch_skill(ch, SKILL_EPIC_WARDING_FAITH, 2);
 	}
 
 	return (int)ceil(absorbed / wardMitigation);
@@ -527,7 +524,7 @@ bool opposite_racewar(P_char ch, P_char victim)
 	return IS_PC(ch) && IS_PC(victim) && GET_RACEWAR(ch) != GET_RACEWAR(victim);
 }
 
-int vamp(P_char ch, double fhits, double fcap)
+int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 {
 	struct affected_type *af;
 	static char buf[100];
@@ -577,7 +574,9 @@ int vamp(P_char ch, double fhits, double fcap)
 		}
 	}
 
-	if (IS_PC(ch) && IS_AFFECTED3(ch, AFF3_PALADIN_AURA) && has_aura(ch, AURA_HEALING))
+	const bool eligible = allow_improved_healing && IS_PC(ch);
+	const bool non_healer = eligible && !GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER);
+	if (non_healer && IS_AFFECTED3(ch, AFF3_PALADIN_AURA) && has_aura(ch, AURA_HEALING))
 	{
 		// This stops the massive healing when used with the following: Nov08 -Lucrot
 		if (!IS_SET(ch->specials.affected_by4, AFF4_REGENERATION) &&
@@ -634,7 +633,8 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 	}
 	*/
 	const int attempted_hits = MAX(0, hits);
-	hits = vamp(ch, hits, cap);
+	// Healer spells cannot gain the incoming Paladin healing multiplier.
+	hits = vamp(ch, hits, cap, !GET_SPEC(healer, CLASS_CLERIC, SPEC_HEALER));
 	telemetry_runtime_game_combat_healing(healer, ch,
 					      static_cast<std::uint64_t>(attempted_hits),
 					      static_cast<std::uint64_t>(MAX(0, hits)), 0U);
@@ -648,11 +648,6 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 		send_to_char(buf, healer);
 	}
 
-	if (GET_SPEC(healer, CLASS_CLERIC, SPEC_HEALER))
-	{
-		// healing replenishes ward
-		GET_WARD(healer) = BOUNDED(0, GET_WARD(healer) + (hits / 10), GET_MAX_WARD(healer));
-	}
 	// debug("Hitting heal function in fight with (%d) hits.", hits);
 	if (IS_PC(healer) && IS_FIGHTING(ch))
 		gain_exp(healer, ch, hits, EXP_HEALING);

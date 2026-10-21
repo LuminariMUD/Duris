@@ -8095,10 +8095,10 @@ No specialization overrides; ordinary Cleric Kick remains trainable to 40%.
 &+b11th Circle: &+cdivine font&n
 &+b12th Circle: &+caura of rebirth&n
 ==Innate additions==
- &+caura_of_improved_healing&n
-*&+cwarding faith&n (obtained at level &+c30&n)
-'*' Designates passive ability.
-The white Improved Healing aura unlocks when you specialize at level 30.
+ &+caura_of_spell_protection&n
+The magenta Spell Protection aura unlocks when you specialize at level 30.
+Healers have no innate ward and cannot receive Improved Healing from Paladins.
+Healer-cast healing spells do not gain the Paladin Improved Healing multiplier.
 All ordinary Cleric offensive spells and sixth-circle Negative Energy Barrier remain available, with their normal restrictions.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 ==See also==
@@ -19112,7 +19112,8 @@ These permissions apply to an existing character; they do not enable a forbidden
 &+b11th Circle: &+cplague&n
 &+b12th Circle: &+cbattletide&n
 ==Innate additions==
-None beyond the base-class registrations.
+ &+caura_of_protection&n
+Aura of Protection unlocks with the Zealot specialization at level 30.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 ==See also==
 * Cleric
@@ -21668,7 +21669,8 @@ See also: epic power, epic constitution, epic luck, toughness
 #
 "EPIC WARDING FAITH" (Skill)
 ===========================================================================
-Epic Warding Faith increases Warding Faith's capacity in steps. At full mastery the ward holds twice its base capacity. Passive recovery from empty still takes 240 seconds in an ordinary room without other modifiers. Healing by the Healer restores ward equal to 10% of effective HP restored, rounded down separately for each recipient and capped at maximum ward.
+Epic Warding Faith is retired and can no longer be purchased or trained.
+Existing ranks no longer grant ward capacity or recharge bonuses.
 ===========================================================================
 See also: devotion, warding faith, prayer, aura of rebirth
 #
@@ -24618,9 +24620,10 @@ AURA_OF_IMPROVED_HEALING (Innate)
 ===========================================================================
 Syntax: innate aura_of_improved_healing
 
-Paladins at level 30 and Clerics who specialize as Healers can radiate this
-white aura. Nearby group members become more receptive to healing spells.
-Multiple Improved Healing auras do not stack.
+Paladins at level 30 can radiate this white aura to eligible group members.
+Cleric Healers cannot receive its bonus, and healing spells cast by Healers
+cannot gain the aura multiplier even when the target has it. Other eligible
+recipients continue to benefit. Multiple Improved Healing auras do not stack.
 
 See also: HEALER, PALADIN
 #
@@ -24628,15 +24631,45 @@ See also: HEALER, PALADIN
 #
 "WARDING FAITH" (Innate)
 ===========================================================================
-Warding Faith is a passive Healer ability, available on specialization at level 30.
-It absorbs damage using a separate ward pool. In an ordinary room with no other
-modifiers, an empty ward recovers fully over 240 seconds. Passive recovery stops
-in combat and no-heal rooms; healing rooms improve recovery. Epic Warding Faith
-increases capacity without extending that baseline recovery time.
-
-A Healer's healing also restores ward equal to 10% of HP actually restored,
-rounded down for each recipient and capped at maximum ward, including in combat.
-Overhealing restores no ward. Group Heal can refill ward for each healed member.
+Warding Faith has been retired. Healers no longer receive an innate ward,
+passive ward recharge or healing-triggered ward refill. Wards granted by other
+abilities and equipment are unaffected.
 
 See also: HEALER, EPIC WARDING FAITH
+#
+
+#
+"AURA OF SPELL PROTECTION" (Innate)
+===========================================================================
+Syntax: innate aura_of_spell_protection
+Healers and Holymen can radiate this magenta aura after specializing at level 30.
+It improves group spell protection based on the provider's level.
+Each provider can maintain only one aura at a time.
+===========================================================================
+See also: healer, holyman, aura of protection
+#
+"AURA OF PROTECTION" (Innate)
+===========================================================================
+Syntax: innate aura_of_protection
+Paladins, Anti-Paladins, Holymen and Zealots can radiate this group aura.
+It improves armor class based on the provider's level. Identical types do not stack.
+===========================================================================
+See also: zealot, holyman, paladin auras
+#
+"PALADIN AURAS" (General Information)
+===========================================================================
+Paladins, Anti-Paladins and eligible Clerics can provide group auras.
+A provider maintains only one aura at a time; different aura types from
+separate providers can coexist. Identical aura types do not stack.
+Improved Healing does not affect Cleric Healers or enhance Healer-cast spells.
+===========================================================================
+See also: aura of improved healing, aura of spell protection, aura of protection
+#
+"GROUP HEAL" (Spell)
+===========================================================================
+Group Heal heals the caster and eligible nearby group members.
+Healers retain their outgoing bonus but do not gain the Paladin Improved
+Healing aura multiplier when casting it.
+===========================================================================
+See also: healer, mass heal
 #

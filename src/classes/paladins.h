@@ -21,6 +21,7 @@
 void event_apply_group_auras(P_char ch, P_char victim, P_obj obj, void *data);
 void do_aura(P_char, int);
 void purge_linked_auras(P_char ch);
+void remove_incoming_healing_aura(P_char victim);
 void apply_aura_to_group(P_char ch, int aura);
 void apply_aura(P_char ch, P_char victim, int aura);
 void aura_broken(struct char_link_data *cld);
