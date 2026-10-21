@@ -341,7 +341,7 @@ enum class telemetry_schema_check : std::uint8_t
 	engine = 5, // a table is not InnoDB
 };
 
-/* What the worker's outage ledger refused at startup, with the errno in
+/* What the worker's setup or outage/quota storage refused, with the errno in
  * last_error_code. */
 enum class telemetry_storage_check : std::uint8_t
 {
@@ -352,6 +352,8 @@ enum class telemetry_storage_check : std::uint8_t
 	owner = 3, // another process holds outages.owner
 	ledger = 4, // the ledger or a whole pending frame does not decode
 	io = 5, // open, read, write, fsync or rename failed; errno says which
+	configuration = 6, // PostHog credentials, scope or sender configuration
+	quota = 7, // missing or mismatched durable quota binding
 };
 
 enum class telemetry_disabled_reason : std::uint8_t

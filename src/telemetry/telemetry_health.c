@@ -495,6 +495,10 @@ const char *telemetry_health_storage_check_name(telemetry_storage_check check) n
 		return "ledger";
 	case telemetry_storage_check::io:
 		return "io";
+	case telemetry_storage_check::configuration:
+		return "configuration";
+	case telemetry_storage_check::quota:
+		return "quota";
 	}
 	return "unknown";
 }

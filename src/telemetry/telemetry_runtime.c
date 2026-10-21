@@ -1168,7 +1168,7 @@ struct worker_outage_guard
 	}
 };
 
-bool start_posthog(telemetry_outage_journal &journal) noexcept
+telemetry_storage_check start_posthog(telemetry_outage_journal &journal) noexcept
 {
 	telemetry_posthog_reducer_config config{};
 	config.producer = R.producer;
@@ -1181,18 +1181,18 @@ bool start_posthog(telemetry_outage_journal &journal) noexcept
 	const auto *test = std::getenv("TELEMETRY_TEST_RUN");
 	if (key == nullptr || token == nullptr || host == nullptr ||
 	    !telemetry_posthog_parse_identity_key(key, config.identity_key))
-		return false;
+		return telemetry_storage_check::configuration;
 	if (test != nullptr)
 	{
 		if (std::strlen(test) >= config.test_run.size())
-			return false;
+			return telemetry_storage_check::configuration;
 		std::memcpy(config.test_run.data(), test, std::strlen(test));
 	}
 	const bool production = config.environment_id == 1U;
 	// Real cloud fixtures have their own scope, tag and <=100 total attempts.
 	if ((!production && (config.environment_id < 1000U || config.test_run[0] == '\0')) ||
 	    (production && config.test_run[0] != '\0'))
-		return false;
+		return telemetry_storage_check::configuration;
 	telemetry_quota_binding binding{};
 	binding.environment_id = config.environment_id;
 	binding.season_id = config.season_id;
@@ -1204,16 +1204,22 @@ bool start_posthog(telemetry_outage_journal &journal) noexcept
 	    binding.project_id != 678214U ||
 	    !environment_unsigned("POSTHOG_SENDER_ID", telemetry_id{ 0U }, 1U, UINT64_MAX,
 				  &binding.sender_id) ||
+	    binding.sender_id == 0U ||
 	    !environment_unsigned("POSTHOG_DAILY_LIMIT", total, 1U, total, &binding.total_limit) ||
 	    !environment_unsigned("POSTHOG_NORMAL_LIMIT", normal, 1U, normal,
 				  &binding.normal_limit) ||
 	    !environment_unsigned("POSTHOG_HEALTH_LIMIT", health, 1U, health,
 				  &binding.health_limit))
-		return false;
+		return telemetry_storage_check::configuration;
+	if (telemetry_outage_quota_check(&journal, binding) != telemetry_outage_result::ready)
+	{
+		OPENSSL_cleanse(config.identity_key.data(), config.identity_key.size());
+		return telemetry_storage_check::quota;
+	}
 	const bool initialized = telemetry_posthog_reducer_init(config);
 	OPENSSL_cleanse(config.identity_key.data(), config.identity_key.size());
 	if (!initialized || !telemetry_posthog_sender_init(host, token, binding, &journal))
-		return false;
+		return telemetry_storage_check::configuration;
 #ifdef TELEMETRY_POSTHOG_TESTING
 	if (const char *port = std::getenv("DURIS_TEST_POSTHOG_PORT"))
 	{
@@ -1225,10 +1231,10 @@ bool start_posthog(telemetry_outage_journal &journal) noexcept
 		    !environment_unsigned("DURIS_TEST_POSTHOG_PORT", parsed_port, 1U, 65535U,
 					  &parsed_port) ||
 		    !telemetry_posthog_sender_test_endpoint(parsed_port, ca))
-			return false;
+			return telemetry_storage_check::configuration;
 	}
 #endif
-	return true;
+	return telemetry_storage_check::none;
 }
 
 void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
@@ -1256,9 +1262,41 @@ void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
 			health.sender.curl_error != 0U	? health.sender.curl_error :
 							  health.sender.http_status;
 		health.native.last_failure_class = telemetry_failure_class::transient_connection;
+		if (state == telemetry_posthog_sender_state::permanent_failure)
+		{
+			health.native.last_failure_class =
+				health.sender.http_status == 401U ||
+						health.sender.http_status == 403U ?
+					telemetry_failure_class::permanent_permission :
+					telemetry_failure_class::permanent_repository;
+			if (health.sender.storage_failures != 0U)
+				health.native.last_storage_check = telemetry_storage_check::io;
+		}
+		else if (state == telemetry_posthog_sender_state::quota_blocked ||
+			 state == telemetry_posthog_sender_state::clock_blocked)
+		{
+			health.native.last_failure_class =
+				telemetry_failure_class::transient_internal;
+			if (state == telemetry_posthog_sender_state::quota_blocked)
+			{
+				health.native.last_storage_check = telemetry_storage_check::quota;
+				health.native.last_error_code = EDQUOT;
+			}
+		}
 		health.native.last_failure_monotonic_usec = health.observed_at;
 	}
 	std::lock_guard<std::mutex> lock(R.posthog_health_mutex);
+	// Closing the sender must retain an unresolved failure for final operator health.
+	if (state == telemetry_posthog_sender_state::stopped &&
+	    R.posthog_health.native.state == telemetry_health_state::degraded)
+	{
+		health.native.state = R.posthog_health.native.state;
+		health.native.last_failure_class = R.posthog_health.native.last_failure_class;
+		health.native.last_error_code = R.posthog_health.native.last_error_code;
+		health.native.last_storage_check = R.posthog_health.native.last_storage_check;
+		health.native.last_failure_monotonic_usec =
+			R.posthog_health.native.last_failure_monotonic_usec;
+	}
 	R.posthog_health = health;
 }
 
@@ -1279,9 +1317,16 @@ void posthog_worker_loop(worker_outage_guard &outage) noexcept
 			publish_posthog_health(outage.journal);
 		}
 	} closer{ outage };
-	if (!start_posthog(outage.journal))
+	if (const auto setup = start_posthog(outage.journal);
+	    setup != telemetry_storage_check::none)
 	{
-		(void)outage.refuse(0U, telemetry_outage_result::invalid);
+		outage.failed = true;
+		telemetry_transport_fail_storage_for_worker(
+			0U,
+			setup == telemetry_storage_check::quota && outage.journal.error_code != 0U ?
+				outage.journal.error_code :
+				EINVAL,
+			setup);
 		return;
 	}
 	telemetry_transport_posthog_start_for_worker();

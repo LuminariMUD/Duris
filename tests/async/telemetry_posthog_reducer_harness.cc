@@ -434,7 +434,7 @@ void observe(const telemetry_health_snapshot &health, bool expected = true,
 
 void finish()
 {
-	telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+	telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true, true);
 	print_output();
 	const auto health = telemetry_posthog_reducer_health_copy();
 	cJSON *object = cJSON_CreateObject();
@@ -587,7 +587,7 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 				emit(experience);
 			}
 			if (name == "byte-capacity")
-				telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+				telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true, true);
 		}
 		if (name == "byte-capacity")
 		{
@@ -638,7 +638,7 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 		for (std::uint32_t subject = 1U; subject <= 256U; ++subject)
 			emit(xp(1, 1, 1, subject));
 		emit(xp(1, 1, 1, 257U), false);
-		telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true, true);
 		CHECK(telemetry_posthog_reducer_health_copy().output_events == 128U);
 		CHECK(telemetry_posthog_reducer_health_copy().output_suppressed == 129U);
 		CHECK(!telemetry_posthog_output_retire(
@@ -901,7 +901,7 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 			life(telemetry_lifecycle_kind::connection_attached);
 		const auto saved = std::string(telemetry_posthog_output_peek().json);
 		emit(xp(3, 3, 3));
-		telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true, true);
 		CHECK(telemetry_posthog_reducer_health_copy().output_suppressed == 1U);
 		CHECK(saved == telemetry_posthog_output_peek().json);
 		CHECK(telemetry_posthog_output_retire(
@@ -1015,6 +1015,40 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 					std::numeric_limits<std::uint64_t>::max();
 			emit(row);
 		}
+	}
+	else if (name == "flush-characters" || name == "flush-encounters" || name == "flush-bytes")
+	{
+		if (name == "flush-characters")
+			for (std::uint32_t subject = 1U; subject <= 200U; ++subject)
+				emit(xp(1, 1, 1, subject));
+		else if (name == "flush-bytes")
+			for (std::uint32_t subject = 1U; subject <= 40U; ++subject)
+				for (std::uint32_t bucket = 0U; bucket < 32U; ++bucket)
+				{
+					emit(interval(bucket, bucket + 1U,
+						      telemetry_interval_category::connected_active,
+						      static_cast<std::int32_t>(bucket), subject));
+					auto record = xp(10'000'000'000'000'000LL,
+							 10'000'000'000'000'000LL, 0, subject);
+					record.payload.progression.modifier_flags = bucket;
+					emit(record);
+				}
+		else
+			for (std::uint64_t run = 1U; run <= 2U; ++run)
+				complete_encounter(run, 64U);
+		for (unsigned int pass = 0U; pass < 8U; ++pass)
+		{
+			const bool sealed =
+				telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true, false);
+			if (pass == 0U)
+				CHECK(!sealed);
+			CHECK(telemetry_posthog_reducer_health_copy().output_suppressed == 0U);
+			drain_output();
+		}
+		CHECK(telemetry_posthog_reducer_health_copy().runs == 0U);
+		CHECK(DRAINED_EVENTS == (name == "flush-characters" ? 201U :
+					 name == "flush-bytes"	    ? 41U :
+								      131U));
 	}
 	else if (name == "encounter-burst")
 	{

@@ -1995,7 +1995,8 @@ bool seal_encounter_row(const encounter_state &run, const encounter_actor *actor
 	return queue_row(row, now);
 }
 
-void seal_encounters(telemetry_monotonic_usec now, telemetry_utc_usec utc, bool force) noexcept
+bool seal_encounters(telemetry_monotonic_usec now, telemetry_utc_usec utc, bool force,
+		     bool discard) noexcept
 {
 	for (auto &run : REDUCER.encounters)
 	{
@@ -2027,8 +2028,8 @@ void seal_encounters(telemetry_monotonic_usec now, telemetry_utc_usec utc, bool 
 					    REDUCER.health.output_bytes <
 				    TELEMETRY_POSTHOG_MAX_EVENT_BYTES + 1U)
 			{
-				if (!force && !expired)
-					break;
+				if (!(force && discard) && !expired)
+					return false;
 				add_count(REDUCER.health.output_suppressed,
 					  run.actor_count + 1U - run.output_cursor);
 				add_count(
@@ -2058,6 +2059,7 @@ void seal_encounters(telemetry_monotonic_usec now, telemetry_utc_usec utc, bool 
 		run = {};
 		--REDUCER.health.runs;
 	}
+	return true;
 }
 } // namespace
 
@@ -2205,11 +2207,11 @@ bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monoton
 	return accepted;
 }
 
-void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_usec utc,
-				    bool force) noexcept
+bool telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_usec utc,
+				    bool force, bool discard) noexcept
 {
 	if (!REDUCER.initialized)
-		return;
+		return true;
 	const auto span =
 		static_cast<telemetry_utc_usec>(REDUCER.config.window_seconds) * 1'000'000;
 	for (auto &character : REDUCER.characters)
@@ -2229,7 +2231,15 @@ void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_
 			const bool aged = now >= part.created_at &&
 					  now - part.created_at >= static_cast<std::uint64_t>(span);
 			if (force || completed_window || aged || silent)
+			{
+				if (!discard &&
+				    (REDUCER.health.output_events == TELEMETRY_POSTHOG_MAX_EVENTS ||
+				     REDUCER.bytes.size() - BATCH_FRAMING_RESERVE -
+						     REDUCER.health.output_bytes <
+					     TELEMETRY_POSTHOG_MAX_EVENT_BYTES + 1U))
+					return false;
 				seal_fragment(character, part, now, utc);
+			}
 		}
 		if (silent)
 		{
@@ -2238,7 +2248,7 @@ void telemetry_posthog_seal_through(telemetry_monotonic_usec now, telemetry_utc_
 			add_count(REDUCER.health.abandoned_sessions);
 		}
 	}
-	seal_encounters(now, utc, force);
+	return seal_encounters(now, utc, force, discard);
 }
 
 bool telemetry_posthog_observe_health(const telemetry_health_snapshot &native,

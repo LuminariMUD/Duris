@@ -16,6 +16,8 @@ int main(int argc, char **argv)
 		      std::chrono::system_clock::now().time_since_epoch())
 		      .count();
 	telemetry_quota_binding binding{ 678214U, 99U, 1000U, 1U, 90U, 10U, 100U };
+	if (scenario == "invalid-scope")
+		binding.environment_id = 2U;
 	if (scenario == "quota")
 		binding = { 678214U, 99U, 1000U, 1U, 2U, 10U, 12U };
 	telemetry_outage_journal journal{};
@@ -30,13 +32,29 @@ int main(int argc, char **argv)
 	setenv("TELEMETRY_OUTAGE_LEDGER_DIR", directory, 1);
 	if (scenario == "missing-key")
 		unsetenv("TELEMETRY_IDENTITY_KEY");
+	if (scenario == "missing-token")
+		unsetenv("POSTHOG_API_KEY");
+	if (scenario == "missing-host")
+		unsetenv("POSTHOG_HOST");
+	if (scenario == "missing-sender")
+		unsetenv("POSTHOG_SENDER_ID");
+	if (scenario == "invalid-host")
+		setenv("POSTHOG_HOST", "https://invalid.example", 1);
+	if (scenario == "invalid-project")
+		setenv("POSTHOG_PROJECT_ID", "1", 1);
+	if (scenario == "quota-mismatch")
+		setenv("POSTHOG_SENDER_ID", "100", 1);
 	if (scenario == "quota")
 	{
 		setenv("POSTHOG_NORMAL_LIMIT", "2", 1);
 		setenv("POSTHOG_DAILY_LIMIT", "12", 1);
 	}
-	const bool refused = scenario == "missing-key" || scenario == "missing-quota" ||
-			     scenario == "owner";
+	const bool configuration = scenario == "missing-key" || scenario == "missing-token" ||
+				   scenario == "missing-host" || scenario == "missing-sender" ||
+				   scenario == "invalid-host" || scenario == "invalid-project" ||
+				   scenario == "invalid-scope";
+	const bool refused = configuration || scenario == "missing-quota" ||
+			     scenario == "quota-mismatch" || scenario == "owner";
 	std::uint32_t prior_reserved = 0U;
 	for (unsigned int incarnation = 0U; incarnation < (scenario == "restart" ? 2U : 1U);
 	     ++incarnation)
@@ -44,7 +62,7 @@ int main(int argc, char **argv)
 		std::uint64_t expected_connected = 0U;
 		auto options = make_enabled_options();
 		options.config.backend = telemetry_storage_backend::posthog;
-		options.config.environment_id = 1000U;
+		options.config.environment_id = binding.environment_id;
 		options.config.interval_usec = 100'000U;
 		options.config.checkpoint_interval_usec = 200'000U;
 		options.config.active_window_usec = 2'000'000U;
@@ -64,6 +82,15 @@ int main(int argc, char **argv)
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			assert(telemetry_runtime_health_copy().state ==
 			       telemetry_health_state::circuit_open);
+			const auto health = telemetry_runtime_health_copy();
+			assert(health.last_storage_check ==
+			       (configuration	    ? telemetry_storage_check::configuration :
+				scenario == "owner" ? telemetry_storage_check::owner :
+						      telemetry_storage_check::quota));
+			assert(health.last_error_code ==
+			       (configuration || scenario == "quota-mismatch" ? EINVAL :
+				scenario == "missing-quota"		      ? ENODATA :
+										EWOULDBLOCK));
 		}
 		else
 			telemetry_test_start_runtime(options);
@@ -76,6 +103,8 @@ int main(int argc, char **argv)
 		else
 		{
 			assert(entered.outcome == telemetry_runtime_outcome::accepted);
+			assert(telemetry_runtime_health_copy().advisory_lock_state ==
+			       telemetry_advisory_lock_state::not_applicable);
 			std::this_thread::sleep_for(std::chrono::milliseconds(25));
 			assert(telemetry_runtime_now(&now, &utc));
 			(void)telemetry_runtime_pulse({ now, utc, 0U, 0U });
@@ -137,6 +166,27 @@ int main(int argc, char **argv)
 				assert(health.sender.storage_failures > 0U);
 			if (scenario == "rollback")
 				assert(health.sender.clock_failures > 0U);
+			if (scenario == "storage" || scenario == "400" || scenario == "401" ||
+			    scenario == "403")
+			{
+				assert(health.native.last_failure_class ==
+				       (scenario == "401" || scenario == "403" ?
+						telemetry_failure_class::permanent_permission :
+						telemetry_failure_class::permanent_repository));
+				assert(health.native.state == telemetry_health_state::degraded);
+				telemetry_health_monitor_state monitor{};
+				const auto config =
+					telemetry_health_monitor_default_config(100'000U, 256U);
+				const auto event = telemetry_health_monitor_evaluate(
+					&monitor, &config, health.native, now + 1'000'000U);
+				assert(event.severity == telemetry_health_alert_severity::critical);
+				assert((event.reason_mask &
+					TELEMETRY_HEALTH_REASON_PERMANENT_FAILURE) != 0U);
+			}
+			if (scenario == "rollback" ||
+			    health.sender.state == telemetry_posthog_sender_state::quota_blocked)
+				assert(health.native.last_failure_class ==
+				       telemetry_failure_class::transient_internal);
 			if (scenario == "deadline")
 			{
 				assert(health.sender.cancellations > 0U);

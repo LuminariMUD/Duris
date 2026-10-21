@@ -1668,8 +1668,7 @@ telemetry_health_snapshot telemetry_transport_health_copy(void)
 	result.repository_retry_attempts =
 		HEALTH.repository_retry_attempts.load(std::memory_order_acquire);
 	result.inflight_active = HEALTH.inflight_active.load(std::memory_order_acquire);
-	result.advisory_lock_state = result.backend ==
-						     telemetry_storage_backend::flatfile_disabled ?
+	result.advisory_lock_state = result.backend != telemetry_storage_backend::sql ?
 					     telemetry_advisory_lock_state::not_applicable :
 				     REPOSITORY_READY.load(std::memory_order_acquire) ?
 					     telemetry_advisory_lock_state::held :
@@ -1778,11 +1777,12 @@ bool telemetry_transport_posthog_pulse_for_worker(telemetry_monotonic_usec now,
 			telemetry_posthog_sender_pulse(current, utc, deadline, force);
 		}
 	}
-	telemetry_posthog_seal_through(POSTHOG_CUT, POSTHOG_CUT_UTC, force);
-	POSTHOG_FENCE_ACTIVE = false;
+	const bool sealed = telemetry_posthog_seal_through(POSTHOG_CUT, POSTHOG_CUT_UTC, force,
+							   deadline != 0U && now >= deadline);
+	POSTHOG_FENCE_ACTIVE = !sealed;
 	HEALTH.last_success_monotonic_usec.store(now, std::memory_order_release);
 	telemetry_monotonic_usec current = now;
 	(void)clock_now(current);
 	telemetry_posthog_sender_pulse(current, utc, deadline, force);
-	return true;
+	return sealed;
 }

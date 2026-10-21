@@ -215,7 +215,9 @@ def runtime_tests(binary: Path, root: Path) -> None:
         "-keyout", str(key), "-out", str(cert),
     ], env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for case in ("success", "restart", "deadline", "quota", "storage", "rollback",
-                 "missing-key", "missing-quota", "owner"):
+                 "missing-key", "missing-token", "missing-host", "missing-sender",
+                 "invalid-host", "invalid-project", "invalid-scope",
+                 "missing-quota", "quota-mismatch", "owner", "400", "401", "403", "503"):
         received: list[dict] = []
         journal = root / case
         journal.mkdir(mode=0o700)
@@ -229,7 +231,7 @@ def runtime_tests(binary: Path, root: Path) -> None:
                 received.extend(value["batch"])
                 if case == "deadline" and len(received) == len(value["batch"]):
                     time.sleep(0.6)
-                self.send_response(200)
+                self.send_response(int(case) if case.isdecimal() else 200)
                 self.send_header("Content-Length", "2")
                 self.end_headers()
                 self.wfile.write(b"{}")
@@ -271,11 +273,15 @@ def runtime_tests(binary: Path, root: Path) -> None:
             assert len({row["uuid"] for row in received}) == len(received), case
             assert all(row["properties"]["duris_test_run"] == "native-runtime" for row in received)
             assert all(int(row["properties"]["duris_environment_id"]) == 1000 for row in received)
-        if case in {"missing-key", "missing-quota", "owner", "rollback"}:
+        if case in {"missing-key", "missing-token", "missing-host", "missing-sender",
+                    "invalid-host", "invalid-project", "invalid-scope",
+                    "missing-quota", "quota-mismatch", "owner", "rollback"}:
             assert not received, (case, received)
         if case == "storage":
             assert all(row["event"] == "duris_telemetry_health" for row in received), case
-        if case not in {"storage", "owner", "missing-key", "missing-quota"}:
+        if case not in {"storage", "owner", "missing-key", "missing-token", "missing-host",
+                        "missing-sender", "invalid-host", "invalid-project", "invalid-scope",
+                        "missing-quota", "quota-mismatch"}:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/telemetry"))
             from outage import decode
