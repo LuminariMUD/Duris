@@ -438,7 +438,7 @@ Current evidence under `bin/issue59/`:
 | Actual cloud campaign | `fast-plan/gameplay-cloud-mariadb.log`: 41 real submissions / 40 unique IDs within 48 native reservations, scope 1002 / season 1 / tag `issue59-cloud-smoke`. Persistent campaign marker forbids another campaign/reset. |
 | Queried reports and health | `acceptance/cloud-smoke/{submitted,expected,query-evidence}.json`: exact reconciliation, repeated UUID, deliberately missing participant, all five doubled-input queries conserve results, all production queries exclude tests. REPORTS.md records totals and IDs. |
 | Saved dashboard | Project 678214, dashboard 2240639, five saved insights 13125342–13125346; readback verifies all five production definitions. |
-| Performance | `fast-plan/slot-scan-performance.log` exits 0: pooled pulse p99 592 usec on / 630 off (-6.03%), save p99 1,758,746 / 1,759,044 usec (-0.017%); 1,032/1,028 pulse samples, 120 saves per condition. All host/health bounds pass. Raw samples: `acceptance/mariadb-*performance*`, `mariadb-latency-*`, persistence snapshots and event-budget evidence. |
+| Performance | Historical `fast-plan/slot-scan-performance.log` used a pooled-only check and did not prove each pair. Superseded by the matched-pair review qualification in PERFORMANCE_GATE.md: pulse off/on 1704/897, 695/560, 788/638 usec; every pulse/save pair meets 5%. |
 
 First completed performance comparison FAILED: pulse p99 654 usec on / 557 off
 (+17.4%); save p99 1,759,083 / 1,759,045 usec (passes). Absolute host bounds passed.
@@ -453,10 +453,11 @@ rule or reduced criterion. State, runtime HTTPS, both native builds and both rea
 gameplay journeys pass again. Existing cloud/report/reducer evidence remains
 valid because those data contracts and reduction code did not change.
 
-The repaired comparison finished successfully: all three alternating pairs,
+The historical pooled comparison recorded all three alternating pairs,
 40 saves/run and 120 saves per condition. Individual pulse p99 off/on values
-were 615/725, 504/540 and 631/592 usec; the predeclared gate pools all raw
-samples. This proves the fixture gate, not a general speed improvement.
+were 615/725, 504/540 and 631/592 usec. Review established that its pooled-only
+check masked two pair regressions; it is not a matched-pair performance pass.
+The runner now enforces the original 5% pulse/save limit separately on every pair.
 Maximum enabled event pass was 188 usec; all critical oldest-age snapshots were
 0ms, with zero observed event-budget debt, capture loss, refusal or quota errors.
 Enabled game-process CPU was 0.392% of one core and maximum RSS 49,036 KiB.
@@ -484,9 +485,20 @@ activation remains separately authorized and is not a closure condition.
 # Review publication follow-up
 
 PR review corrections are qualified locally. After this stack merges, refresh the
-saved time, encounter and health insights from `docs/telemetry/posthog/` as listed
+saved time, XP, encounter and health insights from `docs/telemetry/posthog/` as listed
 in `docs/telemetry/REPORTS.md`, then query the existing synthetic scope read-only.
 The owner chose to finish this review without PostHog access; no new capture,
-saved-view update or production activation is part of this pass. The cloud and
-paired-performance evidence elsewhere in this plan remains dated historical
-evidence, not a newly executed cloud or performance campaign.
+saved-view update or production activation is part of this pass. Cloud evidence
+elsewhere in this plan remains dated historical evidence. The paired-performance
+review comparison below is newly executed local evidence.
+
+The merge review corrected XP zone/group grouping and the pooled-only performance
+guard. Local SQL regressions preserve all three independent XP zone/group buckets.
+A new local one-client, three-pair performance run exits 0 with 40 saves/run:
+pulse p99 off/on is 1704/897, 695/560 and 788/638 usec; save changes are -0.022%,
++0.111% and -0.148%. Each pair independently meets the original 5% limit. There
+are 1,026 off / 1,032 on pulse samples and 120 saves per condition; maximum enabled
+event pass is 905 usec and all twelve sampled critical ages are 0ms. Required
+capture/health fields remain clean. Raw local evidence and limits are documented
+in PERFORMANCE_GATE.md. No new cloud campaign, saved-view update or production
+operation occurred.

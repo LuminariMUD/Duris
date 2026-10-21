@@ -41,6 +41,8 @@ WITH deduplicated AS (
         toInt(JSONExtractRaw(bucket, 'race_id')) AS race_id,
         toInt(JSONExtractRaw(bucket, 'faction_id')) AS faction_id,
         toInt(JSONExtractRaw(bucket, 'level_band')) AS level_band,
+        toInt(JSONExtractRaw(bucket, 'zone')) AS zone,
+        toInt(JSONExtractRaw(bucket, 'group_size')) AS group_size,
         observed_level,
         toInt(JSONExtractRaw(bucket, 'source')) AS source,
         toInt(JSONExtractRaw(bucket, 'reason')) AS reason,
@@ -56,13 +58,13 @@ WITH deduplicated AS (
                 OR JSONExtractRaw(bucket, 'zero_applied') = 'null') AS unavailable_inputs
     FROM buckets
     WHERE JSONExtractString(bucket, 'attempts') != '0'
-    GROUP BY utc_day, allocation, class_id, race_id, faction_id, level_band, observed_level, source, reason, modifier_flags
+    GROUP BY utc_day, allocation, class_id, race_id, faction_id, level_band, zone, group_size, observed_level, source, reason, modifier_flags
 ), planes AS (
     SELECT * FROM deltas
     UNION ALL
     SELECT
         'level_change', if(timestamp_basis = 'occurrence', toDate(captured_at), NULL), 'captured_transition',
-        class_id, race_id, faction_id, level_band, NULL, source, reason, NULL,
+        class_id, race_id, faction_id, level_band, NULL, NULL, NULL, source, reason, NULL,
         character_id, before_level, after_level, threshold_xp,
         NULL, NULL, NULL, NULL, NULL, 0
     FROM deduplicated
@@ -70,5 +72,5 @@ WITH deduplicated AS (
 )
 SELECT *, count() OVER () AS total_rows_before_limit
 FROM planes
-ORDER BY row_plane, utc_day DESC, class_id, race_id, faction_id, level_band, observed_level, source, reason, modifier_flags, character_id, before_level
+ORDER BY row_plane, utc_day DESC, class_id, race_id, faction_id, level_band, zone, group_size, observed_level, source, reason, modifier_flags, character_id, before_level
 LIMIT 500

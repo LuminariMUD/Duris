@@ -131,6 +131,21 @@ def main():
         assert {(row["context_quality"], row["resident_usec"]) for row in result} == {(1, "100"), (2, "200")}
         print("PASS: equal time contexts with different evidence quality remain separate")
 
+        xp_summary = deepcopy(next(row for row in ordinary if row["event"] == "duris_character_summary"
+                                   and row["properties"]["xp_allocations"]))
+        xp_buckets = []
+        for zone, group, amount in ((100, 1, 10), (200, 1, 20), (100, 2, 30)):
+            bucket = deepcopy(xp_summary["properties"]["xp_allocations"][0])
+            bucket.update(zone=zone, group_size=group, requested_xp=str(amount),
+                          computed_xp=str(amount), applied_xp=str(amount), attempts="1", zero_applied="0")
+            xp_buckets.append(bucket)
+        xp_summary["properties"].update(xp_allocations=xp_buckets, unattributed_xp={"attempts": "0"})
+        result = run(db, "xp", [xp_summary])
+        assert {(row["zone"], row["group_size"], row["applied_xp"]) for row in result} == {
+            (100, 1, "10"), (200, 1, "20"), (100, 2, "30")}
+        assert result == run(db, "xp", [xp_summary, xp_summary])
+        print("PASS: XP allocation preserves independent captured zone and group-size dimensions")
+
         comparisons = []
         for index, observed in enumerate((400, 800)):
             row = deepcopy(summary)

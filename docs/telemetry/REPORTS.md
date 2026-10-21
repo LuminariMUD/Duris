@@ -17,7 +17,7 @@ no governed metric matching these contracts when checked.
 
 The bounded cloud fixture below qualified the original saved definitions.
 After merging the review corrections, refresh saved insights **13125343 (time),
-13125345 (encounters), and 13125346 (health)** from the corresponding SQL files.
+13125344 (XP), 13125345 (encounters), and 13125346 (health)** from the corresponding SQL files.
 That cloud refresh and a read-only query check are a separate follow-up; no new
 capture campaign is needed. The current review is qualified locally and does not
 claim those saved definitions have been refreshed. All five production queries
@@ -49,7 +49,8 @@ UTC-day quota. The report exposes the selected snapshot's durable quota day,
 normal/health reservations and limits, reducer occupancy and capacities, and
 coalesced incidents even after their active reason clears. Its freshness time
 comes from that same monotonic snapshot, including UTC rollback.
-Time allocation retains context quality; within each checkpoint revision,
+Time allocation retains context quality and XP retains captured zone/group size;
+within each checkpoint revision,
 reconciliation prefers greater observed cumulative duration and preserves an
 unavailable comparison as unknown. Occurrence time and UUID order do not measure
 comparison progress. Encounter rows retain terminal/lower-bound duration basis
@@ -72,7 +73,7 @@ This executes all five committed SQL definitions with embedded ClickHouse agains
 native fixture rows and controlled rollback/reconciliation variants. It checks
 event deduplication, quota/capacity and recovered-incident visibility, consistent
 freshness, retained encounter overflow (including 640 pet damage), lower-bound
-duration labels, separate time-quality buckets and late checkpoint comparisons.
+duration labels, separate time-quality and XP zone/group buckets, and late checkpoint comparisons.
 The local adapter supplies HogQL's nullable `toInt` conversion and event-property
 columns; this is SQL semantics proof, not a PostHog ingestion or saved-view check.
 

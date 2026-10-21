@@ -79,6 +79,16 @@ def until(predicate, label: str, timeout: float = 30) -> None:
     raise AssertionError(label)
 
 
+def verify_performance_pairs(measurements):
+    for pair in range(3):
+        off = next(row for row in measurements if row["pair"] == pair and not row["enabled"])
+        on = next(row for row in measurements if row["pair"] == pair and row["enabled"])
+        assert on["save_p99_us"] * 100 <= off["save_p99_us"] * 105, (pair, "save_p99_us", off, on)
+        assert on["native"]["total_tick"]["p99_us"] * 100 <= off["native"]["total_tick"]["p99_us"] * 105, (pair, off, on)
+        assert on["native"]["total_tick"]["p99_us"] <= 250000
+        assert on["native"]["ne_events"]["max_us"] <= 25000, "callback latency upper bound unresolved"
+
+
 def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
     artifacts = ROOT / "bin/issue59/acceptance"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -410,13 +420,6 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                             print(json.dumps({key: value for key, value in measurements[-1].items()
                                               if key not in ("save_samples_us", "command_samples_us", "telemetry_snapshots")}), flush=True)
                             (artifacts / f"{backend}-persistence-{pair}-{enabled}.txt").write_text("\n".join(snapshots))
-                    for pair in range(3):
-                        off = next(row for row in measurements if row["pair"] == pair and not row["enabled"])
-                        on = next(row for row in measurements if row["pair"] == pair and row["enabled"])
-                        assert on["native"]["total_tick"]["p99_us"] <= 250000
-                        # Every callback lies inside its event pass: its maximum
-                        # bounds callback p99 without inventing a callback distribution.
-                        assert on["native"]["ne_events"]["max_us"] <= 25000, "callback latency upper bound unresolved"
                     # Estimate p99 across all three matched runs, retaining each
                     # pair and every raw sample for review of host noise.
                     pooled = {}
@@ -432,8 +435,8 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                                                 "save_p99_us": p99(saves), "save_count": len(saves)}
                     (artifacts / (backend + "-performance-summary.json")).write_text(json.dumps(pooled, indent=2))
                     print(json.dumps({"pooled_three_pairs": pooled}), flush=True)
-                    for metric in ("pulse_p99_us", "save_p99_us"):
-                        assert pooled["True"][metric] * 100 <= pooled["False"][metric] * 105, (metric, pooled)
+                    # Pooling is descriptive; each matched pair must meet the gate.
+                    verify_performance_pairs(measurements)
                     print("PASS three paired gameplay/save performance comparisons")
                     return
                 boot(); client = reconnect()

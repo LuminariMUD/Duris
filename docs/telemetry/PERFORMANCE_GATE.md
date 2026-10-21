@@ -6,8 +6,8 @@ Run `nice -n 10 python3 tests/async/run_telemetry_player_journey.py --backend ma
 after the task-specific native build. This uses a disposable socket-only database,
 synthetic world and loopback HTTPS; it never sources the host environment. The
 release fixture is one client, three alternating off/on pairs, 40 ordinary saves
-per run after warmup. Regression p99 uses pooled raw samples from all three
-matched runs, with each individual run retained to expose host noise. It is not
+per run after warmup. Each matched pair must meet the <=5% pulse and save p99
+regression limits independently; pooled samples are descriptive only. It is not
 200-player capacity certification.
 
 Raw pulse/event/command and process-fsync samples, save/command p99, CPU/RSS,
@@ -20,16 +20,48 @@ persistence calls and are an upper bound, not isolated journal cost. No producti
 instrumentation is added. Normal capture/budget loss and sustained backlog must
 be absent. Production external I/O stays in the worker.
 
-### Measured result — 2026-10-21 UTC
+### Matched-pair qualification — 2026-10-21 UTC
 
-**PASS**, native production source `18b163a20`, runner at `d558e4bdc`, both native
+**PASS**, native source `3277e8bd1`, corrected runner/checker in this PR, development
+build and one synthetic client. All three pairs independently meet both 5% limits:
+
+| Pair | Pulse p99 off/on, usec | Change | Save p99 off/on, usec | Change |
+| --- | --- | --- | --- | --- |
+| 0 | 1,704 / 897 | -47.359% | 1,761,459 / 1,761,080 | -0.022% |
+| 1 | 695 / 560 | -19.424% | 1,763,700 / 1,765,665 | +0.111% |
+| 2 | 788 / 638 | -19.036% | 1,764,019 / 1,761,401 | -0.148% |
+
+There are 1,026 off / 1,032 on pulse samples and 120 saves per condition. Maximum
+enabled whole event pass is 905 usec, bounding callback p99 below 25ms. All twelve
+sampled critical oldest ages are 0ms. The six retained enabled telemetry snapshots
+show zero capture drops, reduction refusals, ambiguity, suppression, expiry and
+quota errors. Off/on game-process CPU is 0.248% / 0.344% of one core; maximum RSS
+is 35,464 / 43,392 KiB. Pooling is descriptive only and does not decide acceptance.
+Maximum enabled pulse is 3,368 usec. Process-wide fsync has 3 off / 84 on samples,
+with maxima 3,210 / 6,605 usec; these bound process persistence cost rather than
+isolating journal-only latency.
+
+Host snapshot after collection: 16 CPUs, load averages 6.54/7.71/6.90 and 43.7 GiB
+available memory. Host load varied; the negative pair differences do not establish
+a general speed improvement or concurrent-player capacity.
+
+The command above exited 0. Raw six-run samples, snapshots and summary are under
+`bin/issue59/acceptance/mariadb-*performance*`, `mariadb-latency-*` and
+`mariadb-persistence-*`; the run log is `/tmp/duris-pr263-matched-performance.log`.
+`python3 tests/async/test_telemetry_performance_pairs.py` rejects the historical
+false-pass values below and independently rejects pulse or save regression in
+each pair. PostHog and production were untouched.
+
+### Historical pooled result — 2026-10-21 UTC
+
+**Not a matched-pair qualification**, native source `18b163a20`, runner at `d558e4bdc`, both native
 builds current. The fixture uses the existing development build profile and
 minimal synthetic world. It measures one client, not concurrent player capacity.
 
 | Pooled metric | Telemetry off | Telemetry on | Result |
 | --- | ---: | ---: | --- |
-| Pulse p99 | 630 usec / 1,028 samples | 592 usec / 1,032 samples | -6.03%; within 5% gate |
-| Save p99 | 1,759,044 usec / 120 saves | 1,758,746 usec / 120 saves | -0.017%; within 5% gate |
+| Pulse p99 | 630 usec / 1,028 samples | 592 usec / 1,032 samples | -6.03%; descriptive pooled change |
+| Save p99 | 1,759,044 usec / 120 saves | 1,758,746 usec / 120 saves | -0.017%; descriptive pooled change |
 | Client command p99 | 251,356 usec | 251,420 usec | Recorded; no separate regression gate |
 | Game-process CPU | 0.72 seconds / 245.71 seconds | 0.97 seconds / 247.19 seconds | 0.293% / 0.392% of one CPU |
 | Maximum RSS | 40,108 KiB | 49,036 KiB | About 8.7 MiB additional |
@@ -38,8 +70,10 @@ minimal synthetic world. It measures one client, not concurrent player capacity.
 | Process-wide fsync p99/max | 1,959 usec / 3 calls | 2,645 usec / 84 calls | Upper bound including non-journal calls |
 
 Individual pulse p99 values (off/on, usec) were 615/725, 504/540 and 631/592.
-The declared gate pools all three matched runs; these differences show host
-variation and do not establish a general speed improvement. Maximum enabled
+Pairs 0 and 1 regress by 17.9% and 7.1%, so this collection does not pass the
+required <=5% matched-pair gate despite its pooled improvement. The runner now
+rejects either pulse or save regression in any pair; a focused regression uses
+these archived pair values to prove pooling cannot mask a failure. Maximum enabled
 pulse was 1,483 usec, far below the 250ms p99 limit. Enabled health snapshots
 showed zero capture drops, reduction refusal, ambiguity, suppression, expiry or
 quota errors; queues/output drained. Each enabled run's final workload snapshot
@@ -62,12 +96,13 @@ Reproduce with the command above. Evidence is in
 `mariadb-latency-<pair>-<enabled>.txt` and persistence snapshots, and
 `mariadb-event-budget-windows.txt` (no observed debt windows).
 
-The first comparison failed: pulse p99 654/557 usec (+17.4%); save p99 passed.
+The first comparison failed: pulse p99 557 usec off / 654 on (+17.4%); save p99 passed.
 It remains preserved under `acceptance/performance-before-slot-scan-fix/`.
 Repair `18b163a20` stops scans after existing resident counts are exhausted,
 retaining sparse high-index residents and all 256 slots. State/runtime tests,
 both native builds and both real gameplay journeys pass after that repair.
-No acceptance limit changed and no cloud campaign was repeated.
+The pooled-only acceptance check was insufficient and has been corrected; the
+5% requirement and absolute operating bounds are retained. No cloud campaign was repeated.
 
 ### Emitted volume and limits
 
