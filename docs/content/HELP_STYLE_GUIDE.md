@@ -84,6 +84,47 @@ Database pages explicitly assigned dynamic categories receive code-generated
 sections: race `25`, class `9`, specialization `16`, and class-skillset `10`.
 Do not duplicate those sections in the authored body of a dynamic page.
 
+## Class and specialization progression layout
+
+Use numeric progression rows in both base-class skillsets and specialization
+change sections rather than one `ability: circle N` or `ability: level N` entry
+per line. Group spells by circle, and skills, songs and instruments by level,
+in ascending numeric order; alphabetize names within each group. Render circle and level labels in dark blue (`&+b`) and names in
+cyan (`&+c`), resetting at the end of each row (`&n`). Wrap long groups to
+four-space-indented cyan continuation lines.
+
+Keep skill caps beside individual skill names (e.g. `parry (cap 90%)`). For
+innate additions, use one cyan name per line, a leading `*` for passive
+abilities, and `(obtained at level N)` where N is greater than 1, followed by
+the passive-ability legend. Order innates by level, then name. Preserve
+descriptions, headings, requirements, and all other authored prose.
+
+For the `==Allowed races==` section on both class and specialization pages,
+preserve the original class-creation or specialization-permission set, but
+print each race with the exact ANSI string in
+`race_names_table` (`src/core/common.c`). Use a white `*` bullet and
+wrap long lists at 79 visible characters (excluding ANSI codes), indenting
+continuation lines by two spaces. This keeps split-colour names such as
+Githzerai (`&+WGith&+Gzerai&n`) and Githyanki
+(`&+GGith&+Wyanki&n`) intact, while Goblin uses
+`&+GGoblin&n`. Preserve the explanation distinguishing character race
+permissions from initial creation choices.
+
+For base-class help pages, retain the normal-creation versus event-eligibility
+explanation and order existing innate entries by unlock level, displaying each
+name in cyan without removing passive markers or unlock levels. Class skillset
+pages must retain their base-grant scope and numerical spell/skill requirements,
+including the Bard's separate song and instrument lists. The same ANSI format
+applies to specialization song changes such as Minstrel's.
+
+Keep both base-class and specialization bodies synchronized across the two
+maintained import sources. The historical duplicate `Anti-paladin Skills`
+entry is retained for compatibility; the newer `Anti-Paladin Skills` topic
+remains authoritative due to parsed-help source order.
+
+For mirrored specialization topics, maintain identical bodies in
+`help/duris_help_parsed.hlp` and `lib/information/help_index`.
+
 ## Verification and publication
 
 Check title collisions and parser output with

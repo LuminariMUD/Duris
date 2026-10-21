@@ -76,7 +76,7 @@ for cls in class_names:
     assert "==skills==" in skill_lower, f"Missing '==Skills==' in skills help for '{cls}'"
     assert "==spells==" in skill_lower, f"Missing '==Spells==' in skills help for '{cls}'"
     assert "==see also==" in skill_lower, f"Missing '==See also==' in skills help for '{cls}'"
-    for circle in re.findall(r"(?m)^(\d+)(?:st|nd|rd|th) Circle:", skill_entry):
+    for circle in re.findall(r"(?m)^&\+b(\d+)(?:st|nd|rd|th) Circle:", skill_entry):
         assert 1 <= int(circle) <= MAX_CIRCLE, f"Unobtainable circle {circle} in {skills_title}"
 
     # Main class and skillset in help_index
@@ -89,6 +89,107 @@ for cls in class_names:
     for key, expected in ((cls_lower, main_body), (index_skill_title, skill_body)):
         index_body = "\n".join(index_map[key][1].strip().splitlines()[2:]).strip()
         assert index_body == expected, f"Divergent help source body for {key}"
+
+
+# All base-class help pages and class skillsets follow the same ANSI style as
+# specialization pages. Check progression ordering, line wrapping, and innates.
+def ansi_visible_length(line):
+    return len(re.sub(r"&(?:\+[A-Za-z]|[nN])", "", line))
+
+
+def assert_progression(section, unit, topic):
+    if section.strip() == "None.":
+        return
+    groups = []
+    for line in section.splitlines():
+        header = re.fullmatch(
+            rf"&\+b(\d+)(?:st|nd|rd|th) {unit}: &\+c(.+)&n", line
+        )
+        continuation = re.fullmatch(r"    &\+c(.+)&n", line)
+        assert ansi_visible_length(line) <= 79, f"Overflow in {topic}: {line}"
+        if header:
+            groups.append([int(header[1]), header[2]])
+        elif continuation:
+            assert groups, f"Orphan continuation in {topic}: {line}"
+            assert groups[-1][1].endswith(","), (
+                f"Missing separator before continuation in {topic}: {line}"
+            )
+            groups[-1][1] += " " + continuation[1]
+        else:
+            raise AssertionError(f"Unexpected {unit} progression in {topic}: {line}")
+    assert groups, f"Empty {unit} progression in {topic}"
+    positions = [level for level, _ in groups]
+    assert positions == sorted(set(positions)), f"Unsorted {unit} labels in {topic}"
+    for level, names in groups:
+        abilities = names.split(", ")
+        assert abilities == sorted(abilities, key=str.casefold), (
+            f"Unsorted abilities at {unit} {level} in {topic}"
+        )
+        assert len(abilities) == len(set(abilities)), f"Duplicate ability in {topic}"
+
+
+def assert_innates(section, topic):
+    if section.strip() == "None.":
+        return
+    seen = []
+    for line in section.splitlines():
+        if line == "'*' Designates passive ability.":
+            continue
+        match = re.fullmatch(
+            r"([ *])&\+c([^&\n]+)&n"
+            r"(?: \(obtained at level &\+c(\d+)&n\))?", line
+        )
+        assert match, f"Invalid innate ANSI in {topic}: {line}"
+        seen.append((int(match[3] or 1), match[2]))
+    assert seen == sorted(seen, key=lambda x: (x[0], x[1].casefold())), (
+        f"Unsorted innate list in {topic}"
+    )
+
+
+for class_name in class_names:
+    key = class_name.lower()
+    main_help = parsed_map[key][1]
+    skill_help = parsed_map[f"{key} skills"][1]
+    for topic, entry in ((key, main_help), (f"{key} skills", skill_help)):
+        innates = re.search(
+            r"==Innate abilities==\n(.*?)(?=\n==|\Z)", entry, re.S
+        )
+        assert innates, f"Missing innate section: {topic}"
+        assert_innates(innates[1].rstrip(), topic)
+    for section, unit in (("Skills", "Level"), ("Spells", "Circle")):
+        match = re.search(
+            rf"=={section}==\n(.*?)(?=\n==|\Z)", skill_help, re.S
+        )
+        assert match, f"Missing section {section} in {key}"
+        assert_progression(match[1].strip(), unit, key)
+    allowed = re.search(
+        r"==Allowed races==\n(.*?)(?=\nThese are normal-roster)", main_help, re.S
+    )
+    assert allowed, f"Missing allowed races in {key}"
+    listing = allowed[1].strip().splitlines()
+    if listing[0].startswith("None in the normal creation roster."):
+        continue
+    assert listing[0].startswith("&+W*&n "), f"Missing race bullet in {key}"
+    assert all(ansi_visible_length(line) <= 79 for line in listing), key
+    assert all(line.startswith("  ") for line in listing[1:]), key
+    from_lines = " ".join(
+        [listing[0][len("&+W*&n "):]] + [line.strip() for line in listing[1:]]
+    )
+    canonical = set(re.findall(
+        r'\{\s*"[^"]+",\s*"[^"]+",\s*"([^"]+)",\s*"[^"]+"\s*\}',
+        COMMON_C
+    ))
+    assert all(race in canonical for race in from_lines.split(", ")), (
+        f"Noncanonical race coloring for {key}"
+    )
+
+# Bard's base songs and instruments also have level-based progression.
+bard_base = parsed_map["bard skills"][1]
+for part in ("Songs", "Instruments"):
+    match = re.search(rf"=={part}==\n(.*?)(?=\n==|\Z)", bard_base, re.S)
+    assert match, f"Missing {part} in Bard help"
+    assert_progression(match[1].strip(), "Level", f"Bard {part}")
+
 
 # Songs and instruments have their own ID ranges, but belong in Bard progression.
 skills_source = re.sub(r"/\*.*?\*/|//[^\n]*", "", (SRC / "skills.c").read_text(), flags=re.S)
@@ -110,7 +211,8 @@ for kind, section in (("SONG", "Songs"), ("INSTRUMENT", "Instruments")):
     body = re.search(r"==" + section + r"==\n(.*?)(?=\n==|\Z)", bard_help, re.S)
     assert body, f"Missing Bard {section} progression"
     listed = {}
-    for level, names in re.findall(r"(?m)^(\d+)(?:st|nd|rd|th) Level:([^\n]*(?:\n +[^\n]+)*)", body[1]):
+    plain_body = re.sub(r"&(?:\+[A-Za-z]|[nN])", "", body[1])
+    for level, names in re.findall(r"(?m)^(\d+)(?:st|nd|rd|th) Level:([^\n]*(?:\n +[^\n]+)*)", plain_body):
         for name in names.replace("\n", " ").split(","):
             name = name.strip()
             assert name not in listed, f"Duplicate Bard {section} entry: {name}"
@@ -121,8 +223,9 @@ for kind, section in (("SONG", "Songs"), ("INSTRUMENT", "Instruments")):
 minstrel_help = parsed_map["minstrel"][1]
 song_changes = re.search(r"==Song changes==\n(.*?)(?=\n==|\Z)", minstrel_help, re.S)
 assert song_changes, "Missing Minstrel song progression"
-listed = {name: (int(level), int(cap)) for name, level, cap in re.findall(
-    r"(?m)^([^\n:]+): level (\d+), skill cap (\d+)%$", song_changes[1])}
+listed = {name: (int(level), int(cap)) for level, name, cap in re.findall(
+    r"(?m)^&\+b(\d+)(?:st|nd|rd|th) Level: &\+c(.+?) \(cap (\d+)%\)&n$",
+    song_changes[1])}
 assert minstrel_grants and listed == minstrel_grants, "Minstrel songs differ from skills.c"
 
 # These specialization bonuses are implemented in fight.c, outside grant tables.
@@ -141,7 +244,86 @@ healing_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_healing\s*\}',
                          (SRC / "innates.c").read_text())
 assert healing_aura, "Healing aura command registration is missing"
 for entries in (parsed_map, index_map):
-    assert f"{healing_aura[1]}: level 1" in entries["healer"][1], \
+    assert f"&+c{healing_aura[1]}&n" in entries["healer"][1], \
         "Healer help must use the registered healing aura command"
+
+
+# Specialization deltas use the same ANSI progression layout as class skillsets:
+# ascending spell circles / skill levels and colored spell and skill names.
+for title, (_, entry) in parsed_map.items():
+    if "==Spell changes==" not in entry:
+        continue
+    for section_name, unit in (("Skill changes", "Level"), ("Spell changes", "Circle")):
+        match = re.search(
+            rf"=={section_name}==\n(.*?)(?=\n==|\Z)", entry, re.S
+        )
+        assert match, f"Missing {section_name} section in {title}"
+        lines = match[1].splitlines()
+        numbers = []
+        for line in lines:
+            if re.match(r"^[^:\n]+: (?:circle|level) \d+", line):
+                raise AssertionError(f"Old progression format in {title}: {line}")
+            row = re.match(rf"^&\+b(\d+)(?:st|nd|rd|th) {unit}: &\+c.*&n$", line)
+            if row:
+                numbers.append(int(row[1]))
+            if line.startswith("    &+c"):
+                assert line.endswith("&n"), f"Unterminated color in {title}: {line}"
+        assert numbers == sorted(set(numbers)), f"Unsorted {unit} progression in {title}"
+
+    innates = re.search(r"==Innate additions==\n(.*?)(?=\n==|\Z)", entry, re.S)
+    assert innates, f"Missing Innate additions in {title}"
+    innate_levels = []
+    for line in innates[1].splitlines():
+        if re.match(r"^[^:\n]+: level \d+", line):
+            raise AssertionError(f"Old innate format in {title}: {line}")
+        match = re.match(
+            r"^[ *]&\+c[^&\n]+&n(?: \(obtained at level &\+c(\d+)&n\))?$", line
+        )
+        if match:
+            innate_levels.append(int(match[1] or 1))
+    assert innate_levels == sorted(innate_levels), f"Unsorted innates in {title}"
+
+    if title in index_map:
+        parsed_body = "\n".join(entry.strip().splitlines()[3:]).strip()
+        index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
+        assert parsed_body == index_body, f"Divergent specialization help source: {title}"
+
+
+# Static specialization race-permission rows must use the canonical in-game
+# race ANSI strings and keep the two imported help sources synchronized.
+race_ansi = dict(re.findall(
+    r'\{\s*"([^"]+)",\s*"[^"]+",\s*"([^"]+)",\s*"[^"]+"\s*\}',
+    COMMON_C,
+))
+canonical_race_tokens = set(race_ansi.values())
+for title, (_, entry) in parsed_map.items():
+    if ("==Allowed races==" not in entry or
+            "These permissions apply to an existing character" not in entry):
+        continue
+    assert "==Race permission rows==" not in entry, title
+    section = re.search(r"==Allowed races==\n(.*?)(?=\n==|\Z)", entry, re.S)
+    assert section, title
+    list_lines = []
+    for line in section[1].splitlines():
+        if line.startswith("These permissions apply"):
+            break
+        list_lines.append(line)
+    if list_lines[0].startswith("None."):
+        continue
+    assert list_lines[0].startswith("&+W*&n "), f"Missing bullet in {title}"
+    assert all(len(re.sub(r"&(?:\+[A-Za-z]|[nN])", "", line)) <= 79 for line in list_lines), title
+    assert all(line.startswith("  ") for line in list_lines[1:]), title
+    rendered = " ".join([list_lines[0][len("&+W*&n "):]] +
+                        [line.strip() for line in list_lines[1:]])
+    for race in rendered.split(", "):
+        assert race in canonical_race_tokens, f"Noncanonical race ANSI in {title}: {race}"
+    if title in index_map:
+        body = "\n".join(entry.strip().splitlines()[3:]).strip()
+        mirror = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
+        assert body == mirror, f"Divergent race help source: {title}"
+
+assert race_ansi["Goblin"] == "&+GGoblin&n"
+assert race_ansi["Githzerai"] == "&+WGith&+Gzerai&n"
+assert race_ansi["Githyanki"] == "&+GGith&+Wyanki&n"
 
 print("All 30 class help files, Bard progression, and specialization help contracts passed!")
