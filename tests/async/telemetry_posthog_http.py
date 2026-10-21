@@ -201,3 +201,87 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
         if case == "clock":
             assert health["clock_failures"] == 1 and health["suppressed"] == 2
     print(f"PostHog HTTPS: {len(cases)} loopback delivery/quota/cancellation scenarios PASS")
+
+
+def runtime_tests(binary: Path, root: Path) -> None:
+    import os
+    # Never inherit project tokens, telemetry settings or host database targets.
+    environment = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "ENVIRONMENT": "local"}
+    root.mkdir(mode=0o700)
+    cert, key = root / "cert.pem", root / "key.pem"
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+        "-keyout", str(key), "-out", str(cert),
+    ], env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for case in ("success", "restart", "deadline", "quota", "storage", "rollback",
+                 "missing-key", "missing-quota", "owner"):
+        received: list[dict] = []
+        journal = root / case
+        journal.mkdir(mode=0o700)
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_POST(self):
+                value = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                received.extend(value["batch"])
+                if case == "deadline" and len(received) == len(value["batch"]):
+                    time.sleep(0.6)
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+        server = Receiver(("127.0.0.1", 0), Handler)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        env = dict(environment, POSTHOG_HOST="https://us.i.posthog.com", POSTHOG_API_KEY="phc_fixture",
+                   POSTHOG_PROJECT_ID="678214", POSTHOG_SENDER_ID="99", TELEMETRY_TEST_RUN="native-runtime",
+                   TELEMETRY_IDENTITY_KEY="01" * 32, DURIS_TEST_POSTHOG_PORT=str(server.server_port),
+                   DURIS_TEST_POSTHOG_CA=str(cert))
+        try:
+            result = subprocess.run([str(binary), case, str(journal)], env=env,
+                                    text=True, capture_output=True, timeout=15)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=1)
+        assert result.returncode == 0 and not result.stderr, (case, result)
+        assert "telemetry PostHog runtime path passed" in result.stdout, (case, result)
+        if case in {"success", "restart", "deadline"}:
+            assert received, (case, result)
+            sessions = [row for row in received if row["event"] == "duris_session"]
+            if case != "deadline":
+                assert len(sessions) == (2 if case == "restart" else 1), (case, sessions)
+            summaries = [row["properties"] for row in received if row["event"] == "duris_character_summary"]
+            assert summaries, (case, received)
+            if case in {"success", "restart"}:
+                expected = sum(json.loads(line)["connected"] for line in result.stdout.splitlines() if line.startswith("{"))
+                observed = sum(int(row["time"]["connected_usec"]) for row in summaries)
+                assert observed == expected > 0, (case, observed, expected)
+                for row in summaries:
+                    durations = row["time"]
+                    assert int(durations["connected_usec"]) == sum(int(durations[name]) for name in ("active_usec", "idle_usec", "unknown_usec"))
+                    assert sum(int(bucket["connected_usec"]) for bucket in row["time_allocations"]) == int(durations["connected_usec"])
+            assert len({row["uuid"] for row in received}) == len(received), case
+            assert all(row["properties"]["duris_test_run"] == "native-runtime" for row in received)
+            assert all(int(row["properties"]["duris_environment_id"]) == 1000 for row in received)
+        if case in {"missing-key", "missing-quota", "owner", "rollback"}:
+            assert not received, (case, received)
+        if case == "storage":
+            assert all(row["event"] == "duris_telemetry_health" for row in received), case
+        if case not in {"storage", "owner", "missing-key", "missing-quota"}:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/telemetry"))
+            from outage import decode
+            evidence = decode((journal / "outages.ledger").read_bytes())
+            assert evidence["ledger_version"] == 3
+            assert evidence["observations"][-1]["backend"] == "posthog"
+            assert evidence["observations"][-1]["consumed_records"] > 0
+            assert evidence["observations"][-1]["phase"] == "unknown_tail"
+        print(f"PostHog native runtime {case}: PASS")

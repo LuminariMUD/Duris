@@ -24,7 +24,9 @@ REVIEW_CASES = ("worker-init", "startup-admission", "control-reserve", "immutabl
                 "producer-order", "ambiguous-invalid-barrier", "missing-clock-flush",
                 "stop-init-race", "bounded-loss", "duplicate-results", "stop-worker-init", "mixed-retry-barrier",
                 "stop-invalid-init", "cancelled-empty-start", "disabled-init-loss")
-SOURCES = [SRC / "telemetry/telemetry_queue.c", SRC / "telemetry/telemetry_transport.c"]
+SOURCES = [SRC / "telemetry" / name for name in (
+    "telemetry_queue.c", "telemetry_transport.c", "telemetry_posthog.c",
+    "telemetry_outage.c", "telemetry_config.c", "telemetry_health.c")]
 
 
 def run(command: list[str], *, timeout: int = 60, env: dict[str, str] | None = None,
@@ -39,7 +41,7 @@ def compile_harness(output: Path, extra: list[str], source: Path = HARNESS) -> N
         "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pedantic", "-pthread",
         "-I", str(SRC),
         *extra,
-        *(str(item) for item in SOURCES), str(source), "-o", str(output),
+        *(str(item) for item in SOURCES), str(source), "-lcrypto", "-lcurl", "-lcjson", "-o", str(output),
     ]
     run(command)
 

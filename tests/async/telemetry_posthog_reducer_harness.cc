@@ -1323,6 +1323,10 @@ int telemetry_posthog_sender_scenario(std::string_view name, const char *directo
 			telemetry_posthog_sender_pulse(now, TELEMETRY_UTC_UNKNOWN);
 			CHECK(telemetry_posthog_sender_health_copy().state ==
 			      telemetry_posthog_sender_state::permanent_failure);
+			telemetry_posthog_sender_pulse(now, utc, now);
+			telemetry_posthog_sender_resume();
+			CHECK(telemetry_posthog_sender_health_copy().state ==
+			      telemetry_posthog_sender_state::permanent_failure);
 		}
 		if (name == "clock" && !clock_recovered)
 		{

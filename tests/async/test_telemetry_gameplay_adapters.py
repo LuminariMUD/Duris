@@ -36,6 +36,7 @@ def main(*, sanitize: bool = False) -> None:
                     "telemetry_failure.c",
                     "telemetry_health.c",
                     "telemetry_outage.c",
+                    "telemetry_posthog.c",
                     "telemetry_queue.c",
                     "telemetry_progression.c",
                     "telemetry_repository.c",
@@ -44,7 +45,7 @@ def main(*, sanitize: bool = False) -> None:
                     "telemetry_transport.c",
                 )
             ],
-            "-lcrypto",
+            "-lcrypto", "-lcurl", "-lcjson",
             str(HARNESS_STUBS), "-o",
             executable,
         ]

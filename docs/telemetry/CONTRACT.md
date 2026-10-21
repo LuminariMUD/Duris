@@ -820,3 +820,21 @@ Shared fixtures live in `tests/async/fixtures/telemetry/contract/`. Downstream
 implementations must consume the same cases through their actual boundaries; the
 reference oracle is not a substitute for queue, repository or classifier tests.
 The gameplay journey is `tests/async/run_telemetry_player_journey.py`.
+
+### Runtime connection (#59)
+
+Both gameplay persistence builds use opt-in backend `posthog` (`3`). The old SQL
+writer is absent from active linking. The worker consumes native records once,
+keeps the admitted-tail fence before sealing, and preserves valid logical
+copyover identity even when the bounded flush fails. `world telemetry` exposes
+native consumption separately from reducer acknowledgements/suppression and
+HTTP/quota/journal state. See [TRANSPORT.md](TRANSPORT.md#current-posthog-path-59)
+and [OUTAGE_STORAGE.md](OUTAGE_STORAGE.md) for current lifecycle/evidence behavior.
+
+Startup requires the fixed US host, project 678214, dedicated stable hex identity
+key, sender allocation, reviewed property catalog and matching initialized quota.
+`.env.example` lists the names. Production defaults to 19,800 normal + 100 health
+attempts/day; tagged synthetic worlds >=1000 are limited to 100 total. The native
+state tool initializes or exhausts allowance explicitly; boot never resets it.
+Real native gameplay, performance and queried cloud-report acceptance remain
+pending in the [delivery plan](../ongoing-projects/plan.md).
