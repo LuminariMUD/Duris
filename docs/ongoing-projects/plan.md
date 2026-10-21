@@ -2,8 +2,8 @@
 
 Status: **replanned on 2026-10-21 UTC; implementation incomplete; production disabled.**
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
-Working branch: `issue-59-posthog-runtime`, based on
-`d540b778c04889cb848e2f3269741867fd1f1728` (sender PR #260).
+Working branch: `issue-59-posthog-acceptance`, based on
+`6ea2ab792a11d7b6a7eb0f0d2947c50c0346062d` (runtime PR #261).
 The earlier issue-107 plan remains in [plan-issue-107.md](plan-issue-107.md).
 The intervening Assassin plan is preserved byte-for-byte in
 [plan-issue-187.md](plan-issue-187.md).
@@ -397,4 +397,27 @@ ticket.
   standalone contract headers, copyover wire, activity/session integration,
   existing runtime lifecycle/exhaustion/outage and gameplay adapters passed.
   Logs are `bin/issue59/fast-plan/*runtime*.log`. Full final build checks are
-  finishing before this chunk is published. No production activation occurred.
+  complete before publication. No production activation occurred.
+
+- Runtime chunk committed/pushed as `6ea2ab792`, [PR #261](https://github.com/LuminariMUD/Duris/pull/261)
+  stacked on sender [PR #260](https://github.com/LuminariMUD/Duris/pull/260).
+  #261 is ready for review after both full builds and the state tool passed. The native
+  runtime suite has all 18 passes. The user asked only whether merging PRs
+  252–255 would disrupt ongoing work; do not undertake their merges/conflict
+  resolution. No PR 252–255 mutation was performed.
+- Acceptance implementation next: replace the SQL-only
+  `tests/async/run_telemetry_player_journey.py`. Reuse fixture/client helpers in
+  `test_flatfile_combat_journey.py` / `run_copyover_runtime_journey.py` and
+  `scripts/persistence_restore.py:private_database` for a fresh socket-only DB.
+  Avoid rebuilding the whole game for a mock endpoint: compile only runtime
+  and PostHog objects with `TELEMETRY_POSTHOG_TESTING` and relink the already
+  built backend objects into a task-owned test executable under `bin/`.
+  Production executables keep the override compiled out. No game journey has
+  run against the new exporter yet.
+
+- Final runtime revision verification: sequential `nice -n 10 make -C src -j1
+  PERSISTENCE_BACKEND=<backend> BIN_ROOT="$PWD/bin/issue59/<backend>" all telemetry-state`
+  passed for MariaDB and flat-file. Logs:
+  `bin/issue59/fast-plan/build-runtime-{mariadb,flatfile}-verified.log`.
+  `nm -C` confirms neither executable links `telemetry_repository_init`.
+  Formatting, whitespace and commit-hook clang-tidy passed at `6ea2ab792`.
