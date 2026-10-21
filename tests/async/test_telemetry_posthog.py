@@ -121,6 +121,8 @@ def reducer_tests(binary: Path) -> None:
         "encounter-counter-overflow", "encounter-burst", "encounter-replay", "encounter-expiry",
         "encounter-capacity", "encounter-scope-clock",
         "encounter-allocation-failure",
+        "health-cadence", "health-incidents", "health-loss", "health-capacity",
+        "health-faults", "health-family-expiry",
     )
     observed = {}
     forbidden = {"pid", "subject_id", "actor_pid", "name", "email", "account_id", "ip",
@@ -131,6 +133,8 @@ def reducer_tests(binary: Path) -> None:
                      "duris_environment_id", "duris_season_id", "damage_dealt", "damage_taken",
                      "healing_attempted", "effective_healing", "overhealing", "control_applications",
                      "casting_attempts", "casting_completions", "casting_aborts"}
+    decimal_names |= {"consumed", "refused", "created", "suppressed", "expired",
+                      "http_acknowledged", "ambiguous", "producer_boot_id", "producer_process_id"}
 
     def walk(value: object) -> None:
         if isinstance(value, dict):
@@ -156,6 +160,12 @@ def reducer_tests(binary: Path) -> None:
         health = decoded.pop()["_fixture_health"]
         assert health["output_events"] + health["drained_events"] == len(decoded)
         assert health["output_events"] <= 128 and health["output_bytes"] <= 512 * 1024
+        assert len(health["by_family"]) == 6
+        for field, total in (("created", "created_events"), ("suppressed", "output_suppressed"),
+                             ("expired", "output_expired"), ("http_acknowledged", "http_acknowledged"),
+                             ("ambiguous", "ambiguous_events")):
+            assert sum(family[field] for family in health["by_family"]) == health[total], (case, field)
+        assert sum(health["refused_by_kind"]) == health["reduction_refusals"]
         seen = set()
         for row in decoded:
             walk(row)
@@ -453,6 +463,57 @@ def reducer_tests(binary: Path) -> None:
         assert row["timestamp_basis"] == "emitted_at" and row["occurrence_start_utc_usec"] is None
     assert observed["encounter-allocation-failure"][1]["serialization_failures"] == 8
     assert observed["encounter-allocation-failure"][1]["output_suppressed"] == 8
+
+    def health_rows(case: str) -> list[dict]:
+        return [row["properties"] for row in observed[case][0] if row["event"] == "duris_telemetry_health"]
+
+    cadence = health_rows("health-cadence")
+    assert [row["health_trigger"] for row in cadence] == ["initial", "hourly"]
+    assert int(cadence[1]["sampled_monotonic_usec"]) - int(cadence[0]["sampled_monotonic_usec"]) == 3600000000
+    assert cadence[0]["reducer"]["created_events"] == "1"  # Sample precedes its own insertion.
+    assert cadence[1]["reducer"]["http_acknowledged"] == "2"
+    assert cadence[1]["reducer"]["output_oldest_age_usec"] is None
+    incident = health_rows("health-incidents")
+    assert len(incident) == 2 and incident[1]["health_trigger"] == "incident"
+    assert incident[1]["native_transport"]["state"] == "healthy"
+    assert incident[1]["coalesced_reason_mask"] & 1  # The brief degraded state survived coalescing.
+    assert incident[1]["coalesced_severity"] == "warning" and incident[1]["active_reason_mask"] == 0
+    loss = health_rows("health-loss")[-1]
+    assert loss["health_trigger"] == "incident"
+    assert loss["health_scope"] == "producer" and loss["health_counter_basis"] == "cumulative_since_producer_start"
+    assert loss["producer_boot_id"] == "11" and loss["producer_process_id"] == "22"
+    assert loss["native_transport"]["applied_records"] == "9007199254740993"
+    assert loss["native_transport"]["last_committed_record_seq"] == "18446744073709551615"
+    assert loss["native_transport"]["last_success_age_usec"] is None
+    assert loss["reducer"]["http_acknowledged"] == "0"  # Native applied is never relabeled as an HTTP ack.
+    assert loss["reducer"]["native_scoped_gaps"] == loss["reducer"]["native_process_gaps"] == "1"
+    assert loss["reducer"]["native_dropped_records"] == "6"
+    assert loss["reducer"]["native_gap_known_usec"] == "0"  # Zero known duration is not completeness.
+    assert len(loss["native_reduction_by_kind"]) == 8 and len(loss["output_by_family"]) == 6
+    progression, = [kind for kind in loss["native_reduction_by_kind"] if kind["kind"] == 6]
+    assert progression["consumed"] == "2" and progression["refused"] == "1"
+    for row in (cadence[0], cadence[1], loss):
+        assert all(isinstance(value, str) for key, value in row["reducer"].items()
+                   if key not in {"sessions", "session_limit", "runs", "run_limit", "configurations",
+                                  "configuration_limit", "output_events", "output_event_limit",
+                                  "output_bytes", "output_byte_limit", "output_oldest_age_usec"})
+    capacity, = health_rows("health-capacity")
+    assert capacity["reducer"]["output_suppressed"] == "2"
+    by_family = {family["event"]: family for family in capacity["output_by_family"]}
+    assert by_family["duris_telemetry_health"]["suppressed"] == "1"
+    assert by_family["duris_configuration"]["suppressed"] == "1"
+    faults = health_rows("health-faults")
+    assert len(faults) == 2
+    assert faults[0]["reducer"]["invalid_health_snapshots"] == "3"
+    assert faults[0]["reducer"]["serialization_failures"] == "2"
+    assert faults[0]["reducer"]["clock_failures"] == "2"
+    assert faults[1]["reducer"]["clock_failures"] == "3"
+    expiry, = health_rows("health-family-expiry")
+    families = {family["event"]: family for family in expiry["output_by_family"]}
+    assert families["duris_configuration"]["http_acknowledged"] == "1"
+    assert families["duris_telemetry_health"]["ambiguous"] == "1"
+    assert families["duris_telemetry_health"]["suppressed"] == "1"
+    assert families["duris_telemetry_health"]["expired"] == "1"
     print(f"PostHog reducer: {len(cases)} executable semantic/capacity/fault scenarios PASS")
 
 
@@ -503,6 +564,7 @@ def main() -> None:
                 "-fno-sanitize-recover=all", *defines, "-I", str(ROOT / "src"),
                 str(ROOT / "src/telemetry/telemetry_posthog.c"),
                 str(ROOT / "src/telemetry/telemetry_config.c"),
+                str(ROOT / "src/telemetry/telemetry_health.c"),
                 str(ROOT / "src/telemetry/telemetry_encounter.c"),
                 str(ROOT / "src/telemetry/telemetry_combat_summary.c"),
                 str(ROOT / "tests/async/telemetry_posthog_harness.cc"),
