@@ -449,7 +449,8 @@ that binary and removes only its disposable handoff image before successful exec
 
 Remaining actions, in order:
 
-1. Wait for the existing live benchmark (tool session `57877`), not a replacement.
+1. Initial benchmark `57877` finished with a failed pulse gate. After the narrow
+   resident-scan repair, wait for the current live benchmark recorded below.
    Three alternating off/on pairs, 40 ordinary saves/run, 120 saves per condition
    for pooled p99. Keep the 5% pulse/save and host bounds. The earlier longer
    collection stopped before a completed pair and is diagnostic only. No heavy
@@ -486,3 +487,15 @@ runtime HTTPS and both real-game journeys are requalifying; then repeat only the
 failed performance comparison. Existing cloud/report and reducer evidence stays
 valid because their data contract/reduction code is unchanged. Do not restart the
 cloud campaign or expand the fixture matrix.
+
+
+Resident-scan repair `18b163a20` is committed/pushed to PR #263. State suites pass
+(SQL, no-MySQL, golden and integration); runtime HTTPS is 18/18. Both real journeys
+pass again: MariaDB 38 events / 44 attempts, flat-file 36 / 42. Evidence:
+`fast-plan/slot-scan-{state,runtime,gameplay-mariadb,gameplay-flatfile}.log`.
+Both native full builds are rechecked in `slot-scan-build-<backend>.log` before
+starting the unchanged three-pair comparison, `slot-scan-performance.log`.
+Cloud/report evidence remains valid; no new capture campaign. Performance is
+still unproven; preserve its failed baseline rather than replacing the record.
+
+Current live comparison tool session: `95220`. Do not restart it while live.
