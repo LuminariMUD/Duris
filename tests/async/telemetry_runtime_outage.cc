@@ -176,8 +176,13 @@ void required_directory()
 {
 	assert(unsetenv("TELEMETRY_OUTAGE_LEDGER_DIR") == 0);
 	telemetry_transport_unbind_for_tests();
-	assert(telemetry_runtime_init(make_enabled_options()) ==
-	       telemetry_runtime_outcome::accepted);
+	auto options = make_enabled_options();
+	options.config.backend = telemetry_storage_backend::posthog;
+	assert(telemetry_config_compute_fingerprint(options.config, options.config.fingerprint,
+						    sizeof(options.config.fingerprint)));
+	options.config.config_id = telemetry_config_id_from_fingerprint(
+		options.config.fingerprint, sizeof(options.config.fingerprint));
+	assert(telemetry_runtime_init(options) == telemetry_runtime_outcome::accepted);
 	wait_for_storage_refusal(telemetry_storage_check::directory);
 	assert(telemetry_runtime_health_copy().last_error_code == EINVAL);
 	assert(telemetry_runtime_health_copy().last_admitted_record_seq == 0U);

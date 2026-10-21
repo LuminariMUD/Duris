@@ -300,7 +300,8 @@ std::size_t find_free_config(const telemetry_activity_state *state) noexcept
 
 bool config_detail_enabled(const telemetry_config_snapshot &config) noexcept
 {
-	return config.enabled == 1U && config.backend == telemetry_storage_backend::sql;
+	return config.enabled == 1U &&
+	       config.backend != telemetry_storage_backend::flatfile_disabled;
 }
 
 bool admitted_config(const telemetry_activity_state *state, telemetry_config_id config_id,

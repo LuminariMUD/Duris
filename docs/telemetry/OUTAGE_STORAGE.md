@@ -1,19 +1,22 @@
 # Durable outage and loss evidence
 
-The SQL telemetry worker persists a producer registration before it qualifies
-the repository or allows queue admission. It samples bounded counters about once
-per second and attempts a final observation before publishing worker completion.
-Gameplay capture performs no journal I/O, allocation or wait. The coherent sample
-has four bounded attempts; a busy producer can defer a sample rather than delay
-gameplay or publish torn queue/counter totals.
+The PostHog worker persists registration before allowing queue admission.
+Gameplay performs no journal I/O or wait. Dirty native coverage is sampled every
+60 seconds and at lifecycle/incident boundaries; HTTP attempts reserve quota
+durably before sending. A coherent sample has four bounded attempts and defers
+when the producer is busy.
 
-This is the bounded gap record that landed in `338092a78`. It does not spool
-telemetry payloads, restore lost gameplay facts, or establish historical incident
-ends, and nothing publishes a recorded gap into the rollups or reports.
+Wire version 3 adds backend identity and native consumed count/sequence to the
+existing observation. Readers still accept versions 1 and 2; historical SQL
+frames retain their encoding. Version 3 occupies at most 88,208 bytes including
+quota and checksum. Consumption is not durable delivery: a PostHog lifetime
+with admitted records ends as `unknown_tail` even after HTTP acknowledgement.
+This preserves uncertainty about accumulators, output and cloud ingestion.
+The ledger stores evidence and quota, never payloads or a replay queue.
 
 ## Local setup
 
-When SQL telemetry is enabled, set `TELEMETRY_OUTAGE_LEDGER_DIR` to an existing,
+When PostHog telemetry is enabled, set `TELEMETRY_OUTAGE_LEDGER_DIR` to an existing,
 absolute directory owned by the server's effective user with mode `0700`.
 Provision it alongside the other local journals before enabling capture:
 
@@ -22,10 +25,10 @@ install -d -m 0700 /your/private/local/runtime/telemetry-outages
 export TELEMETRY_OUTAGE_LEDGER_DIR=/your/private/local/runtime/telemetry-outages
 ```
 
-This path alone does not enable telemetry. Dedicated SQL writer credentials,
-schema compatibility and the reviewed property catalog still apply; see
-[DATABASE.md](DATABASE.md) and [CONFIG_CONTEXT.md](CONFIG_CONTEXT.md).
-The production repository binding requires this directory. Explicitly injected
+This path alone does not enable telemetry. A dedicated identity key, project
+token, reviewed property catalog and explicitly initialized matching quota are
+required; see [CONTRACT.md](CONTRACT.md) and [CONFIG_CONTEXT.md](CONFIG_CONTEXT.md).
+Production delivery requires this directory and no telemetry SQL credentials. Explicitly injected
 component-test repositories may omit it; the durable runtime tests provide real
 protected directories and exercise the actual journal implementation.
 
@@ -41,7 +44,7 @@ character/account names, credentials, SQL text, commands or record payloads.
 | Phase | Evidence and limits |
 | --- | --- |
 | `running` | A durable registration or periodic sample. After an unfinished lifetime, the next producer converts this to `unknown_tail` while retaining the original observation time and counters. |
-| `clean_drained` | All admitted records were acknowledged, no invalid/conflicting/quarantined record remains, and the queue/inflight batch is empty. This does **not** erase admission rejections, session gaps or earlier outage counters. |
+| `clean_drained` | Historical SQL: all admitted records were committed, no invalid/conflicting/quarantined record remains, and the queue/inflight batch is empty. This does **not** erase admission rejections, session gaps or earlier outage counters. |
 | `abandoned` | The worker terminated with a known count of unattempted queued records and no unresolved inflight batch. Preserve that count and the final sampled boundary. |
 | `unknown_tail` | An unfinished lifetime, unresolved inflight commit, or a non-durable tail. The last sample is a watermark, not an exact crash/end time. Do not infer later admissions, an exact loss count, or an inclusive missing sequence span. |
 
@@ -91,10 +94,10 @@ or rename can leave a whole pending frame. Any failed quota publication disables
 reservations for that owner until a fresh open validates the on-disk chain; no
 failed or ambiguous attempt authorizes HTTP or receives a refund.
 
-A sample that cannot be written costs evidence, not records: the records are
-durable in SQL whatever the ledger says, capture goes on, and the ledger's last
-good sample stays a running watermark (an unknown tail after the next
-registration). A registration that cannot be written refuses capture, as do a
+A failed PostHog checkpoint is visible in local health and refuses further
+capture/export for that lifecycle; the last good sample remains a watermark.
+The historical SQL fixture retains its older policy of continuing capture when
+a coverage sample fails because its records are committed separately. A registration that cannot be written refuses capture, as do a
 missing, unsafe or conflicting directory and a ledger that does not decode: the
 telemetry circuit opens payload-free with `storage_check` naming the check
 (`directory`, `protection`, `owner`, `ledger`, `io`) and `error` the errno, and

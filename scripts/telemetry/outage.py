@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded, offline, read-only export of worker outage evidence (wire versions 1 and 2)."""
+"""Bounded, offline, read-only export of worker outage evidence (wire versions 1-3)."""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,7 @@ MAGIC = b"DMSTLJ01"
 MAX_PRODUCERS = 256
 WORDS = 40
 QUOTA_WORDS = 10
-MAX_BYTES = 64 + QUOTA_WORDS * 8 + MAX_PRODUCERS * WORDS * 8
+MAX_BYTES = 64 + QUOTA_WORDS * 8 + MAX_PRODUCERS * 43 * 8
 UNKNOWN_UTC = -(1 << 63)
 KNOWN_KINDS = (1 << 9) - 2
 PHASES = {1: "running", 2: "clean_drained", 3: "abandoned", 4: "unknown_tail"}
@@ -44,18 +44,19 @@ class EvidenceError(Exception):
 
 
 def decode(data: bytes) -> dict:
-    version = 2 if data[:8] == b"DMSTLJ02" else 1
-    if not 64 <= len(data) <= MAX_BYTES or data[:8] not in (MAGIC, b"DMSTLJ02"):
+    version = 3 if data[:8] == b"DMSTLJ03" else 2 if data[:8] == b"DMSTLJ02" else 1
+    if not 64 <= len(data) <= MAX_BYTES or data[:8] not in (MAGIC, b"DMSTLJ02", b"DMSTLJ03"):
         raise EvidenceError("corrupt")
     if hashlib.sha256(data[:-32]).digest() != data[-32:]:
         raise EvidenceError("corrupt")
     generation, count, reserved = struct.unpack_from(">3Q", data, 8)
-    extra = QUOTA_WORDS if version == 2 else 0
-    if (not generation or not (0 if version == 2 else 1) <= count <= MAX_PRODUCERS
-        or reserved != extra or len(data) != 64 + extra * 8 + count * WORDS * 8):
+    extra = reserved if version == 3 else QUOTA_WORDS if version == 2 else 0
+    words = 43 if version == 3 else WORDS
+    if (not generation or not (0 if extra else 1) <= count <= MAX_PRODUCERS
+        or extra not in (0, QUOTA_WORDS) or reserved != extra or len(data) != 64 + extra * 8 + count * words * 8):
         raise EvidenceError("corrupt")
     quota = None
-    if version == 2:
+    if extra:
         q = struct.unpack_from(f">{QUOTA_WORDS}Q", data, 32)
         day = q[7] - (1 << 64) if q[7] >= (1 << 63) else q[7]
         if (not all(q[:4]) or not 0 < q[6] <= 20000 or q[4] > q[6] or
@@ -68,7 +69,7 @@ def decode(data: bytes) -> dict:
     observations = []
     producers = set()
     for index in range(count):
-        w = struct.unpack_from(f">{WORDS}Q", data, 32 + extra * 8 + index * WORDS * 8)
+        w = struct.unpack_from(f">{words}Q", data, 32 + extra * 8 + index * words * 8)
         producer = w[:2]
         accepted = w[10] + w[11]
         acknowledged = w[13] + w[14] + w[15]
@@ -83,6 +84,11 @@ def decode(data: bytes) -> dict:
             raise EvidenceError("corrupt")
         producers.add(producer)
         row = dict(zip(FIELDS, w))
+        if version == 3:
+            if w[40] not in (0, 3) or w[41] > w[12]:
+                raise EvidenceError("corrupt")
+            row.update(backend="posthog" if w[40] == 3 else "sql",
+                       last_consumed_record_seq=w[41], consumed_records=w[42])
         for name in ("registered_utc_usec", "observed_utc_usec"):
             value = row[name]
             signed = value - (1 << 64) if value >= (1 << 63) else value
@@ -144,7 +150,7 @@ def read_evidence(directory: Path, name: str = "outages.ledger") -> dict:
         with os.fdopen(ledger, "rb", closefd=False) as stream:
             data = stream.read(MAX_BYTES + 1)
         result = decode(data)
-        if name == "outages.ledger" and result["ledger_version"] == 2:
+        if name == "outages.ledger" and result.get("quota") is not None:
             marker = os.pread(owner, 48, 0)
             if (marker_size != 48 or marker[:8] != b"DMSQW001" or
                 struct.unpack_from(">Q", marker, 8)[0] != result["generation"] or marker[16:] != data[-32:]):
