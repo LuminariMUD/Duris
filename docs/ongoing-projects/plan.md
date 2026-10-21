@@ -1,10 +1,32 @@
 # Issue #59: PostHog gameplay telemetry implementation plan
 
-Status: **planning complete; implementation and acceptance have not started.**
+Status: **implementation in progress; production remains disabled.**
 Evidence checked on 2026-10-21 UTC against branch
 `issue-59-posthog-telemetry`, commit `2527671f1732ae6ed1eafbea0fb5690e3d28814e`.
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
 The previous plan is preserved in [plan-issue-107.md](plan-issue-107.md).
+
+## Implementation handoff (updated 2026-10-21 UTC)
+
+- Preparation is ready for review in [PR #252](https://github.com/LuminariMUD/Duris/pull/252),
+  branch `issue-59-posthog-telemetry`. Subsequent chunks stack on this branch.
+- The first implementation chunk, branch `issue-59-posthog-percentiles`, repairs
+  both performance-gate percentile helpers. Both now use integer per-mille ranks
+  (`990` = p99, `999` = p99.9), with deterministic Python and native regressions
+  that distinguish p99.9 from the maximum at 2,000 observations.
+- `nice -n 10 python3 tests/async/test_telemetry_capacity_272.py` passed for
+  50/200/1,000 synthetic records, three repetitions, including fault fixtures.
+  Report: `bin/tests/telemetry_capacity_272.report.json`. This proves the
+  existing offline gate, not PostHog delivery or player capacity.
+- `./scripts/format.sh --check` and `git diff --check` passed. The full SQL build
+  passed with `nice -n 10 make -C src -j2 PERSISTENCE_BACKEND=mariadb
+  BIN_ROOT="$PWD/bin/issue59/mariadb"`; log: `bin/issue59/build-mariadb.log`.
+- Exporter, compact fixtures, quota, SQL decoupling, gameplay journeys, cloud
+  ingestion and reports are still unimplemented. The next chunk freezes the
+  concrete encodings and complete volume fixture, then implements worker
+  reduction. The isolation limitation below still applies.
+- No live game operation or cloud event has been performed. Production enablement
+  is separately authorized; this work prepares reviewable implementation PRs.
 
 This plan implements the issue's PostHog decision and acceptance requirements.
 The SQL recommendations in the older [telemetry review](telemetry-review.md)
@@ -109,8 +131,9 @@ capture token; no personal API key is currently needed.
 10. Both percentile helpers in
     [benchmark_272.py](../../scripts/telemetry/benchmark_272.py) and
     [its native harness](../../tests/async/telemetry_capacity_272_harness.cc)
-    divide by 100 when passed `999`; their p99.9 is the maximum. Fix this before
-    using the gate. Existing 50/200/1,000 profiles count records, not players.
+    originally divided by 100 when passed `999`, reporting the maximum as
+    p99.9. The first implementation chunk fixes both to use per-mille ranks.
+    Existing 50/200/1,000 profiles count records, not players.
 
 ## Locked event and identity contract
 
