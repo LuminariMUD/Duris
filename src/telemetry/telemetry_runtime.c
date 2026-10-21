@@ -383,6 +383,19 @@ bool environment_backend(telemetry_storage_backend default_backend,
 	return true;
 }
 
+bool posthog_environment_matches(telemetry_environment_id environment) noexcept
+{
+	telemetry_environment_id configured = 0U;
+	if (!environment_unsigned("TELEMETRY_ENVIRONMENT_ID", configured, 1U, UINT64_MAX,
+				  &configured) ||
+	    configured != environment)
+		return false;
+	const auto *role = std::getenv("ENVIRONMENT");
+	return (environment_text_is(role, "production") && environment == 1U) ||
+	       (environment_text_is(role, "staging") && environment == 2U) ||
+	       (environment_text_is(role, "local") && (environment == 3U || environment >= 1000U));
+}
+
 bool environment_enabled(bool *enabled) noexcept
 {
 	if (enabled == nullptr)
@@ -1194,7 +1207,8 @@ telemetry_storage_check start_posthog(telemetry_outage_journal &journal) noexcep
 	}
 	const bool production = config.environment_id == 1U;
 	// Real cloud fixtures have their own scope, tag and <=100 total attempts.
-	if ((!production && (config.environment_id < 1000U || config.test_run[0] == '\0')) ||
+	if (!posthog_environment_matches(config.environment_id) ||
+	    (!production && config.test_run[0] == '\0') ||
 	    (production && config.test_run[0] != '\0'))
 		return telemetry_storage_check::configuration;
 	telemetry_quota_binding binding{};
@@ -1268,6 +1282,7 @@ void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
 		health.native.last_failure_class = telemetry_failure_class::transient_connection;
 		if (state == telemetry_posthog_sender_state::permanent_failure)
 		{
+			health.native.state = telemetry_health_state::circuit_open;
 			health.native.last_failure_class =
 				health.sender.http_status == 401U ||
 						health.sender.http_status == 403U ?
@@ -1289,10 +1304,30 @@ void publish_posthog_health(const telemetry_outage_journal &journal) noexcept
 		}
 		health.native.last_failure_monotonic_usec = health.observed_at;
 	}
+	const bool invalid_reduction = health.reducer.invalid_records != 0U ||
+				       health.reducer.reduction_refusals != 0U;
+	const bool lost_output = health.reducer.output_suppressed != 0U ||
+				 health.reducer.output_expired != 0U ||
+				 health.reducer.serialization_failures != 0U;
+	if ((invalid_reduction || lost_output) &&
+	    (health.native.state == telemetry_health_state::healthy ||
+	     health.native.state == telemetry_health_state::stopping ||
+	     health.native.state == telemetry_health_state::stopped))
+	{
+		health.native.state = telemetry_health_state::degraded;
+		health.native.last_failure_class =
+			invalid_reduction ? telemetry_failure_class::invalid_record :
+					    telemetry_failure_class::transient_internal;
+		health.native.last_error_code = invalid_reduction ? EPROTO : EIO;
+		health.native.last_failure_monotonic_usec = health.observed_at;
+	}
 	std::lock_guard<std::mutex> lock(R.posthog_health_mutex);
 	// Closing the sender must retain an unresolved failure for final operator health.
 	if (state == telemetry_posthog_sender_state::stopped &&
-	    R.posthog_health.native.state == telemetry_health_state::degraded)
+	    (R.posthog_health.native.state == telemetry_health_state::circuit_open ||
+	     (R.posthog_health.native.state == telemetry_health_state::degraded &&
+	      health.native.state != telemetry_health_state::degraded &&
+	      health.native.state != telemetry_health_state::circuit_open)))
 	{
 		health.native.state = R.posthog_health.native.state;
 		health.native.last_failure_class = R.posthog_health.native.last_failure_class;
@@ -1665,6 +1700,8 @@ telemetry_runtime_options telemetry_runtime_options_from_environment(void)
 	    !environment_unsigned("TELEMETRY_ENVIRONMENT_ID", environment_id, 1U,
 				  std::numeric_limits<telemetry_environment_id>::max(),
 				  &environment_id) ||
+	    (backend == telemetry_storage_backend::posthog &&
+	     !posthog_environment_matches(environment_id)) ||
 	    !environment_unsigned("TELEMETRY_INTERVAL_USEC", interval_usec, 1U,
 				  TELEMETRY_INTERVAL_USEC_MAX_PROPOSAL, &interval_usec) ||
 	    !environment_unsigned("TELEMETRY_CHECKPOINT_INTERVAL_USEC", checkpoint_interval_usec,

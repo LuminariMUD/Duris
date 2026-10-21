@@ -59,7 +59,7 @@ using [OUTAGE_STORAGE.md](../telemetry/OUTAGE_STORAGE.md) before opting in.
 | `POSTHOG_SENDER_ID` | required | positive `uint64` | One authorized sender, matching the quota binding. |
 | `TELEMETRY_IDENTITY_KEY` | required | 64 hex digits, nonzero | Protected stable pseudonym key; never log it. |
 | `TELEMETRY_OUTAGE_LEDGER_DIR` | required | absolute protected directory | Durable quota reservations and exclusive worker ownership. |
-| `TELEMETRY_TEST_RUN` | absent in production | required nonempty tag in test scopes | Production scope is environment `1`; test environments start at `1000`. |
+| `TELEMETRY_TEST_RUN` | absent in production | required nonempty tag in non-production scopes | `ENVIRONMENT=production` requires explicit environment ID `1`; staging requires `2`; local requires `3` or an isolated ID at least `1000`. Missing or mismatched IDs disable export. |
 | `POSTHOG_NORMAL_LIMIT`, `POSTHOG_HEALTH_LIMIT`, `POSTHOG_DAILY_LIMIT` | `19800`, `100`, `19900` in production; `90`, `10`, `100` in tests | positive values at or below those caps, matching the initialized binding | Every attempt, including retries, reserves quota first. |
 | `TELEMETRY_CONFIG_REVISION` | `1` | positive `uint64` | Reviewed effective configuration revision floor. |
 | `TELEMETRY_BUILD_VERSION`, `TELEMETRY_CONTENT_VERSION` | `1` | positive `uint32` | Versioned inputs included in the config identity. |

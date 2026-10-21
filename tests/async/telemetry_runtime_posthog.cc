@@ -18,6 +18,8 @@ int main(int argc, char **argv)
 	telemetry_quota_binding binding{ 678214U, 99U, 1000U, 1U, 90U, 10U, 100U };
 	if (scenario == "invalid-scope")
 		binding.environment_id = 2U;
+	if (scenario == "production-scope")
+		binding.environment_id = 1U;
 	if (scenario == "quota")
 		binding = { 678214U, 99U, 1000U, 1U, 2U, 10U, 12U };
 	telemetry_outage_journal journal{};
@@ -38,6 +40,10 @@ int main(int argc, char **argv)
 		unsetenv("POSTHOG_HOST");
 	if (scenario == "missing-sender")
 		unsetenv("POSTHOG_SENDER_ID");
+	if (scenario == "missing-scope")
+		unsetenv("TELEMETRY_ENVIRONMENT_ID");
+	if (scenario == "production-scope")
+		setenv("TELEMETRY_ENVIRONMENT_ID", "1", 1);
 	if (scenario == "invalid-host")
 		setenv("POSTHOG_HOST", "https://invalid.example", 1);
 	if (scenario == "invalid-project")
@@ -52,7 +58,8 @@ int main(int argc, char **argv)
 	const bool configuration = scenario == "missing-key" || scenario == "missing-token" ||
 				   scenario == "missing-host" || scenario == "missing-sender" ||
 				   scenario == "invalid-host" || scenario == "invalid-project" ||
-				   scenario == "invalid-scope";
+				   scenario == "invalid-scope" || scenario == "missing-scope" ||
+				   scenario == "production-scope";
 	const bool refused = configuration || scenario == "missing-quota" ||
 			     scenario == "quota-mismatch" || scenario == "owner";
 	std::uint32_t prior_reserved = 0U;
@@ -114,6 +121,17 @@ int main(int argc, char **argv)
 			if (scenario == "storage")
 				std::filesystem::create_directory(std::filesystem::path(directory) /
 								  "outages.pending");
+			if (scenario == "deadline")
+			{
+				// Start the flush only after the receiver holds an active request.
+				const auto held = std::filesystem::path(directory) / "request-held";
+				const auto until =
+					std::chrono::steady_clock::now() + std::chrono::seconds(3);
+				while (!std::filesystem::exists(held) &&
+				       std::chrono::steady_clock::now() < until)
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				assert(std::filesystem::exists(held));
+			}
 			assert(telemetry_runtime_now(&now, &utc));
 			const auto start = std::chrono::steady_clock::now();
 			const auto flushed = telemetry_runtime_flush_for_copyover(now + 250'000U);
@@ -173,7 +191,7 @@ int main(int argc, char **argv)
 				       (scenario == "401" || scenario == "403" ?
 						telemetry_failure_class::permanent_permission :
 						telemetry_failure_class::permanent_repository));
-				assert(health.native.state == telemetry_health_state::degraded);
+				assert(health.native.state == telemetry_health_state::circuit_open);
 				telemetry_health_monitor_state monitor{};
 				const auto config =
 					telemetry_health_monitor_default_config(100'000U, 256U);

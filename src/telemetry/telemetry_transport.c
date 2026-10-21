@@ -1773,6 +1773,8 @@ bool telemetry_transport_posthog_pulse_for_worker(telemetry_monotonic_usec now,
 				     &record, 1U, 0U);
 			return false;
 		}
+		// This is native consumption progress, including partial fence drains.
+		HEALTH.last_success_monotonic_usec.store(now, std::memory_order_release);
 		if (++processed % 16U == 0U)
 		{
 			telemetry_monotonic_usec current = 0U;
@@ -1784,7 +1786,6 @@ bool telemetry_transport_posthog_pulse_for_worker(telemetry_monotonic_usec now,
 	const bool sealed = telemetry_posthog_seal_through(POSTHOG_CUT, POSTHOG_CUT_UTC, force,
 							   deadline != 0U && now >= deadline);
 	POSTHOG_FENCE_ACTIVE = !sealed;
-	HEALTH.last_success_monotonic_usec.store(now, std::memory_order_release);
 	telemetry_monotonic_usec current = now;
 	(void)clock_now(current);
 	telemetry_posthog_sender_pulse(current, utc, deadline, force);

@@ -216,7 +216,7 @@ def runtime_tests(binary: Path, root: Path) -> None:
     ], env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for case in ("success", "restart", "deadline", "quota", "storage", "rollback",
                  "missing-key", "missing-token", "missing-host", "missing-sender",
-                 "invalid-host", "invalid-project", "invalid-scope",
+                 "invalid-host", "invalid-project", "invalid-scope", "missing-scope", "production-scope",
                  "missing-quota", "quota-mismatch", "owner", "400", "401", "403", "503"):
         received: list[dict] = []
         journal = root / case
@@ -230,6 +230,7 @@ def runtime_tests(binary: Path, root: Path) -> None:
                 value = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 received.extend(value["batch"])
                 if case == "deadline" and len(received) == len(value["batch"]):
+                    (journal / "request-held").touch()
                     time.sleep(0.6)
                 self.send_response(int(case) if case.isdecimal() else 200)
                 self.send_header("Content-Length", "2")
@@ -244,6 +245,7 @@ def runtime_tests(binary: Path, root: Path) -> None:
         thread.start()
         env = dict(environment, POSTHOG_HOST="https://us.i.posthog.com", POSTHOG_API_KEY="phc_fixture",
                    POSTHOG_PROJECT_ID="678214", POSTHOG_SENDER_ID="99", TELEMETRY_TEST_RUN="native-runtime",
+                   TELEMETRY_ENVIRONMENT_ID="1000",
                    TELEMETRY_IDENTITY_KEY="01" * 32, DURIS_TEST_POSTHOG_PORT=str(server.server_port),
                    DURIS_TEST_POSTHOG_CA=str(cert))
         try:
@@ -274,13 +276,13 @@ def runtime_tests(binary: Path, root: Path) -> None:
             assert all(row["properties"]["duris_test_run"] == "native-runtime" for row in received)
             assert all(int(row["properties"]["duris_environment_id"]) == 1000 for row in received)
         if case in {"missing-key", "missing-token", "missing-host", "missing-sender",
-                    "invalid-host", "invalid-project", "invalid-scope",
+                    "invalid-host", "invalid-project", "invalid-scope", "missing-scope", "production-scope",
                     "missing-quota", "quota-mismatch", "owner", "rollback"}:
             assert not received, (case, received)
         if case == "storage":
             assert all(row["event"] == "duris_telemetry_health" for row in received), case
         if case not in {"storage", "owner", "missing-key", "missing-token", "missing-host",
-                        "missing-sender", "invalid-host", "invalid-project", "invalid-scope",
+                        "missing-sender", "invalid-host", "invalid-project", "invalid-scope", "missing-scope", "production-scope",
                         "missing-quota", "quota-mismatch"}:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/telemetry"))

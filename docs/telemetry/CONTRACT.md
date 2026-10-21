@@ -53,17 +53,17 @@ reconnects, process restarts, and copyover within the same world.
 Before export can be enabled, require an explicit nonzero environment ID and
 validate its role: production `1`, staging `2`, local `3` or an isolated-world ID
 at least `1000`. Missing, malformed or role-mismatched IDs disable export; the
-current runtime's independent production-valued default must not reach the new
-exporter. This validation remains required implementation work.
+runtime's independent production-valued default cannot enable the exporter.
+Both environment option parsing and worker setup enforce this role check.
 
 `TELEMETRY_SEASON_ID=1` starts the first PostHog reporting season; it does not claim
 a historical game-wipe number. Change the season when a wipe/reset starts a new
 character population, not on deployment or restart. Tag cloud test runs separately
 and exclude their environment IDs from production dashboard queries.
 
-These settings reserve reporting identities only. PostHog encodings and character
-reduction are implemented; the exporter is not connected to the runtime yet. Setting either
-variable does not enable telemetry. The SQL-specific sections below describe the
+These settings scope reporting identities. PostHog delivery is connected to both
+gameplay backends; enabling it also requires the explicit telemetry opt-in,
+reviewed catalog, credentials and initialized quota journal. The SQL-specific sections below describe the
 existing native path; this section defines its replacement export contract.
 
 ### Compact PostHog export schema 1 (#59)

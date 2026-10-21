@@ -44,6 +44,8 @@ void check_posthog_byte_pressure()
 	telemetry_record_sequence sequence = 0U;
 	telemetry_monotonic_usec now = 1'000'000U;
 	constexpr telemetry_utc_usec utc = 1'728'000'060'000'000LL;
+	assert(telemetry_transport_posthog_pulse_for_worker(now, utc));
+	assert(telemetry_transport_health_copy().last_success_monotonic_usec == 0U);
 	const auto consume = [&](telemetry_record record)
 	{
 		now += 1000U;
@@ -118,12 +120,45 @@ void check_posthog_byte_pressure()
 	assert(telemetry_transport_posthog_pulse_for_worker(now, utc));
 	assert(telemetry_transport_health_copy().consumed_records == 1U);
 	assert(telemetry_transport_health_copy().queue_depth == 0U);
+	assert(telemetry_transport_health_copy().last_success_monotonic_usec == now);
+	assert(telemetry_transport_posthog_pulse_for_worker(now + 1000U, utc + 1000U));
+	assert(telemetry_transport_health_copy().last_success_monotonic_usec == now);
 	assert(telemetry_posthog_reducer_health_copy().output_suppressed == 0U);
+	telemetry_outage_journal journal{};
+	assert(telemetry_posthog_output_retire(telemetry_posthog_reducer_health_copy().output_events,
+					       telemetry_posthog_output_disposition::suppressed));
+	publish_posthog_health(journal);
+	assert(R.posthog_health.native.state == telemetry_health_state::degraded);
+	assert(R.posthog_health.native.last_failure_class ==
+	       telemetry_failure_class::transient_internal);
+	telemetry_record refused{};
+	refused.header = { TELEMETRY_SCHEMA_VERSION,
+			   telemetry_record_kind::configuration,
+			   0U,
+			   { transport.fresh_producer, ++sequence },
+			   utc };
+	refused.payload.configuration.config = make_enabled_options().config;
+	assert(telemetry_record_is_valid(refused));
+	assert(!telemetry_posthog_consume(refused, now, utc));
+	assert(telemetry_posthog_reducer_health_copy().reduction_refusals == 1U);
+	publish_posthog_health(journal);
+	assert(R.posthog_health.native.state == telemetry_health_state::degraded);
+	assert(R.posthog_health.native.last_failure_class ==
+	       telemetry_failure_class::invalid_record);
+	telemetry_health_monitor_state monitor{};
+	const auto monitor_config = telemetry_health_monitor_default_config(100'000U, 8192U);
+	const auto alert = telemetry_health_monitor_evaluate(&monitor, &monitor_config,
+							     R.posthog_health.native,
+							     R.posthog_health.observed_at + 1000U);
+	assert(alert.severity == telemetry_health_alert_severity::warning);
+	assert((alert.reason_mask & TELEMETRY_HEALTH_REASON_WRITER_DEGRADED) != 0U);
 	telemetry_posthog_reducer_reset();
 	(void)telemetry_transport_request_stop();
 	telemetry_transport_repository_shutdown_for_owner();
 	telemetry_transport_shutdown();
 	std::puts("PostHog byte pressure retains the native record until output drains");
+	std::puts(
+		"PostHog idle pulses never invent progress; reduction/output loss raises local warning");
 }
 
 void check_posthog_consumption_checkpoint()

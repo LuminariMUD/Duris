@@ -4649,23 +4649,31 @@ static void show_world_telemetry(P_char ch)
 		 telemetry_health_advisory_lock_name(health.advisory_lock_state));
 	send_to_char(line, ch);
 	if (status.last_commit_age_available != 0U)
-		snprintf(line, sizeof(line),
-			 "producer=%llu:%llu last_admitted_seq=%llu last_committed_seq=%llu "
-			 "last_commit_monotonic_us=%llu last_commit_age_ms=%llu\n",
-			 (unsigned long long)health.producer.boot_id,
-			 (unsigned long long)health.producer.process_id,
-			 (unsigned long long)health.last_admitted_record_seq,
-			 (unsigned long long)health.last_committed_record_seq,
-			 (unsigned long long)health.last_success_monotonic_usec,
-			 (unsigned long long)(status.last_commit_age_usec / 1'000U));
+		snprintf(
+			line, sizeof(line),
+			health.backend == telemetry_storage_backend::posthog ?
+				"producer=%llu:%llu last_admitted_seq=%llu last_committed_seq=%llu "
+				"last_consumption_monotonic_us=%llu last_consumption_age_ms=%llu\n" :
+				"producer=%llu:%llu last_admitted_seq=%llu last_committed_seq=%llu "
+				"last_commit_monotonic_us=%llu last_commit_age_ms=%llu\n",
+			(unsigned long long)health.producer.boot_id,
+			(unsigned long long)health.producer.process_id,
+			(unsigned long long)health.last_admitted_record_seq,
+			(unsigned long long)health.last_committed_record_seq,
+			(unsigned long long)health.last_success_monotonic_usec,
+			(unsigned long long)(status.last_commit_age_usec / 1'000U));
 	else
-		snprintf(line, sizeof(line),
-			 "producer=%llu:%llu last_admitted_seq=%llu last_committed_seq=%llu "
-			 "last_commit=never\n",
-			 (unsigned long long)health.producer.boot_id,
-			 (unsigned long long)health.producer.process_id,
-			 (unsigned long long)health.last_admitted_record_seq,
-			 (unsigned long long)health.last_committed_record_seq);
+		snprintf(
+			line, sizeof(line),
+			health.backend == telemetry_storage_backend::posthog ?
+				"producer=%llu:%llu last_admitted_seq=%llu last_committed_seq=%llu "
+				"last_consumption=never\n" :
+				"producer=%llu:%llu last_admitted_seq=%llu last_committed_seq=%llu "
+				"last_commit=never\n",
+			(unsigned long long)health.producer.boot_id,
+			(unsigned long long)health.producer.process_id,
+			(unsigned long long)health.last_admitted_record_seq,
+			(unsigned long long)health.last_committed_record_seq);
 	send_to_char(line, ch);
 	snprintf(line, sizeof(line),
 		 "records admitted=%llu/%llu applied=%llu duplicate=%llu stale=%llu invalid=%llu "
