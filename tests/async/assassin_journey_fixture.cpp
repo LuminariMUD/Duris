@@ -63,9 +63,9 @@ int main(int argc, char **argv)
 		if (pid == 2)
 		{
 			snapshot.skills.clear();
-			for (int skill :
-			     { SKILL_BACKSTAB, SKILL_1H_PIERCING, SKILL_APPLY_POISON,
-			       SKILL_MIXPOISON, SKILL_CONTROL_FLEE, SKILL_CRITICAL_STAB })
+			for (int skill : { SKILL_BACKSTAB, SKILL_1H_PIERCING, SKILL_APPLY_POISON,
+					   SKILL_MIXPOISON, SKILL_CONTROL_FLEE, SKILL_CRITICAL_STAB,
+					   SKILL_RANGE_WEAPONS, SKILL_DARTS })
 				snapshot.skills.push_back({ skill, 100, 100 });
 			snapshot.skills.push_back({ SKILL_DUAL_WIELD, 90, 90 });
 			snapshot.skills.push_back({ SKILL_AWARENESS, 80, 80 });

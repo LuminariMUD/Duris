@@ -557,3 +557,18 @@ or an approved traded-item restriction may add **2-6 active hours**. Time awaiti
 owner policy decisions, review or separately requested deployment is elapsed
 time outside this estimate. Re-estimate only if the first executable baseline
 reveals a material lifecycle/persistence issue or expands the agreed scope.
+
+### PR #250 review corrections
+
+- Landed throws now use the same poison delivery as melee/backstab, including
+  darts and thrown coated weapons. Remove the old dart-only skill proc and
+  numeric-marker damage event: its only caller bypassed recipe effects, PvP
+  saves and immediate feedback. One landed attempt consumes one coating;
+  misses retain it. Returning projectiles keep their existing movement behavior.
+- Player morphs use their original player body for the paralysis save and
+  level adjustment, including morphed attackers. Immunity and poison application
+  use the active target form. Ordinary NPC sources/targets retain the helper's
+  existing treatment.
+- Extend the existing sanitizer regression for morph save boundaries, active
+  form immunities and morphed sources, and the isolated command journey for
+  apply plus throw of a returning dart and victim-only neutral wording.

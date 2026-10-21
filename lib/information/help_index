@@ -536,7 +536,8 @@ vial. A landed coated attack uses the coating, including when the poison is
 resisted or the same poison is already active. A missed attack keeps it.
 
 Player victims can resist weapon poison from another player or their pet using
-their paralysis saving throw, adjusted for the level difference. Dragon, demon,
+their paralysis saving throw, adjusted for the level difference. Morphed players
+retain their original body's saving throw. Dragon, demon,
 elemental and undead player forms are immune to that delivery. Other NPC
 delivery is unchanged. Different poison types can coexist; the same type does
 not stack.

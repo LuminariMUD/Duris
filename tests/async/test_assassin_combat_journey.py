@@ -21,6 +21,7 @@ ROOT = journey.ROOT
 ACTORS = (("Venomwarden", "Venomstaff"), ("Shadeblade", "Venomrogue"),
           ("Venomtarget", "Venomguard"))
 NOTICE = "poison from your attacker's blade enters your bloodstream!"
+DART_NOTICE = NOTICE.replace("blade", "weapon")
 
 
 def fixture(runtime):
@@ -45,6 +46,14 @@ A journey venom vial rests here.~
 17 7 1 2 7 0 0 16385 0 0 0
 200 200 27 1 0 0 0 0
 200 0 100
+#22812
+journeydart dart~
+a journey dart~
+A small journey dart rests here.~
+~
+7 11 2 3 7 0 256 8193 0 0 0
+0 1 4 6 0 0 0 0
+2 100 100
 """
     objects.write_text(objects.read_text().replace("$~", additions + "$~"))
 
@@ -118,7 +127,7 @@ def run(binary, build):
                     client.expect_any(("Pos: standing >", "<>"), timeout=20)
                     command(client, "toggle paging no")
                 staff, assassin, victim = clients
-                for vnum, keyword in ((22810, "journeydagger"), (22811, "journeyvenom")):
+                for vnum, keyword in ((22810, "journeydagger"), (22811, "journeyvenom"), (22812, "journeydart")):
                     created = command(staff, "load obj " + str(vnum))
                     assert "created" in created, created
                     given = command(staff, "give " + keyword + " Shadeblade")
@@ -129,7 +138,9 @@ def run(binary, build):
                 wielded = command(assassin, "wield journeydagger")
                 assert "You wield" in wielded, wielded
                 results = {}
-                for attack in ("hit", "backstab"):
+                for attack in ("hit", "backstab", "throw"):
+                    keyword = "journeydart" if attack == "throw" else "journeydagger"
+                    expected_notice = DART_NOTICE if attack == "throw" else NOTICE
                     print("Assassin command journey:", attack, flush=True)
                     successes = 0
                     for attempt in range(96):
@@ -138,22 +149,24 @@ def run(binary, build):
                         command(staff, "restore all")
                         command(assassin, "wake")
                         command(assassin, "stand")
-                        applied = command(assassin, "apply journeyvenom journeydagger")
+                        applied = command(assassin, "apply journeyvenom " + keyword)
                         assert "now drips" in applied, applied
                         before = len(victim.transcript)
-                        command(assassin, attack + " Venomtarget")
+                        command(assassin, "throw journeydart Venomtarget" if attack == "throw" else attack + " Venomtarget")
                         settled = command(staff, "tranquilize Shadeblade")
                         assert "monotone" in settled, settled
                         command(victim, "score")
                         received = bytes(victim.transcript[before:]).decode(errors="replace")
-                        assert received.count(NOTICE) <= 1, received
-                        if NOTICE in received:
+                        assert received.count(expected_notice) <= 1, received
+                        if expected_notice in received:
                             successes += 1
                             break
                     assert successes, attack + " never delivered a new weapon poison"
                     results[attack] = {"attempts": attempt + 1, "new_notices": successes}
                 assert NOTICE not in assassin.transcript.decode(errors="replace")
                 assert NOTICE not in staff.transcript.decode(errors="replace")
+                assert DART_NOTICE not in assassin.transcript.decode(errors="replace")
+                assert DART_NOTICE not in staff.transcript.decode(errors="replace")
                 print("Assassin real-server weapon delivery and victim-only routing:", results, flush=True)
                 stop()
             except Exception:

@@ -42,6 +42,7 @@ static mm_ds event_pool{}, affect_pool{};
 mm_ds *dead_affect_pool = &affect_pool;
 Skill skills[MAX_SKILLS]{};
 static char_data target{}, source{}, owner{};
+static npc_only_data target_npc{}, source_npc{};
 static bool minimum_roll;
 static int waits, damage_calls;
 static int save_roll = 1, second_save_roll = 1, save_rolls;
@@ -185,6 +186,7 @@ def production():
     code += parser[start:parser.index("/*", start)]
     return code + "\n".join(extract_function(file, signature) for file, signature in [
         ("utility.c", "int flag2idx("),
+        ("utility.c", "int IS_MORPH("),
         ("sparser.c", "void update_saving_throws("),
         ("sparser.c", "int find_save("),
         ("sparser.c", "bool NewSaves("),
@@ -392,6 +394,42 @@ static void delivery() {
     }
     reset(); poison(POISON_LIFELEAK); assert(notice.empty()); // Non-weapon sources keep their own symptoms.
 }
+static void morph_delivery() {
+    for (bool resisted : {false, true}) {
+        reset(); owner = target;
+        // Save against the original player's gear/level, not NPC defaults.
+        owner.specials.apply_saving_throw[SAVING_PARA] = -2;
+        target.specials.act |= ACT_ISNPC;
+        target_npc = {}; target_npc.orig_char = &owner; target.only.npc = &target_npc;
+        target.player.level = 1;
+        save_roll = resisted ? 25 : 24;
+        auto obj = coating();
+        deliver_weapon_poison(&source, &target, &obj);
+        assert(obj.value[4] == 0 && save_rolls == 1);
+        assert(affected_by_spell(&target, POISON_LIFELEAK) == !resisted);
+        assert(notice.empty() == resisted);
+        if (!resisted) assert(notice_target == &target && !owner.affected);
+    }
+    for (int race : {RACE_LICH, RACE_UNDEAD, RACE_DRAGON, RACE_DEMON, RACE_F_ELEMENTAL}) {
+        reset(); owner = target;
+        target.specials.act |= ACT_ISNPC;
+        target_npc = {}; target_npc.orig_char = &owner; target.only.npc = &target_npc;
+        target.player.race = race;
+        auto obj = coating(); deliver_weapon_poison(&source, &target, &obj);
+        assert(obj.value[4] == 0 && !target.affected && !save_rolls && notice.empty());
+    }
+    for (bool resisted : {false, true}) {
+        reset(); owner = source;
+        source.specials.act |= ACT_ISNPC;
+        source_npc = {}; source_npc.orig_char = &owner; source.only.npc = &source_npc;
+        source.player.level = 1;
+        save_roll = resisted ? 35 : 34;
+        auto obj = coating(); deliver_weapon_poison(&source, &target, &obj);
+        assert(obj.value[4] == 0 && save_rolls == 1);
+        assert(affected_by_spell(&target, POISON_LIFELEAK) == !resisted);
+        assert(notice.empty() == resisted);
+    }
+}
 static void calibration() {
     for (int cls : {CLASS_WARRIOR, CLASS_CLERIC}) {
         for (int level : {30, 36, 41, 46, 51, 56}) {
@@ -462,7 +500,7 @@ int main() {
     skills[POISON_WEAKNESS].spell_pointer = reinterpret_cast<spell_func>(poison_weakness);
     skills[POISON_SLOWNESS].spell_pointer = reinterpret_cast<spell_func>(poison_slowness);
     skills[POISON_MADNESS].spell_pointer = reinterpret_cast<spell_func>(poison_madness);
-    slowness(); replacement(); timers(); recurrence(); delivery(); calibration(); stabbed_delivery(); reset();
+    slowness(); replacement(); timers(); recurrence(); delivery(); morph_delivery(); calibration(); stabbed_delivery(); reset();
     assert(ne_event_counter == 0 && event_pool.objs_used == 0 && affect_pool.objs_used == 0);
     puts("Weapon poison delivery, saves, feedback and lifecycle regressions passed");
 }
