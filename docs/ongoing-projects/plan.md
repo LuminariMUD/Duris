@@ -100,7 +100,8 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   an immutable prefix without making a second retained JSON copy. Context
   overflow stays inside summaries, avoiding per-minute exports. Explicit unknown
   dimensions remain in allocations rather than being filled from later data.
-- The fourth chunk, branch `issue-59-posthog-encounters`, adds the native
+- The fourth chunk, [PR #257](https://github.com/LuminariMUD/Duris/pull/257),
+  branch `issue-59-posthog-encounters`, adds the native
   encounter/combat join in the same module, bounded to 128 runs and 64 combined
   player/pet identities per run. Close plus complete roster is insufficient:
   all declared combat revisions, including suppressed NPC rows, must arrive
