@@ -57,12 +57,56 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   queries/results are recorded in the contract; no cloud events were submitted.
   The account recheck confirmed project `678214`, free billing, no active
   subscription, `ingested_event=false` and zero analytics usage.
-- Worker reduction/serialization, HTTP, quota, SQL decoupling, gameplay journeys,
-  cloud ingestion and reports are still unimplemented. Continue in this module
-  with bounded accumulators and immutable sealed output, then replace the
-  SQL-specific transport/runtime contract. Pet/system identities are specified
-  but remain to be implemented with their corresponding rows. The isolation
-  limitation below still applies.
+- The third chunk, [PR #255](https://github.com/LuminariMUD/Duris/pull/255),
+  branch `issue-59-posthog-reducer`, implements character
+  reduction and bounded immutable JSON output in the same module: 256 sessions,
+  two fragments/session, 32 time and 32 XP buckets, 64 validated configurations,
+  and 128 events / 512 KiB retained output. It consumes intervals, XP/levels,
+  lifecycle, checkpoints, configuration and gaps. It explicitly refuses encounter
+  and combat records until the next slice; the runtime is still unconnected.
+- Reducer evidence: `python3 tests/async/test_telemetry_posthog.py` passes 39
+  executable scenarios in both build modes under UBSan. They cover conservation,
+  checkpoint baselines/conflicts/late detail, level/config/dimension changes,
+  late windows, midnight, clock failure, signed/unsigned arithmetic and bucket
+  overflow, 256/257 sessions, 64/65 configurations, row/byte/age limits, immutable
+  retained output, JSON allocation failure and scope/replay refusal. A lost native
+  exit cannot pin a slot forever: after 3,720 seconds without any input for that
+  session (maximum native cadence plus queue allowance), seal with unknown-tail
+  coverage and free it without inventing a logout/entry. A later observation
+  keeps its original logical identity and has no invented checkpoint baseline.
+  The JSON allocation-failure case also passes ASan/UBSan with leak detection,
+  covering zero and partially constructed documents at four allocation budgets.
+  Contract
+  header and configuration tests also pass. Both full low-priority builds pass;
+  logs: `bin/issue59/build-{mariadb,flatfile}-reducer.log`.
+- Review repair validates all six initial reducer findings: configurations are cached only after
+  output retention; every known-window seal tracks subsequent late fragments;
+  the split-limit remainder is explicitly unattributed; missing initial sequence
+  prefixes are counted; unknown XP levels cannot inherit later known levels;
+  and direct character events flag incomplete dimensions. Fifteen added scenarios
+  reproduce event/byte/allocation pressure, all sealing paths and the remaining
+  accounting cases using the existing harness. Both backend variants pass UBSan.
+  The carried-forward XP contract also retains zone/group size in bucket keys
+  and JSON. Its regression preserves three allocations across four observations,
+  coalescing only the repeated captured context and conserving all XP.
+  Follow-up review fixes preserve global output-loss coverage after event/byte
+  pressure or JSON allocation failure, using the existing cumulative counter;
+  unknown level-transition endpoints serialize as null. Both defects reproduced
+  before their regression cases passed. Retained output remains immutable.
+  All 39 scenarios also pass ASan/UBSan with leak detection. Review build logs:
+  `bin/issue59/build-pr255-{mariadb,flatfile}.log`; both server builds pass.
+- Ablation: reuse the existing canonical configuration fingerprint; retain only
+  typed accumulators, checked metrics and one packed output arena. HTTP can read
+  an immutable prefix without making a second retained JSON copy. Context
+  overflow stays inside summaries, avoiding per-minute exports. Explicit unknown
+  dimensions remain in allocations rather than being filled from later data.
+- Next: implement bounded encounter/combat joining and health output, then the
+  HTTPS sender and durable quota before connecting runtime/transport. Native
+  queue admission age and the timer fence belong to that integration; occurrence
+  age is not admission age. Resolve the sender's retained retry prefix before
+  retiring/expiring borrowed output views. Pet identity, HTTP/quota/lifecycle,
+  SQL removal, gameplay/cloud/report proofs remain open. The isolation gate
+  below still applies; no production operation or cloud capture has occurred.
 - No live game operation or cloud event has been performed. Production enablement
   is separately authorized; this work prepares reviewable implementation PRs.
 
@@ -95,7 +139,7 @@ linkage, automatic balancing or new gameplay metric is required. PostHog MCP is
 an administrative tool for this work; the game never depends on it.
 
 Production deployment/enablement is a separate, explicitly authorized operation.
-Work through the encoding chunk performed no game login, server restart, migration, database
+Work through the character-reducer chunk performed no game login, server restart, migration, database
 mutation, event capture or PostHog dashboard mutation.
 
 ## Verified starting facts
