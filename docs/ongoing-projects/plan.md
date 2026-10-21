@@ -5,6 +5,8 @@ Source evidence checked on 2026-10-21 UTC against retained
 [master `9090518ba091`](https://github.com/LuminariMUD/Duris/commit/9090518ba091abc15b8fb2df4675b9ee3d83bd08).
 Tracking: [Duris #59](https://github.com/LuminariMUD/Duris/issues/59).
 The previous plan is preserved in [plan-issue-107.md](plan-issue-107.md).
+The intervening Assassin plan from master is preserved byte-for-byte in
+[plan-issue-187.md](plan-issue-187.md), including its dated review status.
 
 This plan implements the issue's PostHog decision and acceptance requirements.
 The SQL recommendations in the older [telemetry review](telemetry-review.md)
