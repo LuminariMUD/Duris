@@ -34,11 +34,14 @@ NOTICE = "poison from your attacker's blade enters your bloodstream!"
 
 # These are copied or read by the shared runtime fixture and command helpers.
 RUNTIME_INPUTS = (
-    "lib", "areas_mini", "areas/obj/heavens.obj",
+    "lib", "areas_mini", "areas/obj/heavens.obj", "src",
     "tests/async/run_assassin_balance_journey.py",
     "tests/async/test_assassin_combat_journey.py",
     "tests/async/test_flatfile_combat_journey.py",
     "tests/async/assassin_journey_fixture.cpp",
+    "tests/async/test_flatfile_player_repository.py",
+    "tests/async/flatfile_player_repository_harness.cpp",
+    "tests/async/_paths.py",
     "tests/async/run_paladin_balance_journey.py",
     "tests/async/run_divine_refusal_journey.py",
     "tests/async/run_item_pilot_journey.py",
@@ -89,6 +92,27 @@ def prepare_binaries():
         subprocess.run(["patch", "-p1", "--batch", "--forward"], cwd=cleansed,
                        input=patch, check=True)
     assert source_digest(original) != source_digest(cleansed), "cleanse-only patch did not apply"
+
+    # A ref marker cannot prove that a persistent ignored archive stayed intact.
+    # Compare archived source/build inputs, plus the complete compiled source set, with
+    # fresh BASE bytes and a freshly applied cleanse-only patch.
+    with tempfile.TemporaryDirectory(prefix="verify-baseline-", dir=directory) as temporary:
+        fresh = Path(temporary)
+        archive = subprocess.Popen(["git", "archive", BASE], cwd=ROOT, stdout=subprocess.PIPE)
+        with archive.stdout, tarfile.open(fileobj=archive.stdout, mode="r|") as tar:
+            tar.extractall(fresh, filter="data")
+        assert archive.wait() == 0, "baseline verification archive failed"
+        files = tuple(str(path.relative_to(fresh)) for path in sorted(fresh.rglob("*"))
+                      if path.is_file() and path.relative_to(fresh).parts[0] != "bin")
+        assert source_digest(original, files) == source_digest(fresh, files), \
+            "cached original differs from BASE"
+        assert source_digest(original) == source_digest(fresh), "cached original has extra source inputs"
+        subprocess.run(["patch", "-p1", "--batch", "--forward"], cwd=fresh, input=patch,
+                       check=True, stdout=subprocess.PIPE)
+        assert source_digest(cleansed, files) == source_digest(fresh, files), \
+            "cached cleanse-only variant differs from BASE plus patch"
+        assert source_digest(cleansed) == source_digest(fresh), "cached cleanse-only has extra source inputs"
+    print("Fresh archive verification passed for original and cleanse-only sources", flush=True)
 
     seed = Path(__file__).with_name("assassin_seed_fixture.cpp")
     seed_sha = hashlib.sha256(seed.read_bytes()).hexdigest()
@@ -231,6 +255,8 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
                 return row
         raise AssertionError(f"{keyword} never established a new poison")
 
+    command(staff, "setbit room here flag NO_HEAL 1")
+    assert "NO_HEAL" in command(staff, "stat room 22800")
     cured_symptom_start = len(victim.transcript)
     heart_cure = delivered(473, "heart")
     cured = command(victim, "cast 'remove poison' Venomtarget")
@@ -253,6 +279,7 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     symptoms = bytes(victim.transcript[symptom_start:]).decode(errors="replace")
     assert "You suddenly feel sick" in symptoms, "uncured Heart Toxin did not reach its scheduled tick"
     after_tick = hp(staff, "Venomtarget")[0]
+    assert after_tick < before_tick, "uncured Heart Toxin did not reduce HP with regeneration disabled"
     result["heart"] = {"cured": heart_cure, "uncured": heart_tick,
                        "observed_hit_change_after_delivery": before_tick-after_tick,
                        "scheduled_symptom_seen": True,
@@ -321,6 +348,8 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     print("revised dual poison openings", {key: result[key] for key in
                                            ("mixed_dual", "duplicate_dual")}, flush=True)
 
+    command(staff, "setbit room here flag NO_HEAL 0")
+
     # A disposable level-46 NPC supplies an actual solo kill and elapsed combat
     # time. Its 50-HP profile is a reference target, not a live PvE balance mob.
     settle()
@@ -338,7 +367,7 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     started = time.monotonic()
     npc_start = len(assassin.transcript)
     assassin.send("backstab assassinsentinel")
-    deadline = started + 60
+    deadline = started + 180
     while True:
         assassin._receive()
         outcome = bytes(assassin.transcript[npc_start:]).decode(errors="replace")

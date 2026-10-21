@@ -791,3 +791,13 @@ run; neither this value nor prior fast kills is a live PvE balance estimate.
 Native builds, ASan/UBSan poison/morph/crafting regressions, input-digest tests,
 formatting and whitespace checks pass. No further numeric balance tuning, merge,
 release tag or production operation was performed.
+
+### Final merge review corrections
+
+The later audit review adds the state-inspector builder, harness and path resolver
+to pinned inputs. Preparation verifies cached original and cleanse-only files
+against a fresh BASE archive and the freshly applied patch, including unexpected
+compiled-source inputs. The solo NPC deadline is 180 seconds to leave margin over
+the observed 51.28-second run. Heart checks disable room regeneration, verify the
+room flag, and require an actual positive HP decrease before restoring normal
+regeneration for the solo NPC case. These are audit-only changes.

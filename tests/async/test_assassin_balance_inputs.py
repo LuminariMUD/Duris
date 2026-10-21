@@ -23,7 +23,9 @@ def main():
         runtime_before = source_digest(root, RUNTIME_INPUTS)
         for name in ("lib/duris.properties", "areas_mini/mini.wld",
                      "areas/obj/heavens.obj", "tests/async/assassin_journey_fixture.cpp",
-                     "tests/async/test_assassin_combat_journey.py"):
+                     "tests/async/test_assassin_combat_journey.py",
+                     "tests/async/test_flatfile_player_repository.py",
+                     "tests/async/flatfile_player_repository_harness.cpp"):
             path = root / name
             original = path.read_bytes()
             path.write_bytes(original + b"changed")
@@ -31,6 +33,19 @@ def main():
             assert source_digest(root, RUNTIME_INPUTS) != runtime_before, name
             path.write_bytes(original)
             assert source_digest(root, RUNTIME_INPUTS) == runtime_before, name
+        # Baseline verification also pins builder inputs outside src and rejects
+        # unexpected compiled files, rather than trusting a qualification-ref.
+        tracked = ("src/server.c", "tests/async/test_flatfile_player_repository.py")
+        baseline = source_digest(root, tracked)
+        builder = root / tracked[1]
+        original = builder.read_bytes()
+        builder.write_bytes(original + b"changed")
+        assert source_digest(root, tracked) != baseline
+        builder.write_bytes(original)
+        (root / "src/unexpected.c").write_text("untracked source")
+        assert source_digest(root) != source_before
+        (root / "src/unexpected.c").unlink()
+        assert source_digest(root) == source_before
         (root / "bin").mkdir()
         (root / "bin/results.json").write_text("generated result")
         assert source_digest(root, RUNTIME_INPUTS) == runtime_before
