@@ -180,7 +180,7 @@ void SpellCastShow(P_char, int) {}
 int STAT_INDEX(int) { return 0; }
 void MobStartFight(P_char, P_char) {}
 bool hit(P_char, P_char, P_obj, int *) { return false; }
-int vamp(P_char, double, double) { return 0; }
+int vamp(P_char, double, double, bool) { return 0; }
 void do_alert(P_char, char *, int) {}
 void remember(P_char, P_char) {}
 int attack_back(P_char, P_char, int) { return DAM_NONEDEAD; }
