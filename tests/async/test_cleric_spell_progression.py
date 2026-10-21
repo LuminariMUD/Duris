@@ -33,11 +33,13 @@ for name, circle in {
 def cleric_help(path):
     text = (ROOT / path).read_text().lower()
     if path == "lib/information/help_index":
-        return next(entry for entry in text.split("\n#\n")
+        text = next(entry for entry in text.split("\n#\n")
                     if entry.strip().startswith("skill_cleric ("))
-    start = text.index("the following is a list of all skills and spells available to the cleric class:")
-    return re.search(r"==spells==\n(.*?)(?:\n\s*\n|\n#0|\Z)",
-                     text[start:], re.S)[1]
+    else:
+        start = text.index("the following is a list of all skills and spells available to the cleric class:")
+        text = text[start:]
+    section = re.search(r"==spells==\n(.*?)(?=\n==|\n#|\Z)", text, re.S)[1]
+    return re.sub(r"&(?:\+[a-z]|[n])", "", section)
 
 
 for path in ("help/duris_help_parsed.hlp",
