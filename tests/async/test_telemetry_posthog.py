@@ -99,6 +99,7 @@ def reducer_tests(binary: Path) -> None:
         "sealed-force", "sealed-age", "sealed-config", "sealed-dimensions",
         "sealed-level", "sealed-eviction", "initial-gap", "unknown-xp-level",
         "direct-unknown-dimensions", "xp-dimensions",
+        "output-suppression-coverage", "unknown-transition-levels",
     )
     observed = {}
     forbidden = {"pid", "subject_id", "actor_pid", "name", "email", "account_id", "ip",
@@ -228,6 +229,8 @@ def reducer_tests(binary: Path) -> None:
     byte_health = observed["byte-capacity"][1]
     assert byte_health["output_suppressed"] > 0 and byte_health["http_acknowledged"] > 0
     assert byte_health["output_events"] < 128  # Byte limit, not the row count, was reached.
+    retained_lifecycle = [row for row in observed["byte-capacity"][0] if row["event"] == "duris_session"]
+    assert "output_suppressed" in retained_lifecycle[-1]["properties"]["duris_coverage"]
     overflow = summaries(observed["integer-overflow"][0])
     assert len(overflow) == 3
     for part in overflow[:2]:
@@ -273,6 +276,10 @@ def reducer_tests(binary: Path) -> None:
     assert not observed["expiry"][0]
     assert observed["allocation-failure"][1]["serialization_failures"] == 4
     assert observed["allocation-failure"][1]["output_suppressed"] == 4
+    retained_lifecycle = [row for row in observed["allocation-failure"][0]
+                          if row["event"] == "duris_session"]
+    assert len(retained_lifecycle) == 1
+    assert "output_suppressed" in retained_lifecycle[0]["properties"]["duris_coverage"]
     assert "missing_configuration" in summaries(observed["missing-config"][0])[0]["duris_coverage"]
     assert observed["missing-config"][1]["missing_configuration_rows"] == 1
     flagged_clock = summaries(observed["clock-flag"][0])[0]
@@ -332,6 +339,14 @@ def reducer_tests(binary: Path) -> None:
     assert remainder["unattributed_time"]["active_usec"] == str(900000000000000 - 64 * 900000000)
     assert remainder["time"] == remainder["unattributed_time"]
     assert {"unattributed_time", "occurrence_utc_unknown"} <= set(remainder["duris_coverage"])
+    recovered, health = observed["output-suppression-coverage"]
+    assert [row["event"] for row in recovered] == ["duris_session", "duris_character_summary"]
+    assert health["output_suppressed"] == 1 and health["http_acknowledged"] == 128
+    assert summaries(recovered)[0]["xp"]["applied_xp"] == "7"  # The lost row is not restored.
+    assert all("output_suppressed" in row["properties"]["duris_coverage"] for row in recovered)
+    transitions = [row["properties"] for row in observed["unknown-transition-levels"][0]
+                   if row["event"] == "duris_level_change"]
+    assert [(row["before_level"], row["after_level"]) for row in transitions] == [(None, 1), (1, None)]
     print(f"PostHog reducer: {len(cases)} executable semantic/capacity/fault scenarios PASS")
 
 

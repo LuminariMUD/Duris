@@ -119,6 +119,10 @@ Export coverage names are `native_gap`, `unattributed_time`, `unattributed_xp`,
 `historical_dimensions_unavailable` and `unsupported_actor`. Emit each at most
 once per row; retain scope-specific detail in bounded health counters. These
 flags describe known evidence and do not certify a missing producer as healthy.
+After local output suppression, subsequent sealed rows retain `output_suppressed`
+as producer-lifetime evidence, using the existing cumulative loss counter. This
+is global loss evidence, not a claim that every later character/window lost data.
+Already-retained JSON remains immutable; resetting the reducer clears this scope.
 
 Identity encodings are implemented in
 [`telemetry_posthog.c`](../../src/telemetry/telemetry_posthog.c) and independently
@@ -193,6 +197,8 @@ attempts and zero-applied attempts. Absolute checkpoints/revisions stay in a
 separate reconciliation object; missing detail is not attributed to a guessed
 dimension or added again to the observed totals. Observed XP is not committed-save
 authority. Before/after levels and threshold XP remain separate level-change data.
+An unknown level endpoint (`0` in native records) is JSON null, including on
+level-advanced/lost rows; known endpoints remain JSON numbers.
 
 Within a summary, retain at most 32 time-allocation buckets keyed by captured
 class/race/faction/level-band/zone/group-size/activity context and 32 XP buckets

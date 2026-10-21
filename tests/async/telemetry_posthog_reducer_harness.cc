@@ -652,6 +652,34 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 			life(telemetry_lifecycle_kind::session_entered);
 			cJSON_InitHooks(nullptr);
 		}
+		life(telemetry_lifecycle_kind::connection_attached);
+	}
+	else if (name == "output-suppression-coverage")
+	{
+		while (telemetry_posthog_reducer_health_copy().output_events < 128U)
+			life(telemetry_lifecycle_kind::connection_attached);
+		const auto saved = std::string(telemetry_posthog_output_peek().json);
+		emit(xp(3, 3, 3));
+		telemetry_posthog_seal_through(NOW, BASE + 60'000'000, true);
+		CHECK(telemetry_posthog_reducer_health_copy().output_suppressed == 1U);
+		CHECK(saved == telemetry_posthog_output_peek().json);
+		CHECK(telemetry_posthog_output_retire(
+			128U, telemetry_posthog_output_disposition::http_acknowledged));
+		life(telemetry_lifecycle_kind::connection_attached, 45U);
+		emit(xp(7, 7, 7));
+	}
+	else if (name == "unknown-transition-levels")
+	{
+		auto advanced = xp(0, 0, 0, 44U, 0U);
+		advanced.payload.progression.kind = telemetry_progression_kind::level_advanced;
+		advanced.payload.progression.reason = telemetry_progression_reason::level_threshold;
+		advanced.payload.progression.after_level = 1U;
+		emit(advanced);
+		auto lost = xp(0, 0, 0, 44U, 1U);
+		lost.payload.progression.kind = telemetry_progression_kind::level_lost;
+		lost.payload.progression.reason = telemetry_progression_reason::death_loss;
+		lost.payload.progression.after_level = 0U;
+		emit(lost);
 	}
 	else if (name == "lost-exit")
 	{

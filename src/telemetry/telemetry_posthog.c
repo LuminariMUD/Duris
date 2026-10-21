@@ -222,6 +222,7 @@ constexpr std::uint32_t COVERAGE_TAIL = 1U << 5;
 constexpr std::uint32_t COVERAGE_CLOCK = 1U << 6;
 constexpr std::uint32_t COVERAGE_LATE = 1U << 7;
 constexpr std::uint32_t COVERAGE_DIMENSIONS = 1U << 8;
+constexpr std::uint32_t COVERAGE_OUTPUT = 1U << 9;
 
 template <typename Number> struct metric
 {
@@ -552,7 +553,8 @@ void coverage_json(posthog_row &row, std::uint32_t coverage) noexcept
 					  "unclosed_tail",
 					  "occurrence_utc_unknown",
 					  "late_fragment",
-					  "historical_dimensions_unavailable" };
+					  "historical_dimensions_unavailable",
+					  "output_suppressed" };
 	auto *array = row.array("duris_coverage");
 	for (std::size_t index = 0U; index < std::size(names); ++index)
 		if ((coverage & (1U << index)) != 0U)
@@ -664,6 +666,8 @@ void common_json(posthog_row &row, const char *event, const telemetry_session_re
 	}
 	if (!occurrence)
 		coverage |= COVERAGE_CLOCK;
+	if (REDUCER.health.output_suppressed != 0U)
+		coverage |= COVERAGE_OUTPUT;
 	coverage_json(row, coverage | native_coverage(quality));
 }
 
@@ -1044,8 +1048,8 @@ bool consume_progression(const telemetry_progression_payload &xp, telemetry_mono
 			    xp.classifier_version, xp.policy_version, &xp.dimensions,
 			    xp.quality_flags, character->coverage, xp.at_utc_usec, xp.at_utc_usec,
 			    utc);
-		row.number(row.properties, "before_level", xp.before_level);
-		row.number(row.properties, "after_level", xp.after_level);
+		row.number(row.properties, "before_level", xp.before_level, xp.before_level != 0U);
+		row.number(row.properties, "after_level", xp.after_level, xp.after_level != 0U);
 		row.number(row.properties, "transition", static_cast<std::uint32_t>(xp.kind));
 		row.number(row.properties, "reason", static_cast<std::uint32_t>(xp.reason));
 		row.number(row.properties, "source", static_cast<std::uint32_t>(xp.source));

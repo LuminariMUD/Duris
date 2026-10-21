@@ -64,7 +64,7 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   and 128 events / 512 KiB retained output. It consumes intervals, XP/levels,
   lifecycle, checkpoints, configuration and gaps. It explicitly refuses encounter
   and combat records until the next slice; the runtime is still unconnected.
-- Reducer evidence: `python3 tests/async/test_telemetry_posthog.py` passes 37
+- Reducer evidence: `python3 tests/async/test_telemetry_posthog.py` passes 39
   executable scenarios in both build modes under UBSan. They cover conservation,
   checkpoint baselines/conflicts/late detail, level/config/dimension changes,
   late windows, midnight, clock failure, signed/unsigned arithmetic and bucket
@@ -83,13 +83,17 @@ The intervening Assassin plan from master is preserved byte-for-byte in
   output retention; every known-window seal tracks subsequent late fragments;
   the split-limit remainder is explicitly unattributed; missing initial sequence
   prefixes are counted; unknown XP levels cannot inherit later known levels;
-  and direct character events flag incomplete dimensions. Thirteen added scenarios
+  and direct character events flag incomplete dimensions. Fifteen added scenarios
   reproduce event/byte/allocation pressure, all sealing paths and the remaining
   accounting cases using the existing harness. Both backend variants pass UBSan.
   The carried-forward XP contract also retains zone/group size in bucket keys
   and JSON. Its regression preserves three allocations across four observations,
   coalescing only the repeated captured context and conserving all XP.
-  All 37 scenarios also pass ASan/UBSan with leak detection. Review build logs:
+  Follow-up review fixes preserve global output-loss coverage after event/byte
+  pressure or JSON allocation failure, using the existing cumulative counter;
+  unknown level-transition endpoints serialize as null. Both defects reproduced
+  before their regression cases passed. Retained output remains immutable.
+  All 39 scenarios also pass ASan/UBSan with leak detection. Review build logs:
   `bin/issue59/build-pr255-{mariadb,flatfile}.log`; both server builds pass.
 - Ablation: reuse the existing canonical configuration fingerprint; retain only
   typed accumulators, checked metrics and one packed output arena. HTTP can read
