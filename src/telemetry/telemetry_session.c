@@ -281,11 +281,14 @@ std::size_t find_expired_detached_slot(const telemetry_session_state *state,
 {
 	std::size_t best = state->max_slots;
 	telemetry_monotonic_usec oldest = std::numeric_limits<telemetry_monotonic_usec>::max();
-	for (std::size_t index = 0; index < state->max_slots; ++index)
+	std::size_t remaining = state->resident_slots;
+	for (std::size_t index = 0; index < state->max_slots && remaining != 0U; ++index)
 	{
 		const telemetry_session_slot &slot = state->slots[index];
-		if (slot.lifecycle != telemetry_session_slot_lifecycle::resident ||
-		    slot.connected != 0U || now < slot.detached_since_monotonic_usec ||
+		if (slot.lifecycle != telemetry_session_slot_lifecycle::resident)
+			continue;
+		--remaining;
+		if (slot.connected != 0U || now < slot.detached_since_monotonic_usec ||
 		    now - slot.detached_since_monotonic_usec < state->detached_retire_after_usec)
 			continue;
 		if (best == state->max_slots || slot.detached_since_monotonic_usec < oldest)
