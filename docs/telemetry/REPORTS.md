@@ -15,8 +15,9 @@ no governed metric matching these contracts when checked.
 | Encounters and separate pet contributions | [13125345](https://us.posthog.com/project/678214/insights/g8EmHskc) | [encounters.sql](posthog/encounters.sql) |
 | Delivery health and coverage | [13125346](https://us.posthog.com/project/678214/insights/Q1uzfy0I) | [health.sql](posthog/health.sql) |
 
-All five queries execute in project 678214. Cloud fixture reconciliation is still
-pending; empty production results are expected while production export is disabled.
+All five saved queries execute in project 678214 and reconcile to the bounded
+synthetic cloud fixture below. Production results remain empty while export is
+disabled; all five production queries exclude the tagged synthetic traffic.
 The starter dashboard is retained. Views select schema 1, environment 1, season 1,
 empty test tag and a rolling 31-day event window. Change the explicit SQL scope
 and bucket predicates for another authorized scope or captured cohort. Each query
@@ -43,6 +44,42 @@ counters double-counts them. Producer reservations are not the complete durable
 UTC-day quota. During cloud loss, use `world telemetry` and the local journal as
 authoritative failure evidence. HTTP acknowledgement alone proves no query-visible
 receipt.
+
+
+### Verified cloud fixture — 2026-10-21 UTC
+
+`python3 tests/async/run_telemetry_player_journey.py --backend mariadb --cloud`
+completed one synthetic campaign in environment 1002, season 1, tag
+`issue59-cloud-smoke`: **41 real submissions / 40 unique event IDs**, with 48
+native quota reservations including local outage attempts. There was one real
+repeated UUID. The persistent campaign marker refuses a second run; never remove
+it or reinitialize its ledger to repeat this test.
+
+The same saved SQL, with only environment/tag predicates changed for the fixture,
+reconciled exactly to deduplicated native submitted rows:
+
+| Evidence | Query-visible result |
+| --- | --- |
+| Activity | 2 characters, 3 logical entries, 1 returning character, 3 exits, 2 connection attachments |
+| Time, microseconds | connected 49,402,710; active 33,577,284; idle 13,567,062; unknown 2,258,364; linkdead 4,269,222; resident 53,671,932 |
+| Observed XP | requested -4,294,967,116; computed/applied 164; 4 attempts, 1 zero-applied; 9 level transitions |
+| Encounters | 2 run rows and 3 actor rows; separate pet damage 13 with owner linkage and null participant time |
+| Incomplete cloud evidence | Native-complete run expects 3 actor rows, only 2 observed; cloud completeness is false |
+| Health | Latest snapshots for 2 producers; all displayed native/reducer/delivery fields match their submitted snapshots |
+
+The missing participant was intentionally omitted by the fixture and remains
+omitted across retries. To test report deduplication independently of PostHog's
+UUID handling, each scoped query also ran with `FROM events` replaced by
+`FROM events CROSS JOIN (SELECT 1 AS duplicate_probe UNION ALL SELECT 2 AS duplicate_probe)`.
+All five results were identical (excluding the changing health freshness age).
+All five original production queries then returned no synthetic rows.
+
+Local evidence is under `bin/issue59/acceptance/cloud-smoke/`: `submitted.json`,
+`expected.json`, `query-evidence.json`, and the durable ledger/campaign files.
+No key is stored in these artifacts. Ingestion/query caching briefly omitted a
+final 23-microsecond fragment; a refreshed query then reconciled exactly. Refresh
+before interpreting recently acknowledged HTTP batches as missing data. No
+second capture campaign was used.
 
 ## Historical SQL administrator reports (#269)
 

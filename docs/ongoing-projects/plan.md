@@ -584,3 +584,18 @@ performance proof remain uncompleted. No production activation.
   runs, 120 saves each; the 5% regression comparison pools all three matched raw
   sample sets. Individual runs and host bounds remain recorded. No valid pair
   has been collected yet. Cloud compilation/journeys finish before the benchmark.
+
+- Cloud campaign completed: 41 real attempts / 40 unique event IDs, within 48
+  native reservations, environment 1002 / season 1 / `issue59-cloud-smoke`.
+  All four report totals and all health fields reconcile exactly to submitted
+  native rows. Activity 2 characters / 3 entries / 1 return; connected time
+  49,402,710 usec; applied XP 164 / one zero-applied attempt / 9 level changes;
+  separate pet damage 13. One intentionally omitted participant makes the cloud
+  completeness flag false despite native completeness. All five queries conserve
+  results with every SQL input doubled; all five production scopes exclude tests.
+  Evidence: `cloud-smoke/{submitted,expected,query-evidence}.json` under acceptance
+  artifacts. Saved dashboard readback confirms all five saved tiles/definitions.
+- Only retained performance proof and final review/publication remain. Benchmark
+  process is live (`gameplay-release-performance.log`), three alternating off/on
+  pairs, 120 saves each. Keep compile/load jobs out of this measurement. Do not
+  add another campaign, matrix, qualification phase or forecast tuning task.
