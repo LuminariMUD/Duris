@@ -147,6 +147,44 @@ struct telemetry_posthog_output
 	bool health = false;
 };
 
+enum class telemetry_posthog_sender_state : std::uint8_t
+{
+	disabled,
+	ready,
+	sending,
+	backoff,
+	recovery,
+	permanent_failure,
+	quota_blocked,
+	clock_blocked,
+	stopped,
+};
+
+struct telemetry_posthog_sender_health
+{
+	telemetry_posthog_sender_state state{};
+	std::uint64_t attempted_batches = 0U;
+	std::uint64_t reserved_events = 0U;
+	std::uint64_t submitted_events = 0U;
+	std::uint64_t submitted_bytes = 0U;
+	std::uint64_t retry_attempts = 0U;
+	std::uint64_t retry_exhaustions = 0U;
+	std::uint64_t recovery_probes = 0U;
+	std::uint64_t quota_refusals = 0U;
+	std::uint64_t storage_failures = 0U;
+	std::uint64_t clock_failures = 0U;
+	std::uint64_t cancellations = 0U;
+	std::uint64_t response_limit_failures = 0U;
+	telemetry_monotonic_usec next_attempt = 0U;
+	telemetry_monotonic_usec last_http_acknowledged = 0U;
+	std::uint32_t http_status = 0U;
+	std::uint32_t curl_error = 0U;
+	std::uint32_t quota_error = 0U;
+	std::uint32_t batch_events = 0U;
+	std::uint32_t batch_bytes = 0U;
+	std::uint32_t batch_attempts = 0U;
+};
+
 enum class telemetry_posthog_output_disposition : std::uint8_t
 {
 	http_acknowledged,
@@ -156,7 +194,8 @@ enum class telemetry_posthog_output_disposition : std::uint8_t
 
 /* Single worker owner. Init/reset is legal only outside an active lifecycle.
  * The runtime remains unconnected until HTTP/quota/lifecycle integration is
- * complete. No function here performs network or disk I/O. */
+ * complete. Reducer operations do not perform network or disk I/O. Reset closes
+ * the sender first, invalidating any borrowed output views. */
 bool telemetry_posthog_reducer_init(const telemetry_posthog_reducer_config &config) noexcept;
 void telemetry_posthog_reducer_reset() noexcept;
 bool telemetry_posthog_consume(const telemetry_record &record, telemetry_monotonic_usec now,
@@ -179,5 +218,26 @@ bool telemetry_posthog_output_retire(std::size_t count,
 void telemetry_posthog_output_expire(telemetry_monotonic_usec now) noexcept;
 /* Worker-only value copy; runtime will publish it through its cached health. */
 telemetry_posthog_reducer_health telemetry_posthog_reducer_health_copy() noexcept;
+
+struct telemetry_outage_journal;
+struct telemetry_quota_binding;
+/* Existing worker only. The journal must outlive sender_close. Production host
+ * is exactly https://us.i.posthog.com (an optional trailing slash is accepted).
+ * Pulse advances asynchronous curl work without waiting on sockets or sleeping.
+ * A nonzero deadline shortens the attempt and cancels it when reached. */
+bool telemetry_posthog_sender_init(std::string_view host, std::string_view project_token,
+				   const telemetry_quota_binding &binding,
+				   telemetry_outage_journal *journal) noexcept;
+void telemetry_posthog_sender_pulse(telemetry_monotonic_usec now, telemetry_utc_usec utc,
+				    telemetry_monotonic_usec deadline = 0U,
+				    bool force = false) noexcept;
+void telemetry_posthog_sender_close() noexcept;
+telemetry_posthog_sender_health telemetry_posthog_sender_health_copy() noexcept;
+
+#ifdef TELEMETRY_POSTHOG_TESTING
+/* Compiled out of production. HTTPS loopback or injected DNS stall; TLS stays enabled. */
+bool telemetry_posthog_sender_test_endpoint(std::uint16_t port, std::string_view ca_file,
+					    bool resolve_dns = false) noexcept;
+#endif
 
 #endif
