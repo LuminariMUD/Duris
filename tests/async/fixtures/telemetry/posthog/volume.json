@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic_forecast_not_measured_capacity",
+  "days": 31,
+  "normal_target": 450000,
+  "daily_ceiling": 20000,
+  "assumptions": {
+    "detached_percent": 2,
+    "logical_entries_per_character_day": 3,
+    "reconnects_per_character_day": 1,
+    "extra_summary_boundaries_per_character_day": 2,
+    "character_days_per_level_change": 2,
+    "character_days_per_run": 2,
+    "encounter_rows_per_run": 6,
+    "copyovers": 2,
+    "configuration_rows_per_day": 2,
+    "health_incidents_per_day": 4,
+    "cloud_test_submissions": 100,
+    "retry_percent": 2
+  },
+  "profiles": [
+    {
+      "average_connected": 50,
+      "window_seconds": 900,
+      "expected": {
+        "periodic_summaries": 151776,
+        "boundary_summaries": 3100,
+        "session": 21800,
+        "level_change": 775,
+        "encounter": 4650,
+        "configuration": 62,
+        "health": 868,
+        "cloud_test": 100,
+        "retries": 3661
+      },
+      "fits_normal_target": true
+    },
+    {
+      "average_connected": 100,
+      "window_seconds": 900,
+      "expected": {
+        "periodic_summaries": 303552,
+        "boundary_summaries": 6200,
+        "session": 43600,
+        "level_change": 1550,
+        "encounter": 9300,
+        "configuration": 62,
+        "health": 868,
+        "cloud_test": 100,
+        "retries": 7303
+      },
+      "fits_normal_target": true
+    },
+    {
+      "average_connected": 200,
+      "window_seconds": 900,
+      "expected": {
+        "periodic_summaries": 607104,
+        "boundary_summaries": 12400,
+        "session": 87200,
+        "level_change": 3100,
+        "encounter": 18600,
+        "configuration": 62,
+        "health": 868,
+        "cloud_test": 100,
+        "retries": 14587
+      },
+      "fits_normal_target": false
+    },
+    {
+      "average_connected": 200,
+      "window_seconds": 1800,
+      "expected": {
+        "periodic_summaries": 303552,
+        "boundary_summaries": 12400,
+        "session": 87200,
+        "level_change": 3100,
+        "encounter": 18600,
+        "configuration": 62,
+        "health": 868,
+        "cloud_test": 100,
+        "retries": 8516
+      },
+      "fits_normal_target": true
+    }
+  ]
+}
