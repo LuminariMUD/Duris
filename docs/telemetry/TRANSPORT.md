@@ -1,5 +1,37 @@
 # Bounded telemetry transport (#262)
 
+## Current PostHog path (#59)
+
+Production uses `telemetry_transport_posthog_*` in the existing runtime worker,
+independently of MariaDB or flat-file gameplay. The SQL repository object is no
+longer linked. The older callback/retry path below remains for historical
+repository regression fixtures; it is not a fallback or a second live writer.
+
+Admission still copies into the bounded SPSC queue with the native sequence and
+admission clock. The worker captures a tail fence, consumes each record once,
+and seals timer windows after reaching that fence. It retains an unfinished
+fence across pulses, pumps HTTP between groups of 16 records, and pauses native
+drain near the bounded output limit. HTTP retries reuse sealed bytes/IDs and
+never repeat reduction. Native `consumed_records`/`last_consumed_record_seq` are
+separate from historical SQL applied/committed fields and cloud acknowledgements.
+
+The worker acquires the protected journal before initializing the reducer and
+sender. Runtime summaries use 1,800 seconds. Dirty coverage checkpoints run at
+60 seconds and at incident/lifecycle boundaries; every HTTP attempt also
+reserves quota durably. `world telemetry` reads coherent cached native/reducer/
+sender/quota metadata without waiting on worker I/O. See
+[CONTRACT.md](CONTRACT.md#worker-https-sender-59) for sender bounds.
+
+Copyover waits at most 250ms for progress. Valid handoffs retain identity and
+cumulative counters when delivery fails, with `UNCLOSED_TAIL` quality instead
+of an absent session. After failed exec, the same sender resumes with its
+counters, quota and permanent-error circuit preserved. Sender close precedes
+journal close; final reap occurs off gameplay hooks. HTTP acknowledgement does
+not establish query-visible ingestion.
+
+## Historical SQL transport reference
+
+
 This module is the in-process handoff between the gameplay/runtime producer and
 #261's repository. It is deliberately a transport, not a durable spool and not
 a second repository. A successful enqueue means that a value was copied into

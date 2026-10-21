@@ -119,7 +119,7 @@ telemetry_runtime_options enabled_options()
 void check_disabled_game_path()
 {
 	assert(telemetry_runtime_init(telemetry_runtime_default_options()) ==
-	       telemetry_runtime_outcome::flatfile_disabled);
+	       telemetry_runtime_outcome::disabled);
 
 	char_data player{};
 	pc_only_data player_pc{};
@@ -150,7 +150,7 @@ void check_environment_options()
 	unsetenv("TELEMETRY_BACKEND");
 	const telemetry_runtime_options disabled = telemetry_runtime_options_from_environment();
 	assert(!disabled.config.enabled);
-	assert(disabled.config.backend == telemetry_storage_backend::flatfile_disabled);
+	assert(disabled.config.backend == telemetry_storage_backend::posthog);
 
 	setenv("TELEMETRY_ENABLED", "true", 1);
 	setenv("TELEMETRY_BACKEND", "flatfile_disabled", 1);
