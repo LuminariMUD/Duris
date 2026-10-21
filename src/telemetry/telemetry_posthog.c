@@ -10,6 +10,7 @@
 #include "telemetry/telemetry_posthog.h"
 #include "telemetry/telemetry_config_private.h"
 #include "telemetry/telemetry_health.h"
+#include "telemetry/telemetry_outage_private.h"
 
 #include <algorithm>
 #include <bit>
@@ -18,9 +19,12 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <mutex>
+#include <cerrno>
 #include <type_traits>
 
 #include <cjson/cJSON.h>
+#include <curl/curl.h>
 
 #include <openssl/crypto.h>
 #include <openssl/hmac.h>
@@ -529,9 +533,49 @@ namespace
 		telemetry_health_alert_severity health_incident_severity{};
 		std::array<output_entry, TELEMETRY_POSTHOG_MAX_EVENTS> output{};
 		std::array<char, TELEMETRY_POSTHOG_MAX_OUTPUT_BYTES> bytes{};
+		std::size_t pinned_events = 0U;
 	};
 
 	reducer_state REDUCER{};
+
+	constexpr std::size_t HTTP_BATCH_EVENTS = 64U;
+	constexpr std::size_t HTTP_BATCH_BYTES = 256U * 1024U;
+	constexpr std::size_t HTTP_RESPONSE_BYTES = 16U * 1024U;
+	constexpr telemetry_duration_usec HTTP_TIMEOUT_USEC = 2'000'000U;
+	constexpr telemetry_duration_usec HTTP_RECOVERY_USEC = 60'000'000U;
+	constexpr const char *CAPTURE_URL = "https://us.i.posthog.com/batch/";
+	std::once_flag CURL_ONCE;
+	CURLcode CURL_INITIALIZED = CURLE_FAILED_INIT;
+
+	struct sender_state
+	{
+		CURL *easy = nullptr;
+		CURLM *multi = nullptr;
+		curl_slist *headers = nullptr;
+		telemetry_outage_journal *journal = nullptr;
+		telemetry_quota_binding binding{};
+		telemetry_posthog_sender_health health{};
+		bool initialized = false;
+		bool active = false;
+		bool probing = false;
+		bool uncertain = false;
+		bool response_limited = false;
+		telemetry_monotonic_usec last_observed = 0U;
+		telemetry_monotonic_usec attempt_deadline = 0U;
+		telemetry_utc_usec utc = TELEMETRY_UTC_UNKNOWN;
+		telemetry_duration_usec retry_after = 0U;
+		std::size_t response_bytes = 0U;
+		std::size_t header_bytes = 0U;
+		std::size_t read_offset = 0U;
+		std::size_t prefix_bytes = 0U;
+		std::array<char, 320U> prefix{};
+		std::array<std::string_view, HTTP_BATCH_EVENTS> rows{};
+#ifdef TELEMETRY_POSTHOG_TESTING
+		std::array<char, 128U> test_url{};
+		std::array<char, 4096U> test_ca{};
+#endif
+	};
+	sender_state SENDER{};
 
 	bool same_producer(const telemetry_producer_id &a, const telemetry_producer_id &b) noexcept
 	{
@@ -881,6 +925,18 @@ namespace
 
 	bool queue_row(posthog_row & row, telemetry_monotonic_usec now) noexcept
 	{
+		/* Validate the required capture envelope before sealing it. Rows only
+		 * enter through this builder; the sender never reparses/copies JSON. */
+		for (const char *key : { "event", "uuid", "timestamp" })
+		{
+			const auto *value = cJSON_GetObjectItemCaseSensitive(row.root, key);
+			if (!cJSON_IsString(value) || value->valuestring[0] == '\0')
+				row.valid = false;
+		}
+		const auto *distinct =
+			cJSON_GetObjectItemCaseSensitive(row.properties, "distinct_id");
+		if (!cJSON_IsString(distinct) || distinct->valuestring[0] == '\0')
+			row.valid = false;
 		std::array<char, TELEMETRY_POSTHOG_MAX_EVENT_BYTES + 6U> encoded{};
 		if (!row.valid || !cJSON_PrintPreallocated(row.root, encoded.data(),
 							   static_cast<int>(encoded.size()), false))
@@ -2072,6 +2128,8 @@ namespace
 
 void telemetry_posthog_reducer_reset() noexcept
 {
+	telemetry_posthog_sender_close();
+	REDUCER.pinned_events = 0U;
 	REDUCER.initialized = false;
 	OPENSSL_cleanse(REDUCER.config.identity_key.data(), REDUCER.config.identity_key.size());
 	REDUCER.config = {};
@@ -2325,6 +2383,38 @@ bool telemetry_posthog_observe_health(const telemetry_health_snapshot &native,
 		    status.active_severity != telemetry_health_alert_severity::none);
 	native_health_json(row, native, now);
 	reducer_health_json(row, now);
+	auto *http = row.object(row.properties, "http_delivery");
+	row.number(http, "state", static_cast<std::uint32_t>(SENDER.health.state));
+	row.number(http, "http_status", SENDER.health.http_status);
+	row.number(http, "curl_error", SENDER.health.curl_error);
+	row.number(http, "quota_error", SENDER.health.quota_error);
+	row.number(http, "batch_events", SENDER.health.batch_events);
+	row.number(http, "batch_bytes", SENDER.health.batch_bytes);
+	row.number(http, "batch_attempts", SENDER.health.batch_attempts);
+	row.integer(http, "attempted_batches", SENDER.health.attempted_batches);
+	row.integer(http, "reserved_events", SENDER.health.reserved_events);
+	row.integer(http, "submitted_events", SENDER.health.submitted_events);
+	row.integer(http, "submitted_bytes", SENDER.health.submitted_bytes);
+	row.integer(http, "retry_attempts", SENDER.health.retry_attempts);
+	row.integer(http, "retry_exhaustions", SENDER.health.retry_exhaustions);
+	row.integer(http, "recovery_probes", SENDER.health.recovery_probes);
+	row.integer(http, "quota_refusals", SENDER.health.quota_refusals);
+	row.integer(http, "storage_failures", SENDER.health.storage_failures);
+	row.integer(http, "clock_failures", SENDER.health.clock_failures);
+	row.integer(http, "cancellations", SENDER.health.cancellations);
+	row.integer(http, "response_limit_failures", SENDER.health.response_limit_failures);
+	row.integer(http, "next_attempt", SENDER.health.next_attempt);
+	row.integer(http, "last_http_acknowledged", SENDER.health.last_http_acknowledged);
+	if (SENDER.journal != nullptr)
+	{
+		const auto &quota = SENDER.journal->quota;
+		row.integer(http, "quota_day", quota.day);
+		row.number(http, "normal_reserved", quota.normal_reserved);
+		row.number(http, "health_reserved", quota.health_reserved);
+		row.number(http, "normal_limit", quota.binding.normal_limit);
+		row.number(http, "health_limit", quota.binding.health_limit);
+		row.number(http, "total_limit", quota.binding.total_limit);
+	}
 	if (!queue_row(row, now))
 		return false;
 	REDUCER.health_reported = true;
@@ -2348,7 +2438,7 @@ telemetry_posthog_output telemetry_posthog_output_peek(std::size_t offset) noexc
 bool telemetry_posthog_output_retire(std::size_t count,
 				     telemetry_posthog_output_disposition disposition) noexcept
 {
-	if (count == 0U || count > REDUCER.health.output_events)
+	if (REDUCER.pinned_events != 0U || count == 0U || count > REDUCER.health.output_events)
 		return false;
 	for (std::size_t index = 0U; index < count; ++index)
 	{
@@ -2396,6 +2486,8 @@ bool telemetry_posthog_output_retire(std::size_t count,
 
 void telemetry_posthog_output_expire(telemetry_monotonic_usec now) noexcept
 {
+	if (REDUCER.pinned_events != 0U)
+		return;
 	std::size_t expired = 0U;
 	while (expired < REDUCER.health.output_events)
 	{
@@ -2421,3 +2513,522 @@ telemetry_posthog_reducer_health telemetry_posthog_reducer_health_copy() noexcep
 {
 	return REDUCER.health;
 }
+
+namespace
+{
+	using sender_phase = telemetry_posthog_sender_state;
+	using output_disposition = telemetry_posthog_output_disposition;
+
+	telemetry_monotonic_usec http_after(telemetry_monotonic_usec now,
+					    telemetry_duration_usec delay) noexcept
+	{
+		return delay > std::numeric_limits<telemetry_monotonic_usec>::max() - now ?
+			       std::numeric_limits<telemetry_monotonic_usec>::max() :
+			       now + delay;
+	}
+
+	void http_remove() noexcept
+	{
+		if (SENDER.active)
+		{
+			(void)curl_multi_remove_handle(SENDER.multi, SENDER.easy);
+			SENDER.active = false;
+		}
+	}
+
+	void http_release(output_disposition disposition, bool expired = false) noexcept
+	{
+		http_remove();
+		const auto count = SENDER.health.batch_events;
+		if (expired)
+		{
+			add_count(REDUCER.health.output_expired, count);
+			for (std::size_t index = 0U; index < count; ++index)
+				add_count(REDUCER.health
+						  .by_family[static_cast<std::size_t>(
+							  REDUCER.output[index].family)]
+						  .expired);
+		}
+		REDUCER.pinned_events = 0U;
+		if (count != 0U)
+			(void)telemetry_posthog_output_retire(count, disposition);
+		SENDER.rows.fill({});
+		SENDER.health.batch_events = 0U;
+		SENDER.health.batch_bytes = 0U;
+		SENDER.health.batch_attempts = 0U;
+		SENDER.uncertain = false;
+	}
+
+	output_disposition http_unresolved() noexcept
+	{
+		return (SENDER.active || SENDER.uncertain) ? output_disposition::ambiguous :
+							     output_disposition::suppressed;
+	}
+
+	void http_suppress_output() noexcept
+	{
+		const auto count = REDUCER.health.output_events;
+		if (count != 0U)
+			(void)telemetry_posthog_output_retire(count,
+							      output_disposition::suppressed);
+	}
+
+	std::size_t http_read(char *buffer, std::size_t size, std::size_t count, void *) noexcept
+	{
+		/* Stream framing and the pinned arena views, with no second payload. */
+		const auto capacity = size * count;
+		std::size_t copied = 0U;
+		std::size_t position = 0U;
+		const auto segment = [&](std::string_view part)
+		{
+			if (SENDER.read_offset >= position &&
+			    SENDER.read_offset < position + part.size())
+			{
+				const auto offset = SENDER.read_offset - position;
+				const auto bytes =
+					std::min(capacity - copied, part.size() - offset);
+				std::memcpy(buffer + copied, part.data() + offset, bytes);
+				copied += bytes;
+				SENDER.read_offset += bytes;
+			}
+			position += part.size();
+		};
+		segment({ SENDER.prefix.data(), SENDER.prefix_bytes });
+		for (std::size_t index = 0U; index < SENDER.health.batch_events; ++index)
+		{
+			if (index != 0U)
+				segment(",");
+			segment(SENDER.rows[index]);
+		}
+		segment("]}");
+		return copied;
+	}
+
+	std::size_t http_body(char *, std::size_t size, std::size_t count, void *) noexcept
+	{
+		const auto bytes = size * count;
+		if (bytes > HTTP_RESPONSE_BYTES - SENDER.response_bytes)
+		{
+			SENDER.response_limited = true;
+			return 0U;
+		}
+		SENDER.response_bytes += bytes;
+		return bytes;
+	}
+
+	std::size_t http_header(char *buffer, std::size_t size, std::size_t count, void *) noexcept
+	{
+		const auto bytes = size * count;
+		if (bytes > HTTP_RESPONSE_BYTES - SENDER.header_bytes)
+		{
+			SENDER.response_limited = true;
+			return 0U;
+		}
+		SENDER.header_bytes += bytes;
+		std::string_view line(buffer, bytes);
+		constexpr std::string_view name = "retry-after:";
+		if (line.size() < name.size() ||
+		    !std::equal(name.begin(), name.end(), line.begin(), [](char a, char b)
+				{ return a == (b >= 'A' && b <= 'Z' ? b + 'a' - 'A' : b); }))
+			return bytes;
+		line.remove_prefix(name.size());
+		while (!line.empty() && (line.front() == ' ' || line.front() == '\t'))
+			line.remove_prefix(1U);
+		while (!line.empty() && (line.back() == '\r' || line.back() == '\n' ||
+					 line.back() == ' ' || line.back() == '\t'))
+			line.remove_suffix(1U);
+		std::uint64_t seconds = 0U;
+		const auto parsed =
+			std::from_chars(line.data(), line.data() + line.size(), seconds);
+		const bool digits = !line.empty() &&
+				    std::all_of(line.begin(), line.end(),
+						[](char c) { return c >= '0' && c <= '9'; });
+		if (digits)
+		{
+			if (parsed.ec != std::errc{})
+				seconds = std::numeric_limits<std::uint64_t>::max();
+			seconds = std::min(seconds,
+					   std::numeric_limits<std::uint64_t>::max() / 1'000'000U);
+			SENDER.retry_after = std::max(SENDER.retry_after, seconds * 1'000'000U);
+		}
+		else if (line.size() < 128U && SENDER.utc != TELEMETRY_UTC_UNKNOWN)
+		{
+			std::array<char, 128U> date{};
+			std::memcpy(date.data(), line.data(), line.size());
+			const auto when = curl_getdate(date.data(), nullptr);
+			const auto now = SENDER.utc / 1'000'000;
+			if (when >= 0 && when > now)
+				SENDER.retry_after = std::max(
+					SENDER.retry_after,
+					static_cast<std::uint64_t>(when - now) * 1'000'000U);
+		}
+		return bytes;
+	}
+
+	bool http_retryable(CURLcode error, long status) noexcept
+	{
+		if (SENDER.response_limited)
+			return false;
+		if (error == CURLE_OK)
+			return status == 408 || status == 429 || (status >= 500 && status <= 599);
+		switch (error)
+		{
+		case CURLE_COULDNT_RESOLVE_PROXY:
+		case CURLE_COULDNT_RESOLVE_HOST:
+		case CURLE_COULDNT_CONNECT:
+		case CURLE_OPERATION_TIMEDOUT:
+		case CURLE_SEND_ERROR:
+		case CURLE_RECV_ERROR:
+		case CURLE_GOT_NOTHING:
+		case CURLE_PARTIAL_FILE:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	void http_finished(CURLcode error, long status, telemetry_monotonic_usec now,
+			   telemetry_monotonic_usec deadline) noexcept
+	{
+		if (error != CURLE_OK || status < 200 || status > 299 || SENDER.probing ||
+		    SENDER.health.batch_attempts > 1U)
+			REDUCER.health_incident_pending = true;
+		if (error != CURLE_OK || http_retryable(error, status))
+			SENDER.uncertain = true;
+		http_remove();
+		SENDER.health.http_status = static_cast<std::uint32_t>(status);
+		SENDER.health.curl_error = static_cast<std::uint32_t>(error);
+		if (error == CURLE_OPERATION_TIMEDOUT && deadline != 0U &&
+		    SENDER.attempt_deadline >= deadline)
+		{
+			add_count(SENDER.health.cancellations);
+			http_release(http_unresolved());
+			http_suppress_output();
+			SENDER.health.state = sender_phase::stopped;
+			return;
+		}
+		if (error == CURLE_OK && status >= 200 && status <= 299)
+		{
+			http_release(output_disposition::http_acknowledged);
+			SENDER.health.last_http_acknowledged = now;
+			SENDER.health.next_attempt = 0U;
+			SENDER.probing = false;
+			SENDER.health.state = sender_phase::ready;
+			return;
+		}
+		if (SENDER.response_limited)
+			add_count(SENDER.health.response_limit_failures);
+		if (!http_retryable(error, status))
+		{
+			http_release(http_unresolved());
+			SENDER.health.state = sender_phase::permanent_failure;
+			return;
+		}
+		const auto first = telemetry_posthog_output_peek().sealed_at;
+		const auto delay = std::max<telemetry_duration_usec>(
+			SENDER.retry_after,
+			(1ULL << (SENDER.health.batch_attempts - 1U)) * 1'000'000ULL);
+		const auto next = http_after(now, delay);
+		if (SENDER.probing || SENDER.health.batch_attempts >= 5U ||
+		    next >= http_after(first, TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC) ||
+		    (deadline != 0U && next >= deadline))
+		{
+			add_count(SENDER.health.retry_exhaustions);
+			http_release(http_unresolved());
+			SENDER.probing = true;
+			SENDER.health.state = sender_phase::recovery;
+			SENDER.health.next_attempt =
+				http_after(now, std::max(HTTP_RECOVERY_USEC, SENDER.retry_after));
+			return;
+		}
+		SENDER.health.state = sender_phase::backoff;
+		SENDER.health.next_attempt = next;
+	}
+
+	bool http_select(telemetry_monotonic_usec now, bool force) noexcept
+	{
+		const auto first = telemetry_posthog_output_peek();
+		if (first.json.empty())
+			return false;
+		std::size_t count = 0U;
+		std::size_t bytes = SENDER.prefix_bytes + 2U;
+		while (count < HTTP_BATCH_EVENTS)
+		{
+			const auto row = telemetry_posthog_output_peek(count);
+			if (row.json.empty() || row.health != first.health ||
+			    row.json.size() + (count != 0U ? 1U : 0U) > HTTP_BATCH_BYTES - bytes)
+				break;
+			SENDER.rows[count] = row.json;
+			bytes += row.json.size() + (count != 0U ? 1U : 0U);
+			++count;
+		}
+		/* A class/byte/count boundary is a full batch; otherwise coalesce 2s. */
+		if (!force && count == REDUCER.health.output_events && count < HTTP_BATCH_EVENTS &&
+		    now - first.sealed_at < HTTP_TIMEOUT_USEC)
+			return false;
+		REDUCER.pinned_events = count;
+		SENDER.health.batch_events = static_cast<std::uint32_t>(count);
+		SENDER.health.batch_bytes = static_cast<std::uint32_t>(bytes);
+		SENDER.health.batch_attempts = 0U;
+		SENDER.uncertain = false;
+		return true;
+	}
+
+	void http_attempt(telemetry_monotonic_usec now, telemetry_utc_usec utc,
+			  telemetry_monotonic_usec deadline) noexcept
+	{
+		const auto count = SENDER.health.batch_events;
+		const bool health = telemetry_posthog_output_peek().health;
+		const auto reserved = telemetry_outage_quota_reserve(SENDER.journal, SENDER.binding,
+								     utc, health ? 0U : count,
+								     health ? count : 0U);
+		SENDER.health.quota_error = SENDER.journal->error_code;
+		if (reserved != telemetry_outage_result::ready)
+		{
+			const auto error = SENDER.journal->error_code;
+			http_release(http_unresolved());
+			if (reserved == telemetry_outage_result::invalid && error == EDQUOT)
+			{
+				add_count(SENDER.health.quota_refusals);
+				SENDER.health.state = sender_phase::quota_blocked;
+			}
+			else if (reserved == telemetry_outage_result::invalid && error == ERANGE)
+			{
+				add_count(SENDER.health.clock_failures);
+				SENDER.health.state = sender_phase::clock_blocked;
+			}
+			else
+			{
+				add_count(SENDER.health.storage_failures);
+				SENDER.health.state = sender_phase::permanent_failure;
+			}
+			return;
+		}
+		add_count(SENDER.health.reserved_events, count);
+		if (SENDER.health.batch_attempts != 0U)
+			add_count(SENDER.health.retry_attempts);
+		else if (SENDER.probing)
+			add_count(SENDER.health.recovery_probes);
+		++SENDER.health.batch_attempts;
+		SENDER.read_offset = 0U;
+		SENDER.response_bytes = 0U;
+		SENDER.header_bytes = 0U;
+		SENDER.response_limited = false;
+		SENDER.retry_after = 0U;
+		SENDER.utc = utc;
+		const auto duration = deadline == 0U ? HTTP_TIMEOUT_USEC :
+						       std::min(HTTP_TIMEOUT_USEC, deadline - now);
+		SENDER.attempt_deadline = http_after(now, duration);
+		const auto millis =
+			static_cast<long>(std::max<std::uint64_t>(1U, duration / 1000U));
+		if (curl_easy_setopt(SENDER.easy, CURLOPT_TIMEOUT_MS, millis) != CURLE_OK ||
+		    curl_easy_setopt(SENDER.easy, CURLOPT_CONNECTTIMEOUT_MS,
+				     std::min(1000L, millis)) != CURLE_OK ||
+		    curl_easy_setopt(SENDER.easy, CURLOPT_POSTFIELDSIZE_LARGE,
+				     static_cast<curl_off_t>(SENDER.health.batch_bytes)) !=
+			    CURLE_OK ||
+		    curl_multi_add_handle(SENDER.multi, SENDER.easy) != CURLM_OK)
+		{
+			http_release(http_unresolved());
+			SENDER.health.state = sender_phase::permanent_failure;
+			return;
+		}
+		SENDER.active = true;
+		add_count(SENDER.health.attempted_batches);
+		add_count(SENDER.health.submitted_events, count);
+		add_count(SENDER.health.submitted_bytes, SENDER.health.batch_bytes);
+		SENDER.health.state = sender_phase::sending;
+	}
+} // namespace
+
+void telemetry_posthog_sender_close() noexcept
+{
+	if (SENDER.active)
+		add_count(SENDER.health.cancellations);
+	http_release(http_unresolved());
+	if (SENDER.easy != nullptr)
+		curl_easy_cleanup(SENDER.easy);
+	if (SENDER.multi != nullptr)
+		curl_multi_cleanup(SENDER.multi);
+	curl_slist_free_all(SENDER.headers);
+	SENDER.easy = nullptr;
+	SENDER.multi = nullptr;
+	SENDER.headers = nullptr;
+	SENDER.journal = nullptr;
+	SENDER.initialized = false;
+	OPENSSL_cleanse(SENDER.prefix.data(), SENDER.prefix.size());
+	SENDER.health.state = sender_phase::stopped;
+}
+
+bool telemetry_posthog_sender_init(std::string_view host, std::string_view token,
+				   const telemetry_quota_binding &binding,
+				   telemetry_outage_journal *journal) noexcept
+{
+	telemetry_posthog_sender_close();
+	SENDER = {};
+	SENDER.health.state = sender_phase::permanent_failure;
+	if (!REDUCER.initialized || journal == nullptr ||
+	    (host != "https://us.i.posthog.com" && host != "https://us.i.posthog.com/") ||
+	    !token.starts_with("phc_") || token.size() < 5U || token.size() > 256U ||
+	    !std::all_of(token.begin(), token.end(),
+			 [](char c)
+			 {
+				 return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+					(c >= '0' && c <= '9') || c == '_';
+			 }) ||
+	    binding.environment_id != REDUCER.config.environment_id ||
+	    binding.season_id != REDUCER.config.season_id ||
+	    telemetry_outage_quota_check(journal, binding) != telemetry_outage_result::ready)
+		return false;
+	std::call_once(CURL_ONCE, [] { CURL_INITIALIZED = curl_global_init(CURL_GLOBAL_DEFAULT); });
+	const auto *version = curl_version_info(CURLVERSION_NOW);
+#if LIBCURL_VERSION_NUM >= 0x075700
+	if (CURL_INITIALIZED != CURLE_OK || version == nullptr || version->version_num < 0x075700 ||
+	    (version->features &
+	     (CURL_VERSION_ASYNCHDNS | CURL_VERSION_SSL | CURL_VERSION_THREADSAFE)) !=
+		    (CURL_VERSION_ASYNCHDNS | CURL_VERSION_SSL | CURL_VERSION_THREADSAFE))
+		return false;
+#else
+	(void)version;
+	return false; // No blocking DNS-cleanup fallback on unsupported libcurl.
+#endif
+	SENDER.easy = curl_easy_init();
+	SENDER.multi = curl_multi_init();
+	SENDER.headers = curl_slist_append(nullptr, "Content-Type: application/json");
+	if (SENDER.easy == nullptr || SENDER.multi == nullptr || SENDER.headers == nullptr)
+	{
+		telemetry_posthog_sender_close();
+		return false;
+	}
+	constexpr std::string_view before_token = "{\"api_key\":\"";
+	constexpr std::string_view after_token = "\",\"batch\":[";
+	std::memcpy(SENDER.prefix.data(), before_token.data(), before_token.size());
+	std::memcpy(SENDER.prefix.data() + before_token.size(), token.data(), token.size());
+	std::memcpy(SENDER.prefix.data() + before_token.size() + token.size(), after_token.data(),
+		    after_token.size());
+	SENDER.prefix_bytes = before_token.size() + token.size() + after_token.size();
+	SENDER.binding = binding;
+	SENDER.journal = journal;
+	bool valid = true;
+#define HTTP_OPTION(option, value) \
+	valid = (curl_easy_setopt(SENDER.easy, option, value) == CURLE_OK) && valid
+	HTTP_OPTION(CURLOPT_URL, CAPTURE_URL);
+	HTTP_OPTION(CURLOPT_HTTPHEADER, SENDER.headers);
+	HTTP_OPTION(CURLOPT_POST, 1L);
+	HTTP_OPTION(CURLOPT_READFUNCTION, http_read);
+	HTTP_OPTION(CURLOPT_WRITEFUNCTION, http_body);
+	HTTP_OPTION(CURLOPT_HEADERFUNCTION, http_header);
+	HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, 1L);
+	HTTP_OPTION(CURLOPT_SSL_VERIFYHOST, 2L);
+	HTTP_OPTION(CURLOPT_FOLLOWLOCATION, 0L);
+	HTTP_OPTION(CURLOPT_PROXY, "");
+	HTTP_OPTION(CURLOPT_NOSIGNAL, 1L);
+	HTTP_OPTION(CURLOPT_FRESH_CONNECT, 1L);
+	HTTP_OPTION(CURLOPT_FORBID_REUSE, 1L);
+	HTTP_OPTION(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+#if LIBCURL_VERSION_NUM >= 0x075700
+	/* libcurl's threaded resolver otherwise joins in easy_cleanup even after
+	 * multi_remove_handle. Its private context outlives cancelled lookup;
+	 * it never owns our callbacks, token or arena. */
+	HTTP_OPTION(CURLOPT_QUICK_EXIT, 1L);
+#endif
+#undef HTTP_OPTION
+	if (!valid)
+	{
+		telemetry_posthog_sender_close();
+		return false;
+	}
+	SENDER.initialized = true;
+	SENDER.health.state = sender_phase::ready;
+	return true;
+}
+
+void telemetry_posthog_sender_pulse(telemetry_monotonic_usec now, telemetry_utc_usec utc,
+				    telemetry_monotonic_usec deadline, bool force) noexcept
+{
+	if (!SENDER.initialized || SENDER.health.state == sender_phase::stopped)
+		return;
+	if (deadline != 0U && now >= deadline)
+	{
+		if (SENDER.active)
+			add_count(SENDER.health.cancellations);
+		http_release(http_unresolved());
+		http_suppress_output();
+		SENDER.health.state = sender_phase::stopped;
+		return;
+	}
+	if (SENDER.health.state == sender_phase::permanent_failure)
+	{
+		http_suppress_output();
+		return;
+	}
+	if (now < SENDER.last_observed || utc == TELEMETRY_UTC_UNKNOWN)
+	{
+		add_count(SENDER.health.clock_failures);
+		http_release(http_unresolved());
+		http_suppress_output();
+		SENDER.health.state = sender_phase::clock_blocked;
+		return;
+	}
+	SENDER.last_observed = now;
+	if (SENDER.health.batch_events != 0U && now - telemetry_posthog_output_peek().sealed_at >=
+							TELEMETRY_POSTHOG_MAX_OUTPUT_AGE_USEC)
+	{
+		http_release(http_unresolved(), true);
+		SENDER.probing = true;
+		SENDER.health.state = sender_phase::recovery;
+		SENDER.health.next_attempt = http_after(now, HTTP_RECOVERY_USEC);
+	}
+	telemetry_posthog_output_expire(now);
+	if (SENDER.active)
+	{
+		if (now >= SENDER.attempt_deadline)
+			http_finished(CURLE_OPERATION_TIMEDOUT, 0L, now, deadline);
+		else
+		{
+			int running = 0;
+			const auto result = curl_multi_perform(SENDER.multi, &running);
+			if (result != CURLM_OK)
+				http_finished(CURLE_FAILED_INIT, 0L, now, deadline);
+			else
+			{
+				int remaining = 0;
+				if (auto *message = curl_multi_info_read(SENDER.multi, &remaining);
+				    message != nullptr && message->msg == CURLMSG_DONE)
+				{
+					long status = 0L;
+					(void)curl_easy_getinfo(SENDER.easy, CURLINFO_RESPONSE_CODE,
+								&status);
+					http_finished(message->data.result, status, now, deadline);
+				}
+			}
+		}
+		return;
+	}
+	if (now < SENDER.health.next_attempt)
+		return;
+	if (SENDER.health.batch_events == 0U && !http_select(now, force))
+		return;
+	http_attempt(now, utc, deadline);
+}
+
+telemetry_posthog_sender_health telemetry_posthog_sender_health_copy() noexcept
+{
+	return SENDER.health;
+}
+
+#ifdef TELEMETRY_POSTHOG_TESTING
+bool telemetry_posthog_sender_test_endpoint(std::uint16_t port, std::string_view ca_file,
+					    bool resolve_dns) noexcept
+{
+	if (!SENDER.initialized || SENDER.active || port == 0U || ca_file.empty() ||
+	    ca_file.size() >= SENDER.test_ca.size() || ca_file.find('\0') != std::string_view::npos)
+		return false;
+	std::snprintf(SENDER.test_url.data(), SENDER.test_url.size(), "https://%s:%u/batch/",
+		      resolve_dns ? "stall.invalid" : "127.0.0.1", port);
+	std::memcpy(SENDER.test_ca.data(), ca_file.data(), ca_file.size());
+	SENDER.test_ca[ca_file.size()] = '\0';
+	return curl_easy_setopt(SENDER.easy, CURLOPT_URL, SENDER.test_url.data()) == CURLE_OK &&
+	       curl_easy_setopt(SENDER.easy, CURLOPT_CAINFO, SENDER.test_ca.data()) == CURLE_OK;
+}
+#endif
