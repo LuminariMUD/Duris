@@ -391,7 +391,8 @@ plan. The progress log below records subsequent implementation and proof.
   measure only the reference actors and do not justify further critical tuning.
 - Full-server Heart Toxin caused its first six-second symptom and **43-47 net
   HP** loss in the unwarded high-HP reference. A prepared Cleric began Remove
-  Poison immediately but completed after that first hit on this host. The same
+  Poison after the delivery helper returned and completed after that first hit.
+  This driver does not measure the earliest possible cure window. The same
   Cleric did remove actual weapon Slowness. That historical run also observed
   Heart absorption by Healer Warding Faith. Master PR #242 subsequently retired
   that ward, so its old absorption result is no longer applicable. The refreshed
@@ -430,9 +431,9 @@ plan. The progress log below records subsequent implementation and proof.
   actors. The recent-stab quarter rule and five one-hit wards stay intact.
 - **Poison 4 / recurring control and Heart — retain:** Neurotoxin does not
   interrupt on application and has long cast/movement windows between events;
-  Aid/Remove Poison and Slow Poison remain available. Heart's first hit can
-  beat an immediately started prepared Cleric cure, but the equal-level PvP
-  application save, later cure and 1-in-4 repeat branch
+  Aid/Remove Poison and Slow Poison remain available. Heart reached its tick
+  before this fixture's cure completed; minimum cure latency is unmeasured.
+  The equal-level PvP application save, later cure and 1-in-4 repeat branch
   constrain the realized outcome. No extra cooldown, repeat cap or damage cut
   is justified by this isolated reference; production duel balance remains
   unmeasured. A requested extra numeric restriction would be a separate owner
@@ -464,13 +465,11 @@ records the shared runtime-input digest: copied lib and mini-world data, recipe
 prototypes, and the journey/character fixture code. Changing these inputs
 invalidates a prepared manifest and requires --prepare again.
 No production operation, migration, merge or tag has been performed.
-Historical pre-refresh audit gates: the six-level, three-race live matrix rows completed on the three
-verified seeded binaries; the revised `--scenarios-only` journey passed every
-equipped, escape, cure, ward, dual, NPC and traded-vial case. The extended
-`test_poison_lifecycle_runtime.py` passed under ASan/UBSan, including four-type
-stacking, Heart recurrence and Madness timing. The existing
-`test_assassin_combat_journey.py` passed again after the audit fixture change
-(normal hit 5 attempts, backstab 10, level-46 Weakness -13 after reconnect).
+The old original/cleanse-only comparison is excluded from current proof because
+its archived patch had been skipped. Revised-only historical observations above
+are reference results; the refreshed review qualification records distinct
+source/binary hashes, runtime-input hashes and the complete rerun below.
+
 `make -C src -j4`, format, Python syntax and `git diff --check` passed.
 
 ## Implementation sequence and acceptance
@@ -771,3 +770,24 @@ forms, both weaker and stronger, plus an ordinary level-46 NPC.
   knockdown left the Assassin sitting. The bounded combat loop now stands and
   attacks through real commands until death or its existing 60-second deadline;
   the NPC profile and production combat behavior are unchanged.
+
+### Final review qualification
+
+All six PRs are prepared on master 9090518ba in dependency order. The five
+review findings are fixed, including the later original-player morph-potency
+finding in #251. The completed matrix records 12 original, 12 cleanse-only and
+36 revised cases (11/11/33 landed openings respectively). Original and
+cleanse-only source/binary hashes are distinct; the old skipped-patch comparison
+is excluded. The matrix and final scenario receipts retain their runtime-input
+manifests; the combat-prompt-only driver correction leaves the tested production
+source and binary hashes unchanged.
+
+The final canonical --prepare --variant revised --scenarios-only run passed
+matched/mismatched equipment, Control Flee, Heart timing/cure, Slowness cure,
+Healer ward retirement, mixed/duplicate openings, solo NPC survival/kill and
+traded Madness. Both dual cases succeeded on their first isolated attempt with
+two/one notices. The 50-HP NPC took 51.28 seconds with 272 actor HP lost in this
+run; neither this value nor prior fast kills is a live PvE balance estimate.
+Native builds, ASan/UBSan poison/morph/crafting regressions, input-digest tests,
+formatting and whitespace checks pass. No further numeric balance tuning, merge,
+release tag or production operation was performed.

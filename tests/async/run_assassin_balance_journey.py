@@ -347,7 +347,7 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
         assert time.monotonic() < deadline, "solo Assassin did not finish the reference NPC"
         # A normal NPC knockdown can leave the actor sitting indefinitely.
         # Recover through real commands rather than waiting only for stab text.
-        command(assassin, "stand")
+        combat_command(assassin, "stand", timeout=min(20, deadline-time.monotonic()))
         assassin.send("hit assassinsentinel")
         time.sleep(.5)
     result["solo_pve"] = {"npc_level": 46, "reference_hp": 50,
