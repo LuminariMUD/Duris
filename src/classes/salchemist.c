@@ -250,25 +250,25 @@ struct poison poison_data[] = {
 	    VOBJ_FORAGE_MANGROVE_ROOT, VOBJ_FORAGE_PURPLE_MUSHROOMS, VOBJ_FORAGE_PINK_MUSHROOMS },
 	  VOBJ_POISON_VIAL_MADNESS },
 	{ POISON_SLOWNESS,
-	  30,
+	  41,
 	  70,
 	  { VOBJ_FORAGE_FAERIE_DUST, VOBJ_FORAGE_MANDRAKE, VOBJ_FORAGE_DRAGON_BLOOD,
 	    VOBJ_FORAGE_BLUE_MUSHROOMS },
 	  VOBJ_POISON_VIAL_SLOWNESS },
 	{ POISON_MOVELEAK,
-	  30,
+	  36,
 	  50,
 	  { VOBJ_FORAGE_WIREGRASS, VOBJ_FORAGE_GREEN_MUSHROOMS, VOBJ_FORAGE_TREEROOT_MOSS },
 	  VOBJ_POISON_VIAL_MOVELEAK },
 	{ POISON_HEART_TOXIN,
-	  36,
+	  46,
 	  80,
 	  { VOBJ_FORAGE_NIGHTSHADE, VOBJ_FORAGE_MANDRAKE, VOBJ_FORAGE_DRAGON_BLOOD,
 	    VOBJ_FORAGE_FAERIE_DUST },
 	  VOBJ_POISON_VIAL_HEART_TOXIN },
 	{ POISON_NEUROTOXIN,
-	  30,
-	  20,
+	  46,
+	  80,
 	  { VOBJ_FORAGE_MANGROVE_ROOT, VOBJ_FORAGE_MANDRAKE, VOBJ_FORAGE_CRABAPPLES },
 	  VOBJ_POISON_VIAL_NEUROTOXIN },
 	{ POISON_WEAKNESS,
@@ -707,6 +707,8 @@ void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 			{
 				char buffer[MAX_STRING_LENGTH];
 				P_obj poison_vial = read_object(poison_data[i].vnum, VIRTUAL);
+				if (!poison_vial)
+					continue;
 				snprintf(buffer, MAX_STRING_LENGTH, " %-40s - %s\r\n",
 					 poison_vial->short_description,
 					 print_poison_ingredients(poison_data[i].ingredients));
