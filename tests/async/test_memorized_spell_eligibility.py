@@ -116,20 +116,40 @@ cleric_driver = r'''
     puts("Cleric source grants: all restored offense, progression boundaries, saved full/pending spells, specs and multiclass passed");
 '''.replace("REGISTER_CLERIC", "\n".join(grants))
 
-aura_grants = re.findall(
-    r"^\s*ADD_CLASS_INNATE\(INNATE_AURA_HEALING, (CLASS_\w+), (\d+), (\w+)\);",
-    source("innates.c").read_text(), re.M)
-assert len(aura_grants) == 2
-for cls, level, spec in aura_grants:
-    cleric_driver += f"class_innates[INNATE_AURA_HEALING][flag2idx({cls}) - 1][{spec}] = {level};\n"
-    cleric_driver += f"class_innates_at_all[INNATE_AURA_HEALING] |= {cls};\n"
+expected_auras = {
+    "HEALING": {("CLASS_PALADIN", "30", "0")},
+    "PROTECTION": {
+        ("CLASS_PALADIN", "1", "0"),
+        ("CLASS_CLERIC", "1", "SPEC_HOLYMAN"),
+        ("CLASS_CLERIC", "1", "SPEC_ZEALOT"),
+        ("CLASS_ANTIPALADIN", "1", "0"),
+    },
+    "SPELL_PROTECTION": {
+        ("CLASS_CLERIC", "1", "SPEC_HOLYMAN"),
+        ("CLASS_CLERIC", "1", "SPEC_HEALER"),
+    },
+}
+innate_source = source("innates.c").read_text()
+for aura, expected in expected_auras.items():
+    innate = f"INNATE_AURA_{aura}"
+    actual = set(re.findall(
+        rf"^\s*ADD_CLASS_INNATE\({innate}, (CLASS_\w+), (\d+), (\w+)\);",
+        innate_source, re.M))
+    assert actual == expected, (innate, actual)
+    for cls, level, spec in sorted(actual):
+        cleric_driver += f"class_innates[{innate}][flag2idx({cls}) - 1][{spec}] = {level};\n"
+        cleric_driver += f"class_innates_at_all[{innate}] |= {cls};\n"
 cleric_driver += r'''
     cleric.player.secondary_class = 0;
     cleric.player.m_class = CLASS_CLERIC;
     for (int spec : {0, SPEC_HEALER, SPEC_HOLYMAN, SPEC_ZEALOT}) {
         cleric.player.spec = spec;
         cleric.player.level = 30;
-        assert(has_innate(&cleric, INNATE_AURA_HEALING) == (spec == SPEC_HEALER));
+        assert(!has_innate(&cleric, INNATE_AURA_HEALING));
+        assert(has_innate(&cleric, INNATE_AURA_PROTECTION) ==
+               (spec == SPEC_HOLYMAN || spec == SPEC_ZEALOT));
+        assert(has_innate(&cleric, INNATE_AURA_SPELL_PROTECTION) ==
+               (spec == SPEC_HOLYMAN || spec == SPEC_HEALER));
     }
     cleric.player.spec = 0;
     cleric.player.m_class = CLASS_PALADIN;
@@ -137,7 +157,7 @@ cleric_driver += r'''
     assert(!has_innate(&cleric, INNATE_AURA_HEALING));
     cleric.player.level = 30;
     assert(has_innate(&cleric, INNATE_AURA_HEALING));
-    puts("White aura entitlement: Healer only among Clerics, Paladin level-30 grant preserved");
+    puts("Cleric protection auras and Paladin level-30 Improved Healing entitlement passed");
 '''
 driver = r'''
 int main() {
