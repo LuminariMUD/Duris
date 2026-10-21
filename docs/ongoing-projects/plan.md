@@ -404,205 +404,85 @@ ticket.
 ## Implementation handoff — 2026-10-21 UTC
 
 **DO NOT SCOPE CREEP. WE ARE OUT OF TIME AND TOKENS. DELIVER FAST.**
-Implementation has resumed. Use the current revision and
-existing evidence; do not restart completed work or repeatedly chase moving PR
-bases. The older progress notes below are historical, not a fresh completion
-claim or a current ETA.
 
-Completed and pushed:
+Implementation is active. Completion conditions 1–4 have direct native/cloud
+proof; condition 5 awaits the running performance gate and final publication.
+No additional acceptance stage is authorized or needed. Production is disabled.
 
-- Sender [PR #260](https://github.com/LuminariMUD/Duris/pull/260), branch
-  `issue-59-posthog-http`, revision `d540b778c`, base quota PR #259: bounded
-  worker TLS batches, immutable retries, durable quota, cancellation and health.
-- Runtime [PR #261](https://github.com/LuminariMUD/Duris/pull/261), branch
-  `issue-59-posthog-runtime`, implementation `6ea2ab792`, latest handoff
-  `8db892ac9`, stacked on #260. Ready for review. Direct fenced reducer delivery
-  replaces the production SQL writer in both persistence builds. Copyover keeps
-  identity through failed delivery; cached health reports consumed records and
-  sender/quota state. Version-3 outage observations retain consumed sequence/
-  counts without claiming durable cloud ingestion; v1/v2 remain readable.
-- Native runtime HTTPS cases: `python3 tests/async/test_telemetry_runtime_integration.py
-  --posthog` passed nine cases per build under UBSan (18 total): exact time,
-  restart quota, cancellation/failed exec, exhaustion, storage publication,
-  clock rollback, missing identity/quota and journal ownership. Evidence:
-  `bin/issue59/fast-plan/runtime-posthog.log`.
-- Focused transport normal/ASan/UBSan/TSan, config, health, contract headers,
-  copyover wire, activity/session integration, legacy lifecycle/exhaustion/
-  outage, gameplay adapters and journal tests passed. Evidence:
-  `bin/issue59/fast-plan/*runtime*.log` and `copyover.log`.
-- Both full builds and the state tool passed at the final runtime revision:
-  `nice -n 10 make -C src -j1 PERSISTENCE_BACKEND=<backend>
-  BIN_ROOT="$PWD/bin/issue59/<backend>" all telemetry-state`.
-  Logs: `build-runtime-{mariadb,flatfile}-verified.log` in the same evidence
-  directory. Neither executable links `telemetry_repository_init`. Formatting,
-  whitespace and commit-hook clang-tidy passed. No production activation.
+Published review stack:
 
-Current uncommitted chunk: `issue-59-posthog-acceptance`.
+- #260 (`issue-59-posthog-http`, `d540b778c`): bounded worker sender.
+- #261 (`issue-59-posthog-runtime`): both-backend runtime integration.
+- #262 (`issue-59-posthog-acceptance`, `32b4772f8`): terminal logout/pet adapter
+  fixes, native gameplay fixture and deterministic held-request deadline test.
+- #263 (`issue-59-posthog-reports`, published `3bbc45741`): five saved report
+  definitions, exact cloud reconciliation, emitted-volume proof and operation
+  handoff. Local follow-up `d3f81a054` reduces extra benchmark sampling to 40
+  saves/run; push it with the final measured result.
 
-- Adapted `tests/async/run_telemetry_player_journey.py` runs disposable native
-  games with `--backend flatfile` or `--backend mariadb`. It reuses the existing
-  combat/copyover clients and fixture, and the socket-only `private_database`
-  helper. Only the two test-seam worker objects are rebuilt before relinking
-  already-built game objects under `bin/`; production binaries are unchanged.
-- The core journey passed in both backends: save/reload, active/idle/linkdead,
-  reconnect, failed/successful exec, one logical session and exact time
-  conservation. Each received 13 events. Logs:
-  `bin/issue59/fast-plan/gameplay-posthog-{flatfile,mariadb}.log`; synthetic
-  payloads: `bin/issue59/acceptance/<backend>-events.json`.
-- Native MariaDB cannot write a datadir under this host's `/home`; the same
-  disposable helper works under a private `/tmp/duris-telemetry-db-*` directory.
-  Only the fixture location changed. No production permissions or DB helper
-  were changed. The runner now stops game writers before closing the private
-  database, including on failure.
-- Expanded domain/failure journey now passes in both backends. It adds a mortal
-  companion's combat XP and level transition, groups and separate player/pet
-  fights, mock HTTP 503 with continued saves, and durable quota across exec.
-  Fixture corrections so far: valid short account name, explicit `look` after
-  linkdead reconnect, staff `vis 0` before the companion grants consent, and
-  paginated health handling. Logs: `gameplay-posthog-{flatfile,mariadb}-domain.log`.
-  Received **36 / 35** events with **46 / 41** attempted/reserved events,
-  respectively; no retry duplicates were counted as new reductions. Assertions
-  prove one main logical session across exec/reconnect, exact time and XP
-  allocation conservation, captured group/level dimensions, positive separate
-  pet damage with owner linkage, no private gameplay values in payloads,
-  saves during HTTP 503, zero old SQL intervals and persisted quota/producers.
-- Expanded journeys reproduced two real adapter defects. Group/pet teardown
-  after terminal logout reopened phantom sessions; presence now refuses the
-  existing terminal-extraction flag. Pet-first attacks were not attached to an
-  owner's run, so their damage had no summary slot; begin now uses the owner
-  for the encounter and a separate pet combat actor, and NPC union data is
-  excluded from player participants/group keys. Focused adapter regression
-  passed under ASan/UBSan (`gameplay-terminal-pet-regression.log`). The full
-  game journeys then passed with both fixes. Final focused sanitizer/build
-  checks follow a small owner-lookup simplification; earlier successful full
-  builds are `build-gameplay-fix-<backend>.log`, final logs are
-  `build-acceptance-<backend>.log`.
-- Installed clang-format 21 treats `.c` as C while this translation unit builds
-  as C++. Its required whole-file check exposed pre-existing formatting drift.
-  The mechanically formatted baseline is isolated in commit `e75f017db`, so
-  the behavioral repair can be reviewed as a small separate diff. No formatter
-  configuration, namespaces, public interfaces or runtime behavior was changed
-  by that commit.
-- `--performance` runs three matched off/on pairs, alternating order, with one
-  client and 40 ordinary saves per run after warmup. A bounded test-link
-  wrapper at the existing pulse timer retains raw pulse/event/command samples;
-  process fsync samples give a conservative upper bound including journal and
-  gameplay persistence. Samples write only on exit. The runner records client
-  save/command p99, CPU/RSS and local health. This adds no production telemetry.
-  First attempt stopped at the health pager; fixed before collecting a valid
-  pair. Current log: `gameplay-posthog-mariadb-performance.log`. No performance
-  gate is claimed passed.
-- Pause performance collection while gameplay fixture compilation is active;
-  the interrupted attempt is diagnostic only. Use the MariaDB build for the
-  declared release performance fixture, matching this host's `mariadb-primary`
-  setting; both persistence builds still need the full gameplay journey. This
-  is the existing one-fixture gate, not a broad backend/capacity matrix.
-- Cloud readiness rechecked read-only: shared usage still 0/1,000,000 analytics
-  events, no existing Duris insights, one starter dashboard, empty governed
-  metric catalog. Standard query/report tools work; taxonomy/template tools
-  lack scopes. Use verified SQL inspection and plain saved tables. No cloud
-  captures or dashboard writes have occurred.
-- Constant-only HogQL checks confirmed that ordinary numeric result rendering
-  can round integers above 2^53. Exact report aggregation can use
-  `accurateCastOrNull(value, 'Decimal(38, 0)')` and return `toString(...)`;
-  unsigned 9223372036854775809 and signed -9223372036854775808 round-trip exactly.
-  This is representation proof, not event ingestion/report reconciliation.
+Production source is unchanged from tested `2be333750`. Both full native builds
+and state tools pass in `bin/issue59/{mariadb,flatfile}/`; neither links the old
+SQL writer. Logs `fast-plan/build-aligned-final-<backend>.log` and the focused
+ASan/UBSan gameplay-adapter regression cover this source. Existing unaffected
+config/transport/storage/copyover/fault results remain valid; do not rerun them.
 
-Next: paired performance and the complete emitted volume mix;
-publish/query the five views with one <=100-attempt
-synthetic cloud fixture; update the operational docs and publish this chunk.
-The five closure criteria above remain outstanding where not proven. Production
-activation is separate. The user's PR 252–255 question was only a question:
-**do not undertake their merges or conflict resolution**; none was performed.
+Current evidence under `bin/issue59/`:
 
-- PR #262 is ready for review. Its base #261 moved to `f1aa582e1` during
-  acceptance work, including reviewed quota/reducer repairs and unrelated
-  upstream gameplay updates. Aligning with that base using a normal merge;
-  preserve all upstream files except this chunk's five explicit paths. The
-  existing 35/36-event journey results belong to `8d996b1fa`; rerun affected
-  proof on the aligned tree. The diagnostic benchmark was stopped before its
-  first valid pair. No performance pass is claimed.
+| Required proof | Authoritative result |
+| --- | --- |
+| Native runtime HTTPS | `fast-plan/runtime-tight-posthog.log`: 18/18 cases under UBSan, including independently witnessed active-request cancellation, quota, restart, storage, clock and ownership faults. |
+| Reducer/sender components | `fast-plan/posthog-aligned.log`: 57 reducer + 29 HTTPS cases per backend; later test-only release-mix scenario is independently verified below. |
+| MariaDB gameplay | `fast-plan/gameplay-tight-mariadb.log`: 37 events / 43 reservations; complete native journey passes. |
+| Flat-file gameplay | `fast-plan/gameplay-tight-flatfile.log`: 38 events / 44 reservations; complete native journey passes. |
+| Domain/lifecycle assertions | Both journeys conserve time/XP, capture group/level dimensions and positive separate pet damage/owner links, exclude private values, save during 503, preserve identity/quota across reconnect and real failed/successful exec, and leave old SQL intervals empty. |
+| Integrated emitted volume | `fast-plan/release-mix-volume.log`: 97 emitted rows across all six families, no suppression/refusal; scaled shapes reconcile 396,454 attempts/31 days at 30 minutes. Frequencies/retry rates remain explicit assumptions, not concurrent capacity proof. |
+| Actual cloud campaign | `fast-plan/gameplay-cloud-mariadb.log`: 41 real submissions / 40 unique IDs within 48 native reservations, scope 1002 / season 1 / tag `issue59-cloud-smoke`. Persistent campaign marker forbids another campaign/reset. |
+| Queried reports and health | `acceptance/cloud-smoke/{submitted,expected,query-evidence}.json`: exact reconciliation, repeated UUID, intentionally missing participant, all five doubled-input queries conserve results, all production queries exclude tests. REPORTS.md records totals and IDs. |
+| Saved dashboard | Project 678214, dashboard 2240639, five saved insights 13125342–13125346; dashboard readback verifies all five production definitions. |
+| Performance | `fast-plan/gameplay-release-performance.log` is running; do not claim a pass. Raw samples/results are written under `acceptance/mariadb-*performance*` and `mariadb-latency-*`. |
 
-- Base-alignment follow-up: #261 advanced again to `458b834ce`; its eight-line
-  quota recovery change and matching docs/tests are retained. This alignment
-  is prepared in `bin/issue59/base-alignment` to keep the active full builds
-  undisturbed. Use normal forward merges/pushes; no force push or history
-  rewrite. The current aligned adapter regression under ASan/UBSan passes;
-  full builds and requalification are still in progress.
+The native fixture uses its default 60-second interval with a 64-segment/minute
+cap; accelerating to one second exhausted that cap before group attribution.
+HTTP outage recovery is observed before copyover's lossy 250ms deadline. Failed
+exec uses only the private fixture's invalid staged binary (ENOEXEC); restores
+that binary and removes only its disposable handoff image before successful exec.
 
-Current continuation (owner resumed): freeze revision `2be333750`; do not chase
-moving PR bases. Both aligned full builds and 57 reducer / 29 HTTPS component
-cases per backend pass. Latest real-game requalification failed captured group
-attribution and pre-exec delivery assertions; the native deadline test also
-failed intermittently before witnessing an active request. Investigating these
-existing failures only. The fixture now uses the native 60-second interval
-instead of an accelerated one-second cadence against its 64-segment/minute cap,
-waits for failed-exec sender recovery before successful replacement, and witnesses
-the held HTTP request before testing cancellation. Assertions remain intact.
-Reports are five SQL drafts under `docs/telemetry/posthog/`; cloud capture and
-performance proof remain uncompleted. No production activation.
+Remaining actions, in order:
 
-- Native runtime requalification now passes all 18 HTTPS cases under UBSan:
-  `runtime-tight-posthog.log`. The cancellation fixture waits for an independently
-  witnessed active request before starting its bounded flush; no assertion was
-  removed. Production code is unchanged.
-- The slower native capture cadence restores captured group_size=2 in both
-  gameplay captures. The original missing-directory fault stopped before telemetry
-  flush, so it could not prove failed-exec recovery. The runner now promotes a
-  synthetic invalid executable (ENOEXEC), restores its staged binary and removes
-  only its disposable handoff image before the subsequent successful exec.
-  Full journeys are rerunning; do not claim a pass yet.
-- Created dashboard 2240639 and five saved insights 13125342–13125346. All five
-  committed SQL definitions execute against project 678214; production views are
-  empty as expected. Billing remains free, reported analytics usage 0/1,000,000.
-  Cloud ingestion/reconciliation is still pending. Report links and operation
-  steps are in REPORTS.md and CONFIG_CONTEXT.md. No extra report/UI scope.
+1. Wait for the existing live benchmark (tool session `57877`), not a replacement.
+   Three alternating off/on pairs, 40 ordinary saves/run, 120 saves per condition
+   for pooled p99. Keep the 5% pulse/save and host bounds. The earlier longer
+   collection stopped before a completed pair and is diagnostic only. No heavy
+   compilation/load job should overlap the running comparison.
+2. Record actual measured results in PERFORMANCE_GATE.md and this handoff. If a
+   gate fails, investigate that specific failure; do not expand qualification.
+3. Finish the already prepared Git alignment once, then publish final commits.
+   Base #261 was rebased to `079537906`; its tree is byte-identical to tested
+   predecessor `458b834ce`. A pending normal merge in task-owned worktree
+   `bin/issue59/final-stack` has first parent `079537906`, second `32b4772f8`, and
+   a staged tree byte-identical to tested `32b4772f8`. Commit with hooks, push to
+   #262, then merge that commit into the reports branch and push #263. No source
+   change, force push, new build matrix or further moving-base chase is needed.
+4. Finish narrow formatting/whitespace/diff checks, update PR/issue evidence and
+   leave the stack ready for review. Production activation remains separate.
 
-- Deadline fixture repair is committed/pushed to acceptance PR #262 as
-  `32b4772f8`; 18/18 native runtime HTTPS cases pass. Full MariaDB gameplay now
-  passes with 37 events / 43 charged attempts (`gameplay-tight-mariadb.log`).
-  The flat-file fixture reached a real ENOEXEC but interrupted its paced HTTP
-  recovery with copyover's lossy deadline. It now waits for the recovered logical
-  exit before copyover; requalification is running. No production-code change.
-- The five saved report definitions and minimum operation handoff are ready for
-  review on the dependent reports branch. They execute successfully; actual
-  synthetic cloud reconciliation and the paired performance gate remain pending.
-  No repeated base synchronization, new environment, or extra report framework.
+Do not merge PRs 252–255: the owner's earlier message was a question, not an
+instruction. Deferred SQL boot-schema cleanup and broader capacity qualification
+remain outside closure. Preserve all five agreed completion conditions.
 
-- Flat-file real gameplay also passes: 38 events / 44 charged attempts, exact
-  time/XP conservation, captured group/level dimensions, positive separate pet
-  contributions, 503 save/recovery, stable identity through reconnect and actual
-  failed/successful exec. Evidence `gameplay-tight-flatfile.log`.
-- Reports are published for review in PR #263, stacked on #262. The bounded
-  MariaDB cloud campaign has started after mock journey proof; its persistent
-  campaign marker and ledger prevent reruns/resetting the 100-attempt allowance.
-- The serial native reducer mix emits exactly 97 rows across all six families;
-  actual shape counts reconcile all four volume profiles, including 396,454 at
-  the selected 30-minute window. These are workload-frequency projections,
-  not 200-player capacity certification. Evidence `release-mix-volume.log`.
-- The release benchmark is declared before collection: three alternating off/on
-  runs, 40 saves each; the 5% regression comparison pools all three matched raw
-  sample sets. Individual runs and host bounds remain recorded. No valid pair
-  has been collected yet. Cloud compilation/journeys finish before the benchmark.
 
-- Cloud campaign completed: 41 real attempts / 40 unique event IDs, within 48
-  native reservations, environment 1002 / season 1 / `issue59-cloud-smoke`.
-  All four report totals and all health fields reconcile exactly to submitted
-  native rows. Activity 2 characters / 3 entries / 1 return; connected time
-  49,402,710 usec; applied XP 164 / one zero-applied attempt / 9 level changes;
-  separate pet damage 13. One intentionally omitted participant makes the cloud
-  completeness flag false despite native completeness. All five queries conserve
-  results with every SQL input doubled; all five production scopes exclude tests.
-  Evidence: `cloud-smoke/{submitted,expected,query-evidence}.json` under acceptance
-  artifacts. Saved dashboard readback confirms all five saved tiles/definitions.
-- Only retained performance proof and final review/publication remain. Benchmark
-  process is live (`gameplay-release-performance.log`), three alternating off/on
-  pairs, 40 saves each. Keep compile/load jobs out of this measurement. Do not
-  add another campaign, matrix, qualification phase or forecast tuning task.
+Performance gate result: **FAILED**, source `2be333750`, pooled pulse p99
+654 usec on / 557 off (+17.4%); save p99 1,759,083 / 1,759,045 usec (passes).
+All absolute host bounds pass, but the 5% pulse criterion remains mandatory.
+Original raw evidence is preserved in `acceptance/performance-before-slot-scan-fix/`.
+The 10–15 minute completion estimate was explicitly withdrawn when this failed.
 
-- Ablation before the first completed benchmark pair: 120 saves per repetition
-  was extra sampling, not an agreed gate. Use 40 per repetition across the same
-  three alternating pairs: 120 saves per condition for pooled p99. The 5% gate,
-  native pulse sample minimum, host bounds, raw samples and ordinary save path
-  are unchanged. The initial longer collection was stopped; do not reuse it as
-  completed paired evidence. No additional workload or testing stage is added.
+Current narrow repair: activity pulse/cohort checks, checkpoint scans and detached
+retirement scans now stop after visiting all residents, using their existing
+resident counts. All 256 slots remain available, including sparse high-index
+residents. Changed files are only telemetry_activity.c, telemetry_session.c and
+telemetry_runtime.c. No new state, API, timing rule or reduced gate. Focused state,
+runtime HTTPS and both real-game journeys are requalifying; then repeat only the
+failed performance comparison. Existing cloud/report and reducer evidence stays
+valid because their data contract/reduction code is unchanged. Do not restart the
+cloud campaign or expand the fixture matrix.

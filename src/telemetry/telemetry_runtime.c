@@ -2166,11 +2166,14 @@ telemetry_pulse_result telemetry_runtime_pulse(telemetry_pulse_request pulse)
 			result.quality_flags |= TELEMETRY_QUALITY_SEQUENCE_GAP;
 		}
 	}
-	for (std::size_t index = 0U; index < R.session.max_slots; ++index)
+	std::size_t remaining = R.session.resident_slots;
+	for (std::size_t index = 0U; index < R.session.max_slots && remaining != 0U; ++index)
 	{
 		telemetry_session_slot &slot = R.session.slots[index];
-		if (slot.lifecycle != telemetry_session_slot_lifecycle::resident ||
-		    R.config.checkpoint_interval_usec == 0U)
+		if (slot.lifecycle != telemetry_session_slot_lifecycle::resident)
+			continue;
+		--remaining;
+		if (R.config.checkpoint_interval_usec == 0U)
 			continue;
 		const telemetry_monotonic_usec anchor =
 			slot.last_checkpoint_monotonic_usec != 0U ?
