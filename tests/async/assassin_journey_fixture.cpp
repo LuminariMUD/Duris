@@ -92,7 +92,7 @@ int main(int argc, char **argv)
 				snapshot.skills.push_back({ skill, 100, 100 });
 			}
 			snapshot.skills.push_back({ SKILL_DUAL_WIELD, 90, 90 });
-			snapshot.skills.push_back({ SKILL_AWARENESS, 80, 80 });
+			snapshot.skills.push_back({ SKILL_AWARENESS, 70, 70 });
 		}
 		std::vector<uint8_t> payload, bytes;
 		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;

@@ -331,6 +331,11 @@ plan. The progress log below records subsequent implementation and proof.
   The actual crafted prototypes have zero effective weight; subsequent raw
   negative weights from dose use are clamped by existing `GET_OBJ_WEIGHT`.
   Do not claim weight limits prevent pre-stocking.
+- Final skill-table audit corrected the synthetic Assassin's unused Awareness
+  grant from 80 to its specialization cap of 70. This fixture never activated
+  that skill in the delivered poison/crafting/persistence journeys, so the
+  recorded outcomes remain applicable. Future Awareness combat comparisons
+  must use 70 for Assassins, 80 for Rangers/Swashbucklers and 100 for Monks.
 - Crafting-only progression remains the initial implemented policy: transfers
   demonstrably bypass recipe gates; nothing is deleted/migrated and no new
   use-level restriction is silently imposed. Final retain/change decision is
