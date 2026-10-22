@@ -103,36 +103,32 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
-### Trade save support ready for publication
+### Published trade save support (#287) and live producer WIP
 
-Current source branch `branch/issue-245-divine-trade-runtime` is based on #283
-`ba2a62b54` and has uncommitted currency/snapshot support. The original deadline
-remains missed; full-scope continuation is authorized. Actual shop integration,
-selection, loss hooks, commands/help, cutover and final integrated proof remain
-unfinished. No reliable completion ETA is available; several hours remain.
+[PR #287](https://github.com/LuminariMUD/Duris/pull/287) is open, ready and
+mergeable at `e4a9a120c`, stacked on #283. Both backend builds, focused native
+repository/receipt races, currency reservations, pipeline coalescing, sanitized
+trade/player codecs, formatting and LLVM 22 clang-tidy pass. No merge or tag.
+The original plan branch is synchronized after preserving its externally rebased
+history on current master. Source branch is now
+`branch/issue-245-divine-shop-integration`, based on #287.
 
-Memory owns trade preparation and publication. Ordinary currency completions are
-synchronous and logout queues a full save before immediately extracting the
-character. Therefore pending trade must not suppress saves or retain callback
-contexts. Reserve future payment without mutating the live purse. Tag captures
-made during that reservation with operation id, command hash, payment, wallet
-revision and optional final cargo achievement. The writer resolves its permanent
-receipt, overlays committed payment/achievement once on the captured ordinary
-state, clears the tag, and then applies the normal revision guards. A rejected or
-not-yet-written trade clears the tag without payment. SQL locks the receipt before
-the player, matching compound trade lock order; flat-file resolves under recovered
-authority. Live completion publishes the same prepared effect once, then releases
-reservations. This preserves logout and intervening ordinary changes.
+Uncommitted producer code now connects qualifying purchases and single/all cargo
+or contraband sales to prepared settlement; boot restores the active boon book,
+and completion publishes money, ship/crew, market, book and achievement. Live
+player purse publication preserves intervening ordinary money and skips a newly
+hydrated session using a process-local flag. Payload v2 shares the existing
+fixed affect-row codec, independently of full snapshot schema evolution.
+Syntax checks pass; these producer hooks are not yet qualified or published.
 
-Support complete: exact shared currency preview and reservation bounds, snapshot
-schema 12 pending receipt merge, payload v2 cargo achievement with v1 compatibility,
-and unchanged fixed 48-byte result. Both real repository dispatchers pass receipt
-commit/rejection/absence, identity mismatch, repeated captures, intervening ordinary
-money/status and achievement persistence. Currency and pipeline coalescing checks,
-sanitized trade/player codecs and both backend builds pass. Shared affect-row
-encoding keeps payload v2 independent of future full snapshot schema versions.
-Formatting/tidy and publication are next.
-Runtime producer/command integration follows this support slice.
+Immediate next work: finish affected ship/market reservations and normal-save
+coordination, persist loss/invalidation alongside ship snapshots, then prove the
+real producer path and publish it. Selector routes, activation/cutover, commands/
+help and final integrated gameplay evidence remain unfinished. Keep working on
+those concrete paths; do not restart broad analysis or rerun unrelated evidence.
+Memory owns all gameplay calculations. SQL/flat-file restore state, validate
+revision/identity and persist prepared after-images. Original deadline remains
+missed; the owner authorized full-scope continuation without a replacement budget.
 
 ### Published producer fixes (#283)
 
