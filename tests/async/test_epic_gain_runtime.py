@@ -300,6 +300,7 @@ def test_epic_boon_publication() -> None:
                         '-g', '-no-pie', '-Isrc', '-I/usr/include/mysql', str(cpp),
                         'src/world/epic_transaction.c', 'src/world/epic_command.c',
                         'src/economy/boon_reward_transaction.c', 'src/economy/boon_reward_command.c',
+                        'src/economy/boon_shop_transaction.c',
                         'src/economy/boon_shop_command.c', 'src/economy/currency_command.c',
                         'src/combat/combat_outcome_command.c',
                         'src/flatfile/flatfile_boon_repository.c',

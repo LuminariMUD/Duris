@@ -7,7 +7,7 @@
 > evidence, and defer optional work. Required correctness and recovery remain
 > part of completion.
 
-Status: implementation in progress; rotation, backend storage and writer/boot integration implemented.
+Status: implementation in progress; rotation, storage, writer/boot and legacy admission barriers implemented.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -24,8 +24,8 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-runtime`, stacked on
-  `branch/issue-245-divine-persistence` -> `branch/issue-245-divine-boons`.
+  `branch/issue-245-divine-cutover`, stacked on `branch/issue-245-divine-runtime`
+  -> `branch/issue-245-divine-persistence` -> `branch/issue-245-divine-boons`.
 - Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
   implementation commit `8cbc07fc4`. Further chunks stack on this branch.
 - First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
@@ -69,7 +69,19 @@ restart and merge remain separate actions.
   committed journal recovery, exact retry and restart skipping. Existing
   `test_player_save_worker.py` and both server backend builds pass. Earlier
   state/repository proof remains valid and was reused.
-- **Next:** safe legacy admission drain and settlement before activation.
+- Fourth chunk: legacy command/shop/create/extend/reward and new scan admissions
+  close immediately when draining is queued or authority is unavailable. Accepted
+  reward/shop completion and login recovery handlers continue unchanged. Restored
+  SQL scans check durable mode before parsing old payloads, then recheck with a
+  row lock inside the scan transaction; a concurrent retirement must wait for the
+  accepted scan or prevent its mutations. Missing/corrupt authority fails closed.
+- Fourth-chunk proof: real reward and shop transaction handlers reject new work
+  while accepted callbacks still publish once (existing ASan/UBSan epic harness).
+  Runtime admission-state, scheduler, producer replay and 13 boon cutover contract
+  tests pass. The disposable MariaDB scan fixture exercises live legacy expiry,
+  concurrent state-writer locking, restored no-ops and corrupt-state rejection.
+  Both server backend builds and changed-file formatting pass.
+- **Next:** complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
 - Concrete next integration findings: `boon_shop()` spends MariaDB stat points
@@ -85,7 +97,7 @@ restart and merge remain separate actions.
   are resolved. No staff command or automatic switch currently enables Divine.
 - **Still open:** every full-feature acceptance item. The rotation core is a
   dependency; backend persistence and writer ordering are proven above, while
-  live candidate rotation, cutover, gameplay payouts and completed Divine Boons
+  live candidate rotation, completed cutover, gameplay payouts and Divine Boons
   remain unproven. No production action performed.
 - Ablation: reuse one state/codec for both backends; no scheduler, delivery
   framework, general economy rewrite or extra verification campaign added.

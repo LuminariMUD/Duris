@@ -10,6 +10,7 @@
 #include "world/difficulty.h"
 #include "economy/boon.h"
 #include "economy/boon_reward_transaction.h"
+#include "economy/boon_shop_transaction.h"
 #include "economy/currency_transaction.h"
 #include "economy/nexus_stones.h"
 #include "flatfile/flatfile_boon_repository.h"
@@ -31,6 +32,7 @@ P_index mob_index = nullptr;
 Skill skills[MAX_SKILLS] = {};
 long new_exp_table[MAXLVL + 2] = {};
 int errand_notch = 100000;
+extern const attr_names_struct attr_names[MAX_ATTRIBUTES] = { { "", "" }, { "str", "strength" } };
 static bool fail_id = false, refuse_history = false;
 extern "C" ssize_t __real_getrandom(void *, size_t, unsigned int);
 extern "C" ssize_t __wrap_getrandom(void *buf, size_t size, unsigned int flags)
@@ -51,6 +53,13 @@ static int artifact_awards = 0, dirty = 0, experience = 0;
 static std::string flat_root;
 static bool online = true, fail_acknowledgement = false;
 static int nested_submissions = 0;
+static bool admissions_open = true;
+static bool shop_completion = false;
+
+bool divine_boon_legacy_admissions_allowed()
+{
+	return admissions_open;
+}
 
 float get_property(const char *, double fallback)
 {
@@ -180,7 +189,8 @@ void affect_to_char_with_messages(P_char, affected_type *, const char *, const c
 }
 char affect_total(P_char, int)
 {
-	std::abort();
+	assert(shop_completion);
+	return 0;
 }
 P_obj read_object(int, int)
 {
@@ -215,6 +225,7 @@ static void reset_actor(int level, int64_t epics)
 	online = true;
 	fail_acknowledgement = false;
 	nested_submissions = 0;
+	admissions_open = true;
 }
 
 static void publication_case(int level, int type, int failure)
@@ -223,6 +234,9 @@ static void publication_case(int level, int type, int failure)
 	const auto initial = pc.epics;
 	assert(boon_reward_transaction_submit(&actor, nullptr, 1, BOPT_LEVEL));
 	assert(commands.size() == 1 && boon_reward_transaction_health_copy().pending == 1);
+	admissions_open = false;
+	assert(!boon_reward_transaction_submit(&actor, nullptr, 1, BOPT_LEVEL));
+	assert(commands.size() == 1); // Closing admission preserves the accepted completion.
 	const auto parent = commands.front().operation_id;
 	boon_reward_result result = {};
 	result.pid = 42;
@@ -289,6 +303,8 @@ static void flat_publication_case(const std::string &root, int ordering, bool fa
 	const auto command = commands.front();
 	const auto applied = flatfile_boon_repository_apply(flat_root, command);
 	assert(applied.outcome == critical_apply_outcome::applied);
+	admissions_open = false;
+	assert(!boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
 	critical_completion completion = {};
 	completion.operation_id = command.operation_id;
 	completion.outcome = applied.outcome;
@@ -363,6 +379,36 @@ static void nested_publication_case()
 	assert(boon_reward_transaction_health_copy().pending == 128);
 }
 
+static void legacy_shop_admission_case()
+{
+	reset_actor(20, 100);
+	boon_shop_transaction_reset_for_tests();
+	flat_root = "shop-admission-fixture";
+	admissions_open = false;
+	assert(!boon_shop_transaction_submit(&actor, 0) && commands.empty());
+	admissions_open = true;
+	assert(boon_shop_transaction_submit(&actor, 0) && commands.size() == 1);
+	admissions_open = false;
+	assert(!boon_shop_transaction_submit(&actor, 0) && commands.size() == 1);
+	const boon_shop_result result = { 42, 0, 51, 1, 1 };
+	std::array<uint8_t, BOON_SHOP_RESULT_BYTES> bytes;
+	assert(boon_shop_command_encode_result(result, &bytes));
+	critical_completion completion = {};
+	completion.operation_id = commands.front().operation_id;
+	completion.outcome = critical_apply_outcome::applied;
+	completion.result_size = bytes.size();
+	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+	shop_completion = true;
+	boon_shop_transaction_handle_completions(&completion, 1);
+	shop_completion = false;
+	assert(actor.base_stats.Str == 51 &&
+	       feedback.find("strength rises to 51") != std::string::npos);
+	const auto prior = feedback;
+	boon_shop_transaction_handle_completions(&completion, 1);
+	assert(feedback == prior);
+	flat_root.clear();
+}
+
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
@@ -379,5 +425,6 @@ int main(int argc, char **argv)
 						      (fail_ack ? "-fail" : "-ok"),
 					      ordering, fail_ack);
 	nested_publication_case();
-	puts("PASS boon rewards: all-level awards, failures, reconnect orderings, acknowledgement retries and nested submissions");
+	legacy_shop_admission_case();
+	puts("PASS boon rewards: all-level awards, admission closure, accepted shop/reward delivery, reconnect, retries and nested submissions");
 }

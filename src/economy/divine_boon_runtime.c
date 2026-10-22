@@ -202,6 +202,12 @@ bool divine_boon_runtime_pending()
 	return pending != nullptr;
 }
 
+bool divine_boon_legacy_admissions_allowed()
+{
+	return ready && published.mode == divine_boon_mode::legacy &&
+	       (!pending || pending->next.mode == divine_boon_mode::legacy);
+}
+
 bool divine_boon_runtime_queue(const divine_boon_state &next)
 {
 	if (!ready || pending || published.revision == std::numeric_limits<uint64_t>::max() ||

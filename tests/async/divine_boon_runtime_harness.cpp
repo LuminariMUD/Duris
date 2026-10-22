@@ -47,6 +47,7 @@ int main(int argc, char **argv)
 					     std::filesystem::perm_options::replace);
 	assert(!divine_boon_runtime_boot(100)); // Queue refusal never publishes state.
 	assert(!divine_boon_runtime_state() && !divine_boon_runtime_pending());
+	assert(!divine_boon_legacy_admissions_allowed());
 	assert(player_save_worker_init(unused_player, nullptr));
 	std::promise<void> entered, release;
 	auto released = release.get_future();
@@ -67,15 +68,18 @@ int main(int argc, char **argv)
 	finish();
 	assert(!divine_boon_runtime_pending());
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::legacy);
+	assert(divine_boon_legacy_admissions_allowed());
 	assert(std::string(persistence_job_kind_name(persistence_job_kind::divine_boon)) ==
 	       "divine_boon");
 	auto next = *divine_boon_runtime_state();
 	assert(divine_boon_set_mode(&next, divine_boon_mode::draining, 100));
 	assert(divine_boon_runtime_queue(next));
 	assert(!divine_boon_runtime_queue(next));
+	assert(!divine_boon_legacy_admissions_allowed());
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::legacy);
 	finish();
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::draining);
+	assert(!divine_boon_legacy_admissions_allowed());
 	next = *divine_boon_runtime_state();
 	assert(divine_boon_set_mode(&next, divine_boon_mode::divine, 100));
 	assert(divine_boon_runtime_queue(next));
