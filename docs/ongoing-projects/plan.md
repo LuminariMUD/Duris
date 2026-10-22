@@ -7,7 +7,7 @@
 > evidence, and defer optional work. Required correctness and recovery remain
 > part of completion.
 
-Status: implementation in progress; rotation state and snapshot contracts implemented.
+Status: implementation in progress; rotation, backend storage and writer/boot integration implemented.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -24,8 +24,8 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-persistence`, stacked on
-  `branch/issue-245-divine-boons`.
+  `branch/issue-245-divine-runtime`, stacked on
+  `branch/issue-245-divine-persistence` -> `branch/issue-245-divine-boons`.
 - Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
   implementation commit `8cbc07fc4`. Further chunks stack on this branch.
 - First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
@@ -56,13 +56,24 @@ restart and merge remain separate actions.
   schema apply/replay/verifier, lifecycle/runtime validators, seven boot contract
   tests and 21 immutable migration tests pass. Both MariaDB and flat-file server
   builds pass (`DMS_BINARY=.../bin/server/dms_new_flatfile` isolates flat-file output).
-- **Next:** queue the repository operations on the existing persistence writer;
-  wire boot/reconciliation and safe legacy admission drain before activation.
+- Third chunk: `divine_boon_runtime.{h,c}` wires boot loading/reconciliation and
+  confirmed publication into `comm.c`. One appended writer job kind orders
+  state saves with existing player/ship work. New installations retain legacy
+  mode; this does not activate Divine gameplay. The game sees a new snapshot
+  only after a successful commit; interrupted writes retain the exact pending
+  choice and retry, while invalid/conflicting authority disables bonuses.
+- Third-chunk proof: `test_divine_boon_runtime.py` passes with ASan/UBSan using
+  the real writer, including queue refusal, blocked-writer publication ordering,
+  committed journal recovery, exact retry and restart skipping. Existing
+  `test_player_save_worker.py` and both server backend builds pass. Earlier
+  state/repository proof remains valid and was reused.
+- **Next:** safe legacy admission drain and settlement before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
 - **Still open:** every full-feature acceptance item. The rotation core is a
-  dependency, not evidence of live rotation, durable backend commits, cutover,
-  gameplay payouts or completed Divine Boons. No production action performed.
+  dependency; backend persistence and writer ordering are proven above, while
+  live candidate rotation, cutover, gameplay payouts and completed Divine Boons
+  remain unproven. No production action performed.
 - Ablation: reuse one state/codec for both backends; no scheduler, delivery
   framework, general economy rewrite or extra verification campaign added.
   State revision plus an atomic snapshot supplies retry identity; no additional

@@ -147,6 +147,7 @@
 #include "combat/combat_outcome_transaction.h"
 #include "guild/artifact_guild_transaction.h"
 #include "economy/boon_reward_transaction.h"
+#include "economy/divine_boon_runtime.h"
 #include "economy/boon_shop_transaction.h"
 #include "world/zone_touch_transaction.h"
 #include "world/epic_transaction.h"
@@ -1054,6 +1055,8 @@ int run_the_game(int port, int sslport)
 				  "writer thread did not start");
 	}
 	sql_async_boot_done();
+	if (!divine_boon_runtime_boot(static_cast<int64_t>(time(nullptr))))
+		logit(LOG_STATUS, "Divine Boon state unavailable; world bonuses disabled.");
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
 #ifdef __NO_MYSQL__
 	critical_apply = flatfile_critical_command_repository_apply_selected;
@@ -2197,6 +2200,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		combat_outcome_transaction_publish_outbox();
 		artifact_guild_transaction_publish_outbox();
 		player_save_pipeline_pulse();
+		divine_boon_runtime_pulse();
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};
 		const size_t load_completion_count =
