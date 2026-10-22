@@ -80,7 +80,7 @@ uint64_t inventory_fingerprint(P_obj first)
 	return hash;
 }
 
-std::array<int64_t, 13> fingerprint(P_char body)
+std::array<int64_t, 14> fingerprint(P_char body)
 {
 	P_char player = GET_PLYR(body);
 	P_char opponent = GET_OPPONENT(body);
@@ -98,6 +98,7 @@ std::array<int64_t, 13> fingerprint(P_char body)
 		 opponent ? static_cast<int64_t>(opponent->runtime_id) : 0,
 		 opponent ? GET_HIT(opponent) : 0,
 		 GET_MANA(body),
+		 GET_VITALITY(body),
 		 IS_AFFECTED2(body, AFF2_CASTING) ? 1 : 0,
 		 static_cast<int64_t>(inventory) };
 }

@@ -236,6 +236,16 @@ void device_input()
 	bodies[0].carrying = nullptr;
 }
 
+void resource_input()
+{
+	setup_game();
+	GET_VITALITY(&bodies[0]) = 100;
+	const auto input = divine_boon_activity_begin(&bodies[0]);
+	GET_VITALITY(&bodies[0]) -= 20;
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+}
+
 void morphed_player()
 {
 	setup_game();
@@ -277,6 +287,7 @@ int main()
 	real_input_boundary();
 	container_input();
 	device_input();
+	resource_input();
 	morphed_player();
 	std::cout
 		<< "Divine activity: 60/15/5-minute windows, accounts, brackets, real input and exclusions passed\n";
