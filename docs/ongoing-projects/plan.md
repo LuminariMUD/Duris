@@ -48,6 +48,8 @@ restart and merge remain separate actions.
   re-runnable, registered with lifecycle and compiled runtime schema contracts.
   Metadata fingerprints were measured on disposable MySQL 8 and MariaDB 10.11;
   both runtime compatibility verifiers pass. No existing databases were changed.
+- Review-ready persistence: [PR #266](https://github.com/LuminariMUD/Duris/pull/266),
+  implementation commit `99da4373f`, stacked on #265.
 - Second-chunk proof: flat-file ASan/UBSan repository harness covers failures
   before commit, after journal commit and after the state after-image, plus
   recovery/retry, stale writes and corruption. The MariaDB repository harness,
