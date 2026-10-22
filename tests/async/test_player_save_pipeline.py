@@ -55,6 +55,9 @@ HARNESS = r'''
 #include <vector>
 
 P_char character_list = nullptr;
+static bool divine_pending = false;
+void divine_boon_runtime_pulse() {}
+bool divine_boon_runtime_pending() { return divine_pending; }
 static room_data rooms[1]{};
 P_room world = rooms;
 const char *command[] = {"\n"};
@@ -267,6 +270,10 @@ int main()
 
     // Ended sessions cannot be forgotten while a save or its completion is pending.
     player_save_pipeline_resume();
+    divine_pending = true;
+    assert(!player_save_pipeline_drain(100)); // An idle writer does not drain deferred Divine work.
+    divine_pending = false;
+    player_save_pipeline_resume();
     hold_writer(true);
     state.failures[44] = 2;
     assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
@@ -316,9 +323,11 @@ int main()
            player_save_pipeline_result::queued);
     wait_until_held();
     const int alerts_at_shutdown = alerts;
+    divine_pending = true;
     const auto left = player_save_pipeline_finish(persistence_observability_now_usec() + 20000,
                                                   [] { hold_writer(false); });
-    assert(left.empty());
+    assert(left.size() == 1 && left[0] == persistence_job_owner(persistence_job_kind::divine_boon, 1));
+    divine_pending = false;
     assert(alerts == alerts_at_shutdown + 1);
     player_save_pipeline_reset_for_tests();
 

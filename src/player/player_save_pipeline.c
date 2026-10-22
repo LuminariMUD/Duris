@@ -21,6 +21,7 @@
 #include "core/prototypes.h"
 #include "core/files.h"
 #include "economy/collector_death_enrollment.h"
+#include "economy/divine_boon_runtime.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
@@ -368,12 +369,14 @@ bool player_save_pipeline_drain(uint64_t timeout_msec)
 	player_save_pipeline_quiesce();
 	const bool drained = persistence_writer_wait_idle(timeout_msec);
 	player_save_pipeline_pulse();
-	if (!drained)
+	divine_boon_runtime_pulse();
+	const bool complete = drained && !divine_boon_runtime_pending();
+	if (!complete)
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		++health.drain_failures;
 	}
-	return drained;
+	return complete;
 }
 
 std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline_usec,
@@ -388,6 +391,9 @@ std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline
 	// The job the writer was on when it stopped may have failed since the pulse.
 	player_save_pipeline_pulse();
 	std::vector<persistence_job_owner> left = persistence_writer_pending_owners();
+	divine_boon_runtime_pulse();
+	if (divine_boon_runtime_pending())
+		left.emplace_back(persistence_job_kind::divine_boon, 1);
 	player_save_pipeline_shutdown();
 	return left;
 }
