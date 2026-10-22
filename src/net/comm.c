@@ -148,6 +148,7 @@
 #include "guild/artifact_guild_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_activity.h"
 #include "economy/boon_shop_transaction.h"
 #include "world/zone_touch_transaction.h"
 #include "world/epic_transaction.h"
@@ -1351,10 +1352,12 @@ static bool casting_input_for_descriptor(P_desc descriptor, P_char character)
 /** Send a dequeued playing-state command through the normal command dispatcher. */
 static void dispatch_playing_command(P_char character, char *input)
 {
+	const auto activity = divine_boon_activity_begin(character, ordered_command_number(input));
 	if (character && character->desc && IS_SET(character->specials.act, PLR_PAGING_ON))
 		process_with_paging(character, input);
 	else
 		command_interpreter(character, input);
+	divine_boon_activity_end(activity);
 }
 
 struct game_loop_pulse_context

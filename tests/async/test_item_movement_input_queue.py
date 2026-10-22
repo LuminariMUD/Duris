@@ -88,6 +88,8 @@ assert equip_check < authoritative_root_guard < container_reparent
 
 PRELUDE = r'''
 #include "core/utils.h"
+int ordered_command_number(const char *);
+#include "economy/divine_boon_activity.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "item/item_transfer_command.h"
