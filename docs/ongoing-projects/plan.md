@@ -7,7 +7,7 @@
 > evidence, and defer optional work. Required correctness and recovery remain
 > part of completion.
 
-Status: implementation in progress; NPC EXP and hourly selection wired; legacy activation and remaining reward/trade/command paths still open.
+Status: implementation in progress; NPC EXP, hourly selection and prepared PvP delivery wired; zone epics, trade, commands and legacy activation remain open.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -24,7 +24,8 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-experience`, stacked on `branch/issue-245-divine-selection`
+  `branch/issue-245-divine-pvp`, stacked on `branch/issue-245-divine-experience`
+  -> `branch/issue-245-divine-selection`
   -> `branch/issue-245-divine-delivery`
   -> `branch/issue-245-divine-activity`
   -> `branch/issue-245-divine-cutover`
@@ -191,8 +192,46 @@ restart and merge remain separate actions.
   [PR #272](https://github.com/LuminariMUD/Duris/pull/272), implementation
   `2b3bb7d4b`, stacked on #271. Both server builds, formatting, clang-tidy and
   whitespace checks pass. Existing passing evidence was reused as applicable.
-- **Next:** implement prepared zone/PvP recipient sequences, publication and
-  login recovery at the saved delivery watermark boundary;
+- Ninth chunk: PvP selection now requires both distinct warmed account populations
+  and permits only one active global PvP slot. The actual death producer prepares
+  its Good/Evil bonus from the legitimate base, excluding the separate 500 task
+  reward and retaining reductions. Generic `EPIC_PVP` gains remain unboosted;
+  the unused `epic_frag()` route is removed. Payload v5 stores boon ID, admission
+  time, fractional base and task component; ordinary captures still write v4.
+  Prepared results use a checksummed flat-file record or SQL inbox result with
+  an explicit new envelope; ordinary results retain their 1536-byte layout and
+  old captures/results remain readable. No SQL migration was needed.
+- Recipient ordering reuses the existing issued `epic_revision`, allocated by the
+  locked SQL row or flat authority. A predecessor links only prepared deliveries,
+  so ordinary revisions may create harmless gaps. `divine_pvp_award` is a reserved
+  compound-ledger reason, not a standalone command. Both repositories retain the
+  prepared amount and predecessor before publication. Live submission defers
+  these epic deltas until commit; matching callbacks and login recovery share
+  one ordered publisher. Already checkpointed sequences are skipped. Publication
+  does not issue another ledger revision or re-evaluate an expired boon.
+- New player-load readers recover unpaid receipts before admission, and queued
+  critical player work holds asynchronous login reads. Captures requested by
+  level/achievement hooks are held until all reward effects finish, then the
+  normal full player checkpoint saves balance, watermark and affected state.
+  A fault test exposed a mixed flat-file read (old watermark/new balance); the
+  reader now obtains snapshot, domains and pending receipts under one authority
+  lock. Advancing a flat marker requires a complete financial status capture.
+- Ninth-chunk proof: ASan/UBSan/float-cast tests execute real PvP preparation,
+  submit/completion, ordered publication, nested capture deferral and recovery
+  on both build configurations. Real flat repositories cover journal failure,
+  replay, multiple awards before checkpoint, login reads and interrupted full
+  checkpoints. Disposable MariaDB fixtures cover ordered issuance, rollback/
+  retry, exact replay, unpaid login reads, corrupt parents and paid filtering.
+  Legacy player-load/save, combat, artifact and frag-cap checks pass. Actual
+  loaded-world PvP/save journeys remain part of final qualification.
+- **Before activation:** remove the fixed lifetime receipt ceiling for new flat
+  prepared work. The pre-existing domain operations list caps at 512; complete
+  parent results cannot grow in that list forever. Compact checkpointed detail
+  while retaining durable retry identity through the existing authority files;
+  preserve unrelated legacy receipts. The byte bound now accommodates the
+  already-declared operation count instead of failing early at 64 KiB.
+- **Next:** finish flat receipt retention, then implement prepared zone rewards
+  and real flat-file stone payouts on the same saved delivery boundary;
   complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
@@ -221,11 +260,10 @@ restart and merge remain separate actions.
   framework, general economy rewrite or extra verification campaign added.
   State revision plus an atomic snapshot supplies retry identity; no additional
   critical-command type, outbox or duplicate receipt catalogue is needed.
-- Next delivery step: allocate recipient sequences in the existing writer under
-  the recipient row/authority lock, including earlier prepared receipts. Do not
-  derive a new sequence from the live applied watermark: multiple accepted
-  awards before completion would collide. Publish and recover in sequence,
-  saving the amount and applied watermark through the player status boundary.
+- Next zone delivery step: extend the existing prepared-reason predecessor lookup
+  and load readers across both PvP and zone receipts. Reuse issued revisions;
+  never derive a new sequence from the applied watermark. Multiple accepted
+  awards before callbacks must retain distinct identities and ordered recovery.
 - Remaining estimate at this checkpoint: 6-8 hours of active implementation and
   focused verification, including review-ready PRs. Cargo recovery and flat-file
   epic payouts remain the largest costs; this is an estimate, not time to fill.

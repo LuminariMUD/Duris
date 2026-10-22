@@ -17,8 +17,8 @@
 #include "redis/redis_report_cache.h"
 #include "economy/currency_transaction.h"
 #include "persistence/persistence_checkpoint.h"
-#include "sql/sql_player.h"
 #include "core/utils.h"
+#include "economy/divine_boon_delivery.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -73,7 +73,7 @@ void apply_live(const combat_outcome_payload &payload)
 			character->only.pc->frags += entry.frag_delta;
 			++character->only.pc->frag_revision;
 		}
-		if (entry.epic_delta)
+		if (entry.epic_delta && !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 		{
 			character->only.pc->epics += entry.epic_delta;
 			++character->only.pc->epic_revision;
@@ -143,10 +143,33 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 		const bool decoded = combat_outcome_command_decode_result(
 			completions[index].result_payload.data(), completions[index].result_size,
 			&result);
-		const bool committed =
+		bool committed =
 			decoded &&
 			(completions[index].outcome == critical_apply_outcome::applied ||
 			 completions[index].outcome == critical_apply_outcome::already_applied);
+		if (committed && found->second.payload.prepared_at)
+		{
+			const auto &expected = found->second.payload;
+			committed = result.participant_count == expected.participant_count &&
+				    result.victim_pid == expected.victim_pid &&
+				    result.prepared_at == expected.prepared_at;
+			for (size_t participant = 0;
+			     committed && participant < expected.participant_count; ++participant)
+			{
+				const auto &original = expected.participants[participant];
+				const auto &received = result.participants[participant];
+				committed = received.pid == original.pid;
+				if (original.flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+					committed = committed &&
+						    received.epic_delivery_delta ==
+							    original.epic_delta &&
+						    received.epic_boon_id ==
+							    original.epic_boon_id &&
+						    received.epic_base == original.epic_base &&
+						    received.epic_spill_blood ==
+							    original.epic_spill_blood;
+			}
+		}
 		if (committed)
 			++health.committed;
 		else
@@ -160,6 +183,16 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 						 decoded ? result : combat_outcome_result{},
 						 completions[index].error_code,
 						 found->second.payload);
+		if (committed)
+			for (size_t participant = 0; participant < result.participant_count;
+			     ++participant)
+			{
+				divine_epic_delivery delivery;
+				if (divine_epic_delivery_from_combat(
+					    completions[index].operation_id, result, participant,
+					    &delivery))
+					divine_boon_delivery_completed(delivery);
+			}
 		pending.erase(found);
 	}
 	health.pending = pending.size();

@@ -985,6 +985,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 			return failure(error);
 		}
 		std::array<uint8_t, COMBAT_OUTCOME_RESULT_BYTES> result_payload = {};
+		const size_t result_size = combat_outcome_result_size(combat_result);
 		uint64_t durable_revision = 0;
 		for (size_t index = 0; index < combat_result.participant_count; ++index)
 			durable_revision = std::max(
@@ -994,10 +995,10 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 					   combat_result.participants[index].wallet_revision,
 					   combat_result.participants[index].bank_revision }));
 		if (!combat_outcome_command_encode_result(combat_result, &result_payload) ||
-		    (mutation_applied && !insert_outbox(connection, command, result_payload.data(),
-							result_payload.size())) ||
+		    (mutation_applied &&
+		     !insert_outbox(connection, command, result_payload.data(), result_size)) ||
 		    !finish_inbox(connection, command, durable_revision, result_code,
-				  result_payload.data(), result_payload.size()))
+				  result_payload.data(), result_size))
 		{
 			const unsigned int database_failure = database_error(connection);
 			const unsigned int error = database_failure ? database_failure : errno;
@@ -1018,7 +1019,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 							  critical_apply_outcome::terminal_failure :
 							  critical_apply_outcome::applied,
 						  durable_revision, result_code };
-		applied.result_size = result_payload.size();
+		applied.result_size = result_size;
 		std::copy(result_payload.begin(), result_payload.end(),
 			  applied.result_payload.begin());
 		return applied;

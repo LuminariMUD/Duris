@@ -304,9 +304,23 @@ try
 			}
 		}
 	}
-	if (selected.zones[0] < 0 && selected.zones[1] < 0)
+	const bool experience = selected.zones[0] >= 0 || selected.zones[1] >= 0;
+	const bool pvp = population[0].pvp_accounts && population[1].pvp_accounts &&
+			 !std::any_of(state.slots.begin(), state.slots.end(),
+				      [&](const auto &slot) {
+					      return slot.category == divine_boon_category::pvp &&
+						     divine_boon_active(slot, now);
+				      });
+	const int pvp_weight =
+		population[0].pvp_accounts >= 2 && population[1].pvp_accounts >= 2 ? 40 : 20;
+	if (pvp && (!experience || number(1, 35 + pvp_weight) <= pvp_weight))
+	{
+		selected = {};
+		selected.category = divine_boon_category::pvp;
+	}
+	else if (!experience)
 		return false;
-	// Epic/trade/PvP choices join this selector with their actual payout paths.
+	// Epic/trade choices join this selector with their actual payout paths.
 	// Until then, do not advertise a category that cannot yet deliver its benefit.
 	*choice = selected;
 	return true;

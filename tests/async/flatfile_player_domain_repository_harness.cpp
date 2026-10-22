@@ -399,6 +399,68 @@ int main(int argc, char **argv)
 			"an older server's player and bank intent was not finished: " + error);
 	}
 
+	// Prepared awards record owed credit and ordered receipts, without changing
+	// the saved balance. A journal interruption cannot drop or duplicate them.
+	{
+		auto prepared = combat(70);
+		combat_outcome_payload payload;
+		require(combat_outcome_command_decode_payload(prepared, &payload),
+			"decode fixture");
+		payload.prepared_at = 150;
+		payload.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM |
+						COMBAT_PARTICIPANT_DIVINE_EPIC;
+		payload.participants[0].epic_delta = 150;
+		payload.participants[0].epic_boon_id = 7;
+		payload.participants[0].epic_base = 100;
+		payload.participants[0].wallet_delta_copper = 0;
+		payload.participants[1].racewar = 2;
+		payload.participants[1].epic_delta = 0;
+		payload.participants[1].wallet_delta_copper = 0;
+		require(combat_outcome_command_build(&prepared, prepared.operation_id, payload),
+			"build prepared fixture");
+		prepared.accepted_at_usec = 1;
+		const auto before = loaded.domains.epics;
+		require(setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1) ==
+				0,
+			"set interruption");
+		const auto interrupted = flatfile_player_domain_apply(root.string(), prepared);
+		require(interrupted.outcome == critical_apply_outcome::retryable_failure,
+			"prepared fault did not interrupt after the journal: outcome=" +
+				std::to_string(static_cast<unsigned>(interrupted.outcome)) +
+				", error=" + std::to_string(interrupted.error_code));
+		require(unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL") == 0,
+			"clear interruption");
+		std::vector<divine_epic_delivery> receipts;
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 42, 0, &receipts,
+								    &error) ==
+					flatfile_player_domain_result::ok &&
+				receipts.size() == 1 && receipts[0].sequence == 1 &&
+				receipts[0].previous == 0 && receipts[0].amount == 150,
+			"prepared journal recovery lost its receipt");
+		require(flatfile_player_domain_apply(root.string(), prepared).outcome ==
+				critical_apply_outcome::already_applied,
+			"prepared command was applied twice after recovery");
+		prepared.operation_id.bytes[0] = 71;
+		require(flatfile_player_domain_apply(root.string(), prepared).outcome ==
+				critical_apply_outcome::applied,
+			"second prepared command failed");
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 42, 0, &receipts,
+								    &error) ==
+					flatfile_player_domain_result::ok &&
+				receipts.size() == 2 && receipts[1].sequence == 2 &&
+				receipts[1].previous == 1,
+			"several awards before a checkpoint reused a sequence");
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 42, 1, &receipts,
+								    &error) ==
+					flatfile_player_domain_result::ok &&
+				receipts.size() == 1 && receipts[0].sequence == 2,
+			"saved delivery watermark did not filter paid receipts");
+		require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded,
+						    &error) == flatfile_player_domain_result::ok &&
+				loaded.domains.epics == before,
+			"preparation changed the saved balance before recipient publication");
+	}
+
 	const fs::path player = domains / "player-42.domain";
 	{
 		std::fstream file(player, std::ios::in | std::ios::out | std::ios::binary);
