@@ -103,24 +103,72 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
-### Latest verified continuation (16:10 UTC / 19:10 Asia/Jerusalem)
+### Latest verified continuation (16:58 UTC / 19:58 Asia/Jerusalem)
 
 - **Published:** [PR #276](https://github.com/LuminariMUD/Duris/pull/276),
   receipt retention, implementation `b2135ca72`, stacked on #275; and
   [PR #277](https://github.com/LuminariMUD/Duris/pull/277), zone epics,
   implementation `3afb15200`, stacked on #276. Both are open, ready for review.
   No merge or release tag; no ordinary-installation activation or production work.
+- [PR #278](https://github.com/LuminariMUD/Duris/pull/278), exact trade lots and
+  shared fixed account allowance, is also open and ready for review, stacked on
+  #277 at `f436aaac2`. Hosted base/head were read back, mergeable; remote parity
+  is 0/0. This is preparation/codec code, not a live trade payout.
 - Latest source worktree `/home/aiwithapex/projects/duris-issue245-plan`, branch
-  `branch/issue-245-divine-zone-epics`. It is clean and published; source and both
-  builds/tests match implementation `3afb15200`. Later handoff-only commits do
-  not invalidate that evidence. The named plan branch contains the foundation
+  `branch/issue-245-divine-trade-settlement`, based on the published #279
+  implementation `3485ea516` plus the handoff-only commit.
+  Trade implementation started from a clean tree. Both current server builds
+  include the wallet checkpoint below; earlier loaded-world zone journeys remain
+  valid evidence for implementation `3afb15200`. No gameplay reward math or
+  selector changed in the two trade prerequisites. The named plan branch contains the foundation
   plus this current document, not the whole implementation stack.
 - Both final loaded-world journeys pass after the fractional rounding correction:
   real zone 429, normally created Orc, 100 -> 150, save, restart and reconnect.
   Native fixtures validate claim/replay/corruption, ordered zone/PvP delivery,
   old payloads, runtime orchestration, additive math and seed parity. Preserve
   the evidence below; do not repeat green checks without a relevant change.
-- **Next concrete delivery:** branch from #277 for trade. Reuse the existing ship
+- **Trade preparation now implemented, not yet wired to gameplay:** exact paid
+  operation lots survive merged slots and partial consumption; untracked stock
+  goes first, invoice remainders stay with unsold lots. A single account/boon
+  record fixes the first full hold and combined three-hold allowance across goods
+  and ships. Loss/unproven transfer removes proof without creating a new cap.
+  The versioned checked snapshot preserves spent allowance after all lots sell.
+  The native ASan/UBSan harness passes 9+1, partial basis conservation, combined
+  goods, a larger second ship, different accounts, strict start/expiry, same-port
+  sale, loss, invalidation, corrupt/truncated reload and 600 purchase/sale cycles.
+  Both incremental server builds pass. No gameplay payment or atomic settlement
+  is claimed by these policy/codec checks; no new SQL schema was introduced.
+- [PR #279](https://github.com/LuminariMUD/Duris/pull/279), existing wallet revision
+  checkpoint, is open and ready for review, stacked on #278 at `3485ea516`.
+  Both backend builds match that source; remote parity is 0/0 and the published
+  PR base/head have been read back. The source tree is clean at this handoff.
+- **Qualified wallet checkpoint prerequisite:** reuse the existing memory
+  `wallet_revision` rather than add a trade-specific counter or SQL migration.
+  Snapshot wire v11 appends this revision; old versions restore zero. SQL and
+  flat-file status saves carry it with money and reject older wallet captures,
+  including a later general save revision. Non-wallet status updates preserve
+  the wallet revision. Flat-file snapshot/domain balances still share one atomic
+  authority commit, including the initial player checkpoint. The real native SQL
+  save/load harnesses pass on disposable MariaDB, as do sanitized codec/old-wire,
+  actual capture and flat-file repository tests (interrupted commit/reload,
+  nonzero starter-wallet revision and stale capture). Both incremental backend
+  builds, domain regression and native flat-file save-claim contracts pass.
+  Full settlement and gameplay are still missing. SQL proof executed the
+  maintained `player_save_claim_mysql_harness.cpp` and
+  `player_load_filter_mysql_harness.cpp` on a disposable complete schema; no
+  production database or checkout environment credentials were used. The
+  temporary local runner has been removed; the maintained complete SQL runner
+  remains `tests/async/run_player_save_claim_mysql.sh`.
+- **Concrete next implementation:** admit a qualifying buy/sale from memory,
+  prepare wallet/ship-slot/market-cell/account-book after-images, persist one
+  identified critical command on the existing writer and publish its absolute
+  result. Use the existing `wallet_revision` guard above for old player captures;
+  reserve the actual ship/market participants and cover their queued save/replay
+  ordering. Extend the existing authority helpers instead of adding a second
+  transaction framework. Hook loss/clear/ownership mutations to lot consumption
+  or invalidation. No live trade bonus may be admitted until this boundary and
+  both backend fault/retry journeys pass. No settlement code has been written yet.
+- **Next concrete delivery:** connect trade on the branch above. Reuse the existing ship
   capture/writer and cargo-market authority; implement purchase batches and the
   fixed three-first-ship-hold account cap together with atomic sale consumption,
   player payment, market update and recovery. A bonus-only multiplier is not an
@@ -128,7 +176,7 @@ checkpoints cannot be restarted now; they count as missed.
   player/staff boon commands/help and combined final journeys. Full #245 remains
   incomplete; all required outcomes remain in scope.
 - **Clock:** original combined start 08:41:02 UTC, original six-hour outer bound
-  14:41:02 UTC. At 16:10 UTC, elapsed is 7h 29m and overrun is 1h 29m. The owner
+  14:41:02 UTC. At 16:58 UTC, elapsed is 8h 17m and overrun is 2h 17m. The owner
   explicitly approved full-scope work past that deadline. There is no new
   six-hour budget or reliable upper completion ETA.
 
@@ -820,6 +868,23 @@ neither lose nor duplicate prepared rewards. SQL and flat-file each select
 and award a real payable reachable epic target.
 
 ### 4. Boon-specific cargo lots and settlement
+
+Runtime authority is the game thread's in-memory state, as the owner reaffirmed
+on 2026-10-22. It prepares selection, eligibility, prices, lots and allowances.
+The existing single writer persists the exact prepared operation and rejects a
+stale revision; SQL does not select targets or recalculate gameplay from rows.
+SQL and flat files restore state at boot and identify committed operations during
+recovery. A financial success is published only after its prepared atomic record
+is durable, so crash recovery cannot duplicate money or restore consumed cargo.
+
+The next slice records exact individual purchase lots and one account/boon
+allowance, then deterministically prepares partial consumption. Its files are the
+concrete Divine trade policy, its existing build list, focused native harness and
+this plan. Proof covers 9 old + 1 eligible, invoice conservation, both goods sharing
+the three-first-hold cap, another ship/account, loss, expiry and checked reload.
+This policy alone is not a gameplay or atomic-settlement completion claim. The
+next consumer must commit its after-images with player, ship and market state on
+the existing transaction writer; ordinary trade retains its current path.
 
 - Retain ordinary commodity slots; attach exact lots to stable persistent ship
   identity, not its process-local runtime reference. Qualifying purchases store
