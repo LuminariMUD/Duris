@@ -1575,17 +1575,19 @@ static void extend_boon_on_writer(P_char ch, int id, int extend)
 
 void do_boon(P_char ch, char *argument, int /*cmd*/)
 {
-	if (!divine_boon_legacy_admissions_allowed())
-	{
-		send_to_char("Legacy boons are closed while Divine Boons are prepared.\r\n", ch);
-		return;
-	}
 	char arg[MAX_STRING_LENGTH];
 	char buff[MAX_STRING_LENGTH], buffline[MAX_STRING_LENGTH];
 	int duration = 0, id = 0;
 	int i, dresult;
 
 	argument = one_argument(argument, arg);
+	if ((!strcmp(arg, "shop") || !strcmp(arg, "add") || !strcmp(arg, "extend") ||
+	     !strcmp(arg, "random")) &&
+	    !divine_boon_legacy_admissions_allowed())
+	{
+		send_to_char("Legacy boons are closed while Divine Boons are prepared.\r\n", ch);
+		return;
+	}
 
 	// The mortal arguments
 	// Handle list (or no arguments)

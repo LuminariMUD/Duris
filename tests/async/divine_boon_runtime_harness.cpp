@@ -1,6 +1,7 @@
 #include "economy/divine_boon_runtime.h"
 #include "economy/divine_boon_repository.h"
 #include "persistence/persistence_mode.h"
+#include "persistence/maintenance_scheduler.h"
 #include "player/player_save_worker.h"
 
 #include <cassert>
@@ -11,6 +12,8 @@
 #include <future>
 #include <iostream>
 #include <thread>
+
+unsigned long long ne_event_tick = 0;
 
 namespace
 {
@@ -73,7 +76,54 @@ int main(int argc, char **argv)
 	       "divine_boon");
 	auto next = *divine_boon_runtime_state();
 	assert(divine_boon_set_mode(&next, divine_boon_mode::draining, 100));
+	// An admitted flat-file scan must reach its game-thread completion before
+	// retirement closes the legacy gate, including an undrained completion.
+	std::promise<void> scan_release;
+	auto scan_released = scan_release.get_future().share();
+	assert(maintenance_scheduler_init(
+		1,
+		[](const maintenance_request &request, void *context)
+		{
+			auto &wait = *static_cast<std::shared_future<void> *>(context);
+			wait.wait();
+			return maintenance_result{ request.work_id,
+						   request.job_id,
+						   maintenance_outcome::complete,
+						   0,
+						   0,
+						   0,
+						   0,
+						   0,
+						   {} };
+		},
+		&scan_released, [](maintenance_request &request, void *)
+		{ return request.job_id == maintenance_job_id::boon_scan; }));
+	const auto scan_index = static_cast<size_t>(maintenance_job_id::boon_scan);
+	ne_event_tick = maintenance_scheduler_health_copy(0).jobs[scan_index].next_due_tick;
+	for (size_t attempt = 0;
+	     attempt < MAINTENANCE_JOB_COUNT * 2 &&
+	     !maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active;
+	     ++attempt)
+		maintenance_scheduler_pulse(ne_event_tick, nullptr, 0);
+	assert(maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active);
+	assert(!divine_boon_runtime_queue(next));
+	assert(divine_boon_legacy_admissions_allowed());
+	scan_release.set_value();
+	const auto scan_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+	while (!maintenance_scheduler_health_copy(ne_event_tick).completions &&
+	       std::chrono::steady_clock::now() < scan_deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	assert(maintenance_scheduler_health_copy(ne_event_tick).completions == 1);
+	assert(!divine_boon_runtime_queue(next));
+	maintenance_scheduler_quiesce();
+	maintenance_result scan_result = {};
+	assert(maintenance_scheduler_pulse(ne_event_tick, &scan_result, 1) == 1);
+	assert(scan_result.job_id == maintenance_job_id::boon_scan &&
+	       scan_result.outcome == maintenance_outcome::complete);
+	// The synchronous completion callback still sees an open gate.
+	assert(divine_boon_legacy_admissions_allowed());
 	assert(divine_boon_runtime_queue(next));
+	maintenance_scheduler_reset_for_tests();
 	assert(!divine_boon_runtime_queue(next));
 	assert(!divine_boon_legacy_admissions_allowed());
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::legacy);
