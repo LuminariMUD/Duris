@@ -7,7 +7,7 @@
 > evidence, and defer optional work. Required correctness and recovery remain
 > part of completion.
 
-Status: implementation in progress; rotation, storage, writer/boot and legacy admission barriers implemented.
+Status: implementation in progress; rotation, storage, writer/boot, legacy admissions and account activity implemented.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -24,8 +24,9 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-cutover`, stacked on `branch/issue-245-divine-runtime`
-  -> `branch/issue-245-divine-persistence` -> `branch/issue-245-divine-boons`.
+  `branch/issue-245-divine-activity`, stacked on `branch/issue-245-divine-cutover`
+  -> `branch/issue-245-divine-runtime` -> `branch/issue-245-divine-persistence`
+  -> `branch/issue-245-divine-boons`.
 - Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
   implementation commit `8cbc07fc4`. Further chunks stack on this branch.
 - First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
@@ -84,6 +85,26 @@ restart and merge remain separate actions.
 - Review-ready admission barriers: [PR #268](https://github.com/LuminariMUD/Duris/pull/268),
   implementation commit `315b04fab`, stacked on #267. This is not the completed
   receipt-retirement or activation step.
+- Fifth chunk: `divine_boon_activity.{h,c}` observes real playing-input effects
+  on room, combat, casting/resources or inventory and keeps bounded 60-minute
+  histories by canonical account and side. Repeated no-op input, automatic
+  combat and force-like changes to another actor supply no new observation.
+  Accounts need gameplay within 15 minutes and a current mortal, non-AFK,
+  connected representative. History survives alt changes, including logout;
+  PvP qualification needs five distinct observed minutes spanning five minutes,
+  and the same account cannot qualify both opposing populations. The four level
+  brackets count one representative per account/side. Morphs use their owner;
+  staff accounts and unaffiliated characters are excluded. There is no telemetry
+  dependency, gameplay I/O or new copyover format.
+- Fifth-chunk proof: ASan/UBSan activity harness covers window boundaries, account
+  case/alt deduplication, cross-side alts, all bracket edges, stale history,
+  real input/automatic/forced/no-op differences, AFK/link-dead/staff exclusions,
+  safe extraction and morphed players. Both server backend builds, affected item
+  input queue/newbie grant regressions, command latency and telemetry hook checks
+  pass. Prior rotation, state persistence and reward evidence remains valid.
+- Selection integration: call `divine_boon_activity_population()` to obtain
+  per-side `brackets`, `active_accounts` and distinct `pvp_accounts`; do not use
+  descriptors, hosts or optional telemetry as a substitute for this history.
 - **Next:** complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
