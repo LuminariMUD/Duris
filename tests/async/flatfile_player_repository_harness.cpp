@@ -11,6 +11,7 @@
 #include "core/defines.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
+#include "combat/combat_outcome_command.h"
 #include <algorithm>
 #include <cstring>
 #include <ctime>
@@ -1247,8 +1248,81 @@ int main(int argc, char **argv)
 			"player domain removal was not prepared: " + error);
 	}
 
+	// Prepare an award, load it through the ordinary login reader, then commit
+	// the actual full status checkpoint containing its balance and watermark.
+	{
+		flatfile_player_domain_record opponent;
+		opponent.pid = 43;
+		opponent.account_name = "divine-victim";
+		opponent.racewar = 2;
+		require(flatfile_player_domain_establish(root.string(), opponent, &error) ==
+				flatfile_player_domain_result::ok,
+			"establish Divine opponent");
+		combat_outcome_payload event = {};
+		event.victim_pid = 43;
+		event.participant_count = 2;
+		event.prepared_at = 150;
+		event.participants[0].pid = 42;
+		event.participants[0].role = combat_participant_role::killer;
+		event.participants[0].racewar = 1;
+		event.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM |
+					      COMBAT_PARTICIPANT_DIVINE_EPIC;
+		event.participants[0].frag_delta = 100;
+		event.participants[0].epic_delta = 150;
+		event.participants[0].epic_boon_id = 7;
+		event.participants[0].epic_base = 100;
+		event.participants[1].pid = 43;
+		event.participants[1].role = combat_participant_role::victim;
+		event.participants[1].racewar = 2;
+		critical_operation_id identity = {};
+		identity.bytes[0] = 223;
+		critical_command command;
+		require(combat_outcome_command_build(&command, identity, event),
+			"build prepared PvP");
+		command.accepted_at_usec = 1;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+				critical_apply_outcome::applied,
+			"prepare PvP receipt");
+		player_load_request recovery = {};
+		recovery.request_id = 900;
+		recovery.pid = 42;
+		recovery.account_name = "account-one";
+		recovery.deadline_usec =
+			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+		const auto owed = flatfile_player_load_repository_execute(root.string(), recovery);
+		require(owed.outcome == player_load_outcome::applied &&
+				owed.divine_epic_deliveries.size() == 1 &&
+				owed.divine_epic_deliveries[0].amount == 150 &&
+				owed.divine_epic_deliveries[0].sequence == 1,
+			"flat login omitted an unpaid prepared receipt");
+		auto credited = make_full(11);
+		for (auto &field : credited.status_integers)
+			if (field.field == player_status_field::epics)
+				field.signed_value = owed.domains.epics + 150;
+		credited.status_integers.push_back(
+			{ player_status_field::divine_boon_delivery_seq, 0, 1, true });
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+		require(flatfile_player_snapshot_apply(root.string(), credited, &error).outcome ==
+				player_save_apply_outcome::retryable_failure,
+			"prepared checkpoint interruption");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+		const auto paid_credit =
+			flatfile_player_load_repository_execute(root.string(), recovery);
+		require(paid_credit.outcome == player_load_outcome::applied &&
+				paid_credit.divine_epic_deliveries.empty() &&
+				paid_credit.domains.epics == owed.domains.epics + 150,
+			"flat checkpoint recovery lost or duplicated the prepared payout: outcome=" +
+				std::to_string(static_cast<unsigned>(paid_credit.outcome)) +
+				", balance=" + std::to_string(paid_credit.domains.epics) +
+				", before=" + std::to_string(owed.domains.epics) + ", pending=" +
+				std::to_string(paid_credit.divine_epic_deliveries.size()) +
+				", component=" +
+				(paid_credit.failed_component ? paid_credit.failed_component :
+								"none"));
+	}
+
 	const fs::path snapshot_path = players / "42.snapshot";
-	player_snapshot paid = make_status(11, 51, 1201);
+	player_snapshot paid = make_status(12, 51, 1201);
 	paid.status_integers.insert(paid.status_integers.end(),
 				    { { player_status_field::copper, 11, 0, false },
 				      { player_status_field::silver, 12, 0, false },
@@ -1268,7 +1342,7 @@ int main(int argc, char **argv)
 			player_save_apply_outcome::applied,
 		"Divine status checkpoint failed: " + error);
 	auto stale_delivery = paid;
-	stale_delivery.revision = 12;
+	stale_delivery.revision = 13;
 	stale_delivery.status_integers[stale_delivery.status_integers.size() - 2].signed_value = 1;
 	stale_delivery.status_integers.back().unsigned_value = 2;
 	require(flatfile_player_snapshot_apply(root.string(), stale_delivery, &error).outcome ==
@@ -1303,7 +1377,7 @@ int main(int argc, char **argv)
 						    &error) == flatfile_player_domain_result::ok &&
 			delivery_domains.domains.epics == 450,
 		"delivery marker advanced without the authoritative epic balance");
-	auto incomplete_delivery = make_status(13, 51, 1201);
+	auto incomplete_delivery = make_status(14, 51, 1201);
 	incomplete_delivery.status_integers.push_back(
 		{ player_status_field::epics, 500, 0, false });
 	incomplete_delivery.status_integers.push_back(

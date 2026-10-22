@@ -22,13 +22,14 @@
 #include <cstdint>
 #include <string>
 
-constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 4;
+constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 5;
 constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 15;
 constexpr size_t COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES = 96;
 constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 255;
 constexpr size_t COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES = 65535;
 constexpr size_t COMBAT_OUTCOME_LOG_MAX_BYTES = 99999;
-constexpr size_t COMBAT_OUTCOME_RESULT_BYTES = 1536;
+constexpr size_t COMBAT_OUTCOME_LEGACY_RESULT_BYTES = 1536;
+constexpr size_t COMBAT_OUTCOME_RESULT_BYTES = 2048;
 // Every participant can retain the legacy snapshots without losing the outcome
 // when a full group has long logs. The coordinator still enforces its byte budget.
 static_assert(COMBAT_OUTCOME_MAX_PARTICIPANTS * (COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES +
@@ -50,6 +51,7 @@ enum combat_participant_flag : uint8_t
 	COMBAT_PARTICIPANT_IN_ROOM = UINT8_C(1) << 0,
 	COMBAT_PARTICIPANT_LEADER = UINT8_C(1) << 1,
 	COMBAT_PARTICIPANT_SPILL_BLOOD = UINT8_C(1) << 2,
+	COMBAT_PARTICIPANT_DIVINE_EPIC = UINT8_C(1) << 3,
 };
 
 enum class combat_webinfo : int8_t
@@ -78,6 +80,9 @@ struct combat_outcome_participant
 	combat_webinfo webinfo_at_capture = combat_webinfo::unknown;
 	std::string equipment;
 	std::string log;
+	uint64_t epic_boon_id = 0;
+	double epic_base = 0;
+	int32_t epic_spill_blood = 0;
 };
 
 struct combat_outcome_payload
@@ -91,6 +96,7 @@ struct combat_outcome_payload
 	std::array<char, COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES + 1> room_name;
 	uint16_t participant_count;
 	std::array<combat_outcome_participant, COMBAT_OUTCOME_MAX_PARTICIPANTS> participants;
+	int64_t prepared_at = 0;
 };
 
 struct combat_outcome_participant_result
@@ -104,6 +110,12 @@ struct combat_outcome_participant_result
 	uint64_t epic_revision;
 	uint64_t wallet_revision;
 	uint64_t bank_revision;
+	uint64_t epic_delivery_previous = 0;
+	int64_t epic_delivery_delta = 0;
+	uint64_t epic_boon_id = 0;
+	double epic_base = 0;
+	int32_t epic_spill_blood = 0;
+	uint8_t epic_delivery_flags = 0;
 };
 
 struct combat_outcome_result
@@ -111,7 +123,15 @@ struct combat_outcome_result
 	uint64_t event_id;
 	uint16_t participant_count;
 	std::array<combat_outcome_participant_result, COMBAT_OUTCOME_MAX_PARTICIPANTS> participants;
+	uint32_t victim_pid = 0;
+	int64_t prepared_at = 0;
 };
+
+inline size_t combat_outcome_result_size(const combat_outcome_result &result)
+{
+	return result.prepared_at ? COMBAT_OUTCOME_RESULT_BYTES :
+				    COMBAT_OUTCOME_LEGACY_RESULT_BYTES;
+}
 
 bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload,
 					   std::vector<uint8_t> *encoded);

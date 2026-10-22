@@ -19,6 +19,7 @@
 #include "player/player_load_repository.h"
 #include "persistence/critical_command_coordinator.h"
 #include "economy/currency_command.h"
+#include "economy/divine_boon_delivery.h"
 
 #include <cstdint>
 #include <string>
@@ -60,6 +61,13 @@ struct flatfile_base_stat_mutation
 	flatfile_authority_after_image after_image;
 };
 
+struct flatfile_identity_record;
+// Read snapshot, saved balances and pending receipts under one authority lock.
+flatfile_player_domain_result
+flatfile_player_domain_load_checkpoint(const std::string &root,
+				       const flatfile_identity_record &identity,
+				       player_load_result *result, std::string *error);
+
 flatfile_player_domain_result
 flatfile_player_domain_establish(const std::string &root,
 				 const flatfile_player_domain_record &record, std::string *error);
@@ -75,6 +83,10 @@ flatfile_player_domain_result flatfile_player_domain_load(const std::string &roo
 							  std::string *error);
 critical_apply_result flatfile_player_domain_apply(const std::string &root,
 						   const critical_command &command);
+flatfile_player_domain_result
+flatfile_player_domain_pending_divine_epics(const std::string &root, uint32_t pid, uint64_t after,
+					    std::vector<divine_epic_delivery> *deliveries,
+					    std::string *error);
 // The balances a player save carries, written into the player's domain record.
 struct flatfile_saved_balances
 {

@@ -69,6 +69,7 @@
 #include "account/multiplay_whitelist.h"
 #include "classes/paladins.h"
 #include "player/player_load_materialize.h"
+#include "economy/divine_boon_delivery.h"
 #include "player/player_load_items.h"
 #include "player/player_load_pets.h"
 #include "player/player_load_pipeline.h"
@@ -1877,6 +1878,7 @@ void enter_game(P_desc d)
 		schedule_chaos_starting_bank(ch);
 	}
 	zone_touch_transaction_player_ready(ch);
+	divine_boon_delivery_player_ready(ch);
 	locker_identify_replay(ch);
 	item_movement_transaction_player_ready(ch);
 	shop_trade_transaction_player_ready(ch);

@@ -10,11 +10,27 @@
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
 #include "economy/divine_boon_activity.h"
+#include "economy/divine_boon_delivery.h"
 
 #include <cstdlib>
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+
+// Legacy-only load/transaction fixtures carry no prepared Divine receipts.
+// Dedicated delivery tests link the real publication and recovery implementation.
+HARNESS_STUB void divine_boon_delivery_completed(const divine_epic_delivery &) {}
+HARNESS_STUB bool divine_boon_delivery_recover(char_data *,
+					       const std::vector<divine_epic_delivery> &deliveries)
+{
+	return deliveries.empty();
+}
+HARNESS_STUB void divine_boon_delivery_player_ready(char_data *) {}
+HARNESS_STUB bool critical_command_coordinator_is_fenced(const critical_entity_key &,
+							 critical_operation_id *)
+{
+	return false;
+}
 
 // Input-queue fixtures do not collect population. The focused Divine activity
 // harness links the real observer in place of these no-op boundaries.

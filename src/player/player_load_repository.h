@@ -19,6 +19,7 @@
 #include "guild/artifact_population_repository.h"
 #include "persistence/gameplay_read_state.h"
 #include "player/player_snapshot.h"
+#include "economy/divine_boon_delivery.h"
 
 #include <array>
 #include <cstdint>
@@ -191,6 +192,7 @@ struct player_load_result
 	player_load_read_mask_t read_components = 0;
 	std::vector<int64_t> recent_pvp_deaths;
 	std::vector<int32_t> completed_epic_zones;
+	std::vector<divine_epic_delivery> divine_epic_deliveries;
 	player_load_metrics metrics = {};
 	// Static string literal naming the loader stage that refused the load, or nullptr
 	// on success. The worker thread cannot log, so the failing stage is carried back

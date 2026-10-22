@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_materialize.h"
+#include "economy/divine_boon_delivery.h"
 #include "net/output_preference_codec.h"
 
 #include "item/item_ownership_runtime.h"
@@ -821,5 +822,7 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 	affect_total(ch, FALSE);
 	GET_MANA(ch) = BOUNDED(1, loaded_mana, GET_MAX_MANA(ch));
 	GET_VITALITY(ch) = BOUNDED(1, loaded_vitality, GET_MAX_VITALITY(ch));
+	if (!divine_boon_delivery_recover(ch, result.divine_epic_deliveries))
+		return refuse("divine_epic_delivery", "unresolved_receipt_chain");
 	return true;
 }

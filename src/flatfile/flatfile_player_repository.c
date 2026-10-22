@@ -804,19 +804,21 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 		return result;
 	}
 
-	const flatfile_player_load_result snapshot_loaded =
-		flatfile_player_snapshot_load(root, identity.pid, &result.snapshot, &error);
-	if (snapshot_loaded != flatfile_player_load_result::ok)
+	const auto checkpoint =
+		flatfile_player_domain_load_checkpoint(root, identity, &result, &error);
+	if (checkpoint != flatfile_player_domain_result::ok)
 	{
-		result.failed_component = "snapshot";
-		result.error_code =
-			snapshot_loaded == flatfile_player_load_result::not_found ? ENOENT :
-			snapshot_loaded == flatfile_player_load_result::io_error  ? EIO :
-										    EILSEQ;
-		result.outcome = snapshot_loaded == flatfile_player_load_result::not_found ?
-					 player_load_outcome::not_found :
-				 snapshot_loaded == flatfile_player_load_result::io_error ?
+		if (!result.failed_component)
+			result.failed_component = "domains";
+		result.error_code = checkpoint == flatfile_player_domain_result::io_error ? EIO :
+				    checkpoint == flatfile_player_domain_result::not_found ?
+											    ENOENT :
+											    EILSEQ;
+		result.outcome = checkpoint == flatfile_player_domain_result::io_error ?
 					 player_load_outcome::retryable_failure :
+				 checkpoint == flatfile_player_domain_result::not_found &&
+						 !strcmp(result.failed_component, "snapshot") ?
+					 player_load_outcome::not_found :
 					 player_load_outcome::component_failure;
 		return result;
 	}
@@ -830,42 +832,6 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	}
 	if (request.include_items && !reconcile_item_ownership(root, &result))
 		return result;
-	// The identity keeps the character's own racewar. One written before it did holds
-	// the account menu's immortal value (0) for an immortal instead; the snapshot's is
-	// the character's own, and the next save writes it back.
-	int64_t snapshot_racewar = 0;
-	if (!snapshot_signed(result.snapshot, player_status_field::racewar, &snapshot_racewar) ||
-	    (identity.racewar && snapshot_racewar != identity.racewar) ||
-	    snapshot_racewar < INT8_MIN || snapshot_racewar > INT8_MAX)
-	{
-		result.outcome = player_load_outcome::component_failure;
-		result.error_code = EILSEQ;
-		result.failed_component = "domain_identity";
-		return result;
-	}
-	flatfile_player_domain_record domains;
-	const flatfile_player_domain_result domains_loaded = flatfile_player_domain_load(
-		root, identity.pid, identity.account, static_cast<int8_t>(snapshot_racewar),
-		&domains, &error);
-	if (domains_loaded != flatfile_player_domain_result::ok)
-	{
-		result.error_code =
-			domains_loaded == flatfile_player_domain_result::not_found ? ENOENT :
-			domains_loaded == flatfile_player_domain_result::io_error  ? EIO :
-										     EILSEQ;
-		result.outcome = domains_loaded == flatfile_player_domain_result::io_error ?
-					 player_load_outcome::retryable_failure :
-					 player_load_outcome::component_failure;
-		result.failed_component = "domains";
-		return result;
-	}
-	else
-	{
-		result.domains = domains.domains;
-		result.recent_pvp_deaths = std::move(domains.recent_pvp_deaths);
-		result.completed_epic_zones = std::move(domains.completed_epic_zones);
-		result.read_components = PLAYER_LOAD_SESSION04_READS;
-	}
 	if (!request.include_pets)
 	{
 		result.snapshot.pets.clear();

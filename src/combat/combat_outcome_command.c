@@ -13,8 +13,12 @@
  ****************************************************************************/
 
 #include "combat/combat_outcome_command.h"
+#include "economy/divine_boon_delivery.h"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <limits>
 #include <cstring>
 #include <limits>
 
@@ -85,6 +89,13 @@ bool valid(const combat_outcome_payload &payload)
 	if (!payload.victim_pid || !payload.participant_count ||
 	    payload.participant_count > payload.participants.size() || !bounded(payload.room_name))
 		return false;
+	const auto victim = std::find_if(payload.participants.begin(),
+					 payload.participants.begin() + payload.participant_count,
+					 [&](const auto &entry)
+					 { return entry.pid == payload.victim_pid; });
+	if (victim == payload.participants.begin() + payload.participant_count)
+		return false;
+	bool prepared = false;
 	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
 		const auto &entry = payload.participants[index];
@@ -102,13 +113,28 @@ bool valid(const combat_outcome_payload &payload)
 		     (!entry.equipment.empty() || !entry.log.empty())) ||
 		    ((entry.wallet_delta_copper != 0) && !entry.account_name[0]))
 			return false;
+		if (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+		{
+			if (!entry.epic_boon_id || !std::isfinite(entry.epic_base) ||
+			    entry.epic_base <= 0 || entry.epic_delta <= 0 ||
+			    entry.epic_delta > std::numeric_limits<int>::max() ||
+			    entry.frag_delta <= 0 || entry.pid == payload.victim_pid ||
+			    !(entry.flags & COMBAT_PARTICIPANT_IN_ROOM) ||
+			    !((entry.racewar == 1 && victim->racewar == 2) ||
+			      (entry.racewar == 2 && victim->racewar == 1)) ||
+			    (entry.epic_spill_blood != 0 && entry.epic_spill_blood != 500) ||
+			    ((entry.epic_spill_blood != 0) !=
+			     ((entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD) != 0)))
+				return false;
+			prepared = true;
+		}
+		else if (entry.epic_boon_id || entry.epic_base != 0 || entry.epic_spill_blood)
+			return false;
 		for (size_t other = 0; other < index; ++other)
 			if (payload.participants[other].pid == entry.pid)
 				return false;
 	}
-	return std::any_of(payload.participants.begin(),
-			   payload.participants.begin() + payload.participant_count,
-			   [&](const auto &entry) { return entry.pid == payload.victim_pid; });
+	return prepared ? payload.prepared_at > 0 : payload.prepared_at == 0;
 }
 
 void put_u64(uint8_t *output, uint64_t value)
@@ -169,6 +195,17 @@ bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload
 				255 :
 			payload.participants[index].webinfo_at_capture == combat_webinfo::on ? 1 :
 											       0);
+	if (payload.prepared_at)
+	{
+		append_le<int64_t>(encoded, payload.prepared_at);
+		for (size_t index = 0; index < payload.participant_count; ++index)
+		{
+			const auto &entry = payload.participants[index];
+			append_le<uint64_t>(encoded, entry.epic_boon_id);
+			append_le<uint64_t>(encoded, std::bit_cast<uint64_t>(entry.epic_base));
+			append_le<int32_t>(encoded, entry.epic_spill_blood);
+		}
+	}
 	return encoded->size() <= CRITICAL_COMMAND_MAX_PAYLOAD_BYTES;
 }
 
@@ -231,6 +268,21 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 				consent == 1   ? combat_webinfo::on :
 						 combat_webinfo::off;
 		}
+	if (command.payload_version >= 5)
+	{
+		if (!read_le(&cursor, end, &payload->prepared_at))
+			return false;
+		for (size_t index = 0; index < payload->participant_count; ++index)
+		{
+			auto &entry = payload->participants[index];
+			uint64_t base = 0;
+			if (!read_le(&cursor, end, &entry.epic_boon_id) ||
+			    !read_le(&cursor, end, &base) ||
+			    !read_le(&cursor, end, &entry.epic_spill_blood))
+				return false;
+			entry.epic_base = std::bit_cast<double>(base);
+		}
+	}
 	if (cursor != end || !valid(*payload))
 		return false;
 	critical_command expected = {};
@@ -248,21 +300,64 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 			  });
 }
 
+namespace
+{
+constexpr std::array<uint8_t, 8> prepared_result_magic = { 'D', 'B', 'C', 'O', 'M', 'B', '0', '5' };
+constexpr size_t prepared_entry_size = 129;
+constexpr size_t prepared_header_size = 32;
+
+bool valid_delivery(const combat_outcome_result &result,
+		    const combat_outcome_participant_result &row)
+{
+	if (!row.epic_delivery_flags)
+		return !row.epic_delivery_previous && !row.epic_delivery_delta &&
+		       !row.epic_boon_id && row.epic_base == 0 && !row.epic_spill_blood;
+	return row.pid && result.victim_pid && result.prepared_at > 0 &&
+	       (row.epic_delivery_flags & COMBAT_PARTICIPANT_DIVINE_EPIC) &&
+	       !(row.epic_delivery_flags &
+		 ~(COMBAT_PARTICIPANT_DIVINE_EPIC | COMBAT_PARTICIPANT_SPILL_BLOOD)) &&
+	       row.epic_revision > row.epic_delivery_previous && row.epic_delivery_delta > 0 &&
+	       row.epic_delivery_delta <= std::numeric_limits<int>::max() && row.epic_boon_id &&
+	       std::isfinite(row.epic_base) && row.epic_base > 0 &&
+	       (row.epic_spill_blood == 0 || row.epic_spill_blood == 500) &&
+	       ((row.epic_spill_blood != 0) ==
+		((row.epic_delivery_flags & COMBAT_PARTICIPANT_SPILL_BLOOD) != 0));
+}
+}
+
 bool combat_outcome_command_encode_result(const combat_outcome_result &result,
 					  std::array<uint8_t, COMBAT_OUTCOME_RESULT_BYTES> *encoded)
 {
-	constexpr size_t ENTRY = 92;
-	if (!encoded || result.participant_count > result.participants.size() ||
-	    10 + result.participant_count * ENTRY > encoded->size())
+	if (!encoded || result.participant_count > result.participants.size())
 		return false;
+	static_assert(prepared_header_size +
+			      COMBAT_OUTCOME_MAX_PARTICIPANTS * prepared_entry_size <=
+		      COMBAT_OUTCOME_RESULT_BYTES);
+	const bool prepared = result.prepared_at != 0;
+	const size_t header = prepared ? prepared_header_size : 10;
+	const size_t stride = prepared ? prepared_entry_size : 92;
 	encoded->fill(0);
-	put_u64(encoded->data(), result.event_id);
-	(*encoded)[8] = static_cast<uint8_t>(result.participant_count);
-	(*encoded)[9] = static_cast<uint8_t>(result.participant_count >> 8);
+	if (prepared)
+	{
+		std::copy(prepared_result_magic.begin(), prepared_result_magic.end(),
+			  encoded->begin());
+		put_u64(encoded->data() + 8, result.event_id);
+		for (size_t byte = 0; byte < 4; ++byte)
+			(*encoded)[16 + byte] =
+				static_cast<uint8_t>(result.victim_pid >> (byte * 8));
+		put_u64(encoded->data() + 20, static_cast<uint64_t>(result.prepared_at));
+	}
+	else
+		put_u64(encoded->data(), result.event_id);
+	const size_t count_offset = prepared ? 28 : 8;
+	(*encoded)[count_offset] = static_cast<uint8_t>(result.participant_count);
+	(*encoded)[count_offset + 1] = static_cast<uint8_t>(result.participant_count >> 8);
 	for (size_t index = 0; index < result.participant_count; ++index)
 	{
-		uint8_t *row = encoded->data() + 10 + index * ENTRY;
 		const auto &entry = result.participants[index];
+		if (!valid_delivery(result, entry))
+			return false;
+		uint8_t *row = encoded->data() + header + index * stride;
 		for (size_t byte = 0; byte < 4; ++byte)
 			row[byte] = static_cast<uint8_t>(entry.pid >> (byte * 8));
 		put_u64(row + 4, static_cast<uint64_t>(entry.frags));
@@ -276,6 +371,17 @@ bool combat_outcome_command_encode_result(const combat_outcome_result &result,
 		put_u64(row + 68, entry.epic_revision);
 		put_u64(row + 76, entry.wallet_revision);
 		put_u64(row + 84, entry.bank_revision);
+		if (prepared)
+		{
+			put_u64(row + 92, entry.epic_delivery_previous);
+			put_u64(row + 100, static_cast<uint64_t>(entry.epic_delivery_delta));
+			put_u64(row + 108, entry.epic_boon_id);
+			put_u64(row + 116, std::bit_cast<uint64_t>(entry.epic_base));
+			for (size_t byte = 0; byte < 4; ++byte)
+				row[124 + byte] =
+					static_cast<uint8_t>(entry.epic_spill_blood >> (byte * 8));
+			row[128] = entry.epic_delivery_flags;
+		}
 	}
 	return true;
 }
@@ -283,20 +389,42 @@ bool combat_outcome_command_encode_result(const combat_outcome_result &result,
 bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 					  combat_outcome_result *result)
 {
-	constexpr size_t ENTRY = 92;
-	if (!encoded || !result || size != COMBAT_OUTCOME_RESULT_BYTES)
+	if (!encoded || !result ||
+	    (size != COMBAT_OUTCOME_RESULT_BYTES && size != COMBAT_OUTCOME_LEGACY_RESULT_BYTES))
+		return false;
+	const bool prepared =
+		size == COMBAT_OUTCOME_RESULT_BYTES &&
+		std::equal(prepared_result_magic.begin(), prepared_result_magic.end(), encoded);
+	if (!prepared && size == COMBAT_OUTCOME_RESULT_BYTES &&
+	    !std::all_of(encoded + COMBAT_OUTCOME_LEGACY_RESULT_BYTES, encoded + size,
+			 [](uint8_t byte) { return byte == 0; }))
 		return false;
 	*result = {};
-	result->event_id = get_u64(encoded);
-	result->participant_count = encoded[8] | static_cast<uint16_t>(encoded[9]) << 8;
+	result->event_id = get_u64(encoded + (prepared ? 8 : 0));
+	const size_t count_offset = prepared ? 28 : 8;
+	result->participant_count = encoded[count_offset] |
+				    static_cast<uint16_t>(encoded[count_offset + 1]) << 8;
 	if (result->participant_count > result->participants.size())
 		return false;
+	if (prepared)
+	{
+		for (size_t byte = 0; byte < 4; ++byte)
+			result->victim_pid |= static_cast<uint32_t>(encoded[16 + byte])
+					      << (byte * 8);
+		result->prepared_at = static_cast<int64_t>(get_u64(encoded + 20));
+		if (encoded[30] || encoded[31])
+			return false;
+	}
+	const size_t header = prepared ? prepared_header_size : 10;
+	const size_t stride = prepared ? prepared_entry_size : 92;
 	for (size_t index = 0; index < result->participant_count; ++index)
 	{
-		const uint8_t *row = encoded + 10 + index * ENTRY;
+		const uint8_t *row = encoded + header + index * stride;
 		auto &entry = result->participants[index];
 		for (size_t byte = 0; byte < 4; ++byte)
 			entry.pid |= static_cast<uint32_t>(row[byte]) << (byte * 8);
+		if (!entry.pid)
+			return false;
 		entry.frags = static_cast<int64_t>(get_u64(row + 4));
 		entry.epics = static_cast<int64_t>(get_u64(row + 12));
 		entry.wallet_value = static_cast<int64_t>(get_u64(row + 20));
@@ -308,8 +436,23 @@ bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 		entry.epic_revision = get_u64(row + 68);
 		entry.wallet_revision = get_u64(row + 76);
 		entry.bank_revision = get_u64(row + 84);
+		if (prepared)
+		{
+			entry.epic_delivery_previous = get_u64(row + 92);
+			entry.epic_delivery_delta = static_cast<int64_t>(get_u64(row + 100));
+			entry.epic_boon_id = get_u64(row + 108);
+			entry.epic_base = std::bit_cast<double>(get_u64(row + 116));
+			uint32_t spill = 0;
+			for (size_t byte = 0; byte < 4; ++byte)
+				spill |= static_cast<uint32_t>(row[124 + byte]) << (byte * 8);
+			entry.epic_spill_blood = static_cast<int32_t>(spill);
+			entry.epic_delivery_flags = row[128];
+			if (!valid_delivery(*result, entry))
+				return false;
+		}
 	}
-	return true;
+	return !prepared || std::all_of(encoded + header + result->participant_count * stride,
+					encoded + size, [](uint8_t byte) { return byte == 0; });
 }
 
 bool combat_outcome_command_build(critical_command *command, critical_operation_id operation_id,
@@ -320,7 +463,7 @@ bool combat_outcome_command_build(critical_command *command, critical_operation_
 	*command = { .schema_version = CRITICAL_COMMAND_SCHEMA_VERSION,
 		     .operation_id = operation_id,
 		     .type = critical_command_type::combat_outcome,
-		     .payload_version = COMBAT_OUTCOME_PAYLOAD_VERSION,
+		     .payload_version = static_cast<uint16_t>(payload.prepared_at ? 5 : 4),
 		     .source_site = critical_source_site::combat,
 		     .deadline_class = critical_deadline_class::terminal,
 		     .accepted_at_usec = 0,
@@ -357,4 +500,40 @@ bool combat_outcome_command_build(critical_command *command, critical_operation_
 		  [](const auto &left, const auto &right)
 		  { return critical_entity_key_less(left.key, right.key); });
 	return command->keys.size() <= CRITICAL_COMMAND_MAX_KEYS;
+}
+
+bool divine_epic_delivery_valid(const divine_epic_delivery &delivery)
+{
+	return !critical_operation_id_is_zero(delivery.operation_id) && delivery.pid &&
+	       delivery.victim_pid && delivery.pid != delivery.victim_pid &&
+	       delivery.sequence > delivery.previous && delivery.boon_id &&
+	       delivery.prepared_at > 0 && delivery.amount > 0 &&
+	       delivery.amount <= std::numeric_limits<int>::max() && std::isfinite(delivery.base) &&
+	       delivery.base > 0 && (delivery.spill_blood == 0 || delivery.spill_blood == 500);
+}
+
+bool divine_epic_delivery_from_combat(const critical_operation_id &operation,
+				      const combat_outcome_result &result, size_t index,
+				      divine_epic_delivery *delivery)
+{
+	if (!delivery || index >= result.participant_count ||
+	    !valid_delivery(result, result.participants[index]))
+		return false;
+	const auto &row = result.participants[index];
+	if (!(row.epic_delivery_flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
+		return false;
+	divine_epic_delivery decoded = { operation,
+					 row.pid,
+					 result.victim_pid,
+					 row.epic_revision,
+					 row.epic_delivery_previous,
+					 row.epic_boon_id,
+					 row.epic_delivery_delta,
+					 result.prepared_at,
+					 row.epic_base,
+					 row.epic_spill_blood };
+	if (!divine_epic_delivery_valid(decoded))
+		return false;
+	*delivery = decoded;
+	return true;
 }

@@ -33,6 +33,8 @@
 #include <string.h>
 #include "account/account_reward.h"
 #include "world/achievements.h"
+#include "economy/divine_boon_delivery.h"
+#include "economy/divine_boon_math.h"
 #include "world/experience_share.h"
 #include "combat/arena.h"
 #include "combat/arenadef.h"
@@ -910,7 +912,7 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 			af.duration = get_property("epic.frag.thrill.duration", 45) * WAIT_SEC;
 			affect_from_char(ch, TAG_PLR_RECENT_FRAG);
 			affect_to_char(ch, &af);
-			if (entry.epic_delta)
+			if (entry.epic_delta && !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 				epic_publish_pvp_award(ch, static_cast<int>(entry.epic_delta));
 			if (entry.wallet_delta_copper)
 			{
@@ -918,7 +920,8 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 					 coin_stringv(entry.wallet_delta_copper));
 				send_to_char(buffer, ch);
 			}
-			if (entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD)
+			if ((entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD) &&
+			    !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			{
 				struct affected_type *task = get_epic_task(ch);
 				if (task && abs(task->modifier) == SPILL_BLOOD)
@@ -945,7 +948,8 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 			af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
 			af.duration = 60 * WAIT_SEC;
 			affect_to_char(ch, &af);
-			if (entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD)
+			if ((entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD) &&
+			    !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			{
 				send_to_char("The &+yGods of Duris&n are very pleased with YOUR "
 					     "&+Rblood&n, too!!!\n",
@@ -973,6 +977,7 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 		ch = ch->following;
 	}
 	combat_outcome_payload payload = {};
+	const int64_t prepared_at = time(nullptr);
 	payload.victim_pid = static_cast<uint32_t>(GET_PID(victim));
 	payload.room_vnum = world[ch->in_room].number;
 	strlcpy(payload.room_name.data(), world[ch->in_room].name, payload.room_name.size());
@@ -1045,13 +1050,28 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 				epic_gain = std::clamp(
 					epic_gain, get_property("epic.frag.minimum.epics", 100),
 					get_property("epic.frag.maximum.epics", 1500));
+				const double precise_base = std::clamp(
+					(static_cast<double>(real_gain) / 100.0) *
+							divine_boon_modifier(get_property(
+								"epic.frag.amount", 20.000)) +
+						GET_FRAGS(victim),
+					static_cast<double>(
+						get_property("epic.frag.minimum.epics", 100)),
+					static_cast<double>(
+						get_property("epic.frag.maximum.epics", 1500)));
+				int spill_blood = 0;
 				struct affected_type *task = get_epic_task(current);
 				if (task && abs(task->modifier) == SPILL_BLOOD)
 				{
-					epic_gain += 500;
+					spill_blood = 500;
 					entry->flags |= COMBAT_PARTICIPANT_SPILL_BLOOD;
 				}
-				entry->epic_delta = epic_calculate_pvp_award(current, epic_gain);
+				if (!epic_prepare_pvp_award(current, victim, precise_base,
+							    epic_gain, spill_blood, prepared_at,
+							    entry))
+					return false;
+				if (entry->flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+					payload.prepared_at = prepared_at;
 			}
 			if (GET_RACE(current) == RACE_HALFLING ||
 			    GET_CLASS(current, CLASS_MERCENARY))
@@ -1087,7 +1107,8 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
 		const auto &entry = payload.participants[index];
-		if (entry.epic_delta <= 0)
+		// Prepared Divine rewards are published only from a committed receipt.
+		if (entry.epic_delta <= 0 || (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			continue;
 		P_char participant = find_player_by_pid(entry.pid);
 		if (!participant || IS_NPC(participant) ||

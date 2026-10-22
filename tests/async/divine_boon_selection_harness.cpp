@@ -254,6 +254,18 @@ int main()
 	assert(!divine_boon_select(state, 10800, population, &choice));
 
 	// Exercise the actual game-thread tick at the existing writer boundary.
+	std::array<divine_boon_population, 2> opposing = {};
+	opposing[0].active_accounts = opposing[1].active_accounts = 1;
+	opposing[0].brackets[0] = opposing[1].brackets[0] = 1;
+	opposing[0].pvp_accounts = 1;
+	assert(!divine_boon_select(state, 10800, opposing, &choice));
+	opposing[1].pvp_accounts = 1;
+	assert(divine_boon_select(state, 10800, opposing, &choice) &&
+	       choice.category == divine_boon_category::pvp);
+	auto pvp_state = state;
+	assert(divine_boon_rotate(&pvp_state, 10800, &choice));
+	assert(!divine_boon_select(pvp_state, 14400, opposing, &choice)); // One global PvP slot.
+
 	// Publication itself remains the real writer runtime's separate proof.
 	low_resets[0].arg1 = 0;
 	auto reset_hour = [&]
