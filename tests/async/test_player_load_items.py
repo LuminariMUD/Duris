@@ -1330,7 +1330,7 @@ void prepare_valid_status(player_load_result &result) {
  result.snapshot.schema_version=PLAYER_SNAPSHOT_SCHEMA_VERSION; result.snapshot.pid=result.pid;
  result.snapshot.components=PLAYER_LOAD_SESSION02_COMPONENTS;
  result.snapshot.status_integers.clear(); result.snapshot.status_strings.clear();
- for(unsigned field=0;field<=static_cast<unsigned>(player_status_field::learned_flight_stops);++field)
+ for(unsigned field=0;field<PLAYER_STATUS_INTEGER_COUNT;++field)
   result.snapshot.status_integers.push_back({static_cast<player_status_field>(field),0,0,true});
  for(unsigned field=0;field<=static_cast<unsigned>(player_status_string_field::last_read_news_hash);++field)
   result.snapshot.status_strings.push_back({static_cast<player_status_string_field>(field),""});

@@ -605,7 +605,8 @@ bool replace_items_together(player_component_mask_t components)
 	return !(components & items) || (components & items) == items;
 }
 
-bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materialized)
+bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materialized,
+		    bool status_current)
 {
 	if (!materialized || materialized->pid != incoming.pid ||
 	    materialized->components != PLAYER_CHECKPOINT_COMPONENT_ALL ||
@@ -613,9 +614,10 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 		return false;
 	materialized->revision = incoming.revision;
 	materialized->save_intent = incoming.save_intent;
-	materialized->room_vnum = incoming.room_vnum;
+	if (status_current)
+		materialized->room_vnum = incoming.room_vnum;
 	materialized->recipes_are_external = incoming.recipes_are_external;
-	if (incoming.components & PLAYER_COMPONENT_STATUS)
+	if ((incoming.components & PLAYER_COMPONENT_STATUS) && status_current)
 	{
 		materialized->status_integers = incoming.status_integers;
 		materialized->status_strings = incoming.status_strings;
@@ -963,6 +965,16 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	uint64_t incoming_sequence = 0, stored_sequence = 0;
+	if (!player_snapshot_divine_delivery_sequence(snapshot, &incoming_sequence))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	if (loaded == flatfile_player_load_result::ok &&
+	    !player_snapshot_divine_delivery_sequence(materialized, &stored_sequence))
+		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+	const bool status_current = !(snapshot.components & PLAYER_COMPONENT_STATUS) ||
+				    incoming_sequence >= stored_sequence;
+	if (snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
+		return { player_save_apply_outcome::stale_revision, materialized.revision, 0 };
 	std::vector<player_item_snapshot> held_items;
 	if ((snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
 	    !snapshot.retained_items.rows.empty())
@@ -1006,7 +1018,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	else
 	{
-		if (!merge_snapshot(snapshot, &materialized))
+		if (!merge_snapshot(snapshot, &materialized, status_current))
 			return { player_save_apply_outcome::terminal_failure, materialized.revision,
 				 EINVAL };
 	}
@@ -1112,7 +1124,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	flatfile_authority_operation saved_balances;
 	flatfile_saved_balances balances;
 	const bool saves_balances =
-		!new_player &&
+		!new_player && status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 		snapshot_unsigned(snapshot, player_status_field::copper, &balances.wallet[0]) &&
 		snapshot_unsigned(snapshot, player_status_field::silver, &balances.wallet[1]) &&
 		snapshot_unsigned(snapshot, player_status_field::gold, &balances.wallet[2]) &&
@@ -1120,6 +1132,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		snapshot_signed(snapshot, player_status_field::epics, &balances.epics) &&
 		snapshot_signed(snapshot, player_status_field::frags, &balances.frags) &&
 		snapshot_signed(snapshot, player_status_field::old_frags, &balances.old_frags);
+	if (incoming_sequence > stored_sequence && !new_player && !saves_balances)
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	if (saves_balances)
 	{
 		const auto prepared = flatfile_player_domain_prepare_saved_balances(
