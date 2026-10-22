@@ -826,10 +826,10 @@ query_result apply_trophies(MYSQL *connection, const player_snapshot &snapshot)
 }
 
 query_result apply_components(MYSQL *connection, const player_snapshot &snapshot,
-			      std::vector<claimed_graph> *claims)
+			      std::vector<claimed_graph> *claims, bool status_current)
 {
 	query_result result = { true, 0 };
-	if (snapshot.components & PLAYER_COMPONENT_STATUS)
+	if ((snapshot.components & PLAYER_COMPONENT_STATUS) && status_current)
 		result = apply_status(connection, snapshot);
 	if (result.ok)
 		result = apply_replacement_rows(connection, snapshot);
@@ -933,8 +933,8 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	uint64_t stored_delivery_sequence = 0;
 	query = ensure_player_row(connection, snapshot, &created, &stored_revision,
 				  &stored_delivery_sequence);
-	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
-	    delivered_sequence < stored_delivery_sequence)
+	const bool status_current = delivered_sequence >= stored_delivery_sequence;
+	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{
 		const auto rolled_back = execute(connection, "ROLLBACK");
 		if (!rolled_back.ok)
@@ -942,7 +942,7 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		return { player_save_apply_outcome::stale_revision, stored_revision, 0 };
 	}
 	if (query.ok)
-		query = apply_components(connection, snapshot, &claims);
+		query = apply_components(connection, snapshot, &claims, status_current);
 	if (query.ok && created)
 		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)
