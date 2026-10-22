@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "persistence/maintenance_repository.h"
+#include "economy/divine_boon_repository.h"
 
 #include "combat/frag_cap_config.h"
 #include "core/defines.h"
@@ -475,6 +476,20 @@ struct boon_scan_row
 
 maintenance_result execute_boon_scan(MYSQL *connection, const maintenance_request &request)
 {
+	// Restored requests bypass new game-thread admission. Retire them before
+	// parsing old payloads or changing any legacy definition in closed modes.
+	divine_boon_state state;
+	const auto loaded = divine_boon_sql_load(connection, &state);
+	if (loaded == divine_boon_store_result::ok && state.mode != divine_boon_mode::legacy)
+		return failure(request, maintenance_outcome::complete, 0);
+	if (loaded == divine_boon_store_result::not_found)
+		return failure(request, maintenance_outcome::retryable_failure, EAGAIN);
+	if (loaded != divine_boon_store_result::ok && loaded != divine_boon_store_result::not_found)
+		return failure(request,
+			       loaded == divine_boon_store_result::invalid ?
+				       maintenance_outcome::permanent_failure :
+				       maintenance_outcome::retryable_failure,
+			       loaded == divine_boon_store_result::invalid ? EBADMSG : EIO);
 	if (request.value_count < 3 || request.values[0] <= 0 || request.values[1] < 0)
 		return failure(request, maintenance_outcome::permanent_failure, EINVAL);
 	const size_t epic_records = static_cast<size_t>(request.values[1]);
@@ -507,6 +522,19 @@ maintenance_result execute_boon_scan(MYSQL *connection, const maintenance_reques
 	}
 	if (!begin_transaction(connection))
 		return sql_failure(connection, request);
+	// The maintenance worker is independent of the player/state writer. Hold the
+	// authority row until scan commit, so a concurrent cutover either waits for
+	// this accepted scan or closes it before any legacy mutation can start.
+	const auto locked = divine_boon_sql_load(connection, &state, true);
+	if (locked != divine_boon_store_result::ok || state.mode != divine_boon_mode::legacy)
+	{
+		execute_sql(connection, "ROLLBACK");
+		return failure(request,
+			       locked == divine_boon_store_result::ok ?
+				       maintenance_outcome::complete :
+				       maintenance_outcome::retryable_failure,
+			       locked == divine_boon_store_result::ok ? 0 : EAGAIN);
+	}
 	const std::string selection =
 		"SELECT id,time,duration,racewar,opt,criteria,pid FROM boons WHERE active=1 AND id>" +
 		std::to_string(request.cursor) + " ORDER BY id LIMIT " + limit_sql(request);

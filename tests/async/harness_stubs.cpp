@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "economy/boon_reward_transaction.h"
 #include "guild/artifact_admission.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
@@ -13,6 +14,18 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+
+// Legacy-only fixtures have no Divine runtime. Divine integration harnesses
+// link the real gate and exercise draining/unavailable states explicitly.
+HARNESS_STUB bool divine_boon_legacy_admissions_allowed()
+{
+	return true;
+}
+
+HARNESS_STUB boon_reward_health boon_reward_transaction_health_copy()
+{
+	return {};
+}
 
 // Fixtures that do not link the artifact authority have no artifact state to
 // checkpoint. Focused admission tests and server builds use the real methods.

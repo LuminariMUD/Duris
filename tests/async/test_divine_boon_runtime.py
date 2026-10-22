@@ -4,7 +4,7 @@
 import subprocess
 import tempfile
 
-from _paths import ROOT
+from _paths import ROOT, HARNESS_STUBS
 
 
 output_root = ROOT / "bin" / "tests"
@@ -21,6 +21,8 @@ with tempfile.TemporaryDirectory(prefix="divine-boon-runtime-", dir=output_root)
             "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
             "src/economy/divine_boon_runtime.c", "src/player/player_save_worker.c",
             "src/persistence/persistence_observability.c",
+            "src/persistence/maintenance_scheduler.c",
+            str(HARNESS_STUBS),
             "src/flatfile/flatfile_authority_transaction.c", "src/flatfile/flatfile_store.c",
             "-lcrypto", "-pthread", "-o", binary,
         ],

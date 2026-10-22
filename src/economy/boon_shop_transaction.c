@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "economy/boon_shop_transaction.h"
+#include "economy/divine_boon_runtime.h"
 
 #include "persistence/persistence_mode.h"
 #include "core/prototypes.h"
@@ -55,6 +56,8 @@ void publish(P_char character, const boon_shop_result &result)
 
 bool boon_shop_transaction_submit(P_char character, uint8_t stat_index)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return false;
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0 ||
 	    stat_index >= BOON_SHOP_BASE_STAT_COUNT ||
 	    persistence_mode_get() != PERSISTENCE_MODE_FLATFILE_PRIMARY)

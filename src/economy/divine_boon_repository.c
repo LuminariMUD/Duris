@@ -90,17 +90,22 @@ divine_boon_store_result divine_boon_flatfile_save(const std::string &root,
 		       divine_boon_store_result::io_error;
 }
 
-divine_boon_store_result divine_boon_sql_load(MYSQL *connection, divine_boon_state *state)
+divine_boon_store_result divine_boon_sql_load(MYSQL *connection, divine_boon_state *state,
+					      bool for_update)
 {
 #ifdef __NO_MYSQL__
 	(void)connection;
 	(void)state;
+	(void)for_update;
 	return divine_boon_store_result::io_error;
 #else
 	if (!connection || !state)
 		return divine_boon_store_result::invalid;
-	if (mysql_query(connection,
-			"SELECT revision,snapshot FROM divine_boon_state WHERE state_id=1"))
+	const char *query =
+		for_update ?
+			"SELECT revision,snapshot FROM divine_boon_state WHERE state_id=1 FOR UPDATE" :
+			"SELECT revision,snapshot FROM divine_boon_state WHERE state_id=1";
+	if (mysql_query(connection, query))
 		return divine_boon_store_result::io_error;
 	MYSQL_RES *result = mysql_store_result(connection);
 	if (!result)

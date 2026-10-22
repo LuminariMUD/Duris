@@ -20,7 +20,10 @@ enum class divine_boon_store_result
 // writer, then publish the confirmed snapshot. Expected revision zero creates
 // the initial state; every subsequent save advances exactly one revision. SQL
 // calls use an autocommit connection, outside any enclosing transaction.
-divine_boon_store_result divine_boon_sql_load(MYSQL *connection, divine_boon_state *state);
+// Locking reads require an active transaction and serialize legacy maintenance
+// with the state change that retires it.
+divine_boon_store_result divine_boon_sql_load(MYSQL *connection, divine_boon_state *state,
+					      bool for_update = false);
 divine_boon_store_result divine_boon_sql_save(MYSQL *connection, uint64_t expected_revision,
 					      const divine_boon_state &state);
 divine_boon_store_result divine_boon_flatfile_load(const std::string &root,

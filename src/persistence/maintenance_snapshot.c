@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "persistence/maintenance_snapshot.h"
+#include "economy/divine_boon_runtime.h"
 
 #include "net/comm.h"
 #include "core/config.h"
@@ -147,6 +148,8 @@ bool prepare_statistics(maintenance_request &request)
 
 bool prepare_boon_scan(maintenance_request &request)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return false;
 	request.values[0] = time(nullptr);
 	const size_t epic_start = 2;
 	const size_t epic_values = epic_zone_completion_snapshot(
