@@ -16,6 +16,7 @@
 #include "persistence/persistence_observability.h"
 
 #include <cassert>
+#include <cerrno>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -365,6 +366,7 @@ int main()
 	third.sequence = 10;
 	third.previous = 1;
 	third.amount = 100;
+	third.spill_blood = 0;
 	pc.divine_boon_delivery_seq = 1;
 	divine_boon_delivery_completed(third);
 	assert(pc.epics == 350 && pc.divine_boon_delivery_seq == 10 &&
