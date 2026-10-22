@@ -81,6 +81,9 @@ restart and merge remain separate actions.
   tests pass. The disposable MariaDB scan fixture exercises live legacy expiry,
   concurrent state-writer locking, restored no-ops and corrupt-state rejection.
   Both server backend builds and changed-file formatting pass.
+- Review-ready admission barriers: [PR #268](https://github.com/LuminariMUD/Duris/pull/268),
+  implementation commit `315b04fab`, stacked on #267. This is not the completed
+  receipt-retirement or activation step.
 - **Next:** complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
