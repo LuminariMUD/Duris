@@ -319,6 +319,8 @@ constexpr reducer_counter REDUCER_COUNTERS[] = {
 	{ "clock_failures", &telemetry_posthog_reducer_health::clock_failures, true },
 	{ "http_acknowledged", &telemetry_posthog_reducer_health::http_acknowledged, false },
 	{ "ambiguous_events", &telemetry_posthog_reducer_health::ambiguous_events, true },
+	{ "coalesced_health_events", &telemetry_posthog_reducer_health::coalesced_health_events,
+	  false },
 };
 
 template <typename Number> struct metric
@@ -432,6 +434,10 @@ struct output_entry
 	std::size_t bytes = 0U;
 	telemetry_monotonic_usec sealed_at = 0U;
 	telemetry_posthog_family family{};
+	std::uint32_t health_reasons = 0U;
+	telemetry_health_alert_severity health_severity{};
+	bool health_incident = false;
+	telemetry_monotonic_usec health_previous_report = 0U;
 };
 
 struct combat_totals
@@ -592,6 +598,29 @@ bool scope_matches(telemetry_environment_id environment, telemetry_season_id sea
 bool utc_valid(telemetry_utc_usec value) noexcept
 {
 	return value >= UTC_MIN && value <= UTC_MAX;
+}
+
+bool health_attempt_allowed(telemetry_utc_usec utc, std::uint32_t count) noexcept
+{
+	// Pure reducer fixtures have no sender. Invalid clocks/storage still go
+	// through the existing reservation checks so their errors stay visible.
+	if (!SENDER.initialized || !utc_valid(utc) || SENDER.journal->quota_poisoned)
+		return true;
+	constexpr telemetry_utc_usec day_usec = 86'400'000'000LL;
+	auto elapsed = utc % day_usec;
+	if (elapsed < 0)
+		elapsed += day_usec;
+	const auto day = (utc - elapsed) / day_usec;
+	const auto &quota = SENDER.journal->quota;
+	if (day < quota.day)
+		return true;
+	const auto used = day == quota.day ? quota.health_reserved : 0U;
+	// One initial attempt, then release the remaining allowance throughout
+	// the UTC day. The durable count includes retries and survives restarts.
+	const auto allowance = std::min<std::uint64_t>(
+		SENDER.binding.health_limit,
+		1U + static_cast<std::uint64_t>(elapsed) * SENDER.binding.health_limit / day_usec);
+	return used <= allowance && count <= allowance - used;
 }
 
 telemetry_utc_usec window_for(telemetry_utc_usec utc) noexcept
@@ -2300,6 +2329,13 @@ bool telemetry_posthog_observe_health(const telemetry_health_snapshot &native,
 	    (REDUCER.health_attempted &&
 	     now - REDUCER.health_last_attempt < TELEMETRY_POSTHOG_HEALTH_COALESCE_USEC))
 		return false;
+	if (SENDER.initialized &&
+	    (!health_attempt_allowed(utc, 1U) ||
+	     std::any_of(REDUCER.output.begin(),
+			 REDUCER.output.begin() + REDUCER.health.output_events,
+			 [](const auto &entry)
+			 { return entry.family == telemetry_posthog_family::health; })))
+		return false;
 	REDUCER.health_attempted = true;
 	REDUCER.health_last_attempt = now;
 	posthog_row row;
@@ -2360,6 +2396,11 @@ bool telemetry_posthog_observe_health(const telemetry_health_snapshot &native,
 	}
 	if (!queue_row(row, now))
 		return false;
+	auto &entry = REDUCER.output[REDUCER.health.output_events - 1U];
+	entry.health_reasons = REDUCER.health_incident_reasons;
+	entry.health_severity = REDUCER.health_incident_severity;
+	entry.health_incident = REDUCER.health_incident_pending;
+	entry.health_previous_report = REDUCER.health_reported ? REDUCER.health_last_report : 0U;
 	REDUCER.health_reported = true;
 	REDUCER.health_last_report = now;
 	REDUCER.health_incident_pending = false;
@@ -2383,6 +2424,11 @@ bool telemetry_posthog_output_retire(std::size_t count,
 {
 	if (REDUCER.pinned_events != 0U || count == 0U || count > REDUCER.health.output_events)
 		return false;
+	if (disposition == telemetry_posthog_output_disposition::health_coalesced &&
+	    std::any_of(REDUCER.output.begin(), REDUCER.output.begin() + count,
+			[](const auto &entry)
+			{ return entry.family != telemetry_posthog_family::health; }))
+		return false;
 	for (std::size_t index = 0U; index < count; ++index)
 	{
 		auto &family =
@@ -2398,6 +2444,8 @@ bool telemetry_posthog_output_retire(std::size_t count,
 			break;
 		case telemetry_posthog_output_disposition::ambiguous:
 			add_count(family.ambiguous);
+			break;
+		case telemetry_posthog_output_disposition::health_coalesced:
 			break;
 		}
 	}
@@ -2422,6 +2470,9 @@ bool telemetry_posthog_output_retire(std::size_t count,
 		break;
 	case telemetry_posthog_output_disposition::ambiguous:
 		add_count(REDUCER.health.ambiguous_events, count);
+		break;
+	case telemetry_posthog_output_disposition::health_coalesced:
+		add_count(REDUCER.health.coalesced_health_events, count);
 		break;
 	}
 	return true;
@@ -2483,6 +2534,22 @@ void http_release(output_disposition disposition, bool expired = false) noexcept
 {
 	http_remove();
 	const auto count = SENDER.health.batch_events;
+	if (disposition != output_disposition::http_acknowledged)
+		for (std::size_t index = 0U; index < count; ++index)
+		{
+			const auto &entry = REDUCER.output[index];
+			if (entry.family != telemetry_posthog_family::health)
+				continue;
+			REDUCER.health_incident_pending |= entry.health_incident;
+			REDUCER.health_incident_reasons |= entry.health_reasons;
+			REDUCER.health_incident_severity =
+				std::max(REDUCER.health_incident_severity, entry.health_severity);
+			if (disposition == output_disposition::health_coalesced)
+			{
+				REDUCER.health_reported = entry.health_previous_report != 0U;
+				REDUCER.health_last_report = entry.health_previous_report;
+			}
+		}
 	if (expired)
 	{
 		add_count(REDUCER.health.output_expired, count);
@@ -2715,6 +2782,17 @@ void http_attempt(telemetry_monotonic_usec now, telemetry_utc_usec utc,
 {
 	const auto count = SENDER.health.batch_events;
 	const bool health = telemetry_posthog_output_peek().health;
+	if (health && !health_attempt_allowed(utc, count))
+	{
+		const bool attempted = SENDER.health.batch_attempts != 0U;
+		http_release(attempted ? http_unresolved() : output_disposition::health_coalesced);
+		// Coalesce a fresh snapshot later; a pinned health retry must not hold
+		// gameplay exports behind the next health allowance. Real HTTP failures
+		// remain visible until a later successful request restores ready state.
+		SENDER.health.state = attempted ? sender_phase::recovery : sender_phase::ready;
+		SENDER.health.next_attempt = 0U;
+		return;
+	}
 	const auto reserved = telemetry_outage_quota_reserve(
 		SENDER.journal, SENDER.binding, utc, health ? 0U : count, health ? count : 0U);
 	SENDER.health.quota_error = SENDER.journal->error_code;

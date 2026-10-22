@@ -1425,9 +1425,204 @@ int telemetry_posthog_reducer_scenario(std::string_view name)
 }
 
 #ifdef TELEMETRY_POSTHOG_TESTING
+int health_pacing_scenario(std::string_view name, const char *directory, std::uint16_t port,
+			   const char *ca)
+{
+	constexpr telemetry_utc_usec day = 86'400'000'000LL;
+	constexpr telemetry_utc_usec slot = day / 100;
+	initialize(false);
+	NOW = MONO;
+	telemetry_outage_journal journal{};
+	const telemetry_quota_binding binding{ 678214U, 99U, 1000U, 1U, 19800U, 100U, 19900U };
+	CHECK(telemetry_outage_read(&journal, directory) == telemetry_outage_result::ready);
+	CHECK(telemetry_outage_quota_initialize(&journal, binding, BASE) ==
+	      telemetry_outage_result::ready);
+	auto start_sender = [&]
+	{
+		CHECK(telemetry_posthog_sender_init("https://us.i.posthog.com", "phc_fixture",
+						    binding, &journal));
+		CHECK(telemetry_posthog_sender_test_endpoint(port, ca));
+	};
+	start_sender();
+	auto pump = [&](telemetry_utc_usec utc, bool stop_at_backoff = false)
+	{
+		for (unsigned int iteration = 0U; iteration < 2000U; ++iteration)
+		{
+			NOW += 1000U;
+			telemetry_posthog_sender_pulse(NOW, utc, 0U, true);
+			const auto sender = telemetry_posthog_sender_health_copy();
+			if (stop_at_backoff &&
+			    sender.state == telemetry_posthog_sender_state::backoff)
+				return;
+			if (!stop_at_backoff && sender.batch_events == 0U &&
+			    telemetry_posthog_reducer_health_copy().output_events == 0U)
+				return;
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		CHECK(false);
+	};
+	auto snapshot = [&]
+	{
+		const auto output = telemetry_posthog_output_peek();
+		CHECK(output.health);
+		return cJSON_Parse(std::string(output.json).c_str());
+	};
+	auto native = native_health();
+	if (name == "health-pacing")
+	{
+		observe(native, true, BASE);
+		pump(BASE);
+		CHECK(journal.quota.health_reserved == 1U);
+		NOW = MONO + 60'000'000U;
+		native.state = telemetry_health_state::degraded;
+		native.last_failure_class = telemetry_failure_class::transient_connection;
+		native.last_failure_monotonic_usec = NOW;
+		observe(native, false, BASE + 60'000'000);
+		++NOW;
+		native.state = telemetry_health_state::healthy;
+		native.last_success_monotonic_usec = NOW;
+		observe(native, false, BASE + 60'000'001);
+		publish(CONFIG);
+		life(telemetry_lifecycle_kind::session_entered);
+		pump(BASE + 60'000'001);
+		CHECK(journal.quota.normal_reserved == 2U);
+		NOW = MONO + slot - 1U;
+		observe(native, false, BASE + slot - 1);
+		++NOW;
+		observe(native, true, BASE + slot);
+		auto *row = snapshot();
+		auto *props = cJSON_GetObjectItem(row, "properties");
+		CHECK(cJSON_GetObjectItem(props, "active_reason_mask")->valueint == 0);
+		CHECK(cJSON_GetObjectItem(props, "coalesced_reason_mask")->valueint != 0);
+		cJSON_Delete(row);
+		pump(BASE + slot);
+		NOW += 60'000'000U;
+		observe(native, false, BASE + slot + 60'000'000);
+		// Reopen the actual ledger and reset all process-local state each time.
+		for (unsigned int restart = 0U; restart < 24U; ++restart)
+		{
+			telemetry_posthog_sender_close();
+			telemetry_outage_close(&journal);
+			initialize(false);
+			NOW = MONO;
+			CHECK(telemetry_outage_read(&journal, directory) ==
+			      telemetry_outage_result::ready);
+			start_sender();
+			observe(native_health(), false, BASE + slot);
+			CHECK(journal.quota.health_reserved == 2U);
+			CHECK(telemetry_posthog_reducer_health_copy().output_events == 0U);
+		}
+		// Midnight makes the first new-day attempt available without rewriting
+		// the ledger format. Sustained incidents still cannot spend ahead.
+		observe(native_health(), true, BASE + day);
+		pump(BASE + day);
+		CHECK(journal.quota.day == BASE / day + 1);
+		CHECK(journal.quota.health_reserved == 1U && journal.quota.normal_reserved == 0U);
+		for (unsigned int index = 1U; index < 100U; ++index)
+		{
+			NOW = MONO + index * slot;
+			native.state = telemetry_health_state::degraded;
+			native.last_error_code = index;
+			native.last_failure_monotonic_usec = NOW;
+			observe(native, false, BASE + day + index * slot - 1);
+			observe(native, true, BASE + day + index * slot);
+			pump(BASE + day + index * slot);
+			CHECK(journal.quota.health_reserved == index + 1U);
+		}
+		NOW = MONO + day - 1U;
+		native.last_error_code = 101U;
+		observe(native, false, BASE + 2 * day - 1);
+		CHECK(journal.quota.health_reserved == 100U);
+	}
+	else if (name == "health-pacing-coalesce")
+	{
+		// A same-day UTC rollback between sealing and sending must coalesce
+		// an unattempted snapshot without manufacturing a loss/incident.
+		CHECK(telemetry_outage_quota_reserve(&journal, binding, BASE + slot, 0U, 2U) ==
+		      telemetry_outage_result::ready);
+		observe(native, true, BASE + 2 * slot);
+		publish(CONFIG);
+		life(telemetry_lifecycle_kind::session_entered);
+		pump(BASE + slot);
+		CHECK(journal.quota.health_reserved == 2U);
+		CHECK(journal.quota.normal_reserved == 2U);
+		CHECK(telemetry_posthog_reducer_health_copy().coalesced_health_events == 1U);
+		NOW += 60'000'000U;
+		observe(native, false, BASE + slot);
+		NOW += 60'000'000U;
+		observe(native, true, BASE + 2 * slot);
+		auto *row = snapshot();
+		auto *props = cJSON_GetObjectItem(row, "properties");
+		CHECK(std::strcmp(cJSON_GetObjectItem(props, "health_trigger")->valuestring,
+				  "initial") == 0);
+		CHECK(cJSON_GetObjectItem(props, "coalesced_reason_mask")->valueint == 0);
+		pump(BASE + 2 * slot);
+		cJSON_Delete(row);
+		NOW += 60'000'000U;
+		observe(native, false, BASE + 2 * slot + 60'000'000);
+	}
+	else
+	{
+		const bool spare = name == "health-pacing-retry-spare";
+		const auto utc = BASE + (spare ? slot : 0);
+		native.state = telemetry_health_state::degraded;
+		native.last_failure_class = telemetry_failure_class::transient_connection;
+		native.last_failure_monotonic_usec = NOW;
+		observe(native, true, utc);
+		const std::string original(telemetry_posthog_output_peek().json);
+		pump(utc, true);
+		CHECK(journal.quota.health_reserved == 1U);
+		NOW = telemetry_posthog_sender_health_copy().next_attempt;
+		if (spare)
+		{
+			CHECK(original == telemetry_posthog_output_peek().json);
+			pump(utc);
+			CHECK(journal.quota.health_reserved == 2U);
+		}
+		else
+		{
+			publish(CONFIG);
+			life(telemetry_lifecycle_kind::session_entered);
+			telemetry_posthog_sender_pulse(NOW, utc, 0U, true);
+			CHECK(telemetry_posthog_sender_health_copy().state ==
+			      telemetry_posthog_sender_state::recovery);
+			CHECK(telemetry_posthog_sender_health_copy().http_status == 503U);
+			pump(utc);
+			CHECK(journal.quota.health_reserved == 1U &&
+			      journal.quota.normal_reserved == 2U);
+			CHECK(telemetry_posthog_reducer_health_copy().ambiguous_events == 1U);
+			NOW = MONO + slot - 1U;
+			native.state = telemetry_health_state::healthy;
+			native.last_success_monotonic_usec = NOW;
+			observe(native, false, BASE + slot - 1);
+			++NOW;
+			observe(native, true, BASE + slot);
+			auto *row = snapshot();
+			auto *props = cJSON_GetObjectItem(row, "properties");
+			CHECK(cJSON_GetObjectItem(props, "active_reason_mask")->valueint == 0);
+			CHECK(cJSON_GetObjectItem(props, "coalesced_reason_mask")->valueint != 0);
+			CHECK(original != telemetry_posthog_output_peek().json);
+			cJSON_Delete(row);
+			pump(BASE + slot);
+		}
+	}
+	const auto reduced = telemetry_posthog_reducer_health_copy();
+	const auto sender = telemetry_posthog_sender_health_copy();
+	CHECK(reduced.output_suppressed == 0U && reduced.output_expired == 0U);
+	CHECK(reduced.invalid_records == 0U && reduced.reduction_refusals == 0U);
+	CHECK(sender.quota_refusals == 0U && sender.storage_failures == 0U);
+	CHECK(sender.state == telemetry_posthog_sender_state::ready);
+	telemetry_posthog_sender_close();
+	telemetry_outage_close(&journal);
+	std::puts("{\"pacing_verified\":true}");
+	return 0;
+}
+
 int telemetry_posthog_sender_scenario(std::string_view name, const char *directory,
 				      std::uint16_t port, const char *ca)
 {
+	if (name.starts_with("health-pacing"))
+		return health_pacing_scenario(name, directory, port, ca);
 	initialize();
 	life(telemetry_lifecycle_kind::session_entered);
 	if (name == "batches")

@@ -342,6 +342,20 @@ are saturating lower bounds; zero known duration never certifies an empty gap.
 `duris_telemetry_health` uses the same bounded arena and system identity. Its
 initial/hourly snapshots and incident changes are coalesced to at most one seal
 attempt per minute; quota enforcement still charges every eventual HTTP attempt.
+The sender also paces health attempts with the existing durable daily reservation
+count: at elapsed UTC-day microseconds `t`, at most
+`min(health_limit, 1 + floor(t * health_limit / 86400000000))` may be reserved.
+For the production limit of 100, one attempt is available at midnight and another
+every 864 seconds (14 minutes 24 seconds). Unused allowance can accumulate;
+restarts do not renew it, and retries use the same allowance. Daily hard limits
+and the journal format are unchanged. A new UTC day uses the existing quota rollover.
+While paced out, incidents remain in the reducer's coalescing state without
+queueing a health snapshot. A health retry that cannot reserve an attempt is
+retired with its actual delivery uncertainty and its incident reasons retained
+for a fresh snapshot; gameplay output can continue. If an unattempted health
+snapshot becomes ineligible between sealing and sending, it is returned to the
+coalescing state and counted in `coalesced_health_events`, without suppression
+or a new incident. Local logs and `world telemetry` keep their current cadence.
 Transient native alert/recovery reasons survive coalescing even if current state
 has recovered. Missing clocks or output capacity count as local loss and retry
 only at the coalescing boundary. Counters are cumulative for the named producer;
