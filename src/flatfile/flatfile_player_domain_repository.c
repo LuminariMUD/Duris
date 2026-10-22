@@ -1195,9 +1195,7 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 	}
 	for (const player_authority &player : players)
 		if (player.operations.size() >= domain_maximum_operations)
-			return { payload.prepared_at ? critical_apply_outcome::retryable_failure :
-						       critical_apply_outcome::terminal_failure,
-				 0, ENOSPC };
+			return { critical_apply_outcome::terminal_failure, 0, ENOSPC };
 
 	// Frags, epic points and blood money are memory's: the submit changed them and the
 	// players' saves write them. The outcome is only recorded.
@@ -1237,7 +1235,8 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 		if (payload.participants[index].flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
 		{
 			auto &entry = combat_result.participants[index];
-			if (domains.epic_revision == UINT64_MAX)
+			if (domains.epic_revision == UINT64_MAX ||
+			    domains.epics > INT64_MAX - payload.participants[index].epic_delta)
 				return { critical_apply_outcome::terminal_failure, 0, ERANGE };
 			for (const auto &prior : players[index].operations)
 			{
