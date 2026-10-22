@@ -102,6 +102,11 @@ restart and merge remain separate actions.
   safe extraction and morphed players. Both server backend builds, affected item
   input queue/newbie grant regressions, command latency and telemetry hook checks
   pass. Prior rotation, state persistence and reward evidence remains valid.
+- Review-ready activity: [PR #269](https://github.com/LuminariMUD/Duris/pull/269),
+  initial implementation `0b6b4926b`, stacked on #268. Cross-side accounts are
+  assigned to only one PvP population, balancing available distinct accounts;
+  a lone account cannot fabricate an opponent, while a valid different account
+  on the other side remains usable.
 - Selection integration: call `divine_boon_activity_population()` to obtain
   per-side `brackets`, `active_accounts` and distinct `pvp_accounts`; do not use
   descriptors, hosts or optional telemetry as a substitute for this history.
@@ -119,6 +124,12 @@ restart and merge remain separate actions.
   durable recipient delivery. Bind prepared Divine awards and their applied
   marker to the player status save; keep activation closed until these paths
   are resolved. No staff command or automatic switch currently enables Divine.
+- Recipient-recovery direction: carry an ordered per-recipient delivery sequence
+  with the full prepared zone/PvP award, and checkpoint an applied watermark
+  atomically with the recipient balance. Recover unpaid sequences before new
+  recipient admissions; reject older snapshots that would overwrite a newer
+  applied watermark. This stays within the existing prepared payloads and player
+  status boundary; do not change general currency semantics or add per-hit XP I/O.
 - **Still open:** every full-feature acceptance item. The rotation core is a
   dependency; backend persistence and writer ordering are proven above, while
   live candidate rotation, completed cutover, gameplay payouts and Divine Boons
