@@ -1,5 +1,6 @@
 #include "economy/divine_boon_runtime.h"
 #include "economy/divine_boon_repository.h"
+#include "economy/boon_reward_transaction.h"
 #include "persistence/persistence_mode.h"
 #include "persistence/maintenance_scheduler.h"
 #include "player/player_save_worker.h"
@@ -14,6 +15,14 @@
 #include <thread>
 
 unsigned long long ne_event_tick = 0;
+static uint64_t pending_rewards = 0;
+
+boon_reward_health boon_reward_transaction_health_copy()
+{
+	boon_reward_health health = {};
+	health.pending = pending_rewards;
+	return health;
+}
 
 namespace
 {
@@ -139,6 +148,14 @@ int main(int argc, char **argv)
 	assert(scan_result.outcome == maintenance_outcome::complete);
 	// The synchronous completion callback still sees an open gate.
 	assert(divine_boon_legacy_admissions_allowed());
+	pending_rewards = 1;
+	assert(!divine_boon_runtime_queue(next));
+	assert(divine_boon_legacy_admissions_allowed());
+	pending_rewards = 2; // Publishing an admitted reward can submit a level completion.
+	assert(!divine_boon_runtime_queue(next));
+	pending_rewards = 1; // The parent is acknowledged, but its nested reward is pending.
+	assert(!divine_boon_runtime_queue(next));
+	pending_rewards = 0;
 	assert(divine_boon_runtime_queue(next));
 	maintenance_scheduler_reset_for_tests();
 	assert(!divine_boon_runtime_queue(next));

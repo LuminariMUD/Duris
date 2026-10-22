@@ -1581,8 +1581,7 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 	int i, dresult;
 
 	argument = one_argument(argument, arg);
-	if ((!strcmp(arg, "shop") || !strcmp(arg, "add") || !strcmp(arg, "extend") ||
-	     !strcmp(arg, "random")) &&
+	if ((!strcmp(arg, "add") || !strcmp(arg, "extend") || !strcmp(arg, "random")) &&
 	    !divine_boon_legacy_admissions_allowed())
 	{
 		send_to_char("Legacy boons are closed while Divine Boons are prepared.\r\n", ch);
@@ -1917,16 +1916,17 @@ static void boon_shop_show(P_char ch, int points, int stats)
 
 void boon_shop(P_char ch, char *argument)
 {
-	if (!divine_boon_legacy_admissions_allowed())
-	{
-		send_to_char("The legacy boon shop is closed.\r\n", ch);
-		return;
-	}
 	char arg[MAX_STRING_LENGTH];
 	int stat = 0;
 	int i;
 
 	argument = one_argument(argument, arg);
+	if ((!strcmp(arg, "stat") || !strcmp(arg, "stats")) &&
+	    !divine_boon_legacy_admissions_allowed())
+	{
+		send_to_char("The legacy boon shop is closed.\r\n", ch);
+		return;
+	}
 
 	// Flat-file reads the shop here; MariaDB reads it on the writer, where the boon
 	// rewards add the points.

@@ -12,7 +12,9 @@ HARNESS = r'''
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -33,6 +35,7 @@ struct { const char *type; } boon_types[MAX_BTYPE + 1] = { {"none"}, {"exp"}, {"
 struct { const char *option; } boon_options[MAX_BOPT] = { {"none"}, {"zone"} };
 static bool open = false, flat = true;
 static int lists, shops, creates, extensions, removals, notifications, randoms;
+static int shop_views;
 static std::string output;
 bool divine_boon_legacy_admissions_allowed() { return open; }
 void send_to_char(const char *text, P_char) { output += text; }
@@ -50,7 +53,26 @@ char *one_argument(const char *text, char *word) {
     return const_cast<char *>(text);
 }
 int boon_display(P_char, char *) { ++lists; return 1; }
-void boon_shop(P_char, char *) { ++shops; }
+void boon_shop(P_char, char *);
+struct BoonShop { int id, pid, points, stats, unused; };
+#define GET_PID(ch) 42
+#define MAX_ATTRIBUTES 2
+struct { const char *abrv, *name; } attr_names[MAX_ATTRIBUTES] = {{"", ""}, {"str", "strength"}};
+struct MYSQL {};
+bool get_boon_shop_data(int, BoonShop *shop) { shop->points = 7; shop->stats = 3; return true; }
+bool is_abbrev(const char *arg, const char *word) { return !std::strcmp(arg, word); }
+bool boon_shop_transaction_submit(P_char, uint8_t) { ++shops; return true; }
+unsigned int sql_execute(MYSQL *, const std::string &) { return 0; }
+int mysql_affected_rows(MYSQL *) { return 1; }
+bool boon_shop_raise_stat(P_char, int) { return true; }
+void sql_queue(const char *, int) { std::abort(); }
+void boon_shop_show(P_char, int points, int stats) {
+    assert(points == 7 && stats == 3); ++shop_views;
+}
+bool sql_read_work_for(P_char ch, std::function<unsigned int(MYSQL *, sql_rows *)> work,
+                      std::function<void(P_char, const sql_rows &)> callback) {
+    ++shops; sql_rows rows; assert(work(nullptr, &rows) == 0); callback(ch, rows); return true;
+}
 void zero_boon_data(BoonData *data) { *data = {}; }
 int parse_boon_args(P_char, BoonData *, char *) { return 1; }
 bool ctf_use_boon(BoonData *) { return true; }
@@ -59,7 +81,7 @@ const char *flat_boon_root() { return flat ? "fixture" : nullptr; }
 std::string sql_format(const char *, int) { return "fixture"; }
 void sql_read_for(P_char ch, const std::string &,
                   std::function<void(P_char, const sql_rows &)> callback) {
-    callback(ch, {{"1", "0"}});
+    callback(ch, {{"7", "3"}});
 }
 int remove_boon(int id) { assert(id == 42); ++removals; return 1; }
 int is_boon_valid(int) { return 1; }
@@ -87,14 +109,15 @@ int main() {
         run("?"); assert(output.find("Boon Command Help") != std::string::npos);
         run("remove 42");
         assert(removals == (backend ? 1 : 2) && notifications == removals);
-        for (const char *command : {"shop str", "add", "extend 42 60", "random"}) {
+        run("shop"); assert(shop_views == (backend ? 1 : 2));
+        for (const char *command : {"shop stat str", "shop stats str", "add", "extend 42 60", "random"}) {
             run(command);
-            assert(output.find("Legacy boons are closed") != std::string::npos);
+            assert(output.find("closed") != std::string::npos);
         }
         assert(!shops && !creates && !extensions && !randoms);
     }
     open = true;
-    run("shop str"); run("add"); run("extend 42 60"); run("random");
+    run("shop stat str"); run("add"); run("extend 42 60"); run("random");
     assert(shops == 1 && creates == 1 && extensions == 1 && randoms == 1);
     std::puts("Legacy command inspection/removal survives closed admissions on both backends");
 }
@@ -105,7 +128,8 @@ outputs.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="divine-legacy-commands-", dir=outputs) as directory:
     source = Path(directory) / "commands.cpp"
     binary = Path(directory) / "commands"
-    source.write_text(HARNESS.replace("// DISPATCHER", extract_function("boon.c", "void do_boon(")))
+    functions = extract_function("boon.c", "void do_boon(") + "\n" + extract_function("boon.c", "void boon_shop(")
+    source.write_text(HARNESS.replace("// DISPATCHER", functions))
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
         "-g", "-Og", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",

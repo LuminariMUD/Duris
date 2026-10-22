@@ -1,6 +1,7 @@
 #include "economy/divine_boon_runtime.h"
 
 #include "economy/divine_boon_repository.h"
+#include "economy/boon_reward_transaction.h"
 #include "persistence/persistence_mode.h"
 #include "persistence/maintenance_scheduler.h"
 #include "player/player_save_worker.h"
@@ -218,12 +219,13 @@ bool divine_boon_runtime_queue(const divine_boon_state &next)
 	    next.mode < published.mode ||
 	    static_cast<unsigned>(next.mode) > static_cast<unsigned>(published.mode) + 1)
 		return false;
-	// Keep the gate open through completion and every SQL page/retry. A retained
-	// work ID spans gaps where no request or completion is currently active.
+	// Accepted rewards can submit nested level completions during publication.
+	// Keep their gate open, including every scan page/retry, until they finish.
 	if (published.mode == divine_boon_mode::legacy && next.mode != published.mode &&
-	    maintenance_scheduler_health_copy(ne_event_tick)
-		    .jobs[static_cast<size_t>(maintenance_job_id::boon_scan)]
-		    .work_id)
+	    (boon_reward_transaction_health_copy().pending ||
+	     maintenance_scheduler_health_copy(ne_event_tick)
+		     .jobs[static_cast<size_t>(maintenance_job_id::boon_scan)]
+		     .work_id))
 		return false;
 	return stage(next, published.revision);
 }
