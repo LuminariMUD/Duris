@@ -24,6 +24,7 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
+  `branch/issue-245-divine-persistence`, stacked on
   `branch/issue-245-divine-boons`.
 - Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
   implementation commit `8cbc07fc4`. Further chunks stack on this branch.
@@ -40,7 +41,20 @@ restart and merge remain separate actions.
   `./scripts/format.sh --all --check` passes for all 1100 tracked C/C++ files.
   Use `CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy` (installed LLVM 22)
   for commits: system LLVM 18 cannot parse the installed GCC 16 headers.
-- **Next:** persist state through the existing writer on SQL and flat-file;
+- Second chunk: `divine_boon_repository.{h,c}` provides SQL compare-and-swap
+  and flat-file authority after-image commits for the shared snapshot. Exact
+  retries are idempotent, stale/rerolled revisions conflict, and corrupt state
+  cannot be overwritten. Migration `0048_divine_boon_state` is additive and
+  re-runnable, registered with lifecycle and compiled runtime schema contracts.
+  Metadata fingerprints were measured on disposable MySQL 8 and MariaDB 10.11;
+  both runtime compatibility verifiers pass. No existing databases were changed.
+- Second-chunk proof: flat-file ASan/UBSan repository harness covers failures
+  before commit, after journal commit and after the state after-image, plus
+  recovery/retry, stale writes and corruption. The MariaDB repository harness,
+  schema apply/replay/verifier, lifecycle/runtime validators, seven boot contract
+  tests and 21 immutable migration tests pass. Both MariaDB and flat-file server
+  builds pass (`DMS_BINARY=.../bin/server/dms_new_flatfile` isolates flat-file output).
+- **Next:** queue the repository operations on the existing persistence writer;
   wire boot/reconciliation and safe legacy admission drain before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
@@ -49,6 +63,11 @@ restart and merge remain separate actions.
   gameplay payouts or completed Divine Boons. No production action performed.
 - Ablation: reuse one state/codec for both backends; no scheduler, delivery
   framework, general economy rewrite or extra verification campaign added.
+  State revision plus an atomic snapshot supplies retry identity; no additional
+  critical-command type, outbox or duplicate receipt catalogue is needed.
+- Remaining estimate at this checkpoint: 6-9 hours of active implementation and
+  focused verification, including review-ready PRs. Cargo recovery and flat-file
+  epic payouts remain the largest costs; this is an estimate, not time to fill.
 
 ## Outcome
 
