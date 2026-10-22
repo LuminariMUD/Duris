@@ -64,6 +64,7 @@ struct quest_mob_profile
 	bool can_speak = false;
 	bool invisible = false;
 	bool hidden = false;
+	bool combat_eligible = false;
 };
 
 struct quest_reward_profile
@@ -261,6 +262,11 @@ void load_mobile_profiles()
 		profile.rnum = rnum;
 		profile.vnum = mob_index[rnum].virtual_number;
 		profile.level = GET_LEVEL(probe.value);
+		profile.combat_eligible = profile.level > 0 && profile.level < MAXLVL &&
+					  GET_MAX_HIT(probe.value) > 1 &&
+					  GET_EXP(probe.value) > 0 && !IS_SHOPKEEPER(probe.value) &&
+					  !IS_SET(probe.value->specials.act,
+						  ACT_TEACHER | ACT_GUILD_GOLEM | ACT_IGNORE);
 		profile.can_speak = CAN_SPEAK(probe.value);
 		profile.invisible = IS_AFFECTED(probe.value, AFF_INVISIBLE) ||
 				    IS_AFFECTED2(probe.value, AFF2_CONCEALMENT) ||
@@ -519,6 +525,19 @@ bool world_quest_policy_bootstrap()
 	}
 	quest_catalog_building = false;
 	return quest_catalog_ready;
+}
+
+int world_quest_policy_combat_level(int mob_rnum)
+{
+	if (!quest_catalog_ready || mob_rnum < 0 || mob_rnum > top_of_mobt)
+		return -1;
+	const int zone = zone_for_vnum(mob_index[mob_rnum].virtual_number);
+	if (zone < 0)
+		return -1;
+	for (const auto &mob : quest_zones[zone].mobs)
+		if (mob.rnum == mob_rnum)
+			return mob.combat_eligible ? mob.level : -1;
+	return -1;
 }
 
 bool world_quest_policy_zone_is_invalid(int zone_number)
