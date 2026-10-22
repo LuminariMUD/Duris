@@ -151,409 +151,335 @@ or deployed settings. Function names below are navigation points at that commit.
 
 ## Ablation decisions: non-goals, files and proof
 
-**Keep:** each outcome above; eight durable slots; a small validated candidate
-catalogue; bounded account activity; prepared reward identity; cargo batches,
-cap and settlement receipts; an explicit legacy transition; both backends;
-focused tests of actual commands, rewards and recovery. Removing any of these
-would leave an explicit acceptance requirement or a traced failure unhandled.
+**Keep:** the issue's gameplay, both backends, safe legacy retirement, prepared
+reward identity, cargo batch/cap/payment recovery, hard target exclusions,
+activity rules, commands/help and actual-path tests. These are requirements,
+not optional hardening. There is no permission to replace exactly-once trade
+settlement with a best-effort multiplier or to defer flat-file epic payouts.
 
-**Simplify:** use the current writer/coordinator, maintenance dispatch, atomic
-flat-file after-image transaction, player status saves, bartender cached profile
-techniques and native ANSI utilities. Keep policy in one small Divine module
-with persistence code following existing repository boundaries. Share only
-qualification or arithmetic that has actual reward callers. Consolidate the
-unused PvP wrapper rather than preserving two calculations.
+**Second-pass changes and retained limits:**
 
-**Drop:** a new scheduler, external service, PostHog dependency, generic
-reward/quest framework, universal economy rewrite, new gameplay currencies,
-legacy point conversion, eight slots per side, rigid category quotas, immediate
-refill, catch-up bursts, alternate zone-name colouring, individual player/ship
-tracking displays, and broad unrelated cleanup. No feature implementation,
-source formatting, database writes or server operation belongs to this planning
-commit. Do not expand the task into a full burn-in or require hosted CI waits.
+- **No general reward/save redesign.** Extend only the existing stone/combat
+  payloads and the player checkpoint fields needed to recover Divine awards.
+  Use the existing single writer, save ordering and flat-file after-images.
+  Do not add an economy-wide delivery service or retrofit unrelated rewards.
+- **No historical reward conversion engine.** Close legacy admissions, let
+  existing handlers drain accepted work, and durably retain unresolved exact
+  entitlements. Do not rewrite every old cash/level/stat/affect reward into a
+  new format. Retention is not acknowledgement or loss; recovery must still
+  distinguish already delivered from unpaid work.
+- **No new runtime rollback workflow.** Preserve legacy balances/history and
+  new receipts; document a controlled backout after reconciling pending work.
+  Do not add reverse migrations, a second online mode-switch engine or its
+  test matrix. The forward legacy -> draining -> Divine transition remains.
+- **No universal trade rewrite.** Atomic purchase/sale receipts cover qualifying
+  boon lots and sales that include them, including mixed eligible quantities.
+  Ordinary unrelated cargo/payment paths keep their current behavior. The
+  receipt's small player/ship/market/cap boundary is still mandatory.
+- **No world-wide content audit or mandatory duplicate metadata registry.**
+  Cache a bounded safe pool from runtime zones, bartender profiles, real stones
+  and existing metadata. Add only missing explicit safety/side-access metadata
+  for that pool. Do not invent a second payout source or a generic reachability
+  engine. Positive normal access and actual flat-file payout remain required.
+- **No activity-history copyover format.** Keep the required 60-minute bounded
+  gameplay history in memory and warm it from observed play after process
+  replacement. Slots, timestamps, caps and receipts still persist normally.
+- **No six-PR delivery requirement or repeated full verification per unit.**
+  The steps below describe dependencies, not mandatory PR boundaries. Run a
+  focused check when its consumer changes; retain its valid result and run one
+  integrated journey per backend at the end. No full burn-in or CI wait.
+- **No new broad balance study.** Assess the approved cargo economics with
+  representative actual routes/capacities and deterministic fixtures. Keep the
+  required 25% and three-hold policy; no live soak or analytics project.
 
-**Files:** implementation is expected to touch `src/economy/boon*`,
-`src/economy/currency_transaction*` only for the concrete durable-sale boundary,
-`src/world/limits.c`, `src/world/epic*`, `src/world/zone_touch*`,
-`src/combat/fight.c` and `combat_outcome*`, `src/ships/ship_shop.c`,
-`ship_utils.c`, `ship_base.c`, `ships.h`, the relevant flat-file ship/player
-and SQL player snapshot repositories, maintenance dispatch/replay, boot/login/
-copyover integration, interpreter/toggle registration, help, and focused tests.
-Add `src/economy/divine_boon.{h,c}` and its backend repository/codec files only
-where the existing boundaries need them; a command-only source file is optional.
-A reviewed common candidate manifest, additive migrations and concise operating
-instructions are necessary content/persistence changes, not a new platform.
-Touch bartender or activity code only to expose proven reusable facts.
+Also exclude new schedulers/services, PostHog dependencies, generic quest/reward
+frameworks, point conversion, per-side eight-slot pools, quotas, instant refill,
+catch-up bursts, alternate colouring and player/ship location displays.
 
-**Proof:** deterministic policy tests plus executable reward, settlement and
-restart journeys in disposable MariaDB and flat-file environments. Source-string
-assertions and codec tests supplement those journeys; they cannot replace them.
+**Files:** core changes belong in one `divine_boon.{h,c}` module and its minimal
+backend persistence boundary, existing boon admission/scan handlers, interpreter/
+toggle, `limits.c`, `epic.c`, `zone_touch*`, `fight.c`/`combat_outcome*`,
+ship shop/cargo mutation/save code and help. Extend SQL/flat-file player or ship
+snapshot capture/load only where the concrete receipt must share a save.
+Do not refactor the general currency API merely to give it new semantics;
+the cargo operation owns its idempotent payment boundary.
+
+**Proof:** extend existing executable harnesses and disposable database/file
+fixtures. Add a small clock/selection test and the missing domain recovery
+cases; no new test framework. Helper/codec checks cannot prove a reachable
+command, real stone payout or recoverable sale. No gameplay implementation or
+production action is part of this planning change.
 
 ## Implementation sequence
 
-Each numbered unit is a reviewable implementation change with its own focused
-tests. Land prerequisites before consumers; stack only where changes actually
-depend on each other. The feature remains unavailable until its required
-persistence, cutover and reward paths are ready. This is one work item, #245;
-the units below are not separate optional deliverables.
+These are dependency steps within the same issue and branch, not six separately
+qualified projects. Preserve every acceptance item in the closure map.
 
-### 1. Durable state, award delivery and legacy transition
+### 1. State, hourly rotation and forward legacy cutover
 
-- Persist a versioned Divine state containing mode, pause state, revision,
-  last consumed UTC opportunity, slots with stable IDs/category/rate/timestamps,
-  Good/Evil zone or route objectives, and recent expired-zone history.
-  Boon identity is distinct from reusable display slot number.
-- Use the existing single writer and critical-operation identities for state
-  transitions. Commit an opportunity and its selected result, including an
-  empty result, together. Publish the cache only after durable acceptance.
-  SQL uses unique operation/opportunity keys; flat-file uses its existing
-  checksummed, locked after-image transaction. Corruption or unknown schema
-  must disable new Divine admissions without guessing targets or deleting data.
-- Add only the concrete recipient receipt/checkpoint fields needed for
-  recoverable awards. An applied marker and its wallet/epic/player-state effect
-  must share a durable transaction/checkpoint. Publication from that checkpoint
-  must not overwrite newer live changes; serialize the affected player's reward
-  delivery/save sequence and prevent a stale queued save from reversing it.
-  Do not replay a delta just because a receipt lacks a message-delivered flag.
-- Use explicit durable modes: legacy -> draining -> Divine. Entering draining
-  closes new legacy completion, creation/edit/reactivation and shop admissions,
-  including SQL reads/callbacks already scheduled to admit a purchase.
-  Inventory accepted work, SQL writer requests, critical inbox/outbox entries,
-  flat-file pending/login rewards, scheduler requests/results and nested
-  cash/epic/stat/level/affect effects. Complete accepted operations with stable
-  child identities or preserve their exact unresolved entitlements durably.
-- Keep recovery of pre-transition entitlements separate from admission of new
-  legacy work. Do not mark an unresolved reward delivered merely because its
-  gameplay callback was disabled. Switch only after every accepted operation
-  is either settled or explicitly retained for recipient recovery. Boot must
-  resume a partially completed drain without reopening admissions.
-- Disable future `boon_scan` work on both backends in Divine mode. Preserve
-  durable enum IDs; retire the old job as a safe no-op after its old work is
-  reconciled. Do not reinterpret an old saved request as a Divine rotation.
-  Append a new job ID only if the existing dispatch actually needs one.
-- Keep all old points, balances, definitions and history. Rollback stops new
-  Divine admissions and reconciles receipts before re-enabling legacy mode;
-  it neither deletes Divine receipts nor replays old completions. Document
-  that rollback must use code that understands the new receipts.
-- Prepare additive, guarded, re-runnable SQL changes and matching flat-file
-  versions/read compatibility. Apply only to disposable local fixtures during
-  implementation. No production migration or rollback operation is authorized.
+- In the Divine module store eight slots with stable boon IDs, category/rate,
+  absolute starts/expiry, per-side objectives, revision, pause flag, last UTC
+  opportunity and expired-zone history. Slot number is not award identity.
+  Persist via the existing writer and versioned SQL/flat-file records; use
+  unique opportunity/operation keys and atomic checksummed after-images.
+  Commit a selected or empty result once, then publish its cache. Invalid
+  persisted state disables new admissions without deleting historical data.
+- Start empty at cutover and use fixed UTC hourly boundaries. At most one
+  generation per opportunity; EXP/epic last eight real hours, Cargo/PvP four.
+  Enforce eight global slots, one Cargo and one PvP, no other category quota.
+  Expiry is checked by display/award queries as well as maintenance.
+- Reboot expires overdue slots and consumes/skips missed opportunities; resume
+  at the next future hour. No burst, reroll or timestamp extension. Pause
+  consumes opportunities and prevents new spawns, while expiry continues.
+  Resume waits for the next hour. Forward clock jumps skip elapsed hours;
+  backward jumps cannot revisit an already consumed hour.
+- Close all new legacy task, create/edit/reactivation, shop and reward
+  admissions, including delayed SQL shop callbacks. Durably record draining,
+  complete accepted work through existing handlers, and retain exact unresolved
+  entitlements with their known delivery state. Cover queued SQL, committed
+  unpublished results, flat-file/login rewards and restored maintenance work.
+  Never acknowledge a retained reward away or suppress an earned callback
+  merely because Divine mode is enabled.
+- Activate Divine mode only once admitted work is settled or durably retained
+  for recovery. Recovery of old entitlements does not reopen new admissions.
+  Disable old scan/restore side effects on both backends afterward. Preserve
+  old durable job/command IDs as retired no-ops; append an ID only if needed.
+  Preserve all old points/balances/history; no conversion or deletion.
+- Add only required guarded, additive, re-runnable schema/codec changes.
+  Keep old accepted payloads readable. Backout instructions stop admissions
+  and reconcile receipts before changing code; no new rollback engine.
 
-**Proof:** inject failure before/after preparation, commit, publication,
-player save and acknowledgement; restart and reconnect. Each accepted legacy
-reward is delivered once or remains recoverable. Test shop callbacks already
-queued at the boundary, offline recipients, restored scans and repeated drains.
-Run old receipt/codec fixtures unchanged where backward compatibility requires it.
+**Focused proof:** deterministic clock/RNG cases for slot/category limits,
+hour boundaries, expiry, pause/restart/clock jumps and retry identity. Inject
+cutover before admission, after commit and before delivery/acknowledgement;
+verify old work is paid once or retained recoverably. Test restored jobs and
+offline recipients. Use existing receipt fixtures for actual retained formats.
 
-### 2. Common candidates, account activity and rotation
+### 2. Safe candidates and bounded activity
 
-- Build one validated runtime candidate catalogue for both backends. Use loaded
-  runtime zone ownership/flags, mob profiles and actual stone/reset definitions
-  as facts. Use a small reviewed common manifest for zone/stone IDs, positive
-  ordinary entry evidence per side, recommended level/group and completion
-  constraints that boot data does not express reliably. Stone values remain
-  authoritative for actual payout/group gates; validate rather than invent
-  metadata. Cross-check SQL rows where present; do not let a missing SQL-only
-  field become a permissive flat-file default.
-- Explicitly reject every `ZONE_TOWN`, including hometown zero, before scoring,
-  fallback, activation, display and reward admission. Also reject unloaded,
-  removed, disconnected, unfinished, staff-only, safe/tutorial-only,
-  guildhall/locker/storage, connector/transit-only, Surface/Underdark map-only
-  and unsuitable no-NPC/trivial targets. Heaven/Hell variants require positive
-  ordinary access evidence for that side. Neither a map marker nor a numeric
-  zone range proves reachability. Review a bounded safe pool rather than
-  building a generic world reachability service.
-- For EXP, validate suitable naturally available NPCs and relevant-side access.
-  For epic zones, also validate a real enabled stone, positive payable amount,
-  group-size suitability, normal reachability, completion/replay restrictions
-  and current completion/reset state. `task_zone` is not sufficient evidence.
-  Include real source-backed positive examples, not just exclusion fixtures.
-  Revalidate dynamic completion, flags and access before activation and awards.
-- Reuse bartender boot profiles, weighted selection and finite traversal
-  techniques where they fit. Do not inherit its item-reward requirements,
-  bartender minimum-level restrictions, mapless exceptions or final fallback
-  without checking them against Divine rules.
-- Keep a bounded rolling 60-minute account history in memory, driven by actual
-  gameplay evidence at existing input/movement/combat hooks. Count only mortals
-  currently connected, not AFK/link-dead, with gameplay in the last 15 minutes.
-  Use canonical actual account identity, not host, character PID or telemetry
-  pseudonym. Deduplicate one representative per account per side. An account
-  appearing on both sides cannot serve as two opposing accounts for PvP.
-  Telemetry disabled/full/unavailable must not change this gameplay accounting.
-- For PvP selection require distinct active accounts on opposing sides and at
-  least five accumulated minutes of meaningful play in the 60-minute window.
-  Weight upward with at least two accounts on each side. Login, keepalive,
-  status-command spam, forced commands and idle automatic combat cannot create
-  eligibility on their own. Do not invent pre-reboot activity; cold boot
-  warms from observed play. Copyover may preserve bounded verified history.
-- Select within brackets 1-20, 21-35, 36-50 and 51+, weighted by current per-side
-  accounts and under-served brackets. Group suitability uses available distinct
-  active accounts, not raw descriptors or an imaginary full group. Cap target
-  difficulty to realistic group size and prevent one high-level character from
-  dominating a low-level population. These are selection bands, not entry gates.
-- EXP 35 / epic 30 / cargo 15 / PvP 20 are initial weights only. Apply category
-  availability and the single-Cargo/single-PvP caps first. Reject duplicate
-  currently active zones for the same side across EXP and epic categories.
-  Allow a safe shared Good/Evil zone for contested play. Prefer 12 hours without
-  repeat after expiry; relax only that soft preference if the safe pool is thin.
-- Choose real distinct source/destination ports and commodities from `ports[]`
-  and current trade conditions. Validate both cargo and contraband availability,
-  access and a usable route; prefer shared contested routes when feasible.
-  Show port objectives, never current ships or individual players.
-  Unaffiliated Neutral/Undead characters get no invented side targets or PvE/PvP
-  benefit; a legitimate runtime Good/Evil assignment follows that effective side.
-  Unaffiliated characters may use the global trade event normally.
-- Use UTC epoch-hour identities and absolute timestamps. First activation is
-  the next scheduled hour after cutover, not eight slots at boot. A live
-  opportunity creates at most one slot, starting at its fixed boundary, with
-  eight/four-hour expiry. Expiry is checked by every display/bonus query as
-  well as maintenance; scheduler delay cannot extend a boon.
-- On boot expire overdue slots, consume/skip every missed boundary without
-  backfill, and resume at the next scheduled hour. Pause skips spawning but
-  preserves natural expiry and consumes opportunities. Resume waits for the
-  next hour. Retries reuse the stored choice and timestamps; they cannot reroll.
-  Handle UTC rollback by refusing to revisit consumed hours, and forward
-  jumps by skipping elapsed opportunities. Persist expiry/repeat history.
+- Use one cached validated catalogue for SQL and flat-file. Reuse bartender
+  boot-profile, level-score and bounded distinct-candidate techniques; do not
+  inherit item-reward requirements, minimum quest level, mapless exceptions or
+  fallback logic. Runtime stone values own payout/group constraints. Supplement
+  only missing candidate eligibility/access metadata; unknown values fail closed.
+- Hard-exclude every runtime `ZONE_TOWN` before weighting, fallback,
+  activation, persistence/display and award; hometown zero is not an exception.
+  Reject removed/unloaded, unfinished, disconnected/inaccessible, staff,
+  tutorial/safe-only, guildhall, locker/storage, transit/connector, Surface/
+  Underdark map-only, no-NPC and trivially farmable targets. Heaven/Hell variants
+  need positive ordinary access evidence for the relevant side. Review the
+  actual bounded pool, not every world area. A map marker or file alone proves
+  neither reachability nor completion. Revalidate dynamic flags/access.
+- EXP needs appropriate normal NPC encounters. Epic selection also needs a real
+  enabled payable stone, positive payout, completion/reset/replay eligibility,
+  recommended level/group suitability and side reachability. `task_zone` alone
+  is insufficient. Include actual eligible positive targets in both backends;
+  when no valid candidate exists, choose another eligible category or leave empty.
+- At existing gameplay input/movement/combat observation points maintain a
+  rolling 60-minute per-account history. Count one current mortal representative
+  per canonical account per side, active in the last 15 minutes, excluding
+  AFK, link-dead and staff. Hosts, PIDs and telemetry identities are not accounts.
+  An account cannot satisfy both opposing PvP populations. PvP needs distinct
+  active opposing accounts with five minutes of meaningful play; increase its
+  weight with at least two active accounts on each side. Login, keepalive,
+  spam, force and idle automatic combat alone cannot qualify.
+  Work independently of optional telemetry; cold boot/copyover warms from
+  observed play without a new activity handoff format.
+- Weight brackets 1-20, 21-35, 36-50, 51+ by actual per-side accounts, under-served
+  brackets and realistic distinct-account group capacity; avoid one high-level
+  outlier dominating a low-level group. These are selection, not entry rules.
+  Category weights 35/30/15/20 are tunable suggestions, not quotas.
+- No active same-side duplicate zone across EXP/epic categories. Good/Evil may
+  deliberately share a safe contested zone. Prefer 12 hours without repeat
+  after expiry; only that soft preference may relax for a thin safe pool.
+- Choose real distinct source/destination ports from `ports[]`, commodity and
+  market/access data; support both goods and prefer shared contested routes
+  where feasible. Do not disclose ships or individual players. Effective
+  runtime Good/Evil assignment controls side objectives; unaffiliated Neutral/
+  Undead gets no fabricated PvE/PvP benefit but may use global trade boons.
 
-**Proof:** fixed clock and fixed RNG tests for all timing, pause, clock-jump,
-restart, idempotent-empty-result, slot and side invariants. Test all activity
-thresholds and bracket boundaries, alts/cross-side accounts, insufficient groups,
-low-population cold start, thin safe pools, cross-category duplicates and soft
-repeats. Explicitly test hometown zero/nonzero, flag changes and every excluded
-area class; include a genuine eligible target for each implemented category.
+**Focused proof:** all activity windows, account/alt exclusions, group/bracket
+boundaries, duplicate/repeat rules and thin pools. Test every excluded area class,
+especially town flag with hometown zero/nonzero and changed flags. Prove positive
+side access for selected real content, not only rejection of synthetic bad zones.
 
-### 3. EXP, zone epic and PvP reward consumers
+### 3. Reward integration and flat-file stone payouts
 
-- Establish explicit local `base`, existing-modified amount and Divine
-  contribution in each eligible reward family. Preserve structural share,
-  level/group/stone rules and non-benefit reductions; Divine cannot undo them.
-  Keep precision through percentage arithmetic and round down once at the final
-  integer award, then enforce the existing final caps/overflow rules.
-  New benefit = eligible base x Divine rate; add it to the existing benefit
-  calculation rather than scaling that calculation. Preserve existing behavior
-  for rewards outside Divine scope. Do not rewrite all reward math globally.
-- EXP: support NPC-derived spell/melee damage, tanking, healing, melee drip,
-  kill and normalized kill-bonus awards. Derive the unboosted tank share before
-  adding the attacker's Divine contribution. For healing, inspect the healed
-  character's hostile opponent. Require the recipient and qualifying NPC
-  encounter to be inside that side's designated valid zone. Exclude pets or
-  other targets already excluded by normal XP, and all PvP, quest/world-quest,
-  resurrection, death, legacy-boon and unrelated XP.
-  Retain powerleveling, safe/guild room, level/global accumulation and final
-  one-third-level caps. The immediate EXP mutation has no separate replay;
-  save its result through the normal player path, without per-hit I/O.
-- Define the original eligible base at share derivation before benefit
-  multipliers, carrying existing reductions through the whole calculation.
-  Trace rested, global/race, Nexus, epic and difficulty modifiers explicitly;
-  remove premature integer conversions only where needed for these eligible
-  calculations. Verify 100 + 20% existing + 100% Divine = 220 and base 100 with
-  no other benefit = 200, never 300. Damage's recursive tank call must not
-  inherit the attacker's bonus or apply a second bonus.
-- Zone epics: prepare each participant's +50% within the existing stone touch
-  batch, before `zone_touch_transaction_submit()`. Keep actual group payout,
-  alignment, completion/errand constraints, witch/Nexus/race/difficulty effects,
-  stone caps and participant-specific eligibility. Separate eligible base
-  from existing benefits so 100 + 10% + 50% = 160, not 165. Persist boon ID,
-  prepared time/base/bonus/final amount and stable child award identity.
-- Add the missing flat-file stone-touch repository/dispatch path using existing
-  locked multi-file authority transactions. Persist claim, zone completion,
-  prepared participant awards and recipient delivery status, and integrate
-  boot/login recovery. Reconstruct completion/reset/alignment state needed by
-  that path. Only remove the existing flat-file refusal after atomic recovery
-  is proven; a selected target that can never pay is not acceptance.
-- Make SQL stone publication equally recoverable at the player-save boundary.
-  Test a claim committed before callback and a callback before player save.
-  Recover a legitimate unpaid participant once; do not treat
-  `recovered_claim` as proof that every player's balance was saved.
-- PvP: qualify at combat death with effective Good/Evil victim/recipient sides,
-  positive legitimate normal award, arena/level/recent-frag/fragWorthy gates.
-  Keep general `opposite_racewar()` unchanged for its unrelated combat callers.
-  Carry qualifying sides, boon ID, prepared time and separated normal/Spill
-  Blood values in the existing combat outcome.
-- Use one PvP preparation calculation for existing modifiers plus the Divine
-  contribution. Remove the unreferenced `epic_frag()` declaration/wrapper
-  after verifying the final caller graph; do not resurrect it as another
-  award route. Generic `gain_epic(EPIC_PVP)` without qualified combat context
-  gets no Divine benefit. Thus both historical calculation paths are resolved
-  through consolidation rather than left with inconsistent mathematics.
-  Spill Blood's separate 500 is excluded from the Divine base:
-  normal 100 plus task 500 yields 150 + 500 with other modifiers off.
-  Same-side, unaffiliated or zero-legitimate-award cases get no bonus.
-- Version affected command/result payloads compatibly and persist prepared
-  amounts. A legitimate operation prepared before expiry may complete once
-  afterward; an operation admitted at/after expiry gets no boost. Replay never
-  consults the then-current slot. Add only required delivery/save coordination
-  for these rewards, retaining existing unrelated epic/artifact side effects.
+- Derive each legitimate share first. Carry an explicit eligible base and
+  calculate the Divine contribution separately from existing increases.
+  Preserve non-benefit reductions and existing caps on the whole result.
+  Keep percentage precision and round down once on final integer award;
+  reject overflow. Make only the local arithmetic changes the affected paths
+  need; unrelated reward families retain their current behavior.
+- NPC EXP covers spell/melee damage, recursive tanking, healing, melee drip,
+  kills and normalized `EXP_KILL_BONUS`. Preserve powerlevel/group/pet,
+  safe/guild room, level/global accumulation and final one-third-level caps.
+  For healing inspect the healed character's hostile opponent. Derive the
+  unboosted tank share before adding the attacker's Divine increase.
+  Require recipient and NPC encounter in the side's valid designated zone.
+  Exclude PvP, quests/world quests, resurrection, death, old-boon and unrelated
+  XP. With no other bonus, 100 becomes 200, never 300; with +20% existing,
+  100 becomes 220. Trace rested, Nexus, epic, race/global/difficulty modifiers
+  and remove premature truncation only in these eligible calculations.
+  Immediate XP uses the normal player save, with no new per-hit I/O or receipt.
+- Prepare zone +50% separately for each participant inside the existing stone
+  batch before submit. Preserve actual group/stone maximum, alignment, errand,
+  witch/Nexus/race/difficulty rules. The +10%/+50% example is 160 from base 100,
+  not 165. Store prepared boon ID/time/base/final amount with stable award
+  identity; retries never recompute against the current slot.
+- Supply the currently missing flat-file zone-touch backend using the existing
+  authority transaction. Claim the real stone, record completion/reset/alignment
+  and prepared participants, and deliver each award durably once. Remove the
+  flat-file refusal only after an actual selected stone can pay. Extend SQL
+  recipient delivery at the same existing player-save boundary: a committed
+  stone claim or process-local published flag is not proof of saved player credit.
+- For new deferred Divine epic/PvP awards, commit the amount and applied marker
+  with the recipient's existing status snapshot. Reuse writer ordering and
+  checkpoint capture rather than introducing another scheduler/coordinator.
+  Handle queued stale saves and offline recovery at that concrete boundary.
+  A legitimate pre-expiry prepared award may pay once afterward; admission
+  at/after expiry gets no boon. Preserve unrelated epic/artifact side effects.
+- Qualify PvP at combat death from effective Good/Evil sides and a legitimate
+  positive normal award, retaining arena, level, repeat-victim and fragWorthy
+  gates. Carry victim/recipient qualification, boon ID and separated normal/
+  Spill Blood components through the existing prepared combat outcome.
+  Do not change broad `opposite_racewar()` semantics for unrelated callers.
+- Use one PvP preparation calculation. Remove the unused `epic_frag()`
+  wrapper/declaration once the caller search confirms it remains dead; do not
+  revive a second production route. Unqualified generic `EPIC_PVP` awards get
+  no boost. Spill Blood's separate 500 is outside the Divine base:
+  100 normal + 500 task becomes 150 + 500 with other modifiers off.
+  Same-side, unaffiliated and zero legitimate awards get no Divine increase.
+  Version only payloads/records that actually gain prepared identity.
 
-**Proof:** run actual reward callers, not just a percentage helper. Cover every
-XP type, hostile-NPC healer context, shared tank derivation, reductions, stacked
-bonuses, fractional rounding, overflow and caps. Exercise real stone touch and
-combat outcome paths in both backends, multiple/offline recipients, duplicate
-callback, ambiguous commit, reconnect and restart before/after player save.
-SQL and flat-file must select a real payable epic target and actually award it.
+**Focused proof:** actual NPC reward callers, hostile-NPC healing, recursive
+tanking, kill bonus, additive/fractional math, reductions, caps and overflow.
+Run real stone and PvP preparation/publication with multiple/offline recipients.
+Crash before/after commit, callback and player save; retry and reconnect must
+neither lose nor duplicate prepared rewards. SQL and flat-file each select
+and award a real payable reachable epic target.
 
-### 4. Cargo provenance, account cap and atomic settlement
+### 4. Boon-specific cargo lots and settlement
 
-- Keep ordinary commodity slots and normal market/access rules; add exact
-  purchase lots associated with stable ship identity and commodity/slot.
-  Record operation/lot ID, source, purchase timestamp, invoice/cost basis,
-  quantity, canonical purchaser account and matching boon ID. Purchases must
-  durably debit their payer and establish provenance together; a failed or
-  unpaid purchase cannot mint eligible cargo. Older ships load with existing
-  cargo intact and no fabricated Divine provenance.
-- Persist multiple lots per merged slot. Nine old crates plus one qualifying
-  crate grants only one crate's bonus. Track partial eligible sales, jettison,
-  loss/confiscation, slot clearing, ship ownership/transfer, sinking, salvage,
-  ship save/load and copyover. Consume lots deterministically without duplicating
-  quantity or losing invoice allocation. Include provenance in save signatures,
-  SQL capture/load and versioned flat-file capture/materialization.
-- Use the issue's permitted simpler salvage/transfer rule: invalidate Divine
-  eligibility when normal crate/ownership transfer cannot preserve authenticated
-  purchase/account lineage. Goods remain saleable normally. Never relabel
-  salvage or another account's goods as a new qualifying purchase; direct
-  same-account operations that retain proof must not multiply quantity.
-  Destructive quantity mutations must atomically retire matching provenance.
-- For each (canonical account, boon ID), persist the first qualifying purchase's
-  ship and fixed full hold capacity. Use `SHIP_MAX_CARGO`'s combined crate
-  units (including the snapshotted crew capacity), not remaining free hold,
-  `get_capacity()` passenger count, per-character or current-ship capacity.
-  Both cargo and contraband use this same three-times-capacity allowance;
-  weight availability and contraband restrictions still limit each purchase.
-  Snapshot once, even before any sale, and never increase it after ship/crew,
-  character, side, account session or restart changes.
-- A qualifying lot was purchased strictly after that boon starts at the
-  selected source, with paid and verifiable basis, and admitted for sale before
-  expiry at its distinct destination. Reject source=destination in selection
-  and settlement. Unproven/prestocked/out-of-period goods get ordinary revenue.
-  Apply a reduced eligible quantity when only part of the shared cap remains.
-  Retire settled lot identities permanently so sellback, rebuy, salvage and
-  transfer cannot recycle a single purchase into several capped claims.
-- Preserve `cargo_buy_price()`/`contra_buy_price()` and existing Nexus,
-  diplomat, Seadog, warship, contraband access and market effects. Compute a
-  separate +25% of eligible market sale revenue before those optional reward
-  modifiers, with mandatory penalties/constraints retained. Do not add the
-  Divine component to purchase prices or multiply the Nexus-adjusted total.
-  Record all components and round the final integer credit down once.
-  Required no-other-modifier example: cost 100, normal revenue 120,
-  Divine revenue 150, profit 50.
-- Introduce one concrete sale receipt per operation containing exact lot
-  consumption, normal and Divine credit, account allowance before/after,
-  ship and player revisions and market delta. For SQL, commit authoritative
-  inventory/provenance, market mutation, cap and player payment/delivery marker
-  under one transaction/serialized operation. For flat-file, commit the
-  equivalent player/ship/market/cap/receipt after-images together using
-  `flatfile_authority_transaction`. Existing memory-only `ADD_MONEY` and
-  three separate save calls cannot be the settlement guarantee.
-- Reserve only the affected ship/account/recipient while a prepared sale is
-  outstanding. Prevent stale writer/player/ship snapshots from overwriting the
-  settlement. Before durable commit, rejection leaves cargo, money, market
-  and cap unchanged; after commit, recovery publishes the exact outcome and
-  never resells the old inventory or credits a second delta. Offline recovery
-  completes before those goods or wallet funds can be used again.
-- Keep normal sell-all and sell-slot commands and their achievement/crew
-  behavior. Publish success and resulting side effects after settlement.
-  Make secondary achievement/crew effects idempotent with that receipt.
-  Measure approved-rate returns on actual reviewed routes and ship capacities;
-  report economy exposure without silently changing 25% or three holds.
+- Retain ordinary commodity slots; attach exact lots to stable persistent ship
+  identity, not its process-local runtime reference. Qualifying purchases store
+  lot/operation ID, timestamp, source, invoice/basis, quantity, purchaser account
+  and boon ID. Durably establish paid purchase plus provenance together;
+  unpaid/failed purchases cannot create eligible goods. Old ships/goods load
+  unchanged with no fabricated provenance. This does not rewrite unrelated buys.
+- Preserve separate lots inside merged slots: nine old plus one qualifying
+  crate boosts one, not ten. Consume quantities/invoice basis deterministically
+  on eligible partial sales and every relevant loss/clear/confiscation/jettison/
+  sink mutation. Persist lots in affected ship capture/load/save signatures.
+  When salvage or ownership/account transfer cannot authenticate lineage,
+  invalidate eligibility and retain normal saleability; do not create a cargo
+  transfer subsystem. Same-account proven handling cannot multiply quantity.
+- Snapshot the first qualifying purchase's ship and full `SHIP_MAX_CARGO`
+  capacity, including its then-current crew modifier, once per (account, boon).
+  Combined normal cargo/contraband crate units count toward 3 x that fixed hold.
+  Available free space, passenger capacity or later ship/crew changes do not
+  reset/raise the cap. Keep actual purchase weight and contraband restrictions.
+  Persist consumption across alts, sides, ships, relog and restart.
+- Require purchase strictly after start at the selected source and sale
+  admission before expiry at the distinct destination. Reject source=destination
+  at selection and settlement. No bonus on pre-stocked, expired, unverifiable
+  or laundered goods; excess-cap quantities still sell normally. Retire sold
+  lot identities so sellback/rebuy and salvage cannot reuse purchase proof.
+- Preserve base market prices, Nexus, diplomat/Seadog/warship effects, access
+  and ordinary trade mechanics. Add +25% of qualifying base sale revenue
+  separately from existing benefits, retain mandatory penalties, and round
+  down once on final credit. With other modifiers off: cost 100, ordinary
+  revenue 120, boon revenue 150, profit 50. Do not alter purchase prices.
+- For sales containing boon lots, one receipt holds precise inventory/lot
+  consumption, normal+bonus payment, market delta, account allowance and
+  player/ship revisions. Commit payment/delivery marker, inventory, market
+  and cap together: SQL transaction on the existing writer, flat-file atomic
+  player/ship/market/cap after-images using existing authority machinery.
+  Memory-only `ADD_MONEY` followed by separate saves is insufficient.
+- Reserve only affected participants while that operation settles. Rejection
+  before commit leaves all effects unchanged; after commit, publish/recover
+  the stored result without reapplying a delta or reselling consumed goods.
+  Coordinate normal queued saves so they cannot overwrite that outcome.
+  Finish recovery before the affected wallet/cargo can be used again.
+  Existing sell-slot/sell-all, achievements and crew behavior remain, with
+  success effects emitted once from the same completed operation.
+- Assess economy exposure using representative actual routes and hold sizes
+  in bounded fixtures, not a new live balance study. Retain the approved rates.
 
-**Proof:** executable purchases and both sale commands; old/new merged lots,
-partial eligible quantities and remaining cap, mixed cargo/contraband, larger
-second ship, alts/accounts, relog/restart, confiscation/jettison/salvage/transfer,
-source sellback and expired/untraceable goods. Inject failure at receipt,
-inventory, wallet/player checkpoint, market and cap boundaries on both backends;
-verify conservation, no duplicate credit and exactly the approved cap.
-Test normal pricing/Nexus/penalties and non-qualifying sales unchanged.
+**Focused proof:** both purchase/sale goods and normal pricing; 9+1 merging,
+partial eligibility/cap, combined goods, larger second ship, alts and restart;
+salvage/jettison/confiscation/transfer/clear, source loops and expiry.
+Fault injection at receipt, inventory, player payment, market and cap boundaries
+on both backends must prove quantity conservation, one payment and the fixed cap.
+No second framework or unrelated ordinary-sale rewrite is required.
 
-### 5. Player/staff commands, help and operating notes
+### 5. Commands, help and one integrated qualification
 
-- Keep command 804 and replace its dispatch with Divine display after cutover;
-  no mortal legacy shop/edit path remains. `boon` and `boon list` show:
-  "The Gods of Duris have given you and your allies the following boons:"
-  then actual stored eligible targets, rates, remaining real time and the next
-  UTC opportunity. Handle initializing, paused, empty and partial lists cleanly.
-- Render native `zone_table[].name` colour sequences unchanged and use
-  `ports[].loc_name` for routes. Reuse `pad_ansi()` and existing ANSI-aware
-  wrapping utilities; wrap long objectives without splitting colour escapes.
-  Verify visible widths in an 80-column terminal and actual Good/Evil PvP
-  objective wording. Show unaffiliated players only applicable global events.
-- Append one safely allocated staff-only `divineboon` command ID without
-  renumbering existing IDs. Provide `status|pause|resume|replace <slot>|force|history`
-  with existing staff authorization/audit conventions and durable operation IDs.
-  `force` retries a currently due, unconsumed opportunity; it does not add an
-  extra hourly roll. `replace` expires the selected slot and requests a future
-  normal opportunity, preserving caps and timestamps. Repeated admin requests
-  must be idempotent, and no staff control may activate an invalid town target.
-- Remove the participation effect of `toggle boon` for Divine mode and explain
-  automatic benefits. Preserve the old stored preference for rollback.
-  Remove obsolete shop/toggle wording from the toggle summary and help.
-- Update existing `BOON` help_index plus consistent two-line/title/date
-  `Boon` and `Divine Boons` parsed topics, and staff-only administration help.
-  Check case-insensitive collisions and parsed-source precedence. Update the
-  relevant Experience, Epic points, Frag, Ship and `helpships` references.
-  Document all rates, durations, eight shared slots, hourly empty slots,
-  additive examples, no-town rule, effective sides, provenance and combined
-  three-hold account cap. No +30% cargo text or legacy shop instructions remain.
-- Follow HELP_STYLE_GUIDE.md. Validate importer dry-run and both serving
-  backends; do not run a production import. Add concise cutover/status/recovery
-  and rollback instructions with production application kept separate.
-
-**Proof:** actual interpreter dispatch, legacy command denial and staff privilege
-tests; ANSI-visible-width and native-colour fixtures for real/multicolour/long
-names, both sides and unaffiliated viewers; repeated admin operations; help
-parsing, collision, search and SQL/flat-file serving parity.
-
-### 6. Integrated acceptance and delivery
-
-- Extend the existing harnesses and executable journeys before adding new
-  focused files. Add a small Divine model/clock test and durable-sale/recipient
-  failure cases only where current tests cannot prove these new requirements.
-  Do not start a general test framework or repeat green unrelated suites.
-- In disposable fixtures on both backends, take the real path through legacy
-  admission drain, Divine activation, hourly selection, all four reward types,
-  pause/expiry, pre-expiry prepared payment after expiry, restart and login.
-  Include an actual world epic stone and cargo route, not fabricated catalogue
-  entries or codec-only round trips.
-- Build changed C/C++ with `make -C src`; qualify both
-  `PERSISTENCE_BACKEND=mariadb` and `PERSISTENCE_BACKEND=flatfile` with isolated
-  build outputs/appropriate clean rebuild between backend macro changes.
-  The maintained executable is `bin/server/dms_new`; generated outputs stay
-  under `bin/` and are never committed. The issue also requests the read-only
-  `./scripts/format.sh --all --check`. Use changed-line formatting for touched
-  implementation code and report unrelated formatting failures separately.
-- Run the affected boon/zone, EXP/epic/PvP, ship/market, scheduler, help and
-  persistence/restart tests. Additive schema changes must be re-runnable and
-  tested for upgrade, replay and old payload reads in isolated databases/files.
-  A production data audit or live balance result remains unverified until a
-  separately authorized environment exercise.
-- Review every retained change with the ablation test again. Publish focused
-  implementation PRs linked to #245 once implementation is authorized, with
-  exact local evidence and any limitations. Review requirements still apply;
-  hosted CI completion is not a merge gate under AGENTS.md. Production
-  application/import, restart and activation remain separate owner actions.
+- Keep `CMD_BOON=804`, `boon` and `boon list`. Show the exact requested Gods
+  introduction, stored valid targets/rates, real remaining time and next hourly
+  opportunity; handle initialization, pause and fewer than eight/zero slots.
+  Preserve native `zone_table[].name` ANSI and `ports[].loc_name`, with existing
+  ANSI-aware padding/wrapping in 80 visible columns. Good targets Evil, Evil
+  targets Good; unaffiliated players see only applicable global trade events.
+- Append a staff-only `divineboon` ID without renumbering commands. Implement
+  status, pause, resume, replace, force and history via the same state mutation,
+  existing authorization/audit conventions and idempotent operation identity.
+  Force retries a due unconsumed opportunity; replace expires a slot and uses
+  the next normal opportunity. Neither bypasses timing, caps or target safety.
+  Old shop/edit admissions are unavailable; `toggle boon` explains automatic
+  benefits and no longer affects them. Preserve its stored bit for backout.
+- Update existing BOON help_index and consistent Boon/Divine Boons parsed topics,
+  staff help and relevant Experience/Epic points/Frag/Ship/helpships references.
+  Keep parser title/date format, ANSI policy and parsed-source precedence;
+  verify collisions. Explain every rate, duration, shared slot rule, side/
+  no-town rule, additive math, cargo provenance and combined account cap.
+  Remove obsolete shop/toggle and +30% text. Validate importer dry-run and
+  both help-serving backends; no production import.
+- Extend the existing harnesses from the earlier steps and reuse their valid
+  results. Run one combined legacy-cutover -> rotation -> all four rewards ->
+  pause/expiry -> pre-expiry deferred payment -> restart/login journey per
+  backend, including actual stone and route. Do not rerun every fault permutation
+  again in the integrated journey or require a separate test campaign per PR.
+- Build changed C/C++ with `make -C src`; qualify MariaDB and flat-file builds
+  with `PERSISTENCE_BACKEND=mariadb` and `PERSISTENCE_BACKEND=flatfile`, isolated
+  outputs or a clean backend switch. Keep outputs under `bin/` and uncommitted.
+  Run affected tests only, required schema re-run/old payload checks and the
+  issue's read-only `./scripts/format.sh --all --check`. Use changed-line
+  formatting for touched code; report unrelated formatting failures separately.
+- Reapply ablation to the final diff. Publish the eventual feature work with
+  local evidence once implementation is authorized. Follow review requirements,
+  without waiting on hosted CI. Keep cutover/backout operating notes concise.
+  No production migration/import, restart, deployment or live balance claim.
 
 ## Requirement closure map
 
-#245 remains open until all of these have implementation and executable proof:
+#245 remains open until all of these have implementation and executable proof.
 
-- **Slots/time/recovery:** unit 1 state and receipts; unit 2 fixed UTC schedule,
+The item numbers below refer to the 23 acceptance checkboxes in the issue
+snapshot inspected on 2026-10-22; all 23 have a retained implementation path.
+
+- **Slots/time/recovery (9, 13, 14):** step 1 state/receipts and fixed UTC schedule,
   eight global slots, one Cargo/one PvP, four/eight-hour expiry, skipped downtime,
   pause/resume, no rerolls/duplicate targets and soft 12-hour repeats.
-- **Targets/population:** unit 2 hard hometown and unsafe-area exclusions,
+- **Targets/population (5, 10, 11, 15, 16):** step 2 hard hometown and unsafe-area
+  exclusions,
   per-side access, common SQL/flat-file epic catalogue, actual payable stones,
   60/15-minute activity, five-minute distinct-account PvP and all four brackets.
-- **Rewards:** unit 3 all NPC EXP contributors/kill bonus and cap; participant
+- **Rewards (6, 7, 17, 18, 19):** step 3 all NPC EXP contributors/kill bonus and
+  cap; participant
   zone-epic preparation; qualified Good/Evil PvP; excluded 500 Spill Blood;
   precise additive math, rounding and prepared pre-expiry payment once.
-- **Trade:** unit 4 both goods at +25% revenue, exact 9+1 provenance,
+- **Trade (2, 3, 4, 20):** step 4 both goods at +25% revenue, exact 9+1 provenance,
   all quantity mutations, fixed first-ship account cap, normal market constraints,
   no laundering/stockpile bonus, atomic payment/inventory/market/cap recovery.
-- **Compatibility/retirement:** units 1 and 5 no new legacy awards/purchases,
+- **Compatibility/retirement (1, 8, 12):** steps 1 and 5 no new legacy
+  awards/purchases,
   preserved historic data and unresolved entitlements, restored-work safety,
   command 804, automatic benefits independent of old toggle and safe rollback.
-- **User/staff/docs:** unit 5 native ANSI, 80-column output, real targets and
+- **User/staff/docs (21, 22):** step 5 native ANSI, 80-column output, real targets and
   accurate duration, side-correct objectives, safe audited controls, maintained
   help sources/See Also links and importer dry-run on both backends.
-- **Delivery:** unit 6 focused runtime/journey/schema tests, both builds,
+- **Delivery (23):** step 5 focused runtime/journey/schema tests, both builds,
   formatting checks, source-grounded content/economy assessment and honest
   separation between local qualification and production actions.
 
@@ -569,6 +495,7 @@ The following existing checks passed against the pinned checkout on 2026-10-22:
 - `python3 tests/async/test_flatfile_cargo_market.py`
 - `python3 tests/async/test_currency_transaction_contract.py` (9 tests)
 - `python3 tests/async/test_epic_gain_runtime.py`
+- `python3 tests/async/test_flatfile_authority_transaction.py` (ablation reuse check)
 
 These characterize existing contracts only. They are not Divine acceptance,
 proof of exactly-once recipient delivery, real target reachability, SQL feature
@@ -578,25 +505,27 @@ Before publication, check document/source references, preservation of the prior
 plan, a documentation-only diff, `git diff --check`, remote commit parity and
 native GitHub issue-to-branch linkage.
 
-## Implementation estimate
+## Estimate for Codex implementation
 
-**The initial 96-144-hour human-effort estimate is withdrawn as a delivery ETA.**
-The per-unit ranges were judgment calls, not timings measured in this checkout.
-They do not establish how long Codex implementation would take, and there is no
-evidence from this planning pass that the user must wait 96 hours.
+**Plan for 6-10 hours of my active implementation and focused verification.**
+Use about eight hours for scheduling. This is a source-informed estimate for
+Codex working on the complete issue, not human-engineer days, a measured benchmark,
+or a promise that work has started in the background.
 
-The useful forecast is the dependency order and where uncertainty sits:
-cargo provenance/atomic payment and recipient-save recovery dominate the work;
-flat-file stone-touch support is another necessary dependency. Command display,
-the eight-slot policy and help are comparatively small. Existing writer and
-after-image primitives should be reused, with focused tests rather than broad
-qualification added to each unit.
+Most time is in cargo lot/payment recovery and the missing flat-file epic payout
+path. Rotation/selection, reward wiring and command/help work use the current
+code and test harnesses. The estimate includes both required backend builds,
+focused failure/restart cases and the final integrated journeys. It does not
+include six PR/test cycles, a full regression burn-in, generalized persistence
+repair, a rollback product, CI waiting or production operations.
 
-A numerical Codex wall-clock estimate is not yet calibrated. Implementation is
-expected to span multiple focused work sessions, but this read-only source review
-cannot substantiate a reliable hour range. Record actual elapsed implementation
-and verification time for the first prerequisite unit, then forecast remaining
-work from that evidence. Do not run implementation merely to calibrate this
-planning task, silently reduce the issue's requirements, or substitute another
-unsupported precise ETA. Review turnaround and separately authorized production
-actions are outside implementation time.
+This assumes the available C++/SQL tools and existing disposable MariaDB/file
+fixtures are sufficient, and the bounded candidate pool can be proven from
+checked-in content. The tools and fixture wrappers are present; no new environment
+installation or production access is planned. If a concrete defect below these
+boundaries blocks required proof, report it and revise remaining time from the
+actual result. Do not reduce acceptance coverage to meet the estimate.
+
+The earlier 96-144-hour figure was an uncalibrated human-effort guess and is
+superseded. The estimate above includes uncertainty rather than deferring an
+answer until implementation. Implementation remains a separate requested action.
