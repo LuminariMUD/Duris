@@ -658,6 +658,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "7c84955a35a6f34e4618773b2f08c2470219a54a982b0bf3e5a161ece78d0a68",
       "verify_checksum": "beb92063f46b04089b21520f242334d15dd127d35ef381030d40a2da17822234"
+    },
+    {
+      "id": "0049_divine_boon_delivery",
+      "sequence": 49,
+      "description": "Checkpoint prepared Divine reward delivery with recipient status",
+      "apply": "immutable/0049_divine_boon_delivery.sql",
+      "verify": "immutable/0049_divine_boon_delivery.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "e4e0268f5f7ab27b6872f87d44453c862116829b80fdc247191c968a207a41b3",
+      "verify_checksum": "d9ace2841a6cc5b9fb2ef28a8a9fa46467cf99f63be71fdfa96bb4ff08bc7f15"
     }
   ],
   "engine_verifiers": [

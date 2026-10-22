@@ -317,6 +317,24 @@ bool valid_item_relationships(const std::vector<player_item_snapshot> &items)
 
 } // namespace
 
+bool player_snapshot_divine_delivery_sequence(const player_snapshot &snapshot, uint64_t *sequence)
+{
+	if (!sequence)
+		return false;
+	uint64_t value = 0;
+	bool found = false;
+	for (const auto &row : snapshot.status_integers)
+		if (row.field == player_status_field::divine_boon_delivery_seq)
+		{
+			if (found || !row.is_unsigned)
+				return false;
+			found = true;
+			value = row.unsigned_value;
+		}
+	*sequence = value;
+	return true;
+}
+
 player_snapshot_codec_result
 player_item_snapshot_list_encode(const std::vector<player_item_snapshot> &items,
 				 std::vector<uint8_t> *encoded_out)
@@ -614,7 +632,7 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			return in.failure();
 		const uint32_t wire_version = snapshot.schema_version;
 		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
-		    wire_version == 7 || wire_version == 8)
+		    wire_version == 7 || wire_version == 8 || wire_version == 9)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -625,9 +643,10 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		snapshot.encoded_size_bound = encoded_bound;
 		if (!valid_metadata(snapshot))
 			return player_snapshot_codec_result::invalid_value;
-		const auto last_status_field = wire_version < 8 ?
-						       player_status_field::last_ip :
-						       player_status_field::learned_flight_stops;
+		const auto last_status_field =
+			wire_version < 8  ? player_status_field::last_ip :
+			wire_version < 10 ? player_status_field::learned_flight_stops :
+					    player_status_field::divine_boon_delivery_seq;
 		const auto last_string_field =
 			wire_version < 9 ? player_status_string_field::poof_out :
 					   player_status_string_field::last_read_news_hash;
@@ -750,6 +769,13 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 				return player_snapshot_codec_result::limit_exceeded;
 			snapshot.status_strings.push_back(
 				{ player_status_string_field::last_read_news_hash, "" });
+		}
+		if (wire_version < 10 && (snapshot.components & PLAYER_COMPONENT_STATUS))
+		{
+			if (snapshot.status_integers.size() == PLAYER_SNAPSHOT_MAX_ROWS)
+				return player_snapshot_codec_result::limit_exceeded;
+			snapshot.status_integers.push_back(
+				{ player_status_field::divine_boon_delivery_seq, 0, 0, true });
 		}
 		*snapshot_out = std::move(snapshot);
 	}

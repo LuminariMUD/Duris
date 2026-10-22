@@ -963,6 +963,14 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	uint64_t incoming_sequence = 0, stored_sequence = 0;
+	if (!player_snapshot_divine_delivery_sequence(snapshot, &incoming_sequence))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	if (loaded == flatfile_player_load_result::ok &&
+	    !player_snapshot_divine_delivery_sequence(materialized, &stored_sequence))
+		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+	if ((snapshot.components & PLAYER_COMPONENT_STATUS) && incoming_sequence < stored_sequence)
+		return { player_save_apply_outcome::stale_revision, materialized.revision, 0 };
 	std::vector<player_item_snapshot> held_items;
 	if ((snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
 	    !snapshot.retained_items.rows.empty())
