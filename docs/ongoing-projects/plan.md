@@ -103,7 +103,113 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
-### Latest verified continuation (16:58 UTC / 19:58 Asia/Jerusalem)
+### Latest published backend continuation (19:01 UTC / 22:01 Asia/Jerusalem)
+
+- [PR #282](https://github.com/LuminariMUD/Duris/pull/282) is open, ready for
+  review and mergeable, stacked on #279. Implementation `5a5d0bf3f` is pushed
+  with 0/0 parity; both builds and native evidence match it. No release tag or
+  merge. The compound backend slice does not activate gameplay trade rewards.
+- Next worktree `/home/aiwithapex/projects/duris-issue245-plan`, branch
+  `branch/issue-245-divine-trade-runtime`, based on #282 plus this handoff-only
+  commit. This source tree is clean at handoff. The original named plan branch
+  continues to carry the foundation and authoritative current plan only.
+- Both real repository dispatchers now atomically persist prepared wallet, ship
+  slots/crew, market, account book and permanent result. Type 19 and entity 15
+  are appended. Memory prepares prices/eligibility/after-images; the writer only
+  checks identity/revision/shape and commits them. SQL uses the existing inbox/
+  outbox transaction, flat-file uses six after-images in the existing journal.
+  Restart/retry returns the stored result and does not apply a financial delta.
+- Native SQL purchase/sale proof passes ten rollback boundaries, with cargo and
+  contraband cases, exact market/price restoration, conflicting retries, 9+1
+  merged stock, spent allowance and repeated receipts. The real SQL maintenance
+  executor rejects restored generation-zero work after trade and accepts current
+  generation work. The new check caught non-unique legacy market indexes: the
+  executor now replaces each logical cell inside the transaction instead of
+  appending an ineffective upsert. Crew after-images also handle a missing row.
+- Native flat-file purchase/sale proof passes the journal and all six after-image
+  interruption boundaries, covering both goods. Retry/reload conserves wallet,
+  consumed inventory, market and fixed allowance; old player captures are rejected.
+  Native market proof covers v1 -> v2 read compatibility, stale restored maintenance,
+  current maintenance, corrupt/symlink files and an unconfigured root. Zero-revenue
+  sales also commit consumed goods/cap with unchanged money; no phantom credit.
+- Shared market codec is now in `flatfile_cargo_repository`; the existing player
+  file envelope encoder is shared in `flatfile_player_snapshot_file`. This keeps
+  persistence independent of live ship/gameplay code. The wallet helper owns only
+  authority, as all native snapshot writers already do; it does not invert locks
+  by acquiring a player lock afterward. Other balances/receipts remain untouched.
+- Additive migration 0050 is registered, re-runnable and preserves the generation
+  on replay. Both actual engine metadata fingerprints were measured on fresh
+  disposable MySQL 8 and MariaDB 10.11 schemas and synchronized with runtime and
+  lifecycle manifests. New schema is needed by ordinary market persistence as
+  well as the new financial operation; publication must include this migration.
+- Passed: `run_divine_trade_mysql.sh`; `test_flatfile_player_repository.py`;
+  `test_flatfile_cargo_market.py`; sanitized `test_divine_trade.py`, critical-command
+  and player-item-snapshot codecs; existing standalone flat-file item consumer;
+  seven runtime-compatibility and twelve lifecycle checks; both backend builds.
+  Formatting, LLVM 22 clang-tidy, both final builds and whitespace checks pass. Existing
+  loaded-world EXP/PvP/zone evidence is retained, not rerun without a relevant change.
+- **Next actual delivery:** wire the existing ship shop paths to memory-cached
+  active account books/generation, preserve purchase/access/pricing rules, reserve
+  affected participants and publish absolute completion once. Coordinate ordinary
+  wallet/ship/market saves and callbacks, add real port-route selection, and attach
+  loss/clear/confiscation/salvage/sink/ownership provenance updates to affected ship
+  capture/save signatures. Preserve crew and achievement behavior. Qualify actual
+  purchase/sale/save/restart journeys on both backends before activation.
+- **Additional source finding to resolve separately:** ordinary `write_cargo()`
+  fills its SQL contraband price cache using the cargo quote. Native game quote
+  functions are separate. Also, ordinary zero-revenue sales clear slots but only
+  queue the ship save when credit is positive. Fix these in a focused change with
+  runtime integration; retain the approved 25% and three-hold policy.
+- Then finish legacy reconciliation/activation, player/staff commands and help,
+  and all final integrated acceptance journeys. Full #245 remains incomplete.
+- Original start 08:41:02 UTC, original deadline 14:41:02 UTC. At 19:01, elapsed
+  is 10h 20m, overrun 4h 20m. Owner-approved full-scope continuation remains active;
+  no replacement budget or reliable upper completion ETA is claimed.
+
+### Earlier in-progress checkpoint (17:34 UTC / 20:34 Asia/Jerusalem)
+
+- Current worktree remains `/home/aiwithapex/projects/duris-issue245-plan`, branch
+  `branch/issue-245-divine-trade-settlement`, HEAD `6e672a44b` (published #279
+  handoff). The settlement source/test diff is **uncommitted and not qualified**.
+  Do not mistake the clean published prerequisite head for full trade delivery.
+- The real critical-command payload/result and SQL compound executor are written:
+  memory supplies absolute wallet, slots/crew, market cells and account-book
+  after-images. Existing inbox/outbox handles SQL receipt/retry; type 19 and ship
+  entity 15 are appended. Flat-file dispatch now prepares snapshot + domain + ship
+  catalogue + market + account book + permanent receipt under one authority journal.
+  Player locks precede authority; account validation uses the already locked domain
+  record to avoid recursively acquiring authority through identity lookup.
+- The market codec was moved intact into `flatfile_cargo_repository` for two actual
+  callers: ordinary market persistence and compound trade. This prevents repository
+  tests/writers from linking live ship gameplay. Format v2 adds a trade generation,
+  reads v1 as zero, and normal writes/maintenance reject obsolete generations.
+  Scheduled snapshots append their captured generation; restored old snapshots remain
+  accepted at generation zero and cannot overwrite a later committed trade.
+- Passed new evidence: sanitized native command/book codec; native flat-file market
+  interruption/recovery, old maintenance rejection and v1 load. The SQL server build
+  passed **before** the last flat dispatch/codec extraction edits, so rebuild current
+  source. The combined native purchase/sale fault harness is being added to the
+  existing flat-file player repository suite; first run exposed a fixture ship with
+  missing required revision, now corrected. It has not yet passed.
+- Files to continue: `divine_trade_command*`, `divine_trade_repository*`,
+  `divine_trade_flatfile.c`, existing critical dispatch/outbox and flat-file player/
+  ship/market helpers, `ship_cargo_transaction.h`, and focused existing harnesses.
+- **Required before publication:** qualify the compound flat-file command at the
+  journal and all six after-image boundaries; execute the real SQL command/retry/
+  rollback path. Register/verify additive `0050_divine_trade_state.sql` (currently
+  present but not in manifests), refresh both measured runtime schema fingerprints,
+  update affected native test link lists, and build both backends. Existing market
+  code now needs that schema, so do not publish it with migration head 0049.
+- **Still not implemented:** game-thread trade admission/publication and mutation
+  hooks, real port selection, wallet/ship reservations and normal save ordering,
+  precise price/achievement integration, actual cargo journeys; then legacy
+  reconciliation/activation, commands/help and final full-scope journeys. No live
+  trade rewards are enabled. All requirements remain in scope.
+- Clock: original start 08:41:02 UTC, original deadline 14:41:02 UTC. At 17:34,
+  elapsed is 8h 53m and overrun is 2h 53m. Full-scope continuation was explicitly
+  authorized; no new budget or reliable upper ETA has been invented.
+
+### Earlier verified continuation (16:58 UTC / 19:58 Asia/Jerusalem)
 
 - **Published:** [PR #276](https://github.com/LuminariMUD/Duris/pull/276),
   receipt retention, implementation `b2135ca72`, stacked on #275; and
@@ -877,14 +983,13 @@ SQL and flat files restore state at boot and identify committed operations durin
 recovery. A financial success is published only after its prepared atomic record
 is durable, so crash recovery cannot duplicate money or restore consumed cargo.
 
-The next slice records exact individual purchase lots and one account/boon
-allowance, then deterministically prepares partial consumption. Its files are the
-concrete Divine trade policy, its existing build list, focused native harness and
-this plan. Proof covers 9 old + 1 eligible, invoice conservation, both goods sharing
-the three-first-hold cap, another ship/account, loss, expiry and checked reload.
-This policy alone is not a gameplay or atomic-settlement completion claim. The
-next consumer must commit its after-images with player, ship and market state on
-the existing transaction writer; ordinary trade retains its current path.
+Trade preparation records exact individual purchase lots and one account/boon
+allowance, then deterministically prepares partial consumption. Native proof covers
+9 old + 1 eligible, invoice conservation, both goods sharing the three-first-hold
+cap, another ship/account, loss, expiry and checked reload. PR #282 now commits
+the prepared financial after-images on both backends. The next consumer is the
+actual game-thread ship shop: admission, prices, reservations, mutation provenance
+and completion/recovery publication still require implementation and live proof.
 
 - Retain ordinary commodity slots; attach exact lots to stable persistent ship
   identity, not its process-local runtime reference. Qualifying purchases store
