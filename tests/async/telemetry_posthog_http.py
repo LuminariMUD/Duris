@@ -4,6 +4,7 @@ No real token, external receiver, host environment or live journal is used.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -51,10 +52,12 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
              "retry-after", "retry-date", "long-retry", "overflow-retry", "exhaustion",
              "400", "401", "403", "413", "redirect", "oversized", "headers",
              "tls", "quota", "quota-retry", "storage", "clock", "rollback",
-             "expire", "deadline", "dns", "mono")
+             "expire", "deadline", "dns", "mono", "health-pacing",
+             "health-pacing-retry", "health-pacing-retry-spare", "health-pacing-coalesce")
     for case in cases:
         received: list[bytes] = []
         reserved: list[tuple[int, int]] = []
+        quota_days: list[int] = []
         journal = root / case
         journal.mkdir(mode=0o700)
 
@@ -74,6 +77,7 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
                 frame = (journal / "outages.ledger").read_bytes()
                 words = struct.unpack_from(">10Q", frame, 32)
                 reserved.append((words[-2], words[-1]))
+                quota_days.append(words[7])
                 attempt = len(received)
                 status, headers, body = 200, {}, b"{}"
                 if case == "lost-response" and attempt == 1:
@@ -81,7 +85,9 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
                     self.connection.close()
                     return
                 if ((case in {"retry", "pin", "expire", "quota-retry"} and attempt == 1)
-                        or (case == "exhaustion" and attempt <= 6)):
+                        or (case == "exhaustion" and attempt <= 6)
+                        or (case in {"health-pacing-retry", "health-pacing-retry-spare"}
+                            and attempt == 1)):
                     status = 503
                 if case in {"retry-after", "retry-date", "long-retry", "overflow-retry"} and attempt == 1:
                     status = 429
@@ -131,6 +137,42 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
             thread.join(timeout=1)
         assert result.returncode == 0 and not result.stderr, (case, result)
         health = json.loads(result.stdout)
+        if case.startswith("health-pacing"):
+            assert health == {"pacing_verified": True}, (case, health)
+            batches = [json.loads(raw) for raw in received]
+            assert all(batch["api_key"] == "phc_fixture" for batch in batches)
+            rows = [row for batch in batches for row in batch["batch"]]
+            health_rows = [row for row in rows if row["event"] == "duris_telemetry_health"]
+            assert all(normal <= 19800 and health <= 100 for normal, health in reserved)
+            # Independently check pre-send reservations and UTC pacing at the
+            # receiver. Retry receipts count too; rollover starts a new day.
+            submitted_by_day: dict[int, int] = {}
+            for batch, day, quota in zip(batches, quota_days, reserved):
+                submitted_by_day[day] = submitted_by_day.get(day, 0) + len(batch["batch"])
+                assert sum(quota) >= submitted_by_day[day], (case, quota)
+                if batch["batch"][0]["event"] == "duris_telemetry_health":
+                    stamp = datetime.fromisoformat(batch["batch"][0]["timestamp"].replace("Z", "+00:00"))
+                    elapsed = ((stamp.hour * 60 + stamp.minute) * 60 + stamp.second) * 1_000_000 + stamp.microsecond
+                    assert quota[1] <= min(100, 1 + elapsed * 100 // 86_400_000_000), (case, quota)
+            if case == "health-pacing":
+                assert len(health_rows) == 102 and len(rows) == 104
+                assert len(submitted_by_day) == 2 and reserved[-1] == (0, 100)
+                assert health_rows[1]["properties"]["coalesced_reason_mask"] != 0
+                assert health_rows[1]["properties"]["active_reason_mask"] == 0
+            elif case == "health-pacing-retry-spare":
+                assert len(received) == 2 and received[0] == received[1]
+                assert reserved == [(0, 1), (0, 2)]
+            elif case == "health-pacing-retry":
+                assert len(received) == 3 and len(health_rows) == 2 and len(rows) == 4
+                assert reserved == [(0, 1), (2, 1), (2, 2)]
+                assert health_rows[0]["uuid"] != health_rows[1]["uuid"]
+                assert health_rows[1]["properties"]["coalesced_reason_mask"] != 0
+            else:
+                assert len(received) == 2 and reserved == [(2, 2), (2, 3)]
+                assert len(health_rows) == 1
+                assert health_rows[0]["properties"]["health_trigger"] == "initial"
+                assert health_rows[0]["properties"]["coalesced_reason_mask"] == 0
+            continue
         assert health["cleanup_usec"] < 100_000, (case, health)
         assert health["longest_pulse_usec"] < 250_000, (case, health)
         assert health["attempted_batches"] == (1 if case in {"tls", "dns", "deadline", "mono"} else len(received)), (case, health, len(received))
