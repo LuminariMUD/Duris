@@ -103,24 +103,137 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
-### Current continuation checkpoint (2026-10-22 14:45:07 UTC)
+### Latest verified continuation (16:10 UTC / 19:10 Asia/Jerusalem)
+
+- **Published:** [PR #276](https://github.com/LuminariMUD/Duris/pull/276),
+  receipt retention, implementation `b2135ca72`, stacked on #275; and
+  [PR #277](https://github.com/LuminariMUD/Duris/pull/277), zone epics,
+  implementation `3afb15200`, stacked on #276. Both are open, ready for review.
+  No merge or release tag; no ordinary-installation activation or production work.
+- Latest source worktree `/home/aiwithapex/projects/duris-issue245-plan`, branch
+  `branch/issue-245-divine-zone-epics`. It is clean and published; source and both
+  builds/tests match implementation `3afb15200`. Later handoff-only commits do
+  not invalidate that evidence. The named plan branch contains the foundation
+  plus this current document, not the whole implementation stack.
+- Both final loaded-world journeys pass after the fractional rounding correction:
+  real zone 429, normally created Orc, 100 -> 150, save, restart and reconnect.
+  Native fixtures validate claim/replay/corruption, ordered zone/PvP delivery,
+  old payloads, runtime orchestration, additive math and seed parity. Preserve
+  the evidence below; do not repeat green checks without a relevant change.
+- **Next concrete delivery:** branch from #277 for trade. Reuse the existing ship
+  capture/writer and cargo-market authority; implement purchase batches and the
+  fixed three-first-ship-hold account cap together with atomic sale consumption,
+  player payment, market update and recovery. A bonus-only multiplier is not an
+  acceptable implementation. Then finish safe legacy reconciliation/activation,
+  player/staff boon commands/help and combined final journeys. Full #245 remains
+  incomplete; all required outcomes remain in scope.
+- **Clock:** original combined start 08:41:02 UTC, original six-hour outer bound
+  14:41:02 UTC. At 16:10 UTC, elapsed is 7h 29m and overrun is 1h 29m. The owner
+  explicitly approved full-scope work past that deadline. There is no new
+  six-hour budget or reliable upper completion ETA.
+
+
+### Earlier continuation checkpoint (2026-10-22 14:45:07 UTC)
 
 - Owner approval: **Continue full scope ASAP past the old deadline.** The original
   six-hour outer bound was 14:41:02 UTC / 17:41:02 Asia/Jerusalem and is missed.
   No replacement deadline has been invented. Earlier pause text below is history.
 - Outcome remains all 23 acceptance items. Non-goals remain optional frameworks,
   repeated green validation, release tags for unmerged work and production changes.
-- Actual implementation worktree: `/home/aiwithapex/projects/duris-issue245-plan`,
-  `branch/issue-245-divine-receipts`, based on #275. Preserve and finish its
-  existing five source/test changes, then publish the focused PR. Reuse recorded
-  passing repository harnesses and both builds unless relevant changes invalidate
-  them. Final review, formatting and affected-consumer checks remain for this chunk.
-- Next concrete result: publish receipt retention that removes the 512-command
-  lifetime ceiling while preserving unpaid prepared awards and exact retry. Then
-  implement the actual flat-file stone payout and trade settlement boundaries;
-  neither is complete. Commands/help, epic selection, legacy reconciliation/
-  activation and both loaded-world journeys also remain open.
+- Receipt retention is committed as `b2135ca72` and published for review in
+  [PR #276](https://github.com/LuminariMUD/Duris/pull/276), stacked on #275.
+  Both flat-file repository harnesses, sanitized Divine delivery, formatting,
+  LLVM 22 clang-tidy and whitespace checks pass. Both previous incremental
+  backend builds remain valid for the unchanged reviewed source.
+- Current worktree `/home/aiwithapex/projects/duris-issue245-plan` is now on
+  `branch/issue-245-divine-zone-epics`, based on #276. Next outcome: a real stone
+  prepares each recipient's final zone award and both backends recover it once
+  using the existing saved balance/watermark. Reuse the existing claim, writer,
+  receipt and delivery machinery; do not add a second reward framework.
+- Files: zone command/repository/transaction, existing recipient-delivery and
+  flat-file domain code, epic preparation/selection and focused existing tests.
+  Proof: old payload compatibility, full-group claim/retry, mixed PvP/zone
+  ordering, save/restart and actual stone selection/payment on both backends.
+- **Continuation checkpoint 15:12 UTC / 18:12 Asia/Jerusalem:** original outer
+  bound missed by 31 minutes; full scope remains authorized past it. No fresh
+  completion promise or replacement budget is established. Receipt PR #276 is
+  published. The zone-epic slice below is uncommitted and still under focused
+  qualification; all-issue acceptance remains OPEN.
+- Zone implementation now prepares exact recipient amounts at actual stone
+  touch, persists shared PvP/zone delivery ordering and recovers both through
+  the existing bounded login query. SQL child inboxes retain the parent receipt;
+  no new migration or query budget is needed. Flat-file claim, full receipt,
+  issued revisions and alignment/touch state share one authority transaction.
+- A common selector validates live payable stones and directed side paths, uses
+  actual encounter crowding and matching account brackets for group suitability,
+  and rejects towns/unsafe targets before category weighting. Native defaults
+  derive from the existing reviewed 110-zone payout seed. Its historical group
+  value 100 is a payout divisor, not recommended party guidance. No payout seed
+  values were changed; an already-stale epic.h source fingerprint was refreshed.
+- Passed this continuation: both backend server builds (later final source edits
+  require incremental rebuild); domain, full player save/reload (including claim
+  journal recovery, retouch, mixed PvP/zone and checkpoint), sanitized reward math/
+  delivery and selector harnesses; ten seed checks; disposable MariaDB full-group
+  claim/retry/rollback and actual login recovery/corrupt-zone-receipt rejection.
+  Old 88/512-byte compatibility and orchestration checks are being finished.
+- **Continuation checkpoint 15:43 UTC / 18:43 Asia/Jerusalem:** original combined
+  start 08:41:02 UTC; elapsed 7h 02m, original six-hour bound overrun by 1h 02m.
+  The owner-approved continuation remains full scope, with no reliable upper ETA.
+  #276 remains the published result. The zone slice is still uncommitted.
+- Full-world execution confirms flat-file stones now reach prepared payment and
+  save real base payouts (80/275/90/175/600). It also exposed the incumbent selector's
+  rejection of Tharnadia's normal inn spawn. `inn()` was traced: it handles RENT
+  and returns false for movement. That specific proc is now allowed; unknown
+  special-room movement stays excluded, and a focused regression passes.
+- The loaded catalogue currently proves an Evil target in zone 429 (six-account
+  encounter crowding); the conservative Good pool has no payable epic at the
+  sampled untouched world state. Empty objectives remain allowed; no safety
+  fallback was relaxed. Metadata becomes available on the normal object event.
+- Review of that real mobile-held stone found a completion bug: eligibility
+  searched only its NPC/reset-room location. It now follows the existing
+  `obj_zone_id()` container/carrier resolver, retaining target proof after corpse
+  loot or player acquisition within the same zone. Native regression covers
+  acquisition and rejects moving the stone out of its designated zone.
+- Existing staff `world persistence` now reports bounded, validated target counts
+  and eligible epic zone IDs. This supports the required staff status and lets the
+  journey choose a real proved target rather than guess. Stone metadata initializes
+  on its existing `PULSE_MOBILE+4` bounded object event; the journey waits for that
+  readiness. At this checkpoint, the +50% loaded-world journey is still running.
+- Both final backend builds, changed-line LLVM 22 tidy, all 1120 tracked C/C++
+  formatting checks, legacy orchestration/88- and 512-byte receipt compatibility,
+  quaff/legacy reward publication and dual-backend XP consumer checks pass.
+  Reuse these results unless later source changes invalidate the relevant check.
+- **Zone-epic qualification complete at 16:07 UTC / 19:07 Asia/Jerusalem.**
+  Both actual full-world journeys pass using the current binaries and original
+  zone-429 stone: a normally created Orc on the Evil side earns 150 from base
+  100, saves, restarts and reconnects with the same balance. The fixture selects
+  from actual eligible targets and seeds one paused objective offline; weighted
+  population choice/hourly admission remain the separate executable selector
+  proof. No production data or shared server was used.
+- Exact maintained journey commands:
+  `python3 tests/async/test_divine_boon_zone_journey.py --backend flatfile --server bin/server/dms_new_flatfile`;
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server bin/server/dms_new`.
+  `make world` generated the required ignored world inputs. No generated area
+  outputs are staged. Test actor creation reuses the existing journey helper,
+  with a race-menu argument and fixed-alignment prompt handling for the Orc.
+- The exact final rounding requirement also retains fractional group and
+  alignment shares through Divine preparation. A real 100*2/3 base pays 100
+  with +50%, rather than 99 after premature rounding. Ordinary legacy integer
+  payout behavior remains unchanged. Sanitized production-math tests and both
+  final backend builds pass after this correction; both journeys above also
+  ran after it. All changed-line formatting/tidy and whitespace checks pass.
+- Additional focused proof: native claim/replay/rejection/SQL rollback (including
+  15 recipients), old 88/512-byte payloads, actual orchestrator, interrupted flat
+  claim/checkpoint and mixed zone/PvP recovery, SQL login/corruption, ten seed
+  checks and affected legacy award/XP consumers. Run the SQL claim fixture with
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_epic_stone_transaction.py`;
+  its TEST_DB_* bridge uses only the explicit disposable service.
+- **Remaining full feature:** trade batch provenance/account cap/atomic settlement,
+  legacy reconciliation and activation, player/staff boon commands/help, and the
+  combined cutover/rotation/all-rewards/restart journeys. #245 remains OPEN.
+  Publication of the qualified zone slice is the immediate next action.
 
+### Superseded paused checkpoint (history)
 
 - **Clock evidence:** implementation started at 12:30:26 Asia/Jerusalem
   (09:30:26 UTC); the paused checkpoint was recorded at 17:17:38 (14:17:38 UTC):
