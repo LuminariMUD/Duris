@@ -152,6 +152,15 @@ void real_input_boundary()
 	++bodies[0].in_room;
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	descriptors[0].showstr_count = 1;
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	assert(!divine_boon_activity_begin(&bodies[0]).runtime_id);
+	descriptors[0].showstr_count = 0;
+	char *editing = nullptr;
+	descriptors[0].str = &editing;
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	assert(!divine_boon_activity_begin(&bodies[0]).runtime_id);
+	descriptors[0].str = nullptr;
 	SET_BIT(bodies[0].specials.act, PLR_AFK);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
 	REMOVE_BIT(bodies[0].specials.act, PLR_AFK);
@@ -179,6 +188,27 @@ void real_input_boundary()
 	present[0] = false; // Quit/extraction before the post-dispatch observation.
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
+}
+
+void container_input()
+{
+	setup_game();
+	obj_data source = {}, target = {}, nested = {}, item = {};
+	bodies[0].carrying = &source;
+	source.next_content = &target;
+	source.contains = &nested;
+	nested.contains = &item;
+	IS_CARRYING_N(&bodies[0]) = 2;
+	auto input = divine_boon_activity_begin(&bodies[0]);
+	divine_boon_activity_end(input); // Inspecting unchanged contents creates no evidence.
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	input = divine_boon_activity_begin(&bodies[0]);
+	nested.contains = nullptr;
+	target.contains = &item; // The resulting tree of empty source target.
+	divine_boon_activity_end(input);
+	assert(IS_CARRYING_N(&bodies[0]) == 2);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	bodies[0].carrying = nullptr;
 }
 
 void morphed_player()
@@ -220,6 +250,7 @@ int main()
 	windows_and_accounts();
 	sides_and_brackets();
 	real_input_boundary();
+	container_input();
 	morphed_player();
 	std::cout
 		<< "Divine activity: 60/15/5-minute windows, accounts, brackets, real input and exclusions passed\n";

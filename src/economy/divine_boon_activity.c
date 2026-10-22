@@ -50,8 +50,8 @@ bool live_actor(P_char body, divine_boon_actor *identity)
 	P_char player = GET_PLYR(body);
 	P_desc descriptor = body->desc ? body->desc : player->desc;
 	if (!IS_PC(player) || !player->only.pc || !descriptor || descriptor->character != body ||
-	    descriptor->connected != CON_PLAYING || descriptor->str || descriptor->showstr_count ||
-	    !descriptor->account || !descriptor->account->acct_name || GET_LEVEL(player) < 1 ||
+	    descriptor->connected != CON_PLAYING || !descriptor->account ||
+	    !descriptor->account->acct_name || GET_LEVEL(player) < 1 ||
 	    GET_LEVEL(player) > MAXLVLMORTAL || IS_SET(player->specials.act, PLR_AFK) ||
 	    IS_SET(body->specials.act, PLR_AFK) || GET_PID(player) <= 0)
 		return false;
@@ -67,10 +67,24 @@ bool live_actor(P_char body, divine_boon_actor *identity)
 	return true;
 }
 
-std::array<int64_t, 12> fingerprint(P_char body)
+uint64_t inventory_fingerprint(P_obj first)
+{
+	uint64_t hash = UINT64_C(14695981039346656037);
+	for (P_obj object = first; object; object = object->next_content)
+	{
+		hash = (hash ^ reinterpret_cast<uintptr_t>(object)) * UINT64_C(1099511628211);
+		hash = (hash ^ inventory_fingerprint(object->contains)) * UINT64_C(1099511628211);
+	}
+	return hash;
+}
+
+std::array<int64_t, 13> fingerprint(P_char body)
 {
 	P_char player = GET_PLYR(body);
 	P_char opponent = GET_OPPONENT(body);
+	uint64_t inventory = inventory_fingerprint(body->carrying);
+	for (P_obj object : body->equipment)
+		inventory = (inventory ^ inventory_fingerprint(object)) * UINT64_C(1099511628211);
 	return { body->in_room,
 		 GET_EXP(player),
 		 GET_HIT(body),
@@ -82,7 +96,8 @@ std::array<int64_t, 12> fingerprint(P_char body)
 		 opponent ? static_cast<int64_t>(opponent->runtime_id) : 0,
 		 opponent ? GET_HIT(opponent) : 0,
 		 GET_MANA(body),
-		 IS_AFFECTED2(body, AFF2_CASTING) ? 1 : 0 };
+		 IS_AFFECTED2(body, AFF2_CASTING) ? 1 : 0,
+		 static_cast<int64_t>(inventory) };
 }
 
 divine_boon_activity_history observed;
@@ -196,6 +211,9 @@ try
 {
 	divine_boon_actor actor;
 	if (!body || !body->runtime_id || !live_actor(body, &actor))
+		return {};
+	P_desc descriptor = body->desc ? body->desc : GET_PLYR(body)->desc;
+	if (descriptor->str || descriptor->showstr_count)
 		return {};
 	return { body->runtime_id, actor.pid, fingerprint(body) };
 }

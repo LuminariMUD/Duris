@@ -50,7 +50,7 @@ struct divine_boon_input_activity
 {
 	uint64_t runtime_id = 0;
 	uint32_t pid = 0;
-	std::array<int64_t, 12> before = {};
+	std::array<int64_t, 13> before = {};
 };
 
 // Wrap only the real playing-input dispatcher. End resolves the runtime ID
