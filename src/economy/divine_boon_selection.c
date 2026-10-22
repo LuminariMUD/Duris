@@ -16,6 +16,7 @@ extern zone_data *zone_table;
 extern int top_of_world;
 extern int top_of_zone_table;
 extern const int guild_locations[][CLASS_COUNT + 1];
+int inn(int, P_char, int, char *);
 
 namespace
 {
@@ -45,7 +46,7 @@ bool ordinary_room(int room, unsigned side)
 	if (!world || !zone_table || room < 0 || room > top_of_world || side > 1)
 		return false;
 	const auto &entry = world[room];
-	if (entry.zone > top_of_zone_table || entry.funct ||
+	if (entry.zone > top_of_zone_table || (entry.funct && entry.funct != inn) ||
 	    IS_SET(entry.room_flags, forbidden_rooms) ||
 	    IS_SET(zone_table[entry.zone].flags, ZONE_CLOSED | ZONE_PRIVATE))
 		return false;
@@ -244,14 +245,16 @@ bool divine_boon_zone_eligible(int zone_number, unsigned side)
 	return false;
 }
 
-bool divine_boon_select(const divine_boon_state &state, int64_t now,
+bool divine_boon_select(const divine_boon_state &published, int64_t now,
 			const std::array<divine_boon_population, 2> &population,
 			divine_boon_slot *choice)
 try
 {
-	if (!choice || state.mode != divine_boon_mode::divine || state.paused ||
-	    !divine_boon_state_valid(state) || top_of_world < 0)
+	if (!choice || published.mode != divine_boon_mode::divine || published.paused ||
+	    !divine_boon_state_valid(published) || top_of_world < 0)
 		return false;
+	auto state = published;
+	divine_boon_reconcile(&state, now); // Newly expired objectives join repeat history.
 	refresh_paths();
 	divine_boon_slot selected;
 	selected.category = divine_boon_category::experience;
@@ -264,7 +267,11 @@ try
 			if (divine_boon_active(slot, now))
 				for (const auto &zone : catalogue)
 					if (zone.number == slot.zones[side])
-						++served[bracket(suitable_level(zone, side))];
+					{
+						const double level = suitable_level(zone, side);
+						if (level > 0)
+							++served[bracket(level)];
+					}
 		for (unsigned relaxed = 0; relaxed < 2 && selected.zones[side] < 0; ++relaxed)
 		{
 			double total = 0;

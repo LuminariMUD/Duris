@@ -14,6 +14,7 @@ room_direction_data exits[11] = {};
 reset_com low_resets[6] = {};
 reset_com high_resets[6] = {};
 int levels[] = { 16, 18, 38, 42 };
+int random_value = 0;
 }
 P_room world = rooms;
 zone_data *zone_table = zones;
@@ -42,7 +43,15 @@ int world_quest_policy_combat_level(int mob)
 }
 int number(int low, int)
 {
-	return low; // Deterministically accept every positive reservoir weight.
+	return random_value ? random_value : low;
+}
+int inn(int, P_char, int, char *)
+{
+	return false;
+}
+int unsafe_room(int, P_char, int, char *)
+{
+	return false;
 }
 
 int main()
@@ -88,6 +97,13 @@ int main()
 	assert(divine_boon_zone_eligible(20, 0));
 	assert(!divine_boon_zone_eligible(999, 0));
 	assert(!divine_boon_zone_eligible(18, 2));
+	rooms[0].funct = inn; // Tharn's ordinary spawn uses the movement-safe inn.
+	assert(divine_boon_selection_bootstrap());
+	assert(divine_boon_zone_eligible(18, 0));
+	rooms[0].funct = unsafe_room;
+	assert(!divine_boon_zone_eligible(18, 0));
+	rooms[0].funct = nullptr;
+	assert(divine_boon_selection_bootstrap());
 	for (int flag : { ZONE_TOWN, ZONE_SAFE, ZONE_MAP, ZONE_CLOSED, ZONE_PRIVATE })
 	{
 		zones[2].flags = flag;
@@ -158,6 +174,39 @@ int main()
 	assert(!divine_boon_select(state, 10800, population, &choice));
 	state.paused = false;
 	population[0].active_accounts = population[0].brackets[0] = 1;
+	{
+		divine_boon_state pending;
+		assert(divine_boon_set_mode(&pending, divine_boon_mode::draining, 0));
+		assert(divine_boon_set_mode(&pending, divine_boon_mode::divine, 0));
+		divine_boon_slot active;
+		active.category = divine_boon_category::experience;
+		active.zones = { 20, -1 };
+		assert(divine_boon_rotate(&pending, 3600, &active));
+		reset_com alternative[6] = {};
+		for (int i = 0; i < 5; ++i)
+			alternative[i] = { 'M', false, 2 + i % 2, 5, 8 + i % 3, 100 };
+		alternative[5].command = 'S';
+		zones[4].number = 40;
+		zones[4].cmd = alternative;
+		zones[3].flags = ZONE_CLOSED;
+		assert(divine_boon_selection_bootstrap());
+		auto balanced = population;
+		balanced[0].brackets[2] = 1;
+		random_value = 600000;
+		assert(divine_boon_select(pending, 7200, balanced, &choice));
+		assert(choice.zones[0] == 18); // Invalid high objective must not serve bracket 0.
+		random_value = 0;
+		zones[4].number = 999;
+		zones[4].cmd = high_resets;
+		zones[3].flags = 0;
+		levels[2] = levels[3] = 18;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_select(pending, 9 * 3600, population, &choice));
+		assert(choice.zones[0] == 18); // Expired zone 20 awaits core reconciliation.
+		levels[2] = 38;
+		levels[3] = 42;
+		assert(divine_boon_selection_bootstrap());
+	}
 	low_resets[0].arg1 = 99; // Unknown profiles fail closed on catalogue rebuild.
 	assert(divine_boon_selection_bootstrap());
 	assert(!divine_boon_select(state, 10800, population, &choice));
