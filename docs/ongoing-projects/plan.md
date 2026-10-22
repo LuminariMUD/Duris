@@ -148,6 +148,9 @@ restart and merge remain separate actions.
   bartender dynamic-policy contracts pass. Actual loaded-world positive target
   journeys, group suitability, epic/trade candidates and category selection
   remain required; synthetic graph proof does not close those acceptance items.
+- Review-ready EXP selector: [PR #271](https://github.com/LuminariMUD/Duris/pull/271),
+  implementation `3a58b7ede`, stacked on #270. Both backend builds, formatting,
+  clang-tidy and whitespace checks pass.
 - **Next:** wire eligible NPC EXP math and the hourly selector into gameplay;
   complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
