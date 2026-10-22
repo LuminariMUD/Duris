@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <openssl/sha.h>
 #include <string>
 
@@ -102,6 +103,31 @@ static void append_retained_result(const fs::path &path, uint16_t result_size)
 	payload.push_back(static_cast<uint8_t>(result_size));
 	payload.push_back(static_cast<uint8_t>(result_size >> 8));
 	payload.insert(payload.end(), result_size, 0xa5);
+	write_player_domain_fixture(path, file, payload);
+}
+
+// Fill an otherwise empty authority with checkpointed receipts to reproduce a
+// permanent full-store failure without thousands of disk transactions.
+static void fill_receipt_history(const fs::path &path)
+{
+	std::vector<uint8_t> file = file_bytes(path);
+	require(file.size() >= 60, "receipt capacity fixture was truncated");
+	std::vector<uint8_t> payload(file.begin() + 56, file.end());
+	size_t offset = payload.size() - 4;
+	require(read_u32(payload, &offset) == 0,
+		"receipt capacity fixture must start without history");
+	write_u32(&payload, payload.size() - 4, 512);
+	for (uint16_t index = 0; index < 512; ++index)
+	{
+		critical_operation_id id = {};
+		id.bytes[0] = 0x7e;
+		id.bytes[1] = static_cast<uint8_t>(index);
+		id.bytes[2] = static_cast<uint8_t>(index >> 8);
+		payload.insert(payload.end(), id.bytes.begin(), id.bytes.end());
+		payload.insert(payload.end(), SHA256_DIGEST_LENGTH, 0x5a);
+		append<uint32_t>(&payload, 0); // Result code.
+		append<uint16_t>(&payload, 0); // Empty historical result.
+	}
 	write_player_domain_fixture(path, file, payload);
 }
 
@@ -459,6 +485,84 @@ int main(int argc, char **argv)
 						    &error) == flatfile_player_domain_result::ok &&
 				loaded.domains.epics == before,
 			"preparation changed the saved balance before recipient publication");
+	}
+
+	// A prepared receipt must be rejected before persistence if a recipient's
+	// saved balance cannot accept its credit.
+	{
+		flatfile_player_domain_record near_maximum = baseline(80);
+		near_maximum.domains.bank = {};
+		near_maximum.domains.epics = std::numeric_limits<int64_t>::max() - 100;
+		require(flatfile_player_domain_establish_initial_player(
+				root.string(), near_maximum, &error) ==
+				flatfile_player_domain_result::ok,
+			"near-maximum recipient baseline failed");
+		auto counterpart = baseline(81);
+		counterpart.domains.bank = {};
+		counterpart.racewar = 2;
+		require(flatfile_player_domain_establish_initial_player(root.string(), counterpart,
+								 &error) ==
+				flatfile_player_domain_result::ok,
+			"overflow counterpart baseline failed");
+		auto prepared = combat(85);
+		combat_outcome_payload payload;
+		require(combat_outcome_command_decode_payload(prepared, &payload),
+			"overflow fixture decode failed");
+		payload.victim_pid = 81;
+		payload.prepared_at = 150;
+		payload.participants[0].pid = 80;
+		payload.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM |
+						COMBAT_PARTICIPANT_DIVINE_EPIC;
+		payload.participants[0].epic_delta = 150;
+		payload.participants[0].epic_boon_id = 7;
+		payload.participants[0].epic_base = 100;
+		payload.participants[0].wallet_delta_copper = 0;
+		payload.participants[1].pid = 81;
+		payload.participants[1].racewar = 2;
+		payload.participants[1].epic_delta = 0;
+		payload.participants[1].wallet_delta_copper = 0;
+		require(combat_outcome_command_build(&prepared, prepared.operation_id, payload),
+			"overflow prepared fixture build failed");
+		const auto result = flatfile_player_domain_apply(root.string(), prepared);
+		require(result.outcome == critical_apply_outcome::terminal_failure &&
+				result.error_code == ERANGE,
+			"unpayable Divine receipt was recorded");
+		std::vector<divine_epic_delivery> receipts;
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 80, 0, &receipts,
+								    &error) ==
+					flatfile_player_domain_result::ok &&
+				receipts.empty(),
+			"overflowing recipient acquired a durable receipt");
+	}
+
+	// A permanently full receipt history must not retain a writer fence forever.
+	{
+		auto saturated = baseline(82);
+		saturated.domains.bank = {};
+		require(flatfile_player_domain_establish_initial_player(root.string(), saturated,
+								 &error) ==
+				flatfile_player_domain_result::ok,
+			"full-store recipient baseline failed");
+		auto counterpart = baseline(83);
+		counterpart.domains.bank = {};
+		require(flatfile_player_domain_establish_initial_player(root.string(), counterpart,
+								 &error) ==
+				flatfile_player_domain_result::ok,
+			"full-store counterpart baseline failed");
+		fill_receipt_history(domains / "player-82.domain");
+		auto outcome = combat(86);
+		combat_outcome_payload payload;
+		require(combat_outcome_command_decode_payload(outcome, &payload),
+			"full-store fixture decode failed");
+		payload.victim_pid = 83;
+		payload.participants[0].pid = 82;
+		payload.participants[1].pid = 83;
+		require(combat_outcome_command_build(&outcome, outcome.operation_id, payload),
+			"full-store fixture build failed");
+		const auto result = flatfile_player_domain_apply(root.string(), outcome);
+		require(result.outcome == critical_apply_outcome::terminal_failure &&
+				result.error_code == ENOSPC,
+			"full authority history incorrectly offered an infinite retry");
 	}
 
 	const fs::path player = domains / "player-42.domain";
