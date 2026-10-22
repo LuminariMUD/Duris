@@ -33,6 +33,7 @@
 #include <string.h>
 #include "account/account_reward.h"
 #include "world/achievements.h"
+#include "world/experience_share.h"
 #include "combat/arena.h"
 #include "combat/arenadef.h"
 #include "combat/attack_continuation.h"
@@ -3125,16 +3126,31 @@ void kill_gain(P_char ch, P_char victim)
 		{
 			XP = (int)(((float)GET_LEVEL(gl->ch) / (float)highest_level) *
 				   ((float)gain / exp_divider));
+			double precise_XP =
+				(static_cast<double>(GET_LEVEL(gl->ch)) / highest_level) *
+				(static_cast<double>(gain) / exp_divider);
 
 			/* power leveler stopgap measure */
 			if ((GET_LEVEL(gl->ch) + 40) < highest_level)
+			{
 				XP /= 5000;
+				precise_XP /= 5000;
+			}
 			else if ((GET_LEVEL(gl->ch) + 30) < highest_level)
+			{
 				XP /= 1000;
+				precise_XP /= 1000;
+			}
 			else if ((GET_LEVEL(gl->ch) + 20) < highest_level)
+			{
 				XP /= 150;
+				precise_XP /= 150;
+			}
 			else if ((GET_LEVEL(gl->ch) + 15) < highest_level)
+			{
 				XP /= 40;
+				precise_XP /= 40;
+			}
 
 			if (XP && IS_PC(gl->ch))
 			{
@@ -3144,7 +3160,7 @@ void kill_gain(P_char ch, P_char victim)
 			}
 
 			send_to_char("You receive your share of experience.\r\n", gl->ch);
-			gain_exp(gl->ch, victim, XP, EXP_KILL);
+			gain_exp_combat_share(gl->ch, victim, precise_XP, XP, EXP_KILL);
 			if (IS_PC(gl->ch))
 				add_bloodlust(gl->ch, victim);
 			// this is for all kinds of kill-type quests

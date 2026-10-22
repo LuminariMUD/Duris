@@ -7,7 +7,7 @@
 > evidence, and defer optional work. Required correctness and recovery remain
 > part of completion.
 
-Status: implementation in progress; rotation, storage, writer/boot, legacy admissions and account activity implemented.
+Status: implementation in progress; NPC EXP and hourly selection wired; legacy activation and remaining reward/trade/command paths still open.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -24,7 +24,8 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-selection`, stacked on `branch/issue-245-divine-delivery`
+  `branch/issue-245-divine-experience`, stacked on `branch/issue-245-divine-selection`
+  -> `branch/issue-245-divine-delivery`
   -> `branch/issue-245-divine-activity`
   -> `branch/issue-245-divine-cutover`
   -> `branch/issue-245-divine-runtime` -> `branch/issue-245-divine-persistence`
@@ -151,7 +152,43 @@ restart and merge remain separate actions.
 - Review-ready EXP selector: [PR #271](https://github.com/LuminariMUD/Duris/pull/271),
   implementation `3a58b7ede`, stacked on #270. Both backend builds, formatting,
   clang-tidy and whitespace checks pass.
-- **Next:** wire eligible NPC EXP math and the hourly selector into gameplay;
+- Eighth chunk: `gain_exp()` now dispatches qualifying NPC combat to precise
+  arithmetic with a separate original eligible base. Existing increases do not
+  enlarge the Divine contribution; reductions and final/accumulation caps stay
+  effective. Damage, tanking, healing, melee, kill and normalized kill-bonus
+  awards use the correct NPC encounter and side/zone/window. Healing follows
+  the healed character's hostile NPC; recursive tank awards derive independently
+  before attacker rest, level-cap reductions or Divine credit. A shared numeric
+  body retains ordinary float arithmetic for all non-Divine awards. Group kills
+  and blood-streak producers carry their fractional legitimate share alongside
+  their original integer calculation; only eligible Divine awards use the
+  fraction. Actual caller tests cover a two-player group receiving 161 rather
+  than 160 from an 80.8 share, and a 1.99 streak share paying 3 rather than 2.
+  Sub-unit bases cannot fabricate an extra minimum bonus. Existing Nexus and
+  epic-bonus paths expose their precise values; ordinary integer/float callers
+  keep their behavior. Computed epic modifiers retain their original double
+  value rather than being normalized as configuration percentages.
+  Configured float modifiers use their shortest decimal value for the precise
+  path, avoiding final-floor errors such as 179 instead of 180 at 90%.
+- The game loop now drives the hourly selector through the existing writer.
+  Queue refusal retains the exact unsubmitted choice for the hour; if the hour
+  passes it is skipped. Pause, clock jumps and full/empty pools consume the
+  opportunity correctly. Just-expired zones enter repeat history before choosing;
+  changed targets are cancelled before retry admission without rerolling.
+  Default legacy mode and the unfinished activation gate remain closed.
+- Eighth-chunk proof: the existing quest/kill XP harness executes real production
+  dispatcher, qualification and modifier bodies on both backend builds with
+  ASan/UBSan and float-cast checks. It covers all six NPC sources, additive rest/
+  global/race/Nexus/epic/difficulty stacking, reductions, precision and caps,
+  healer opponent, independent fractional tank shares, unrelated XP families,
+  expiry/side/zone/town-zero exclusions and non-finite/overflow rejection.
+  The native selector harness covers hourly queue refusal/exact retry, pending
+  publication, forward skips, expiry history, pause and target invalidation.
+  Real Nexus lifecycle/consumer and flat-file authority harnesses preserve
+  integer behavior and prove fractional payouts; difficulty and telemetry
+  progression checks pass. Actual full-world reward/save journeys remain open.
+- **Next:** implement prepared zone/PvP recipient sequences, publication and
+  login recovery at the saved delivery watermark boundary;
   complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.

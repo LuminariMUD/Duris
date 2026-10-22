@@ -1,4 +1,5 @@
 #include "economy/divine_boon_selection.h"
+#include "economy/divine_boon_runtime.h"
 
 #include "combat/justice.h"
 #include "core/prototypes.h"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <new>
+#include <optional>
 #include <set>
 
 extern P_room world;
@@ -39,6 +41,7 @@ struct candidate
 };
 std::vector<candidate> catalogue;
 std::array<std::vector<int>, 2> paths;
+std::optional<divine_boon_state> prepared_hour;
 
 bool ordinary_room(int room, unsigned side)
 {
@@ -204,6 +207,7 @@ bool divine_boon_selection_bootstrap()
 try
 {
 	catalogue.clear();
+	prepared_hour.reset();
 	if (!world || !zone_table || top_of_world < 0 || top_of_zone_table < 0)
 		return false;
 	for (int number : reviewed_zones)
@@ -310,4 +314,64 @@ try
 catch (const std::bad_alloc &)
 {
 	return false;
+}
+
+void divine_boon_selection_pulse(int64_t now)
+try
+{
+	const auto *state = divine_boon_runtime_state();
+	if (!state || divine_boon_runtime_pending() || state->mode != divine_boon_mode::divine ||
+	    now < 0)
+		return;
+	const int64_t hour = now - now % DIVINE_BOON_HOUR;
+	if (prepared_hour && prepared_hour->revision != state->revision + 1)
+		prepared_hour.reset(); // A staff mutation superseded this unsubmitted choice.
+	if (hour <= state->last_opportunity)
+		return;
+	if (!prepared_hour || hour > prepared_hour->last_opportunity)
+	{
+		auto next = *state;
+		divine_boon_slot choice;
+		bool selected = false;
+		// A refused queue retains the exact choice for this hour. Once the hour
+		// has passed, skip it and consume the present opportunity without RNG.
+		if (!prepared_hour && hour - state->last_opportunity == DIVINE_BOON_HOUR &&
+		    !state->paused)
+		{
+			auto candidates = *state;
+			divine_boon_reconcile(&candidates,
+					      now); // Include just-expired repeat history.
+			if (std::any_of(candidates.slots.begin(), candidates.slots.end(),
+					[](const auto &slot) { return !slot.id; }))
+				selected = divine_boon_select(candidates, now,
+							      divine_boon_activity_population(),
+							      &choice);
+		}
+		if (!divine_boon_rotate(&next, now, selected ? &choice : nullptr))
+			return;
+		prepared_hour = std::move(next);
+	}
+	bool targets_valid = true;
+	for (const auto &slot : prepared_hour->slots)
+		if (slot.id == state->next_id)
+			for (unsigned side = 0; side < slot.zones.size(); ++side)
+				if (slot.zones[side] >= 0 &&
+				    !divine_boon_zone_eligible(slot.zones[side], side))
+				{
+					targets_valid = false;
+				}
+	if (!targets_valid)
+	{
+		auto empty = *state;
+		if (!divine_boon_rotate(&empty, now, nullptr))
+			return;
+		prepared_hour = std::move(empty); // Invalidate, never reroll.
+	}
+	if (divine_boon_runtime_queue(*prepared_hour))
+		prepared_hour.reset();
+}
+catch (const std::bad_alloc &)
+{
+	// No durable admission happened; published state remains the authority.
+	logit(LOG_STATUS, "Divine Boon selection deferred: insufficient memory.");
 }

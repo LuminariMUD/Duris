@@ -37,9 +37,13 @@ PRELUDE = r'''
 #include "combat/justice.h"
 #include "combat/frag_cap_config.h"
 #include "economy/boon.h"
+#include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_math.h"
+#include "world/db.h"
 #include "economy/nexus_stones.h"
 #include "world/achievements.h"
 #include "world/epic.h"
+#include "world/experience_share.h"
 #include "item/trophy.h"
 #include "item/item_movement_transaction.h"
 #include "sql/sql.h"
@@ -47,6 +51,10 @@ PRELUDE = r'''
 #include <cassert>
 #include <algorithm>
 #include <climits>
+#include <cmath>
+#include <limits>
+#include <ctime>
+#include <type_traits>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -54,10 +62,10 @@ PRELUDE = r'''
 #include <string>
 #include <vector>
 
-room_data rooms[1]{};
+room_data rooms[2]{};
 P_room world = rooms;
-extern const int top_of_world = 0;
-zone_data zones[1]{};
+extern const int top_of_world = 1;
+zone_data zones[2]{};
 zone_data *zone_table = zones;
 index_data mobs[2]{};
 P_index mob_index = mobs;
@@ -70,6 +78,9 @@ float racial_exp_mod_victims[LAST_RACE + 1]{};
 std::string output;
 double earned_multiplier = 1.0;
 int rested_tag = 0, dirty = 0, epics = 0, finished = 0;
+P_char rested_only = nullptr;
+bool in_test_group = false;
+double epic_percent = 0;
 bool grant_allowed = true;
 obj_data reward{};
 namespace economic_gameplay_authority {
@@ -87,22 +98,29 @@ int frag_cap_config_hardcore_level_cap(int cap) { return cap; }
 const hardcore_config *hardcore_config_get() { static hardcore_config config{}; return &config; }
 int IS_MORPH(P_char) { return false; }
 int GET_CLASS(P_char, unsigned int) { return 0; }
+int flag2idx(int) { return 1; }
 int BOUNDED(int low, int value, int high) { return MAX(low, MIN(value, high)); }
 int shop_keeper(P_char, P_char, int, char *) { return 0; }
 bool affected_by_spell(P_char ch, int tag) {
     for (auto *af = ch->affected; af; af = af->next)
         if (af->type == tag) return true;
-    return tag == rested_tag;
+    return tag == rested_tag && (!rested_only || ch == rested_only);
 }
 bool opposite_racewar(P_char, P_char) { return false; }
-bool grouped(P_char, P_char) { return false; }
+bool grouped(P_char, P_char) { return in_test_group; }
 double difficulty_multiplier(difficulty_dial dial) {
     return dial == DIFFICULTY_EXP_EARNED ? earned_multiplier : 1.0;
 }
-float gain_global_exp_modifiers(P_char, float xp) { return xp; }
-float gain_exp_modifiers(P_char, P_char, float xp) { return xp; }
 int check_nexus_bonus(P_char, int xp, int) { return xp; }
-float get_epic_bonus(P_char, int) { return 0; }
+double nexus_percent = 0;
+double check_nexus_bonus_precise(P_char, double xp, int) { return xp * (1 + nexus_percent); }
+divine_boon_state divine_state;
+bool divine_enabled = false, target_eligible = true;
+const divine_boon_state *divine_boon_runtime_state() { return divine_enabled ? &divine_state : nullptr; }
+bool divine_boon_zone_eligible(int, unsigned) { return target_eligible; }
+bool aggressive_to_basic(P_char, P_char) { return false; }
+float get_epic_bonus(P_char, int) { return epic_percent; }
+double get_epic_bonus_precise(P_char, int) { return epic_percent; }
 std::vector<int> boon_events;
 void check_boon_completion(P_char, P_char, double, int option) {
     boon_events.push_back(option);
@@ -428,6 +446,199 @@ int main() {
             }
         }
     }
+    // Run the real dispatcher, qualification and modifiers for Divine NPC XP.
+    auto reset_divine = [&] {
+        reset();
+        for (auto &mod : exp_mods) mod = 1.0f;
+        for (auto &mod : racial_exp_mods) mod = 1.0f;
+        for (auto &mod : racial_exp_mod_victims) mod = 1.0f;
+        player.player.racewar = RACEWAR_GOOD;
+        player.affected = nullptr;
+        player.group = nullptr;
+        player.in_room = mob.in_room = 0;
+        player.specials.fighting = mob.specials.fighting = nullptr;
+        mob.player.level = 20;
+        other.player.level = 20;
+        mob.points.max_hit = 70;
+        mob.points.curr_exp = 100;
+        zones[0].number = 18;
+        zones[0].flags = zones[0].hometown = 0;
+        rooms[0].zone = 0;
+        rooms[1].zone = 1;
+        divine_enabled = target_eligible = true;
+        rested_only = nullptr;
+        in_test_group = false;
+        nexus_percent = epic_percent = 0;
+        divine_state = {};
+        divine_state.mode = divine_boon_mode::divine;
+        auto &slot = divine_state.slots[0];
+        slot.id = 1;
+        slot.category = divine_boon_category::experience;
+        slot.starts_at = time(nullptr) - 10;
+        slot.expires_at = time(nullptr) + 7200;
+        slot.zones[0] = 18;
+    };
+    for (int kind : {EXP_DAMAGE, EXP_KILL, EXP_KILL_BONUS}) {
+        reset_divine();
+        assert(gain_exp(&player, &mob, 100, kind) == 200);
+        assert(player.points.curr_exp == 200);
+    }
+    reset_divine();
+    exp_mods[EXPMOD_GLOBAL] = 1.2f;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 220);
+    reset_divine();
+    exp_mods[EXPMOD_GLOBAL] = 0.5f;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 100);
+    reset_divine();
+    exp_mods[EXPMOD_GLOBAL] = 0.9f;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 180);
+    reset_divine();
+    racial_exp_mods[RACE_HUMAN] = 1.2f;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 220);
+    reset_divine();
+    nexus_percent = 0.2;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 220);
+    reset_divine();
+    epic_percent = 0.2f;
+    assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 220);
+    reset_divine();
+    epic_percent = 0.01999999999;
+    assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 201); // Do not round a computed bonus upward.
+    reset_divine();
+    rested_tag = TAG_RESTED;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 250);
+    reset_divine();
+    rested_tag = TAG_WELLRESTED;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 300);
+    reset_divine();
+    earned_multiplier = 2;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 300);
+    reset_divine();
+    earned_multiplier = 0.5;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 100);
+    reset_divine();
+    racial_exp_mods[RACE_HUMAN] = 0.75f;
+    nexus_percent = 0.1;
+    assert(gain_exp(&player, &mob, 101, EXP_KILL) == 159); // One final floor.
+    reset_divine();
+    assert(gain_exp(&player, &mob, 10000, EXP_KILL) == 3333); // Existing cap.
+    reset_divine();
+    player.points.curr_exp = global_exp_limit;
+    gain_exp(&player, &mob, 100, EXP_KILL);
+    assert(player.points.curr_exp == global_exp_limit);
+    reset_divine();
+    for (int kind : {EXP_QUEST, EXP_WORLD_QUEST, EXP_RESURRECT}) {
+        player.points.curr_exp = 0;
+        assert(gain_exp(&player, nullptr, 100, kind) == 100);
+    }
+    reset_divine();
+    player.points.curr_exp = 1000;
+    assert(gain_exp(&player, nullptr, 0, EXP_DEATH) == -1000);
+    assert(player.points.curr_exp == 0);
+    reset_divine();
+    player.specials.fighting = &mob;
+    assert(gain_exp(&player, &player, 40, EXP_HEALING) == 200);
+    reset_divine();
+    other.player.level = 21;
+    other.specials.fighting = &mob;
+    in_test_group = true;
+    assert(gain_exp(&player, &other, 2, EXP_HEALING) == 98); // Keep the half-level until final floor.
+    reset_divine();
+    player.specials.fighting = &other; // A player opponent cannot supply an NPC boon.
+    assert(gain_exp(&player, &player, 40, EXP_HEALING) == 100);
+    reset_divine();
+    assert(gain_exp(&player, &mob, 25, EXP_MELEE) == 200);
+
+    // Each tank receives its own precise unboosted share. The attacker's rest
+    // and Divine increase must not feed back into that recursive calculation.
+    reset_divine();
+    group_list tank_group{}, attacker_group{};
+    tank_group.ch = &other;
+    tank_group.next = &attacker_group;
+    attacker_group.ch = &player;
+    player.group = other.group = &tank_group;
+    other.player.level = 20;
+    other.player.race = RACE_HUMAN;
+    other.player.racewar = RACEWAR_GOOD;
+    other.points.curr_exp = 0;
+    other.in_room = 0;
+    other_pc.pid = 43;
+    mob.specials.fighting = &other;
+    in_test_group = true;
+    rested_tag = TAG_WELLRESTED;
+    rested_only = &player;
+    assert(gain_exp(&player, &mob, 101, EXP_DAMAGE) == 303);
+    assert(other.points.curr_exp == 67); // floor(101/3 + 101/3), not 66 or 134.
+    other.group = nullptr;
+    reset_divine();
+    player.group = other.group = &tank_group;
+    other.points.curr_exp = 0;
+    mob.specials.fighting = &other;
+    in_test_group = true;
+    player.points.curr_exp = 10000;
+    exp_mods[EXPMOD_OVER_LEVEL_CAP] = 0.5f;
+    assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 100);
+    assert(other.points.curr_exp == 66); // Do not inherit the attacker's level-cap reduction.
+    other.group = nullptr;
+    reset_divine();
+    affected_type other_blood{};
+    other_blood.type = TAG_ADDICTED_BLOOD;
+    for (bool enabled : {false, true}) {
+        reset_divine();
+        divine_enabled = enabled;
+        player.group = other.group = &tank_group;
+        player.affected = &blood;
+        other.affected = &other_blood;
+        blood.modifier = other_blood.modifier = 6; // No streak award in this case.
+        other.points.curr_exp = 0;
+        mob.points.curr_exp = 101;
+        rooms[0].people = &player;
+        kill_gain(&player, &mob);
+        assert(player.points.curr_exp == (enabled ? 161 : 80));
+        assert(other.points.curr_exp == (enabled ? 161 : 80));
+        other.group = nullptr;
+    }
+    for (bool enabled : {false, true}) {
+        reset_divine();
+        divine_enabled = enabled;
+        player.affected = &blood;
+        blood.modifier = 7;
+        mob.points.curr_exp = 199;
+        rooms[0].people = &player;
+        update_addicted_to_blood(&player, &mob);
+        assert(player.points.curr_exp == (enabled ? 3 : 1)); // Retain the 1.99 share.
+    }
+
+    for (int scenario = 0; scenario < 11; ++scenario) {
+        reset_divine();
+        if (scenario == 0) divine_enabled = false;
+        if (scenario == 1) target_eligible = false;
+        if (scenario == 2) divine_state.mode = divine_boon_mode::draining;
+        if (scenario == 3) divine_state.slots[0].expires_at = time(nullptr);
+        if (scenario == 4) divine_state.slots[0].starts_at = time(nullptr) + 60;
+        if (scenario == 5) player.player.racewar = RACEWAR_UNDEAD;
+        if (scenario == 6) divine_state.slots[0].zones[0] = 20;
+        if (scenario == 7) divine_state.slots[0].category = divine_boon_category::epic;
+        if (scenario == 8) mob.in_room = 1;
+        if (scenario == 9) zones[0].flags = ZONE_TOWN; // Hometown remains zero.
+        if (scenario == 10) player.player.racewar = RACEWAR_EVIL;
+        assert(gain_exp(&player, &mob, 100, EXP_KILL) == 100);
+    }
+    reset_divine();
+    rooms[0].room_flags = ROOM_SAFE;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
+    reset_divine();
+    earned_multiplier = std::numeric_limits<double>::infinity();
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
+    assert(player.points.curr_exp == 0);
+    reset_divine();
+    earned_multiplier = 1e100;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
+    assert(player.points.curr_exp == 0);
+    reset_divine();
+    exp_mods[EXPMOD_GLOBAL] = 1e30f; // Overflow before the old kill log's cast.
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
+    assert(player.points.curr_exp == 0);
 }
 '''
 
@@ -439,11 +650,17 @@ def main() -> None:
             "static telemetry_progression_source progression_source_for_type(",
             "static telemetry_progression_reason progression_reason_for_type(",
             "void display_gain(",
-            "float gain_exp_modifiers_race_only(",
             "int exp_level_percent_modifier(",
-            "int gain_exp(",
         )
     ]
+    functions += [extract_function("limits.c", "static bool divine_experience_active(")]
+    for signature in ("static void apply_exp_modifier(", "Amount gain_exp_modifiers_race_only(",
+                      "Amount gain_exp_modifiers(", "Amount gain_global_exp_modifiers(",
+                      "static int gain_exp_amount("):
+        parameters = "typename Amount, typename Modifier" if "apply_exp_modifier" in signature else "typename Amount"
+        functions += [f"template <{parameters}>\n" + extract_function("limits.c", signature)]
+    functions += [extract_function("limits.c", "int gain_exp_combat_share(")]
+    functions += [extract_function("limits.c", "int gain_exp(")]
     functions += [extract_function("world_quest.c", signature) for signature in (
         "int quest_exp_reward(", "void quest_full_reward(", "void quest_kill(")]
     functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
@@ -467,8 +684,9 @@ def main() -> None:
             flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
                      shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True)))
             subprocess.run(shlex.split(os.environ.get("CXX", "g++")) + [
-                "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Isrc",
-                *flags, str(program), "src/telemetry/telemetry_progression.c", str(HARNESS_STUBS), "-o", str(binary),
+                "-std=c++20", "-fsanitize=address,undefined,float-cast-overflow", "-fno-omit-frame-pointer",
+                "-fno-pie", "-no-pie", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Isrc",
+                *flags, str(program), "src/telemetry/telemetry_progression.c", "src/economy/divine_boon.c", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
             ], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True, timeout=10)
     print("quest XP and solo/group kill-bonus boon credit passed (mariadb + flatfile)")

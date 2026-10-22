@@ -12,5 +12,7 @@ bool divine_boon_select(const divine_boon_state &state, int64_t now,
 			divine_boon_slot *choice);
 // Rechecks runtime flags and the proved ordinary path for display/admission.
 bool divine_boon_zone_eligible(int zone_number, unsigned side);
+// Game-thread tick: choose once per fixed hour, then use the existing writer.
+void divine_boon_selection_pulse(int64_t now);
 
 #endif

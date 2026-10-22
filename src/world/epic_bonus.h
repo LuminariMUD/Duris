@@ -45,6 +45,7 @@ void epic_bonus_set(P_char, int);
 float get_epic_bonus_max(int);
 bool get_epic_bonus_data(P_char, EpicBonusData *);
 float get_epic_bonus(P_char, int);
+double get_epic_bonus_precise(P_char, int);
 void epic_bonus_hydrate(P_char);
 void epic_bonus_record_gain(P_char, int, int);
 #endif
