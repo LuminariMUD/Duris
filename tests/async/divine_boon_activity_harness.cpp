@@ -89,15 +89,22 @@ void sides_and_brackets()
 	current.push_back(evil_alt);
 	const auto overlap = history.population(current, 300);
 	assert(overlap[0].active_accounts == 8 && overlap[1].active_accounts == 1);
-	assert(overlap[0].pvp_accounts == 7 && overlap[1].pvp_accounts == 0);
+	assert(overlap[0].pvp_accounts == 7 && overlap[1].pvp_accounts == 1);
 	// Distinct accounts, even behind the same host, remain independent.
 	auto opposing = actor(201, "opposing", 1, 30);
 	played(history, opposing, 0);
 	current.push_back(opposing);
-	assert(history.population(current, 300)[1].pvp_accounts == 1);
+	assert(history.population(current, 300)[1].pvp_accounts == 2);
 	current[0].eligible = false;
 	assert(history.population(current, 300)[1].pvp_accounts == 2);
 	assert(history.population(current, -1)[0].active_accounts == 0);
+	divine_boon_activity_history only_alts;
+	auto one_good = actor(1, "same-account", 0, 20);
+	auto one_evil = actor(2, "SAME-ACCOUNT", 1, 30);
+	played(only_alts, one_good, 0);
+	played(only_alts, one_evil, 5);
+	const auto alone = only_alts.population({ one_good, one_evil }, 305);
+	assert(alone[0].pvp_accounts == 0 && alone[1].pvp_accounts == 1);
 }
 
 void setup_game()

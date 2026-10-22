@@ -176,6 +176,18 @@ divine_boon_activity_history::population(const std::vector<divine_boon_actor> &c
 		for (const auto &account : pvp[side])
 			if (!pvp[1 - side].contains(account))
 				++result[side].pvp_accounts;
+	// Assign a cross-side account once, keeping any genuinely distinct opposing
+	// population usable. A single account alone can never supply both sides.
+	for (const auto &account : pvp[0])
+		if (pvp[1].contains(account))
+		{
+			const auto &entry = accounts.at(account);
+			const size_t side =
+				result[0].pvp_accounts == result[1].pvp_accounts ?
+					(entry[1].last > entry[0].last ? 1 : 0) :
+					(result[0].pvp_accounts < result[1].pvp_accounts ? 0 : 1);
+			++result[side].pvp_accounts;
+		}
 	return result;
 }
 
