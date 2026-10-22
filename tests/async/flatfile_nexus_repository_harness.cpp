@@ -2,6 +2,7 @@
 #include "economy/nexus_stones.h"
 
 #include <filesystem>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -117,6 +118,9 @@ int main(int argc, char **argv)
 	character.player.racewar = RACEWAR_GOOD;
 	require(check_nexus_bonus(&character, 100, NEXUS_BONUS_EPICS) == 110,
 		"aligned flat nexus bonus was not applied");
+	require(std::abs(check_nexus_bonus_precise(&character, 100.5, NEXUS_BONUS_EPICS) - 110.55) <
+			0.0001,
+		"fractional flat nexus bonus was rounded before final payout");
 	character.player.racewar = RACEWAR_EVIL;
 	require(check_nexus_bonus(&character, 100, NEXUS_BONUS_EPICS) == 100,
 		"flat nexus bonus was applied to the opposing side");
