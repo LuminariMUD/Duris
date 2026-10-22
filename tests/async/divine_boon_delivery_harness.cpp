@@ -4,6 +4,7 @@
 #include "combat/combat_outcome_command.h"
 #include "combat/combat_outcome_transaction.h"
 #include "economy/currency_transaction.h"
+#include "guild/artifact_guild_transaction.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "world/db.h"
@@ -32,6 +33,8 @@ divine_boon_state state;
 double nexus = 0, epic = 0;
 float race_modifier = 1;
 int effects = 0, hydrations = 0;
+int artifact_effects = 0;
+bool artifact_available = true;
 bool worker_pending = false, command_pending = false;
 critical_command submitted;
 std::mutex pipeline_mutex;
@@ -103,6 +106,17 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
 					      currency_completion_fn, const void *, size_t)
 {
 	std::abort(); // These prepared-epic cases contain no wallet award.
+}
+bool artifact_guild_transaction_submit(P_char ch, const critical_operation_id &operation,
+				       int epics, int type)
+{
+	assert(ch == &player && epics > 0 && type == EPIC_PVP);
+	assert(!critical_operation_id_is_zero(operation));
+	assert(ch->only.pc->divine_boon_delivery_applying);
+	if (!artifact_available)
+		return false;
+	++artifact_effects;
+	return true;
 }
 void redis_invalidate_fraglist() {}
 void critical_outbox_resume() {}
@@ -274,14 +288,20 @@ int main()
 	affected_type task = {};
 	task.modifier = SPILL_BLOOD;
 	player.affected = &task;
+	artifact_available = false;
 	divine_boon_delivery_completed(first);
+	assert(pc.epics == 100 && pc.divine_boon_delivery_seq == 0 &&
+	       artifact_effects == 0); // No half-award when artifact capture is unavailable.
+	artifact_available = true;
+	divine_boon_delivery_player_ready(&player);
 	assert(pc.epics == 900 && pc.divine_boon_delivery_seq == 9 && effects == 2);
+	assert(artifact_effects == 2);
 	assert(pc.epic_revision == 9); // Publishing does not issue another ledger revision.
 	assert(captures.size() == 2 && captures[0].epics == 250 && captures[0].sequence == 5);
 	assert(captures[1].epics == 900 && captures[1].sequence == 9 && !captures[1].task);
 	divine_boon_delivery_completed(first);
 	divine_boon_delivery_completed(second);
-	assert(pc.epics == 900 && effects == 2 && hydrations == 0);
+	assert(pc.epics == 900 && effects == 2 && hydrations == 0 && artifact_effects == 2);
 
 	// Restart from the first saved checkpoint and recover only the unpaid receipt.
 	pc.epics = 250;
@@ -290,6 +310,7 @@ int main()
 	captures.clear();
 	assert(divine_boon_delivery_recover(&player, { first, second }));
 	assert(pc.epics == 900 && pc.divine_boon_delivery_seq == 9 && captures.empty());
+	assert(artifact_effects == 3); // Offline receipt still grants the artifact effect.
 	divine_boon_delivery_player_ready(&player);
 	assert(writeCharacter(&player, 1, NOWHERE));
 	assert(captures.size() == 1 && captures[0].epics == 900 && captures[0].sequence == 9);
@@ -319,6 +340,16 @@ int main()
 	payload.participants[0].epic_base = 100;
 	payload.participants[0].epic_spill_blood = 0;
 	critical_operation_id admitted;
+	// A rejected parent never publishes epic or artifact rewards.
+	critical_operation_id rejected;
+	assert(combat_outcome_transaction_submit(payload, nullptr, &rejected));
+	critical_completion failure = {};
+	failure.operation_id = rejected;
+	failure.outcome = critical_apply_outcome::terminal_failure;
+	failure.error_code = ENOENT;
+	const int artifacts_before_rejection = artifact_effects;
+	combat_outcome_transaction_handle_completions(&failure, 1);
+	assert(pc.epics == 100 && artifact_effects == artifacts_before_rejection);
 	assert(combat_outcome_transaction_submit(payload, nullptr, &admitted));
 	assert(pc.epics == 100 && pc.divine_boon_delivery_seq == 0);
 	outcome.participants[0].epic_revision = 1;
@@ -330,8 +361,9 @@ int main()
 	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
 	combat_outcome_transaction_handle_completions(&completion, 1);
 	assert(pc.epics == 250 && pc.divine_boon_delivery_seq == 1);
+	assert(artifact_effects == artifacts_before_rejection + 1);
 	combat_outcome_transaction_handle_completions(&completion, 1);
-	assert(pc.epics == 250);
+	assert(pc.epics == 250 && artifact_effects == artifacts_before_rejection + 1);
 	std::cout
 		<< "Prepared PvP math, parent codec, ordered publication and checkpoint recovery passed\n";
 }
