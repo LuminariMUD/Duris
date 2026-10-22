@@ -103,7 +103,7 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
-### Published trade save support (#287) and live producer WIP
+### Published trade producers (#288), next loss persistence
 
 [PR #287](https://github.com/LuminariMUD/Duris/pull/287) is open, ready and
 mergeable at `e4a9a120c`, stacked on #283. Both backend builds, focused native
@@ -113,17 +113,44 @@ The original plan branch is synchronized after preserving its externally rebased
 history on current master. Source branch is now
 `branch/issue-245-divine-shop-integration`, based on #287.
 
-Uncommitted producer code now connects qualifying purchases and single/all cargo
+[PR #288](https://github.com/LuminariMUD/Duris/pull/288) is open and ready at
+`5a27e0bfb`, stacked on #287, with both builds and focused executable evidence.
+Next branch is `branch/issue-245-divine-trade-loss`, based on #288 plus this
+handoff. The producer code connects qualifying purchases and single/all cargo
 or contraband sales to prepared settlement; boot restores the active boon book,
 and completion publishes money, ship/crew, market, book and achievement. Live
 player purse publication preserves intervening ordinary money and skips a newly
 hydrated session using a process-local flag. Payload v2 shares the existing
 fixed affect-row codec, independently of full snapshot schema evolution.
-Syntax checks pass; these producer hooks are not yet qualified or published.
+Both backend builds, the existing Divine writer/runtime check, sanitized real
+Nexus lifecycle/consumers and a new sanitized production trade-controller harness
+pass. The harness executes purchase and single/all sale preparation for both goods,
+9+1 eligibility, unchanged pre-commit memory, ordinary intervening money, retry,
+rejection/admission failure, duplicate completion and a newly hydrated session.
+Shared market preview also passes a sanitized check against the real ordinary
+price/adjustment functions for both goods, source/destination and clamped volumes.
+It caught and fixes the source cache distinction: asking price is persisted,
+whereas a same-port sale pays half. Ordinary adjustment now uses that shared
+preview; the existing paid/zero/empty sale check passes. Final builds are green.
+Formatting, LLVM 22 clang-tidy, whitespace checks and both final builds pass.
+The published stack remains unmerged. Full gameplay loss/restart journeys remain
+outstanding; do not treat the producer harness as a loaded-world journey. The affected ship's shop/control mutations, activity and
+ordinary snapshot captures now wait while settlement is pending; other ships
+continue. New market maintenance waits for the shared market participant.
+Nexus preparation has a quiet preview, and the flat-file reward branch now uses
+the same boot-restored memory catalogue as SQL, updated after durable alignment
+changes/expiry. This removes its per-award flat-file read. Existing harness stubs
+were adjusted for the new boot boundary and optional announcement argument.
 
-Immediate next work: finish affected ship/market reservations and normal-save
-coordination, persist loss/invalidation alongside ship snapshots, then prove the
-real producer path and publish it. Selector routes, activation/cutover, commands/
+Immediate next work: persist loss/invalidation alongside ship snapshots. Concrete
+loss sites are `clear_cargo` and partial/all jettison in `ship_utils.c`, customs
+confiscation in `ship_shop.c`, NPC theft in `ship_npc_ai.c`, reset/deletion and
+owner transfer paths. Use the existing exact removal/invalidation policy before
+mutation and include prepared book after-images in the corresponding existing
+SQL writer transaction or flat-file authority journal. Include dirty provenance
+in ship save signatures, preserve fixed allowance and prevent stale captures
+from restoring proof. Add focused loss/restart proof; reuse green sale/receipt
+and unrelated reward evidence. The ship/market pending guards already exist. Selector routes, activation/cutover, commands/
 help and final integrated gameplay evidence remain unfinished. Keep working on
 those concrete paths; do not restart broad analysis or rerun unrelated evidence.
 Memory owns all gameplay calculations. SQL/flat-file restore state, validate
@@ -1207,3 +1234,13 @@ No tracking service, automation, extra report file or test framework is needed.
 The plan and existing evidence are sufficient. Updating this document is not
 implementation completion. Finish when the full outcome is proven and published;
 otherwise keep the issue open and follow the fixed budget's failure rule.
+
+### Continuation checkpoint at 20:35 UTC / 23:35 Asia/Jerusalem
+
+Original start remains 08:41:02 UTC; original six-hour deadline was 14:41:02 UTC.
+Elapsed is about 11h54, original allowance exhausted and missed. The owner has
+approved full-scope continuation and again explicitly demanded less analysis and
+concrete delivery. #287 and #288 were implemented, qualified and published in
+this continuation. No active test/build processes remain. Do not restart discovery:
+continue the loss sites named above, then selection/activation/commands/help and
+one final integrated campaign for the remaining acceptance items.
