@@ -6,7 +6,7 @@
 > A forecast outside the remaining budget is a delivery failure to disclose
 > immediately, not permission to continue spending time.
 
-Status: incomplete and inactive; implementation paused by the user's explicit stop.
+Status: active implementation; incomplete and inactive in gameplay. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
 Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Authoritative plan branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -15,14 +15,20 @@ The agreed follow-up decisions take precedence over older exploratory numbers.
 The previous issue-59 plan is preserved byte-for-byte in
 [plan-issue-59.md](plan-issue-59.md); earlier plans remain in their existing files.
 
-This request repairs the plan. It does not restart the paused implementation or
-grant another time budget. Prior implementation authorized focused code/tests
-and review-ready commits, pushes and PRs; the subsequent explicit pause is
-preserved. Production migrations/imports, deployment, restart and merge remain
-separate actions. The owner already reported the deadline overdue: do not label
-this delivery on track.
+The owner explicitly resumed implementation and approved continuing the full
+scope ASAP past the original deadline. This supersedes the previous pause and
+the elapsed deadline's stop boundary; it does not reset spent time, invent a new
+six-hour allowance, or reduce any acceptance requirement. The original delivery
+was missed. Focused code/tests, commits, pushes and stacked review-ready PRs are
+authorized. Production migrations/imports, deployment, restart and merge remain
+separate actions.
 
 ## Fixed budget and failure rules
+
+**Historical contract; missed.** The owner has now explicitly approved full-scope
+continuation past this deadline. Retain the original clock and missed checkpoints;
+the old stop boundary no longer blocks authorized implementation. No replacement
+deadline or extra six-hour budget was granted.
 
 1. **One clock for the whole outcome.** The budget is 360 elapsed minutes from
    the original agreed start, including discovery, implementation, builds,
@@ -97,6 +103,25 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
+### Current continuation checkpoint (2026-10-22 14:45:07 UTC)
+
+- Owner approval: **Continue full scope ASAP past the old deadline.** The original
+  six-hour outer bound was 14:41:02 UTC / 17:41:02 Asia/Jerusalem and is missed.
+  No replacement deadline has been invented. Earlier pause text below is history.
+- Outcome remains all 23 acceptance items. Non-goals remain optional frameworks,
+  repeated green validation, release tags for unmerged work and production changes.
+- Actual implementation worktree: `/home/aiwithapex/projects/duris-issue245-plan`,
+  `branch/issue-245-divine-receipts`, based on #275. Preserve and finish its
+  existing five source/test changes, then publish the focused PR. Reuse recorded
+  passing repository harnesses and both builds unless relevant changes invalidate
+  them. Final review, formatting and affected-consumer checks remain for this chunk.
+- Next concrete result: publish receipt retention that removes the 512-command
+  lifetime ceiling while preserving unpaid prepared awards and exact retry. Then
+  implement the actual flat-file stone payout and trade settlement boundaries;
+  neither is complete. Commands/help, epic selection, legacy reconciliation/
+  activation and both loaded-world journeys also remain open.
+
+
 - **Clock evidence:** implementation started at 12:30:26 Asia/Jerusalem
   (09:30:26 UTC); the paused checkpoint was recorded at 17:17:38 (14:17:38 UTC):
   4h 47m 12s for that interval alone. Earlier planning began at 11:41:02
@@ -145,6 +170,262 @@ checkpoints cannot be restarted now; they count as missed.
   "next foundation PR" instruction cannot override a failed checkpoint.
 - **Still open:** full-feature acceptance. No merge, production operation or
   live balance claim is supplied by the partial implementation or this repair.
+
+### Published implementation history (retained evidence)
+
+- Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
+  `branch/issue-245-divine-pvp`, stacked on `branch/issue-245-divine-experience`
+  -> `branch/issue-245-divine-selection`
+  -> `branch/issue-245-divine-delivery`
+  -> `branch/issue-245-divine-activity`
+  -> `branch/issue-245-divine-cutover`
+  -> `branch/issue-245-divine-runtime` -> `branch/issue-245-divine-persistence`
+  -> `branch/issue-245-divine-boons`.
+- Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
+  implementation commit `8cbc07fc4`. Further chunks stack on this branch.
+- First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
+  category rates/lifetimes, forward legacy/draining/Divine mode transitions,
+  fixed UTC hours, skip-on-restart/clock-jump policy, pause/expiry, replacement,
+  stable identities, cross-category same-side duplicate rejection and bounded
+  expired-zone history. One versioned SHA-256 snapshot format serves both
+  future backend adapters. Changes prepare a state; callers must commit it
+  before making it visible to gameplay.
+- Proof: `python3 tests/async/test_divine_boon.py` passes with ASan/UBSan.
+  It exercises the actual state implementation and corruption/truncation of
+  snapshots. `make -C src -j12` and changed-file formatting checks pass.
+  `./scripts/format.sh --all --check` passes for all 1100 tracked C/C++ files.
+  Use `CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy` (installed LLVM 22)
+  for commits: system LLVM 18 cannot parse the installed GCC 16 headers.
+- Second chunk: `divine_boon_repository.{h,c}` provides SQL compare-and-swap
+  and flat-file authority after-image commits for the shared snapshot. Exact
+  retries are idempotent, stale/rerolled revisions conflict, and corrupt state
+  cannot be overwritten. Migration `0048_divine_boon_state` is additive and
+  re-runnable, registered with lifecycle and compiled runtime schema contracts.
+  Metadata fingerprints were measured on disposable MySQL 8 and MariaDB 10.11;
+  both runtime compatibility verifiers pass. No existing databases were changed.
+- Review-ready persistence: [PR #266](https://github.com/LuminariMUD/Duris/pull/266),
+  implementation commit `99da4373f`, stacked on #265.
+- Second-chunk proof: flat-file ASan/UBSan repository harness covers failures
+  before commit, after journal commit and after the state after-image, plus
+  recovery/retry, stale writes and corruption. The MariaDB repository harness,
+  schema apply/replay/verifier, lifecycle/runtime validators, seven boot contract
+  tests and 21 immutable migration tests pass. Both MariaDB and flat-file server
+  builds pass (`DMS_BINARY=.../bin/server/dms_new_flatfile` isolates flat-file output).
+- Third chunk: `divine_boon_runtime.{h,c}` wires boot loading/reconciliation and
+  confirmed publication into `comm.c`. One appended writer job kind orders
+  state saves with existing player/ship work. New installations retain legacy
+  mode; this does not activate Divine gameplay. The game sees a new snapshot
+  only after a successful commit; interrupted writes retain the exact pending
+  choice and retry, while invalid/conflicting authority disables bonuses.
+- Review-ready writer/boot integration: [PR #267](https://github.com/LuminariMUD/Duris/pull/267),
+  implementation commit `93f856f06`, stacked on #266.
+- Third-chunk proof: `test_divine_boon_runtime.py` passes with ASan/UBSan using
+  the real writer, including queue refusal, blocked-writer publication ordering,
+  committed journal recovery, exact retry and restart skipping. Existing
+  `test_player_save_worker.py` and both server backend builds pass. Earlier
+  state/repository proof remains valid and was reused.
+- Fourth chunk: legacy command/shop/create/extend/reward and new scan admissions
+  close immediately when draining is queued or authority is unavailable. Accepted
+  reward/shop completion and login recovery handlers continue unchanged. Restored
+  SQL scans check durable mode before parsing old payloads, then recheck with a
+  row lock inside the scan transaction; a concurrent retirement must wait for the
+  accepted scan or prevent its mutations. Missing/corrupt authority fails closed.
+- Fourth-chunk proof: real reward and shop transaction handlers reject new work
+  while accepted callbacks still publish once (existing ASan/UBSan epic harness).
+  Runtime admission-state, scheduler, producer replay and 13 boon cutover contract
+  tests pass. The disposable MariaDB scan fixture exercises live legacy expiry,
+  concurrent state-writer locking, restored no-ops and corrupt-state rejection.
+  Both server backend builds and changed-file formatting pass.
+- Review-ready admission barriers: [PR #268](https://github.com/LuminariMUD/Duris/pull/268),
+  implementation commit `315b04fab`, stacked on #267. This is not the completed
+  receipt-retirement or activation step.
+- Fifth chunk: `divine_boon_activity.{h,c}` observes real playing-input effects
+  on room, combat, casting/resources or inventory and keeps bounded 60-minute
+  histories by canonical account and side. Repeated no-op input, automatic
+  combat and force-like changes to another actor supply no new observation.
+  Accounts need gameplay within 15 minutes and a current mortal, non-AFK,
+  connected representative. History survives alt changes, including logout;
+  PvP qualification needs five distinct observed minutes spanning five minutes,
+  and the same account cannot qualify both opposing populations. The four level
+  brackets count one representative per account/side. Morphs use their owner;
+  staff accounts and unaffiliated characters are excluded. There is no telemetry
+  dependency, gameplay I/O or new copyover format.
+- Fifth-chunk proof: ASan/UBSan activity harness covers window boundaries, account
+  case/alt deduplication, cross-side alts, all bracket edges, stale history,
+  real input/automatic/forced/no-op differences, AFK/link-dead/staff exclusions,
+  safe extraction and morphed players. Both server backend builds, affected item
+  input queue/newbie grant regressions, command latency and telemetry hook checks
+  pass. Prior rotation, state persistence and reward evidence remains valid.
+- Review-ready activity: [PR #269](https://github.com/LuminariMUD/Duris/pull/269),
+  initial implementation `0b6b4926b`, stacked on #268. Cross-side accounts are
+  assigned to only one PvP population, balancing available distinct accounts;
+  a lone account cannot fabricate an opponent, while a valid different account
+  on the other side remains usable.
+- Selection integration: call `divine_boon_activity_population()` to obtain
+  per-side `brackets`, `active_accounts` and distinct `pvp_accounts`; do not use
+  descriptors, hosts or optional telemetry as a substitute for this history.
+- Sixth chunk: player status snapshots now checkpoint an unsigned Divine delivery
+  sequence with the epic balance. Both repositories reject a status capture below
+  the saved watermark, even if its general save revision is newer. Snapshot v10
+  upgrades supported older snapshots with a zero watermark; additive migration
+  `0049_divine_boon_delivery` preserves balances and defaults existing players to
+  zero. This is the recipient checkpoint boundary; prepared-award sequencing,
+  publication and login recovery still need integration before any Divine payout.
+- Sixth-chunk proof: focused capture, codec, player materialization and load tests
+  pass. Flat-file journal interruption/retry preserves the balance and watermark;
+  stale, signed and duplicate markers are rejected. Disposable MariaDB save/load
+  fixtures prove the same stale rejection and atomic rollback on an injected
+  balance/marker update failure. Migration apply/replay and exact verifiers pass
+  on disposable MySQL 8 and MariaDB 10.11, with measured runtime fingerprints.
+  The runtime validator, seven boot-contract and 21 migration-runner tests pass.
+- Review-ready delivery checkpoint: [PR #270](https://github.com/LuminariMUD/Duris/pull/270),
+  implementation `49602d449`, stacked on #269. Both server backend builds,
+  changed-line formatting, clang-tidy and whitespace checks pass.
+- Seventh chunk: EXP candidate selection caches actual normal NPC reset locations
+  from 15 bounded source zones, reusing bartender boot profiles without its item
+  reward or quest level gates. It requires at least two eligible NPC prototypes,
+  five reset encounters and three reachable encounter rooms. Ordinary directed
+  paths start at current `guild_locations[town][0]` spawn rooms for the relevant
+  justice side, rejecting restricted rooms, opposite-side towns, locked/secret/
+  blocked exits, special room procedures and terrain requiring special access.
+  Dynamic paths/flags are rechecked; `ZONE_TOWN` always rejects targets even with
+  hometown zero. The selector weights actual account brackets, reduces weight
+  for served brackets, prevents same-side duplicates and relaxes only the soft
+  repeat preference when the safe pool is thin. Both backends build the same
+  boot catalogue. It does not yet drive live rotation or activate rewards.
+- Seventh-chunk proof: ASan/UBSan native selector harness passes for directed
+  side access, runtime town/safe/map/closed/private flags, restricted rooms,
+  inaccessible terrain, changed doors, unknown profiles/content, account
+  brackets, side exclusions, active duplicates and repeat relaxation. Existing
+  bartender dynamic-policy contracts pass. Actual loaded-world positive target
+  journeys, group suitability, epic/trade candidates and category selection
+  remain required; synthetic graph proof does not close those acceptance items.
+- Review-ready EXP selector: [PR #271](https://github.com/LuminariMUD/Duris/pull/271),
+  implementation `3a58b7ede`, stacked on #270. Both backend builds, formatting,
+  clang-tidy and whitespace checks pass.
+- Eighth chunk: `gain_exp()` now dispatches qualifying NPC combat to precise
+  arithmetic with a separate original eligible base. Existing increases do not
+  enlarge the Divine contribution; reductions and final/accumulation caps stay
+  effective. Damage, tanking, healing, melee, kill and normalized kill-bonus
+  awards use the correct NPC encounter and side/zone/window. Healing follows
+  the healed character's hostile NPC; recursive tank awards derive independently
+  before attacker rest, level-cap reductions or Divine credit. A shared numeric
+  body retains ordinary float arithmetic for all non-Divine awards. Group kills
+  and blood-streak producers carry their fractional legitimate share alongside
+  their original integer calculation; only eligible Divine awards use the
+  fraction. Actual caller tests cover a two-player group receiving 161 rather
+  than 160 from an 80.8 share, and a 1.99 streak share paying 3 rather than 2.
+  Sub-unit bases cannot fabricate an extra minimum bonus. Existing Nexus and
+  epic-bonus paths expose their precise values; ordinary integer/float callers
+  keep their behavior. Computed epic modifiers retain their original double
+  value rather than being normalized as configuration percentages.
+  Configured float modifiers use their shortest decimal value for the precise
+  path, avoiding final-floor errors such as 179 instead of 180 at 90%.
+- The game loop now drives the hourly selector through the existing writer.
+  Queue refusal retains the exact unsubmitted choice for the hour; if the hour
+  passes it is skipped. Pause, clock jumps and full/empty pools consume the
+  opportunity correctly. Just-expired zones enter repeat history before choosing;
+  changed targets are cancelled before retry admission without rerolling.
+  Default legacy mode and the unfinished activation gate remain closed.
+- Eighth-chunk proof: the existing quest/kill XP harness executes real production
+  dispatcher, qualification and modifier bodies on both backend builds with
+  ASan/UBSan and float-cast checks. It covers all six NPC sources, additive rest/
+  global/race/Nexus/epic/difficulty stacking, reductions, precision and caps,
+  healer opponent, independent fractional tank shares, unrelated XP families,
+  expiry/side/zone/town-zero exclusions and non-finite/overflow rejection.
+  The native selector harness covers hourly queue refusal/exact retry, pending
+  publication, forward skips, expiry history, pause and target invalidation.
+  Real Nexus lifecycle/consumer and flat-file authority harnesses preserve
+  integer behavior and prove fractional payouts; difficulty and telemetry
+  progression checks pass. Actual full-world reward/save journeys remain open.
+- Review-ready NPC EXP and hourly integration:
+  [PR #272](https://github.com/LuminariMUD/Duris/pull/272), implementation
+  `2b3bb7d4b`, stacked on #271. Both server builds, formatting, clang-tidy and
+  whitespace checks pass. Existing passing evidence was reused as applicable.
+- Ninth chunk: PvP selection now requires both distinct warmed account populations
+  and permits only one active global PvP slot. The actual death producer prepares
+  its Good/Evil bonus from the legitimate base, excluding the separate 500 task
+  reward and retaining reductions. Generic `EPIC_PVP` gains remain unboosted;
+  the unused `epic_frag()` route is removed. Payload v5 stores boon ID, admission
+  time, fractional base and task component; ordinary captures still write v4.
+  Prepared results use a checksummed flat-file record or SQL inbox result with
+  an explicit new envelope; ordinary results retain their 1536-byte layout and
+  old captures/results remain readable. No SQL migration was needed.
+- Recipient ordering reuses the existing issued `epic_revision`, allocated by the
+  locked SQL row or flat authority. A predecessor links only prepared deliveries,
+  so ordinary revisions may create harmless gaps. `divine_pvp_award` is a reserved
+  compound-ledger reason, not a standalone command. Both repositories retain the
+  prepared amount and predecessor before publication. Live submission defers
+  these epic deltas until commit; matching callbacks and login recovery share
+  one ordered publisher. Already checkpointed sequences are skipped. Publication
+  does not issue another ledger revision or re-evaluate an expired boon.
+- New player-load readers recover unpaid receipts before admission, and queued
+  critical player work holds asynchronous login reads. Captures requested by
+  level/achievement hooks are held until all reward effects finish, then the
+  normal full player checkpoint saves balance, watermark and affected state.
+  A fault test exposed a mixed flat-file read (old watermark/new balance); the
+  reader now obtains snapshot, domains and pending receipts under one authority
+  lock. Advancing a flat marker requires a complete financial status capture.
+- Ninth-chunk proof: ASan/UBSan/float-cast tests execute real PvP preparation,
+  submit/completion, ordered publication, nested capture deferral and recovery
+  on both build configurations. Real flat repositories cover journal failure,
+  replay, multiple awards before checkpoint, login reads and interrupted full
+  checkpoints. Disposable MariaDB fixtures cover ordered issuance, rollback/
+  retry, exact replay, unpaid login reads, corrupt parents and paid filtering.
+  Legacy player-load/save, combat, artifact and frag-cap checks pass. Actual
+  loaded-world PvP/save journeys remain part of final qualification.
+- Review-ready prepared PvP delivery:
+  [PR #275](https://github.com/LuminariMUD/Duris/pull/275), implementation
+  `7b3407016`, stacked on #272. Both server builds, affected bank/legacy-boon
+  consumers, formatting, clang-tidy and whitespace checks pass.
+- **Before activation (uncommitted fix described in the paused checkpoint):**
+  remove the fixed lifetime receipt ceiling for new flat
+  prepared work. The pre-existing domain operations list caps at 512; complete
+  parent results cannot grow in that list forever. Compact checkpointed detail
+  while retaining durable retry identity through the existing authority files;
+  preserve unrelated legacy receipts. The byte bound now accommodates the
+  already-declared operation count instead of failing early at 64 KiB.
+- **After explicit resume:** finish and publish flat receipt retention, then implement prepared zone rewards
+  and real flat-file stone payouts on the same saved delivery boundary;
+  complete legacy receipt retention/delivery reconciliation before activation.
+  Then finish epic candidates, cargo and command/help paths below. Activity and
+  EXP/PvP selection already have published implementation; do not rebuild them.
+  The state API does not itself prove targets safe or legacy work settled.
+- Concrete next integration findings: `boon_shop()` spends MariaDB stat points
+  in a queued writer job and raises/refunds the stat in its completion; closing
+  new admissions must not suppress that accepted completion. Legacy flat-file
+  `publish_reward()` acknowledges after live publication, and SQL legacy outbox
+  delivery currently acknowledges a decoded result without proving a player
+  checkpoint. Preserve those exact receipts until delivery is reconciled.
+  Likewise, SQL `execute_epic_state()` advances `player_data.epic_revision`
+  before saving the new balance, so that existing field alone cannot prove
+  durable recipient delivery. Bind prepared Divine awards and their applied
+  marker to the player status save; keep activation closed until these paths
+  are resolved. No staff command or automatic switch currently enables Divine.
+- Recipient-recovery direction: carry an ordered per-recipient delivery sequence
+  with the full prepared zone/PvP award, and checkpoint an applied watermark
+  atomically with the recipient balance. Recover unpaid sequences before new
+  recipient admissions; reject older snapshots that would overwrite a newer
+  applied watermark. This stays within the existing prepared payloads and player
+  status boundary; do not change general currency semantics or add per-hit XP I/O.
+- **Still open:** full-feature acceptance as an integrated system. Published
+  state, persistence, writer, activity, EXP selection/reward and prepared PvP
+  checks prove the bounded behavior recorded above. They do not prove completed
+  cutover, all reward categories, trade, commands or actual loaded-world journeys.
+  No production action performed.
+- Ablation: reuse one state/codec for both backends; no scheduler, delivery
+  framework, general economy rewrite or extra verification campaign added.
+  State revision plus an atomic snapshot supplies rotation retry identity.
+  The receipt-retention follow-up uses existing authority files because the
+  reproduced per-player lifetime limit needs durable replay outside that list;
+  do not generalize it into a separate economy framework.
+- Next zone delivery step: extend the existing prepared-reason predecessor lookup
+  and load readers across both PvP and zone receipts. Reuse issued revisions;
+  never derive a new sequence from the applied watermark. Multiple accepted
+  awards before callbacks must retain distinct identities and ordered recovery.
+- Scheduling: previous time estimates are withdrawn; use the paused checkpoint's
+  actual completed, uncommitted and remaining work. Work stays paused until the
+  user explicitly resumes it.
 
 ## Outcome
 
