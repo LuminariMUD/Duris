@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "economy/boon_reward_transaction.h"
+#include "economy/divine_boon_runtime.h"
 
 #include "economy/boon.h"
 #include "flatfile/flatfile_boon_repository.h"
@@ -105,6 +106,8 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 
 bool boon_reward_transaction_submit(P_char character, P_char victim, double data, int option)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return false;
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0 || option < 0 ||
 	    option >= MAX_BOPT || pending.size() >= BOON_REWARD_PENDING_MAX)
 		return false;

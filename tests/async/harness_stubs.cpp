@@ -14,6 +14,13 @@
 
 #define HARNESS_STUB __attribute__((weak))
 
+// Legacy-only fixtures have no Divine runtime. Divine integration harnesses
+// link the real gate and exercise draining/unavailable states explicitly.
+HARNESS_STUB bool divine_boon_legacy_admissions_allowed()
+{
+	return true;
+}
+
 // Fixtures that do not link the artifact authority have no artifact state to
 // checkpoint. Focused admission tests and server builds use the real methods.
 HARNESS_STUB artifact_restore_scope::artifact_restore_scope()

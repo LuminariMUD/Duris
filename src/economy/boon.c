@@ -40,6 +40,7 @@ using namespace std;
 #include "guild/assocs.h"
 #include "economy/auction_houses.h"
 #include "economy/boon.h"
+#include "economy/divine_boon_runtime.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/boon_shop_transaction.h"
 #include "world/buildings.h"
@@ -1513,6 +1514,8 @@ int parse_boon_args(P_char ch, BoonData *bdata, char *argument)
 // a later pulse. A boon that never expires is left as it is.
 static void extend_boon_on_writer(P_char ch, int id, int extend)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return;
 	const std::string name = GET_NAME(ch);
 	sql_read_work_for(
 		ch,
@@ -1572,6 +1575,11 @@ static void extend_boon_on_writer(P_char ch, int id, int extend)
 
 void do_boon(P_char ch, char *argument, int /*cmd*/)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+	{
+		send_to_char("Legacy boons are closed while Divine Boons are prepared.\r\n", ch);
+		return;
+	}
 	char arg[MAX_STRING_LENGTH];
 	char buff[MAX_STRING_LENGTH], buffline[MAX_STRING_LENGTH];
 	int duration = 0, id = 0;
@@ -1907,6 +1915,11 @@ static void boon_shop_show(P_char ch, int points, int stats)
 
 void boon_shop(P_char ch, char *argument)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+	{
+		send_to_char("The legacy boon shop is closed.\r\n", ch);
+		return;
+	}
 	char arg[MAX_STRING_LENGTH];
 	int stat = 0;
 	int i;
@@ -2675,6 +2688,8 @@ static void boon_create_told(P_char ch, bool created)
 // MariaDB on a later pulse, since the count, the insert and its id come from the writer.
 int create_boon(BoonData *bdata, P_char ch)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return FALSE;
 	if (!bdata)
 	{
 		debug("create_boon(): NULL bdata passed to function");
@@ -2761,6 +2776,8 @@ int remove_boon(int id)
 // Flat-file only: MariaDB extends on the writer (extend_boon_on_writer()).
 int extend_boon(int id, int extend, const char *name)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return FALSE;
 	const char *root = flat_boon_root();
 	if (!root || id <= 0 || extend < 0 || !name || !*name)
 		return FALSE;
@@ -2932,6 +2949,8 @@ void boon_randomize(P_char ch, char *argument)
 // does this on the writer).
 void boon_maintenance()
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return;
 	BoonData bdata;
 	int expire;
 	std::vector<int> active_ids;
@@ -3026,6 +3045,8 @@ void boon_maintenance()
 
 void check_boon_completion(P_char ch, P_char victim, double data, int option)
 {
+	if (!divine_boon_legacy_admissions_allowed())
+		return;
 	if (!ch || IS_NPC(ch) || option < 0 || option >= MAX_BOPT ||
 	    !IS_SET(ch->specials.act2, PLR2_BOON))
 		return;
