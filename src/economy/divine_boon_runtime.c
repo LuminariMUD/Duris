@@ -53,29 +53,37 @@ try
 #else
 		MYSQL *connection = sql_pool_acquire();
 		if (!connection)
-			return { player_save_apply_outcome::retryable_failure, 0, ENOTCONN };
-		result = divine_boon_sql_save(connection, operation->expected_revision,
-					      operation->next);
-		const unsigned error = mysql_errno(connection);
-		if (result == store_result::io_error &&
-		    (error == 2006 || error == 2013 || error == 2055))
+			result = store_result::io_error;
+		else
 		{
-			connection = sql_pool_replace_connection(connection);
-			if (connection)
+			result = divine_boon_sql_save(connection, operation->expected_revision,
+						      operation->next);
+			const unsigned error = mysql_errno(connection);
+			if (result == store_result::io_error &&
+			    (error == 2006 || error == 2013 || error == 2055))
+			{
+				connection = sql_pool_replace_connection(connection);
+				if (connection)
+					sql_pool_release(connection);
+			}
+			else
 				sql_pool_release(connection);
-			return { player_save_apply_outcome::retryable_failure, 0, error };
 		}
-		sql_pool_release(connection);
 #endif
 	}
-	operation->result = result;
-	operation->finished.store(true, std::memory_order_release);
-	if (result == store_result::ok || result == store_result::already_applied)
-		return { player_save_apply_outcome::applied, operation->next.revision, 0 };
-	const unsigned error = result == store_result::conflict ? ESTALE :
+	const bool applied = result == store_result::ok || result == store_result::already_applied;
+	const unsigned error = applied				? 0 :
+			       result == store_result::conflict ? ESTALE :
 			       result == store_result::invalid	? EBADMSG :
 								  EIO;
-	return { player_save_apply_outcome::terminal_failure, 0, error };
+	const player_save_apply_result completion = {
+		applied ? player_save_apply_outcome::applied :
+			  player_save_apply_outcome::terminal_failure,
+		applied ? operation->next.revision : 0, error
+	};
+	operation->result = result;
+	operation->finished.store(true, std::memory_order_release);
+	return completion;
 }
 catch (const std::bad_alloc &)
 {

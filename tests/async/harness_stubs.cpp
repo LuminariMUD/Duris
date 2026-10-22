@@ -23,6 +23,11 @@ HARNESS_STUB divine_boon_input_activity divine_boon_activity_begin(char_data *, 
 	return {};
 }
 HARNESS_STUB void divine_boon_activity_end(const divine_boon_input_activity &) {}
+HARNESS_STUB void divine_boon_runtime_pulse() {}
+HARNESS_STUB bool divine_boon_runtime_pending()
+{
+	return false;
+}
 HARNESS_STUB int ordered_command_number(const char *)
 {
 	return 0;
