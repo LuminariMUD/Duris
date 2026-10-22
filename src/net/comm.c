@@ -2208,6 +2208,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		artifact_guild_transaction_publish_outbox();
 		player_save_pipeline_pulse();
 		divine_boon_runtime_pulse();
+		divine_boon_selection_pulse(static_cast<int64_t>(time(nullptr)));
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};
 		const size_t load_completion_count =

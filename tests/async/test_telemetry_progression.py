@@ -22,7 +22,7 @@ VERIFIER = ROOT / "migrations" / "immutable" / "0022_telemetry_progression.sh"
 
 def source_contract() -> None:
     limits = LIMITS.read_text()
-    gain = limits[limits.index("int gain_exp(") : limits.index("int gain_condition(")]
+    gain = limits[limits.index("static int gain_exp_amount(") : limits.index("int gain_condition(")]
 
     storage = gain.index("GET_EXP(ch) += (int)XP_final")
     capture = gain.index("telemetry_runtime_game_progression", storage)

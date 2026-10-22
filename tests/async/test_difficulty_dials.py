@@ -167,9 +167,9 @@ def test_every_dial_reaches_its_hook() -> None:
          "return static_cast<float>(breath_dam_mod * dial);"),
         ("net/sparser.c", "bool NewSaves(",
          "save = difficulty_scale_int(save, 1.0 / resistance_dial);"),
-        ("world/limits.c", "int gain_exp(",
+        ("world/limits.c", "static int gain_exp_amount(",
          "XP *= difficulty_multiplier(DIFFICULTY_EXP_EARNED);"),
-        ("world/limits.c", "int gain_exp(",
+        ("world/limits.c", "static int gain_exp_amount(",
          "XP *= difficulty_multiplier(DIFFICULTY_DEATH_PENALTY);"),
         ("world/limits.c", "void update_exp_table(",
          "difficulty_scale_long(propVal, difficulty_multiplier(DIFFICULTY_EXP_REQUIRED));"),
@@ -267,7 +267,7 @@ def test_breath_money_regen_and_corpse_hooks_are_complete() -> None:
     limits = source("world/limits.c").read_text()
     for signature in ("int hit_regen(", "int mana_regen(", "int move_regen("):
         assert "difficulty_scale_player_regen(ch," in _body("world/limits.c", signature)
-    earned = _body("world/limits.c", "int gain_exp(")
+    earned = _body("world/limits.c", "static int gain_exp_amount(")
     assert "if (XP > 0 && !pvp && type != EXP_RESURRECT)" in earned
     for name in ("combat/fight.c", "core/files.c", "magic/smagic.c"):
         assert 'get_property("timer.decay.corpse.pc"' not in source(name).read_text(), name

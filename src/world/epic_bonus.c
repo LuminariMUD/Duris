@@ -184,7 +184,7 @@ bool get_epic_bonus_data(P_char ch, EpicBonusData *ebdata)
 	return true;
 }
 
-float get_epic_bonus(P_char ch, int type)
+double get_epic_bonus_precise(P_char ch, int type)
 {
 	if (!IS_PC(ch))
 		return 0;
@@ -204,7 +204,12 @@ float get_epic_bonus(P_char ch, int type)
 	}
 	state->contribution_cap = contribution_cap;
 	state->maximum_modifier = maximum_modifier;
-	return (float)epic_bonus_state_modifier(state, type, time(NULL));
+	return epic_bonus_state_modifier(state, type, time(NULL));
+}
+
+float get_epic_bonus(P_char ch, int type)
+{
+	return static_cast<float>(get_epic_bonus_precise(ch, type));
 }
 
 static bool parse_int64(const char *value, int64_t *out)

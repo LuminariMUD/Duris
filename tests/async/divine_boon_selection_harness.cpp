@@ -1,4 +1,5 @@
 #include "economy/divine_boon_selection.h"
+#include "economy/divine_boon_runtime.h"
 #include "combat/justice.h"
 #include "core/prototypes.h"
 #include "world/db.h"
@@ -15,6 +16,10 @@ reset_com low_resets[7] = {};
 reset_com high_resets[6] = {};
 int levels[] = { 16, 18, 38, 42 };
 int random_value = 0;
+divine_boon_state authority, queued;
+std::array<divine_boon_population, 2> current_population = {};
+bool queue_accepts = false, write_pending = false;
+unsigned random_calls = 0, queue_calls = 0;
 }
 P_room world = rooms;
 zone_data *zone_table = zones;
@@ -43,6 +48,7 @@ int world_quest_policy_combat_level(int mob)
 }
 int number(int low, int)
 {
+	++random_calls;
 	return random_value ? random_value : low;
 }
 int inn(int, P_char, int, char *)
@@ -52,6 +58,26 @@ int inn(int, P_char, int, char *)
 int unsafe_room(int, P_char, int, char *)
 {
 	return false;
+}
+void logit(const char *, const char *, ...) {}
+const divine_boon_state *divine_boon_runtime_state()
+{
+	return &authority;
+}
+bool divine_boon_runtime_pending()
+{
+	return write_pending;
+}
+bool divine_boon_runtime_queue(const divine_boon_state &next)
+{
+	++queue_calls;
+	queued = next;
+	write_pending = queue_accepts;
+	return queue_accepts;
+}
+std::array<divine_boon_population, 2> divine_boon_activity_population()
+{
+	return current_population;
 }
 
 int main()
@@ -226,5 +252,82 @@ int main()
 	low_resets[0].arg1 = 99; // Unknown profiles fail closed on catalogue rebuild.
 	assert(divine_boon_selection_bootstrap());
 	assert(!divine_boon_select(state, 10800, population, &choice));
+
+	// Exercise the actual game-thread tick at the existing writer boundary.
+	// Publication itself remains the real writer runtime's separate proof.
+	low_resets[0].arg1 = 0;
+	auto reset_hour = [&]
+	{
+		assert(divine_boon_selection_bootstrap());
+		authority = {};
+		assert(divine_boon_set_mode(&authority, divine_boon_mode::draining, 0));
+		assert(divine_boon_set_mode(&authority, divine_boon_mode::divine, 0));
+		current_population = {};
+		current_population[0].active_accounts = current_population[0].brackets[0] = 1;
+		queue_calls = random_calls = 0;
+		queue_accepts = write_pending = false;
+	};
+	auto publish = [&]
+	{
+		assert(write_pending);
+		authority = queued;
+		write_pending = false;
+	};
+	reset_hour();
+	divine_boon_selection_pulse(3599);
+	assert(queue_calls == 0 && random_calls == 0);
+	divine_boon_selection_pulse(3600);
+	assert(queue_calls == 1 && queued.slots[0].id == 1 && !authority.slots[0].id);
+	const auto first_choice = queued;
+	const auto choices = random_calls;
+	divine_boon_selection_pulse(3601);
+	assert(queue_calls == 2 && random_calls == choices && queued == first_choice);
+	queue_accepts = true;
+	divine_boon_selection_pulse(3602);
+	assert(queue_calls == 3 && write_pending && !authority.slots[0].id);
+	divine_boon_selection_pulse(3603);
+	assert(queue_calls == 3);
+	publish();
+	divine_boon_selection_pulse(3604);
+	assert(queue_calls == 3);
+	assert(divine_boon_reward_zone_eligible(18, 0));
+	exits[0].exit_info = EX_BLOCKED;
+	for (unsigned hit = 0; hit < 10000; ++hit)
+		assert(divine_boon_reward_zone_eligible(18, 0)); // A bounded cached lookup.
+	divine_boon_selection_pulse(3605);
+	assert(!divine_boon_reward_zone_eligible(18, 0));
+	exits[0].exit_info = 0;
+	divine_boon_selection_pulse(3606);
+	assert(divine_boon_reward_zone_eligible(18, 0));
+	assert(!divine_boon_reward_zone_eligible(18, 2));
+	divine_boon_selection_pulse(10800); // Forward jump skips opportunities without RNG.
+	assert(random_calls == choices && queued.last_opportunity == 10800);
+	publish();
+	divine_boon_selection_pulse(32400);
+	assert(random_calls == choices && !queued.slots[0].id);
+	assert(queued.history.size() == 1 && queued.history[0].zone == 18);
+	publish();
+
+	reset_hour();
+	divine_boon_selection_pulse(3600);
+	const auto before_skip = random_calls;
+	divine_boon_selection_pulse(7200); // Queue refused until the choice's hour passed.
+	assert(random_calls == before_skip && queued.last_opportunity == 7200 &&
+	       !queued.slots[0].id);
+	queue_accepts = true;
+	divine_boon_selection_pulse(7201);
+	publish();
+	assert(divine_boon_set_paused(&authority, true, 7201));
+	divine_boon_selection_pulse(10800);
+	assert(random_calls == before_skip && !queued.slots[0].id);
+	publish();
+
+	reset_hour();
+	divine_boon_selection_pulse(3600);
+	zones[2].flags = ZONE_TOWN; // Changed after selection, before writer admission.
+	const auto before_invalid = random_calls;
+	divine_boon_selection_pulse(3601);
+	assert(random_calls == before_invalid && !queued.slots[0].id);
+	zones[2].flags = 0;
 	std::cout << "Divine candidate paths, flags, account brackets and thin pools passed\n";
 }

@@ -13,6 +13,7 @@
 #include "persistence/persistence_checkpoint.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <cstdarg>
 #include <filesystem>
@@ -518,10 +519,15 @@ int main(int argc, char **argv)
 	assert(capture_awards == 1 && boon_completions == 1 && task_removals == 1);
 	assert(random_low == 15 && random_high == 50 && pc.epics == 1016);
 	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_EPICS) == 277);
+	assert(std::abs(check_nexus_bonus_precise(&player, 250, NEXUS_BONUS_EPICS) - 277.5) <
+	       0.0001);
+	assert(std::abs(check_nexus_bonus_precise(&player, 100.5, NEXUS_BONUS_EPICS) - 111.555) <
+	       0.0001);
 	assert(check_nexus_bonus(&player, 1, NEXUS_BONUS_EPICS) == 2);
 	assert(STONE_ALIGN(get_random_enemy_nexus(&player)) == 0);
 	player.player.racewar = RACEWAR_EVIL;
 	assert(check_nexus_bonus(&player, 250, NEXUS_BONUS_EPICS) == 250);
+	assert(check_nexus_bonus_precise(&player, 100.5, NEXUS_BONUS_EPICS) == 100.5);
 	player.in_room = 1;
 	stone = get_nexus_stone(3);
 	extract_char(get_nexus_guardian(3));
