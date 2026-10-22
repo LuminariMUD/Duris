@@ -103,6 +103,53 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
+### Trade save support ready for publication
+
+Current source branch `branch/issue-245-divine-trade-runtime` is based on #283
+`ba2a62b54` and has uncommitted currency/snapshot support. The original deadline
+remains missed; full-scope continuation is authorized. Actual shop integration,
+selection, loss hooks, commands/help, cutover and final integrated proof remain
+unfinished. No reliable completion ETA is available; several hours remain.
+
+Memory owns trade preparation and publication. Ordinary currency completions are
+synchronous and logout queues a full save before immediately extracting the
+character. Therefore pending trade must not suppress saves or retain callback
+contexts. Reserve future payment without mutating the live purse. Tag captures
+made during that reservation with operation id, command hash, payment, wallet
+revision and optional final cargo achievement. The writer resolves its permanent
+receipt, overlays committed payment/achievement once on the captured ordinary
+state, clears the tag, and then applies the normal revision guards. A rejected or
+not-yet-written trade clears the tag without payment. SQL locks the receipt before
+the player, matching compound trade lock order; flat-file resolves under recovered
+authority. Live completion publishes the same prepared effect once, then releases
+reservations. This preserves logout and intervening ordinary changes.
+
+Support complete: exact shared currency preview and reservation bounds, snapshot
+schema 12 pending receipt merge, payload v2 cargo achievement with v1 compatibility,
+and unchanged fixed 48-byte result. Both real repository dispatchers pass receipt
+commit/rejection/absence, identity mismatch, repeated captures, intervening ordinary
+money/status and achievement persistence. Currency and pipeline coalescing checks,
+sanitized trade/player codecs and both backend builds pass. Shared affect-row
+encoding keeps payload v2 independent of future full snapshot schema versions.
+Formatting/tidy and publication are next.
+Runtime producer/command integration follows this support slice.
+
+### Published producer fixes (#283)
+
+[PR #283](https://github.com/LuminariMUD/Duris/pull/283) is open and ready for
+review, implementation `cf50aaf57`, stacked on #282. It is mergeable; both builds,
+native focused checks, formatting and LLVM 22 clang-tidy pass. Next source branch
+is `branch/issue-245-divine-trade-runtime`, based on #283 plus this handoff.
+Outcome: correct ordinary contraband price-cache quotes, persist
+zero-revenue cargo/contraband removal, and preserve trade generation through a
+staff market reset. Prepared wallet denominations must also respect the existing
+`INT_MAX` currency facade limit on both backends. Non-goals: changing approved rates or replacing ordinary
+trade. Files: ship cargo/shop code and focused existing native checks. Proof:
+execute the actual writer/sale functions for distinct quotes, stale jobs, paid/
+zero/empty sales, and reset/reload generation. These native checks pass, including ASan/UBSan,
+and prepared-wallet overflow rejection passes. Both final backend builds pass. Reuse the qualified settlement backend
+evidence; then continue actual gameplay integration.
+
 ### Latest published backend continuation (19:01 UTC / 22:01 Asia/Jerusalem)
 
 - [PR #282](https://github.com/LuminariMUD/Duris/pull/282) is open, ready for
@@ -155,11 +202,9 @@ checkpoints cannot be restarted now; they count as missed.
   loss/clear/confiscation/salvage/sink/ownership provenance updates to affected ship
   capture/save signatures. Preserve crew and achievement behavior. Qualify actual
   purchase/sale/save/restart journeys on both backends before activation.
-- **Additional source finding to resolve separately:** ordinary `write_cargo()`
-  fills its SQL contraband price cache using the cargo quote. Native game quote
-  functions are separate. Also, ordinary zero-revenue sales clear slots but only
-  queue the ship save when credit is positive. Fix these in a focused change with
-  runtime integration; retain the approved 25% and three-hold policy.
+- **Subsequently resolved in #283:** ordinary SQL contraband cache quotes,
+  zero-revenue slot save marks, staff-reset financial cursor and native wallet
+  denomination bounds. The approved 25% and three-hold policy is unchanged.
 - Then finish legacy reconciliation/activation, player/staff commands and help,
   and all final integrated acceptance journeys. Full #245 remains incomplete.
 - Original start 08:41:02 UTC, original deadline 14:41:02 UTC. At 19:01, elapsed
