@@ -25,6 +25,8 @@ restart and merge remain separate actions.
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
   `branch/issue-245-divine-boons`.
+- Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
+  implementation commit `8cbc07fc4`. Further chunks stack on this branch.
 - First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
   category rates/lifetimes, forward legacy/draining/Divine mode transitions,
   fixed UTC hours, skip-on-restart/clock-jump policy, pause/expiry, replacement,
