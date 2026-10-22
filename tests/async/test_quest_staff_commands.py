@@ -20,6 +20,7 @@ PRELUDE = r'''
 #include "world/db.h"
 #include "cmd/interp.h"
 #include "magic/spells.h"
+#include "net/output_style.h"
 #include <cassert>
 #include <charconv>
 #include <climits>
@@ -35,11 +36,16 @@ quest_data quest_index[MAX_QUESTS];
 Skill skills[MAX_SKILLS];
 const char *item_types[] = {"UNDEFINED", "LIGHT", "\n"};
 static std::string output;
+#define MAX_COMMAND_OUTPUT (15 * MAX_STRING_LENGTH)
+static char command_output[MAX_COMMAND_OUTPUT + 1];
+static size_t output_length;
+static P_char executing_ch;
 void send_to_char(const char *text, P_char) { output += text; }
-char *coin_stringv(int amount, int) {
-    static std::string text;
-    text = std::to_string(amount) + " copper coins";
-    return text.data();
+void send_to_char(const char *text, P_char, int, const OutputContext &) {
+    output += text;
+    assert(strlen(text) < MAX_COMMAND_OUTPUT - output_length);
+    strcpy(command_output + output_length, text);
+    output_length += strlen(text);
 }
 P_char read_mobile(int, int, bool) { abort(); }
 P_obj read_object(int, int) { abort(); }
@@ -49,12 +55,14 @@ void extract_obj(P_obj) { abort(); }
 
 DRIVER = r'''
 static char_data staff;
+static descriptor_data descriptor;
 static index_data mobiles[4], objects[3];
 static room_data room;
 static zone_data zones[2];
 static char *text(const char *value) { return const_cast<char *>(value); }
 static std::string run(int command, const std::string &argument) {
     output.clear(); std::string writable = argument;
+    output_length=0; command_output[0]='\0'; executing_ch=&staff;
     if(command == CMD_QVIEW) do_qview(&staff, writable.data(), command);
     else if(command == CMD_QREF || command == CMD_QINFO) do_qref(&staff, writable.data(), command);
     else do_qlist(&staff, writable.data(), command);
@@ -69,6 +77,7 @@ static size_t count(const std::string &value, const std::string &part) {
     return found;
 }
 int main() {
+    staff.desc=&descriptor;
     const int vnums[] = {0,100,200,201};
     for(int i=0;i<4;++i) {
         mobiles[i].virtual_number=vnums[i]; mobiles[i].desc2=text("the quest giver");
@@ -125,9 +134,15 @@ int main() {
     for(const char *part : {"Quest giver [200]", "Key: help quest (room)", "RAW $n response",
                             "Completion 3:", "BOTH_COMPLETION", "UNRELATED_COMPLETION",
                             "123 copper coins", "Skill [3] quest skill",
-                            "Experience: -1 (dynamic reward)", "RAW $n disappears",
+                            "Experience: -1\r\n", "RAW $n disappears",
                             "Completion message (player)", "Completion message (room)"})
         assert(has(view,part));
+    assert(!has(view,"dynamic reward"));
+    for(int amount : {INT_MIN, 0, INT_MAX}) {
+        coins.number=amount;
+        assert(has(run(CMD_QVIEW,"200"),"Coins: "+std::to_string(amount)+" copper coins"));
+    }
+    coins.number=123;
     assert(count(view,"Item [0]")==4); // Two required copies and two reward occurrences.
     std::string refs=run(CMD_QREF,"0");
     assert(has(refs,"completion 2: GIVE, RECEIVE"));
@@ -185,6 +200,12 @@ int main() {
     quest_index[3].quest_complete=many.data();
     assert(count(run(CMD_QINFO,"0"),"BOTH_COMPLETION")==700);
     assert(has(run(CMD_QVIEW,"200"),"Completion 700:"));
+    std::string oversized(MAX_COMMAND_OUTPUT, 'x');
+    char *saved_message=message.message;
+    message.message=oversized.data();
+    assert(has(run(CMD_QVIEW,"200"),"too large"));
+    assert(!has(output,"xxx"));
+    message.message=saved_message;
     REMOVE_BIT(staff.specials.act,PLR_PAGING_ON);
     assert(has(run(CMD_QINFO,"0"),"requires paging"));
     assert(has(run(CMD_QVIEW,"0"),"No completion rules"));
@@ -221,6 +242,7 @@ def main():
              extract_function("utility.c", "void sprinttype(int type, const char *names[], char *result)"),
              extract_function("quest.c", "int binary_search(int num, int min, int max)"),
              extract_function("quest.c", "int find_quester_id(int num)"),
+             extract_function("comm.c", "bool send_paged_text("),
              handlers, DRIVER]
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="quest-staff-", dir=ROOT / "bin/tests") as temporary:

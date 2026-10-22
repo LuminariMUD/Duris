@@ -468,6 +468,14 @@ void quest_staff_output(P_char ch, const std::ostringstream &output)
 		send_to_char(
 			"This report requires paging. Use toggle paging, then repeat the command.\r\n",
 			ch);
+	else if (IS_SET(ch->specials.act, PLR_PAGING_ON))
+	{
+		if (!send_paged_text(ch, text, LOG_PUBLIC))
+			send_to_char(
+				"This report is too large to display. Use a smaller VNUM range "
+				"or qref instead of qinfo.\r\n",
+				ch);
+	}
 	else
 		send_to_char(text.c_str(), ch);
 }
@@ -523,7 +531,7 @@ void quest_staff_goals(std::ostringstream &output, const goal_data *goals)
 			break;
 		}
 		case QUEST_GOAL_COINS:
-			output << "  Coins: " << coin_stringv(goal->number) << "\r\n";
+			output << "  Coins: " << goal->number << " copper coins\r\n";
 			break;
 		case QUEST_GOAL_SKILL:
 			output << "  Skill [" << goal->number << "] "
@@ -534,8 +542,7 @@ void quest_staff_goals(std::ostringstream &output, const goal_data *goals)
 			       << "\r\n";
 			break;
 		case QUEST_GOAL_EXP:
-			output << "  Experience: " << goal->number
-			       << (goal->number <= 0 ? " (dynamic reward)" : "") << "\r\n";
+			output << "  Experience: " << goal->number << "\r\n";
 			break;
 		default:
 			output << "  Unknown goal type " << static_cast<int>(goal->goal_type)

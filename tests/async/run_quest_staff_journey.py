@@ -63,6 +63,9 @@ DIALOGUE_ONLY~
 S
 #~
 """)
+    oversized = "#13\n" + ("Q\n" + "OVERSIZED_QUEST_TEXT " * 220 + "~\n") * 250 + "S\n#~\n"
+    quest_file = runtime / "areas/world.qst"
+    quest_file.write_text(quest_file.read_text().replace("#~\n", oversized))
 
 
 def run(binary):
@@ -104,6 +107,13 @@ def run(binary):
                 assert part in view, (part, view)
             assert "Return to continue" in view, view
             result["checks"].append("qview reaches every response page, both completions and disappearance")
+            command(staff, f"setbit char {journey.CHARACTER} pcact PAGING_ON 0")
+            assert "requires paging" in command(staff, "qview 13")
+            command(staff, f"setbit char {journey.CHARACTER} pcact PAGING_ON 1")
+            oversized = command(staff, "qview 13")
+            assert "report is too large" in oversized, oversized
+            assert "and the list goes on" not in oversized, oversized
+            result["checks"].append("oversized qview returns an explicit capacity error")
             refs = command(staff, "qref 15")
             assert "GIVE" in refs and "RECEIVE" in refs, refs
             assert "QUEST_GIVE_COMPLETION" not in refs, refs

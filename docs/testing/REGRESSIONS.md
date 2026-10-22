@@ -25,8 +25,10 @@ and real prototype/quest lookups under ASan/UBSan. It covers both roles in one
 completion, later completions, repeated requirements, every goal type, broken
 references, invalid/overflowing input, current-zone boundaries, exact/reversed
 ranges, NPC exclusion, empty tables, long reports, and unchanged indexes. Entity
-loaders abort if called. Large reports with paging disabled request paging
-instead of returning a truncated report.
+loaders abort if called. Coin amounts retain their raw copper values, including
+zero and integer limits, and EXP values do not invent dynamic reward semantics.
+Large reports with paging disabled request paging; reports beyond the pager's
+capacity return an explicit error instead of disappearing behind its generic warning.
 
 `python3 tests/async/run_quest_staff_journey.py --binary
 bin/server/dms_quest_staff_flat --output bin/analysis/quest-staff-journey.json`
