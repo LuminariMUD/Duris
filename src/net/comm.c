@@ -148,6 +148,7 @@
 #include "guild/artifact_guild_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_selection.h"
 #include "economy/divine_boon_activity.h"
 #include "economy/boon_shop_transaction.h"
 #include "world/zone_touch_transaction.h"
@@ -935,6 +936,9 @@ int run_the_game(int port, int sslport)
 		fprintf(stderr, "World quest catalog unavailable; bartender quests fail closed.\n");
 	}
 	fprintf(stderr, "--  Done calculating mob level and world-quest catalog.\n");
+	if (!divine_boon_selection_bootstrap())
+		logit(LOG_STATUS,
+		      "Divine Boon candidate catalogue unavailable; selection stays closed.");
 
 	if (!mini_mode)
 		initialize_tradeskills();

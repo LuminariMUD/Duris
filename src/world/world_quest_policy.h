@@ -20,6 +20,9 @@
 #include "core/structs.h"
 
 bool world_quest_policy_bootstrap();
+// Reuse the boot probe for Divine encounter checks, without quest reward rules.
+// Unknown, staff-level, shop and non-combat prototypes return -1.
+int world_quest_policy_combat_level(int mob_rnum);
 bool world_quest_policy_zone_is_invalid(int zone_number);
 void world_quest_policy_zone_list(P_char ch, std::vector<int> &valid_zones);
 int world_quest_policy_select_zone(P_char ch, const std::vector<int> &valid_zones);

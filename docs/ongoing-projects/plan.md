@@ -24,7 +24,8 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-delivery`, stacked on `branch/issue-245-divine-activity`
+  `branch/issue-245-divine-selection`, stacked on `branch/issue-245-divine-delivery`
+  -> `branch/issue-245-divine-activity`
   -> `branch/issue-245-divine-cutover`
   -> `branch/issue-245-divine-runtime` -> `branch/issue-245-divine-persistence`
   -> `branch/issue-245-divine-boons`.
@@ -128,7 +129,27 @@ restart and merge remain separate actions.
 - Review-ready delivery checkpoint: [PR #270](https://github.com/LuminariMUD/Duris/pull/270),
   implementation `49602d449`, stacked on #269. Both server backend builds,
   changed-line formatting, clang-tidy and whitespace checks pass.
-- **Next:** complete legacy receipt retention/delivery reconciliation before activation.
+- Seventh chunk: EXP candidate selection caches actual normal NPC reset locations
+  from 15 bounded source zones, reusing bartender boot profiles without its item
+  reward or quest level gates. It requires at least two eligible NPC prototypes,
+  five reset encounters and three reachable encounter rooms. Ordinary directed
+  paths start at current `guild_locations[town][0]` spawn rooms for the relevant
+  justice side, rejecting restricted rooms, opposite-side towns, locked/secret/
+  blocked exits, special room procedures and terrain requiring special access.
+  Dynamic paths/flags are rechecked; `ZONE_TOWN` always rejects targets even with
+  hometown zero. The selector weights actual account brackets, reduces weight
+  for served brackets, prevents same-side duplicates and relaxes only the soft
+  repeat preference when the safe pool is thin. Both backends build the same
+  boot catalogue. It does not yet drive live rotation or activate rewards.
+- Seventh-chunk proof: ASan/UBSan native selector harness passes for directed
+  side access, runtime town/safe/map/closed/private flags, restricted rooms,
+  inaccessible terrain, changed doors, unknown profiles/content, account
+  brackets, side exclusions, active duplicates and repeat relaxation. Existing
+  bartender dynamic-policy contracts pass. Actual loaded-world positive target
+  journeys, group suitability, epic/trade candidates and category selection
+  remain required; synthetic graph proof does not close those acceptance items.
+- **Next:** wire eligible NPC EXP math and the hourly selector into gameplay;
+  complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
 - Concrete next integration findings: `boon_shop()` spends MariaDB stat points
