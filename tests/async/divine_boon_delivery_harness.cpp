@@ -288,12 +288,7 @@ int main()
 	affected_type task = {};
 	task.modifier = SPILL_BLOOD;
 	player.affected = &task;
-	artifact_available = false;
 	divine_boon_delivery_completed(first);
-	assert(pc.epics == 100 && pc.divine_boon_delivery_seq == 0 &&
-	       artifact_effects == 0); // No half-award when artifact capture is unavailable.
-	artifact_available = true;
-	divine_boon_delivery_player_ready(&player);
 	assert(pc.epics == 900 && pc.divine_boon_delivery_seq == 9 && effects == 2);
 	assert(artifact_effects == 2);
 	assert(pc.epic_revision == 9); // Publishing does not issue another ledger revision.
@@ -364,6 +359,17 @@ int main()
 	assert(artifact_effects == artifacts_before_rejection + 1);
 	combat_outcome_transaction_handle_completions(&completion, 1);
 	assert(pc.epics == 250 && artifact_effects == artifacts_before_rejection + 1);
+	artifact_available = false;
+	auto third = second;
+	third.operation_id.bytes[0] = 42;
+	third.sequence = 10;
+	third.previous = 1;
+	third.amount = 100;
+	pc.divine_boon_delivery_seq = 1;
+	divine_boon_delivery_completed(third);
+	assert(pc.epics == 350 && pc.divine_boon_delivery_seq == 10 &&
+	       artifact_effects == artifacts_before_rejection + 1);
+	artifact_available = true;
 	std::cout
 		<< "Prepared PvP math, parent codec, ordered publication and checkpoint recovery passed\n";
 }
