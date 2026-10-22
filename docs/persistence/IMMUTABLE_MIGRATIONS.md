@@ -276,6 +276,23 @@ empty rejection set; old updates leave it untouched. Check the deployed writers
 before reuse. Applying this schema migration leaves the game running; activating
 the new artifact recovery code is a separate deployment.
 
+`run --online-divine-boon` accepts only the sealed manifest ending at 0049,
+with all steps through 0047 already applied. It creates `divine_boon_state` (0048)
+and adds the default-zero `player_data.divine_boon_delivery_seq` column (0049).
+It retains production target, allow-list, fresh backup, checksum, advisory-lock,
+ordered-history and success-last verification safeguards. It requires MariaDB
+11.8 and InnoDB `player_data`, executes the sealed CREATE unchanged, and strengthens
+only the sealed ALTER to `ALTER ONLINE TABLE` with `alter_algorithm=INSTANT` and
+one-second metadata and row-lock waits. Unsupported instant DDL or lock contention
+fails without a rebuild or offline fallback. A completed 0048 resumes at 0049.
+
+The October 22 production review found 127 player rows, InnoDB DYNAMIC format,
+no full-text indexes or triggers, and both additions absent. The running binary
+uses named-column player inserts and updates; its existing reads tolerate the new
+column. Coordinate schema-aware backups across both steps and verify the current
+runtime contract afterward. The old binary remains compatible while running but
+its exact boot contract requires an updated build before the next restart.
+
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size
 limits and rejects duplicate JSON keys, invalid paths, missing/duplicate/reordered IDs,

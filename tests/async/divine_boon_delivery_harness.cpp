@@ -108,8 +108,8 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
 {
 	std::abort(); // These prepared-epic cases contain no wallet award.
 }
-bool artifact_guild_transaction_submit(P_char ch, const critical_operation_id &operation,
-				       int epics, int type)
+bool artifact_guild_transaction_submit(P_char ch, const critical_operation_id &operation, int epics,
+				       int type)
 {
 	assert(ch == &player && epics > 0 && type == EPIC_PVP);
 	assert(!critical_operation_id_is_zero(operation));

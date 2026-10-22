@@ -133,6 +133,7 @@ struct telemetry_posthog_reducer_health
 	std::uint64_t clock_failures = 0U;
 	std::uint64_t http_acknowledged = 0U;
 	std::uint64_t ambiguous_events = 0U;
+	std::uint64_t coalesced_health_events = 0U;
 	std::uint32_t sessions = 0U;
 	std::uint32_t configurations = 0U;
 	std::uint32_t runs = 0U;
@@ -190,6 +191,8 @@ enum class telemetry_posthog_output_disposition : std::uint8_t
 	http_acknowledged,
 	suppressed,
 	ambiguous,
+	/* An unattempted health snapshot returned to the coalescing state. */
+	health_coalesced,
 };
 
 /* Single worker owner. Init/reset is legal only outside an active lifecycle.

@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "economy/boon_reward_transaction.h"
 #include "guild/artifact_admission.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
@@ -33,17 +34,31 @@ HARNESS_STUB bool critical_command_coordinator_is_fenced(const critical_entity_k
 
 // Input-queue fixtures do not collect population. The focused Divine activity
 // harness links the real observer in place of these no-op boundaries.
-HARNESS_STUB divine_boon_input_activity divine_boon_activity_begin(char_data *)
+HARNESS_STUB divine_boon_input_activity divine_boon_activity_begin(char_data *, int)
 {
 	return {};
 }
 HARNESS_STUB void divine_boon_activity_end(const divine_boon_input_activity &) {}
+HARNESS_STUB void divine_boon_runtime_pulse() {}
+HARNESS_STUB bool divine_boon_runtime_pending()
+{
+	return false;
+}
+HARNESS_STUB int ordered_command_number(const char *)
+{
+	return 0;
+}
 
 // Legacy-only fixtures have no Divine runtime. Divine integration harnesses
 // link the real gate and exercise draining/unavailable states explicitly.
 HARNESS_STUB bool divine_boon_legacy_admissions_allowed()
 {
 	return true;
+}
+
+HARNESS_STUB boon_reward_health boon_reward_transaction_health_copy()
+{
+	return {};
 }
 
 // Fixtures that do not link the artifact authority have no artifact state to

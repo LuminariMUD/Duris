@@ -493,15 +493,15 @@ int main(int argc, char **argv)
 		flatfile_player_domain_record near_maximum = baseline(80);
 		near_maximum.domains.bank = {};
 		near_maximum.domains.epics = std::numeric_limits<int64_t>::max() - 100;
-		require(flatfile_player_domain_establish_initial_player(
-				root.string(), near_maximum, &error) ==
+		require(flatfile_player_domain_establish_initial_player(root.string(), near_maximum,
+									&error) ==
 				flatfile_player_domain_result::ok,
 			"near-maximum recipient baseline failed");
 		auto counterpart = baseline(81);
 		counterpart.domains.bank = {};
 		counterpart.racewar = 2;
 		require(flatfile_player_domain_establish_initial_player(root.string(), counterpart,
-								 &error) ==
+									&error) ==
 				flatfile_player_domain_result::ok,
 			"overflow counterpart baseline failed");
 		auto prepared = combat(85);
@@ -523,6 +523,7 @@ int main(int argc, char **argv)
 		payload.participants[1].wallet_delta_copper = 0;
 		require(combat_outcome_command_build(&prepared, prepared.operation_id, payload),
 			"overflow prepared fixture build failed");
+		prepared.accepted_at_usec = 1;
 		const auto result = flatfile_player_domain_apply(root.string(), prepared);
 		require(result.outcome == critical_apply_outcome::terminal_failure &&
 				result.error_code == ERANGE,
@@ -540,13 +541,13 @@ int main(int argc, char **argv)
 		auto saturated = baseline(82);
 		saturated.domains.bank = {};
 		require(flatfile_player_domain_establish_initial_player(root.string(), saturated,
-								 &error) ==
+									&error) ==
 				flatfile_player_domain_result::ok,
 			"full-store recipient baseline failed");
 		auto counterpart = baseline(83);
 		counterpart.domains.bank = {};
 		require(flatfile_player_domain_establish_initial_player(root.string(), counterpart,
-								 &error) ==
+									&error) ==
 				flatfile_player_domain_result::ok,
 			"full-store counterpart baseline failed");
 		fill_receipt_history(domains / "player-82.domain");
@@ -559,6 +560,7 @@ int main(int argc, char **argv)
 		payload.participants[1].pid = 83;
 		require(combat_outcome_command_build(&outcome, outcome.operation_id, payload),
 			"full-store fixture build failed");
+		outcome.accepted_at_usec = 1;
 		const auto result = flatfile_player_domain_apply(root.string(), outcome);
 		require(result.outcome == critical_apply_outcome::terminal_failure &&
 				result.error_code == ENOSPC,

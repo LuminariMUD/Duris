@@ -105,8 +105,14 @@ void pause_restart_and_clock()
 {
 	auto state = activated();
 	auto choice = zone(divine_boon_category::epic, 10, 20);
+	const auto running = state;
+	assert(!divine_boon_set_paused(&state, false, H));
+	assert(state == running); // Redundant resume must not consume the next opportunity.
 	assert(divine_boon_rotate(&state, H, &choice));
 	assert(divine_boon_set_paused(&state, true, H + 10));
+	const auto paused = state;
+	assert(!divine_boon_set_paused(&state, true, 2 * H));
+	assert(state == paused);
 	assert(divine_boon_rotate(&state, 2 * H, &choice));
 	assert(occupied(state) == 1);
 	assert(divine_boon_reconcile(&state, 9 * H));

@@ -32,7 +32,7 @@ bool apply(P_char ch, const divine_epic_delivery &delivery)
 	// This receipt is committed before completion delivery or login recovery.
 	// Defer the artifact/guild effect alongside its epic award.
 	if (!artifact_guild_transaction_submit(ch, delivery.operation_id,
-					      static_cast<int>(delivery.amount), EPIC_PVP))
+					       static_cast<int>(delivery.amount), EPIC_PVP))
 		logit(LOG_STATUS,
 		      "Divine epic receipt committed, but artifact/guild effect unavailable.");
 	pc->epics += delivery.amount;

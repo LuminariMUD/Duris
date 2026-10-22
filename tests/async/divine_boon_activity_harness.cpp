@@ -1,12 +1,17 @@
 #include "economy/divine_boon_activity.h"
 #include "core/utils.h"
+#include "cmd/interp.h"
 
 #include <cassert>
 #include <iostream>
+#include <sanitizer/asan_interface.h>
 
 // MORPH_POLICY
+// ITEM_COMMAND_POLICY
 
 P_desc descriptor_list = nullptr;
+P_room world = nullptr;
+extern const int top_of_world = 7;
 namespace
 {
 char_data bodies[3] = {};
@@ -139,19 +144,28 @@ void real_input_boundary()
 {
 	setup_game();
 	for (int spam = 0; spam < 10; ++spam)
-		divine_boon_activity_end(divine_boon_activity_begin(&bodies[0]));
+		divine_boon_activity_end(divine_boon_activity_begin(&bodies[0], CMD_LOOK));
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
 	// An automatically awarded combat tick has no playing-input capture.
 	GET_EXP(&bodies[1]) += 100;
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
-	auto input = divine_boon_activity_begin(&bodies[0]);
+	auto input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
 	GET_EXP(&bodies[1]) += 100; // A force-like effect on somebody else is not their input.
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
-	input = divine_boon_activity_begin(&bodies[0]);
+	input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
 	++bodies[0].in_room;
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	descriptors[0].showstr_count = 1;
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	assert(!divine_boon_activity_begin(&bodies[0], CMD_LOOK).runtime_id);
+	descriptors[0].showstr_count = 0;
+	char *editing = nullptr;
+	descriptors[0].str = &editing;
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	assert(!divine_boon_activity_begin(&bodies[0], CMD_LOOK).runtime_id);
+	descriptors[0].str = nullptr;
 	SET_BIT(bodies[0].specials.act, PLR_AFK);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
 	REMOVE_BIT(bodies[0].specials.act, PLR_AFK);
@@ -159,26 +173,117 @@ void real_input_boundary()
 	bodies[0].desc = nullptr;
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
 	setup_game();
-	input = divine_boon_activity_begin(&bodies[0]);
+	input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
 	SET_BIT(bodies[0].specials.affected_by2, AFF2_CASTING);
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 1);
 	setup_game();
 	bodies[0].player.level = MAXLVLMORTAL + 1;
-	assert(!divine_boon_activity_begin(&bodies[0]).runtime_id);
+	assert(!divine_boon_activity_begin(&bodies[0], CMD_LOOK).runtime_id);
 	bodies[0].player.level = 30;
 	acct_chars staff = {};
 	staff.racewar = ACCT_IMMORTAL;
 	accounts[0].acct_character_list = &staff;
-	assert(!divine_boon_activity_begin(&bodies[0]).runtime_id);
+	assert(!divine_boon_activity_begin(&bodies[0], CMD_LOOK).runtime_id);
 	accounts[0].acct_character_list = nullptr;
 	bodies[0].player.racewar = RACEWAR_NEUTRAL;
-	assert(!divine_boon_activity_begin(&bodies[0]).runtime_id);
+	assert(!divine_boon_activity_begin(&bodies[0], CMD_LOOK).runtime_id);
 	bodies[0].player.racewar = RACEWAR_GOOD;
-	input = divine_boon_activity_begin(&bodies[0]);
+	input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
 	present[0] = false; // Quit/extraction before the post-dispatch observation.
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
+}
+
+void container_input()
+{
+	setup_game();
+	obj_data source = {}, target = {}, nested = {}, item = {};
+	bodies[0].carrying = &source;
+	source.next_content = &target;
+	source.contains = &nested;
+	nested.contains = &item;
+	IS_CARRYING_N(&bodies[0]) = 2;
+	auto input = divine_boon_activity_begin(&bodies[0], CMD_EMPTY);
+	divine_boon_activity_end(input); // Inspecting unchanged contents creates no evidence.
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	input = divine_boon_activity_begin(&bodies[0], CMD_EMPTY);
+	nested.contains = nullptr;
+	target.contains = &item; // The resulting tree of empty source target.
+	divine_boon_activity_end(input);
+	assert(IS_CARRYING_N(&bodies[0]) == 2);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	bodies[0].carrying = nullptr;
+}
+
+void device_input()
+{
+	setup_game();
+	obj_data device = {};
+	device.value[2] = 3;
+	bodies[0].equipment[0] = &device;
+	auto input = divine_boon_activity_begin(&bodies[0], CMD_USE);
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	input = divine_boon_activity_begin(&bodies[0], CMD_USE);
+	--device.value[2]; // Accepted device work consumes its charge before delayed effects.
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	bodies[0].equipment[0] = nullptr;
+	setup_game();
+	device.value[1] = 42;
+	bodies[0].carrying = &device;
+	input = divine_boon_activity_begin(&bodies[0], CMD_RECITE);
+	for (int slot = 1; slot <= 3; ++slot)
+		device.value[slot] = 0; // Recite consumes ink before the scheduled effect.
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	bodies[0].carrying = nullptr;
+}
+
+void resource_input()
+{
+	setup_game();
+	GET_VITALITY(&bodies[0]) = 100;
+	const auto input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
+	GET_VITALITY(&bodies[0]) -= 20;
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+}
+
+void door_input()
+{
+	setup_game();
+	room_data rooms[8] = {};
+	room_direction_data door = {};
+	world = rooms;
+	rooms[5].dir_option[0] = &door;
+	door.exit_info = EX_CLOSED;
+	auto input = divine_boon_activity_begin(&bodies[0], CMD_OPEN);
+	divine_boon_activity_end(input); // A failed/no-op door action is not gameplay.
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	input = divine_boon_activity_begin(&bodies[0], CMD_OPEN);
+	door.exit_info = 0;
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	world = nullptr;
+}
+
+void independent_input()
+{
+	setup_game();
+	std::vector<obj_data> items(4096);
+	for (size_t index = 1; index < items.size(); ++index)
+		items[index - 1].next_content = &items[index];
+	bodies[0].carrying = items.data();
+	// Any item access fails under ASan, proving these commands never walk the tree.
+	__asan_poison_memory_region(items.data(), items.size() * sizeof(obj_data));
+	for (int command : { CMD_LOOK, CMD_SCORE, CMD_SAY, CMD_TELL })
+		for (int repeat = 0; repeat < 1000; ++repeat)
+			divine_boon_activity_end(divine_boon_activity_begin(&bodies[0], command));
+	__asan_unpoison_memory_region(items.data(), items.size() * sizeof(obj_data));
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	bodies[0].carrying = nullptr;
 }
 
 void morphed_player()
@@ -193,13 +298,13 @@ void morphed_player()
 	body.desc = &descriptors[0];
 	descriptors[0].character = &body;
 	morph_body = &body;
-	const auto input = divine_boon_activity_begin(&body);
+	const auto input = divine_boon_activity_begin(&body, CMD_NORTH);
 	assert(input.runtime_id == 4 && input.pid == static_cast<uint32_t>(players[0].pid));
 	++body.in_room;
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 1);
 	npc.orig_char = nullptr;
-	assert(!divine_boon_activity_begin(&body).runtime_id);
+	assert(!divine_boon_activity_begin(&body, CMD_NORTH).runtime_id);
 	morph_body = nullptr;
 	descriptors[0].character = nullptr;
 }
@@ -220,6 +325,11 @@ int main()
 	windows_and_accounts();
 	sides_and_brackets();
 	real_input_boundary();
+	container_input();
+	device_input();
+	resource_input();
+	door_input();
+	independent_input();
 	morphed_player();
 	std::cout
 		<< "Divine activity: 60/15/5-minute windows, accounts, brackets, real input and exclusions passed\n";

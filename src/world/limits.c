@@ -1175,7 +1175,7 @@ static bool divine_experience_active(P_char ch, P_char encounter)
 	for (const auto &slot : state->slots)
 		if (slot.category == divine_boon_category::experience && slot.zones[side] == zone &&
 		    divine_boon_active(slot, now))
-			return divine_boon_zone_eligible(zone, side);
+			return divine_boon_reward_zone_eligible(zone, side);
 	return false;
 }
 

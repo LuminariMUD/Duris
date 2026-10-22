@@ -10148,17 +10148,16 @@ void tranquilize(P_char ch, P_char victim)
 			return;
 	}
 
+	for (P_char tch = world[victim->in_room].people; tch; tch = tch->next_in_room)
+	{
+		if (GET_OPPONENT(tch) == victim)
+		{
+			stop_fighting(tch);
+			clearMemory(tch);
+		}
+	}
 	if (GET_OPPONENT(victim))
 	{
-		for (P_char tch = world[victim->in_room].people; tch; tch = tch->next_in_room)
-		{
-			if (GET_OPPONENT(tch) && (GET_OPPONENT(tch) == victim))
-			{
-				stop_fighting(tch);
-				clearMemory(tch);
-			}
-		}
-
 		stop_fighting(victim);
 		clearMemory(victim);
 	}

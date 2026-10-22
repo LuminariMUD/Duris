@@ -1,27 +1,512 @@
 # Issue #245: rotating Divine Boons
 
-> **Critical delivery constraint: our resources and tokens are very limited,
-> the deadline is already past due, and we must deliver as fast as possible.**
-> This governs the entire plan: take
-> the shortest path that meets all requirements, reuse existing code and valid
-> evidence, and defer optional work. Required correctness and recovery remain
-> part of completion.
+> **Delivery contract: six hours TOTAL, never six more hours.**
+> Preserve the entire agreed outcome. Do not reset the clock, expand the budget,
+> hide a missed deadline behind progress, or call partial implementation done.
+> A forecast outside the remaining budget is a delivery failure to disclose
+> immediately, not permission to continue spending time.
 
-Status: implementation in progress; NPC EXP, hourly selection and prepared PvP delivery wired; zone epics, trade, commands and legacy activation remain open.
-Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
-Implementation branch: `branch/issue-245-divine-boons`.
+Status: active implementation; incomplete and inactive in gameplay. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
+Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
+Authoritative plan branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
 Issue specification inspected at its 2026-10-22 update, including all five comments.
 The agreed follow-up decisions take precedence over older exploratory numbers.
 The previous issue-59 plan is preserved byte-for-byte in
 [plan-issue-59.md](plan-issue-59.md); earlier plans remain in their existing files.
 
-The current request authorizes implementation, focused tests, commits, pushes
-and review-ready PRs, stacked as dependencies become ready. It supersedes the
-issue's older design-only restriction. Production migrations/imports, deployment,
-restart and merge remain separate actions.
+The owner explicitly resumed implementation and approved continuing the full
+scope ASAP past the original deadline. This supersedes the previous pause and
+the elapsed deadline's stop boundary; it does not reset spent time, invent a new
+six-hour allowance, or reduce any acceptance requirement. The original delivery
+was missed. Focused code/tests, commits, pushes and stacked review-ready PRs are
+authorized. Production migrations/imports, deployment, restart and merge remain
+separate actions.
+
+## Fixed budget and failure rules
+
+**Historical contract; missed.** The owner has now explicitly approved full-scope
+continuation past this deadline. Retain the original clock and missed checkpoints;
+the old stop boundary no longer blocks authorized implementation. No replacement
+deadline or extra six-hour budget was granted.
+
+1. **One clock for the whole outcome.** The budget is 360 elapsed minutes from
+   the original agreed start, including discovery, implementation, builds,
+   tests, fixes, documentation, Git/PR work and reporting. Active work may be
+   tracked separately; it cannot replace elapsed delivery time. New turns,
+   resumed goals, branches, PRs, agents, context compaction and revised plans
+   reset neither spent time nor the deadline. Waiting and handoffs count. An
+   explicit user pause stops work; it does not automatically move the deadline.
+2. **Record facts before spending more time.** Keep original start, absolute
+   deadline with timezone, elapsed time, remaining budget and next proof in the
+   handoff. Read the actual clock at each work boundary and before long commands.
+   If the original timestamp is unavailable, label it unknown and use the
+   earliest evidenced start as a conservative bound, never a fresh start.
+   Tokens and PR counts do not measure remaining delivery time.
+3. **Budget is not an estimate.** Forecast ALL unfinished behavior, affected
+   tests, required builds and publication using measured durations where
+   available. Label unmeasured work uncertain. Required work of unknown cost
+   cannot support an on-track claim. Do not quote a new full-project estimate
+   as remaining time or turn the six-hour limit into an eight-hour schedule.
+4. **Disclose failure early.** Immediately report when required work cannot fit,
+   a checkpoint below is missed, or evidence invalidates the forecast. State
+   elapsed time, remaining budget, missing acceptance items, concrete cause and
+   smallest recovery option without waiting for an ETA question. A report does
+   not grant an extension. Record a budget checkpoint at least every 30 elapsed
+   minutes; keep routine progress brief and tied to completed behavior/proof.
+5. **No unilateral extension or scope reduction.** Remove optional work and
+   duplicate verification first. If the complete required outcome still cannot
+   fit, stop new implementation, preserve the checkpoint and request only the
+   consequential time/scope decision. Only explicit user approval changes that
+   contract. Silence, frustration, "go faster" and an ordinary resume do not
+   authorize extra hours or omitted requirements. Resume continues the recorded
+   balance. Keep the original budget and miss visible after any approved change.
+6. **The deadline is a stop boundary.** Do not start commands that cannot finish
+   within the allowance; bound long commands by remaining time and safe cleanup
+   needs. At the deadline stop this task's work/processes safely, preserve the
+   diff/evidence and report complete delivery or an explicit missed delivery
+   with blockers. No unattended continuation, new PR cycle or "nearly finished"
+   extension. Reserve cleanup/report time inside the budget.
+7. **Completion means the whole issue.** All 23 acceptance items need executable
+   proof, both backends, commands/help and review-ready published code. A
+   foundation PR, passing helper test or inactive subset is partial work. Keep
+   #245 open until complete. Report qualification and publication separately
+   from merge/production. A deadline never excuses missing safety/recovery proof.
+
+These rules prohibit silent overruns; they cannot guarantee unknown work fits.
+If feasibility fails, say so early instead of making another unsupported promise.
+
+### Checkpoints inside the original six hours
+
+These are maximum elapsed thresholds to detect a failed commitment, not fresh
+allocations or predicted task durations. Finish earlier when possible. Missed
+checkpoints cannot be restarted now; they count as missed.
+
+- **By 00:30:** confirm scope, reuse and fixtures. Trace cargo settlement and
+  flat-file stone payout first. Forecast ALL remaining slices and final proof.
+  If they cannot fit 360 minutes, disclose failure before building layers.
+- **By 01:30:** execute representative purchase -> sale -> save/retry and
+  selected stone -> recipient save/reload paths on both backends at production
+  boundaries. These are narrow feasibility proofs, not full acceptance. Expose
+  missing atomicity/content before optional architecture or foundation-only PRs.
+- **By 03:00:** all four reward families have reachable vertical paths; cutover,
+  selection and display connect in isolated fixtures. Remaining work is named
+  acceptance gaps, not an undiscovered backend or reward subsystem.
+- **By 04:00:** required implementation/help exist and focused checks pass.
+  Reserve the last two hours for integrated journeys, both builds, required
+  review corrections and publication. No new infrastructure or optional work.
+- **By 05:00:** integrated journeys and final checks pass on both backends;
+  review-ready changes/evidence are prepared. The last hour is contingency for
+  concrete failures and delivery, not another feature phase.
+- **By 06:00:** publish the complete qualified result and report it, or report
+  missed delivery and stop. Never substitute another remaining-time range.
 
 ## Implementation handoff (2026-10-22)
+
+### Published trade producers (#288), next loss persistence
+
+[PR #287](https://github.com/LuminariMUD/Duris/pull/287) is open, ready and
+mergeable at `e4a9a120c`, stacked on #283. Both backend builds, focused native
+repository/receipt races, currency reservations, pipeline coalescing, sanitized
+trade/player codecs, formatting and LLVM 22 clang-tidy pass. No merge or tag.
+The original plan branch is synchronized after preserving its externally rebased
+history on current master. Source branch is now
+`branch/issue-245-divine-shop-integration`, based on #287.
+
+[PR #288](https://github.com/LuminariMUD/Duris/pull/288) is open and ready at
+`5a27e0bfb`, stacked on #287, with both builds and focused executable evidence.
+Next branch is `branch/issue-245-divine-trade-loss`, based on #288 plus this
+handoff. The producer code connects qualifying purchases and single/all cargo
+or contraband sales to prepared settlement; boot restores the active boon book,
+and completion publishes money, ship/crew, market, book and achievement. Live
+player purse publication preserves intervening ordinary money and skips a newly
+hydrated session using a process-local flag. Payload v2 shares the existing
+fixed affect-row codec, independently of full snapshot schema evolution.
+Both backend builds, the existing Divine writer/runtime check, sanitized real
+Nexus lifecycle/consumers and a new sanitized production trade-controller harness
+pass. The harness executes purchase and single/all sale preparation for both goods,
+9+1 eligibility, unchanged pre-commit memory, ordinary intervening money, retry,
+rejection/admission failure, duplicate completion and a newly hydrated session.
+Shared market preview also passes a sanitized check against the real ordinary
+price/adjustment functions for both goods, source/destination and clamped volumes.
+It caught and fixes the source cache distinction: asking price is persisted,
+whereas a same-port sale pays half. Ordinary adjustment now uses that shared
+preview; the existing paid/zero/empty sale check passes. Final builds are green.
+Formatting, LLVM 22 clang-tidy, whitespace checks and both final builds pass.
+The published stack remains unmerged. Full gameplay loss/restart journeys remain
+outstanding; do not treat the producer harness as a loaded-world journey. The affected ship's shop/control mutations, activity and
+ordinary snapshot captures now wait while settlement is pending; other ships
+continue. New market maintenance waits for the shared market participant.
+Nexus preparation has a quiet preview, and the flat-file reward branch now uses
+the same boot-restored memory catalogue as SQL, updated after durable alignment
+changes/expiry. This removes its per-award flat-file read. Existing harness stubs
+were adjusted for the new boot boundary and optional announcement argument.
+
+Immediate next work: persist loss/invalidation alongside ship snapshots. Concrete
+loss sites are `clear_cargo` and partial/all jettison in `ship_utils.c`, customs
+confiscation in `ship_shop.c`, NPC theft in `ship_npc_ai.c`, reset/deletion and
+owner transfer paths. Use the existing exact removal/invalidation policy before
+mutation and include prepared book after-images in the corresponding existing
+SQL writer transaction or flat-file authority journal. Include dirty provenance
+in ship save signatures, preserve fixed allowance and prevent stale captures
+from restoring proof. Add focused loss/restart proof; reuse green sale/receipt
+and unrelated reward evidence. The ship/market pending guards already exist. Selector routes, activation/cutover, commands/
+help and final integrated gameplay evidence remain unfinished. Keep working on
+those concrete paths; do not restart broad analysis or rerun unrelated evidence.
+Memory owns all gameplay calculations. SQL/flat-file restore state, validate
+revision/identity and persist prepared after-images. Original deadline remains
+missed; the owner authorized full-scope continuation without a replacement budget.
+
+### Published producer fixes (#283)
+
+[PR #283](https://github.com/LuminariMUD/Duris/pull/283) is open and ready for
+review, implementation `cf50aaf57`, stacked on #282. It is mergeable; both builds,
+native focused checks, formatting and LLVM 22 clang-tidy pass. Next source branch
+is `branch/issue-245-divine-trade-runtime`, based on #283 plus this handoff.
+Outcome: correct ordinary contraband price-cache quotes, persist
+zero-revenue cargo/contraband removal, and preserve trade generation through a
+staff market reset. Prepared wallet denominations must also respect the existing
+`INT_MAX` currency facade limit on both backends. Non-goals: changing approved rates or replacing ordinary
+trade. Files: ship cargo/shop code and focused existing native checks. Proof:
+execute the actual writer/sale functions for distinct quotes, stale jobs, paid/
+zero/empty sales, and reset/reload generation. These native checks pass, including ASan/UBSan,
+and prepared-wallet overflow rejection passes. Both final backend builds pass. Reuse the qualified settlement backend
+evidence; then continue actual gameplay integration.
+
+### Latest published backend continuation (19:01 UTC / 22:01 Asia/Jerusalem)
+
+- [PR #282](https://github.com/LuminariMUD/Duris/pull/282) is open, ready for
+  review and mergeable, stacked on #279. Implementation `5a5d0bf3f` is pushed
+  with 0/0 parity; both builds and native evidence match it. No release tag or
+  merge. The compound backend slice does not activate gameplay trade rewards.
+- Next worktree `/home/aiwithapex/projects/duris-issue245-plan`, branch
+  `branch/issue-245-divine-trade-runtime`, based on #282 plus this handoff-only
+  commit. This source tree is clean at handoff. The original named plan branch
+  continues to carry the foundation and authoritative current plan only.
+- Both real repository dispatchers now atomically persist prepared wallet, ship
+  slots/crew, market, account book and permanent result. Type 19 and entity 15
+  are appended. Memory prepares prices/eligibility/after-images; the writer only
+  checks identity/revision/shape and commits them. SQL uses the existing inbox/
+  outbox transaction, flat-file uses six after-images in the existing journal.
+  Restart/retry returns the stored result and does not apply a financial delta.
+- Native SQL purchase/sale proof passes ten rollback boundaries, with cargo and
+  contraband cases, exact market/price restoration, conflicting retries, 9+1
+  merged stock, spent allowance and repeated receipts. The real SQL maintenance
+  executor rejects restored generation-zero work after trade and accepts current
+  generation work. The new check caught non-unique legacy market indexes: the
+  executor now replaces each logical cell inside the transaction instead of
+  appending an ineffective upsert. Crew after-images also handle a missing row.
+- Native flat-file purchase/sale proof passes the journal and all six after-image
+  interruption boundaries, covering both goods. Retry/reload conserves wallet,
+  consumed inventory, market and fixed allowance; old player captures are rejected.
+  Native market proof covers v1 -> v2 read compatibility, stale restored maintenance,
+  current maintenance, corrupt/symlink files and an unconfigured root. Zero-revenue
+  sales also commit consumed goods/cap with unchanged money; no phantom credit.
+- Shared market codec is now in `flatfile_cargo_repository`; the existing player
+  file envelope encoder is shared in `flatfile_player_snapshot_file`. This keeps
+  persistence independent of live ship/gameplay code. The wallet helper owns only
+  authority, as all native snapshot writers already do; it does not invert locks
+  by acquiring a player lock afterward. Other balances/receipts remain untouched.
+- Additive migration 0050 is registered, re-runnable and preserves the generation
+  on replay. Both actual engine metadata fingerprints were measured on fresh
+  disposable MySQL 8 and MariaDB 10.11 schemas and synchronized with runtime and
+  lifecycle manifests. New schema is needed by ordinary market persistence as
+  well as the new financial operation; publication must include this migration.
+- Passed: `run_divine_trade_mysql.sh`; `test_flatfile_player_repository.py`;
+  `test_flatfile_cargo_market.py`; sanitized `test_divine_trade.py`, critical-command
+  and player-item-snapshot codecs; existing standalone flat-file item consumer;
+  seven runtime-compatibility and twelve lifecycle checks; both backend builds.
+  Formatting, LLVM 22 clang-tidy, both final builds and whitespace checks pass. Existing
+  loaded-world EXP/PvP/zone evidence is retained, not rerun without a relevant change.
+- **Next actual delivery:** wire the existing ship shop paths to memory-cached
+  active account books/generation, preserve purchase/access/pricing rules, reserve
+  affected participants and publish absolute completion once. Coordinate ordinary
+  wallet/ship/market saves and callbacks, add real port-route selection, and attach
+  loss/clear/confiscation/salvage/sink/ownership provenance updates to affected ship
+  capture/save signatures. Preserve crew and achievement behavior. Qualify actual
+  purchase/sale/save/restart journeys on both backends before activation.
+- **Subsequently resolved in #283:** ordinary SQL contraband cache quotes,
+  zero-revenue slot save marks, staff-reset financial cursor and native wallet
+  denomination bounds. The approved 25% and three-hold policy is unchanged.
+- Then finish legacy reconciliation/activation, player/staff commands and help,
+  and all final integrated acceptance journeys. Full #245 remains incomplete.
+- Original start 08:41:02 UTC, original deadline 14:41:02 UTC. At 19:01, elapsed
+  is 10h 20m, overrun 4h 20m. Owner-approved full-scope continuation remains active;
+  no replacement budget or reliable upper completion ETA is claimed.
+
+### Earlier in-progress checkpoint (17:34 UTC / 20:34 Asia/Jerusalem)
+
+- Current worktree remains `/home/aiwithapex/projects/duris-issue245-plan`, branch
+  `branch/issue-245-divine-trade-settlement`, HEAD `6e672a44b` (published #279
+  handoff). The settlement source/test diff is **uncommitted and not qualified**.
+  Do not mistake the clean published prerequisite head for full trade delivery.
+- The real critical-command payload/result and SQL compound executor are written:
+  memory supplies absolute wallet, slots/crew, market cells and account-book
+  after-images. Existing inbox/outbox handles SQL receipt/retry; type 19 and ship
+  entity 15 are appended. Flat-file dispatch now prepares snapshot + domain + ship
+  catalogue + market + account book + permanent receipt under one authority journal.
+  Player locks precede authority; account validation uses the already locked domain
+  record to avoid recursively acquiring authority through identity lookup.
+- The market codec was moved intact into `flatfile_cargo_repository` for two actual
+  callers: ordinary market persistence and compound trade. This prevents repository
+  tests/writers from linking live ship gameplay. Format v2 adds a trade generation,
+  reads v1 as zero, and normal writes/maintenance reject obsolete generations.
+  Scheduled snapshots append their captured generation; restored old snapshots remain
+  accepted at generation zero and cannot overwrite a later committed trade.
+- Passed new evidence: sanitized native command/book codec; native flat-file market
+  interruption/recovery, old maintenance rejection and v1 load. The SQL server build
+  passed **before** the last flat dispatch/codec extraction edits, so rebuild current
+  source. The combined native purchase/sale fault harness is being added to the
+  existing flat-file player repository suite; first run exposed a fixture ship with
+  missing required revision, now corrected. It has not yet passed.
+- Files to continue: `divine_trade_command*`, `divine_trade_repository*`,
+  `divine_trade_flatfile.c`, existing critical dispatch/outbox and flat-file player/
+  ship/market helpers, `ship_cargo_transaction.h`, and focused existing harnesses.
+- **Required before publication:** qualify the compound flat-file command at the
+  journal and all six after-image boundaries; execute the real SQL command/retry/
+  rollback path. Register/verify additive `0050_divine_trade_state.sql` (currently
+  present but not in manifests), refresh both measured runtime schema fingerprints,
+  update affected native test link lists, and build both backends. Existing market
+  code now needs that schema, so do not publish it with migration head 0049.
+- **Still not implemented:** game-thread trade admission/publication and mutation
+  hooks, real port selection, wallet/ship reservations and normal save ordering,
+  precise price/achievement integration, actual cargo journeys; then legacy
+  reconciliation/activation, commands/help and final full-scope journeys. No live
+  trade rewards are enabled. All requirements remain in scope.
+- Clock: original start 08:41:02 UTC, original deadline 14:41:02 UTC. At 17:34,
+  elapsed is 8h 53m and overrun is 2h 53m. Full-scope continuation was explicitly
+  authorized; no new budget or reliable upper ETA has been invented.
+
+### Earlier verified continuation (16:58 UTC / 19:58 Asia/Jerusalem)
+
+- **Published:** [PR #276](https://github.com/LuminariMUD/Duris/pull/276),
+  receipt retention, implementation `b2135ca72`, stacked on #275; and
+  [PR #277](https://github.com/LuminariMUD/Duris/pull/277), zone epics,
+  implementation `3afb15200`, stacked on #276. Both are open, ready for review.
+  No merge or release tag; no ordinary-installation activation or production work.
+- [PR #278](https://github.com/LuminariMUD/Duris/pull/278), exact trade lots and
+  shared fixed account allowance, is also open and ready for review, stacked on
+  #277 at `f436aaac2`. Hosted base/head were read back, mergeable; remote parity
+  is 0/0. This is preparation/codec code, not a live trade payout.
+- Latest source worktree `/home/aiwithapex/projects/duris-issue245-plan`, branch
+  `branch/issue-245-divine-trade-settlement`, based on the published #279
+  implementation `3485ea516` plus the handoff-only commit.
+  Trade implementation started from a clean tree. Both current server builds
+  include the wallet checkpoint below; earlier loaded-world zone journeys remain
+  valid evidence for implementation `3afb15200`. No gameplay reward math or
+  selector changed in the two trade prerequisites. The named plan branch contains the foundation
+  plus this current document, not the whole implementation stack.
+- Both final loaded-world journeys pass after the fractional rounding correction:
+  real zone 429, normally created Orc, 100 -> 150, save, restart and reconnect.
+  Native fixtures validate claim/replay/corruption, ordered zone/PvP delivery,
+  old payloads, runtime orchestration, additive math and seed parity. Preserve
+  the evidence below; do not repeat green checks without a relevant change.
+- **Trade preparation now implemented, not yet wired to gameplay:** exact paid
+  operation lots survive merged slots and partial consumption; untracked stock
+  goes first, invoice remainders stay with unsold lots. A single account/boon
+  record fixes the first full hold and combined three-hold allowance across goods
+  and ships. Loss/unproven transfer removes proof without creating a new cap.
+  The versioned checked snapshot preserves spent allowance after all lots sell.
+  The native ASan/UBSan harness passes 9+1, partial basis conservation, combined
+  goods, a larger second ship, different accounts, strict start/expiry, same-port
+  sale, loss, invalidation, corrupt/truncated reload and 600 purchase/sale cycles.
+  Both incremental server builds pass. No gameplay payment or atomic settlement
+  is claimed by these policy/codec checks; no new SQL schema was introduced.
+- [PR #279](https://github.com/LuminariMUD/Duris/pull/279), existing wallet revision
+  checkpoint, is open and ready for review, stacked on #278 at `3485ea516`.
+  Both backend builds match that source; remote parity is 0/0 and the published
+  PR base/head have been read back. The source tree is clean at this handoff.
+- **Qualified wallet checkpoint prerequisite:** reuse the existing memory
+  `wallet_revision` rather than add a trade-specific counter or SQL migration.
+  Snapshot wire v11 appends this revision; old versions restore zero. SQL and
+  flat-file status saves carry it with money and reject older wallet captures,
+  including a later general save revision. Non-wallet status updates preserve
+  the wallet revision. Flat-file snapshot/domain balances still share one atomic
+  authority commit, including the initial player checkpoint. The real native SQL
+  save/load harnesses pass on disposable MariaDB, as do sanitized codec/old-wire,
+  actual capture and flat-file repository tests (interrupted commit/reload,
+  nonzero starter-wallet revision and stale capture). Both incremental backend
+  builds, domain regression and native flat-file save-claim contracts pass.
+  Full settlement and gameplay are still missing. SQL proof executed the
+  maintained `player_save_claim_mysql_harness.cpp` and
+  `player_load_filter_mysql_harness.cpp` on a disposable complete schema; no
+  production database or checkout environment credentials were used. The
+  temporary local runner has been removed; the maintained complete SQL runner
+  remains `tests/async/run_player_save_claim_mysql.sh`.
+- **Concrete next implementation:** admit a qualifying buy/sale from memory,
+  prepare wallet/ship-slot/market-cell/account-book after-images, persist one
+  identified critical command on the existing writer and publish its absolute
+  result. Use the existing `wallet_revision` guard above for old player captures;
+  reserve the actual ship/market participants and cover their queued save/replay
+  ordering. Extend the existing authority helpers instead of adding a second
+  transaction framework. Hook loss/clear/ownership mutations to lot consumption
+  or invalidation. No live trade bonus may be admitted until this boundary and
+  both backend fault/retry journeys pass. No settlement code has been written yet.
+- **Next concrete delivery:** connect trade on the branch above. Reuse the existing ship
+  capture/writer and cargo-market authority; implement purchase batches and the
+  fixed three-first-ship-hold account cap together with atomic sale consumption,
+  player payment, market update and recovery. A bonus-only multiplier is not an
+  acceptable implementation. Then finish safe legacy reconciliation/activation,
+  player/staff boon commands/help and combined final journeys. Full #245 remains
+  incomplete; all required outcomes remain in scope.
+- **Clock:** original combined start 08:41:02 UTC, original six-hour outer bound
+  14:41:02 UTC. At 16:58 UTC, elapsed is 8h 17m and overrun is 2h 17m. The owner
+  explicitly approved full-scope work past that deadline. There is no new
+  six-hour budget or reliable upper completion ETA.
+
+
+### Earlier continuation checkpoint (2026-10-22 14:45:07 UTC)
+
+- Owner approval: **Continue full scope ASAP past the old deadline.** The original
+  six-hour outer bound was 14:41:02 UTC / 17:41:02 Asia/Jerusalem and is missed.
+  No replacement deadline has been invented. Earlier pause text below is history.
+- Outcome remains all 23 acceptance items. Non-goals remain optional frameworks,
+  repeated green validation, release tags for unmerged work and production changes.
+- Receipt retention is committed as `b2135ca72` and published for review in
+  [PR #276](https://github.com/LuminariMUD/Duris/pull/276), stacked on #275.
+  Both flat-file repository harnesses, sanitized Divine delivery, formatting,
+  LLVM 22 clang-tidy and whitespace checks pass. Both previous incremental
+  backend builds remain valid for the unchanged reviewed source.
+- Current worktree `/home/aiwithapex/projects/duris-issue245-plan` is now on
+  `branch/issue-245-divine-zone-epics`, based on #276. Next outcome: a real stone
+  prepares each recipient's final zone award and both backends recover it once
+  using the existing saved balance/watermark. Reuse the existing claim, writer,
+  receipt and delivery machinery; do not add a second reward framework.
+- Files: zone command/repository/transaction, existing recipient-delivery and
+  flat-file domain code, epic preparation/selection and focused existing tests.
+  Proof: old payload compatibility, full-group claim/retry, mixed PvP/zone
+  ordering, save/restart and actual stone selection/payment on both backends.
+- **Continuation checkpoint 15:12 UTC / 18:12 Asia/Jerusalem:** original outer
+  bound missed by 31 minutes; full scope remains authorized past it. No fresh
+  completion promise or replacement budget is established. Receipt PR #276 is
+  published. The zone-epic slice below is uncommitted and still under focused
+  qualification; all-issue acceptance remains OPEN.
+- Zone implementation now prepares exact recipient amounts at actual stone
+  touch, persists shared PvP/zone delivery ordering and recovers both through
+  the existing bounded login query. SQL child inboxes retain the parent receipt;
+  no new migration or query budget is needed. Flat-file claim, full receipt,
+  issued revisions and alignment/touch state share one authority transaction.
+- A common selector validates live payable stones and directed side paths, uses
+  actual encounter crowding and matching account brackets for group suitability,
+  and rejects towns/unsafe targets before category weighting. Native defaults
+  derive from the existing reviewed 110-zone payout seed. Its historical group
+  value 100 is a payout divisor, not recommended party guidance. No payout seed
+  values were changed; an already-stale epic.h source fingerprint was refreshed.
+- Passed this continuation: both backend server builds (later final source edits
+  require incremental rebuild); domain, full player save/reload (including claim
+  journal recovery, retouch, mixed PvP/zone and checkpoint), sanitized reward math/
+  delivery and selector harnesses; ten seed checks; disposable MariaDB full-group
+  claim/retry/rollback and actual login recovery/corrupt-zone-receipt rejection.
+  Old 88/512-byte compatibility and orchestration checks are being finished.
+- **Continuation checkpoint 15:43 UTC / 18:43 Asia/Jerusalem:** original combined
+  start 08:41:02 UTC; elapsed 7h 02m, original six-hour bound overrun by 1h 02m.
+  The owner-approved continuation remains full scope, with no reliable upper ETA.
+  #276 remains the published result. The zone slice is still uncommitted.
+- Full-world execution confirms flat-file stones now reach prepared payment and
+  save real base payouts (80/275/90/175/600). It also exposed the incumbent selector's
+  rejection of Tharnadia's normal inn spawn. `inn()` was traced: it handles RENT
+  and returns false for movement. That specific proc is now allowed; unknown
+  special-room movement stays excluded, and a focused regression passes.
+- The loaded catalogue currently proves an Evil target in zone 429 (six-account
+  encounter crowding); the conservative Good pool has no payable epic at the
+  sampled untouched world state. Empty objectives remain allowed; no safety
+  fallback was relaxed. Metadata becomes available on the normal object event.
+- Review of that real mobile-held stone found a completion bug: eligibility
+  searched only its NPC/reset-room location. It now follows the existing
+  `obj_zone_id()` container/carrier resolver, retaining target proof after corpse
+  loot or player acquisition within the same zone. Native regression covers
+  acquisition and rejects moving the stone out of its designated zone.
+- Existing staff `world persistence` now reports bounded, validated target counts
+  and eligible epic zone IDs. This supports the required staff status and lets the
+  journey choose a real proved target rather than guess. Stone metadata initializes
+  on its existing `PULSE_MOBILE+4` bounded object event; the journey waits for that
+  readiness. At this checkpoint, the +50% loaded-world journey is still running.
+- Both final backend builds, changed-line LLVM 22 tidy, all 1120 tracked C/C++
+  formatting checks, legacy orchestration/88- and 512-byte receipt compatibility,
+  quaff/legacy reward publication and dual-backend XP consumer checks pass.
+  Reuse these results unless later source changes invalidate the relevant check.
+- **Zone-epic qualification complete at 16:07 UTC / 19:07 Asia/Jerusalem.**
+  Both actual full-world journeys pass using the current binaries and original
+  zone-429 stone: a normally created Orc on the Evil side earns 150 from base
+  100, saves, restarts and reconnects with the same balance. The fixture selects
+  from actual eligible targets and seeds one paused objective offline; weighted
+  population choice/hourly admission remain the separate executable selector
+  proof. No production data or shared server was used.
+- Exact maintained journey commands:
+  `python3 tests/async/test_divine_boon_zone_journey.py --backend flatfile --server bin/server/dms_new_flatfile`;
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server bin/server/dms_new`.
+  `make world` generated the required ignored world inputs. No generated area
+  outputs are staged. Test actor creation reuses the existing journey helper,
+  with a race-menu argument and fixed-alignment prompt handling for the Orc.
+- The exact final rounding requirement also retains fractional group and
+  alignment shares through Divine preparation. A real 100*2/3 base pays 100
+  with +50%, rather than 99 after premature rounding. Ordinary legacy integer
+  payout behavior remains unchanged. Sanitized production-math tests and both
+  final backend builds pass after this correction; both journeys above also
+  ran after it. All changed-line formatting/tidy and whitespace checks pass.
+- Additional focused proof: native claim/replay/rejection/SQL rollback (including
+  15 recipients), old 88/512-byte payloads, actual orchestrator, interrupted flat
+  claim/checkpoint and mixed zone/PvP recovery, SQL login/corruption, ten seed
+  checks and affected legacy award/XP consumers. Run the SQL claim fixture with
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_epic_stone_transaction.py`;
+  its TEST_DB_* bridge uses only the explicit disposable service.
+- **Remaining full feature:** trade batch provenance/account cap/atomic settlement,
+  legacy reconciliation and activation, player/staff boon commands/help, and the
+  combined cutover/rotation/all-rewards/restart journeys. #245 remains OPEN.
+  Publication of the qualified zone slice is the immediate next action.
+
+### Superseded paused checkpoint (history)
+
+- **Clock evidence:** implementation started at 12:30:26 Asia/Jerusalem
+  (09:30:26 UTC); the paused checkpoint was recorded at 17:17:38 (14:17:38 UTC):
+  4h 47m 12s for that interval alone. Earlier planning began at 11:41:02
+  (08:41:02 UTC), the earliest verified start for the combined job. Its six-hour
+  outer bound is **17:41:02 Asia/Jerusalem (14:41:02 UTC)**. This is NOT a
+  replacement for the owner's already-overdue deadline; the exact earlier
+  promise timestamp is unverified. Planning, waiting and this repair count.
+  No additional implementation time or reliable on-time forecast is established.
+- **Read this branch's current plan before continuing an older stack copy.**
+  Preserve the paused work and spent-time record. A resumed goal does not
+  restore an old estimate or grant a new six-hour window.
+- **Published partial work:** [#265](https://github.com/LuminariMUD/Duris/pull/265)
+  state, [#266](https://github.com/LuminariMUD/Duris/pull/266) persistence,
+  [#267](https://github.com/LuminariMUD/Duris/pull/267) writer/boot,
+  [#268](https://github.com/LuminariMUD/Duris/pull/268) legacy admission barriers,
+  [#269](https://github.com/LuminariMUD/Duris/pull/269) activity,
+  [#270](https://github.com/LuminariMUD/Duris/pull/270) delivery watermark,
+  [#271](https://github.com/LuminariMUD/Duris/pull/271) EXP candidates,
+  [#272](https://github.com/LuminariMUD/Duris/pull/272) EXP/hourly integration,
+  [#275](https://github.com/LuminariMUD/Duris/pull/275) prepared PvP delivery.
+  These prove bounded components, not nine completed feature slices.
+- **Latest published implementation:** `branch/issue-245-divine-pvp` at
+  `4ecad7a9b578a497eeec31c8e2fe29ac963ac6c9`, implementation `7b3407016`.
+  The plan branch contains only the earlier foundation. Do not confuse its
+  source tree with the latest implementation or rebuild completed components.
+- **Paused dirty worktree:** `/home/aiwithapex/projects/duris-issue245-plan`,
+  branch `branch/issue-245-divine-receipts`. Its uncommitted plan records detailed
+  evidence and receipt work in `flatfile_player_domain_repository.{c,h}`,
+  `flatfile_player_repository.c` and their two existing harnesses. Preserve all
+  six modified files. Receipt changes are not published or finally reviewed.
+  This plan repair uses a separate worktree and must not overwrite that work.
+- **Confirmed remaining work:** `zone_touch_transaction_submit` still refuses
+  flat-file mode; `divine_boon_select` selects only EXP/PvP; `CMD_BOON=804` still
+  dispatches `do_boon`; cargo credits `ADD_MONEY` separately from ship/market
+  saves. Epic candidates/payouts, trade lots/cap/settlement, legacy reconciliation/
+  activation, commands/help and final loaded-world journeys remain. This is
+  substantial unfinished implementation, not just final verification.
+- **Evidence:** reuse results against the relevant unchanged code. The paused
+  handoff records both receipt harnesses and both incremental builds passing;
+  that is prior evidence, not checks rerun by this plan repair. Existing PRs
+  retain their detailed checks. Use installed LLVM 22 for later C++ commits
+  (`CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy`).
+- **Next, only if resumed:** assess ALL remaining cost against the unreset
+  budget first. Finish the bounded receipt fix only if that gate permits work;
+  then prove cargo and stone gaps before more supporting layers. An older
+  "next foundation PR" instruction cannot override a failed checkpoint.
+- **Still open:** full-feature acceptance. No merge, production operation or
+  live balance claim is supplied by the partial implementation or this repair.
+
+### Published implementation history (retained evidence)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
   `branch/issue-245-divine-pvp`, stacked on `branch/issue-245-divine-experience`
@@ -228,17 +713,19 @@ restart and merge remain separate actions.
   [PR #275](https://github.com/LuminariMUD/Duris/pull/275), implementation
   `7b3407016`, stacked on #272. Both server builds, affected bank/legacy-boon
   consumers, formatting, clang-tidy and whitespace checks pass.
-- **Before activation:** remove the fixed lifetime receipt ceiling for new flat
+- **Before activation (uncommitted fix described in the paused checkpoint):**
+  remove the fixed lifetime receipt ceiling for new flat
   prepared work. The pre-existing domain operations list caps at 512; complete
   parent results cannot grow in that list forever. Compact checkpointed detail
   while retaining durable retry identity through the existing authority files;
   preserve unrelated legacy receipts. The byte bound now accommodates the
   already-declared operation count instead of failing early at 64 KiB.
-- **Next:** finish flat receipt retention, then implement prepared zone rewards
+- **After explicit resume:** finish and publish flat receipt retention, then implement prepared zone rewards
   and real flat-file stone payouts on the same saved delivery boundary;
   complete legacy receipt retention/delivery reconciliation before activation.
-  Then implement the candidate/activity, reward, cargo and command/help paths
-  below. The state API does not itself prove targets safe or legacy work settled.
+  Then finish epic candidates, cargo and command/help paths below. Activity and
+  EXP/PvP selection already have published implementation; do not rebuild them.
+  The state API does not itself prove targets safe or legacy work settled.
 - Concrete next integration findings: `boon_shop()` spends MariaDB stat points
   in a queued writer job and raises/refunds the stat in its completion; closing
   new admissions must not suppress that accepted completion. Legacy flat-file
@@ -256,27 +743,26 @@ restart and merge remain separate actions.
   recipient admissions; reject older snapshots that would overwrite a newer
   applied watermark. This stays within the existing prepared payloads and player
   status boundary; do not change general currency semantics or add per-hit XP I/O.
-- **Still open:** every full-feature acceptance item. The rotation core is a
-  dependency; backend persistence and writer ordering are proven above, while
-  live candidate rotation, completed cutover, gameplay payouts and Divine Boons
-  remain unproven. No production action performed.
+- **Still open:** full-feature acceptance as an integrated system. Published
+  state, persistence, writer, activity, EXP selection/reward and prepared PvP
+  checks prove the bounded behavior recorded above. They do not prove completed
+  cutover, all reward categories, trade, commands or actual loaded-world journeys.
+  No production action performed.
 - Ablation: reuse one state/codec for both backends; no scheduler, delivery
   framework, general economy rewrite or extra verification campaign added.
-  State revision plus an atomic snapshot supplies retry identity; no additional
-  critical-command type, outbox or duplicate receipt catalogue is needed.
+  State revision plus an atomic snapshot supplies rotation retry identity.
+  The receipt-retention follow-up uses existing authority files because the
+  reproduced per-player lifetime limit needs durable replay outside that list;
+  do not generalize it into a separate economy framework.
 - Next zone delivery step: extend the existing prepared-reason predecessor lookup
   and load readers across both PvP and zone receipts. Reuse issued revisions;
   never derive a new sequence from the applied watermark. Multiple accepted
   awards before callbacks must retain distinct identities and ordered recovery.
-- Remaining estimate at this checkpoint: 6-8 hours of active implementation and
-  focused verification, including review-ready PRs. Cargo recovery and flat-file
-  epic payouts remain the largest costs; this is an estimate, not time to fill.
+- Scheduling: previous time estimates are withdrawn; use the paused checkpoint's
+  actual completed, uncommitted and remaining work. Work stays paused until the
+  user explicitly resumes it.
 
 ## Outcome
-
-**Delivery priority:** resources and tokens are very limited, and the deadline
-is already past due. Deliver the complete required outcome as fast as possible.
-Add no optional scope.
 
 Replace the player-facing legacy task/shop boon system with automatic,
 persistent world bonuses. Retain `boon`, `boon list` and `CMD_BOON=804`.
@@ -297,126 +783,38 @@ contraband base sale revenue. New Divine benefits add a contribution calculated
 from the original eligible base; they do not multiply an already boosted total.
 Keep the existing eligibility rules, penalties and final caps.
 
-## Verified code findings and implications
+## Source findings that bound the remaining work
 
-These are facts about the pinned checkout, not claims about production content
-or deployed settings. Function names below are navigation points at that commit.
-Use these findings to focus the limited time on known required changes. Reopen
-investigation only where implementation exposes a concrete unresolved question.
+Original baseline: `e897b5214893`; latest inspected implementation: `4ecad7a9b`
+plus the preserved receipt diff. Detailed baseline findings remain in Git history;
+do not repeat the completed audit or treat old line numbers as current evidence.
 
-1. **Command replacement is small; legacy retirement is not.**
-   [interp.c](../../src/cmd/interp.c), `CMD_BOON` registration at 3454, calls
-   `do_boon()`; [interp.h](../../src/cmd/interp.h) defines 804 at 841.
-   [boon.c](../../src/economy/boon.c), `do_boon()` at 1573, owns list, shop and
-   editing dispatch. `boon_randomize()` at 2924 really is unfinished.
-   `check_boon_completion()` at 3027 admits rewards through a transaction;
-   changing command dispatch cannot stop its combat/zone/economy callers.
-
-2. **There are independent legacy mutation and delivery paths.**
-   [boon_reward_transaction.c](../../src/economy/boon_reward_transaction.c),
-   `publish_reward()` at 70 and `player_ready()` at 199, distinguishes live
-   publication from flat-file acknowledgement and login delivery. The published
-   marker is process memory, not a durable proof of player delivery.
-   [boon.c](../../src/economy/boon.c), `boon_shop()` at 1908, uses a flat-file
-   transaction but a separate SQL writer/callback path for MariaDB purchases.
-   [maintenance_scheduler.c](../../src/persistence/maintenance_scheduler.c),
-   initialization at 640, restores unfinished work; the flat-file scan also
-   reaches `boon_maintenance()` via completion dispatch.
-   A mode flip or suppressed callback alone cannot settle earned rewards.
-
-3. **An operation ID does not currently make wallet payment idempotent.**
-   [currency_transaction.c](../../src/economy/currency_transaction.c),
-   `currency_transaction_submit_identified()` at 262, explicitly ignores its
-   operation ID and updates live money; player saves persist it later.
-   [epic_transaction.c](../../src/world/epic_transaction.c), submit at 36,
-   likewise changes the live epic balance before queuing ledger evidence.
-   [combat_outcome_transaction.c](../../src/combat/combat_outcome_transaction.c),
-   `apply_live()` at 62, applies participant deltas in memory.
-   Reuse their accounting rules, but do not claim these APIs alone supply
-   durable exactly-once delivery. New recoverable rewards need a delivery
-   marker committed with the corresponding player state.
-
-4. **EXP has distinct share derivation paths and intermediate truncation.**
-   [limits.c](../../src/world/limits.c), `gain_exp()` at 1125, normalizes
-   `EXP_KILL_BONUS`, derives tanking recursively from damage before damage
-   modifiers, and obtains a healer's hostile NPC through `GET_OPPONENT(victim)`.
-   Damage, tanking, healing, melee and kill branches apply their own modifiers.
-   Final difficulty scaling precedes integer conversion and the one-third-level
-   cap around 1505-1525. Rest, Nexus and epic bonuses occur earlier.
-   A late `XP *= 2` compounds existing boosts; an early multiplier also boosts
-   the recursively derived tank share again. Neither implements the agreed math.
-
-5. **The active PvP caller differs from the issue's suggested two-route model.**
-   [fight.c](../../src/combat/fight.c), `opposite_racewar()` at 522, accepts
-   any differing racewars. Death admission around 2510 and
-   `submit_pvp_outcome()` at 963 retain the victim and existing frag gates.
-   It adds Spill Blood's 500 before calling `epic_calculate_pvp_award()`.
-   [epic.c](../../src/world/epic.c) has another implementation in
-   `epic_frag()` at 679, but a repository-wide caller search finds only its
-   definition and declaration. Do not build a second live payout route merely
-   because the issue assumes both are live. Consolidate qualification and math;
-   retain generic `gain_epic(EPIC_PVP)` behavior without an unqualified Divine boost.
-
-6. **Flat-file epic support requires more than a candidate codec.**
-   [sql.c](../../src/sql/sql.c) at 581-591 supplies empty/failing flat-file
-   `sql_zones()`/`get_zone_info()` stubs. The
-   [epic task catalogue](../../src/world/epic_task_catalog.c), refresh at 98,
-   reports `database_disabled` and otherwise selects `task_zone=1` rows.
-   More decisively, [zone_touch_transaction.c](../../src/world/zone_touch_transaction.c),
-   submit at 99, explicitly rejects non-MySQL mode.
-   Its SQL publication at 60-95 adds player epics with process-local markers;
-   recovered stone claims skip repeat side effects. A ledger receipt therefore
-   does not by itself prove a player save contains the reward.
-   Both real flat-file touch support and durable recipient recovery are in scope.
-   [epic.c](../../src/world/epic.c), `epic_stone_payout()` at 780 and touch
-   preparation at 1125-1168, already provides group/stone gates and per-recipient
-   prepared awards worth extending.
-
-7. **Cargo loses batch identity and settles separate effects.**
-   [ship_shop.c](../../src/ships/ship_shop.c), `buy_cargo()` at 2041 and
-   `buy_contra()` at 2197, merges quantity and invoice cost by commodity.
-   Sales at 936-1230 clear slots, modify markets, credit money, then queue ship
-   saves and a separate market write. The market write's own SQL transaction
-   does not make that whole sale atomic. Current sales select whole slots;
-   partial eligible quantities inside a slot still require exact accounting.
-   [ShipSlot](../../src/ships/ships.h) stores counts/costs, not purchase identity.
-   Jettison and salvage in [ship_utils.c](../../src/ships/ship_utils.c) at
-   2460-2707 discard/reconstruct crates; salvage does keep invoice-free crates
-   separate from purchased slots today. Preserve that existing cost-basis rule.
-   Customs confiscation and `clear_cargo()` are additional quantity mutations.
-
-8. **Capacity and selection have reusable code, with narrower guarantees.**
-   [ships.h](../../src/ships/ships.h) at 685-700 expresses combined cargo and
-   contraband load in crates, with two weight units per crate. `SHIP_MAX_CARGO`
-   includes a crew modifier; available capacity is also weight-limited.
-   [world_quest_policy.c](../../src/world/world_quest_policy.c), the updated
-   bartender quest policy, caches zone/mob profiles, excludes `ZONE_TOWN`,
-   uses level windows and weighted scores, and bounds target probes.
-   [world_quest.c](../../src/world/world_quest.c), assignment at 794, tries
-   distinct targets with finite budgets. Its item-reward suitability and map
-   heuristics are not proof of Divine side accessibility or epic completion.
-   [maintenance_snapshot.c](../../src/persistence/maintenance_snapshot.c)
-   at 90-144 counts current descriptors and unique hosts, not active accounts.
-   Newer [interp.c](../../src/cmd/interp.c) at 149-188 and
-   [telemetry_runtime.h](../../src/telemetry/telemetry_runtime.h) at 345-378
-   expose activity evidence, but telemetry is optional and its session counters
-   are not the requested rolling, account-deduplicated gameplay population.
-
-9. **Runtime flags and help precedence must remain authoritative.**
-   [db.c](../../src/world/db.c) at 1783-1817 initializes hometown to zero and
-   loads `ZONE_TOWN` independently; a real town can have index zero.
-   The existing `BOON` topic in
-   [help_index](../../lib/information/help_index) at 1686-1706 still advertises
-   participation toggling and the shop. Parsed help currently has no actual
-   Boon topic. [HELP_SYSTEM.md](../content/HELP_SYSTEM.md) documents that a
-   matching parsed-help title overrides help_index, including in flat-file mode.
-   Update maintained sources consistently; do not create contradictory copies.
+- `zone_touch_transaction.c` still refuses flat-file settlement. Extend the
+  existing stone claim/prepared-participant boundary and saved delivery marker;
+  a candidate catalogue or committed claim alone does not prove player credit.
+- `ship_shop.c`, `ships.h` and `ship_utils.c` merge commodity slots without lot
+  identity and save payment, ships and markets separately. `SHIP_MAX_CARGO`
+  counts combined crates and includes crew. The affected sale needs atomic
+  recovery of all effects; a bonus-only receipt is insufficient.
+- Legacy admission barriers now exist in the stack. `boon_reward_transaction.c`,
+  `boon.c` and `maintenance_scheduler.c` still need accepted/unpublished/login/
+  restored reward reconciliation. Suppressed callbacks lose earned entitlements.
+- EXP/PvP integration already exists in `limits.c`, `fight.c` and the stack's
+  tests. Reuse it. The old `epic_frag` wrapper had no production callers; do not
+  invent a second live route to match the issue's assumption. Remaining award
+  entries must share qualified preparation without boosting generic EPIC_PVP.
+- Barquest profiles support bounded candidates, not proof of side access or
+  epic payout. Runtime `ZONE_TOWN` is authoritative even at hometown zero.
+  Reuse existing account activity independently of optional telemetry.
+- `interp.c` still routes command 804 to legacy `do_boon`. Existing BOON help
+  includes shop/toggle guidance; [HELP_SYSTEM.md](../content/HELP_SYSTEM.md)
+  documents parsed-help precedence. Update both maintained sources consistently.
 
 ## Ablation decisions: non-goals, files and proof
 
-**Resource, token and overdue deadline rule:** these scope limits are essential
-to finishing as fast as possible. Every addition must be needed
-for a retained requirement or its proof; defer optional improvements and polish.
+Every addition must identify its retained acceptance item and concrete failure.
+A required addition updates the remaining forecast or triggers the budget failure
+rule; discovering it does not create extra hours. Drop optional work.
 
 **Keep:** the issue's gameplay, both backends, safe legacy retirement, prepared
 reward identity, cargo batch/cap/payment recovery, hard target exclusions,
@@ -463,7 +861,7 @@ Also exclude new schedulers/services, PostHog dependencies, generic quest/reward
 frameworks, point conversion, per-side eight-slot pools, quotas, instant refill,
 catch-up bursts, alternate colouring and player/ship location displays.
 
-**Files:** core changes belong in one `divine_boon.{h,c}` module and its minimal
+**Files:** reuse the already published `divine_boon*` implementation and minimal
 backend persistence boundary, existing boon admission/scan handlers, interpreter/
 toggle, `limits.c`, `epic.c`, `zone_touch*`, `fight.c`/`combat_outcome*`,
 ship shop/cargo mutation/save code and help. Extend SQL/flat-file player or ship
@@ -474,23 +872,32 @@ the cargo operation owns its idempotent payment boundary.
 **Proof:** extend existing executable harnesses and disposable database/file
 fixtures. Add a small clock/selection test and the missing domain recovery
 cases; no new test framework. Helper/codec checks cannot prove a reachable
-command, real stone payout or recoverable sale. Gameplay implementation is now
-authorized; production actions remain outside this work.
+command, real stone payout or recoverable sale. The paused implementation's
+authority and budget limits are recorded above.
 
-## Implementation sequence
+## Remaining execution order and technical contracts
 
-These are dependency steps within the same issue and branch, not six separately
-qualified projects. Preserve every acceptance item in the closure map.
+The numbered contracts below preserve requirements, not mandatory implementation
+or PR boundaries. Reuse the existing stack; do not repeat already proven steps.
 
-**Execution priority:** resources and tokens are very limited; we are already
-past the deadline and must deliver fast. Keep reasoning and progress reports brief.
-Keep each step to its required changes and focused proof, reuse valid results,
-and move directly to the next dependency as soon as the current one is complete.
+On an authorized continuation that passes the budget gate:
+
+1. Finish the existing receipt-retention gap needed by prepared rewards, reusing
+   valid tests; no generalized history service or extra foundation PR.
+2. Prove actual cargo purchase/sale and stone save/recovery boundaries on both
+   backends first. Use a real route and stone, then cover the variations below.
+   Do not defer these largest costs or build substitute toy implementations.
+3. Complete both vertical paths through selection, eligibility, prepared reward,
+   save/reload and player output. Reuse existing EXP/PvP paths.
+4. Finish legacy reconciliation, commands/help and combined journeys; run both
+   required builds and remaining affected checks, then publish the complete diff.
+
+Use one continuation branch unless a concrete dependency/review requirement needs
+another. Keep existing PRs intact. Use focused commits, but do not require a
+PR/build/report cycle for each helper. No full burn-in, CI wait, world-wide audit
+or optional hardening phase. Apply the same clock and failure rules throughout.
 
 ### 1. State, hourly rotation and forward legacy cutover
-
-**Overdue delivery focus:** reuse the existing writer and recovery machinery to finish
-the required state and safe cutover with the smallest necessary changes.
 
 - In the Divine module store eight slots with stable boon IDs, category/rate,
   absolute starts/expiry, per-side objectives, revision, pause flag, last UTC
@@ -531,9 +938,6 @@ verify old work is paid once or retained recoverably. Test restored jobs and
 offline recipients. Use existing receipt fixtures for actual retained formats.
 
 ### 2. Safe candidates and bounded activity
-
-**Overdue delivery focus:** prove a bounded usable candidate pool and reuse existing
-observation points. Spend no scarce time on a world-wide audit or new framework.
 
 - Use one cached validated catalogue for SQL and flat-file. Reuse bartender
   boot-profile, level-score and bounded distinct-candidate techniques; do not
@@ -582,9 +986,6 @@ especially town flag with hometown zero/nonzero and changed flags. Prove positiv
 side access for selected real content, not only rejection of synthetic bad zones.
 
 ### 3. Reward integration and flat-file stone payouts
-
-**Overdue delivery focus:** make the required changes at the existing reward and save
-boundaries. Avoid unrelated reward work so both backends can finish quickly.
 
 - Derive each legitimate share first. Carry an explicit eligible base and
   calculate the Divine contribution separately from existing increases.
@@ -642,8 +1043,21 @@ and award a real payable reachable epic target.
 
 ### 4. Boon-specific cargo lots and settlement
 
-**Overdue delivery focus:** keep recovery work confined to qualifying lots and affected
-sales. This required work is a major time cost; avoid a general trade rewrite.
+Runtime authority is the game thread's in-memory state, as the owner reaffirmed
+on 2026-10-22. It prepares selection, eligibility, prices, lots and allowances.
+The existing single writer persists the exact prepared operation and rejects a
+stale revision; SQL does not select targets or recalculate gameplay from rows.
+SQL and flat files restore state at boot and identify committed operations during
+recovery. A financial success is published only after its prepared atomic record
+is durable, so crash recovery cannot duplicate money or restore consumed cargo.
+
+Trade preparation records exact individual purchase lots and one account/boon
+allowance, then deterministically prepares partial consumption. Native proof covers
+9 old + 1 eligible, invoice conservation, both goods sharing the three-first-hold
+cap, another ship/account, loss, expiry and checked reload. PR #282 now commits
+the prepared financial after-images on both backends. The next consumer is the
+actual game-thread ship shop: admission, prices, reservations, mutation provenance
+and completion/recovery publication still require implementation and live proof.
 
 - Retain ordinary commodity slots; attach exact lots to stable persistent ship
   identity, not its process-local runtime reference. Qualifying purchases store
@@ -699,9 +1113,6 @@ No second framework or unrelated ordinary-sale rewrite is required.
 
 ### 5. Commands, help and one integrated qualification
 
-**Overdue delivery focus:** finish the required commands/help and reuse focused evidence
-for one integrated journey per backend. No optional polish or extra test campaign.
-
 - Keep `CMD_BOON=804`, `boon` and `boon list`. Show the exact requested Gods
   introduction, stored valid targets/rates, real remaining time and next hourly
   opportunity; handle initialization, pause and fewer than eight/zero slots.
@@ -742,9 +1153,10 @@ for one integrated journey per backend. No optional polish or extra test campaig
 
 #245 remains open until all of these have implementation and executable proof.
 
-**Completion is overdue:** use this map to keep limited resources and tokens
-on required work, close each item once its proof is valid, and finish immediately
-when the full map is satisfied. Do not add optional acceptance criteria.
+All groups remain OPEN for full-feature delivery. Close an individual item only
+with its implementation commit, executable command/result, backend and actual-path
+evidence. A group summary cannot close an unproven member. Do not add criteria or
+defer existing ones to make the clock fit.
 
 The item numbers below refer to the 23 acceptance checkboxes in the issue
 snapshot inspected on 2026-10-22; all 23 have a retained implementation path.
@@ -800,32 +1212,35 @@ Current implementation evidence is recorded in the handoff above. Before each
 publication, check references, preservation of prior plans, the focused diff,
 `git diff --check` and remote commit parity. Link each PR to #245 and its stack.
 
-## Estimate for Codex implementation
+## Delivery report and continuation record
 
-**Urgent delivery target:** resources and tokens are very limited, and the
-deadline is already past due. Deliver fast. The range below is an estimate,
-not time to fill.
-Finish sooner whenever the required implementation and proof are complete.
+The earlier human-days estimate and rolling multi-hour ETAs are withdrawn.
+They are history, not additional budget. Never restore them from a child branch.
+Current evidence does not support a promise to deliver the remaining feature
+immediately or within an invented fresh window.
 
-**Plan for 6-10 hours of my active implementation and focused verification.**
-Use about eight hours for scheduling. This is a source-informed estimate for
-Codex working on the complete issue, not human-engineer days, a measured benchmark,
-or a promise that work has started in the background.
+At each budget checkpoint or final delivery, report these facts briefly and retain
+them in the handoff for the next turn:
 
-Most time is in cargo lot/payment recovery and the missing flat-file epic payout
-path. Rotation/selection, reward wiring and command/help work use the current
-code and test harnesses. The estimate includes both required backend builds,
-focused failure/restart cases and the final integrated journeys. It does not
-include six PR/test cycles, a full regression burn-in, generalized persistence
-repair, a rollback product, CI waiting or production operations.
+- Original start/deadline; current time; elapsed, remaining or overrun; any
+  explicitly approved change and its exact scope.
+- Acceptance items fully proven since the last checkpoint, with commit and
+  commands/results; partial and uncommitted work identified separately.
+- Exact missing acceptance items and next concrete result; whether ALL remaining
+  implementation and proof fit, with unknowns stated explicitly.
+- Publication links and state; completion or missed delivery stated plainly.
 
-This assumes the available C++/SQL tools and existing disposable MariaDB/file
-fixtures are sufficient, and the bounded candidate pool can be proven from
-checked-in content. The tools and fixture wrappers are present; no new environment
-installation or production access is planned. If a concrete defect below these
-boundaries blocks required proof, report it and revise remaining time from the
-actual result. Do not reduce acceptance coverage to meet the estimate.
+No tracking service, automation, extra report file or test framework is needed.
+The plan and existing evidence are sufficient. Updating this document is not
+implementation completion. Finish when the full outcome is proven and published;
+otherwise keep the issue open and follow the fixed budget's failure rule.
 
-The earlier 96-144-hour figure was an uncalibrated human-effort guess and is
-superseded. The estimate above includes uncertainty rather than deferring an
-answer until implementation. The subsequent request now authorizes implementation.
+### Continuation checkpoint at 20:35 UTC / 23:35 Asia/Jerusalem
+
+Original start remains 08:41:02 UTC; original six-hour deadline was 14:41:02 UTC.
+Elapsed is about 11h54, original allowance exhausted and missed. The owner has
+approved full-scope continuation and again explicitly demanded less analysis and
+concrete delivery. #287 and #288 were implemented, qualified and published in
+this continuation. No active test/build processes remain. Do not restart discovery:
+continue the loss sites named above, then selection/activation/commands/help and
+one final integrated campaign for the remaining acceptance items.

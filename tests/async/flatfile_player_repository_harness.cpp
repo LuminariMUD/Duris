@@ -1348,6 +1348,13 @@ int main(int argc, char **argv)
 	require(flatfile_player_snapshot_apply(root.string(), stale_delivery, &error).outcome ==
 			player_save_apply_outcome::stale_revision,
 		"stale Divine capture was applied");
+	auto mixed_delivery = stale_delivery;
+	mixed_delivery.components |= PLAYER_COMPONENT_SKILLS | PLAYER_COMPONENT_LANGUAGES;
+	mixed_delivery.skills = { { 9, 73, 2 } };
+	mixed_delivery.languages = { { 1, 82, 0 } };
+	require(flatfile_player_snapshot_apply(root.string(), mixed_delivery, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"stale status discarded unrelated components");
 	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
 			flatfile_player_load_result::ok,
 		"paid Divine checkpoint could not reload");
@@ -1357,6 +1364,27 @@ int main(int argc, char **argv)
 			loaded.status_integers[loaded.status_integers.size() - 2].signed_value ==
 				450,
 		"stale save erased the Divine balance or applied marker");
+	require(loaded.revision == mixed_delivery.revision && loaded.skills.size() == 1 &&
+			loaded.skills[0].learned == 73 && loaded.languages.size() == 1 &&
+			loaded.languages[0].value == 82,
+		"mixed stale status lost skill/language changes");
+	flatfile_identity_record delivery_identity;
+	flatfile_player_domain_record delivery_domains;
+	require(flatfile_identity_lookup_pid(root.string(), 42, &delivery_identity, &error) ==
+				flatfile_identity_result::ok &&
+			flatfile_player_domain_load(root.string(), 42, delivery_identity.account,
+						    delivery_identity.racewar, &delivery_domains,
+						    &error) == flatfile_player_domain_result::ok &&
+			delivery_domains.domains.epics == 450,
+		"delivery marker advanced without the authoritative epic balance");
+	auto incomplete_delivery = make_status(14, 51, 1201);
+	incomplete_delivery.status_integers.push_back(
+		{ player_status_field::epics, 500, 0, false });
+	incomplete_delivery.status_integers.push_back(
+		{ player_status_field::divine_boon_delivery_seq, 0, 4, true });
+	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"marker advanced without a complete financial checkpoint");
 	auto malformed_delivery = paid;
 	malformed_delivery.status_integers.back().is_unsigned = false;
 	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
@@ -1367,14 +1395,6 @@ int main(int argc, char **argv)
 	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"duplicate delivery marker was accepted");
-	auto incomplete_delivery = make_status(14, 51, 1201);
-	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::epics, 500, 0, false });
-	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::divine_boon_delivery_seq, 0, 4, true });
-	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
-			player_save_apply_outcome::terminal_failure,
-		"marker advanced without a complete financial checkpoint");
 	{
 		std::fstream file(snapshot_path, std::ios::in | std::ios::out | std::ios::binary);
 		require(file.good(), "could not open player snapshot for corruption test");

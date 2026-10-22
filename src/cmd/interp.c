@@ -1271,7 +1271,12 @@ const char *command[MAX_CMD] = {
 	"_retired_863",
 	"dummy",
 	"flights",
-	"\n" /* MAX_CMD = 866, MAX_CMD_LIST = 1000 */
+	"qview",
+	"qref",
+	"qlist",
+	"hlqlist",
+	"qinfo",
+	"\n" /* MAX_CMD = 871, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3460,6 +3465,11 @@ void assign_command_pointers(void)
 	CMD_Y(CMD_HLIST, STAT_DEAD + POS_PRONE, do_hlist, IMMORTAL, FALSE);
 	CMD_Y(CMD_OLIST, STAT_DEAD + POS_PRONE, do_olist, IMMORTAL, FALSE);
 	CMD_Y(CMD_MLIST, STAT_DEAD + POS_PRONE, do_mlist, IMMORTAL, FALSE);
+	CMD_Y(CMD_QVIEW, STAT_DEAD + POS_PRONE, do_qview, IMMORTAL, FALSE);
+	CMD_Y(CMD_QREF, STAT_DEAD + POS_PRONE, do_qref, IMMORTAL, FALSE);
+	CMD_Y(CMD_QINFO, STAT_DEAD + POS_PRONE, do_qref, IMMORTAL, FALSE);
+	CMD_Y(CMD_QLIST, STAT_DEAD + POS_PRONE, do_qlist, IMMORTAL, FALSE);
+	CMD_Y(CMD_HLQLIST, STAT_DEAD + POS_PRONE, do_qlist, IMMORTAL, FALSE);
 	CMD_Y(CMD_ZCHECK, STAT_DEAD + POS_PRONE, do_zcheck, IMMORTAL, FALSE);
 	CMD_Y(CMD_ABORT, STAT_RESTING + POS_PRONE, do_abort, 0, TRUE);
 	CMD_N(CMD_KINGDOM, STAT_RESTING + POS_PRONE, do_kingdom, 0, FALSE);

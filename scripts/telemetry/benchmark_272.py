@@ -32,6 +32,10 @@ FAULT_HARNESS = ROOT / "tests/async/telemetry_fault_272_harness.cc"
 TRANSPORT_SOURCES = (
     SRC / "telemetry/telemetry_queue.c",
     SRC / "telemetry/telemetry_transport.c",
+    SRC / "telemetry/telemetry_posthog.c",
+    SRC / "telemetry/telemetry_outage.c",
+    SRC / "telemetry/telemetry_config.c",
+    SRC / "telemetry/telemetry_health.c",
 )
 DEFAULT_WORKLOADS = (50, 200, 1000)
 DEFAULT_REPETITIONS = 5
@@ -98,6 +102,9 @@ class Toolchain:
             "-O2",
             *(str(item) for item in TRANSPORT_SOURCES),
             str(source),
+            "-lcrypto",
+            "-lcurl",
+            "-lcjson",
             "-o",
             str(output),
         ]
@@ -115,6 +122,9 @@ class Toolchain:
                 "-O2",
                 *(self._wsl_path(item) for item in TRANSPORT_SOURCES),
                 self._wsl_path(source),
+                "-lcrypto",
+                "-lcurl",
+                "-lcjson",
                 "-o",
                 self._wsl_path(output),
             ]

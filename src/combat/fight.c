@@ -1108,8 +1108,7 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 	{
 		const auto &entry = payload.participants[index];
 		// Prepared Divine rewards are published only from a committed receipt.
-		if (entry.epic_delta <= 0 ||
-		    (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
+		if (entry.epic_delta <= 0 || (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			continue;
 		P_char participant = find_player_by_pid(entry.pid);
 		if (!participant || IS_NPC(participant) ||

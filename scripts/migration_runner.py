@@ -70,6 +70,14 @@ ONLINE_ARTIFACT_PVP = (
      "9ec4164a7f70796409f6e88e483b1e90044eae1ff8ef9c3151397dba9e24e110",
      "0d3f5cf89844a00fdba5e0be9cec79bd6b91bcb79c20bd94157d57f43e0a96d1"),
 )
+ONLINE_DIVINE_BOON = (
+    ("0048_divine_boon_state",
+     "7c84955a35a6f34e4618773b2f08c2470219a54a982b0bf3e5a161ece78d0a68",
+     "beb92063f46b04089b21520f242334d15dd127d35ef381030d40a2da17822234"),
+    ("0049_divine_boon_delivery",
+     "e4e0268f5f7ab27b6872f87d44453c862116829b80fdc247191c968a207a41b3",
+     "d9ace2841a6cc5b9fb2ef28a8a9fa46467cf99f63be71fdfa96bb4ff08bc7f15"),
+)
 
 
 class MigrationContractError(Exception):
@@ -373,7 +381,8 @@ class MysqlExecutor:
                  online_player_updates: bool = False,
                  online_artifact_pvp: bool = False,
                  online_nexus_phase1: bool = False,
-                 online_artifact_rejections: bool = False):
+                 online_artifact_rejections: bool = False,
+                 online_divine_boon: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
@@ -382,6 +391,7 @@ class MysqlExecutor:
         self.online_migration: Migration | None = None
         self.online_player_updates = online_player_updates
         self.online_artifact_pvp = online_artifact_pvp
+        self.online_divine_boon = online_divine_boon
         self.lock_process = None
         self.lock_errors = None
         self.lock_connection_id = 0
@@ -413,25 +423,21 @@ class MysqlExecutor:
                 raise MigrationContractError(f"missing migration credential: {name}")
         if sum((online_level_cap_sides, online_combat_outcome_allies,
                 online_player_updates, online_artifact_pvp, online_nexus_phase1,
-                online_artifact_rejections)) > 1:
+                online_artifact_rejections, online_divine_boon)) > 1:
             raise MigrationContractError("select only one reviewed online migration")
-        if online_player_updates:
+        for enabled, count, pair in (
+                (online_player_updates, 43, ONLINE_PLAYER_UPDATES),
+                (online_artifact_pvp, 45, ONLINE_ARTIFACT_PVP),
+                (online_divine_boon, 49, ONLINE_DIVINE_BOON)):
+            if not enabled:
+                continue
             reviewed = tuple((step.migration_id, step.apply_checksum, step.verify_checksum)
                              for step in manifest.migrations[-2:])
-            if not self.production or len(manifest.migrations) != 43 or \
-                    reviewed != ONLINE_PLAYER_UPDATES:
+            if not self.production or len(manifest.migrations) != count or reviewed != pair:
                 raise MigrationContractError(
-                    "online migration requires the reviewed production 0042/0043 manifest")
+                    f"online migration requires the reviewed production {count - 1:04d}/{count:04d} manifest")
             self.online_migration = manifest.migrations[-1]
             self.online_table = "player_data"
-        if online_artifact_pvp:
-            reviewed = tuple((step.migration_id, step.apply_checksum, step.verify_checksum)
-                             for step in manifest.migrations[-2:])
-            if not self.production or len(manifest.migrations) != 45 or \
-                    reviewed != ONLINE_ARTIFACT_PVP:
-                raise MigrationContractError(
-                    "online migration requires the reviewed production 0044/0045 manifest")
-            self.online_migration = manifest.migrations[-1]
         if (online_level_cap_sides or online_combat_outcome_allies or online_nexus_phase1 or
                 online_artifact_rejections):
             if online_level_cap_sides:
@@ -639,11 +645,10 @@ class MysqlExecutor:
     def apply(self, migration: Migration) -> None:
         if self.online_migration is not None:
             reviewed = self.online_migration
-            if self.online_player_updates and migration.migration_id == ONLINE_PLAYER_UPDATES[0][0]:
+            if (self.online_player_updates or self.online_artifact_pvp or self.online_divine_boon) and \
+                    migration.migration_id == self.manifest.migrations[-2].migration_id:
                 reviewed = self.manifest.migrations[-2]
             if self.online_artifact_pvp:
-                if migration.migration_id == ONLINE_ARTIFACT_PVP[0][0]:
-                    reviewed = self.manifest.migrations[-2]
                 self.online_table = ("artifact_domain_state" if reviewed.sequence == 44
                                      else "pkill_info")
             if (migration.migration_id, migration.apply_checksum, migration.verify_checksum) != \
@@ -661,12 +666,13 @@ class MysqlExecutor:
             if checksum(payload) != reviewed.apply_checksum:
                 raise MigrationContractError("online migration apply checksum changed")
             algorithm = b"INSTANT"
-            if self.online_artifact_pvp or reviewed.migration_id == ONLINE_ARTIFACT_REJECTIONS_ID:
+            if (self.online_artifact_pvp or reviewed.migration_id == ONLINE_ARTIFACT_REJECTIONS_ID or
+                    (self.online_divine_boon and migration.sequence == 49)):
                 # Strengthen only the sealed statements to LOCK=NONE. NOCOPY
                 # permits the unique index but refuses a clustered-table rebuild.
                 old = f"'ALTER TABLE {self.online_table} ".encode()
                 if payload.count(old) != (3 if migration.sequence == 44 else 1):
-                    raise MigrationContractError("reviewed artifact/PvP ALTER was not found")
+                    raise MigrationContractError("reviewed online ALTER was not found")
                 payload = payload.replace(old, old.replace(b"ALTER TABLE", b"ALTER ONLINE TABLE"))
                 if migration.sequence == 44:
                     algorithm = b"NOCOPY"
@@ -778,6 +784,9 @@ def main() -> int:
     online.add_argument("--online-artifact-rejections", action="store_true",
                         help="apply only reviewed 0047 on MariaDB 11.8 using online INSTANT DDL; "
                              "requires production confirmation, backup and compatible live writers")
+    online.add_argument("--online-divine-boon", action="store_true",
+                        help="apply only reviewed 0048/0049 on MariaDB 11.8 using CREATE and "
+                             "online INSTANT DDL; requires production confirmation and backup")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
@@ -785,7 +794,8 @@ def main() -> int:
         manifest = load_manifest(arguments.manifest)
         if (arguments.online_level_cap_sides or arguments.online_combat_outcome_allies or
                 arguments.online_player_updates or arguments.online_artifact_pvp or
-                arguments.online_nexus_phase1 or arguments.online_artifact_rejections) and \
+                arguments.online_nexus_phase1 or arguments.online_artifact_rejections or
+                arguments.online_divine_boon) and \
                 arguments.command != "run":
             raise MigrationContractError("online migration option requires run")
         if arguments.command == "inspect":
@@ -805,7 +815,8 @@ def main() -> int:
                                  arguments.production_backup, arguments.online_level_cap_sides,
                                  arguments.online_combat_outcome_allies,
                                  arguments.online_player_updates, arguments.online_artifact_pvp,
-                                 arguments.online_nexus_phase1, arguments.online_artifact_rejections)
+                                 arguments.online_nexus_phase1, arguments.online_artifact_rejections,
+                                 arguments.online_divine_boon)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")

@@ -366,8 +366,11 @@ int main(int argc, char **argv)
 				read_back.pets.size() == 1 &&
 				read_back.pets[0].pet_uid ==
 					(version >= 7 ? full.pets[0].pet_uid : 0) &&
-				read_back.status_integers.back().field ==
+				read_back.status_integers[read_back.status_integers.size() - 2]
+						.field ==
 					player_status_field::learned_flight_stops &&
+				read_back.status_integers.back().field ==
+					player_status_field::divine_boon_delivery_seq &&
 				read_back.status_integers.back().is_unsigned &&
 				read_back.status_integers.back().unsigned_value == 0 &&
 				read_back.pets[0].mob_vnum == 5 &&
@@ -405,8 +408,11 @@ int main(int argc, char **argv)
 							   &error) ==
 					flatfile_player_load_result::ok &&
 				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION &&
-				read_back.status_integers.back().field ==
+				read_back.status_integers[read_back.status_integers.size() - 2]
+						.field ==
 					player_status_field::learned_flight_stops &&
+				read_back.status_integers.back().field ==
+					player_status_field::divine_boon_delivery_seq &&
 				read_back.status_integers.back().is_unsigned &&
 				read_back.status_integers.back().unsigned_value == 0,
 			"old player file did not load with empty flight discoveries: " + error);
@@ -418,6 +424,13 @@ int main(int argc, char **argv)
 				player_status_string_field::last_read_news_hash &&
 			read_back.status_strings.back().value.empty(),
 		"version 8 news default failed");
+	const auto version9 = wire(9);
+	uint64_t sequence = UINT64_MAX;
+	require(player_snapshot_decode(version9.data(), version9.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			player_snapshot_divine_delivery_sequence(read_back, &sequence) &&
+			sequence == 0,
+		"version 9 delivery marker default failed");
 	changed = full;
 	changed.status_strings.push_back(
 		{ player_status_string_field::last_read_news_hash, std::string(64, 'a') });
@@ -475,7 +488,7 @@ int main(int argc, char **argv)
 		require(player_snapshot_decode(three.data(), length, &read_back) ==
 				player_snapshot_codec_result::truncated,
 			"a " + std::to_string(length) + "-byte version-3 prefix was not truncated");
-	for (uint32_t version : { 2u, 4u, 6u, 10u })
+	for (uint32_t version : { 2u, 4u, 6u, PLAYER_SNAPSHOT_SCHEMA_VERSION + 1 })
 	{
 		auto bytes = current;
 		put32(bytes, 0, version);
@@ -492,7 +505,7 @@ int main(int argc, char **argv)
 	auto bad = current;
 	const size_t integer_at = first_difference(current, other);
 	const uint16_t past_integer =
-		static_cast<uint16_t>(player_status_field::learned_flight_stops) + 1;
+		static_cast<uint16_t>(player_status_field::divine_boon_delivery_seq) + 1;
 	bad[integer_at] = static_cast<uint8_t>(past_integer);
 	bad[integer_at + 1] = static_cast<uint8_t>(past_integer >> 8);
 	require(player_snapshot_decode(bad.data(), bad.size(), &read_back) ==
