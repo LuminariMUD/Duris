@@ -2619,8 +2619,20 @@ void game_loop(int port, int sslport)
 	{
 		logit(LOG_STATUS, "Opening mother connection.");
 		s = init_socket(port);
+		if (s < 0)
+		{
+			// Return through worker shutdown instead of destroying joinable threads.
+			_reboot = 1;
+			return;
+		}
 		logit(LOG_STATUS, "Opening father connection.");
 		S = init_socket(sslport);
+		if (S < 0)
+		{
+			close(s);
+			_reboot = 1;
+			return;
+		}
 		// The WebSocket and health listener is for a server with a website.
 		const char *websocket = getenv("DURIS_WEBSOCKET");
 		WS = -1;
@@ -3224,7 +3236,7 @@ bool runtime_listener_address(sockaddr_in6 *address)
 
 int init_socket(int port)
 {
-	int s, bind_error;
+	int s;
 	sockaddr_in6 sa;
 	int value = 1;
 	struct linger linger_values;
@@ -3241,7 +3253,7 @@ int init_socket(int port)
 	if (!runtime_listener_address(&sa))
 	{
 		logit(LOG_EXIT, "LISTEN_ADDRESS must be a numeric IPv4 or IPv6 address");
-		exit(1);
+		return -1;
 	}
 	/*
 	  gethostname(hostname, MAX_HOSTNAME);
@@ -3271,24 +3283,27 @@ int init_socket(int port)
 	if (s < 0)
 	{
 		logit(LOG_EXIT, "Init-socket");
-		exit(1);
+		return -1;
 	}
 	if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value)) < 0)
 	{
 		logit(LOG_EXIT, "setsockopt REUSEADDR");
-		exit(1);
+		close(s);
+		return -1;
 	}
 	if (setsockopt(s, SOL_SOCKET, SO_LINGER, &linger_values, sizeof(linger_values)) < 0)
 	{
-		logit(LOG_EXIT, "setsockopt REUSEADDR");
-		exit(1);
+		logit(LOG_EXIT, "setsockopt LINGER");
+		close(s);
+		return -1;
 	}
 	buffsize = sizeof(int);
 
 	if (getsockopt(s, SOL_SOCKET, SO_SNDBUF, (char *)&buffer, (socklen_t *)&buffsize))
 	{
 		logit(LOG_EXIT, "getsockopt SNDBUF");
-		exit(1);
+		close(s);
+		return -1;
 	}
 	if (buffer < MIN_SOCKET_BUFFER_SIZE)
 	{
@@ -3296,20 +3311,25 @@ int init_socket(int port)
 		if (setsockopt(s, SOL_SOCKET, SO_SNDBUF, (char *)&buffer, sizeof(buffer)) < 0)
 		{
 			logit(LOG_EXIT, "setsockopt SNDBUF");
-			exit(1);
+			close(s);
+			return -1;
 		}
 	}
-	if ((bind_error = (bind(s, (struct sockaddr *)&sa, sizeof(sa))) < 0))
+	if (bind(s, (struct sockaddr *)&sa, sizeof(sa)) < 0)
 	{
-		logit(LOG_EXIT, "bind error %d", bind_error);
+		const int bind_error = errno;
+		char address[INET6_ADDRSTRLEN];
+		inet_ntop(AF_INET6, &sa.sin6_addr, address, sizeof(address));
+		logit(LOG_EXIT, "bind [%s]:%d failed: %s (errno=%d)", address, port,
+		      strerror(bind_error), bind_error);
 		close(s);
-		exit(1);
+		return -1;
 	}
 	if (listen(s, SOMAXCONN) < 0)
 	{
 		logit(LOG_EXIT, "listen failed");
 		close(s);
-		exit(1);
+		return -1;
 	}
 	nonblock(s);
 	return (s);
