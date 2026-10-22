@@ -933,6 +933,12 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	uint64_t stored_delivery_sequence = 0;
 	query = ensure_player_row(connection, snapshot, &created, &stored_revision,
 				  &stored_delivery_sequence);
+	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
+	    delivered_sequence > stored_delivery_sequence &&
+	    std::none_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
+			 [](const auto &field)
+			 { return field.field == player_status_field::epics; }))
+		query = { false, EINVAL };
 	const bool status_current = delivered_sequence >= stored_delivery_sequence;
 	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{

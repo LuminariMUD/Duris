@@ -674,6 +674,16 @@ int main()
 			       "SELECT proficiency FROM player_languages WHERE pid=1 AND tongue_id=1") ==
 				"82",
 		"stale status discarded unrelated skill/language changes");
+	auto marker_only = paid;
+	marker_only.revision = 10002;
+	marker_only.status_integers.erase(marker_only.status_integers.begin());
+	marker_only.status_integers[0].unsigned_value = 4;
+	applied = player_snapshot_repository_apply(test_connection, marker_only);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT CONCAT(epics,':',divine_boon_delivery_seq) FROM player_data WHERE pid=1") ==
+				"450:3",
+		"delivery marker advanced without its epic balance");
 	auto malformed_delivery = paid;
 	malformed_delivery.status_integers[1].is_unsigned = false;
 	require(player_snapshot_repository_apply(test_connection, malformed_delivery).outcome ==
