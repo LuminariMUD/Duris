@@ -224,6 +224,10 @@ restart and merge remain separate actions.
   retry, exact replay, unpaid login reads, corrupt parents and paid filtering.
   Legacy player-load/save, combat, artifact and frag-cap checks pass. Actual
   loaded-world PvP/save journeys remain part of final qualification.
+- Review-ready prepared PvP delivery:
+  [PR #275](https://github.com/LuminariMUD/Duris/pull/275), implementation
+  `7b3407016`, stacked on #272. Both server builds, affected bank/legacy-boon
+  consumers, formatting, clang-tidy and whitespace checks pass.
 - **Before activation:** remove the fixed lifetime receipt ceiling for new flat
   prepared work. The pre-existing domain operations list caps at 512; complete
   parent results cannot grow in that list forever. Compact checkpointed detail
