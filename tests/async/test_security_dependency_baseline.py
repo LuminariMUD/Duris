@@ -3,6 +3,7 @@
 
 import json
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -72,6 +73,45 @@ assert b"production import uses a predictable remote SQL temporary file" in secu
 assert b"production import exports every value sourced from .env" in security_checker
 assert b"epic payout migration documents public database credentials" in security_checker
 print("[PASS] tracked private keys and operational credential defaults are rejected")
+
+with tempfile.TemporaryDirectory(prefix="duris-tls-source-check-") as temp_dir:
+    fixture = Path(temp_dir)
+    for relative in (
+        "scripts/security_source_check.py", "SECURITY.md", ".github/dependabot.yml",
+        "src/sql/sql.h", "scripts/import_help_to_prod.sh", "migrations/epic-zone-payout.sql",
+        "src/sql/sql_player.c", "src/item/storage_lockers.c",
+    ):
+        destination = fixture / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, destination)
+    (fixture / ".github/workflows").mkdir()
+    transport = fixture / "src/transport.c"
+    transport.touch()
+    subprocess.run(["git", "init", "-q", temp_dir], check=True)
+    subprocess.run(["git", "-C", temp_dir, "add", "."], check=True)
+    for source, accepted in (
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, 1L);\n"
+         "HTTP_OPTION(CURLOPT_SSL_VERIFYHOST, 2L);", True),
+        ("curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 1L);\n"
+         "curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 2L);", True),
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, 0L);", False),
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYHOST, 0L);", False),
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYHOST, 1L);", False),
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, configured);", False),
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, 1L - 1L);", False),
+        ("HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, 1L);\n"
+         "HTTP_OPTION(CURLOPT_SSL_VERIFYPEER, 0L);", False),
+        ("HTTP_OPTION(CURLOPT_VERBOSE, 1L);", False),
+    ):
+        transport.write_text(source)
+        result = subprocess.run(
+            ["python3", "scripts/security_source_check.py"], cwd=fixture,
+            capture_output=True, text=True,
+        )
+        assert (result.returncode == 0) == accepted, (source, result.stdout, result.stderr)
+        if not accepted:
+            assert "src/transport.c" in result.stdout, result.stdout
+print("[PASS] TLS source check accepts enabled verification and rejects unsafe overrides")
 
 assert "/certs/*.key" in gitignore and "/certs/*.crt" in gitignore
 assert "/Players/**" in gitignore
