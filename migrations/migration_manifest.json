@@ -648,6 +648,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "5692e9ddcaef423f6b1d487005f0fdafc50b6bccbd85c66fc5ce8875c218bb4b",
       "verify_checksum": "c88ba4baed7333bfa6f39a5df551bae5b08d267a7d8a929a659b09125004b4a8"
+    },
+    {
+      "id": "0048_divine_boon_state",
+      "sequence": 48,
+      "description": "Persist revision-checked Divine Boon rotation snapshots",
+      "apply": "immutable/0048_divine_boon_state.sql",
+      "verify": "immutable/0048_divine_boon_state.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "7c84955a35a6f34e4618773b2f08c2470219a54a982b0bf3e5a161ece78d0a68",
+      "verify_checksum": "beb92063f46b04089b21520f242334d15dd127d35ef381030d40a2da17822234"
     }
   ],
   "engine_verifiers": [

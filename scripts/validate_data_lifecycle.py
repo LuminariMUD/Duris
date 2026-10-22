@@ -33,6 +33,7 @@ DEFAULT_SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
     ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
     ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
+    ROOT / "migrations" / "immutable" / "0048_divine_boon_state.sql",
 )
 
 ROOT_FIELDS = {
@@ -70,6 +71,7 @@ DESTRUCTIVE_ACTIONS = {
     "archive", "purge", "pseudonymize", "cascade", "restore_tombstone",
 }
 REQUIRED_NON_DATABASE_STORES = {
+    "file:divine-boons": ("recovery_state", "FLATFILE_ROOT/domains/divine-boons.state"),
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
     "file:telemetry_outage_ledger": ("journal", "TELEMETRY_OUTAGE_LEDGER_DIR"),
