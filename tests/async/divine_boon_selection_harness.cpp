@@ -11,7 +11,7 @@ namespace
 room_data rooms[11] = {};
 zone_data zones[5] = {};
 room_direction_data exits[11] = {};
-reset_com low_resets[6] = {};
+reset_com low_resets[7] = {};
 reset_com high_resets[6] = {};
 int levels[] = { 16, 18, 38, 42 };
 int random_value = 0;
@@ -206,6 +206,22 @@ int main()
 		levels[2] = 38;
 		levels[3] = 42;
 		assert(divine_boon_selection_bootstrap());
+	}
+	{
+		for (int i = 0; i < 5; ++i)
+			low_resets[i].arg1 = 0;
+		low_resets[5] = {
+			'M', false, 1, 5, 8, 100
+		}; // Other prototype moved outside the zone.
+		low_resets[6].command = 'S';
+		assert(divine_boon_selection_bootstrap());
+		assert(!divine_boon_zone_eligible(18, 0));
+		low_resets[5].arg3 = 4;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0));
+		for (int i = 0; i < 5; ++i)
+			low_resets[i].arg1 = i % 2;
+		low_resets[5].command = 'S';
 	}
 	low_resets[0].arg1 = 99; // Unknown profiles fail closed on catalogue rebuild.
 	assert(divine_boon_selection_bootstrap());

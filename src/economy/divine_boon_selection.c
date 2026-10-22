@@ -31,6 +31,7 @@ struct encounter
 {
 	int room;
 	int level;
+	int prototype;
 };
 struct candidate
 {
@@ -174,6 +175,7 @@ double suitable_level(const candidate &zone, unsigned side)
 	if (!live_zone(zone))
 		return 0;
 	std::set<int> rooms;
+	std::set<int> prototypes;
 	double total = 0;
 	unsigned count = 0;
 	for (const auto &mob : zone.encounters)
@@ -183,10 +185,11 @@ double suitable_level(const candidate &zone, unsigned side)
 		    !IS_SURFACE_MAP(mob.room) && !IS_UD_MAP(mob.room) && path_valid(mob.room, side))
 		{
 			rooms.insert(mob.room);
+			prototypes.insert(mob.prototype);
 			total += mob.level;
 			++count;
 		}
-	return rooms.size() >= 3 && count >= 5 ? total / count : 0;
+	return rooms.size() >= 3 && prototypes.size() >= 2 && count >= 5 ? total / count : 0;
 }
 
 bool assigned(const divine_boon_state &state, int zone, unsigned side, int64_t now)
@@ -213,7 +216,6 @@ try
 		candidate zone{ number, index, {} };
 		if (!live_zone(zone) || !zone_table[index].cmd)
 			continue;
-		std::set<int> prototypes;
 		for (auto *reset = zone_table[index].cmd; reset->command != 'S'; ++reset)
 		{
 			if (reset->command != 'M' || reset->arg2 <= 0 || reset->arg4 < 50)
@@ -221,10 +223,9 @@ try
 			const int level = world_quest_policy_combat_level(reset->arg1);
 			if (level < 5)
 				continue;
-			prototypes.insert(reset->arg1);
-			zone.encounters.push_back({ reset->arg3, level });
+			zone.encounters.push_back({ reset->arg3, level, reset->arg1 });
 		}
-		if (prototypes.size() >= 2)
+		if (zone.encounters.size() >= 5)
 			catalogue.push_back(std::move(zone));
 	}
 	refresh_paths();
