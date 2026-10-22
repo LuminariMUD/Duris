@@ -197,7 +197,7 @@ depend on each other. The feature remains unavailable until its required
 persistence, cutover and reward paths are ready. This is one work item, #245;
 the units below are not separate optional deliverables.
 
-### 1. Durable state, award delivery and legacy transition (16-24 hours)
+### 1. Durable state, award delivery and legacy transition
 
 - Persist a versioned Divine state containing mode, pause state, revision,
   last consumed UTC opportunity, slots with stable IDs/category/rate/timestamps,
@@ -245,7 +245,7 @@ reward is delivered once or remains recoverable. Test shop callbacks already
 queued at the boundary, offline recipients, restored scans and repeated drains.
 Run old receipt/codec fixtures unchanged where backward compatibility requires it.
 
-### 2. Common candidates, account activity and rotation (16-24 hours)
+### 2. Common candidates, account activity and rotation
 
 - Build one validated runtime candidate catalogue for both backends. Use loaded
   runtime zone ownership/flags, mob profiles and actual stone/reset definitions
@@ -322,7 +322,7 @@ low-population cold start, thin safe pools, cross-category duplicates and soft
 repeats. Explicitly test hometown zero/nonzero, flag changes and every excluded
 area class; include a genuine eligible target for each implemented category.
 
-### 3. EXP, zone epic and PvP reward consumers (20-28 hours)
+### 3. EXP, zone epic and PvP reward consumers
 
 - Establish explicit local `base`, existing-modified amount and Divine
   contribution in each eligible reward family. Preserve structural share,
@@ -392,7 +392,7 @@ combat outcome paths in both backends, multiple/offline recipients, duplicate
 callback, ambiguous commit, reconnect and restart before/after player save.
 SQL and flat-file must select a real payable epic target and actually award it.
 
-### 4. Cargo provenance, account cap and atomic settlement (28-44 hours)
+### 4. Cargo provenance, account cap and atomic settlement
 
 - Keep ordinary commodity slots and normal market/access rules; add exact
   purchase lots associated with stable ship identity and commodity/slot.
@@ -464,7 +464,7 @@ inventory, wallet/player checkpoint, market and cap boundaries on both backends;
 verify conservation, no duplicate credit and exactly the approved cap.
 Test normal pricing/Nexus/penalties and non-qualifying sales unchanged.
 
-### 5. Player/staff commands, help and operating notes (8-12 hours)
+### 5. Player/staff commands, help and operating notes
 
 - Keep command 804 and replace its dispatch with Divine display after cutover;
   no mortal legacy shop/edit path remains. `boon` and `boon list` show:
@@ -502,7 +502,7 @@ tests; ANSI-visible-width and native-colour fixtures for real/multicolour/long
 names, both sides and unaffiliated viewers; repeated admin operations; help
 parsing, collision, search and SQL/flat-file serving parity.
 
-### 6. Integrated acceptance and delivery (8-12 hours)
+### 6. Integrated acceptance and delivery
 
 - Extend the existing harnesses and executable journeys before adding new
   focused files. Add a small Divine model/clock test and durable-sale/recipient
@@ -580,18 +580,23 @@ native GitHub issue-to-branch linkage.
 
 ## Implementation estimate
 
-**96-144 focused engineering hours: approximately 12-18 eight-hour working days
-for one engineer familiar with this codebase.** The six units above total that
-range and include their focused tests plus the final integrated qualification.
-This is an effort estimate, not a measured autonomous-agent completion time or
-a guaranteed calendar delivery date.
+**The initial 96-144-hour human-effort estimate is withdrawn as a delivery ETA.**
+The per-unit ranges were judgment calls, not timings measured in this checkout.
+They do not establish how long Codex implementation would take, and there is no
+evidence from this planning pass that the user must wait 96 hours.
 
-Cargo provenance/atomic payment and recipient-save recovery are the largest
-uncertainties; flat-file stone-touch support is a required dependency, not an
-optional follow-up. The lower end assumes existing writer/after-image primitives
-and reviewed content supply those paths without broader repair. The upper end
-allows for the concrete recovery and content gaps described above.
-External review turnaround, production access/approval, deployment and prolonged
-live balance observation are excluded. Re-estimate once units 1-2 establish the
-actual durable boundaries and safe catalogue; do not silently omit requirements
-to retain an early estimate.
+The useful forecast is the dependency order and where uncertainty sits:
+cargo provenance/atomic payment and recipient-save recovery dominate the work;
+flat-file stone-touch support is another necessary dependency. Command display,
+the eight-slot policy and help are comparatively small. Existing writer and
+after-image primitives should be reused, with focused tests rather than broad
+qualification added to each unit.
+
+A numerical Codex wall-clock estimate is not yet calibrated. Implementation is
+expected to span multiple focused work sessions, but this read-only source review
+cannot substantiate a reliable hour range. Record actual elapsed implementation
+and verification time for the first prerequisite unit, then forecast remaining
+work from that evidence. Do not run implementation merely to calibrate this
+planning task, silently reduce the issue's requirements, or substitute another
+unsupported precise ETA. Review turnaround and separately authorized production
+actions are outside implementation time.
