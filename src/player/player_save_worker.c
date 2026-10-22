@@ -331,6 +331,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "sql";
 	case persistence_job_kind::artifact:
 		return "artifact";
+	case persistence_job_kind::divine_boon:
+		return "divine_boon";
 	}
 	return "unknown";
 }

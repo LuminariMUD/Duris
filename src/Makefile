@@ -197,6 +197,7 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/boon.o \
 				 economy/divine_boon.o \
 				 economy/divine_boon_repository.o \
+				 economy/divine_boon_runtime.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \
          economy/cardgames.o \
