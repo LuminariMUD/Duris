@@ -1,60 +1,152 @@
 # Issue #245: rotating Divine Boons
 
-> **Critical delivery constraint: our resources and tokens are very limited,
-> the deadline is already past due, and we must deliver as fast as possible.**
-> This governs the entire plan: take
-> the shortest path that meets all requirements, reuse existing code and valid
-> evidence, and defer optional work. Required correctness and recovery remain
-> part of completion.
+> **Delivery contract: six hours TOTAL, never six more hours.**
+> Preserve the entire agreed outcome. Do not reset the clock, expand the budget,
+> hide a missed deadline behind progress, or call partial implementation done.
+> A forecast outside the remaining budget is a delivery failure to disclose
+> immediately, not permission to continue spending time.
 
-Status: implementation in progress; rotation state and snapshot contracts implemented.
-Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
-Implementation branch: `branch/issue-245-divine-boons`.
+Status: incomplete and inactive; implementation paused by the user's explicit stop.
+Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
+Authoritative plan branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
 Issue specification inspected at its 2026-10-22 update, including all five comments.
 The agreed follow-up decisions take precedence over older exploratory numbers.
 The previous issue-59 plan is preserved byte-for-byte in
 [plan-issue-59.md](plan-issue-59.md); earlier plans remain in their existing files.
 
-The current request authorizes implementation, focused tests, commits, pushes
-and review-ready PRs, stacked as dependencies become ready. It supersedes the
-issue's older design-only restriction. Production migrations/imports, deployment,
-restart and merge remain separate actions.
+This request repairs the plan. It does not restart the paused implementation or
+grant another time budget. Prior implementation authorized focused code/tests
+and review-ready commits, pushes and PRs; the subsequent explicit pause is
+preserved. Production migrations/imports, deployment, restart and merge remain
+separate actions. The owner already reported the deadline overdue: do not label
+this delivery on track.
+
+## Fixed budget and failure rules
+
+1. **One clock for the whole outcome.** The budget is 360 elapsed minutes from
+   the original agreed start, including discovery, implementation, builds,
+   tests, fixes, documentation, Git/PR work and reporting. Active work may be
+   tracked separately; it cannot replace elapsed delivery time. New turns,
+   resumed goals, branches, PRs, agents, context compaction and revised plans
+   reset neither spent time nor the deadline. Waiting and handoffs count. An
+   explicit user pause stops work; it does not automatically move the deadline.
+2. **Record facts before spending more time.** Keep original start, absolute
+   deadline with timezone, elapsed time, remaining budget and next proof in the
+   handoff. Read the actual clock at each work boundary and before long commands.
+   If the original timestamp is unavailable, label it unknown and use the
+   earliest evidenced start as a conservative bound, never a fresh start.
+   Tokens and PR counts do not measure remaining delivery time.
+3. **Budget is not an estimate.** Forecast ALL unfinished behavior, affected
+   tests, required builds and publication using measured durations where
+   available. Label unmeasured work uncertain. Required work of unknown cost
+   cannot support an on-track claim. Do not quote a new full-project estimate
+   as remaining time or turn the six-hour limit into an eight-hour schedule.
+4. **Disclose failure early.** Immediately report when required work cannot fit,
+   a checkpoint below is missed, or evidence invalidates the forecast. State
+   elapsed time, remaining budget, missing acceptance items, concrete cause and
+   smallest recovery option without waiting for an ETA question. A report does
+   not grant an extension. Record a budget checkpoint at least every 30 elapsed
+   minutes; keep routine progress brief and tied to completed behavior/proof.
+5. **No unilateral extension or scope reduction.** Remove optional work and
+   duplicate verification first. If the complete required outcome still cannot
+   fit, stop new implementation, preserve the checkpoint and request only the
+   consequential time/scope decision. Only explicit user approval changes that
+   contract. Silence, frustration, "go faster" and an ordinary resume do not
+   authorize extra hours or omitted requirements. Resume continues the recorded
+   balance. Keep the original budget and miss visible after any approved change.
+6. **The deadline is a stop boundary.** Do not start commands that cannot finish
+   within the allowance; bound long commands by remaining time and safe cleanup
+   needs. At the deadline stop this task's work/processes safely, preserve the
+   diff/evidence and report complete delivery or an explicit missed delivery
+   with blockers. No unattended continuation, new PR cycle or "nearly finished"
+   extension. Reserve cleanup/report time inside the budget.
+7. **Completion means the whole issue.** All 23 acceptance items need executable
+   proof, both backends, commands/help and review-ready published code. A
+   foundation PR, passing helper test or inactive subset is partial work. Keep
+   #245 open until complete. Report qualification and publication separately
+   from merge/production. A deadline never excuses missing safety/recovery proof.
+
+These rules prohibit silent overruns; they cannot guarantee unknown work fits.
+If feasibility fails, say so early instead of making another unsupported promise.
+
+### Checkpoints inside the original six hours
+
+These are maximum elapsed thresholds to detect a failed commitment, not fresh
+allocations or predicted task durations. Finish earlier when possible. Missed
+checkpoints cannot be restarted now; they count as missed.
+
+- **By 00:30:** confirm scope, reuse and fixtures. Trace cargo settlement and
+  flat-file stone payout first. Forecast ALL remaining slices and final proof.
+  If they cannot fit 360 minutes, disclose failure before building layers.
+- **By 01:30:** execute representative purchase -> sale -> save/retry and
+  selected stone -> recipient save/reload paths on both backends at production
+  boundaries. These are narrow feasibility proofs, not full acceptance. Expose
+  missing atomicity/content before optional architecture or foundation-only PRs.
+- **By 03:00:** all four reward families have reachable vertical paths; cutover,
+  selection and display connect in isolated fixtures. Remaining work is named
+  acceptance gaps, not an undiscovered backend or reward subsystem.
+- **By 04:00:** required implementation/help exist and focused checks pass.
+  Reserve the last two hours for integrated journeys, both builds, required
+  review corrections and publication. No new infrastructure or optional work.
+- **By 05:00:** integrated journeys and final checks pass on both backends;
+  review-ready changes/evidence are prepared. The last hour is contingency for
+  concrete failures and delivery, not another feature phase.
+- **By 06:00:** publish the complete qualified result and report it, or report
+  missed delivery and stop. Never substitute another remaining-time range.
 
 ## Implementation handoff (2026-10-22)
 
-- Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-boons`.
-- Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
-  implementation commit `8cbc07fc4`. Further chunks stack on this branch.
-- First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
-  category rates/lifetimes, forward legacy/draining/Divine mode transitions,
-  fixed UTC hours, skip-on-restart/clock-jump policy, pause/expiry, replacement,
-  stable identities, cross-category same-side duplicate rejection and bounded
-  expired-zone history. One versioned SHA-256 snapshot format serves both
-  future backend adapters. Changes prepare a state; callers must commit it
-  before making it visible to gameplay.
-- Proof: `python3 tests/async/test_divine_boon.py` passes with ASan/UBSan.
-  It exercises the actual state implementation and corruption/truncation of
-  snapshots. `make -C src -j12` and changed-file formatting checks pass.
-  `./scripts/format.sh --all --check` passes for all 1100 tracked C/C++ files.
-  Use `CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy` (installed LLVM 22)
-  for commits: system LLVM 18 cannot parse the installed GCC 16 headers.
-- **Next:** persist state through the existing writer on SQL and flat-file;
-  wire boot/reconciliation and safe legacy admission drain before activation.
-  Then implement the candidate/activity, reward, cargo and command/help paths
-  below. The state API does not itself prove targets safe or legacy work settled.
-- **Still open:** every full-feature acceptance item. The rotation core is a
-  dependency, not evidence of live rotation, durable backend commits, cutover,
-  gameplay payouts or completed Divine Boons. No production action performed.
-- Ablation: reuse one state/codec for both backends; no scheduler, delivery
-  framework, general economy rewrite or extra verification campaign added.
+- **Clock evidence:** implementation started at 12:30:26 Asia/Jerusalem
+  (09:30:26 UTC); the paused checkpoint was recorded at 17:17:38 (14:17:38 UTC):
+  4h 47m 12s for that interval alone. Earlier planning began at 11:41:02
+  (08:41:02 UTC), the earliest verified start for the combined job. Its six-hour
+  outer bound is **17:41:02 Asia/Jerusalem (14:41:02 UTC)**. This is NOT a
+  replacement for the owner's already-overdue deadline; the exact earlier
+  promise timestamp is unverified. Planning, waiting and this repair count.
+  No additional implementation time or reliable on-time forecast is established.
+- **Read this branch's current plan before continuing an older stack copy.**
+  Preserve the paused work and spent-time record. A resumed goal does not
+  restore an old estimate or grant a new six-hour window.
+- **Published partial work:** [#265](https://github.com/LuminariMUD/Duris/pull/265)
+  state, [#266](https://github.com/LuminariMUD/Duris/pull/266) persistence,
+  [#267](https://github.com/LuminariMUD/Duris/pull/267) writer/boot,
+  [#268](https://github.com/LuminariMUD/Duris/pull/268) legacy admission barriers,
+  [#269](https://github.com/LuminariMUD/Duris/pull/269) activity,
+  [#270](https://github.com/LuminariMUD/Duris/pull/270) delivery watermark,
+  [#271](https://github.com/LuminariMUD/Duris/pull/271) EXP candidates,
+  [#272](https://github.com/LuminariMUD/Duris/pull/272) EXP/hourly integration,
+  [#275](https://github.com/LuminariMUD/Duris/pull/275) prepared PvP delivery.
+  These prove bounded components, not nine completed feature slices.
+- **Latest published implementation:** `branch/issue-245-divine-pvp` at
+  `4ecad7a9b578a497eeec31c8e2fe29ac963ac6c9`, implementation `7b3407016`.
+  The plan branch contains only the earlier foundation. Do not confuse its
+  source tree with the latest implementation or rebuild completed components.
+- **Paused dirty worktree:** `/home/aiwithapex/projects/duris-issue245-plan`,
+  branch `branch/issue-245-divine-receipts`. Its uncommitted plan records detailed
+  evidence and receipt work in `flatfile_player_domain_repository.{c,h}`,
+  `flatfile_player_repository.c` and their two existing harnesses. Preserve all
+  six modified files. Receipt changes are not published or finally reviewed.
+  This plan repair uses a separate worktree and must not overwrite that work.
+- **Confirmed remaining work:** `zone_touch_transaction_submit` still refuses
+  flat-file mode; `divine_boon_select` selects only EXP/PvP; `CMD_BOON=804` still
+  dispatches `do_boon`; cargo credits `ADD_MONEY` separately from ship/market
+  saves. Epic candidates/payouts, trade lots/cap/settlement, legacy reconciliation/
+  activation, commands/help and final loaded-world journeys remain. This is
+  substantial unfinished implementation, not just final verification.
+- **Evidence:** reuse results against the relevant unchanged code. The paused
+  handoff records both receipt harnesses and both incremental builds passing;
+  that is prior evidence, not checks rerun by this plan repair. Existing PRs
+  retain their detailed checks. Use installed LLVM 22 for later C++ commits
+  (`CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy`).
+- **Next, only if resumed:** assess ALL remaining cost against the unreset
+  budget first. Finish the bounded receipt fix only if that gate permits work;
+  then prove cargo and stone gaps before more supporting layers. An older
+  "next foundation PR" instruction cannot override a failed checkpoint.
+- **Still open:** full-feature acceptance. No merge, production operation or
+  live balance claim is supplied by the partial implementation or this repair.
 
 ## Outcome
-
-**Delivery priority:** resources and tokens are very limited, and the deadline
-is already past due. Deliver the complete required outcome as fast as possible.
-Add no optional scope.
 
 Replace the player-facing legacy task/shop boon system with automatic,
 persistent world bonuses. Retain `boon`, `boon list` and `CMD_BOON=804`.
@@ -75,126 +167,38 @@ contraband base sale revenue. New Divine benefits add a contribution calculated
 from the original eligible base; they do not multiply an already boosted total.
 Keep the existing eligibility rules, penalties and final caps.
 
-## Verified code findings and implications
+## Source findings that bound the remaining work
 
-These are facts about the pinned checkout, not claims about production content
-or deployed settings. Function names below are navigation points at that commit.
-Use these findings to focus the limited time on known required changes. Reopen
-investigation only where implementation exposes a concrete unresolved question.
+Original baseline: `e897b5214893`; latest inspected implementation: `4ecad7a9b`
+plus the preserved receipt diff. Detailed baseline findings remain in Git history;
+do not repeat the completed audit or treat old line numbers as current evidence.
 
-1. **Command replacement is small; legacy retirement is not.**
-   [interp.c](../../src/cmd/interp.c), `CMD_BOON` registration at 3454, calls
-   `do_boon()`; [interp.h](../../src/cmd/interp.h) defines 804 at 841.
-   [boon.c](../../src/economy/boon.c), `do_boon()` at 1573, owns list, shop and
-   editing dispatch. `boon_randomize()` at 2924 really is unfinished.
-   `check_boon_completion()` at 3027 admits rewards through a transaction;
-   changing command dispatch cannot stop its combat/zone/economy callers.
-
-2. **There are independent legacy mutation and delivery paths.**
-   [boon_reward_transaction.c](../../src/economy/boon_reward_transaction.c),
-   `publish_reward()` at 70 and `player_ready()` at 199, distinguishes live
-   publication from flat-file acknowledgement and login delivery. The published
-   marker is process memory, not a durable proof of player delivery.
-   [boon.c](../../src/economy/boon.c), `boon_shop()` at 1908, uses a flat-file
-   transaction but a separate SQL writer/callback path for MariaDB purchases.
-   [maintenance_scheduler.c](../../src/persistence/maintenance_scheduler.c),
-   initialization at 640, restores unfinished work; the flat-file scan also
-   reaches `boon_maintenance()` via completion dispatch.
-   A mode flip or suppressed callback alone cannot settle earned rewards.
-
-3. **An operation ID does not currently make wallet payment idempotent.**
-   [currency_transaction.c](../../src/economy/currency_transaction.c),
-   `currency_transaction_submit_identified()` at 262, explicitly ignores its
-   operation ID and updates live money; player saves persist it later.
-   [epic_transaction.c](../../src/world/epic_transaction.c), submit at 36,
-   likewise changes the live epic balance before queuing ledger evidence.
-   [combat_outcome_transaction.c](../../src/combat/combat_outcome_transaction.c),
-   `apply_live()` at 62, applies participant deltas in memory.
-   Reuse their accounting rules, but do not claim these APIs alone supply
-   durable exactly-once delivery. New recoverable rewards need a delivery
-   marker committed with the corresponding player state.
-
-4. **EXP has distinct share derivation paths and intermediate truncation.**
-   [limits.c](../../src/world/limits.c), `gain_exp()` at 1125, normalizes
-   `EXP_KILL_BONUS`, derives tanking recursively from damage before damage
-   modifiers, and obtains a healer's hostile NPC through `GET_OPPONENT(victim)`.
-   Damage, tanking, healing, melee and kill branches apply their own modifiers.
-   Final difficulty scaling precedes integer conversion and the one-third-level
-   cap around 1505-1525. Rest, Nexus and epic bonuses occur earlier.
-   A late `XP *= 2` compounds existing boosts; an early multiplier also boosts
-   the recursively derived tank share again. Neither implements the agreed math.
-
-5. **The active PvP caller differs from the issue's suggested two-route model.**
-   [fight.c](../../src/combat/fight.c), `opposite_racewar()` at 522, accepts
-   any differing racewars. Death admission around 2510 and
-   `submit_pvp_outcome()` at 963 retain the victim and existing frag gates.
-   It adds Spill Blood's 500 before calling `epic_calculate_pvp_award()`.
-   [epic.c](../../src/world/epic.c) has another implementation in
-   `epic_frag()` at 679, but a repository-wide caller search finds only its
-   definition and declaration. Do not build a second live payout route merely
-   because the issue assumes both are live. Consolidate qualification and math;
-   retain generic `gain_epic(EPIC_PVP)` behavior without an unqualified Divine boost.
-
-6. **Flat-file epic support requires more than a candidate codec.**
-   [sql.c](../../src/sql/sql.c) at 581-591 supplies empty/failing flat-file
-   `sql_zones()`/`get_zone_info()` stubs. The
-   [epic task catalogue](../../src/world/epic_task_catalog.c), refresh at 98,
-   reports `database_disabled` and otherwise selects `task_zone=1` rows.
-   More decisively, [zone_touch_transaction.c](../../src/world/zone_touch_transaction.c),
-   submit at 99, explicitly rejects non-MySQL mode.
-   Its SQL publication at 60-95 adds player epics with process-local markers;
-   recovered stone claims skip repeat side effects. A ledger receipt therefore
-   does not by itself prove a player save contains the reward.
-   Both real flat-file touch support and durable recipient recovery are in scope.
-   [epic.c](../../src/world/epic.c), `epic_stone_payout()` at 780 and touch
-   preparation at 1125-1168, already provides group/stone gates and per-recipient
-   prepared awards worth extending.
-
-7. **Cargo loses batch identity and settles separate effects.**
-   [ship_shop.c](../../src/ships/ship_shop.c), `buy_cargo()` at 2041 and
-   `buy_contra()` at 2197, merges quantity and invoice cost by commodity.
-   Sales at 936-1230 clear slots, modify markets, credit money, then queue ship
-   saves and a separate market write. The market write's own SQL transaction
-   does not make that whole sale atomic. Current sales select whole slots;
-   partial eligible quantities inside a slot still require exact accounting.
-   [ShipSlot](../../src/ships/ships.h) stores counts/costs, not purchase identity.
-   Jettison and salvage in [ship_utils.c](../../src/ships/ship_utils.c) at
-   2460-2707 discard/reconstruct crates; salvage does keep invoice-free crates
-   separate from purchased slots today. Preserve that existing cost-basis rule.
-   Customs confiscation and `clear_cargo()` are additional quantity mutations.
-
-8. **Capacity and selection have reusable code, with narrower guarantees.**
-   [ships.h](../../src/ships/ships.h) at 685-700 expresses combined cargo and
-   contraband load in crates, with two weight units per crate. `SHIP_MAX_CARGO`
-   includes a crew modifier; available capacity is also weight-limited.
-   [world_quest_policy.c](../../src/world/world_quest_policy.c), the updated
-   bartender quest policy, caches zone/mob profiles, excludes `ZONE_TOWN`,
-   uses level windows and weighted scores, and bounds target probes.
-   [world_quest.c](../../src/world/world_quest.c), assignment at 794, tries
-   distinct targets with finite budgets. Its item-reward suitability and map
-   heuristics are not proof of Divine side accessibility or epic completion.
-   [maintenance_snapshot.c](../../src/persistence/maintenance_snapshot.c)
-   at 90-144 counts current descriptors and unique hosts, not active accounts.
-   Newer [interp.c](../../src/cmd/interp.c) at 149-188 and
-   [telemetry_runtime.h](../../src/telemetry/telemetry_runtime.h) at 345-378
-   expose activity evidence, but telemetry is optional and its session counters
-   are not the requested rolling, account-deduplicated gameplay population.
-
-9. **Runtime flags and help precedence must remain authoritative.**
-   [db.c](../../src/world/db.c) at 1783-1817 initializes hometown to zero and
-   loads `ZONE_TOWN` independently; a real town can have index zero.
-   The existing `BOON` topic in
-   [help_index](../../lib/information/help_index) at 1686-1706 still advertises
-   participation toggling and the shop. Parsed help currently has no actual
-   Boon topic. [HELP_SYSTEM.md](../content/HELP_SYSTEM.md) documents that a
-   matching parsed-help title overrides help_index, including in flat-file mode.
-   Update maintained sources consistently; do not create contradictory copies.
+- `zone_touch_transaction.c` still refuses flat-file settlement. Extend the
+  existing stone claim/prepared-participant boundary and saved delivery marker;
+  a candidate catalogue or committed claim alone does not prove player credit.
+- `ship_shop.c`, `ships.h` and `ship_utils.c` merge commodity slots without lot
+  identity and save payment, ships and markets separately. `SHIP_MAX_CARGO`
+  counts combined crates and includes crew. The affected sale needs atomic
+  recovery of all effects; a bonus-only receipt is insufficient.
+- Legacy admission barriers now exist in the stack. `boon_reward_transaction.c`,
+  `boon.c` and `maintenance_scheduler.c` still need accepted/unpublished/login/
+  restored reward reconciliation. Suppressed callbacks lose earned entitlements.
+- EXP/PvP integration already exists in `limits.c`, `fight.c` and the stack's
+  tests. Reuse it. The old `epic_frag` wrapper had no production callers; do not
+  invent a second live route to match the issue's assumption. Remaining award
+  entries must share qualified preparation without boosting generic EPIC_PVP.
+- Barquest profiles support bounded candidates, not proof of side access or
+  epic payout. Runtime `ZONE_TOWN` is authoritative even at hometown zero.
+  Reuse existing account activity independently of optional telemetry.
+- `interp.c` still routes command 804 to legacy `do_boon`. Existing BOON help
+  includes shop/toggle guidance; [HELP_SYSTEM.md](../content/HELP_SYSTEM.md)
+  documents parsed-help precedence. Update both maintained sources consistently.
 
 ## Ablation decisions: non-goals, files and proof
 
-**Resource, token and overdue deadline rule:** these scope limits are essential
-to finishing as fast as possible. Every addition must be needed
-for a retained requirement or its proof; defer optional improvements and polish.
+Every addition must identify its retained acceptance item and concrete failure.
+A required addition updates the remaining forecast or triggers the budget failure
+rule; discovering it does not create extra hours. Drop optional work.
 
 **Keep:** the issue's gameplay, both backends, safe legacy retirement, prepared
 reward identity, cargo batch/cap/payment recovery, hard target exclusions,
@@ -241,7 +245,7 @@ Also exclude new schedulers/services, PostHog dependencies, generic quest/reward
 frameworks, point conversion, per-side eight-slot pools, quotas, instant refill,
 catch-up bursts, alternate colouring and player/ship location displays.
 
-**Files:** core changes belong in one `divine_boon.{h,c}` module and its minimal
+**Files:** reuse the already published `divine_boon*` implementation and minimal
 backend persistence boundary, existing boon admission/scan handlers, interpreter/
 toggle, `limits.c`, `epic.c`, `zone_touch*`, `fight.c`/`combat_outcome*`,
 ship shop/cargo mutation/save code and help. Extend SQL/flat-file player or ship
@@ -252,23 +256,32 @@ the cargo operation owns its idempotent payment boundary.
 **Proof:** extend existing executable harnesses and disposable database/file
 fixtures. Add a small clock/selection test and the missing domain recovery
 cases; no new test framework. Helper/codec checks cannot prove a reachable
-command, real stone payout or recoverable sale. Gameplay implementation is now
-authorized; production actions remain outside this work.
+command, real stone payout or recoverable sale. The paused implementation's
+authority and budget limits are recorded above.
 
-## Implementation sequence
+## Remaining execution order and technical contracts
 
-These are dependency steps within the same issue and branch, not six separately
-qualified projects. Preserve every acceptance item in the closure map.
+The numbered contracts below preserve requirements, not mandatory implementation
+or PR boundaries. Reuse the existing stack; do not repeat already proven steps.
 
-**Execution priority:** resources and tokens are very limited; we are already
-past the deadline and must deliver fast. Keep reasoning and progress reports brief.
-Keep each step to its required changes and focused proof, reuse valid results,
-and move directly to the next dependency as soon as the current one is complete.
+On an authorized continuation that passes the budget gate:
+
+1. Finish the existing receipt-retention gap needed by prepared rewards, reusing
+   valid tests; no generalized history service or extra foundation PR.
+2. Prove actual cargo purchase/sale and stone save/recovery boundaries on both
+   backends first. Use a real route and stone, then cover the variations below.
+   Do not defer these largest costs or build substitute toy implementations.
+3. Complete both vertical paths through selection, eligibility, prepared reward,
+   save/reload and player output. Reuse existing EXP/PvP paths.
+4. Finish legacy reconciliation, commands/help and combined journeys; run both
+   required builds and remaining affected checks, then publish the complete diff.
+
+Use one continuation branch unless a concrete dependency/review requirement needs
+another. Keep existing PRs intact. Use focused commits, but do not require a
+PR/build/report cycle for each helper. No full burn-in, CI wait, world-wide audit
+or optional hardening phase. Apply the same clock and failure rules throughout.
 
 ### 1. State, hourly rotation and forward legacy cutover
-
-**Overdue delivery focus:** reuse the existing writer and recovery machinery to finish
-the required state and safe cutover with the smallest necessary changes.
 
 - In the Divine module store eight slots with stable boon IDs, category/rate,
   absolute starts/expiry, per-side objectives, revision, pause flag, last UTC
@@ -309,9 +322,6 @@ verify old work is paid once or retained recoverably. Test restored jobs and
 offline recipients. Use existing receipt fixtures for actual retained formats.
 
 ### 2. Safe candidates and bounded activity
-
-**Overdue delivery focus:** prove a bounded usable candidate pool and reuse existing
-observation points. Spend no scarce time on a world-wide audit or new framework.
 
 - Use one cached validated catalogue for SQL and flat-file. Reuse bartender
   boot-profile, level-score and bounded distinct-candidate techniques; do not
@@ -360,9 +370,6 @@ especially town flag with hometown zero/nonzero and changed flags. Prove positiv
 side access for selected real content, not only rejection of synthetic bad zones.
 
 ### 3. Reward integration and flat-file stone payouts
-
-**Overdue delivery focus:** make the required changes at the existing reward and save
-boundaries. Avoid unrelated reward work so both backends can finish quickly.
 
 - Derive each legitimate share first. Carry an explicit eligible base and
   calculate the Divine contribution separately from existing increases.
@@ -420,9 +427,6 @@ and award a real payable reachable epic target.
 
 ### 4. Boon-specific cargo lots and settlement
 
-**Overdue delivery focus:** keep recovery work confined to qualifying lots and affected
-sales. This required work is a major time cost; avoid a general trade rewrite.
-
 - Retain ordinary commodity slots; attach exact lots to stable persistent ship
   identity, not its process-local runtime reference. Qualifying purchases store
   lot/operation ID, timestamp, source, invoice/basis, quantity, purchaser account
@@ -477,9 +481,6 @@ No second framework or unrelated ordinary-sale rewrite is required.
 
 ### 5. Commands, help and one integrated qualification
 
-**Overdue delivery focus:** finish the required commands/help and reuse focused evidence
-for one integrated journey per backend. No optional polish or extra test campaign.
-
 - Keep `CMD_BOON=804`, `boon` and `boon list`. Show the exact requested Gods
   introduction, stored valid targets/rates, real remaining time and next hourly
   opportunity; handle initialization, pause and fewer than eight/zero slots.
@@ -520,9 +521,10 @@ for one integrated journey per backend. No optional polish or extra test campaig
 
 #245 remains open until all of these have implementation and executable proof.
 
-**Completion is overdue:** use this map to keep limited resources and tokens
-on required work, close each item once its proof is valid, and finish immediately
-when the full map is satisfied. Do not add optional acceptance criteria.
+All groups remain OPEN for full-feature delivery. Close an individual item only
+with its implementation commit, executable command/result, backend and actual-path
+evidence. A group summary cannot close an unproven member. Do not add criteria or
+defer existing ones to make the clock fit.
 
 The item numbers below refer to the 23 acceptance checkboxes in the issue
 snapshot inspected on 2026-10-22; all 23 have a retained implementation path.
@@ -578,32 +580,25 @@ Current implementation evidence is recorded in the handoff above. Before each
 publication, check references, preservation of prior plans, the focused diff,
 `git diff --check` and remote commit parity. Link each PR to #245 and its stack.
 
-## Estimate for Codex implementation
+## Delivery report and continuation record
 
-**Urgent delivery target:** resources and tokens are very limited, and the
-deadline is already past due. Deliver fast. The range below is an estimate,
-not time to fill.
-Finish sooner whenever the required implementation and proof are complete.
+The earlier human-days estimate and rolling multi-hour ETAs are withdrawn.
+They are history, not additional budget. Never restore them from a child branch.
+Current evidence does not support a promise to deliver the remaining feature
+immediately or within an invented fresh window.
 
-**Plan for 6-10 hours of my active implementation and focused verification.**
-Use about eight hours for scheduling. This is a source-informed estimate for
-Codex working on the complete issue, not human-engineer days, a measured benchmark,
-or a promise that work has started in the background.
+At each budget checkpoint or final delivery, report these facts briefly and retain
+them in the handoff for the next turn:
 
-Most time is in cargo lot/payment recovery and the missing flat-file epic payout
-path. Rotation/selection, reward wiring and command/help work use the current
-code and test harnesses. The estimate includes both required backend builds,
-focused failure/restart cases and the final integrated journeys. It does not
-include six PR/test cycles, a full regression burn-in, generalized persistence
-repair, a rollback product, CI waiting or production operations.
+- Original start/deadline; current time; elapsed, remaining or overrun; any
+  explicitly approved change and its exact scope.
+- Acceptance items fully proven since the last checkpoint, with commit and
+  commands/results; partial and uncommitted work identified separately.
+- Exact missing acceptance items and next concrete result; whether ALL remaining
+  implementation and proof fit, with unknowns stated explicitly.
+- Publication links and state; completion or missed delivery stated plainly.
 
-This assumes the available C++/SQL tools and existing disposable MariaDB/file
-fixtures are sufficient, and the bounded candidate pool can be proven from
-checked-in content. The tools and fixture wrappers are present; no new environment
-installation or production access is planned. If a concrete defect below these
-boundaries blocks required proof, report it and revise remaining time from the
-actual result. Do not reduce acceptance coverage to meet the estimate.
-
-The earlier 96-144-hour figure was an uncalibrated human-effort guess and is
-superseded. The estimate above includes uncertainty rather than deferring an
-answer until implementation. The subsequent request now authorizes implementation.
+No tracking service, automation, extra report file or test framework is needed.
+The plan and existing evidence are sufficient. Updating this document is not
+implementation completion. Finish when the full outcome is proven and published;
+otherwise keep the issue open and follow the fixed budget's failure rule.
