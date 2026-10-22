@@ -221,7 +221,7 @@ bool divine_boon_reconcile(divine_boon_state *state, int64_t now)
 bool divine_boon_set_paused(divine_boon_state *state, bool paused, int64_t now)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state) ||
-	    state->mode != divine_boon_mode::divine)
+	    state->mode != divine_boon_mode::divine || state->paused == paused)
 		return false;
 	auto next = *state;
 	expire(next, now);
