@@ -33,11 +33,8 @@ bool apply(P_char ch, const divine_epic_delivery &delivery)
 	// Defer the artifact/guild effect alongside its epic award.
 	if (!artifact_guild_transaction_submit(ch, delivery.operation_id,
 					      static_cast<int>(delivery.amount), EPIC_PVP))
-	{
-		pc->divine_boon_delivery_applying = false;
-		logit(LOG_STATUS, "Divine epic delivery deferred: artifact/guild effect unavailable.");
-		return false;
-	}
+		logit(LOG_STATUS,
+		      "Divine epic receipt committed, but artifact/guild effect unavailable.");
 	pc->epics += delivery.amount;
 	pc->epic_revision = std::max(pc->epic_revision, delivery.sequence);
 	pc->divine_boon_delivery_seq = delivery.sequence;
