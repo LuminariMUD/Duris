@@ -73,6 +73,8 @@ uint64_t inventory_fingerprint(P_obj first)
 	for (P_obj object = first; object; object = object->next_content)
 	{
 		hash = (hash ^ reinterpret_cast<uintptr_t>(object)) * UINT64_C(1099511628211);
+		for (int value : object->value)
+			hash = (hash ^ static_cast<uint64_t>(value)) * UINT64_C(1099511628211);
 		hash = (hash ^ inventory_fingerprint(object->contains)) * UINT64_C(1099511628211);
 	}
 	return hash;

@@ -211,6 +211,31 @@ void container_input()
 	bodies[0].carrying = nullptr;
 }
 
+void device_input()
+{
+	setup_game();
+	obj_data device = {};
+	device.value[2] = 3;
+	bodies[0].equipment[0] = &device;
+	auto input = divine_boon_activity_begin(&bodies[0]);
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	input = divine_boon_activity_begin(&bodies[0]);
+	--device.value[2]; // Accepted device work consumes its charge before delayed effects.
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	bodies[0].equipment[0] = nullptr;
+	setup_game();
+	device.value[1] = 42;
+	bodies[0].carrying = &device;
+	input = divine_boon_activity_begin(&bodies[0]);
+	for (int slot = 1; slot <= 3; ++slot)
+		device.value[slot] = 0; // Recite consumes ink before the scheduled effect.
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	bodies[0].carrying = nullptr;
+}
+
 void morphed_player()
 {
 	setup_game();
@@ -251,6 +276,7 @@ int main()
 	sides_and_brackets();
 	real_input_boundary();
 	container_input();
+	device_input();
 	morphed_player();
 	std::cout
 		<< "Divine activity: 60/15/5-minute windows, accounts, brackets, real input and exclusions passed\n";
