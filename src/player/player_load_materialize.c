@@ -55,7 +55,7 @@ bool valid_snapshot(const player_load_result &result)
 	     result.snapshot.components != PLAYER_LOAD_SESSION02_COMPONENTS &&
 	     result.snapshot.components != PLAYER_LOAD_SESSION03_COMPONENTS) ||
 	    result.snapshot.status_strings.size() != 8 ||
-	    result.snapshot.status_integers.size() != 64)
+	    result.snapshot.status_integers.size() != PLAYER_STATUS_INTEGER_COUNT)
 		return false;
 	std::unordered_set<unsigned int> integers;
 	std::unordered_set<unsigned int> strings;
@@ -64,8 +64,9 @@ bool valid_snapshot(const player_load_result &result)
 		return false;
 	for (const player_snapshot_integer &entry : result.snapshot.status_integers)
 		if (entry.field < player_status_field::class_primary ||
-		    entry.field > player_status_field::learned_flight_stops ||
-		    (entry.field == player_status_field::learned_flight_stops &&
+		    entry.field > player_status_field::divine_boon_delivery_seq ||
+		    ((entry.field == player_status_field::learned_flight_stops ||
+		      entry.field == player_status_field::divine_boon_delivery_seq) &&
 		     !entry.is_unsigned) ||
 		    !integers.insert(static_cast<unsigned int>(entry.field)).second)
 			return false;
@@ -383,6 +384,9 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		break;
 	case player_status_field::learned_flight_stops:
 		ch->only.pc->learned_flight_stops = entry.unsigned_value;
+		break;
+	case player_status_field::divine_boon_delivery_seq:
+		ch->only.pc->divine_boon_delivery_seq = entry.unsigned_value;
 		break;
 	case player_status_field::copper:
 	case player_status_field::silver:

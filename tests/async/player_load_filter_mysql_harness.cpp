@@ -392,6 +392,42 @@ int main()
 			progress(11) == std::pair(uint64_t{ 7 }, int64_t{ 54321 }),
 		"discovery checkpoint retry failed");
 
+	player_snapshot delivery = discovery;
+	delivery.revision++;
+	delivery.status_integers = { { player_status_field::epics, 450, 0, false },
+				     { player_status_field::divine_boon_delivery_seq, 0, 3,
+				       true } };
+	require(player_snapshot_repository_apply(test_connection, delivery).outcome ==
+			player_save_apply_outcome::applied,
+		"Divine delivery checkpoint failed");
+	const auto delivered = [&]()
+	{
+		const auto result = load(11, 499);
+		require(result.outcome == player_load_outcome::applied &&
+				result.snapshot.status_integers.size() ==
+					PLAYER_STATUS_INTEGER_COUNT,
+			"Divine checkpoint status could not reload");
+		for (const auto &field : result.snapshot.status_integers)
+			if (field.field == player_status_field::divine_boon_delivery_seq)
+			{
+				require(field.is_unsigned, "Divine marker loaded as signed");
+				return std::pair(result.domains.epics, field.unsigned_value);
+			}
+		std::abort();
+	};
+	require(delivered() == std::pair(int64_t{ 450 }, uint64_t{ 3 }),
+		"Divine marker and epic balance did not reload together");
+	execute("CREATE TRIGGER reject_divine_save BEFORE UPDATE ON player_data FOR EACH ROW "
+		"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic delivery failure'");
+	delivery.revision++;
+	delivery.status_integers[0].signed_value = 500;
+	delivery.status_integers[1].unsigned_value = 4;
+	require(player_snapshot_repository_apply(test_connection, delivery).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			delivered() == std::pair(int64_t{ 450 }, uint64_t{ 3 }),
+		"failed delivery checkpoint changed the balance or applied marker");
+	execute("DROP TRIGGER reject_divine_save");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player load filter MariaDB leg passed\n";

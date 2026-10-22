@@ -24,7 +24,8 @@ restart and merge remain separate actions.
 ## Implementation handoff (2026-10-22)
 
 - Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
-  `branch/issue-245-divine-activity`, stacked on `branch/issue-245-divine-cutover`
+  `branch/issue-245-divine-delivery`, stacked on `branch/issue-245-divine-activity`
+  -> `branch/issue-245-divine-cutover`
   -> `branch/issue-245-divine-runtime` -> `branch/issue-245-divine-persistence`
   -> `branch/issue-245-divine-boons`.
 - Review-ready foundation: [PR #265](https://github.com/LuminariMUD/Duris/pull/265),
@@ -110,6 +111,20 @@ restart and merge remain separate actions.
 - Selection integration: call `divine_boon_activity_population()` to obtain
   per-side `brackets`, `active_accounts` and distinct `pvp_accounts`; do not use
   descriptors, hosts or optional telemetry as a substitute for this history.
+- Sixth chunk: player status snapshots now checkpoint an unsigned Divine delivery
+  sequence with the epic balance. Both repositories reject a status capture below
+  the saved watermark, even if its general save revision is newer. Snapshot v10
+  upgrades supported older snapshots with a zero watermark; additive migration
+  `0049_divine_boon_delivery` preserves balances and defaults existing players to
+  zero. This is the recipient checkpoint boundary; prepared-award sequencing,
+  publication and login recovery still need integration before any Divine payout.
+- Sixth-chunk proof: focused capture, codec, player materialization and load tests
+  pass. Flat-file journal interruption/retry preserves the balance and watermark;
+  stale, signed and duplicate markers are rejected. Disposable MariaDB save/load
+  fixtures prove the same stale rejection and atomic rollback on an injected
+  balance/marker update failure. Migration apply/replay and exact verifiers pass
+  on disposable MySQL 8 and MariaDB 10.11, with measured runtime fingerprints.
+  The runtime validator, seven boot-contract and 21 migration-runner tests pass.
 - **Next:** complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
@@ -138,6 +153,11 @@ restart and merge remain separate actions.
   framework, general economy rewrite or extra verification campaign added.
   State revision plus an atomic snapshot supplies retry identity; no additional
   critical-command type, outbox or duplicate receipt catalogue is needed.
+- Next delivery step: allocate recipient sequences in the existing writer under
+  the recipient row/authority lock, including earlier prepared receipts. Do not
+  derive a new sequence from the live applied watermark: multiple accepted
+  awards before completion would collide. Publish and recover in sequence,
+  saving the amount and applied watermark through the player status boundary.
 - Remaining estimate at this checkpoint: 6-8 hours of active implementation and
   focused verification, including review-ready PRs. Cargo recovery and flat-file
   epic payouts remain the largest costs; this is an estimate, not time to fill.

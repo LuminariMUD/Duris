@@ -1278,6 +1278,7 @@ struct pc_only_data
 	uint64_t frag_revision; /* Transactional PvP frag-domain revision. */
 	long epics; /* # of epic points                           */
 	uint64_t epic_revision; /* Transactional epic domain revision. */
+	uint64_t divine_boon_delivery_seq; /* Prepared awards included in the saved epic balance. */
 	long epic_skill_points;
 	struct EpicBonusState epic_bonus_state;
 	struct gameplay_read_state gameplay_reads;

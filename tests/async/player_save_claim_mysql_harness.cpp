@@ -632,6 +632,43 @@ int main()
 			std::string(rows[1][0]) == "2" && !rows[1][1],
 		"a queued read did not copy its rows");
 
+	// A prepared reward's balance and applied sequence share one status commit.
+	player_snapshot paid = {};
+	paid.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	paid.pid = 1;
+	paid.revision = 10000;
+	paid.components = PLAYER_COMPONENT_STATUS;
+	paid.encoded_size_bound = 4096;
+	paid.status_integers = { { player_status_field::epics, 450, 0, false },
+				 { player_status_field::divine_boon_delivery_seq, 0, 3, true } };
+	applied = player_snapshot_repository_apply(test_connection, paid);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT CONCAT(epics,':',divine_boon_delivery_seq) FROM player_data WHERE pid=1") ==
+				"450:3",
+		"Divine balance and applied marker were not checkpointed together");
+	auto stale_delivery = paid;
+	stale_delivery.revision = 10001;
+	stale_delivery.status_integers[0].signed_value = 1;
+	stale_delivery.status_integers[1].unsigned_value = 2;
+	applied = player_snapshot_repository_apply(test_connection, stale_delivery);
+	require(applied.outcome == player_save_apply_outcome::stale_revision &&
+			applied.durable_revision == paid.revision &&
+			scalar(test_connection,
+			       "SELECT CONCAT(epics,':',divine_boon_delivery_seq) FROM player_data WHERE pid=1") ==
+				"450:3",
+		"a newer-numbered stale capture erased a delivered Divine award");
+	auto malformed_delivery = paid;
+	malformed_delivery.status_integers[1].is_unsigned = false;
+	require(player_snapshot_repository_apply(test_connection, malformed_delivery).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"signed Divine delivery marker was accepted");
+	malformed_delivery = paid;
+	malformed_delivery.status_integers.push_back(paid.status_integers[1]);
+	require(player_snapshot_repository_apply(test_connection, malformed_delivery).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"duplicate Divine delivery marker was accepted");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

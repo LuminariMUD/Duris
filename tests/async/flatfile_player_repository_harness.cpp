@@ -1033,6 +1033,17 @@ int main(int argc, char **argv)
 			applied.error_code == ENOENT,
 		"partial snapshot created a missing player baseline");
 	player_snapshot full = make_full(1);
+	std::vector<uint8_t> legacy_bytes;
+	require(player_snapshot_encode(full, &legacy_bytes) == player_snapshot_codec_result::ok,
+		"could not encode legacy-compatible status fixture");
+	legacy_bytes[0] = 9; // Version 9 has the same layout, without the new status field.
+	player_snapshot legacy;
+	uint64_t legacy_sequence = 99;
+	require(player_snapshot_decode(legacy_bytes.data(), legacy_bytes.size(), &legacy) ==
+				player_snapshot_codec_result::ok &&
+			player_snapshot_divine_delivery_sequence(legacy, &legacy_sequence) &&
+			!legacy_sequence,
+		"version-9 player status did not upgrade with an empty delivery marker");
 	applied = flatfile_player_snapshot_apply(root.string(), full, &error);
 	require(applied.outcome == player_save_apply_outcome::applied &&
 			applied.durable_revision == 1,
@@ -1237,6 +1248,44 @@ int main(int argc, char **argv)
 	}
 
 	const fs::path snapshot_path = players / "42.snapshot";
+	player_snapshot paid = make_status(11, 51, 1201);
+	paid.status_integers.push_back({ player_status_field::epics, 450, 0, false });
+	paid.status_integers.push_back(
+		{ player_status_field::divine_boon_delivery_seq, 0, 3, true });
+	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+	require(flatfile_player_snapshot_apply(root.string(), paid, &error).outcome ==
+			player_save_apply_outcome::retryable_failure,
+		"delivery fault did not interrupt the authority commit");
+	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+	require(flatfile_player_snapshot_apply(root.string(), paid, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"Divine status checkpoint failed: " + error);
+	auto stale_delivery = paid;
+	stale_delivery.revision = 12;
+	stale_delivery.status_integers[stale_delivery.status_integers.size() - 2].signed_value = 1;
+	stale_delivery.status_integers.back().unsigned_value = 2;
+	require(flatfile_player_snapshot_apply(root.string(), stale_delivery, &error).outcome ==
+			player_save_apply_outcome::stale_revision,
+		"stale Divine capture was applied");
+	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
+			flatfile_player_load_result::ok,
+		"paid Divine checkpoint could not reload");
+	uint64_t delivered_sequence = 0;
+	require(player_snapshot_divine_delivery_sequence(loaded, &delivered_sequence) &&
+			delivered_sequence == 3 &&
+			loaded.status_integers[loaded.status_integers.size() - 2].signed_value ==
+				450,
+		"stale save erased the Divine balance or applied marker");
+	auto malformed_delivery = paid;
+	malformed_delivery.status_integers.back().is_unsigned = false;
+	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"signed delivery marker was accepted");
+	malformed_delivery = paid;
+	malformed_delivery.status_integers.push_back(paid.status_integers.back());
+	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"duplicate delivery marker was accepted");
 	{
 		std::fstream file(snapshot_path, std::ios::in | std::ios::out | std::ios::binary);
 		require(file.good(), "could not open player snapshot for corruption test");
