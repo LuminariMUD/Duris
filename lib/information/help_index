@@ -20859,14 +20859,86 @@ spell.
 See also: LOAD, AFFECTPURGE, "GOD, PURGE"
 ===========================================================================
 #
+QVIEW (Immortal Command)
+===========================================================================
+Syntax: qview <mobile-vnum>
+
+Immortal command (level 58). Shows an NPC quest giver's keywords and raw
+responses, every completion rule, required items/item types/coins, rewards,
+completion messages, and disappearance behavior. Message targets are shown
+as player or room. Repeated item rows mean multiple copies are required.
+Missing object or skill references remain visible by number.
+
+Reads booted quest definitions and prototype names; the giver and items do
+not need to be loaded. This describes authored NPC quests, not bartender
+world quests or a player's completion history.
+
+See also: QREF, QINFO, QLIST, QUESTWHERE
+===========================================================================
+#
+QREF (Immortal Command)
+===========================================================================
+Syntax: qref <object-vnum>
+
+Immortal command (level 58). Lists every NPC quest completion that explicitly
+requires (GIVE) or rewards (RECEIVE) this object. Results identify the giver's
+mobile VNUM and completion number used by QVIEW. Both roles can appear in
+one completion. Generic item-type requirements are not exact VNUM references.
+
+The object must have a prototype, but no loaded instance is needed.
+
+See also: QINFO, QVIEW, QLIST, QUESTWHERE
+===========================================================================
+#
+QINFO (Immortal Command)
+===========================================================================
+Syntax: qinfo <object-vnum>
+
+Immortal command (level 58). Finds the same object references as QREF and
+shows the full requirements, rewards, completion message, and disappearance
+behavior of each matching completion. Other completions are omitted.
+Use QVIEW to see all completions and keyword responses for one giver.
+
+See also: QREF, QVIEW, QLIST
+===========================================================================
+#
+QLIST (Immortal Command)
+===========================================================================
+Syntax: qlist
+        qlist <mobile-vnum>
+        qlist <from> <to>
+        hlqlist [<mobile-vnum> | <from> <to>]
+
+Immortal command (level 58). Lists NPC quest givers and their completion
+rule counts. No arguments lists the current zone's mobile VNUM partition,
+as with MLIST. One VNUM selects one giver; two form an inclusive range
+(either order). Explicit ranges work without a current room. HLQLIST is
+an alias. Givers with dialogue but no completion rules are included.
+
+These commands read definitions without loading mobiles or objects. Large
+reports require paging (toggle paging). Use QVIEW for full quest details.
+
+See also: QVIEW, QREF, QINFO, MLIST, ZLIST
+===========================================================================
+#
+HLQLIST (Immortal Command)
+===========================================================================
+Syntax: hlqlist [<mobile-vnum> | <from> <to>]
+
+Immortal command (level 58). Alias for QLIST. Lists NPC quest givers in the
+current zone, or within an explicit inclusive mobile VNUM range.
+
+See also: QLIST, QVIEW, QREF, QINFO
+===========================================================================
+#
 QUESTWHERE (Immortal Command)
 ===========================================================================
 Syntax: questwhere <item keyword(s)>
 
 Immortal command (level 58). Searches the world for loaded items matching the keywords whose
-vnum is used as a quest goal item, listing each instance's location.
+vnum is used as a quest reward item, listing each instance's location.
 
-See also: WHERE
+See also: WHERE, QREF, QINFO, QVIEW, QLIST
 ===========================================================================
 #
 RANDOBJ (Immortal Command)

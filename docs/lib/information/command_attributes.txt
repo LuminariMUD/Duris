@@ -1511,6 +1511,16 @@ puzzle
 ~
 quest
 ~
+qinfo
+~
+qlist
+~
+hlqlist
+~
+qref
+~
+qview
+~
 questwhere
 ~
 qui
