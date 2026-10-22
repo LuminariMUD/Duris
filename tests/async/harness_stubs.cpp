@@ -9,11 +9,20 @@
 #include "guild/artifact_admission.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
+#include "economy/divine_boon_activity.h"
 
 #include <cstdlib>
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+
+// Input-queue fixtures do not collect population. The focused Divine activity
+// harness links the real observer in place of these no-op boundaries.
+HARNESS_STUB divine_boon_input_activity divine_boon_activity_begin(char_data *)
+{
+	return {};
+}
+HARNESS_STUB void divine_boon_activity_end(const divine_boon_input_activity &) {}
 
 // Legacy-only fixtures have no Divine runtime. Divine integration harnesses
 // link the real gate and exercise draining/unavailable states explicitly.
