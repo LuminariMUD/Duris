@@ -125,6 +125,9 @@ restart and merge remain separate actions.
   balance/marker update failure. Migration apply/replay and exact verifiers pass
   on disposable MySQL 8 and MariaDB 10.11, with measured runtime fingerprints.
   The runtime validator, seven boot-contract and 21 migration-runner tests pass.
+- Review-ready delivery checkpoint: [PR #270](https://github.com/LuminariMUD/Duris/pull/270),
+  implementation `49602d449`, stacked on #269. Both server backend builds,
+  changed-line formatting, clang-tidy and whitespace checks pass.
 - **Next:** complete legacy receipt retention/delivery reconciliation before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
