@@ -1352,7 +1352,7 @@ static bool casting_input_for_descriptor(P_desc descriptor, P_char character)
 /** Send a dequeued playing-state command through the normal command dispatcher. */
 static void dispatch_playing_command(P_char character, char *input)
 {
-	const auto activity = divine_boon_activity_begin(character);
+	const auto activity = divine_boon_activity_begin(character, ordered_command_number(input));
 	if (character && character->desc && IS_SET(character->specials.act, PLR_PAGING_ON))
 		process_with_paging(character, input);
 	else

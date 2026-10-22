@@ -50,12 +50,13 @@ struct divine_boon_input_activity
 {
 	uint64_t runtime_id = 0;
 	uint32_t pid = 0;
-	std::array<int64_t, 14> before = {};
+	std::array<int64_t, 15> before = {};
+	bool inspect_inventory = false;
 };
 
 // Wrap only the real playing-input dispatcher. End resolves the runtime ID
 // afresh, so quit, extraction or body replacement cannot leave a stale pointer.
-divine_boon_input_activity divine_boon_activity_begin(char_data *body);
+divine_boon_input_activity divine_boon_activity_begin(char_data *body, int command);
 void divine_boon_activity_end(const divine_boon_input_activity &input);
 std::array<divine_boon_population, 2> divine_boon_activity_population();
 

@@ -2,6 +2,7 @@
 
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "cmd/interp.h"
 
 #include <algorithm>
 #include <chrono>
@@ -11,6 +12,8 @@
 #include <utility>
 
 extern P_desc descriptor_list;
+extern P_room world;
+extern const int top_of_world;
 
 namespace
 {
@@ -80,13 +83,22 @@ uint64_t inventory_fingerprint(P_obj first)
 	return hash;
 }
 
-std::array<int64_t, 14> fingerprint(P_char body)
+std::array<int64_t, 15> fingerprint(P_char body, bool inspect_inventory)
 {
 	P_char player = GET_PLYR(body);
 	P_char opponent = GET_OPPONENT(body);
-	uint64_t inventory = inventory_fingerprint(body->carrying);
-	for (P_obj object : body->equipment)
-		inventory = (inventory ^ inventory_fingerprint(object)) * UINT64_C(1099511628211);
+	uint64_t inventory = 0, exits = 0;
+	if (inspect_inventory)
+	{
+		inventory = inventory_fingerprint(body->carrying);
+		for (P_obj object : body->equipment)
+			inventory = (inventory ^ inventory_fingerprint(object)) *
+				    UINT64_C(1099511628211);
+	}
+	if (world && body->in_room >= 0 && body->in_room <= top_of_world)
+		for (const auto *exit : world[body->in_room].dir_option)
+			exits = (exits ^ static_cast<uint64_t>(exit ? exit->exit_info : 0)) *
+				UINT64_C(1099511628211);
 	return { body->in_room,
 		 GET_EXP(player),
 		 GET_HIT(body),
@@ -100,7 +112,8 @@ std::array<int64_t, 14> fingerprint(P_char body)
 		 GET_MANA(body),
 		 GET_VITALITY(body),
 		 IS_AFFECTED2(body, AFF2_CASTING) ? 1 : 0,
-		 static_cast<int64_t>(inventory) };
+		 static_cast<int64_t>(inventory),
+		 static_cast<int64_t>(exits) };
 }
 
 divine_boon_activity_history observed;
@@ -209,7 +222,7 @@ divine_boon_activity_history::population(const std::vector<divine_boon_actor> &c
 	return result;
 }
 
-divine_boon_input_activity divine_boon_activity_begin(P_char body)
+divine_boon_input_activity divine_boon_activity_begin(P_char body, int command)
 try
 {
 	divine_boon_actor actor;
@@ -218,7 +231,13 @@ try
 	P_desc descriptor = body->desc ? body->desc : GET_PLYR(body)->desc;
 	if (descriptor->str || descriptor->showstr_count)
 		return {};
-	return { body->runtime_id, actor.pid, fingerprint(body) };
+	// Reuse the interpreter's item dependency policy. Spell/special interaction
+	// commands can also consume or receive items without a movement transaction.
+	const bool inventory = cmd_depends_on_item_movement(command) || command == CMD_NONE ||
+			       command == CMD_CAST || command == CMD_STEAL || command == CMD_READ ||
+			       command == CMD_EXAMINE || command == CMD_FORAGE ||
+			       command == CMD_ORDER || command == CMD_OFFER;
+	return { body->runtime_id, actor.pid, fingerprint(body, inventory), inventory };
 }
 catch (const std::bad_alloc &)
 {
@@ -232,7 +251,8 @@ try
 		return;
 	P_char body = find_character_by_runtime_id(input.runtime_id);
 	divine_boon_actor actor;
-	if (live_actor(body, &actor) && actor.pid == input.pid && fingerprint(body) != input.before)
+	if (live_actor(body, &actor) && actor.pid == input.pid &&
+	    fingerprint(body, input.inspect_inventory) != input.before)
 		observed.observe(actor, monotonic_seconds());
 }
 catch (const std::bad_alloc &)

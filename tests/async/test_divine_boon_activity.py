@@ -14,7 +14,8 @@ with tempfile.TemporaryDirectory(prefix="divine-boon-activity-", dir=output_root
     binary = f"{directory}/activity"
     harness = Path(directory) / "activity.cpp"
     harness.write_text((ROOT / "tests/async/divine_boon_activity_harness.cpp").read_text().replace(
-        "// MORPH_POLICY", extract_function("utility.c", "int IS_MORPH(")))
+        "// MORPH_POLICY", extract_function("utility.c", "int IS_MORPH(")).replace(
+        "// ITEM_COMMAND_POLICY", extract_function("interp.c", "bool cmd_depends_on_item_movement(")))
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
          "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",

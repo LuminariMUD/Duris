@@ -15,6 +15,7 @@ from _paths import HARNESS_STUBS
 PRELUDE = r'''
 #include "core/utils.h"
 #include "economy/divine_boon_activity.h"
+int ordered_command_number(const char *);
 #include "core/prototypes.h"
 #include "classes/necromancy.h"
 #include "item/item_movement_transaction.h"
