@@ -2,6 +2,7 @@
 
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "world/epic.h"
 
@@ -28,6 +29,15 @@ bool apply(P_char ch, const divine_epic_delivery &delivery)
 	// Level/achievement hooks can request saves while publishing. Hold those
 	// captures until the balance, watermark and all recipient effects agree.
 	pc->divine_boon_delivery_applying = true;
+	// This receipt is committed before completion delivery or login recovery.
+	// Defer the artifact/guild effect alongside its epic award.
+	if (!artifact_guild_transaction_submit(ch, delivery.operation_id,
+					      static_cast<int>(delivery.amount), EPIC_PVP))
+	{
+		pc->divine_boon_delivery_applying = false;
+		logit(LOG_STATUS, "Divine epic delivery deferred: artifact/guild effect unavailable.");
+		return false;
+	}
 	pc->epics += delivery.amount;
 	pc->epic_revision = std::max(pc->epic_revision, delivery.sequence);
 	pc->divine_boon_delivery_seq = delivery.sequence;
