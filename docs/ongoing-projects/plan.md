@@ -187,6 +187,10 @@ restart and merge remain separate actions.
   Real Nexus lifecycle/consumer and flat-file authority harnesses preserve
   integer behavior and prove fractional payouts; difficulty and telemetry
   progression checks pass. Actual full-world reward/save journeys remain open.
+- Review-ready NPC EXP and hourly integration:
+  [PR #272](https://github.com/LuminariMUD/Duris/pull/272), implementation
+  `2b3bb7d4b`, stacked on #271. Both server builds, formatting, clang-tidy and
+  whitespace checks pass. Existing passing evidence was reused as applicable.
 - **Next:** implement prepared zone/PvP recipient sequences, publication and
   login recovery at the saved delivery watermark boundary;
   complete legacy receipt retention/delivery reconciliation before activation.
