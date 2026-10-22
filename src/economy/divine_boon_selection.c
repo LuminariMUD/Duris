@@ -44,6 +44,9 @@ struct candidate
 std::vector<candidate> catalogue;
 std::array<std::vector<int>, 2> paths;
 std::optional<divine_boon_state> prepared_hour;
+std::array<std::array<int32_t, DIVINE_BOON_SLOTS>, 2> reward_zones = {};
+uint64_t reward_revision = 0;
+int64_t reward_checked_at = -1;
 
 bool ordinary_room(int room, unsigned side)
 {
@@ -212,6 +215,8 @@ try
 {
 	catalogue.clear();
 	prepared_hour.reset();
+	reward_revision = 0;
+	reward_checked_at = -1;
 	if (!world || !zone_table || top_of_world < 0 || top_of_zone_table < 0)
 		return false;
 	for (int number : reviewed_zones)
@@ -248,6 +253,15 @@ bool divine_boon_zone_eligible(int zone_number, unsigned side)
 		if (zone.number == zone_number)
 			return suitable_level(zone, side) > 0;
 	return false;
+}
+
+bool divine_boon_reward_zone_eligible(int zone_number, unsigned side)
+{
+	const auto *state = divine_boon_runtime_state();
+	return state && state->revision == reward_revision && side < reward_zones.size() &&
+	       zone_number >= 0 &&
+	       std::find(reward_zones[side].begin(), reward_zones[side].end(), zone_number) !=
+		       reward_zones[side].end();
 }
 
 bool divine_boon_select(const divine_boon_state &published, int64_t now,
@@ -328,8 +342,32 @@ void divine_boon_selection_pulse(int64_t now)
 try
 {
 	const auto *state = divine_boon_runtime_state();
-	if (!state || divine_boon_runtime_pending() || state->mode != divine_boon_mode::divine ||
-	    now < 0)
+	if (!state || state->mode != divine_boon_mode::divine || now < 0)
+	{
+		reward_revision = 0;
+		return;
+	}
+	// Path validation allocates and walks world exits. Refresh at most once per
+	// second (and after publication), never from a per-hit reward calculation.
+	if (reward_revision != state->revision || reward_checked_at != now)
+	{
+		for (auto &side : reward_zones)
+			side.fill(-1);
+		for (size_t index = 0; index < state->slots.size(); ++index)
+		{
+			const auto &slot = state->slots[index];
+			if (slot.category != divine_boon_category::experience ||
+			    !divine_boon_active(slot, now))
+				continue;
+			for (unsigned side = 0; side < reward_zones.size(); ++side)
+				if (slot.zones[side] >= 0 &&
+				    divine_boon_zone_eligible(slot.zones[side], side))
+					reward_zones[side][index] = slot.zones[side];
+		}
+		reward_revision = state->revision;
+		reward_checked_at = now;
+	}
+	if (divine_boon_runtime_pending())
 		return;
 	const int64_t hour = now - now % DIVINE_BOON_HOUR;
 	if (prepared_hour && prepared_hour->revision != state->revision + 1)

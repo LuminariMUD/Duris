@@ -117,7 +117,7 @@ double check_nexus_bonus_precise(P_char, double xp, int) { return xp * (1 + nexu
 divine_boon_state divine_state;
 bool divine_enabled = false, target_eligible = true;
 const divine_boon_state *divine_boon_runtime_state() { return divine_enabled ? &divine_state : nullptr; }
-bool divine_boon_zone_eligible(int, unsigned) { return target_eligible; }
+bool divine_boon_reward_zone_eligible(int, unsigned) { return target_eligible; }
 bool aggressive_to_basic(P_char, P_char) { return false; }
 float get_epic_bonus(P_char, int) { return epic_percent; }
 double get_epic_bonus_precise(P_char, int) { return epic_percent; }

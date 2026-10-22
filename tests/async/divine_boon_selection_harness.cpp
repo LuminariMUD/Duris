@@ -290,6 +290,16 @@ int main()
 	publish();
 	divine_boon_selection_pulse(3604);
 	assert(queue_calls == 3);
+	assert(divine_boon_reward_zone_eligible(18, 0));
+	exits[0].exit_info = EX_BLOCKED;
+	for (unsigned hit = 0; hit < 10000; ++hit)
+		assert(divine_boon_reward_zone_eligible(18, 0)); // A bounded cached lookup.
+	divine_boon_selection_pulse(3605);
+	assert(!divine_boon_reward_zone_eligible(18, 0));
+	exits[0].exit_info = 0;
+	divine_boon_selection_pulse(3606);
+	assert(divine_boon_reward_zone_eligible(18, 0));
+	assert(!divine_boon_reward_zone_eligible(18, 2));
 	divine_boon_selection_pulse(10800); // Forward jump skips opportunities without RNG.
 	assert(random_calls == choices && queued.last_opportunity == 10800);
 	publish();
