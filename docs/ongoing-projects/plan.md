@@ -1,5 +1,12 @@
 # Issue #245: rotating Divine Boons
 
+> **Critical delivery constraint: our resources and tokens are very limited,
+> the deadline is already past due, and we must deliver as fast as possible.**
+> This governs the entire plan: take
+> the shortest path that meets all requirements, reuse existing code and valid
+> evidence, and defer optional work. Required correctness and recovery remain
+> part of completion.
+
 Status: implementation plan only; no feature implementation or production action.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
@@ -16,6 +23,10 @@ restart and merge are separate actions. This document proposes their sequence;
 it does not perform them.
 
 ## Outcome
+
+**Delivery priority:** resources and tokens are very limited, and the deadline
+is already past due. Deliver the complete required outcome as fast as possible.
+Add no optional scope.
 
 Replace the player-facing legacy task/shop boon system with automatic,
 persistent world bonuses. Retain `boon`, `boon list` and `CMD_BOON=804`.
@@ -40,6 +51,8 @@ Keep the existing eligibility rules, penalties and final caps.
 
 These are facts about the pinned checkout, not claims about production content
 or deployed settings. Function names below are navigation points at that commit.
+Use these findings to focus the limited time on known required changes. Reopen
+investigation only where implementation exposes a concrete unresolved question.
 
 1. **Command replacement is small; legacy retirement is not.**
    [interp.c](../../src/cmd/interp.c), `CMD_BOON` registration at 3454, calls
@@ -151,6 +164,10 @@ or deployed settings. Function names below are navigation points at that commit.
 
 ## Ablation decisions: non-goals, files and proof
 
+**Resource, token and overdue deadline rule:** these scope limits are essential
+to finishing as fast as possible. Every addition must be needed
+for a retained requirement or its proof; defer optional improvements and polish.
+
 **Keep:** the issue's gameplay, both backends, safe legacy retirement, prepared
 reward identity, cargo batch/cap/payment recovery, hard target exclusions,
 activity rules, commands/help and actual-path tests. These are requirements,
@@ -215,7 +232,15 @@ production action is part of this planning change.
 These are dependency steps within the same issue and branch, not six separately
 qualified projects. Preserve every acceptance item in the closure map.
 
+**Execution priority:** resources and tokens are very limited; we are already
+past the deadline and must deliver fast. Keep reasoning and progress reports brief.
+Keep each step to its required changes and focused proof, reuse valid results,
+and move directly to the next dependency as soon as the current one is complete.
+
 ### 1. State, hourly rotation and forward legacy cutover
+
+**Overdue delivery focus:** reuse the existing writer and recovery machinery to finish
+the required state and safe cutover with the smallest necessary changes.
 
 - In the Divine module store eight slots with stable boon IDs, category/rate,
   absolute starts/expiry, per-side objectives, revision, pause flag, last UTC
@@ -256,6 +281,9 @@ verify old work is paid once or retained recoverably. Test restored jobs and
 offline recipients. Use existing receipt fixtures for actual retained formats.
 
 ### 2. Safe candidates and bounded activity
+
+**Overdue delivery focus:** prove a bounded usable candidate pool and reuse existing
+observation points. Spend no scarce time on a world-wide audit or new framework.
 
 - Use one cached validated catalogue for SQL and flat-file. Reuse bartender
   boot-profile, level-score and bounded distinct-candidate techniques; do not
@@ -304,6 +332,9 @@ especially town flag with hometown zero/nonzero and changed flags. Prove positiv
 side access for selected real content, not only rejection of synthetic bad zones.
 
 ### 3. Reward integration and flat-file stone payouts
+
+**Overdue delivery focus:** make the required changes at the existing reward and save
+boundaries. Avoid unrelated reward work so both backends can finish quickly.
 
 - Derive each legitimate share first. Carry an explicit eligible base and
   calculate the Divine contribution separately from existing increases.
@@ -361,6 +392,9 @@ and award a real payable reachable epic target.
 
 ### 4. Boon-specific cargo lots and settlement
 
+**Overdue delivery focus:** keep recovery work confined to qualifying lots and affected
+sales. This required work is a major time cost; avoid a general trade rewrite.
+
 - Retain ordinary commodity slots; attach exact lots to stable persistent ship
   identity, not its process-local runtime reference. Qualifying purchases store
   lot/operation ID, timestamp, source, invoice/basis, quantity, purchaser account
@@ -415,6 +449,9 @@ No second framework or unrelated ordinary-sale rewrite is required.
 
 ### 5. Commands, help and one integrated qualification
 
+**Overdue delivery focus:** finish the required commands/help and reuse focused evidence
+for one integrated journey per backend. No optional polish or extra test campaign.
+
 - Keep `CMD_BOON=804`, `boon` and `boon list`. Show the exact requested Gods
   introduction, stored valid targets/rates, real remaining time and next hourly
   opportunity; handle initialization, pause and fewer than eight/zero slots.
@@ -455,6 +492,10 @@ No second framework or unrelated ordinary-sale rewrite is required.
 
 #245 remains open until all of these have implementation and executable proof.
 
+**Completion is overdue:** use this map to keep limited resources and tokens
+on required work, close each item once its proof is valid, and finish immediately
+when the full map is satisfied. Do not add optional acceptance criteria.
+
 The item numbers below refer to the 23 acceptance checkboxes in the issue
 snapshot inspected on 2026-10-22; all 23 have a retained implementation path.
 
@@ -485,6 +526,10 @@ snapshot inspected on 2026-10-22; all 23 have a retained implementation path.
 
 ## Planning verification and limits
 
+**Verification with very limited resources and tokens:** reuse valid evidence and
+run only checks needed for the actual change. Keep required proof; avoid repeated
+checks that add no new evidence and delay an already overdue delivery.
+
 The following existing checks passed against the pinned checkout on 2026-10-22:
 
 - `python3 tests/async/test_world_quest_dynamic_policy.py`
@@ -506,6 +551,11 @@ plan, a documentation-only diff, `git diff --check`, remote commit parity and
 native GitHub issue-to-branch linkage.
 
 ## Estimate for Codex implementation
+
+**Urgent delivery target:** resources and tokens are very limited, and the
+deadline is already past due. Deliver fast. The range below is an estimate,
+not time to fill.
+Finish sooner whenever the required implementation and proof are complete.
 
 **Plan for 6-10 hours of my active implementation and focused verification.**
 Use about eight hours for scheduling. This is a source-informed estimate for
