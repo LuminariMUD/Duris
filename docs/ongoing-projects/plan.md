@@ -7,7 +7,7 @@
 > evidence, and defer optional work. Required correctness and recovery remain
 > part of completion.
 
-Status: implementation plan only; no feature implementation or production action.
+Status: implementation in progress; rotation state and snapshot contracts implemented.
 Prepared 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Implementation branch: `branch/issue-245-divine-boons`.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
@@ -16,11 +16,37 @@ The agreed follow-up decisions take precedence over older exploratory numbers.
 The previous issue-59 plan is preserved byte-for-byte in
 [plan-issue-59.md](plan-issue-59.md); earlier plans remain in their existing files.
 
-This request authorizes this plan, its branch, commit, push and issue linkage.
-The issue's design-only restriction does not prevent those requested actions.
-Gameplay implementation, a feature PR, production migrations/imports, deployment,
-restart and merge are separate actions. This document proposes their sequence;
-it does not perform them.
+The current request authorizes implementation, focused tests, commits, pushes
+and review-ready PRs, stacked as dependencies become ready. It supersedes the
+issue's older design-only restriction. Production migrations/imports, deployment,
+restart and merge remain separate actions.
+
+## Implementation handoff (2026-10-22)
+
+- Worktree: `/home/aiwithapex/projects/duris-issue245-plan`; branch
+  `branch/issue-245-divine-boons`.
+- First chunk: `src/economy/divine_boon.{h,c}` implements the eight-slot state,
+  category rates/lifetimes, forward legacy/draining/Divine mode transitions,
+  fixed UTC hours, skip-on-restart/clock-jump policy, pause/expiry, replacement,
+  stable identities, cross-category same-side duplicate rejection and bounded
+  expired-zone history. One versioned SHA-256 snapshot format serves both
+  future backend adapters. Changes prepare a state; callers must commit it
+  before making it visible to gameplay.
+- Proof: `python3 tests/async/test_divine_boon.py` passes with ASan/UBSan.
+  It exercises the actual state implementation and corruption/truncation of
+  snapshots. `make -C src -j12` and changed-file formatting checks pass.
+  `./scripts/format.sh --all --check` passes for all 1100 tracked C/C++ files.
+  Use `CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy` (installed LLVM 22)
+  for commits: system LLVM 18 cannot parse the installed GCC 16 headers.
+- **Next:** persist state through the existing writer on SQL and flat-file;
+  wire boot/reconciliation and safe legacy admission drain before activation.
+  Then implement the candidate/activity, reward, cargo and command/help paths
+  below. The state API does not itself prove targets safe or legacy work settled.
+- **Still open:** every full-feature acceptance item. The rotation core is a
+  dependency, not evidence of live rotation, durable backend commits, cutover,
+  gameplay payouts or completed Divine Boons. No production action performed.
+- Ablation: reuse one state/codec for both backends; no scheduler, delivery
+  framework, general economy rewrite or extra verification campaign added.
 
 ## Outcome
 
@@ -224,8 +250,8 @@ the cargo operation owns its idempotent payment boundary.
 **Proof:** extend existing executable harnesses and disposable database/file
 fixtures. Add a small clock/selection test and the missing domain recovery
 cases; no new test framework. Helper/codec checks cannot prove a reachable
-command, real stone payout or recoverable sale. No gameplay implementation or
-production action is part of this planning change.
+command, real stone payout or recoverable sale. Gameplay implementation is now
+authorized; production actions remain outside this work.
 
 ## Implementation sequence
 
@@ -484,7 +510,7 @@ for one integrated journey per backend. No optional polish or extra test campaig
   issue's read-only `./scripts/format.sh --all --check`. Use changed-line
   formatting for touched code; report unrelated formatting failures separately.
 - Reapply ablation to the final diff. Publish the eventual feature work with
-  local evidence once implementation is authorized. Follow review requirements,
+  local evidence as each chunk becomes ready. Follow review requirements,
   without waiting on hosted CI. Keep cutover/backout operating notes concise.
   No production migration/import, restart, deployment or live balance claim.
 
@@ -544,11 +570,11 @@ The following existing checks passed against the pinned checkout on 2026-10-22:
 
 These characterize existing contracts only. They are not Divine acceptance,
 proof of exactly-once recipient delivery, real target reachability, SQL feature
-parity or live economy balance. This planning change performs no server build,
-database application, help import, server restart or gameplay mutation.
-Before publication, check document/source references, preservation of the prior
-plan, a documentation-only diff, `git diff --check`, remote commit parity and
-native GitHub issue-to-branch linkage.
+parity or live economy balance. The earlier planning pass performed no server
+build, database application, help import, restart or gameplay mutation.
+Current implementation evidence is recorded in the handoff above. Before each
+publication, check references, preservation of prior plans, the focused diff,
+`git diff --check` and remote commit parity. Link each PR to #245 and its stack.
 
 ## Estimate for Codex implementation
 
@@ -578,4 +604,4 @@ actual result. Do not reduce acceptance coverage to meet the estimate.
 
 The earlier 96-144-hour figure was an uncalibrated human-effort guess and is
 superseded. The estimate above includes uncertainty rather than deferring an
-answer until implementation. Implementation remains a separate requested action.
+answer until implementation. The subsequent request now authorizes implementation.

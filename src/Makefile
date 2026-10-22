@@ -195,6 +195,7 @@ OBJS =  $(SHIP_OBJS) \
          magic/blispells.o \
 				 cmd/boards.o \
 				 economy/boon.o \
+				 economy/divine_boon.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \
          economy/cardgames.o \
