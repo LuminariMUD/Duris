@@ -62,6 +62,8 @@ restart and merge remain separate actions.
   mode; this does not activate Divine gameplay. The game sees a new snapshot
   only after a successful commit; interrupted writes retain the exact pending
   choice and retry, while invalid/conflicting authority disables bonuses.
+- Review-ready writer/boot integration: [PR #267](https://github.com/LuminariMUD/Duris/pull/267),
+  implementation commit `93f856f06`, stacked on #266.
 - Third-chunk proof: `test_divine_boon_runtime.py` passes with ASan/UBSan using
   the real writer, including queue refusal, blocked-writer publication ordering,
   committed journal recovery, exact retry and restart skipping. Existing
