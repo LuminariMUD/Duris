@@ -72,6 +72,17 @@ restart and merge remain separate actions.
 - **Next:** safe legacy admission drain and settlement before activation.
   Then implement the candidate/activity, reward, cargo and command/help paths
   below. The state API does not itself prove targets safe or legacy work settled.
+- Concrete next integration findings: `boon_shop()` spends MariaDB stat points
+  in a queued writer job and raises/refunds the stat in its completion; closing
+  new admissions must not suppress that accepted completion. Legacy flat-file
+  `publish_reward()` acknowledges after live publication, and SQL legacy outbox
+  delivery currently acknowledges a decoded result without proving a player
+  checkpoint. Preserve those exact receipts until delivery is reconciled.
+  Likewise, SQL `execute_epic_state()` advances `player_data.epic_revision`
+  before saving the new balance, so that existing field alone cannot prove
+  durable recipient delivery. Bind prepared Divine awards and their applied
+  marker to the player status save; keep activation closed until these paths
+  are resolved. No staff command or automatic switch currently enables Divine.
 - **Still open:** every full-feature acceptance item. The rotation core is a
   dependency; backend persistence and writer ordering are proven above, while
   live candidate rotation, cutover, gameplay payouts and completed Divine Boons
@@ -80,7 +91,7 @@ restart and merge remain separate actions.
   framework, general economy rewrite or extra verification campaign added.
   State revision plus an atomic snapshot supplies retry identity; no additional
   critical-command type, outbox or duplicate receipt catalogue is needed.
-- Remaining estimate at this checkpoint: 6-9 hours of active implementation and
+- Remaining estimate at this checkpoint: 6-8 hours of active implementation and
   focused verification, including review-ready PRs. Cargo recovery and flat-file
   epic payouts remain the largest costs; this is an estimate, not time to fill.
 
