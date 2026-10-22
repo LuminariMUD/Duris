@@ -88,9 +88,10 @@ int main(int argc, char **argv)
 			wait.wait();
 			return maintenance_result{ request.work_id,
 						   request.job_id,
-						   maintenance_outcome::complete,
-						   0,
-						   0,
+						   request.cursor ? maintenance_outcome::complete :
+								    maintenance_outcome::more,
+						   64,
+						   64,
 						   0,
 						   0,
 						   0,
@@ -119,7 +120,23 @@ int main(int argc, char **argv)
 	maintenance_result scan_result = {};
 	assert(maintenance_scheduler_pulse(ne_event_tick, &scan_result, 1) == 1);
 	assert(scan_result.job_id == maintenance_job_id::boon_scan &&
-	       scan_result.outcome == maintenance_outcome::complete);
+	       scan_result.outcome == maintenance_outcome::more);
+	assert(!maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active);
+	assert(!divine_boon_runtime_queue(next)); // A retained page is still unfinished.
+	maintenance_scheduler_resume();
+	++ne_event_tick;
+	for (size_t attempt = 0;
+	     attempt < MAINTENANCE_JOB_COUNT * 2 &&
+	     !maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active;
+	     ++attempt)
+		maintenance_scheduler_pulse(ne_event_tick, nullptr, 0);
+	const auto page_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+	while (!maintenance_scheduler_health_copy(ne_event_tick).completions &&
+	       std::chrono::steady_clock::now() < page_deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	maintenance_scheduler_quiesce();
+	assert(maintenance_scheduler_pulse(ne_event_tick, &scan_result, 1) == 1);
+	assert(scan_result.outcome == maintenance_outcome::complete);
 	// The synchronous completion callback still sees an open gate.
 	assert(divine_boon_legacy_admissions_allowed());
 	assert(divine_boon_runtime_queue(next));
