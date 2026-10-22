@@ -21,6 +21,9 @@
 #include "sql/sql.h"
 #include "world/zone_story_quest_runtime.h"
 #include <time.h>
+#include <charconv>
+#include <climits>
+#include <sstream>
 
 /* external variables */
 
@@ -33,6 +36,7 @@ extern const char *item_types[];
 extern const struct stat_data stat_factor[];
 extern struct str_app_type str_app[];
 extern struct zone_data *zone_table;
+extern int top_of_mobt, top_of_objt, top_of_world, top_of_zone_table;
 extern int mini_mode;
 extern long new_exp_table[]; // Arih: Fixed type mismatch bug - was int, should be long
 
@@ -453,6 +457,268 @@ void tell_quest(int id, P_char pl)
 		if (qcp->disappear)
 			send_to_char("  I will disappear after this quest is finished.\n", pl);
 	}
+}
+
+namespace
+{
+void quest_staff_output(P_char ch, const std::ostringstream &output)
+{
+	const std::string text = output.str();
+	if (text.size() >= MAX_STRING_LENGTH && !IS_SET(ch->specials.act, PLR_PAGING_ON))
+		send_to_char(
+			"This report requires paging. Use toggle paging, then repeat the command.\r\n",
+			ch);
+	else
+		send_to_char(text.c_str(), ch);
+}
+
+bool quest_staff_number(const std::string &text, int &value)
+{
+	if (text.empty() || text.front() < '0' || text.front() > '9')
+		return false;
+	const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+	return parsed.ec == std::errc() && parsed.ptr == text.data() + text.size();
+}
+
+bool quest_staff_target(P_char ch, const char *argument, const char *command_name, int &vnum)
+{
+	std::istringstream input(argument ? argument : "");
+	std::string target, extra;
+	if (!(input >> target) || (input >> extra) || !quest_staff_number(target, vnum))
+	{
+		std::string usage = std::string("Usage: ") + command_name +
+				    (strcmp(command_name, "qview") ? " <object-vnum>\r\n" :
+								     " <mobile-vnum>\r\n");
+		send_to_char(usage.c_str(), ch);
+		return false;
+	}
+	return true;
+}
+
+void quest_staff_goals(std::ostringstream &output, const goal_data *goals)
+{
+	if (!goals)
+		output << "  (none)\r\n";
+	for (const goal_data *goal = goals; goal; goal = goal->next)
+	{
+		switch (goal->goal_type)
+		{
+		case QUEST_GOAL_ITEM:
+		{
+			const int object =
+				obj_index && top_of_objt >= 0 ? real_object(goal->number) : -1;
+			output << "  Item [" << goal->number << "] "
+			       << (object >= 0 && obj_index[object].desc2 ?
+					   obj_index[object].desc2 :
+					   "<missing object>")
+			       << "\r\n";
+			break;
+		}
+		case QUEST_GOAL_ITEM_TYPE:
+		{
+			char name[MAX_STRING_LENGTH];
+			// sprinttype handles the upper bound, but does not accept negative types.
+			sprinttype(goal->number < 0 ? INT_MAX : goal->number, item_types, name);
+			output << "  Item type [" << goal->number << "] " << name << "\r\n";
+			break;
+		}
+		case QUEST_GOAL_COINS:
+			output << "  Coins: " << coin_stringv(goal->number) << "\r\n";
+			break;
+		case QUEST_GOAL_SKILL:
+			output << "  Skill [" << goal->number << "] "
+			       << (goal->number >= 0 && goal->number < MAX_SKILLS &&
+						   skills[goal->number].name ?
+					   skills[goal->number].name :
+					   "<missing skill>")
+			       << "\r\n";
+			break;
+		case QUEST_GOAL_EXP:
+			output << "  Experience: " << goal->number
+			       << (goal->number <= 0 ? " (dynamic reward)" : "") << "\r\n";
+			break;
+		default:
+			output << "  Unknown goal type " << static_cast<int>(goal->goal_type)
+			       << ": " << goal->number << "\r\n";
+		}
+	}
+}
+
+void quest_staff_completion(std::ostringstream &output, const quest_complete_data *completion)
+{
+	output << "Give:\r\n";
+	quest_staff_goals(output, completion->give);
+	output << "Receive:\r\n";
+	quest_staff_goals(output, completion->receive);
+	output << "Completion message (" << (completion->echoAll ? "room" : "player") << "):\r\n"
+	       << (completion->message ? completion->message : "") << "\r\n";
+	if (completion->disappear)
+		output << "Giver disappears:\r\n"
+		       << (completion->disappear_message ? completion->disappear_message : "")
+		       << "\r\n";
+}
+}
+
+void do_qview(P_char ch, char *argument, int /*cmd*/)
+{
+	if (!ch || IS_NPC(ch))
+		return;
+	int vnum;
+	if (!quest_staff_target(ch, argument, "qview", vnum))
+		return;
+	const int mobile = mob_index && top_of_mobt >= 0 ? real_mobile(vnum) : -1;
+	if (mobile < 0)
+	{
+		send_to_char("No such mobile.\r\n", ch);
+		return;
+	}
+	const int quest = find_quester_id(mobile);
+	if (quest < 0)
+	{
+		send_to_char("That mobile has no quests.\r\n", ch);
+		return;
+	}
+	std::ostringstream output;
+	output << "Quest giver [" << vnum << "] "
+	       << (mob_index[mobile].desc2 ? mob_index[mobile].desc2 : "<unnamed mobile>")
+	       << "\r\nKeywords and responses:\r\n";
+	for (const quest_msg_data *message = quest_index[quest].quest_message; message;
+	     message = message->next)
+		output << "  Key: " << (message->key_words ? message->key_words : "") << " ("
+		       << (message->echoAll ? "room" : "player") << ")\r\n"
+		       << (message->message ? message->message : "") << "\r\n";
+	int number = 0;
+	for (const quest_complete_data *completion = quest_index[quest].quest_complete; completion;
+	     completion = completion->next)
+	{
+		output << "\r\nCompletion " << ++number << ":\r\n";
+		quest_staff_completion(output, completion);
+	}
+	if (!number)
+		output << "No completion rules.\r\n";
+	quest_staff_output(ch, output);
+}
+
+void do_qref(P_char ch, char *argument, int cmd)
+{
+	if (!ch || IS_NPC(ch))
+		return;
+	const bool detailed = cmd == CMD_QINFO;
+	int vnum;
+	if (!quest_staff_target(ch, argument, detailed ? "qinfo" : "qref", vnum))
+		return;
+	const int object = obj_index && top_of_objt >= 0 ? real_object(vnum) : -1;
+	if (object < 0)
+	{
+		send_to_char("No such object.\r\n", ch);
+		return;
+	}
+	std::ostringstream output;
+	output << "Quest references for [" << vnum << "] "
+	       << (obj_index[object].desc2 ? obj_index[object].desc2 : "<unnamed object>")
+	       << "\r\n";
+	int found = 0;
+	for (int quest = 0; quest < number_of_quests; ++quest)
+	{
+		const int mobile = quest_index[quest].quester;
+		if (mobile < 0 || mobile > top_of_mobt)
+			continue;
+		int number = 0;
+		for (const quest_complete_data *completion = quest_index[quest].quest_complete;
+		     completion; completion = completion->next)
+		{
+			++number;
+			bool give = false, receive = false;
+			for (const goal_data *goal = completion->give; goal; goal = goal->next)
+				give |= goal->goal_type == QUEST_GOAL_ITEM && goal->number == vnum;
+			for (const goal_data *goal = completion->receive; goal; goal = goal->next)
+				receive |= goal->goal_type == QUEST_GOAL_ITEM &&
+					   goal->number == vnum;
+			if (!give && !receive)
+				continue;
+			++found;
+			output << "[" << mob_index[mobile].virtual_number << "] "
+			       << (mob_index[mobile].desc2 ? mob_index[mobile].desc2 :
+							     "<unnamed mobile>")
+			       << " - completion " << number << ": "
+			       << (give && receive ? "GIVE, RECEIVE" :
+				   give		   ? "GIVE" :
+						     "RECEIVE")
+			       << "\r\n";
+			if (detailed)
+				quest_staff_completion(output, completion);
+		}
+	}
+	if (!found)
+		output << "That object is not used in any quests.\r\n";
+	quest_staff_output(ch, output);
+}
+
+void do_qlist(P_char ch, char *argument, int /*cmd*/)
+{
+	if (!ch || IS_NPC(ch))
+		return;
+	std::istringstream input(argument ? argument : "");
+	std::string from, to, extra;
+	int first = 0, last = INT_MAX;
+	if (input >> from)
+	{
+		const bool has_to = static_cast<bool>(input >> to);
+		if (!quest_staff_number(from, first) || (has_to && !quest_staff_number(to, last)) ||
+		    (input >> extra))
+		{
+			send_to_char("Usage: qlist [<mobile-vnum> | <from> <to>]\r\n"
+				     "No arguments: current zone. Alias: hlqlist.\r\n",
+				     ch);
+			return;
+		}
+		if (!has_to)
+			last = first;
+		if (first > last)
+			std::swap(first, last);
+	}
+	else
+	{
+		if (ch->in_room < 0 || ch->in_room > top_of_world || !world || !zone_table ||
+		    world[ch->in_room].zone > top_of_zone_table)
+		{
+			send_to_char("qlist: no valid current zone; supply a VNUM range.\r\n", ch);
+			return;
+		}
+		const int zone = world[ch->in_room].zone;
+		// Prototype ownership follows the same VNUM partitions as mlist/olist.
+		first = zone ? zone_table[zone - 1].top : -1;
+		if (first == INT_MAX)
+		{
+			send_to_char("No quest givers in this zone.\r\n", ch);
+			return;
+		}
+		++first;
+		last = zone_table[zone].top;
+	}
+	std::ostringstream output;
+	output << "Quest givers from " << first << " to " << last << ":\r\n";
+	int found = 0;
+	for (int quest = 0; quest < number_of_quests; ++quest)
+	{
+		const int mobile = quest_index[quest].quester;
+		if (mobile < 0 || mobile > top_of_mobt)
+			continue;
+		const int vnum = mob_index[mobile].virtual_number;
+		if (vnum < first || vnum > last)
+			continue;
+		int completions = 0;
+		for (const quest_complete_data *completion = quest_index[quest].quest_complete;
+		     completion; completion = completion->next)
+			++completions;
+		output << "[" << vnum << "] "
+		       << (mob_index[mobile].desc2 ? mob_index[mobile].desc2 : "<unnamed mobile>")
+		       << " - " << completions << " completion rule(s)\r\n";
+		++found;
+	}
+	if (!found)
+		output << "No quest givers found.\r\n";
+	quest_staff_output(ch, output);
 }
 
 int quester(P_char ch, P_char pl, int cmd, char *arg)

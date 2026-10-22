@@ -11,6 +11,31 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## NPC quest staff inspection
+
+`qview <mobile-vnum>` displays authored dialogue, all completion requirements,
+rewards, and disappearance messages. `qref <object-vnum>` identifies every
+completion that gives or receives that exact object; `qinfo` expands those same
+matches into full exchanges. `qlist` (`hlqlist`) lists givers in the current
+zone's prototype partition or an explicit inclusive VNUM range. All require
+IMMORTAL and read indexes without instantiating mobiles or objects.
+
+`python3 tests/async/test_quest_staff_commands.py` runs the production handlers
+and real prototype/quest lookups under ASan/UBSan. It covers both roles in one
+completion, later completions, repeated requirements, every goal type, broken
+references, invalid/overflowing input, current-zone boundaries, exact/reversed
+ranges, NPC exclusion, empty tables, long reports, and unchanged indexes. Entity
+loaders abort if called. Large reports with paging disabled request paging
+instead of returning a truncated report.
+
+`python3 tests/async/run_quest_staff_journey.py --binary
+bin/server/dms_quest_staff_flat --output bin/analysis/quest-staff-journey.json`
+boots a disposable flat-file server and drives Telnet commands as a mortal and
+then staff. It checks actual dispatch restrictions, all five help/wizhelp entries,
+multi-page dialogue, compact references versus full exchanges, and bad input.
+It uses synthetic state and a private world; no production deployment or
+database help import is performed. The normal MariaDB build is checked separately.
+
 ## Bounded builder inspection (#231)
 
 `rlist`, `mlist`, and `olist` default to the standing zone, use the public zone
