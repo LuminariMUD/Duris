@@ -629,8 +629,15 @@ bool found_asc(P_char god, P_char leader, const char *bits, char *asc_name)
 	// The guild bits should have no player info.
 	SET_M_BITS(asc_bits, A_P_MASK, 0);
 
-	// Create the new guild
+	critical_operation_id incarnation{};
+	if (!critical_operation_id_generate(&incarnation))
+	{
+		send_to_char("The association could not be created. Try again shortly.\n", god);
+		return FALSE;
+	}
+	// Create the new guild with a distinct identity even when its number is reused.
 	pNewGuild = new Guild(asc_name, GET_RACEWAR(leader), i, 0, 0, 0, asc_bits);
+	pNewGuild->delivery_identity = incarnation;
 	// Add the leader to it
 	pNewGuild->add_member(leader, A_LEADER);
 	// Add the guild to the head of the guild_list.
@@ -653,6 +660,7 @@ Guild::Guild(char *_name, unsigned int _racewar, unsigned int _id_number, unsign
 	strcpy(name, _name);
 	racewar = _racewar;
 	id_number = _id_number;
+	delivery_identity = artifact_guild_legacy_identity(_id_number);
 	prestige = _prestige;
 	construction = _construction;
 	copper = _money % 10;
@@ -758,6 +766,13 @@ void Guild::initialize()
 		guild->bits = record.bits;
 		guild->prestige = record.prestige;
 		guild->construction = record.construction;
+		guild->delivery_ids = record.delivery_ids;
+		guild->delivery_identity =
+			std::any_of(record.delivery_identity.bytes.begin(),
+				    record.delivery_identity.bytes.end(),
+				    [](uint8_t byte) { return byte != 0; }) ?
+				record.delivery_identity :
+				artifact_guild_legacy_identity(record.association_id);
 		guild->platinum = record.platinum;
 		guild->gold = record.gold;
 		guild->silver = record.silver;
@@ -852,6 +867,8 @@ bool Guild::build_flatfile_record(const std::string &root, flatfile_association_
 	record->bits = bits;
 	record->prestige = prestige;
 	record->construction = construction;
+	record->delivery_ids = delivery_ids;
+	record->delivery_identity = delivery_identity;
 	record->platinum = platinum;
 	record->gold = gold;
 	record->silver = silver;
@@ -931,6 +948,7 @@ bool Guild::save_with_kingdom(const kingdom_realm &realm)
 bool Guild::save()
 {
 #ifdef __NO_MYSQL__
+	save_dirty = true;
 	const char *configured_root = persistence_mode_flatfile_root();
 	if (!configured_root)
 	{
@@ -954,6 +972,7 @@ bool Guild::save()
 				  "flat guild save failed: %s", error.c_str());
 		return false;
 	}
+	save_dirty = false;
 	return true;
 #else
 	if (!sql_save_guild(this))
@@ -988,6 +1007,9 @@ bool Guild::save_pending([[maybe_unused]] bool retry)
 	}
 	if (retry && save_dirty && !save_receipt)
 		save();
+#else
+	if (retry && save_dirty)
+		save();
 #endif
 	return save_dirty;
 }
@@ -998,6 +1020,34 @@ void Guild::report_unsaved()
 		logit(LOG_FILE,
 		      "artifact_guild: stage=shutdown reason=unsaved entity=guild guild_id=%u",
 		      id_number);
+}
+
+bool Guild::apply_delivery(const critical_operation_id &operation, uint64_t amount, uint64_t notch)
+{
+	auto at = std::lower_bound(delivery_ids.begin(), delivery_ids.end(), operation.bytes);
+	if (at != delivery_ids.end() && *at == operation.bytes)
+		return true;
+	if (!notch || delivery_ids.size() >= ARTIFACT_GUILD_PENDING_MAX ||
+	    amount > ULONG_MAX - prestige)
+		return false;
+	const unsigned long after = prestige + amount;
+	const uint64_t points = after / notch - prestige / notch;
+	if (points > ULONG_MAX - construction)
+		return false;
+	delivery_ids.insert(at, operation.bytes); // Allocate before changing either total.
+	prestige = after;
+	construction += points;
+	save();
+	return true;
+}
+
+void Guild::forget_delivery(const critical_operation_id &operation)
+{
+	auto at = std::lower_bound(delivery_ids.begin(), delivery_ids.end(), operation.bytes);
+	if (at == delivery_ids.end() || *at != operation.bytes)
+		return;
+	delivery_ids.erase(at);
+	save();
 }
 
 size_t guild_save_pulse(bool retry)
@@ -1072,6 +1122,7 @@ bool Guild::load_guild(int guild_num)
 	strlcpy(new_guild->frags.topfragger, parsed_top, sizeof(new_guild->frags.topfragger));
 
 	new_guild->id_number = guild_num;
+	new_guild->delivery_identity = artifact_guild_legacy_identity(guild_num);
 
 	// Then get the default guild titles.
 	for (int i = 0; i < ASC_NUM_RANKS; i++)

@@ -24,6 +24,10 @@ constexpr size_t BOON_REWARD_PENDING_MAX = 1024;
 
 struct boon_reward_health
 {
+	uint64_t checked;
+	uint64_t filtered;
+	uint64_t definition_refreshes;
+	uint64_t definition_failures;
 	uint64_t submitted;
 	uint64_t committed;
 	uint64_t rejected;
@@ -34,6 +38,9 @@ struct boon_reward_health
 };
 
 bool boon_reward_transaction_submit(P_char character, P_char victim, double data, int option);
+// Thread-safe. Invalidate definition changes before queuing them. Changes that
+// can enable eligibility also invalidate on writer attempts, including retries.
+void boon_reward_definition_view_invalidate(void);
 void boon_reward_transaction_handle_completions(const critical_completion *completions,
 						size_t count);
 void boon_reward_transaction_player_ready(P_char character);

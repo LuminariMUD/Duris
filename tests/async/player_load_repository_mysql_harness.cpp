@@ -1,4 +1,5 @@
 #include "player/player_load_repository.h"
+#include "world/epic_command.h"
 #include "player/player_snapshot_codec.h"
 #include "core/defines.h"
 #include "item/trophy_state.h"
@@ -368,7 +369,11 @@ int main()
 		"reason_type,reason_id,source_site) VALUES(UNHEX('00000000000000000000000000000001')," +
 			std::to_string(pid) +
 			",1,1,1,1,20,1),(UNHEX('00000000000000000000000000000002')," +
-			std::to_string(pid) + ",1,2,2,1,30,1)");
+			std::to_string(pid) +
+			",1,2,2,1,30,1),(UNHEX('00000000000000000000000000000003')," +
+			std::to_string(pid) + ",1,3,3," +
+			std::to_string(static_cast<unsigned>(epic_reason_type::divine_zone_award)) +
+			",40,1)");
 	execute_sql(
 		connection,
 		"INSERT INTO item_owner_revision(owner_type,owner_id,owner_context_id,revision) "
@@ -415,7 +420,7 @@ int main()
 	assert(fixture.recent_pvp_deaths.size() == 20);
 	assert(fixture.recent_pvp_deaths.front() == 2000000000 &&
 	       fixture.recent_pvp_deaths.back() == 1999999981);
-	assert((fixture.completed_epic_zones == std::vector<int32_t>{ 10, 20, 30 }));
+	assert((fixture.completed_epic_zones == std::vector<int32_t>{ 10, 20, 30, 40 }));
 	assert(fixture.item_identities.size() == 3 && fixture.item_owner_revision == 7);
 	assert(fixture.snapshot.items[1].parent_index == 0);
 	assert(fixture.item_identities[1].root_item_uid == 900001);

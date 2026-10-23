@@ -19,8 +19,6 @@
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/critical_outbox.h"
 
-constexpr size_t ARTIFACT_GUILD_PENDING_MAX = 256;
-
 struct artifact_guild_health
 {
 	uint64_t live_applied;
@@ -38,6 +36,7 @@ struct artifact_guild_health
 	uint64_t oldest_age_msec;
 };
 
+void artifact_guild_transaction_publish_delivery(const artifact_guild_payload &published);
 void artifact_guild_transaction_pulse(void);
 bool artifact_guild_transaction_drain(uint64_t timeout_msec);
 void artifact_guild_transaction_report_unsaved(void);

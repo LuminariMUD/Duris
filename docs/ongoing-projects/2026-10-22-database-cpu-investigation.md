@@ -1,15 +1,215 @@
 # Database CPU investigation and remediation plan
 
-Investigation date: 2026-10-22. Updated: 2026-10-23. Status: worker, expectation
-metadata and audit changes locally qualified and published in PRs #300–#303.
-Owner independent review/merge is the next gate. Production rollout/CPU measurement remain open.
-No deployment or production mutation performed.
+Investigation date: 2026-10-22. Updated: 2026-10-23. PRs #300–#303 are
+merged. Follow-up [issue #305](https://github.com/LuminariMUD/Duris/issues/305)
+owns production measurement and the boon producer optimization below. Earlier
+review/authorization notes are historical: the owner has now given full authority
+to finish #305 on the production VPS, including the 0050 rollout. PR #306 is merged and deployed; 0050 and the native rebuild/reboot are verified.
+Production measurement and producer acceptance for #305 are complete.
 
-**Owner review boundary:** the owner keeps independent review, issue addressing
-and merge. Do not merge PRs or deploy until that step is complete. Worker-only
-rollout authority exists after it; production is the VPS reached with
-`ssh duris-staging`, not this WSL host. Later 0050 schema/audit rollout is outside
-that worker-only production authority.
+## Issue #305: VPS measurement and producer qualification
+
+The actual environment is `/home/staging/duris` on `plesk.luminarimud.com`,
+`ENVIRONMENT=production`, MariaDB 11.8.6 at `127.0.0.1:3307/duris_prod`.
+At this task's first inspection the worker-only implementation was already
+running (game PID 1912907, boot 12:43 UTC), and the live immutable history was
+0049. The initial checkout was `ca38ab9c8`; master was pulled to `7418cec8c`.
+No pre-worker process sample was available from that cutover. Do not present the
+following controlled comparison as a captured pre-cutover baseline.
+
+### Fresh measurement, with players online
+
+Ten consecutive 60-second samples, 12:47–12:57 UTC, measured database process CPU
+at **0.932–1.082%, mean 1.005% of one core**. Processlist observations saw one
+historical audit in each interval, spaced approximately 60.3 seconds apart.
+All ten queue observations had pending/dead-letter/incomplete counts and oldest
+pending age zero. There were no deliveries created during those quiet intervals;
+they establish idle behavior, not active reward throughput. The staff readback
+reported fresh counters/audit and zero database failures, retries or terminal
+failures. Its 1,057 raw historical omission candidates are the pre-0050 worker's
+existing diagnostic, not newly missing delivery work.
+
+Bounded, read-only executions against the same live retained data gave:
+
+| Query | Mean elapsed | Handler row reads per call |
+| --- | ---: | ---: |
+| Original combined health | 193.89 ms | 522,748 |
+| Indexed operational health | 0.423 ms | 5 |
+| Worker-only historical audit | 160.42 ms | 392,639 |
+
+The frequent query's row work falls **99.999%**. Including the once-per-minute
+historical audit and four operational polls per second gives about 6,564 row
+reads/s, versus about 1.14 million/s for the original combined query at its
+observed cadence: approximately **99.4% less idle health-related row work**.
+The audit still covers retained history; no recent-only window or purge was used.
+
+For a fresh comparable CPU control, replay the original combined SELECT with its
+original 250 ms wait after each result, under session read-only and a three-second
+statement limit. Leave the real worker and game online. The 30-second samples were:
+
+| Start UTC | Workload | Database CPU | Original query executions |
+| --- | --- | ---: | ---: |
+| 13:03:30 | Current worker | 1.30% | 0 |
+| 13:04:00 | Current worker plus original-health replay | 45.97% | 66 |
+| 13:04:30 | Current worker | 1.13% | 0 |
+
+This attributes about 44.8 percentage points of one core to the old workload on
+this quiet traffic, consistent with the older 44.23% incident sample. The replay
+includes the new worker's small cost; it is not a second deployment or a promise
+of a fixed CPU saving at every traffic level. No global database setting changed.
+The production 24-hour delivery aggregate contained 5,313 delivered events, mean
+321.6 ms, maximum 10.54 seconds, with zero retry attempts in that window; this
+mixed pre-rollout history is context, not a new-worker latency claim.
+
+The separately deployable worker checkpoint remains intact: squash
+`fba46932c215663c5ca230f02828d1b1441a9ea6`, remote qualification tag
+`issue-292/worker-current-base-20261023`. The observed live worker executable and
+0049 stamp/manifest are preserved outside `bin/`; executable SHA-256 is
+`3eaccba44b801b06b4e7bc1135753017630b51573f19f1ad24fdd595141f6d64`.
+That old executable must not restart after advancing the database to 0050.
+
+### Narrow producer change
+
+Reuse the existing asynchronous SQL writer for an on-demand active definition
+view containing only option, racewar and target PID. A negative view is usable
+for at most 60 seconds from request time. Missing, expired, failed, truncated or
+invalidated views immediately fall back to the existing authoritative command;
+an outstanding refresh never delays the triggering event. Possible matches keep
+all criteria, progress, reward and completion evaluation on the existing writer.
+The view checks the current event's side/target rather than caching a player's
+negative decision. Creation/reactivation invalidates before admission and on
+writer attempts, including retries; removal, expiry and reward completions also
+invalidate. A generation rejects in-flight older reads and concurrent invalidation.
+No schema, new worker, periodic job or duplicate eligibility engine is added.
+
+Only a proven negative is filtered **before generating an operation ID**. Every
+accepted ID still has its typed outcome and canonical inbox answer, so an ambiguous
+retry cannot re-evaluate against later definitions. A SQL result with zero matching
+entries uses an eight-byte version-2 receipt: little-endian PID (four bytes),
+zero entry count (two), version 2 (two). Its explicit expectation is zero and it
+has no outbox event. Nonempty results retain the original 2,080-byte format;
+old inbox/outbox records decode unchanged and replay returns their original bytes.
+Flat-file catalog writers retain their existing fixed-size format and readers
+accept both result formats. Historical expectations and receipts are not rewritten.
+`world persistence` exposes checks, filtered/submitted/committed/rejected counts,
+pending work, and definition refresh/failure counts.
+
+The executable producer burst admits two cold/loading checks, then filters 100
+of the next 100 checks before ID allocation: 102 checks, two submissions.
+The SQL regression covers maximum fanout, side/target/pet/mob eligibility,
+progress, completion, personal deactivation, repeat rewards, ambiguous retry after
+activation, and replay of old fixed-size zero receipts without changing NULL
+expectations. Existing flat-file and actual reward-publication checks remain valid.
+
+A paired 100-operation zero-match benchmark on the same disposable MariaDB 11.8.9
+schema compares the merged pre-change repository with this repository:
+
+| Metric | Before | After |
+| --- | ---: | ---: |
+| Accepted canonical receipts / matched outcomes | 100 / 0 | 100 / 0 |
+| Total result bytes in inbox | 208,000 | 800 |
+| Outbox inserts / payload bytes | 100 / 208,000 | 0 / 0 |
+| Mean / p50 / p95 transaction latency | 3.330 / 3.231 / 4.037 ms | 2.326 / 2.252 / 2.863 ms |
+
+These are executable fixture measurements, not a live reward-load claim. Filtered
+checks create neither receipts nor transactions; accepted cold/stale no-matches
+retain their canonical answer with 99.6% fewer result bytes and no delivery work.
+
+Focused qualification passed:
+
+- `make -C src -j4 PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production`.
+- `python3 tests/async/test_reward_producer_replay.py`: real producer/coordinator,
+  negative-view fallback/invalidation/retry, duplicate publication and cache eviction.
+- `python3 tests/async/test_boon_reward_zone_transactional_cutover.py`: 13 tests,
+  including old/new receipt decoding and unchanged fixed-size nonempty bytes.
+- `tests/async/run_boon_reward_zone_schema_mysql.sh` with isolated `TEST_DB_*`
+  on MariaDB 11.8.9 and MySQL 8.0.46: schema, eligibility/progress/repeat rewards,
+  new/legacy replay, zero-event expectations and paired storage behavior.
+- `python3 tests/async/test_flatfile_boon_repository.py` and
+  `python3 tests/async/test_epic_gain_runtime.py`: catalog/replay and actual
+  reward publication, including nested submissions and acknowledgement recovery.
+- `python3 tests/async/test_critical_transaction_contract.py`: actual SQL and
+  client-free worker/staff/drain contracts.
+- `./scripts/format.sh --check`, `git diff --check`, help/news import previews.
+
+The default disposable MariaDB 10.11 wrapper did not become reachable during its
+startup window on this host. The explicitly provisioned, memory/CPU-bounded 11.8
+and MySQL 8 instances passed the focused SQL suite. No production-derived database
+clone or broad burn-in was used; existing unchanged worker/migration qualification
+from #292 is reused. Formatting and the normal commit hooks used clang-format
+18.1.8 with its matching driver: newer installed versions interpret these C++
+`.c` files as C and propose unrelated rewrites. No unrelated formatting was retained.
+
+### Production cutover and acceptance
+
+PR [#306](https://github.com/LuminariMUD/Duris/pull/306), revision
+`e2a2166f34fc56b814d553feed0a43d952b4a4d2`, was deployed on October 23.
+The clean server/editor/area/tool build, pfile/maintenance tools, seven generated
+world files, five lookups, dynamic libraries and production launcher configuration
+passed while the game stayed online. The reviewed online runner applied only
+0050 with a verified owner-only pre-migration backup; runtime compatibility and
+live history/checksums passed. Historical expectations remain NULL.
+
+The new binary was installed by atomic rename. Veridian scheduled the exact
+three-minute warning at 13:35:30 UTC and stayed connected through the reboot at
+13:38:30. PID 2019252 booted at 13:38:44, completed world/persistence loading, and
+matched rebuilt SHA-256
+`b00d45706bdf430c45dd1b50a2ab601f4836ea076401c52d802c17ac27671a52` with
+`mariadb/production`. The launcher stayed up, with no systemd restart loop.
+Local health, public MUD health and website database/cache health passed. The
+website's auction socket recovered its expected reboot disconnect and authenticated.
+A separate website restart at 13:42 is visible in the observation and was not part
+of this game deployment.
+
+Ten more consecutive one-minute samples (13:38:58–13:48:59 UTC) averaged
+**3.433% database CPU**, range 1.315–5.476%, including startup/website activity.
+The full expectation/classification audit costs more than the worker-only raw
+count: the captured actual live query took 1,367.9 ms and 1,563,409 handler reads.
+At a conservative once/minute plus four indexed operational polls/second, idle
+health-related row work is **97.70% below** the original measured workload,
+exceeding the 95% gate. Observed audits were approximately 61.5 seconds apart;
+a query spanning a sample boundary is one execution. This attributes the residual
+work rather than promising the worker-only 1% CPU level for the fuller audit.
+
+All ten observations had zero pending, oldest pending age, dead letters and
+incomplete operations. Three events delivered during the observation, maximum
+186.205 ms and zero attempts/retries. Final staff readback had fresh counters/audit,
+zero proven mismatches, zero database/retry/terminal failures, and 1,078 unknown
+historical expectations retained for reconciliation; unknown evidence was not
+silently classified or deleted. The live producer checked 19 events, filtered 13 before ID allocation, and
+committed six accepted boon receipts without rejection or refresh failure:
+five empty version-2 eight-byte results with zero expected/outbox events, and one
+nonempty 2,080-byte result with its normal event. Focused executable tests provide
+the detailed eligibility, progress, completion and replay comparisons above.
+
+Help/news publication was verified against stored bytes. The five missing quest
+inspection help topics and current credits were published. Veridian read the actual
+`news` first page (newest headline and main boon addition) and the complete new
+section, then restored paging, quit and closed the session. Startup, rotating game
+logs and service journals were observed through the additional operating period;
+ordinary world-stat/reset and retained-artifact diagnostics were distinguished from
+persistence or delivery failures. No unresolved deployment error or crash loop remains.
+
+### Retention decision
+
+Defer retention. At 13:09 UTC, 117,720 boon receipts included 111,310 zero-entry
+and 6,410 matched outcomes; their inbox plus outbox payloads totaled 489,715,200
+bytes. Daily boon admissions were declining (14,542 on Oct 19; 9,740 on Oct 20;
+8,408 on Oct 21; 6,734 on Oct 22). The new filter and compact receipts address
+future zero-match growth without sacrificing deduplication or audit evidence.
+Inbox/outbox data allocation is approximately 354/245 MiB; these are allocations,
+not reclaimable-space estimates. The verified online pre-migration backup was
+36,177,059 compressed database bytes and took about 102 seconds under compilation
+load. The filesystem has 243 GiB free (48% used). This does not justify deleting
+replay evidence now. No new restore-cost measurement is claimed.
+
+No retention migration, arbitrary age limit, historical-zero inference, foreign-key
+disablement, or data deletion is included. If growth/backup cost later warrants
+retention, obtain a separately reviewed replay/archive/restore-horizon and dependency
+design. Pending, dead-letter, incomplete, referenced and unresolved evidence remains.
+
+Local private measurements, query/control scripts, paired benchmark and logs are
+under `/home/staging/backups/duris/issue305/`, outside the clean build tree.
 
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
 Work branch:

@@ -273,9 +273,22 @@ DROP TEMPORARY TABLE _duris_epic_seed;
 """
 
 
+def runtime_header(manifest: dict) -> str:
+    rows = [z for z in manifest["zones"] if z["status"] == "known" and z["epic_payout"] > 0]
+    lines = ["// Derived by scripts/epic_zone_seed.py runtime; source is the reviewed seed manifest.",
+             "// Payout group size is the legacy payout divisor, not a recommended party size.",
+             "#ifndef EPIC_ZONE_DEFAULTS_H", "#define EPIC_ZONE_DEFAULTS_H", "",
+             "struct epic_zone_default", "{", "    int number, payout, payout_group, stone_count, type;", "};",
+             "inline constexpr epic_zone_default epic_zone_defaults[] = {"]
+    for z in rows:
+        lines.append(f"    {{ {z['number']}, {z['epic_payout']}, {z['suggested_group_size']}, {z['stone_loads']}, {z['epic_type']} }},")
+    lines.extend(["};", "", "#endif", ""])
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["manifest", "check", "write", "sql-audit", "sql-apply"])
+    parser.add_argument("command", choices=["manifest", "check", "write", "sql-audit", "sql-apply", "runtime"])
     parser.add_argument("--database", help="exact target database bound into generated application SQL")
     parser.add_argument("--server-stopped", action="store_true", help="acknowledge operator stop requirement")
     args = parser.parse_args()
@@ -294,7 +307,9 @@ def main() -> int:
         else:
             if MANIFEST.read_text() != text:
                 raise ValueError("seed manifest differs from source; review changes and run 'write'")
-            if args.command == "sql-audit":
+            if args.command == "runtime":
+                print(runtime_header(manifest), end="")
+            elif args.command == "sql-audit":
                 print(audit_sql(manifest), end="")
             elif args.command == "sql-apply":
                 print(apply_sql(manifest, args.database), end="")

@@ -136,7 +136,8 @@ fail closed. Connection loss after `COMMIT` is reconciled by rereading the inbox
 the original immutable command can retry. Test-state rows are locked in normalized key
 order. Deadlocks and lock waits are retryable with the same operation ID.
 
-Each transaction also writes a bounded typed outbox record. The dispatcher reads at
+Each transaction records its expected event count and writes bounded typed outbox
+records when publication is needed. The dispatcher reads at
 most 64 records/4 MiB at a time, passes the stable outbox ID to a typed consumer, and
 records consumer dedupe plus delivered state together. Retryable delivery uses bounded
 backoff; the eighth failure or a terminal result retains a dead-letter row. Copyover and
@@ -145,6 +146,24 @@ shutdown drain commands first and outbox records second.
 `world persistence` adds cached `critical_outbox` counts for pending age, dead letters,
 incomplete inbox rows, event-expectation mismatches, unknown historical expectations,
 reconciliation candidates, delivery/retry/error totals, and high-water records/bytes.
+
+Legacy boon checks use an asynchronous active-definition view (option, side and
+target only) to filter proven impossible matches before an operation ID exists.
+The view expires 60 seconds after its request; missing, failed, oversized or stale
+views fall back to the normal command. Creation/reactivation invalidates before
+queuing and on writer attempts, including retries; removal, expiry and reward
+completion invalidate too. Generations reject older in-flight reads, and each
+event uses its current side/target. Criteria and progress remain authoritative on
+the existing writer. The `boon_rewards` diagnostic reports checks, filtering,
+submissions, completions, pending work and definition refresh/failure counts.
+
+Every accepted boon ID retains its typed outcome and canonical inbox answer.
+Proven zero-entry SQL results use an eight-byte version-2 receipt (little-endian
+PID, zero uint16 entry count, uint16 version 2), zero expected events and no
+outbox insert. Replay returns the stored answer even if definitions later change.
+Nonempty results and flat-file catalog writers retain the 2,080-byte format;
+readers accept both, including historical inbox/outbox and flat-file receipts.
+No old receipt or historical NULL expectation is rewritten.
 
 Operational counts use the existing status indexes on the 250 ms delivery cadence;
 the full historical missing-outbox audit runs after delivery, initially and then

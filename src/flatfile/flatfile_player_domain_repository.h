@@ -45,6 +45,29 @@ enum class flatfile_player_domain_result
 	io_error
 };
 
+// Compound prepared effects share the caller's primary authority transaction.
+flatfile_player_domain_result
+flatfile_artifact_deliveries_prepare(const std::string &root, const flatfile_authority_lock &lock,
+				     const std::vector<critical_command> &commands,
+				     std::vector<flatfile_authority_operation> *operations,
+				     std::string *error);
+flatfile_player_domain_result
+flatfile_artifact_deliveries_list(const std::string &root, const flatfile_authority_lock &lock,
+				  std::vector<critical_command> *commands, std::string *error);
+// Verify native entity snapshots while holding lock before preparing this ACK.
+flatfile_player_domain_result
+flatfile_artifact_delivery_prepare_ack(const std::string &root, const flatfile_authority_lock &lock,
+				       const critical_command &command,
+				       std::vector<flatfile_authority_operation> *writes,
+				       std::string *error);
+flatfile_player_domain_result
+flatfile_artifact_delivery_load(const std::string &root, const flatfile_authority_lock &lock,
+				const critical_operation_id &operation, critical_command *command,
+				bool *acknowledged, std::string *error);
+flatfile_player_domain_result flatfile_artifact_delivery_acknowledged(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const critical_command &command, bool *acknowledged, std::string *error);
+
 struct flatfile_wallet_mutation
 {
 	currency_vector wallet = {};
@@ -87,18 +110,30 @@ flatfile_player_domain_result
 flatfile_player_domain_pending_divine_epics(const std::string &root, uint32_t pid, uint64_t after,
 					    std::vector<divine_epic_delivery> *deliveries,
 					    std::string *error);
-// The balances a player save carries, written into the player's domain record.
+// Save balances; a stale wallet is replaced with the committed purse and revision.
 struct flatfile_saved_balances
 {
 	std::array<uint64_t, 4> wallet = {};
 	int64_t epics = 0;
 	int64_t frags = 0;
 	int64_t old_frags = 0;
+	uint64_t divine_boon_delivery_seq = 0;
+	uint64_t wallet_revision = 0;
 };
 flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const flatfile_saved_balances &balances, flatfile_authority_operation *operation,
+	flatfile_saved_balances &balances, flatfile_authority_operation *operation,
 	std::string *error);
+// All native snapshot writers own authority. The compound operation uses that
+// same lock to prepare its player file and domain wallet together; it never
+// takes a player lock while holding authority.
+flatfile_player_domain_result flatfile_player_domain_prepare_wallet(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
+	uint64_t expected_revision, uint64_t expected_account,
+	const std::array<uint64_t, 4> &wallet,
+	std::vector<flatfile_authority_operation> *operations, std::string *error,
+	const player_affect_snapshot *cargo_effect = nullptr);
+
 // A change to one account's bank on one side, added to its record (created when missing).
 flatfile_player_domain_result flatfile_player_domain_prepare_bank_delta(
 	const std::string &root, const flatfile_authority_lock &lock,
@@ -116,5 +151,15 @@ flatfile_player_domain_result flatfile_player_domain_prepare_account_remove(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const std::string &account_name, std::vector<flatfile_authority_operation> *operations,
 	std::string *error);
+
+struct flatfile_zone_touch_state
+{
+	uint32_t number = 0;
+	int32_t alignment = 0;
+	int64_t last_touch = 0;
+};
+flatfile_player_domain_result flatfile_zone_touch_load(const std::string &root, uint32_t number,
+						       flatfile_zone_touch_state *state,
+						       std::string *error);
 
 #endif

@@ -302,6 +302,8 @@ bool boon_reward_repository_execute(MYSQL *connection, const critical_command &c
 					   stored_counter };
 	}
 	result->entry_count = static_cast<uint16_t>(boons.size());
-	*mutation_applied = true;
+	// The typed outcome and inbox still answer every accepted operation ID.
+	// With no eligible definitions there is no progress, reward or publication.
+	*mutation_applied = !boons.empty();
 	return true;
 }

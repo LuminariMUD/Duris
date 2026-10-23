@@ -14,6 +14,10 @@ bool divine_boon_select(const divine_boon_state &state, int64_t now,
 bool divine_boon_zone_eligible(int zone_number, unsigned side);
 // Bounded reward lookup; the game-thread tick refreshes paths once per second.
 bool divine_boon_reward_zone_eligible(int zone_number, unsigned side);
+bool divine_boon_epic_zone_eligible(int zone_number, unsigned side);
+bool divine_boon_cargo_eligible(const divine_boon_slot &slot);
+struct char_data;
+void divine_boon_selection_status(char_data *ch);
 // Game-thread tick: choose once per fixed hour, then use the existing writer.
 void divine_boon_selection_pulse(int64_t now);
 

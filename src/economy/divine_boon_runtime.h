@@ -3,8 +3,8 @@
 
 #include "economy/divine_boon.h"
 
-// Game-thread API. Boot reads authority before gameplay; mutations run on the
-// existing writer. No state is published before its durable confirmation.
+// Game-thread memory owns gameplay decisions. Boot restores durable state;
+// the existing writer persists prepared mutations before memory publishes them.
 bool divine_boon_runtime_boot(int64_t now);
 void divine_boon_runtime_pulse();
 const divine_boon_state *divine_boon_runtime_state();

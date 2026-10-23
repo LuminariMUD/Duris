@@ -29,7 +29,7 @@ int main()
 {
     static_assert(std::is_move_constructible_v<player_snapshot>);
     static_assert(std::is_move_assignable_v<player_snapshot>);
-    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 10);
+    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 12);
     static_assert(PLAYER_SNAPSHOT_MAX_BYTES == 4 * 1024 * 1024);
     static_assert(PLAYER_SNAPSHOT_MAX_OBJECTS < PLAYER_SNAPSHOT_MAX_ROWS);
     static_assert(PLAYER_SNAPSHOT_MAX_DEPTH > 0);
@@ -354,6 +354,23 @@ int main()
     player_snapshot untouched; untouched.pid=123;
     assert(player_snapshot_capture(&ch,101,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&untouched)==player_snapshot_capture_result::limit_exceeded && untouched.pid==123);
     pc.retained_items=nullptr; ch.carrying=nullptr;
+    player_snapshot ordinary_status;
+    assert(player_snapshot_capture(&ch,102,PLAYER_COMPONENT_STATUS,RENT_CRASH,22800,&ordinary_status)==player_snapshot_capture_result::ok);
+    const size_t status_rows=ordinary_status.status_integers.size()+ordinary_status.status_strings.size();
+    std::vector<affected_type> crowded_affects(PLAYER_SNAPSHOT_MAX_ROWS-status_rows+1);
+    for(size_t i=0;i<crowded_affects.size();++i) {
+        crowded_affects[i].type=i==0 ? PLAYER_TRADE_CARGO_AFFECT : 0;
+        crowded_affects[i].next=i+1<crowded_affects.size() ? &crowded_affects[i+1] : nullptr;
+    }
+    ch.affected=crowded_affects.data();
+    player_snapshot crowded;
+    assert(player_snapshot_capture(&ch,103,PLAYER_COMPONENT_STATUS|PLAYER_COMPONENT_AFFECTS,RENT_QUIT,22800,&crowded)==player_snapshot_capture_result::ok);
+    assert(crowded.affects.size()+crowded.status_integers.size()+crowded.status_strings.size()==PLAYER_SNAPSHOT_MAX_ROWS+1);
+    crowded_affects[1].type=PLAYER_TRADE_CARGO_AFFECT;
+    assert(player_snapshot_capture(&ch,104,PLAYER_COMPONENT_STATUS|PLAYER_COMPONENT_AFFECTS,RENT_QUIT,22800,&crowded)==player_snapshot_capture_result::malformed_source);
+    ch.affected=nullptr;
+    std::cout << "[PASS] later terminal captures preserve one protected cargo row at the ordinary row limit\n";
+
     std::cout << "[PASS] immutable retained-source capture, byte bound and unchanged wire format\n";
 }
 """

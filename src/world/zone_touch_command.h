@@ -16,19 +16,23 @@
 #define ZONE_TOUCH_COMMAND_H
 
 #include "persistence/critical_command.h"
+#include "guild/artifact_guild_command.h"
 
 #include <array>
 
 constexpr uint16_t ZONE_TOUCH_PAYLOAD_VERSION = 2;
 constexpr size_t ZONE_TOUCH_MAX_PARTICIPANTS = 15;
 constexpr size_t ZONE_TOUCH_LEGACY_RESULT_BYTES = 88;
-constexpr size_t ZONE_TOUCH_RESULT_BYTES = 512;
+constexpr size_t ZONE_TOUCH_V2_RESULT_BYTES = 512;
+constexpr size_t ZONE_TOUCH_RESULT_BYTES = 1024;
 
 struct zone_touch_award
 {
 	int32_t amount = 0;
 	int32_t errand = 0;
 	uint8_t flags = 0; // blessing=1, outstanding task penalty=2
+	uint64_t boon_id = 0;
+	double base = 0;
 };
 
 struct zone_touch_payload
@@ -46,6 +50,9 @@ struct zone_touch_payload
 	int32_t stone_level = 0;
 	uint8_t record_zone = 1;
 	std::array<zone_touch_award, ZONE_TOUCH_MAX_PARTICIPANTS> awards = {};
+	bool prepared_delivery = false; // v3: saved recipient checkpoint owns payment
+	bool artifact_intents = false; // v4: immutable entity effects co-commit with the award
+	std::vector<critical_command> artifact_deliveries;
 };
 
 struct zone_touch_result : zone_touch_payload
@@ -56,8 +63,15 @@ struct zone_touch_result : zone_touch_payload
 	}
 	std::array<int64_t, ZONE_TOUCH_MAX_PARTICIPANTS> balances = {};
 	std::array<uint64_t, ZONE_TOUCH_MAX_PARTICIPANTS> revisions = {};
+	std::array<uint64_t, ZONE_TOUCH_MAX_PARTICIPANTS> previous = {};
+	critical_operation_id parent_operation = {};
 	bool recovered_claim = false;
 };
+
+struct divine_epic_delivery;
+bool divine_epic_delivery_from_zone(const critical_operation_id &operation,
+				    const zone_touch_result &result, size_t index,
+				    divine_epic_delivery *delivery);
 
 bool zone_touch_award_command(const critical_command &parent, size_t index,
 			      critical_command *award);

@@ -14,6 +14,7 @@
 
 #include "flatfile/flatfile_item_repository.h"
 
+#include "economy/divine_trade_repository.h"
 #include "flatfile/flatfile_auction_repository.h"
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_boon_repository.h"
@@ -2432,6 +2433,8 @@ flatfile_critical_command_repository_apply_selected(const critical_command &comm
 		return flatfile_item_repository_apply(root, command);
 	if (command.type == critical_command_type::auction)
 		return flatfile_auction_repository_apply(root, command);
+	if (command.type == critical_command_type::divine_trade)
+		return divine_trade_flatfile_apply(root, command);
 	if (command.type == critical_command_type::collector)
 		return flatfile_collector_repository_apply(root, command);
 	if (command.type == critical_command_type::boon_reward)
@@ -2441,6 +2444,7 @@ flatfile_critical_command_repository_apply_selected(const critical_command &comm
 	if (command.type == critical_command_type::shop_trade)
 		return flatfile_shop_trade_repository_apply(root, command);
 	if (command.type == critical_command_type::epic ||
+	    command.type == critical_command_type::zone ||
 	    command.type == critical_command_type::combat_outcome)
 		return flatfile_player_domain_apply(root, command);
 	return { critical_apply_outcome::terminal_failure, 0, ENOTSUP };

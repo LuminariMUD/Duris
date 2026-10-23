@@ -22,6 +22,9 @@
 #include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_mode.h"
 #include "redis/redis_report_cache.h"
+#include "economy/divine_boon_delivery.h"
+#include "guild/artifact_guild_state.h"
+#include "guild/artifact_guild_delivery.h"
 
 #include <algorithm>
 #include <new>
@@ -60,8 +63,18 @@ bool publish(pending_touch &entry)
 		if (entry.published[i])
 			continue;
 		P_char ch = find_player_by_pid(entry.result.participant_pids[i]);
-		if (!ch || IS_NPC(ch))
+		if ((!ch || IS_NPC(ch)) && !entry.result.prepared_delivery)
 			continue;
+		if (entry.result.prepared_delivery)
+		{
+			divine_epic_delivery delivery;
+			if (!divine_epic_delivery_from_zone(entry.result.parent_operation,
+							    entry.result, i, &delivery))
+				return false;
+			divine_boon_delivery_completed(delivery);
+			entry.published[i] = true;
+			continue;
+		}
 		// Dispatch for each recipient when ready, retaining the child ledger as proof.
 		critical_command award = {};
 		if (zone_touch_award_command(entry.command, i, &award) &&
@@ -102,29 +115,54 @@ bool zone_touch_transaction_submit(const zone_touch_payload &payload)
 	// Completed receipts await reconnect; they no longer occupy transaction slots.
 	const auto in_flight = std::count_if(pending.begin(), pending.end(), [](const auto &item)
 					     { return !item.second.committed; });
-	if (!persistence_mode_requires_mysql() ||
+	if (payload.group_size > ZONE_TOUCH_MAX_PARTICIPANTS ||
+	    (!persistence_mode_requires_mysql() && !payload.prepared_delivery) ||
 	    static_cast<size_t>(in_flight) >= ZONE_TOUCH_PENDING_MAX ||
 	    (payload.stone_uid &&
 	     zone_touch_transaction_busy(payload.stone_uid, payload.zone_number)))
 		return false;
 	critical_operation_id operation_id = {};
-	critical_command command = {};
-	if (!critical_operation_id_generate(&operation_id) ||
-	    !zone_touch_command_build(&command, operation_id, payload))
+	if (!critical_operation_id_generate(&operation_id))
 		return false;
-	const std::string key = operation_key(operation_id);
+	zone_touch_payload prepared;
+	std::string key;
+	bool reserved = false;
 	try
 	{
-		pending.emplace(key, pending_touch{ command, payload, {}, {}, false });
+		prepared = payload;
+		prepared.artifact_deliveries.clear();
+		prepared.artifact_intents = prepared.prepared_delivery;
+		if (prepared.artifact_intents)
+			for (size_t i = 0; i < prepared.group_size; ++i)
+			{
+				critical_command child;
+				const auto captured = artifact_guild_state_prepare_delivery(
+					find_player_by_pid(prepared.participant_pids[i]),
+					prepared.awards[i].amount, EPIC_ZONE, operation_id, &child);
+				if (captured == artifact_guild_capture_status::ready)
+					prepared.artifact_deliveries.push_back(std::move(child));
+				else if (captured != artifact_guild_capture_status::no_effect)
+					return false;
+			}
+		critical_command command = {};
+		if (!zone_touch_command_build(&command, operation_id, prepared) ||
+		    !artifact_guild_delivery_reserve(prepared.artifact_deliveries))
+			return false;
+		reserved = true;
+		key = operation_key(operation_id);
+		pending.emplace(key, pending_touch{ command, prepared, {}, {}, false });
+		const auto submitted = critical_command_coordinator_submit(std::move(command));
+		if (!critical_submit_result_keeps_operation(submitted))
+		{
+			artifact_guild_delivery_complete(prepared.artifact_deliveries, false);
+			pending.erase(key);
+			return false;
+		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		return false;
-	}
-	const critical_submit_result submitted =
-		critical_command_coordinator_submit(std::move(command));
-	if (!critical_submit_result_keeps_operation(submitted))
-	{
+		if (reserved)
+			artifact_guild_delivery_complete(prepared.artifact_deliveries, false);
 		pending.erase(key);
 		return false;
 	}
@@ -149,6 +187,7 @@ void zone_touch_transaction_handle_completions(const critical_completion *comple
 					       critical_apply_outcome::already_applied;
 		if (!committed)
 		{
+			artifact_guild_delivery_complete(entry.payload.artifact_deliveries, false);
 			notify(entry.payload,
 			       "The stone reward failed. The stone remains available; please try again.\r\n");
 			pending.erase(found);
@@ -156,12 +195,18 @@ void zone_touch_transaction_handle_completions(const critical_completion *comple
 		}
 		if (!zone_touch_command_decode_result(completion.result_payload.data(),
 						      completion.result_size, &entry.result) ||
-		    entry.result.stone_uid != entry.payload.stone_uid)
+		    entry.result.stone_uid != entry.payload.stone_uid ||
+		    (!entry.result.recovered_claim &&
+		     entry.result.artifact_intents != entry.payload.artifact_intents))
 		{
+			// The parent committed its immutable children even when its result is unreadable.
+			artifact_guild_delivery_complete(entry.payload.artifact_deliveries, true);
 			notify(entry.payload,
 			       "The stone reward receipt is unavailable. Please contact staff.\r\n");
 			continue; // Unknown committed result must not become a new award attempt.
 		}
+		artifact_guild_delivery_complete(entry.payload.artifact_deliveries,
+						 !entry.result.recovered_claim);
 		entry.committed = true;
 		if (!entry.payload.stone_uid)
 		{

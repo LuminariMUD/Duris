@@ -311,7 +311,22 @@ bool record_delivery(const critical_outbox_record &record,
 					std::to_string(record.outbox_id));
 		if (updated && mysql_affected_rows(connection) == 1)
 		{
-			ok = execute(connection, "COMMIT");
+			bool receipt_acked = true;
+			if (record.destination == 7 && record.event_type == 2 &&
+			    record.payload_version == 3)
+			{
+				char id[CRITICAL_COMMAND_ID_HEX_SIZE]{};
+				critical_operation_id_to_hex(record.operation_id, id, sizeof(id));
+				// Keep ACK proof with the permanent child descriptor, even after
+				// ordinary outbox archival or a crash before entity-ID pruning.
+				receipt_acked =
+					execute(connection,
+						"UPDATE critical_operation_inbox SET result_code=1 WHERE operation_id=UNHEX('" +
+							std::string(id) +
+							"') AND command_type=9 AND payload_version=3 AND status=1 AND result_code=0") &&
+					mysql_affected_rows(connection) == 1;
+			}
+			ok = receipt_acked && execute(connection, "COMMIT");
 			if (!ok && is_connection_error(mysql_errno(connection)))
 			{
 				connection = sql_pool_replace_connection(connection);

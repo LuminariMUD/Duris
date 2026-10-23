@@ -488,6 +488,13 @@ dropped on any other error; their owners are marked dirty and saved again. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
 For `critical_outbox`, pending age may briefly rise during destination recovery.
+`boon_rewards` counts checks filtered before operation-ID allocation separately
+from accepted submissions and completions. Definition refresh failures reduce the
+optimization, not reward eligibility: unavailable or 60-second-old views fall
+back to the authoritative writer. Definition creation/reactivation invalidates
+on admission and writer retries; removal, expiry and completion also invalidate.
+Zero-entry accepted SQL results retain a versioned canonical receipt with an
+explicit zero-event expectation, while old 2,080-byte receipts remain readable.
 `critical_outbox_health` reports operational counts and the historical audit
 separately: `unavailable` means no successful refresh yet, `stale` means a failed
 refresh or an overdue observation, and `fresh` includes the age of the last good

@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 10;
+constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 12;
 constexpr size_t PLAYER_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 constexpr size_t PLAYER_SNAPSHOT_MAX_ROWS = 8192;
 constexpr size_t PLAYER_SNAPSHOT_MAX_OBJECTS = 4096;
@@ -259,6 +259,19 @@ struct player_item_retention
 	size_t bytes = 0;
 };
 
+// A capture made before a prepared trade's game-thread completion can still
+// leave on logout. Its writer resolves this receipt before saving the purse.
+struct player_pending_trade_snapshot
+{
+	std::array<uint8_t, 16> operation{};
+	std::array<uint8_t, 32> command_hash{};
+	int64_t payment = 0;
+	uint64_t wallet_revision = 0;
+	bool has_cargo_effect = false;
+	player_affect_snapshot cargo_effect{};
+};
+constexpr int16_t PLAYER_TRADE_CARGO_AFFECT = 2110;
+
 struct player_snapshot
 {
 	uint32_t schema_version;
@@ -287,6 +300,10 @@ struct player_snapshot
 	std::vector<player_trophy_snapshot> trophies;
 	bool recipes_are_external;
 	std::string output_preferences;
+	// Revision of the in-memory wallet captured with STATUS. Persisting this
+	// existing counter prevents an older capture overwriting a committed payment.
+	uint64_t wallet_revision = 0;
+	player_pending_trade_snapshot pending_trade{};
 };
 
 #endif

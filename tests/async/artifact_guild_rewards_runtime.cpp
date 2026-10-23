@@ -240,7 +240,7 @@ static int identity_contract(const std::string &scenario)
 	const bool duplicate = scenario == "duplicate" || scenario == "duplicate-reversed" ||
 			       scenario == "guild-only" || scenario == "same-uid";
 	const bool guild_only = scenario == "guild-only";
-	const bool canonical_copy = scenario == "canonical-copy" ||
+	const bool canonical_copy = scenario == "prepared-codec" || scenario == "canonical-copy" ||
 				    scenario == "canonical-copy-reversed" ||
 				    scenario == "canonical-alias-slot";
 	const bool rejected = scenario == "rejected-copy";
@@ -308,6 +308,43 @@ static int identity_contract(const std::string &scenario)
 		canonical_objects[42001] = &copy;
 	critical_operation_id parent = {};
 	assert(critical_operation_id_generate(&parent));
+	if (scenario == "prepared-codec")
+	{
+		artifact_guild_payload payload;
+		assert(artifact_guild_state_capture(&actor, 4, EPIC_PVP, parent, &payload) ==
+		       artifact_guild_capture_status::ready);
+		assert(payload.artifact_count == 2 &&
+		       payload.artifacts[0].canonical_item_uid == 101 &&
+		       payload.artifacts[1].canonical_item_uid == 103);
+		critical_operation_id id;
+		assert(critical_operation_id_derive(parent, 0x41475431, 42, &id));
+		critical_command prepared;
+		assert(artifact_guild_command_build_prepared(&prepared, id, payload));
+		prepared.accepted_at_usec = 1;
+		assert(prepared.payload_version == 3 && critical_command_valid(prepared));
+		std::vector<uint8_t> bytes;
+		assert(critical_command_encode(prepared, &bytes) ==
+		       critical_command_codec_result::ok);
+		critical_command restored;
+		assert(critical_command_decode(bytes.data(), bytes.size(), &restored) ==
+		       critical_command_codec_result::ok);
+		artifact_guild_payload decoded;
+		assert(artifact_guild_command_decode_payload(restored, &decoded));
+		assert(decoded.artifacts[0].canonical_item_uid == 101 &&
+		       decoded.artifacts[1].canonical_item_uid == 103);
+		critical_command history;
+		assert(artifact_guild_command_build(&history, id, payload));
+		assert(history.payload_version == 2 &&
+		       artifact_guild_command_decode_payload(history, &decoded) &&
+		       !decoded.artifacts[0].canonical_item_uid);
+		payload.artifacts[0].canonical_item_uid = 0;
+		assert(!artifact_guild_command_build_prepared(&prepared, id, payload));
+		assert(payload.feeding_cap == FEED_CAP && payload.construction_notch == 100 &&
+		       payload.artifacts[0].feed_seconds == 28800);
+		assert(guild->get_prestige() == 95 && rows.at(42001).timer == NOW + 100);
+		puts("prepared child retains canonical artifact targets; legacy history remains v2");
+		return 0;
+	}
 	const bool submitted = artifact_guild_transaction_submit(&actor, parent, 4, EPIC_BOON);
 	const bool isolated =
 		submitted && rows.at(42001).timer == NOW + 100 + (canonical_copy ? 3600 : 0) &&
@@ -343,6 +380,30 @@ int main(int argc, char **argv)
 {
 	if (argc == 2)
 	{
+		if (std::string(argv[1]) == "delivery-state")
+		{
+			reset();
+			char name[] = "Delivery";
+			auto *guild = new Guild(name, RACEWAR_GOOD, 7, 95, 0, 0, 0);
+			critical_operation_id first{}, second{};
+			first.bytes.back() = 1;
+			second.bytes.back() = 2;
+			assert(guild->apply_delivery(first, 20, 100));
+			assert(guild->get_prestige() == 115 && guild->get_construction() == 1);
+			assert(guild->sub_prestige(7));
+			guild->add_prestige(2);
+			assert(guild->apply_delivery(first, 20, 100));
+			assert(guild->get_prestige() == 110 && guild->get_construction() == 1);
+			assert(guild->apply_delivery(second, 90, 100));
+			assert(guild->get_prestige() == 200 && guild->get_construction() == 2);
+			guild->forget_delivery(first);
+			assert(guild->applied_deliveries() ==
+			       artifact_guild_delivery_ids{ second.bytes });
+			assert(guild->apply_delivery(second, 90, 100) &&
+			       guild->get_prestige() == 200);
+			puts("prepared guild IDs preserve later spending and cumulative construction");
+			return 0;
+		}
 		if (std::string(argv[1]) == "flatfile")
 		{
 			mysql_mode = false;

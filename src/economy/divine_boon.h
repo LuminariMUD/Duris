@@ -51,6 +51,15 @@ struct divine_boon_zone_history
 	bool operator==(const divine_boon_zone_history &) const = default;
 };
 
+// Bounded staff history; the separate zone history drives the repeat preference.
+struct divine_boon_retired
+{
+	divine_boon_slot objective;
+	int64_t ended_at = 0;
+	bool operator==(const divine_boon_retired &) const = default;
+};
+constexpr size_t DIVINE_BOON_RECENT_MAX = 16;
+
 struct divine_boon_state
 {
 	uint64_t revision = 1;
@@ -60,6 +69,7 @@ struct divine_boon_state
 	bool paused = false;
 	std::array<divine_boon_slot, DIVINE_BOON_SLOTS> slots = {};
 	std::vector<divine_boon_zone_history> history;
+	std::vector<divine_boon_retired> recent;
 	bool operator==(const divine_boon_state &) const = default;
 };
 

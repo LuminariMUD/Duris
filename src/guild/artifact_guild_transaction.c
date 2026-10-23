@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "guild/artifact_guild_transaction.h"
+#include "guild/artifact_guild_delivery.h"
 
 #include "guild/assocs.h"
 #include "net/comm.h"
@@ -35,7 +36,6 @@
 
 namespace
 {
-constexpr uint32_t ARTIFACT_GUILD_DERIVATION_DOMAIN = 0x41475431;
 
 struct pending_outcome
 {
@@ -119,9 +119,11 @@ void publish_messages(P_char character, const artifact_guild_payload &payload)
 {
 	if (!character)
 		return;
-	if (payload.guild_id && payload.prestige_delta > 0)
+	const bool same_guild = GET_ASSOC(character) &&
+				GET_ASSOC(character)->get_id() == payload.guild_id;
+	if (same_guild && payload.prestige_delta > 0)
 		send_to_char("&+bYour guild gained prestige!\n", character);
-	if (payload.construction_delta > 0)
+	if (same_guild && payload.construction_delta > 0)
 	{
 		Guild *guild = GET_ASSOC(character);
 		if (guild)
@@ -138,6 +140,15 @@ void publish_messages(P_char character, const artifact_guild_payload &payload)
 		send_to_char("&+RYou feel a sense of satisfaction from above.&n\r\n", character);
 }
 } // namespace
+
+void artifact_guild_transaction_publish_delivery(const artifact_guild_payload &published)
+{
+	if (!published.artifact_count && !published.guild_id)
+		return;
+	publish_messages(find_player_by_pid(published.actor_pid), published);
+	++health.live_applied;
+	health.max_artifacts = std::max<uint64_t>(health.max_artifacts, published.artifact_count);
+}
 
 // New source publication only. The boon/combat/stone producers own live once-only
 // publication; a prepared command is retried below without recapturing or granting.
@@ -272,6 +283,7 @@ void artifact_guild_transaction_handle_completions(const critical_completion *co
 
 void artifact_guild_transaction_pulse()
 {
+	artifact_guild_delivery_pulse();
 	const uint64_t now = monotonic_msec();
 	const bool retry = now >= next_retry_msec;
 	health.dirty_artifacts = artifact_save_pulse(retry);
@@ -313,7 +325,8 @@ bool artifact_guild_transaction_drain(uint64_t timeout_msec)
 		// a fresh guild snapshot can retry without that deleted player's FK.
 		sql_async_pulse();
 		artifact_guild_transaction_pulse();
-		if (pending.empty() && !health.dirty_artifacts && !health.dirty_guilds &&
+		if (pending.empty() && !artifact_guild_delivery_pending() &&
+		    !health.dirty_artifacts && !health.dirty_guilds &&
 		    !critical_command_coordinator_health_copy().inflight)
 			return true;
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -325,6 +338,10 @@ void artifact_guild_transaction_report_unsaved()
 {
 	artifact_report_unsaved();
 	guild_report_unsaved();
+	if (const auto count = artifact_guild_delivery_pending())
+		logit(LOG_FILE,
+		      "artifact_guild: stage=shutdown reason=prepared_effects_unresolved pending=%zu",
+		      count);
 	for (const auto &[id, entry] : pending)
 	{
 		critical_operation_id parent = {};
@@ -338,6 +355,8 @@ void artifact_guild_transaction_report_unsaved()
 critical_outbox_delivery_result
 artifact_guild_transaction_outbox_delivery(const critical_outbox_record &record, void *)
 {
+	if (record.destination == 7 && record.event_type == 2)
+		return artifact_guild_delivery_outbox(record);
 	if (record.destination != 7 || record.event_type != 1 || record.payload_version != 1)
 		return critical_outbox_delivery_result::terminal_failure;
 	artifact_guild_result result = {};
@@ -363,6 +382,7 @@ artifact_guild_transaction_outbox_delivery(const critical_outbox_record &record,
 
 void artifact_guild_transaction_publish_outbox(void)
 {
+	artifact_guild_delivery_pulse();
 	bool publish = false;
 	{
 		std::lock_guard<std::mutex> lock(outbox_mutex);
@@ -385,7 +405,7 @@ void artifact_guild_transaction_publish_outbox(void)
 
 artifact_guild_health artifact_guild_transaction_health_copy(void)
 {
-	health.pending = pending.size();
+	health.pending = pending.size() + artifact_guild_delivery_pending();
 	health.oldest_age_msec = 0;
 	const uint64_t now = monotonic_msec();
 	for (const auto &[key, entry] : pending)

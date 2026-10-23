@@ -3,7 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
-from _paths import rel
+from _paths import HARNESS_STUBS, rel
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -71,15 +71,16 @@ int main(int argc, char **argv) {
 
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
-    "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_player_snapshot_file.c",
+    "flatfile_item_repository.c",
+    "divine_trade.c", "divine_trade_command.c", "divine_trade_flatfile.c", "flatfile_cargo_repository.c", "flatfile_ship_repository.c", "item_claim.c", "dupe_log.c", "flatfile_player_snapshot_file.c",
     "flatfile_locker_repository.c", "flatfile_world_item_repository.c",
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
     "flatfile_shop_trade_materialization.c", "flatfile_shopkeeper_repository.c",
     "flatfile_auction_repository.c", "flatfile_boon_repository.c",
     "flatfile_player_domain_repository.c", "flatfile_authority_transaction.c",
     "player_snapshot_codec.c", "flatfile_store.c", "item_transfer_command.c",
-    "shop_trade_command.c", "critical_command.c", "epic_command.c",
-    "currency_command.c", "auction_command.c", "combat_outcome_command.c", "boon_reward_command.c",
+    "shop_trade_command.c", "critical_command.c", "epic_command.c", "zone_touch_command.c",
+    "currency_command.c", "auction_command.c", "combat_outcome_command.c", "artifact_guild_command.c", "boon_reward_command.c",
     "boon_shop_command.c", "persistence_observability.c", "persistence_mode.c",
     "flatfile_ip_activity_repository.c",
 ]
@@ -87,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-flatfile-") as temporary
     root = Path(temporary)
     source, binary = root / "playtime.cpp", root / "playtime"
     source.write_text(HARNESS)
-    subprocess.run(["g++", "-std=c++20", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
+    subprocess.run(["g++", str(HARNESS_STUBS), "-std=c++20", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
                     "-Isrc", "-Isrc/no_mysql", str(source), *[rel(name) for name in SOURCES],
                     "-Wl,--gc-sections", "-lcrypto", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)
     for name in ("state", "state/players", "state/identities", "state/identities/names", "state/domains"):

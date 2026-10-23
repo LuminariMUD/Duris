@@ -99,6 +99,7 @@ critical_command_schema tests/async/run_critical_command_schema_mysql.sh
 combat_baseline_repair tests/async/run_combat_baseline_repair_mysql.sh
 collector_notification tests/async/run_collector_notification_mysql.sh
 boon_reward_zone $DB tests/async/run_boon_reward_zone_schema_mysql.sh
+divine_trade $DB tests/async/run_divine_trade_mysql.sh
 combat_outcome $DB tests/async/run_combat_outcome_schema_mysql.sh
 account_bank_delta tests/async/run_account_bank_delta_mysql.sh
 account_locker_conversion_check tests/async/run_account_locker_conversion_check_mysql.sh

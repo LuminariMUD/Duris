@@ -35,6 +35,8 @@ SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
     ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
     ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
+    ROOT / "migrations" / "immutable" / "0048_divine_boon_state.sql",
+    ROOT / "migrations" / "immutable" / "0050_divine_trade_state.sql",
 )
 VALIDATOR_SPEC = importlib.util.spec_from_file_location("validate_data_lifecycle", VALIDATOR)
 VALIDATOR_MODULE = importlib.util.module_from_spec(VALIDATOR_SPEC)

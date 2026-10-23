@@ -71,7 +71,16 @@ FUNCTIONS = "\n\n".join(
     ]
 )
 
-HARNESS = r'''
+HARNESS = r'''#include "economy/divine_trade_runtime.h"
+bool trade_busy=false;
+bool divine_trade_runtime_busy(const ShipData *) {return trade_busy;}
+std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t) {return {};}
+uint64_t divine_trade_runtime_ship_revision(uint32_t) {return 0;}
+void divine_trade_runtime_ship_saved(uint32_t) {}
+bool divine_trade_runtime_invalidate(ShipData *,int) {return true;}
+void divine_trade_runtime_restore_books(std::vector<divine_trade_book>,uint32_t) {}
+bool divine_trade_book_encode(const divine_trade_book &,std::vector<uint8_t> *) {return false;}
+
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "cmd/interp.h"
@@ -359,6 +368,7 @@ static void reset(bool owns_ship = true)
 	ships[1].name = strdup("Gull");
 
 	durable = { "Oldname", owns_ship ? "Oldname" : "Someoneelse", "Oldname", 3 };
+	trade_busy = false;
 	fail_player_update = fail_ship_save = fail_references = refuse_queue = false;
 	pending = nullptr;
 	jobs = charged = saves = 0;
@@ -422,6 +432,17 @@ int main()
 	}
 	for (const std::string &statement : statements)
 		assert(statement.find("corpses") == std::string::npos);
+
+	// Only admission is fenced: later trade/customs work cannot undo a committed rename.
+	reset();
+	trade_busy = true;
+	assert(!rename_by_immortal() && jobs == 0);
+	trade_busy = false;
+	assert(rename_by_immortal());
+	trade_busy = true;
+	pulse();
+	check_owned_by("Newname");
+	assert(replied_renamed);
 
 	// A character with no ship is renamed without touching anyone's ship.
 	reset(false);

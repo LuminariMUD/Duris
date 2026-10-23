@@ -1271,6 +1271,7 @@ struct pc_only_data
 	int spare3;
 	int spare4;
 	uint64_t bank_revision; /* Transactional shared account-bank domain revision. */
+	bool divine_trade_payment_pending; // Process-local; never hydrated.
 	uint64_t wallet_revision; /* Transactional carried-wallet domain revision. */
 
 	long frags; /* Pkill counter                           */

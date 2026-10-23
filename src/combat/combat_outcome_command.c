@@ -134,6 +134,28 @@ bool valid(const combat_outcome_payload &payload)
 			if (payload.participants[other].pid == entry.pid)
 				return false;
 	}
+	if ((!payload.artifact_intents && !payload.artifact_deliveries.empty()) ||
+	    (payload.artifact_intents && !prepared) ||
+	    payload.artifact_deliveries.size() > payload.participant_count)
+		return false;
+	std::array<uint32_t, COMBAT_OUTCOME_MAX_PARTICIPANTS> actors{};
+	for (size_t i = 0; i < payload.artifact_deliveries.size(); ++i)
+	{
+		artifact_guild_payload effect{};
+		const auto &child = payload.artifact_deliveries[i];
+		if (child.payload_version != ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION ||
+		    !artifact_guild_command_decode_payload(child, &effect) ||
+		    std::find(actors.begin(), actors.begin() + i, effect.actor_pid) !=
+			    actors.begin() + i ||
+		    std::none_of(payload.participants.begin(),
+				 payload.participants.begin() + payload.participant_count,
+				 [&](const auto &entry) {
+					 return entry.pid == effect.actor_pid &&
+						(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC);
+				 }))
+			return false;
+		actors[i] = effect.actor_pid;
+	}
 	return prepared ? payload.prepared_at > 0 : payload.prepared_at == 0;
 }
 
@@ -204,6 +226,20 @@ bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload
 			append_le<uint64_t>(encoded, entry.epic_boon_id);
 			append_le<uint64_t>(encoded, std::bit_cast<uint64_t>(entry.epic_base));
 			append_le<int32_t>(encoded, entry.epic_spill_blood);
+		}
+	}
+	if (payload.artifact_intents)
+	{
+		append_le<uint16_t>(encoded, payload.artifact_deliveries.size());
+		for (const auto &child : payload.artifact_deliveries)
+		{
+			std::vector<uint8_t> bytes;
+			if (critical_command_encode(child, &bytes) !=
+				    critical_command_codec_result::ok ||
+			    bytes.size() > 2048)
+				return false;
+			append_le<uint16_t>(encoded, bytes.size());
+			encoded->insert(encoded->end(), bytes.begin(), bytes.end());
 		}
 	}
 	return encoded->size() <= CRITICAL_COMMAND_MAX_PAYLOAD_BYTES;
@@ -283,6 +319,25 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 			entry.epic_base = std::bit_cast<double>(base);
 		}
 	}
+	if (command.payload_version >= 6)
+	{
+		payload->artifact_intents = true;
+		uint16_t count = 0;
+		if (!read_le(&cursor, end, &count) || count > payload->participant_count)
+			return false;
+		for (size_t i = 0; i < count; ++i)
+		{
+			uint16_t size = 0;
+			critical_command child;
+			if (!read_le(&cursor, end, &size) || size > 2048 ||
+			    static_cast<size_t>(end - cursor) < size ||
+			    critical_command_decode(cursor, size, &child) !=
+				    critical_command_codec_result::ok)
+				return false;
+			cursor += size;
+			payload->artifact_deliveries.push_back(std::move(child));
+		}
+	}
 	if (cursor != end || !valid(*payload))
 		return false;
 	critical_command expected = {};
@@ -346,6 +401,7 @@ bool combat_outcome_command_encode_result(const combat_outcome_result &result,
 			(*encoded)[16 + byte] =
 				static_cast<uint8_t>(result.victim_pid >> (byte * 8));
 		put_u64(encoded->data() + 20, static_cast<uint64_t>(result.prepared_at));
+		(*encoded)[30] = result.artifact_intents ? 1 : 0;
 	}
 	else
 		put_u64(encoded->data(), result.event_id);
@@ -412,7 +468,8 @@ bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 			result->victim_pid |= static_cast<uint32_t>(encoded[16 + byte])
 					      << (byte * 8);
 		result->prepared_at = static_cast<int64_t>(get_u64(encoded + 20));
-		if (encoded[30] || encoded[31])
+		result->artifact_intents = encoded[30] == 1;
+		if (encoded[30] > 1 || encoded[31])
 			return false;
 	}
 	const size_t header = prepared ? prepared_header_size : 10;
@@ -463,7 +520,9 @@ bool combat_outcome_command_build(critical_command *command, critical_operation_
 	*command = { .schema_version = CRITICAL_COMMAND_SCHEMA_VERSION,
 		     .operation_id = operation_id,
 		     .type = critical_command_type::combat_outcome,
-		     .payload_version = static_cast<uint16_t>(payload.prepared_at ? 5 : 4),
+		     .payload_version = static_cast<uint16_t>(payload.artifact_intents ? 6 :
+							      payload.prepared_at      ? 5 :
+											 4),
 		     .source_site = critical_source_site::combat,
 		     .deadline_class = critical_deadline_class::terminal,
 		     .accepted_at_usec = 0,
@@ -493,6 +552,16 @@ bool combat_outcome_command_build(critical_command *command, critical_operation_
 			}
 		}
 	}
+	for (const auto &child : payload.artifact_deliveries)
+	{
+		if (!artifact_guild_command_valid_delivery(child, operation_id))
+			return false;
+		for (const auto &key : child.keys)
+			if (std::none_of(command->keys.begin(), command->keys.end(),
+					 [&](const auto &prior)
+					 { return critical_entity_key_equal(prior, key); }))
+				command->keys.push_back(key);
+	}
 	if (!combat_outcome_command_encode_payload(payload, &command->payload))
 		return false;
 	std::sort(command->keys.begin(), command->keys.end(), critical_entity_key_less);
@@ -500,16 +569,6 @@ bool combat_outcome_command_build(critical_command *command, critical_operation_
 		  [](const auto &left, const auto &right)
 		  { return critical_entity_key_less(left.key, right.key); });
 	return command->keys.size() <= CRITICAL_COMMAND_MAX_KEYS;
-}
-
-bool divine_epic_delivery_valid(const divine_epic_delivery &delivery)
-{
-	return !critical_operation_id_is_zero(delivery.operation_id) && delivery.pid &&
-	       delivery.victim_pid && delivery.pid != delivery.victim_pid &&
-	       delivery.sequence > delivery.previous && delivery.boon_id &&
-	       delivery.prepared_at > 0 && delivery.amount > 0 &&
-	       delivery.amount <= std::numeric_limits<int>::max() && std::isfinite(delivery.base) &&
-	       delivery.base > 0 && (delivery.spill_blood == 0 || delivery.spill_blood == 500);
 }
 
 bool divine_epic_delivery_from_combat(const critical_operation_id &operation,
@@ -532,6 +591,7 @@ bool divine_epic_delivery_from_combat(const critical_operation_id &operation,
 					 result.prepared_at,
 					 row.epic_base,
 					 row.epic_spill_blood };
+	decoded.artifact_intents = result.artifact_intents;
 	if (!divine_epic_delivery_valid(decoded))
 		return false;
 	*delivery = decoded;

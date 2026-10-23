@@ -1,11 +1,33 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 22, 2026&n
+&+WUpdated: October 23, 2026&n
 
-Welcome back! Staff can call a cleaner halt to combat.
+Welcome back! Less background busywork and a clearer bridge await.
 Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/23/26&n &+L-&n &+YLess busywork, clearer decks&n
+&+W----------------------------------------------------------------------&n
+
+&+CSame boons, less busywork&n
+&+Y-&n Legacy boon checks now skip needless background work when no active
+  boon can apply to you. Goals, progress, completion and rewards keep
+  their existing rules.
+&+Y-&n Auction announcements that are still being prepared no longer use up
+  delivery retries while staff prepare a restart.
+
+&+CYour bridge at a glance&n
+&+Y-&n Supported clients can now show more of your ship's bridge details:
+  hull weight, current and maximum load, ordered heading and speed,
+  crew fatigue, and your current target. Your client must support the
+  expanded ship display; sailing rules are unchanged.
+
+&+CStaff can inspect quests&n
+&+Y-&n Immortals can use &+C'qview'&n, &+C'qref'&n, &+C'qinfo'&n,
+  &+C'qlist'&n and &+C'hlqlist'&n to inspect quest givers, item
+  references, rewards and quest listings. Read each command's help for
+  its arguments. These commands inspect quests without changing them.
 
 &+R10/22/26&n &+L-&n &+YA quieter end to the fight&n
 &+W----------------------------------------------------------------------&n

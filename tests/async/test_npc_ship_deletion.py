@@ -25,7 +25,7 @@ FUNCTIONS = "\n\n".join(
         ("ship_base.c", (
             "void clear_ship_layout(P_ship ship)", "void clear_references_to_ship(",
             "void delete_ship(P_ship ship, bool npc)", "void finish_sinking(P_ship ship)",
-            "void ship_activity()", "void dock_ship(P_ship ship, int to_room)",
+            "void ship_activity()", "void flush_pending_ship_saves(void)", "void dock_ship(P_ship ship, int to_room)",
         )),
         ("ship_auto.c", ("void clear_autopilot(P_ship ship)",)),
         ("ship_npc.c", ("bool try_unload_npc_ship(P_ship ship)",)),
@@ -36,7 +36,19 @@ FUNCTIONS = "\n\n".join(
     for signature in signatures
 )
 
-HARNESS = r'''
+HARNESS = r'''#include "economy/divine_trade_runtime.h"
+static const ShipData *blocked_ship=nullptr;
+bool divine_trade_runtime_busy(const ShipData *ship) {return ship && ship==blocked_ship;}
+bool divine_trade_runtime_save_busy(const ShipData *ship) {return divine_trade_runtime_busy(ship);}
+std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t) {return {};}
+uint64_t divine_trade_runtime_ship_revision(uint32_t) {return 0;}
+void divine_trade_runtime_ship_saved(uint32_t) {}
+void divine_trade_runtime_ship_deleted(uint32_t) {}
+static bool invalidate_ok=true;
+bool divine_trade_runtime_invalidate(ShipData *,int) {return invalidate_ok;}
+void divine_trade_runtime_restore_books(std::vector<divine_trade_book>,uint32_t) {}
+bool divine_trade_book_encode(const divine_trade_book &,std::vector<uint8_t> *) {return false;}
+
 #include "core/prototypes.h"
 #include "core/files.h"
 #include "player/player_save_pipeline.h"
@@ -59,6 +71,8 @@ HARNESS = r'''
 #include "flatfile/flatfile_ship_repository.h"
 #include "persistence/persistence_mode.h"
 #include "ships/ship_identity.c"
+static int customs_calls=0;
+void check_contraband(P_ship ship,int) {++customs_calls;if(ship==blocked_ship)SET_BIT(ship->flags,CUSTOMS_PENDING);}
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -79,7 +93,7 @@ const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._mxsail = 100, ._speedgain
 const ShipArcProperties ship_arc_properties[MAXSHIPCLASS] = {};
 const WeaponData weapon_data[MAXWEAPON] = {};
 static int persistence_calls, freed_ships, extracted_objects, extracted_crew, invariant_logs;
-static bool persistence_ok = false;
+static bool persistence_ok = false, ambiguous_delete=false, deletion_recovered=false;
 static std::set<void *> live_ships;
 static std::string output_text;
 struct mm_ds *dead_mob_pool = nullptr, *dead_pconly_pool = nullptr;
@@ -130,10 +144,12 @@ void send_to_char_f(P_char, const char *format, ...) {
     vsnprintf(text, sizeof text, format, args); va_end(args); output_text += text;
 }
 std::string strip_ansi(const char *text) { return text; }
-bool sql_delete_ship(const char *) { ++persistence_calls; return persistence_ok; }
+bool sql_delete_ship(const char *,uint32_t) { ++persistence_calls; return persistence_ok; }
+flatfile_ship_result flatfile_ship_list(const std::string &,std::vector<flatfile_ship_record> *rows,std::string *) {rows->clear();return deletion_recovered ? flatfile_ship_result::ok : flatfile_ship_result::io_error;}
 const char *persistence_mode_flatfile_root() { return "/unused-test-authority"; }
-flatfile_ship_result flatfile_ship_remove(const char *, uint32_t, const char *, std::string *) {
+flatfile_ship_result flatfile_ship_remove(const std::string &, uint32_t, const std::string &, std::string *,const std::vector<flatfile_authority_operation> *) {
     ++persistence_calls;
+    if (ambiguous_delete) return flatfile_ship_result::io_error;
     return persistence_ok ? flatfile_ship_result::ok : flatfile_ship_result::invalid;
 }
 
@@ -332,6 +348,7 @@ static void check_sinking(bool passenger) {
 static void check_delete(bool ownerless, int db_id = 42) {
     P_ship ship = make_ship(0, 2), observer = make_ship(NPCSHIP, 3);
     if (ownerless) ship->ownername = nullptr;
+    if (!ownerless) SET_BIT(ship->flags,CUSTOMS_PENDING);
     ship->db_id = db_id;
     observer->target = ship;
     observer->npc_ai->escort = observer->npc_ai->did_board = ship;
@@ -341,6 +358,7 @@ static void check_delete(bool ownerless, int db_id = 42) {
     assert(shipObjHash.erase(ship)); delete_ship(ship);
     assert(find_ship_by_runtime_ref(ref) == ship && shipObjHash.find(ship->shipobj) == ship);
     assert(shipObjHash.size() == 2 && observer->target == ship);
+    if (!ownerless) assert(IS_SET(ship->flags,CUSTOMS_PENDING));
     assert(observer->npc_ai->escort == ship && observer->npc_ai->did_board == ship);
     assert(passenger.in_room == 2 && world[2].people == &passenger);
     assert(world[2].funct && world[2].contents == ship->panel);
@@ -358,6 +376,29 @@ static void check_delete(bool ownerless, int db_id = 42) {
     persistence_ok = false;
     remove_runtime(observer);
     puts(ownerless ? "PASS ownerless player retained and logged" : "PASS failed player persistence retained, retry succeeds");
+}
+
+int write_ship(P_ship) {abort();}
+unsigned long long ship_save_signature(const P_ship) {abort();}
+static void check_ambiguous_delete() {
+#ifdef __NO_MYSQL__
+    P_ship ship=make_ship(0,2);const auto ref=ship->runtime_ref;
+    ambiguous_delete=true;
+    assert(shipObjHash.erase(ship));delete_ship(ship);
+    assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE) && ship->save_pending);
+    assert(ship->save_retry_after>0);
+    invalidate_ok=false;ship->save_retry_after=0;flush_pending_ship_saves();
+    assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE) && ship->save_pending);
+    invalidate_ok=true;ambiguous_delete=false;persistence_ok=false;
+    ship->save_retry_after=0;flush_pending_ship_saves();
+    assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE) && ship->save_pending);
+    persistence_ok=true;ambiguous_delete=true;
+    deletion_recovered=true;
+    ship->save_retry_after=0;flush_pending_ship_saves();
+    assert(!find_ship_by_runtime_ref(ref));
+    ambiguous_delete=deletion_recovered=false;
+    puts("PASS ambiguous deletion retains/fences its ship until journal recovery confirms removal");
+#endif
 }
 
 static void check_npc_removal(bool purge) {
@@ -438,14 +479,49 @@ static void check_unloaded_cleanup() {
     puts("PASS failed-load cleanup never traverses unassigned room numbers");
 }
 
+
+static void busy_delete()
+{
+ P_ship ship=make_ship(0,2);const auto ref=ship->runtime_ref;
+ invalidate_ok=false;
+ assert(shipObjHash.erase(ship));delete_ship(ship);
+ assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE));
+ assert(ship->save_pending && ship->save_retry_after>0);
+ invalidate_ok=true;persistence_ok=true;ship->save_retry_after=0;
+ flush_pending_ship_saves();
+ assert(!find_ship_by_runtime_ref(ref));
+ puts("PASS first deletion retains intent while proof is busy and retries");
+}
+
+static void busy_effects()
+{
+ P_ship first=make_ship(0,2),later=make_ship(NPCSHIP,3);
+ const auto ref=first->runtime_ref;const int type=first->m_class;
+ SET_BIT(first->flags,SINKING);first->timer[T_SINKING]=0;blocked_ship=first;
+ const int saves=persistence_calls,freed=freed_ships;
+ finish_sinking(first);
+ assert(first->timer[T_SINKING]==1 && first->m_class==type && persistence_calls==saves && freed_ships==freed);
+ later->timer[T_MAINTENANCE]=50;ship_activity();
+ assert(later->timer[T_MAINTENANCE]==49 && find_ship_by_runtime_ref(ref)==first);
+ REMOVE_BIT(first->flags,SINKING);first->timer[T_SINKING]=0;
+ SET_BIT(first->flags,CUSTOMS_PENDING);ship_activity();
+ assert(IS_SET(first->flags,CUSTOMS_PENDING) && customs_calls==1);
+ blocked_ship=nullptr;ship_activity();
+ assert(!IS_SET(first->flags,CUSTOMS_PENDING) && customs_calls==2);
+ remove_runtime(first);remove_runtime(later);
+ puts("PASS busy sinking defers before side effects, sweep continues, and customs retries");
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     objects[1].virtual_number = VOBJ_ALL_SHIPS;
-    if (!strcmp(argv[1], "sinking")) check_sinking(false);
+    if (!strcmp(argv[1],"busy-delete")) busy_delete();
+    else if (!strcmp(argv[1],"busy-effects")) busy_effects();
+    else if (!strcmp(argv[1], "sinking")) check_sinking(false);
     else if (!strcmp(argv[1], "passenger")) check_sinking(true);
     else if (!strcmp(argv[1], "purge")) check_npc_removal(true);
     else if (!strcmp(argv[1], "unload")) check_npc_removal(false);
     else if (!strcmp(argv[1], "persistence")) check_delete(false);
+    else if (!strcmp(argv[1], "ambiguous")) check_ambiguous_delete();
     else if (!strcmp(argv[1], "ownerless")) { check_delete(true); check_delete(true, 0); }
     else if (!strcmp(argv[1], "occupied")) check_occupied_purge();
     else if (!strcmp(argv[1], "references")) check_ai_references();
@@ -470,8 +546,10 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("sinking", "passenger", "purge", "unload", "persistence", "ownerless",
-                     "occupied", "references", "unloaded"):
+        for case in ("busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
+                     "occupied", "references", "unloaded", "ambiguous"):
+            if case=="ambiguous" and backend=="mysql":
+                continue
             print(f"{backend}: {case}", flush=True)
             result = subprocess.run([str(binary), case], timeout=30)
             if result.returncode:

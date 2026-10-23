@@ -17,8 +17,10 @@
 #include "core/defines.h"
 #include "economy/collector_eligibility.h"
 #include "economy/collector_repository.h"
+#include "economy/divine_trade_result.h"
 #include "item/item_claim_repository.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/persistence_log.h"
 #include "player/player_snapshot_codec.h"
 #include "sql/item_extra_descr_codec.h"
 #include "sql/sql_pool.h"
@@ -254,14 +256,19 @@ bool status_time_field(player_status_field field)
 	       field == player_status_field::time_unspecialized;
 }
 
-query_result apply_status(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_status(MYSQL *connection, const player_snapshot &snapshot, bool wallet_current)
 {
 	std::ostringstream sql;
 	sql << "UPDATE player_data SET last_room=" << snapshot.room_vnum << ",last_save=NOW()";
 	sql << ",output_preferences=" << quote(connection, snapshot.output_preferences);
+	if (wallet_current && player_snapshot_writes_wallet(snapshot))
+		sql << ",wallet_revision=" << snapshot.wallet_revision;
 	// The wallet, epic points and frags are memory's, and the save writes them.
 	for (const player_snapshot_integer &row : snapshot.status_integers)
 	{
+		if (!wallet_current && row.field >= player_status_field::copper &&
+		    row.field <= player_status_field::platinum)
+			continue;
 		const char *column = status_column(row.field);
 		if (!column)
 			return { false, EINVAL };
@@ -375,20 +382,29 @@ query_result apply_skills(MYSQL *connection, const player_snapshot &snapshot)
 			    });
 }
 
-query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot,
+			   bool cargo_only = false, bool preserve_cargo = false)
 {
-	query_result result = execute(connection, "DELETE FROM player_affects WHERE pid=" +
-							  std::to_string(snapshot.pid));
+	query_result result = execute(
+		connection,
+		"DELETE FROM player_affects WHERE pid=" + std::to_string(snapshot.pid) +
+			(cargo_only ? " AND type=" + std::to_string(PLAYER_TRADE_CARGO_AFFECT) :
+			 preserve_cargo ?
+				      " AND type<>" + std::to_string(PLAYER_TRADE_CARGO_AFFECT) :
+				      ""));
 	if (!result.ok || snapshot.affects.empty())
 		return result;
 	std::ostringstream sql;
 	sql << "INSERT INTO player_affects (pid,type,duration,flags,modifier,location,level,"
 	       "bitvector1,bitvector2,bitvector3,bitvector4,bitvector5,custom_msg_char,"
 	       "custom_msg_room) VALUES ";
+	bool first = true;
 	for (size_t index = 0; index < snapshot.affects.size(); ++index)
 	{
 		const auto &row = snapshot.affects[index];
-		sql << (index ? "," : "") << '(' << snapshot.pid << ',' << row.type << ','
+		if (preserve_cargo && row.type == PLAYER_TRADE_CARGO_AFFECT)
+			continue;
+		sql << (first ? "" : ",") << '(' << snapshot.pid << ',' << row.type << ','
 		    << row.duration << ',' << row.flags << ',' << row.modifier << ','
 		    << static_cast<unsigned int>(row.location) << ',' << row.level;
 		for (uint64_t bitvector : row.bitvectors)
@@ -399,8 +415,9 @@ query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot)
 		    << ','
 		    << (row.wear_off_room.empty() ? "NULL" : quote(connection, row.wear_off_room))
 		    << ')';
+		first = false;
 	}
-	return execute(connection, sql.str());
+	return first ? query_result{ true, 0 } : execute(connection, sql.str());
 }
 
 std::string optional_item_string(MYSQL *connection, const player_item_snapshot &row, uint8_t mask,
@@ -826,17 +843,18 @@ query_result apply_trophies(MYSQL *connection, const player_snapshot &snapshot)
 }
 
 query_result apply_components(MYSQL *connection, const player_snapshot &snapshot,
-			      std::vector<claimed_graph> *claims, bool status_current)
+			      std::vector<claimed_graph> *claims, bool status_current,
+			      bool wallet_current, bool preserve_cargo)
 {
 	query_result result = { true, 0 };
 	if ((snapshot.components & PLAYER_COMPONENT_STATUS) && status_current)
-		result = apply_status(connection, snapshot);
+		result = apply_status(connection, snapshot, wallet_current);
 	if (result.ok)
 		result = apply_replacement_rows(connection, snapshot);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_SKILLS))
 		result = apply_skills(connection, snapshot);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_AFFECTS))
-		result = apply_affects(connection, snapshot);
+		result = apply_affects(connection, snapshot, false, preserve_cargo);
 	if (result.ok &&
 	    (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
 		result = apply_items(connection, snapshot, claims);
@@ -852,14 +870,16 @@ query_result apply_components(MYSQL *connection, const player_snapshot &snapshot
 // A character with no player_data row yet gets one (*created). The rest of the save fills
 // it in.
 query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot, bool *created,
-			       player_revision_t *stored_revision, uint64_t *delivered_sequence)
+			       player_revision_t *stored_revision, uint64_t *delivered_sequence,
+			       uint64_t *wallet_revision)
 {
 	*created = false;
 	*stored_revision = 0;
 	*delivered_sequence = 0;
+	*wallet_revision = 0;
 	query_result result = execute(
 		connection,
-		"SELECT save_revision,divine_boon_delivery_seq FROM player_data WHERE pid=" +
+		"SELECT save_revision,divine_boon_delivery_seq,wallet_revision FROM player_data WHERE pid=" +
 			std::to_string(snapshot.pid) + " FOR UPDATE");
 	if (!result.ok)
 		return result;
@@ -868,12 +888,13 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		return { false, mysql_errno(connection) };
 	MYSQL_ROW row = mysql_fetch_row(rows);
 	const bool present = row != nullptr;
-	if (present && row[0] && row[1])
+	if (present && row[0] && row[1] && row[2])
 	{
 		*stored_revision = strtoull(row[0], nullptr, 10);
 		*delivered_sequence = strtoull(row[1], nullptr, 10);
+		*wallet_revision = strtoull(row[2], nullptr, 10);
 	}
-	const bool valid = !present || (row[0] && row[1]);
+	const bool valid = !present || (row[0] && row[1] && row[2]);
 	mysql_free_result(rows);
 	if (!valid)
 		return { false, EINVAL };
@@ -899,7 +920,7 @@ query_result insert_opening_baselines(MYSQL *connection, int pid)
 	query_result result = execute(
 		connection, "INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,"
 			    "opening_silver,opening_gold,opening_platinum,opening_revision) "
-			    "SELECT pid,copper,silver,gold,platinum,0" +
+			    "SELECT pid,copper,silver,gold,platinum,wallet_revision" +
 				    from);
 	if (result.ok)
 		result =
@@ -913,8 +934,69 @@ query_result insert_opening_baselines(MYSQL *connection, int pid)
 	return result;
 }
 
-player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &snapshot)
+// The critical writer locks inbox before player_data; use that order here too.
+query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 {
+	const auto &tag = snapshot->pending_trade;
+	constexpr char digits[] = "0123456789abcdef";
+	std::string operation;
+	for (uint8_t byte : tag.operation)
+	{
+		operation += digits[byte >> 4];
+		operation += digits[byte & 15];
+	}
+	auto query = execute(
+		connection,
+		"SELECT command_hash,command_type,status,result_code=0,result_payload FROM critical_operation_inbox "
+		"WHERE operation_id=UNHEX('" +
+			operation + "') FOR UPDATE");
+	if (!query.ok)
+		return query;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	if (!rows)
+		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+	MYSQL_ROW row = mysql_fetch_row(rows);
+	bool valid = true, committed = false;
+	if (row)
+	{
+		const auto *lengths = mysql_fetch_lengths(rows);
+		divine_trade_result result;
+		valid = lengths && row[0] && lengths[0] == tag.command_hash.size() &&
+			!memcmp(row[0], tag.command_hash.data(), tag.command_hash.size()) &&
+			row[1] && !strcmp(row[1], "19") && row[2] && !strcmp(row[2], "1") &&
+			row[3] && (!strcmp(row[3], "0") || !strcmp(row[3], "1")) && row[4] &&
+			divine_trade_result_decode(reinterpret_cast<const uint8_t *>(row[4]),
+						   lengths[4], &result) &&
+			result.pid == static_cast<uint32_t>(snapshot->pid) &&
+			result.payment == tag.payment &&
+			result.wallet_revision == tag.wallet_revision + 1;
+		committed = valid && !strcmp(row[3], "1");
+	}
+	mysql_free_result(rows);
+	if (!valid)
+		return { false, EILSEQ };
+	const auto settled = player_snapshot_settle_trade(snapshot, committed);
+	return { settled == player_snapshot_codec_result::ok,
+		 static_cast<unsigned int>(
+			 settled == player_snapshot_codec_result::allocation_failure ? ENOMEM :
+										       EILSEQ) };
+}
+
+player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &captured)
+{
+	std::unique_ptr<player_snapshot> revised;
+	if (player_snapshot_trade_pending(captured))
+	{
+		try
+		{
+			revised = std::make_unique<player_snapshot>(captured);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return failure(ENOMEM);
+		}
+	}
+	const auto &snapshot = revised ? *revised : captured;
 	if (!connection || snapshot.pid <= 0 || !snapshot.revision || !snapshot.components ||
 	    (snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
@@ -930,9 +1012,29 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	std::vector<claimed_graph> claims;
 	bool created = false;
 	player_revision_t stored_revision = 0;
-	uint64_t stored_delivery_sequence = 0;
-	query = ensure_player_row(connection, snapshot, &created, &stored_revision,
-				  &stored_delivery_sequence);
+	uint64_t stored_delivery_sequence = 0, stored_wallet_revision = 0;
+	bool unresolved_trade = false;
+	if (revised)
+	{
+		query = settle_pending_trade(connection, revised.get());
+		if (!query.ok && query.error_code == EILSEQ)
+		{
+			// Keep the stored financial projection; a terminal actor no longer
+			// exists to recapture its unrelated state.
+			unresolved_trade = true;
+			revised->pending_trade = {};
+			query = { true, 0 };
+			char record[128];
+			snprintf(
+				record, sizeof(record),
+				"player_save trade_receipt_unresolved pid=%d financial_state=retained",
+				captured.pid);
+			persistence_log_submit(record);
+		}
+	}
+	if (query.ok)
+		query = ensure_player_row(connection, snapshot, &created, &stored_revision,
+					  &stored_delivery_sequence, &stored_wallet_revision);
 	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 	    delivered_sequence > stored_delivery_sequence &&
 	    std::none_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
@@ -940,6 +1042,10 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 			 { return field.field == player_status_field::epics; }))
 		query = { false, EINVAL };
 	const bool status_current = delivered_sequence >= stored_delivery_sequence;
+	// A terminal save has no live actor to recapture. Preserve every other
+	// component while leaving a newer committed purse untouched.
+	const bool wallet_current = !unresolved_trade &&
+				    snapshot.wallet_revision >= stored_wallet_revision;
 	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{
 		const auto rolled_back = execute(connection, "ROLLBACK");
@@ -948,7 +1054,9 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		return { player_save_apply_outcome::stale_revision, stored_revision, 0 };
 	}
 	if (query.ok)
-		query = apply_components(connection, snapshot, &claims, status_current);
+		query = apply_components(
+			connection, snapshot, &claims, status_current, wallet_current,
+			unresolved_trade && captured.pending_trade.has_cargo_effect);
 	if (query.ok && created)
 		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)
@@ -1423,6 +1531,24 @@ template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 	return applied;
 }
 } // namespace
+
+bool player_snapshot_repository_write_cargo_effect(MYSQL *connection, int32_t pid,
+						   const player_affect_snapshot &effect)
+{
+	if (!connection || pid <= 0 || effect.type != PLAYER_TRADE_CARGO_AFFECT ||
+	    effect.modifier < 0)
+	{
+		errno = EINVAL;
+		return false;
+	}
+	player_snapshot image{};
+	image.pid = pid;
+	image.affects.push_back(effect);
+	auto result = apply_affects(connection, image, true);
+	if (!result.ok)
+		errno = result.error_code;
+	return result.ok;
+}
 
 bool player_snapshot_repository_write_pets(MYSQL *connection, const player_snapshot &snapshot)
 {

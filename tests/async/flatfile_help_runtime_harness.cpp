@@ -55,6 +55,19 @@ int main()
 	       "person operating the panel", "bonus will not persist", "10% more proceeds" })
 		require(seadog.find(meaning) != string::npos,
 			"Seadog did not render its owner/panel and cargo-sale rules");
+	for (const char *query : { "boon", "divine boons" })
+	{
+		const string boons = wiki_help(query);
+		for (const char *rule : { "200%", "+25%", "three times", "FIRST qualifying ship",
+					  "Spill Blood", "220", "160", "automatic" })
+			require(boons.find(rule) != string::npos,
+				"Divine help omitted a required rule");
+		require(boons.find("boon shop stat") == string::npos,
+			"Legacy shop directions survived");
+	}
+	require(wiki_help("divineboon").find("unconsumed hourly opportunity") != string::npos,
+		"Staff help missing force timing");
+
 	cout << "flat-file help runtime passed\n";
 	return 0;
 }

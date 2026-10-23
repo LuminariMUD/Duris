@@ -1517,6 +1517,7 @@ static void extend_boon_on_writer(P_char ch, int id, int extend)
 	if (!divine_boon_legacy_admissions_allowed())
 		return;
 	const std::string name = GET_NAME(ch);
+	boon_reward_definition_view_invalidate();
 	sql_read_work_for(
 		ch,
 		[id, extend, name](MYSQL *connection, sql_rows *rows) -> unsigned int
@@ -1546,6 +1547,7 @@ static void extend_boon_on_writer(P_char ch, int id, int extend)
 						    ct, extend, name.c_str(), id)))
 					return error_code;
 			}
+			boon_reward_definition_view_invalidate();
 			rows->push_back(std::move(found[0]));
 			return 0;
 		},
@@ -2702,6 +2704,7 @@ int create_boon(BoonData *bdata, P_char ch)
 	{
 		const BoonData boon = *bdata;
 		const uint64_t runtime_id = ch ? ch->runtime_id : 0;
+		boon_reward_definition_view_invalidate();
 		return sql_read_work(
 			[boon](MYSQL *connection, sql_rows *rows) -> unsigned int
 			{
@@ -2724,6 +2727,7 @@ int create_boon(BoonData *bdata, P_char ch)
 						    boon.bonus2, boon.random, boon.author.c_str(),
 						    boon.pid, boon.repeat)))
 					return error_code;
+				boon_reward_definition_view_invalidate();
 				return sql_select(connection, "SELECT LAST_INSERT_ID()", rows);
 			},
 			[boon, runtime_id](bool ok, const sql_rows &rows)
@@ -2772,6 +2776,7 @@ int remove_boon(int id)
 		       flatfile_boon_result::ok;
 	}
 	// Gona leave boons on the DB for history lookup purposes. Queued on the writer.
+	boon_reward_definition_view_invalidate();
 	return sql_queue("UPDATE boons SET active='0', duration='0' WHERE id='%d'", id);
 }
 

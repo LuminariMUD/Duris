@@ -36,6 +36,30 @@ int main()
                                              &decoded_result));
     assert(decoded_result.entries[0].boon_id == 5);
 
+    // Existing inbox/outbox and flat-file bytes remain readable. Only the SQL
+    // empty-result encoder emits version 2; nonempty results retain old bytes.
+    std::vector<uint8_t> compact;
+    assert(boon_reward_command_encode_result(boon_result, &compact));
+    assert(std::equal(compact.begin(), compact.end(), boon_bytes.begin()));
+    boon_result.entry_count = 0;
+    assert(boon_reward_command_encode_result(boon_result, &boon_bytes));
+    assert(boon_reward_command_decode_result(boon_bytes.data(), boon_bytes.size(),
+                                            &decoded_result));
+    assert(boon_reward_command_encode_result(boon_result, &compact));
+    assert(compact.size() == BOON_REWARD_EMPTY_RESULT_BYTES && compact[6] == 2);
+    assert(boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+    assert(decoded_result.pid == 42 && decoded_result.entry_count == 0);
+    for (size_t length = 0; length < compact.size(); ++length)
+        assert(!boon_reward_command_decode_result(compact.data(), length, &decoded_result));
+    compact[6] = 3;
+    assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+    compact[6] = 2;
+    compact[4] = 1;
+    assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+    compact[4] = 0;
+    compact[0] = 0;
+    assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+
     boon_shop_payload shop = {42, 3};
     critical_command shop_command = {};
     assert(boon_shop_command_build(&shop_command, operation, shop));
@@ -89,7 +113,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
                 "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", f"-I{SRC}",
                 str(harness), str(SRC / "critical_command.c"),
                 str(SRC / "boon_reward_command.c"), str(SRC / "boon_shop_command.c"),
-                str(SRC / "zone_touch_command.c"), str(SRC / "epic_command.c"),
+                str(SRC / "zone_touch_command.c"), str(SRC / "artifact_guild_command.c"), str(SRC / "epic_command.c"),
                 "-lcrypto", "-o", str(binary),
             ], check=True)
             subprocess.run([str(binary)], check=True)
@@ -186,9 +210,18 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         start = transaction.index("bool publish_reward(")
         publication = transaction[start:transaction.index("} // namespace", start)]
         publish = publication.index("boon_publish_transaction_result")
-        acknowledge = publication.index("acknowledge_flat_reward")
-        self.assertLess(publish, acknowledge)
+        retained = publication.index("if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)", publish)
+        self.assertLess(publish, retained)
+        self.assertNotIn("acknowledge_flat_reward", publication)
         self.assertIn("publish_reward(character, reward.operation_id", ready)
+        self.assertIn("legacy_uncheckpointed", ready)
+        outbox = transaction[transaction.index("boon_reward_transaction_outbox_delivery"):transaction.index("boon_reward_health boon_reward_transaction_health_copy")]
+        self.assertNotIn("persistence_alert(", outbox)
+        self.assertNotIn("wizlog(", outbox)
+        self.assertIn("boon_reward_requires_checkpoint(result)", outbox)
+        self.assertIn("boon_reward_requires_checkpoint(result)", publication)
+        self.assertIn("published_flat.insert(key)", publication)
+        self.assertIn("if (retain)", publication)
         self.assertIn("flatfile_boon_find_pending_reward", ready)
 
         self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 1)

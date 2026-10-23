@@ -2,9 +2,9 @@
 
 #include "core/prototypes.h"
 #include "core/utils.h"
-#include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "world/epic.h"
+#include "world/zone_touch_command.h"
 
 #include <algorithm>
 #include <limits>
@@ -15,6 +15,21 @@ namespace
 {
 std::map<uint32_t, std::map<uint64_t, divine_epic_delivery>> pending;
 
+bool effect_proof(const divine_epic_delivery &delivery)
+{
+	if (delivery.artifact_intents)
+		return true;
+	uint64_t words[2] = {};
+	for (size_t i = 0; i < delivery.operation_id.bytes.size(); ++i)
+		words[i / 8] = (words[i / 8] << 8) | delivery.operation_id.bytes[i];
+	persistence_alert(AVATAR, "divine_effects", "redacted", "none", "none", "legacy_unproven",
+			  "operation=%llu:%llu sequence=%llu",
+			  static_cast<unsigned long long>(words[0]),
+			  static_cast<unsigned long long>(words[1]),
+			  static_cast<unsigned long long>(delivery.sequence));
+	return false; // Keep the original receipt; it cannot prove which entity effects were saved.
+}
+
 bool apply(P_char ch, const divine_epic_delivery &delivery)
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) != static_cast<int>(delivery.pid) ||
@@ -23,26 +38,35 @@ bool apply(P_char ch, const divine_epic_delivery &delivery)
 	auto *pc = ch->only.pc;
 	if (delivery.sequence <= pc->divine_boon_delivery_seq)
 		return true;
+	if (!effect_proof(delivery))
+		return false;
 	if (delivery.previous != pc->divine_boon_delivery_seq ||
 	    pc->epics > std::numeric_limits<int64_t>::max() - delivery.amount)
 		return false;
 	// Level/achievement hooks can request saves while publishing. Hold those
 	// captures until the balance, watermark and all recipient effects agree.
 	pc->divine_boon_delivery_applying = true;
-	// This receipt is committed before completion delivery or login recovery.
-	// Defer the artifact/guild effect alongside its epic award.
-	if (!artifact_guild_transaction_submit(ch, delivery.operation_id,
-					       static_cast<int>(delivery.amount), EPIC_PVP))
-		logit(LOG_STATUS,
-		      "Divine epic receipt committed, but artifact/guild effect unavailable.");
+	// Immutable entity intents belong to the primary transaction, independently of login.
 	pc->epics += delivery.amount;
 	pc->epic_revision = std::max(pc->epic_revision, delivery.sequence);
 	pc->divine_boon_delivery_seq = delivery.sequence;
-	epic_publish_pvp_award(ch, static_cast<int>(delivery.amount));
 	if (delivery.spill_blood)
 		if (auto *task = get_epic_task(ch);
 		    task && (task->modifier == SPILL_BLOOD || task->modifier == -SPILL_BLOOD))
 			affect_remove(ch, task);
+	if (delivery.zone)
+	{
+		zone_touch_result result;
+		result.zone_number = delivery.zone_number;
+		result.stone_level = delivery.stone_level;
+		result.group_size = 1;
+		result.participant_pids[0] = delivery.pid;
+		result.awards[0] = { static_cast<int32_t>(delivery.amount), delivery.errand,
+				     delivery.flags };
+		epic_publish_stone_award(ch, result, 0);
+	}
+	else
+		epic_publish_pvp_award(ch, static_cast<int>(delivery.amount));
 	pc->divine_boon_delivery_applying = false;
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_AFFECTS |
@@ -113,6 +137,8 @@ bool divine_boon_delivery_recover(P_char ch, const std::vector<divine_epic_deliv
 			return false;
 		if (delivery.sequence <= previous)
 			continue;
+		if (!effect_proof(delivery))
+			return false;
 		if (delivery.previous != previous || balance > INT64_MAX - delivery.amount)
 			return false;
 		previous = delivery.sequence;

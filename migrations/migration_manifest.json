@@ -678,6 +678,27 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "fc3590231a567095458ff25bf19635a479eac3f2b63f0eb360900c5279cf423a",
       "verify_checksum": "0e46e28c7f4bb57110b03dbe6c338d9a48d9169ea0b595c9971f7620e29fff94"
+    },
+    {
+      "id": "0050_divine_trade_state",
+      "sequence": 51,
+      "description": "Persist atomic Divine trade manifests and market generation",
+      "apply": "immutable/0050_divine_trade_state.sql",
+      "verify": "immutable/0050_divine_trade_state.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "3657f30c78faea6b728e456220c62737aceea2e44968d0e1b88d27e57674861c",
+      "verify_checksum": "6e580109ffc73d3e1e82493c1b6b9b4df5dad38fbb9a244de1c7b2e1f53b9508"
+
+    },
+    {
+      "id": "0051_divine_effect_delivery",
+      "sequence": 52,
+      "description": "Checkpoint prepared artifact and guild delivery IDs with entity snapshots",
+      "apply": "immutable/0051_divine_effect_delivery.sql",
+      "verify": "immutable/0051_divine_effect_delivery.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "60c23ec1a9a172ad04fda08dc041bc0d90192e69054008b06d282b00b86a32b7",
+      "verify_checksum": "3f37071ddb6706e39a4736daa0bcd3d156acbb192e08acbf760985ef706b6c2c"
     }
   ],
   "engine_verifiers": [

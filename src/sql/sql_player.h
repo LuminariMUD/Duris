@@ -164,8 +164,9 @@ bool sql_save_ship(struct ShipData *ship);
 bool sql_load_all_ships(void);
 struct ShipData *sql_place_ship(const char *owner_name, bool *unplaced);
 bool sql_ship_stored(const char *owner_name);
+void sql_forget_ship(const char *owner_name);
 std::string sql_delete_ship_statement(const char *owner_name);
-bool sql_delete_ship(const char *owner_name);
+bool sql_delete_ship(const char *owner_name, uint32_t ship_id = 0);
 
 // guilds
 class Guild;
@@ -181,4 +182,7 @@ bool sql_remove_spellbook_mob(int pid, int mob_vnum);
 bool sql_has_spellbook_mob(int pid, int mob_vnum);
 int *sql_get_spellbook_mobs(int pid, int *count);
 
+// False while a ship receipt is unfinished or needs a retry before copyover.
+bool sql_ship_write_pulse();
+void sql_reserve_ship_ids(uint32_t maximum);
 #endif // __SQL_PLAYER_H_INCLUDED__

@@ -1,3 +1,9 @@
+#include "economy/divine_trade_repository.h"
+#include "player/player_snapshot_codec.h"
+#include <openssl/sha.h>
+#include "flatfile/flatfile_ship_repository.h"
+#include "flatfile/flatfile_cargo_repository.h"
+#include "ships/ships.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "flatfile/flatfile_boon_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
@@ -12,7 +18,9 @@
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "combat/combat_outcome_command.h"
+#include "world/zone_touch_command.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <ctime>
 #include <openssl/sha.h>
@@ -655,6 +663,7 @@ static void saved_wallet_matrix(const fs::path &path)
 			flatfile_identity_result::ok,
 		"wallet player identity claim");
 	auto snapshot = make_full(1);
+	snapshot.wallet_revision = 7; // Creation can already have granted starter money.
 	for (const std::array<int64_t, 4> &wallet :
 	     { std::array<int64_t, 4>{ 11, 12, 13, 14 }, std::array<int64_t, 4>{ 5, 0, 0, 1 },
 	       std::array<int64_t, 4>{ 0, 0, 0, 0 } })
@@ -681,6 +690,7 @@ static void saved_wallet_matrix(const fs::path &path)
 		flatfile_player_domain_record domain;
 		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
 					flatfile_player_domain_result::ok &&
+				domain.domains.wallet_revision == snapshot.wallet_revision &&
 				domain.domains.wallet ==
 					std::array<uint64_t, 4>{
 						static_cast<uint64_t>(wallet[0]),
@@ -690,7 +700,8 @@ static void saved_wallet_matrix(const fs::path &path)
 				domain.domains.epics == wallet[0] * 100 - 5 &&
 				domain.domains.frags == wallet[1] - 3 &&
 				domain.domains.old_frags == wallet[2] + 1,
-			"the save did not write the wallet, epics and frags it carries");
+			"the save did not write the wallet, epics, frags and captured wallet revision");
+		++snapshot.wallet_revision;
 	}
 	// A bank change is a delta added to the account's record for its side, created
 	// when missing; a debit the record cannot cover is refused and changes nothing.
@@ -726,6 +737,530 @@ static void saved_wallet_matrix(const fs::path &path)
 }
 
 /** Inspect synthetic authority on request, otherwise exercise player repository durability and recovery. */
+// Real dispatcher -> six authority after-images -> interrupted commit/retry.
+static void divine_trade_settlement(const fs::path &base)
+{
+	for (int boundary = 0; boundary <= 6; ++boundary)
+	{
+		const bool contraband = boundary % 2;
+		const bool zero_sale = boundary == 6;
+		const int slot_type = contraband ? SLOT_CONTRABAND : SLOT_CARGO;
+		const auto goods = contraband ? divine_trade_goods::contraband :
+						divine_trade_goods::cargo;
+		const auto path = base / std::to_string(boundary);
+		std::string root = path.string();
+		const auto apply = [&](const critical_command &value)
+		{ return flatfile_critical_command_repository_apply_selected(value, root.data()); };
+		for (const auto &part :
+		     { path, path / "players", path / "domains", path / "metadata",
+		       path / "identities", path / "identities/names" })
+		{
+			fs::create_directories(part);
+			fs::permissions(part, fs::perms::owner_all, fs::perm_options::replace);
+		}
+		std::string error;
+		int32_t pid = 0;
+		for (int i = 0; i < 42; ++i)
+			require(flatfile_identity_allocate_pid(root, &pid, &error) ==
+					flatfile_identity_result::ok,
+				error);
+		require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
+				flatfile_identity_result::ok,
+			error);
+		auto opening = make_full(1);
+		opening.wallet_revision = 7;
+		require(flatfile_player_snapshot_apply(root, opening, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		flatfile_ship_record ship;
+		ship.ship_id = 1;
+		ship.revision = 1;
+		ship.owner_pid = 42;
+		ship.owner_name = "player";
+		ship.ship_name = "Trade fixture";
+		ship.anchor_room = 1201;
+		ship.slots.push_back({ 3, slot_type, 2, SLOT_HOLD, 0, { 9, 900, -1, -1, -1 } });
+		require(flatfile_ship_establish(root, { ship }, &error) == flatfile_ship_result::ok,
+			"trade ship establish: " + error);
+		flat_cargo_record market;
+		market.cargo.fill(1.0f);
+		market.contraband.fill(1.0f);
+		require(flatfile_cargo_save(root, market, &error) == flat_cargo_result::ok, error);
+		critical_entity_key account;
+		require(currency_account_key("Account-One", 0, &account),
+			"canonical trade account");
+		divine_boon_slot boon;
+		boon.id = 17;
+		boon.category = divine_boon_category::cargo;
+		boon.starts_at = 100;
+		boon.expires_at = 14500;
+		boon.source_port = boon.cargo_commodity = boon.contraband_commodity = 2;
+		boon.destination_port = 4;
+		critical_operation_id buy_id{}, sell_id{};
+		require(critical_operation_id_generate(&buy_id) &&
+				critical_operation_id_generate(&sell_id),
+			"trade IDs");
+		divine_trade_purchase buy;
+		buy.operation = buy_id;
+		buy.goods = goods;
+		buy.account = account.id;
+		buy.ship_id = 1;
+		buy.full_hold = 10;
+		buy.slot = 3;
+		buy.source_port = 2;
+		buy.at = 101;
+		buy.quantity = 1;
+		buy.paid = 100;
+		buy.slot_quantity_before = 9;
+		buy.slot_basis_before = 900;
+		divine_trade_payload purchase;
+		purchase.pid = purchase.ship_owner_pid = 42;
+		purchase.ship_id = 1;
+		purchase.wallet_revision = 7;
+		purchase.admitted_at = 101;
+		purchase.payment = -100;
+		purchase.wallet_after.amount = { 1, 3, 3, 15 }; // 15431 - 100 = 15331.
+		purchase.slots_after.push_back(
+			{ 3, slot_type, 2, SLOT_HOLD, 0, { 10, 1000, -1, -1, -1 } });
+		purchase.slots_before = ship.slots;
+		purchase.crew_before = ship.crew;
+		purchase.market_after.push_back({ 2, 2, goods, 1.03f, 100 });
+		require(divine_trade_prepare_purchase({}, boon, buy, &purchase.book_after),
+			"prepare paid trade lot");
+		critical_command command;
+		require(divine_trade_command_build(&command, buy_id, purchase),
+			"prepare buy command");
+		for (int changed_field = 0; changed_field < 2; ++changed_field)
+		{
+			std::vector<flatfile_ship_record> stored;
+			require(flatfile_ship_list(root, &stored, &error) ==
+					flatfile_ship_result::ok,
+				"read ship preimage");
+			const auto original = stored.front();
+			auto changed = original;
+			if (changed_field)
+				changed.crew.sail_chief = 1;
+			else
+			{
+				changed.slots[0].values[0] = 8;
+				changed.slots[0].values[1] = 800;
+			}
+			require(flatfile_ship_upsert(root, &changed, &error) ==
+					flatfile_ship_result::ok,
+				"ordinary ship change before delayed trade");
+			critical_operation_id stale_id;
+			require(critical_operation_id_generate(&stale_id), "stale ship command id");
+			auto stale_trade = purchase;
+			stale_trade.book_after.lots.back().purchase = stale_id;
+			critical_command stale_command;
+			require(divine_trade_command_build(&stale_command, stale_id, stale_trade),
+				"prepare delayed ship command");
+			require(apply(stale_command).error_code == ESTALE,
+				"trade overwrote changed ship slot or crew");
+			require(flatfile_ship_list(root, &stored, &error) ==
+						flatfile_ship_result::ok &&
+					stored[0].slots == changed.slots &&
+					stored[0].crew == changed.crew,
+				"stale trade changed ordinary ship state");
+			auto restore = original;
+			require(flatfile_ship_upsert(root, &restore, &error) ==
+					flatfile_ship_result::ok,
+				"restore ship preimage for journal boundary test");
+		}
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+		auto applied = apply(command);
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+		require(applied.outcome == critical_apply_outcome::retryable_failure,
+			"buy journal fault did not fire");
+		applied = apply(command);
+		require(applied.outcome == critical_apply_outcome::already_applied,
+			"buy retry was not a stored receipt");
+		std::vector<divine_trade_book> books;
+		require(divine_trade_flatfile_books(root, 17, &books) && books.size() == 1 &&
+				books[0] == purchase.book_after,
+			"buy manifest did not recover");
+		require(divine_trade_flatfile_restore_validate(root, &error),
+			"valid trade history did not qualify");
+		const auto market_path = fs::path(root) / "metadata" / "cargo_market";
+		std::ifstream old_market_input(market_path, std::ios::binary);
+		const std::string old_market{ std::istreambuf_iterator<char>(old_market_input),
+					      std::istreambuf_iterator<char>() };
+		char buy_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+		critical_operation_id_to_hex(buy_id, buy_hex, sizeof(buy_hex));
+		for (const auto &name :
+		     { std::string("divine-trade-17-") +
+			       std::to_string(purchase.book_after.account) + ".book",
+		       std::string("divine-trade-command-") + buy_hex + ".receipt" })
+		{
+			std::fstream file(std::filesystem::path(root) / "domains" / name,
+					  std::ios::in | std::ios::out | std::ios::binary);
+			char original;
+			file.seekg(-1, std::ios::end);
+			file.read(&original, 1);
+			require(file.good(), "open trade history corruption fixture");
+			const char corrupt = original ^ 1;
+			file.seekp(-1, std::ios::end);
+			file.write(&corrupt, 1);
+			file.flush();
+			require(!divine_trade_flatfile_restore_validate(root, &error),
+				"restore qualification ignored corrupt trade history");
+			file.seekp(-1, std::ios::end);
+			file.write(&original, 1);
+			file.flush();
+			require(divine_trade_flatfile_restore_validate(root, &error),
+				"repaired trade history did not qualify");
+		}
+
+		std::vector<flatfile_ship_record> ships;
+		require(flatfile_ship_list(root, &ships, &error) == flatfile_ship_result::ok &&
+				ships.size() == 1 && ships[0].slots[0].values[0] == 10,
+			"paid purchase cargo did not recover");
+		flatfile_player_domain_record domain;
+		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
+					flatfile_player_domain_result::ok &&
+				domain.domains.wallet == std::array<uint64_t, 4>{ 1, 3, 3, 15 } &&
+				domain.domains.wallet_revision == 8,
+			"paid purchase wallet did not recover");
+		if (boundary == 0)
+		{
+			divine_trade_removal loss;
+			loss.ship_id = 1;
+			loss.slot = 3;
+			loss.goods = goods;
+			loss.source_port = 2;
+			loss.at = 150;
+			loss.slot_quantity_before = loss.quantity = 10;
+			loss.slot_basis_before = 1000;
+			divine_trade_book retired;
+			divine_trade_consumption removed;
+			require(divine_trade_prepare_removal(purchase.book_after, {}, loss,
+							     &retired, &removed) &&
+					retired.lots.empty() && !retired.consumed &&
+					retired.first_full_hold == 10,
+				"prepare complete ordinary cargo loss");
+			flatfile_authority_operation proof;
+			proof.filename = "divine-trade-17-" + std::to_string(account.id) + ".book";
+			require(divine_trade_book_encode(retired, &proof.bytes),
+				"encode loss proof");
+			const std::vector<flatfile_authority_operation> after_images{ proof };
+			for (bool deletion : { false, true })
+				for (int interrupted = 0; interrupted <= 2; ++interrupted)
+				{
+					const auto clone =
+						base /
+						(std::string(deletion ? "delete-" : "loss-") +
+						 std::to_string(interrupted));
+					fs::copy(path, clone, fs::copy_options::recursive);
+					auto changed = ships[0];
+					changed.slots[0] = {
+						3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 }
+					};
+					const std::string step = std::to_string(interrupted);
+					const char *fault =
+						interrupted ?
+							"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION" :
+							"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL";
+					setenv(fault, interrupted ? step.c_str() : "1", 1);
+					const auto saved =
+						deletion ? flatfile_ship_remove(clone.string(), 1,
+										changed.owner_name,
+										&error,
+										&after_images) :
+							   flatfile_ship_upsert(clone.string(),
+										&changed, &error,
+										&after_images);
+					unsetenv(fault);
+					require(saved == flatfile_ship_result::io_error,
+						"ordinary ship loss fault did not fire");
+					std::vector<flatfile_ship_record> restored_ships;
+					require(flatfile_ship_list(clone.string(), &restored_ships,
+								   &error) ==
+								flatfile_ship_result::ok &&
+							(deletion ? restored_ships.empty() :
+								    restored_ships[0]
+										    .slots[0]
+										    .slot_type ==
+									    SLOT_EMPTY),
+						"loss inventory journal recovery");
+					std::vector<divine_trade_book> restored_books;
+					require(divine_trade_flatfile_books(clone.string(), 17,
+									    &restored_books) &&
+							restored_books.size() == 1 &&
+							restored_books[0] == retired,
+						"loss proof/cap did not recover with inventory");
+				}
+		}
+		auto conflict = purchase;
+		conflict.wallet_after.amount[0]++;
+		require(divine_trade_command_build(&command, buy_id, conflict),
+			"conflicting retry command");
+		require(apply(command).error_code == EEXIST,
+			"trade identity conflict was accepted");
+		auto stale = opening;
+		stale.revision = 9999;
+		require(flatfile_player_snapshot_apply(root, stale, &error).outcome ==
+					player_save_apply_outcome::applied &&
+				flatfile_player_domain_load(root, 42, "Account-One", 0, &domain,
+							    &error) ==
+					flatfile_player_domain_result::ok &&
+				domain.domains.wallet == std::array<uint64_t, 4>{ 1, 3, 3, 15 } &&
+				domain.domains.wallet_revision == 8,
+			"old capture overwrote committed purchase money");
+		divine_trade_removal remove;
+		remove.goods = goods;
+		remove.account = account.id;
+		remove.ship_id = 1;
+		remove.slot = 3;
+		remove.source_port = 2;
+		remove.destination_port = 4;
+		remove.at = 200;
+		remove.slot_quantity_before = remove.quantity = 10;
+		remove.slot_basis_before = 1000;
+		divine_trade_payload sale;
+		sale.action = divine_trade_action::sale;
+		sale.pid = sale.ship_owner_pid = 42;
+		sale.ship_id = 1;
+		sale.generation = 1;
+		sale.book_revision = 1;
+		sale.wallet_revision = 8;
+		sale.admitted_at = 200;
+		sale.payment =
+			zero_sale ? 0 :
+				    1230; // 10 * 120 ordinary + only the one eligible crate * 30.
+		sale.wallet_after.amount = zero_sale ? std::array<int64_t, 4>{ 1, 3, 3, 15 } :
+						       std::array<int64_t, 4>{ 1, 6, 5, 16 };
+		sale.slots_after.push_back({ 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } });
+		sale.slots_before = purchase.slots_after;
+		sale.crew_before = purchase.crew_after;
+		sale.market_after.push_back(
+			{ 4, 2, goods, zero_sale ? 0.0f : .95f, zero_sale ? 0 : 120 });
+		divine_trade_consumption consumed;
+		require(divine_trade_prepare_removal(books[0], boon, remove, &sale.book_after,
+						     &consumed) &&
+				consumed.qualifying_quantity == 1,
+			"merged cargo sale boosted old stock");
+		sale.qualifying_quantity = consumed.qualifying_quantity;
+		sale.has_cargo_effect = !contraband && !zero_sale;
+		sale.cargo_effect.type = PLAYER_TRADE_CARGO_AFFECT;
+		sale.cargo_effect.duration = -1;
+		sale.cargo_effect.modifier = 10005;
+
+		require(divine_trade_command_build(&command, sell_id, sale),
+			"prepare sale command");
+		const std::string step = std::to_string(boundary);
+		setenv(boundary ? "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION" :
+				  "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL",
+		       boundary ? step.c_str() : "1", 1);
+		applied = apply(command);
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+		require(applied.outcome == critical_apply_outcome::retryable_failure,
+			"sale boundary fault did not fire");
+		applied = apply(command);
+		require(applied.outcome == critical_apply_outcome::already_applied,
+			"sale retry repeated the financial operation");
+		char sell_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+		critical_operation_id_to_hex(sell_id, sell_hex, sizeof(sell_hex));
+		const auto buy_file = path / "domains" /
+				      (std::string("divine-trade-command-") + buy_hex + ".receipt");
+		const auto sell_file =
+			path / "domains" /
+			(std::string("divine-trade-command-") + sell_hex + ".receipt");
+		std::ifstream receipt_input(sell_file, std::ios::binary);
+		const std::vector<uint8_t> current_receipt{ std::istreambuf_iterator<char>(
+								    receipt_input),
+							    std::istreambuf_iterator<char>() };
+		auto legacy_receipt = current_receipt;
+		legacy_receipt.erase(legacy_receipt.begin() + 12,
+				     legacy_receipt.begin() + 12 + CRITICAL_COMMAND_ID_BYTES);
+		legacy_receipt[7] = '1';
+		SHA256(legacy_receipt.data(), legacy_receipt.size() - SHA256_DIGEST_LENGTH,
+		       legacy_receipt.data() + legacy_receipt.size() - SHA256_DIGEST_LENGTH);
+		{
+			std::ofstream legacy(sell_file, std::ios::binary | std::ios::trunc);
+			legacy.write(reinterpret_cast<const char *>(legacy_receipt.data()),
+				     legacy_receipt.size());
+		}
+		require(!divine_trade_flatfile_restore_validate(root, &error),
+			"unbound legacy receipt restore was approved");
+		require(apply(command).outcome == critical_apply_outcome::already_applied &&
+				divine_trade_flatfile_restore_validate(root, &error),
+			"proven legacy retry did not upgrade its receipt identity");
+		{
+			std::ofstream restored(sell_file, std::ios::binary | std::ios::trunc);
+			restored.write(reinterpret_cast<const char *>(current_receipt.data()),
+				       current_receipt.size());
+		}
+		const auto temporary = path / "domains" / "receipt-swap-fixture";
+		fs::rename(buy_file, temporary);
+		fs::rename(sell_file, buy_file);
+		fs::rename(temporary, sell_file);
+		require(!divine_trade_flatfile_restore_validate(root, &error) &&
+				apply(command).error_code == EEXIST,
+			"swapped valid receipts passed filename binding");
+		fs::rename(buy_file, temporary);
+		fs::rename(sell_file, buy_file);
+		fs::rename(temporary, sell_file);
+		require(divine_trade_flatfile_restore_validate(root, &error) &&
+				apply(command).outcome == critical_apply_outcome::already_applied,
+			"correct receipt identities did not restore");
+
+		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
+					flatfile_player_domain_result::ok &&
+				domain.domains.wallet ==
+					(zero_sale ? std::array<uint64_t, 4>{ 1, 3, 3, 15 } :
+						     std::array<uint64_t, 4>{ 1, 6, 5, 16 }) &&
+				domain.domains.wallet_revision == 9,
+			"sale lost or duplicated its payment");
+		require(flatfile_ship_list(root, &ships, &error) == flatfile_ship_result::ok &&
+				ships[0].slots[0].slot_type == SLOT_EMPTY,
+			"sale restored consumed cargo");
+		require(flatfile_cargo_load(root, &market, &error) == flat_cargo_result::ok &&
+				market.trade_generation == 2 &&
+				(contraband ? market.contraband :
+					      market.cargo)[4 * NUM_PORTS + 2] ==
+					(zero_sale ? 0.0f : .95f),
+			"sale market did not commit");
+		std::ifstream new_market_input(market_path, std::ios::binary);
+		const std::string new_market{ std::istreambuf_iterator<char>(new_market_input),
+					      std::istreambuf_iterator<char>() };
+		{
+			std::ofstream rollback(market_path, std::ios::binary | std::ios::trunc);
+			rollback << old_market;
+		}
+		require(!divine_trade_flatfile_restore_validate(root, &error),
+			"valid older market qualified with newer successful receipts");
+		{
+			std::ofstream restore(market_path, std::ios::binary | std::ios::trunc);
+			restore << new_market;
+		}
+		require(divine_trade_flatfile_restore_validate(root, &error),
+			"matching market generation did not qualify");
+		require(divine_trade_flatfile_books(root, 17, &books) && books.size() == 1 &&
+				books[0].lots.empty() && books[0].consumed == 1 &&
+				books[0].first_full_hold == 10,
+			"sale lost the fixed spent allowance");
+		applied = apply(command);
+		require(applied.outcome == critical_apply_outcome::already_applied,
+			"sale receipt was not permanent");
+		player_snapshot saved;
+		require(flatfile_player_snapshot_load(root, 42, &saved, &error) ==
+				flatfile_player_load_result::ok,
+			error);
+		if (sale.has_cargo_effect)
+			require(std::any_of(saved.affects.begin(), saved.affects.end(),
+					    [](const auto &af)
+					    { return af.type == 2110 && af.modifier == 10005; }),
+				"financial sale omitted cargo achievement");
+		auto captured = opening;
+		captured.revision = 10000;
+		captured.wallet_revision = 9;
+		captured.pending_trade.operation = sell_id.bytes;
+		captured.pending_trade.payment = sale.payment;
+		captured.pending_trade.wallet_revision = 8;
+		captured.pending_trade.has_cargo_effect = sale.has_cargo_effect;
+		captured.pending_trade.cargo_effect = sale.cargo_effect;
+		std::vector<uint8_t> encoded_command;
+		require(critical_command_encode(command, &encoded_command) ==
+				critical_command_codec_result::ok,
+			"encode pending trade identity");
+		SHA256(encoded_command.data(), encoded_command.size(),
+		       captured.pending_trade.command_hash.data());
+		for (auto &row : captured.status_integers)
+		{
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				const unsigned i =
+					static_cast<unsigned>(row.field) -
+					static_cast<unsigned>(player_status_field::copper);
+				row.signed_value = i ? purchase.wallet_after.amount[i] : 21;
+			}
+			if (row.field == player_status_field::level)
+				row.signed_value = 51;
+		}
+		const auto merged = zero_sale ? std::array<uint64_t, 4>{ 21, 3, 3, 15 } :
+						std::array<uint64_t, 4>{ 21, 6, 5, 16 };
+		const auto verify = [&]()
+		{
+			require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain,
+							    &error) ==
+						flatfile_player_domain_result::ok &&
+					domain.domains.wallet == merged &&
+					domain.domains.wallet_revision == 10,
+				"pending capture lost/repeated payment");
+			require(flatfile_player_snapshot_load(root, 42, &saved, &error) ==
+						flatfile_player_load_result::ok &&
+					saved.status_integers[0].signed_value == 51 &&
+					!player_snapshot_trade_pending(saved),
+				"pending capture lost ordinary status or retained tag");
+			if (sale.has_cargo_effect)
+				require(std::any_of(saved.affects.begin(), saved.affects.end(),
+						    [](const auto &af) {
+							    return af.type == 2110 &&
+								   af.modifier == 10005;
+						    }),
+					"pending affect capture erased cargo achievement");
+		};
+		require(flatfile_player_snapshot_apply(root, captured, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+		require(flatfile_player_snapshot_apply(root, captured, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+		auto corrupt = captured;
+		corrupt.pending_trade.command_hash[0] ^= 1;
+		corrupt.components |= PLAYER_COMPONENT_TROPHIES;
+		corrupt.trophies.push_back({ 123456, 77 });
+		player_affect_snapshot unrelated{};
+		unrelated.type = 1234;
+		unrelated.modifier = 77;
+		corrupt.affects.push_back(unrelated);
+		require(flatfile_player_snapshot_apply(root, corrupt, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"unresolved receipt dropped the terminal capture");
+		verify();
+		require(std::any_of(
+				saved.trophies.begin(), saved.trophies.end(), [](const auto &row)
+				{ return row.zone_number == 123456 && row.experience == 77; }) &&
+				std::any_of(saved.affects.begin(), saved.affects.end(),
+					    [](const auto &row)
+					    { return row.type == 1234 && row.modifier == 77; }),
+			"receipt quarantine lost unrelated trophy or affect state");
+		auto unpaid = captured;
+		require(player_snapshot_settle_trade(&unpaid, true) ==
+				player_snapshot_codec_result::ok,
+			"prepare current purse fixture");
+		unpaid.pending_trade = captured.pending_trade;
+		critical_operation_id absent;
+		require(critical_operation_id_generate(&absent), "absent trade id");
+		unpaid.pending_trade.operation = absent.bytes;
+		require(flatfile_player_snapshot_apply(root, unpaid, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+		critical_command rejected;
+		require(divine_trade_command_build(&rejected, absent, sale),
+			"build rejected trade");
+		require(apply(rejected).error_code == ESTALE,
+			"stale trade did not retain rejection");
+		encoded_command.clear();
+		require(critical_command_encode(rejected, &encoded_command) ==
+				critical_command_codec_result::ok,
+			"encode rejected trade");
+		SHA256(encoded_command.data(), encoded_command.size(),
+		       unpaid.pending_trade.command_hash.data());
+		require(flatfile_player_snapshot_apply(root, unpaid, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+	}
+	std::cout
+		<< "Divine trade purchase/sale recovery passed at journal and all six after-image boundaries\n";
+}
+
 int main(int argc, char **argv)
 {
 	if ((argc == 4 || argc == 5) && std::string(argv[2]) == "artifact-owner")
@@ -1006,6 +1541,7 @@ int main(int argc, char **argv)
 	require(argc == 2, "state root argument required");
 	const fs::path root = argv[1];
 	saved_wallet_matrix(root / "saved-wallet");
+	divine_trade_settlement(root / "trade-settlement");
 	const fs::path players = root / "players";
 	const fs::path identities = root / "identities/names";
 	const fs::path domains = root / "domains";
@@ -1037,7 +1573,8 @@ int main(int argc, char **argv)
 	std::vector<uint8_t> legacy_bytes;
 	require(player_snapshot_encode(full, &legacy_bytes) == player_snapshot_codec_result::ok,
 		"could not encode legacy-compatible status fixture");
-	legacy_bytes[0] = 9; // Version 9 has the same layout, without the new status field.
+	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1);
+	legacy_bytes[0] = 9; // Older status has no delivery field or wallet metadata.
 	player_snapshot legacy;
 	uint64_t legacy_sequence = 99;
 	require(player_snapshot_decode(legacy_bytes.data(), legacy_bytes.size(), &legacy) ==
@@ -1283,6 +1820,10 @@ int main(int argc, char **argv)
 		require(flatfile_player_domain_apply(root.string(), command).outcome ==
 				critical_apply_outcome::applied,
 			"prepare PvP receipt");
+		command.operation_id.bytes[0] = 224;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+				critical_apply_outcome::applied,
+			"prepare second PvP receipt");
 		player_load_request recovery = {};
 		recovery.request_id = 900;
 		recovery.pid = 42;
@@ -1291,16 +1832,18 @@ int main(int argc, char **argv)
 			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
 		const auto owed = flatfile_player_load_repository_execute(root.string(), recovery);
 		require(owed.outcome == player_load_outcome::applied &&
-				owed.divine_epic_deliveries.size() == 1 &&
+				owed.divine_epic_deliveries.size() == 2 &&
 				owed.divine_epic_deliveries[0].amount == 150 &&
-				owed.divine_epic_deliveries[0].sequence == 1,
+				owed.divine_epic_deliveries[0].sequence == 1 &&
+				owed.divine_epic_deliveries[1].sequence == 2 &&
+				owed.divine_epic_deliveries[1].previous == 1,
 			"flat login omitted an unpaid prepared receipt");
 		auto credited = make_full(11);
 		for (auto &field : credited.status_integers)
 			if (field.field == player_status_field::epics)
-				field.signed_value = owed.domains.epics + 150;
+				field.signed_value = owed.domains.epics + 300;
 		credited.status_integers.push_back(
-			{ player_status_field::divine_boon_delivery_seq, 0, 1, true });
+			{ player_status_field::divine_boon_delivery_seq, 0, 2, true });
 		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
 		require(flatfile_player_snapshot_apply(root.string(), credited, &error).outcome ==
 				player_save_apply_outcome::retryable_failure,
@@ -1310,7 +1853,7 @@ int main(int argc, char **argv)
 			flatfile_player_load_repository_execute(root.string(), recovery);
 		require(paid_credit.outcome == player_load_outcome::applied &&
 				paid_credit.divine_epic_deliveries.empty() &&
-				paid_credit.domains.epics == owed.domains.epics + 150,
+				paid_credit.domains.epics == owed.domains.epics + 300,
 			"flat checkpoint recovery lost or duplicated the prepared payout: outcome=" +
 				std::to_string(static_cast<unsigned>(paid_credit.outcome)) +
 				", balance=" + std::to_string(paid_credit.domains.epics) +
@@ -1319,10 +1862,124 @@ int main(int argc, char **argv)
 				", component=" +
 				(paid_credit.failed_component ? paid_credit.failed_component :
 								"none"));
+		zone_touch_payload touch = {};
+		touch.zone_number = 18;
+		touch.toucher_pid = 42;
+		touch.stone_uid = 987654321;
+		touch.touched_at = 1200;
+		touch.boot_time = 1000;
+		touch.group_size = 1;
+		touch.participant_pids[0] = 42;
+		touch.epic_value = 100;
+		touch.alignment_delta = 1;
+		touch.prepared_delivery = true;
+		touch.awards[0] = { 150, 0, 0, 7, 100 };
+		critical_command stone;
+		critical_operation_id stone_id;
+		stone_id.bytes[0] = 225;
+		require(zone_touch_command_build(&stone, stone_id, touch), "build prepared stone");
+		stone.accepted_at_usec = 1;
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+		require(flatfile_player_domain_apply(root.string(), stone).outcome ==
+				critical_apply_outcome::retryable_failure,
+			"stone claim journal fault");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+		const auto stone_replay = flatfile_player_domain_apply(root.string(), stone);
+		require(stone_replay.outcome == critical_apply_outcome::already_applied,
+			"stone claim recovery");
+		zone_touch_result stone_receipt;
+		require(zone_touch_command_decode_result(stone_replay.result_payload.data(),
+							 stone_replay.result_size,
+							 &stone_receipt) &&
+				stone_receipt.revisions[0] == 3 && stone_receipt.previous[0] == 2 &&
+				stone_receipt.awards[0].amount == 150,
+			"stone receipt lost preparation");
+		const auto stone_owed =
+			flatfile_player_load_repository_execute(root.string(), recovery);
+		require(stone_owed.outcome == player_load_outcome::applied &&
+				stone_owed.divine_epic_deliveries.size() == 1 &&
+				stone_owed.divine_epic_deliveries[0].zone &&
+				stone_owed.divine_epic_deliveries[0].sequence == 3 &&
+				stone_owed.domains.epics == paid_credit.domains.epics,
+			"unpaid stone reload changed balance");
+		require(std::binary_search(stone_owed.completed_epic_zones.begin(),
+					   stone_owed.completed_epic_zones.end(), 18),
+			"recovered stone claim lost recipient completion history");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::ok,
+			"restore qualification rejected valid stone history");
+		for (const auto *name : { "stone-987654321.claim", "zone-18.state" })
+		{
+			std::fstream file(root / "domains" / name,
+					  std::ios::in | std::ios::out | std::ios::binary);
+			char original;
+			file.seekg(-1, std::ios::end);
+			file.read(&original, 1);
+			require(file.good(), "open stone history corruption fixture");
+			const char corrupt = original ^ 1;
+			file.seekp(-1, std::ios::end);
+			file.write(&corrupt, 1);
+			file.flush();
+			require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+					flatfile_player_domain_result::invalid,
+				"restore qualification ignored corrupt stone history");
+			file.seekp(-1, std::ios::end);
+			file.write(&original, 1);
+			file.flush();
+			require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+					flatfile_player_domain_result::ok,
+				"repaired stone history did not qualify");
+		}
+		flatfile_zone_touch_state zone;
+		require(flatfile_zone_touch_load(root.string(), 18, &zone, &error) ==
+					flatfile_player_domain_result::ok &&
+				zone.alignment == 1 && zone.last_touch == 1200,
+			"zone history missing after recovered claim");
+		stone_id.bytes[0] = 226;
+		touch.awards[0].amount = 999;
+		require(zone_touch_command_build(&stone, stone_id, touch), "retouch changed boon");
+		stone.accepted_at_usec = 1;
+		const auto retouch = flatfile_player_domain_apply(root.string(), stone);
+		require(retouch.outcome == critical_apply_outcome::applied &&
+				zone_touch_command_decode_result(retouch.result_payload.data(),
+								 retouch.result_size,
+								 &stone_receipt) &&
+				stone_receipt.recovered_claim &&
+				stone_receipt.awards[0].amount == 150,
+			"retouch paid or recomputed a committed stone");
+		command.operation_id.bytes[0] = 227;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+				critical_apply_outcome::applied,
+			"prepare PvP after zone");
+		const auto mixed = flatfile_player_load_repository_execute(root.string(), recovery);
+		require(mixed.outcome == player_load_outcome::applied &&
+				mixed.divine_epic_deliveries.size() == 2 &&
+				mixed.divine_epic_deliveries[1].sequence == 4 &&
+				mixed.divine_epic_deliveries[1].previous == 3,
+			"zone and PvP recipient chain diverged");
+		auto combined = credited;
+		combined.revision = 12;
+		for (auto &field : combined.status_integers)
+		{
+			if (field.field == player_status_field::epics)
+				field.signed_value = paid_credit.domains.epics + 300;
+			if (field.field == player_status_field::divine_boon_delivery_seq)
+				field.unsigned_value = 4;
+		}
+		require(flatfile_player_snapshot_apply(root.string(), combined, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"mixed award checkpoint");
+		const auto settled =
+			flatfile_player_load_repository_execute(root.string(), recovery);
+		require(settled.outcome == player_load_outcome::applied &&
+				settled.divine_epic_deliveries.empty() &&
+				settled.domains.epics == paid_credit.domains.epics + 300,
+			"mixed award checkpoint lost or duplicated credit");
 	}
 
 	const fs::path snapshot_path = players / "42.snapshot";
-	player_snapshot paid = make_status(12, 51, 1201);
+	player_snapshot paid = make_status(13, 51, 1201);
+	paid.wallet_revision = 19;
 	paid.status_integers.insert(paid.status_integers.end(),
 				    { { player_status_field::copper, 11, 0, false },
 				      { player_status_field::silver, 12, 0, false },
@@ -1330,9 +1987,10 @@ int main(int argc, char **argv)
 				      { player_status_field::platinum, 14, 0, false },
 				      { player_status_field::frags, 16, 0, false },
 				      { player_status_field::old_frags, 17, 0, false } });
+	paid.status_integers.push_back({ player_status_field::racewar, 0, 0, false });
 	paid.status_integers.push_back({ player_status_field::epics, 450, 0, false });
 	paid.status_integers.push_back(
-		{ player_status_field::divine_boon_delivery_seq, 0, 3, true });
+		{ player_status_field::divine_boon_delivery_seq, 0, 5, true });
 	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
 	require(flatfile_player_snapshot_apply(root.string(), paid, &error).outcome ==
 			player_save_apply_outcome::retryable_failure,
@@ -1342,7 +2000,7 @@ int main(int argc, char **argv)
 			player_save_apply_outcome::applied,
 		"Divine status checkpoint failed: " + error);
 	auto stale_delivery = paid;
-	stale_delivery.revision = 13;
+	stale_delivery.revision = 14;
 	stale_delivery.status_integers[stale_delivery.status_integers.size() - 2].signed_value = 1;
 	stale_delivery.status_integers.back().unsigned_value = 2;
 	require(flatfile_player_snapshot_apply(root.string(), stale_delivery, &error).outcome ==
@@ -1360,7 +2018,7 @@ int main(int argc, char **argv)
 		"paid Divine checkpoint could not reload");
 	uint64_t delivered_sequence = 0;
 	require(player_snapshot_divine_delivery_sequence(loaded, &delivered_sequence) &&
-			delivered_sequence == 3 &&
+			delivered_sequence == 5 &&
 			loaded.status_integers[loaded.status_integers.size() - 2].signed_value ==
 				450,
 		"stale save erased the Divine balance or applied marker");
@@ -1381,7 +2039,7 @@ int main(int argc, char **argv)
 	incomplete_delivery.status_integers.push_back(
 		{ player_status_field::epics, 500, 0, false });
 	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::divine_boon_delivery_seq, 0, 4, true });
+		{ player_status_field::divine_boon_delivery_seq, 0, 6, true });
 	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"marker advanced without a complete financial checkpoint");
@@ -1395,6 +2053,47 @@ int main(int argc, char **argv)
 	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"duplicate delivery marker was accepted");
+	// A wallet commit is protected by the existing wallet revision even if an
+	// old capture carries a later general save revision and the right epic marker.
+	auto stale_wallet = paid;
+	stale_wallet.revision = 99999;
+	stale_wallet.wallet_revision = 18;
+	stale_wallet.status_integers[3].signed_value = 1;
+	stale_wallet.components |= PLAYER_COMPONENT_LANGUAGES;
+	stale_wallet.languages = { { 1, 97, 0 } };
+	const auto wallet_conflict =
+		flatfile_player_snapshot_apply(root.string(), stale_wallet, &error);
+	require(wallet_conflict.outcome == player_save_apply_outcome::applied,
+		"stale wallet dropped unrelated language work after extraction");
+	player_snapshot wallet_loaded;
+	require(flatfile_player_snapshot_load(root.string(), 42, &wallet_loaded, &error) ==
+				flatfile_player_load_result::ok &&
+			wallet_loaded.wallet_revision == 19 && !wallet_loaded.languages.empty() &&
+			wallet_loaded.languages.front().value == 97,
+		"stale wallet save lost unrelated language work");
+	// A later current-wallet checkpoint still preserves both components.
+	auto refreshed = stale_wallet;
+	refreshed.revision = 100000;
+	refreshed.wallet_revision = 19;
+	refreshed.status_integers[3].signed_value = paid.status_integers[3].signed_value;
+	require(flatfile_player_snapshot_apply(root.string(), refreshed, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"fresh wallet and language recapture failed: " + error);
+	require(flatfile_player_snapshot_load(root.string(), 42, &wallet_loaded, &error) ==
+				flatfile_player_load_result::ok &&
+			wallet_loaded.wallet_revision == 19 && !wallet_loaded.languages.empty() &&
+			wallet_loaded.languages.front().value == 97,
+		"freshly recaptured language work was dropped");
+	auto wallet_request = load_request;
+	wallet_request.deadline_usec =
+		persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+	wallet_request.include_items = false;
+	wallet_request.include_pets = false;
+	auto wallet_domain = flatfile_player_load_repository_execute(root.string(), wallet_request);
+	require(wallet_domain.outcome == player_load_outcome::applied &&
+			wallet_domain.domains.wallet_revision == 19 &&
+			wallet_domain.domains.wallet[0] == 11,
+		"stale capture changed the durable wallet or load revision");
 	{
 		std::fstream file(snapshot_path, std::ios::in | std::ios::out | std::ios::binary);
 		require(file.good(), "could not open player snapshot for corruption test");

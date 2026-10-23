@@ -1,4 +1,12 @@
+void divine_trade_runtime_reconcile() {}
+#include <cstdint>
+bool divine_trade_runtime_boot(uint64_t)
+{
+	return true;
+}
 #include "economy/divine_boon_runtime.h"
+#include "persistence/critical_command_coordinator.h"
+#include <ctime>
 #include "economy/divine_boon_repository.h"
 #include "economy/boon_reward_transaction.h"
 #include "persistence/persistence_mode.h"
@@ -6,6 +14,7 @@
 #include "player/player_save_worker.h"
 
 #include <cassert>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -24,6 +33,11 @@ boon_reward_health boon_reward_transaction_health_copy()
 	return health;
 }
 
+critical_coordinator_health old_work = {};
+critical_coordinator_health critical_command_coordinator_health_copy()
+{
+	return old_work;
+}
 namespace
 {
 std::string root;
@@ -79,110 +93,94 @@ int main(int argc, char **argv)
 	release.set_value();
 	finish();
 	assert(!divine_boon_runtime_pending());
-	assert(divine_boon_runtime_state()->mode == divine_boon_mode::legacy);
-	assert(divine_boon_legacy_admissions_allowed());
-	assert(std::string(persistence_job_kind_name(persistence_job_kind::divine_boon)) ==
-	       "divine_boon");
-	auto next = *divine_boon_runtime_state();
-	assert(divine_boon_set_mode(&next, divine_boon_mode::draining, 100));
-	// An admitted flat-file scan must reach its game-thread completion before
-	// retirement closes the legacy gate, including an undrained completion.
-	std::promise<void> scan_release;
-	auto scan_released = scan_release.get_future().share();
-	assert(maintenance_scheduler_init(
-		1,
-		[](const maintenance_request &request, void *context)
-		{
-			auto &wait = *static_cast<std::shared_future<void> *>(context);
-			wait.wait();
-			return maintenance_result{ request.work_id,
-						   request.job_id,
-						   request.cursor ? maintenance_outcome::complete :
-								    maintenance_outcome::more,
-						   64,
-						   64,
-						   0,
-						   0,
-						   0,
-						   {} };
-		},
-		&scan_released, [](maintenance_request &request, void *)
-		{ return request.job_id == maintenance_job_id::boon_scan; }));
-	const auto scan_index = static_cast<size_t>(maintenance_job_id::boon_scan);
-	ne_event_tick = maintenance_scheduler_health_copy(0).jobs[scan_index].next_due_tick;
-	for (size_t attempt = 0;
-	     attempt < MAINTENANCE_JOB_COUNT * 2 &&
-	     !maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active;
-	     ++attempt)
-		maintenance_scheduler_pulse(ne_event_tick, nullptr, 0);
-	assert(maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active);
-	assert(!divine_boon_runtime_queue(next));
-	assert(divine_boon_legacy_admissions_allowed());
-	scan_release.set_value();
-	const auto scan_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-	while (!maintenance_scheduler_health_copy(ne_event_tick).completions &&
-	       std::chrono::steady_clock::now() < scan_deadline)
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	assert(maintenance_scheduler_health_copy(ne_event_tick).completions == 1);
-	assert(!divine_boon_runtime_queue(next));
-	maintenance_scheduler_quiesce();
-	maintenance_result scan_result = {};
-	assert(maintenance_scheduler_pulse(ne_event_tick, &scan_result, 1) == 1);
-	assert(scan_result.job_id == maintenance_job_id::boon_scan &&
-	       scan_result.outcome == maintenance_outcome::more);
-	assert(!maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active);
-	assert(!divine_boon_runtime_queue(next)); // A retained page is still unfinished.
-	maintenance_scheduler_resume();
-	++ne_event_tick;
-	for (size_t attempt = 0;
-	     attempt < MAINTENANCE_JOB_COUNT * 2 &&
-	     !maintenance_scheduler_health_copy(ne_event_tick).jobs[scan_index].active;
-	     ++attempt)
-		maintenance_scheduler_pulse(ne_event_tick, nullptr, 0);
-	const auto page_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-	while (!maintenance_scheduler_health_copy(ne_event_tick).completions &&
-	       std::chrono::steady_clock::now() < page_deadline)
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	maintenance_scheduler_quiesce();
-	assert(maintenance_scheduler_pulse(ne_event_tick, &scan_result, 1) == 1);
-	assert(scan_result.outcome == maintenance_outcome::complete);
-	// The synchronous completion callback still sees an open gate.
-	assert(divine_boon_legacy_admissions_allowed());
-	pending_rewards = 1;
-	assert(!divine_boon_runtime_queue(next));
-	assert(divine_boon_legacy_admissions_allowed());
-	pending_rewards = 2; // Publishing an admitted reward can submit a level completion.
-	assert(!divine_boon_runtime_queue(next));
-	pending_rewards = 1; // The parent is acknowledged, but its nested reward is pending.
-	assert(!divine_boon_runtime_queue(next));
-	pending_rewards = 0;
-	assert(divine_boon_runtime_queue(next));
-	maintenance_scheduler_reset_for_tests();
-	assert(!divine_boon_runtime_queue(next));
-	assert(!divine_boon_legacy_admissions_allowed());
-	assert(divine_boon_runtime_state()->mode == divine_boon_mode::legacy);
-	finish();
+
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::draining);
 	assert(!divine_boon_legacy_admissions_allowed());
-	next = *divine_boon_runtime_state();
-	assert(divine_boon_set_mode(&next, divine_boon_mode::divine, 100));
-	assert(divine_boon_runtime_queue(next));
+	old_work.initialized = old_work.running = true;
+	old_work.queued = 1;
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending());
+	old_work.queued = 0;
+	old_work.inflight = 1;
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending());
+	old_work.inflight = 0;
+	old_work.blocked = 1;
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending());
+	old_work.blocked = 0;
+	old_work.fenced_keys = 1;
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending());
+	old_work.fenced_keys = 0;
+	const auto scheduler_path = root + "/maintenance.state";
+	assert(maintenance_scheduler_set_state_path(scheduler_path.c_str()));
+	std::atomic<bool> scan_executed{ false };
+	auto execute_scan = [](const maintenance_request &request, void *context)
+	{
+		maintenance_result result{};
+		result.work_id = request.work_id;
+		result.job_id = request.job_id;
+		result.outcome = maintenance_outcome::complete;
+		if (request.job_id == maintenance_job_id::boon_scan)
+			static_cast<std::atomic<bool> *>(context)->store(true);
+		return result;
+	};
+	assert(maintenance_scheduler_init(1, execute_scan, &scan_executed));
+	const auto scan = static_cast<size_t>(maintenance_job_id::boon_scan);
+	std::array<maintenance_result, MAINTENANCE_JOB_COUNT> restored_results;
+	maintenance_scheduler_pulse(0, restored_results.data(), restored_results.size());
+	const auto scan_tick = maintenance_scheduler_health_copy(0).jobs[scan].next_due_tick;
+	const auto queued_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (!maintenance_scheduler_health_copy(scan_tick).jobs[scan].work_id)
+	{
+		assert(std::chrono::steady_clock::now() < queued_deadline);
+		maintenance_scheduler_pulse(scan_tick, restored_results.data(),
+					    restored_results.size());
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	while (!scan_executed.load())
+	{
+		assert(std::chrono::steady_clock::now() < queued_deadline);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	maintenance_scheduler_shutdown();
+	assert(maintenance_scheduler_init(1, execute_scan, &scan_executed));
+	assert(maintenance_scheduler_health_copy(scan_tick).jobs[scan].work_id);
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending() &&
+	       divine_boon_runtime_state()->mode == divine_boon_mode::draining);
+	const auto scan_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (maintenance_scheduler_health_copy(scan_tick).jobs[scan].work_id)
+	{
+		assert(std::chrono::steady_clock::now() < scan_deadline);
+		maintenance_scheduler_pulse(scan_tick, restored_results.data(),
+					    restored_results.size());
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	maintenance_scheduler_shutdown();
+	divine_boon_runtime_pulse();
+	assert(divine_boon_runtime_pending());
+	assert(divine_boon_runtime_state()->mode == divine_boon_mode::draining);
 	finish();
-	next = *divine_boon_runtime_state();
+	assert(divine_boon_runtime_state()->mode == divine_boon_mode::divine);
+	const auto base = divine_boon_runtime_state()->last_opportunity;
+	auto next = *divine_boon_runtime_state();
+
 	divine_boon_slot choice;
 	choice.category = divine_boon_category::experience;
 	choice.zones = { 10, 20 };
-	assert(divine_boon_rotate(&next, DIVINE_BOON_HOUR, &choice));
+	assert(divine_boon_rotate(&next, base + DIVINE_BOON_HOUR, &choice));
 	assert(divine_boon_runtime_queue(next));
 	finish();
 	assert(divine_boon_runtime_state()->slots[0].id == 1);
-	assert(divine_boon_runtime_boot(20 * DIVINE_BOON_HOUR));
+	assert(divine_boon_runtime_boot(base + 20 * DIVINE_BOON_HOUR));
 	assert(!divine_boon_runtime_state()); // Restart skips hours only after committing.
 	finish();
 	assert(!divine_boon_runtime_state()->slots[0].id);
-	assert(divine_boon_runtime_state()->last_opportunity == 20 * DIVINE_BOON_HOUR);
+	assert(divine_boon_runtime_state()->last_opportunity == base + 20 * DIVINE_BOON_HOUR);
 	next = *divine_boon_runtime_state();
-	assert(divine_boon_set_paused(&next, true, 20 * DIVINE_BOON_HOUR));
+	assert(divine_boon_set_paused(&next, true, base + 20 * DIVINE_BOON_HOUR));
 	assert(setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1) == 0);
 	assert(divine_boon_runtime_queue(next));
 	finish();
@@ -198,12 +196,35 @@ int main(int argc, char **argv)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 	assert(divine_boon_runtime_state() && *divine_boon_runtime_state() == next);
-	assert(divine_boon_runtime_boot(19 * DIVINE_BOON_HOUR));
-	assert(divine_boon_runtime_state()->last_opportunity == 20 * DIVINE_BOON_HOUR);
+	assert(divine_boon_runtime_boot(base + 19 * DIVINE_BOON_HOUR));
+	assert(divine_boon_runtime_state()->last_opportunity == base + 20 * DIVINE_BOON_HOUR);
 	std::ofstream(root + "/domains/divine-boons.state", std::ios::binary | std::ios::trunc)
 		<< "bad";
-	assert(!divine_boon_runtime_boot(20 * DIVINE_BOON_HOUR));
+	assert(!divine_boon_runtime_boot(base + 20 * DIVINE_BOON_HOUR));
 	assert(!divine_boon_runtime_state() && !divine_boon_runtime_pending());
+	// An existing legacy snapshot closes admission immediately while its draining
+	// transition is queued, then waits for accepted work before publishing Divine.
+	root += "-legacy";
+	std::filesystem::create_directories(root + "/domains");
+	for (const auto &directory : { root, root + "/domains" })
+		std::filesystem::permissions(directory, std::filesystem::perms::owner_all,
+					     std::filesystem::perm_options::replace);
+	divine_boon_state legacy;
+	assert(divine_boon_flatfile_save(root, 0, legacy) == divine_boon_store_result::ok);
+	old_work.inflight = 1;
+	assert(divine_boon_runtime_boot(100) && divine_boon_runtime_pending());
+	assert(!divine_boon_legacy_admissions_allowed());
+	finish();
+	assert(divine_boon_runtime_state()->mode == divine_boon_mode::draining);
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending());
+	old_work.inflight = 0;
+	divine_boon_runtime_pulse();
+	assert(divine_boon_runtime_pending());
+	finish();
+	assert(divine_boon_runtime_state()->mode == divine_boon_mode::divine);
+	assert(!divine_boon_legacy_admissions_allowed());
+
 	player_save_worker_shutdown();
 	std::cout
 		<< "Divine Boon runtime: real writer ordering, commit-before-publication, restart and retry passed\n";

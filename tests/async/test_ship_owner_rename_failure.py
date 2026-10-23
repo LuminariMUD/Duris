@@ -13,7 +13,7 @@ checks = {
     'modify_stores_ship_with_player': 'sql_rename_character_statements(GET_PID(doofus), from, to, ship)' in modify and 'undo_ship_owner_change(&change);' in modify,
     'modify_moves_by_owner': 'get_ship_from_owner(const_cast<char *>(from))' in modify and 'get_ship_from_char(doofus)' not in modify,
     'specs_checks_return': 'if (!rename_ship_owner(argstring3, skip_spaces(argument)))' in specs,
-    'delete_ship_aborts_on_db_failure': 'Failed to delete ship row for %s; aborting ship removal.' in ship_base and 'if (!sql_delete_ship(ship->ownername))' in ship_base,
+    'delete_ship_defers_until_commit': 'if (!sql_delete_ship(ship->ownername, static_cast<uint32_t>(ship->db_id)))' in ship_base and 'defer_delete();' in ship_base,
 }
 for name, passed in checks.items():
     if not passed:

@@ -38,6 +38,7 @@ using namespace std;
 #include "core/utils.h"
 #include "combat/ctf.h"
 #include "world/epic.h"
+#include "economy/divine_boon_selection.h"
 #include "world/epic_bonus.h"
 #include "world/epic_transaction.h"
 #include "guild/artifact_guild_transaction.h"
@@ -50,6 +51,7 @@ using namespace std;
 #include "world/zone_story_quest_runtime.h"
 #include "economy/nexus_stones.h"
 #include "economy/currency_transaction.h"
+#include "economy/boon_reward_transaction.h"
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "persistence/persistence_checkpoint.h"
@@ -4272,6 +4274,7 @@ static void show_world_persistence(P_char ch)
 		 epic_task_catalog_ready(), epic_task_catalog_size(),
 		 epic_task_catalog_last_refresh(), pending_tasks, pending_reads_unavailable);
 	send_to_char(line, ch);
+	divine_boon_selection_status(ch);
 
 	snprintf(line, sizeof(line),
 		 "maintenance state=%s queued=%llu inflight=%llu completions=%llu "
@@ -4441,6 +4444,17 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)currency_transactions.committed,
 		 (unsigned long long)currency_transactions.rejected,
 		 (unsigned long long)currency_transactions.bank_deltas);
+	send_to_char(line, ch);
+
+	const boon_reward_health boons = boon_reward_transaction_health_copy();
+	snprintf(line, sizeof(line),
+		 "boon_rewards checked=%llu filtered=%llu submitted=%llu committed=%llu "
+		 "rejected=%llu pending=%llu definition_refreshes=%llu definition_failures=%llu\n",
+		 (unsigned long long)boons.checked, (unsigned long long)boons.filtered,
+		 (unsigned long long)boons.submitted, (unsigned long long)boons.committed,
+		 (unsigned long long)boons.rejected, (unsigned long long)boons.pending,
+		 (unsigned long long)boons.definition_refreshes,
+		 (unsigned long long)boons.definition_failures);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

@@ -15,6 +15,7 @@
 #include "combat/combat_outcome_repository.h"
 
 #include "world/epic_command.h"
+#include "guild/artifact_guild_repository.h"
 
 #include <algorithm>
 #include <array>
@@ -213,10 +214,13 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 		{
 			if (!execute(connection,
 				     "SELECT epic_revision FROM epic_ledger WHERE pid=" +
-					     std::to_string(entry.pid) + " AND reason_type=" +
+					     std::to_string(entry.pid) + " AND reason_type IN (" +
 					     std::to_string(static_cast<uint16_t>(
 						     epic_reason_type::divine_pvp_award)) +
-					     " ORDER BY epic_revision DESC LIMIT 1 FOR UPDATE"))
+					     "," +
+					     std::to_string(static_cast<uint16_t>(
+						     epic_reason_type::divine_zone_award)) +
+					     ") ORDER BY epic_revision DESC LIMIT 1 FOR UPDATE"))
 				return false;
 			MYSQL_RES *rows = mysql_store_result(connection);
 			MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
@@ -252,6 +256,7 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 	result->event_id = event_id;
 	result->victim_pid = payload.victim_pid;
 	result->prepared_at = payload.prepared_at;
+	result->artifact_intents = payload.artifact_intents;
 	result->participant_count = payload.participant_count;
 	for (player_state &state : players)
 	{
@@ -405,6 +410,9 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 				(COMBAT_PARTICIPANT_DIVINE_EPIC | COMBAT_PARTICIPANT_SPILL_BLOOD);
 		}
 	}
+	for (const auto &child : payload.artifact_deliveries)
+		if (!artifact_guild_repository_prepare_delivery(connection, child))
+			return false;
 	*mutation_applied = true;
 	return true;
 }

@@ -17,7 +17,12 @@ HARNESS = r'''
 #include "world/epic.h"
 #include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/artifact_guild_delivery.h"
+#include "guild/artifact_guild_state.h"
 #include "persistence/persistence_mode.h"
+#include "economy/divine_boon_delivery.h"
+#include <limits>
+#include <cmath>
 #include <cassert>
 #include <cstdlib>
 #include <string>
@@ -39,6 +44,29 @@ struct artifact_publication
  int amount, type;
 };
 static std::vector<artifact_publication> artifacts;
+static std::vector<divine_epic_delivery> prepared_deliveries;
+static size_t reservations = 0, activations = 0, releases = 0;
+artifact_guild_capture_status artifact_guild_state_prepare_delivery(P_char ch, int, int type,
+ const critical_operation_id &parent, critical_command *child)
+{
+ assert(ch && type == EPIC_ZONE);
+ artifact_guild_payload effect{};
+ effect.actor_pid=ch->only.pc->pid; effect.parent_operation_id=parent;
+ effect.guild_id=7; effect.guild_identity=artifact_guild_legacy_identity(7);
+ effect.prestige_delta=20; effect.prestige_after=20; effect.construction_notch=100;
+ critical_operation_id id{};
+ assert(critical_operation_id_derive(parent,ARTIFACT_GUILD_DERIVATION_DOMAIN,effect.actor_pid,&id));
+ assert(artifact_guild_command_build_prepared(child,id,effect));
+ child->accepted_at_usec=1;
+ return artifact_guild_capture_status::ready;
+}
+bool artifact_guild_delivery_reserve(const std::vector<critical_command> &commands)
+{ reservations += commands.size(); return true; }
+void artifact_guild_delivery_complete(const std::vector<critical_command> &commands,bool committed)
+{ (committed ? activations : releases) += commands.size(); }
+
+void divine_boon_delivery_completed(const divine_epic_delivery &delivery)
+{ assert(divine_epic_delivery_valid(delivery)); prepared_deliveries.push_back(delivery); }
 
 bool persistence_mode_requires_mysql() { return mysql_available; }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
@@ -75,7 +103,7 @@ static critical_completion complete(critical_apply_outcome outcome, bool receipt
  {
   zone_touch_payload decoded;
   assert(zone_touch_command_decode_payload(submitted,&decoded));
-  zone_touch_result r(decoded); r.balances[0]=110; r.balances[1]=120;
+  zone_touch_result r(decoded); r.parent_operation=submitted.operation_id; r.balances[0]=110; r.balances[1]=120;
   r.revisions[0]=r.revisions[1]=1;
   std::array<uint8_t,ZONE_TOUCH_RESULT_BYTES> bytes;
   assert(zone_touch_command_encode_result(r,&bytes));
@@ -184,6 +212,38 @@ int main()
  zone_touch_transaction_player_ready(&characters[1]);
  assert(artifacts.size()==2);
  test_pending_admission_excludes_committed_offline_receipts();
+ zone_touch_transaction_reset_for_tests();
+ mysql_available=false;
+ p.prepared_delivery=true; p.touched_at=150;
+ for (size_t i=0; i<p.group_size; ++i) { p.awards[i].base=100; p.awards[i].boon_id=7; }
+ assert(zone_touch_transaction_submit(p));
+ online[1]=false;
+ auto prepared=complete(critical_apply_outcome::applied);
+ zone_touch_transaction_handle_completions(&prepared,1);
+ assert(prepared_deliveries.size()==2 && prepared_deliveries[0].zone && prepared_deliveries[1].pid==2);
+ assert(prepared_deliveries[0].artifact_intents && reservations==2 && activations==2 && releases==0);
+ online[1]=true;
+ p.stone_uid=100;
+ assert(zone_touch_transaction_submit(p));
+ auto prior_claim=complete(critical_apply_outcome::applied);
+ zone_touch_result prior;
+ assert(zone_touch_command_decode_result(prior_claim.result_payload.data(),prior_claim.result_size,&prior));
+ prior.recovered_claim=true;
+ assert(zone_touch_command_encode_result(prior,&bytes));
+ std::copy(bytes.begin(),bytes.end(),prior_claim.result_payload.begin());
+ zone_touch_transaction_handle_completions(&prior_claim,1);
+ assert(reservations==4 && activations==2 && releases==2 && prepared_deliveries.size()==2);
+
+ assert(prepared_deliveries[0].amount==10 && prepared_deliveries[0].previous==0);
+ assert(!zone_touch_transaction_busy(p.stone_uid,p.zone_number));
+ zone_touch_transaction_handle_completions(&prepared,1);
+ assert(prepared_deliveries.size()==2);
+ p.stone_uid=101;
+ assert(zone_touch_transaction_submit(p));
+ auto malformed_prepared=complete(critical_apply_outcome::already_applied,false);
+ zone_touch_transaction_handle_completions(&malformed_prepared,1);
+ assert(activations==4 && reservations==6 && releases==2);
+ assert(zone_touch_transaction_busy(p.stone_uid,p.zone_number));
 }
 '''
 
@@ -227,6 +287,8 @@ static int spends = 0, payouts = 0, object_lookups = 0;
 static int64_t spend_delta = 0;
 static epic_level_context spend_context = {};
 static std::string messages;
+static bool sql_authoritative_stone_level = false;
+bool persistence_mode_requires_mysql() { return sql_authoritative_stone_level; }
 int sql_level_cap(int) { return 56; }
 int get_property(const char *name, int fallback)
 {
@@ -264,6 +326,14 @@ bool epic_transaction_submit(P_char ch,int64_t delta,epic_reason_type reason,int
 LEVEL_CHECKS = r'''
 int main()
 {
+ // Flat-file payout defaults do not contain an epic level: keep the native stone.
+ assert(stone_level_for_zone(51, 0)==51);
+ assert(stone_level_for_zone(51, 53)==53);
+ sql_authoritative_stone_level=true;
+ // MariaDB retains the existing authoritative zero/positive metadata policy.
+ assert(stone_level_for_zone(51, 0)==0);
+ assert(stone_level_for_zone(51, 53)==53);
+ sql_authoritative_stone_level=false;
  test_pc pc;
  test_character character;
  character.only.pc=&pc;
@@ -322,6 +392,29 @@ int main()
 '''
 
 class StoneRuntimeTests(unittest.TestCase):
+    def test_native_zone_reset_progress_survives_cached_reads(self):
+        code = """#include <vector>
+#include <cassert>
+struct zone_info { int number; int reset_perc; };
+static std::vector<zone_info> flat_zones = {{77,0},{78,9}};
+""" + extract_function("sql.c", "bool get_zone_info(") + extract_function("sql.c", "void sql_set_zone_reset_perc(") + """
+int main() {
+ zone_info row{};
+ for(int progress=1;progress<=100;++progress) {
+  sql_set_zone_reset_perc(77,progress);
+  assert(get_zone_info(77,&row) && row.reset_perc==progress);
+ }
+ sql_set_zone_reset_perc(77,0);
+ assert(get_zone_info(77,&row) && row.reset_perc==0);
+ assert(get_zone_info(78,&row) && row.reset_perc==9);
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            source,binary=Path(directory)/"reset.cpp",Path(directory)/"reset"
+            source.write_text(code)
+            subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror",str(source),"-o",str(binary)],check=True)
+            subprocess.run([str(binary)],check=True)
+
     def test_admission_failure_pending_success_disconnect_and_recovery(self):
         self.assertIsNotNone(shutil.which("g++"), "Linux g++ is required for the native runtime regression")
         with tempfile.TemporaryDirectory() as directory:
@@ -330,7 +423,7 @@ class StoneRuntimeTests(unittest.TestCase):
             source.write_text(HARNESS)
             subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc',
                 str(source), 'src/world/zone_touch_transaction.c', 'src/world/zone_touch_command.c',
-                'src/world/epic_command.c', 'src/persistence/critical_command.c',
+                'src/world/epic_command.c', 'src/guild/artifact_guild_command.c', 'src/persistence/critical_command.c',
                 '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True)
 
@@ -338,6 +431,7 @@ class StoneRuntimeTests(unittest.TestCase):
         self.assertIsNotNone(shutil.which("g++"), "Linux g++ is required for the native gameplay regression")
         code = LEVEL_ADAPTERS + "\n".join(
             extract_function("epic.c", signature) for signature in (
+                "static int stone_level_for_zone(int native_level, int configured_level)",
                 "static void epic_stone_level_char_from_level(int stone_level, P_char ch)",
                 "void epic_stone_level_char(P_obj obj, P_char ch)",
                 "void epic_publish_stone_award(P_char ch, const zone_touch_result &result, size_t index)",

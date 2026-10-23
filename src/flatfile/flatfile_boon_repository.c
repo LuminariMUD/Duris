@@ -915,7 +915,8 @@ flatfile_boon_result flatfile_boon_load_player(const std::string &root, uint32_t
 
 flatfile_boon_result flatfile_boon_find_pending_reward(const std::string &root, uint32_t pid,
 						       flatfile_boon_pending_reward *reward,
-						       std::string *error)
+						       std::string *error,
+						       bool checkpoint_free_only)
 {
 	if (root.empty() || !pid || !reward)
 		return flatfile_boon_result::invalid;
@@ -937,7 +938,11 @@ flatfile_boon_result flatfile_boon_find_pending_reward(const std::string &root, 
 	const auto operation =
 		std::find_if(catalog.operations.begin(), catalog.operations.end(),
 			     [&](const boon_operation &entry)
-			     { return !entry.reward_published && entry.result.pid == pid; });
+			     {
+				     return !entry.reward_published && entry.result.pid == pid &&
+					    (!checkpoint_free_only ||
+					     !boon_reward_requires_checkpoint(entry.result));
+			     });
 	if (operation == catalog.operations.end())
 		return flatfile_boon_result::not_found;
 	*reward = { operation->operation_id, operation->result.pid, operation->event_data,

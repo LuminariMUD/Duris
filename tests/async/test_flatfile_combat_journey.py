@@ -393,7 +393,7 @@ def runtime_logs(run_root: pathlib.Path) -> str:
 def create_character(client: MudClient, expected_room: str | None = "The Regression Arena",
                      class_name: str = "w", *, account: str = ACCOUNT,
                      character: str = CHARACTER, email: str = EMAIL,
-                     hometown: str | None = None) -> None:
+                     hometown: str | None = None, race_name: str = "h") -> None:
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
         client.send("9")
@@ -422,22 +422,29 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     client.expect("meet these criteria?")
     client.send("y")
     client.expect("Your selection")
-    client.send("h")
+    client.send(race_name)
     client.expect("Male or Female")
     client.send("m")
     client.expect("Hardcore")
     client.send("n")
     client.expect("Class Selection")
     client.send(class_name)
+    stat_prompt_seen = False
     if hometown is not None:
         client.expect("Hometown Selection")
         client.send(hometown)
     else:
-        client.expect("Alignment only affects")
-        client.send("g")
-        client.expect("Your selection")
-        client.send("p")
-    client.expect("Your stat rolling system [D]:")
+        prompt, _ = client.expect_any(("Alignment only affects", "Hometown Selection", "Your stat rolling system [D]:"))
+        if prompt == "Alignment only affects":
+            client.send("g")
+            client.expect("Your selection")
+            client.send("p")
+        elif prompt == "Hometown Selection":
+            client.send("p")
+        else:
+            stat_prompt_seen = True
+    if not stat_prompt_seen:
+        client.expect("Your stat rolling system [D]:")
     client.send("")
     for label, stat in zip(("first bonus", "second bonus", "third bonus", "fourth bonus"), "sdal"):
         client.expect(label)

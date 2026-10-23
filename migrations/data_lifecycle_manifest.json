@@ -38,6 +38,64 @@
   },
   "entries": [
     {
+      "id": "file:divine-trade-books",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/divine-trade-<boon>-<account>.book",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "canonical_account_key",
+      "technical_purpose": "Paid cargo lots and shared account/boon allowances for flat-file financial recovery",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
+      "id": "file:divine-trade-receipts",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/divine-trade-command-*.receipt",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "player_pid_and_operation_id",
+      "technical_purpose": "Permanent flat-file trade results and command hashes for idempotent financial replay",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
       "id": "file:divine-boons",
       "kind": "recovery_state",
       "locator": "FLATFILE_ROOT/domains/divine-boons.state",
@@ -94,6 +152,35 @@
       "exception": "protected_reconciliation_or_replay_horizon",
       "protected_record": true,
       "dependencies": []
+    },
+    {
+      "id": "database:divine_trade_state",
+      "kind": "database_table",
+      "locator": "divine_trade_state",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "canonical_account_key",
+      "technical_purpose": "Paid cargo purchase lots and shared account/boon allowances for exact financial replay; the global row stores only a market generation",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "direct_account",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": ["database:critical_operation_inbox"]
     },
     {
       "id": "database:epic_stone_claim",
@@ -6464,6 +6551,124 @@
       "exception": "protected_recovery_replay_or_restore_horizon",
       "protected_record": true,
       "dependencies": []
+    },
+    {
+      "id": "file:flatfile-command-receipts",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/command-*.receipt",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "participant_player_pids",
+      "technical_purpose": "Permanent epic/combat command identities and results, including prepared artifact/guild child descriptors and ACK proof, for replay after player/account removal",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
+      "id": "file:epic-zone-state",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/zone-*.state",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "not_subject_scoped",
+      "technical_purpose": "Saved epic-zone alignment and last-touch state for flat-file recovery",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
+      "id": "file:epic-stone-claims",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/stone-*.claim",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "participant_player_pids",
+      "technical_purpose": "Permanent stone claims and prepared participant awards for idempotent epic recovery",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
+      "id": "file:artifact-guild-pending",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/artifact_guild_pending",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "original_actor_pid_and_operation_id",
+      "technical_purpose": "Bounded unACKed prepared artifact/guild effects linked to permanent child receipts and atomic entity delivery IDs",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": [
+        "file:flatfile-command-receipts"
+      ]
     }
   ]
 }
