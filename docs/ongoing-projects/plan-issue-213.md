@@ -2,9 +2,10 @@
 
 Tracking: [Duris #213](https://github.com/LuminariMUD/Duris/issues/213).
 Implementation branch: `branch/issue-213-evil-onboarding`.
-Status: implementation in progress; death policy/warning implemented and locally
-qualified as the first review chunk. Tutorial/server/client integration and full
-gameplay/persistence acceptance remain outstanding.
+Status: implementation in progress; death policy/warning, shared creation
+validation and the browser refresh companion are committed, qualified and open
+for review. Evil tutorial content/procs/choices and full gameplay/persistence
+acceptance remain outstanding.
 Revised October 23, 2026 for the issue's approved Firbolg/Ogre eligibility decision;
 the previous tutorial exclusions are superseded.
 
@@ -78,8 +79,9 @@ First review chunk: [PR #314](https://github.com/LuminariMUD/Duris/pull/314),
 commit `f81f62ffa`, on `branch/issue-213-evil-onboarding`, pushed and ready
 for review. It is not merged and does not close #213.
 
-The next independent chunk is on `branch/issue-213-creation-eligibility` in
-the same worktree, stacked on #314. It shares one eligibility predicate across
+The next independent chunk is [PR #315](https://github.com/LuminariMUD/Duris/pull/315),
+commit `491df3ca6`, on `branch/issue-213-creation-eligibility` in the same
+worktree, stacked on #314, pushed and ready for review. It shares one eligibility predicate across
 terminal counting/display/selection and web listing/final submission. It adds
 the approved good tutorials for Firbolg and good-side neutral races, preserves
 racial defaults for omitted web homes and forced/staff calls, and rejects
@@ -119,7 +121,36 @@ and omit an unspecified hometown instead of serializing the old `-1` sentinel.
 **Coordinate this client change with the server validation PR**: an explicitly
 supplied -1 is deliberately invalid under the locked decision.
 
-Next: finish/publish these focused server/client PRs, allocate collision-free
+The companion is [DurisWeb PR #91](https://github.com/LuminariMUD/DurisWeb/pull/91),
+commit `9eb92e3`, pushed and ready for review. Its handoff and unpublished
+release-news text are in that repository's `docs/ongoing-projects/plan-issue-213.md`.
+107 focused tests, frontend format/lint/type check/build and actual Chromium
+menu/back-navigation checks passed. The browser used this server's complete
+generated authored world and flat-file authority; only unrelated website-shell
+HTTP endpoints were stubbed, with real hometown WebSocket responses. Firbolg's
+three choices and good -> evil -> good Thri-kreen selection invalidation were
+observed. Desktop/phone screenshots under `/tmp/issue213-browser-*.png` were
+inspected; phone label clipping was repaired. The existing Vue Router `next()`
+deprecation warning remains non-blocking. Browser plugin was unavailable, so
+regular Playwright used an already-installed Chromium executable.
+
+Both server binaries now build successfully (`make -C src -j4` and
+`make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=$PWD/bin/server/dms_flatfile`);
+`make world` passed. Generated outputs remain uncommitted. Local browser support
+scripts `/tmp/issue213-browser.py` and `/tmp/issue213-browser-server.py` are not
+the final complete journey runner. The temporary server requires
+`DURIS_WEBSOCKET=TRUE`; the first fixture omitted it and was corrected. Repeated
+synthetic registrations reached the normal throttle; the fixture now reuses
+its own account. No production data or listeners were used.
+
+An independent registration defect discovered in that browser QA was fixed in
+[DurisWeb PR #92](https://github.com/LuminariMUD/DurisWeb/pull/92), commit
+`aeeab8a`, based directly on website master. The form now matches the MUD's
+3-14 character letters/underscores account-name rule, rejecting digits and
+overlong names before connecting. Six focused tests, normal frontend gates and
+Chromium in-place rejection checks passed. It is not a dependency of #91.
+
+Next: allocate collision-free
 tutorial IDs from refreshed authored sources, implement faithful copies with
 typed-reference/mechanical parity, and wire the remaining procedures/choices.
 Keep later PRs stacked so menus cannot ship before their data and procs.
