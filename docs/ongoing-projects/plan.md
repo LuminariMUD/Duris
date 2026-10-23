@@ -40,6 +40,23 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — reward retry accounting
+
+Branch `branch/issue-264-reward-retries`, based on PR #317 at `7fc360575`.
+Outcome: bind reward-policy eligibility and its committed stamp to the fixed SQL
+reset start and validate the current resetting epoch. Preserve the 28-day business
+protection between distinct resets, while making same-reset retries safe even
+months later. Clear old summon/body links regardless of that protection window.
+Files: existing account reward hook/config, native DB harness, regression docs/plan.
+Proof: real hook on the private migrated DB, both preserve modes, expiry/finite and
+permanent grants, same/distinct reset timing, rollback and lost-ACK retries; focused
+builds/contracts. Non-goals: new schema, ledger or migration framework, and changing
+approved grant rates/lifetimes. Existing singleton + policy timestamp suffice.
+The real hook/private-DB matrix passed, including invalid boundaries, delayed
+retries, fixed-boundary 28-day protection, both configurations, rollback and lost
+ACK. Both backend builds and the exact reward source contract passed; format/hooks
+and publication remain. Full readiness remains open.
+
 ## Implementation handoff — 2026-10-24
 
 - Reused `/home/aiwithapex/projects/duris-issue264-plan`, clean at `1ec58eee5`;
@@ -137,8 +154,8 @@ and startup recovery isolation; W4/W5/W6 are still required.
 - Owner decision, 2026-10-24: **reset all account-bank balances; recreate only
   level-62 staff (Overlords)**. All other characters are wiped, including staff below
   62. Preserve the associated accounts; recreation must not restore seasonal items,
-  money, progression or ownership. Implement and prove this in W1/W4; current code
-  still retains bank balances and soft-deletes every account-character link.
+  money, progression or ownership. Implemented in #312/#313 and exercised through
+  real login/gameplay in #317; historical notes below describe that delivery.
 - No production operations.
 
 ### Seasonal bank reset chunk (stacked after PR #311)
@@ -186,7 +203,7 @@ PR #313: https://github.com/LuminariMUD/Duris/pull/313 at `427860b58`, review-re
 Current branch: `branch/issue-264-runtime-qualification`, based on that stack.
 Published as PR #317: https://github.com/LuminariMUD/Duris/pull/317 at `e8b43d01c`.
 PRs #309, #310, #311, #312, #313, #316 and #317 are review-ready and unmerged.
-`tests/async/run_pwipe_runtime_journey.py` is being exercised (uncommitted): private
+`tests/async/run_pwipe_runtime_journey.py` was published and passed using a private
 MariaDB via the existing wrapper, supported adopt/run migrations, copied real launcher
 and binary, synthetic world/account, real five-minute pwipe, explicit next boot,
 recreated staff login and fresh mortal combat/save/reconnect/reboot. It uses no
@@ -205,7 +222,7 @@ record both durations and assert the wall-clock interval. GDB read-only inspecti
 of the disposable server confirmed its stored deadline (no timer acceleration).
 Source review found the game SIGCHLD handler can reap the preflight child first;
 reuse `take_reaped_child_status()` on ECHILD. The native handoff test now forces
-that real reaper ordering. Full runtime success is still unclaimed. Outputs remain
+that real reaper ordering. The successful scoped result is recorded below. Outputs remain
 uncommitted under `bin/analysis`.
 
 Consumer review during countdown: `zone_story_quest_runtime.c` already derives
@@ -437,9 +454,10 @@ completion is safe and overall success appears only after all required stages.
   and snapshots. Preserve history while blocking old payload startup/replay.
   Prove banks, IDs, quests and economic/item baselines match the contract rather
   than blindly following `retain` labels.
-- [ ] Bind reward-policy application to reset identity; failure is an unfinished
-  stage. Preserve 28-day protection as a separate business rule unless explicitly
-  revised. Separate summon cleanup from grant-decrement eligibility where required.
+- [x] Bind reward-policy application to the resetting epoch and fixed boundary;
+  failure prevents SQL-ready publication. The native real-hook matrix proves
+  28-day business protection, delayed retries, rollback/lost ACK and unconditional
+  old-body summon cleanup. See the reward-retry chunk above.
 - [ ] Test permanent, time-expiring, finite-one/finite-many grants, both preserve
   settings, summons, ambiguous commit, immediate/delayed retries, distinct resets
   inside/outside 28 days and failure before activation. Prove new-character claims

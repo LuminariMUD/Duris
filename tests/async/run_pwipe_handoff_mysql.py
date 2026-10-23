@@ -56,6 +56,9 @@ def run():
     native.parent.mkdir(parents=True, exist_ok=True)
     signals = (ROOT / "src/core/signals.c").read_text()
     child_status = signals[signals.index("void reap(int sig)\n{"):signals.index("void reaper(")]
+    rewards_source = (ROOT / "src/account/account_reward.c").read_text()
+    rewards = rewards_source[rewards_source.index("bool account_bound_rewards_on_successful_pwipe(void)"):
+                             rewards_source.index("\n#ifndef __NO_MYSQL__\nstatic void dissolve_reward_containers")]
     native.write_text('''#include <mysql/mysql.h>
 #include <spawn.h>
 #include <signal.h>
@@ -99,7 +102,6 @@ bool pwipe_quiesce_writers() { return true; }
 void pwipe_resume_writers() {}
 bool redis_validate_pwipe_state() { return true; }
 bool redis_clear_pwipe_state() { return true; }
-bool account_bound_rewards_on_successful_pwipe() { return true; }
 uint64_t current_season_epoch;
 MYSQL_RES *db_query(const char *format, ...) {
     char statement[16384]; va_list args; va_start(args, format);
@@ -115,7 +117,13 @@ bool qry(const char *format, ...) {
     MYSQL_RES *result = mysql_store_result(DB); if (result) mysql_free_result(result);
     return true;
 }
-''' + functions + source[source.index("bool sql_verify_pwipe_manifest(void)"):
+''' + functions + '''
+uint64_t sql_season_epoch() { return current_season_epoch; }
+bool sql_begin_transaction() { return qry("START TRANSACTION"); }
+void sql_rollback() { (void)qry("ROLLBACK"); }
+bool sql_commit() { return qry("COMMIT") && !getenv("PWIPE_TEST_LOST_REWARD_ACK"); }
+bool account_reward_config_preserve_on_pwipe() { return !getenv("PWIPE_TEST_DELETE_REWARDS"); }
+''' + rewards + source[source.index("bool sql_verify_pwipe_manifest(void)"):
                             source.index("void sql_log_player_login", source.rindex("bool sql_pwipe(int code_verify)"))] + '''
 int main(int argc, char **argv) {
     if (argc != 3) return 2;
@@ -123,10 +131,12 @@ int main(int argc, char **argv) {
     DB = mysql_init(nullptr);
     if (!mysql_real_connect(DB, getenv("DB_HOST"), getenv("DB_USER"), getenv("DB_PASSWD"),
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
+    if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
     bool ok = !strcmp(argv[1], "begin") ? sql_begin_pwipe_epoch() :
               !strcmp(argv[1], "ready") ? sql_prepare_pwipe_filesystem() :
-              !strcmp(argv[1], "wipe") ? sql_pwipe(1723699) : sql_load_active_season_state();
+              !strcmp(argv[1], "wipe") ? sql_pwipe(1723699) :
+              !strcmp(argv[1], "rewards") ? account_bound_rewards_on_successful_pwipe() : sql_load_active_season_state();
     mysql_close(DB);
     return ok ? 0 : 1;
 }
@@ -228,6 +238,80 @@ int main(int argc, char **argv) {
         finally:
             sql("ALTER TABLE player_data RENAME COLUMN fixture_base_luk TO base_luk")
         print("Missing recreation schema rejected before the irreversible boundary", flush=True)
+
+        # Exercise the real policy hook. Its fixed reset boundary separates retry
+        # identity from the 28-day business protection, with no schema extension.
+        def policy_boundary(epoch, started):
+            sql("UPDATE season_reset_state SET season_epoch=" + str(epoch) +
+                ",reset_status='resetting',reset_started_at='" + started +
+                "',reset_completed_at=NULL WHERE state_id=1")
+
+        def summons():
+            sql("INSERT INTO account_bound_reward_summons(grant_id,pid) VALUES(1,1001)")
+
+        def remaining():
+            return sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=3")
+
+        sql("UPDATE account_bound_reward_pwipe_state SET last_processed_at=NULL WHERE id=1")
+        sql("INSERT INTO account_bound_rewards(id,account_name,remaining_pwipes,expires_at,created_at) VALUES"
+            "(1,'fixturebank',NULL,NULL,'2024-01-01'),(2,'fixturebank',1,NULL,'2024-01-01'),"
+            "(3,'fixturebank',3,NULL,'2024-01-01'),(4,'fixturebank',NULL,'2030-01-01','2024-01-01'),"
+            "(5,'fixturebank',NULL,'2020-01-01','2019-01-01')")
+        policy_boundary(20, "2025-01-01 12:00:00.123456")
+        env["PWIPE_TEST_NOW"] = sql("SELECT UNIX_TIMESTAMP('2025-01-01 12:00:01')")
+        summons()
+        epoch_call("rewards", 19, 1)
+        assert remaining() == "3" and sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "1"
+        epoch_call("rewards", 0, 1)
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        epoch_call("rewards", 20, 1)
+        sql("UPDATE season_reset_state SET reset_status='resetting',reset_started_at=NULL WHERE state_id=1")
+        epoch_call("rewards", 20, 1)
+        assert remaining() == "3" and sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "1"
+        policy_boundary(20, "2025-01-01 12:00:00.123456")
+        epoch_call("rewards", 20, 0)
+        assert remaining() == "2"
+        assert sql("SELECT GROUP_CONCAT(id ORDER BY id) FROM account_bound_rewards") == "1,3,4"
+        assert sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "0"
+        stamp = sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state WHERE id=1")
+        assert stamp == "2025-01-01 12:00:00"
+        # Same reset, much later clock: no second decrement.
+        env["PWIPE_TEST_NOW"] = sql("SELECT UNIX_TIMESTAMP('2025-04-01')")
+        env["PWIPE_TEST_DELETE_REWARDS"] = "1"
+        epoch_call("rewards", 20, 0); assert remaining() == "2"
+        del env["PWIPE_TEST_DELETE_REWARDS"]
+        assert sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state WHERE id=1") == stamp
+        # A distinct reset inside 28 days keeps grants but clears old body links,
+        # even if the operator retries it after the protection window has passed.
+        policy_boundary(21, "2025-01-02 12:00:00")
+        summons(); epoch_call("rewards", 21, 0)
+        assert remaining() == "2" and sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "0"
+        assert sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state WHERE id=1") == stamp
+        # Eligible distinct reset: rollback preserves both grants and summons.
+        policy_boundary(22, "2025-02-01 12:00:00")
+        summons(); env["PWIPE_TEST_FAIL_SQL"] = "SET g.last_processed_at="
+        try:
+            epoch_call("rewards", 22, 1)
+        finally:
+            del env["PWIPE_TEST_FAIL_SQL"]
+        assert remaining() == "2" and sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "1"
+        env["PWIPE_TEST_LOST_REWARD_ACK"] = "1"
+        try:
+            epoch_call("rewards", 22, 1)
+        finally:
+            del env["PWIPE_TEST_LOST_REWARD_ACK"]
+        assert remaining() == "1" and sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "0"
+        epoch_call("rewards", 22, 0); assert remaining() == "1"
+        policy_boundary(23, "2025-03-01 12:00:00")
+        env["PWIPE_TEST_DELETE_REWARDS"] = "1"
+        try:
+            epoch_call("rewards", 23, 0)
+        finally:
+            del env["PWIPE_TEST_DELETE_REWARDS"]
+        assert sql("SELECT COUNT(*) FROM account_bound_rewards") == "0"
+        del env["PWIPE_TEST_NOW"]
+        print("Real reward hook: permanent/finite/expiry, wrong epoch, delayed retry, distinct reset guard, rollback/lost ACK and preserve=false passed", flush=True)
+
 
 
 
