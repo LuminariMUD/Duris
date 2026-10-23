@@ -6,7 +6,7 @@ import tempfile
 from _paths import ROOT, SRC, HARNESS_STUBS, extract_function
 
 source = (SRC / 'trap.c').read_text()
-defines = source[source.index('#define TRAP_DAM_SLEEP'):source.index('void do_trapremove')]
+defines = source[source.index('#define TRAP_DAM_SLEEP'):source.index('static bool trap_damage_supported')]
 harness = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
@@ -38,13 +38,19 @@ void stop_fighting(P_char) {}
 void spell_teleport(int, P_char, char *, int, P_char, P_obj) { ++effects; }
 int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) { ++effects; return 0; }
 bool damage(P_char, P_char, double, int) { ++effects; return true; }
-''' + defines + extract_function('trap.c', 'void trapdamage(') + r'''
+''' + defines + extract_function('trap.c', 'static bool trap_damage_supported(') + \
+    extract_function('trap.c', 'void trapdamage(') + \
+    extract_function('trap.c', 'bool checkmovetrap(') + \
+    extract_function('trap.c', 'bool checkgetput(') + \
+    extract_function('trap.c', 'bool checkopen(') + r'''
 int main() {
     char_data actor = {};
     pc_only_data pc = {};
     actor.only.pc = &pc;
     indexes[0].virtual_number = 131200;
     obj_data item = {};
+    item.trap_eff = TRAP_EFF_MOVE | TRAP_EFF_NORTH | TRAP_EFF_OBJECT | TRAP_EFF_OPEN;
+    rooms[0].contents = &item;
     for (int type = -1; type <= 16; ++type) {
         item.trap_dam = type; item.trap_charge = 2;
         effects = reports = 0; audit.clear();
@@ -55,7 +61,20 @@ int main() {
             item.trap_charge = -1;
             trapdamage(&actor, &item);
             assert(item.trap_charge == -1 && reports == 2 && effects == 0);
-        } else assert(item.trap_charge == 1 && reports == 0 && effects == 1);
+            for (int charge : {1, -1}) {
+                item.trap_charge = charge;
+                assert(!checkmovetrap(&actor, 0));
+                assert(!checkgetput(&actor, &item));
+                assert(!checkopen(&actor, &item));
+                assert(item.trap_charge == charge && effects == 0);
+            }
+        } else {
+            assert(item.trap_charge == 1 && reports == 0 && effects == 1);
+            item.trap_charge = 2; assert(checkmovetrap(&actor, 0) && item.trap_charge == 1);
+            item.trap_charge = 2; assert(checkgetput(&actor, &item) && item.trap_charge == 1);
+            item.trap_charge = 2; assert(checkopen(&actor, &item) && item.trap_charge == 1);
+            assert(effects == 4 && reports == 0);
+        }
     }
 }
 '''

@@ -49,6 +49,15 @@ extern P_room world;
 #define TRAP_EFF_DOWN BIT_9
 #define TRAP_EFF_OPEN BIT_10 /* trigger on open */
 
+static bool trap_damage_supported(P_obj obj)
+{
+	if (obj->trap_dam >= TRAP_DAM_SLEEP && obj->trap_dam <= TRAP_DAM_SLASH)
+		return true;
+	logit(LOG_WIZ, "Trap object %d has unsupported damage type %d; charge preserved.",
+	      OBJ_VNUM(obj), obj->trap_dam);
+	return false;
+}
+
 void do_trapremove(P_char ch, char *argument, int /*cmd*/)
 {
 	P_obj obj;
@@ -426,7 +435,8 @@ bool checkmovetrap(P_char ch, int dir)
 	{
 		obj_next = obj->next_content;
 
-		if (obj->trap_eff && IS_SET(obj->trap_eff, TRAP_EFF_MOVE) && obj->trap_charge)
+		if (obj->trap_eff && IS_SET(obj->trap_eff, TRAP_EFF_MOVE) && obj->trap_charge &&
+		    trap_damage_supported(obj))
 			found = TRUE;
 		else
 			found = FALSE;
@@ -473,7 +483,7 @@ bool checkgetput(P_char ch, P_obj obj)
 	if (!obj->trap_charge)
 		return FALSE;
 
-	if (IS_SET(obj->trap_eff, TRAP_EFF_OBJECT))
+	if (IS_SET(obj->trap_eff, TRAP_EFF_OBJECT) && trap_damage_supported(obj))
 	{
 		trapdamage(ch, obj);
 		return TRUE;
@@ -486,7 +496,7 @@ bool checkopen(P_char ch, P_obj obj)
 	if (!obj->trap_charge)
 		return FALSE;
 
-	if (IS_SET(obj->trap_eff, TRAP_EFF_OPEN))
+	if (IS_SET(obj->trap_eff, TRAP_EFF_OPEN) && trap_damage_supported(obj))
 	{
 		trapdamage(ch, obj);
 		return TRUE;
@@ -504,12 +514,8 @@ void trapdamage(P_char ch, P_obj obj)
 	if (!obj->trap_charge)
 		return;
 
-	if (obj->trap_dam < TRAP_DAM_SLEEP || obj->trap_dam > TRAP_DAM_SLASH)
-	{
-		logit(LOG_WIZ, "Trap object %d has unsupported damage type %d; charge preserved.",
-		      OBJ_VNUM(obj), obj->trap_dam);
+	if (!trap_damage_supported(obj))
 		return;
-	}
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
 		return;
