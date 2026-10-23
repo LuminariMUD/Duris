@@ -3,6 +3,7 @@
 
 #include "economy/divine_trade_command.h"
 #include "persistence/critical_command_completion.h"
+#include "flatfile/flatfile_player_domain_repository.h"
 #include <mysql/mysql.h>
 
 // Caller owns the SQL transaction. for_update serializes whole-market captures
@@ -16,6 +17,10 @@ bool divine_trade_sql_books(MYSQL *connection, uint64_t boon_id,
 			    std::vector<divine_trade_book> *books);
 critical_apply_result divine_trade_flatfile_apply(const std::string &root,
 						  const critical_command &command);
+// Caller owns recovered authority. The returned image never retains a pending tag.
+flatfile_player_domain_result
+divine_trade_flatfile_settle_snapshot(const std::string &root, const flatfile_authority_lock &lock,
+				      player_snapshot *snapshot, std::string *error);
 bool divine_trade_flatfile_books(const std::string &root, uint64_t boon_id,
 				 std::vector<divine_trade_book> *books);
 

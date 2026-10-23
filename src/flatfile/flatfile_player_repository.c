@@ -15,6 +15,7 @@
 #include "flatfile/flatfile_player_repository.h"
 
 #include "economy/collector_eligibility.h"
+#include "economy/divine_trade_repository.h"
 #include "flatfile/flatfile_collector_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -846,9 +847,22 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 }
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
-							const player_snapshot &snapshot,
+							const player_snapshot &captured,
 							std::string *error)
 {
+	std::unique_ptr<player_snapshot> revised;
+	if (player_snapshot_trade_pending(captured))
+	{
+		try
+		{
+			revised = std::make_unique<player_snapshot>(captured);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+		}
+	}
+	const auto &snapshot = revised ? *revised : captured;
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	flatfile_player_snapshot_lock snapshot_lock;
@@ -873,6 +887,16 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	player_save_apply_result locked = lock_authority();
 	if (locked.outcome != player_save_apply_outcome::applied)
 		return locked;
+	if (revised)
+	{
+		const auto settled = divine_trade_flatfile_settle_snapshot(root, *authority,
+									   revised.get(), error);
+		if (settled != flatfile_player_domain_result::ok)
+			return { settled == flatfile_player_domain_result::io_error ?
+					 player_save_apply_outcome::retryable_failure :
+					 player_save_apply_outcome::terminal_failure,
+				 0, EILSEQ };
+	}
 	player_snapshot materialized = {};
 	bool new_player = false;
 	const flatfile_player_load_result loaded =

@@ -84,6 +84,10 @@ bool currency_transaction_submit_bank_payment(P_char character, int64_t value,
 // Queue the character's save now, before whatever the money it gave up moves into is
 // saved: when money leaves one saved owner for another, the one it leaves goes first.
 void currency_transaction_save_first(P_char character);
+// One cargo market operation reserves its future purse while other wallet
+// changes keep the facade's synchronous behavior. No money moves here.
+bool currency_transaction_reserve_trade(P_char character, int64_t payment);
+void currency_transaction_release_trade(uint32_t pid);
 currency_transaction_health currency_transaction_health_copy(void);
 void currency_transaction_reset_for_tests(void);
 

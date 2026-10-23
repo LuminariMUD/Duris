@@ -17,6 +17,7 @@
 #include "core/defines.h"
 #include "economy/collector_eligibility.h"
 #include "economy/collector_repository.h"
+#include "economy/divine_trade_result.h"
 #include "item/item_claim_repository.h"
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_codec.h"
@@ -380,10 +381,14 @@ query_result apply_skills(MYSQL *connection, const player_snapshot &snapshot)
 			    });
 }
 
-query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot,
+			   bool cargo_only = false)
 {
-	query_result result = execute(connection, "DELETE FROM player_affects WHERE pid=" +
-							  std::to_string(snapshot.pid));
+	query_result result = execute(
+		connection,
+		"DELETE FROM player_affects WHERE pid=" + std::to_string(snapshot.pid) +
+			(cargo_only ? " AND type=" + std::to_string(PLAYER_TRADE_CARGO_AFFECT) :
+				      ""));
 	if (!result.ok || snapshot.affects.empty())
 		return result;
 	std::ostringstream sql;
@@ -922,8 +927,69 @@ query_result insert_opening_baselines(MYSQL *connection, int pid)
 	return result;
 }
 
-player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &snapshot)
+// The critical writer locks inbox before player_data; use that order here too.
+query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 {
+	const auto &tag = snapshot->pending_trade;
+	constexpr char digits[] = "0123456789abcdef";
+	std::string operation;
+	for (uint8_t byte : tag.operation)
+	{
+		operation += digits[byte >> 4];
+		operation += digits[byte & 15];
+	}
+	auto query = execute(
+		connection,
+		"SELECT command_hash,command_type,status,result_code=0,result_payload FROM critical_operation_inbox "
+		"WHERE operation_id=UNHEX('" +
+			operation + "') FOR UPDATE");
+	if (!query.ok)
+		return query;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	if (!rows)
+		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+	MYSQL_ROW row = mysql_fetch_row(rows);
+	bool valid = true, committed = false;
+	if (row)
+	{
+		const auto *lengths = mysql_fetch_lengths(rows);
+		divine_trade_result result;
+		valid = lengths && row[0] && lengths[0] == tag.command_hash.size() &&
+			!memcmp(row[0], tag.command_hash.data(), tag.command_hash.size()) &&
+			row[1] && !strcmp(row[1], "19") && row[2] && !strcmp(row[2], "1") &&
+			row[3] && (!strcmp(row[3], "0") || !strcmp(row[3], "1")) && row[4] &&
+			divine_trade_result_decode(reinterpret_cast<const uint8_t *>(row[4]),
+						   lengths[4], &result) &&
+			result.pid == static_cast<uint32_t>(snapshot->pid) &&
+			result.payment == tag.payment &&
+			result.wallet_revision == tag.wallet_revision + 1;
+		committed = valid && !strcmp(row[3], "1");
+	}
+	mysql_free_result(rows);
+	if (!valid)
+		return { false, EILSEQ };
+	const auto settled = player_snapshot_settle_trade(snapshot, committed);
+	return { settled == player_snapshot_codec_result::ok,
+		 static_cast<unsigned int>(
+			 settled == player_snapshot_codec_result::allocation_failure ? ENOMEM :
+										       EILSEQ) };
+}
+
+player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &captured)
+{
+	std::unique_ptr<player_snapshot> revised;
+	if (player_snapshot_trade_pending(captured))
+	{
+		try
+		{
+			revised = std::make_unique<player_snapshot>(captured);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return failure(ENOMEM);
+		}
+	}
+	const auto &snapshot = revised ? *revised : captured;
 	if (!connection || snapshot.pid <= 0 || !snapshot.revision || !snapshot.components ||
 	    (snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
@@ -940,8 +1006,11 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	bool created = false;
 	player_revision_t stored_revision = 0;
 	uint64_t stored_delivery_sequence = 0, stored_wallet_revision = 0;
-	query = ensure_player_row(connection, snapshot, &created, &stored_revision,
-				  &stored_delivery_sequence, &stored_wallet_revision);
+	if (revised)
+		query = settle_pending_trade(connection, revised.get());
+	if (query.ok)
+		query = ensure_player_row(connection, snapshot, &created, &stored_revision,
+					  &stored_delivery_sequence, &stored_wallet_revision);
 	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 	    delivered_sequence > stored_delivery_sequence &&
 	    std::none_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
@@ -1436,6 +1505,24 @@ template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 	return applied;
 }
 } // namespace
+
+bool player_snapshot_repository_write_cargo_effect(MYSQL *connection, int32_t pid,
+						   const player_affect_snapshot &effect)
+{
+	if (!connection || pid <= 0 || effect.type != PLAYER_TRADE_CARGO_AFFECT ||
+	    effect.modifier < 0)
+	{
+		errno = EINVAL;
+		return false;
+	}
+	player_snapshot image{};
+	image.pid = pid;
+	image.affects.push_back(effect);
+	auto result = apply_affects(connection, image, true);
+	if (!result.ok)
+		errno = result.error_code;
+	return result.ok;
+}
 
 bool player_snapshot_repository_write_pets(MYSQL *connection, const player_snapshot &snapshot)
 {

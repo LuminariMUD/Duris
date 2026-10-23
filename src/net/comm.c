@@ -372,7 +372,8 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		// A restart restores those records; the outbox never applies a wallet delta.
 		divine_trade_result result;
 		return record.event_type == 1 &&
-				       record.payload_version == DIVINE_TRADE_PAYLOAD_VERSION &&
+				       (record.payload_version == 1 ||
+					record.payload_version == DIVINE_TRADE_PAYLOAD_VERSION) &&
 				       divine_trade_result_decode(record.payload.data(),
 								  record.payload.size(), &result) ?
 			       critical_outbox_delivery_result::already_delivered :

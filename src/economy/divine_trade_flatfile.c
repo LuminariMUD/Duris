@@ -3,6 +3,7 @@
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_store.h"
 #include "flatfile/flatfile_cargo_repository.h"
+#include "player/player_snapshot_codec.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -194,7 +195,7 @@ try
 			wallet[i] = static_cast<uint64_t>(p.wallet_after.amount[i]);
 		const auto prepared = flatfile_player_domain_prepare_wallet(
 			root, lock, p.pid, p.wallet_revision, p.book_after.account, wallet,
-			&operations, &error);
+			&operations, &error, p.has_cargo_effect ? &p.cargo_effect : nullptr);
 		if (prepared == flatfile_player_domain_result::io_error)
 			return { critical_apply_outcome::retryable_failure, 0, EIO };
 		if (prepared != flatfile_player_domain_result::ok)
@@ -261,6 +262,53 @@ try
 catch (const std::bad_alloc &)
 {
 	return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
+}
+
+flatfile_player_domain_result
+divine_trade_flatfile_settle_snapshot(const std::string &root, const flatfile_authority_lock &lock,
+				      player_snapshot *snapshot, std::string *error)
+try
+{
+	if (!snapshot || !lock.matches(root))
+		return flatfile_player_domain_result::invalid;
+	const auto &tag = snapshot->pending_trade;
+	critical_operation_id operation;
+	operation.bytes = tag.operation;
+	char operation_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+	critical_operation_id_to_hex(operation, operation_hex, sizeof(operation_hex));
+	std::vector<uint8_t> receipt;
+	const auto read =
+		flatfile_read(root + "/domains",
+			      std::string("divine-trade-command-") + operation_hex + ".receipt",
+			      receipt_size, &receipt, error);
+	bool committed = false;
+	if (read == flatfile_read_result::ok)
+	{
+		const auto retained = replay(receipt, tag.command_hash);
+		divine_trade_result result;
+		if (retained.result_size != DIVINE_TRADE_RESULT_BYTES ||
+		    !divine_trade_result_decode(retained.result_payload.data(),
+						retained.result_size, &result) ||
+		    result.pid != static_cast<uint32_t>(snapshot->pid) ||
+		    result.payment != tag.payment ||
+		    result.wallet_revision != tag.wallet_revision + 1)
+			return flatfile_player_domain_result::invalid;
+		committed = retained.outcome == critical_apply_outcome::already_applied;
+	}
+	else if (read != flatfile_read_result::not_found)
+		return read == flatfile_read_result::io_error ?
+			       flatfile_player_domain_result::io_error :
+			       flatfile_player_domain_result::invalid;
+	const auto settled = player_snapshot_settle_trade(snapshot, committed);
+	return settled == player_snapshot_codec_result::ok ?
+		       flatfile_player_domain_result::ok :
+	       settled == player_snapshot_codec_result::allocation_failure ?
+		       flatfile_player_domain_result::io_error :
+		       flatfile_player_domain_result::invalid;
+}
+catch (const std::bad_alloc &)
+{
+	return flatfile_player_domain_result::io_error;
 }
 
 bool divine_trade_flatfile_books(const std::string &root, uint64_t boon_id,

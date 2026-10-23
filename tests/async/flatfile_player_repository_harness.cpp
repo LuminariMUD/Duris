@@ -1,4 +1,6 @@
 #include "economy/divine_trade_repository.h"
+#include "player/player_snapshot_codec.h"
+#include <openssl/sha.h>
 #include "flatfile/flatfile_ship_repository.h"
 #include "flatfile/flatfile_cargo_repository.h"
 #include "ships/ships.h"
@@ -965,6 +967,11 @@ static void divine_trade_settlement(const fs::path &base)
 				consumed.qualifying_quantity == 1,
 			"merged cargo sale boosted old stock");
 		sale.qualifying_quantity = consumed.qualifying_quantity;
+		sale.has_cargo_effect = !contraband && !zero_sale;
+		sale.cargo_effect.type = PLAYER_TRADE_CARGO_AFFECT;
+		sale.cargo_effect.duration = -1;
+		sale.cargo_effect.modifier = 10005;
+
 		require(divine_trade_command_build(&command, sell_id, sale),
 			"prepare sale command");
 		const std::string step = std::to_string(boundary);
@@ -1048,6 +1055,106 @@ static void divine_trade_settlement(const fs::path &base)
 		applied = apply(command);
 		require(applied.outcome == critical_apply_outcome::already_applied,
 			"sale receipt was not permanent");
+		player_snapshot saved;
+		require(flatfile_player_snapshot_load(root, 42, &saved, &error) ==
+				flatfile_player_load_result::ok,
+			error);
+		if (sale.has_cargo_effect)
+			require(std::any_of(saved.affects.begin(), saved.affects.end(),
+					    [](const auto &af)
+					    { return af.type == 2110 && af.modifier == 10005; }),
+				"financial sale omitted cargo achievement");
+		auto captured = opening;
+		captured.revision = 10000;
+		captured.wallet_revision = 9;
+		captured.pending_trade.operation = sell_id.bytes;
+		captured.pending_trade.payment = sale.payment;
+		captured.pending_trade.wallet_revision = 8;
+		captured.pending_trade.has_cargo_effect = sale.has_cargo_effect;
+		captured.pending_trade.cargo_effect = sale.cargo_effect;
+		std::vector<uint8_t> encoded_command;
+		require(critical_command_encode(command, &encoded_command) ==
+				critical_command_codec_result::ok,
+			"encode pending trade identity");
+		SHA256(encoded_command.data(), encoded_command.size(),
+		       captured.pending_trade.command_hash.data());
+		for (auto &row : captured.status_integers)
+		{
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				const unsigned i =
+					static_cast<unsigned>(row.field) -
+					static_cast<unsigned>(player_status_field::copper);
+				row.signed_value = i ? purchase.wallet_after.amount[i] : 21;
+			}
+			if (row.field == player_status_field::level)
+				row.signed_value = 51;
+		}
+		const auto merged = zero_sale ? std::array<uint64_t, 4>{ 21, 3, 3, 15 } :
+						std::array<uint64_t, 4>{ 21, 6, 5, 16 };
+		const auto verify = [&]()
+		{
+			require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain,
+							    &error) ==
+						flatfile_player_domain_result::ok &&
+					domain.domains.wallet == merged &&
+					domain.domains.wallet_revision == 10,
+				"pending capture lost/repeated payment");
+			require(flatfile_player_snapshot_load(root, 42, &saved, &error) ==
+						flatfile_player_load_result::ok &&
+					saved.status_integers[0].signed_value == 51 &&
+					!player_snapshot_trade_pending(saved),
+				"pending capture lost ordinary status or retained tag");
+			if (sale.has_cargo_effect)
+				require(std::any_of(saved.affects.begin(), saved.affects.end(),
+						    [](const auto &af) {
+							    return af.type == 2110 &&
+								   af.modifier == 10005;
+						    }),
+					"pending affect capture erased cargo achievement");
+		};
+		require(flatfile_player_snapshot_apply(root, captured, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+		require(flatfile_player_snapshot_apply(root, captured, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+		auto corrupt = captured;
+		corrupt.pending_trade.command_hash[0] ^= 1;
+		require(flatfile_player_snapshot_apply(root, corrupt, &error).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"mismatched pending receipt accepted");
+		verify();
+		auto unpaid = captured;
+		require(player_snapshot_settle_trade(&unpaid, true) ==
+				player_snapshot_codec_result::ok,
+			"prepare current purse fixture");
+		unpaid.pending_trade = captured.pending_trade;
+		critical_operation_id absent;
+		require(critical_operation_id_generate(&absent), "absent trade id");
+		unpaid.pending_trade.operation = absent.bytes;
+		require(flatfile_player_snapshot_apply(root, unpaid, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
+		critical_command rejected;
+		require(divine_trade_command_build(&rejected, absent, sale),
+			"build rejected trade");
+		require(apply(rejected).error_code == ESTALE,
+			"stale trade did not retain rejection");
+		encoded_command.clear();
+		require(critical_command_encode(rejected, &encoded_command) ==
+				critical_command_codec_result::ok,
+			"encode rejected trade");
+		SHA256(encoded_command.data(), encoded_command.size(),
+		       unpaid.pending_trade.command_hash.data());
+		require(flatfile_player_snapshot_apply(root, unpaid, &error).outcome ==
+				player_save_apply_outcome::applied,
+			error);
+		verify();
 	}
 	std::cout
 		<< "Divine trade purchase/sale recovery passed at journal and all six after-image boundaries\n";
@@ -1365,7 +1472,7 @@ int main(int argc, char **argv)
 	std::vector<uint8_t> legacy_bytes;
 	require(player_snapshot_encode(full, &legacy_bytes) == player_snapshot_codec_result::ok,
 		"could not encode legacy-compatible status fixture");
-	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t));
+	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1);
 	legacy_bytes[0] = 9; // Older status has no delivery field or wallet metadata.
 	player_snapshot legacy;
 	uint64_t legacy_sequence = 99;

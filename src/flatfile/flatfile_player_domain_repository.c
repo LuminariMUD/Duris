@@ -2281,7 +2281,8 @@ flatfile_player_domain_result flatfile_player_domain_prepare_wallet(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	uint64_t expected_revision, uint64_t expected_account,
 	const std::array<uint64_t, 4> &wallet,
-	std::vector<flatfile_authority_operation> *operations, std::string *error)
+	std::vector<flatfile_authority_operation> *operations, std::string *error,
+	const player_affect_snapshot *cargo_effect)
 {
 	if (!operations || !pid || !lock.matches(root) || !expected_account ||
 	    expected_revision == UINT64_MAX)
@@ -2320,6 +2321,18 @@ flatfile_player_domain_result flatfile_player_domain_prepare_wallet(
 		}
 	if (found != 15)
 		return flatfile_player_domain_result::invalid;
+	if (cargo_effect)
+	{
+		if (cargo_effect->type != PLAYER_TRADE_CARGO_AFFECT || cargo_effect->modifier < 0)
+			return flatfile_player_domain_result::invalid;
+		auto effect = std::find_if(snapshot.affects.begin(), snapshot.affects.end(),
+					   [](const auto &af)
+					   { return af.type == PLAYER_TRADE_CARGO_AFFECT; });
+		if (effect != snapshot.affects.end())
+			*effect = *cargo_effect;
+		else
+			snapshot.affects.push_back(*cargo_effect);
+	}
 	snapshot.wallet_revision = expected_revision + 1;
 	player.record.domains.wallet = wallet;
 	player.record.domains.wallet_revision = snapshot.wallet_revision;

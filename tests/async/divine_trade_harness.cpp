@@ -403,7 +403,35 @@ int main()
 	old_command.payload.erase(old_command.payload.begin() + book_offset - preimage_bytes,
 				  old_command.payload.begin() + book_offset);
 	assert(divine_trade_command_decode(old_command, &decoded) && decoded.slots_before.empty());
+	auto v2_command = command;
+	v2_command.payload_version = 2;
+	v2_command.payload.erase(v2_command.payload.begin() + book_offset - (preimage_bytes - 4),
+		v2_command.payload.begin() + book_offset);
+	assert(divine_trade_command_decode(v2_command, &decoded) && decoded.slots_before.empty() &&
+	       !decoded.has_cargo_effect);
 
+
+	auto sale = payload;
+	sale.slots_before = payload.slots_after;
+	sale.crew_before = payload.crew_after;
+	sale.action = divine_trade_action::sale;
+	sale.admitted_at = 200;
+	sale.payment = 150;
+	sale.book_revision = book.revision;
+	sale.qualifying_quantity = 1;
+	divine_trade_consumption sale_used;
+	assert(divine_trade_prepare_removal(book, boon, removal(1, 1, 100), &sale.book_after,
+					    &sale_used));
+	sale.slots_after = { { 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } } };
+	sale.market_after = { { 4, 2, divine_trade_goods::cargo, .95f, 120 } };
+	sale.has_cargo_effect = true;
+	sale.cargo_effect.type = PLAYER_TRADE_CARGO_AFFECT;
+	sale.cargo_effect.duration = -1;
+	sale.cargo_effect.modifier = 10005;
+	critical_command effect_command;
+	assert(divine_trade_command_build(&effect_command, operation(901), sale) &&
+	       divine_trade_command_decode(effect_command, &decoded) && decoded.has_cargo_effect &&
+	       decoded.cargo_effect.modifier == 10005);
 	auto bad_command = command;
 	bad_command.keys.back().id = 22;
 	assert(!divine_trade_command_decode(bad_command, &decoded));
