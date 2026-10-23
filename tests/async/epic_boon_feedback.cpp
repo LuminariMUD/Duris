@@ -465,6 +465,45 @@ static void sql_offline_rewards()
 	}
 }
 
+static void ordered_offline_rewards()
+{
+	reset_actor(20, 100);
+	flat_root.clear();
+	online = false;
+	std::vector<critical_completion> completed;
+	for (int i = 0; i < 32; ++i)
+	{
+		assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+		boon_reward_result result{};
+		result.pid = 42;
+		result.entry_count = 1;
+		result.entries[0].boon_id = 100 + i;
+		result.entries[0].type = BTYPE_EXP;
+		result.entries[0].bonus = 1;
+		result.entries[0].flags = BOON_RESULT_COMPLETED;
+		std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+		assert(boon_reward_command_encode_result(result, &bytes));
+		critical_completion completion{};
+		completion.operation_id = commands.back().operation_id;
+		completion.outcome = critical_apply_outcome::applied;
+		completion.result_size = bytes.size();
+		std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+		completed.push_back(completion);
+	}
+	std::reverse(completed.begin(), completed.end());
+	boon_reward_transaction_handle_completions(completed.data(), completed.size());
+	online = true;
+	boon_reward_transaction_player_ready(&actor);
+	size_t previous = 0;
+	for (int id = 131; id >= 100; --id)
+	{
+		const auto position = feedback.find("completed boon # " + std::to_string(id));
+		assert(position != std::string::npos && (id == 131 || position > previous));
+		previous = position;
+	}
+	assert(experience == 32 && boon_reward_transaction_health_copy().pending == 0);
+}
+
 static void checkpoint_free_offline(const std::string &root)
 {
 	for (bool flat : { false, true })
@@ -547,7 +586,8 @@ static void checkpoint_free_offline(const std::string &root)
 	flat_root.clear();
 }
 
-static void checkpoint_free_online_ack_failure(const std::string &root)
+static void checkpoint_free_online_ack_failure(const std::string &root,
+					       bool recipient_online = true)
 {
 	reset_actor(20, 100);
 	flat_root = root;
@@ -572,6 +612,7 @@ static void checkpoint_free_online_ack_failure(const std::string &root)
 	completion.outcome = applied.outcome;
 	completion.result_size = applied.result_size;
 	completion.result_payload = applied.result_payload;
+	online = recipient_online;
 	std::filesystem::rename(root + "/domains", root + "/unavailable");
 	boon_reward_transaction_handle_completions(&completion, 1);
 	assert(boon_reward_transaction_health_copy().pending == 1);
@@ -581,6 +622,7 @@ static void checkpoint_free_online_ack_failure(const std::string &root)
 	boon_reward_transaction_handle_completions(&completion, 1);
 	assert(feedback == messages && boon_reward_transaction_health_copy().pending == 1);
 	std::filesystem::rename(root + "/unavailable", root + "/domains");
+	online = true;
 	boon_reward_transaction_player_ready(&actor);
 	assert(feedback == messages && boon_reward_transaction_health_copy().pending == 0);
 	flatfile_boon_pending_reward reward;
@@ -740,9 +782,11 @@ int main(int argc, char **argv)
 					      ordering, fail_ack);
 	multiple_offline_rewards(std::string(argv[1]) + "/multiple");
 	sql_offline_rewards();
+	ordered_offline_rewards();
 	checkpoint_free_offline(std::string(argv[1]) + "/checkpoint-free");
 	checkpoint_free_outbox();
 	checkpoint_free_online_ack_failure(std::string(argv[1]) + "/online-ack-failure");
+	checkpoint_free_online_ack_failure(std::string(argv[1]) + "/offline-ack-failure", false);
 	flat_published_admission_capacity();
 	nested_publication_case();
 	legacy_shop_admission_case();

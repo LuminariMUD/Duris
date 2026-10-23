@@ -41,6 +41,7 @@ struct pending_reward
 	uint64_t submitted_at_msec;
 	bool published = false;
 	boon_reward_result committed_result = {};
+	uint64_t completion_order = 0;
 };
 
 std::unordered_map<std::string, pending_reward> pending;
@@ -56,6 +57,7 @@ uint64_t definitions_read_at_msec = 0;
 bool definitions_available = false;
 bool definitions_loading = false;
 constexpr uint64_t DEFINITION_FRESH_MSEC = 60000;
+uint64_t completion_order = 0;
 
 uint64_t monotonic_msec()
 {
@@ -281,6 +283,8 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 			if (result.entry_count)
 				boon_reward_definition_view_invalidate();
 			found->second.committed_result = result;
+			if (!found->second.completion_order)
+				found->second.completion_order = ++completion_order;
 			P_char character = find_player_by_pid(found->second.pid);
 			if (character || found->second.published)
 			{
@@ -292,6 +296,12 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 			{
 				// Progress and shop counters are already committed. No player
 				// callback/checkpoint is needed to finish their admission.
+				if (!found->second.published)
+				{
+					found->second.published = true;
+					++health.committed;
+				}
+
 				if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 				{
 					const char *root = persistence_mode_flatfile_root();
@@ -299,12 +309,14 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 					if (!root || flatfile_boon_acknowledge_reward(
 							     root, completions[index].operation_id,
 							     &error) != flatfile_boon_result::ok)
+					{
 						persistence_alert(AVATAR, "boon_reward", "player",
 								  "unknown", "completion",
 								  "checkpoint_free_ack_retained",
 								  "pid=%u", result.pid);
+						continue; // Keep the ACK retry visible across mode transitions.
+					}
 				}
-				++health.committed;
 				health.max_results =
 					std::max<uint64_t>(health.max_results, result.entry_count);
 				pending.erase(found);
@@ -339,6 +351,9 @@ try
 		    entry.committed_result.pid &&
 		    (!entry.published || !needs_checkpoint(entry.committed_result)))
 			known.push_back(key);
+	std::sort(
+		known.begin(), known.end(), [](const auto &left, const auto &right)
+		{ return pending.at(left).completion_order < pending.at(right).completion_order; });
 	for (const auto &key : known)
 	{
 		auto found = pending.find(key);
@@ -441,4 +456,5 @@ void boon_reward_transaction_reset_for_tests(void)
 	definitions_available = false;
 	definitions.clear();
 	definitions_loading = false;
+	completion_order = 0;
 }
