@@ -289,6 +289,12 @@ try
 	    payload.wallet_revision != ch->only.pc->wallet_revision ||
 	    payload.generation != cargo_trade_generation())
 		return false;
+	if (payload.action == divine_trade_action::purchase &&
+	    !divine_trade_runtime_book(payload.book_after.account, payload.book_after.boon_id)
+		     .first_ship_id &&
+	    (payload.book_after.first_ship_id != payload.ship_id ||
+	     payload.book_after.first_full_hold != static_cast<uint32_t>(SHIP_MAX_CARGO(ship))))
+		return false;
 	const auto dirty = dirty_owner.find(payload.book_after.account);
 	if (dirty != dirty_owner.end() && dirty->second &&
 	    dirty->second != static_cast<uint32_t>(ship->db_id))
@@ -374,8 +380,6 @@ try
 	next->command = command;
 	// Allocate the publication destination before handing the immutable command off.
 	books.try_emplace(next->after.book_after.account);
-	next->indexed_ships = ship_accounts;
-	next->indexed_dirty = dirty_owner;
 	index_book(next->after.book_after, next->indexed_ships, next->indexed_dirty);
 	if (!currency_transaction_reserve_trade(ch, next->after.payment))
 		return false;
@@ -578,8 +582,14 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 			}
 			player_save_pipeline_release_trade(p.pid);
 			currency_transaction_release_trade(p.pid);
-			ship_accounts.swap(pending->indexed_ships);
-			dirty_owner.swap(pending->indexed_dirty);
+			// Transfer preallocated index additions without overwriting losses on
+			// unrelated ships while this command was pending. Node merges allocate nothing.
+			for (auto &[id, accounts] : pending->indexed_ships)
+				if (auto found = ship_accounts.find(id);
+				    found != ship_accounts.end())
+					found->second.merge(accounts);
+			ship_accounts.merge(pending->indexed_ships);
+			dirty_owner.merge(pending->indexed_dirty);
 			books[p.book_after.account] = std::move(p.book_after);
 			if (P_ship ship = find_ship_by_runtime_ref(pending->ship);
 			    ship && static_cast<uint32_t>(ship->db_id) == p.ship_id)

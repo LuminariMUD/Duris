@@ -881,6 +881,10 @@ static void divine_trade_settlement(const fs::path &base)
 			"buy manifest did not recover");
 		require(divine_trade_flatfile_restore_validate(root, &error),
 			"valid trade history did not qualify");
+		const auto market_path = fs::path(root) / "metadata" / "cargo_market";
+		std::ifstream old_market_input(market_path, std::ios::binary);
+		const std::string old_market{ std::istreambuf_iterator<char>(old_market_input),
+					      std::istreambuf_iterator<char>() };
 		char buy_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
 		critical_operation_id_to_hex(buy_id, buy_hex, sizeof(buy_hex));
 		for (const auto &name :
@@ -1117,6 +1121,21 @@ static void divine_trade_settlement(const fs::path &base)
 					      market.cargo)[4 * NUM_PORTS + 2] ==
 					(zero_sale ? 0.0f : .95f),
 			"sale market did not commit");
+		std::ifstream new_market_input(market_path, std::ios::binary);
+		const std::string new_market{ std::istreambuf_iterator<char>(new_market_input),
+					      std::istreambuf_iterator<char>() };
+		{
+			std::ofstream rollback(market_path, std::ios::binary | std::ios::trunc);
+			rollback << old_market;
+		}
+		require(!divine_trade_flatfile_restore_validate(root, &error),
+			"valid older market qualified with newer successful receipts");
+		{
+			std::ofstream restore(market_path, std::ios::binary | std::ios::trunc);
+			restore << new_market;
+		}
+		require(divine_trade_flatfile_restore_validate(root, &error),
+			"matching market generation did not qualify");
 		require(divine_trade_flatfile_books(root, 17, &books) && books.size() == 1 &&
 				books[0].lots.empty() && books[0].consumed == 1 &&
 				books[0].first_full_hold == 10,

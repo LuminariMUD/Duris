@@ -199,7 +199,6 @@ static void implicit_empty_trade(const fs::path &root)
 	}
 }
 
-
 static void monotonic_ids(const fs::path &root)
 {
 	prepare_root(root);

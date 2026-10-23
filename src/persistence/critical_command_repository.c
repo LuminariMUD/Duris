@@ -1325,7 +1325,8 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 							   award_bytes.size()) ||
 					    (!zone_payload.prepared_delivery &&
 					     !finish_inbox(connection, child, award_result.revision,
-							   0, award_bytes.data(), award_bytes.size(), 1)))
+							   0, award_bytes.data(),
+							   award_bytes.size(), 1)))
 					{
 						const auto error = database_error(connection);
 						rollback(connection);

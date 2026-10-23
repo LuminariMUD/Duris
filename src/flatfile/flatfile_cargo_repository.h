@@ -21,6 +21,9 @@ struct flat_cargo_record
 };
 flat_cargo_result flatfile_cargo_load(const std::string &root, flat_cargo_record *record,
 				      std::string *error);
+flat_cargo_result flatfile_cargo_load(const std::string &root,
+				      const flatfile_authority_lock &authority,
+				      flat_cargo_record *record, std::string *error);
 flat_cargo_result flatfile_cargo_save(const std::string &root, flat_cargo_record record,
 				      std::string *error);
 bool flatfile_cargo_prepare_trade(const std::string &root, const flatfile_authority_lock &lock,

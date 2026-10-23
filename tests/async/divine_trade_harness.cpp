@@ -406,10 +406,9 @@ int main()
 	auto v2_command = command;
 	v2_command.payload_version = 2;
 	v2_command.payload.erase(v2_command.payload.begin() + book_offset - (preimage_bytes - 4),
-		v2_command.payload.begin() + book_offset);
+				 v2_command.payload.begin() + book_offset);
 	assert(divine_trade_command_decode(v2_command, &decoded) && decoded.slots_before.empty() &&
 	       !decoded.has_cargo_effect);
-
 
 	auto sale = payload;
 	sale.slots_before = payload.slots_after;

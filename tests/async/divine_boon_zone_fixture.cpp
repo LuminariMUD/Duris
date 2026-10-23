@@ -30,17 +30,24 @@ int main(int argc, char **argv)
 	for (auto mode : { divine_boon_mode::draining, divine_boon_mode::divine })
 	{
 		const auto expected = state.revision;
-		assert(divine_boon_set_mode(&state, mode, now));
-		save(expected);
+		if (state.mode < mode)
+		{
+			assert(divine_boon_set_mode(&state, mode, now));
+			save(expected);
+		}
 	}
 	const auto expected = state.revision++;
 	state.paused = true;
 	state.last_opportunity = now - now % DIVINE_BOON_HOUR;
-	state.slots = {};
-	auto &slot = state.slots[0];
+	// Retain the real cargo objective if the combined campaign already rotated it.
+	size_t index = 0;
+	while (index < state.slots.size() && state.slots[index].id)
+		++index;
+	assert(index < state.slots.size());
+	auto &slot = state.slots[index];
 	slot.id = state.next_id++;
 	slot.category = divine_boon_category::epic;
-	slot.starts_at = state.last_opportunity;
+	slot.starts_at = state.last_opportunity - (index ? DIVINE_BOON_HOUR : 0);
 	slot.expires_at = slot.starts_at + 8 * DIVINE_BOON_HOUR;
 	slot.zones = { -1, -1 };
 	slot.zones[std::atoi(argv[4])] = std::atoi(argv[3]);

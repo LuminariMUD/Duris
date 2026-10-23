@@ -375,6 +375,7 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		divine_trade_result result;
 		return record.event_type == 1 &&
 				       (record.payload_version == 1 ||
+					record.payload_version == 2 ||
 					record.payload_version == DIVINE_TRADE_PAYLOAD_VERSION) &&
 				       divine_trade_result_decode(record.payload.data(),
 								  record.payload.size(), &result) ?
