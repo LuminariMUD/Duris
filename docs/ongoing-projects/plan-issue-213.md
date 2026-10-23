@@ -150,9 +150,57 @@ An independent registration defect discovered in that browser QA was fixed in
 overlong names before connecting. Six focused tests, normal frontend gates and
 Chromium in-place rejection checks passed. It is not a dependency of #91.
 
-Next: allocate collision-free
-tutorial IDs from refreshed authored sources, implement faithful copies with
-typed-reference/mechanical parity, and wire the remaining procedures/choices.
+Next data chunk: `branch/issue-213-tutorial-copies`, stacked on #315 in the
+same worktree. Master was refreshed again and remains ancestral at `7d3bd3b95`.
+All authored namespaces (including inactive sources) were inventoried before
+allocating the formerly OPEN 912-919 range:
+
+- Plane of Chaos uses zone 912, rooms 91200-91206, mobiles 91200-91202 and
+  objects 91200-91209. Mapping: each Plane of Life entity +68400, zone +684.
+- Wutvr uses zone 914 spanning room IDs 91401-91517, mobiles 91401-91505 and
+  objects 91401-91533 (sparse sets match the source). Mapping: each Ailvio
+  entity +62200, zone +622. Quest controller and shop identities follow their
+  corresponding copied mobile IDs. Zones 913 and 916-919 remain OPEN.
+- The ten new authored files and `areas/AREA` are staged for delivery. The
+  focused fixture `tests/async/test_issue213_tutorial_parity.py` holds the typed
+  mappings, all explicit shared external object IDs and stream room 132575,
+  exact counts and authored/generated equality checks. It remaps room exits
+  (including D8), door keys, zone reset entities/containers/equipment, portal
+  rooms, switch rooms, quest item actions/rewards, and shop stocks/keepers/rooms.
+  Numeric rewards, commands, flags and other fields are unchanged.
+- Ailvio's final arch also has an authored fallback to Plane of Life; that
+  cross-stage reference maps to Plane of Chaos in the copy. The final racial
+  departure still needs the copied compiled portal assignment. The stone slab
+  `ITEM_SWITCH` stores its target room in value[1], which is also remapped.
+- One inherited no-op is deliberately omitted from the copy: bank object 6081
+  has no prototype, and original boot disables its reset. The original source
+  repair is isolated in [PR #319](https://github.com/LuminariMUD/Duris/pull/319),
+  commit `15e314e43`, with a focused active-catalog bank reset regression.
+  Original tutorial files are unchanged on this feature branch. The working
+  bank sign, locker and object 3097 remain in both the source and copy.
+
+This is the **ID/reference foundation**, not completed evil-content acceptance.
+Only area/location names are reskinned so far. Original NPC names/races and
+faction prose are deliberately retained until the next chunk can apply and
+prove the required evil replacements together with their compiled behavior.
+No creation menu exposes the copied tutorials yet. Do not release the data
+alone as a functioning tutorial, or count this stage as the locked themed
+copies being complete.
+
+`make world`, the new authored/generated parity test, area filename-case and
+object-bitvector compatibility checks, and `git diff --check` pass. A disposable
+flat-file boot of the complete generated world succeeds: 353 zones, 17,283
+mobile profiles, 1,755 quest-controller records, game loop reached in 2.818s.
+Boot evidence is `bin/qualification/issue213/copy-boot.log`; generated world,
+lookups and binary outputs are uncommitted. A diff against master verifies all
+ten original authored files are byte-for-byte unchanged. Non-theme field
+equality at this foundation stage does not prove derived parity after future
+NPC race substitutions, or copied special-procedure dispatch.
+
+Next: complete minimal NPC naming/race/faction substitutions with mechanical
+parity, wire copied compiled procedures and creation choices, and implement the
+full terminal/browser/persistence runner. See all original acceptance gates
+below; none are dropped by splitting the reference foundation from integration.
 Keep later PRs stacked so menus cannot ship before their data and procs.
 All full-world terminal/browser routes, cold-restart XP/home persistence on both
 backends, actual rendered web warning and help database publication remain
