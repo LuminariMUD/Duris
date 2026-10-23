@@ -327,7 +327,8 @@ bool nexus_stone_info(int stone_id, NexusStoneInfo *info)
 #endif
 }
 
-template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount amount, int type)
+template <typename Amount>
+static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announce = true)
 {
 	char buff[MAX_STRING_LENGTH], buff2[MAX_STRING_LENGTH];
 
@@ -392,6 +393,8 @@ template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount am
 		case NEXUS_BONUS_EXP:
 			break;
 		case NEXUS_BONUS_CARGO:
+			if (!announce)
+				break;
 			snprintf(buff2, MAX_STRING_LENGTH,
 				 "&+yEnlil&n grants you an additional %s&n.\r\n",
 				 coin_stringv(static_cast<int>(newamnt)));
@@ -415,9 +418,9 @@ int check_nexus_bonus(P_char ch, int amount, int type)
 }
 
 // Prepared Divine EXP/epic awards retain fractions until the final payout.
-double check_nexus_bonus_precise(P_char ch, double amount, int type)
+double check_nexus_bonus_precise(P_char ch, double amount, int type, bool announce)
 {
-	return nexus_bonus_amount(ch, amount, type);
+	return nexus_bonus_amount(ch, amount, type, announce);
 }
 
 int update_nexus_stone_align(int stone_id, int align)

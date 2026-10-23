@@ -9,6 +9,7 @@ HARNESS = r'''#include <array>
 #include <cassert>
 #include <cerrno>
 #include <climits>
+#include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -86,7 +87,9 @@ std::string strip_ansi(const char *text) {return text;}
 void adjust_ship_market(int,int,int,int) {}
 affected_type *get_spell_from_char(P_char,int) {return &achievement;}
 affected_type *apply_achievement(P_char,int) {return &achievement;}
-int check_nexus_bonus(P_char,int value,int) {return value;}
+double nexus_multiplier=1;
+double check_nexus_bonus_precise(P_char,double value,int,bool) {return value*nexus_multiplier;}
+int check_nexus_bonus(P_char,int value,int) {assert(value*nexus_multiplier<=INT_MAX);return value*nexus_multiplier;}
 void update_crew(P_ship) {}
 void update_ship_status(P_ship) {}
 void queue_ship_save(P_ship value,const char *) {value->save_pending=true;}
@@ -117,6 +120,28 @@ int main() {
     assert(boat.crew.raises==(zero ? 0 : 2));
     assert(achievement.modifier==(goods==SLOT_CARGO ? 10 : 0));
    }
+ // Batch overflow must retain the unpayable slot and pay the accepted slot.
+ for(int goods : {SLOT_CARGO,SLOT_CONTRABAND}) {
+  character trader;ship boat;zero_quotes=false;overflow_quotes=true;
+  achievement.modifier=INT_MAX;
+  for(int i=0;i<2;++i) {
+   boat.slot[i].type=goods;boat.slot[i].index=0;
+   boat.slot[i].val0=1;boat.slot[i].val1=1;
+  }
+  if(goods==SLOT_CARGO)sell_cargo(&trader,&boat,-1);
+  else sell_contra(&trader,&boat,-1);
+  assert(trader.money==INT_MAX && boat.slot[0].type==SLOT_EMPTY &&
+         boat.slot[1].type==goods && boat.slot[1].val0==1 && boat.save_pending);
+  assert(achievement.modifier==INT_MAX);
+  // Include the Nexus premium in refusal, before any slot is consumed.
+  character boosted;ship unpayable;nexus_multiplier=1.1;
+  unpayable.slot[0].type=goods;unpayable.slot[0].index=0;
+  unpayable.slot[0].val0=1;unpayable.slot[0].val1=1;
+  if(goods==SLOT_CARGO)sell_cargo(&boosted,&unpayable,-1);
+  else sell_contra(&boosted,&unpayable,-1);
+  assert(!boosted.money && unpayable.slot[0].type==goods && !unpayable.save_pending);
+  nexus_multiplier=1;overflow_quotes=false;
+ }
  character ch;ship empty;
  sell_cargo(&ch,&empty,-1);sell_contra(&ch,&empty,-1);
  assert(!empty.save_pending && !ch.money);

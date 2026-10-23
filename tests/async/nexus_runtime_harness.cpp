@@ -84,14 +84,14 @@ int write_cargo()
 {
 	return true;
 }
-int sell_cargo_slot(P_char, P_ship ship, int slot, int)
+int sell_cargo_slot(P_char, P_ship ship, int slot, int, int)
 {
 	ship->slot[slot].type = SLOT_EMPTY;
 	return 250;
 }
-int sell_contra_slot(P_char ch, P_ship ship, int slot, int room)
+int sell_contra_slot(P_char ch, P_ship ship, int slot, int room, int paid)
 {
-	return sell_cargo_slot(ch, ship, slot, room);
+	return sell_cargo_slot(ch, ship, slot, room, paid);
 }
 void send_to_char_f(P_char, const char *format, ...)
 {

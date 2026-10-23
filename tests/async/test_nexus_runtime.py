@@ -29,8 +29,8 @@ with tempfile.TemporaryDirectory(prefix="nexus-runtime-", dir=build) as temporar
         "world/difficulty.h", "ships/ships.h",
     ))
     utility.write_text(headers + '\nextern int errand_notch;\n' +
-        'int sell_cargo_slot(P_char, P_ship, int, int);\n'
-        'int sell_contra_slot(P_char, P_ship, int, int);\n' +
+        'int sell_cargo_slot(P_char, P_ship, int, int, int = 0);\n'
+        'int sell_contra_slot(P_char, P_ship, int, int, int = 0);\n' +
         extract_function("utility.c", "sh_int *char_stat(") + '\n' +
         extract_function("epic.c", "struct epic_award_context") + ';\n' +
         extract_function("epic.c", "static bool prepare_epic_award(") + '\n' +

@@ -72,6 +72,7 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include <math.h>
+#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include "world/achievements.h"
@@ -933,7 +934,7 @@ int summon_ship(P_char ch, P_ship ship, bool time_only)
  * was paid, moves the market with adjust_ship_market(), and clears the slot.
  * Returns the amount paid.
  */
-int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
+int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom, int already_paid = 0)
 {
 	if (slot < 0 || slot >= MAXSLOTS || rroom < 0 || rroom >= NUM_PORTS)
 		return 0;
@@ -981,6 +982,14 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 			 percentage < INT_MIN ? INT_MIN :
 						static_cast<int>(percentage);
 	}
+	if (IS_WARSHIP(ship))
+		cost = cost * 0.6;
+	if (already_paid > INT_MAX - cost)
+		return 0;
+	const double payout = check_nexus_bonus_precise(
+		ch, static_cast<double>(already_paid) + cost, NEXUS_BONUS_CARGO, false);
+	if (!std::isfinite(payout) || payout < 0 || payout > INT_MAX)
+		return 0;
 	ship->slot[slot].clear();
 
 	if (IS_WARSHIP(ship))
@@ -988,7 +997,6 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 		send_to_char(
 			"&+gBecause your cargo is obviosly stolen, local merchants bargain the price down.&n\n",
 			ch);
-		cost = cost * 0.6;
 	}
 
 	sprintf(buf, "CARGO: %s sold &+W%d&n %s&n at %s&n [%d] for %s&n (%d percent profit)",
@@ -1018,13 +1026,14 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 		paf = apply_achievement(ch, AIP_CARGOCOUNT);
 		paf->modifier = 0;
 	}
-	if (paf->modifier < 10000 && paf->modifier + crates >= 10000)
+	const int64_t cargo_count = static_cast<int64_t>(paf->modifier) + crates;
+	if (paf->modifier < 10000 && cargo_count >= 10000)
 	{
 		send_to_char(
 			"&+rCon&+Rgra&+Wtula&+Rtio&+rns! You have completed the &+RTrader&+r achievement!&n\n",
 			ch);
 	}
-	paf->modifier += crates;
+	paf->modifier = static_cast<int>(std::min<int64_t>(INT_MAX, cargo_count));
 
 	queue_ship_save(ship, "cargo sale");
 	return cost;
@@ -1083,7 +1092,8 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
 			{
 				if (ship->slot[i].type == SLOT_CARGO)
 				{
-					total_cost += sell_cargo_slot(ch, ship, i, rroom);
+					total_cost +=
+						sell_cargo_slot(ch, ship, i, rroom, total_cost);
 				}
 			}
 		}
@@ -1122,7 +1132,7 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
  * Sell the contraband in one slot at port `rroom`, at contra_buy_price() per
  * crate, moving the market afterwards.  Returns the amount paid.
  */
-int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
+int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom, int already_paid = 0)
 {
 	if (slot < 0 || slot >= MAXSLOTS || rroom < 0 || rroom >= NUM_PORTS)
 		return 0;
@@ -1153,6 +1163,14 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
 			 percentage < INT_MIN ? INT_MIN :
 						static_cast<int>(percentage);
 	}
+	if (IS_WARSHIP(ship))
+		cost = cost * 0.6;
+	if (already_paid > INT_MAX - cost)
+		return 0;
+	const double payout = check_nexus_bonus_precise(
+		ch, static_cast<double>(already_paid) + cost, NEXUS_BONUS_CARGO, false);
+	if (!std::isfinite(payout) || payout < 0 || payout > INT_MAX)
+		return 0;
 	ship->slot[slot].clear();
 
 	if (IS_WARSHIP(ship))
@@ -1160,7 +1178,6 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
 		send_to_char(
 			"&+gBecause your contraband is obviosly stolen, local merchants bargain the price down.&n\n",
 			ch);
-		cost = cost * 0.6;
 	}
 
 	sprintf(buf, "CONTRABAND: %s sold &+W%d&n %s&n at %s&n [%d] for %s&n (%d percent profit)",
@@ -1225,7 +1242,8 @@ int sell_contra(P_char ch, P_ship ship, int slot)
 			{
 				if (ship->slot[i].type == SLOT_CONTRABAND)
 				{
-					total_cost += sell_contra_slot(ch, ship, i, rroom);
+					total_cost +=
+						sell_contra_slot(ch, ship, i, rroom, total_cost);
 				}
 			}
 		}
