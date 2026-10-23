@@ -721,17 +721,15 @@ int main()
 	stale_wallet.components |= PLAYER_COMPONENT_TROPHIES;
 	stale_wallet.trophies.push_back({ 123456, 77 });
 	applied = player_snapshot_repository_apply(test_connection, stale_wallet);
-	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
-			applied.error_code == ESTALE &&
+	require(applied.outcome == player_save_apply_outcome::applied &&
 			scalar(test_connection,
 			       "SELECT CONCAT(copper,':',wallet_revision) FROM player_data WHERE pid=1") ==
 				"150:" + std::to_string(paid.wallet_revision) &&
 			scalar(test_connection,
-			       "SELECT COUNT(*) FROM zone_trophy WHERE pid=1 AND zone_number=123456") ==
-				"0",
-		"stale wallet must fail and re-dirty unrelated trophy work, not acknowledge it");
-	// The pipeline will recapture the failed components from memory. The fresh
-	// submission must be able to durably apply the unrelated component.
+			       "SELECT exp FROM zone_trophy WHERE pid=1 AND zone_number=123456") ==
+				"77",
+		"stale wallet lost unrelated terminal-save state");
+	// A later current-wallet capture keeps the same unrelated state.
 	auto fresh_wallet = stale_wallet;
 	fresh_wallet.revision = 100000;
 	fresh_wallet.wallet_revision = paid.wallet_revision;

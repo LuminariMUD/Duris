@@ -254,16 +254,19 @@ bool status_time_field(player_status_field field)
 	       field == player_status_field::time_unspecialized;
 }
 
-query_result apply_status(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_status(MYSQL *connection, const player_snapshot &snapshot, bool wallet_current)
 {
 	std::ostringstream sql;
 	sql << "UPDATE player_data SET last_room=" << snapshot.room_vnum << ",last_save=NOW()";
 	sql << ",output_preferences=" << quote(connection, snapshot.output_preferences);
-	if (player_snapshot_writes_wallet(snapshot))
+	if (wallet_current && player_snapshot_writes_wallet(snapshot))
 		sql << ",wallet_revision=" << snapshot.wallet_revision;
 	// The wallet, epic points and frags are memory's, and the save writes them.
 	for (const player_snapshot_integer &row : snapshot.status_integers)
 	{
+		if (!wallet_current && row.field >= player_status_field::copper &&
+		    row.field <= player_status_field::platinum)
+			continue;
 		const char *column = status_column(row.field);
 		if (!column)
 			return { false, EINVAL };
@@ -828,11 +831,12 @@ query_result apply_trophies(MYSQL *connection, const player_snapshot &snapshot)
 }
 
 query_result apply_components(MYSQL *connection, const player_snapshot &snapshot,
-			      std::vector<claimed_graph> *claims, bool status_current)
+			      std::vector<claimed_graph> *claims, bool status_current,
+			      bool wallet_current)
 {
 	query_result result = { true, 0 };
 	if ((snapshot.components & PLAYER_COMPONENT_STATUS) && status_current)
-		result = apply_status(connection, snapshot);
+		result = apply_status(connection, snapshot, wallet_current);
 	if (result.ok)
 		result = apply_replacement_rows(connection, snapshot);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_SKILLS))
@@ -945,24 +949,19 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 			 { return field.field == player_status_field::epics; }))
 		query = { false, EINVAL };
 	const bool status_current = delivered_sequence >= stored_delivery_sequence;
-	// A stale wallet is not a superseded player checkpoint: it may carry
-	// equipment, pets, or other components that still need a fresh save.
-	// Report failure so finish_completion() re-dirties all submitted components.
-	const bool stale_wallet = query.ok && player_snapshot_writes_wallet(snapshot) &&
-				  snapshot.wallet_revision < stored_wallet_revision;
-	if (query.ok &&
-	    (stale_wallet || (snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)))
+	// A terminal save has no live actor to recapture. Preserve every other
+	// component while leaving a newer committed purse untouched.
+	const bool wallet_current = snapshot.wallet_revision >= stored_wallet_revision;
+	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{
 		const auto rolled_back = execute(connection, "ROLLBACK");
 		if (!rolled_back.ok)
 			return failure(rolled_back.error_code);
-		if (stale_wallet)
-			return { player_save_apply_outcome::terminal_failure, stored_revision,
-				 ESTALE };
 		return { player_save_apply_outcome::stale_revision, stored_revision, 0 };
 	}
 	if (query.ok)
-		query = apply_components(connection, snapshot, &claims, status_current);
+		query = apply_components(connection, snapshot, &claims, status_current,
+					 wallet_current);
 	if (query.ok && created)
 		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)

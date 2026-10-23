@@ -1104,7 +1104,7 @@ flatfile_player_domain_result flatfile_player_domain_load(const std::string &roo
 
 flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const flatfile_saved_balances &balances, flatfile_authority_operation *operation,
+	flatfile_saved_balances &balances, flatfile_authority_operation *operation,
 	std::string *error)
 {
 	if (!operation || !pid || !lock.matches(root))
@@ -1116,8 +1116,13 @@ flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
 	const auto loaded = load_player_authority(root, pid, &player, error);
 	if (loaded != flatfile_player_domain_result::ok)
 		return loaded;
+	// A terminal capture may outlive its character. Keep its other state even
+	// when a committed trade has already advanced the saved wallet.
 	if (balances.wallet_revision < player.record.domains.wallet_revision)
-		return flatfile_player_domain_result::conflict;
+	{
+		balances.wallet = player.record.domains.wallet;
+		balances.wallet_revision = player.record.domains.wallet_revision;
+	}
 	size_t unpaid = 0;
 	const auto compacted =
 		compact_receipts(root, &player, balances.divine_boon_delivery_seq, &unpaid, error);

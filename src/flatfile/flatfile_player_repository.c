@@ -941,13 +941,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	const bool status_current = !(snapshot.components & PLAYER_COMPONENT_STATUS) ||
 				    incoming_sequence >= stored_sequence;
-	// A wallet conflict is not a successful/stale general checkpoint. Reject it
-	// as a failed save so the pipeline re-dirties every submitted component,
-	// including item graphs that would otherwise be silently acknowledged.
-	if (player_snapshot_writes_wallet(snapshot) &&
-	    snapshot.wallet_revision < materialized.wallet_revision)
-		return { player_save_apply_outcome::terminal_failure, materialized.revision,
-			 ESTALE };
 	if (snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 		return { player_save_apply_outcome::stale_revision, materialized.revision, 0 };
 	std::vector<player_item_snapshot> held_items;
@@ -1073,9 +1066,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			materialized.items.push_back(std::move(item));
 		}
 	}
-	std::vector<uint8_t> bytes;
-	if (!encode_file(&materialized, &bytes))
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	// A save that carries everything the player holds replaces what earlier
 	// transfers gave it, as a MariaDB save replaces the player_items rows they wrote.
 	constexpr player_component_mask_t held_components =
@@ -1117,16 +1107,24 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			&saved_balances, error);
 		if (prepared == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
-		if (prepared == flatfile_player_domain_result::conflict)
-		{
-			// Domain authority can advance beyond the snapshot file (e.g.
-			// after a trade). This second guard must also re-dirty the save.
-			return { player_save_apply_outcome::terminal_failure, materialized.revision,
-				 ESTALE };
-		}
 		if (prepared != flatfile_player_domain_result::ok)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		materialized.wallet_revision = balances.wallet_revision;
+		for (auto &row : materialized.status_integers)
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				row.unsigned_value =
+					balances.wallet[static_cast<size_t>(row.field) -
+							static_cast<size_t>(
+								player_status_field::copper)];
+				row.signed_value = 0;
+				row.is_unsigned = true;
+			}
 	}
+	std::vector<uint8_t> bytes;
+	if (!encode_file(&materialized, &bytes))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{

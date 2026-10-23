@@ -1532,17 +1532,15 @@ int main(int argc, char **argv)
 	stale_wallet.languages = { { 1, 97, 0 } };
 	const auto wallet_conflict =
 		flatfile_player_snapshot_apply(root.string(), stale_wallet, &error);
-	require(wallet_conflict.outcome == player_save_apply_outcome::terminal_failure &&
-			wallet_conflict.error_code == ESTALE,
-		"stale wallet must fail and re-dirty unrelated language work");
+	require(wallet_conflict.outcome == player_save_apply_outcome::applied,
+		"stale wallet dropped unrelated language work after extraction");
 	player_snapshot wallet_loaded;
 	require(flatfile_player_snapshot_load(root.string(), 42, &wallet_loaded, &error) ==
 				flatfile_player_load_result::ok &&
-			wallet_loaded.wallet_revision == 19 &&
-			!wallet_loaded.languages.empty() &&
-			wallet_loaded.languages.front().value != 97,
-		"stale wallet failure corrupted the saved wallet or acknowledged language work");
-	// Recapturing the rejected STATUS and LANGUAGES must persist both together.
+			wallet_loaded.wallet_revision == 19 && !wallet_loaded.languages.empty() &&
+			wallet_loaded.languages.front().value == 97,
+		"stale wallet save lost unrelated language work");
+	// A later current-wallet checkpoint still preserves both components.
 	auto refreshed = stale_wallet;
 	refreshed.revision = 100000;
 	refreshed.wallet_revision = 19;
