@@ -120,8 +120,9 @@ bool divine_trade_runtime_submit(P_char ch, P_ship ship, critical_operation_id o
 				 divine_trade_payload payload)
 try
 {
-	if (!ch || IS_NPC(ch) || !ship || pending || !cargo_trade_market_available() ||
-	    payload.pid != static_cast<uint32_t>(GET_PID(ch)) ||
+	if (!ch || IS_NPC(ch) || !ship || pending ||
+	    (ship->save_pending && !ship->save_saved_signature) ||
+	    !cargo_trade_market_available() || payload.pid != static_cast<uint32_t>(GET_PID(ch)) ||
 	    payload.ship_id != static_cast<uint32_t>(ship->db_id) ||
 	    payload.wallet_revision != ch->only.pc->wallet_revision ||
 	    payload.generation != cargo_trade_generation())

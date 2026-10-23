@@ -394,6 +394,13 @@ int main()
 	boon.expires_at = boon.starts_at + 14400;
 	boon.source_port = boon.cargo_commodity = boon.contraband_commodity = 2;
 	boon.destination_port = 4;
+	// A load-normalized crew must reach the writer before a prepared trade.
+	ship.save_pending = true;
+	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(!divine_trade_runtime_busy() && !capture_reserved && ship.slot[0].val0 == 9 &&
+	       GET_COPPER(&alice.ch) == 1000);
+	ship.save_saved_signature = 1;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
 	assert(divine_trade_runtime_busy(&ship) && capture_reserved && ship.slot[0].val0 == 9 &&
