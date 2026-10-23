@@ -210,7 +210,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         start = transaction.index("bool publish_reward(")
         publication = transaction[start:transaction.index("} // namespace", start)]
         publish = publication.index("boon_publish_transaction_result")
-        retained = publication.index("PERSISTENCE_MODE_FLATFILE_PRIMARY")
+        retained = publication.index("if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)", publish)
         self.assertLess(publish, retained)
         self.assertNotIn("acknowledge_flat_reward", publication)
         self.assertIn("publish_reward(character, reward.operation_id", ready)
@@ -219,7 +219,9 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         self.assertNotIn("persistence_alert(", outbox)
         self.assertNotIn("wizlog(", outbox)
         self.assertIn("needs_checkpoint(result)", outbox)
-        self.assertIn("if (needs_checkpoint(result))", publication)
+        self.assertIn("needs_checkpoint(result)", publication)
+        self.assertIn("published_flat.insert(key)", publication)
+        self.assertIn("if (retain)", publication)
         self.assertIn("flatfile_boon_find_pending_reward", ready)
 
         self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 1)

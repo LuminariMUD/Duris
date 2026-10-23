@@ -150,6 +150,7 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 	{
 		auto [entry, inserted] = pending.try_emplace(
 			key, pending_reward{ result.pid, {}, monotonic_msec() });
+		entry->second.committed_result = result;
 		publish = !entry->second.published;
 		if (publish)
 		{
@@ -183,7 +184,11 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 		std::string error;
 		if (!root || flatfile_boon_acknowledge_reward(root, operation_id, &error) !=
 				     flatfile_boon_result::ok)
+		{
+			persistence_alert(AVATAR, "boon_reward", "player", "unknown", "publication",
+					  "checkpoint_free_ack_retained", "pid=%u", result.pid);
 			return false;
+		}
 	}
 	pending.erase(key);
 	return true;
@@ -331,12 +336,13 @@ try
 	std::vector<std::string> known;
 	for (const auto &[key, entry] : pending)
 		if (entry.pid == static_cast<uint32_t>(GET_PID(character)) &&
-		    entry.committed_result.pid && !entry.published)
+		    entry.committed_result.pid &&
+		    (!entry.published || !needs_checkpoint(entry.committed_result)))
 			known.push_back(key);
 	for (const auto &key : known)
 	{
 		auto found = pending.find(key);
-		if (found == pending.end() || found->second.published)
+		if (found == pending.end())
 			continue;
 		const auto result = found->second.committed_result;
 		const auto data = found->second.payload.data;
@@ -417,12 +423,11 @@ boon_reward_health boon_reward_transaction_health_copy(void)
 	for (const auto &[key, entry] : pending)
 	{
 		(void)key;
-		if (!entry.published)
-		{
-			++health.pending;
-			health.oldest_age_msec =
-				std::max(health.oldest_age_msec, now - entry.submitted_at_msec);
-		}
+		// Published checkpoint-dependent IDs already left this map. A published
+		// entry still here needs an acknowledgement retry and remains visible.
+		++health.pending;
+		health.oldest_age_msec =
+			std::max(health.oldest_age_msec, now - entry.submitted_at_msec);
 	}
 	return health;
 }

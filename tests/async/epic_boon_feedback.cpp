@@ -48,6 +48,12 @@ static char_data actor = {};
 static pc_only_data pc = {};
 static affected_type gain_tag = {};
 static std::string feedback;
+static std::vector<std::string> retained_alerts;
+void persistence_alert(int, const char *, const char *, const char *, const char *,
+		       const char *reason, const char *, ...)
+{
+	retained_alerts.emplace_back(reason);
+}
 static std::vector<critical_command> commands;
 static int artifact_awards = 0, dirty = 0, experience = 0;
 static std::string flat_root;
@@ -220,6 +226,7 @@ static void reset_actor(int level, int64_t epics)
 	SET_POS(&actor, POS_STANDING + STAT_NORMAL);
 	fail_id = refuse_history = false;
 	feedback.clear();
+	retained_alerts.clear();
 	commands.clear();
 	artifact_awards = dirty = experience = 0;
 	online = true;
@@ -540,6 +547,48 @@ static void checkpoint_free_offline(const std::string &root)
 	flat_root.clear();
 }
 
+static void checkpoint_free_online_ack_failure(const std::string &root)
+{
+	reset_actor(20, 100);
+	flat_root = root;
+	std::filesystem::create_directories(root + "/domains");
+	std::filesystem::permissions(root, std::filesystem::perms::owner_all);
+	std::filesystem::permissions(root + "/domains", std::filesystem::perms::owner_all);
+	flatfile_boon_definition definition;
+	definition.id = 7;
+	definition.type = BTYPE_POINT;
+	definition.option = BOPT_LEVEL;
+	definition.criteria = 20;
+	definition.bonus = 4;
+	definition.active = true;
+	definition.author = "test";
+	std::string error;
+	assert(flatfile_boon_establish(root, { definition }, &error) == flatfile_boon_result::ok);
+	assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	const auto applied = flatfile_boon_repository_apply(root, commands.back());
+	assert(applied.outcome == critical_apply_outcome::applied);
+	critical_completion completion{};
+	completion.operation_id = commands.back().operation_id;
+	completion.outcome = applied.outcome;
+	completion.result_size = applied.result_size;
+	completion.result_payload = applied.result_payload;
+	std::filesystem::rename(root + "/domains", root + "/unavailable");
+	boon_reward_transaction_handle_completions(&completion, 1);
+	assert(boon_reward_transaction_health_copy().pending == 1);
+	assert(std::find(retained_alerts.begin(), retained_alerts.end(),
+			 "checkpoint_free_ack_retained") != retained_alerts.end());
+	const auto messages = feedback;
+	boon_reward_transaction_handle_completions(&completion, 1);
+	assert(feedback == messages && boon_reward_transaction_health_copy().pending == 1);
+	std::filesystem::rename(root + "/unavailable", root + "/domains");
+	boon_reward_transaction_player_ready(&actor);
+	assert(feedback == messages && boon_reward_transaction_health_copy().pending == 0);
+	flatfile_boon_pending_reward reward;
+	assert(flatfile_boon_find_pending_reward(root, 42, &reward, &error) ==
+	       flatfile_boon_result::not_found);
+	flat_root.clear();
+}
+
 static void checkpoint_free_outbox()
 {
 	for (int type : { BTYPE_POINT, BTYPE_STATS, BTYPE_EXP })
@@ -693,6 +742,7 @@ int main(int argc, char **argv)
 	sql_offline_rewards();
 	checkpoint_free_offline(std::string(argv[1]) + "/checkpoint-free");
 	checkpoint_free_outbox();
+	checkpoint_free_online_ack_failure(std::string(argv[1]) + "/online-ack-failure");
 	flat_published_admission_capacity();
 	nested_publication_case();
 	legacy_shop_admission_case();
