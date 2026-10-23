@@ -285,13 +285,53 @@ bool divine_trade_book_transition_valid(const divine_trade_book &before,
 	const auto &after = p.book_after;
 	if (!divine_trade_book_valid(before) || !valid(p) || before.revision != p.book_revision)
 		return false;
+	if (before.revision &&
+	    (before.account != after.account || before.boon_id != after.boon_id ||
+	     before.first_ship_id != after.first_ship_id ||
+	     before.first_full_hold != after.first_full_hold))
+		return false;
+	if (before.consumed > after.consumed ||
+	    after.consumed - before.consumed != p.qualifying_quantity)
+		return false;
+	if (p.action == divine_trade_action::purchase)
+	{
+		if (after.revision != before.revision + 1 || p.slots_after.size() != 1 ||
+		    p.qualifying_quantity || after.lots.size() != before.lots.size() + 1 ||
+		    !std::equal(before.lots.begin(), before.lots.end(), after.lots.begin()) ||
+		    (!before.revision && after.first_ship_id != p.ship_id))
+			return false;
+		const auto &lot = after.lots.back();
+		const auto &slot = p.slots_after.front();
+		return lot.ship_id == p.ship_id && lot.slot == slot.slot_index &&
+		       lot.source_port == slot.item_index && lot.purchased_at == p.admitted_at &&
+		       lot.invoice_basis == -p.payment &&
+		       lot.remaining_basis == lot.invoice_basis &&
+		       lot.remaining_quantity == lot.purchased_quantity &&
+		       lot.goods == (slot.slot_type == SLOT_CARGO ? divine_trade_goods::cargo :
+								    divine_trade_goods::contraband);
+	}
 	if (!before.revision)
-		return p.action == divine_trade_action::purchase && after.revision == 1 &&
-		       !after.consumed && after.first_ship_id == p.ship_id;
-	return before.account == after.account && before.boon_id == after.boon_id &&
-	       before.first_ship_id == after.first_ship_id &&
-	       before.first_full_hold == after.first_full_hold &&
-	       before.consumed <= after.consumed &&
-	       after.consumed - before.consumed == p.qualifying_quantity &&
-	       (p.action != divine_trade_action::purchase || before.consumed == after.consumed);
+		return false;
+	// Sales clear complete slots. Preserve every other ship/slot's exact lot
+	// identity and metadata; one changed slot advances preparation once.
+	auto expected = before.lots;
+	std::set<uint8_t> changed;
+	uint64_t removed = 0;
+	std::erase_if(expected,
+		      [&](const auto &lot)
+		      {
+			      const bool selected =
+				      lot.ship_id == p.ship_id &&
+				      std::any_of(p.slots_after.begin(), p.slots_after.end(),
+						  [&](const auto &slot)
+						  { return slot.slot_index == lot.slot; });
+			      if (selected)
+			      {
+				      changed.insert(lot.slot);
+				      removed += lot.remaining_quantity;
+			      }
+			      return selected;
+		      });
+	return expected == after.lots && p.qualifying_quantity <= removed &&
+	       after.revision == before.revision + changed.size();
 }

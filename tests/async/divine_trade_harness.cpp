@@ -274,6 +274,53 @@ int main()
 	assert(decoded.book_after == book && decoded.wallet_revision == 9);
 	assert(command.keys.size() == 4 && command.keys.back().type == critical_entity_type::ship);
 	assert(divine_trade_book_transition_valid(blank, decoded));
+	// Repository preimage checks preserve the exact manifest, not just its cap.
+	auto next_buy = purchase(901);
+	next_buy.slot_quantity_before = 1;
+	next_buy.slot_basis_before = 100;
+	auto next_payload = payload;
+	next_payload.book_revision = book.revision;
+	next_payload.slots_after[0].values[0] = 2;
+	next_payload.slots_after[0].values[1] = 200;
+	assert(divine_trade_prepare_purchase(book, boon, next_buy, &next_payload.book_after));
+	assert(divine_trade_book_transition_valid(book, next_payload));
+	auto forged = next_payload;
+	forged.book_after.lots.erase(forged.book_after.lots.begin());
+	assert(!divine_trade_book_transition_valid(book, forged));
+	forged = next_payload;
+	forged.book_after.lots[0].purchase = operation(999);
+	assert(!divine_trade_book_transition_valid(book, forged));
+	forged = next_payload;
+	forged.book_after.revision++;
+	assert(!divine_trade_book_transition_valid(book, forged));
+	auto unsold_buy = purchase(902);
+	unsold_buy.ship_id = 99;
+	unsold_buy.slot = 4;
+	divine_trade_book with_unsold;
+	assert(divine_trade_prepare_purchase(next_payload.book_after, boon, unsold_buy,
+					     &with_unsold));
+	auto sale_payload = next_payload;
+	sale_payload.action = divine_trade_action::sale;
+	sale_payload.book_revision = with_unsold.revision;
+	sale_payload.payment = 250;
+	sale_payload.admitted_at = 200;
+	sale_payload.slots_after[0] = { 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } };
+	sale_payload.market_after[0].port = 4;
+	divine_trade_consumption sale_used;
+	assert(divine_trade_prepare_removal(with_unsold, boon, removal(2, 2, 200),
+					    &sale_payload.book_after, &sale_used));
+	sale_payload.qualifying_quantity = sale_used.qualifying_quantity;
+	assert(divine_trade_book_transition_valid(with_unsold, sale_payload));
+	forged = sale_payload;
+	forged.book_after.lots.clear();
+	assert(!divine_trade_book_transition_valid(with_unsold, forged));
+	forged = sale_payload;
+	forged.book_after.lots[0].purchase = operation(999);
+	assert(!divine_trade_book_transition_valid(with_unsold, forged));
+	forged = sale_payload;
+	forged.book_after.revision--;
+	assert(!divine_trade_book_transition_valid(with_unsold, forged));
+
 	std::vector<uint8_t> wire;
 	critical_command restored_command;
 	assert(critical_command_encode(command, &wire) == critical_command_codec_result::ok);
