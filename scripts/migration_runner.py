@@ -70,6 +70,9 @@ ONLINE_ARTIFACT_PVP = (
      "9ec4164a7f70796409f6e88e483b1e90044eae1ff8ef9c3151397dba9e24e110",
      "0d3f5cf89844a00fdba5e0be9cec79bd6b91bcb79c20bd94157d57f43e0a96d1"),
 )
+ONLINE_OUTBOX_EXPECTATIONS_ID = "0050_critical_outbox_expectations"
+ONLINE_OUTBOX_EXPECTATIONS_APPLY = "fc3590231a567095458ff25bf19635a479eac3f2b63f0eb360900c5279cf423a"
+ONLINE_OUTBOX_EXPECTATIONS_VERIFY = "0e46e28c7f4bb57110b03dbe6c338d9a48d9169ea0b595c9971f7620e29fff94"
 ONLINE_DIVINE_BOON = (
     ("0048_divine_boon_state",
      "7c84955a35a6f34e4618773b2f08c2470219a54a982b0bf3e5a161ece78d0a68",
@@ -382,7 +385,8 @@ class MysqlExecutor:
                  online_artifact_pvp: bool = False,
                  online_nexus_phase1: bool = False,
                  online_artifact_rejections: bool = False,
-                 online_divine_boon: bool = False):
+                 online_divine_boon: bool = False,
+                 online_outbox_expectations: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
@@ -423,7 +427,7 @@ class MysqlExecutor:
                 raise MigrationContractError(f"missing migration credential: {name}")
         if sum((online_level_cap_sides, online_combat_outcome_allies,
                 online_player_updates, online_artifact_pvp, online_nexus_phase1,
-                online_artifact_rejections, online_divine_boon)) > 1:
+                online_artifact_rejections, online_divine_boon, online_outbox_expectations)) > 1:
             raise MigrationContractError("select only one reviewed online migration")
         for enabled, count, pair in (
                 (online_player_updates, 43, ONLINE_PLAYER_UPDATES),
@@ -439,7 +443,7 @@ class MysqlExecutor:
             self.online_migration = manifest.migrations[-1]
             self.online_table = "player_data"
         if (online_level_cap_sides or online_combat_outcome_allies or online_nexus_phase1 or
-                online_artifact_rejections):
+                online_artifact_rejections or online_outbox_expectations):
             if online_level_cap_sides:
                 reviewed = (ONLINE_LEVEL_CAP_ID, ONLINE_LEVEL_CAP_APPLY, ONLINE_LEVEL_CAP_VERIFY)
                 count, self.online_table = 39, "level_cap"
@@ -450,6 +454,10 @@ class MysqlExecutor:
             elif online_nexus_phase1:
                 reviewed = (ONLINE_NEXUS_ID, ONLINE_NEXUS_APPLY, ONLINE_NEXUS_VERIFY)
                 count, self.online_table = 46, "nexus_stones"
+            elif online_outbox_expectations:
+                reviewed = (ONLINE_OUTBOX_EXPECTATIONS_ID, ONLINE_OUTBOX_EXPECTATIONS_APPLY,
+                            ONLINE_OUTBOX_EXPECTATIONS_VERIFY)
+                count, self.online_table = 50, "critical_operation_inbox"
             else:
                 reviewed = (ONLINE_ARTIFACT_REJECTIONS_ID, ONLINE_ARTIFACT_REJECTIONS_APPLY,
                             ONLINE_ARTIFACT_REJECTIONS_VERIFY)
@@ -787,6 +795,9 @@ def main() -> int:
     online.add_argument("--online-divine-boon", action="store_true",
                         help="apply only reviewed 0048/0049 on MariaDB 11.8 using CREATE and "
                              "online INSTANT DDL; requires production confirmation and backup")
+    online.add_argument("--online-outbox-expectations", action="store_true",
+                        help="apply only reviewed 0050 on MariaDB 11.8 using INSTANT DDL; "
+                             "requires production confirmation, backup and compatible live writers")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
@@ -795,7 +806,7 @@ def main() -> int:
         if (arguments.online_level_cap_sides or arguments.online_combat_outcome_allies or
                 arguments.online_player_updates or arguments.online_artifact_pvp or
                 arguments.online_nexus_phase1 or arguments.online_artifact_rejections or
-                arguments.online_divine_boon) and \
+                arguments.online_divine_boon or arguments.online_outbox_expectations) and \
                 arguments.command != "run":
             raise MigrationContractError("online migration option requires run")
         if arguments.command == "inspect":
@@ -816,7 +827,7 @@ def main() -> int:
                                  arguments.online_combat_outcome_allies,
                                  arguments.online_player_updates, arguments.online_artifact_pvp,
                                  arguments.online_nexus_phase1, arguments.online_artifact_rejections,
-                                 arguments.online_divine_boon)
+                                 arguments.online_divine_boon, arguments.online_outbox_expectations)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")

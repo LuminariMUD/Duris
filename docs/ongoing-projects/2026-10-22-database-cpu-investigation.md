@@ -1,8 +1,8 @@
 # Database CPU investigation and remediation plan
 
 Investigation date: 2026-10-22. Updated: 2026-10-23. Status: worker, expectation
-metadata and audit changes locally qualified; publishing the audit PR completes
-the current implementation stack. Production rollout/CPU measurement remain open.
+metadata and audit changes locally qualified and published in PRs #300–#303.
+Owner independent review/merge is the next gate. Production rollout/CPU measurement remain open.
 No deployment or production mutation performed.
 
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
@@ -18,7 +18,7 @@ Original investigation:
   `branch/issue-292-outbox-audit`. The worker remains on the dedicated issue branch
   above; the separate fixture worktree is
   `/home/aiwithapex/projects/duris-issue292-worker-review` on
-  `branch/issue-292-stone-proof`. Base is still `fc1c94e15155`; initial tracking commit is
+  `branch/issue-292-outbox-expectations`. Base is still `fc1c94e15155`; initial tracking commit is
   `a4ba9402b2e7`. The shared `duris` checkout belongs to another task.
 - Outcome for chunk 1: indexed operational counts, independent 60-second
   historical audit, last-good health with freshness, and fresh bounded worker
@@ -36,7 +36,7 @@ Original investigation:
   general scheduler, or purge is needed. Raw audit semantics remain unchanged in
   this chunk so cadence and semantic correction can be reviewed independently.
 - Delivery: [PR #300](https://github.com/LuminariMUD/Duris/pull/300), ready for
-  review against `master`; current head `c42275a80`, initial qualification commit
+  review against `master`; current head `67fb3e0b3`, initial qualification commit
   `cd76e30a1b2a`. The local merge
   tree equals that qualified head's tree. No merge has been requested/performed.
 - Proof: the commands and results in the next subsection qualify chunk 1 locally.
@@ -81,9 +81,11 @@ recovered-claim expectation assertion; full build, eight auction tests,
 lifecycle/client-free/boot checks, formatting and whitespace pass too.
 [Expectation-metadata PR #302](https://github.com/LuminariMUD/Duris/pull/302)
 is ready for review above PR #301. Qualified tag:
-`issue-292/expectations-qualified-20261023` (`c0f5f76f8`).
+`issue-292/expectations-qualified-20261023` (`c0f5f76f8`) covers the initial
+writer checks; current immutable-deployment qualification is
+`issue-292/expectations-immutable-20261023` (`6e46964dc`).
 
-The migration `migrations/critical_outbox_expectations.sql` is guarded and
+The migration `migrations/immutable/0050_critical_outbox_expectations.sql` is guarded and
 re-runnable and requires `ALGORITHM=INSTANT` rather than silently copying the
 history table. New schemas include the nullable column; the normal migration
 runner installs it before schema verification, and boot requires its presence.
@@ -92,10 +94,32 @@ extra query. New session audits/combat children record zero; each mutation owns
 its event count, including item/collector event indexes and recovered stone
 receipts. Historical NULL is never backfilled from existing outbox rows or
 rewritten by replay. Reader/result codecs are unchanged. Keep this additive
-column and evidence on binary rollback; do not drop it. No production migration
+column and evidence; do not drop it to force an older binary to boot. A pre-0050
+binary cannot restart against head 0050: recovery needs a compatible binary or
+an explicitly authorized, verified matching database restore. No production migration
 has run. The audit consumer still awaits its separately reviewed change.
 
+PR #302 deployment-path correction: register the single canonical apply/verifier
+as immutable `0050_critical_outbox_expectations`, advance the compiled/runtime
+ledger contract to head 50, and measure its fingerprints on clean MariaDB 10.11
+and MySQL 8.0 schemas. The exact reviewed online runner option
+`--online-outbox-expectations` retains the target/backup/allow-list/advisory-lock,
+sealed-checksum, prior-history and success-last protections, with INSTANT-only DDL
+and one-second waits. It accepts only a 0049 prefix and the sealed 0050 manifest.
+The old root SQL copy is removed; fresh schema, legacy runner and fixtures use
+the canonical immutable step. No production migration has run or been authorized.
+
+Focused qualification uses the normal runner twice on disposable old-0049
+schemas, proving upgrade/replay, success-last history, retained legacy NULL and
+rejection of signed/default-zero drift. Both engines pass the new runtime
+compatibility verifier after measured fingerprints are installed. Local evidence
+and the focused authoring driver are under ignored `bin/analysis/issue292/` in
+the metadata worktree; no production-derived clone or broad telemetry regression
+matrix is used. Migration runner tests: 23 pass, including exact online scope,
+authorization, engine, checksum and lock-timeout guards.
+
 Chunk 3 is locally qualified on `branch/issue-292-outbox-audit`, above PR #302.
+[PR #303](https://github.com/LuminariMUD/Duris/pull/303) is ready for owner review.
 Outcome: audit every committed historical operation using exact recorded
 expectations when known; classify legitimate historical session audits from their
 typed receipt and combat children from parent/participant/ledger/hash identity;
@@ -134,15 +158,19 @@ backfill, purge, or recent-only audit window was introduced.
 
 ### Next session / remaining gates
 
-1. Publish the qualified audit chunk as a PR above #302, update its link here,
-   verify remote parity/clean trees, and address any concrete review findings.
-2. Keep the stack ready for review; no GitHub PR has been merged. Worker #300
-   can roll out separately without a migration. The later metadata/audit rollout
-   requires the additive migration from #302 first and separate owner permission.
-3. Production deployment/reboot and migrations require permission under
-   [AGENTS.md](../../AGENTS.md). Request authorization only for the concrete,
-   reviewed worker rollout, through the normal deployment workflow. Production
-   CPU improvement and the >=95% row-work acceptance criterion are still unmeasured.
+1. The owner explicitly reserved independent review, issue addressing and GitHub
+   merge. **Do not merge these PRs or start deployment before that step.** Review
+   stack: #300 worker → #301 stone proof → #302 immutable expectations → #303 audit.
+   All completed chunks are committed/pushed; no GitHub PR has been merged.
+2. Worker-only production rollout was authorized, conditional on that review/merge.
+   Use `ssh duris-staging` for the actual VPS; this WSL machine is not production.
+   After the owner completes review/merge, use the normal deployment skill without
+   asking again for the already authorized worker-only scope. Preserve #300 as a
+   separately deployable no-migration change. Merging #302 advances the runtime
+   contract to 0050 and requires a separately authorized migration before boot.
+3. On the VPS, take a fresh pre-cutover CPU/handler baseline while the current game
+   remains running; the original 44% sample is not a current VPS verification.
+   Production CPU improvement and >=95% row-work acceptance remain unmeasured.
 4. Compare CPU/handler deltas, audit cadence/freshness, delivery latency/age and
    failures at comparable traffic, then a longer gameplay period. Do not close
    #292 or claim the incident resolved from local query evidence alone.
@@ -207,6 +235,27 @@ the handler-counter probe uses portable `SHOW SESSION STATUS`. MariaDB worker
 evidence remains valid because its SQL, cadence and drain implementation did not
 change. Qualification tags distinguish the original worker and this review repair.
 
+PR #300 review repair 2: accepted asynchronous auction publication now returns
+`publication_pending`, which leaves the durable row due and consumes no failed
+attempt. The completed callback wakes the worker for immediate acknowledgement.
+Actual read/admission failures enter a failed state until the worker records the
+normal durable backoff; progress callbacks cannot resubmit them in a tight loop.
+The executable worker fixture delays publication 2,300 ms, observes more than eight
+pending visits, and completes within the existing three-second drain with zero
+attempts/retries/dead letters. Actual auction-function probes cover pending and
+failed states; build, SQL/client-free/lifecycle checks and the MariaDB worker suite
+pass. Current worker qualification tag: `issue-292/worker-review-2-20261023`.
+
+Owner boundary (2026-10-23): the user authorized a worker-only rollout, then
+reserved independent review, issue addressing, and GitHub merge to themselves.
+Do not merge PRs or start deployment before that review/merge step. Deployment
+authorization remains for worker #300 only; later schema/audit changes are not
+authorized for production. The user clarified that this WSL host is **not** the
+production machine: access the VPS with `ssh duris-staging`. SSH connectivity
+confirmed `/home/staging`; no production checkout, database, service, or schedule
+was changed. Take a fresh baseline on that actual VPS before cutover rather than
+assuming the original investigation's 44% interval describes its current load.
+
 ### Separate stone-fixture repair
 
 While qualifying the expectation-metadata prerequisite, the epic-stone SQL journey
@@ -224,7 +273,8 @@ group, recovered claim, replay, rejection, and SQL rollback/retry. Provision usi
 `tests/async/with_disposable_mariadb.sh`, map `TEST_DB_HOST/PORT/USER/PASSWORD` to
 `DB_HOST/PORT/USER/PASSWD`, and set `EPIC_TEST_DB_NAME=epic_stone_test_issue292`.
 The harness creates that fresh named database and refuses an existing one. This
-repair will be its own PR above #300, then carried into metadata qualification.
+repair is published in [PR #301](https://github.com/LuminariMUD/Duris/pull/301)
+above #300 and has been carried into metadata qualification.
 
 ## Recommended change
 

@@ -165,7 +165,13 @@ backoff; a future retry may truthfully make a bounded drain fail. A SQL build
 without an initialized worker fails closed; the flat-file backend intentionally
 has no SQL outbox and retains its successful absent-worker drain behavior.
 
-The additive `critical_outbox_expectations.sql` migration must precede the new
+An accepted auction read returns `publication_pending`: its row remains due,
+without consuming retry attempts or moving `next_attempt_at`. Its completed
+game-thread callback wakes the worker for acknowledgement immediately. A failed
+read/admission is observed as a real failure by the worker and retains the normal
+durable backoff before another read can be submitted.
+
+The additive `immutable/0050_critical_outbox_expectations.sql` migration must precede the new
 writer/audit consumer. New committed inbox results record the exact expected
 contiguous event indexes `0..expected_outbox_events-1` in their own transaction.
 NULL preserves unknown historical intent and replay never rewrites it. The audit

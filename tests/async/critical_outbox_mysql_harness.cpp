@@ -187,11 +187,13 @@ static std::atomic<bool> publication_queued = false, publication_ready = false;
 static bool needs_publication = false;
 static bool duplicate_delivery = false;
 static std::thread::id game_thread;
+static std::chrono::steady_clock::time_point publication_not_before;
 
 static void publish()
 {
 	assert(std::this_thread::get_id() == game_thread);
-	if (publication_queued && !publication_ready)
+	if (publication_queued && !publication_ready &&
+	    std::chrono::steady_clock::now() >= publication_not_before)
 	{
 		publication_ready = true;
 		critical_outbox_resume();
@@ -211,7 +213,7 @@ static critical_outbox_delivery_result deliver(const critical_outbox_record &rec
 	if (needs_publication && !publication_ready)
 	{
 		publication_queued = true;
-		return critical_outbox_delivery_result::retryable_failure;
+		return critical_outbox_delivery_result::publication_pending;
 	}
 	if (state.terminal)
 		return critical_outbox_delivery_result::terminal_failure;
@@ -517,9 +519,15 @@ int main()
 	state = {};
 	needs_publication = true;
 	publication_queued = publication_ready = false;
+	// A read finishing after the old two-second retry must still acknowledge
+	// within the caller's three seconds, without consuming eight attempts.
+	publication_not_before = std::chrono::steady_clock::now() + std::chrono::milliseconds(2300);
 	assert(critical_outbox_init(deliver, &state, publish));
 	assert(critical_outbox_drain(3000));
-	assert(publication_ready && critical_outbox_health_copy().retries == 1);
+	assert(publication_ready && state.calls > CRITICAL_OUTBOX_MAX_ATTEMPTS);
+	assert(critical_outbox_health_copy().retries == 0 &&
+	       critical_outbox_health_copy().terminal_failures == 0);
+	assert(scalar("SELECT attempt_count FROM critical_outbox") == 0);
 	critical_outbox_shutdown();
 	needs_publication = false;
 	puts("outbox commit/in-flight/future-retry/failure drains and game-thread publication passed");

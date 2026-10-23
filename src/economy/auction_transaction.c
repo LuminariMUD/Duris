@@ -53,6 +53,7 @@ enum class outbox_publication_state : uint8_t
 	queued,
 	publishing,
 	published,
+	failed,
 };
 
 struct pending_outbox_publication
@@ -316,7 +317,12 @@ auction_transaction_outbox_delivery(const critical_outbox_record &record, void *
 			outbox_publications.erase(found);
 			return critical_outbox_delivery_result::delivered;
 		}
-		return critical_outbox_delivery_result::retryable_failure;
+		if (found->second.state == outbox_publication_state::failed)
+		{
+			outbox_publications.erase(found);
+			return critical_outbox_delivery_result::retryable_failure;
+		}
+		return critical_outbox_delivery_result::publication_pending;
 	}
 	try
 	{
@@ -330,7 +336,7 @@ auction_transaction_outbox_delivery(const critical_outbox_record &record, void *
 	{
 		return critical_outbox_delivery_result::retryable_failure;
 	}
-	return critical_outbox_delivery_result::retryable_failure;
+	return critical_outbox_delivery_result::publication_pending;
 }
 
 void auction_transaction_outbox_published(unsigned long long outbox_id, bool succeeded)
@@ -340,7 +346,7 @@ void auction_transaction_outbox_published(unsigned long long outbox_id, bool suc
 	if (found == outbox_publications.end())
 		return;
 	found->second.state = succeeded ? outbox_publication_state::published :
-					  outbox_publication_state::queued;
+					  outbox_publication_state::failed;
 	if (succeeded)
 		critical_outbox_resume();
 }
