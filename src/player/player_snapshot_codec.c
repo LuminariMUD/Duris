@@ -957,6 +957,7 @@ try
 			// Validate that same budget before changing the capture.
 			auto candidate = *snapshot;
 			candidate.affects = effects;
+			candidate.pending_trade = {};
 			std::vector<uint8_t> encoded;
 			const auto valid = player_snapshot_encode(candidate, &encoded);
 			if (valid != player_snapshot_codec_result::ok)

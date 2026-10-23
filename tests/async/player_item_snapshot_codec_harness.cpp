@@ -371,6 +371,35 @@ int main(int argc, char **argv)
 	require(player_snapshot_encode(crowded, &tagged) ==
 			player_snapshot_codec_result::limit_exceeded,
 		"protected cargo row allowed a second excess ordinary row");
+	auto tight = pending;
+	tight.components |= PLAYER_COMPONENT_INVENTORY;
+	tight.items = heavy;
+	tight.items[0].name.resize(tight.items[0].name.size() - 2048);
+	tight.pending_trade = {};
+	tight.affects.push_back(pending.pending_trade.cargo_effect);
+	require(player_snapshot_encode(tight, &tagged) == player_snapshot_codec_result::ok,
+		"tight settled image");
+	const auto extra = PLAYER_SNAPSHOT_MAX_BYTES - tagged.size() - 128;
+	// Spread the padding_left bytes without crossing any individual string bound.
+	size_t padding_left = extra;
+	for (auto &item : tight.items)
+		for (std::string *value : { &item.name, &item.short_description, &item.description,
+					    &item.action_description })
+		{
+			const auto added = std::min(padding_left, PLAYER_SNAPSHOT_MAX_STRING_BYTES -
+									  value->size());
+			value->append(added, 'x');
+			padding_left -= added;
+		}
+	require(!padding_left, "tight image padding");
+	tight.affects.clear();
+	tight.pending_trade = pending.pending_trade;
+	require(player_snapshot_encode(tight, &tagged) == player_snapshot_codec_result::ok &&
+			player_snapshot_settle_trade(&tight, true) ==
+				player_snapshot_codec_result::ok &&
+			!player_snapshot_trade_pending(tight) &&
+			player_snapshot_encode(tight, &tagged) == player_snapshot_codec_result::ok,
+		"settlement validated a transient duplicate tag instead of its final image");
 	auto refused = read_back;
 	require(player_snapshot_settle_trade(&refused, false) == player_snapshot_codec_result::ok &&
 			refused.wallet_revision == 6 &&
