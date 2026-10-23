@@ -244,6 +244,8 @@ const char *contra_name[NUM_PORTS] = {
  */
 void reset_cargo()
 {
+	if (divine_trade_runtime_busy())
+		return;
 	// The trade generation names the durable market, not these values; a staff
 	// reset must not make later saves, maintenance and trades look stale.
 	for (int i = 0; i < NUM_PORTS; i++)
@@ -1372,6 +1374,13 @@ void do_world_cargo(P_char ch, char *arg)
 {
 	if (!ch)
 		return;
+	if (arg && *arg && divine_trade_runtime_busy() &&
+	    (is_abbrev(arg, "reload") || is_abbrev(arg, "reset") || is_abbrev(arg, "save") ||
+	     is_abbrev(arg, "update")))
+	{
+		send_to_char("Cargo settlement is pending; retry after it completes.\r\n", ch);
+		return;
+	}
 
 	if (!arg || !*arg)
 	{
@@ -1386,9 +1395,17 @@ void do_world_cargo(P_char ch, char *arg)
 		if (!read_cargo())
 			send_to_char("FAILED!\r\n", ch);
 #else
+		const uint64_t generation = trade_generation;
 		sql_read_for(ch, CARGO_MODS_QUERY,
-			     [](P_char, const sql_rows &rows)
+			     [generation](P_char actor, const sql_rows &rows)
 			     {
+				     if (divine_trade_runtime_busy() ||
+					 trade_generation != generation)
+				     {
+					     send_to_char("Cargo changed during reload; retry.\r\n",
+							  actor);
+					     return;
+				     }
 				     for (const sql_row &row : rows)
 					     apply_cargo_mod(row[0], row[1], row[2], row[3]);
 			     });
