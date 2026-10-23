@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — remaining live payload stores
 
 Branch `branch/issue-264-payload-reset`, based on cargo PR #325 at `d92559fdb`.
+Review-ready PR #326 (https://github.com/LuminariMUD/Duris/pull/326), implementation
+`b2790e7cf`; committed and pushed after this handoff update.
 Outcome: clear `auction_item_custody` and siege items/affects/descriptions with the
 other seasonal physical payloads. The actual boot population readers scan these
 stores; old rows must not remain new-season presence or uncertainty evidence.
@@ -58,7 +60,9 @@ FK-linked nested siege items/affects/descriptions, a missing child table abort b
 epoch advance, and a triggered delete failure that never publishes SQL-ready.
 MariaDB/flat-file development and optimized MariaDB production builds passed;
 12 manifest checks (21 dependency-order assertions), 14 lifecycle tests and the
-reset-fence contract passed. Final publication remains; full readiness is open.
+reset-fence contract passed. Commit hooks passed; PR #326 is ready for review.
+Full readiness remains open. Next: qualify the unsupported flat-file command path
+on the actual built server, then Redis-on and service/recovery gates.
 
 ## Current continuation — prepared cargo replay proof
 
