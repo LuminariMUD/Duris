@@ -22759,10 +22759,10 @@ See also: disease, plague, desecrate land
 Area of effect: <victim>
 Aggressive:     No
 Cumulative:     No
-Duration:       Long (a fixed, lengthy span)
+Duration:       25 seconds
 Type of spell:  Enchantment 
 
-"Contain being" points a finger at a creature and sets its form phasing in and out of this plane of existence, neither wholly here nor wholly elsewhere, for a very long while. The contained victim is marked in a way only summoners care for: a specialized summoner who slays a contained creature may study its fading essence and learn the recipe for conjuring its kind thereafter. Players and the pets of others lie beyond its reach.
+"Contain being" points a finger at a creature and sets its form phasing in and out of this plane of existence for 25 seconds. A specialized summoner who earns kill experience while the mark remains may study the creature's fading essence and learn the recipe for conjuring its kind thereafter. Learning is chance-based: higher Charisma helps, while the creature's level and Intelligence oppose the attempt. An unsuccessful attempt reports that no recipe was learned, and the containment fading is announced in the room. Players and the pets of others lie beyond its reach.
 ===========================================================================
 See also: summoning
 #
