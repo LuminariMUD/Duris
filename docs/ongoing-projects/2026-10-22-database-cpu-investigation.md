@@ -1,8 +1,15 @@
 # Database CPU investigation and remediation plan
 
-Investigation date: 2026-10-22. Updated: 2026-10-23. Status: first worker
-implementation locally qualified and published for review; no deployment or production
-mutation performed.
+Investigation date: 2026-10-22. Updated: 2026-10-23. Status: worker, expectation
+metadata and audit changes locally qualified and published in PRs #300–#303.
+Owner independent review/merge is the next gate. Production rollout/CPU measurement remain open.
+No deployment or production mutation performed.
+
+**Owner review boundary:** the owner keeps independent review, issue addressing
+and merge. Do not merge PRs or deploy until that step is complete. Worker-only
+rollout authority exists after it; production is the VPS reached with
+`ssh duris-staging`, not this WSL host. Later 0050 schema/audit rollout is outside
+that worker-only production authority.
 
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
 Work branch:
@@ -13,8 +20,11 @@ Original investigation:
 
 ## Implementation handoff (2026-10-23)
 
-- Worktree: `/home/aiwithapex/projects/duris-issue292`, on the dedicated issue
-  branch above. Base is still `fc1c94e15155`; initial tracking commit is
+- Worktree: `/home/aiwithapex/projects/duris-issue292`, currently on
+  `branch/issue-292-outbox-audit`. The worker remains on the dedicated issue branch
+  above; the separate fixture worktree is
+  `/home/aiwithapex/projects/duris-issue292-worker-review` on
+  `branch/issue-292-outbox-expectations`. Base is still `fc1c94e15155`; initial tracking commit is
   `a4ba9402b2e7`. The shared `duris` checkout belongs to another task.
 - Outcome for chunk 1: indexed operational counts, independent 60-second
   historical audit, last-good health with freshness, and fresh bounded worker
@@ -32,7 +42,8 @@ Original investigation:
   general scheduler, or purge is needed. Raw audit semantics remain unchanged in
   this chunk so cadence and semantic correction can be reviewed independently.
 - Delivery: [PR #300](https://github.com/LuminariMUD/Duris/pull/300), ready for
-  review against `master`; code/validation commit `cd76e30a1b2a`. The local merge
+  review against `master`; current head `b46b0bb51`, worker source fix `67fb3e0b3`, initial qualification commit
+  `cd76e30a1b2a`. The local merge
   tree equals that qualified head's tree. No merge has been requested/performed.
 - Proof: the commands and results in the next subsection qualify chunk 1 locally.
 - Next: implement audit-semantic correction on a dependent
@@ -74,7 +85,11 @@ current receipt/ledger-only epic writer. The baseline failure was reproduced on
 worker review fix into this branch, both epic-stone tests pass with the new
 recovered-claim expectation assertion; full build, eight auction tests,
 lifecycle/client-free/boot checks, formatting and whitespace pass too.
-No expectation-metadata PR is open yet; publishing it is the next step.
+[Expectation-metadata PR #302](https://github.com/LuminariMUD/Duris/pull/302)
+is ready for review above PR #301. Qualified tag:
+`issue-292/expectations-qualified-20261023` (`c0f5f76f8`) covers the initial
+writer checks; current immutable-deployment qualification is
+`issue-292/expectations-immutable-20261023` (`6e46964dc`).
 
 The migration `migrations/immutable/0050_critical_outbox_expectations.sql` is guarded and
 re-runnable and requires `ALGORITHM=INSTANT` rather than silently copying the
@@ -85,7 +100,9 @@ extra query. New session audits/combat children record zero; each mutation owns
 its event count, including item/collector event indexes and recovered stone
 receipts. Historical NULL is never backfilled from existing outbox rows or
 rewritten by replay. Reader/result codecs are unchanged. Keep this additive
-column and evidence on binary rollback; do not drop it. No production migration
+column and evidence; do not drop it to force an older binary to boot. A pre-0050
+binary cannot restart against head 0050: recovery needs a compatible binary or
+an explicitly authorized, verified matching database restore. No production migration
 has run. The audit consumer still awaits its separately reviewed change.
 
 PR #302 deployment-path correction: register the single canonical apply/verifier
@@ -106,6 +123,96 @@ and the focused authoring driver are under ignored `bin/analysis/issue292/` in
 the metadata worktree; no production-derived clone or broad telemetry regression
 matrix is used. Migration runner tests: 23 pass, including exact online scope,
 authorization, engine, checksum and lock-timeout guards.
+
+Chunk 3 is locally qualified on `branch/issue-292-outbox-audit`, above PR #302.
+[PR #303](https://github.com/LuminariMUD/Duris/pull/303) is ready for owner review.
+Outcome: audit every committed historical operation using exact recorded
+expectations when known; classify legitimate historical session audits from their
+typed receipt and combat children from parent/participant/ledger/hash identity;
+keep remaining historical ambiguity explicit. Detect missing, partially missing,
+or unexpected event indexes and report unknown coverage separately from proven
+integrity failures. Never infer an expectation from surviving outbox rows.
+Non-goals: rewriting historical receipts, deleting data, changing codecs or
+retry policy, and boon/retention work before its measurement/decision gates.
+Files: existing worker/health/staff display, runbook/pipeline guide, executable
+outbox fixture harness and wrapper, and this handoff. Proof: positive/negative
+legacy-classification fixtures, known zero/no-op/rejected/recovered-stone and
+multi-event loss fixtures, full-history discoverability, focused worker/harness
+checks on MariaDB/MySQL, formatting and build. Keep unknown historical event sets
+visible rather than assuming zero.
+
+Chunk 3 results: `CRITICAL_DB_IMAGE=mariadb:11.8` and `CRITICAL_DB_IMAGE=mysql:8.0`
+with `tests/async/run_critical_command_schema_mysql.sh` both pass. The wrapper
+now uses the canonical bootstrap so the actual worker audit sees production-shaped
+typed receipt tables. Fixtures distinguish **10 proven mismatches, four unknown
+historical expectations, and three unclassified zero-event candidates**. They
+cover proven session omissions, normal and Divine combat children, a lookalike
+with the wrong derived ID, single-event typed mutations, known zero/no-op and
+rejection, recovered stone expectation, partial loss, wrong indexes, unexpected
+events, and ambiguous old item sets. Historical missing fixtures date to 2020.
+The same executable suite retains 60-second cadence/failure/recovery/drain tests
+and 100k delivered/10,001 active-row checks. Operational next reads remain three.
+
+`python3 tests/async/test_critical_transaction_contract.py` additionally executes
+the actual staff formatting for stopped, unavailable, stale, reconciliation,
+degraded, pending and ready states, in SQL and client-free builds. The full server
+build, formatting and whitespace checks pass. Existing unchanged domain and
+lifecycle evidence from the preceding chunks remains valid. The runbook and
+pipeline guide now describe candidate/coverage counts separately from proven
+integrity failures. No fixed-count subtraction, blanket epic exemption, historical
+backfill, purge, or recent-only audit window was introduced.
+
+Final integrated qualification after carrying the worker review fixes and
+immutable-ledger correction into the audit branch: full build; 23 migration
+runner tests; seven runtime-boot contract tests; eight auction tests; actual
+SQL/client-free staff and drain contracts; executable lifecycle-policy probe;
+and the full MariaDB 11.8 worker/schema suite all pass. The latter includes the
+2,300 ms pending-publication regression with zero consumed attempts, the typed
+audit fixtures, cadence/failures/recovery and retained-history scaling. Prior
+unchanged MySQL 8.0 audit evidence and measured dual-engine 0050 runtime contracts
+are reused. Formatting, commit hooks and whitespace checks pass.
+
+Review heads before this documentation-only closeout: worker `67fb3e0b3`, stone
+proof `2c6c0e31a`, immutable metadata `6e46964dc`, integrated audit `509ec5464`.
+Current complete-stack qualification tag: `issue-292/audit-review-20261023`.
+All four PRs are ready for owner review; issue #292 remains open for rollout and
+measurement-gated work. No hosted CI wait or merge override is used.
+
+Final base refresh: master advanced to `e86bf7f24` (ship GMCP PR #304), touching
+only `json_utils.c`, `gmcp.c`, and its two GUI contract fixtures. All four review
+branches now carry that qualified base without rewriting history. Worker head is
+`b46b0bb51`, stone proof `c650f8c96`, metadata `962b580f1`, and the audit integration
+is `b004ed97d`. Task-owned source, migrations and tests match the preceding
+qualification; only the four unrelated base files differ. The worker/current-base
+and complete-stack builds pass, and the affected GUI GMCP contract passes.
+Current final review tag: `issue-292/review-ready-20261023`; earlier tags retain
+their original evidence. Remote parity, clean worktrees and conflict-free merge
+trees are checked against this captured base. Review and merge still belong to
+the owner; no production deployment has begun.
+
+### Next session / remaining gates
+
+1. The owner explicitly reserved independent review, issue addressing and GitHub
+   merge. **Do not merge these PRs or start deployment before that step.** Review
+   stack: #300 worker → #301 stone proof → #302 immutable expectations → #303 audit.
+   All completed chunks are committed/pushed; no GitHub PR has been merged.
+2. Worker-only production rollout was authorized, conditional on that review/merge.
+   Use `ssh duris-staging` for the actual VPS; this WSL machine is not production.
+   After the owner completes review/merge, use the normal deployment skill without
+   asking again for the already authorized worker-only scope. Preserve #300 as a
+   separately deployable no-migration change. Merging #302 advances the runtime
+   contract to 0050 and requires a separately authorized migration before boot.
+3. On the VPS, take a fresh pre-cutover CPU/handler baseline while the current game
+   remains running; the original 44% sample is not a current VPS verification.
+   Production CPU improvement and >=95% row-work acceptance remain unmeasured.
+4. Compare CPU/handler deltas, audit cadence/freshness, delivery latency/age and
+   failures at comparable traffic, then a longer gameplay period. Do not close
+   #292 or claim the incident resolved from local query evidence alone.
+5. Only after the worker improvement is measured, decide/implement the separately
+   reviewed boon producer optimization with its replay/eligibility/codec gates.
+   Retention remains conditional on growth/backup cost and explicit replay/archive
+   horizons. Historical unclassifiable event sets remain visible for typed
+   reconciliation; do not assign them zero merely to clear health.
 
 ### Chunk 1 local qualification
 
@@ -200,7 +307,8 @@ group, recovered claim, replay, rejection, and SQL rollback/retry. Provision usi
 `tests/async/with_disposable_mariadb.sh`, map `TEST_DB_HOST/PORT/USER/PASSWORD` to
 `DB_HOST/PORT/USER/PASSWD`, and set `EPIC_TEST_DB_NAME=epic_stone_test_issue292`.
 The harness creates that fresh named database and refuses an existing one. This
-repair will be its own PR above #300, then carried into metadata qualification.
+repair is published in [PR #301](https://github.com/LuminariMUD/Duris/pull/301)
+above #300 and has been carried into metadata qualification.
 
 ## Recommended change
 

@@ -143,8 +143,8 @@ backoff; the eighth failure or a terminal result retains a dead-letter row. Copy
 shutdown drain commands first and outbox records second.
 
 `world persistence` adds cached `critical_outbox` counts for pending age, dead letters,
-incomplete inbox rows, committed operations missing outbox rows, delivery/retry/error
-totals, and high-water records/bytes.
+incomplete inbox rows, event-expectation mismatches, unknown historical expectations,
+reconciliation candidates, delivery/retry/error totals, and high-water records/bytes.
 
 Operational counts use the existing status indexes on the 250 ms delivery cadence;
 the full historical missing-outbox audit runs after delivery, initially and then
@@ -170,6 +170,34 @@ without consuming retry attempts or moving `next_attempt_at`. Its completed
 game-thread callback wakes the worker for acknowledgement immediately. A failed
 read/admission is observed as a real failure by the worker and retains the normal
 durable backoff before another read can be submitted.
+
+The additive `immutable/0050_critical_outbox_expectations.sql` migration must precede the new
+writer/audit consumer. New committed inbox results record the exact expected
+contiguous event indexes `0..expected_outbox_events-1` in their own transaction.
+NULL preserves unknown historical intent and replay never rewrites it. The audit
+counts all outbox statuses and compares both cardinality and indexes, so a
+partially lost multi-event operation remains visible even if one event survives.
+An unexpected event for a known zero is also a mismatch.
+
+Historical expectations are classified only with the domain contract and positive
+typed evidence. Session audits need a corresponding outcome receipt. Combat epic
+children need their canonical empty/hash identity plus the exact parent,
+participant index, ledger revision/delta, reason/source, and derived child ID;
+the parent owns their publication. Empty epic payloads or command type alone are
+insufficient. Typed mutation receipts can prove a single event. Remaining old
+ambiguity, including historical item/collector multi-event counts, stays unknown.
+All committed history is covered on every audit attempt; no timestamp window or
+permanent high-water mark skips old rows.
+
+`outbox_mismatches` is a proven integrity failure. `unknown_expectations` is a
+coverage count; `reconciliation_candidates` counts its operations with no outbox
+row. These unknowns produce `state=reconciliation`, while dead letters,
+incomplete inbox rows, or proven mismatches produce `degraded`. Diagnostic failure
+or staleness still produces `unknown`, preserving last-good values. Neither a
+candidate count nor an unknown historical set proves loss or permits claiming a
+clean audit. The legacy health member `committed_without_outbox` now carries the
+reconciliation-candidate count and is no longer an integrity verdict. Never infer
+historical intent from the rows still present or fabricate zero expectations.
 
 Treat a growing oldest age as a stop condition for copyover/shutdown and affected
 gameplay: restore the underlying database or destination and investigate before
