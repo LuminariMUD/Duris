@@ -6,7 +6,7 @@ runs under `make test-db` because it needs Docker.
 """
 
 import re
-from _paths import SRC, rel
+from _paths import HARNESS_STUBS, SRC, rel
 import pathlib
 import subprocess
 import tempfile
@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix="flat-claim-test-", dir=ROOT / "bin/test
     work = pathlib.Path(temporary)
     binary = work / "flatfile_player_save_claim"
     built = subprocess.run(
-        ["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-D__NO_MYSQL__",
+        ["g++", str(HARNESS_STUBS), "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-D__NO_MYSQL__",
          "-Isrc", "-Isrc/no_mysql", "tests/async/flatfile_player_save_claim_harness.cpp",
          *[rel(name) for name in SOURCES], "-lcrypto", "-pthread", "-o", str(binary)],
         cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

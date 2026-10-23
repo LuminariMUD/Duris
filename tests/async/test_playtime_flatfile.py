@@ -3,7 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
-from _paths import rel
+from _paths import HARNESS_STUBS, rel
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-flatfile-") as temporary
     root = Path(temporary)
     source, binary = root / "playtime.cpp", root / "playtime"
     source.write_text(HARNESS)
-    subprocess.run(["g++", "-std=c++20", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
+    subprocess.run(["g++", str(HARNESS_STUBS), "-std=c++20", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
                     "-Isrc", "-Isrc/no_mysql", str(source), *[rel(name) for name in SOURCES],
                     "-Wl,--gc-sections", "-lcrypto", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)
     for name in ("state", "state/players", "state/identities", "state/identities/names", "state/domains"):

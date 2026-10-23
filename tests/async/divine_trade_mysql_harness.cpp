@@ -425,10 +425,26 @@ int main()
 				"pending affect capture erased cargo achievement");
 		auto corrupt = captured;
 		corrupt.pending_trade.command_hash[0] ^= 1;
+		corrupt.components |= PLAYER_COMPONENT_TROPHIES;
+		corrupt.trophies.push_back({ 123456, 77 });
+		player_affect_snapshot unrelated{};
+		unrelated.type = 1234;
+		unrelated.modifier = 77;
+		corrupt.affects.push_back(unrelated);
 		require(player_snapshot_repository_apply(db, corrupt).outcome ==
-					player_save_apply_outcome::terminal_failure &&
-				wallet() == merged,
-			"mismatched pending receipt accepted");
+					player_save_apply_outcome::applied &&
+				wallet() == merged &&
+				scalar(db, "SELECT exp FROM zone_trophy WHERE pid=" +
+						   std::to_string(pid) +
+						   " AND zone_number=123456") == "77" &&
+				scalar(db, "SELECT modifier FROM player_affects WHERE pid=" +
+						   std::to_string(pid) + " AND type=1234") == "77",
+			"receipt quarantine lost unrelated terminal state");
+		if (sale.has_cargo_effect)
+			require(scalar(db, "SELECT modifier FROM player_affects WHERE pid=" +
+						   std::to_string(pid) + " AND type=2110") ==
+					"10005",
+				"receipt quarantine changed committed cargo progress");
 		// Absent and durably rejected trades do not pay a captured purse.
 		auto unpaid = captured;
 		require(player_snapshot_settle_trade(&unpaid, true) ==

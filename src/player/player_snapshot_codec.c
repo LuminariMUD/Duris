@@ -143,7 +143,8 @@ struct decoder
 		uint32_t count = 0;
 		if (!number(count))
 			return false;
-		if (count > PLAYER_SNAPSHOT_MAX_ROWS || rows > PLAYER_SNAPSHOT_MAX_ROWS - count ||
+		if (count > PLAYER_SNAPSHOT_MAX_ROWS ||
+		    rows > PLAYER_SNAPSHOT_MAX_ROWS + 1 - count ||
 		    (object_rows && (count > PLAYER_SNAPSHOT_MAX_OBJECTS ||
 				     objects > PLAYER_SNAPSHOT_MAX_OBJECTS - count)))
 		{
@@ -819,6 +820,14 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			return player_snapshot_codec_result::invalid_value;
 		if (in.offset != in.size)
 			return player_snapshot_codec_result::invalid_value;
+		// One protected cargo-count row can be committed while an otherwise
+		// full ordinary capture waits on the writer. Keep that bounded row
+		// without discarding the capture's unrelated state.
+		if (in.rows > PLAYER_SNAPSHOT_MAX_ROWS &&
+		    std::none_of(snapshot.affects.begin(), snapshot.affects.end(),
+				 [](const auto &row)
+				 { return row.type == PLAYER_TRADE_CARGO_AFFECT; }))
+			return player_snapshot_codec_result::limit_exceeded;
 		if (!valid_item_relationships(snapshot.items))
 			return player_snapshot_codec_result::invalid_value;
 		for (const player_pet_snapshot &pet : snapshot.pets)

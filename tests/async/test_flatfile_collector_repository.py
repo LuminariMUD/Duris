@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import rel
+from _paths import HARNESS_STUBS, rel
 import pathlib
 import subprocess
 import tempfile
@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
     ]
     compile_result = subprocess.run(
         [
-            "g++",
+            "g++", str(HARNESS_STUBS),
             "-std=c++20",
             "-Wall",
             "-Wextra",

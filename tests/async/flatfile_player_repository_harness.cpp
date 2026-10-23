@@ -1124,10 +1124,23 @@ static void divine_trade_settlement(const fs::path &base)
 		verify();
 		auto corrupt = captured;
 		corrupt.pending_trade.command_hash[0] ^= 1;
+		corrupt.components |= PLAYER_COMPONENT_TROPHIES;
+		corrupt.trophies.push_back({ 123456, 77 });
+		player_affect_snapshot unrelated{};
+		unrelated.type = 1234;
+		unrelated.modifier = 77;
+		corrupt.affects.push_back(unrelated);
 		require(flatfile_player_snapshot_apply(root, corrupt, &error).outcome ==
-				player_save_apply_outcome::terminal_failure,
-			"mismatched pending receipt accepted");
+				player_save_apply_outcome::applied,
+			"unresolved receipt dropped the terminal capture");
 		verify();
+		require(std::any_of(
+				saved.trophies.begin(), saved.trophies.end(), [](const auto &row)
+				{ return row.zone_number == 123456 && row.experience == 77; }) &&
+				std::any_of(saved.affects.begin(), saved.affects.end(),
+					    [](const auto &row)
+					    { return row.type == 1234 && row.modifier == 77; }),
+			"receipt quarantine lost unrelated trophy or affect state");
 		auto unpaid = captured;
 		require(player_snapshot_settle_trade(&unpaid, true) ==
 				player_snapshot_codec_result::ok,

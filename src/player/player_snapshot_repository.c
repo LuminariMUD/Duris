@@ -20,6 +20,7 @@
 #include "economy/divine_trade_result.h"
 #include "item/item_claim_repository.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/persistence_log.h"
 #include "player/player_snapshot_codec.h"
 #include "sql/item_extra_descr_codec.h"
 #include "sql/sql_pool.h"
@@ -382,12 +383,14 @@ query_result apply_skills(MYSQL *connection, const player_snapshot &snapshot)
 }
 
 query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot,
-			   bool cargo_only = false)
+			   bool cargo_only = false, bool preserve_cargo = false)
 {
 	query_result result = execute(
 		connection,
 		"DELETE FROM player_affects WHERE pid=" + std::to_string(snapshot.pid) +
 			(cargo_only ? " AND type=" + std::to_string(PLAYER_TRADE_CARGO_AFFECT) :
+			 preserve_cargo ?
+				      " AND type<>" + std::to_string(PLAYER_TRADE_CARGO_AFFECT) :
 				      ""));
 	if (!result.ok || snapshot.affects.empty())
 		return result;
@@ -395,10 +398,13 @@ query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot,
 	sql << "INSERT INTO player_affects (pid,type,duration,flags,modifier,location,level,"
 	       "bitvector1,bitvector2,bitvector3,bitvector4,bitvector5,custom_msg_char,"
 	       "custom_msg_room) VALUES ";
+	bool first = true;
 	for (size_t index = 0; index < snapshot.affects.size(); ++index)
 	{
 		const auto &row = snapshot.affects[index];
-		sql << (index ? "," : "") << '(' << snapshot.pid << ',' << row.type << ','
+		if (preserve_cargo && row.type == PLAYER_TRADE_CARGO_AFFECT)
+			continue;
+		sql << (first ? "" : ",") << '(' << snapshot.pid << ',' << row.type << ','
 		    << row.duration << ',' << row.flags << ',' << row.modifier << ','
 		    << static_cast<unsigned int>(row.location) << ',' << row.level;
 		for (uint64_t bitvector : row.bitvectors)
@@ -409,8 +415,9 @@ query_result apply_affects(MYSQL *connection, const player_snapshot &snapshot,
 		    << ','
 		    << (row.wear_off_room.empty() ? "NULL" : quote(connection, row.wear_off_room))
 		    << ')';
+		first = false;
 	}
-	return execute(connection, sql.str());
+	return first ? query_result{ true, 0 } : execute(connection, sql.str());
 }
 
 std::string optional_item_string(MYSQL *connection, const player_item_snapshot &row, uint8_t mask,
@@ -837,7 +844,7 @@ query_result apply_trophies(MYSQL *connection, const player_snapshot &snapshot)
 
 query_result apply_components(MYSQL *connection, const player_snapshot &snapshot,
 			      std::vector<claimed_graph> *claims, bool status_current,
-			      bool wallet_current)
+			      bool wallet_current, bool preserve_cargo)
 {
 	query_result result = { true, 0 };
 	if ((snapshot.components & PLAYER_COMPONENT_STATUS) && status_current)
@@ -847,7 +854,7 @@ query_result apply_components(MYSQL *connection, const player_snapshot &snapshot
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_SKILLS))
 		result = apply_skills(connection, snapshot);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_AFFECTS))
-		result = apply_affects(connection, snapshot);
+		result = apply_affects(connection, snapshot, false, preserve_cargo);
 	if (result.ok &&
 	    (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
 		result = apply_items(connection, snapshot, claims);
@@ -1006,8 +1013,25 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	bool created = false;
 	player_revision_t stored_revision = 0;
 	uint64_t stored_delivery_sequence = 0, stored_wallet_revision = 0;
+	bool unresolved_trade = false;
 	if (revised)
+	{
 		query = settle_pending_trade(connection, revised.get());
+		if (!query.ok && query.error_code == EILSEQ)
+		{
+			// Keep the stored financial projection; a terminal actor no longer
+			// exists to recapture its unrelated state.
+			unresolved_trade = true;
+			revised->pending_trade = {};
+			query = { true, 0 };
+			char record[128];
+			snprintf(
+				record, sizeof(record),
+				"player_save trade_receipt_unresolved pid=%d financial_state=retained",
+				captured.pid);
+			persistence_log_submit(record);
+		}
+	}
 	if (query.ok)
 		query = ensure_player_row(connection, snapshot, &created, &stored_revision,
 					  &stored_delivery_sequence, &stored_wallet_revision);
@@ -1020,7 +1044,8 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	const bool status_current = delivered_sequence >= stored_delivery_sequence;
 	// A terminal save has no live actor to recapture. Preserve every other
 	// component while leaving a newer committed purse untouched.
-	const bool wallet_current = snapshot.wallet_revision >= stored_wallet_revision;
+	const bool wallet_current = !unresolved_trade &&
+				    snapshot.wallet_revision >= stored_wallet_revision;
 	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{
 		const auto rolled_back = execute(connection, "ROLLBACK");
@@ -1029,8 +1054,9 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		return { player_save_apply_outcome::stale_revision, stored_revision, 0 };
 	}
 	if (query.ok)
-		query = apply_components(connection, snapshot, &claims, status_current,
-					 wallet_current);
+		query = apply_components(
+			connection, snapshot, &claims, status_current, wallet_current,
+			unresolved_trade && captured.pending_trade.has_cargo_effect);
 	if (query.ok && created)
 		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)

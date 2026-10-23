@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import SRC, rel
+from _paths import HARNESS_STUBS, SRC, rel
 import os
 import contextlib
 import fcntl
@@ -39,7 +39,7 @@ with lock as publication:
         binary = temporary_path / "flatfile_player_test"
         compile_result = subprocess.run(
             [
-                "g++",
+                "g++", str(HARNESS_STUBS),
                 "-std=c++20",
                 "-Wall",
                 "-Wextra",
