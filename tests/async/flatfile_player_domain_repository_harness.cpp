@@ -717,7 +717,7 @@ int main(int argc, char **argv)
 			"overflowing recipient acquired a durable receipt");
 	}
 
-	// A permanently full receipt history must not retain a writer fence forever.
+	// Legacy full histories compact before admitting another ordinary command.
 	{
 		auto saturated = baseline(82);
 		saturated.domains.bank = {};
@@ -743,9 +743,14 @@ int main(int argc, char **argv)
 			"full-store fixture build failed");
 		outcome.accepted_at_usec = 1;
 		const auto result = flatfile_player_domain_apply(root.string(), outcome);
-		require(result.outcome == critical_apply_outcome::terminal_failure &&
-				result.error_code == ENOSPC,
-			"full authority history incorrectly offered an infinite retry");
+		require(result.outcome == critical_apply_outcome::applied && !result.error_code,
+			"full legacy history did not compact before ordinary combat");
+		require(fs::file_size(domains / "player-82.domain") < 8192,
+			"full legacy history remained embedded after compaction");
+		const auto replay = flatfile_player_domain_apply(root.string(), outcome);
+		require(replay.outcome == critical_apply_outcome::already_applied &&
+				replay.result_payload == result.result_payload,
+			"ordinary combat changed after full-history compaction");
 	}
 
 	const fs::path player = domains / "player-42.domain";
