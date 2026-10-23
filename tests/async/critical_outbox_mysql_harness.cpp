@@ -1,12 +1,17 @@
 #include "persistence/critical_outbox.h"
+#include "world/epic_command.h"
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mysql.h>
+#include <openssl/sha.h>
 #include <future>
 #include <mutex>
 #include <string>
@@ -65,7 +70,7 @@ extern "C" int __wrap_mysql_real_query(MYSQL *connection, const char *sql, unsig
 			mysql_close(killer);
 		}
 	}
-	else if (query.find("SELECT COUNT(*) FROM critical_operation_inbox i") == 0)
+	else if (query.find("/* critical_outbox_audit */") == 0)
 	{
 		++audits;
 		fail = fail_audit;
@@ -225,6 +230,155 @@ template <typename Predicate> static void wait_until(Predicate predicate)
 		assert(std::chrono::steady_clock::now() < deadline);
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
+}
+
+static void audit_fixtures()
+{
+	clear_rows();
+	auto id = [](unsigned int suffix)
+	{ return "UNHEX(LPAD(HEX(" + std::to_string(200000 + suffix) + "),32,'0'))"; };
+	auto receipt = [&](const std::string &operation, unsigned int type, int expected,
+			   unsigned int code = 0)
+	{
+		execute(("INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,"
+			 "command_type,schema_version,payload_version,status,result_code,result_payload,"
+			 "created_at,committed_at,expected_outbox_events) VALUES(" +
+			 operation + ",UNHEX(REPEAT('11',32)),UNHEX(REPEAT('22',32))," +
+			 std::to_string(type) + ",1,1,1," + std::to_string(code) +
+			 ",'','2020-01-01','2020-01-01'," +
+			 (expected < 0 ? "NULL" : std::to_string(expected)) + ")")
+				.c_str());
+	};
+	auto event = [&](unsigned int operation, unsigned int index)
+	{
+		execute(("INSERT INTO critical_outbox(operation_id,event_index,destination,event_type,"
+			 "payload_version,payload,status) VALUES(" +
+			 id(operation) + "," + std::to_string(index) +
+			 ",1,1,1,UNHEX(REPEAT('33',16)),1)")
+				.c_str());
+	};
+	receipt(id(1), 13, -1); // Proven historical audit omission.
+	execute(("INSERT INTO session_audit_outcome(operation_id,pid,event_type,occurred_at) VALUES(" +
+		 id(1) + ",105,1,'2020-01-01')")
+			.c_str());
+	receipt(id(2), 13, -1); // Type alone is not proof: no typed receipt.
+	receipt(id(3), 7, 0); // Successful zero-effect result.
+	receipt(id(4), 7, -1, EINVAL); // Historical rejection has no publication.
+	receipt(id(5), 12, 1); // A recovered stone receipt still expects its event.
+	receipt(id(6), 5, 3);
+	event(6, 0);
+	event(6, 2); // Partial multi-event loss.
+	receipt(id(7), 5, 2);
+	event(7, 0);
+	event(7, 2); // Correct count, wrong indexes.
+	receipt(id(8), 7, 0);
+	event(8, 0); // Unexpected event for known zero.
+	receipt(id(9), 11, -1);
+	execute(("INSERT INTO boon_reward_outcome(operation_id,pid,`option`,event_value,entry_count) VALUES(" +
+		 id(9) + ",104,0,0,0)")
+			.c_str()); // Even zero-match legacy boons expected one event.
+	receipt(id(10), 5, -1);
+	event(10, 0); // Unknown historical multi-event set stays unknown.
+	receipt(id(11), 7, -1); // Unproven historical no-op is also unknown.
+	receipt(id(16), 12, -1);
+	execute(("INSERT INTO zone_touch_outcome(operation_id,zone_number,toucher_pid,boot_time,"
+		 "touched_at,group_size,epic_value,alignment_delta) VALUES(" +
+		 id(16) + ",1,100,1,2,1,1,0)")
+			.c_str()); // Missing event from an old typed mutation.
+	receipt(id(18), 12, -1); // Recovery without provable history is never a zero exemption.
+	for (unsigned int parent : { 12U, 21U })
+	{
+		receipt(id(parent), 8, -1);
+		event(parent, 0);
+		execute(("INSERT INTO combat_outcome(operation_id,pkill_event_id,victim_pid,room_vnum,"
+			 "participant_count) VALUES(" +
+			 id(parent) + "," + std::to_string(parent) + ",20,1," +
+			 (parent == 12 ? "2" : "1") + ")")
+				.c_str());
+	}
+	receipt(id(22), 7, -1);
+	execute(("INSERT INTO auction_ledger(operation_id,event_type,auction_id,auction_revision) VALUES(" +
+		 id(22) + ",1,1,1)")
+			.c_str());
+	receipt(id(23), 9, -1);
+	execute(("INSERT INTO artifact_guild_outcome(operation_id,parent_operation_id,actor_pid) VALUES(" +
+		 id(23) + "," + id(12) + ",100)")
+			.c_str());
+	receipt(id(24), 18, -1);
+	execute(("INSERT INTO collector_ledger(operation_id,listing_id,action,catalog_revision,listing_revision,"
+		 "item_uid,source_site) VALUES(" +
+		 id(24) + ",1,5,1,1,1,2)")
+			.c_str());
+	auto combat_child = [&](unsigned int parent, unsigned int index, unsigned int pid,
+				bool divine, bool impostor)
+	{
+		// Writer contract: first 16 bytes of SHA256(parent || domain || LE16(index)).
+		// C++ hashing independently checks the audit's SQL identity calculation.
+		std::array<uint8_t, 19> input = {};
+		for (unsigned int byte = 0; byte < 4; ++byte)
+			input[15 - byte] = static_cast<uint8_t>((200000 + parent) >> (8 * byte));
+		input[16] = 1;
+		input[17] = static_cast<uint8_t>(index);
+		std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
+		SHA256(input.data(), input.size(), digest.data());
+		std::array<uint8_t, 16> child = {};
+		std::copy_n(digest.begin(), child.size(), child.begin());
+		if (impostor)
+			child[0] ^= 1; // Same hashes/ledger shape, wrong derived identity.
+		auto hex = [](const uint8_t *bytes, size_t length)
+		{
+			static const char DIGITS[] = "0123456789abcdef";
+			std::string value;
+			for (size_t i = 0; i < length; ++i)
+			{
+				value += DIGITS[bytes[i] >> 4];
+				value += DIGITS[bytes[i] & 15];
+			}
+			return value;
+		};
+		const std::string operation = "UNHEX('" + hex(child.data(), child.size()) + "')";
+		receipt(operation, 2, -1);
+		SHA256(child.data(), child.size(), digest.data());
+		const auto hash = "UNHEX('" + hex(digest.data(), digest.size()) + "')";
+		execute(("UPDATE critical_operation_inbox SET command_hash=" + hash +
+			 ",keys_hash=" + hash +
+			 ",durable_revision=1 WHERE operation_id=" + operation)
+				.c_str());
+		execute(("INSERT INTO combat_outcome_participant(operation_id,participant_index,pid,role,flags,"
+			 "frag_delta,epic_delta,wallet_delta_copper,frag_after,frag_revision,epic_revision,"
+			 "wallet_revision,bank_revision) VALUES(" +
+			 id(parent) + "," + std::to_string(index) + "," + std::to_string(pid) +
+			 ",1," + (divine ? "8" : "0") + ",0,50,0,0,0,1,0,0)")
+				.c_str());
+		execute(("INSERT INTO epic_ledger(operation_id,pid,delta,balance_after,epic_revision,reason_type,"
+			 "reason_id,source_site) VALUES(" +
+			 operation + "," + std::to_string(pid) + ",50,150,1," +
+			 std::to_string(
+				 static_cast<uint16_t>(divine ? epic_reason_type::divine_pvp_award :
+								epic_reason_type::pvp_award)) +
+			 ",20," +
+			 std::to_string(static_cast<uint16_t>(critical_source_site::combat)) + ")")
+				.c_str());
+	};
+	combat_child(12, 0, 100, false, false);
+	combat_child(12, 1, 101, false, true);
+	combat_child(21, 0, 102, true, false);
+	delivery_state state = {};
+	assert(critical_outbox_init(deliver, &state));
+	wait_until([] { return critical_outbox_health_copy().audit_available; });
+	const auto result = critical_outbox_health_copy();
+	assert(result.outbox_expectation_mismatches == 10);
+	assert(result.unknown_outbox_expectations == 4);
+	assert(result.committed_without_outbox == 3);
+	critical_outbox_shutdown();
+	// This database is owned solely by the disposable wrapper. Respect all FKs.
+	for (const char *table :
+	     { "combat_outcome_participant", "combat_outcome", "epic_ledger",
+	       "session_audit_outcome", "boon_reward_outcome", "zone_touch_outcome",
+	       "auction_ledger", "artifact_guild_outcome", "collector_ledger",
+	       "critical_outbox_delivery_dedupe", "critical_outbox", "critical_operation_inbox" })
+		execute(("DELETE FROM " + std::string(table)).c_str());
+	puts("outbox historical proof, unknown coverage and exact/partial/unexpected event audit passed");
 }
 
 int main()
@@ -433,6 +587,7 @@ int main()
 	execute("DELETE FROM critical_operation_inbox WHERE operation_id>=UNHEX('000000000000000000000000000003e8')");
 	printf("outbox mixed counters and 100k delivered-history scaling passed (%llu indexed next reads)\n",
 	       before_history);
+	audit_fixtures();
 
 	// One real minute proves the production deadline; do not add a test-only
 	// scheduler/configuration surface to the worker.

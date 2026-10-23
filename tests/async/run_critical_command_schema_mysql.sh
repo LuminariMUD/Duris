@@ -32,6 +32,9 @@ done
 [[ "$ready" == 1 ]]
 "${MYSQL[@]}" -e "CREATE DATABASE $CRITICAL_TEST_DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
+# The historical audit validates typed receipts and combat parent/child identity.
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/bootstrap_multithread_safe.sql"
+
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/critical_command_inbox_outbox.sql"
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/critical_command_inbox_outbox.sql"
 # Upgrade a production-shaped older schema without assigning historical zeroes.

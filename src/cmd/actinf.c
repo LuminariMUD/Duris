@@ -4395,20 +4395,24 @@ static void show_world_persistence(P_char ch)
 	snprintf(
 		line, sizeof(line),
 		"critical_outbox state=%s pending=%llu dead_letter=%llu oldest_age_ms=%llu "
-		"incomplete_inbox=%llu committed_without_outbox=%llu fetched=%llu delivered=%llu "
+		"incomplete_inbox=%llu reconciliation_candidates=%llu outbox_mismatches=%llu "
+		"unknown_expectations=%llu fetched=%llu delivered=%llu "
 		"duplicates=%llu retries=%llu terminal=%llu db_failures=%llu high_water=%llu/%llu\n",
 		!critical_outbox.initialized				    ? "stopped" :
 		critical_outbox.counts_stale || critical_outbox.audit_stale ? "unknown" :
 		critical_outbox.dead_letter || critical_outbox.incomplete_inbox ||
-				critical_outbox.committed_without_outbox ?
+				critical_outbox.outbox_expectation_mismatches ?
 									      "degraded" :
-		critical_outbox.pending ? "pending" :
-					  "ready",
+		critical_outbox.unknown_outbox_expectations ? "reconciliation" :
+		critical_outbox.pending			    ? "pending" :
+							      "ready",
 		(unsigned long long)critical_outbox.pending,
 		(unsigned long long)critical_outbox.dead_letter,
 		(unsigned long long)critical_outbox.oldest_age_msec,
 		(unsigned long long)critical_outbox.incomplete_inbox,
 		(unsigned long long)critical_outbox.committed_without_outbox,
+		(unsigned long long)critical_outbox.outbox_expectation_mismatches,
+		(unsigned long long)critical_outbox.unknown_outbox_expectations,
 		(unsigned long long)critical_outbox.fetched,
 		(unsigned long long)critical_outbox.delivered,
 		(unsigned long long)critical_outbox.duplicates,

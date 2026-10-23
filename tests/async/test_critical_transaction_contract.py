@@ -84,13 +84,47 @@ assert COPYOVER.index("critical_command_coordinator_drain(3000)") < COPYOVER.ind
 assert "critical_outbox state=%s" in DIAGNOSTICS
 assert "committed_without_outbox" in DIAGNOSTICS
 
+display_start = DIAGNOSTICS.index('"critical_outbox state=%s')
+display_start = DIAGNOSTICS.rfind("\n\tsnprintf(", 0, display_start)
+display_end = DIAGNOSTICS.index('"currency_transactions state=', display_start)
+display_end = DIAGNOSTICS.rfind("\n\tsnprintf(", display_start, display_end)
+
 HARNESS = r'''
 #include "persistence/critical_outbox.h"
 #include <cassert>
+#include <cstdio>
+#include <string>
 extern "C" struct st_mysql *sql_pool_acquire(void) { return nullptr; }
 extern "C" struct st_mysql *sql_pool_replace_connection(struct st_mysql *) { return nullptr; }
+static std::string display(const critical_outbox_health &critical_outbox)
+{
+    char line[2048];
+    std::string output;
+#define send_to_char(text, character) output += text
+''' + DIAGNOSTICS[display_start:display_end] + r'''
+#undef send_to_char
+    return output;
+}
 int main()
 {
+    critical_outbox_health sample = {};
+    assert(display(sample).find("state=stopped") != std::string::npos);
+    sample.initialized = true; sample.counts_stale = sample.audit_stale = true;
+    assert(display(sample).find("state=unknown") != std::string::npos);
+    assert(display(sample).find("counts=unavailable") != std::string::npos);
+    sample.counts_available = sample.audit_available = true;
+    assert(display(sample).find("counts=stale") != std::string::npos);
+    sample.counts_stale = sample.audit_stale = false;
+    sample.unknown_outbox_expectations = 4; sample.committed_without_outbox = 3;
+    assert(display(sample).find("state=reconciliation") != std::string::npos);
+    assert(display(sample).find("reconciliation_candidates=3") != std::string::npos);
+    sample.outbox_expectation_mismatches = 1;
+    assert(display(sample).find("state=degraded") != std::string::npos);
+    sample.outbox_expectation_mismatches = sample.unknown_outbox_expectations = sample.committed_without_outbox = 0;
+    sample.pending = 1;
+    assert(display(sample).find("state=pending") != std::string::npos);
+    sample.pending = 0;
+    assert(display(sample).find("state=ready") != std::string::npos);
 #ifdef __NO_MYSQL__
     assert(critical_outbox_drain(0));
 #else
@@ -115,7 +149,8 @@ int main()
     return 0;
 }
 '''
-with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-") as temporary:
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-", dir=ROOT / "bin/tests") as temporary:
     source = Path(temporary) / "test.cpp"
     binary = Path(temporary) / "test"
     source.write_text(HARNESS)

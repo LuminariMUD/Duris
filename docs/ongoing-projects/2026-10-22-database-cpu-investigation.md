@@ -1,8 +1,9 @@
 # Database CPU investigation and remediation plan
 
-Investigation date: 2026-10-22. Updated: 2026-10-23. Status: first worker
-implementation locally qualified and published for review; no deployment or production
-mutation performed.
+Investigation date: 2026-10-22. Updated: 2026-10-23. Status: worker, expectation
+metadata and audit changes locally qualified; publishing the audit PR completes
+the current implementation stack. Production rollout/CPU measurement remain open.
+No deployment or production mutation performed.
 
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
 Work branch:
@@ -13,8 +14,11 @@ Original investigation:
 
 ## Implementation handoff (2026-10-23)
 
-- Worktree: `/home/aiwithapex/projects/duris-issue292`, on the dedicated issue
-  branch above. Base is still `fc1c94e15155`; initial tracking commit is
+- Worktree: `/home/aiwithapex/projects/duris-issue292`, currently on
+  `branch/issue-292-outbox-audit`. The worker remains on the dedicated issue branch
+  above; the separate fixture worktree is
+  `/home/aiwithapex/projects/duris-issue292-worker-review` on
+  `branch/issue-292-stone-proof`. Base is still `fc1c94e15155`; initial tracking commit is
   `a4ba9402b2e7`. The shared `duris` checkout belongs to another task.
 - Outcome for chunk 1: indexed operational counts, independent 60-second
   historical audit, last-good health with freshness, and fresh bounded worker
@@ -32,7 +36,8 @@ Original investigation:
   general scheduler, or purge is needed. Raw audit semantics remain unchanged in
   this chunk so cadence and semantic correction can be reviewed independently.
 - Delivery: [PR #300](https://github.com/LuminariMUD/Duris/pull/300), ready for
-  review against `master`; code/validation commit `cd76e30a1b2a`. The local merge
+  review against `master`; current head `c42275a80`, initial qualification commit
+  `cd76e30a1b2a`. The local merge
   tree equals that qualified head's tree. No merge has been requested/performed.
 - Proof: the commands and results in the next subsection qualify chunk 1 locally.
 - Next: implement audit-semantic correction on a dependent
@@ -74,7 +79,9 @@ current receipt/ledger-only epic writer. The baseline failure was reproduced on
 worker review fix into this branch, both epic-stone tests pass with the new
 recovered-claim expectation assertion; full build, eight auction tests,
 lifecycle/client-free/boot checks, formatting and whitespace pass too.
-No expectation-metadata PR is open yet; publishing it is the next step.
+[Expectation-metadata PR #302](https://github.com/LuminariMUD/Duris/pull/302)
+is ready for review above PR #301. Qualified tag:
+`issue-292/expectations-qualified-20261023` (`c0f5f76f8`).
 
 The migration `migrations/critical_outbox_expectations.sql` is guarded and
 re-runnable and requires `ALGORITHM=INSTANT` rather than silently copying the
@@ -87,6 +94,63 @@ receipts. Historical NULL is never backfilled from existing outbox rows or
 rewritten by replay. Reader/result codecs are unchanged. Keep this additive
 column and evidence on binary rollback; do not drop it. No production migration
 has run. The audit consumer still awaits its separately reviewed change.
+
+Chunk 3 is locally qualified on `branch/issue-292-outbox-audit`, above PR #302.
+Outcome: audit every committed historical operation using exact recorded
+expectations when known; classify legitimate historical session audits from their
+typed receipt and combat children from parent/participant/ledger/hash identity;
+keep remaining historical ambiguity explicit. Detect missing, partially missing,
+or unexpected event indexes and report unknown coverage separately from proven
+integrity failures. Never infer an expectation from surviving outbox rows.
+Non-goals: rewriting historical receipts, deleting data, changing codecs or
+retry policy, and boon/retention work before its measurement/decision gates.
+Files: existing worker/health/staff display, runbook/pipeline guide, executable
+outbox fixture harness and wrapper, and this handoff. Proof: positive/negative
+legacy-classification fixtures, known zero/no-op/rejected/recovered-stone and
+multi-event loss fixtures, full-history discoverability, focused worker/harness
+checks on MariaDB/MySQL, formatting and build. Keep unknown historical event sets
+visible rather than assuming zero.
+
+Chunk 3 results: `CRITICAL_DB_IMAGE=mariadb:11.8` and `CRITICAL_DB_IMAGE=mysql:8.0`
+with `tests/async/run_critical_command_schema_mysql.sh` both pass. The wrapper
+now uses the canonical bootstrap so the actual worker audit sees production-shaped
+typed receipt tables. Fixtures distinguish **10 proven mismatches, four unknown
+historical expectations, and three unclassified zero-event candidates**. They
+cover proven session omissions, normal and Divine combat children, a lookalike
+with the wrong derived ID, single-event typed mutations, known zero/no-op and
+rejection, recovered stone expectation, partial loss, wrong indexes, unexpected
+events, and ambiguous old item sets. Historical missing fixtures date to 2020.
+The same executable suite retains 60-second cadence/failure/recovery/drain tests
+and 100k delivered/10,001 active-row checks. Operational next reads remain three.
+
+`python3 tests/async/test_critical_transaction_contract.py` additionally executes
+the actual staff formatting for stopped, unavailable, stale, reconciliation,
+degraded, pending and ready states, in SQL and client-free builds. The full server
+build, formatting and whitespace checks pass. Existing unchanged domain and
+lifecycle evidence from the preceding chunks remains valid. The runbook and
+pipeline guide now describe candidate/coverage counts separately from proven
+integrity failures. No fixed-count subtraction, blanket epic exemption, historical
+backfill, purge, or recent-only audit window was introduced.
+
+### Next session / remaining gates
+
+1. Publish the qualified audit chunk as a PR above #302, update its link here,
+   verify remote parity/clean trees, and address any concrete review findings.
+2. Keep the stack ready for review; no GitHub PR has been merged. Worker #300
+   can roll out separately without a migration. The later metadata/audit rollout
+   requires the additive migration from #302 first and separate owner permission.
+3. Production deployment/reboot and migrations require permission under
+   [AGENTS.md](../../AGENTS.md). Request authorization only for the concrete,
+   reviewed worker rollout, through the normal deployment workflow. Production
+   CPU improvement and the >=95% row-work acceptance criterion are still unmeasured.
+4. Compare CPU/handler deltas, audit cadence/freshness, delivery latency/age and
+   failures at comparable traffic, then a longer gameplay period. Do not close
+   #292 or claim the incident resolved from local query evidence alone.
+5. Only after the worker improvement is measured, decide/implement the separately
+   reviewed boon producer optimization with its replay/eligibility/codec gates.
+   Retention remains conditional on growth/backup cost and explicit replay/archive
+   horizons. Historical unclassifiable event sets remain visible for typed
+   reconciliation; do not assign them zero merely to clear health.
 
 ### Chunk 1 local qualification
 

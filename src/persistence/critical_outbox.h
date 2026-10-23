@@ -52,6 +52,8 @@ struct critical_outbox_health
 	uint64_t oldest_age_msec;
 	uint64_t incomplete_inbox;
 	uint64_t committed_without_outbox;
+	uint64_t outbox_expectation_mismatches;
+	uint64_t unknown_outbox_expectations;
 	uint64_t fetched;
 	uint64_t delivered;
 	uint64_t duplicates;
