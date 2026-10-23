@@ -4693,6 +4693,10 @@ P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 		return NULL;
 	}
 
+	const auto raw_sail = ship->crew.sail_skill;
+	const auto raw_guns = ship->crew.guns_skill;
+	const auto raw_repair = ship->crew.rpar_skill;
+
 	name_ship(ship->name, ship);
 	if (!load_ship(ship, real_room0(ship->anchor)))
 	{
@@ -4709,6 +4713,12 @@ P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 	reset_crew_stamina(ship);
 	set_ship_armor(ship, false);
 	update_ship_status(ship);
+	if (ship->crew.sail_skill != raw_sail || ship->crew.guns_skill != raw_guns ||
+	    ship->crew.rpar_skill != raw_repair)
+	{
+		ship->save_saved_signature = 0;
+		queue_ship_save(ship, "normalized loaded crew");
+	}
 	stored_ships.erase(stored);
 	return ship;
 }
