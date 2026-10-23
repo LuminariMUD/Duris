@@ -74,10 +74,55 @@ no local environment file was copied or edited. Git fetch/merge also reports
 pre-existing unreachable-object housekeeping warnings; do not prune objects or
 delete recovery logs as part of this work.
 
-Next: publish the first focused PR, then allocate collision-free tutorial IDs
-from refreshed authored sources, implement faithful copies with typed-reference
-parity, wire compiled procedures/creation, and deliver the companion DurisWeb
-PR. Keep later PRs stacked so menus cannot ship before their data and procs.
+First review chunk: [PR #314](https://github.com/LuminariMUD/Duris/pull/314),
+commit `f81f62ffa`, on `branch/issue-213-evil-onboarding`, pushed and ready
+for review. It is not merged and does not close #213.
+
+The next independent chunk is on `branch/issue-213-creation-eligibility` in
+the same worktree, stacked on #314. It shares one eligibility predicate across
+terminal counting/display/selection and web listing/final submission. It adds
+the approved good tutorials for Firbolg and good-side neutral races, preserves
+racial defaults for omitted web homes and forced/staff calls, and rejects
+supplied invalid/fractional/non-numeric/zero/out-of-range/wrong-race/wrong-side
+homes before character allocation or grants. Race/class and account side
+admission checks remain in place. Web lists accept selected alignment and echo
+race/alignment context; legacy neutral race-only requests return racial choices.
+
+The exhaustive terminal selector check exposed another key collision when
+enabling good Thri-kreen tutorials: **Payang and Plane of Life both use P**.
+Payang retains P and Plane of Life uses L only for that race; other existing
+keys are preserved. Displayed town names are now complete. This is required
+supporting behavior, alongside the already-planned C/W keys for evil tutorials.
+
+`python3 tests/async/test_creation_hometowns.py` passes under ASan/UBSan with
+both backend compilation modes. It executes the real shared policy, terminal
+display/selection, web list handler and web pre-persistence validation prefix
+over the full standard roster, malformed/forged homes, omitted defaults,
+neutral-side refresh, disabled-race listing and account-side denial. Surrounding
+class/account services are controlled stubs; this is not actual character-save
+or browser proof. Existing creation availability/all-races/all-classes controls,
+format/diff checks and the required `make -C src -j4` pass for this chunk.
+
+The tutorial content audit found 105 Ailvio mobile templates spanning multiple
+playable races; `convertMob()` and `affect_total()` derive stats/HP from race,
+and XP also has a victim-race modifier. Do not claim numerical field equality
+proves a race substitution. No new content IDs are reserved or activated yet.
+Keep that mechanical parity work together with copies/procs; delivering the
+independent validation first avoids blocking a reviewable server fix on it.
+
+Companion frontend worktree:
+`/home/aiwithapex/projects/durisweb-issue213`, branch
+`branch/issue-213-hometown-parity`, based on clean fetched DurisWeb master
+`7147e6b`. Its primary checkout is untouched. It must carry alignment, reject
+stale response context, block pending hometown skips, clear invalid selections,
+and omit an unspecified hometown instead of serializing the old `-1` sentinel.
+**Coordinate this client change with the server validation PR**: an explicitly
+supplied -1 is deliberately invalid under the locked decision.
+
+Next: finish/publish these focused server/client PRs, allocate collision-free
+tutorial IDs from refreshed authored sources, implement faithful copies with
+typed-reference/mechanical parity, and wire the remaining procedures/choices.
+Keep later PRs stacked so menus cannot ship before their data and procs.
 All full-world terminal/browser routes, cold-restart XP/home persistence on both
 backends, actual rendered web warning and help database publication remain
 unverified; issue #213 stays open until those completion gates pass.

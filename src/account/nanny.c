@@ -2908,7 +2908,7 @@ void select_class(P_desc d, char *arg)
 
 	/* pass through here, they don't get an alignment d->characterchoice. */
 
-	home = find_hometown(GET_RACE(d->character), false);
+	home = find_hometown(GET_RACE(d->character), false, GET_RACEWAR(d->character));
 
 	if (home == HOME_CHOICE)
 	{
@@ -3042,7 +3042,7 @@ void select_alignment(P_desc d, char *arg)
 		return;
 
 	/* does this race get to choose a hometown ? */
-	home = find_hometown(GET_RACE(d->character), false);
+	home = find_hometown(GET_RACE(d->character), false, GET_RACEWAR(d->character));
 	if (home == HOME_CHOICE)
 	{
 		STATE(d) = CON_HOMETOWN;
@@ -3061,6 +3061,14 @@ void select_alignment(P_desc d, char *arg)
 
 /* Krov: HOMETOWN connects now to REROLL */
 
+static char hometown_selection_key(int race, int hometown)
+{
+	// Good-side Thri-kreen can choose both Payang and Plane of Life.
+	if (race == RACE_THRIKREEN && hometown == HOME_PLANE_OF_LIFE)
+		return 'L';
+	return town_name_list[hometown][0];
+}
+
 void select_hometown(P_desc d, char *arg)
 {
 	int home;
@@ -3072,15 +3080,9 @@ void select_hometown(P_desc d, char *arg)
 	home = -1;
 	for (int i = 0; i <= LAST_HOME; i++)
 	{
-		// if (i == HOME_SHADY)
-		// town_letter = 'a';
-		// else if (i == HOME_GOBLIN)
-		// town_letter = 'g';
-		// else if (i == HOME_SYLVANDAWN)
-		// town_letter = 's';
-
-		if ((avail_hometowns[i][GET_RACE(d->character)] == 1) &&
-		    (LOWER(*arg) == LOWER(town_name_list[i][0])))
+		if (creation_hometown_available(GET_RACE(d->character), GET_RACEWAR(d->character),
+						i) &&
+		    (LOWER(*arg) == LOWER(hometown_selection_key(GET_RACE(d->character), i))))
 		{
 			home = i;
 			break;
@@ -3093,14 +3095,6 @@ void select_hometown(P_desc d, char *arg)
 		return;
 	}
 
-	/* did they select one that is allowed for their race */
-	if (avail_hometowns[home][(int)GET_RACE(d->character)] != 1)
-	{
-		SEND_TO_Q("\r\nThat is not a hometown for your race.\r\n ", d);
-		SEND_TO_Q("Please select again.\r\n\r\nHometown: ", d);
-		STATE(d) = CON_HOMETOWN;
-		return;
-	}
 	/* record it, move onto the next step */
 	GET_HOME(d->character) = home;
 	GET_BIRTHPLACE(d->character) = home;
@@ -3304,6 +3298,15 @@ void add_stat_bonus(P_char ch, int which, int what)
 
 /* Krov: char_quals_for_class - gone for good */
 
+bool creation_hometown_available(int race, int racewar, int hometown)
+{
+	if (race < 1 || race > LAST_RACE || hometown < 1 || hometown > LAST_HOME)
+		return false;
+	if (hometown == HOME_NEWBIE || hometown == HOME_PLANE_OF_LIFE)
+		return racewar == RACEWAR_GOOD && OLD_RACE_GOOD(race, 1000);
+	return avail_hometowns[hometown][race] == 1;
+}
+
 void show_avail_hometowns(P_desc d)
 {
 	int i, race;
@@ -3313,24 +3316,11 @@ void show_avail_hometowns(P_desc d)
 
 	for (i = 0; i <= LAST_HOME; i++)
 	{
-		if (avail_hometowns[i][race] == 1)
+		if (creation_hometown_available(race, GET_RACEWAR(d->character), i))
 		{
-			// if (i == HOME_SHADY)
-			// {
-			// strcpy(Gbuf1, "S) Shady\r\n");
-			// SEND_TO_Q(Gbuf1, d);
-			// }
-			// else if (i == HOME_GOBLIN)
-			// {
-			// strcpy(Gbuf1, "G) Moregeeth\r\n");
-			// SEND_TO_Q(Gbuf1, d);
-			// }
-			// else
-			// {
-			snprintf(Gbuf1, MAX_STRING_LENGTH, "%c)%s\r\n", town_name_list[i][0],
-				 &town_name_list[i][1]);
+			snprintf(Gbuf1, MAX_STRING_LENGTH, "%c) %s\r\n",
+				 hometown_selection_key(race, i), town_name_list[i]);
 			SEND_TO_Q(Gbuf1, d);
-			// }
 		}
 	}
 }
@@ -3338,7 +3328,7 @@ void show_avail_hometowns(P_desc d)
 /* this function returns the NUMBER OF THE HOMETOWN, not the virtual number of
    the room they start at [that's done later] */
 
-int find_hometown(int race, bool force)
+int find_hometown(int race, bool force, int racewar)
 {
 	int i, count = 0, home = 0;
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -3351,7 +3341,7 @@ int find_hometown(int race, bool force)
 	}
 	for (i = 0; i <= LAST_HOME; i++)
 	{
-		if (avail_hometowns[i][race] == 1)
+		if (creation_hometown_available(race, force ? RACEWAR_NONE : racewar, i))
 		{
 			if (home == 0)
 				home = i;
