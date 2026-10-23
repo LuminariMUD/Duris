@@ -34,6 +34,7 @@ DEFAULT_SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
     ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
     ROOT / "migrations" / "immutable" / "0048_divine_boon_state.sql",
+    ROOT / "migrations" / "immutable" / "0050_divine_trade_state.sql",
 )
 
 ROOT_FIELDS = {

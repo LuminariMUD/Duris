@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-cargo-") as temporary:
             "-Wpedantic",
             "-Werror",
             "-D__NO_MYSQL__",
+            "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST",
             "-ffunction-sections",
             "-fdata-sections",
             "-Isrc/no_mysql",
@@ -31,6 +32,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-cargo-") as temporary:
             "tests/async/flatfile_cargo_market_harness.cpp",
             rel("ship_cargo.c"),
             rel("flatfile_store.c"),
+            rel("flatfile_authority_transaction.c"),
+            rel("flatfile_cargo_repository.c"),
             "-Wl,--gc-sections",
             "-lcrypto",
             "-pthread",
@@ -75,8 +78,8 @@ preprocess = subprocess.run(
 ).stdout
 live_market_path = preprocess[preprocess.index("int read_cargo()") :]
 for token in (
-    "load_flat_cargo(&record, &error)",
-    "save_flat_cargo(capture_flat_cargo(), &error)",
+    "flatfile_cargo_load(flat_cargo_root(), &record, &error)",
+    "flatfile_cargo_save(flat_cargo_root(), capture_flat_cargo(), &error)",
     "flatfile_cargo_maintenance_apply(const int64_t *values, size_t count)",
     'fatal_boot_error("ship_cargo", "flat cargo market authority could not be loaded")',
     "Reloading cargo mods from persistent storage",

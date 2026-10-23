@@ -174,6 +174,7 @@ SQL_SOURCES = [
     "economy/collector_command.c", "economy/collector_codec.c",
     "economy/collector_policy.c", "economy/collector_repository.c",
     "persistence/critical_command_repository.c",
+    "economy/divine_trade.c", "economy/divine_trade_command.c", "economy/divine_trade_repository.c",
 ]
 
 

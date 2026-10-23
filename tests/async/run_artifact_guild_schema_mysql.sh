@@ -21,6 +21,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/player/player_snapshot_codec.c \
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
+    src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \
     src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
     -o "$ROOT/bin/tests/artifact_guild_mysql_harness"
 "$ROOT/bin/tests/artifact_guild_mysql_harness"

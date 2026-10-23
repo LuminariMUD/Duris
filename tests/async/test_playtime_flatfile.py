@@ -71,7 +71,8 @@ int main(int argc, char **argv) {
 
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
-    "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_player_snapshot_file.c",
+    "flatfile_item_repository.c",
+    "divine_trade.c", "divine_trade_command.c", "divine_trade_flatfile.c", "flatfile_cargo_repository.c", "flatfile_ship_repository.c", "item_claim.c", "dupe_log.c", "flatfile_player_snapshot_file.c",
     "flatfile_locker_repository.c", "flatfile_world_item_repository.c",
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
     "flatfile_shop_trade_materialization.c", "flatfile_shopkeeper_repository.c",

@@ -1,4 +1,5 @@
-#include "economy/divine_trade.h"
+#include "economy/divine_trade_command.h"
+#include "ships/ships.h"
 
 #include <algorithm>
 #include <cassert>
@@ -244,5 +245,60 @@ int main()
 	corrupt = book;
 	corrupt.revision = std::numeric_limits<uint64_t>::max();
 	assert(!divine_trade_prepare_invalidation(corrupt, 21, -1, &after));
+	// The actual critical-command codec carries the prepared financial boundary,
+	// including canonical player/account/ship/market reservations and retry identity.
+	divine_trade_payload payload;
+	payload.pid = 42;
+	payload.ship_id = 21;
+	payload.ship_owner_pid = 42;
+	payload.generation = 1;
+	payload.wallet_revision = 9;
+	payload.admitted_at = 101;
+	payload.payment = -100;
+	payload.wallet_after.amount = { 0, 0, 0, 1 };
+	payload.slots_after.push_back({ 3, SLOT_CARGO, 2, SLOT_HOLD, 0, { 1, 100, 0, 0, 0 } });
+	payload.market_after.push_back({ 2, 2, divine_trade_goods::cargo, 1.03f, 100 });
+	payload.book_after = book;
+	critical_command command;
+	assert(divine_trade_command_build(&command, operation(900), payload));
+	command.accepted_at_usec = 123456;
+	divine_trade_payload decoded;
+	assert(divine_trade_command_decode(command, &decoded));
+	assert(decoded.book_after == book && decoded.wallet_revision == 9);
+	assert(command.keys.size() == 4 && command.keys.back().type == critical_entity_type::ship);
+	assert(divine_trade_book_transition_valid(blank, decoded));
+	std::vector<uint8_t> wire;
+	critical_command restored_command;
+	assert(critical_command_encode(command, &wire) == critical_command_codec_result::ok);
+	assert(critical_command_decode(wire.data(), wire.size(), &restored_command) ==
+	       critical_command_codec_result::ok);
+	assert(divine_trade_command_decode(restored_command, &decoded));
+	auto bad_command = command;
+	bad_command.keys.back().id = 22;
+	assert(!divine_trade_command_decode(bad_command, &decoded));
+	bad_command = command;
+	bad_command.payload.push_back(0);
+	assert(!divine_trade_command_decode(bad_command, &decoded));
+	for (size_t length = 0; length < command.payload.size(); ++length)
+	{
+		bad_command = command;
+		bad_command.payload.resize(length);
+		assert(!divine_trade_command_decode(bad_command, &decoded));
+	}
+	auto invalid_transition = payload;
+	invalid_transition.book_revision = book.revision;
+	invalid_transition.book_after.first_full_hold = 500;
+	invalid_transition.book_after.revision++;
+	assert(!divine_trade_book_transition_valid(book, invalid_transition));
+	divine_trade_result result{ 42, 21, 2, 10, book.revision, -100, 0 };
+	std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> result_bytes;
+	assert(divine_trade_result_encode(result, &result_bytes));
+	divine_trade_result decoded_result;
+	assert(divine_trade_result_decode(result_bytes.data(), result_bytes.size(),
+					  &decoded_result));
+	assert(decoded_result.payment == -100 && decoded_result.generation == 2);
+	result_bytes.back() = 1;
+	assert(!divine_trade_result_decode(result_bytes.data(), result_bytes.size(),
+					   &decoded_result));
 	puts("PASS: exact Divine trade lots, partial basis, shared fixed cap, loss and checked reload");
 }

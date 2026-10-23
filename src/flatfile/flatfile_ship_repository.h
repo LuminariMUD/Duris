@@ -86,6 +86,15 @@ flatfile_ship_result flatfile_ship_list(const std::string &root,
 					std::string *error);
 flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship,
 					  std::string *error);
+// Caller owns the authority lock and commits this catalogue after-image with
+// the prepared player, market, account allowance and command receipt.
+flatfile_ship_result
+flatfile_ship_prepare_trade(const std::string &root, const flatfile_authority_lock &lock,
+			    uint32_t ship_id, uint32_t owner_pid,
+			    const std::vector<flatfile_ship_slot_record> &slots,
+			    const flatfile_ship_crew_record &crew,
+			    flatfile_authority_operation *operation, std::string *error);
+
 flatfile_ship_result flatfile_ship_remove(const std::string &root, uint32_t ship_id,
 					  const std::string &expected_owner, std::string *error);
 flatfile_ship_result flatfile_ship_import_legacy(const std::string &root,

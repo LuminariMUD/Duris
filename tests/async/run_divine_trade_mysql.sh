@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+source "$ROOT/tests/async/disposable_schema.sh"
+bash migrations/immutable/0050_divine_trade_state.sh
+mkdir -p bin/tests
+read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
+read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
+g++ -std=c++20 -ffunction-sections -fdata-sections -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
+    "${MYSQL_CFLAGS[@]}" tests/async/divine_trade_mysql_harness.cpp tests/async/harness_stubs.cpp \
+	 src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
+	 src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c src/economy/auction_command.c \
+	 src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
+	 src/economy/auction_repository.c src/combat/combat_outcome_command.c src/combat/combat_outcome_repository.c \
+	 src/guild/artifact_guild_command.c src/guild/artifact_guild_repository.c \
+	 src/economy/boon_reward_command.c src/economy/boon_reward_repository.c \
+	 src/world/zone_touch_command.c src/world/zone_touch_repository.c \
+	 src/account/session_audit_command.c src/account/session_audit_repository.c \
+    src/player/player_snapshot_codec.c \
+    src/economy/collector_command.c src/economy/collector_codec.c \
+    src/economy/collector_policy.c src/economy/collector_repository.c \
+    src/persistence/critical_command_repository.c \
+    src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \
+    "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
+    -o "$ROOT/bin/tests/divine_trade_mysql_harness"
+"$ROOT/bin/tests/divine_trade_mysql_harness"
+before=$("${disposable_mysql[@]}" -N -B "$DB_NAME" -e "SELECT revision FROM divine_trade_state WHERE account_key=0 AND boon_id=0")
+"${disposable_mysql[@]}" "$DB_NAME" < migrations/immutable/0050_divine_trade_state.sql
+bash migrations/immutable/0050_divine_trade_state.sh
+after=$("${disposable_mysql[@]}" -N -B "$DB_NAME" -e "SELECT revision FROM divine_trade_state WHERE account_key=0 AND boon_id=0")
+[[ "$before" == "$after" && "$after" == 20 ]]

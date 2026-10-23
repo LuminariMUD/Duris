@@ -34,6 +34,9 @@ std::string player_directory(const std::string &root);
 std::string player_filename(int32_t pid);
 }
 
+// Shared envelope encoder for ordinary checkpoints and compound wallet writes.
+bool flatfile_player_snapshot_encode_file(player_snapshot *snapshot, std::vector<uint8_t> *bytes);
+
 // Read one immutable, atomically published file without taking player locks.
 // A coin transaction holds authority while checking its legacy pile baseline;
 // taking a player lock there would reverse the snapshot writer's lock order.

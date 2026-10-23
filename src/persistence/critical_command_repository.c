@@ -28,6 +28,7 @@
 #include "guild/artifact_guild_repository.h"
 #include "economy/boon_reward_command.h"
 #include "economy/boon_reward_repository.h"
+#include "economy/divine_trade_repository.h"
 #include "world/zone_touch_command.h"
 #include "world/zone_touch_repository.h"
 #include "account/session_audit_command.h"
@@ -495,6 +496,11 @@ bool insert_outbox(MYSQL *connection, const critical_command &command, const uin
 		destination = OUTBOX_DESTINATION_ZONE_TOUCH;
 		event_type = OUTBOX_EVENT_ZONE_TOUCH_MUTATED;
 	}
+	else if (command.type == critical_command_type::divine_trade)
+	{
+		destination = DIVINE_TRADE_OUTBOX_DESTINATION;
+		event_type = 1;
+	}
 	else if (command.type == critical_command_type::collector)
 	{
 		destination = COLLECTOR_OUTBOX_DESTINATION;
@@ -688,6 +694,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	artifact_guild_payload artifact_payload = {};
 	boon_reward_payload boon_payload = {};
 	zone_touch_payload zone_payload = {};
+	divine_trade_payload trade_payload;
 	session_audit_payload audit_payload = {};
 	const bool test_command = command.type == critical_command_type::test &&
 				  command.payload.size() == 8;
@@ -702,10 +709,11 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	const bool boon_command = boon_reward_command_decode_payload(command, &boon_payload);
 	const bool zone_command = zone_touch_command_decode_payload(command, &zone_payload);
 	const bool audit_command = session_audit_command_decode_payload(command, &audit_payload);
+	const bool trade_command = divine_trade_command_decode(command, &trade_payload);
 	if (!connection ||
 	    (!test_command && !epic_command && !item_command && !auction_command &&
 	     !collector_command && !combat_command && !artifact_guild_command && !boon_command &&
-	     !zone_command && !audit_command) ||
+	     !zone_command && !audit_command && !trade_command) ||
 	    !critical_command_valid(command))
 	{
 		auto rejected = failure(EINVAL);
@@ -1086,6 +1094,49 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 		std::copy(result_payload.begin(), result_payload.end(),
 			  applied.result_payload.begin());
 		return applied;
+	}
+	if (trade_command)
+	{
+		divine_trade_result trade_result;
+		unsigned int result_code = 0;
+		bool mutation_applied = false;
+		if (!divine_trade_sql_execute(connection, command, &trade_result, &result_code,
+					      &mutation_applied))
+		{
+			const auto db_error = database_error(connection);
+			const auto error = db_error ? db_error : errno;
+			rollback(connection);
+			return failure(error ? error : EIO);
+		}
+		std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> bytes;
+		const uint64_t revision = mutation_applied ? trade_result.generation : 0;
+		if (!divine_trade_result_encode(trade_result, &bytes) ||
+		    (mutation_applied &&
+		     !insert_outbox(connection, command, bytes.data(), bytes.size())) ||
+		    !finish_inbox(connection, command, revision, result_code, bytes.data(),
+				  bytes.size()))
+		{
+			const auto error = database_error(connection);
+			rollback(connection);
+			return failure(error ? error : EIO);
+		}
+		if (!execute(connection, "COMMIT"))
+		{
+			const auto error = mysql_errno(connection);
+			if (!connection_error(error))
+				rollback(connection);
+			return { connection_error(error) ?
+					 critical_apply_outcome::ambiguous_commit :
+					 failure(error).outcome,
+				 revision, error };
+		}
+		critical_apply_result result{ result_code ?
+						      critical_apply_outcome::terminal_failure :
+						      critical_apply_outcome::applied,
+					      revision, result_code };
+		result.result_size = bytes.size();
+		std::copy(bytes.begin(), bytes.end(), result.result_payload.begin());
+		return result;
 	}
 	if (boon_command)
 	{

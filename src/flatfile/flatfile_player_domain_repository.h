@@ -101,6 +101,15 @@ flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	flatfile_saved_balances &balances, flatfile_authority_operation *operation,
 	std::string *error);
+// All native snapshot writers own authority. The compound operation uses that
+// same lock to prepare its player file and domain wallet together; it never
+// takes a player lock while holding authority.
+flatfile_player_domain_result flatfile_player_domain_prepare_wallet(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
+	uint64_t expected_revision, uint64_t expected_account,
+	const std::array<uint64_t, 4> &wallet,
+	std::vector<flatfile_authority_operation> *operations, std::string *error);
+
 // A change to one account's bank on one side, added to its record (created when missing).
 flatfile_player_domain_result flatfile_player_domain_prepare_bank_delta(
 	const std::string &root, const flatfile_authority_lock &lock,

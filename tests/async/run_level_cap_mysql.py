@@ -67,6 +67,7 @@ def main():
              '-ffunction-sections', '-fdata-sections',
              'tests/async/level_cap_mysql_harness.cpp',
              'src/persistence/maintenance_repository.c',
+             'src/economy/divine_trade.c', 'src/economy/divine_trade_command.c', 'src/economy/divine_trade_repository.c', 'src/economy/currency_command.c', 'src/persistence/critical_command.c',
              'src/persistence/persistence_observability.c', 'src/combat/frag_cap_config.c',
              '-Wl,--gc-sections',
              *shlex.split(subprocess.check_output(['mysql_config', '--libs'], text=True)),

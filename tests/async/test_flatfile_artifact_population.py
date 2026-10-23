@@ -10,7 +10,8 @@ from _paths import ROOT, rel, HARNESS_STUBS
 sources = [
     "artifact_population.c", "flatfile_player_snapshot_file.c", "flatfile_locker_repository.c",
     "flatfile_world_item_repository.c", "flatfile_shopkeeper_repository.c",
-    "flatfile_item_repository.c", "flatfile_auction_repository.c",
+    "flatfile_item_repository.c",
+    "divine_trade.c", "divine_trade_command.c", "divine_trade_flatfile.c", "flatfile_cargo_repository.c", "flatfile_ship_repository.c", "flatfile_auction_repository.c",
     "flatfile_collector_repository.c", "collector_command.c", "collector_codec.c", "collector_policy.c",
     "auction_command.c", "flatfile_player_domain_repository.c", "currency_command.c",
     "epic_command.c", "zone_touch_command.c", "combat_outcome_command.c", "boon_reward_command.c", "shop_trade_command.c",

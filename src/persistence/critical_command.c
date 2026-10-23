@@ -29,7 +29,7 @@ constexpr unsigned char COMMAND_MAGIC[4] = { 'C', 'C', 'M', '1' };
 
 bool valid_entity_type(critical_entity_type type)
 {
-	return type >= critical_entity_type::player && type <= critical_entity_type::pet;
+	return type >= critical_entity_type::player && type <= critical_entity_type::ship;
 }
 
 bool valid_command_type(critical_command_type type)
@@ -49,6 +49,7 @@ bool valid_command_type(critical_command_type type)
 	case critical_command_type::boon_shop:
 	case critical_command_type::shop_trade:
 	case critical_command_type::collector:
+	case critical_command_type::divine_trade:
 		return true;
 	}
 	return false;

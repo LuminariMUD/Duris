@@ -139,6 +139,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_catalog_cache.h"
+#include "economy/divine_trade_command.h"
 #include "economy/collector_listing_pipeline.h"
 #include "economy/collector_maintenance.h"
 #include "economy/collector_presence.h"
@@ -364,6 +365,18 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		return boon_reward_transaction_outbox_delivery(record, context);
 	if (record.destination == 9)
 		return zone_touch_transaction_outbox_delivery(record, context);
+	if (record.destination == DIVINE_TRADE_OUTBOX_DESTINATION)
+	{
+		// The transaction has already saved the complete financial after-images.
+		// A restart restores those records; the outbox never applies a wallet delta.
+		divine_trade_result result;
+		return record.event_type == 1 &&
+				       record.payload_version == DIVINE_TRADE_PAYLOAD_VERSION &&
+				       divine_trade_result_decode(record.payload.data(),
+								  record.payload.size(), &result) ?
+			       critical_outbox_delivery_result::already_delivered :
+			       critical_outbox_delivery_result::terminal_failure;
+	}
 	if (record.destination == COLLECTOR_OUTBOX_DESTINATION)
 		return collector_transaction_outbox_delivery(record, context);
 	return auction_transaction_outbox_delivery(record, context);

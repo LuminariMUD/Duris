@@ -15,7 +15,7 @@ enum class divine_trade_goods : uint8_t
 };
 
 // One paid purchase remains one lot even when the ordinary ship slot merges it.
-// The permanent transaction receipt retains the original after this lot is spent.
+// A permanent operation receipt retires its purchase ID after the lot is spent.
 struct divine_trade_lot
 {
 	critical_operation_id purchase = {};
