@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-shop-trade-") as temporary:
         rel("epic_command.c"), rel("zone_touch_command.c"),
         rel("auction_command.c"),
         rel("currency_command.c"),
-        rel("combat_outcome_command.c"),
+        rel("combat_outcome_command.c"), rel("artifact_guild_command.c"),
         rel("boon_reward_command.c"),
         rel("boon_shop_command.c"),
         rel("critical_command.c"),

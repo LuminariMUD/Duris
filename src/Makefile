@@ -320,6 +320,7 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_item_repository.o \
 				 flatfile/flatfile_collector_repository.o \
 				 flatfile/flatfile_artifact_repository.o \
+				 flatfile/flatfile_artifact_guild_delivery.o \
 				 flatfile/flatfile_corpse_ownership.o \
 				 flatfile/flatfile_corpse_restore.o \
 				 flatfile/flatfile_association_repository.o \
@@ -374,6 +375,7 @@ OBJS =  $(SHIP_OBJS) \
 				 guild/artifact_guild_command.o \
 				 guild/artifact_guild_repository.o \
 				 guild/artifact_guild_state.o \
+				 guild/artifact_guild_delivery.o \
 				 guild/artifact_guild_transaction.o \
 				 economy/boon_reward_command.o \
 				 economy/boon_reward_repository.o \

@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-boon-") as temporary:
         rel("boon_shop_command.c"),
         rel("epic_command.c"), rel("zone_touch_command.c"),
         rel("currency_command.c"),
-        rel("combat_outcome_command.c"),
+        rel("combat_outcome_command.c"), rel("artifact_guild_command.c"),
         rel("critical_command.c"),
     ]
     compile_result = subprocess.run(

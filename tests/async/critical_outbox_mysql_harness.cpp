@@ -181,6 +181,7 @@ struct delivery_state
 	unsigned int calls;
 	bool retry_first;
 	bool terminal;
+	bool deferred = false;
 };
 static std::atomic<bool> block_delivery = false, delivery_entered = false;
 static std::atomic<bool> publication_queued = false, publication_ready = false;
@@ -203,9 +204,12 @@ static void publish()
 static critical_outbox_delivery_result deliver(const critical_outbox_record &record, void *raw)
 {
 	auto &state = *static_cast<delivery_state *>(raw);
-	assert(record.outbox_id && record.destination == 1 && record.event_type == 1 &&
-	       record.payload_version == 1 && record.payload.size() == 16 &&
-	       record.operation_id.bytes[15] >= 1 && record.operation_id.bytes[15] <= 3);
+	assert(record.outbox_id &&
+	       ((record.destination == 1 && record.event_type == 1 && record.payload_version == 1) ||
+		(record.destination == 7 && record.event_type == 2 &&
+		 record.payload_version == 3)) &&
+	       record.payload.size() == 16 && record.operation_id.bytes[15] >= 1 &&
+	       record.operation_id.bytes[15] <= 3);
 	++state.calls;
 	delivery_entered = true;
 	while (block_delivery)
@@ -215,6 +219,8 @@ static critical_outbox_delivery_result deliver(const critical_outbox_record &rec
 		publication_queued = true;
 		return critical_outbox_delivery_result::publication_pending;
 	}
+	if (state.deferred)
+		return critical_outbox_delivery_result::publication_pending;
 	if (state.terminal)
 		return critical_outbox_delivery_result::terminal_failure;
 	if (state.retry_first && state.calls == 1)
@@ -407,6 +413,44 @@ int main()
 	assert(scalar("SELECT COUNT(*) FROM critical_outbox_delivery_dedupe d JOIN "
 		      "critical_outbox o ON o.outbox_id=d.outbox_id WHERE o.operation_id="
 		      "UNHEX('00000000000000000000000000000001')") == 1);
+
+	clear_rows();
+	insert_record(1);
+	state = { .calls = 0, .retry_first = false, .terminal = false, .deferred = true };
+	assert(critical_outbox_init(deliver, &state));
+	wait_until(
+		[&] {
+			return critical_outbox_health_copy().fetched >
+			       CRITICAL_OUTBOX_MAX_ATTEMPTS + 1;
+		});
+	critical_outbox_shutdown();
+	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=0 AND attempt_count=0 AND operation_id=UNHEX('00000000000000000000000000000001')") ==
+	       1);
+	state.deferred = false;
+	assert(critical_outbox_init(deliver, &state));
+	wait_until([&] { return critical_outbox_health_copy().delivered == 1; });
+	critical_outbox_shutdown();
+	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=1 AND attempt_count=0 AND operation_id=UNHEX('00000000000000000000000000000001')") ==
+	       1);
+
+	clear_rows();
+	insert_record(1);
+	execute("UPDATE critical_operation_inbox SET command_type=9,payload_version=3");
+	execute("UPDATE critical_outbox SET destination=7,event_type=2,payload_version=3");
+	execute("CREATE TRIGGER refuse_effect_ack BEFORE UPDATE ON critical_operation_inbox FOR EACH ROW BEGIN IF NEW.result_code=1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='effect ACK fixture'; END IF; END");
+	state = {};
+	assert(critical_outbox_init(deliver, &state));
+	wait_until([&] { return critical_outbox_health_copy().db_failures > 0; });
+	critical_outbox_shutdown();
+	assert(scalar("SELECT status FROM critical_outbox") == 0);
+	assert(scalar("SELECT result_code FROM critical_operation_inbox") == 0);
+	assert(scalar("SELECT COUNT(*) FROM critical_outbox_delivery_dedupe") == 0);
+	execute("DROP TRIGGER refuse_effect_ack");
+	assert(critical_outbox_init(deliver, &state));
+	wait_until([&] { return critical_outbox_health_copy().delivered == 1; });
+	critical_outbox_shutdown();
+	assert(scalar("SELECT status FROM critical_outbox") == 1);
+	assert(scalar("SELECT result_code FROM critical_operation_inbox") == 1);
 
 	clear_rows();
 	insert_record(2);

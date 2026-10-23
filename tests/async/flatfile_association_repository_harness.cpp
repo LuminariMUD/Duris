@@ -138,6 +138,9 @@ int main(int argc, char **argv)
 
 	auto updated = source;
 	updated.prestige = 101;
+	std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES> delivery{};
+	delivery.back() = 1;
+	updated.delivery_ids = { delivery };
 	updated.members[1].debt = 51;
 	require(flatfile_association_save(root.string(), updated, &error) ==
 			flatfile_association_result::ok,
@@ -145,6 +148,7 @@ int main(int argc, char **argv)
 	require(flatfile_association_list(root.string(), &records, &error) ==
 				flatfile_association_result::ok &&
 			records.size() == 1 && records[0].prestige == 101 &&
+			records[0].delivery_ids == updated.delivery_ids &&
 			records[0].revision == 10 && records[0].members[0].debt == 51 &&
 			records[0].members[0].revision == 5 && records[0].members[1].revision == 2,
 		"association update did not preserve and advance revisions exactly");

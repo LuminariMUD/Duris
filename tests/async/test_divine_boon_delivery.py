@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="divine-delivery-", dir=output_root) as 
              "-fno-pie", "-no-pie", "-ffunction-sections", "-fdata-sections", "-Isrc",
              *(["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []),
              str(source), "src/economy/divine_boon_delivery.c", "src/economy/divine_boon.c",
-             "src/combat/combat_outcome_command.c", "src/world/zone_touch_command.c", "src/world/epic_command.c", "src/persistence/critical_command.c",
+             "src/combat/combat_outcome_command.c", "src/guild/artifact_guild_command.c", "src/world/zone_touch_command.c", "src/world/epic_command.c", "src/persistence/critical_command.c",
              "src/combat/combat_outcome_transaction.c",
              "src/economy/currency_command.c", str(HARNESS_STUBS),
              "-Wl,--gc-sections", "-lcrypto", "-o", binary], cwd=ROOT, check=True,

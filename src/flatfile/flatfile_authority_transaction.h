@@ -26,7 +26,7 @@
  * Callers that build a transaction from a fixed domain contract must assert their
  * own maximum against this value at compile time.
  */
-constexpr size_t flatfile_authority_transaction_maximum_operations = 32;
+constexpr size_t flatfile_authority_transaction_maximum_operations = 34;
 constexpr size_t flatfile_authority_transaction_maximum_bytes = 256 * 1024 * 1024;
 
 struct flatfile_authority_after_image

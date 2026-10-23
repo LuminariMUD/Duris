@@ -147,6 +147,7 @@
 #include "economy/collector_transaction.h"
 #include "combat/combat_outcome_transaction.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/artifact_guild_delivery.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/divine_boon_runtime.h"
 #include "economy/divine_boon_selection.h"
@@ -1113,6 +1114,10 @@ int run_the_game(int port, int sslport)
 		persistence_alert(AVATAR, "critical_command", "pipeline", "none", "none",
 				  "start_failed", "check critical schema");
 	}
+	if (!artifact_guild_delivery_boot())
+		persistence_alert(
+			AVATAR, "artifact_delivery", "redacted", "none", "none", "boot_pending",
+			"prepared effects remain protected until native recovery is ready");
 	if (!collector_catalog_cache_refresh())
 		logit(LOG_STATUS,
 		      "Collector catalog refresh unavailable; collector gameplay fails closed.");

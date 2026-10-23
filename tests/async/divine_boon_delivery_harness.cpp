@@ -5,6 +5,7 @@
 #include "combat/combat_outcome_transaction.h"
 #include "economy/currency_transaction.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/artifact_guild_state.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "world/db.h"
@@ -119,17 +120,18 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
 {
 	std::abort(); // These prepared-epic cases contain no wallet award.
 }
-bool artifact_guild_transaction_submit(P_char ch, const critical_operation_id &operation, int epics,
-				       int type)
+bool artifact_guild_transaction_submit(P_char, const critical_operation_id &, int, int)
+{
+	std::abort(); // Login publication must never recapture entity effects.
+}
+artifact_guild_capture_status
+artifact_guild_state_prepare_delivery(P_char ch, int epics, int type,
+				      const critical_operation_id &parent, critical_command *)
 {
 	assert(ch == &player && epics > 0 && (type == EPIC_PVP || type == EPIC_ZONE));
-	last_artifact_type = type;
-	assert(!critical_operation_id_is_zero(operation));
-	assert(ch->only.pc->divine_boon_delivery_applying);
-	if (!artifact_available)
-		return false;
-	++artifact_effects;
-	return true;
+	assert(!critical_operation_id_is_zero(parent));
+	return artifact_available ? artifact_guild_capture_status::no_effect :
+				    artifact_guild_capture_status::unavailable;
 }
 void redis_invalidate_fraglist() {}
 void critical_outbox_resume() {}
@@ -270,6 +272,44 @@ int main()
 	critical_command command;
 	assert(combat_outcome_command_build(&command, operation, payload));
 	assert(command.payload_version == 5);
+	// Freeze v5 while proving the new nested intents retain their exact target.
+	artifact_guild_payload effect{};
+	effect.parent_operation_id = operation;
+	effect.actor_pid = 1;
+	effect.guild_id = 7;
+	effect.guild_identity = artifact_guild_legacy_identity(7);
+	effect.prestige_before = 95;
+	effect.prestige_after = 115;
+	effect.prestige_delta = 20;
+	effect.construction_after = effect.construction_delta = 1;
+	effect.construction_notch = 100;
+	effect.feeding_cap = 10000;
+	effect.artifact_count = 1;
+	effect.artifacts[0] = { 42, ARTIFACT_DELTA_FEED, 100, 400, -1, -1, 0, 0, 101, 300 };
+	critical_operation_id child_id{};
+	assert(critical_operation_id_derive(operation, ARTIFACT_GUILD_DERIVATION_DOMAIN, 1,
+					    &child_id));
+	critical_command child;
+	assert(artifact_guild_command_build_prepared(&child, child_id, effect));
+	child.accepted_at_usec = 1;
+	auto prepared_payload = payload;
+	prepared_payload.artifact_intents = true;
+	prepared_payload.artifact_deliveries = { child };
+	critical_command prepared_parent;
+	assert(combat_outcome_command_build(&prepared_parent, operation, prepared_payload));
+	assert(prepared_parent.payload_version == 6);
+	combat_outcome_payload prepared_decoded;
+	assert(combat_outcome_command_decode_payload(prepared_parent, &prepared_decoded));
+	assert(prepared_decoded.artifact_intents &&
+	       prepared_decoded.artifact_deliveries.size() == 1 &&
+	       prepared_decoded.artifact_deliveries.front().payload == child.payload);
+	prepared_payload.artifact_deliveries.push_back(child);
+	assert(!combat_outcome_command_build(&prepared_parent, operation, prepared_payload));
+	prepared_payload.artifact_deliveries = { child };
+	critical_operation_id different_parent = operation;
+	different_parent.bytes.back() = 1;
+	assert(!combat_outcome_command_build(&prepared_parent, different_parent, prepared_payload));
+
 	auto ordinary_payload = payload;
 	ordinary_payload.prepared_at = 0;
 	ordinary_payload.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM;
@@ -313,6 +353,14 @@ int main()
 	assert(combat_outcome_command_encode_result(outcome, &bytes));
 	combat_outcome_result restored;
 	assert(combat_outcome_command_decode_result(bytes.data(), bytes.size(), &restored));
+	assert(!restored.artifact_intents);
+	outcome.artifact_intents = true;
+	assert(combat_outcome_command_encode_result(outcome, &bytes));
+	assert(combat_outcome_command_decode_result(bytes.data(), bytes.size(), &restored) &&
+	       restored.artifact_intents);
+	outcome.artifact_intents = false;
+	assert(combat_outcome_command_encode_result(outcome, &bytes));
+	assert(combat_outcome_command_decode_result(bytes.data(), bytes.size(), &restored));
 	std::array<uint8_t, COMBAT_OUTCOME_LEGACY_RESULT_BYTES> legacy = {};
 	legacy[0] = 1;
 	legacy[8] = 2;
@@ -322,6 +370,8 @@ int main()
 	assert(combat_outcome_command_decode_result(legacy.data(), legacy.size(), &old_receipt));
 	assert(old_receipt.participant_count == 2 &&
 	       !old_receipt.participants[0].epic_delivery_flags);
+	// New receipts prove entity registration even when capture found no target.
+	restored.artifact_intents = outcome.artifact_intents = true;
 	divine_epic_delivery first;
 	assert(divine_epic_delivery_from_combat(operation, restored, 0, &first));
 	auto second = first;
@@ -339,13 +389,13 @@ int main()
 	player.affected = &task;
 	divine_boon_delivery_completed(first);
 	assert(pc.epics == 900 && pc.divine_boon_delivery_seq == 9 && effects == 2);
-	assert(artifact_effects == 2);
+	assert(artifact_effects == 0);
 	assert(pc.epic_revision == 9); // Publishing does not issue another ledger revision.
 	assert(captures.size() == 2 && captures[0].epics == 250 && captures[0].sequence == 5);
 	assert(captures[1].epics == 900 && captures[1].sequence == 9 && !captures[1].task);
 	divine_boon_delivery_completed(first);
 	divine_boon_delivery_completed(second);
-	assert(pc.epics == 900 && effects == 2 && hydrations == 0 && artifact_effects == 2);
+	assert(pc.epics == 900 && effects == 2 && hydrations == 0 && artifact_effects == 0);
 
 	// Restart from the first saved checkpoint and recover only the unpaid receipt.
 	pc.epics = 250;
@@ -354,13 +404,17 @@ int main()
 	captures.clear();
 	assert(divine_boon_delivery_recover(&player, { first, second }));
 	assert(pc.epics == 900 && pc.divine_boon_delivery_seq == 9 && captures.empty());
-	assert(artifact_effects == 3); // Offline receipt still grants the artifact effect.
+	assert(artifact_effects == 0); // Offline login never recaptures entity effects.
 	divine_boon_delivery_player_ready(&player);
 	assert(writeCharacter(&player, 1, NOWHERE));
 	assert(captures.size() == 1 && captures[0].epics == 900 && captures[0].sequence == 9);
 	pc.epics = 100;
 	pc.divine_boon_delivery_seq = 0;
 	pc.divine_boon_delivery_ready = false;
+	auto unproven = first;
+	unproven.artifact_intents = false;
+	assert(!divine_boon_delivery_recover(&player, { unproven }));
+	assert(pc.epics == 100 && pc.divine_boon_delivery_seq == 0 && artifact_effects == 0);
 	auto missing = second;
 	missing.previous = 7;
 	assert(!divine_boon_delivery_recover(&player, { first, missing }));
@@ -396,6 +450,11 @@ int main()
 	assert(pc.epics == 100 && artifact_effects == artifacts_before_rejection);
 	assert(combat_outcome_transaction_submit(payload, nullptr, &admitted));
 	assert(pc.epics == 100 && pc.divine_boon_delivery_seq == 0);
+	critical_completion malformed{};
+	malformed.operation_id = admitted;
+	malformed.outcome = critical_apply_outcome::applied;
+	combat_outcome_transaction_handle_completions(&malformed, 1);
+	assert(combat_outcome_transaction_health_copy().pending == 1 && pc.epics == 100);
 	outcome.participants[0].epic_revision = 1;
 	assert(combat_outcome_command_encode_result(outcome, &bytes));
 	critical_completion completion = {};
@@ -405,9 +464,9 @@ int main()
 	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
 	combat_outcome_transaction_handle_completions(&completion, 1);
 	assert(pc.epics == 250 && pc.divine_boon_delivery_seq == 1);
-	assert(artifact_effects == artifacts_before_rejection + 1);
+	assert(artifact_effects == artifacts_before_rejection);
 	combat_outcome_transaction_handle_completions(&completion, 1);
-	assert(pc.epics == 250 && artifact_effects == artifacts_before_rejection + 1);
+	assert(pc.epics == 250 && artifact_effects == artifacts_before_rejection);
 	artifact_available = false;
 	auto third = second;
 	third.operation_id.bytes[0] = 42;
@@ -418,7 +477,7 @@ int main()
 	pc.divine_boon_delivery_seq = 1;
 	divine_boon_delivery_completed(third);
 	assert(pc.epics == 350 && pc.divine_boon_delivery_seq == 10 &&
-	       artifact_effects == artifacts_before_rejection + 1);
+	       artifact_effects == artifacts_before_rejection);
 	artifact_available = true;
 	auto zone_delivery = third;
 	zone_delivery.operation_id.bytes[0] = 43;
@@ -429,9 +488,9 @@ int main()
 	zone_delivery.sequence = 11;
 	const int before_zone = artifact_effects;
 	divine_boon_delivery_completed(zone_delivery);
-	assert(artifact_effects == before_zone + 1 && last_artifact_type == EPIC_ZONE);
+	assert(artifact_effects == before_zone);
 	divine_boon_delivery_completed(zone_delivery);
-	assert(artifact_effects == before_zone + 1);
+	assert(artifact_effects == before_zone);
 	player.specials.position = STAT_SLEEPING;
 	state.slots[0].category = divine_boon_category::epic;
 	state.slots[0].zones[0] = 18;

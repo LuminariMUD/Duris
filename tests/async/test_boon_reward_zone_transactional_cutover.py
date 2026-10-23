@@ -113,7 +113,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
                 "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", f"-I{SRC}",
                 str(harness), str(SRC / "critical_command.c"),
                 str(SRC / "boon_reward_command.c"), str(SRC / "boon_shop_command.c"),
-                str(SRC / "zone_touch_command.c"), str(SRC / "epic_command.c"),
+                str(SRC / "zone_touch_command.c"), str(SRC / "artifact_guild_command.c"), str(SRC / "epic_command.c"),
                 "-lcrypto", "-o", str(binary),
             ], check=True)
             subprocess.run([str(binary)], check=True)

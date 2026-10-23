@@ -45,6 +45,29 @@ enum class flatfile_player_domain_result
 	io_error
 };
 
+// Compound prepared effects share the caller's primary authority transaction.
+flatfile_player_domain_result
+flatfile_artifact_deliveries_prepare(const std::string &root, const flatfile_authority_lock &lock,
+				     const std::vector<critical_command> &commands,
+				     std::vector<flatfile_authority_operation> *operations,
+				     std::string *error);
+flatfile_player_domain_result
+flatfile_artifact_deliveries_list(const std::string &root, const flatfile_authority_lock &lock,
+				  std::vector<critical_command> *commands, std::string *error);
+// Verify native entity snapshots while holding lock before preparing this ACK.
+flatfile_player_domain_result
+flatfile_artifact_delivery_prepare_ack(const std::string &root, const flatfile_authority_lock &lock,
+				       const critical_command &command,
+				       std::vector<flatfile_authority_operation> *writes,
+				       std::string *error);
+flatfile_player_domain_result
+flatfile_artifact_delivery_load(const std::string &root, const flatfile_authority_lock &lock,
+				const critical_operation_id &operation, critical_command *command,
+				bool *acknowledged, std::string *error);
+flatfile_player_domain_result flatfile_artifact_delivery_acknowledged(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const critical_command &command, bool *acknowledged, std::string *error);
+
 struct flatfile_wallet_mutation
 {
 	currency_vector wallet = {};

@@ -29,6 +29,9 @@
 #include <ctime>
 #include <cmath>
 #include <climits>
+#include <chrono>
+
+extern P_Guild guild_list;
 
 namespace
 {
@@ -136,6 +139,8 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			const uint64_t notch = static_cast<uint64_t>(std::max(
 				1, get_property("prestige.constructionPoints.notch", 100)));
 			payload->guild_id = guild_id;
+			payload->guild_identity = guild->delivery_incarnation();
+			payload->construction_notch = notch;
 			payload->prestige_delta = prestige;
 			payload->prestige_before = guild->get_prestige();
 			payload->construction_before = guild->get_construction();
@@ -158,6 +163,7 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 		if (!artifact_feed_seconds(character, epics, epic_type, &feed_seconds))
 			return artifact_guild_capture_status::invalid;
 		const int64_t maximum = now + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+		payload->feeding_cap = maximum;
 		for (int slot = 0; slot < MAX_WEAR && feed_seconds &&
 				   payload->artifact_count < payload->artifacts.size();
 		     ++slot)
@@ -234,6 +240,8 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 				.bind_owner_pid = bind_owner_pid,
 				.bind_timer_before = bind_timer,
 				.bind_timer = bind_timer,
+				.canonical_item_uid = object->obj_uid,
+				.feed_seconds = feed_seconds,
 			};
 		}
 	}
@@ -241,6 +249,82 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 		return artifact_guild_capture_status::no_effect;
 	return artifact_guild_payload_valid(*payload) ? artifact_guild_capture_status::ready :
 							artifact_guild_capture_status::invalid;
+}
+
+artifact_guild_capture_status
+artifact_guild_state_prepare_delivery(P_char character, int epics, int epic_type,
+				      const critical_operation_id &parent,
+				      critical_command *command)
+{
+	if (!command)
+		return artifact_guild_capture_status::invalid;
+	*command = {};
+	artifact_guild_payload payload{};
+	const auto captured =
+		artifact_guild_state_capture(character, epics, epic_type, parent, &payload);
+	if (captured != artifact_guild_capture_status::ready)
+		return captured;
+	critical_operation_id operation{};
+	if (!critical_operation_id_derive(parent, ARTIFACT_GUILD_DERIVATION_DOMAIN,
+					  payload.actor_pid, &operation) ||
+	    !artifact_guild_command_build_prepared(command, operation, payload))
+		return artifact_guild_capture_status::invalid;
+	command->accepted_at_usec = std::chrono::duration_cast<std::chrono::microseconds>(
+					    std::chrono::system_clock::now().time_since_epoch())
+					    .count();
+	return artifact_guild_capture_status::ready;
+}
+
+bool artifact_guild_state_apply_delivery(const critical_operation_id &operation,
+					 const artifact_guild_payload &payload,
+					 artifact_guild_payload *published)
+{
+	if (!published)
+		return false;
+	*published = {};
+	published->actor_pid = payload.actor_pid;
+	bool applied = true;
+	for (size_t i = 0; i < payload.artifact_count; ++i)
+	{
+		bool newly_applied = false;
+		if (!artifact_apply_delivery(operation, payload.artifacts[i], payload.feeding_cap,
+					     &newly_applied))
+			applied = false;
+		if (newly_applied)
+			published->artifacts[published->artifact_count++] = payload.artifacts[i];
+	}
+	if (payload.guild_id)
+		for (Guild *guild = guild_list; guild; guild = guild->next())
+			if (guild->get_id() == payload.guild_id &&
+			    guild->delivery_incarnation().bytes == payload.guild_identity.bytes)
+			{
+				const auto before = guild->get_prestige(),
+					   construction = guild->get_construction();
+				const auto &ids = guild->applied_deliveries();
+				const bool seen =
+					std::binary_search(ids.begin(), ids.end(), operation.bytes);
+				if (!guild->apply_delivery(operation, payload.prestige_delta,
+							   payload.construction_notch))
+					applied = false;
+				else if (!seen)
+				{
+					published->guild_id = payload.guild_id;
+					published->prestige_delta = guild->get_prestige() - before;
+					published->construction_delta =
+						guild->get_construction() - construction;
+				}
+			}
+	return applied;
+}
+
+void artifact_guild_state_forget_delivery(const critical_operation_id &operation,
+					  const artifact_guild_payload &payload)
+{
+	for (size_t i = 0; i < payload.artifact_count; ++i)
+		artifact_forget_delivery(payload.artifacts[i].vnum, operation);
+	for (Guild *guild = guild_list; guild; guild = guild->next())
+		if (guild->get_id() == payload.guild_id)
+			guild->forget_delivery(operation);
 }
 
 // Called only for a new source award, immediately after capture on the game thread.
@@ -255,5 +339,42 @@ void artifact_guild_state_apply(P_char character, const artifact_guild_payload &
 		Guild *guild = GET_ASSOC(character);
 		guild->publish_outcome_totals(payload.prestige_after, payload.construction_after);
 		guild->save();
+	}
+}
+
+void artifact_guild_state_guild_markers(uint32_t *cursor, critical_operation_id *after,
+					artifact_guild_delivery_ids *ids)
+{
+	ids->clear();
+	for (size_t visited = 0; visited < 8; ++visited)
+	{
+		Guild *next = nullptr;
+		for (Guild *guild = guild_list; guild; guild = guild->next())
+			if (guild->get_id() >= *cursor &&
+			    (!next || guild->get_id() < next->get_id()))
+				next = guild;
+		if (!next)
+		{
+			*cursor = 0;
+			*after = {};
+			break;
+		}
+		if (next->get_id() != *cursor)
+			*after = {};
+		*cursor = next->get_id();
+		const auto &markers = next->applied_deliveries();
+		auto id = std::upper_bound(markers.begin(), markers.end(), after->bytes);
+		while (id != markers.end() && ids->size() < 32)
+		{
+			ids->push_back(*id);
+			after->bytes = *id++;
+		}
+		if (id == markers.end())
+		{
+			++*cursor;
+			*after = {};
+		}
+		if (!ids->empty())
+			break;
 	}
 }

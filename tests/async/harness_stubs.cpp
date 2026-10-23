@@ -7,6 +7,8 @@
 #include "core/prototypes.h"
 #include "economy/boon_reward_transaction.h"
 #include "guild/artifact_admission.h"
+#include "guild/artifact_guild_delivery.h"
+#include "guild/artifact_guild_state.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
 #include "economy/divine_boon_activity.h"
@@ -185,4 +187,35 @@ extern "C"
 	{
 		return nullptr;
 	}
+}
+
+// Unrelated harnesses have no hydrated prepared-effect service. Focused tests
+// link the real delivery module or explicitly control its projection boundary.
+HARNESS_STUB bool artifact_guild_delivery_boot()
+{
+	return false;
+}
+HARNESS_STUB bool artifact_guild_delivery_reserve(const std::vector<critical_command> &commands)
+{
+	return commands.empty();
+}
+HARNESS_STUB void artifact_guild_delivery_complete(const std::vector<critical_command> &, bool) {}
+HARNESS_STUB void artifact_guild_delivery_pulse() {}
+HARNESS_STUB size_t artifact_guild_delivery_pending()
+{
+	return 0;
+}
+HARNESS_STUB bool artifact_guild_delivery_holds(uint64_t)
+{
+	return false;
+}
+HARNESS_STUB critical_outbox_delivery_result
+artifact_guild_delivery_outbox(const critical_outbox_record &)
+{
+	return critical_outbox_delivery_result::terminal_failure;
+}
+HARNESS_STUB artifact_guild_capture_status artifact_guild_state_prepare_delivery(
+	P_char, int, int, const critical_operation_id &, critical_command *)
+{
+	return artifact_guild_capture_status::unavailable;
 }

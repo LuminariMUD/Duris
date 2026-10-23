@@ -19,6 +19,20 @@
 
 #include <mysql/mysql.h>
 
+// Called inside the primary transaction. The child receipt/outbox retain the
+// immutable v3 command; ordinary artifact/guild snapshots deliver its effect.
+bool artifact_guild_repository_load_delivery(MYSQL *connection,
+					     const critical_operation_id &operation,
+					     critical_command *command, bool *acknowledged);
+bool artifact_guild_repository_pending_deliveries(MYSQL *connection,
+						  std::vector<critical_command> *commands);
+bool artifact_guild_repository_prepare_delivery(MYSQL *connection, const critical_command &command);
+bool artifact_guild_repository_delivery_saved(MYSQL *connection, const critical_command &command,
+					      bool *saved);
+bool artifact_guild_repository_delivery_acknowledged(MYSQL *connection,
+						     const critical_command &command,
+						     bool *acknowledged);
+
 std::array<char, 1024> artifact_guild_repository_diagnostic(const critical_command &command,
 							    const char *reason, unsigned int error);
 bool artifact_guild_repository_execute(MYSQL *connection, const critical_command &command,

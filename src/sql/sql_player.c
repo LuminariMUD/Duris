@@ -4794,16 +4794,19 @@ std::vector<std::string> sql_save_guild_statements(Guild *guild)
 	std::vector<std::string> statements;
 	statements.push_back(sql_format(
 		"insert into guilds (id, name, racewar, bits, prestige, construction, "
-		"platinum, gold, silver, copper, frags, top_frags, topfragger) "
-		"values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s') "
+		"platinum, gold, silver, copper, frags, top_frags, topfragger, delivery_ids, delivery_identity) "
+		"values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s', UNHEX('%s'), UNHEX('%s')) "
 		"on duplicate key update name='%s', racewar=%u, bits=%u, prestige=VALUES(prestige), "
 		"construction=VALUES(construction), platinum=%u, gold=%u, silver=%u, copper=%u, "
-		"frags=%ld, top_frags=%ld, topfragger='%s'",
+		"frags=%ld, top_frags=%ld, topfragger='%s', delivery_ids=VALUES(delivery_ids), delivery_identity=VALUES(delivery_identity)",
 		gid, name.c_str(), guild->racewar, guild->bits, guild->prestige,
 		guild->construction, guild->platinum, guild->gold, guild->silver, guild->copper,
-		guild->frags.frags, guild->frags.top_frags, fragger.c_str(), name.c_str(),
-		guild->racewar, guild->bits, guild->platinum, guild->gold, guild->silver,
-		guild->copper, guild->frags.frags, guild->frags.top_frags, fragger.c_str()));
+		guild->frags.frags, guild->frags.top_frags, fragger.c_str(),
+		artifact_guild_delivery_ids_hex(guild->delivery_ids).c_str(),
+		artifact_guild_delivery_ids_hex({ guild->delivery_identity.bytes }).c_str(),
+		name.c_str(), guild->racewar, guild->bits, guild->platinum, guild->gold,
+		guild->silver, guild->copper, guild->frags.frags, guild->frags.top_frags,
+		fragger.c_str()));
 
 	statements.push_back(sql_format("delete from guild_ranks where guild_id=%u", gid));
 	for (int i = 0; i < ASC_NUM_RANKS; i++)
@@ -4865,11 +4868,12 @@ Guild *sql_load_guild(unsigned int guild_id)
 		return NULL;
 
 	char query[256];
-	snprintf(query, sizeof(query),
-		 "select id, name, racewar, bits, prestige, construction, "
-		 "platinum, gold, silver, copper, frags, top_frags, topfragger "
-		 "from guilds where id=%u",
-		 guild_id);
+	snprintf(
+		query, sizeof(query),
+		"select id, name, racewar, bits, prestige, construction, "
+		"platinum, gold, silver, copper, frags, top_frags, topfragger, HEX(delivery_ids), HEX(delivery_identity) "
+		"from guilds where id=%u",
+		guild_id);
 
 	MYSQL_RES *result = db_query("%s", query);
 	if (!result)
@@ -4896,6 +4900,14 @@ Guild *sql_load_guild(unsigned int guild_id)
 	guild->frags.frags = row[10] ? atol(row[10]) : 0;
 	guild->frags.top_frags = row[11] ? atol(row[11]) : 0;
 	strlcpy(guild->frags.topfragger, row[12] ? row[12] : "", sizeof guild->frags.topfragger);
+	artifact_guild_delivery_ids incarnation;
+	if (!artifact_guild_delivery_ids_read_hex(row[13], &guild->delivery_ids) ||
+	    !artifact_guild_delivery_ids_read_hex(row[14], &incarnation) || incarnation.size() > 1)
+		fatal_boot_error("associations", "invalid delivery evidence for guild %u",
+				 guild_id);
+	guild->delivery_identity = incarnation.empty() ?
+					   artifact_guild_legacy_identity(guild_id) :
+					   critical_operation_id{ incarnation.front() };
 	mysql_free_result(result);
 
 	// load ranks

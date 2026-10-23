@@ -17,6 +17,8 @@ HARNESS = r'''
 #include "world/epic.h"
 #include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/artifact_guild_delivery.h"
+#include "guild/artifact_guild_state.h"
 #include "persistence/persistence_mode.h"
 #include "economy/divine_boon_delivery.h"
 #include <limits>
@@ -43,6 +45,26 @@ struct artifact_publication
 };
 static std::vector<artifact_publication> artifacts;
 static std::vector<divine_epic_delivery> prepared_deliveries;
+static size_t reservations = 0, activations = 0, releases = 0;
+artifact_guild_capture_status artifact_guild_state_prepare_delivery(P_char ch, int, int type,
+ const critical_operation_id &parent, critical_command *child)
+{
+ assert(ch && type == EPIC_ZONE);
+ artifact_guild_payload effect{};
+ effect.actor_pid=ch->only.pc->pid; effect.parent_operation_id=parent;
+ effect.guild_id=7; effect.guild_identity=artifact_guild_legacy_identity(7);
+ effect.prestige_delta=20; effect.prestige_after=20; effect.construction_notch=100;
+ critical_operation_id id{};
+ assert(critical_operation_id_derive(parent,ARTIFACT_GUILD_DERIVATION_DOMAIN,effect.actor_pid,&id));
+ assert(artifact_guild_command_build_prepared(child,id,effect));
+ child->accepted_at_usec=1;
+ return artifact_guild_capture_status::ready;
+}
+bool artifact_guild_delivery_reserve(const std::vector<critical_command> &commands)
+{ reservations += commands.size(); return true; }
+void artifact_guild_delivery_complete(const std::vector<critical_command> &commands,bool committed)
+{ (committed ? activations : releases) += commands.size(); }
+
 void divine_boon_delivery_completed(const divine_epic_delivery &delivery)
 { assert(divine_epic_delivery_valid(delivery)); prepared_deliveries.push_back(delivery); }
 
@@ -199,6 +221,19 @@ int main()
  auto prepared=complete(critical_apply_outcome::applied);
  zone_touch_transaction_handle_completions(&prepared,1);
  assert(prepared_deliveries.size()==2 && prepared_deliveries[0].zone && prepared_deliveries[1].pid==2);
+ assert(prepared_deliveries[0].artifact_intents && reservations==2 && activations==2 && releases==0);
+ online[1]=true;
+ p.stone_uid=100;
+ assert(zone_touch_transaction_submit(p));
+ auto prior_claim=complete(critical_apply_outcome::applied);
+ zone_touch_result prior;
+ assert(zone_touch_command_decode_result(prior_claim.result_payload.data(),prior_claim.result_size,&prior));
+ prior.recovered_claim=true;
+ assert(zone_touch_command_encode_result(prior,&bytes));
+ std::copy(bytes.begin(),bytes.end(),prior_claim.result_payload.begin());
+ zone_touch_transaction_handle_completions(&prior_claim,1);
+ assert(reservations==4 && activations==2 && releases==2 && prepared_deliveries.size()==2);
+
  assert(prepared_deliveries[0].amount==10 && prepared_deliveries[0].previous==0);
  assert(!zone_touch_transaction_busy(p.stone_uid,p.zone_number));
  zone_touch_transaction_handle_completions(&prepared,1);
@@ -382,7 +417,7 @@ int main() {
             source.write_text(HARNESS)
             subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc',
                 str(source), 'src/world/zone_touch_transaction.c', 'src/world/zone_touch_command.c',
-                'src/world/epic_command.c', 'src/persistence/critical_command.c',
+                'src/world/epic_command.c', 'src/guild/artifact_guild_command.c', 'src/persistence/critical_command.c',
                 '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True)
 

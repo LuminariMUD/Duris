@@ -73,6 +73,26 @@ bool valid(const zone_touch_payload &payload)
 			      payload.participant_pids[index]) !=
 		    payload.participant_pids.begin() + index)
 			return false;
+	if ((!payload.artifact_intents && !payload.artifact_deliveries.empty()) ||
+	    (payload.artifact_intents && (!payload.prepared_delivery || !payload.stone_uid)) ||
+	    payload.artifact_deliveries.size() > payload.group_size)
+		return false;
+	std::array<uint32_t, ZONE_TOUCH_MAX_PARTICIPANTS> actors{};
+	for (size_t i = 0; i < payload.artifact_deliveries.size(); ++i)
+	{
+		artifact_guild_payload effect{};
+		const auto &child = payload.artifact_deliveries[i];
+		if (child.payload_version != ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION ||
+		    !artifact_guild_command_decode_payload(child, &effect) ||
+		    std::find(actors.begin(), actors.begin() + i, effect.actor_pid) !=
+			    actors.begin() + i ||
+		    std::find(payload.participant_pids.begin(),
+			      payload.participant_pids.begin() + payload.group_size,
+			      effect.actor_pid) ==
+			    payload.participant_pids.begin() + payload.group_size)
+			return false;
+		actors[i] = effect.actor_pid;
+	}
 	return true;
 }
 } // namespace
@@ -87,7 +107,9 @@ bool zone_touch_command_build(critical_command *command, critical_operation_id o
 		     .type = critical_command_type::zone,
 		     .payload_version = static_cast<uint16_t>(
 			     payload.stone_uid ?
-				     (payload.prepared_delivery ? 3 : ZONE_TOUCH_PAYLOAD_VERSION) :
+				     (payload.artifact_intents	? 4 :
+				      payload.prepared_delivery ? 3 :
+								  ZONE_TOUCH_PAYLOAD_VERSION) :
 				     1),
 		     .source_site = critical_source_site::zone_event,
 		     .deadline_class = critical_deadline_class::interactive,
@@ -102,6 +124,16 @@ bool zone_touch_command_build(critical_command *command, critical_operation_id o
 		payload.record_zone ?
 			critical_entity_key{ critical_entity_type::zone, payload.zone_number } :
 			critical_entity_key{ critical_entity_type::item, payload.stone_uid });
+	for (const auto &child : payload.artifact_deliveries)
+	{
+		if (!artifact_guild_command_valid_delivery(child, operation_id))
+			return false;
+		for (const auto &key : child.keys)
+			if (std::none_of(command->keys.begin(), command->keys.end(),
+					 [&](const auto &prior)
+					 { return critical_entity_key_equal(prior, key); }))
+				command->keys.push_back(key);
+	}
 	std::sort(command->keys.begin(), command->keys.end(), critical_entity_key_less);
 	append_le<uint32_t>(&command->payload, payload.zone_number);
 	append_le<uint32_t>(&command->payload, payload.toucher_pid);
@@ -132,6 +164,21 @@ bool zone_touch_command_build(critical_command *command, critical_operation_id o
 			}
 		}
 	}
+	if (payload.artifact_intents)
+	{
+		append_le<uint16_t>(&command->payload, payload.artifact_deliveries.size());
+		for (const auto &child : payload.artifact_deliveries)
+		{
+			std::vector<uint8_t> encoded;
+			if (critical_command_encode(child, &encoded) !=
+				    critical_command_codec_result::ok ||
+			    encoded.size() > 2048)
+				return false;
+			append_le<uint16_t>(&command->payload, encoded.size());
+			command->payload.insert(command->payload.end(), encoded.begin(),
+						encoded.end());
+		}
+	}
 	return true;
 }
 
@@ -139,7 +186,7 @@ bool zone_touch_command_decode_payload(const critical_command &command, zone_tou
 {
 	if (!payload || command.type != critical_command_type::zone ||
 	    (command.payload_version != 1 && command.payload_version != 2 &&
-	     command.payload_version != 3))
+	     command.payload_version != 3 && command.payload_version != 4))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
@@ -164,7 +211,8 @@ bool zone_touch_command_decode_payload(const critical_command &command, zone_tou
 		    !read_le(&cursor, end, &payload->stone_level) ||
 		    !read_le(&cursor, end, &payload->record_zone))
 			return false;
-		payload->prepared_delivery = command.payload_version == 3;
+		payload->prepared_delivery = command.payload_version >= 3;
+		payload->artifact_intents = command.payload_version >= 4;
 		for (size_t i = 0; i < payload->group_size; ++i)
 		{
 			if (!read_le(&cursor, end, &payload->awards[i].amount) ||
@@ -179,6 +227,24 @@ bool zone_touch_command_decode_payload(const critical_command &command, zone_tou
 					return false;
 				payload->awards[i].base = std::bit_cast<double>(base);
 			}
+		}
+	}
+	if (payload->artifact_intents)
+	{
+		uint16_t count = 0;
+		if (!read_le(&cursor, end, &count) || count > payload->group_size)
+			return false;
+		for (size_t i = 0; i < count; ++i)
+		{
+			uint16_t size = 0;
+			critical_command child;
+			if (!read_le(&cursor, end, &size) || size > 2048 ||
+			    static_cast<size_t>(end - cursor) < size ||
+			    critical_command_decode(cursor, size, &child) !=
+				    critical_command_codec_result::ok)
+				return false;
+			cursor += size;
+			payload->artifact_deliveries.push_back(std::move(child));
 		}
 	}
 	if (cursor != end)
@@ -220,7 +286,9 @@ bool zone_touch_command_encode_result(const zone_touch_result &result,
 	critical_command command = {};
 	critical_operation_id operation = {};
 	operation.bytes[0] = 1;
-	if (!encoded || !zone_touch_command_build(&command, operation, result))
+	zone_touch_payload projection = result;
+	projection.artifact_deliveries.clear(); // Descriptor history is in the child receipts.
+	if (!encoded || !zone_touch_command_build(&command, operation, projection))
 		return false;
 	std::vector<uint8_t> bytes;
 	append_le<uint16_t>(&bytes, command.payload_version);
@@ -354,6 +422,7 @@ bool divine_epic_delivery_from_zone(const critical_operation_id &operation,
 	next.stone_level = result.stone_level;
 	next.errand = result.awards[index].errand;
 	next.flags = result.awards[index].flags;
+	next.artifact_intents = result.artifact_intents;
 	if (!divine_epic_delivery_valid(next))
 		return false;
 	*delivery = next;

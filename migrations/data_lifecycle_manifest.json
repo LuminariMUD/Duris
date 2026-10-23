@@ -6558,7 +6558,7 @@
       "locator": "FLATFILE_ROOT/domains/command-*.receipt",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "participant_player_pids",
-      "technical_purpose": "Permanent epic/combat command identities and results for idempotent replay, including history after player/account removal",
+      "technical_purpose": "Permanent epic/combat command identities and results, including prepared artifact/guild child descriptors and ACK proof, for replay after player/account removal",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -6638,6 +6638,37 @@
       "exception": "protected_recovery_replay_or_restore_horizon",
       "protected_record": true,
       "dependencies": []
+    },
+    {
+      "id": "file:artifact-guild-pending",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/artifact_guild_pending",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "original_actor_pid_and_operation_id",
+      "technical_purpose": "Bounded unACKed prepared artifact/guild effects linked to permanent child receipts and atomic entity delivery IDs",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": [
+        "file:flatfile-command-receipts"
+      ]
     }
   ]
 }
