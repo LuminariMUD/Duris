@@ -1136,7 +1136,12 @@ flatfile_ship_result flatfile_ship_prepare_trade(
 						      expected.slot_index,
 						      [](const auto &slot, uint8_t index)
 						      { return slot.slot_index < index; });
-		if (current == ship->slots.end() || *current != expected)
+		if (current == ship->slots.end() || current->slot_index != expected.slot_index)
+		{
+			if (expected != flatfile_ship_empty_slot(expected.slot_index))
+				return flatfile_ship_result::conflict;
+		}
+		else if (*current != expected)
 			return flatfile_ship_result::conflict;
 	}
 	std::unordered_set<uint8_t> changed;

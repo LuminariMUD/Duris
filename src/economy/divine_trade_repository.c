@@ -101,7 +101,14 @@ bool ship_preimage_matches(MYSQL *connection, const divine_trade_payload &p)
 			query += " AND val" + std::to_string(i) + "=" +
 				 std::to_string(slot.values[i]);
 		if (!matches(query + " FOR UPDATE"))
-			return false;
+		{
+			if (errno != ESTALE || slot != flatfile_ship_empty_slot(slot.slot_index) ||
+			    !matches("SELECT 1 FROM ships WHERE id=" + std::to_string(p.ship_id) +
+				     " AND NOT EXISTS(SELECT 1 FROM ship_slots WHERE ship_id=" +
+				     std::to_string(p.ship_id) + " AND slot_index=" +
+				     std::to_string(slot.slot_index) + ") FOR UPDATE"))
+				return false;
+		}
 	}
 	const auto &crew = p.crew_before;
 	std::string query = "SELECT 1 FROM ship_crew WHERE ship_id=" + std::to_string(p.ship_id);
@@ -113,7 +120,12 @@ bool ship_preimage_matches(MYSQL *connection, const divine_trade_payload &p)
 				   crew.repair_chief };
 	for (size_t i = 0; i < std::size(values); ++i)
 		query += std::string(" AND ") + fields[i] + "=" + std::to_string(values[i]);
-	return matches(query + " FOR UPDATE");
+	if (matches(query + " FOR UPDATE"))
+		return true;
+	return errno == ESTALE && crew == flatfile_ship_crew_record{} &&
+	       matches("SELECT 1 FROM ships WHERE id=" + std::to_string(p.ship_id) +
+		       " AND NOT EXISTS(SELECT 1 FROM ship_crew WHERE ship_id=" +
+		       std::to_string(p.ship_id) + ") FOR UPDATE");
 }
 }
 

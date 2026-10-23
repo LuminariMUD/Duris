@@ -33,6 +33,12 @@ struct flatfile_ship_slot_record
 	bool operator==(const flatfile_ship_slot_record &) const = default;
 };
 
+// Missing legacy slot rows materialize through ShipSlot::clear() in both loaders.
+inline flatfile_ship_slot_record flatfile_ship_empty_slot(uint8_t index)
+{
+	return { index, 0, -1, -1, 0, { -1, -1, -1, -1, -1 } };
+}
+
 struct flatfile_ship_crew_record
 {
 	int32_t crew_index = 0;

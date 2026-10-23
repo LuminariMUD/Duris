@@ -142,6 +142,29 @@ int main()
 		critical_command command;
 		require(divine_trade_command_build(&command, buy_id, purchase),
 			"prepare purchase command");
+		if (!scenario)
+		{
+			execute(db, "START TRANSACTION");
+			execute(db, "DELETE FROM ship_slots WHERE slot_index=3 AND ship_id=" +
+					    std::to_string(ship_id));
+			execute(db,
+				"DELETE FROM ship_crew WHERE ship_id=" + std::to_string(ship_id));
+			auto implicit = purchase;
+			implicit.slots_before = { flatfile_ship_empty_slot(3) };
+			implicit.slots_after[0].values[0] = 1;
+			implicit.slots_after[0].values[1] = 100;
+			critical_command implicit_command;
+			require(divine_trade_command_build(&implicit_command, buy_id, implicit),
+				"implicit empty command");
+			divine_trade_result implicit_result;
+			unsigned int implicit_error = 0;
+			bool implicit_mutated = false;
+			require(divine_trade_sql_execute(db, implicit_command, &implicit_result,
+							 &implicit_error, &implicit_mutated) &&
+					!implicit_error && implicit_mutated,
+				"native empty slot/crew materialization was refused");
+			execute(db, "ROLLBACK");
+		}
 		for (int changed_field = 0; changed_field < 2; ++changed_field)
 		{
 			const std::string change =
