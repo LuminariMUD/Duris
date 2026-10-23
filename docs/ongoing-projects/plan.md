@@ -6,13 +6,14 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-runtime-qualification/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-runtime-qualification`, [PR #317](https://github.com/LuminariMUD/Duris/pull/317).
+blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-divine-reset/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-divine-reset`, [PR #322](https://github.com/LuminariMUD/Duris/pull/322).
 Reuse `/home/aiwithapex/projects/duris-issue264-plan`, which is on that branch.
-Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317, plus independent
+Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322, plus independent
 production-build repair #316. The real MariaDB/Redis-off five-minute reset through
 recreated staff login and fresh mortal gameplay/save/reconnect/another boot passed;
-full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
+reward retry accounting, kingdom ownership and active Divine retirement are also
+qualified. Full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
 balances and recreate only exact level-62 Overlords. Continue from the linked current
 plan; the baseline planning detail below is retained for provenance.
 
