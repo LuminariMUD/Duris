@@ -40,6 +40,31 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — prepared cargo replay proof
+
+Branch `branch/issue-264-cargo-replay`, based on artifact PR #324 at `75367cc07`.
+Outcome: prove retained cargo books/receipts and a pre-reset prepared trade cannot
+restore wiped wallets, ships, cargo or markets, including a fresh same-named mortal
+and new ship. Use the actual policy, command codec, SQL executor and receipt path.
+Non-goals: a generic epoch field/cutoff or altering protected receipts without a
+reproduced need. Files: extend the existing native SQL journey and its regression/
+runbook/plan references. Proof: one committed and one unapplied prepared purchase,
+actual reset, receipt replay and stale-command rejection before/after fresh identity
+creation, unchanged historical book/generation and zero restored after-images.
+The complete real native SQL/launcher matrix passed: receipt replay was inert,
+prepared execution returned ESTALE before and after a same-named fresh mortal/new
+higher-ID ship, and the normal critical repository refused the pending command.
+Both old/new wallets, retained books/generation, and deleted cargo/market tables
+remained unchanged. No source behavior change, new epoch field or generic cutoff
+was needed. Existing build and five-minute gameplay evidence is reused for this
+test/documentation-only chunk. Publication remains; full readiness is open.
+
+Next W1 retained payload consumers: `auction_item_custody` (pickup reads plus
+artifact population scanning), and `siege_items`/children (artifact population
+scanning). Trace active versus immutable historical use before changing retention.
+General custody/baseline boot behavior, SQL-stage recovery/restore, Redis-on/external
+cutover, flat-file command rejection and full service qualification also remain.
+
 ## Current continuation — artifact retirement
 
 Branch `branch/issue-264-artifact-reset`, based on collector PR #323 at `025a6da7c`.

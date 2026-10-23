@@ -78,6 +78,14 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+Cargo replay coverage prepares two real trades: one commits before wipe and the
+other remains unapplied. The actual reset preserves the first receipt and historical
+book/generation, deletes ships/cargo/markets and retires the player. Receipt replay
+is inert; the unapplied command returns stale from both the SQL executor and normal
+critical repository. The same checks pass after a same-named fresh mortal and a
+higher-ID ship are created, without changing either wallet or restoring after-images.
+This uses the existing policy/codec/repository; no source behavior change is needed.
+
 Artifact reset coverage seeds owned, retired and unresolved identities plus real
 historical receipts and a pending delivery. The actual SQL reset clears current
 ownership/timers/souls while retaining UID rejection, history and revisions. The

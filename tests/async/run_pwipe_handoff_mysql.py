@@ -66,6 +66,8 @@ def run():
 #include "economy/divine_boon_repository.h"
 #include "guild/artifact_identity.h"
 #include "guild/artifact_guild_repository.h"
+#include "economy/divine_trade_repository.h"
+#include "ships/ships.h"
 #include "core/runtime_compatibility_contract.h"
 #include <openssl/sha.h>
 #include "economy/collector_repository.h"
@@ -107,12 +109,10 @@ extern "C" int __wrap_posix_spawn(pid_t *pid, const char *path, const posix_spaw
 MYSQL *DB;
 #define TRUE true
 #define FALSE false
-#define LOG_DEBUG 0
-#define LOG_STATUS 1
 #define OVERLORD 62
 #define ACCT_IMMORTAL 0
 bool pwipe_crossed_boundary, pwipe_filesystem_ready;
-void logit(int, const char *format, ...) {
+void logit(const char *, const char *format, ...) {
     va_list args; va_start(args, format); vfprintf(stderr, format, args); va_end(args); fputc(10, stderr);
 }
 void send_to_all(const char *) {}
@@ -280,6 +280,63 @@ bool check_artifact_history() {
         artifact_guild_repository_load_delivery(DB,delivery.operation_id,&loaded,&acknowledged) && !acknowledged &&
         artifact_guild_repository_delivery_saved(DB,loaded,&saved) && saved;
 }
+bool seed_trade() {
+    if (!qry("INSERT INTO ships(id,owner_name,ship_name,ship_class) VALUES(600,'Oldmortal','Old trade',0)") ||
+        !qry("INSERT INTO ship_slots(ship_id,slot_index,slot_type,item_index,position,timer,val0,val1,val2,val3,val4) "
+             "VALUES(600,3,%d,0,%d,0,9,900,-1,-1,-1)",SLOT_CARGO,SLOT_HOLD)) return false;
+    divine_boon_state state;
+    if (divine_boon_sql_load(DB,&state)!=divine_boon_store_result::ok) return false;
+    const auto &boon=state.slots[1];
+    critical_entity_key account;
+    if (!currency_account_key("fixturebank",0,&account)) return false;
+    divine_trade_book book;
+    for (unsigned i=0; i<2; ++i) {
+        critical_operation_id operation{}; operation.bytes.fill(30+i);
+        divine_trade_purchase buy;
+        buy.operation=operation; buy.account=account.id; buy.ship_id=600; buy.full_hold=100;
+        buy.slot=3; buy.source_port=boon.source_port; buy.at=boon.starts_at+1;
+        buy.quantity=1; buy.paid=100; buy.slot_quantity_before=9+i; buy.slot_basis_before=900+100*i;
+        divine_trade_payload payload;
+        payload.pid=payload.ship_owner_pid=1004; payload.ship_id=600;
+        if (!divine_trade_sql_generation(DB,&payload.generation,false)) return false;
+        payload.wallet_revision=i; payload.book_revision=book.revision;
+        payload.admitted_at=buy.at; payload.payment=-100;
+        payload.wallet_after.amount={899-static_cast<int64_t>(100*i),0,0,0};
+        payload.slots_before.push_back({3,SLOT_CARGO,0,SLOT_HOLD,0,{9+static_cast<int>(i),900+100*static_cast<int>(i),-1,-1,-1}});
+        payload.slots_after.push_back({3,SLOT_CARGO,0,SLOT_HOLD,0,{10+static_cast<int>(i),1000+100*static_cast<int>(i),-1,-1,-1}});
+        payload.market_after.push_back({0,0,divine_trade_goods::cargo,1.03f,100});
+        if (!divine_trade_prepare_purchase(book,boon,buy,&payload.book_after)) return false;
+        critical_command command;
+        if (!divine_trade_command_build(&command,operation,payload)) return false;
+        command.accepted_at_usec=1;
+        std::vector<uint8_t> bytes;
+        if (critical_command_encode(command,&bytes)!=critical_command_codec_result::ok) return false;
+        std::ofstream output(std::string(getenv("PWIPE_TEST_TRADE_PREFIX"))+std::to_string(i),std::ios::binary);
+        output.write(reinterpret_cast<const char *>(bytes.data()),static_cast<std::streamsize>(bytes.size()));
+        if (!output.good()) return false;
+        if (!i && critical_command_repository_apply(DB,command).outcome!=critical_apply_outcome::applied) return false;
+        book=payload.book_after;
+    }
+    return true;
+}
+bool replay_trade(bool submit) {
+    for (unsigned i=0; i<2; ++i) {
+        std::ifstream input(std::string(getenv("PWIPE_TEST_TRADE_PREFIX"))+std::to_string(i),std::ios::binary);
+        const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>()};
+        critical_command command;
+        if (critical_command_decode(bytes.data(),bytes.size(),&command)!=critical_command_codec_result::ok) return false;
+        if (!i) {
+            if (critical_command_repository_apply(DB,command).outcome!=critical_apply_outcome::already_applied) return false;
+        } else if (submit) {
+            const auto result=critical_command_repository_apply(DB,command);
+            if (result.outcome!=critical_apply_outcome::terminal_failure || result.error_code!=ESTALE) return false;
+        } else {
+            divine_trade_result result; unsigned error=0; bool mutated=true;
+            if (!divine_trade_sql_execute(DB,command,&result,&error,&mutated) || error!=ESTALE || mutated) return false;
+        }
+    }
+    return true;
+}
 bool check_collectors() {
     collector_bootstrap_snapshot loaded;
     return collector_repository_read_bootstrap(DB,&loaded) && loaded.catalog.records.empty() &&
@@ -311,7 +368,10 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
-    bool ok = !strcmp(argv[1], "seed-artifact-history") ? seed_artifact_history() :
+    bool ok = !strcmp(argv[1], "seed-trade") ? seed_trade() :
+              !strcmp(argv[1], "replay-trade") ? replay_trade(false) :
+              !strcmp(argv[1], "submit-stale-trade") ? replay_trade(true) :
+              !strcmp(argv[1], "seed-artifact-history") ? seed_artifact_history() :
               !strcmp(argv[1], "check-artifact-history") ? check_artifact_history() :
               !strcmp(argv[1], "seed-collectors") ? seed_collectors(strtoull(argv[2],nullptr,10),1004,4) :
               !strcmp(argv[1], "stale-collector") ? stale_collector_purchase() :
@@ -413,6 +473,9 @@ int main(int argc, char **argv) {
         assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
         sql("UPDATE collector_listings SET record_blob=UNHEX('" + listing_bytes + "') WHERE listing_id=101")
         epoch_call("seed-boons", 1, 0)
+        env["PWIPE_TEST_TRADE_PREFIX"] = str(root / "old-trade-")
+        epoch_call("seed-trade", 1, 0)
+        trade_books = sql("SELECT account_key,boon_id,revision,HEX(snapshot) FROM divine_trade_state ORDER BY account_key,boon_id")
         boon_bytes = sql("SELECT HEX(snapshot) FROM divine_boon_state WHERE state_id=1")
         sql("UPDATE divine_boon_state SET snapshot=0x00 WHERE state_id=1")
         refusal = epoch_call("wipe", 1, 1, cwd=root)
@@ -439,6 +502,13 @@ int main(int argc, char **argv) {
                         "--pwipe-recovery"], cwd=ROOT, env=recovery_env, check=True)
         assert sql("SELECT * FROM artifact_delta_ledger ORDER BY vnum,revision") == artifact_history
         print("Artifact reset/restart: old bodies retired, ownership/timers/souls cleared, history/revisions retained; old delivery and receipt replay cannot restore state", flush=True)
+        trade_wallet = sql("SELECT CONCAT_WS(':',copper,wallet_revision) FROM player_data WHERE pid=1004")
+        epoch_call("replay-trade", 2, 0)
+        assert sql("SELECT CONCAT_WS(':',copper,wallet_revision) FROM player_data WHERE pid=1004") == trade_wallet
+        assert sql("SELECT account_key,boon_id,revision,HEX(snapshot) FROM divine_trade_state ORDER BY account_key,boon_id") == trade_books
+        for table in ("ships", "ship_slots", "ship_crew", "ship_cargo_market_mods", "ship_cargo_prices"):
+            assert sql("SELECT COUNT(*) FROM " + table) == "0"
+        print("Committed cargo receipt replay is harmless; unapplied prepared cargo trade is stale after real reset with retained book/generation", flush=True)
         epoch_call("check-collectors", 2, 0)
         assert sql("SELECT COUNT(*) FROM collector_listings WHERE status=5") == "4"
         assert sql("SELECT COUNT(*) FROM item_current_owner WHERE owner_type=8 AND state=2") == "3"
@@ -479,6 +549,20 @@ int main(int argc, char **argv) {
         assert sql("SELECT COUNT(*) FROM currency_wallet_baseline WHERE pid=" + str(new_god)) == "1"
         sql("INSERT INTO player_data(name,account_name) VALUES('Oldmortal','fixturebank')")
         print("Overlord recreation: exact 62 only, new PID, clean balances/progression, account mapping and freed mortal name passed", flush=True)
+        new_trader = sql("SELECT pid FROM player_data WHERE name='Oldmortal' AND active=1")
+        assert int(new_trader) > 1004
+        sql("INSERT INTO ships(owner_name,ship_name,ship_class) VALUES('Oldmortal','Fresh trade',0)")
+        new_ship = sql("SELECT id FROM ships WHERE owner_name='Oldmortal'")
+        assert int(new_ship) > 600
+        epoch_call("replay-trade", 2, 0)
+        epoch_call("submit-stale-trade", 2, 0)
+        assert sql("SELECT CONCAT_WS(':',copper,wallet_revision) FROM player_data WHERE pid=1004") == trade_wallet
+        assert sql("SELECT CONCAT_WS(':',copper,wallet_revision) FROM player_data WHERE pid=" + new_trader) == "0:0"
+        assert sql("SELECT account_key,boon_id,revision,HEX(snapshot) FROM divine_trade_state ORDER BY account_key,boon_id") == trade_books
+        for table in ("ship_slots", "ship_crew", "ship_cargo_market_mods", "ship_cargo_prices"):
+            assert sql("SELECT COUNT(*) FROM " + table) == "0"
+        sql("DELETE FROM ships WHERE id=" + new_ship)
+        print("Same-named fresh mortal/new ship use higher IDs; stale cargo command cannot restore wallet/cargo/market after-images", flush=True)
         epoch_call("new-collector", 2, 0)
         assert sql("SELECT COUNT(*) FROM collector_listings") == "5"
         print("Fresh collector enrollment/bootstrap uses the next ID and excludes retired protected history", flush=True)
