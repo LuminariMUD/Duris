@@ -44,7 +44,7 @@ int grapple_check_entrapment(P_char ch)
 	for (attacker = world[ch->in_room].people; attacker; attacker = attacker->next_in_room)
 	{
 		if (has_innate(attacker, INNATE_ENTRAPMENT) && CAN_ACT(attacker) &&
-		    CAN_SEE(ch, attacker) && (GET_POS(attacker) == POS_STANDING) &&
+		    CAN_SEE(attacker, ch) && (GET_POS(attacker) == POS_STANDING) &&
 		    (GET_OPPONENT(ch) == attacker))
 		{
 			// Percent of a level 50 grappler with 100 skill in grappler combat is 35% to prevent flee
