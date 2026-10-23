@@ -4031,6 +4031,7 @@ bool sql_verify_pwipe_manifest(void)
 					      "associations",
 					      "auction_bid_history",
 					      "auction_item_pickups",
+					      "auction_item_custody",
 					      "auction_money_pickups",
 					      "auctions",
 					      "boons",
@@ -4119,6 +4120,9 @@ bool sql_verify_pwipe_manifest(void)
 					      "ship_slots",
 					      "ships",
 					      "shop_trophy",
+					      "siege_item_affects",
+					      "siege_item_extra_descr",
+					      "siege_items",
 					      "shopkeeper_affects",
 					      "shopkeeper_item_affects",
 					      "shopkeeper_item_extra_descr",
@@ -4552,7 +4556,8 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing auction data... .. .");
 		send_to_all("Clearing auction data... .. .");
-		if (qry("DELETE FROM auction_bid_history") &&
+		if (qry("DELETE FROM auction_item_custody") &&
+		    qry("DELETE FROM auction_bid_history") &&
 		    qry("DELETE FROM auction_item_pickups") &&
 		    qry("DELETE FROM auction_money_pickups") && qry("DELETE FROM auctions"))
 		{
@@ -4704,6 +4709,14 @@ bool sql_pwipe(int code_verify)
 		{
 			logit(LOG_DEBUG, "        failure!");
 			send_to_all("        failure!\n");
+			return FALSE;
+		}
+		logit(LOG_DEBUG, "sql_pwipe: Clearing siege item data... .. .");
+		send_to_all("Clearing siege item data... .. .");
+		if (!qry("DELETE FROM siege_item_affects") ||
+		    !qry("DELETE FROM siege_item_extra_descr") || !qry("DELETE FROM siege_items"))
+		{
+			logit(LOG_STATUS, "sql_pwipe: Siege cleanup failed; reset remains fenced.");
 			return FALSE;
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing completed quest data... .. .");
@@ -5109,6 +5122,10 @@ bool sql_pwipe(int code_verify)
 			/* Verify that player_items, player_pets, lockers, ships, guilds, and
 			 * persistence event tables are all empty after reset. */
 			const char *postflight_tables[] = { "account_banks",
+							    "auction_item_custody",
+							    "siege_item_affects",
+							    "siege_item_extra_descr",
+							    "siege_items",
 							    "player_items",
 							    "player_pets",
 							    "player_affects",

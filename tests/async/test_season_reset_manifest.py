@@ -149,6 +149,9 @@ if next_func == -1:
 pwipe_body = source[pwipe_start:next_func]
 
 ordering_checks = [
+    ("siege_item_affects", "siege_items", "siege item"),
+    ("siege_item_extra_descr", "siege_items", "siege item"),
+    ("auction_item_custody", "auctions", "auction item"),
     ("player_item_affects", "player_items", "player item"),
     ("player_item_extra_descr", "player_items", "player item"),
     ("player_pet_item_affects", "player_pets", "player pet"),

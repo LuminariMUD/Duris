@@ -68,6 +68,8 @@ def run():
 #include "guild/artifact_guild_repository.h"
 #include "economy/divine_trade_repository.h"
 #include "ships/ships.h"
+#include "core/files.h"
+#include "guild/artifact_population_repository.h"
 #include "core/runtime_compatibility_contract.h"
 #include <openssl/sha.h>
 #include "economy/collector_repository.h"
@@ -337,6 +339,35 @@ bool replay_trade(bool submit) {
     }
     return true;
 }
+bool payload_readers(bool empty) {
+    artifact_population_sql_page siege, auction;
+    return !artifact_population_read_sql_page(DB,artifact_payload_domain::siege,0,&siege) && siege.complete &&
+        siege.rows.size()==(empty?0:2) &&
+        !artifact_population_read_sql_blob_page(DB,artifact_payload_domain::auction,0,&auction) && auction.complete &&
+        auction.rows.size()==(empty?0:1);
+}
+bool seed_payloads() {
+    std::vector<uint8_t> bytes;
+    const auto append=[&]<typename T>(T value) {
+        const auto *begin=reinterpret_cast<const uint8_t *>(&value);
+        bytes.insert(bytes.end(),begin,begin+sizeof(value));
+    };
+    append(uint8_t{SAV_ITEMVERS}); append(uint32_t{1});
+    append(static_cast<uint8_t>(O_F_UNIQUE|O_F_UID)); append(int32_t{904});
+    append(int16_t{0}); append(int16_t{100}); append(uint64_t{890001});
+    append(uint32_t{O_U_EXTRA}); append(uint32_t{1U<<28}); append(uint8_t{O_F_EOL});
+    const auto blob=fixture_hex(bytes.data(),bytes.size());
+    return qry("INSERT IGNORE INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,item_revision,vnum,state) "
+               "VALUES(890001,890001,6,700,1,904,1)") &&
+        qry("INSERT INTO auctions(id,obj_vnum,quantity,obj_blob_str,custody_state,listing_operation_id) VALUES(700,904,1,UNHEX('%s'),1,REPEAT(CHAR(18),16))",blob.c_str()) &&
+        qry("INSERT INTO auction_item_custody(auction_id,slot,item_uid,item_revision,vnum,obj_blob,claim_pid) "
+            "VALUES(700,0,890001,1,904,UNHEX('%s'),1004)",blob.c_str()) &&
+        qry("INSERT INTO siege_items(id,room_vnum,vnum,obj_uid,extra_flags) VALUES(701,900,904,890002,268435456)") &&
+        qry("INSERT INTO siege_items(id,room_vnum,vnum,obj_uid,container_id,extra_flags) VALUES(702,900,904,890003,701,268435456)") &&
+        qry("INSERT INTO siege_item_affects(item_id,location,modifier) VALUES(701,1,15)") &&
+        qry("INSERT INTO siege_item_extra_descr(item_id,keyword,description) VALUES(702,'fixture','old siege')") &&
+        payload_readers(false);
+}
 bool check_collectors() {
     collector_bootstrap_snapshot loaded;
     return collector_repository_read_bootstrap(DB,&loaded) && loaded.catalog.records.empty() &&
@@ -368,7 +399,9 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
-    bool ok = !strcmp(argv[1], "seed-trade") ? seed_trade() :
+    bool ok = !strcmp(argv[1], "seed-payloads") ? seed_payloads() :
+              !strcmp(argv[1], "empty-payloads") ? payload_readers(true) :
+              !strcmp(argv[1], "seed-trade") ? seed_trade() :
               !strcmp(argv[1], "replay-trade") ? replay_trade(false) :
               !strcmp(argv[1], "submit-stale-trade") ? replay_trade(true) :
               !strcmp(argv[1], "seed-artifact-history") ? seed_artifact_history() :
@@ -397,7 +430,8 @@ int main(int argc, char **argv) {
     repository_sources.remove("tests/async/collector_repository_mysql_harness.cpp")
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql", "-pthread",
                     str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
-                    "src/economy/collector_purchase_preparation.c", *repository_sources,
+                    "src/economy/collector_purchase_preparation.c", "src/guild/artifact_population_repository.c",
+                    "src/item/legacy_object_identity.c", *repository_sources,
                     "-lmysqlclient", "-lcrypto", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
 
     def epoch_call(command, epoch, expected_code, cwd=None):
@@ -460,6 +494,7 @@ int main(int argc, char **argv) {
             "(902,1,3,1004,1234,1,1004,20,NULL,0,NULL,0)")
         sql("INSERT INTO artifact_domain_baseline(vnum,opening_timer_epoch,opening_bind_owner_pid,"
             "opening_bind_timer_epoch,opening_revision) VALUES(900,1900000000,1004,10,700)")
+        epoch_call("seed-payloads", 1, 0)
         epoch_call("seed-artifact-history", 1, 0)
         artifact_baseline = sql("SELECT * FROM artifact_domain_baseline ORDER BY vnum")
         artifact_history = sql("SELECT * FROM artifact_delta_ledger ORDER BY vnum,revision")
@@ -494,6 +529,10 @@ int main(int argc, char **argv) {
                    "FROM artifact_domain_state ORDER BY vnum") == "900:880001:2:879999:700\n901:880002:2::9\n902:3::0"
         assert sql("SELECT * FROM artifact_domain_baseline ORDER BY vnum") == artifact_baseline
         assert sql("SELECT * FROM artifact_delta_ledger ORDER BY vnum,revision") == artifact_history
+        epoch_call("empty-payloads", 2, 0)
+        for table in ("auction_item_custody", "siege_items", "siege_item_affects", "siege_item_extra_descr"):
+            assert sql("SELECT COUNT(*) FROM " + table) == "0"
+        print("Auction custody and nested siege payloads/affects/descriptions reset; real startup readers return no old bodies", flush=True)
         epoch_call("check-artifact-history", 2, 0)
         subprocess.run([str(ROOT / "migrations/reconcile_artifact_guild_outcomes.sh")],
                        cwd=ROOT, env=env, check=True)
@@ -614,6 +653,14 @@ int main(int argc, char **argv) {
         finally:
             sql("ALTER TABLE collector_ledger RENAME COLUMN fixture_closed_reason TO closed_reason")
         print("Delegated collector ledger schema drift rejected before epoch advance", flush=True)
+        sql("RENAME TABLE siege_item_extra_descr TO fixture_siege_item_extra_descr")
+        try:
+            epoch_call("wipe", 3, 1, cwd=root)
+            assert sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1") == before
+        finally:
+            sql("RENAME TABLE fixture_siege_item_extra_descr TO siege_item_extra_descr")
+        print("Missing siege payload child schema rejected before epoch advance", flush=True)
+
 
 
 
@@ -737,6 +784,19 @@ int main(int argc, char **argv) {
         epoch_call("reset-collectors", 25, 0)
         assert sql("SELECT COUNT(*) FROM collector_ledger") == repaired
         print("Partial collector failure stayed fenced; repaired retry closed remaining rows without duplicate receipts", flush=True)
+
+        epoch_call("seed-payloads", 25, 0)
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        sql("CREATE TRIGGER fixture_siege_failure BEFORE DELETE ON siege_item_extra_descr "
+            "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture siege failure'")
+        try:
+            refused = epoch_call("wipe", 25, 1, cwd=root)
+            assert "Siege cleanup failed" in refused.stderr
+        finally:
+            sql("DROP TRIGGER fixture_siege_failure")
+        assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "26:resetting:1"
+        assert sql("SELECT COUNT(*) FROM siege_items") == "2"
+        print("A real siege cleanup failure remains fenced and never publishes SQL-ready", flush=True)
 
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"

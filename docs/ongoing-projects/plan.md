@@ -40,6 +40,26 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — remaining live payload stores
+
+Branch `branch/issue-264-payload-reset`, based on cargo PR #325 at `d92559fdb`.
+Outcome: clear `auction_item_custody` and siege items/affects/descriptions with the
+other seasonal physical payloads. The actual boot population readers scan these
+stores; old rows must not remain new-season presence or uncertainty evidence.
+Non-goals: deleting auction/item ledgers, receipts, reconciliation quarantine, or
+inventing season columns. Keep quest trophy history: the only current SQL boot read
+fills an unused cache; both old quest-trophy gameplay calls are commented out.
+Files: SQL preflight/reset/postflight, canonical manifest, existing native journey
+and reset-order checks, runbook/regression/plan. Proof: populated custody/siege
+rows and children, actual reset, empty real boot reader output, missing-schema
+preflight and failed cleanup fencing. The complete native SQL/launcher matrix passed,
+including positive raw boot reader output before reset and empty output afterward,
+FK-linked nested siege items/affects/descriptions, a missing child table abort before
+epoch advance, and a triggered delete failure that never publishes SQL-ready.
+MariaDB/flat-file development and optimized MariaDB production builds passed;
+12 manifest checks (21 dependency-order assertions), 14 lifecycle tests and the
+reset-fence contract passed. Final publication remains; full readiness is open.
+
 ## Current continuation — prepared cargo replay proof
 
 Branch `branch/issue-264-cargo-replay`, based on artifact PR #324 at `75367cc07`.
