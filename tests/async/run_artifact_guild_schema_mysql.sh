@@ -19,7 +19,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/economy/boon_reward_command.c src/economy/boon_reward_repository.c \
     src/world/zone_touch_command.c src/world/zone_touch_repository.c \
     src/account/session_audit_command.c src/account/session_audit_repository.c \
-    src/player/player_snapshot_codec.c \
+    src/player/player_snapshot_codec.c src/player/player_snapshot_repository.c \
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
     src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \

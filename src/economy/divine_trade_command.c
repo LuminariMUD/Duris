@@ -285,7 +285,8 @@ static bool build_version(critical_command *command, critical_operation_id opera
 bool divine_trade_command_decode(const critical_command &command, divine_trade_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::divine_trade ||
-	    (command.payload_version < 1 || command.payload_version > DIVINE_TRADE_PAYLOAD_VERSION) ||
+	    (command.payload_version < 1 ||
+	     command.payload_version > DIVINE_TRADE_PAYLOAD_VERSION) ||
 	    !critical_command_valid(command))
 		return false;
 	divine_trade_payload p;

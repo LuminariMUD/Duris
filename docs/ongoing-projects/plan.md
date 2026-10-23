@@ -6,11 +6,11 @@
 > A forecast outside the remaining budget is a delivery failure to disclose
 > immediately, not permission to continue spending time.
 
-Status: feature implementation/local qualification was completed previously; the owner's 2026-10-23 request to verify and fully address every review on open PRs #276–#294 is IN PROGRESS. The stack is not yet claimed ready to merge. Production has not been activated. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
+Status: the owner's 2026-10-23 review-repair request is complete locally and published. All twelve open PRs #276–#294 have code reviews and evidence-backed finding dispositions. Focused dependency #307 repairs independently checkpointed artifact/guild delivery before activation. The ordered stack is ready for merge review. No merge, production migration, deployment or activation was performed. The historical deadline miss below is preserved.
 
 ### Review repair continuation, 2026-10-23
 
-Use the repository ablation skill: preserve the complete review/integration outcome, fix the existing paths, and avoid unrelated cleanup. Current master is `fc1c94e15155c3f3249bdf328d55c5d1530c0e88`. The twelve open PRs form one dependency chain; parent repairs are carried forward with explicit expected-head leases.
+Use the repository ablation skill: preserve the complete review/integration outcome, fix the existing paths, and avoid unrelated cleanup. Current master is `e2a2166f34fc56b814d553feed0a43d952b4a4d2`. The twelve original PRs plus focused repair #307 form one dependency chain; parent repairs were carried forward with explicit expected-head leases. #283 now targets #307, which follows #282 and precedes activation #291.
 
 Completed source/test repairs:
 
@@ -28,9 +28,9 @@ Completed source/test repairs:
 
 Local evidence includes both server builds; sanitizer/native trade, delivery, stone, selection and command checks; real flat-file journal/six-after-image recovery and corrupted receipt/book/stone restore checks; disposable SQL load, wallet save/claim and ten trade rollback boundaries; exact ordinary loss/deletion snapshots including stale saves after deletion; legacy offline/progress/POINT/STATS cases; lifecycle validation; and all five isolated backup/restore integration tests. Both complete loaded-world campaigns passed with NPC-only XP 1000000 to 1002198, zone 429 reward 100 to 150, legitimate PvP 250 to 375 after expiry, saved trade/restart, cutover and pause/history. Changed-line formatting and LLVM 22 tidy passed. Later validation-only identity/manifest guards and ordinary overflow/staff barriers receive their affected native/repository/build checks; unchanged NPC/PvP campaign evidence is reused. Hosted CI is not a completion gate.
 
-Remaining correctness blocker found by auditing unthreaded review 6354714088 on #276: `divine_boon_delivery_recover` re-enters the new-source-only `artifact_guild_transaction_submit` API. Artifact/guild snapshots can become durable before the player's delivery watermark, so a crash can grant their effect twice on login. The current API's SQL child history is bookkeeping and flat mode has no child receipt; an in-process dedup set or blindly skipping recovered effects cannot supply durable per-entity proof. Finish a focused persistence repair with crash-boundary regression before claiming the entire stack ready. Retain all reward/compatibility requirements. No merge or production action is authorized by this review task.
+The unthreaded artifact/guild crash-replay finding on #276 is repaired in #307. Primary prepared PvP/zone transactions co-commit immutable child intents; native entity snapshots co-save delivery IDs with timer/prestige/construction, and ACK/pruning require durable native proof. Login does not recapture rewards from current equipment or guild membership. Original physical UIDs and guild incarnations prevent rebinding. Unproven older unpaid receipts stay retained and explicitly reported.
 
-The current repaired heads are published with exact leases; every open PR has a current-head audit review. All currently known inline findings have specific evidence-backed dispositions, including the later lot/receipt/aggregate/staff findings. The unthreaded artifact/guild replay blocker remains explicitly open on #276 and in each PR description. Do not mark the goal complete while that correctness issue or final verification remains.
+All published heads include the current master update. The latest exact-delta/outbox-version, byte/row-limit, detailed receipt, offline ACK and completion-order findings have focused executable proof and direct PR replies. Inherited SQL-only drain compilation was also repaired. Published immutable migration IDs/checksums were preserved when master's new outbox migration took sequence 50: the manifest orders Divine trade at sequence 51 and entity delivery at 52. Both database metadata fingerprints and history checksums were remeasured.
 
 ### Artifact/guild replay repair boundary
 
@@ -38,7 +38,7 @@ Outcome: the primary prepared PvP/zone transaction must retain each immutable ar
 
 The selected boundary co-commits effect intents with the primary receipt. Each artifact/guild snapshot stores the child operation ID atomically with the changed timer or prestige/construction. A replay applies only missing IDs to the original artifact UID and guild incarnation. It applies deltas to current state, preserving later ordinary rewards and spending. Native durable checks permit an intent ACK only after every target is saved or durably obsolete; IDs are pruned only after that ACK is confirmed. This bounds retained IDs by pending work without a lifetime reward limit. Use the existing writer, authority journal and outbox handoff, with no game-thread database calls. Preserve old payload decoders and report/retain old ambiguity rather than recapturing against current equipment or guild membership.
 
-Required proof: crashes around primary receipt, individual entity saves, intent ACK and recipient watermark; multiple recipients around a guild construction notch; moved/unequipped/destroyed artifact identity and reused guild numbers; offline completion; duplicate callbacks/restart/relog; interleaved ordinary rewards/spending and queued snapshots; both persistence backends, schema replay and old formats. Then rebuild affected consumers and repeat live review/head/ancestry/remote-parity checks. The replay implementation is still local and incomplete; no claim of merge readiness is made.
+Required proof: crashes around primary receipt, individual entity saves, intent ACK and recipient watermark; multiple recipients around a guild construction notch; moved/unequipped/destroyed artifact identity and reused guild numbers; offline completion; duplicate callbacks/restart/relog; interleaved ordinary rewards/spending and queued snapshots; both persistence backends, schema replay and old formats. Then rebuild affected consumers and repeat live review/head/ancestry/remote-parity checks. This proof is now supplied by the actual entity-state tests, SQL/native intent/ACK fault tests and prepared player recovery tests. The implementation is published in #307; the dependency precedes activation.
 
 ### Latest focused verification, 2026-10-23
 
@@ -46,6 +46,16 @@ Additional local repairs cover exact selected-slot and crew preimages, native ab
 
 Both current server builds pass. Fresh complete campaigns pass on MariaDB and flat-file, now seeded with crew index 2 and zero saved skills; each journey observes the normalized native minimums durably before buying. Both retain route purchase/sale across restart, zone 429 reward 100 to 150, the source-derived NPC-only XP oracle, legitimate PvP 250 to 375 after expiry, cutover, pause/history and saved login recovery. The first flat readiness probe used a display-name comparison against canonical stored names; server logs proved the save succeeded, and the corrected probe compares stable owner PIDs. No extra server change was needed for that fixture error.
 
+
+
+### Review-repair closeout, 2026-10-23
+
+- Both final server backends build against current master; changed-line LLVM 22 tidy, formatting and whitespace pass.
+- MySQL 8 real outbox transactions, ambiguous ACK, publication waiting, exact expected-event audit and production audit cadence pass. MariaDB intent/partial-snapshot/ACK/identity tests and ten trade rollback boundaries pass.
+- Native delivery covers primary journal recovery, partial entity saves, interrupted ACK, ACK-before-prune restart, stale handoff, bounded admission, all 15 zone recipients and recovered-claim suppression. Actual artifact/guild tests retain later ordinary rewards/spending and preserve original identities.
+- Both complete loaded campaigns passed with route shops/both goods/restart, fixed hold 10/consumed 7, zone 429 base 100→150, NPC-only EXP oracle and legitimate PvP 250→375 after expiry. MariaDB was repeated after the master rebase; the flat campaign's unaffected gameplay evidence is reused with its current-master build and native delivery rerun. Wandering NPCs are purged during the PvP fixture so they cannot steal the death.
+- All five disposable backup/restore integration cases pass after linking the prepared entity codec into the native qualifier. SQL harnesses link the real cargo-effect repository consumer. Runtime boot (seven cases), lifecycle/schema contracts, terminal capture/codec limits, real trade producer/loss and legacy offline/reentrancy/capacity checks pass.
+- Merge order: #276 → #277 → #278 → #279 → #282 → #307 → #283 → #287 → #288 → #290 → #291 → #293 → #294. No tags, merges or production operations were performed.
 
 Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Original plan branch: `branch/issue-245-divine-boons` (PR #265 was merged

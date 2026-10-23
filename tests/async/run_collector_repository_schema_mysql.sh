@@ -48,7 +48,7 @@ done
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
-g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
+g++ -std=c++20 -ffunction-sections -fdata-sections -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
 	"${MYSQL_CFLAGS[@]}" tests/async/collector_repository_mysql_harness.cpp tests/async/harness_stubs.cpp \
 	src/persistence/critical_command.c src/world/epic_command.c \
 	src/economy/currency_command.c src/item/item_transfer_command.c \
@@ -60,12 +60,12 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
 	src/economy/boon_reward_repository.c src/world/zone_touch_command.c \
 	src/world/zone_touch_repository.c src/account/session_audit_command.c \
 	src/account/session_audit_repository.c \
-	src/player/player_snapshot_codec.c src/economy/collector_command.c \
+	src/player/player_snapshot_codec.c src/player/player_snapshot_repository.c src/economy/collector_command.c \
 	src/economy/collector_codec.c src/economy/collector_policy.c \
 	src/economy/collector_repository.c \
 	src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \
 	src/persistence/critical_command_repository.c \
-	"${MYSQL_LIBS[@]}" -lcrypto \
+	"${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
 	-o "$ROOT/bin/tests/collector_repository_mysql_harness"
 "$ROOT/bin/tests/collector_repository_mysql_harness"
 printf 'collector custody, catalog, currency, replay, and lifecycle transactions (%s): ok\n' \
