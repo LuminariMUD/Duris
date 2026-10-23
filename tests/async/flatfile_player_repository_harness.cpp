@@ -938,6 +938,52 @@ static void divine_trade_settlement(const fs::path &base)
 		applied = apply(command);
 		require(applied.outcome == critical_apply_outcome::already_applied,
 			"sale retry repeated the financial operation");
+		char sell_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+		critical_operation_id_to_hex(sell_id, sell_hex, sizeof(sell_hex));
+		const auto buy_file = path / "domains" /
+				      (std::string("divine-trade-command-") + buy_hex + ".receipt");
+		const auto sell_file =
+			path / "domains" /
+			(std::string("divine-trade-command-") + sell_hex + ".receipt");
+		std::ifstream receipt_input(sell_file, std::ios::binary);
+		const std::vector<uint8_t> current_receipt{ std::istreambuf_iterator<char>(
+								    receipt_input),
+							    std::istreambuf_iterator<char>() };
+		auto legacy_receipt = current_receipt;
+		legacy_receipt.erase(legacy_receipt.begin() + 12,
+				     legacy_receipt.begin() + 12 + CRITICAL_COMMAND_ID_BYTES);
+		legacy_receipt[7] = '1';
+		SHA256(legacy_receipt.data(), legacy_receipt.size() - SHA256_DIGEST_LENGTH,
+		       legacy_receipt.data() + legacy_receipt.size() - SHA256_DIGEST_LENGTH);
+		{
+			std::ofstream legacy(sell_file, std::ios::binary | std::ios::trunc);
+			legacy.write(reinterpret_cast<const char *>(legacy_receipt.data()),
+				     legacy_receipt.size());
+		}
+		require(!divine_trade_flatfile_restore_validate(root, &error),
+			"unbound legacy receipt restore was approved");
+		require(apply(command).outcome == critical_apply_outcome::already_applied &&
+				divine_trade_flatfile_restore_validate(root, &error),
+			"proven legacy retry did not upgrade its receipt identity");
+		{
+			std::ofstream restored(sell_file, std::ios::binary | std::ios::trunc);
+			restored.write(reinterpret_cast<const char *>(current_receipt.data()),
+				       current_receipt.size());
+		}
+		const auto temporary = path / "domains" / "receipt-swap-fixture";
+		fs::rename(buy_file, temporary);
+		fs::rename(sell_file, buy_file);
+		fs::rename(temporary, sell_file);
+		require(!divine_trade_flatfile_restore_validate(root, &error) &&
+				apply(command).error_code == EEXIST,
+			"swapped valid receipts passed filename binding");
+		fs::rename(buy_file, temporary);
+		fs::rename(sell_file, buy_file);
+		fs::rename(temporary, sell_file);
+		require(divine_trade_flatfile_restore_validate(root, &error) &&
+				apply(command).outcome == critical_apply_outcome::already_applied,
+			"correct receipt identities did not restore");
+
 		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
 					flatfile_player_domain_result::ok &&
 				domain.domains.wallet ==
