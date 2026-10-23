@@ -31,8 +31,8 @@ bool valid(const divine_trade_payload &p, uint16_t version)
 {
 	if ((p.action != divine_trade_action::purchase && p.action != divine_trade_action::sale) ||
 	    !p.pid || p.pid > INT32_MAX || !p.ship_id || p.ship_id > INT32_MAX ||
-	    !p.ship_owner_pid || p.ship_owner_pid > INT32_MAX || p.generation == UINT64_MAX ||
-	    p.wallet_revision == UINT64_MAX || p.admitted_at <= 0 ||
+	    !p.ship_owner_pid || p.ship_owner_pid != p.pid || p.ship_owner_pid > INT32_MAX ||
+	    p.generation == UINT64_MAX || p.wallet_revision == UINT64_MAX || p.admitted_at <= 0 ||
 	    static_cast<uint64_t>(p.admitted_at) > UINT64_MAX / 1000000 ||
 	    (p.action == divine_trade_action::purchase ? p.payment >= 0 : p.payment < 0) ||
 	    p.payment < -static_cast<int64_t>(INT32_MAX) || p.payment > INT32_MAX ||
@@ -51,6 +51,54 @@ bool valid(const divine_trade_payload &p, uint16_t version)
 		for (size_t i = 0; i < p.slots_after.size(); ++i)
 			if (p.slots_before[i].slot_index != p.slots_after[i].slot_index)
 				return false;
+		const auto &before = p.crew_before;
+		const auto &after = p.crew_after;
+		if (after.crew_index != before.crew_index ||
+		    after.sail_chief != before.sail_chief ||
+		    after.guns_chief != before.guns_chief ||
+		    after.repair_chief != before.repair_chief ||
+		    after.guns_skill_milli != before.guns_skill_milli ||
+		    (p.action == divine_trade_action::purchase ?
+			     (after.sail_skill_milli != before.sail_skill_milli ||
+			      after.repair_skill_milli != before.repair_skill_milli) :
+			     (after.sail_skill_milli < before.sail_skill_milli ||
+			      after.repair_skill_milli < before.repair_skill_milli)))
+			return false;
+		if (p.action == divine_trade_action::sale)
+		{
+			for (const auto &slot : p.slots_before)
+				if ((slot.slot_type != SLOT_CARGO &&
+				     slot.slot_type != SLOT_CONTRABAND) ||
+				    slot.position != SLOT_HOLD || slot.item_index < 0 ||
+				    slot.item_index >= NUM_PORTS || slot.values[0] <= 0 ||
+				    slot.values[1] < 0)
+					return false;
+			for (const auto &cell : p.market_after)
+				if (cell.port != p.market_after.front().port ||
+				    std::none_of(
+					    p.slots_before.begin(), p.slots_before.end(),
+					    [&](const auto &slot)
+					    {
+						    return cell.commodity == slot.item_index &&
+							   (cell.goods == divine_trade_goods::cargo ?
+								    slot.slot_type == SLOT_CARGO :
+								    slot.slot_type ==
+									    SLOT_CONTRABAND);
+					    }))
+					return false;
+			for (const auto &slot : p.slots_before)
+				if (std::none_of(
+					    p.market_after.begin(), p.market_after.end(),
+					    [&](const auto &cell)
+					    {
+						    return cell.commodity == slot.item_index &&
+							   (cell.goods == divine_trade_goods::cargo ?
+								    slot.slot_type == SLOT_CARGO :
+								    slot.slot_type ==
+									    SLOT_CONTRABAND);
+					    }))
+					return false;
+		}
 	}
 	for (int64_t coin : p.wallet_after.amount)
 		if (coin < 0 || coin > INT32_MAX)
@@ -392,6 +440,24 @@ bool divine_trade_book_transition_valid(const divine_trade_book &before,
 	}
 	if (!before.revision)
 		return false;
+	for (const auto &slot : p.slots_before)
+	{
+		uint64_t quantity = 0;
+		int64_t basis = 0;
+		for (const auto &lot : before.lots)
+			if (lot.ship_id == p.ship_id && lot.slot == slot.slot_index)
+			{
+				if (lot.source_port != slot.item_index ||
+				    lot.goods != (slot.slot_type == SLOT_CARGO ?
+							  divine_trade_goods::cargo :
+							  divine_trade_goods::contraband))
+					return false;
+				quantity += lot.remaining_quantity;
+				basis += lot.remaining_basis;
+			}
+		if (quantity > static_cast<uint64_t>(slot.values[0]) || basis > slot.values[1])
+			return false;
+	}
 	// Sales clear complete slots. Preserve every other ship/slot's exact lot
 	// identity and metadata; one changed slot advances preparation once.
 	auto expected = before.lots;

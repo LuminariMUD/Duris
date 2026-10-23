@@ -262,6 +262,23 @@ int main()
 	payload.book_after = book;
 	critical_command command;
 	assert(divine_trade_command_build(&command, operation(900), payload));
+	auto other_owner = payload;
+	other_owner.ship_owner_pid++;
+	critical_command invalid_owner;
+	assert(!divine_trade_command_build(&invalid_owner, operation(900), other_owner));
+	for (size_t field = 0; field < 7; ++field)
+	{
+		auto altered = payload;
+		int32_t *values[] = { &altered.crew_after.crew_index,
+				      &altered.crew_after.sail_skill_milli,
+				      &altered.crew_after.guns_skill_milli,
+				      &altered.crew_after.repair_skill_milli,
+				      &altered.crew_after.sail_chief,
+				      &altered.crew_after.guns_chief,
+				      &altered.crew_after.repair_chief };
+		++*values[field];
+		assert(!divine_trade_command_build(&invalid_owner, operation(900), altered));
+	}
 	auto missing_preimage = payload;
 	missing_preimage.slots_before.clear();
 	critical_command refused_preimage;
@@ -343,6 +360,24 @@ int main()
 					    &sale_payload.book_after, &sale_used));
 	sale_payload.qualifying_quantity = sale_used.qualifying_quantity;
 	assert(divine_trade_book_transition_valid(with_unsold, sale_payload));
+	critical_command checked_sale;
+	assert(divine_trade_command_build(&checked_sale, operation(903), sale_payload));
+	auto wrong_sale = sale_payload;
+	wrong_sale.slots_before[0].slot_type = SLOT_EMPTY;
+	assert(!divine_trade_command_build(&checked_sale, operation(903), wrong_sale));
+	wrong_sale = sale_payload;
+	wrong_sale.market_after[0].commodity = 7;
+	assert(!divine_trade_command_build(&checked_sale, operation(903), wrong_sale));
+	wrong_sale = sale_payload;
+	wrong_sale.market_after[0].goods = divine_trade_goods::contraband;
+	assert(!divine_trade_command_build(&checked_sale, operation(903), wrong_sale));
+	wrong_sale = sale_payload;
+	--wrong_sale.slots_before[0].values[0];
+	assert(!divine_trade_book_transition_valid(with_unsold, wrong_sale));
+	wrong_sale = sale_payload;
+	--wrong_sale.slots_before[0].values[1];
+	assert(!divine_trade_book_transition_valid(with_unsold, wrong_sale));
+
 	forged = sale_payload;
 	forged.book_after.lots.clear();
 	assert(!divine_trade_book_transition_valid(with_unsold, forged));
