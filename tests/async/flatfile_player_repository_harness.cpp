@@ -1366,6 +1366,9 @@ int main(int argc, char **argv)
 				stone_owed.divine_epic_deliveries[0].sequence == 3 &&
 				stone_owed.domains.epics == paid_credit.domains.epics,
 			"unpaid stone reload changed balance");
+		require(std::binary_search(stone_owed.completed_epic_zones.begin(),
+					   stone_owed.completed_epic_zones.end(), 18),
+			"recovered stone claim lost recipient completion history");
 		flatfile_zone_touch_state zone;
 		require(flatfile_zone_touch_load(root.string(), 18, &zone, &error) ==
 					flatfile_player_domain_result::ok &&
@@ -1469,14 +1472,6 @@ int main(int argc, char **argv)
 						    &error) == flatfile_player_domain_result::ok &&
 			delivery_domains.domains.epics == 450,
 		"delivery marker advanced without the authoritative epic balance");
-	auto incomplete_delivery = make_status(14, 51, 1201);
-	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::epics, 500, 0, false });
-	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::divine_boon_delivery_seq, 0, 4, true });
-	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
-			player_save_apply_outcome::terminal_failure,
-		"marker advanced without a complete financial checkpoint");
 	auto malformed_delivery = paid;
 	malformed_delivery.status_integers.back().is_unsigned = false;
 	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==

@@ -1757,6 +1757,20 @@ try
 		for (auto &player : players)
 		{
 			player.operations.push_back(receipt);
+			if (payload.zone_number && payload.zone_number <= INT32_MAX)
+			{
+				auto &zones = player.record.completed_epic_zones;
+				const auto number = static_cast<int32_t>(payload.zone_number);
+				auto position =
+					std::lower_bound(zones.begin(), zones.end(), number);
+				if (position == zones.end() || *position != number)
+				{
+					if (zones.size() >= PLAYER_LOAD_COMPLETED_ZONE_MAX)
+						return { critical_apply_outcome::terminal_failure,
+							 0, ENOSPC };
+					zones.insert(position, number);
+				}
+			}
 			write.filename = player_filename(player.record.pid);
 			if (!encode_player_authority(player, &write.bytes))
 				return { critical_apply_outcome::terminal_failure, 0, ENOSPC };

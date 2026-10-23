@@ -39,12 +39,12 @@ double nexus = 0, epic = 0;
 float race_modifier = 1;
 int effects = 0, hydrations = 0;
 int artifact_effects = 0;
+int last_artifact_type = -1;
 bool artifact_available = true;
 bool worker_pending = false, command_pending = false;
 critical_command submitted;
 std::mutex pipeline_mutex;
 uint32_t trade_player_pid = 0;
-player_pending_trade_snapshot trade_capture;
 player_save_pipeline_health health;
 struct captured
 {
@@ -122,7 +122,8 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
 bool artifact_guild_transaction_submit(P_char ch, const critical_operation_id &operation, int epics,
 				       int type)
 {
-	assert(ch == &player && epics > 0 && type == EPIC_PVP);
+	assert(ch == &player && epics > 0 && (type == EPIC_PVP || type == EPIC_ZONE));
+	last_artifact_type = type;
 	assert(!critical_operation_id_is_zero(operation));
 	assert(ch->only.pc->divine_boon_delivery_applying);
 	if (!artifact_available)
@@ -419,6 +420,18 @@ int main()
 	assert(pc.epics == 350 && pc.divine_boon_delivery_seq == 10 &&
 	       artifact_effects == artifacts_before_rejection + 1);
 	artifact_available = true;
+	auto zone_delivery = third;
+	zone_delivery.operation_id.bytes[0] = 43;
+	zone_delivery.zone = true;
+	zone_delivery.zone_number = 18;
+	zone_delivery.stone_level = 50;
+	zone_delivery.previous = 10;
+	zone_delivery.sequence = 11;
+	const int before_zone = artifact_effects;
+	divine_boon_delivery_completed(zone_delivery);
+	assert(artifact_effects == before_zone + 1 && last_artifact_type == EPIC_ZONE);
+	divine_boon_delivery_completed(zone_delivery);
+	assert(artifact_effects == before_zone + 1);
 	player.specials.position = STAT_SLEEPING;
 	state.slots[0].category = divine_boon_category::epic;
 	state.slots[0].zones[0] = 18;

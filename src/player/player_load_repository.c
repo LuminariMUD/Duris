@@ -1473,7 +1473,10 @@ bool load_gameplay_reads(MYSQL *connection, player_load_result *result)
 		"pid=" +
 		pid +
 		" AND type=0 UNION SELECT reason_id AS zone_number FROM epic_ledger WHERE pid=" +
-		pid + " AND reason_type=1) completed ORDER BY zone_number";
+		pid + " AND reason_type IN (" +
+		std::to_string(static_cast<unsigned>(epic_reason_type::zone_award)) + "," +
+		std::to_string(static_cast<unsigned>(epic_reason_type::divine_zone_award)) +
+		")) completed ORDER BY zone_number";
 	if (!load_rows(connection, completion_sql, result,
 		       [&](MYSQL_ROW row)
 		       {
