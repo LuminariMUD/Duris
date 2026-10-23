@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"f545ac6424f6db7b203c8467ff7f7d4995ece2f2ad1f13ebbc091a7f08d7938c";
+	"3784a52c16a75c750b43e54d870dc6afebe8b927a61618c40632bebc9f2beaae";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"0fb89abdc5bee80b7da76783d3d02167ec694bdedbe28402690ddfbc99f7ff5c";
+	"40af700e2ba089cec046f4e0e0857a5fb4a64eead42fbc13f4b06cd53ebcb4f0";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -113,7 +113,7 @@ constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
 	"6e580109ffc73d3e1e82493c1b6b9b4df5dad38fbb9a244de1c7b2e1f53b9508";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"905d1c505fc3d2f41e5eb26e6835e5f56a169a2b7825e09ef126ceef03a170d8";
+	"8bb28550f565350760daff6fb74228a5f1c43f956aad2f41ce10160877bbdbf0";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

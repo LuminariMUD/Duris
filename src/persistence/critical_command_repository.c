@@ -1115,7 +1115,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 		    (mutation_applied &&
 		     !insert_outbox(connection, command, bytes.data(), bytes.size())) ||
 		    !finish_inbox(connection, command, revision, result_code, bytes.data(),
-				  bytes.size()))
+				  bytes.size(), mutation_applied ? 1 : 0))
 		{
 			const auto error = database_error(connection);
 			rollback(connection);
