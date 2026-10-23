@@ -29,6 +29,7 @@
 #include <new>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace
 {
@@ -38,6 +39,7 @@ struct pending_reward
 	boon_reward_payload payload;
 	uint64_t submitted_at_msec;
 	bool published = false;
+	boon_reward_result committed_result = {};
 };
 
 std::unordered_map<std::string, pending_reward> pending;
@@ -118,17 +120,15 @@ std::string operation_key(const critical_operation_id &operation_id)
 			   operation_id.bytes.size());
 }
 
-bool acknowledge_flat_reward(const critical_operation_id &operation_id)
+bool needs_checkpoint(const boon_reward_result &result)
 {
-	if (persistence_mode_get() != PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return true;
-	const char *root = persistence_mode_flatfile_root();
-	std::string error;
-	if (root && flatfile_boon_acknowledge_reward(root, operation_id, &error) ==
-			    flatfile_boon_result::ok)
-		return true;
-	persistence_alert(AVATAR, "boon_reward", "player", "unknown", "acknowledge",
-			  "flat_write_failed", "error=%s", error.c_str());
+	for (size_t index = 0; index < result.entry_count; ++index)
+	{
+		const auto &entry = result.entries[index];
+		if ((entry.flags & BOON_RESULT_COMPLETED) && entry.type != BTYPE_STATS &&
+		    entry.type != BTYPE_POINT)
+			return true;
+	}
 	return false;
 }
 
@@ -159,10 +159,18 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 	}
 	if (publish)
 		boon_publish_transaction_result(character, data, result);
-	// Keep the published marker until acknowledgement succeeds so reconnect only
-	// retries the receipt, never the reward, after a failed write.
-	if (!acknowledge_flat_reward(operation_id))
-		return false;
+	// The old result has no saved recipient watermark. Keep its original flat
+	// receipt and this process's publication marker; a reconnect must not replay it.
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		if (needs_checkpoint(result))
+			return false;
+		const char *root = persistence_mode_flatfile_root();
+		std::string error;
+		if (!root || flatfile_boon_acknowledge_reward(root, operation_id, &error) !=
+				     flatfile_boon_result::ok)
+			return false;
+	}
 	pending.erase(key);
 	return true;
 }
@@ -254,6 +262,7 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 		{
 			if (result.entry_count)
 				boon_reward_definition_view_invalidate();
+			found->second.committed_result = result;
 			P_char character = find_player_by_pid(found->second.pid);
 			if (character || found->second.published)
 			{
@@ -265,8 +274,9 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 			{
 				health.max_results =
 					std::max<uint64_t>(health.max_results, result.entry_count);
-				++health.committed;
-				pending.erase(found);
+				// Keep this known, not-yet-published completion for a same-process
+				// reconnect. A process restart has no publication proof and
+				// must retain the receipt rather than blindly grant it again.
 			}
 		}
 		else
@@ -279,9 +289,30 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 }
 
 void boon_reward_transaction_player_ready(P_char character)
+try
 {
-	if (!character || IS_NPC(character) || GET_PID(character) <= 0 ||
-	    persistence_mode_get() != PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	if (!character || IS_NPC(character) || GET_PID(character) <= 0)
+		return;
+	// Scan known committed admissions independently of the durable receipt order.
+	// Retaining the first receipt must not hide another safe same-process award.
+	std::vector<std::string> known;
+	for (const auto &[key, entry] : pending)
+		if (entry.pid == static_cast<uint32_t>(GET_PID(character)) &&
+		    entry.committed_result.pid && !entry.published)
+			known.push_back(key);
+	for (const auto &key : known)
+	{
+		auto found = pending.find(key);
+		if (found == pending.end() || found->second.published)
+			continue;
+		const auto result = found->second.committed_result;
+		const auto data = found->second.payload.data;
+		critical_operation_id operation;
+		std::copy_n(key.begin(), operation.bytes.size(), operation.bytes.begin());
+		publish_reward(character, operation, data, result);
+	}
+	health.pending = pending.size();
+	if (persistence_mode_get() != PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		return;
 	const char *root = persistence_mode_flatfile_root();
 	if (!root)
@@ -301,6 +332,21 @@ void boon_reward_transaction_player_ready(P_char character)
 					  error.c_str());
 			break;
 		}
+
+		if (needs_checkpoint(reward.result) &&
+		    pending.find(operation_key(reward.operation_id)) == pending.end())
+		{
+			// Old receipts cannot distinguish an unpaid reward from a reward
+			// published just before a crash. Preserve it for reconciliation; no
+			// earned callback with a known live admission is suppressed.
+			send_to_char(
+				"A legacy boon receipt is retained for staff reconciliation.\r\n",
+				character);
+			persistence_alert(AVATAR, "boon_reward", "player", "unknown",
+					  "load_pending", "legacy_uncheckpointed", "pid=%u",
+					  reward.result.pid);
+			break;
+		}
 		if (!publish_reward(character, reward.operation_id, reward.event_data,
 				    reward.result))
 			break;
@@ -308,16 +354,26 @@ void boon_reward_transaction_player_ready(P_char character)
 	health.pending = pending.size();
 }
 
+catch (const std::bad_alloc &)
+{
+	persistence_alert(AVATAR, "boon_reward", "player", "unknown", "load_pending",
+			  "memory_unavailable", "retained receipt remains durable");
+}
+
 critical_outbox_delivery_result
 boon_reward_transaction_outbox_delivery(const critical_outbox_record &record, void *)
 {
 	if (record.destination != 8 || record.event_type != 1 || record.payload_version != 1)
 		return critical_outbox_delivery_result::terminal_failure;
+
 	boon_reward_result result = {};
-	return boon_reward_command_decode_result(record.payload.data(), record.payload.size(),
-						 &result) ?
-		       critical_outbox_delivery_result::delivered :
-		       critical_outbox_delivery_result::terminal_failure;
+	if (!boon_reward_command_decode_result(record.payload.data(), record.payload.size(),
+					       &result))
+		return critical_outbox_delivery_result::terminal_failure;
+	// This callback runs on the outbox worker. Health/status exposes retained
+	// records; never call game-thread descriptor/wizlog notification here.
+	return needs_checkpoint(result) ? critical_outbox_delivery_result::terminal_failure :
+					  critical_outbox_delivery_result::delivered;
 }
 
 boon_reward_health boon_reward_transaction_health_copy(void)

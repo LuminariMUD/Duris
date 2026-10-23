@@ -25318,8 +25318,14 @@ normal rotation. A submitted update is effective only after commit; status
 reports pending confirmation. Repeated identical requests cannot duplicate
 an opportunity. Mutations and force requests are recorded in the staff log.
 
-Boot closes new legacy work, retains already accepted reward receipts for
-completion/login recovery, then commits empty Divine state before rotation.
+Boot closes new legacy work, finishes known accepted live callbacks and retains
+old receipts without recipient checkpoint proof for staff reconciliation.
+Flat receipts stay pending; SQL outbox records stay in its existing dead-letter
+queue (world persistence reports them). An old receipt alone cannot tell whether
+a crash occurred just before or just after payment. Never replay or acknowledge
+these ambiguous records blindly. Inspect the original receipt, recipient save
+and matching reward ledger before reconciling it. No balances are converted or
+deleted. Divine activation starts with an empty state before normal rotation.
 Do not change back to old code while accepted rewards are unresolved.
 See also: BOON, DIVINE BOONS
 

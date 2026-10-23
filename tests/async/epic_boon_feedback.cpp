@@ -325,15 +325,11 @@ static void flat_publication_case(const std::string &root, int ordering, bool fa
 	online = true;
 	if (ordering != 0)
 		boon_reward_transaction_player_ready(&actor);
-	assert(pc.epics == 104 && artifact_awards == 1 && dirty == 1);
-	if (fail_ack)
-	{
-		assert(boon_reward_transaction_health_copy().pending == 1);
+
+	const bool known = ordering != 2;
+	assert(pc.epics == (known ? 104 : 100) && artifact_awards == known && dirty == known);
+	if (fail_ack && known)
 		std::filesystem::rename(flat_root + "/unavailable", flat_root + "/domains");
-		flatfile_boon_pending_reward reward;
-		assert(flatfile_boon_find_pending_reward(flat_root, 42, &reward, &error) ==
-		       flatfile_boon_result::ok);
-	}
 	const auto messages = feedback;
 	for (int repeat = 0; repeat < 2; ++repeat)
 	{
@@ -341,15 +337,169 @@ static void flat_publication_case(const std::string &root, int ordering, bool fa
 		completion.outcome = critical_apply_outcome::already_applied;
 		boon_reward_transaction_handle_completions(&completion, 1);
 	}
-	assert(pc.epics == 104 && artifact_awards == 1 && dirty == 1 && feedback == messages);
-	assert(feedback.find("completed boon # 7") != std::string::npos);
-	assert(feedback.find("completed boon # 7", feedback.find("completed boon # 7") + 1) ==
-	       std::string::npos);
-	assert(boon_reward_transaction_health_copy().pending == 0);
+	assert(pc.epics == (known ? 104 : 100) && artifact_awards == known && dirty == known);
+	if (known)
+	{
+		assert(feedback == messages &&
+		       feedback.find("completed boon # 7") != std::string::npos);
+		assert(boon_reward_transaction_health_copy().pending == 1);
+	}
+	else
+	{
+		assert(feedback.find("retained for staff reconciliation") != std::string::npos);
+		assert(feedback.find("completed boon # 7") == std::string::npos);
+	}
+	// No old receipt is acknowledged without a saved recipient watermark.
 	flatfile_boon_pending_reward reward;
 	assert(flatfile_boon_find_pending_reward(flat_root, 42, &reward, &error) ==
-	       flatfile_boon_result::not_found);
+	       flatfile_boon_result::ok);
+	critical_outbox_record outbox = {};
+	outbox.destination = 8;
+	outbox.event_type = 1;
+	outbox.payload_version = 1;
+	outbox.payload.assign(applied.result_payload.begin(),
+			      applied.result_payload.begin() + applied.result_size);
+	assert(boon_reward_transaction_outbox_delivery(outbox, nullptr) ==
+	       critical_outbox_delivery_result::terminal_failure);
+
+	if (known)
+	{
+		boon_reward_transaction_reset_for_tests();
+		boon_reward_transaction_player_ready(&actor);
+		assert(pc.epics == 104 && artifact_awards == 1 && dirty == 1);
+		assert(feedback.find("retained for staff reconciliation") != std::string::npos);
+		assert(flatfile_boon_find_pending_reward(flat_root, 42, &reward, &error) ==
+		       flatfile_boon_result::ok);
+	}
+
 	flat_root.clear();
+}
+
+static void multiple_offline_rewards(const std::string &root)
+{
+	reset_actor(20, 100);
+	flat_root = root;
+	std::filesystem::create_directories(root + "/domains");
+	std::filesystem::permissions(root, std::filesystem::perms::owner_all);
+	std::filesystem::permissions(root + "/domains", std::filesystem::perms::owner_all);
+	flatfile_boon_definition definition;
+	definition.id = 7;
+	definition.type = BTYPE_EPIC;
+	definition.option = BOPT_LEVEL;
+	definition.criteria = 20;
+	definition.bonus = 4;
+	definition.active = true;
+	definition.repeat = true;
+	definition.author = "test";
+	std::string error;
+	assert(flatfile_boon_establish(root, { definition }, &error) == flatfile_boon_result::ok);
+	online = false;
+	for (int index = 0; index < 2; ++index)
+	{
+		assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+		const auto command = commands.back();
+		const auto applied = flatfile_boon_repository_apply(root, command);
+		assert(applied.outcome == critical_apply_outcome::applied);
+		critical_completion completion{};
+		completion.operation_id = command.operation_id;
+		completion.outcome = applied.outcome;
+		completion.result_size = applied.result_size;
+		completion.result_payload = applied.result_payload;
+		boon_reward_transaction_handle_completions(&completion, 1);
+	}
+	admissions_open = false;
+	online = true;
+	boon_reward_transaction_player_ready(&actor);
+	assert(pc.epics == 108 && artifact_awards == 2);
+	boon_reward_transaction_player_ready(&actor);
+	assert(pc.epics == 108 && artifact_awards == 2);
+	flat_root.clear();
+}
+static void sql_offline_rewards()
+{
+	flat_root.clear();
+	for (int type : { BTYPE_EPIC, BTYPE_EXP })
+	{
+		reset_actor(20, 100);
+		online = false;
+		std::vector<critical_completion> completions;
+		for (int index = 0; index < 2; ++index)
+		{
+			assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+			boon_reward_result result{};
+			result.pid = 42;
+			result.entry_count = 1;
+			result.entries[0].boon_id = 7;
+			result.entries[0].type = type;
+			result.entries[0].flags = BOON_RESULT_COMPLETED;
+			result.entries[0].bonus = 4;
+			std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+			assert(boon_reward_command_encode_result(result, &bytes));
+			critical_completion completion{};
+			completion.operation_id = commands.back().operation_id;
+			completion.outcome = critical_apply_outcome::applied;
+			completion.result_size = bytes.size();
+			std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+			boon_reward_transaction_handle_completions(&completion, 1);
+			completions.push_back(completion);
+		}
+		assert(pc.epics == 100 && experience == 0 &&
+		       boon_reward_transaction_health_copy().pending == 2);
+		admissions_open = false;
+		online = true;
+		boon_reward_transaction_player_ready(&actor);
+		assert(pc.epics == (type == BTYPE_EPIC ? 108 : 100));
+		assert(experience == (type == BTYPE_EXP ? 8 : 0));
+		assert(boon_reward_transaction_health_copy().pending == 0);
+		boon_reward_transaction_player_ready(&actor);
+		boon_reward_transaction_handle_completions(completions.data(), completions.size());
+		assert(pc.epics == (type == BTYPE_EPIC ? 108 : 100));
+		assert(experience == (type == BTYPE_EXP ? 8 : 0));
+	}
+}
+
+static void checkpoint_free_outbox()
+{
+	for (int type : { BTYPE_POINT, BTYPE_STATS, BTYPE_EXP })
+	{
+		boon_reward_result result{};
+		result.pid = 42;
+		result.entry_count = 1;
+		result.entries[0].boon_id = 7;
+		result.entries[0].flags = BOON_RESULT_COMPLETED;
+		result.entries[0].type = type;
+		std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+		assert(boon_reward_command_encode_result(result, &bytes));
+		critical_outbox_record record{};
+		record.destination = 8;
+		record.event_type = 1;
+		record.payload_version = 1;
+		record.payload.assign(bytes.begin(), bytes.end());
+		assert(boon_reward_transaction_outbox_delivery(record, nullptr) ==
+		       (type == BTYPE_EXP ? critical_outbox_delivery_result::terminal_failure :
+					    critical_outbox_delivery_result::delivered));
+	}
+	for (unsigned count : { 0U, 1U })
+	{
+		boon_reward_result result{};
+		result.pid = 42;
+		result.entry_count = count;
+		if (count)
+		{
+			result.entries[0].boon_id = 7;
+			result.entries[0].type = BTYPE_EXP;
+			result.entries[0].flags = BOON_RESULT_PROGRESS;
+		}
+		std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+		assert(boon_reward_command_encode_result(result, &bytes));
+		critical_outbox_record record{};
+		record.destination = 8;
+		record.event_type = 1;
+		record.payload_version = 1;
+		record.payload.assign(bytes.begin(), bytes.end());
+		assert(boon_reward_transaction_outbox_delivery(record, nullptr) ==
+		       critical_outbox_delivery_result::delivered);
+	}
 }
 
 static void nested_publication_case()
@@ -424,6 +574,9 @@ int main(int argc, char **argv)
 						      std::to_string(ordering) +
 						      (fail_ack ? "-fail" : "-ok"),
 					      ordering, fail_ack);
+	multiple_offline_rewards(std::string(argv[1]) + "/multiple");
+	sql_offline_rewards();
+	checkpoint_free_outbox();
 	nested_publication_case();
 	legacy_shop_admission_case();
 	puts("PASS boon rewards: all-level awards, admission closure, accepted shop/reward delivery, reconnect, retries and nested submissions");
