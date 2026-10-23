@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <cmath>
 
 static room_data rooms[3];
 P_room world = rooms;
@@ -22,11 +23,32 @@ zone_data *zone_table = zones;
 const int top_of_world = 3;
 P_desc descriptor_list;
 ContactData contacts[MAXSHIPS];
-const ShipTypeData ship_type_data[MAXSHIPCLASS] = {};
+const ShipTypeData ship_type_data[MAXSHIPCLASS] = { []
+						    {
+							    ShipTypeData t{};
+							    t._hull = 330;
+							    t._mxweight = 165;
+							    t._mxsail = 130;
+							    t._mxcargo = 70;
+							    return t;
+						    }() };
 const ShipCrewData ship_crew_data[MAXCREWS] = {};
 const ShipChiefData ship_chief_data[MAXCHIEFS] = {};
-const WeaponData weapon_data[MAXWEAPON] = {};
-const EquipmentData equipment_data[MAXEQUIPMENT] = {};
+const WeaponData weapon_data[MAXWEAPON] = { []
+					    {
+						    WeaponData t{};
+						    t.name = "Long cannon";
+						    t.weight = 4;
+						    t.ammo = 12;
+						    return t;
+					    }() };
+const EquipmentData equipment_data[MAXEQUIPMENT] = { []
+						     {
+							     EquipmentData t{};
+							     t.name = "Test equipment";
+							     t.weight = 3;
+							     return t;
+						     }() };
 static ShipData vessel, enemy, second_vessel;
 static bool second_ship_enabled;
 static std::map<P_desc, std::vector<std::string>> wire;
@@ -145,10 +167,6 @@ int getcontacts(P_ship ship, bool)
 	++contact_scans;
 	return ship == &second_vessel ? 0 : contact_count;
 }
-string strip_ansi(const char *text)
-{
-	return text ? text : "";
-}
 int ShipData::get_maxspeed(P_char ch) const
 {
 	return ch ? ch->points.mana : 20;
@@ -180,6 +198,10 @@ const char *get_ship_status(P_ship ship)
 const char *cargo_type_name(int)
 {
 	return "silk";
+}
+const char *contra_type_name(int)
+{
+	return "forbidden relics";
 }
 
 // Isolate world/mechanics dependencies while exercising production serializers.
@@ -270,23 +292,65 @@ int main()
 	b.points.mana = 23;
 	descriptor_list = &ad;
 	vessel.flags = LOADED;
+	vessel.runtime_ref = { 1, 9007199254740993ULL };
 	vessel.bridge = 1;
 	vessel.location = 2;
 	vessel.name = const_cast<char *>("Bronze Voyager");
 	vessel.id = const_cast<char *>("AA");
 	vessel.heading = 90;
 	vessel.speed = 12;
+	vessel.setheading = 359.9;
+	vessel.setspeed = 8;
+	vessel.crew.stamina = -400;
+	vessel.crew.max_stamina = 800;
 	vessel.armor[0] = 80;
 	vessel.maxarmor[0] = 100;
 	vessel.internal[0] = 40;
 	vessel.maxinternal[0] = 50;
 	vessel.slot[0].type = SLOT_CARGO;
 	vessel.slot[0].val0 = 3;
+	vessel.slot[0].val1 = 156000;
+	vessel.slot[1].type = SLOT_CONTRABAND;
+	vessel.slot[1].val0 = 2;
+	vessel.slot[1].val1 = 56000;
+	for (int i = 2; i < MAXSLOTS; ++i)
+	{
+		vessel.slot[i].type = i % 2 == 0 ? SLOT_WEAPON : SLOT_EQUIPMENT;
+		vessel.slot[i].index = 0;
+		vessel.slot[i].position = i % 4;
+		vessel.slot[i].val1 = 5;
+		vessel.slot[i].timer = 6;
+	}
+	// Exact production display boundaries, independent of timer readiness.
+	for (const auto &[damage, expected] :
+	     std::vector<std::pair<int, const char *>>{ { 0, "6" },
+							{ 1, "Damaged" },
+							{ 20, "Damaged" },
+							{ 21, "Badly Damaged" },
+							{ 99, "Badly Damaged" },
+							{ 100, "Badly Damaged" },
+							{ 101, "Destroyed" } })
+	{
+		vessel.slot[2].val2 = damage;
+		char *data = json_build_ship_info(&vessel, &a);
+		cJSON *root = cJSON_Parse(data);
+		cJSON *weapon = cJSON_GetArrayItem(cJSON_GetObjectItem(root, "weapons"), 0);
+		assert(std::string(cJSON_GetStringValue(
+			       cJSON_GetObjectItem(weapon, "statusText"))) == expected);
+		assert(cJSON_IsTrue(cJSON_GetObjectItem(weapon, "destroyed")) == (damage >= 100));
+		assert(cJSON_IsFalse(cJSON_GetObjectItem(weapon, "ready")));
+		cJSON_Delete(root);
+		free(data);
+	}
+	vessel.slot[2].val2 = 100;
+	vessel.slot[2].timer = 0;
+	vessel.slot[3].val2 = 21;
 	rooms[2].zone = 0;
 	zones[0].flags = ZONE_MAP;
 	zones[0].mapx = 100;
 	zones[0].mapy = 100;
 	enemy.name = const_cast<char *>("Enemy vessel");
+	enemy.flags = LOADED;
 	enemy.id = const_cast<char *>("BB");
 	enemy.race = EVILSHIP;
 	enemy.heading = 50;
@@ -296,12 +360,47 @@ int main()
 	contacts[0].ship = &enemy;
 	contacts[0].range = 5;
 	contacts[0].bearing = 70;
-	std::strcpy(contacts[0].arc, "port");
+	std::strcpy(contacts[0].arc, "SF");
+	contacts[0].x = 54;
+	contacts[0].y = 48;
 	flush();
 	assert(wire[&ad].size() == 2);
 	emit(&ad, "Ship.Info");
 	emit(&ad, "Ship.Contacts");
 	auto json = payload(&ad, "Ship.Contacts");
+	assert(json.find("\"shipKey\":\"1:9007199254740993\"") != std::string::npos);
+	auto info = payload(&ad, "Ship.Info");
+	assert(info.find("\"hullWeight\":330000") != std::string::npos);
+	assert(info.find("\"current\":136,\"max\":165") != std::string::npos);
+	assert(info.find("\"setHeading\":359,\"setSpeed\":8") != std::string::npos);
+	assert(info.find("\"displayCrewStamina\":-20,\"crewStaminaBand\":\"fatigued\"") !=
+	       std::string::npos);
+	assert(info.find("forbidden relics") != std::string::npos);
+	assert(info.find("\"target\":{\"id\":\"BB\",\"name\":\"Enemy vessel\"}") !=
+	       std::string::npos);
+	for (const auto &[stamina, band] :
+	     std::vector<std::pair<float, const char *>>{ { 1, "rested" },
+							  { 0, "fatigued" },
+							  { -0.5, "fatigued" },
+							  { -799, "fatigued" },
+							  { -800, "exhausted" },
+							  { -801, "exhausted" } })
+	{
+		vessel.crew.stamina = stamina;
+		char *data = json_build_ship_info(&vessel, &a);
+		assert(std::string(data).find(std::string("\"crewStaminaBand\":\"") + band +
+					      "\"") != std::string::npos);
+		free(data);
+	}
+	vessel.crew.stamina = -400;
+	// Weight comes from the real slot/levistone helpers, including flight.
+	ShipSlot saved = vessel.slot[3];
+	vessel.slot[3].index = E_LEVISTONE;
+	assert(vessel.slot[3].get_weight(&vessel) == 9);
+	vessel.flags |= FLYING;
+	assert(vessel.slot[3].get_weight(&vessel) == 0);
+	vessel.flags &= ~FLYING;
+	vessel.slot[3] = saved;
 	assert(json.find("\"worldX\"") == std::string::npos);
 	assert(json.find("\"you_targeting\":true") != std::string::npos);
 	assert(json.find("\"heading\":90") != std::string::npos);
@@ -340,6 +439,7 @@ int main()
 	flush();
 	assert(payload(&bd, "Ship.Contacts").find("\"worldX\"") == std::string::npos);
 	second_vessel.flags = LOADED;
+	second_vessel.runtime_ref = { 2, 2 };
 	second_vessel.bridge = 0;
 	second_vessel.location = 2;
 	second_ship_enabled = true;
