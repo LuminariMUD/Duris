@@ -507,6 +507,10 @@ static cJSON *json_build_ship_contacts(struct ShipData *ship)
 		return NULL;
 
 	/* ship's own heading and speed */
+	cJSON_AddStringToObject(root, "shipKey",
+				(std::to_string(ship->runtime_ref.slot) + ":" +
+				 std::to_string(ship->runtime_ref.generation))
+					.c_str());
 	cJSON_AddNumberToObject(root, "heading", (int)ship->heading);
 	cJSON_AddNumberToObject(root, "speed", ship->speed);
 

@@ -1286,6 +1286,10 @@ char *json_build_ship_info(struct ShipData *ship, struct char_data *ch)
 	root = cJSON_CreateObject();
 
 	/* basic info */
+	cJSON_AddStringToObject(root, "shipKey",
+				(std::to_string(ship->runtime_ref.slot) + ":" +
+				 std::to_string(ship->runtime_ref.generation))
+					.c_str());
 	cJSON_AddStringToObject(root, "name", ship->name ? ship->name : "Unknown");
 	cJSON_AddStringToObject(root, "id", ship->id ? ship->id : "??");
 	cJSON_AddStringToObject(root, "captain", ship->ownername ? ship->ownername : "");
@@ -1298,6 +1302,29 @@ char *json_build_ship_info(struct ShipData *ship, struct char_data *ch)
 	cJSON_AddNumberToObject(root, "contactRange", 35 + ship->crew.get_contact_range_mod());
 	cJSON_AddNumberToObject(root, "sail", ship->mainsail);
 	cJSON_AddNumberToObject(root, "maxSail", SHIP_MAX_SAIL(ship));
+
+	/* Bridge display facts are additive; retain the original raw fields. */
+	cJSON *bridge = cJSON_AddObjectToObject(root, "bridge");
+	cJSON_AddNumberToObject(bridge, "hullWeight", (double)SHIP_HULL_WEIGHT(ship) * 1000);
+	cJSON *load = cJSON_AddObjectToObject(bridge, "load");
+	cJSON_AddNumberToObject(load, "current", SHIP_SLOT_WEIGHT(ship));
+	cJSON_AddNumberToObject(load, "max", SHIP_MAX_WEIGHT(ship));
+	cJSON_AddNumberToObject(bridge, "setHeading", (int)ship->setheading);
+	cJSON_AddNumberToObject(bridge, "setSpeed", ship->setspeed);
+	cJSON_AddNumberToObject(bridge, "displayCrewStamina", ship->crew.get_display_stamina());
+	const char *stamina_color = ship->crew.get_stamina_prefix();
+	cJSON_AddStringToObject(bridge, "crewStaminaBand",
+				strcmp(stamina_color, "&+G") == 0 ? "rested" :
+				strcmp(stamina_color, "&+Y") == 0 ? "fatigued" :
+								    "exhausted");
+	if (ship->target && SHIP_LOADED(ship->target))
+	{
+		cJSON *target = cJSON_AddObjectToObject(bridge, "target");
+		cJSON_AddStringToObject(target, "id", ship->target->id);
+		cJSON_AddStringToObject(target, "name", ship->target->name);
+	}
+	else
+		cJSON_AddNullToObject(bridge, "target");
 
 	/* crew */
 	cJSON_AddNumberToObject(root, "crewStamina", (int)ship->crew.stamina);
@@ -1388,8 +1415,15 @@ char *json_build_ship_info(struct ShipData *ship, struct char_data *ch)
 			/* damage: val2 = damage level (0 = ok, higher = worse) */
 			cJSON_AddNumberToObject(w, "damage", ship->slot[i].val2);
 
-			/* ready: timer == 0 means ready to fire */
+			/* Timer readiness is independent of ammunition and damage. */
 			cJSON_AddBoolToObject(w, "ready", ship->slot[i].timer == 0 ? 1 : 0);
+			cJSON_AddNumberToObject(w, "timer", ship->slot[i].timer);
+			cJSON_AddBoolToObject(w, "destroyed", SHIP_WEAPON_DESTROYED(ship, i));
+			cJSON_AddStringToObject(w, "positionLabel",
+						ship->slot[i].get_position_str());
+			std::string status = strip_ansi(ship->slot[i].get_status_str());
+			status.erase(status.find_last_not_of(" \t\r\n") + 1);
+			cJSON_AddStringToObject(w, "statusText", status.c_str());
 
 			cJSON_AddItemToArray(weapons, w);
 		}
@@ -1411,6 +1445,11 @@ char *json_build_ship_info(struct ShipData *ship, struct char_data *ch)
 							equipment_data[e_idx].name :
 							"Unknown");
 			cJSON_AddBoolToObject(e, "ready", ship->slot[i].timer == 0 ? 1 : 0);
+			cJSON_AddNumberToObject(e, "timer", ship->slot[i].timer);
+			cJSON_AddNumberToObject(e, "damage", ship->slot[i].val2);
+			std::string status = strip_ansi(ship->slot[i].get_status_str());
+			status.erase(status.find_last_not_of(" \t\r\n") + 1);
+			cJSON_AddStringToObject(e, "statusText", status.c_str());
 
 			cJSON_AddItemToArray(equipment, e);
 		}
@@ -1428,7 +1467,7 @@ char *json_build_ship_info(struct ShipData *ship, struct char_data *ch)
 		{
 			cJSON *c = cJSON_CreateObject();
 			cJSON_AddNumberToObject(c, "slot", i);
-			cJSON_AddStringToObject(c, "name", cargo_type_name(ship->slot[i].index));
+			cJSON_AddStringToObject(c, "name", ship->slot[i].get_description());
 			cJSON_AddNumberToObject(c, "crates", ship->slot[i].val0);
 			cJSON_AddNumberToObject(c, "invoicePrice", ship->slot[i].val1);
 			cJSON_AddBoolToObject(c, "contraband",
