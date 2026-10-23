@@ -6,16 +6,22 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-divine-reset/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-divine-reset`, [PR #322](https://github.com/LuminariMUD/Duris/pull/322).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, which is on that branch.
-Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322, plus independent
-production-build repair #316. The real MariaDB/Redis-off five-minute reset through
-recreated staff login and fresh mortal gameplay/save/reconnect/another boot passed;
-reward retry accounting, kingdom ownership and active Divine retirement are also
-qualified. Full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
-balances and recreate only exact level-62 Overlords. Continue from the linked current
-plan; the baseline planning detail below is retained for provenance.
+blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-cargo-replay/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-cargo-replay`, [PR #325](https://github.com/LuminariMUD/Duris/pull/325).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, which is on that branch at
+`d92559fdb` (clean and pushed).
+Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325,
+plus independent production-build repair #316. The real MariaDB/Redis-off five-minute
+reset through recreated staff login and fresh mortal gameplay/save/reconnect/another
+boot passed. Reward retry accounting, kingdom ownership, active Divine retirement,
+collector stock retirement/restart isolation, artifact retirement/new-body creation,
+and prepared cargo/receipt replay isolation are qualified. All three maintained
+build profiles passed the source-changing chunks; cargo proof reused that evidence.
+Full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
+balances and recreate only exact level-62 Overlords. Next: retained auction/siege
+payload consumers, general custody/baselines, SQL recovery/restore, Redis-on/external
+cutover, flat-file command rejection and full service qualification. Continue from
+the linked current plan; baseline planning detail below is retained for provenance.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
