@@ -1612,8 +1612,7 @@ void delete_character(P_char ch, bool delete_locker,
 				    done(character_delete_result::refused);
 				    return;
 			    }
-			    // The ship's stored rows and Redis key follow its deleted row.
-			    sql_delete_ship(deleted.name.c_str());
+			    // Runtime cleanup also forgets unplaced rows and their proof/snapshot.
 			    done(forget_deleted_character(deleted));
 		    }))
 		done(character_delete_result::refused);

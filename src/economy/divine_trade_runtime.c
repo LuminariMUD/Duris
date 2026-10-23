@@ -16,8 +16,17 @@
 #include "persistence/persistence_mode.h"
 #ifndef __NO_MYSQL__
 #include "sql/sql.h"
+#include "sql/sql_player.h"
+#include "persistence/critical_command_repository.h"
 #endif
+#include "flatfile/flatfile_ship_repository.h"
+#include <cstdlib>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include "player/player_save_worker.h"
 #include <map>
+#include <set>
 #include <memory>
 #include <openssl/sha.h>
 extern P_char character_list;
@@ -43,6 +52,11 @@ flatfile_ship_slot_record capture_slot(uint8_t index, const ShipSlot &slot)
 
 uint64_t restored_boon = 0;
 std::map<uint64_t, divine_trade_book> books;
+using ship_account_index = std::map<uint32_t, std::set<uint64_t>>;
+using book_dirty_index = std::map<uint64_t, uint32_t>;
+ship_account_index ship_accounts;
+book_dirty_index dirty_owner;
+std::set<uint32_t> retired_ships;
 const divine_trade_book empty_book;
 struct trade_operation
 {
@@ -52,10 +66,19 @@ struct trade_operation
 	int nexus_bonus = 0;
 	bool trader_completed = false;
 	bool warship = false, seadog = false, diplomat = false;
+	ship_account_index indexed_ships;
+	book_dirty_index indexed_dirty;
 	std::string audit;
 	std::string receipt;
 };
 std::unique_ptr<trade_operation> pending;
+void index_book(const divine_trade_book &book, ship_account_index &ships, book_dirty_index &dirty)
+{
+	dirty.try_emplace(book.account, 0);
+	for (const auto &lot : book.lots)
+		ships[lot.ship_id].insert(book.account);
+}
+
 P_char player(uint32_t pid)
 {
 	for (P_char ch = character_list; ch; ch = ch->next)
@@ -88,18 +111,122 @@ try
 #endif
 		}
 	}
+
+	retired_ships.clear();
+	if (!loaded.empty())
+	{
+		std::set<uint32_t> durable_ids;
+		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		{
+			std::vector<flatfile_ship_record> ships;
+			std::string error;
+			if (flatfile_ship_list(persistence_mode_flatfile_root(), &ships, &error) !=
+			    flatfile_ship_result::ok)
+				return false;
+			for (const auto &ship : ships)
+				durable_ids.insert(ship.ship_id);
+			uint32_t reserved = 0;
+			for (const auto &book : loaded)
+			{
+				reserved = std::max(reserved, book.first_ship_id);
+				for (const auto &lot : book.lots)
+					reserved = std::max(reserved, lot.ship_id);
+			}
+			const auto held = flatfile_ship_reserve_ids(
+				persistence_mode_flatfile_root(), reserved, &error);
+			if (held != flatfile_ship_result::ok &&
+			    held != flatfile_ship_result::unchanged)
+				return false;
+		}
+		else
+		{
+#ifdef __NO_MYSQL__
+			return false;
+#else
+			if (mysql_query(DB, "SELECT id FROM ships"))
+				return false;
+			MYSQL_RES *rows = mysql_store_result(DB);
+			if (!rows)
+				return false;
+			while (MYSQL_ROW row = mysql_fetch_row(rows))
+				if (row[0])
+					durable_ids.insert(std::strtoul(row[0], nullptr, 10));
+			mysql_free_result(rows);
+			uint32_t reserved = 0;
+			for (const auto &book : loaded)
+			{
+				reserved = std::max(reserved, book.first_ship_id);
+				for (const auto &lot : book.lots)
+					reserved = std::max(reserved, lot.ship_id);
+			}
+			sql_reserve_ship_ids(reserved);
+#endif
+		}
+		for (const auto &book : loaded)
+			for (const auto &lot : book.lots)
+				if (!durable_ids.count(lot.ship_id))
+					retired_ships.insert(lot.ship_id);
+	}
 	std::map<uint64_t, divine_trade_book> restored;
 	for (auto &book : loaded)
 		if (!restored.emplace(book.account, std::move(book)).second)
 			return false;
+	ship_accounts.clear();
+	dirty_owner.clear();
+	for (const auto &[account, book] : restored)
+	{
+		static_cast<void>(account);
+		index_book(book, ship_accounts, dirty_owner);
+	}
 	books = std::move(restored);
 	restored_boon = boon_id;
+	divine_trade_runtime_retire_pulse();
 	return true;
 }
 catch (const std::bad_alloc &)
 {
 	return false;
 }
+void divine_trade_runtime_ship_deleted(uint32_t ship_id)
+{
+	if (ship_id)
+		retired_ships.insert(ship_id);
+}
+void divine_trade_runtime_retire_pulse()
+{
+	if (pending)
+		return;
+	for (auto &[account, book] : books)
+	{
+		const auto dirty = dirty_owner.find(account);
+		const bool unowned = dirty != dirty_owner.end() && dirty->second == UINT32_MAX;
+		if (!book.revision || (retired_ships.empty() && !unowned))
+			continue;
+		const size_t old = book.lots.size();
+		if (book.revision == UINT64_MAX)
+			continue;
+		std::erase_if(book.lots,
+			      [&](const auto &lot) { return retired_ships.count(lot.ship_id); });
+		if (old == book.lots.size() && !unowned &&
+		    (dirty == dirty_owner.end() || !retired_ships.count(dirty->second)))
+			continue;
+		if (old != book.lots.size())
+			++book.revision;
+		uint32_t owner = UINT32_MAX;
+		for (const auto &lot : book.lots)
+			if (P_ship ship = find_ship_by_database_id(lot.ship_id))
+			{
+				owner = lot.ship_id;
+				queue_ship_save(ship, "deleted ship cargo proof");
+				break;
+			}
+		dirty_owner[account] = owner;
+	}
+	for (uint32_t id : retired_ships)
+		ship_accounts.erase(id);
+	retired_ships.clear();
+}
+
 const divine_trade_book &divine_trade_runtime_book(uint64_t account, uint64_t boon_id)
 {
 	if (restored_boon != boon_id)
@@ -108,15 +235,39 @@ const divine_trade_book &divine_trade_runtime_book(uint64_t account, uint64_t bo
 		if (pending)
 			return empty_book;
 		books.clear();
+		ship_accounts.clear();
+		dirty_owner.clear();
 		restored_boon = boon_id;
 	}
 	const auto found = books.find(account);
 	return found == books.end() ? empty_book : found->second;
 }
+bool divine_trade_runtime_save_busy(const ShipData *ship)
+{
+	if (!ship)
+		return pending != nullptr;
+	if (!IS_NPC_SHIP(ship) && IS_SET(ship->flags, TO_DELETE))
+		return true;
+	const auto id = static_cast<uint32_t>(ship->db_id);
+	const auto participants = ship_accounts.find(id);
+	if (participants != ship_accounts.end())
+		for (uint64_t account : participants->second)
+		{
+			const auto dirty = dirty_owner.find(account);
+			if (dirty != dirty_owner.end() && dirty->second && dirty->second != id)
+				return true;
+			if (pending && pending->after.book_after.account == account)
+				return true;
+		}
+	return pending && pending->after.ship_id == id;
+}
+
 bool divine_trade_runtime_busy(const ShipData *ship)
 {
-	return pending && (!ship || (pending->after.ship_id == static_cast<uint32_t>(ship->db_id)));
+	return (ship && !IS_NPC_SHIP(ship) && IS_SET(ship->flags, CUSTOMS_PENDING)) ||
+	       divine_trade_runtime_save_busy(ship);
 }
+
 bool divine_trade_runtime_submit(P_char ch, P_ship ship, critical_operation_id operation,
 				 divine_trade_payload payload)
 try
@@ -128,6 +279,21 @@ try
 	    payload.wallet_revision != ch->only.pc->wallet_revision ||
 	    payload.generation != cargo_trade_generation())
 		return false;
+	const auto dirty = dirty_owner.find(payload.book_after.account);
+	if (dirty != dirty_owner.end() && dirty->second &&
+	    dirty->second != static_cast<uint32_t>(ship->db_id))
+		return false;
+	if (divine_trade_runtime_busy(ship) ||
+	    ((ship->save_pending || (dirty != dirty_owner.end() && dirty->second)) &&
+	     !write_ship(ship)))
+		return false;
+
+	if (auto linked = ship_accounts.find(static_cast<uint32_t>(ship->db_id));
+	    linked != ship_accounts.end())
+		for (uint64_t account : linked->second)
+			if (auto dirty = dirty_owner.find(account);
+			    dirty != dirty_owner.end() && dirty->second)
+				return false;
 	currency_vector before, expected;
 	before.amount = { GET_COPPER(ch), GET_SILVER(ch), GET_GOLD(ch), GET_PLATINUM(ch) };
 	if (!currency_wallet_after_value(before, payload.payment, &expected) ||
@@ -197,6 +363,9 @@ try
 	}
 	// Allocate the publication destination before handing the immutable command off.
 	books.try_emplace(next->after.book_after.account);
+	next->indexed_ships = ship_accounts;
+	next->indexed_dirty = dirty_owner;
+	index_book(next->after.book_after, next->indexed_ships, next->indexed_dirty);
 	if (!currency_transaction_reserve_trade(ch, next->after.payment))
 		return false;
 	if (!player_save_pipeline_reserve_trade(static_cast<uint32_t>(GET_PID(ch)), tag))
@@ -273,6 +442,8 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 				      p.ship_id);
 				continue;
 			}
+			ship_accounts.swap(pending->indexed_ships);
+			dirty_owner.swap(pending->indexed_dirty);
 			books[p.book_after.account] = std::move(p.book_after);
 			if (P_ship ship = find_ship_by_runtime_ref(pending->ship);
 			    ship && static_cast<uint32_t>(ship->db_id) == p.ship_id)
@@ -414,6 +585,32 @@ try
 		send_to_char("The merchants cannot settle this trade right now.\r\n", ch);
 		return true;
 	}
+
+	if (auto dirty = dirty_owner.find(account.id);
+	    dirty != dirty_owner.end() && dirty->second == UINT32_MAX)
+	{
+		ship_accounts[ship->db_id].insert(account.id);
+		dirty->second = ship->db_id;
+		queue_ship_save(ship, "retired cargo proof");
+		send_to_char("Your crew is recording retired cargo. Please try again shortly.\r\n",
+			     ch);
+		return true;
+	}
+	for (const auto &[owner, book] : books)
+		if (owner != account.id &&
+		    std::any_of(book.lots.begin(), book.lots.end(),
+				[&](const auto &lot) {
+					return lot.ship_id == static_cast<uint32_t>(ship->db_id) &&
+					       lot.slot == slot;
+				}))
+		{
+			if (divine_trade_runtime_invalidate(ship, slot))
+				queue_ship_save(ship, "transferred cargo proof");
+			send_to_char(
+				"Your crew is recording transferred cargo. Please try again shortly.\r\n",
+				ch);
+			return true;
+		}
 	const auto &before = divine_trade_runtime_book(account.id, boon->id);
 	divine_trade_payload payload;
 	payload.pid = payload.ship_owner_pid = GET_PID(ch);
@@ -500,6 +697,56 @@ try
 	if (!currency_account_key(get_account_name_safe(ch), 0, &account))
 		return false;
 	const auto &before = divine_trade_runtime_book(account.id, boon->id);
+	// Old/mixed manifests cannot each claim the same physical crates. Record
+	// their invalidation before pricing an otherwise qualifying financial sale.
+	if (auto linked = ship_accounts.find(ship->db_id);
+	    linked != ship_accounts.end() && linked->second.size() > 1)
+	{
+		bool recording = false;
+		for (int index = 0; index < MAXSLOTS; ++index)
+		{
+			if ((selected >= 0 && selected != index) ||
+			    ship->slot[index].type != (goods == divine_trade_goods::cargo ?
+							       SLOT_CARGO :
+							       SLOT_CONTRABAND))
+				continue;
+			unsigned owners = 0;
+			for (uint64_t owner : linked->second)
+				if (auto found = books.find(owner);
+				    found != books.end() &&
+				    std::any_of(found->second.lots.begin(),
+						found->second.lots.end(),
+						[&](const auto &lot) {
+							return lot.ship_id ==
+								       static_cast<uint32_t>(
+									       ship->db_id) &&
+							       lot.slot == index;
+						}))
+					++owners;
+			if (owners > 1)
+			{
+				if (!divine_trade_runtime_invalidate(ship, index))
+				{
+					if (recording)
+						queue_ship_save(ship, "mixed cargo proof");
+					send_to_char(
+						"Your crew is recording mixed cargo. Please try again shortly.\r\n",
+						ch);
+					return true;
+				}
+				recording = true;
+			}
+		}
+		if (recording)
+		{
+			queue_ship_save(ship, "mixed cargo proof");
+			send_to_char(
+				"Your crew is recording mixed cargo. Please try again shortly.\r\n",
+				ch);
+			return true;
+		}
+	}
+
 	const bool tracked =
 		std::any_of(before.lots.begin(), before.lots.end(),
 			    [&](const auto &lot)
@@ -671,4 +918,159 @@ try
 catch (const std::bad_alloc &)
 {
 	return true;
+}
+
+std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t ship_id)
+{
+	std::vector<divine_trade_book> captured;
+	const auto found = ship_accounts.find(ship_id);
+	if (found != ship_accounts.end())
+		for (uint64_t account : found->second)
+		{
+			const auto book = books.find(account);
+			const auto dirty = dirty_owner.find(account);
+			if (book != books.end() && book->second.revision &&
+			    (dirty == dirty_owner.end() || !dirty->second ||
+			     dirty->second == ship_id))
+				captured.push_back(book->second);
+		}
+	return captured;
+}
+uint64_t divine_trade_runtime_ship_revision(uint32_t ship_id)
+{
+	uint64_t revision = 0;
+	const auto found = ship_accounts.find(ship_id);
+	if (found != ship_accounts.end())
+		for (uint64_t account : found->second)
+		{
+			const auto book = books.find(account);
+			if (book != books.end())
+				revision ^= book->second.revision + account +
+					    0x9e3779b97f4a7c15ULL + (revision << 6) +
+					    (revision >> 2);
+		}
+	return revision;
+}
+bool divine_trade_runtime_invalidate(P_ship ship, int slot)
+try
+{
+	if (!ship || IS_NPC_SHIP(ship) || ship->db_id <= 0)
+		return true;
+	if (divine_trade_runtime_busy(ship))
+		return false;
+	auto affected = divine_trade_runtime_ship_books(ship->db_id);
+	for (auto &book : affected)
+	{
+		divine_trade_book after;
+		if (!divine_trade_prepare_invalidation(book, ship->db_id, slot, &after))
+			return false;
+		book = std::move(after);
+	}
+	for (auto &book : affected)
+	{
+		if (books[book.account].revision != book.revision)
+			dirty_owner[book.account] = ship->db_id;
+		books[book.account] = std::move(book);
+	}
+	return true;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
+}
+bool divine_trade_runtime_loss(P_ship ship, int slot, int quantity)
+try
+{
+	if (!ship || IS_NPC_SHIP(ship) || ship->db_id <= 0)
+		return true;
+	if (divine_trade_runtime_busy(ship) || slot < 0 || slot >= MAXSLOTS)
+		return false;
+	auto &live = ship->slot[slot];
+	if (live.type != SLOT_CARGO && live.type != SLOT_CONTRABAND)
+		return true;
+	if (quantity <= 0 || live.val0 <= 0 || quantity > live.val0)
+		return false;
+	int64_t removed_basis = static_cast<int64_t>(std::max(0, live.val1)) * quantity / live.val0;
+	auto affected = divine_trade_runtime_ship_books(ship->db_id);
+	size_t owners = 0;
+	for (const auto &book : affected)
+		if (std::any_of(book.lots.begin(), book.lots.end(),
+				[&](const auto &lot) {
+					return lot.ship_id == static_cast<uint32_t>(ship->db_id) &&
+					       lot.slot == slot;
+				}))
+			++owners;
+	for (auto &book : affected)
+	{
+		const auto tracked = std::find_if(
+			book.lots.begin(), book.lots.end(),
+			[&](const auto &lot) {
+				return lot.ship_id == static_cast<uint32_t>(ship->db_id) &&
+				       lot.slot == slot;
+			});
+		if (tracked == book.lots.end())
+			continue;
+		divine_trade_book after;
+		const auto goods = live.type == SLOT_CARGO ? divine_trade_goods::cargo :
+							     divine_trade_goods::contraband;
+		if (owners > 1 || live.val1 < 0 || tracked->goods != goods ||
+		    tracked->source_port != live.index)
+		{
+			if (!divine_trade_prepare_invalidation(book, ship->db_id, slot, &after))
+				return false;
+		}
+		else
+		{
+			divine_trade_removal loss;
+			loss.ship_id = ship->db_id;
+			loss.slot = slot;
+			loss.goods = goods;
+			loss.source_port = live.index;
+			loss.at = time(nullptr);
+			loss.slot_quantity_before = live.val0;
+			loss.slot_basis_before = live.val1;
+			loss.quantity = quantity;
+			divine_trade_consumption consumed;
+			if (!divine_trade_prepare_removal(book, {}, loss, &after, &consumed))
+			{
+				if (!divine_trade_prepare_invalidation(book, ship->db_id, slot,
+								       &after))
+					return false;
+			}
+			else
+				removed_basis = consumed.removed_basis;
+		}
+		book = std::move(after);
+	}
+	for (auto &book : affected)
+	{
+		if (books[book.account].revision != book.revision)
+			dirty_owner[book.account] = ship->db_id;
+		books[book.account] = std::move(book);
+	}
+	live.val1 = std::max(0, live.val1) - static_cast<int32_t>(removed_basis);
+	return true;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
+}
+
+void divine_trade_runtime_restore_books(std::vector<divine_trade_book> before, uint32_t dirty_ship)
+{
+	for (auto &book : before)
+	{
+		dirty_owner[book.account] = dirty_ship;
+		books[book.account] = std::move(book);
+	}
+}
+
+void divine_trade_runtime_ship_saved(uint32_t ship_id)
+{
+	for (auto &[account, owner] : dirty_owner)
+	{
+		static_cast<void>(account);
+		if (owner == ship_id)
+			owner = 0;
+	}
 }

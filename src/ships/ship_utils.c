@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /*****************************************************
  * ship_utils.c
  *
@@ -1991,10 +1992,16 @@ void set_chief(P_ship ship, int chief_index)
  */
 void clear_cargo(P_ship ship)
 {
+	if (divine_trade_runtime_busy(ship))
+		return;
 	for (int i = 0; i < MAXSLOTS; i++)
 	{
 		if (ship->slot[i].type == SLOT_CARGO || ship->slot[i].type == SLOT_CONTRABAND)
+		{
+			if (!divine_trade_runtime_loss(ship, i, ship->slot[i].val0))
+				return;
 			ship->slot[i].clear();
+		}
 	}
 }
 
@@ -2493,6 +2500,13 @@ int jettison_crates(P_ship ship, int crates, int index, int type)
  */
 int jettison_cargo(P_char ch, P_ship ship, int left)
 {
+	if (divine_trade_runtime_busy(ship))
+	{
+		send_to_char("Your crew is settling cargo. Please try again shortly.\r\n", ch);
+		return TRUE;
+	}
+	if (divine_trade_runtime_busy(ship))
+		return TRUE;
 	int done = 0;
 
 	for (int i = 0; i < MAXSLOTS; i++)
@@ -2501,6 +2515,8 @@ int jettison_cargo(P_char ch, P_ship ship, int left)
 		{
 			if (ship->slot[i].val0 > left)
 			{
+				if (!divine_trade_runtime_loss(ship, i, left))
+					break;
 				if (ch)
 					send_to_char_f(ch,
 						       "%d units of %s have been jettisoned!\r\n",
@@ -2512,6 +2528,8 @@ int jettison_cargo(P_char ch, P_ship ship, int left)
 			}
 			else
 			{
+				if (!divine_trade_runtime_loss(ship, i, ship->slot[i].val0))
+					break;
 				if (ch)
 					send_to_char_f(ch,
 						       "%d units of %s have been jettisoned!\r\n",
@@ -2548,6 +2566,13 @@ int jettison_cargo(P_char ch, P_ship ship, int left)
  */
 int jettison_contraband(P_char ch, P_ship ship, int left)
 {
+	if (divine_trade_runtime_busy(ship))
+	{
+		send_to_char("Your crew is settling cargo. Please try again shortly.\r\n", ch);
+		return TRUE;
+	}
+	if (divine_trade_runtime_busy(ship))
+		return TRUE;
 	int done = 0;
 
 	for (int i = 0; i < MAXSLOTS; i++)
@@ -2556,6 +2581,8 @@ int jettison_contraband(P_char ch, P_ship ship, int left)
 		{
 			if (ship->slot[i].val0 > left)
 			{
+				if (!divine_trade_runtime_loss(ship, i, left))
+					break;
 				if (ch)
 					send_to_char_f(ch,
 						       "%d units of %s have been jettisoned!\r\n",
@@ -2567,6 +2594,8 @@ int jettison_contraband(P_char ch, P_ship ship, int left)
 			}
 			else
 			{
+				if (!divine_trade_runtime_loss(ship, i, ship->slot[i].val0))
+					break;
 				if (ch)
 					send_to_char_f(ch,
 						       "%d units of %s have been jettisoned!\r\n",

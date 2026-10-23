@@ -71,7 +71,15 @@ FUNCTIONS = "\n\n".join(
     ]
 )
 
-HARNESS = r'''
+HARNESS = r'''#include "economy/divine_trade_runtime.h"
+bool divine_trade_runtime_busy(const ShipData *) {return false;}
+std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t) {return {};}
+uint64_t divine_trade_runtime_ship_revision(uint32_t) {return 0;}
+void divine_trade_runtime_ship_saved(uint32_t) {}
+bool divine_trade_runtime_invalidate(ShipData *,int) {return true;}
+void divine_trade_runtime_restore_books(std::vector<divine_trade_book>,uint32_t) {}
+bool divine_trade_book_encode(const divine_trade_book &,std::vector<uint8_t> *) {return false;}
+
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "cmd/interp.h"

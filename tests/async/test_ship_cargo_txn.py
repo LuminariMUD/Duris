@@ -99,6 +99,7 @@ void update_ship_status(P_ship) {}
 void queue_ship_save(P_ship value,const char *) {value->save_pending=true;}
 enum class divine_trade_goods {cargo,contraband};
 bool divine_trade_runtime_sale(P_char,P_ship,int,int,divine_trade_goods) {return false;}
+bool divine_trade_runtime_loss(P_ship,int,int) {return true;}
 // REAL_FUNCTIONS
 int main() {
  MYSQL db;

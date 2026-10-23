@@ -832,6 +832,9 @@ bool NPCShipAI::check_boarding_conditions()
  */
 void NPCShipAI::board_target()
 {
+	// Leave the encounter pending until its cargo proof can be retired.
+	if (type == NPC_AI_PIRATE && divine_trade_runtime_busy(ship->target))
+		return;
 	// send_message_to_debug("=============BOARDING TARGET=============\r\n");
 	did_board = ship->target;
 
@@ -906,6 +909,7 @@ int add_crate(P_ship ship, int index, int type);
  */
 void NPCShipAI::steal_target_cargo()
 {
+	bool changed = false;
 	int total_load = SHIP_CARGO_LOAD(ship->target);
 	if (!total_load)
 		return;
@@ -937,6 +941,10 @@ void NPCShipAI::steal_target_cargo()
 
 			int lost_crates = ship->target->slot[i].val0 * lost_pt;
 
+			if (!divine_trade_runtime_loss(ship->target, i,
+						       stolen_crates + lost_crates))
+				continue;
+			changed = true;
 			for (int j = 0; j < stolen_crates; j++)
 				add_crate(ship, ship->target->slot[i].index,
 					  ship->target->slot[i].type == SLOT_CARGO ? 1 : 2);
@@ -947,6 +955,11 @@ void NPCShipAI::steal_target_cargo()
 		}
 	}
 	update_ship_status(ship);
+	if (changed)
+	{
+		update_ship_status(ship->target);
+		queue_ship_save(ship->target, "NPC cargo theft");
+	}
 }
 
 /*

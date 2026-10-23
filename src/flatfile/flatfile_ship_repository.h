@@ -89,11 +89,15 @@ using flatfile_ship_owner_pid_resolver = bool (*)(const char *owner_name, uint32
 flatfile_ship_result flatfile_ship_establish(const std::string &root,
 					     const std::vector<flatfile_ship_record> &ships,
 					     std::string *error);
+// Boot upgrade: keep legacy-catalog IDs referenced by paid manifests reserved.
+flatfile_ship_result flatfile_ship_reserve_ids(const std::string &root, uint32_t maximum,
+					       std::string *error);
 flatfile_ship_result flatfile_ship_list(const std::string &root,
 					std::vector<flatfile_ship_record> *ships,
 					std::string *error);
-flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship,
-					  std::string *error);
+flatfile_ship_result
+flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship, std::string *error,
+		     const std::vector<flatfile_authority_operation> *after_images = nullptr);
 // Caller owns the authority lock and commits this catalogue after-image with
 // the prepared player, market, account allowance and command receipt.
 flatfile_ship_result flatfile_ship_prepare_trade(
@@ -103,8 +107,10 @@ flatfile_ship_result flatfile_ship_prepare_trade(
 	const std::vector<flatfile_ship_slot_record> &slots, const flatfile_ship_crew_record &crew,
 	flatfile_authority_operation *operation, std::string *error);
 
-flatfile_ship_result flatfile_ship_remove(const std::string &root, uint32_t ship_id,
-					  const std::string &expected_owner, std::string *error);
+flatfile_ship_result
+flatfile_ship_remove(const std::string &root, uint32_t ship_id, const std::string &expected_owner,
+		     std::string *error,
+		     const std::vector<flatfile_authority_operation> *after_images = nullptr);
 flatfile_ship_result flatfile_ship_import_legacy(const std::string &root,
 						 const std::string &legacy_directory,
 						 flatfile_ship_owner_pid_resolver resolve_owner,

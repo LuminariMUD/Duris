@@ -14,11 +14,16 @@
 #include "economy/divine_boon_activity.h"
 #include "economy/divine_boon_delivery.h"
 #include "sql/sql_async.h"
+#include "economy/divine_trade_runtime.h"
 
 #include <cstdlib>
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+HARNESS_STUB bool divine_trade_runtime_save_busy(const ShipData *)
+{
+	return false;
+}
 
 // Legacy-only load/transaction fixtures carry no prepared Divine receipts.
 // Dedicated delivery tests link the real publication and recovery implementation.
