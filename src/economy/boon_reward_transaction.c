@@ -29,6 +29,7 @@
 #include <new>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -43,6 +44,10 @@ struct pending_reward
 };
 
 std::unordered_map<std::string, pending_reward> pending;
+// Flat legacy receipts have no saved player watermark. Retain only their
+// process-local publication identities, bounded by the durable catalog's
+// 32768-operation limit, without consuming an in-flight admission slot.
+std::unordered_set<std::string> published_flat;
 boon_reward_health health = {};
 sql_rows definitions;
 std::atomic<uint64_t> definition_generation{ 0 };
@@ -136,6 +141,10 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 		    const boon_reward_result &result)
 {
 	const std::string key = operation_key(operation_id);
+	const bool retain = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY &&
+			    needs_checkpoint(result);
+	if (retain && published_flat.contains(key))
+		return false;
 	bool publish;
 	try
 	{
@@ -144,6 +153,8 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 		publish = !entry->second.published;
 		if (publish)
 		{
+			if (retain)
+				published_flat.insert(key);
 			// Publication may submit more boons and rehash pending. Consume the award
 			// first and use its key, rather than this iterator, after calling out.
 			entry->second.published = true;
@@ -163,8 +174,11 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 	// receipt and this process's publication marker; a reconnect must not replay it.
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 	{
-		if (needs_checkpoint(result))
+		if (retain)
+		{
+			pending.erase(key);
 			return false;
+		}
 		const char *root = persistence_mode_flatfile_root();
 		std::string error;
 		if (!root || flatfile_boon_acknowledge_reward(root, operation_id, &error) !=
@@ -351,6 +365,8 @@ try
 			break;
 		}
 
+		if (published_flat.contains(operation_key(reward.operation_id)))
+			break;
 		if (needs_checkpoint(reward.result) &&
 		    pending.find(operation_key(reward.operation_id)) == pending.end())
 		{
@@ -414,6 +430,7 @@ boon_reward_health boon_reward_transaction_health_copy(void)
 void boon_reward_transaction_reset_for_tests(void)
 {
 	pending.clear();
+	published_flat.clear();
 	health = {};
 	boon_reward_definition_view_invalidate();
 	definitions_available = false;

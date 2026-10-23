@@ -584,6 +584,39 @@ static void checkpoint_free_outbox()
 	}
 }
 
+static void flat_published_admission_capacity()
+{
+	reset_actor(20, 100);
+	flat_root = "retained-flat-publication-fixture";
+	boon_reward_result result{};
+	result.pid = 42;
+	result.entry_count = 1;
+	result.entries[0].boon_id = 7;
+	result.entries[0].type = BTYPE_EPIC;
+	result.entries[0].flags = BOON_RESULT_COMPLETED;
+	result.entries[0].bonus = 4;
+	std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+	assert(boon_reward_command_encode_result(result, &bytes));
+	for (size_t i = 0; i < 1100; ++i)
+	{
+		assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+		critical_completion completion{};
+		completion.operation_id = commands.back().operation_id;
+		completion.outcome = critical_apply_outcome::applied;
+		completion.result_size = bytes.size();
+		std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+		boon_reward_transaction_handle_completions(&completion, 1);
+		boon_reward_transaction_handle_completions(&completion, 1);
+	}
+	assert(pc.epics == 4500 && boon_reward_transaction_health_copy().pending == 0);
+	// Real outstanding work still obeys the existing admission ceiling.
+	for (size_t i = 0; i < BOON_REWARD_PENDING_MAX; ++i)
+		assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	assert(!boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	assert(boon_reward_transaction_health_copy().pending == BOON_REWARD_PENDING_MAX);
+	flat_root.clear();
+}
+
 static void nested_publication_case()
 {
 	reset_actor(20, 100);
@@ -660,6 +693,7 @@ int main(int argc, char **argv)
 	sql_offline_rewards();
 	checkpoint_free_offline(std::string(argv[1]) + "/checkpoint-free");
 	checkpoint_free_outbox();
+	flat_published_admission_capacity();
 	nested_publication_case();
 	legacy_shop_admission_case();
 	puts("PASS boon rewards: all-level awards, admission closure, accepted shop/reward delivery, reconnect, retries and nested submissions");
