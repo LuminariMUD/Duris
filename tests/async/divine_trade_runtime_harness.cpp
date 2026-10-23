@@ -1,3 +1,4 @@
+#include <cstdarg>
 
 #include "core/utils.h"
 #include "economy/currency_transaction.h"
@@ -19,6 +20,9 @@ P_room world = rooms;
 // "completion" when a completion runs.
 static std::vector<std::string> order;
 static int dirty = 0;
+static std::string trade_messages;
+static double nexus_multiplier = 1;
+static float last_sail_raise = 0, last_repair_raise = 0;
 
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...)
 {
@@ -203,10 +207,12 @@ float ShipCrew::get_maxcargo_mod() const
 void ShipCrew::sail_skill_raise(float amount)
 {
 	sail_skill += amount;
+	last_sail_raise = amount;
 }
 void ShipCrew::rpar_skill_raise(float amount)
 {
 	rpar_skill += amount;
+	last_repair_raise = amount;
 }
 void update_crew(P_ship) {}
 void update_ship_status(P_ship, P_ship) {}
@@ -228,10 +234,21 @@ int contra_buy_price(int, int)
 }
 double check_nexus_bonus_precise(P_char, double amount, int, bool)
 {
-	return amount;
+	return amount * nexus_multiplier;
 }
-void send_to_char(const char *, P_char) {}
-void send_to_char_f(P_char, const char *, ...) {}
+void send_to_char(const char *text, P_char)
+{
+	trade_messages += text;
+}
+void send_to_char_f(P_char, const char *format, ...)
+{
+	char text[2048];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(text, sizeof(text), format, args);
+	va_end(args);
+	trade_messages += text;
+}
 char *coin_stringv(int, int)
 {
 	static char coins[] = "coins";
@@ -324,20 +341,36 @@ int main()
 	assert(GET_MONEY(&alice.ch) == 920 && alice.pc.wallet_revision == 2 &&
 	       market_generation == 1);
 	assert(wallet(&alice.ch) == (std::array<int64_t, 4>{ 0, 2, 9, 0 }));
+	affected_type progress{};
+	progress.type = PLAYER_TRADE_CARGO_AFFECT;
+	progress.modifier = 9995;
+	affect_to_char(&alice.ch, &progress);
+	trade_messages.clear();
+	nexus_multiplier = 1.1;
 	assert(divine_trade_runtime_sale(&alice.ch, &ship, -1, 4, divine_trade_goods::cargo));
+	assert(trade_messages.find("Trader") == std::string::npos &&
+	       trade_messages.find("Enlil") == std::string::npos);
+	assert(std::abs(last_sail_raise - .00198f) < 1e-9 &&
+	       std::abs(last_repair_raise - .00066f) < 1e-9);
 	auto sale = prepared();
-	assert(sale.payment == 1230 && sale.qualifying_quantity == 1 && sale.has_cargo_effect);
+	assert(sale.payment == 1350 && sale.qualifying_quantity == 1 && sale.has_cargo_effect);
 	assert(ship.slot[0].val0 == 10 && GET_MONEY(&alice.ch) == 920);
 	complete();
-	assert(ship.slot[0].type == SLOT_EMPTY && GET_MONEY(&alice.ch) == 2150 &&
+	assert(ship.slot[0].type == SLOT_EMPTY && GET_MONEY(&alice.ch) == 2270 &&
 	       market_generation == 2);
 	assert(get_spell_from_char(&alice.ch, PLAYER_TRADE_CARGO_AFFECT, nullptr, 0)->modifier ==
-	       10);
+	       10005);
+	assert(trade_messages.find("Trader") != std::string::npos &&
+	       trade_messages.find("Enlil") != std::string::npos);
+	const auto paid_messages = trade_messages;
+	complete();
+	assert(trade_messages == paid_messages);
+	nexus_multiplier = 1;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
 	complete(false);
 	assert(!divine_trade_runtime_busy() && ship.slot[0].type == SLOT_EMPTY &&
-	       GET_MONEY(&alice.ch) == 2150);
+	       GET_MONEY(&alice.ch) == 2270);
 	admission = critical_submit_result::unavailable;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));

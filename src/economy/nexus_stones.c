@@ -1705,6 +1705,16 @@ void reload_nexus_stone(P_char ch, int stone_id)
 #endif
 	if (!loaded)
 		send_to_char("Nexus reload failed; check the server log.\r\n", ch);
+#ifdef __NO_MYSQL__
+	else if (NexusStoneInfo *cached = nexus_row(stone_id))
+		copy_nexus_info(record, cached);
+	else
+	{
+		NexusStoneInfo restored;
+		copy_nexus_info(record, &restored);
+		nexus_rows.push_back(std::move(restored));
+	}
+#endif
 }
 
 bool nexus_stone_expired(int stone_id)

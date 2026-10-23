@@ -31,6 +31,8 @@ struct trade_operation
 	critical_operation_id id;
 	ShipRuntimeRef ship;
 	divine_trade_payload after;
+	int nexus_bonus = 0;
+	bool trader_completed = false;
 };
 std::unique_ptr<trade_operation> pending;
 P_char player(uint32_t pid)
@@ -245,6 +247,14 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 					player_save_pipeline_mark(GET_PID(ch),
 								  PLAYER_COMPONENT_AFFECTS);
 				}
+				if (pending->trader_completed)
+					send_to_char(
+						"&+rCon&+Rgra&+Wtula&+Rtio&+rns! You have completed the &+RTrader&+r achievement!&n\n",
+						ch);
+				if (pending->nexus_bonus > 0)
+					send_to_char_f(
+						ch, "&+yEnlil&n grants you an additional %s&n.\r\n",
+						coin_stringv(pending->nexus_bonus));
 				player_save_pipeline_request(
 					ch,
 					PLAYER_COMPONENT_STATUS |
@@ -513,11 +523,12 @@ try
 		return true;
 	}
 	ShipCrew crew = ship->crew;
-	if (payload.payment > 0)
+	const auto normal_payment = static_cast<int64_t>(std::floor(normal));
+	if (normal_payment > 0)
 	{
-		crew.sail_skill_raise((static_cast<float>(payload.payment) / 1000000.0) *
+		crew.sail_skill_raise((static_cast<float>(normal_payment) / 1000000.0) *
 				      (goods == divine_trade_goods::cargo ? 1.5 : 1.0));
-		crew.rpar_skill_raise((static_cast<float>(payload.payment) / 1000000.0) /
+		crew.rpar_skill_raise((static_cast<float>(normal_payment) / 1000000.0) /
 				      (goods == divine_trade_goods::cargo ? 2.0 : 3.0));
 	}
 	payload.crew_after = { crew.index,
@@ -527,6 +538,7 @@ try
 			       crew.sail_chief,
 			       crew.guns_chief,
 			       crew.rpar_chief };
+	bool trader_completed = false;
 	if (goods == divine_trade_goods::cargo)
 	{
 		const auto *effect = get_spell_from_char(ch, PLAYER_TRADE_CARGO_AFFECT);
@@ -540,12 +552,19 @@ try
 		payload.cargo_effect.type = PLAYER_TRADE_CARGO_AFFECT;
 		payload.cargo_effect.duration = -1;
 		payload.cargo_effect.modifier = old + static_cast<int32_t>(cargo_count);
+		trader_completed = old < 10000 && payload.cargo_effect.modifier >= 10000;
 		payload.cargo_effect.flags = AFFTYPE_NOSHOW | AFFTYPE_PERM | AFFTYPE_NODISPEL;
 	}
 	critical_operation_id operation;
 	if (!critical_operation_id_generate(&operation) ||
 	    !divine_trade_runtime_submit(ch, ship, operation, std::move(payload)))
 		send_to_char("The merchants cannot settle this trade right now.\r\n", ch);
+	else
+	{
+		pending->trader_completed = trader_completed;
+		pending->nexus_bonus =
+			static_cast<int>(std::max(0.0, std::floor(normal) - std::floor(ordinary)));
+	}
 	return true;
 }
 catch (const std::bad_alloc &)

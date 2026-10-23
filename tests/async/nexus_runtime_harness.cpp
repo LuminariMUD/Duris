@@ -404,8 +404,14 @@ int main(int argc, char **argv)
 	}
 	for (int align : { -3, -2, -1, 0, 1, 2, 3 })
 	{
-		assert(update_nexus_stone_align(1, align));
+		// Change durable state independently of the in-memory reward cache.
+		std::string error;
+		const auto updated = flatfile_nexus_update_state(state_root, 1, align, 0, &error);
+		assert(updated == flatfile_nexus_result::ok ||
+		       updated == flatfile_nexus_result::unchanged);
 		reload_nexus_stone(&staff, 1);
+		NexusStoneInfo cached;
+		assert(nexus_stone_info(1, &cached) && cached.align == align);
 		assert(stone_count(1) == 1 && STONE_ALIGN(get_nexus_stone(1)) == align);
 		const int expected = align == -3 ? 66 : align == 3 ? 65 : align == 0 ? 74 : 0;
 		assert(guardian_count(1) == (expected ? 1 : 0));
