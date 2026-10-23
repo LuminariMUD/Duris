@@ -134,12 +134,57 @@ int main()
 		purchase.wallet_after.amount = { 1, 3, 3, 15 };
 		purchase.slots_after.push_back(
 			{ 3, slot_type, 2, SLOT_HOLD, 0, { 10, 1000, -1, -1, -1 } });
+		purchase.slots_before.push_back(
+			{ 3, slot_type, 2, SLOT_HOLD, 0, { 9, 900, -1, -1, -1 } });
 		purchase.market_after.push_back({ 2, 2, goods, 1.03f, 100 });
 		require(divine_trade_prepare_purchase({}, boon, buy, &purchase.book_after),
 			"prepare purchase provenance");
 		critical_command command;
 		require(divine_trade_command_build(&command, buy_id, purchase),
 			"prepare purchase command");
+		for (int changed_field = 0; changed_field < 2; ++changed_field)
+		{
+			const std::string change =
+				changed_field ?
+					"UPDATE ship_crew SET sail_chief=1 WHERE ship_id=" +
+						std::to_string(ship_id) :
+					"UPDATE ship_slots SET val0=8,val1=800 WHERE slot_index=3 AND ship_id=" +
+						std::to_string(ship_id);
+			execute(db, change);
+			critical_operation_id stale_id;
+			require(critical_operation_id_generate(&stale_id),
+				"stale ship operation id");
+			auto stale = purchase;
+			stale.book_after.lots.back().purchase = stale_id;
+			critical_command stale_command;
+			require(divine_trade_command_build(&stale_command, stale_id, stale),
+				"stale ship capture");
+			require(critical_command_repository_apply(db, stale_command).error_code ==
+						ESTALE &&
+					scalar(db,
+					       "SELECT wallet_revision FROM player_data WHERE pid=" +
+						       std::to_string(pid)) == "7",
+				"delayed trade changed wallet despite a stale ship");
+			if (changed_field)
+			{
+				require(scalar(db,
+					       "SELECT sail_chief FROM ship_crew WHERE ship_id=" +
+						       std::to_string(ship_id)) == "1",
+					"stale trade reverted chief");
+				execute(db, "UPDATE ship_crew SET sail_chief=0 WHERE ship_id=" +
+						    std::to_string(ship_id));
+			}
+			else
+			{
+				require(scalar(db,
+					       "SELECT val0 FROM ship_slots WHERE slot_index=3 AND ship_id=" +
+						       std::to_string(ship_id)) == "8",
+					"stale trade resurrected cargo");
+				execute(db,
+					"UPDATE ship_slots SET val0=9,val1=900 WHERE slot_index=3 AND ship_id=" +
+						std::to_string(ship_id));
+			}
+		}
 		const auto fail = [&]
 		{
 			const auto body =
@@ -239,6 +284,8 @@ int main()
 		sale.wallet_after.amount = zero_sale ? std::array<int64_t, 4>{ 1, 3, 3, 15 } :
 						       std::array<int64_t, 4>{ 1, 6, 5, 16 };
 		sale.slots_after.push_back({ 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } });
+		sale.slots_before = purchase.slots_after;
+		sale.crew_before = purchase.crew_after;
 		sale.market_after.push_back(
 			{ 4, 2, goods, zero_sale ? 0.0f : .95f, zero_sale ? 0 : 120 });
 		sale.crew_after.sail_skill_milli = zero_sale ? 0 : 1500;
@@ -250,6 +297,26 @@ int main()
 		sale.qualifying_quantity = consumed.qualifying_quantity;
 		require(divine_trade_command_build(&command, sell_id, sale),
 			"prepare sale command");
+		// Cargo loaded after preparation must survive a delayed full-slot sale.
+		execute(db,
+			"UPDATE ship_slots SET val0=11,val1=1100 WHERE slot_index=3 AND ship_id=" +
+				std::to_string(ship_id));
+		critical_operation_id delayed_sale;
+		require(critical_operation_id_generate(&delayed_sale), "delayed sale identity");
+		critical_command delayed;
+		require(divine_trade_command_build(&delayed, delayed_sale, sale),
+			"delayed sale command");
+		require(critical_command_repository_apply(db, delayed).error_code == ESTALE &&
+				scalar(db,
+				       "SELECT val0 FROM ship_slots WHERE slot_index=3 AND ship_id=" +
+					       std::to_string(ship_id)) == "11" &&
+				scalar(db, "SELECT wallet_revision FROM player_data WHERE pid=" +
+						   std::to_string(pid)) == "8",
+			"delayed sale consumed newly loaded cargo or changed money");
+		execute(db,
+			"UPDATE ship_slots SET val0=10,val1=1000 WHERE slot_index=3 AND ship_id=" +
+				std::to_string(ship_id));
+
 		fail();
 		require(wallet() == "1:3:3:15:8" && quantity() == std::to_string(slot_type) + ":10",
 			"rejected sale left partial financial effects");

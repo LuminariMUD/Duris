@@ -820,12 +820,51 @@ static void divine_trade_settlement(const fs::path &base)
 		purchase.wallet_after.amount = { 1, 3, 3, 15 }; // 15431 - 100 = 15331.
 		purchase.slots_after.push_back(
 			{ 3, slot_type, 2, SLOT_HOLD, 0, { 10, 1000, -1, -1, -1 } });
+		purchase.slots_before = ship.slots;
+		purchase.crew_before = ship.crew;
 		purchase.market_after.push_back({ 2, 2, goods, 1.03f, 100 });
 		require(divine_trade_prepare_purchase({}, boon, buy, &purchase.book_after),
 			"prepare paid trade lot");
 		critical_command command;
 		require(divine_trade_command_build(&command, buy_id, purchase),
 			"prepare buy command");
+		for (int changed_field = 0; changed_field < 2; ++changed_field)
+		{
+			std::vector<flatfile_ship_record> stored;
+			require(flatfile_ship_list(root, &stored, &error) ==
+					flatfile_ship_result::ok,
+				"read ship preimage");
+			const auto original = stored.front();
+			auto changed = original;
+			if (changed_field)
+				changed.crew.sail_chief = 1;
+			else
+			{
+				changed.slots[0].values[0] = 8;
+				changed.slots[0].values[1] = 800;
+			}
+			require(flatfile_ship_upsert(root, &changed, &error) ==
+					flatfile_ship_result::ok,
+				"ordinary ship change before delayed trade");
+			critical_operation_id stale_id;
+			require(critical_operation_id_generate(&stale_id), "stale ship command id");
+			auto stale_trade = purchase;
+			stale_trade.book_after.lots.back().purchase = stale_id;
+			critical_command stale_command;
+			require(divine_trade_command_build(&stale_command, stale_id, stale_trade),
+				"prepare delayed ship command");
+			require(apply(stale_command).error_code == ESTALE,
+				"trade overwrote changed ship slot or crew");
+			require(flatfile_ship_list(root, &stored, &error) ==
+						flatfile_ship_result::ok &&
+					stored[0].slots == changed.slots &&
+					stored[0].crew == changed.crew,
+				"stale trade changed ordinary ship state");
+			auto restore = original;
+			require(flatfile_ship_upsert(root, &restore, &error) ==
+					flatfile_ship_result::ok,
+				"restore ship preimage for journal boundary test");
+		}
 		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
 		auto applied = apply(command);
 		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
@@ -916,6 +955,8 @@ static void divine_trade_settlement(const fs::path &base)
 		sale.wallet_after.amount = zero_sale ? std::array<int64_t, 4>{ 1, 3, 3, 15 } :
 						       std::array<int64_t, 4>{ 1, 6, 5, 16 };
 		sale.slots_after.push_back({ 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } });
+		sale.slots_before = purchase.slots_after;
+		sale.crew_before = purchase.crew_after;
 		sale.market_after.push_back(
 			{ 4, 2, goods, zero_sale ? 0.0f : .95f, zero_sale ? 0 : 120 });
 		divine_trade_consumption consumed;

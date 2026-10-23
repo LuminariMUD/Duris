@@ -257,10 +257,16 @@ int main()
 	payload.payment = -100;
 	payload.wallet_after.amount = { 0, 0, 0, 1 };
 	payload.slots_after.push_back({ 3, SLOT_CARGO, 2, SLOT_HOLD, 0, { 1, 100, 0, 0, 0 } });
+	payload.slots_before.push_back({ 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } });
 	payload.market_after.push_back({ 2, 2, divine_trade_goods::cargo, 1.03f, 100 });
 	payload.book_after = book;
 	critical_command command;
 	assert(divine_trade_command_build(&command, operation(900), payload));
+	auto missing_preimage = payload;
+	missing_preimage.slots_before.clear();
+	critical_command refused_preimage;
+	assert(!divine_trade_command_build(&refused_preimage, operation(900), missing_preimage));
+
 	for (size_t coin = 0; coin < 4; ++coin)
 	{
 		auto overflow = payload;
@@ -291,6 +297,7 @@ int main()
 	next_buy.slot_basis_before = 100;
 	auto next_payload = payload;
 	next_payload.book_revision = book.revision;
+	next_payload.slots_before = payload.slots_after;
 	next_payload.slots_after[0].values[0] = 2;
 	next_payload.slots_after[0].values[1] = 200;
 	assert(divine_trade_prepare_purchase(book, boon, next_buy, &next_payload.book_after));
@@ -312,6 +319,7 @@ int main()
 					     &with_unsold));
 	auto sale_payload = next_payload;
 	sale_payload.action = divine_trade_action::sale;
+	sale_payload.slots_before = next_payload.slots_after;
 	sale_payload.book_revision = with_unsold.revision;
 	sale_payload.payment = 250;
 	sale_payload.admitted_at = 200;
@@ -338,6 +346,16 @@ int main()
 	assert(critical_command_decode(wire.data(), wire.size(), &restored_command) ==
 	       critical_command_codec_result::ok);
 	assert(divine_trade_command_decode(restored_command, &decoded));
+	std::vector<uint8_t> retained_book;
+	assert(divine_trade_book_encode(payload.book_after, &retained_book));
+	auto old_command = command;
+	old_command.payload_version = 1;
+	const size_t preimage_bytes = 4 + 7 * sizeof(int32_t) + payload.slots_before.size() * 37;
+	const auto book_offset = old_command.payload.size() - retained_book.size();
+	old_command.payload.erase(old_command.payload.begin() + book_offset - preimage_bytes,
+				  old_command.payload.begin() + book_offset);
+	assert(divine_trade_command_decode(old_command, &decoded) && decoded.slots_before.empty());
+
 	auto bad_command = command;
 	bad_command.keys.back().id = 22;
 	assert(!divine_trade_command_decode(bad_command, &decoded));

@@ -1104,15 +1104,15 @@ flatfile_ship_prepare_player_remove(const std::string &root, const flatfile_auth
 	return flatfile_ship_result::ok;
 }
 
-flatfile_ship_result
-flatfile_ship_prepare_trade(const std::string &root, const flatfile_authority_lock &lock,
-			    uint32_t ship_id, uint32_t owner_pid,
-			    const std::vector<flatfile_ship_slot_record> &slots,
-			    const flatfile_ship_crew_record &crew,
-			    flatfile_authority_operation *operation, std::string *error)
+flatfile_ship_result flatfile_ship_prepare_trade(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t ship_id,
+	uint32_t owner_pid, const std::vector<flatfile_ship_slot_record> &before_slots,
+	const flatfile_ship_crew_record &before_crew,
+	const std::vector<flatfile_ship_slot_record> &slots, const flatfile_ship_crew_record &crew,
+	flatfile_authority_operation *operation, std::string *error)
 {
 	if (root.empty() || !lock.matches(root) || !ship_id || !owner_pid || !operation ||
-	    slots.empty() || slots.size() > slot_maximum)
+	    slots.empty() || slots.size() > slot_maximum || before_slots.size() != slots.size())
 		return flatfile_ship_result::invalid;
 	const auto recovered = recover(root, lock, error);
 	if (recovered != flatfile_ship_result::ok)
@@ -1128,6 +1128,17 @@ flatfile_ship_prepare_trade(const std::string &root, const flatfile_authority_lo
 	    ship->owner_pid != owner_pid || ship->revision == UINT64_MAX ||
 	    catalog.revision == UINT64_MAX)
 		return flatfile_ship_result::conflict;
+	if (ship->crew != before_crew)
+		return flatfile_ship_result::conflict;
+	for (const auto &expected : before_slots)
+	{
+		const auto current = std::lower_bound(ship->slots.begin(), ship->slots.end(),
+						      expected.slot_index,
+						      [](const auto &slot, uint8_t index)
+						      { return slot.slot_index < index; });
+		if (current == ship->slots.end() || *current != expected)
+			return flatfile_ship_result::conflict;
+	}
 	std::unordered_set<uint8_t> changed;
 	for (const auto &slot : slots)
 	{

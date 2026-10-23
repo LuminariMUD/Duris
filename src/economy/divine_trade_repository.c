@@ -69,6 +69,52 @@ bool read_book(MYSQL *connection, uint64_t account, uint64_t boon, divine_trade_
 	*book = std::move(loaded);
 	return true;
 }
+bool ship_preimage_matches(MYSQL *connection, const divine_trade_payload &p)
+{
+	const auto matches = [&](const std::string &query)
+	{
+		if (!execute(connection, query))
+			return false;
+		MYSQL_RES *rows = mysql_store_result(connection);
+		if (!rows)
+		{
+			if (!mysql_errno(connection))
+				errno = EIO;
+			return false;
+		}
+		const bool same = mysql_num_rows(rows) == 1;
+		mysql_free_result(rows);
+		if (!same)
+			errno = ESTALE;
+		return same;
+	};
+	for (const auto &slot : p.slots_before)
+	{
+		std::string query =
+			"SELECT 1 FROM ship_slots WHERE ship_id=" + std::to_string(p.ship_id) +
+			" AND slot_index=" + std::to_string(slot.slot_index) +
+			" AND slot_type=" + std::to_string(slot.slot_type) +
+			" AND item_index=" + std::to_string(slot.item_index) +
+			" AND position=" + std::to_string(slot.position) +
+			" AND timer=" + std::to_string(slot.timer);
+		for (size_t i = 0; i < slot.values.size(); ++i)
+			query += " AND val" + std::to_string(i) + "=" +
+				 std::to_string(slot.values[i]);
+		if (!matches(query + " FOR UPDATE"))
+			return false;
+	}
+	const auto &crew = p.crew_before;
+	std::string query = "SELECT 1 FROM ship_crew WHERE ship_id=" + std::to_string(p.ship_id);
+	constexpr const char *fields[] = { "crew_index", "sail_skill", "guns_skill", "rpar_skill",
+					   "sail_chief", "guns_chief", "rpar_chief" };
+	const int32_t values[] = { crew.crew_index,	  crew.sail_skill_milli,
+				   crew.guns_skill_milli, crew.repair_skill_milli,
+				   crew.sail_chief,	  crew.guns_chief,
+				   crew.repair_chief };
+	for (size_t i = 0; i < std::size(values); ++i)
+		query += std::string(" AND ") + fields[i] + "=" + std::to_string(values[i]);
+	return matches(query + " FOR UPDATE");
+}
 }
 
 bool divine_trade_sql_generation(MYSQL *connection, uint64_t *generation, bool for_update)
@@ -115,6 +161,11 @@ bool divine_trade_sql_execute(MYSQL *connection, const critical_command &command
 		    p.qualifying_quantity };
 	*result_code = 0;
 	*mutated = false;
+	if (command.payload_version < 3)
+	{
+		*result_code = EPROTONOSUPPORT;
+		return true; // Existing receipts are resolved before this executor.
+	}
 	uint64_t generation = 0;
 	if (!divine_trade_sql_generation(connection, &generation, true))
 		return false;
@@ -160,6 +211,14 @@ bool divine_trade_sql_execute(MYSQL *connection, const critical_command &command
 		return false;
 	if (!valid)
 	{
+		*result_code = ESTALE;
+		return true;
+	}
+	errno = 0;
+	if (!ship_preimage_matches(connection, p))
+	{
+		if (errno != ESTALE)
+			return false;
 		*result_code = ESTALE;
 		return true;
 	}

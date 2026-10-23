@@ -5,7 +5,7 @@
 #include "economy/currency_command.h"
 #include "flatfile/flatfile_ship_repository.h"
 
-constexpr uint16_t DIVINE_TRADE_PAYLOAD_VERSION = 1;
+constexpr uint16_t DIVINE_TRADE_PAYLOAD_VERSION = 3;
 constexpr uint16_t DIVINE_TRADE_OUTBOX_DESTINATION = 12;
 constexpr uint64_t DIVINE_TRADE_MARKET_KEY = 0x445452414445;
 constexpr size_t DIVINE_TRADE_RESULT_BYTES = 48;
@@ -45,6 +45,8 @@ struct divine_trade_payload
 	std::vector<flatfile_ship_slot_record> slots_after;
 	std::vector<divine_trade_market_cell> market_after;
 	divine_trade_book book_after;
+	flatfile_ship_crew_record crew_before;
+	std::vector<flatfile_ship_slot_record> slots_before;
 };
 
 struct divine_trade_result

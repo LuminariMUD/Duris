@@ -164,6 +164,8 @@ try
 				 critical_apply_outcome::retryable_failure :
 				 critical_apply_outcome::terminal_failure,
 			 0, EIO };
+	if (command.payload_version < 3)
+		return { critical_apply_outcome::terminal_failure, 0, EPROTONOSUPPORT };
 	const std::string book_name = book_filename(p.book_after.account, p.book_after.boon_id);
 	std::vector<uint8_t> before_bytes;
 	read = flatfile_read(root + "/domains", book_name, CRITICAL_COMMAND_MAX_PAYLOAD_BYTES,
@@ -203,7 +205,8 @@ try
 	{
 		flatfile_authority_operation ship;
 		const auto prepared = flatfile_ship_prepare_trade(root, lock, p.ship_id,
-								  p.ship_owner_pid, p.slots_after,
+								  p.ship_owner_pid, p.slots_before,
+								  p.crew_before, p.slots_after,
 								  p.crew_after, &ship, &error);
 		if (prepared == flatfile_ship_result::io_error)
 			return { critical_apply_outcome::retryable_failure, 0, EIO };
