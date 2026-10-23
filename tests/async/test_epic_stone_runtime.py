@@ -351,6 +351,29 @@ int main()
 '''
 
 class StoneRuntimeTests(unittest.TestCase):
+    def test_native_zone_reset_progress_survives_cached_reads(self):
+        code = """#include <vector>
+#include <cassert>
+struct zone_info { int number; int reset_perc; };
+static std::vector<zone_info> flat_zones = {{77,0},{78,9}};
+""" + extract_function("sql.c", "bool get_zone_info(") + extract_function("sql.c", "void sql_set_zone_reset_perc(") + """
+int main() {
+ zone_info row{};
+ for(int progress=1;progress<=100;++progress) {
+  sql_set_zone_reset_perc(77,progress);
+  assert(get_zone_info(77,&row) && row.reset_perc==progress);
+ }
+ sql_set_zone_reset_perc(77,0);
+ assert(get_zone_info(77,&row) && row.reset_perc==0);
+ assert(get_zone_info(78,&row) && row.reset_perc==9);
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            source,binary=Path(directory)/"reset.cpp",Path(directory)/"reset"
+            source.write_text(code)
+            subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror",str(source),"-o",str(binary)],check=True)
+            subprocess.run([str(binary)],check=True)
+
     def test_admission_failure_pending_success_disconnect_and_recovery(self):
         self.assertIsNotNone(shutil.which("g++"), "Linux g++ is required for the native runtime regression")
         with tempfile.TemporaryDirectory() as directory:

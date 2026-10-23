@@ -633,7 +633,15 @@ bool get_zone_info(int zone_number, struct zone_info *info)
 			}
 	return false;
 }
-void sql_set_zone_reset_perc(int /*zone_number*/, int /*reset_perc*/) {}
+void sql_set_zone_reset_perc(int zone_number, int reset_perc)
+{
+	for (auto &zone : flat_zones)
+		if (zone.number == zone_number)
+		{
+			zone.reset_perc = reset_perc;
+			return;
+		}
+}
 
 string escape_str(const char *str)
 {
