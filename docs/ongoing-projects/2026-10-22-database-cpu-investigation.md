@@ -42,7 +42,7 @@ Original investigation:
   general scheduler, or purge is needed. Raw audit semantics remain unchanged in
   this chunk so cadence and semantic correction can be reviewed independently.
 - Delivery: [PR #300](https://github.com/LuminariMUD/Duris/pull/300), ready for
-  review against `master`; current head `67fb3e0b3`, initial qualification commit
+  review against `master`; current head `b46b0bb51`, worker source fix `67fb3e0b3`, initial qualification commit
   `cd76e30a1b2a`. The local merge
   tree equals that qualified head's tree. No merge has been requested/performed.
 - Proof: the commands and results in the next subsection qualify chunk 1 locally.
@@ -177,6 +177,18 @@ proof `2c6c0e31a`, immutable metadata `6e46964dc`, integrated audit `509ec5464`.
 Current complete-stack qualification tag: `issue-292/audit-review-20261023`.
 All four PRs are ready for owner review; issue #292 remains open for rollout and
 measurement-gated work. No hosted CI wait or merge override is used.
+
+Final base refresh: master advanced to `e86bf7f24` (ship GMCP PR #304), touching
+only `json_utils.c`, `gmcp.c`, and its two GUI contract fixtures. All four review
+branches now carry that qualified base without rewriting history. Worker head is
+`b46b0bb51`, stone proof `c650f8c96`, metadata `962b580f1`, and the audit integration
+is `b004ed97d`. Task-owned source, migrations and tests match the preceding
+qualification; only the four unrelated base files differ. The worker/current-base
+and complete-stack builds pass, and the affected GUI GMCP contract passes.
+Current final review tag: `issue-292/review-ready-20261023`; earlier tags retain
+their original evidence. Remote parity, clean worktrees and conflict-free merge
+trees are checked against this captured base. Review and merge still belong to
+the owner; no production deployment has begun.
 
 ### Next session / remaining gates
 
