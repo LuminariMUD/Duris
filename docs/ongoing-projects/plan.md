@@ -176,14 +176,16 @@ exact-level selection, clean fresh identities/baselines, account mapping and mor
 name reuse; an injected mid-recreation SQL failure rolled back the entire roster
 and left the SQL fence in place. Both backend builds and focused source/lifecycle
 checks passed (14 lifecycle tests, 12 manifest checks plus SQL/fence/writer tests).
-The final test extension also removes a required recreation column and proves a
-pre-boundary refusal with unchanged epoch. Publication awaits that focused result
-and commit hooks.
+The final test extension removed a required recreation column and proved a
+pre-boundary refusal with unchanged epoch; it and commit hooks passed before #313
+was published.
 
 ### Runtime qualification continuation
 
 PR #313: https://github.com/LuminariMUD/Duris/pull/313 at `427860b58`, review-ready.
 Current branch: `branch/issue-264-runtime-qualification`, based on that stack.
+Published as PR #317: https://github.com/LuminariMUD/Duris/pull/317 at `e8b43d01c`.
+PRs #309, #310, #311, #312, #313, #316 and #317 are review-ready and unmerged.
 `tests/async/run_pwipe_runtime_journey.py` is being exercised (uncommitted): private
 MariaDB via the existing wrapper, supported adopt/run migrations, copied real launcher
 and binary, synthetic world/account, real five-minute pwipe, explicit next boot,
@@ -223,7 +225,7 @@ repair is review-ready as PR #316 at `ee152d2ba`, in
 native ship-panel/staff-cargo guards passed there. Incorporate that commit into the
 qualification stack before executing the full production-unit fixture. No production
 service or user worktree was changed. Production repair was merged into the qualification branch as `f6694e7fe` and
-the combined production build passed. Runtime changes await publication.
+the combined production build passed. Runtime changes are published in #317.
 
 Next focused implementation candidates after runtime publication:
 
@@ -474,10 +476,10 @@ and donations and retained telemetry/quota evidence remain correct.
 
 ### W6 — Full journeys and failure/recovery cases (6–10 hours)
 
-- [ ] Add focused `tests/async/run_pwipe_runtime_journey.py` (planned new file),
-  reusing private DB/world/socket fixtures. Drive real command/countdown,
-  `cycle_mud.sh` and `wipe_it_all`, then explicitly start the new season. Unit
-  tests may control time; at least one acceptance run uses the real five minutes.
+- [x] Add `tests/async/run_pwipe_runtime_journey.py`, reusing private DB/world/socket
+  fixtures. PR #317 executes the real five-minute command, launcher/wiper, explicit
+  new season, recreated Overlord login, fresh mortal gameplay and another boot.
+  Qualified scope: MariaDB-primary, Redis off, mini world. Wider cases remain below.
 - [ ] Use independent database, Redis process/namespace, ports and runtime tree.
   Never source the checkout's `.env` or read real player/account data. Disable
   production mail/Discord/PostHog in fixtures; artifacts belong under `bin/`.
