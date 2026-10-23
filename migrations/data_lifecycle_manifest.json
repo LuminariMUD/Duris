@@ -6464,6 +6464,35 @@
       "exception": "protected_recovery_replay_or_restore_horizon",
       "protected_record": true,
       "dependencies": []
+    },
+    {
+      "id": "file:flatfile-command-receipts",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/command-*.receipt",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "participant_player_pids",
+      "technical_purpose": "Permanent epic/combat command identities and results for idempotent replay, including history after player/account removal",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
     }
   ]
 }

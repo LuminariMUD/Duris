@@ -74,6 +74,9 @@ REQUIRED_NON_DATABASE_STORES = {
     "file:divine-boons": ("recovery_state", "FLATFILE_ROOT/domains/divine-boons.state"),
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
+    "file:flatfile-command-receipts": (
+        "recovery_state", "FLATFILE_ROOT/domains/command-*.receipt",
+    ),
     "file:telemetry_outage_ledger": ("journal", "TELEMETRY_OUTAGE_LEDGER_DIR"),
     "file:persistence_fallback": ("fallback", "legacy persistence fallback file"),
     "file:persistence_fallback_quarantine": (

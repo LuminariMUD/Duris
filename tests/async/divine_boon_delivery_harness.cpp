@@ -172,9 +172,11 @@ void affect_remove(P_char ch, affected_type *)
 {
 	ch->affected = nullptr;
 }
-void epic_publish_pvp_award(P_char ch, int)
+void epic_publish_pvp_award(P_char ch, int amount)
 {
 	assert(ch->only.pc->divine_boon_delivery_applying);
+	if (amount == 650)
+		assert(!get_epic_task(ch)); // The completed task must not suppress its replacement.
 	const auto before = captures.size();
 	assert(writeCharacter(ch, 1,
 			      NOWHERE)); // A nested level save must not capture half an award.

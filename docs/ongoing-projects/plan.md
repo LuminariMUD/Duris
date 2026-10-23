@@ -486,7 +486,8 @@ evidence; then continue actual gameplay integration.
   branch `branch/issue-245-divine-receipts`. Its uncommitted plan records detailed
   evidence and receipt work in `flatfile_player_domain_repository.{c,h}`,
   `flatfile_player_repository.c` and their two existing harnesses. Preserve all
-  six modified files. Receipt changes are not published or finally reviewed.
+  six modified files. Receipt changes are published as
+  [#276](https://github.com/LuminariMUD/Duris/pull/276) and under review.
   This plan repair uses a separate worktree and must not overwrite that work.
 - **Confirmed remaining work:** `zone_touch_transaction_submit` still refuses
   flat-file mode; `divine_boon_select` selects only EXP/PvP; `CMD_BOON=804` still
@@ -713,7 +714,7 @@ evidence; then continue actual gameplay integration.
   [PR #275](https://github.com/LuminariMUD/Duris/pull/275), implementation
   `7b3407016`, stacked on #272. Both server builds, affected bank/legacy-boon
   consumers, formatting, clang-tidy and whitespace checks pass.
-- **Before activation (uncommitted fix described in the paused checkpoint):**
+- **Before activation (published as #276, under review):**
   remove the fixed lifetime receipt ceiling for new flat
   prepared work. The pre-existing domain operations list caps at 512; complete
   parent results cannot grow in that list forever. Compact checkpointed detail

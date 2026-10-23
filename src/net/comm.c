@@ -327,11 +327,13 @@ static void critical_gameplay_publish_outbox(void)
 	artifact_guild_transaction_publish_outbox();
 }
 
+#ifndef __NO_MYSQL__
 static void critical_gameplay_drain_outbox(void)
 {
 	sql_async_pulse();
 	critical_gameplay_publish_outbox();
 }
+#endif
 
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
