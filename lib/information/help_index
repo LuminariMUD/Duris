@@ -1686,22 +1686,54 @@ See also: MAULER, MANGLE, SPEC_LIST, BERSERKER, SKILL_BERSERKER
 #
 "BOON" (Command)
 ===========================================================================
-Syntax: boon
+Syntax: boon [list]
 
-Boons grant bonuses or rewards for meeting goals such as killing monsters,
-completing zones, gaining levels or earning frags.
+The Gods of Duris offer automatic bonuses. Your old toggle boon setting
+is preserved but does not control these benefits. There is no new boon
+shop or task-completion reward. Old earned balances remain recorded.
 
-Type "boon" to see the specific details of current boons: requirements,
-rewards, eligible racewar sides and time remaining. An "R" marks a
-repeatable boon.
+Eight global slots share one rotation. At most one new boon starts at each
+fixed UTC hour; startup fills gradually. A vacant slot can stay empty.
+There is at most one cargo event and one PvP event at a time. Downtime
+skips missed opportunities. Absolute expiry times survive restart.
 
-Boons apply automatically while enabled; "toggle boon" turns participation
-on or off.
+Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
+Damage, tanking, healing and kill shares qualify in your designated zone.
+Quest, resurrection, PvP and other non-combat EXP do not qualify.
+Epic zone: +50% eligible epic-stone base payout for eight real hours.
+PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
+Normal level, repeat-victim, frag and final reward limits still apply.
+The separate 500-epic Spill Blood reward is never increased by this boon.
 
-"boon shop" shows your shop and stat points. Spend an available stat point
-with "boon shop stat <attribute>", for example "boon shop stat str".
+Good players receive Good-side objectives and PvP against Evil; Evil players
+receive Evil-side objectives and PvP against Good. Unaffiliated players can
+use global trade boons but receive no fabricated side objectives. EXP and
+epic targets exclude every hometown-flagged zone, safe, private, unfinished,
+inaccessible and unsuitable content. Targets reflect recent active accounts
+and suitable group levels. Selection brackets do not restrict zone entry.
+
+Cargo AND contraband: +25% eligible BASE SALE REVENUE for four real hours.
+Buy at the displayed source after this boon starts, then sell at its distinct
+destination before expiry. Existing market, Nexus and ship effects remain.
+The cap combines both goods: three times the hold capacity of your account's
+FIRST qualifying ship for this boon. Larger ships, alts and relogging cannot
+reset it. Only proven paid batches qualify. Old stock, source sellbacks,
+salvage and transferred/unverifiable goods earn ordinary revenue only.
+Partial sales/losses retain only the remaining verified quantity and basis.
+A zero-revenue sale consumes goods and allowance but creates no bonus money.
+
+Each Divine contribution adds to the original eligible base, then the final
+award rounds down once under normal caps: 100 EXP +20 existing +100 Divine
+is 220; 100 epic +10 existing +50 Divine is 160. Purchase 100, base sale 120:
+the trade boon adds 30, total 150, profit 50. It is +25% sale, not profit.
+
+Pause stops new spawns; active boons still expire. Resume waits for the next
+hour. A reward prepared legitimately before expiry retains its fixed amount
+and boon identity and can finish once after expiry. Later awards do not.
+Type boon for your applicable targets, time remaining and next opportunity.
+See also: EXPERIENCE, EPIC, FRAG, SHIP CARGO, DIVINEBOON
 ===========================================================================
-See also: TOGGLE, EPIC, FRAGS
+See also: DIVINE BOONS, EXPERIENCE, EPIC, FRAGS, SHIP
 
 #
 "BOULDER" (Spell)

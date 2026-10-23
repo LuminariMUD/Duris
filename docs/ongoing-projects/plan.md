@@ -8,7 +8,9 @@
 
 Status: active implementation; incomplete and inactive in gameplay. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
 Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
-Authoritative plan branch: `branch/issue-245-divine-boons`.
+Original plan branch: `branch/issue-245-divine-boons` (PR #265 was merged
+and its branch removed by the separate integration workflow). Current handoff
+is maintained on the active implementation/PR branch.
 Source baseline: [master `e897b5214893`](https://github.com/LuminariMUD/Duris/commit/e897b5214893a66b75db5507be0a9be97b519cfc).
 Issue specification inspected at its 2026-10-22 update, including all five comments.
 The agreed follow-up decisions take precedence over older exploratory numbers.
@@ -102,6 +104,49 @@ checkpoints cannot be restarted now; they count as missed.
   missed delivery and stop. Never substitute another remaining-time range.
 
 ## Implementation handoff (2026-10-22)
+
+### Current delivery checkpoint (21:30 UTC / 00:30 Israel, Oct 23)
+
+The original 6-hour delivery was missed; explicit full-scope continuation remains
+authorized. Latest forecast is review-ready by 23:00 UTC / 02:00 Israel Oct 23,
+low confidence. This is an estimate, not a new budget or reset of elapsed time.
+PR #290 is published and attached; implementation head is `91e9500b9` after its
+handoff update. Current source branch `branch/issue-245-divine-controls` adds
+boot cutover, real-port cargo selection, player/staff commands, bounded retired
+history and help. These new changes remain uncommitted and incompletely tested.
+Runtime cutover and selector sanitizer checks pass; command/help, codec backward
+compatibility, both final builds and integrated journeys remain to prove.
+Gameplay calculations and eligibility remain in game-thread memory; backends
+restore at boot and persist prepared after-images before financial publication.
+Next: finish focused command/codec checks and help importer dry-run, build both
+backends, publish controls PR, then one combined journey per backend and final
+acceptance audit. No full regression campaign or hosted-CI waiting is required.
+
+### Controls and cutover qualification (current uncommitted chunk)
+
+Boot now closes new legacy admissions before gameplay, persists draining, waits
+for the existing critical coordinator's admitted work to settle, then persists
+an empty Divine state. Existing durable unpaid entitlements retain their normal
+completion/login recovery. Rotation begins at the next fixed UTC hour.
+Actual port selection has eight safe profitable routes in the loaded MariaDB
+world (sample: source 0 Flann -> destination 3 Myrabolus); no shared-side route
+was proved, so only the soft contested preference relaxes. Real market prices,
+known ship-shop access and distinct endpoints remain required.
+Player `boon`/`boon list` preserve command 804 and native coloured names, hide
+invalid/expired or unaffiliated side objectives and show remaining time/next hour.
+Staff `divineboon` appends ID 866 and exposes status/pause/resume/replace/force/
+history. State mutations stay unpublished until durable confirmation; force
+cannot reroll or bypass a due opportunity. Stored legacy toggle bits remain
+unchanged; benefits are automatic. Retired history retains sixteen objectives in
+snapshot v2; v1 snapshots still decode with empty staff history.
+
+Passed: both server builds, ASan/UBSan core/codec including v1 and bounded all-
+category history, real writer automatic drain/activation/retry, real selector/
+access, real trade controller, native command handlers with actual ANSI helpers
+and 80-column output, flat help catalog/runtime, offline importer dry-run, and
+native snapshot repository CAS/replay/corruption. The loaded SQL help import/
+serving and real stone/restart journey is running. Combined cargo/gameplay and
+remaining final qualification are still incomplete; do not mark #245 complete.
 
 ### Published loss persistence (#290)
 

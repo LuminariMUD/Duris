@@ -1,3 +1,4 @@
+#include <openssl/sha.h>
 #include "economy/divine_boon.h"
 
 #include <cassert>
@@ -140,6 +141,37 @@ void pause_restart_and_clock()
 	assert(state.history.size() == 2 && state.history[0].expired_at == 18 * H + 10);
 }
 
+void bounded_retired_history()
+{
+	auto state = activated();
+	divine_boon_slot choice;
+	choice.category = divine_boon_category::cargo;
+	choice.source_port = choice.cargo_commodity = choice.contraband_commodity = 0;
+	choice.destination_port = 1;
+	for (unsigned index = 1; index <= 24; ++index)
+	{
+		choice.category = index % 2 ? divine_boon_category::cargo :
+					      divine_boon_category::pvp;
+		if (choice.category == divine_boon_category::pvp)
+			choice.source_port = choice.destination_port = choice.cargo_commodity =
+				choice.contraband_commodity = -1;
+		else
+		{
+			choice.source_port = choice.cargo_commodity = choice.contraband_commodity =
+				0;
+			choice.destination_port = 1;
+		}
+		assert(divine_boon_rotate(&state, index * H, &choice));
+		assert(divine_boon_replace(&state, 0, index * H + 1));
+	}
+	assert(state.recent.size() == DIVINE_BOON_RECENT_MAX &&
+	       state.recent.front().objective.id == 9 && state.recent.back().objective.id == 24);
+	std::vector<uint8_t> bytes;
+	divine_boon_state restored;
+	assert(divine_boon_state_encode(state, &bytes) &&
+	       divine_boon_state_decode(bytes, &restored) && state == restored);
+}
+
 void snapshots_and_invalid_state()
 {
 	auto state = activated();
@@ -151,6 +183,20 @@ void snapshots_and_invalid_state()
 	assert(divine_boon_state_encode(state, &bytes));
 	divine_boon_state restored;
 	assert(divine_boon_state_decode(bytes, &restored) && restored == state);
+	assert(state.recent.size() == 1 && restored.recent == state.recent);
+	auto old = bytes;
+	// v1 ended after the original zone history; remove v2 recent records and checksum.
+	const size_t recent_bytes = 4 + state.recent.size() * (49 + 8);
+	old.resize(old.size() - SHA256_DIGEST_LENGTH - recent_bytes);
+	old[8] = 1;
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	SHA256(old.data(), old.size(), digest);
+	old.insert(old.end(), digest, digest + SHA256_DIGEST_LENGTH);
+	divine_boon_state legacy;
+	assert(divine_boon_state_decode(old, &legacy) && legacy.recent.empty());
+	legacy.recent = state.recent;
+	assert(legacy == state);
+
 	assert(!divine_boon_rotate(&restored, 2 * H + 1, &choice));
 	assert(divine_boon_reconcile(&restored, 20 * H));
 	assert(!occupied(restored));
@@ -193,5 +239,6 @@ int main()
 	targets_and_categories();
 	pause_restart_and_clock();
 	snapshots_and_invalid_state();
+	bounded_retired_history();
 	std::cout << "Divine Boon rotation, limits, expiry, clock and snapshot contracts passed\n";
 }

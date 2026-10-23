@@ -116,13 +116,22 @@ player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_
 {
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
-player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t, size_t,
-						    persistence_job_write_fn)
+player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
+						    size_t, persistence_job_write_fn write)
 {
-	assert(kind == persistence_job_kind::bank);
-	order.push_back("bank");
+	if (kind == persistence_job_kind::divine_boon)
+	{
+		assert(owner == 2);
+		write();
+	}
+	else
+	{
+		assert(kind == persistence_job_kind::bank);
+		order.push_back("bank");
+	}
 	return player_save_submit_result::accepted;
 }
+
 player_save_pipeline_result player_save_pipeline_request(P_char ch, player_component_mask_t, int,
 							 int)
 {
@@ -269,6 +278,22 @@ bool cargo_trade_market_available()
 {
 	return true;
 }
+static bool fail_market_publish = false;
+static int reconciled_commands = 0;
+critical_apply_result critical_command_repository_apply_from_pool(const critical_command &command,
+								  void *)
+{
+	assert(command.operation_id.bytes == retained.operation_id.bytes &&
+	       command.payload == retained.payload);
+	++reconciled_commands;
+	return { critical_apply_outcome::already_applied, 0, 0 };
+}
+critical_apply_result divine_trade_flatfile_apply(const std::string &,
+						  const critical_command &command)
+{
+	return critical_command_repository_apply_from_pool(command, nullptr);
+}
+
 static bool physical_ship_exists = true;
 static P_ship physical_ship = nullptr;
 P_ship find_ship_by_database_id(uint32_t id)
@@ -279,9 +304,15 @@ P_ship find_ship_by_database_id(uint32_t id)
 		       nullptr;
 }
 
+bool cargo_trade_reconcile(uint64_t generation, const std::vector<divine_trade_market_cell> &)
+{
+	market_generation = generation;
+	fail_market_publish = false;
+	return true;
+}
 bool cargo_trade_publish(uint64_t expected, const std::vector<divine_trade_market_cell> &)
 {
-	if (expected != market_generation)
+	if (fail_market_publish || expected != market_generation)
 		return false;
 	++market_generation;
 	return true;
@@ -413,8 +444,26 @@ static void complete(bool committed = true)
 	assert(divine_trade_result_encode(result, &bytes));
 	completion.result_size = bytes.size();
 	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+
+	static unsigned injected = 0;
+	const unsigned fault =
+		committed && divine_trade_runtime_busy() && injected < 3 ? ++injected : 0;
+	if (fault == 1)
+		completion.result_payload[0] ^= 1;
+	if (fault == 2)
+		++market_generation;
+	if (fault == 3)
+		fail_market_publish = true;
 	divine_trade_runtime_completions(&completion, 1);
 	divine_trade_runtime_completions(&completion, 1); // duplicate publication is harmless
+	if (fault)
+	{
+		assert(divine_trade_runtime_busy() && capture_reserved);
+		divine_trade_runtime_reconcile();
+		divine_trade_runtime_reconcile();
+		assert(!divine_trade_runtime_busy() && !capture_reserved &&
+		       reconciled_commands == static_cast<int>(fault));
+	}
 }
 bool ac_can_see(P_char, P_char, bool)
 {
@@ -550,6 +599,7 @@ int main()
 	affect_to_char(&alice.ch, &progress);
 	trade_messages.clear();
 	nexus_multiplier = 1.1;
+	route_open = false; // Paid lots remain eligible after intermediate topology closes.
 	assert(divine_trade_runtime_sale(&alice.ch, &ship, -1, 4, divine_trade_goods::cargo));
 	assert(trade_messages.find("Trader") == std::string::npos &&
 	       trade_messages.find("Enlil") == std::string::npos);
@@ -570,7 +620,11 @@ int main()
 	const auto paid_messages = trade_messages;
 	complete();
 	assert(trade_messages == paid_messages);
+	assert(trade_messages.find("Trader", trade_messages.find("Trader") + 1) ==
+	       std::string::npos);
+	assert(trade_messages.find("Enlil", trade_messages.find("Enlil") + 1) == std::string::npos);
 	nexus_multiplier = 1;
+	route_open = true;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
 	complete(false);
@@ -581,7 +635,16 @@ int main()
 					     divine_trade_goods::cargo));
 	assert(!divine_trade_runtime_busy() && !capture_reserved &&
 	       !alice.pc.divine_trade_payment_pending);
+	// A forged payment/denomination proposal never reaches the writer boundary.
+	const auto valid_wallet_proposal = prepared();
+	const auto refused_id = retained.operation_id;
+	auto forged_wallet = valid_wallet_proposal;
+	++forged_wallet.wallet_after.amount[0];
+	assert(!divine_trade_runtime_submit(&alice.ch, &ship, refused_id, forged_wallet));
+	assert(!divine_trade_runtime_busy() && !capture_reserved);
 	admission = critical_submit_result::accepted;
+	assert(divine_trade_runtime_submit(&alice.ch, &ship, refused_id, valid_wallet_proposal));
+	complete(false);
 	throw_submission = true;
 	const auto audits_before_throw = audited_trades;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
@@ -745,6 +808,23 @@ int main()
 	assert(divine_trade_runtime_ship_books(100).empty() &&
 	       !divine_trade_runtime_busy(&rejected));
 	admission = critical_submit_result::accepted;
+	write_ship(&ship);
+	rejected.save_pending = false;
+	rejected.save_saved_signature = 1;
+	rejected.slot[0].clear();
+	assert(divine_trade_runtime_purchase(&restored.ch, &rejected, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_busy(&rejected));
+	complete(false); // Accepted, then terminally rejected by the repository.
+	ship.slot[0].clear();
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_busy());
+	complete();
+	assert(divine_trade_runtime_loss(&ship, 0, 1));
+	ship.slot[0].clear();
+	assert(!divine_trade_runtime_save_busy(&rejected));
+	write_ship(&ship);
 
 	// Ownership transfer cannot merge a new account's paid lot into an old
 	// account's proof. The old proof is saved away before any new charge.
@@ -857,6 +937,33 @@ int main()
 	complete();
 	assert(divine_trade_runtime_book(orphan.account, 17).first_full_hold == 10 &&
 	       divine_trade_runtime_book(orphan.account, 17).consumed == 4);
+
+	// An unexpected raw wallet mutation must not publish free cargo or drop
+	// reservations. Reconcile the same receipt after the purse becomes payable.
+	boot_books.clear();
+	boon.id = 99;
+	assert(divine_trade_runtime_boot(99));
+	ship.slot[0].clear();
+	ship.save_pending = false;
+	GET_COPPER(&restored.ch) = 100;
+	GET_SILVER(&restored.ch) = GET_GOLD(&restored.ch) = GET_PLATINUM(&restored.ch) = 0;
+	const auto generation_before_wallet_fault = market_generation;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	GET_COPPER(&restored.ch) = 0;
+	complete();
+	assert(divine_trade_runtime_busy() && capture_reserved && ship.slot[0].type == SLOT_EMPTY &&
+	       market_generation == generation_before_wallet_fault);
+	assert(currency_transaction_submit_wallet_value(
+		&restored.ch, 100, currency_reason_type::wallet_reward, 0,
+		critical_source_site::command, critical_deadline_class::interactive, completion,
+		nullptr, 0));
+	divine_trade_runtime_reconcile();
+	divine_trade_runtime_reconcile();
+	assert(!divine_trade_runtime_busy() && !capture_reserved &&
+	       ship.slot[0].type == SLOT_CARGO && ship.slot[0].val0 == 1 &&
+	       GET_MONEY(&restored.ch) == 0 &&
+	       market_generation == generation_before_wallet_fault + 1);
 
 	while (alice.ch.affected)
 	{

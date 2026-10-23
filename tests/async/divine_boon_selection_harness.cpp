@@ -5,6 +5,8 @@
 #include "world/db.h"
 #include "sql/sql.h"
 #include "world/epic.h"
+#include "ships/ships.h"
+#include "world/graph.h"
 
 #include <cassert>
 #include <iostream>
@@ -115,6 +117,42 @@ bool divine_boon_runtime_queue(const divine_boon_state &next)
 std::array<divine_boon_population, 2> divine_boon_activity_population()
 {
 	return current_population;
+}
+
+const PortData ports[NUM_PORTS] = { { 103, "Source", 108 }, { 104, "Destination", 109 } };
+bool water_connected = true;
+int water_searches = 0;
+bool valid_ship_edge(int, int)
+{
+	return true;
+}
+bool dijkstra(int from, int to, valid_edge_func *edge, std::vector<int> &path)
+{
+	assert(((from == 8 && to == 9) || (from == 9 && to == 8)) && edge == valid_ship_edge);
+	++water_searches;
+	path = { 5 };
+	return water_connected;
+}
+
+int ship_shop_proc(int, P_char, int, char *)
+{
+	return false;
+}
+int cargo_sell_price(int, bool)
+{
+	return 100;
+}
+int contra_sell_price(int)
+{
+	return 100;
+}
+int cargo_buy_price(int, int, bool)
+{
+	return 120;
+}
+int contra_buy_price(int, int)
+{
+	return 120;
 }
 
 int main()
@@ -432,5 +470,46 @@ int main()
 	epic_population[0].active_accounts = epic_population[0].brackets[0] = 2;
 	assert(divine_boon_select(epic_state, 3600, epic_population, &choice));
 	assert(choice.category == divine_boon_category::epic && choice.zones[0] == 18);
+	divine_boon_slot route;
+	route.category = divine_boon_category::cargo;
+	route.source_port = route.cargo_commodity = route.contraband_commodity = 0;
+	route.destination_port = 1;
+	zones[2].flags = 0;
+	zones[2].hometown = 0;
+	zones[2].reset_mode = 2;
+	rooms[3].funct = rooms[4].funct = ship_shop_proc;
+	exits[0].exit_info = exits[2].exit_info = exits[3].exit_info = 0;
+	rooms[3].room_flags = rooms[4].room_flags = 0;
+	rooms[3].sector_type = rooms[4].sector_type = SECT_FIELD;
+	room_direction_data water_exits[2] = {};
+	water_exits[0].to_room = 9;
+	water_exits[1].to_room = 8;
+	rooms[8].dir_option[5] = &water_exits[0];
+	rooms[9].dir_option[5] = &water_exits[1];
+	rooms[8].sector_type = rooms[9].sector_type = SECT_OCEAN;
+	const int searches = water_searches;
+	for (int i = 0; i < 100; ++i)
+		assert(divine_boon_cargo_eligible(route));
+	assert(water_searches == searches);
+	water_exits[0].exit_info = EX_CLOSED | EX_LOCKED;
+	assert(!divine_boon_cargo_eligible(route));
+	water_exits[0].exit_info = 0;
+	water_connected = false;
+	assert(divine_boon_selection_bootstrap());
+	assert(!divine_boon_cargo_eligible(route));
+	water_connected = true;
+	assert(divine_boon_selection_bootstrap());
+	route.destination_port = 0;
+	assert(!divine_boon_cargo_eligible(route));
+	route.destination_port = 1;
+	route.cargo_commodity = 1;
+	assert(!divine_boon_cargo_eligible(route));
+	route.cargo_commodity = 0;
+	rooms[4].funct = nullptr;
+	assert(!divine_boon_cargo_eligible(route));
+	rooms[4].funct = ship_shop_proc;
+	zones[2].flags = ZONE_CLOSED;
+	assert(!divine_boon_cargo_eligible(route));
+
 	std::cout << "Divine candidate paths, flags, account brackets and thin pools passed\n";
 }

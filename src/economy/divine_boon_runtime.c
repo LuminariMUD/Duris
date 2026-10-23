@@ -5,6 +5,7 @@
 #include "economy/boon_reward_transaction.h"
 #include "persistence/persistence_mode.h"
 #include "persistence/maintenance_scheduler.h"
+#include "persistence/critical_command_coordinator.h"
 #include "player/player_save_worker.h"
 
 #ifndef __NO_MYSQL__
@@ -159,6 +160,7 @@ bool divine_boon_runtime_boot(int64_t now)
 	if (result == store_result::not_found)
 	{
 		loaded.last_opportunity = now - now % DIVINE_BOON_HOUR;
+		loaded.mode = divine_boon_mode::draining;
 		return divine_trade_runtime_boot(0) && stage(loaded, 0);
 	}
 	if (result != store_result::ok)
@@ -170,6 +172,12 @@ bool divine_boon_runtime_boot(int64_t now)
 	if (!divine_trade_runtime_boot(cargo_boon))
 		return false;
 	published = loaded;
+	if (loaded.mode == divine_boon_mode::legacy)
+	{
+		if (!divine_boon_set_mode(&loaded, divine_boon_mode::draining, now))
+			return false;
+		return stage(loaded, published.revision);
+	}
 	if (divine_boon_reconcile(&loaded, now))
 		return stage(loaded, published.revision);
 	ready = true;
@@ -178,8 +186,29 @@ bool divine_boon_runtime_boot(int64_t now)
 
 void divine_boon_runtime_pulse()
 {
+	divine_trade_runtime_reconcile();
 	if (!pending)
+	{
+		if (ready && published.mode == divine_boon_mode::draining)
+		{
+			const auto old = critical_command_coordinator_health_copy();
+			// Already committed, unpublished entitlements remain in the existing durable
+			// inbox/outbox. Their completion/login handlers stay enabled after cutover.
+			if (old.initialized && old.running && !old.queued && !old.inflight &&
+			    !old.blocked && !old.fenced_keys &&
+			    !maintenance_scheduler_health_copy(ne_event_tick)
+				     .jobs[static_cast<size_t>(maintenance_job_id::boon_scan)]
+				     .work_id)
+			{
+				auto next = published;
+				next.slots = {};
+				if (divine_boon_set_mode(&next, divine_boon_mode::divine,
+							 time(nullptr)))
+					stage(next, published.revision);
+			}
+		}
 		return;
+	}
 	if (!submitted)
 	{
 		if (std::chrono::steady_clock::now() >= retry_at && !submit_pending())

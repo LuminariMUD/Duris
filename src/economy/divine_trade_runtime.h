@@ -30,5 +30,8 @@ void divine_trade_runtime_ship_saved(uint32_t ship_id);
 // Only when an ordinary ship deletion was refused before its writer accepted it.
 void divine_trade_runtime_restore_books(std::vector<divine_trade_book> before,
 					uint32_t dirty_ship = 0);
+// Game-thread pulse: verify the original operation/hash on the ordered writer,
+// then reinstall its committed prepared projection before releasing reservations.
+void divine_trade_runtime_reconcile();
 void divine_trade_runtime_completions(const critical_completion *results, size_t count);
 #endif

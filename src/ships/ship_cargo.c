@@ -1441,11 +1441,8 @@ bool cargo_trade_market_available()
 	return !cargo_maintenance_work_id && trade_generation != UINT64_MAX;
 }
 
-bool cargo_trade_publish(uint64_t expected_generation,
-			 const std::vector<divine_trade_market_cell> &cells)
+static bool cargo_trade_cells_valid(const std::vector<divine_trade_market_cell> &cells)
 {
-	if (trade_generation != expected_generation || trade_generation == UINT64_MAX)
-		return false;
 	for (const auto &cell : cells)
 	{
 		if (cell.port >= NUM_PORTS || cell.commodity >= NUM_PORTS ||
@@ -1454,6 +1451,29 @@ bool cargo_trade_publish(uint64_t expected_generation,
 		     cell.goods != divine_trade_goods::contraband))
 			return false;
 	}
+	return true;
+}
+
+bool cargo_trade_reconcile(uint64_t committed_generation,
+			   const std::vector<divine_trade_market_cell> &cells)
+{
+	if (!committed_generation || !cargo_trade_cells_valid(cells))
+		return false;
+	for (const auto &cell : cells)
+		(cell.goods == divine_trade_goods::cargo ?
+			 ship_cargo_market_mod :
+			 ship_contra_market_mod)[cell.port][cell.commodity] = cell.modifier;
+	trade_generation = committed_generation;
+	return true;
+}
+
+bool cargo_trade_publish(uint64_t expected_generation,
+			 const std::vector<divine_trade_market_cell> &cells)
+{
+	if (trade_generation != expected_generation || trade_generation == UINT64_MAX)
+		return false;
+	if (!cargo_trade_cells_valid(cells))
+		return false;
 	for (const auto &cell : cells)
 		(cell.goods == divine_trade_goods::cargo ?
 			 ship_cargo_market_mod :

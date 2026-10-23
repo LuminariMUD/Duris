@@ -3,6 +3,7 @@
 #include "economy/currency_transaction.h"
 #include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_selection.h"
 #include "economy/nexus_stones.h"
 #include "core/files.h"
 #include <cmath>
@@ -58,6 +59,11 @@ ship_account_index ship_accounts;
 book_dirty_index dirty_owner;
 std::set<uint32_t> retired_ships;
 const divine_trade_book empty_book;
+struct trade_recovery
+{
+	std::atomic<bool> finished = false;
+	critical_apply_outcome outcome = critical_apply_outcome::retryable_failure;
+};
 struct trade_operation
 {
 	critical_operation_id id;
@@ -70,6 +76,10 @@ struct trade_operation
 	book_dirty_index indexed_dirty;
 	std::string audit;
 	std::string receipt;
+	critical_command command;
+	bool needs_reconcile = false, verified = false;
+	std::shared_ptr<trade_recovery> recovery;
+	std::chrono::steady_clock::time_point retry_at;
 };
 std::unique_ptr<trade_operation> pending;
 void index_book(const divine_trade_book &book, ship_account_index &ships, book_dirty_index &dirty)
@@ -361,6 +371,7 @@ try
 			next->receipt += record;
 		}
 	}
+	next->command = command;
 	// Allocate the publication destination before handing the immutable command off.
 	books.try_emplace(next->after.book_after.account);
 	next->indexed_ships = ship_accounts;
@@ -397,6 +408,101 @@ catch (const std::bad_alloc &)
 	}
 	return false;
 }
+void divine_trade_runtime_reconcile()
+try
+{
+	if (!pending || !pending->needs_reconcile)
+		return;
+	if (!pending->recovery)
+	{
+		if (std::chrono::steady_clock::now() < pending->retry_at)
+			return;
+		auto recovery = std::make_shared<trade_recovery>();
+		const auto command = pending->command;
+		const bool flat = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
+		const char *configured_root = persistence_mode_flatfile_root();
+		const std::string root = configured_root ? configured_root : "";
+		// State opportunities use owner 1. The one global trade reconciliation uses
+		// owner 2 on the same ordered Divine writer lane, without retaining actors.
+		const auto submitted = persistence_writer_submit(
+			persistence_job_kind::divine_boon, 2, command.payload.size(),
+			[recovery, command, flat, root]
+			{
+				try
+				{
+					critical_apply_result result;
+					if (flat)
+						result = divine_trade_flatfile_apply(root, command);
+					else
+					{
+#ifdef __NO_MYSQL__
+						result.outcome =
+							critical_apply_outcome::terminal_failure;
+#else
+						result =
+							critical_command_repository_apply_from_pool(
+								command, nullptr);
+#endif
+					}
+					recovery->outcome = result.outcome;
+				}
+				catch (const std::bad_alloc &)
+				{
+					recovery->outcome =
+						critical_apply_outcome::retryable_failure;
+				}
+				recovery->finished.store(true, std::memory_order_release);
+				return player_save_apply_result{ player_save_apply_outcome::applied,
+								 0, 0 };
+			});
+		if (submitted == player_save_submit_result::accepted ||
+		    submitted == player_save_submit_result::replaced)
+			pending->recovery = std::move(recovery);
+		else
+			pending->retry_at =
+				std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		return;
+	}
+	if (!pending->recovery->finished.load(std::memory_order_acquire))
+		return;
+	const auto outcome = pending->recovery->outcome;
+	pending->recovery.reset();
+	if (outcome != critical_apply_outcome::applied &&
+	    outcome != critical_apply_outcome::already_applied)
+	{
+		pending->retry_at = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		logit(LOG_SHIP, "Divine trade reconciliation awaiting verified receipt pid=%u",
+		      pending->after.pid);
+		return;
+	}
+	// The backend just verified the original operation AND request hash. Its
+	// committed after-images are exactly our immutable prepared command. A damaged
+	// redundant result cannot change that payment, inventory, book or market.
+	const auto &p = pending->after;
+	divine_trade_result result{ p.pid,
+				    p.ship_id,
+				    p.generation + 1,
+				    p.wallet_revision + 1,
+				    p.book_after.revision,
+				    p.payment,
+				    p.qualifying_quantity };
+	std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> bytes;
+	if (!divine_trade_result_encode(result, &bytes))
+		return;
+	critical_completion completion{};
+	completion.operation_id = pending->id;
+	completion.type = critical_command_type::divine_trade;
+	completion.outcome = critical_apply_outcome::already_applied;
+	completion.result_size = bytes.size();
+	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+	pending->verified = true;
+	divine_trade_runtime_completions(&completion, 1);
+}
+catch (const std::bad_alloc &)
+{
+	logit(LOG_SHIP, "Divine trade reconciliation deferred: memory unavailable");
+}
+
 void divine_trade_runtime_completions(const critical_completion *results, size_t count)
 {
 	for (size_t i = 0; i < count; ++i)
@@ -407,6 +513,8 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 			continue;
 		if (completion.outcome == critical_apply_outcome::retryable_failure ||
 		    completion.outcome == critical_apply_outcome::ambiguous_commit)
+			continue;
+		if (pending->needs_reconcile && !pending->verified)
 			continue;
 		auto &p = pending->after;
 		const bool committed = completion.outcome == critical_apply_outcome::applied ||
@@ -424,24 +532,52 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 		{
 			logit(LOG_SHIP, "Divine trade result mismatch pid=%u ship=%u", p.pid,
 			      p.ship_id);
+			pending->needs_reconcile = true;
 			continue;
 		}
 		P_char ch = player(p.pid);
-		if (committed && cargo_trade_generation() != p.generation)
+		if (committed && !pending->verified && cargo_trade_generation() != p.generation)
 		{
 			logit(LOG_SHIP, "Divine market generation mismatch ship=%u", p.ship_id);
+			pending->needs_reconcile = true;
 			continue;
 		}
-		player_save_pipeline_release_trade(p.pid);
-		currency_transaction_release_trade(p.pid);
 		if (committed)
 		{
-			if (!cargo_trade_publish(p.generation, p.market_after))
+			if (ch && ch->only.pc->divine_trade_payment_pending)
+			{
+				currency_vector before, payable;
+				before.amount = { GET_COPPER(ch), GET_SILVER(ch), GET_GOLD(ch),
+						  GET_PLATINUM(ch) };
+				if (ch->only.pc->wallet_revision == UINT64_MAX ||
+				    !currency_wallet_after_value(before, p.payment, &payable))
+				{
+					logit(LOG_SHIP, "Divine wallet publication fenced pid=%u",
+					      p.pid);
+					pending->needs_reconcile = true;
+					pending->verified = false;
+					continue;
+				}
+			}
+			if (!(pending->verified ?
+				      cargo_trade_reconcile(p.generation + 1, p.market_after) :
+				      cargo_trade_publish(p.generation, p.market_after)))
 			{
 				logit(LOG_SHIP, "Divine market publication mismatch ship=%u",
 				      p.ship_id);
+				pending->needs_reconcile = true;
+				pending->verified = false;
 				continue;
 			}
+			if (ch && ch->only.pc->divine_trade_payment_pending &&
+			    !currency_transaction_publish_trade(ch, p.payment))
+			{
+				pending->needs_reconcile = true;
+				pending->verified = false;
+				continue;
+			}
+			player_save_pipeline_release_trade(p.pid);
+			currency_transaction_release_trade(p.pid);
 			ship_accounts.swap(pending->indexed_ships);
 			dirty_owner.swap(pending->indexed_dirty);
 			books[p.book_after.account] = std::move(p.book_after);
@@ -472,9 +608,6 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 			if (ch && ch->only.pc->divine_trade_payment_pending)
 			{
 				ch->only.pc->divine_trade_payment_pending = false;
-				if (!currency_transaction_publish_trade(ch, p.payment))
-					logit(LOG_SHIP, "Divine wallet publication mismatch pid=%u",
-					      p.pid);
 				if (p.has_cargo_effect)
 				{
 					auto *effect =
@@ -538,6 +671,11 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 				"The cargo trade could not settle. Your money and goods are unchanged.\r\n",
 				ch);
 		}
+		if (!committed)
+		{
+			player_save_pipeline_release_trade(p.pid);
+			currency_transaction_release_trade(p.pid);
+		}
 		pending.reset();
 	}
 }
@@ -565,7 +703,8 @@ try
 			boon = &candidate;
 			break;
 		}
-	if (!boon || now <= boon->starts_at || port != boon->source_port || cost <= 0 ||
+	if (!boon || !divine_boon_cargo_eligible(*boon) || now <= boon->starts_at ||
+	    port != boon->source_port || cost <= 0 ||
 	    port != (goods == divine_trade_goods::cargo ? boon->cargo_commodity :
 							  boon->contraband_commodity))
 		return false;
@@ -691,7 +830,11 @@ try
 			boon = &candidate;
 			break;
 		}
-	if (!boon)
+	if (!boon || (boon->source_port < 0 || boon->source_port >= NUM_PORTS ||
+		      boon->destination_port < 0 || boon->destination_port >= NUM_PORTS ||
+		      boon->source_port == boon->destination_port ||
+		      boon->cargo_commodity != boon->source_port ||
+		      boon->contraband_commodity != boon->source_port))
 		return false;
 	critical_entity_key account;
 	if (!currency_account_key(get_account_name_safe(ch), 0, &account))

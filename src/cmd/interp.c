@@ -1276,7 +1276,8 @@ const char *command[MAX_CMD] = {
 	"qlist",
 	"hlqlist",
 	"qinfo",
-	"\n" /* MAX_CMD = 871, MAX_CMD_LIST = 1000 */
+	"divineboon",
+	"\n" /* MAX_CMD = 872, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3456,7 +3457,8 @@ void assign_command_pointers(void)
 	CMD_N(CMD_OUTPOST, STAT_RESTING + POS_PRONE, do_outpost, 0, FALSE);
 	CMD_Y(CMD_OFFENSIVE, STAT_RESTING + POS_PRONE, do_offensive, 0, FALSE);
 	CMD_Y(CMD_FOCUS, STAT_RESTING + POS_SITTING, do_assimilate, 0, TRUE);
-	CMD_Y(CMD_BOON, STAT_SLEEPING + POS_PRONE, do_boon, 0, FALSE);
+	CMD_Y(CMD_DIVINEBOON, STAT_DEAD + POS_PRONE, do_divineboon, IMMORTAL, FALSE);
+	CMD_Y(CMD_BOON, STAT_SLEEPING + POS_PRONE, do_divine_boon, 0, FALSE);
 	CMD_Y(CMD_CTF, STAT_NORMAL + POS_STANDING, do_ctf, 0, FALSE);
 	CMD_Y(CMD_AUCTION, STAT_NORMAL + POS_STANDING, new_ah_call, 0, FALSE);
 
