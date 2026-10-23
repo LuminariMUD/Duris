@@ -236,7 +236,6 @@ bool boon_reward_transaction_submit(P_char character, P_char victim, double data
 		return false;
 	}
 	++health.submitted;
-	health.pending = pending.size();
 	return true;
 }
 
@@ -270,6 +269,27 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 				publish_reward(character, completions[index].operation_id, data,
 					       result);
 			}
+			else if (!needs_checkpoint(result))
+			{
+				// Progress and shop counters are already committed. No player
+				// callback/checkpoint is needed to finish their admission.
+				if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+				{
+					const char *root = persistence_mode_flatfile_root();
+					std::string error;
+					if (!root || flatfile_boon_acknowledge_reward(
+							     root, completions[index].operation_id,
+							     &error) != flatfile_boon_result::ok)
+						persistence_alert(AVATAR, "boon_reward", "player",
+								  "unknown", "completion",
+								  "checkpoint_free_ack_retained",
+								  "pid=%u", result.pid);
+				}
+				++health.committed;
+				health.max_results =
+					std::max<uint64_t>(health.max_results, result.entry_count);
+				pending.erase(found);
+			}
 			else
 			{
 				health.max_results =
@@ -285,7 +305,6 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 			pending.erase(found);
 		}
 	}
-	health.pending = pending.size();
 }
 
 void boon_reward_transaction_player_ready(P_char character)
@@ -311,7 +330,6 @@ try
 		std::copy_n(key.begin(), operation.bytes.size(), operation.bytes.begin());
 		publish_reward(character, operation, data, result);
 	}
-	health.pending = pending.size();
 	if (persistence_mode_get() != PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		return;
 	const char *root = persistence_mode_flatfile_root();
@@ -351,7 +369,6 @@ try
 				    reward.result))
 			break;
 	}
-	health.pending = pending.size();
 }
 
 catch (const std::bad_alloc &)
@@ -378,14 +395,18 @@ boon_reward_transaction_outbox_delivery(const critical_outbox_record &record, vo
 
 boon_reward_health boon_reward_transaction_health_copy(void)
 {
-	health.pending = pending.size();
+	health.pending = 0;
 	health.oldest_age_msec = 0;
 	const uint64_t now = monotonic_msec();
 	for (const auto &[key, entry] : pending)
 	{
 		(void)key;
-		health.oldest_age_msec =
-			std::max(health.oldest_age_msec, now - entry.submitted_at_msec);
+		if (!entry.published)
+		{
+			++health.pending;
+			health.oldest_age_msec =
+				std::max(health.oldest_age_msec, now - entry.submitted_at_msec);
+		}
 	}
 	return health;
 }

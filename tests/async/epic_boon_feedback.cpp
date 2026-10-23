@@ -342,7 +342,7 @@ static void flat_publication_case(const std::string &root, int ordering, bool fa
 	{
 		assert(feedback == messages &&
 		       feedback.find("completed boon # 7") != std::string::npos);
-		assert(boon_reward_transaction_health_copy().pending == 1);
+		assert(boon_reward_transaction_health_copy().pending == 0);
 	}
 	else
 	{
@@ -456,6 +456,88 @@ static void sql_offline_rewards()
 		assert(pc.epics == (type == BTYPE_EPIC ? 108 : 100));
 		assert(experience == (type == BTYPE_EXP ? 8 : 0));
 	}
+}
+
+static void checkpoint_free_offline(const std::string &root)
+{
+	for (bool flat : { false, true })
+		for (int type : { BTYPE_POINT, BTYPE_STATS, -1, -2 })
+		{
+			reset_actor(20, 100);
+			flat_root.clear();
+			if (flat)
+			{
+				flat_root = root + "/" + std::to_string(type);
+				std::filesystem::create_directories(flat_root + "/domains");
+				std::filesystem::permissions(flat_root,
+							     std::filesystem::perms::owner_all);
+				std::filesystem::permissions(flat_root + "/domains",
+							     std::filesystem::perms::owner_all);
+				flatfile_boon_definition definition;
+				definition.id = 7;
+				definition.type = type >= 0 ? type : BTYPE_EPIC;
+				definition.option = BOPT_LEVEL;
+				definition.criteria = type >= 0 ? 20 : 99;
+				definition.bonus = 4;
+				definition.active = true;
+				definition.author = "test";
+				std::string error;
+				assert(flatfile_boon_establish(flat_root, { definition }, &error) ==
+				       flatfile_boon_result::ok);
+			}
+			assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+			critical_completion completion{};
+			completion.operation_id = commands.back().operation_id;
+			completion.outcome = critical_apply_outcome::applied;
+			if (flat)
+			{
+				const auto applied =
+					flatfile_boon_repository_apply(flat_root, commands.back());
+				assert(applied.outcome == critical_apply_outcome::applied);
+				completion.result_size = applied.result_size;
+				completion.result_payload = applied.result_payload;
+			}
+			else
+			{
+				boon_reward_result result{};
+				result.pid = 42;
+				result.entry_count = type == -2 ? 0 : 1;
+				if (result.entry_count)
+				{
+					result.entries[0].boon_id = 7;
+					result.entries[0].type = type < 0 ? BTYPE_EXP : type;
+					result.entries[0].flags = type < 0 ? BOON_RESULT_PROGRESS :
+									     BOON_RESULT_COMPLETED;
+				}
+				std::array<uint8_t, BOON_REWARD_RESULT_BYTES> bytes;
+				assert(boon_reward_command_encode_result(result, &bytes));
+				completion.result_size = bytes.size();
+				std::copy(bytes.begin(), bytes.end(),
+					  completion.result_payload.begin());
+			}
+			online = false;
+			boon_reward_transaction_handle_completions(&completion, 1);
+			assert(boon_reward_transaction_health_copy().pending == 0 &&
+			       pc.epics == 100 && experience == 0);
+			if (flat)
+			{
+				std::string error;
+				flatfile_boon_pending_reward reward;
+				assert(flatfile_boon_find_pending_reward(flat_root, 42, &reward,
+									 &error) ==
+				       flatfile_boon_result::not_found);
+				if (type >= 0)
+				{
+					flatfile_boon_player_projection saved;
+					assert(flatfile_boon_load_player(flat_root, 42, &saved,
+									 &error) ==
+					       flatfile_boon_result::ok);
+					assert((type == BTYPE_POINT ? saved.points : saved.stats) ==
+					       4);
+				}
+			}
+		}
+	flat_root.clear();
 }
 
 static void checkpoint_free_outbox()
@@ -576,6 +658,7 @@ int main(int argc, char **argv)
 					      ordering, fail_ack);
 	multiple_offline_rewards(std::string(argv[1]) + "/multiple");
 	sql_offline_rewards();
+	checkpoint_free_offline(std::string(argv[1]) + "/checkpoint-free");
 	checkpoint_free_outbox();
 	nested_publication_case();
 	legacy_shop_admission_case();
