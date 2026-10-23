@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "economy/boon_reward_command.h"
+#include "economy/boon.h"
 
 #include <bit>
 #include <cmath>
@@ -199,4 +200,16 @@ bool boon_reward_command_decode_result(const uint8_t *encoded, size_t size,
 		entry.counter = std::bit_cast<double>(get_u64(row + 40));
 	}
 	return true;
+}
+
+bool boon_reward_requires_checkpoint(const boon_reward_result &result)
+{
+	for (size_t index = 0; index < result.entry_count; ++index)
+	{
+		const auto &entry = result.entries[index];
+		if ((entry.flags & BOON_RESULT_COMPLETED) && entry.type != BTYPE_STATS &&
+		    entry.type != BTYPE_POINT)
+			return true;
+	}
+	return false;
 }

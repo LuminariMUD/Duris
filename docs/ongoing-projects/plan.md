@@ -105,6 +105,45 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
+### Final cutover finding and repair in progress
+
+The old legacy publication path had no recipient checkpoint watermark: flat
+publication acknowledged its receipt immediately after changing live state, and
+the SQL outbox declared any decoded payload delivered. Neither proves a player
+checkpoint. The new cutover must not erase or blindly replay that uncertainty.
+The focused repair keeps known accepted live/offline same-process callbacks able
+to finish once, preserves their flat receipts, and retains unknown post-restart
+flat receipts for explicit reconciliation. SQL's existing dead-letter status
+retains the raw original outbox payload instead of recording false delivery.
+Historic balances, operation identities and payload formats remain unchanged.
+This deliberately retains ambiguous old work for staff review; old formats cannot
+retroactively prove whether a pre-upgrade crash happened before or after payment.
+Current Divine prepared rewards use their existing saved watermark and continue
+automatic exactly-once recovery. Native legacy callback/replay/receipt tests and
+both builds are being qualified; no production records have been examined or
+modified. This safety correction is required before final completion.
+
+### Published controls (#291), final campaign in progress
+
+[PR #291](https://github.com/LuminariMUD/Duris/pull/291) is ready for review at
+`027b660bb`, stacked on #290. Both real zone-429 stone/save/restart/login journeys
+pass (100 base -> 150), including current help serving in each backend. SQL help
+is imported only into the disposable fixture database. Automatic fresh-state and
+existing-legacy cutover tests both prove no early admission or publication while
+accepted critical work remains. All 1139 tracked C/C++ files pass the required
+read-only formatting check; both builds and changed-line LLVM22 tidy pass.
+
+Current uncommitted qualification expands the existing world journey: a test-only
+clock override crosses an actual UTC boundary in the isolated server, letting its
+normal selector create the global cargo event. It then buys both goods at real
+ports, saves/restarts with inventory, relocates the saved ship offline between
+actual endpoints (navigation is not claimed), sells, verifies combined consumption,
+and continues stone/NPC/PvP/pause/expiry/relogin checks. Fixture setup is being
+corrected to update the native flat financial authority as well as its player
+snapshot; a snapshot-only money seed correctly did not override durable finances.
+No live or production data is involved. The complete campaign has not yet passed.
+Latest full-scope forecast remains 23:00 UTC / 02:00 Israel Oct 23, low confidence.
+
 ### Current delivery checkpoint (21:30 UTC / 00:30 Israel, Oct 23)
 
 The original 6-hour delivery was missed; explicit full-scope continuation remains

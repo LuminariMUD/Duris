@@ -62,6 +62,8 @@ struct boon_reward_result
 	std::array<boon_reward_entry, BOON_REWARD_MAX_RESULTS> entries;
 };
 
+bool boon_reward_requires_checkpoint(const boon_reward_result &result);
+
 bool boon_reward_command_build(critical_command *command, critical_operation_id operation_id,
 			       const boon_reward_payload &payload);
 bool boon_reward_command_decode_payload(const critical_command &command,
