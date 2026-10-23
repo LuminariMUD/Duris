@@ -14,6 +14,7 @@ bool divine_trade_runtime_boot(uint64_t)
 #include "player/player_save_worker.h"
 
 #include <cassert>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -112,6 +113,52 @@ int main(int argc, char **argv)
 	divine_boon_runtime_pulse();
 	assert(!divine_boon_runtime_pending());
 	old_work.fenced_keys = 0;
+	const auto scheduler_path = root + "/maintenance.state";
+	assert(maintenance_scheduler_set_state_path(scheduler_path.c_str()));
+	std::atomic<bool> scan_executed{ false };
+	auto execute_scan = [](const maintenance_request &request, void *context)
+	{
+		maintenance_result result{};
+		result.work_id = request.work_id;
+		result.job_id = request.job_id;
+		result.outcome = maintenance_outcome::complete;
+		if (request.job_id == maintenance_job_id::boon_scan)
+			static_cast<std::atomic<bool> *>(context)->store(true);
+		return result;
+	};
+	assert(maintenance_scheduler_init(1, execute_scan, &scan_executed));
+	const auto scan = static_cast<size_t>(maintenance_job_id::boon_scan);
+	std::array<maintenance_result, MAINTENANCE_JOB_COUNT> restored_results;
+	maintenance_scheduler_pulse(0, restored_results.data(), restored_results.size());
+	const auto scan_tick = maintenance_scheduler_health_copy(0).jobs[scan].next_due_tick;
+	const auto queued_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (!maintenance_scheduler_health_copy(scan_tick).jobs[scan].work_id)
+	{
+		assert(std::chrono::steady_clock::now() < queued_deadline);
+		maintenance_scheduler_pulse(scan_tick, restored_results.data(),
+					    restored_results.size());
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	while (!scan_executed.load())
+	{
+		assert(std::chrono::steady_clock::now() < queued_deadline);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	maintenance_scheduler_shutdown();
+	assert(maintenance_scheduler_init(1, execute_scan, &scan_executed));
+	assert(maintenance_scheduler_health_copy(scan_tick).jobs[scan].work_id);
+	divine_boon_runtime_pulse();
+	assert(!divine_boon_runtime_pending() &&
+	       divine_boon_runtime_state()->mode == divine_boon_mode::draining);
+	const auto scan_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (maintenance_scheduler_health_copy(scan_tick).jobs[scan].work_id)
+	{
+		assert(std::chrono::steady_clock::now() < scan_deadline);
+		maintenance_scheduler_pulse(scan_tick, restored_results.data(),
+					    restored_results.size());
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	maintenance_scheduler_shutdown();
 	divine_boon_runtime_pulse();
 	assert(divine_boon_runtime_pending());
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::draining);

@@ -195,7 +195,10 @@ void divine_boon_runtime_pulse()
 			// Already committed, unpublished entitlements remain in the existing durable
 			// inbox/outbox. Their completion/login handlers stay enabled after cutover.
 			if (old.initialized && old.running && !old.queued && !old.inflight &&
-			    !old.blocked && !old.fenced_keys)
+			    !old.blocked && !old.fenced_keys &&
+			    !maintenance_scheduler_health_copy(ne_event_tick)
+				     .jobs[static_cast<size_t>(maintenance_job_id::boon_scan)]
+				     .work_id)
 			{
 				auto next = published;
 				next.slots = {};

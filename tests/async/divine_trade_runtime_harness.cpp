@@ -446,7 +446,8 @@ static void complete(bool committed = true)
 	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
 
 	static unsigned injected = 0;
-	const unsigned fault = committed && injected < 3 ? ++injected : 0;
+	const unsigned fault =
+		committed && divine_trade_runtime_busy() && injected < 3 ? ++injected : 0;
 	if (fault == 1)
 		completion.result_payload[0] ^= 1;
 	if (fault == 2)
@@ -634,7 +635,16 @@ int main()
 					     divine_trade_goods::cargo));
 	assert(!divine_trade_runtime_busy() && !capture_reserved &&
 	       !alice.pc.divine_trade_payment_pending);
+	// A forged payment/denomination proposal never reaches the writer boundary.
+	const auto valid_wallet_proposal = prepared();
+	const auto refused_id = retained.operation_id;
+	auto forged_wallet = valid_wallet_proposal;
+	++forged_wallet.wallet_after.amount[0];
+	assert(!divine_trade_runtime_submit(&alice.ch, &ship, refused_id, forged_wallet));
+	assert(!divine_trade_runtime_busy() && !capture_reserved);
 	admission = critical_submit_result::accepted;
+	assert(divine_trade_runtime_submit(&alice.ch, &ship, refused_id, valid_wallet_proposal));
+	complete(false);
 	throw_submission = true;
 	const auto audits_before_throw = audited_trades;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
@@ -798,6 +808,23 @@ int main()
 	assert(divine_trade_runtime_ship_books(100).empty() &&
 	       !divine_trade_runtime_busy(&rejected));
 	admission = critical_submit_result::accepted;
+	write_ship(&ship);
+	rejected.save_pending = false;
+	rejected.save_saved_signature = 1;
+	rejected.slot[0].clear();
+	assert(divine_trade_runtime_purchase(&restored.ch, &rejected, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_busy(&rejected));
+	complete(false); // Accepted, then terminally rejected by the repository.
+	ship.slot[0].clear();
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_busy());
+	complete();
+	assert(divine_trade_runtime_loss(&ship, 0, 1));
+	ship.slot[0].clear();
+	assert(!divine_trade_runtime_save_busy(&rejected));
+	write_ship(&ship);
 
 	// Ownership transfer cannot merge a new account's paid lot into an old
 	// account's proof. The old proof is saved away before any new charge.
