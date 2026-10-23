@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — artifact retirement
 
 Branch `branch/issue-264-artifact-reset`, based on collector PR #323 at `025a6da7c`.
+Review-ready PR #324 (https://github.com/LuminariMUD/Duris/pull/324), implementation
+`527a3cafb`; committed and pushed after this handoff update.
 Outcome: clear current artifact ownership, timers and souls while retaining retired
 canonical UIDs, rejected UIDs, delivery markers and immutable history. Reuse the
 existing retired/absent identity states so both runtime and SQL delivery recovery
@@ -61,7 +63,13 @@ reconciliation tool now accepts cleared domain-only identity history and returne
 zero for all checks against the reset DB; baseline and ledger rows were unchanged.
 MariaDB and flat-file development builds, optimized MariaDB production build,
 12 season-manifest and 14 lifecycle checks and reset-fence contracts passed.
-Publication remains; full readiness stays open.
+Commit hooks passed; PR #324 is ready for review. Full readiness stays open.
+Next concrete consumer: prepared cargo commands in `divine_trade_repository.c`
+validate market generation/book state, player wallet/account and ship owner/preimage.
+Ships and players have monotonic IDs, so prove stale prepared commands reject after
+reset before adding epoch/cutoff machinery. Ordinary critical outbox receipts do not
+replay wallets; `comm.c` documents that the old journal directory now holds only
+locker identification receipts. Trace actual consumers, not historical names.
 
 ## Current continuation — collector retirement and recovery view
 
