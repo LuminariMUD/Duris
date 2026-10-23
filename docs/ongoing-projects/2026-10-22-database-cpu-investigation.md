@@ -124,6 +124,25 @@ confirmed `/home/staging`; no production checkout, database, service, or schedul
 was changed. Take a fresh baseline on that actual VPS before cutover rather than
 assuming the original investigation's 44% interval describes its current load.
 
+### Separate stone-fixture repair
+
+While qualifying the expectation-metadata prerequisite, the epic-stone SQL journey
+failed before reaching its new assertions. The same failure reproduces on worker
+head `c42275a80`, without metadata changes: `verify_awards` expected SQL `epics` to
+increase immediately, but the current writer advances the revision/ledger and the
+canonical player save owns that balance. This is a stale test expectation.
+
+The focused repair on `branch/issue-292-stone-proof` retains the saved balance at
+100 and verifies the actual award in **both** the canonical receipt and the epic
+ledger's balance/revision, rather than just its delta. No game source changes.
+On a disposable MariaDB 10.11 instance, `EPIC_STONE_MYSQL_TEST=1 python3
+tests/async/test_epic_stone_transaction.py` passes both tests, including maximum
+group, recovered claim, replay, rejection, and SQL rollback/retry. Provision using
+`tests/async/with_disposable_mariadb.sh`, map `TEST_DB_HOST/PORT/USER/PASSWORD` to
+`DB_HOST/PORT/USER/PASSWD`, and set `EPIC_TEST_DB_NAME=epic_stone_test_issue292`.
+The harness creates that fresh named database and refuses an existing one. This
+repair will be its own PR above #300, then carried into metadata qualification.
+
 ## Recommended change
 
 Replace the outbox health query's historical aggregates with indexed queries over
