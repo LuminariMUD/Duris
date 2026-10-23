@@ -87,6 +87,7 @@ int write_cargo()
 int sell_cargo_slot(P_char, P_ship ship, int slot, int, int)
 {
 	ship->slot[slot].type = SLOT_EMPTY;
+	queue_ship_save(ship, "cargo sale");
 	return 250;
 }
 int sell_contra_slot(P_char ch, P_ship ship, int slot, int room, int paid)
