@@ -43,7 +43,7 @@ zone_data *zone_table = zones;
 P_char character_list;
 uint64_t character_removal_generation;
 static int skill, roll, escape_roll, random_exit, training, moves, special_calls, special_mode;
-static bool notch, random_rolls, trapped, woods, flying_mount;
+static bool notch, random_rolls, trapped, woods, flying_mount, entrapment;
 static std::mt19937 generator(187);
 static std::string output;
 const char *dirs[] = {"north", "east", "south", "west", "up", "down", "northwest", "southwest", "northeast", "southeast"};
@@ -73,7 +73,7 @@ bool check_castle_walls(int, int) { return false; }
 int is_ice(P_char, int) { return false; }
 bool has_innate(P_char, int) { return false; }
 int grapple_flee_check(P_char) { return trapped; }
-int grapple_check_entrapment(P_char) { return false; }
+int grapple_check_entrapment(P_char) { return entrapment; }
 bool check_crippling_strike(P_char) { return false; }
 void send_to_char(const char *message, P_char) { output += message; }
 void act(const char *, int, P_char, P_obj, void *, int) {}
@@ -145,7 +145,7 @@ static void reset(int count = 2) {
     SET_POS(&runner, POS_STANDING + STAT_NORMAL); GET_VITALITY(&runner) = 100;
     character_list = &runner;
     skill = 100; roll = 1; escape_roll = random_exit = training = moves = special_calls = special_mode = 0;
-    notch = random_rolls = trapped = woods = flying_mount = false;
+    notch = random_rolls = trapped = woods = flying_mount = entrapment = false;
     output.clear();
 }
 static void flee(const char *argument = "east", P_char ch = &runner) {
@@ -223,6 +223,12 @@ static void escape_and_specials() {
         }
     }
     reset(); trapped = true; flee(); assert(!moves);
+    reset(); flying_mount = entrapment = true;
+    runner.specials.fighting = &opponent;
+    mount.specials.fighting = &opponent;
+    flee();
+    assert(!moves && runner.in_room == 0);
+    assert(runner.specials.fighting == &opponent && mount.specials.fighting == &opponent);
     reset(); woods = true; flee(); assert(!moves);
     reset(); special_mode = 1; flee(); assert(!moves && special_calls == 1);
     assert(output.find("couldn't escape") != std::string::npos);

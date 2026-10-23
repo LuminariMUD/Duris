@@ -41,11 +41,14 @@ int grapple_check_entrapment(P_char ch)
 	int gcskl, percent;
 	P_char attacker;
 
+	if (IS_IMMATERIAL(ch) || IS_AFFECTED(ch, AFF_WRAITHFORM))
+		return FALSE;
+
 	for (attacker = world[ch->in_room].people; attacker; attacker = attacker->next_in_room)
 	{
 		if (has_innate(attacker, INNATE_ENTRAPMENT) && CAN_ACT(attacker) &&
-		    CAN_SEE(attacker, ch) && (GET_POS(attacker) == POS_STANDING) &&
-		    (GET_OPPONENT(ch) == attacker))
+		    !IS_STUNNED(attacker) && !IS_IMMOBILE(attacker) && CAN_SEE(attacker, ch) &&
+		    (GET_POS(attacker) == POS_STANDING) && (GET_OPPONENT(ch) == attacker))
 		{
 			// Percent of a level 50 grappler with 100 skill in grappler combat is 35% to prevent flee
 			gcskl = GET_CHAR_SKILL(attacker, SKILL_GRAPPLER_COMBAT);
