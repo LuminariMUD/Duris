@@ -1,4 +1,5 @@
 #include <cstdarg>
+#include <new>
 
 #include "core/utils.h"
 #include "net/comm.h"
@@ -24,6 +25,18 @@ static int dirty = 0;
 static std::string trade_messages;
 static double nexus_multiplier = 1;
 static float last_sail_raise = 0, last_repair_raise = 0;
+static bool seadog = false, diplomat = false, throw_submission = false;
+static int audited_trades = 0;
+void statuslog(int, const char *format, ...)
+{
+	char text[2048];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(text, sizeof(text), format, args);
+	va_end(args);
+	if (strstr(text, "Divine settlement="))
+		++audited_trades;
+}
 
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...)
 {
@@ -99,6 +112,7 @@ struct player
 	explicit player(int pid)
 	{
 		ch.only.pc = &pc;
+		ch.player.name = const_cast<char *>("Trader");
 		pc.pid = pid;
 		ch.player.racewar = 1;
 		ch.in_room = NOWHERE;
@@ -137,7 +151,8 @@ static uint64_t market_generation = 0;
 static P_ship live_ship = nullptr;
 static player_pending_trade_snapshot captured_trade;
 static bool capture_reserved = false;
-const ShipTypeData ship_type_data[MAXSHIPCLASS] = { { ._mxcargo = 10 } };
+const ShipTypeData ship_type_data[MAXSHIPCLASS] = { { ._mxcargo = 10 },
+						    { ._mxcargo = 10, ._kind = SHK_WARSHIP } };
 const divine_boon_state *divine_boon_runtime_state()
 {
 	return &schedule;
@@ -156,6 +171,9 @@ bool divine_trade_flatfile_books(const std::string &, uint64_t, std::vector<divi
 }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
+	if (throw_submission)
+		throw std::bad_alloc();
+
 	retained = std::move(command);
 	return admission;
 }
@@ -219,11 +237,11 @@ void update_crew(P_ship) {}
 void update_ship_status(P_ship, P_ship) {}
 bool has_eq_diplomat(const ShipData *)
 {
-	return false;
+	return diplomat;
 }
 bool has_innate(P_char, int)
 {
-	return false;
+	return seadog;
 }
 int cargo_buy_price(int, int, bool)
 {
@@ -436,6 +454,13 @@ int main()
 	assert(!divine_trade_runtime_busy() && !capture_reserved &&
 	       !alice.pc.divine_trade_payment_pending);
 	admission = critical_submit_result::accepted;
+	throw_submission = true;
+	const auto audits_before_throw = audited_trades;
+	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(!divine_trade_runtime_busy() && !capture_reserved &&
+	       !alice.pc.divine_trade_payment_pending && audited_trades == audits_before_throw);
+	throw_submission = false;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
 	const auto last = prepared();
@@ -463,6 +488,44 @@ int main()
 	assert(prepared().payment == 150 && !prepared().has_cargo_effect);
 	complete();
 	assert(GET_MONEY(&restored.ch) == contra_opening + 50);
+	// All price modifiers remain quiet until the same committed sale.
+	struct player modifiers(45);
+	character_list = &modifiers.ch;
+	GET_COPPER(&modifiers.ch) = 1000;
+	boon.id = 98;
+	const int prior_class = ship.m_class;
+	ship.m_class = 1;
+	seadog = diplomat = true;
+	ship.slot[0].type = SLOT_EMPTY;
+	ship.slot[0].index = -1;
+	ship.slot[0].val0 = ship.slot[0].val1 = 0;
+	const auto audits_before_modifiers = audited_trades;
+	assert(divine_trade_runtime_purchase(&modifiers.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(audited_trades == audits_before_modifiers);
+	complete();
+	trade_messages.clear();
+	assert(divine_trade_runtime_sale(&modifiers.ch, &ship, 0, 4, divine_trade_goods::cargo));
+	assert(prepared().payment == 87);
+	assert(trade_messages.find("heritage") == std::string::npos &&
+	       trade_messages.find("diplomat") == std::string::npos &&
+	       trade_messages.find("stolen") == std::string::npos);
+	complete();
+	assert(audited_trades == audits_before_modifiers + 2 &&
+	       trade_messages.find("heritage") != std::string::npos &&
+	       trade_messages.find("diplomat") != std::string::npos &&
+	       trade_messages.find("stolen") != std::string::npos);
+	while (modifiers.ch.affected)
+	{
+		auto *af = modifiers.ch.affected;
+		modifiers.ch.affected = af->next;
+		delete af;
+	}
+	ship.m_class = prior_class;
+	seadog = diplomat = false;
+	character_list = &restored.ch;
+	boon.id = 18;
+
 	while (alice.ch.affected)
 	{
 		auto *af = alice.ch.affected;

@@ -33,6 +33,8 @@ struct trade_operation
 	divine_trade_payload after;
 	int nexus_bonus = 0;
 	bool trader_completed = false;
+	bool warship = false, seadog = false, diplomat = false;
+	std::string audit;
 };
 std::unique_ptr<trade_operation> pending;
 P_char player(uint32_t pid)
@@ -128,6 +130,42 @@ try
 	next->id = operation;
 	next->ship = ship->runtime_ref;
 	next->after = std::move(payload);
+	const auto &prepared = next->after;
+	const auto &market = prepared.market_after.front();
+	const bool cargo = market.goods == divine_trade_goods::cargo;
+	next->warship = prepared.action == divine_trade_action::sale && IS_WARSHIP(ship);
+	next->seadog = prepared.action == divine_trade_action::sale && cargo &&
+		       has_innate(ch, INNATE_SEADOG);
+	next->diplomat = prepared.action == divine_trade_action::sale && cargo &&
+			 has_eq_diplomat(ship);
+	char operation_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+	critical_operation_id_to_hex(operation, operation_hex, sizeof(operation_hex));
+	char record[320];
+	snprintf(record, sizeof(record),
+		 "%s: %s %s pid=%u ship=%u port=%u payment=%lld qualified=%u Divine settlement=%s",
+		 cargo ? "CARGO" : "CONTRABAND", GET_NAME(ch),
+		 prepared.action == divine_trade_action::purchase ? "bought" : "sold", prepared.pid,
+		 prepared.ship_id, static_cast<unsigned>(market.port),
+		 static_cast<long long>(prepared.payment), prepared.qualifying_quantity,
+		 operation_hex);
+	next->audit = record;
+	for (const auto &after : prepared.slots_after)
+	{
+		const auto &before = ship->slot[after.slot_index];
+		const bool buying = prepared.action == divine_trade_action::purchase;
+		const int64_t quantity =
+			buying ? static_cast<int64_t>(after.values[0]) -
+					 (before.type == SLOT_CARGO ||
+							  before.type == SLOT_CONTRABAND ?
+						  before.val0 :
+						  0) :
+				 before.val0;
+		snprintf(record, sizeof(record), " slot=%u commodity=%d crates=%lld basis=%lld",
+			 static_cast<unsigned>(after.slot_index),
+			 buying ? after.item_index : before.index, static_cast<long long>(quantity),
+			 static_cast<long long>(buying ? -prepared.payment : before.val1));
+		next->audit += record;
+	}
 	// Allocate the publication destination before handing the immutable command off.
 	books.try_emplace(next->after.book_after.account);
 	if (!currency_transaction_reserve_trade(ch, next->after.payment))
@@ -152,6 +190,13 @@ try
 }
 catch (const std::bad_alloc &)
 {
+	// Coordinator identity allocation can throw before it admits this operation.
+	if (pending && pending->id.bytes == operation.bytes)
+	{
+		player_save_pipeline_release_trade(pending->after.pid);
+		currency_transaction_release_trade(pending->after.pid);
+		pending.reset();
+	}
 	return false;
 }
 void divine_trade_runtime_completions(const critical_completion *results, size_t count)
@@ -222,6 +267,8 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 				update_crew(ship);
 				update_ship_status(ship);
 			}
+			statuslog(56, "%s", pending->audit.c_str());
+			logit(LOG_SHIP, "%s", pending->audit.c_str());
 			if (ch && ch->only.pc->divine_trade_payment_pending)
 			{
 				ch->only.pc->divine_trade_payment_pending = false;
@@ -247,6 +294,20 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 					player_save_pipeline_mark(GET_PID(ch),
 								  PLAYER_COMPONENT_AFFECTS);
 				}
+				if (pending->seadog)
+					send_to_char(
+						"Your &+csea&+Cfaring&n heritage has earned you a &+Ybonus&n in your sale...&n\r\n",
+						ch);
+				if (pending->diplomat)
+					send_to_char(
+						"Your diplomat's cut reduced the sale proceeds by 10%.\r\n",
+						ch);
+				if (pending->warship)
+					send_to_char(
+						p.has_cargo_effect ?
+							"&+gBecause your cargo is obviosly stolen, local merchants bargain the price down.&n\n" :
+							"&+gBecause your contraband is obviosly stolen, local merchants bargain the price down.&n\n",
+						ch);
 				if (pending->trader_completed)
 					send_to_char(
 						"&+rCon&+Rgra&+Wtula&+Rtio&+rns! You have completed the &+RTrader&+r achievement!&n\n",

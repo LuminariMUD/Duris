@@ -1898,17 +1898,17 @@ int ship_panel_proc(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (divine_trade_runtime_busy(ship) && cmd != CMD_LOOK && cmd != CMD_SCAN)
-	{
-		send_to_char("Your crew is settling a cargo trade. Please try again shortly.\r\n",
-			     ch);
-		return TRUE;
-	}
-
 	if ((cmd == CMD_GET) && arg)
 	{
 		if (isname(arg, "coins money"))
 		{
+			if (divine_trade_runtime_busy(ship))
+			{
+				send_to_char(
+					"Your crew is settling a cargo trade. Please try again shortly.\r\n",
+					ch);
+				return TRUE;
+			}
 			return claim_coffer(ch, ship);
 		}
 		return FALSE;
@@ -1932,6 +1932,14 @@ int ship_panel_proc(P_obj obj, P_char ch, int cmd, char *arg)
 		      isname(arg1, "fly") || isname(arg1, "land") || isname(arg1, "signal")))
 		{
 			do_order(ch, arg, cmd);
+			return TRUE;
+		}
+
+		if (divine_trade_runtime_busy(ship))
+		{
+			send_to_char(
+				"Your crew is settling a cargo trade. Please try again shortly.\r\n",
+				ch);
 			return TRUE;
 		}
 
