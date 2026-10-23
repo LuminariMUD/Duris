@@ -48,8 +48,9 @@ from surviving outbox rows. Keep old expectations unknown until proven from type
   evidence. Legitimate session-audit and derived combat-child omissions still need
   positive receipt/identity proof.
 
-Chunk 2 is now in progress on `branch/issue-292-outbox-expectations`, based on
-worker PR #300 (`cbb97b87d`). Outcome: a nullable expected-event count covering
+Chunk 2 is locally qualified on `branch/issue-292-outbox-expectations`, stacked
+above [stone-fixture PR #301](https://github.com/LuminariMUD/Duris/pull/301) and
+worker PR #300. Outcome: a nullable expected-event count covering
 contiguous event indexes, committed atomically from the writer's mutation contract
 alongside each canonical inbox result. Known zero is distinct from historical
 NULL. This enables detecting a partially missing multi-event result without
@@ -62,15 +63,30 @@ multi-event and zero-event fixtures, relevant domain harnesses, formatting/build
 Publish this schema/writer prerequisite as its own stacked PR before implementing
 the audit consumer and historical classification.
 
-Chunk 2 qualification so far: full server build, schema/command/outbox MariaDB
-11.8 harness, collector multi-event repository harness (11.8), boon/zone,
+Chunk 2 qualification: full server build, schema/command/outbox MariaDB
+11.8 **and MySQL 8.0** harnesses, collector multi-event repository harness (11.8), boon/zone,
 session-audit and combat SQL harnesses (10.11), boot/source contracts, formatting
 and whitespace pass. Upgrade runs twice and preserves historical NULL; replay
 does not rewrite an older NULL expectation. The epic-stone SQL journey exposed a
 baseline fixture that still expects direct SQL balance mutation despite the
-current receipt/ledger-only epic writer. Reproduce and repair that fixture as a
-separate focused change before claiming stone/recovered-claim qualification.
-No expectation-metadata PR is open yet.
+current receipt/ledger-only epic writer. The baseline failure was reproduced on
+`c42275a80` and fixed separately in PR #301. After merging that repair and the
+worker review fix into this branch, both epic-stone tests pass with the new
+recovered-claim expectation assertion; full build, eight auction tests,
+lifecycle/client-free/boot checks, formatting and whitespace pass too.
+No expectation-metadata PR is open yet; publishing it is the next step.
+
+The migration `migrations/critical_outbox_expectations.sql` is guarded and
+re-runnable and requires `ALGORITHM=INSTANT` rather than silently copying the
+history table. New schemas include the nullable column; the normal migration
+runner installs it before schema verification, and boot requires its presence.
+New writers store expectations in the existing inbox completion UPDATE, with no
+extra query. New session audits/combat children record zero; each mutation owns
+its event count, including item/collector event indexes and recovered stone
+receipts. Historical NULL is never backfilled from existing outbox rows or
+rewritten by replay. Reader/result codecs are unchanged. Keep this additive
+column and evidence on binary rollback; do not drop it. No production migration
+has run. The audit consumer still awaits its separately reviewed change.
 
 ### Chunk 1 local qualification
 
