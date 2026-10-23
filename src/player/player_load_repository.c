@@ -148,7 +148,8 @@ player_load_outcome failure_outcome(unsigned int error)
 
 bool within_budget(const player_load_result &result)
 {
-	return result.metrics.query_count <= PLAYER_LOAD_QUERY_MAX &&
+	// Reserve the final COMMIT in the total query budget.
+	return result.metrics.query_count < PLAYER_LOAD_QUERY_MAX &&
 	       result.metrics.row_count <= PLAYER_SNAPSHOT_MAX_ROWS &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES;
 }

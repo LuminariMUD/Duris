@@ -38,11 +38,11 @@ bool apply(P_char ch, const divine_epic_delivery &delivery)
 	pc->epics += delivery.amount;
 	pc->epic_revision = std::max(pc->epic_revision, delivery.sequence);
 	pc->divine_boon_delivery_seq = delivery.sequence;
-	epic_publish_pvp_award(ch, static_cast<int>(delivery.amount));
 	if (delivery.spill_blood)
 		if (auto *task = get_epic_task(ch);
 		    task && (task->modifier == SPILL_BLOOD || task->modifier == -SPILL_BLOOD))
 			affect_remove(ch, task);
+	epic_publish_pvp_award(ch, static_cast<int>(delivery.amount));
 	pc->divine_boon_delivery_applying = false;
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_AFFECTS |
