@@ -6,7 +6,7 @@
 > A forecast outside the remaining budget is a delivery failure to disclose
 > immediately, not permission to continue spending time.
 
-Status: active implementation; incomplete and inactive in gameplay. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
+Status: implementation and local qualification complete; published stacked PRs are ready for review. Production has not been activated. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
 Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Original plan branch: `branch/issue-245-divine-boons` (PR #265 was merged
 and its branch removed by the separate integration workflow). Current handoff
@@ -104,6 +104,105 @@ checkpoints cannot be restarted now; they count as missed.
   missed delivery and stop. Never substitute another remaining-time range.
 
 ## Implementation handoff (2026-10-22)
+
+### Delivery closeout (2026-10-23 00:47 UTC / 03:47 Asia/Jerusalem)
+
+All 23 implementation and local qualification items below are complete. The open
+stack is synchronized with master fc1c94e15155; every published branch has one
+focused implementation commit, with the final SQL reconnect correction on #293.
+Current worktree: /home/aiwithapex/projects/duris-issue245-plan, branch
+branch/issue-245-divine-final-qualification. The handoff at this heading supersedes
+all historical checkpoints below. Issue #245 remains open for review/integration.
+
+- Stack order: #276 -> #277 -> #278 -> #279 -> #282 -> #283 -> #287 -> #288 ->
+  #290 -> #291 -> #293 -> #294. #276 now targets master, following the separate
+  merge of #275. No release tags or production operations were performed.
+- #290 contains all loss/deletion review corrections: committed SQL save/delete
+  receipts, deferred customs/sinking/summon, preserved deletion retries, exact
+  mixed-account invalidation, rejected-admission index rollback, deleted identity
+  retirement and monotonic flat-file IDs. Flat ship catalogue v2 reads v1; rollback
+  must retain a v2-capable reader and must not reuse active manifest identities.
+- #291 preserves paid route entitlements, validates native water navigation and
+  reconciles all three committed projection failures on the existing writer.
+  Staff command is now **871**, MAX_CMD **872**, preserving master commands
+  866-870 and the player command 804. An executable registry check verifies names
+  against the real command array and constants.
+- #293 retains originals that cannot prove a recipient checkpoint. All known
+  accepted live and same-process offline rewards finish once on both backends.
+  SQL reconnect now scans known committed results before the flat-only recovery
+  path. Two epic and two EXP completions, repeated login and duplicate callbacks
+  pass the native sanitizer harness. Unknown old post-restart receipts still need
+  explicit staff reconciliation; old formats cannot prove paid versus unpaid.
+  Checkpoint-dependent SQL receipts use the existing retained dead-letter state;
+  pure progress/points/stats do not. This bounded cutover state is intentional.
+- #294 includes the completed MariaDB and flat-file loaded-world campaigns:
+  both real goods/shops, account hold 10/consumed 7, zone 429 stone 100 -> 150,
+  real NPC EXP, configured PvP 250 -> 375 admitted before expiry and paid after,
+  pause/history, saved recipient restart/login, final epic balance 525.
+  The flat deferred combat fixture pauses the child under GDB before admission;
+  it requires GDB and an unstripped debug binary. Only fixture processes receive
+  the frozen clock. Endpoint relocation is offline; ship navigation controls are
+  not claimed by the campaign.
+- Final integration evidence: both required backend builds; all affected native
+  state/activity/selection/delivery/runtime/command/trade/market/save-codec tests;
+  the full flat player repository fault matrix; disposable MariaDB player-save
+  and load-filter journeys; legacy command/cutover and epic callback tests;
+  all-source read-only format, changed-line LLVM 22 tidy and whitespace checks.
+  Earlier source-equivalent SQL financial rollback, flat journal, real ship
+  lifecycle/loss and dual-world campaign evidence was reused. No full burn-in or
+  hosted-CI wait was added.
+- Memory remains the gameplay authority for selection, eligibility, prices,
+  bonuses, caps and prepared after-images. SQL/flat-file validate durable identity
+  and revisions and commit prepared outcomes; backend reads do not decide rewards.
+- Original clock: start 2026-10-22 08:41:02 UTC, deadline 14:41:02 UTC, missed.
+  At 00:47 UTC elapsed is 16h 06m, overrun 10h 06m. The owner approved full-scope
+  continuation. The later 23:00 UTC estimate was also missed; neither is reset.
+- Next session: review/integrate the already published stack in the order above.
+  Preserve successor-owned commits when a parent is squash-merged. Keep production
+  migrations/import/deployment/restart separate from this completed delivery.
+
+### Historical verified handoff (22:55 UTC / 01:55 Israel Oct 23)
+
+Full-scope completion remains **unfinished** because #290 has newly read loss/
+deletion review findings. The 23:00 UTC / 02:00 Israel forecast is withdrawn as
+unreliable; no replacement deadline is asserted. Original start 08:41:02 UTC and
+original 14:41:02 deadline remain unchanged and missed; full-scope continuation is
+explicitly authorized. Do not restart analysis or repeat the complete reward work.
+
+Both final full-world campaigns now pass on the reviewed controls/receipt tree:
+cutover -> real hourly water-route selection -> both goods -> saved inventory /
+restart -> fixed hold 10, consumed 7 -> real zone-429 stone 100 -> 150 -> actual
+NPC combat EXP -> legitimate configured PvP base 250 -> 375 **committed after
+expiry** -> pause/expiry/history -> recipient restart/login. A test-only frozen
+clock advances UTC boundaries; ship relocation between real saved endpoints is
+offline. Native shipping navigation is checked by selection; sailing controls
+are not claimed. Both builds, 1141-file read-only format, native market/receipt/
+activity/core/commands/writer checks and the sanitized mismatch recovery pass.
+
+Review fixes are pushed to their owning parents: #291 head `4acc63177` preserves
+paid sale entitlements after path changes, verifies water paths with native
+`dijkstra`/`valid_ship_edge`, and asynchronously reconciles all three committed
+projection failures by original operation/request hash. It reinstalls the exact
+committed game-thread after-images and preserves intervening ordinary money.
+#293 head `ba0140434` scans every known committed disconnected reward, avoids
+worker-thread wizlog access, and acknowledges progress/points/stats that need no
+player checkpoint. Verified parent tree equals old local `bf4e502e3` exactly.
+
+The current local-only #290 repair begins SQL save/delete receipt tracking,
+preserves TO_DELETE on refused retries, moves rename admission fencing before
+queueing, and defers a busy summon arrival. It is not yet qualified or published.
+Remaining review work: finish SQL receipt tests, mixed-account loss/transfer
+handling, confirmed deletion/boot retirement and ship-ID reuse, customs/mandatory
+clear and sinking guards, speculative-index rollback. Reuse the green combined
+campaign for unchanged healthy paths and use focused failure tests for these
+repairs. Then put the loss fix into #290 and rebase #291/#293/successors using
+only successor-owned commits, with explicit leases and tree comparison.
+
+Primary implementation: `/home/aiwithapex/projects/duris-issue245-plan`, branch
+`branch/issue-245-divine-final-qualification`. A temporary clean parent-update
+checkout exists at `/home/aiwithapex/projects/duris-issue245-reviewed-parents`,
+currently on #293. Preserve unrelated primary work. No production operations,
+merges or release tags have been performed. Keep #245 and the goal open.
 
 ### Final cutover finding and repair in progress
 
@@ -1307,6 +1406,83 @@ snapshot inspected on 2026-10-22; all 23 have a retained implementation path.
 - **Delivery (23):** step 5 focused runtime/journey/schema tests, both builds,
   formatting checks, source-grounded content/economy assessment and honest
   separation between local qualification and production actions.
+
+### Source-grounded content and economy assessment
+
+The final loaded pool proves eight distinct-port routes with both goods priced
+above their source invoice, and no currently proved route shared by both sides.
+Only that soft contested preference relaxes; real shop access, normal restrictions
+and distinct endpoints remain hard. Live campaigns have used multiple actual
+port pairs (including Flann/Myrabolus and Thur'Gurax/Sarmiz'Duul). The ship is
+relocated offline between saved endpoints, so these results do not claim sailing
+or docking-navigation coverage.
+
+The actual Clipper holds ten cargo-capacity units and its first qualifying
+purchase fixes a thirty-unit combined account allowance. Both real goods consume
+seven units in the campaign, leaving twenty-three; restart retains the same book.
+The source's largest merchant hull has seventy base units; its existing +10%
+crew option can make the first hold seventy-seven, for an initial allowance of
+231. Later hull/crew/alt changes cannot enlarge an already fixed allowance.
+The approved +25% sale contribution raises 100 purchase / 120 base sale from
+20 ordinary profit to 50 event profit (150 revenue). That is a 150% profit rise,
+not a 25% profit rise. The code keeps the approved rate and bounds eligibility
+with the account allowance and four-hour event; no production economic tuning
+or claim about observed player profits is made.
+
+### Final acceptance audit (complete local qualification)
+
+The following maps every issue item to executable evidence. Existing passing
+source-specific checks are reused; unrelated suites and hosted CI are not gates.
+All 23 items now have the executable evidence below and the closeout above. Publication and production activation remain separate states.
+
+1. Player dispatch/804, list and removed shop/edit access: native command/ANSI
+   harness (`test_divine_boon_commands.py`) and real help/boon sessions.
+2. Both goods +25%, 100/120/150/50: `test_divine_trade.py`, real market/controller
+   checks and matching help; rates come from the core category policy.
+3. Exact mixed provenance/loss/save: native trade controller executes actual
+   clear, partial/all jettison and salvage; SQL capture and flat journal journeys.
+4. Fixed combined first-hold account cap and atomic recovery: core trade,
+   real SQL ten boundaries and flat six after-images; live routes retain 10/7.
+5. Actual payable reachable stone on both backends: zone 429, 100 -> 150,
+   recipient save/restart/login. Weighted eligible selection has native proof.
+6. Effective sides and excluded separate Spill Blood 500: native epic/combat
+   preparation and ordered delivery checks; no generic EPIC_PVP multiplier.
+7. All six NPC EXP sources, 220/160 additive math and caps: existing sanitized
+   `test_world_quest_xp_feedback.py`, epic math and actual reward dispatch checks.
+8. Accepted legacy work: native callback admission/offline/restart cases;
+   uncheckpointed originals remain durable, never blindly replayed or acknowledged.
+9. Hour/expiry/pause/no-reroll/prepared expiry: core and writer tests pass;
+   combined world deferred-PvP/clock/restart proof passes on both backends.
+10. Population 60/15/five-minute/distinct accounts/brackets/repeats: native
+    activity and selection harnesses already qualified and unchanged.
+11. Unsafe-area/access exclusions: native actual world graph/flag/proc tests;
+    the loaded target catalogue and real stone agree on each backend.
+12. No new legacy admissions and historic balances retained: cutover guard tests,
+    native live callback tests, automatic drain and retained raw receipt tests.
+13. Eight slots and durable schedule: core, real writer/CAS and repository
+    create/replay/stale/reroll/corruption tests; reboot never backfills.
+14. Eight/four hours and one Cargo/one PvP: deterministic core category/rotation
+    tests; new cargo selection does not bypass concurrency or empty-slot limits.
+15. Every town flag including hometown zero: selector dynamic flag tests and
+    native payout guards for EXP and epic stones, before all relaxed preferences.
+16. Side/level suitability and no unsafe fallback: native population/candidate
+    tests, thin pools and invalidated prepared-target consumption without reroll.
+17. 200% eligible NPC base only, overflow/caps: native reward dispatcher and
+    source families, including healer's hostile opponent and derived tank shares.
+18. Epic stone grouping/modifiers/idempotence: real loaded stone on both
+    backends plus participant claim/retry/rollback and fractional 100*2/3 -> 100.
+19. PvP side display/native legitimate reward preparation passes; final actual
+    combat/deferred receipt/save/restart proof passes on both backends.
+20. Real ports and both standard shop hooks: actual loaded routes buy and sell
+    both goods across save/restart; exact basis/cap and market math have native proof.
+21. Native colour strings, 80 columns, no/partial slots and durations: actual
+    pad_ansi/strip_ansi command test, long names, side filtering and live sessions.
+22. Existing and parsed help/aliases/staff references: importer offline dry-run,
+    native flat catalog/serving, isolated SQL import/serving; parsed title precedence.
+23. Both final backend builds, affected native/sanitizer and disposable SQL
+    checks, both complete campaigns, all-source read-only format, changed-line
+    tidy and whitespace pass. Final ablation retained required recovery and cut
+    repeated broad regression; the focused stack is published for review.
 
 ## Planning verification and limits
 

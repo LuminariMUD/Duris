@@ -4985,7 +4985,7 @@ void show_toggles(P_char ch)
 		 "&+r     Showspec    :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Web Info    :&+g %-3s    &+y|&N"
 		 "&+r     Show Quests :&+g %-3s    &+y|&N"
-		 "&+r     Boons       :&+g %-3s    &+y|&N\r\n"
+		 "&+r     Boons(auto) :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Newbie EQ   :&+g %-3s    &+y|&N"
 		 "&+r     No Beep     :&+g %-3s    &+y|&n"
 		 "&+r     Underline   :&+g %-3s    &+y|&N\r\n"
@@ -5014,7 +5014,7 @@ void show_toggles(P_char ch)
 		 ONOFF(PLR_FLAGGED(ch, PLR_AFK)), ONOFF(PLR2_FLAGGED(ch, PLR2_NCHAT)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_HINT_CHANNEL)), ONOFF(PLR2_FLAGGED(ch, PLR2_LGROUP)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_SPEC)), ONOFF(PLR2_FLAGGED(ch, PLR2_WEBINFO)),
-		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), "AUTO",
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), "ON",
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_NEWBIEEQ)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOBEEP)),
 		 ONOFF(PLR3_FLAGGED(ch, PLR3_UNDERLINE)), ONOFF(PLR3_FLAGGED(ch, PLR3_SURNAMES)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_DAMAGE)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOLEVEL)),
@@ -5197,8 +5197,7 @@ static const char *tog_messages[][2] = {
 	{ "You will no longer see the acc channel.\r\n", "You will now see the acc channel.\r\n" },
 	{ "Quest NPC's will no longer show a &+Y(Q)&n.\r\n",
 	  "Quest NPC's will show a &+Y(Q)&n.\r\n" },
-	{ "You will no longer be affected by boons.\r\n",
-	  "You will now be affected by boons.\r\n" },
+	{ "Divine Boons apply automatically.\r\n", "Divine Boons apply automatically.\r\n" },
 	{ "You will not load with newbie EQ when you die.\r\n",
 	  "You will now load with newbie EQ when you die.\r\n" },
 	{ "You can be beeped.\r\n", "You can not be beeped.\r\n" },
