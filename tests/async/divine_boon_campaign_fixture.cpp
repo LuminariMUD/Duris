@@ -65,6 +65,31 @@ int main(int argc, char **argv)
 				  << book.lots.size() << "\n";
 	}
 
+	else if (action == "ready")
+	{
+		bool ready = false;
+		if (flat)
+		{
+			flatfile_identity_record identity;
+			assert(flatfile_identity_lookup_name(root, owner, &identity, &error) ==
+			       flatfile_identity_result::ok);
+			std::vector<flatfile_ship_record> ships;
+			assert(flatfile_ship_list(root, &ships, &error) ==
+			       flatfile_ship_result::ok);
+			for (const auto &ship : ships)
+				if (ship.owner_pid == static_cast<uint32_t>(identity.pid))
+					ready = ship.crew.crew_index == 2 &&
+						ship.crew.sail_skill_milli >= 100000 &&
+						ship.crew.guns_skill_milli >= 100000 &&
+						ship.crew.repair_skill_milli >= 100000;
+		}
+		else
+			ready = number("SELECT COUNT(*) FROM ships s JOIN ship_crew c ON c.ship_id=s.id WHERE s.owner_name='" +
+				       owner +
+				       "' AND c.crew_index=2 AND c.sail_skill>=100000 AND c.guns_skill>=100000 AND c.rpar_skill>=100000") ==
+				1;
+		std::cout << (ready ? "READY" : "PENDING") << "\n";
+	}
 	else if (action == "hold")
 	{
 		assert(!flat);
@@ -179,6 +204,7 @@ int main(int argc, char **argv)
 				ship.owner_name = owner;
 				ship.ship_name = "Campaign Clipper";
 				ship.ship_class = 2;
+				ship.crew.crew_index = 2;
 				ship.frags = 10000;
 				ship.mainsail = 90;
 				ship.flags = 16;
@@ -226,7 +252,8 @@ int main(int argc, char **argv)
 			      std::to_string(ports[port]) + ",90,16)");
 			const auto id =
 				number("SELECT id FROM ships WHERE owner_name='" + owner + "'");
-			query("INSERT INTO ship_crew(ship_id) VALUES(" + std::to_string(id) + ")");
+			query("INSERT INTO ship_crew(ship_id,crew_index) VALUES(" +
+			      std::to_string(id) + ",2)");
 			for (int side = 0; side < 4; ++side)
 				query("INSERT INTO ship_armor(ship_id,side,armor,internal) VALUES(" +
 				      std::to_string(id) + "," + std::to_string(side) +

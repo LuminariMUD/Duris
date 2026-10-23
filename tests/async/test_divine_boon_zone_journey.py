@@ -245,6 +245,10 @@ def run(backend, binary):
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
                 command(god, f'goto {PORTS[source]}')
+                deadline = time.monotonic() + 30
+                while fixture('ready').strip() != 'READY':
+                    assert time.monotonic() < deadline, 'crew normalization did not persist'
+                    time.sleep(.1)
                 for goods, quantity in (('cargo', 6), ('contraband', 1)):
                     god.send(f'buy {goods} {quantity}')
                     god.expect('Your cargo trade is complete: paid', timeout=60)
