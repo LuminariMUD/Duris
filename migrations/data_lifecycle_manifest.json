@@ -38,6 +38,64 @@
   },
   "entries": [
     {
+      "id": "file:divine-trade-books",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/divine-trade-<boon>-<account>.book",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "canonical_account_key",
+      "technical_purpose": "Paid cargo lots and shared account/boon allowances for flat-file financial recovery",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
+      "id": "file:divine-trade-receipts",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/divine-trade-command-*.receipt",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "player_pid_and_operation_id",
+      "technical_purpose": "Permanent flat-file trade results and command hashes for idempotent financial replay",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
       "id": "file:divine-boons",
       "kind": "recovery_state",
       "locator": "FLATFILE_ROOT/domains/divine-boons.state",

@@ -857,7 +857,12 @@ static void divine_trade_settlement(const fs::path &base)
 		auto stale = opening;
 		stale.revision = 9999;
 		require(flatfile_player_snapshot_apply(root, stale, &error).outcome ==
-				player_save_apply_outcome::terminal_failure,
+					player_save_apply_outcome::applied &&
+				flatfile_player_domain_load(root, 42, "Account-One", 0, &domain,
+							    &error) ==
+					flatfile_player_domain_result::ok &&
+				domain.domains.wallet == std::array<uint64_t, 4>{ 1, 3, 3, 15 } &&
+				domain.domains.wallet_revision == 8,
 			"old capture overwrote committed purchase money");
 		divine_trade_removal remove;
 		remove.goods = goods;

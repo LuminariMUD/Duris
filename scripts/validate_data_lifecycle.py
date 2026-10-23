@@ -75,6 +75,12 @@ REQUIRED_NON_DATABASE_STORES = {
     "file:divine-boons": ("recovery_state", "FLATFILE_ROOT/domains/divine-boons.state"),
     "file:epic-zone-state": ("recovery_state", "FLATFILE_ROOT/domains/zone-*.state"),
     "file:epic-stone-claims": ("recovery_state", "FLATFILE_ROOT/domains/stone-*.claim"),
+    "file:divine-trade-books": (
+        "recovery_state", "FLATFILE_ROOT/domains/divine-trade-<boon>-<account>.book",
+    ),
+    "file:divine-trade-receipts": (
+        "recovery_state", "FLATFILE_ROOT/domains/divine-trade-command-*.receipt",
+    ),
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
     "file:flatfile-command-receipts": (
