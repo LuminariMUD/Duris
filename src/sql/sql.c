@@ -3886,7 +3886,8 @@ bool sql_clear_zone_trophy()
  * migration-only helper tables. */
 bool sql_verify_pwipe_manifest(void)
 {
-	static const char *const tables[] = { "account_bound_rewards",
+	static const char *const tables[] = { "account_banks",
+					      "account_bound_rewards",
 					      "account_bound_reward_summons",
 					      "account_bound_reward_pwipe_state",
 					      "account_characters",
@@ -4770,6 +4771,13 @@ bool sql_pwipe(int code_verify)
 			send_to_all("        failure!\n");
 			return FALSE;
 		}
+		// Bank balances are seasonal. DELETE preserves the monotonic bank allocator,
+		// so a new season cannot inherit an old bank's ledger/baseline identity.
+		if (!qry("DELETE FROM account_banks"))
+		{
+			logit(LOG_STATUS, "sql_pwipe: Failed to reset account banks.");
+			return FALSE;
+		}
 		/* -- Season-reset manifest: soft-delete account characters -- */
 		logit(LOG_DEBUG, "sql_pwipe: Soft-deleting account characters... .. .");
 		send_to_all("Soft-deleting account characters... .. .");
@@ -4837,7 +4845,8 @@ bool sql_pwipe(int code_verify)
 		{
 			/* Verify that player_items, player_pets, lockers, ships, guilds, and
 			 * persistence event tables are all empty after reset. */
-			const char *postflight_tables[] = { "player_items",
+			const char *postflight_tables[] = { "account_banks",
+							    "player_items",
 							    "player_pets",
 							    "player_affects",
 							    "player_skills",

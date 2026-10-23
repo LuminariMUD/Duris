@@ -201,6 +201,13 @@ finished and filesystem cleanup remains. The launcher keeps status `resetting`
 through cleanup, then atomically activates that exact epoch and records the final
 completion time. Only then does it print `Wiped!`. No schema change is needed.
 
+Reset policy confirmed by the owner for #264: every account-bank balance resets,
+including staff and every racewar side. Bank rows are deleted without resetting
+their allocator; accounts, credentials and donation history survive. Retained bank
+ledger/baseline evidence keeps old bank IDs and cannot become a new bank's opening
+balance. Only exact level-62 Overlords are to be recreated; that recreation remains
+an unimplemented readiness gate until its own executable proof is recorded.
+
 Before the boundary, the server checks `wipe_it_all --check` along with its existing
 schema/Redis checks. Missing artifacts, unexpected store symlinks/types and denied
 access abort before SQL reset. Cleanup revalidates the same fixed paths. Backups,

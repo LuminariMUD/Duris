@@ -141,6 +141,24 @@ and startup recovery isolation; W4/W5/W6 are still required.
   still retains bank balances and soft-deletes every account-character link.
 - No production operations.
 
+### Seasonal bank reset chunk (stacked after PR #311)
+
+PR #311: https://github.com/LuminariMUD/Duris/pull/311 at `2f123996e`, review-ready.
+Owner explicitly confirmed all bank balances reset and only level-62 Overlords are
+recreated. This chunk deletes every `account_banks` row, adds it to reset preflight
+and postflight, and corrects its existing lifecycle classification. Accounts,
+credentials/donations, historical currency baselines/ledger and monotonic bank IDs
+survive. A recreated bank gets a new ID and zero initial balances, so old baseline
+identity is never reused. No schema migration, account deletion, history purge or
+new reconciliation framework is needed. Exact Overlord recreation and persistent
+old-operation replay isolation remain next work; this is not full W4 completion.
+Proof: `python3 tests/async/run_pwipe_handoff_mysql.py` passed the actual full
+SQL reset with nonzero banks on Good/Evil/neutral, unchanged account credentials
+and donation history, retained old baseline, fresh bank ID and zero defaults.
+All 14 lifecycle and 12 season-manifest checks passed, as did the standalone
+validator (200/30/42), both backend incremental builds and `git diff --check`.
+No production operations.
+
 ## What the code currently does
 
 These are baseline observations, not claims that every failure has been reproduced.
