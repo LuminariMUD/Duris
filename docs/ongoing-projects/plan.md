@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — collector retirement and recovery view
 
 Branch `branch/issue-264-collector-reset`, based on PR #322 at `297045583`.
+Review-ready PR #323 (https://github.com/LuminariMUD/Duris/pull/323), implementation
+`b0b7206c0`; all changes are committed and pushed after this handoff update.
 Outcome: use existing `collector::reason::season_reset` cancellations through the
 normal audited critical repository. Candidates close; held stock moves to destroyed
 custody; record blobs, payloads, receipts and listing-ID allocation survive. Derive
@@ -65,7 +67,12 @@ suite passed, together with the real writer/quiescence harness, reset-fence/rewa
 contracts, 12 season-manifest and 14 lifecycle checks. MariaDB and flat-file development
 builds and the optimized MariaDB production build passed. Final review confirmed the
 authoritative cache accepts an equal-revision refresh when retired history disappears;
-no extra revision mechanism is needed. Publication remains; full readiness is open.
+no extra revision mechanism is needed. The final native matrix and incremental
+MariaDB build passed after review; formatting/tidy hooks passed. Full readiness
+remains open. Next: artifact current ownership and compatible reconciliation baselines;
+`src/guild/artifact.c` loads `artifact_domain_state` unscoped after the old legacy
+rows have been wiped. Inspect its history/recovery consumers before choosing reset
+semantics; retain immutable history and monotonic identity/revision allocation.
 
 ## Current continuation — retire active Divine Boons
 
@@ -88,8 +95,7 @@ optimized MariaDB production build passed, as did all 12 season-manifest checks,
 and PR #322 is ready for review; earlier five-minute evidence is reused for unchanged
 reset paths. No readiness sign-off, merge, release tag or deployment is claimed.
 
-Next retained-state consumers to trace: collector listings/custody in
-`src/economy/collector_repository.c`, artifact current ownership/baselines in
+Next retained-state consumers to trace after collector PR #323: artifact current ownership/baselines in
 `src/guild/artifact.c` and prepared cargo replay in
 `src/economy/divine_trade_repository.c`. Old financial commands must not restore
 wiped cargo/market/player after-images. Preserve audit/receipt evidence and prove
