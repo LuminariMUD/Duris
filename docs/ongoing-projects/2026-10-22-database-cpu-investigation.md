@@ -4,8 +4,8 @@ Investigation date: 2026-10-22. Updated: 2026-10-23. PRs #300–#303 are
 merged. Follow-up [issue #305](https://github.com/LuminariMUD/Duris/issues/305)
 owns production measurement and the boon producer optimization below. Earlier
 review/authorization notes are historical: the owner has now given full authority
-to finish #305 on the production VPS, including the 0050 rollout. The game remains
-online during preparation; producer deployment is pending qualification and merge.
+to finish #305 on the production VPS, including the 0050 rollout. PR #306 is merged and deployed; 0050 and the native rebuild/reboot are verified.
+Production measurement and producer acceptance for #305 are complete.
 
 ## Issue #305: VPS measurement and producer qualification
 
@@ -136,7 +136,59 @@ The default disposable MariaDB 10.11 wrapper did not become reachable during its
 startup window on this host. The explicitly provisioned, memory/CPU-bounded 11.8
 and MySQL 8 instances passed the focused SQL suite. No production-derived database
 clone or broad burn-in was used; existing unchanged worker/migration qualification
-from #292 is reused.
+from #292 is reused. Formatting and the normal commit hooks used clang-format
+18.1.8 with its matching driver: newer installed versions interpret these C++
+`.c` files as C and propose unrelated rewrites. No unrelated formatting was retained.
+
+### Production cutover and acceptance
+
+PR [#306](https://github.com/LuminariMUD/Duris/pull/306), revision
+`e2a2166f34fc56b814d553feed0a43d952b4a4d2`, was deployed on October 23.
+The clean server/editor/area/tool build, pfile/maintenance tools, seven generated
+world files, five lookups, dynamic libraries and production launcher configuration
+passed while the game stayed online. The reviewed online runner applied only
+0050 with a verified owner-only pre-migration backup; runtime compatibility and
+live history/checksums passed. Historical expectations remain NULL.
+
+The new binary was installed by atomic rename. Veridian scheduled the exact
+three-minute warning at 13:35:30 UTC and stayed connected through the reboot at
+13:38:30. PID 2019252 booted at 13:38:44, completed world/persistence loading, and
+matched rebuilt SHA-256
+`b00d45706bdf430c45dd1b50a2ab601f4836ea076401c52d802c17ac27671a52` with
+`mariadb/production`. The launcher stayed up, with no systemd restart loop.
+Local health, public MUD health and website database/cache health passed. The
+website's auction socket recovered its expected reboot disconnect and authenticated.
+A separate website restart at 13:42 is visible in the observation and was not part
+of this game deployment.
+
+Ten more consecutive one-minute samples (13:38:58–13:48:59 UTC) averaged
+**3.433% database CPU**, range 1.315–5.476%, including startup/website activity.
+The full expectation/classification audit costs more than the worker-only raw
+count: the captured actual live query took 1,367.9 ms and 1,563,409 handler reads.
+At a conservative once/minute plus four indexed operational polls/second, idle
+health-related row work is **97.70% below** the original measured workload,
+exceeding the 95% gate. Observed audits were approximately 61.5 seconds apart;
+a query spanning a sample boundary is one execution. This attributes the residual
+work rather than promising the worker-only 1% CPU level for the fuller audit.
+
+All ten observations had zero pending, oldest pending age, dead letters and
+incomplete operations. Three events delivered during the observation, maximum
+186.205 ms and zero attempts/retries. Final staff readback had fresh counters/audit,
+zero proven mismatches, zero database/retry/terminal failures, and 1,078 unknown
+historical expectations retained for reconciliation; unknown evidence was not
+silently classified or deleted. The live producer checked 19 events, filtered 13 before ID allocation, and
+committed six accepted boon receipts without rejection or refresh failure:
+five empty version-2 eight-byte results with zero expected/outbox events, and one
+nonempty 2,080-byte result with its normal event. Focused executable tests provide
+the detailed eligibility, progress, completion and replay comparisons above.
+
+Help/news publication was verified against stored bytes. The five missing quest
+inspection help topics and current credits were published. Veridian read the actual
+`news` first page (newest headline and main boon addition) and the complete new
+section, then restored paging, quit and closed the session. Startup, rotating game
+logs and service journals were observed through the additional operating period;
+ordinary world-stat/reset and retained-artifact diagnostics were distinguished from
+persistence or delivery failures. No unresolved deployment error or crash loop remains.
 
 ### Retention decision
 
