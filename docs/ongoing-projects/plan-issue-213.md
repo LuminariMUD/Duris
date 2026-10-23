@@ -2,7 +2,9 @@
 
 Tracking: [Duris #213](https://github.com/LuminariMUD/Duris/issues/213).
 Implementation branch: `branch/issue-213-evil-onboarding`.
-Status: planning only; no gameplay changes or acceptance results are claimed here.
+Status: implementation in progress; death policy/warning implemented and locally
+qualified as the first review chunk. Tutorial/server/client integration and full
+gameplay/persistence acceptance remain outstanding.
 Revised October 23, 2026 for the issue's approved Firbolg/Ogre eligibility decision;
 the previous tutorial exclusions are superseded.
 
@@ -20,6 +22,65 @@ was merged on October 23, 2026. This onboarding plan now lives in
 The source inventory below describes the October 19 baseline; the master merge
 is not fresh gameplay qualification. Recheck those source details before
 implementation.
+
+## Current handoff — October 24, 2026
+
+Worktree: `/home/aiwithapex/projects/duris-issue213-plan`. The primary checkout
+is on unrelated `branch/contain-learning-feedback` and was left untouched.
+The requested branch was clean and equal to its remote before merging fetched
+master `7d3bd3b957196f3136dbca61c01f2cba7f7ac298` without conflicts or history
+rewrites, in merge commit `ae99be838`. No tags or force pushes are needed.
+
+First chunk outcome: every death-XP path protects players below the existing
+cutoff (default 30), and the existing consolidated level notification emits one
+bold uppercase warning per upward crossing. Non-goals remain the locked scope
+below. Files are limited to `limits.c`, `fight.c`, their declaration, the
+property comment, both maintained death-help sources, existing focused tests,
+and this handoff. Ablation retained one shared cutoff getter for three real
+callers; no new configuration, saved flag, or test framework was added.
+
+Implemented:
+
+- Ordinary `EXP_DEATH` is universal, including direct dispatcher calls. The
+  death handler also gates the Lich's forced delevel/residual-XP path. Its
+  zero-initialized loss still reaches corpse creation; death/respawn, arena,
+  staff and hardcore behavior outside that XP block is unchanged.
+- Single-level, multi-level, direct/bulk and Illithid notifications share the
+  crossing warning and retain morph recipient handling. The configured cutoff
+  supplies both policy and wording. `&+W` emits ANSI bold white.
+- Both help sources describe universal protection below 30 and retain the
+  hardcore permanent-death caveat. Flat-file help loads tracked sources;
+  MariaDB uses `scripts/import_help_to_prod.sh`, with parsed help taking
+  precedence. No database or production help was changed.
+
+Evidence so far (run from this worktree): `make -C src -j4` passed for the
+MariaDB development binary; `test_lich_death_experience.py` passed under
+ASan/UBSan; `test_world_quest_xp_feedback.py` passed with MariaDB and flat-file
+compilation under ASan/UBSan/float-cast checks; `test_flatfile_help_catalog.py`,
+`test_death_respawn_state.py`, `test_death_transition_contract.py`,
+`test_chaos_infinite_starting_grants.py`, format check and `git diff --check`
+passed. The XP harness covers ordinary deaths at 1/2/29/30/31 across good,
+evil/other sides and Human/Ogre/Firbolg, losses that do/do not delevel,
+configured/default cutoffs, level cap, warning crossing/count/recipient, and
+direct/bulk/Illithid paths. The Lich harness executes the production death-XP
+block with real character macros and retains fractional residual controls.
+These harnesses stub surrounding level side effects; they do not establish
+loaded-server persistence or browser acceptance.
+
+Help importer dry-run passed using explicit dummy preview database settings
+(no connection); its log and build log are under `bin/qualification/issue213/`.
+The first dry-run without settings failed because this worktree has no `.env`;
+no local environment file was copied or edited. Git fetch/merge also reports
+pre-existing unreachable-object housekeeping warnings; do not prune objects or
+delete recovery logs as part of this work.
+
+Next: publish the first focused PR, then allocate collision-free tutorial IDs
+from refreshed authored sources, implement faithful copies with typed-reference
+parity, wire compiled procedures/creation, and deliver the companion DurisWeb
+PR. Keep later PRs stacked so menus cannot ship before their data and procs.
+All full-world terminal/browser routes, cold-restart XP/home persistence on both
+backends, actual rendered web warning and help database publication remain
+unverified; issue #213 stays open until those completion gates pass.
 
 ## Outcome and locked scope
 
@@ -469,8 +530,7 @@ IDs during rollback while characters still persist there. Any operational
 rollback must first account for those characters using existing relocation
 procedures and owner-authorized production handling.
 
-Provisional effort: **16-28 active engineering hours** for content mapping,
-server/client integration, and focused qualification, subject to the actual
-NPC-race parity audit. This is not a fixed elapsed schedule or a production
-acceptance claim. The publication of this plan leaves implementation, review,
-gameplay qualification, and any deployment outstanding.
+Content mapping, server/client integration, review and focused gameplay
+qualification remain in progress. The current handoff above records completed
+chunks and remaining proof; no elapsed delivery schedule or production
+acceptance is implied. Deployment is outside this implementation request.

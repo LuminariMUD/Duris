@@ -31,6 +31,7 @@ PRELUDE = r'''
 #include "persistence/persistence_checkpoint.h"
 #include "net/comm.h"
 #include "net/gmcp.h"
+#include "net/ansi.h"
 #include "world/difficulty.h"
 #include "world/hardcore_config.h"
 #include "world/epic_bonus.h"
@@ -82,6 +83,9 @@ P_char rested_only = nullptr;
 bool in_test_group = false;
 double epic_percent = 0;
 bool grant_allowed = true;
+int maximum_exp_level = 20, death_cutoff = -1;
+double death_penalty = 0.10;
+P_char last_recipient = nullptr;
 obj_data reward{};
 namespace economic_gameplay_authority {
 bool enabled = false;
@@ -89,11 +93,15 @@ bool active() { return enabled; }
 }
 
 int get_property(const char *key, int fallback) {
-    if (!std::strcmp(key, "exp.maxExpLevel")) return 20;
+    if (!std::strcmp(key, "exp.maxExpLevel")) return maximum_exp_level;
+    if (!std::strcmp(key, "exp.goodieDeathExpLossLevelThreshold") && death_cutoff >= 0)
+        return death_cutoff;
     return fallback;
 }
-float get_property(const char *, double fallback) { return fallback; }
-int sql_level_cap(int) { return 20; }
+float get_property(const char *key, double fallback) {
+    return !std::strcmp(key, "exp.death.level.loss") ? death_penalty : fallback;
+}
+int sql_level_cap(int) { return maximum_exp_level; }
 int frag_cap_config_hardcore_level_cap(int cap) { return cap; }
 const hardcore_config *hardcore_config_get() { static hardcore_config config{}; return &config; }
 int IS_MORPH(P_char) { return false; }
@@ -147,14 +155,15 @@ void logexp(const char *format, ...) {
     va_end(args);
     exp_log += buffer;
 }
-void send_to_char(const char *text, P_char) { output += text; }
-void send_to_char_f(P_char, const char *format, ...) {
+void send_to_char(const char *text, P_char recipient) { output += text; last_recipient = recipient; }
+void send_to_char_f(P_char recipient, const char *format, ...) {
     char buffer[1024];
     va_list args;
     va_start(args, format);
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     output += buffer;
+    last_recipient = recipient;
 }
 void act(const char *text, int, P_char, P_obj, void *, int target) {
     if (target == TO_VICT || target == TO_CHAR) output += text;
@@ -175,13 +184,14 @@ void resetQuest(P_char ch) {
     ch->only.pc->quest_mob_vnum = 0;
 }
 uint64_t discoveries_at_level_save = 0;
-static void advance_level_impl(P_char ch, bool, bool, std::uint64_t) {
+static void notify_level_advancement(P_char, int);
+static void advance_level_impl(P_char ch, bool notify_player, bool, std::uint64_t) {
     discoveries_at_level_save = ch->only.pc->learned_flight_stops;
     ++ch->player.level;
+    if (notify_player) notify_level_advancement(ch, GET_LEVEL(ch) - 1);
 }
-static void lose_level_impl(P_char, std::uint64_t,
-    telemetry_progression_source, telemetry_progression_reason) { assert(false); }
-static void notify_level_advancement(P_char, int) {}
+static void lose_level_impl(P_char ch, std::uint64_t,
+    telemetry_progression_source, telemetry_progression_reason) { --ch->player.level; }
 '''
 
 CASES = r'''
@@ -238,6 +248,108 @@ int main() {
         assert(output.find("Quest EXP:", output.find("Quest EXP:") + 1) == std::string::npos);
         assert(output.find("&+CEXP:") == std::string::npos);
     };
+    // Universal protection and ordinary penalties execute the real XP dispatcher,
+    // including deleveling and the loss returned to corpse/resurrection accounting.
+    for (int race : {RACE_HUMAN, RACE_OGRE, RACE_FIRBOLG}) {
+        for (int side : {RACEWAR_GOOD, RACEWAR_EVIL, 0, 3}) {
+            for (int level : {1, 2, 29, 30, 31}) {
+                reset();
+                player.player.race = race;
+                player.player.racewar = side;
+                player.player.level = level;
+                death_penalty = 0.15;
+                const int loss = gain_exp(&player, nullptr, 0, EXP_DEATH);
+                assert(loss == (level < 30 ? 0 : -1500));
+                assert(player.player.level == (level < 30 ? level : level - 1));
+                assert(player.points.curr_exp == (level < 30 ? 0 : 8500));
+                assert(dirty == (level < 30 ? 0 : 1));
+                reset();
+                player.player.level = level;
+                player.points.curr_exp = 5000;
+                assert(gain_exp(&player, nullptr, 0, EXP_DEATH) == (level < 30 ? 0 : -1500));
+                assert(player.player.level == level);
+                assert(player.points.curr_exp == (level < 30 ? 5000 : 3500));
+            }
+        }
+    }
+    // Missing-property fallback and a non-default cutoff use the same policy.
+    assert(death_exp_loss_level_threshold() == 30);
+    death_cutoff = 25;
+    for (int level : {24, 25}) {
+        reset();
+        player.player.level = level;
+        player.points.curr_exp = 5000;
+        assert(gain_exp(&player, nullptr, 0, EXP_DEATH) == (level == 24 ? 0 : -1500));
+    }
+    death_cutoff = -1;
+    death_penalty = 0.10;
+    maximum_exp_level = 56;
+    player.player.race = RACE_HUMAN;
+    player.player.racewar = RACEWAR_GOOD;
+    auto warning = [&](int cutoff) {
+        const std::string text = "\r\n&+WWARNING: YOU HAVE REACHED LEVEL " +
+            std::to_string(cutoff) + ". DEATH CAN NOW COST YOU EXPERIENCE AND "
+            "CAUSE YOU TO LOSE LEVELS!&N\r\n\r\n";
+        assert(output.find(text) != std::string::npos);
+        assert(output.find("WARNING:", output.find("WARNING:") + 1) == std::string::npos);
+        AnsiString rendered(text.c_str());
+        char terminal[MAX_STRING_LENGTH], plain[MAX_STRING_LENGTH];
+        rendered.term(terminal, TL_BRIGHT_BG);
+        assert(std::strstr(terminal, "\x1b[0;1;37mWARNING:") != nullptr);
+        rendered.plain(plain);
+        assert(std::string(plain) == "\nWARNING: YOU HAVE REACHED LEVEL " +
+            std::to_string(cutoff) + ". DEATH CAN NOW COST YOU EXPERIENCE AND "
+            "CAUSE YOU TO LOSE LEVELS!\n\n");
+    };
+    // Ordinary rewards: no warning before/after the crossing, one at the crossing,
+    // and one after losing a level and crossing again. Bulk awards may skip 30.
+    for (auto [before, after] : {std::pair{28, 29}, {29, 30}, {28, 31}, {30, 31}, {29, 30}}) {
+        reset();
+        for (auto &xp : new_exp_table) xp = 10000;
+        for (int level = before + 2; level <= after; ++level) new_exp_table[level] = 1000;
+        player.player.level = before;
+        player.points.curr_exp = 9900;
+        const int award = 100 + (after - before - 1) * 1000;
+        assert(gain_exp(&player, nullptr, award, EXP_QUEST) == award);
+        assert(player.player.level == after);
+        if (before < 30 && after >= 30) warning(30);
+        else assert(output.find("WARNING:") == std::string::npos);
+        assert(last_recipient == &player);
+    }
+    for (auto &xp : new_exp_table) xp = 10000;
+    for (bool bulk : {false, true}) {
+        reset();
+        player.player.level = bulk ? 28 : 29;
+        if (bulk) advance_to_level(&player, 31);
+        else advance_level(&player);
+        warning(30);
+    }
+    reset();
+    player.player.level = 28;
+    player.points.curr_exp = 30000;
+    maximum_exp_level = 20;
+    illithid_advance_level(&player);
+    assert(player.player.level == 31);
+    warning(30);
+    reset();
+    player.player.level = 24;
+    death_cutoff = 25;
+    player.specials.act |= PLR_MORPH;
+    pc.switched = &other;
+    advance_level(&player);
+    warning(25);
+    assert(last_recipient == &other);
+    player.specials.act &= ~PLR_MORPH;
+    death_cutoff = -1;
+    // An award at the cap does not manufacture a threshold crossing.
+    reset();
+    player.player.level = 29;
+    player.points.curr_exp = 10000;
+    maximum_exp_level = 29;
+    gain_exp(&player, nullptr, 100, EXP_QUEST);
+    assert(player.player.level == 29 && output.find("WARNING:") == std::string::npos);
+    maximum_exp_level = 20;
+    player.player.race = RACE_HUMAN;
     reset();
     quest_kill(&player, &mob);
     assert(player.points.curr_exp == 260 && pc.quest_kill_how_many == 1);
@@ -532,6 +644,8 @@ int main() {
         assert(gain_exp(&player, nullptr, 100, kind) == 100);
     }
     reset_divine();
+    player.player.level = 30;
+    new_exp_table[31] = 10000;
     player.points.curr_exp = 1000;
     assert(gain_exp(&player, nullptr, 0, EXP_DEATH) == -1000);
     assert(player.points.curr_exp == 0);
@@ -649,6 +763,11 @@ def main() -> None:
         for signature in (
             "static telemetry_progression_source progression_source_for_type(",
             "static telemetry_progression_reason progression_reason_for_type(",
+            "int death_exp_loss_level_threshold(",
+            "static void notify_level_advancement(",
+            "void advance_level(P_char ch)",
+            "void advance_to_level(",
+            "void illithid_advance_level(",
             "void display_gain(",
             "int exp_level_percent_modifier(",
         )
@@ -686,7 +805,8 @@ def main() -> None:
             subprocess.run(shlex.split(os.environ.get("CXX", "g++")) + [
                 "-std=c++20", "-fsanitize=address,undefined,float-cast-overflow", "-fno-omit-frame-pointer",
                 "-fno-pie", "-no-pie", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Isrc",
-                *flags, str(program), "src/telemetry/telemetry_progression.c", "src/economy/divine_boon.c", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
+                *flags, str(program), "src/telemetry/telemetry_progression.c", "src/economy/divine_boon.c",
+                str(source("ansi.c")), str(source("unicode.c")), "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
             ], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True, timeout=10)
     print("quest XP and solo/group kill-bonus boon credit passed (mariadb + flatfile)")

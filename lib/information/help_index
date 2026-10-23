@@ -3607,9 +3607,12 @@ See also: BLINDNESS, "CURE BLIND"
 DEATH CORPSE DYING (General Information)
 ===========================================================================
 When you die, you re-enter the game at your birthplace (where you started
-the game). You can retrieve your corpse  y traveling to where you died and
-getting the items from inside. Each time you die you lose a percentage of
-experience for your level. It is wise to be careful to avoid death when you
+the game). You can retrieve your corpse by traveling to where you died and
+getting the items from inside. Below level 30, all races and sides are protected
+from losing experience or levels through death. At level 30, death can cost a
+percentage of experience for your level. You receive a warning when you reach
+this level. Hardcore characters still follow their permanent-death rules.
+It is wise to be careful to avoid death when you
 have recently gained a level. If the experience lost due to death is more
 than you have gained in your current level, you will "lose a level" and the
 maximum hitpoint difference between the two levels. If you were killed by
