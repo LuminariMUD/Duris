@@ -67,7 +67,7 @@ assert "flatfile_item_repository_prepare_claim(" in FLAT_PLAYER
 assert "item_claim_leaves_out(record->state)" in FLAT_ITEMS
 assert "establish_item_baseline" not in FLAT_PLAYER
 assert "replay_fence" not in REPOSITORY and "legacy_replay" not in FLAT_PLAYER
-assert "ensure_player_row(connection, snapshot, &created)" in REPOSITORY
+assert "query = ensure_player_row(connection, snapshot, &created," in REPOSITORY
 # A new character's first save goes through the writer: the row it creates gets the
 # opening baselines the accounting ledgers start from, and nanny no longer forces a
 # synchronous first save on MariaDB.

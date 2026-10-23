@@ -347,6 +347,7 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 	}
 	result->snapshot.revision = unsigned_value(row[column++]);
 	result->domains.wallet_revision = unsigned_value(row[column++]);
+	result->snapshot.wallet_revision = result->domains.wallet_revision;
 	result->domains.epic_revision = unsigned_value(row[column++]);
 	result->domains.frag_revision = unsigned_value(row[column++]);
 	for (int32_t &condition : result->snapshot.conditions)

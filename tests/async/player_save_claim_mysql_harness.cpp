@@ -10,6 +10,7 @@
 #include "player/player_snapshot_repository.h"
 #include "sql/sql_pool.h"
 
+#include <cerrno>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -332,6 +333,8 @@ int main()
 
 	// A character with no player_data row yet gets one instead of failing.
 	player_snapshot unbased = snapshot_for(3, 1, "Newcomer");
+	unbased.wallet_revision = 7; // Starter money has already changed in memory.
+	unbased.status_integers.push_back({ player_status_field::copper, 35, 0, false });
 	unbased.items = { item(1012, 512, PLAYER_SNAPSHOT_NO_PARENT) };
 	applied = player_snapshot_repository_apply(test_connection, unbased);
 	require(applied.outcome == player_save_apply_outcome::applied,
@@ -341,6 +344,13 @@ int main()
 			"Newcomer:20",
 		"the missing row is created and filled in");
 	require(owner_of(1012) == "1:3:0:1:1012:0", "the newcomer's item is claimed");
+	require(scalar(test_connection,
+		       "SELECT CONCAT(copper,':',wallet_revision) FROM player_data WHERE pid=3") ==
+				"35:7" &&
+			scalar(test_connection,
+			       "SELECT CONCAT(opening_copper,':',opening_revision) "
+			       "FROM currency_wallet_baseline WHERE pid=3") == "35:7",
+		"the starter wallet opening baseline must begin at its captured revision");
 
 	// A corpse save claims what the corpse holds and replaces its rows; a remove deletes
 	// them (persistence reset step 6).
@@ -639,8 +649,17 @@ int main()
 	paid.revision = 10000;
 	paid.components = PLAYER_COMPONENT_STATUS;
 	paid.encoded_size_bound = 4096;
+	paid.wallet_revision =
+		std::stoull(scalar(test_connection,
+				   "SELECT wallet_revision FROM player_data WHERE pid=1")) +
+		1;
 	paid.status_integers = { { player_status_field::epics, 450, 0, false },
 				 { player_status_field::divine_boon_delivery_seq, 0, 3, true } };
+	paid.status_integers.insert(paid.status_integers.end(),
+				    { { player_status_field::copper, 150, 0, false },
+				      { player_status_field::silver, 0, 0, false },
+				      { player_status_field::gold, 0, 0, false },
+				      { player_status_field::platinum, 0, 0, false } });
 	applied = player_snapshot_repository_apply(test_connection, paid);
 	require(applied.outcome == player_save_apply_outcome::applied &&
 			scalar(test_connection,
@@ -694,6 +713,50 @@ int main()
 	require(player_snapshot_repository_apply(test_connection, malformed_delivery).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"duplicate Divine delivery marker was accepted");
+
+	auto stale_wallet = paid;
+	stale_wallet.revision = 99999;
+	stale_wallet.wallet_revision = paid.wallet_revision - 1;
+	stale_wallet.status_integers[2].signed_value = 1;
+	stale_wallet.components |= PLAYER_COMPONENT_TROPHIES;
+	stale_wallet.trophies.push_back({ 123456, 77 });
+	applied = player_snapshot_repository_apply(test_connection, stale_wallet);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			applied.error_code == ESTALE &&
+			scalar(test_connection,
+			       "SELECT CONCAT(copper,':',wallet_revision) FROM player_data WHERE pid=1") ==
+				"150:" + std::to_string(paid.wallet_revision) &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM zone_trophy WHERE pid=1 AND zone_number=123456") ==
+				"0",
+		"stale wallet must fail and re-dirty unrelated trophy work, not acknowledge it");
+	// The pipeline will recapture the failed components from memory. The fresh
+	// submission must be able to durably apply the unrelated component.
+	auto fresh_wallet = stale_wallet;
+	fresh_wallet.revision = 100000;
+	fresh_wallet.wallet_revision = paid.wallet_revision;
+	fresh_wallet.status_integers[2].signed_value = 150;
+	applied = player_snapshot_repository_apply(test_connection, fresh_wallet);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT exp FROM zone_trophy WHERE pid=1 AND zone_number=123456") ==
+				"77" &&
+			scalar(test_connection,
+			       "SELECT CONCAT(copper,':',wallet_revision) FROM player_data WHERE pid=1") ==
+				"150:" + std::to_string(paid.wallet_revision),
+		"freshly recaptured unrelated components did not persist with the safe wallet");
+	// Partial non-wallet status work must preserve the wallet revision.
+	auto non_wallet = paid;
+	non_wallet.revision = 100001;
+	non_wallet.wallet_revision = 0;
+	non_wallet.status_integers.resize(2);
+	non_wallet.status_integers[0].signed_value = 500;
+	applied = player_snapshot_repository_apply(test_connection, non_wallet);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT CONCAT(copper,':',wallet_revision) FROM player_data WHERE pid=1") ==
+				"150:" + std::to_string(paid.wallet_revision),
+		"non-wallet status work reset the committed wallet revision");
 
 	mysql_close(test_connection);
 	mysql_library_end();

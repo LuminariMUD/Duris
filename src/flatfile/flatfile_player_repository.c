@@ -624,6 +624,8 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 		materialized->conditions = incoming.conditions;
 		materialized->quest_values = incoming.quest_values;
 		materialized->output_preferences = incoming.output_preferences;
+		if (player_snapshot_writes_wallet(incoming))
+			materialized->wallet_revision = incoming.wallet_revision;
 	}
 	if (incoming.components & PLAYER_COMPONENT_LANGUAGES)
 		materialized->languages = incoming.languages;
@@ -939,6 +941,13 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	const bool status_current = !(snapshot.components & PLAYER_COMPONENT_STATUS) ||
 				    incoming_sequence >= stored_sequence;
+	// A wallet conflict is not a successful/stale general checkpoint. Reject it
+	// as a failed save so the pipeline re-dirties every submitted component,
+	// including item graphs that would otherwise be silently acknowledged.
+	if (player_snapshot_writes_wallet(snapshot) &&
+	    snapshot.wallet_revision < materialized.wallet_revision)
+		return { player_save_apply_outcome::terminal_failure, materialized.revision,
+			 ESTALE };
 	if (snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 		return { player_save_apply_outcome::stale_revision, materialized.revision, 0 };
 	std::vector<player_item_snapshot> held_items;
@@ -1085,12 +1094,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
 	// The wallet, epic points and frags are memory's: a save that carries them writes
-	// them into the player's domain record. A new player's baseline above already holds
-	// them.
+	// them into the player's domain record with the captured wallet revision.
 	flatfile_authority_operation saved_balances;
 	flatfile_saved_balances balances;
 	const bool saves_balances =
-		!new_player && status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
+		status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 		snapshot_unsigned(snapshot, player_status_field::copper, &balances.wallet[0]) &&
 		snapshot_unsigned(snapshot, player_status_field::silver, &balances.wallet[1]) &&
 		snapshot_unsigned(snapshot, player_status_field::gold, &balances.wallet[2]) &&
@@ -1103,11 +1111,19 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	if (saves_balances)
 	{
 		balances.divine_boon_delivery_seq = incoming_sequence;
+		balances.wallet_revision = snapshot.wallet_revision;
 		const auto prepared = flatfile_player_domain_prepare_saved_balances(
 			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
 			&saved_balances, error);
 		if (prepared == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared == flatfile_player_domain_result::conflict)
+		{
+			// Domain authority can advance beyond the snapshot file (e.g.
+			// after a trade). This second guard must also re-dirty the save.
+			return { player_save_apply_outcome::terminal_failure, materialized.revision,
+				 ESTALE };
+		}
 		if (prepared != flatfile_player_domain_result::ok)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	}

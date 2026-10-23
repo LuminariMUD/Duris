@@ -259,6 +259,8 @@ query_result apply_status(MYSQL *connection, const player_snapshot &snapshot)
 	std::ostringstream sql;
 	sql << "UPDATE player_data SET last_room=" << snapshot.room_vnum << ",last_save=NOW()";
 	sql << ",output_preferences=" << quote(connection, snapshot.output_preferences);
+	if (player_snapshot_writes_wallet(snapshot))
+		sql << ",wallet_revision=" << snapshot.wallet_revision;
 	// The wallet, epic points and frags are memory's, and the save writes them.
 	for (const player_snapshot_integer &row : snapshot.status_integers)
 	{
@@ -852,14 +854,16 @@ query_result apply_components(MYSQL *connection, const player_snapshot &snapshot
 // A character with no player_data row yet gets one (*created). The rest of the save fills
 // it in.
 query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot, bool *created,
-			       player_revision_t *stored_revision, uint64_t *delivered_sequence)
+			       player_revision_t *stored_revision, uint64_t *delivered_sequence,
+			       uint64_t *wallet_revision)
 {
 	*created = false;
 	*stored_revision = 0;
 	*delivered_sequence = 0;
+	*wallet_revision = 0;
 	query_result result = execute(
 		connection,
-		"SELECT save_revision,divine_boon_delivery_seq FROM player_data WHERE pid=" +
+		"SELECT save_revision,divine_boon_delivery_seq,wallet_revision FROM player_data WHERE pid=" +
 			std::to_string(snapshot.pid) + " FOR UPDATE");
 	if (!result.ok)
 		return result;
@@ -868,12 +872,13 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		return { false, mysql_errno(connection) };
 	MYSQL_ROW row = mysql_fetch_row(rows);
 	const bool present = row != nullptr;
-	if (present && row[0] && row[1])
+	if (present && row[0] && row[1] && row[2])
 	{
 		*stored_revision = strtoull(row[0], nullptr, 10);
 		*delivered_sequence = strtoull(row[1], nullptr, 10);
+		*wallet_revision = strtoull(row[2], nullptr, 10);
 	}
-	const bool valid = !present || (row[0] && row[1]);
+	const bool valid = !present || (row[0] && row[1] && row[2]);
 	mysql_free_result(rows);
 	if (!valid)
 		return { false, EINVAL };
@@ -899,7 +904,7 @@ query_result insert_opening_baselines(MYSQL *connection, int pid)
 	query_result result = execute(
 		connection, "INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,"
 			    "opening_silver,opening_gold,opening_platinum,opening_revision) "
-			    "SELECT pid,copper,silver,gold,platinum,0" +
+			    "SELECT pid,copper,silver,gold,platinum,wallet_revision" +
 				    from);
 	if (result.ok)
 		result =
@@ -930,9 +935,9 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	std::vector<claimed_graph> claims;
 	bool created = false;
 	player_revision_t stored_revision = 0;
-	uint64_t stored_delivery_sequence = 0;
+	uint64_t stored_delivery_sequence = 0, stored_wallet_revision = 0;
 	query = ensure_player_row(connection, snapshot, &created, &stored_revision,
-				  &stored_delivery_sequence);
+				  &stored_delivery_sequence, &stored_wallet_revision);
 	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 	    delivered_sequence > stored_delivery_sequence &&
 	    std::none_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
@@ -940,11 +945,20 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 			 { return field.field == player_status_field::epics; }))
 		query = { false, EINVAL };
 	const bool status_current = delivered_sequence >= stored_delivery_sequence;
-	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
+	// A stale wallet is not a superseded player checkpoint: it may carry
+	// equipment, pets, or other components that still need a fresh save.
+	// Report failure so finish_completion() re-dirties all submitted components.
+	const bool stale_wallet = query.ok && player_snapshot_writes_wallet(snapshot) &&
+				  snapshot.wallet_revision < stored_wallet_revision;
+	if (query.ok &&
+	    (stale_wallet || (snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)))
 	{
 		const auto rolled_back = execute(connection, "ROLLBACK");
 		if (!rolled_back.ok)
 			return failure(rolled_back.error_code);
+		if (stale_wallet)
+			return { player_save_apply_outcome::terminal_failure, stored_revision,
+				 ESTALE };
 		return { player_save_apply_outcome::stale_revision, stored_revision, 0 };
 	}
 	if (query.ok)

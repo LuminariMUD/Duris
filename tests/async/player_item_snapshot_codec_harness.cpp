@@ -326,10 +326,15 @@ int main(int argc, char **argv)
 			player_snapshot_codec_result::invalid_value,
 		"a snapshot of pid 0 was encoded");
 	// Every proper prefix of a whole snapshot is truncated too.
-	const player_snapshot full = snapshot_fixture();
+	auto full = snapshot_fixture();
+	full.wallet_revision = 42;
 	std::vector<uint8_t> current, other;
 	require(player_snapshot_encode(full, &current) == player_snapshot_codec_result::ok,
 		"the snapshot fixture did not encode");
+	require(player_snapshot_decode(current.data(), current.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.wallet_revision == 42,
+		"current snapshot lost its captured wallet revision");
 	for (size_t length = 1; length < current.size(); ++length)
 		require(player_snapshot_decode(current.data(), length, &read_back) ==
 				player_snapshot_codec_result::truncated,
@@ -349,6 +354,8 @@ int main(int argc, char **argv)
 	const auto wire = [&](uint32_t version)
 	{
 		auto bytes = current;
+		if (version < 11)
+			bytes.resize(bytes.size() - sizeof(uint64_t));
 		if (version < 3) // the restore state's length, its one byte, the hold reason
 			bytes.erase(bytes.begin() + state_at, bytes.begin() + state_at + 9);
 		if (version < 5)
@@ -363,16 +370,29 @@ int main(int argc, char **argv)
 		const auto bytes = wire(version);
 		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
 					player_snapshot_codec_result::ok &&
-				read_back.pets.size() == 1 &&
+				read_back.wallet_revision == 0 && read_back.pets.size() == 1 &&
 				read_back.pets[0].pet_uid ==
 					(version >= 7 ? full.pets[0].pet_uid : 0) &&
-				read_back.status_integers[read_back.status_integers.size() - 2]
-						.field ==
-					player_status_field::learned_flight_stops &&
-				read_back.status_integers.back().field ==
-					player_status_field::divine_boon_delivery_seq &&
-				read_back.status_integers.back().is_unsigned &&
-				read_back.status_integers.back().unsigned_value == 0 &&
+				std::any_of(read_back.status_integers.begin(),
+					    read_back.status_integers.end(),
+					    [](const auto &row)
+					    {
+						    return row.field ==
+								   player_status_field::
+									   learned_flight_stops &&
+							   row.is_unsigned &&
+							   row.unsigned_value == 0;
+					    }) &&
+				std::any_of(
+					read_back.status_integers.begin(),
+					read_back.status_integers.end(),
+					[](const auto &row)
+					{
+						return row.field ==
+							       player_status_field::
+								       divine_boon_delivery_seq &&
+						       row.is_unsigned && row.unsigned_value == 0;
+					}) &&
 				read_back.pets[0].mob_vnum == 5 &&
 				read_back.pets[0].restore_state == (version >= 3 ? "a" : "") &&
 				read_back.output_preferences ==
@@ -408,14 +428,36 @@ int main(int argc, char **argv)
 							   &error) ==
 					flatfile_player_load_result::ok &&
 				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION &&
-				read_back.status_integers[read_back.status_integers.size() - 2]
-						.field ==
-					player_status_field::learned_flight_stops &&
-				read_back.status_integers.back().field ==
-					player_status_field::divine_boon_delivery_seq &&
-				read_back.status_integers.back().is_unsigned &&
-				read_back.status_integers.back().unsigned_value == 0,
+				std::any_of(read_back.status_integers.begin(),
+					    read_back.status_integers.end(),
+					    [](const auto &row)
+					    {
+						    return row.field ==
+								   player_status_field::
+									   learned_flight_stops &&
+							   row.is_unsigned &&
+							   row.unsigned_value == 0;
+					    }) &&
+				std::any_of(
+					read_back.status_integers.begin(),
+					read_back.status_integers.end(),
+					[](const auto &row)
+					{
+						return row.field ==
+							       player_status_field::
+								       divine_boon_delivery_seq &&
+						       row.is_unsigned && row.unsigned_value == 0;
+					}),
 			"old player file did not load with empty flight discoveries: " + error);
+	}
+	for (uint32_t version : { 9u, 10u })
+	{
+		const auto bytes = wire(version);
+		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
+					player_snapshot_codec_result::ok &&
+				read_back.wallet_revision == 0 &&
+				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION,
+			"old snapshot did not default its absent wallet revision");
 	}
 	const auto version8 = wire(8);
 	require(player_snapshot_decode(version8.data(), version8.size(), &read_back) ==
@@ -471,6 +513,7 @@ int main(int argc, char **argv)
 	changed.status_integers.clear();
 	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok,
 		"partial legacy fixture did not encode");
+	other.resize(other.size() - sizeof(uint64_t));
 	put32(other, 0, 7);
 	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&
@@ -504,8 +547,7 @@ int main(int argc, char **argv)
 		"the snapshot with status field 0 did not encode");
 	auto bad = current;
 	const size_t integer_at = first_difference(current, other);
-	const uint16_t past_integer =
-		static_cast<uint16_t>(player_status_field::divine_boon_delivery_seq) + 1;
+	const uint16_t past_integer = static_cast<uint16_t>(PLAYER_STATUS_INTEGER_COUNT);
 	bad[integer_at] = static_cast<uint8_t>(past_integer);
 	bad[integer_at + 1] = static_cast<uint8_t>(past_integer >> 8);
 	require(player_snapshot_decode(bad.data(), bad.size(), &read_back) ==

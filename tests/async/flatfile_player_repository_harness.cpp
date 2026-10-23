@@ -14,6 +14,7 @@
 #include "combat/combat_outcome_command.h"
 #include "world/zone_touch_command.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <ctime>
 #include <openssl/sha.h>
@@ -656,6 +657,7 @@ static void saved_wallet_matrix(const fs::path &path)
 			flatfile_identity_result::ok,
 		"wallet player identity claim");
 	auto snapshot = make_full(1);
+	snapshot.wallet_revision = 7; // Creation can already have granted starter money.
 	for (const std::array<int64_t, 4> &wallet :
 	     { std::array<int64_t, 4>{ 11, 12, 13, 14 }, std::array<int64_t, 4>{ 5, 0, 0, 1 },
 	       std::array<int64_t, 4>{ 0, 0, 0, 0 } })
@@ -682,6 +684,7 @@ static void saved_wallet_matrix(const fs::path &path)
 		flatfile_player_domain_record domain;
 		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
 					flatfile_player_domain_result::ok &&
+				domain.domains.wallet_revision == snapshot.wallet_revision &&
 				domain.domains.wallet ==
 					std::array<uint64_t, 4>{
 						static_cast<uint64_t>(wallet[0]),
@@ -691,7 +694,8 @@ static void saved_wallet_matrix(const fs::path &path)
 				domain.domains.epics == wallet[0] * 100 - 5 &&
 				domain.domains.frags == wallet[1] - 3 &&
 				domain.domains.old_frags == wallet[2] + 1,
-			"the save did not write the wallet, epics and frags it carries");
+			"the save did not write the wallet, epics, frags and captured wallet revision");
+		++snapshot.wallet_revision;
 	}
 	// A bank change is a delta added to the account's record for its side, created
 	// when missing; a debit the record cannot cover is refused and changes nothing.
@@ -1038,7 +1042,8 @@ int main(int argc, char **argv)
 	std::vector<uint8_t> legacy_bytes;
 	require(player_snapshot_encode(full, &legacy_bytes) == player_snapshot_codec_result::ok,
 		"could not encode legacy-compatible status fixture");
-	legacy_bytes[0] = 9; // Version 9 has the same layout, without the new status field.
+	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t));
+	legacy_bytes[0] = 9; // Older status has no delivery field or wallet metadata.
 	player_snapshot legacy;
 	uint64_t legacy_sequence = 99;
 	require(player_snapshot_decode(legacy_bytes.data(), legacy_bytes.size(), &legacy) ==
@@ -1443,6 +1448,7 @@ int main(int argc, char **argv)
 
 	const fs::path snapshot_path = players / "42.snapshot";
 	player_snapshot paid = make_status(13, 51, 1201);
+	paid.wallet_revision = 19;
 	paid.status_integers.insert(paid.status_integers.end(),
 				    { { player_status_field::copper, 11, 0, false },
 				      { player_status_field::silver, 12, 0, false },
@@ -1450,6 +1456,7 @@ int main(int argc, char **argv)
 				      { player_status_field::platinum, 14, 0, false },
 				      { player_status_field::frags, 16, 0, false },
 				      { player_status_field::old_frags, 17, 0, false } });
+	paid.status_integers.push_back({ player_status_field::racewar, 0, 0, false });
 	paid.status_integers.push_back({ player_status_field::epics, 450, 0, false });
 	paid.status_integers.push_back(
 		{ player_status_field::divine_boon_delivery_seq, 0, 5, true });
@@ -1515,6 +1522,50 @@ int main(int argc, char **argv)
 	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"marker advanced without a complete financial checkpoint");
+	// A wallet commit is protected by the existing wallet revision even if an
+	// old capture carries a later general save revision and the right epic marker.
+	auto stale_wallet = paid;
+	stale_wallet.revision = 99999;
+	stale_wallet.wallet_revision = 18;
+	stale_wallet.status_integers[3].signed_value = 1;
+	stale_wallet.components |= PLAYER_COMPONENT_LANGUAGES;
+	stale_wallet.languages = { { 1, 97, 0 } };
+	const auto wallet_conflict =
+		flatfile_player_snapshot_apply(root.string(), stale_wallet, &error);
+	require(wallet_conflict.outcome == player_save_apply_outcome::terminal_failure &&
+			wallet_conflict.error_code == ESTALE,
+		"stale wallet must fail and re-dirty unrelated language work");
+	player_snapshot wallet_loaded;
+	require(flatfile_player_snapshot_load(root.string(), 42, &wallet_loaded, &error) ==
+				flatfile_player_load_result::ok &&
+			wallet_loaded.wallet_revision == 19 &&
+			!wallet_loaded.languages.empty() &&
+			wallet_loaded.languages.front().value != 97,
+		"stale wallet failure corrupted the saved wallet or acknowledged language work");
+	// Recapturing the rejected STATUS and LANGUAGES must persist both together.
+	auto refreshed = stale_wallet;
+	refreshed.revision = 100000;
+	refreshed.wallet_revision = 19;
+	refreshed.status_integers[3].signed_value = paid.status_integers[3].signed_value;
+	require(flatfile_player_snapshot_apply(root.string(), refreshed, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"fresh wallet and language recapture failed: " + error);
+	require(flatfile_player_snapshot_load(root.string(), 42, &wallet_loaded, &error) ==
+			flatfile_player_load_result::ok &&
+			wallet_loaded.wallet_revision == 19 &&
+			!wallet_loaded.languages.empty() &&
+			wallet_loaded.languages.front().value == 97,
+		"freshly recaptured language work was dropped");
+	auto wallet_request = load_request;
+	wallet_request.deadline_usec =
+		persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+	wallet_request.include_items = false;
+	wallet_request.include_pets = false;
+	auto wallet_domain = flatfile_player_load_repository_execute(root.string(), wallet_request);
+	require(wallet_domain.outcome == player_load_outcome::applied &&
+			wallet_domain.domains.wallet_revision == 19 &&
+			wallet_domain.domains.wallet[0] == 11,
+		"stale capture changed the durable wallet or load revision");
 	{
 		std::fstream file(snapshot_path, std::ios::in | std::ios::out | std::ios::binary);
 		require(file.good(), "could not open player snapshot for corruption test");
