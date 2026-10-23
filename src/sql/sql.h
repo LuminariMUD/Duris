@@ -251,6 +251,7 @@ void sql_add_sincesunk_frags(char owner, float frags);
 
 bool sql_pwipe(int code_verify);
 bool sql_pwipe_crossed_boundary(void);
+bool sql_pwipe_filesystem_ready(void);
 uint64_t sql_season_epoch(void);
 bool sql_verify_pwipe_manifest(void);
 bool sql_verify_persistence_schema(void);

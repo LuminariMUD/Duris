@@ -36,7 +36,7 @@ assert boot.index("sql_verify_boot_database()") < boot.index(
 load = section(SQL, "static bool sql_load_active_season_state", "static bool sql_begin_pwipe_epoch")
 assert "reset_status" in load and 'strcmp(row[1], "active")' in load
 
-begin = section(SQL, "static bool sql_begin_pwipe_epoch", "static bool sql_complete_pwipe_epoch")
+begin = section(SQL, "static bool sql_begin_pwipe_epoch", "static bool sql_prepare_pwipe_filesystem")
 assert begin.index('"START TRANSACTION"') < begin.index("FOR UPDATE")
 update_call = begin.index("sql_connection_execute_affected(DB, update, &affected)")
 update_confirmed = begin.index("affected != 1", update_call)
@@ -50,7 +50,8 @@ first_mutation = wipe.index("sql_clear_zone_trophy()")
 assert wipe.index("redis_validate_pwipe_state()") < wipe.index(
     "sql_begin_pwipe_epoch()"
 ) < first_mutation
-assert wipe.index("redis_clear_pwipe_state()") < wipe.index("sql_complete_pwipe_epoch()")
+assert wipe.index("posix_spawn(&wipe_child") < wipe.index("sql_begin_pwipe_epoch()")
+assert wipe.index("redis_clear_pwipe_state()") < wipe.index("sql_prepare_pwipe_filesystem()")
 
 validate = section(REDIS, "bool redis_validate_pwipe_state", "void redis_cleanup")
 assert "redis_maintenance_validate(&config)" in validate

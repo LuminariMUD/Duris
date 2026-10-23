@@ -74,9 +74,10 @@ production port 7777; the default remains 4000.
 | 52 | reboot | yes |
 | 53 | copyover reboot | yes |
 | 54 | auto reboot | yes |
-| 55 | pwipe shutdown | no |
+| 55 | complete pwipe; explicit fresh start required | no |
 | 56 | mud hung reboot | yes |
 | 57 | auto reboot with copyover | yes |
+| 58 | incomplete pwipe; operator recovery required | no |
 | 139 | crash (SIGSEGV) | yes |
 | 128 + N | killed by signal N, named: 137 is `killed by SIGKILL` | yes |
 | other | unknown | yes |
@@ -189,16 +190,49 @@ in one explicitly requested step. Installation does not create credentials, chan
 `.env`, run legacy migrations, or promote a database. A failed production preflight is
 a deployment blocker, not a reason to weaken the unit or reuse development secrets.
 
-Do not use the `pwipe` shutdown path for ordinary restarts: exit code `55`
-causes `cycle_mud.sh` to run the filesystem player wipe artifact after the
-server exits.
+Do not use `pwipe` for ordinary restarts. The full supported reset is still under
+qualification in issue #264; this handoff repair alone is not wipe readiness.
 
-Pwipe advances `season_reset_state.season_epoch` and records `resetting` before the first
-destructive SQL statement. If any later step fails, the server exits and subsequent boots
-refuse to start while that state remains. Treat this as an incomplete destructive reset:
-preserve the database and logs, determine which reset postcondition failed, and recover
-or complete the reset under operator control. Do not change the row back to `active`
-merely to bypass the boot fence.
+Pwipe advances `season_reset_state.season_epoch` and records `resetting` before
+destructive SQL. Startup refuses any non-active season. The singleton also holds
+its handoff receipt: while `reset_status='resetting'`, a NULL `reset_completed_at`
+means SQL/Redis/reward processing is incomplete; a non-NULL value means those stages
+finished and filesystem cleanup remains. The launcher keeps status `resetting`
+through cleanup, then atomically activates that exact epoch and records the final
+completion time. Only then does it print `Wiped!`. No schema change is needed.
+
+Before the boundary, the server checks `wipe_it_all --check` along with its existing
+schema/Redis checks. Missing artifacts, unexpected store symlinks/types and denied
+access abort before SQL reset. Cleanup revalidates the same fixed paths. Backups,
+accounts and configuration are preserved; symlinks within a wiped store are removed
+as links. This check covers the legacy stores handled by this script, not yet every
+modern recovery store; the remaining inventory/isolation work is a readiness gate.
+
+A successful SQL-stage server exits 55; an incomplete irreversible reset exits 58.
+Exit 55 alone never authorizes deletion: the launcher checks its boot epoch's
+successor and the durable SQL-ready receipt. Both terminal statuses propagate
+through notifications; the systemd unit prevents restart on 55 and 58. Ordinary
+reboots and crashes retain their restart policy. A crash during an incomplete reset
+is stopped by the durable fence on the next launch.
+
+After an interruption, stop the launcher/server and all external seasonal writers,
+preserve logs and the matching DB/filesystem/Redis backup generation, and inspect
+`SELECT season_epoch, reset_status, reset_started_at, reset_completed_at FROM
+season_reset_state WHERE state_id=1`. For `resetting` with a non-NULL completion
+timestamp, repair the filesystem problem and, with the same configuration, run
+`./scripts/cycle_mud.sh --resume-pwipe EPOCH` (add `--dev` locally). It validates the
+exact epoch, serializes cleanup, retries safely, activates only after successful
+cleanup, and returns 55 without starting the game. Repeating it for that already
+completed epoch does not delete new-season files. After an ambiguous activation
+acknowledgment, read the row or repeat this same command; do not invent another epoch.
+
+For `resetting` with NULL completion time, file cleanup is prohibited. The current
+supported recovery is a matched pre-wipe DB/filesystem/Redis restore under operator
+control, not an unqualified rerun of SQL or a manual `active` update. SQL-stage resume
+and full carryover/recovery qualification remain tracked in #264. Never change the
+row to `active` merely to bypass the fence. Production reset/restore requires owner
+authorization. Once the complete workflow is qualified and the row is active,
+start the new season explicitly.
 
 Every active Redis key and channel includes the boot-captured SQL season epoch. The old
 process continues to target only the old epoch while pwipe is in progress; after restart,

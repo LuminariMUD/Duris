@@ -11,6 +11,8 @@ Group=@DURIS_GROUP@
 WorkingDirectory=@DURIS_ROOT@
 ExecStart="@DURIS_ROOT@/scripts/cycle_mud.sh" --production
 Restart=always
+SuccessExitStatus=55
+RestartPreventExitStatus=55 58
 RestartSec=10s
 # SIGTERM goes to the launcher alone, which stops the server and records the stop;
 # anything left after TimeoutStopSec is killed.

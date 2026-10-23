@@ -58,12 +58,51 @@ was run during planning.
 - The wider migration-runner check exposed an existing test tied to “last migration”
   instead of its reviewed manifest prefix. Corrected that test separately, matching
   the other reviewed-online-migration fixtures; all 23 runner tests passed.
-- Next chunk: W3 SQL-to-launcher completion/failure contract, including fenced
+- PR #309: https://github.com/LuminariMUD/Duris/pull/309, review-ready at `470c9c92a`.
+- Current chunk: W3 SQL-to-launcher completion/failure contract, including fenced
   post-boundary failures, durable SQL-ready state and guarded filesystem completion.
   W2 writer drain and W4 completeness/carryovers remain required before runtime
   readiness. No production actions, readiness sign-off or release tag.
 - The baseline list failures were repaired on master before this continuation;
   removing the remaining duplication prevents the same drift recurring.
+
+### SQL/filesystem handoff chunk (stacked after PR #309)
+
+Outcome: keep boot fenced through filesystem deletion and distinguish failed stops
+from deletion permission. Files: existing SQL/comm/launcher/wiper/service paths,
+runbook, regression index and focused handoff tests. Non-goals for this chunk:
+writer-drain/completeness/carryover policy repairs, full gameplay and deployment.
+Those remain required for the overall issue. Ablation removed a proposed migration:
+existing status + completion timestamp already encode the SQL-ready handoff.
+
+- `resetting`/NULL completion: SQL incomplete, no file cleanup permitted.
+  `resetting`/timestamp: SQL/Redis/rewards ready, filesystem still fenced.
+  `active`/timestamp: full handoff complete. Launcher final activation is guarded
+  by epoch; duplicate completion never deletes newly created files.
+- Exit 55 requires acknowledged SQL readiness; 58 stops incomplete resets.
+  Launcher additionally checks the boot epoch's successor before cleanup and
+  preserves both statuses. Production unit prevents automatic restart for both.
+- Filesystem preflight validates every fixed legacy target before deletion and
+  is invoked before SQL's irreversible boundary; cleanup revalidates. SQL reward
+  failure now prevents SQL-ready publication. SQL-stage resume is still unimplemented;
+  matched restore is the documented safe recovery route for that stage.
+- Proven: 4 executable filesystem/launcher-contract tests; SQL completion, durable
+  fence, existing quiescence/source-manifest and both Redis source contracts passed.
+  `run_pwipe_handoff_mysql.py` applied the sealed sequence on a private MariaDB 10.11,
+  matched all 200 actual tables, executed native begin/ready/boot-fence functions,
+  and passed real launcher resume/failure/retry/lost-ACK cases. This is a handoff
+  journey, not the full command-to-fresh-gameplay acceptance journey.
+- Both builds passed: `make -C src -j4 PERSISTENCE_BACKEND=mariadb` and
+  `make -C src -j4 PERSISTENCE_BACKEND=flatfile BIN_ROOT=$PWD/bin/qualification-flatfile`.
+  `format.sh --check`, shell syntax,
+  runtime compatibility validation and `git diff --check` passed.
+- Executed the exact production restart properties in isolated user-systemd transient
+  services: after 12 seconds, exits 55 and 58 had one invocation each; reboot exit 52
+  had two. All fixture units stopped/reset afterward. This proves restart policy,
+  not the full installed system-service sandbox.
+- Remaining W3 proof: actual server exit/handoff in W6, interruption at the process
+  boundary, full installed service sandbox and SQL-stage recovery. W2, W4, W5 and
+  the fresh-gameplay journey remain open. Do not sign off #264 or #97.
 
 ## What the code currently does
 

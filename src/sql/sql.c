@@ -49,6 +49,8 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <spawn.h>
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -693,6 +695,10 @@ bool sql_pwipe_crossed_boundary(void)
 {
 	return false;
 }
+bool sql_pwipe_filesystem_ready(void)
+{
+	return false;
+}
 uint64_t sql_season_epoch(void)
 {
 	return 0;
@@ -720,6 +726,7 @@ static bool sql_verify_boot_database(void);
 MYSQL *DB;
 
 static bool pwipe_crossed_boundary = false;
+static bool pwipe_filesystem_ready = false;
 static uint64_t current_season_epoch = 0;
 
 static bool sql_env_true(const char *name)
@@ -941,15 +948,15 @@ static bool sql_begin_pwipe_epoch(void)
 	return true;
 }
 
-static bool sql_complete_pwipe_epoch(void)
+static bool sql_prepare_pwipe_filesystem(void)
 {
 	if (!DB || !current_season_epoch)
 		return false;
 	char update[320];
 	snprintf(update, sizeof update,
-		 "UPDATE season_reset_state SET reset_status='active',"
-		 "reset_completed_at=UTC_TIMESTAMP(6) WHERE state_id=1 AND season_epoch=%llu "
-		 "AND reset_status='resetting'",
+		 "UPDATE season_reset_state SET reset_completed_at=UTC_TIMESTAMP(6) "
+		 "WHERE state_id=1 AND season_epoch=%llu AND reset_status='resetting' "
+		 "AND reset_completed_at IS NULL",
 		 (unsigned long long)current_season_epoch);
 	my_ulonglong affected = 0;
 	return sql_connection_execute_affected(DB, update, &affected) && affected == 1;
@@ -958,6 +965,11 @@ static bool sql_complete_pwipe_epoch(void)
 bool sql_pwipe_crossed_boundary(void)
 {
 	return pwipe_crossed_boundary;
+}
+
+bool sql_pwipe_filesystem_ready(void)
+{
+	return pwipe_filesystem_ready;
 }
 
 uint64_t sql_season_epoch(void)
@@ -4139,6 +4151,7 @@ bool sql_verify_auction_engines(void)
 bool sql_pwipe(int code_verify)
 {
 	pwipe_crossed_boundary = false;
+	pwipe_filesystem_ready = false;
 	logit(LOG_DEBUG, "sql_pwipe: STARTED!");
 	if (code_verify == 1723699)
 	{
@@ -4173,6 +4186,30 @@ bool sql_pwipe(int code_verify)
 			send_to_all("Preflight FAILED: Redis invalidation target unavailable!\n");
 			return FALSE;
 		}
+		char wipe_program[] = "./Players/wipers/wipe_it_all";
+		char wipe_check[] = "--check";
+		char *wipe_arguments[] = { wipe_program, wipe_check, nullptr };
+		pid_t wipe_child = 0;
+		bool filesystem_ready = posix_spawn(&wipe_child, wipe_program, nullptr, nullptr,
+						    wipe_arguments, environ) == 0;
+		if (filesystem_ready)
+		{
+			int status = 0;
+			pid_t waited;
+			do
+			{
+				waited = waitpid(wipe_child, &status, 0);
+			} while (waited < 0 && errno == EINTR);
+			filesystem_ready = waited == wipe_child && WIFEXITED(status) &&
+					   WEXITSTATUS(status) == 0;
+		}
+		if (!filesystem_ready)
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Filesystem preflight failed; reset not started.");
+			return FALSE;
+		}
+
 		if (!sql_begin_pwipe_epoch())
 		{
 			logit(LOG_DEBUG,
@@ -4899,8 +4936,9 @@ bool sql_pwipe(int code_verify)
 			      "sql_pwipe: account reward pwipe policy failed; preserving rewards for manual review.");
 			send_to_all(
 				"Account reward pwipe policy FAILED; rewards are being preserved for manual review.\n");
+			return FALSE;
 		}
-		if (!sql_complete_pwipe_epoch())
+		if (!sql_prepare_pwipe_filesystem())
 		{
 			logit(LOG_DEBUG,
 			      "sql_pwipe: Reset data cleared but season state completion failed; shutdown remains fenced.");
@@ -4910,8 +4948,10 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "  success!");
 		send_to_all("  success!\n");
-		logit(LOG_DEBUG, "sql_pwipe: COMPLETED!");
-		send_to_all("WIPE COMPLETED!");
+		pwipe_filesystem_ready = true;
+		logit(LOG_STATUS,
+		      "sql_pwipe: SQL reset ready for filesystem cleanup; startup remains fenced.");
+		send_to_all("SQL reset ready; filesystem cleanup and season activation remain.\n");
 		sleep(1);
 		return TRUE;
 	}

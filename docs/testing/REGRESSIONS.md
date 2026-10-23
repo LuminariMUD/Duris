@@ -11,6 +11,27 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Pwipe SQL/filesystem handoff
+
+`python3 tests/async/test_cycle_pwipe_status.py` executes the real filesystem
+script in synthetic trees: read-only preflight, preserve accounts/config/backups,
+repeat cleanup, nested links, top-level/dangling links, wrong target types and
+permission denial. SQL/Redis/reward completion must leave startup fenced until
+filesystem cleanup and activation of the same epoch. Exit 55 is cleanup-ready;
+58 is an incomplete reset and cannot authorize deletion. Neither restarts in the
+production service policy.
+
+`python3 tests/async/run_pwipe_handoff_mysql.py` creates a private MariaDB via the
+existing disposable wrapper, applies the sealed migration sequence and compares
+all live tables with the lifecycle inventory. It compiles the actual native season
+functions and executes begin/ready/boot fencing against that DB, then drives the
+actual launcher's resume path with synthetic filesystem data. Cases cover missing
+SQL readiness, wrong epoch, overlapping cleanup, unsafe paths/nonexecutable artifact,
+partial cleanup, fixed retries, duplicate completion and a lost activation ACK.
+No real `.env`, player data or external notifications are used. It does not prove
+the full game command/countdown, writer quiescence, reset completeness, reward policy
+identity, external integrations or fresh gameplay; those remain #264 gates.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,

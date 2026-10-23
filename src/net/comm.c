@@ -1239,7 +1239,7 @@ int run_the_game(int port, int sslport)
 		logit(LOG_EXIT, "Pwipe Shutdown.");
 		logit(LOG_EXIT, "Max Goods: %d, Max Evils: %d.", max_ingame_good, max_ingame_evil);
 		ws_broadcast_mud_shutdown("pwipe");
-		return 55;
+		return sql_pwipe_filesystem_ready() ? 55 : 58;
 	}
 	ws_broadcast_mud_shutdown("manual");
 	logit(LOG_EXIT, "Normal termination of game.");
