@@ -212,19 +212,31 @@ def main():
         assert active.count(copy) == 1, f"{copy} must be active exactly once"
         for kind, count in COUNTS[source].items():
             original = (AREAS / kind / f"{source}.{kind}").read_text()
-            actual = (AREAS / kind / f"{copy}.{kind}").read_text()
+            if kind == "shp":
+                # Shop IDs are durable load-order indices. Append copied records
+                # in the existing end.shp tail, never ahead of established shops.
+                contents = (AREAS / "shp/end.shp").read_text()
+                actual = "".join(records(contents, MAPS[source][kind].values()).values()).split("$~", 1)[0]
+                for ident in MAPS[source][kind].values():
+                    assert len(re.findall(rf"(?m)^#{ident}(?:~|[^0-9])", contents)) == 1
+            else:
+                actual = (AREAS / kind / f"{copy}.{kind}").read_text()
             assert len(records(original)) == count
             assert len(records(actual)) == count
             assert actual == expected_copy(source, kind), f"{copy}.{kind} differs beyond the explicit copy mapping"
             allocated = set(MAPS[source][kind].values())
             for path in (AREAS / kind).glob(f"*.{kind}"):
-                if path.stem == copy:
+                if path.stem == copy or kind == "shp" and path.name == "end.shp":
                     continue
                 collision = allocated.intersection(int(ident) for ident in re.findall(r"(?m)^#(\d+)", path.read_text(errors="replace")))
                 assert not collision, f"allocated {kind} IDs collide with {path}: {collision}"
             generated_path = AREAS / f"world.{kind}"
             assert generated_path.exists(), "run make world before generated-output parity"
             generated = records(generated_path.read_text(), allocated)
+            if kind == "shp":
+                headers = re.findall(r"(?m)^#.*$", generated_path.read_text())
+                copied_headers = [record.splitlines()[0] for record in records(actual).values()]
+                assert headers[-count:] == copied_headers, "copied shops must append after every existing durable shop ID"
             for old_id, old_record in records(original).items():
                 new_id = remap("mob" if kind == "qst" else kind, old_id)
                 expected = copied_record(source, kind, old_record)

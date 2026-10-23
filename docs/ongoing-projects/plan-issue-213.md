@@ -157,7 +157,8 @@ An independent registration defect discovered in that browser QA was fixed in
 overlong names before connecting. Six focused tests, normal frontend gates and
 Chromium in-place rejection checks passed. It is not a dependency of #91.
 
-Next data chunk: `branch/issue-213-tutorial-copies`, stacked on #315 in the
+Data foundation [PR #320](https://github.com/LuminariMUD/Duris/pull/320):
+`branch/issue-213-tutorial-copies`, stacked on #315 in the
 same worktree. Master was refreshed again and remains ancestral at `7d3bd3b95`.
 All authored namespaces (including inactive sources) were inventoried before
 allocating the formerly OPEN 912-919 range:
@@ -166,15 +167,24 @@ allocating the formerly OPEN 912-919 range:
   objects 91200-91209. Mapping: each Plane of Life entity +68400, zone +684.
 - Wutvr uses zone 914 spanning room IDs 91401-91517, mobiles 91401-91505 and
   objects 91401-91533 (sparse sets match the source). Mapping: each Ailvio
-  entity +62200, zone +622. Quest controller and shop identities follow their
-  corresponding copied mobile IDs. Zones 913 and 916-919 remain OPEN.
-- The ten new authored files and `areas/AREA` are staged for delivery. The
+  entity +62200, zone +622. Quest controller/shop record headers follow their
+  copied mobile IDs; durable shop load indices append after the old catalog.
+  Zones 913 and 916-919 remain OPEN.
+- Nine new authored files, eight appended shops and `areas/AREA` are delivered. The
   focused fixture `tests/async/test_issue213_tutorial_parity.py` holds the typed
   mappings, all explicit shared external object IDs and stream room 132575,
   exact counts and authored/generated equality checks. It remaps room exits
   (including D8), door keys, zone reset entities/containers/equipment, portal
   rooms, switch rooms, quest item actions/rewards, and shop stocks/keepers/rooms.
   Numeric rewards, commands, flags and other fields are unchanged.
+- Copied shops are appended in the existing `areas/shp/end.shp` tail. There is
+  deliberately no `areas/shp/wutvr.shp`: including it at the area's position
+  would shift durable shop IDs for every later shop, as shop trades and restored
+  shopkeeper items use the load-order index. The fixture verifies the copied
+  records occupy only the final eight positions and every other catalog entry
+  retains its position. This reuses the established append-only source path
+  without a generator change or identity migration. Both source/runtime files
+  and the active fallback loader place end.shp last.
 - Ailvio's final arch also has an authored fallback to Plane of Life; that
   cross-stage reference maps to Plane of Chaos in the copy. The final racial
   departure still needs the copied compiled portal assignment. The stone slab
@@ -413,7 +423,9 @@ unchanged level-cap behavior.
 
 Files: new `areas/wld/chaos_intro.wld`, `areas/mob/chaos_intro.mob`,
 `areas/obj/chaos_intro.obj`, `areas/zon/chaos_intro.zon`; and
-`areas/{wld,mob,obj,qst,shp,zon}/wutvr.*`, plus `areas/AREA`.
+`areas/{wld,mob,obj,qst,zon}/wutvr.*`, eight appended records in
+`areas/shp/end.shp`, plus `areas/AREA`. Shops must append there to preserve
+the existing durable load-order shop IDs; do not add a wutvr.shp in AREA order.
 Names here are source filenames; displayed names remain Plane of Chaos and Wutvr.
 
 - Refresh master before allocating IDs. Inventory all authored entity namespaces
