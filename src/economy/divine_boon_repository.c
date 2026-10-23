@@ -178,3 +178,21 @@ divine_boon_store_result divine_boon_sql_save(MYSQL *connection, uint64_t expect
 				  divine_boon_store_result::conflict;
 #endif
 }
+
+// Pwipe calls this after its writer drain; preserve the same optimistic revision
+// contract used by normal writes, with one durable transition for all old slots.
+divine_boon_store_result divine_boon_sql_reset_season(MYSQL *connection, int64_t now)
+{
+	divine_boon_state current;
+	const auto loaded = divine_boon_sql_load(connection, &current);
+	if (loaded == divine_boon_store_result::not_found)
+		return divine_boon_store_result::already_applied;
+	if (loaded != divine_boon_store_result::ok)
+		return loaded;
+	auto next = current;
+	if (!divine_boon_reset_season(&next, now))
+		return divine_boon_store_result::invalid;
+	if (next == current)
+		return divine_boon_store_result::already_applied;
+	return divine_boon_sql_save(connection, current.revision, next);
+}

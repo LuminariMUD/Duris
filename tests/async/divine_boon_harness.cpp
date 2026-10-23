@@ -35,6 +35,33 @@ size_t occupied(const divine_boon_state &state)
 	return count;
 }
 
+void season_reset()
+{
+	auto state = activated();
+	auto choice = zone(divine_boon_category::experience, 10, 20);
+	assert(divine_boon_rotate(&state, H, &choice));
+	choice.zones = { 30, 40 };
+	assert(divine_boon_rotate(&state, 2 * H, &choice));
+	assert(divine_boon_set_paused(&state, true, 2 * H));
+	state.history.push_back({ 99, 0, H });
+	const auto before = state;
+	auto blocked = state;
+	blocked.revision = std::numeric_limits<uint64_t>::max();
+	const auto overflow = blocked;
+	assert(!divine_boon_reset_season(&blocked, 2 * H + 1) && blocked == overflow);
+	assert(divine_boon_reset_season(&state, 2 * H + 1));
+	assert(!occupied(state) && state.history.empty() && state.recent.size() == 2);
+	assert(state.next_id == before.next_id && state.revision == before.revision + 1);
+	assert(state.mode == before.mode && state.paused);
+	const auto retired = state;
+	assert(divine_boon_reset_season(&state, 2 * H + 1) && state == retired);
+	assert(!divine_boon_reset_season(&state, -1) && state == retired);
+	assert(!divine_boon_reset_season(nullptr, 2 * H));
+	assert(divine_boon_set_paused(&state, false, 2 * H + 1));
+	assert(divine_boon_rotate(&state, 3 * H, &choice));
+	assert(state.slots[0].id == before.next_id);
+}
+
 void rotation()
 {
 	auto state = activated();
@@ -235,6 +262,7 @@ void snapshots_and_invalid_state()
 
 int main()
 {
+	season_reset();
 	rotation();
 	targets_and_categories();
 	pause_restart_and_clock();

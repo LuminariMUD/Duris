@@ -70,6 +70,14 @@ missing reset boundary, same-reset retry after 90 days, distinct resets inside/o
 The test clock changes only that native fixture connection. No new schema or ledger
 is used: the policy timestamp records the fixed reset boundary atomically with grants.
 
+The Divine Boon model test covers atomic season retirement, retained IDs/history/
+pause configuration, revision overflow, idempotent retry and subsequent ID allocation.
+The native SQL journey seeds live EXP/cargo objectives, rejects a corrupt snapshot
+before epoch advance, and verifies empty objectives/repeat preferences after actual
+pwipe. A database-triggered update failure keeps the reset fenced; a repaired retry
+retires the same stored state once. It uses the actual codec/repository CAS, with no
+snapshot deletion or new season schema.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,

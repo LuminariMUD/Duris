@@ -40,7 +40,34 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
-## Current continuation — kingdom reset completeness
+## Current continuation — retire active Divine Boons
+
+Branch `branch/issue-264-divine-reset`, stacked on kingdom PR #321 at `2640ae94d`
+(https://github.com/LuminariMUD/Duris/pull/321), review-ready.
+Outcome: retire old active objectives and selection-repeat preferences in one
+versioned state transition, while preserving monotonic boon IDs, staff recent history,
+mode/pause configuration and protected cargo-book identities. Reuse the existing
+model serializer/repository CAS; no new schema or blanket ledger deletion. Validate
+the existing snapshot before crossing the reset boundary. Files: existing boon model/
+repository, SQL/manifest, native model/DB tests and docs. Proof: seeded active EXP and
+cargo slots, empty post-reset slots/history, retained IDs/audit/config, idempotent
+repeat, corrupt-state preflight and failed durable update fencing. The ASan/UBSan model
+test and actual SQL/native matrix passed, including a database-triggered failed
+update followed by one repaired retirement. Both development backends and the
+optimized MariaDB production build passed, as did all 12 season-manifest checks,
+14 lifecycle tests, reward/SQL contracts and diff checks. Commit hooks/publication
+remain; the earlier full five-minute journey is reused for unchanged reset paths.
+
+Next retained-state consumers to trace: collector listings/custody in
+`src/economy/collector_repository.c`, artifact current ownership/baselines in
+`src/guild/artifact.c` and prepared cargo replay in
+`src/economy/divine_trade_repository.c`. Old financial commands must not restore
+wiped cargo/market/player after-images. Preserve audit/receipt evidence and prove
+actual startup/recovery behavior before closing those W1/W2/W4 items. SQL-stage
+resume/restore, Redis-on/external cutover, flat-file rejection and full system-service
+qualification also remain. Do not sign off readiness from the completed chunks.
+
+## Kingdom reset delivery
 
 Branch `branch/issue-264-kingdom-reset`, stacked on reward retry PR #318 at
 `b35af6d08` (https://github.com/LuminariMUD/Duris/pull/318), review-ready.
@@ -55,9 +82,10 @@ missing-store preflight must preserve the old epoch. The actual SQL journey pass
 positive territory/resource/guard deletion, association-ID reuse and missing-store
 preflight; both builds passed. It exposed another stale source-test schema list,
 now replaced with the same sealed migration inventory already used by the lifecycle
-validator. Final contracts/hooks and publication remain.
+validator. All 12 reset-manifest and 14 lifecycle checks, both builds, and hooks
+passed before publishing PR #321.
 
-## Current continuation — reward retry accounting
+## Reward retry delivery
 
 Branch `branch/issue-264-reward-retries`, based on PR #317 at `7fc360575`.
 Outcome: bind reward-policy eligibility and its committed stamp to the fixed SQL
