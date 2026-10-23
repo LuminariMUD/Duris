@@ -84,6 +84,8 @@ double epic_percent = 0;
 bool grant_allowed = true;
 obj_data reward{};
 bool conjure_valid = false;
+bool recipe_known = false;
+bool sql_has_spellbook_mob(int, int) { return recipe_known; }
 int conjure_roll = 0, conjure_intelligence = 100;
 std::vector<P_char> learned_minions, failed_learning;
 affected_type containment_affect{};
@@ -157,7 +159,10 @@ void logexp(const char *format, ...) {
     va_end(args);
     exp_log += buffer;
 }
-void send_to_char(const char *text, P_char) { output += text; }
+void send_to_char(const char *text, P_char ch) {
+    output += text;
+    if (std::strstr(text, "You fail to learn")) failed_learning.push_back(ch);
+}
 void send_to_char_f(P_char, const char *format, ...) {
     char buffer[1024];
     va_list args;
@@ -167,6 +172,7 @@ void send_to_char_f(P_char, const char *format, ...) {
     output += buffer;
 }
 void act(const char *text, int, P_char ch, P_obj, void *, int target) {
+    if (!IS_AWAKE(ch) && std::strstr(text, "You fail to learn")) return;
     if (target == TO_VICT || target == TO_CHAR) output += text;
     if (target == TO_CHAR && std::strstr(text, "You fail to learn"))
         failed_learning.push_back(ch);
@@ -725,6 +731,32 @@ int main() {
     kill_gain(&player, &mob);
     assert(learned_minions.size() == 1 && learned_minions.front() == &other);
     assert(failed_learning.size() == 1 && failed_learning.front() == &player);
+
+    // Failed rolls remain private and reach sleeping/knocked-out group members.
+    for (bool knocked_out : {false, true}) {
+        player.specials.position = knocked_out ? POS_STANDING | STAT_NORMAL : STAT_SLEEPING;
+        if (knocked_out) SET_BIT(player.specials.affected_by, AFF_KNOCKED_OUT);
+        assert(!IS_AWAKE(&player));
+        learned_minions.clear();
+        failed_learning.clear();
+        kill_gain(&player, &mob);
+        assert(failed_learning.size() == 1 && failed_learning.front() == &player);
+        assert(learned_minions.size() == 1 && learned_minions.front() == &other);
+        REMOVE_BIT(player.specials.affected_by, AFF_KNOCKED_OUT);
+    }
+    player.specials.position = POS_STANDING | STAT_NORMAL;
+
+    // Both solo and group failed rolls suppress misleading feedback for known recipes.
+    recipe_known = true;
+    group.next = nullptr;
+    for (bool in_group : {false, true}) {
+        player.group = in_group ? &group : nullptr;
+        learned_minions.clear();
+        failed_learning.clear();
+        kill_gain(&player, &mob);
+        assert(learned_minions.empty() && failed_learning.empty());
+    }
+    recipe_known = false;
 
     // An expired mark makes no learning roll. A rejected target keeps the
     // existing eligibility feedback rather than claiming a failed random roll.
