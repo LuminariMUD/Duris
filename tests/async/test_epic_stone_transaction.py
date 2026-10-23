@@ -16,9 +16,19 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import uuid
 from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# The shared disposable wrapper supplies TEST_DB_* only. Prefer that explicit
+# isolated service over inherited application credentials; never read .env.
+if os.environ.get("TEST_DB_HOST"):
+    for target, source in (("DB_HOST", "TEST_DB_HOST"), ("DB_PORT", "TEST_DB_PORT"),
+                           ("DB_USER", "TEST_DB_USER"), ("DB_PASSWD", "TEST_DB_PASSWORD")):
+        os.environ[target] = os.environ[source]
+    os.environ["EPIC_STONE_MYSQL_TEST"] = "1"
+    os.environ["EPIC_TEST_DB_NAME"] = "epic_stone_test_" + uuid.uuid4().hex
 CODEC = r'''
 #include "world/zone_touch_command.h"
 #include "world/epic_command.h"
@@ -93,11 +103,15 @@ int main()
     }
     std::array<uint8_t, ZONE_TOUCH_RESULT_BYTES> bytes;
     assert(zone_touch_command_encode_result(receipt, &bytes));
-    assert(bytes.size() == 512);
+    assert(bytes.size() == ZONE_TOUCH_RESULT_BYTES);
     assert(zone_touch_command_decode_result(bytes.data(), bytes.size(), &decoded));
     assert(decoded.balances == receipt.balances && decoded.revisions == receipt.revisions);
     assert(decoded.recovered_claim && decoded.stone_level == 56);
     assert(decoded.awards[14].errand == 14 && decoded.awards[14].flags == 2);
+    std::array<uint8_t, ZONE_TOUCH_V2_RESULT_BYTES> legacy_v2{};
+    std::copy_n(bytes.begin(), legacy_v2.size(), legacy_v2.begin());
+    assert(zone_touch_command_decode_result(legacy_v2.data(), legacy_v2.size(), &decoded));
+    assert(!decoded.prepared_delivery && decoded.awards[14].amount == 24);
     assert(!zone_touch_command_decode_result(bytes.data(), bytes.size() - 1, &decoded));
     bytes.back() = 1;
     assert(!zone_touch_command_decode_result(bytes.data(), bytes.size(), &decoded));
@@ -120,6 +134,19 @@ int main()
     invalid = payload;
     invalid.awards[14].flags = 4;
     assert(!zone_touch_command_build(&extra, id, invalid));
+
+    auto prepared = receipt;
+    prepared.prepared_delivery = true;
+    prepared.parent_operation = id;
+    for (size_t i=0; i<prepared.group_size; ++i) {
+        prepared.awards[i].base = 10.5;
+        prepared.awards[i].boon_id = 7;
+        prepared.previous[i] = 1;
+    }
+    assert(zone_touch_command_encode_result(prepared, &bytes));
+    assert(zone_touch_command_decode_result(bytes.data(), bytes.size(), &decoded));
+    assert(decoded.prepared_delivery && decoded.awards[14].base == 10.5 && decoded.previous[14] == 1);
+    assert(decoded.parent_operation.bytes == id.bytes);
 
     // A stone awarded outside a qualifying zone still carries all payouts.
     payload.zone_number = 0;

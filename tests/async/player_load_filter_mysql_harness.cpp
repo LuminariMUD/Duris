@@ -10,6 +10,8 @@
 #include "player/player_snapshot_repository.h"
 #include "sql/sql_pool.h"
 #include "combat/combat_outcome_command.h"
+#include "world/zone_touch_command.h"
+#include "world/epic_command.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -142,7 +144,13 @@ int main()
 				loaded_uids(duplicate_load) ==
 					std::vector<uint64_t>{ stable_uid } &&
 				duplicate_load.snapshot.retained_items.rows.size() == 2,
-			"valid/unreadable duplicate roots were not both retained");
+			"valid/unreadable duplicate roots were not both retained: component=" +
+				std::string(duplicate_load.failed_component ?
+						    duplicate_load.failed_component :
+						    "none") +
+				", outcome=" +
+				std::to_string(static_cast<int>(duplicate_load.outcome)) +
+				", mysql=" + mysql_error(test_connection));
 		auto independent = save_holding(pid, 2, duplicate_load.snapshot.items);
 		independent.retained_items = duplicate_load.snapshot.retained_items;
 		independent.items[0].values[0] = 37;
@@ -499,6 +507,73 @@ int main()
 			paid_parent.domains.epics == 480 &&
 			paid_parent.divine_epic_deliveries.empty(),
 		"paid parent was offered again after checkpoint");
+
+	zone_touch_result zone;
+	zone.zone_number = 18;
+	zone.toucher_pid = 11;
+	zone.stone_uid = 991;
+	zone.touched_at = 150;
+	zone.group_size = 1;
+	zone.participant_pids[0] = 11;
+	zone.epic_value = 100;
+	zone.awards[0] = { 150, 0, 0, 7, 100 };
+	zone.revisions[0] = 5;
+	zone.previous[0] = 4;
+	zone.prepared_delivery = true;
+	zone.parent_operation.bytes[0] = 67;
+	std::array<uint8_t, ZONE_TOUCH_RESULT_BYTES> zone_bytes;
+	require(zone_touch_command_encode_result(zone, &zone_bytes), "encode zone delivery");
+	std::string zone_hex;
+	for (uint8_t byte : zone_bytes)
+	{
+		zone_hex += digits[byte >> 4];
+		zone_hex += digits[byte & 15];
+	}
+	critical_operation_id child_operation = {};
+	require(critical_operation_id_derive(zone.parent_operation, 0x5a544132, 11,
+						  &child_operation),
+		"derive zone award child");
+	char child_hex[CRITICAL_COMMAND_ID_HEX_SIZE] = {};
+	critical_operation_id_to_hex(child_operation, child_hex, sizeof(child_hex));
+	const std::string child = child_hex;
+	execute("INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,command_type,"
+		"schema_version,payload_version,status,result_code,durable_revision,result_payload,committed_at) "
+		"VALUES(UNHEX('" +
+		child + "'),REPEAT(CHAR(0),32),REPEAT(CHAR(0),32),2,1,1,1,0,5,UNHEX('" + zone_hex +
+		"'),CURRENT_TIMESTAMP(6))");
+	execute("INSERT INTO epic_ledger(operation_id,pid,delta,balance_after,epic_revision,reason_type,reason_id,source_site) "
+		"VALUES(UNHEX('" +
+		child + "'),11,150,630,5," +
+		std::to_string(static_cast<uint16_t>(epic_reason_type::divine_zone_award)) +
+		",18,3)");
+	const auto zone_owed = load(11, 504);
+	require(zone_owed.outcome == player_load_outcome::applied &&
+			zone_owed.divine_epic_deliveries.size() == 1 &&
+			zone_owed.divine_epic_deliveries[0].zone &&
+			zone_owed.divine_epic_deliveries[0].sequence == 5 &&
+			zone_owed.divine_epic_deliveries[0].previous == 4 &&
+			zone_owed.divine_epic_deliveries[0].amount == 150,
+		"login did not recover the prepared zone award");
+	// A fully valid receipt from a different parent must not be accepted as
+	// the child ledger operation for this player.
+	zone.parent_operation.bytes[0] ^= 0x40;
+	std::array<uint8_t, ZONE_TOUCH_RESULT_BYTES> wrong_parent_bytes;
+	require(zone_touch_command_encode_result(zone, &wrong_parent_bytes),
+		"encode mismatched zone receipt");
+	std::string wrong_parent_hex;
+	for (uint8_t byte : wrong_parent_bytes)
+	{
+		wrong_parent_hex += digits[byte >> 4];
+		wrong_parent_hex += digits[byte & 15];
+	}
+	execute("UPDATE critical_operation_inbox SET result_payload=UNHEX('" +
+		wrong_parent_hex + "') WHERE operation_id=UNHEX('" + child + "')");
+	require(load(11, 505).outcome == player_load_outcome::component_failure,
+		"unrelated zone parent receipt was accepted");
+	execute("UPDATE critical_operation_inbox SET result_payload=CONCAT(CHAR(0),SUBSTRING(result_payload,2)) WHERE operation_id=UNHEX('" +
+		child + "')");
+	require(load(11, 506).outcome == player_load_outcome::component_failure,
+		"corrupt zone receipt was accepted");
 
 	mysql_close(test_connection);
 	mysql_library_end();

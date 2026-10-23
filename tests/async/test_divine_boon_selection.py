@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix="divine-selection-", dir=output_root) as
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
          "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-         "-Isrc", "tests/async/divine_boon_selection_harness.cpp",
+         "-Isrc", "-I/usr/include/mysql", "tests/async/divine_boon_selection_harness.cpp",
          "src/economy/divine_boon_selection.c", "src/economy/divine_boon.c",
          "-lcrypto", "-o", binary], cwd=ROOT, check=True,
     )

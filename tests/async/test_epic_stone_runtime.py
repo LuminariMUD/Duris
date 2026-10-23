@@ -18,6 +18,9 @@ HARNESS = r'''
 #include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_mode.h"
+#include "economy/divine_boon_delivery.h"
+#include <limits>
+#include <cmath>
 #include <cassert>
 #include <cstdlib>
 #include <string>
@@ -39,6 +42,9 @@ struct artifact_publication
  int amount, type;
 };
 static std::vector<artifact_publication> artifacts;
+static std::vector<divine_epic_delivery> prepared_deliveries;
+void divine_boon_delivery_completed(const divine_epic_delivery &delivery)
+{ assert(divine_epic_delivery_valid(delivery)); prepared_deliveries.push_back(delivery); }
 
 bool persistence_mode_requires_mysql() { return mysql_available; }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
@@ -75,7 +81,7 @@ static critical_completion complete(critical_apply_outcome outcome, bool receipt
  {
   zone_touch_payload decoded;
   assert(zone_touch_command_decode_payload(submitted,&decoded));
-  zone_touch_result r(decoded); r.balances[0]=110; r.balances[1]=120;
+  zone_touch_result r(decoded); r.parent_operation=submitted.operation_id; r.balances[0]=110; r.balances[1]=120;
   r.revisions[0]=r.revisions[1]=1;
   std::array<uint8_t,ZONE_TOUCH_RESULT_BYTES> bytes;
   assert(zone_touch_command_encode_result(r,&bytes));
@@ -184,6 +190,19 @@ int main()
  zone_touch_transaction_player_ready(&characters[1]);
  assert(artifacts.size()==2);
  test_pending_admission_excludes_committed_offline_receipts();
+ zone_touch_transaction_reset_for_tests();
+ mysql_available=false;
+ p.prepared_delivery=true; p.touched_at=150;
+ for (size_t i=0; i<p.group_size; ++i) { p.awards[i].base=100; p.awards[i].boon_id=7; }
+ assert(zone_touch_transaction_submit(p));
+ online[1]=false;
+ auto prepared=complete(critical_apply_outcome::applied);
+ zone_touch_transaction_handle_completions(&prepared,1);
+ assert(prepared_deliveries.size()==2 && prepared_deliveries[0].zone && prepared_deliveries[1].pid==2);
+ assert(prepared_deliveries[0].amount==10 && prepared_deliveries[0].previous==0);
+ assert(!zone_touch_transaction_busy(p.stone_uid,p.zone_number));
+ zone_touch_transaction_handle_completions(&prepared,1);
+ assert(prepared_deliveries.size()==2);
 }
 '''
 
@@ -227,6 +246,8 @@ static int spends = 0, payouts = 0, object_lookups = 0;
 static int64_t spend_delta = 0;
 static epic_level_context spend_context = {};
 static std::string messages;
+static bool sql_authoritative_stone_level = false;
+bool persistence_mode_requires_mysql() { return sql_authoritative_stone_level; }
 int sql_level_cap(int) { return 56; }
 int get_property(const char *name, int fallback)
 {
@@ -264,6 +285,14 @@ bool epic_transaction_submit(P_char ch,int64_t delta,epic_reason_type reason,int
 LEVEL_CHECKS = r'''
 int main()
 {
+ // Flat-file payout defaults do not contain an epic level: keep the native stone.
+ assert(stone_level_for_zone(51, 0)==51);
+ assert(stone_level_for_zone(51, 53)==53);
+ sql_authoritative_stone_level=true;
+ // MariaDB retains the existing authoritative zero/positive metadata policy.
+ assert(stone_level_for_zone(51, 0)==0);
+ assert(stone_level_for_zone(51, 53)==53);
+ sql_authoritative_stone_level=false;
  test_pc pc;
  test_character character;
  character.only.pc=&pc;
@@ -338,6 +367,7 @@ class StoneRuntimeTests(unittest.TestCase):
         self.assertIsNotNone(shutil.which("g++"), "Linux g++ is required for the native gameplay regression")
         code = LEVEL_ADAPTERS + "\n".join(
             extract_function("epic.c", signature) for signature in (
+                "static int stone_level_for_zone(int native_level, int configured_level)",
                 "static void epic_stone_level_char_from_level(int stone_level, P_char ch)",
                 "void epic_stone_level_char(P_obj obj, P_char ch)",
                 "void epic_publish_stone_award(P_char ch, const zone_touch_result &result, size_t index)",

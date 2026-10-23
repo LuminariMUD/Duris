@@ -2441,6 +2441,7 @@ flatfile_critical_command_repository_apply_selected(const critical_command &comm
 	if (command.type == critical_command_type::shop_trade)
 		return flatfile_shop_trade_repository_apply(root, command);
 	if (command.type == critical_command_type::epic ||
+	    command.type == critical_command_type::zone ||
 	    command.type == critical_command_type::combat_outcome)
 		return flatfile_player_domain_apply(root, command);
 	return { critical_apply_outcome::terminal_failure, 0, ENOTSUP };

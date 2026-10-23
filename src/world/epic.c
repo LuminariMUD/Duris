@@ -37,9 +37,11 @@ using namespace std;
 #include "economy/auction_houses.h"
 #include "economy/boon.h"
 #include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_selection.h"
 #include "economy/divine_boon_math.h"
 #include "combat/combat_outcome_command.h"
 #include <limits>
+#include <algorithm>
 #include "combat/damage.h"
 #include "economy/currency_transaction.h"
 #include "world/epic.h"
@@ -54,6 +56,7 @@ using namespace std;
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "persistence/persistence_checkpoint.h"
+#include "persistence/persistence_mode.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "world/timers.h"
@@ -106,6 +109,8 @@ struct epic_award_context
 	bool blessing;
 	bool task_penalty;
 	bool *committed = nullptr;
+	uint64_t boon_id = 0;
+	double base = 0;
 };
 
 struct epic_level_context
@@ -624,6 +629,64 @@ static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool c
 	return amount > 0;
 }
 
+static bool prepare_stone_award(P_char ch, int zone, int ordinary_base, double base,
+				bool completing_task, int64_t now, epic_award_context *prepared)
+{
+	const double ordinary = completing_task ?
+					static_cast<float>(ordinary_base) *
+						get_property("epic.errand.completeBonusMod", 1.5) :
+					ordinary_base;
+	const auto *state = divine_boon_runtime_state();
+	const divine_boon_slot *boon = nullptr;
+	const int side = IS_RACEWAR_GOOD(ch) ? 0 : IS_RACEWAR_EVIL(ch) ? 1 : -1;
+	if (state && state->mode == divine_boon_mode::divine && side >= 0 &&
+	    GET_LEVEL(ch) <= MAXLVLMORTAL && divine_boon_epic_zone_eligible(zone, side))
+		for (const auto &slot : state->slots)
+			if (slot.category == divine_boon_category::epic &&
+			    slot.zones[side] == zone && divine_boon_active(slot, now))
+			{
+				boon = &slot;
+				break;
+			}
+	if (!boon)
+	{
+		if (!std::isfinite(ordinary) || ordinary < 1 || ordinary > INT_MAX ||
+		    !prepare_epic_award(ch, EPIC_ZONE, zone, static_cast<int>(ordinary),
+					completing_task, prepared))
+			return false;
+		prepared->base = ordinary_base;
+		return true;
+	}
+	if (!IS_ALIVE(ch) || IS_NPC(ch) || !std::isfinite(base) || base < 1 || errand_notch < 1)
+		return false;
+	double amount = base, contribution = base * 0.5;
+	auto modify = [&](double multiplier)
+	{
+		amount *= multiplier;
+		contribution *= std::min(1.0, multiplier);
+	};
+	if (completing_task)
+		modify(divine_boon_modifier(get_property("epic.errand.completeBonusMod", 1.5)));
+	const bool blessing = IS_AFFECTED4(ch, AFF4_EPIC_INCREASE);
+	const bool penalty = has_epic_task(ch) && !completing_task;
+	if (blessing)
+		modify(divine_boon_modifier(get_property("epic.witch.multiplier", 1.5)));
+	if (penalty)
+		modify(divine_boon_modifier(get_property("epic.errand.penaltyMod", 0.25)));
+	amount = check_nexus_bonus_precise(ch, amount, NEXUS_BONUS_EPICS);
+	modify(1.0 + get_epic_bonus_precise(ch, EPIC_BONUS_EPIC_POINT));
+	modify(divine_boon_modifier(
+		get_property(side ? "epic.gain.modifier.evil" : "epic.gain.modifier.good", 1.0)));
+	modify(divine_boon_modifier(difficulty_multiplier(DIFFICULTY_EPIC_GAIN)));
+	amount = std::max(1.0, amount + contribution);
+	if (!std::isfinite(amount) || amount > INT_MAX)
+		return false;
+	*prepared = { EPIC_ZONE, zone, static_cast<int>(amount), blessing, penalty };
+	prepared->boon_id = boon->id;
+	prepared->base = base;
+	return true;
+}
+
 bool gain_epic(P_char ch, int type, int data, int amount)
 {
 	epic_award_context context = {};
@@ -872,6 +935,32 @@ int epic_stone_payout(P_obj obj, P_char ch)
 	return epic_value;
 }
 
+// Keep group and alignment fractions until the final Divine award conversion.
+// Ordinary awards retain the existing integer payout above.
+static double epic_stone_payout_precise(P_obj obj, P_char ch)
+{
+	if (!obj || !ch || obj->value[0] <= 0 || obj->value[1] <= 0)
+		return 0;
+	int count = 1;
+	if (ch->group)
+	{
+		count = 0;
+		for (auto *member = ch->group; member; member = member->next)
+			if (IS_PC(member->ch) && !IS_TRUSTED(member->ch) &&
+			    member->ch->in_room == ch->in_room)
+				++count;
+	}
+	count = std::max(count, obj->value[1]);
+	double payout = static_cast<double>(obj->value[0]) * obj->value[1] / count;
+	payout = std::max(1.0, payout * divine_boon_modifier(get_epic_zone_alignment_mod(
+						obj->value[2], GET_RACEWAR(ch))));
+	payout *= divine_boon_modifier(get_property("epic.touch.PayoutFactor", 1.0));
+	const double maximum =
+		std::max(1.0, obj->value[0] * divine_boon_modifier(get_property(
+						      "epic.touch.maxPayoutFactor", 10.0)));
+	return std::clamp(payout, 1.0, maximum);
+}
+
 void epic_stone_set_affect(P_char ch)
 {
 	struct affected_type af;
@@ -981,6 +1070,16 @@ void epic_stone_level_char(P_obj obj, P_char ch)
 		epic_stone_level_char_from_level(obj->value[3], ch);
 }
 
+// Flat-file defaults supply payouts but no per-zone epic_level. Preserve the
+// stone prototype's level instead of overwriting it with an unknown zero.
+// SQL continues to honour its authoritative epic_level, including zero.
+static int stone_level_for_zone(int native_level, int configured_level)
+{
+	if (persistence_mode_requires_mysql() || configured_level > 0)
+		return configured_level;
+	return native_level;
+}
+
 static P_obj find_epic_stone(uint64_t uid)
 {
 	for (P_obj obj = object_list; obj; obj = obj->next)
@@ -1060,7 +1159,8 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				obj->value[0] = zinfo.epic_payout;
 				obj->value[1] = zinfo.suggested_group_size;
-				obj->value[3] = zinfo.epic_level;
+				obj->value[3] =
+					stone_level_for_zone(obj->value[3], zinfo.epic_level);
 			}
 		}
 
@@ -1182,6 +1282,12 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 					!zone_table[real_zone0(zone_number)].reset_mode;
 		touch.stone_uid = obj->obj_uid;
 		touch.stone_level = obj->value[3];
+		const auto *divine = divine_boon_runtime_state();
+		touch.prepared_delivery = !persistence_mode_requires_mysql() ||
+					  (divine && divine->mode == divine_boon_mode::divine);
+		const double precise_base = divine && divine->mode == divine_boon_mode::divine ?
+						    epic_stone_payout_precise(obj, ch) :
+						    epic_value;
 		bool ready = touch.stone_uid != 0;
 		for (size_t i = 0; i < participants.size() && ready; ++i)
 		{
@@ -1192,18 +1298,14 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 						    -task->modifier == zone_number) ?
 						   task->modifier :
 						   0;
-			const int value =
-				errand ?
-					static_cast<int>(
-						epic_value *
-						get_property("epic.errand.completeBonusMod", 1.5)) :
-					epic_value;
 			epic_award_context award = {};
-			ready = prepare_epic_award(participant, EPIC_ZONE, zone_number, value,
-						   errand != 0, &award);
+			ready = prepare_stone_award(participant, zone_number, epic_value,
+						    precise_base, errand != 0, touch.touched_at,
+						    &award);
 			touch.awards[i] = { award.amount, errand,
 					    static_cast<uint8_t>((award.blessing ? 1 : 0) |
-								 (award.task_penalty ? 2 : 0)) };
+								 (award.task_penalty ? 2 : 0)),
+					    award.boon_id, award.base };
 		}
 		if (!ready || !zone_touch_transaction_submit(touch))
 		{

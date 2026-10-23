@@ -9,6 +9,9 @@
 #include "core/utils.h"
 #include "world/db.h"
 #include "world/epic.h"
+#include "world/difficulty.h"
+#include "world/zone_touch_command.h"
+#include "guild/artifact_guild_transaction.h"
 #include "world/epic_bonus.h"
 #include "economy/nexus_stones.h"
 #include "player/player_save_pipeline.h"
@@ -17,6 +20,7 @@
 
 #include <cassert>
 #include <cerrno>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -39,6 +43,8 @@ bool artifact_available = true;
 bool worker_pending = false, command_pending = false;
 critical_command submitted;
 std::mutex pipeline_mutex;
+uint32_t trade_player_pid = 0;
+player_pending_trade_snapshot trade_capture;
 player_save_pipeline_health health;
 struct captured
 {
@@ -48,6 +54,11 @@ struct captured
 	bool task;
 };
 std::vector<captured> captures;
+
+void epic_publish_stone_award(P_char, const zone_touch_result &, size_t)
+{
+	++effects;
+}
 
 int IS_MORPH(P_char)
 {
@@ -183,6 +194,40 @@ void epic_publish_pvp_award(P_char ch, int amount)
 	assert(captures.size() == before);
 	++effects;
 }
+
+struct epic_award_context
+{
+	int type, data, amount;
+	bool blessing, task_penalty;
+	bool *committed = nullptr;
+	uint64_t boon_id = 0;
+	double base = 0;
+};
+bool task_present = false, epic_target_available = true;
+bool has_epic_task(P_char)
+{
+	return task_present;
+}
+bool divine_boon_epic_zone_eligible(int zone, unsigned side)
+{
+	return epic_target_available && zone == 18 && side == 0;
+}
+double difficulty_multiplier(difficulty_dial)
+{
+	return 1;
+}
+static bool prepare_epic_award(P_char, int type, int data, int amount, bool,
+			       epic_award_context *out)
+{
+	*out = { type, data, amount, false, false };
+	return true;
+}
+float get_epic_zone_alignment_mod(int, ubyte)
+{
+	return 1;
+}
+// PRECISE_STONE_BASE
+// PREPARED_ZONE_MATH
 
 // ORDINARY_PVP_MATH
 // PREPARED_PVP_MATH
@@ -374,6 +419,50 @@ int main()
 	assert(pc.epics == 350 && pc.divine_boon_delivery_seq == 10 &&
 	       artifact_effects == artifacts_before_rejection + 1);
 	artifact_available = true;
+	player.specials.position = STAT_SLEEPING;
+	state.slots[0].category = divine_boon_category::epic;
+	state.slots[0].zones[0] = 18;
+	nexus = epic = 0;
+	race_modifier = 1;
+	player.specials.affected_by4 = 0;
+	epic_award_context zone_award;
+	assert(prepare_stone_award(&player, 18, 100, 100, false, 150, &zone_award) &&
+	       zone_award.amount == 150 && zone_award.boon_id == 7);
+	epic = 0.1;
+	assert(prepare_stone_award(&player, 18, 100, 100, false, 150, &zone_award) &&
+	       zone_award.amount == 160);
+	epic = 0;
+	assert(prepare_stone_award(&player, 18, 100, 100, true, 150, &zone_award) &&
+	       zone_award.amount == 200);
+	task_present = true;
+	assert(prepare_stone_award(&player, 18, 100, 100, false, 150, &zone_award) &&
+	       zone_award.amount == 37);
+	task_present = false;
+	player.specials.affected_by4 = AFF4_EPIC_INCREASE;
+	epic = 0.1;
+	assert(prepare_stone_award(&player, 18, 9, 9, false, 150, &zone_award) &&
+	       zone_award.amount == 19);
+	player.specials.affected_by4 = 0;
+	epic = 0;
+	assert(prepare_stone_award(&player, 18, 100, 100, false, 200, &zone_award) &&
+	       !zone_award.boon_id && zone_award.amount == 100);
+	char_data peer1 = player, peer2 = player;
+	group_list group[3] = { { &player, &group[1] },
+				{ &peer1, &group[2] },
+				{ &peer2, nullptr } };
+	player.group = group;
+	obj_data fractional_stone = {};
+	fractional_stone.value[0] = 100;
+	fractional_stone.value[1] = 2;
+	const double precise = epic_stone_payout_precise(&fractional_stone, &player);
+	assert(std::abs(precise - 200.0 / 3) < 1e-9);
+	player.group = nullptr;
+	assert(prepare_stone_award(&player, 18, 66, precise, false, 150, &zone_award) &&
+	       zone_award.amount == 100);
+	epic_target_available = false;
+	assert(prepare_stone_award(&player, 18, 100, 100, false, 150, &zone_award) &&
+	       !zone_award.boon_id);
+
 	std::cout
 		<< "Prepared PvP math, parent codec, ordered publication and checkpoint recovery passed\n";
 }

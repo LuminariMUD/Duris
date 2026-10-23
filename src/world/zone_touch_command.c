@@ -15,6 +15,9 @@
 #include "world/zone_touch_command.h"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include "economy/divine_boon_delivery.h"
 #include "world/epic_command.h"
 
 namespace
@@ -57,7 +60,9 @@ bool valid(const zone_touch_payload &payload)
 		{
 			const auto &award = payload.awards[index];
 			if (index < payload.group_size ?
-				    (award.amount <= 0 || award.flags > 3) :
+				    (award.amount <= 0 || award.flags > 3 ||
+				     (payload.prepared_delivery &&
+				      (!std::isfinite(award.base) || award.base <= 0))) :
 				    (award.amount || award.errand || award.flags))
 				return false;
 		}
@@ -81,7 +86,9 @@ bool zone_touch_command_build(critical_command *command, critical_operation_id o
 		     .operation_id = operation_id,
 		     .type = critical_command_type::zone,
 		     .payload_version = static_cast<uint16_t>(
-			     payload.stone_uid ? ZONE_TOUCH_PAYLOAD_VERSION : 1),
+			     payload.stone_uid ?
+				     (payload.prepared_delivery ? 3 : ZONE_TOUCH_PAYLOAD_VERSION) :
+				     1),
 		     .source_site = critical_source_site::zone_event,
 		     .deadline_class = critical_deadline_class::interactive,
 		     .accepted_at_usec = 0,
@@ -116,6 +123,13 @@ bool zone_touch_command_build(critical_command *command, critical_operation_id o
 			append_le<int32_t>(&command->payload, payload.awards[i].amount);
 			append_le<int32_t>(&command->payload, payload.awards[i].errand);
 			append_le<uint8_t>(&command->payload, payload.awards[i].flags);
+			if (payload.prepared_delivery)
+			{
+				append_le<uint64_t>(&command->payload, payload.awards[i].boon_id);
+				append_le<uint64_t>(
+					&command->payload,
+					std::bit_cast<uint64_t>(payload.awards[i].base));
+			}
 		}
 	}
 	return true;
@@ -124,7 +138,8 @@ bool zone_touch_command_build(critical_command *command, critical_operation_id o
 bool zone_touch_command_decode_payload(const critical_command &command, zone_touch_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::zone ||
-	    (command.payload_version != 1 && command.payload_version != ZONE_TOUCH_PAYLOAD_VERSION))
+	    (command.payload_version != 1 && command.payload_version != 2 &&
+	     command.payload_version != 3))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
@@ -143,17 +158,28 @@ bool zone_touch_command_decode_payload(const critical_command &command, zone_tou
 	    !read_le(&cursor, end, &payload->alignment_delta) ||
 	    !read_le(&cursor, end, &payload->reset_requested))
 		return false;
-	if (command.payload_version == ZONE_TOUCH_PAYLOAD_VERSION)
+	if (command.payload_version >= 2)
 	{
 		if (!read_le(&cursor, end, &payload->stone_uid) || !payload->stone_uid ||
 		    !read_le(&cursor, end, &payload->stone_level) ||
 		    !read_le(&cursor, end, &payload->record_zone))
 			return false;
+		payload->prepared_delivery = command.payload_version == 3;
 		for (size_t i = 0; i < payload->group_size; ++i)
+		{
 			if (!read_le(&cursor, end, &payload->awards[i].amount) ||
 			    !read_le(&cursor, end, &payload->awards[i].errand) ||
 			    !read_le(&cursor, end, &payload->awards[i].flags))
 				return false;
+			if (payload->prepared_delivery)
+			{
+				uint64_t base = 0;
+				if (!read_le(&cursor, end, &payload->awards[i].boon_id) ||
+				    !read_le(&cursor, end, &base))
+					return false;
+				payload->awards[i].base = std::bit_cast<double>(base);
+			}
+		}
 	}
 	if (cursor != end)
 		return false;
@@ -177,7 +203,10 @@ bool zone_touch_award_command(const critical_command &parent, size_t index, crit
 					     payload.participant_pids[index], &id) &&
 		epic_command_build(award, id,
 				   { payload.participant_pids[index], payload.awards[index].amount,
-				     epic_reason_type::zone_award, 0, payload.zone_number },
+				     payload.prepared_delivery ?
+					     epic_reason_type::divine_zone_award :
+					     epic_reason_type::zone_award,
+				     0, payload.zone_number },
 				   UINT64_MAX, critical_source_site::zone_event,
 				   critical_deadline_class::interactive);
 	if (built)
@@ -202,6 +231,12 @@ bool zone_touch_command_encode_result(const zone_touch_result &result,
 		append_le<int64_t>(&bytes, result.balances[i]);
 		append_le<uint64_t>(&bytes, result.revisions[i]);
 	}
+	if (result.prepared_delivery)
+		for (size_t i = 0; i < result.group_size; ++i)
+			append_le<uint64_t>(&bytes, result.previous[i]);
+	if (result.prepared_delivery)
+		bytes.insert(bytes.end(), result.parent_operation.bytes.begin(),
+			     result.parent_operation.bytes.end());
 	append_le<uint8_t>(&bytes, result.recovered_claim ? 1 : 0);
 	if (bytes.size() > encoded->size())
 		return false;
@@ -214,13 +249,14 @@ bool zone_touch_command_decode_result(const uint8_t *encoded, size_t size,
 				      zone_touch_result *result)
 {
 	if (!encoded || !result ||
-	    (size != ZONE_TOUCH_RESULT_BYTES && size != ZONE_TOUCH_LEGACY_RESULT_BYTES))
+	    (size != ZONE_TOUCH_RESULT_BYTES && size != ZONE_TOUCH_V2_RESULT_BYTES &&
+	     size != ZONE_TOUCH_LEGACY_RESULT_BYTES))
 		return false;
 	*result = {};
 	const uint8_t *cursor = encoded;
 	const uint8_t *end = encoded + size;
 	uint16_t version = 1, payload_size = 0;
-	if (size == ZONE_TOUCH_RESULT_BYTES)
+	if (size != ZONE_TOUCH_LEGACY_RESULT_BYTES)
 	{
 		if (!read_le(&cursor, end, &version) || !read_le(&cursor, end, &payload_size) ||
 		    payload_size > static_cast<size_t>(end - cursor))
@@ -262,7 +298,7 @@ bool zone_touch_command_decode_result(const uint8_t *encoded, size_t size,
 	if (!read_le(&key_cursor, key_end, &value) || !read_le(&key_cursor, key_end, &delta) ||
 	    !read_le(&key_cursor, key_end, &reset))
 		return false;
-	if (version == ZONE_TOUCH_PAYLOAD_VERSION &&
+	if (version >= 2 &&
 	    (!read_le(&key_cursor, key_end, &uid) || !read_le(&key_cursor, key_end, &value) ||
 	     !read_le(&key_cursor, key_end, &record)))
 		return false;
@@ -271,16 +307,55 @@ bool zone_touch_command_decode_result(const uint8_t *encoded, size_t size,
 	std::sort(command.keys.begin(), command.keys.end(), critical_entity_key_less);
 	if (!zone_touch_command_decode_payload(command, result))
 		return false;
-	if (size == ZONE_TOUCH_RESULT_BYTES)
+	if (size != ZONE_TOUCH_LEGACY_RESULT_BYTES)
 	{
 		for (size_t i = 0; i < result->group_size; ++i)
 			if (!read_le(&cursor, end, &result->balances[i]) ||
 			    !read_le(&cursor, end, &result->revisions[i]))
 				return false;
+		if (result->prepared_delivery)
+			for (size_t i = 0; i < result->group_size; ++i)
+				if (!read_le(&cursor, end, &result->previous[i]))
+					return false;
+		if (result->prepared_delivery)
+		{
+			if (static_cast<size_t>(end - cursor) <
+			    result->parent_operation.bytes.size())
+				return false;
+			std::copy_n(cursor, result->parent_operation.bytes.size(),
+				    result->parent_operation.bytes.begin());
+			cursor += result->parent_operation.bytes.size();
+		}
 		uint8_t recovered = 0;
 		if (!read_le(&cursor, end, &recovered) || recovered > 1)
 			return false;
 		result->recovered_claim = recovered;
 	}
 	return std::all_of(cursor, end, [](uint8_t byte) { return byte == 0; });
+}
+
+bool divine_epic_delivery_from_zone(const critical_operation_id &operation,
+				    const zone_touch_result &result, size_t index,
+				    divine_epic_delivery *delivery)
+{
+	if (!delivery || !result.prepared_delivery || index >= result.group_size)
+		return false;
+	divine_epic_delivery next;
+	next.operation_id = operation;
+	next.pid = result.participant_pids[index];
+	next.sequence = result.revisions[index];
+	next.previous = result.previous[index];
+	next.boon_id = result.awards[index].boon_id;
+	next.amount = result.awards[index].amount;
+	next.prepared_at = result.touched_at;
+	next.base = result.awards[index].base;
+	next.zone = true;
+	next.zone_number = result.zone_number;
+	next.stone_level = result.stone_level;
+	next.errand = result.awards[index].errand;
+	next.flags = result.awards[index].flags;
+	if (!divine_epic_delivery_valid(next))
+		return false;
+	*delivery = next;
+	return true;
 }

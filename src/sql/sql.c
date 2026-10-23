@@ -65,6 +65,8 @@
 #include "guild/assocs.h"
 #include "economy/boon.h"
 #include "world/epic.h"
+#include "world/epic_zone_defaults.h"
+#include "flatfile/flatfile_player_domain_repository.h"
 #include "world/graph.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
@@ -578,16 +580,58 @@ void sql_log(P_char ch, const char *kind, const char *format, ...)
 	      safe_ip, GET_PID(ch), safe_name, zone_number, room_vnum, message);
 }
 
-void sql_load_zones(void) {}
-void sql_zones_refresh(void) {}
+static std::vector<zone_info> flat_zones;
+void sql_zones_refresh(void)
+{
+	for (auto &zone : flat_zones)
+	{
+		flatfile_zone_touch_state state;
+		std::string error;
+		const auto loaded = flatfile_zone_touch_load(persistence_mode_flatfile_root(),
+							     zone.number, &state, &error);
+		if (loaded == flatfile_player_domain_result::ok)
+		{
+			zone.alignment = state.alignment;
+			zone.last_touch = state.last_touch;
+		}
+		else if (loaded != flatfile_player_domain_result::not_found)
+			fatal_boot_error("epic_zones", "flat-file zone authority is unavailable");
+	}
+}
+void sql_load_zones(void)
+{
+	flat_zones.clear();
+	for (const auto &entry : epic_zone_defaults)
+	{
+		zone_info zone = {};
+		zone.number = entry.number;
+		const int index = real_zone0(entry.number);
+		zone.name = index >= 0 && zone_table[index].name ? zone_table[index].name :
+								   std::to_string(entry.number);
+		zone.epic_type = entry.type;
+		zone.frequency_mod = 1;
+		zone.zone_freq_mod = 1;
+		zone.epic_payout = entry.payout;
+		zone.suggested_group_size = entry.payout_group;
+		zone.stonecount = entry.stone_count;
+		flat_zones.push_back(zone);
+	}
+	sql_zones_refresh();
+}
 const std::vector<zone_info> &sql_zones(void)
 {
-	static const std::vector<zone_info> none;
-	return none;
+	return flat_zones;
 }
-bool get_zone_info(int /*zone_number*/, struct zone_info * /*info*/)
+bool get_zone_info(int zone_number, struct zone_info *info)
 {
-	return FALSE;
+	if (info)
+		for (const auto &zone : flat_zones)
+			if (zone.number == zone_number)
+			{
+				*info = zone;
+				return true;
+			}
+	return false;
 }
 void sql_set_zone_reset_perc(int /*zone_number*/, int /*reset_perc*/) {}
 

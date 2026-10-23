@@ -502,16 +502,6 @@ bool combat_outcome_command_build(critical_command *command, critical_operation_
 	return command->keys.size() <= CRITICAL_COMMAND_MAX_KEYS;
 }
 
-bool divine_epic_delivery_valid(const divine_epic_delivery &delivery)
-{
-	return !critical_operation_id_is_zero(delivery.operation_id) && delivery.pid &&
-	       delivery.victim_pid && delivery.pid != delivery.victim_pid &&
-	       delivery.sequence > delivery.previous && delivery.boon_id &&
-	       delivery.prepared_at > 0 && delivery.amount > 0 &&
-	       delivery.amount <= std::numeric_limits<int>::max() && std::isfinite(delivery.base) &&
-	       delivery.base > 0 && (delivery.spill_blood == 0 || delivery.spill_blood == 500);
-}
-
 bool divine_epic_delivery_from_combat(const critical_operation_id &operation,
 				      const combat_outcome_result &result, size_t index,
 				      divine_epic_delivery *delivery)

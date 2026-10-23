@@ -5,6 +5,8 @@
 #include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "world/epic.h"
+#include "world/zone_touch_command.h"
+#include "guild/artifact_guild_transaction.h"
 
 #include <algorithm>
 #include <limits>
@@ -42,7 +44,24 @@ bool apply(P_char ch, const divine_epic_delivery &delivery)
 		if (auto *task = get_epic_task(ch);
 		    task && (task->modifier == SPILL_BLOOD || task->modifier == -SPILL_BLOOD))
 			affect_remove(ch, task);
-	epic_publish_pvp_award(ch, static_cast<int>(delivery.amount));
+	if (delivery.zone)
+	{
+		zone_touch_result result;
+		result.zone_number = delivery.zone_number;
+		result.stone_level = delivery.stone_level;
+		result.group_size = 1;
+		result.participant_pids[0] = delivery.pid;
+		result.awards[0] = { static_cast<int32_t>(delivery.amount), delivery.errand,
+				     delivery.flags };
+		critical_operation_id child;
+		if (critical_operation_id_derive(delivery.operation_id, 0x5a544132, delivery.pid,
+						 &child))
+			artifact_guild_transaction_submit(
+				ch, child, static_cast<int>(delivery.amount), EPIC_ZONE);
+		epic_publish_stone_award(ch, result, 0);
+	}
+	else
+		epic_publish_pvp_award(ch, static_cast<int>(delivery.amount));
 	pc->divine_boon_delivery_applying = false;
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_AFFECTS |
