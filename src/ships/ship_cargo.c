@@ -756,6 +756,8 @@ size_t cargo_maintenance_snapshot(uint64_t work_id, int64_t *values, size_t capa
 		memcpy(values, cargo_maintenance_values, sizeof(cargo_maintenance_values));
 		return required;
 	}
+	if (divine_trade_runtime_busy())
+		return 0;
 	if (critical_command_coordinator_is_fenced(
 		    { critical_entity_type::system, DIVINE_TRADE_MARKET_KEY }, nullptr))
 		return 0;

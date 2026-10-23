@@ -23,6 +23,24 @@
 extern P_char character_list;
 namespace
 {
+flatfile_ship_crew_record capture_crew(const ShipCrew &crew)
+{
+	return { crew.index,
+		 static_cast<int32_t>(std::lround(crew.sail_skill * 1000)),
+		 static_cast<int32_t>(std::lround(crew.guns_skill * 1000)),
+		 static_cast<int32_t>(std::lround(crew.rpar_skill * 1000)),
+		 crew.sail_chief,
+		 crew.guns_chief,
+		 crew.rpar_chief };
+}
+
+flatfile_ship_slot_record capture_slot(uint8_t index, const ShipSlot &slot)
+{
+	return { index,	     slot.type,
+		 slot.index, slot.position,
+		 slot.timer, { slot.val0, slot.val1, slot.val2, slot.val3, slot.val4 } };
+}
+
 uint64_t restored_boon = 0;
 std::map<uint64_t, divine_trade_book> books;
 const divine_trade_book empty_book;
@@ -417,6 +435,7 @@ try
 		send_to_char("The merchants cannot settle this trade right now.\r\n", ch);
 		return true;
 	}
+	payload.slots_before.push_back(capture_slot(static_cast<uint8_t>(slot), live));
 	payload.slots_after.push_back(
 		{ static_cast<uint8_t>(slot),
 		  goods == divine_trade_goods::cargo ? SLOT_CARGO : SLOT_CONTRABAND,
@@ -426,13 +445,8 @@ try
 		  { static_cast<int32_t>(buy.slot_quantity_before + quantity),
 		    static_cast<int32_t>(buy.slot_basis_before + cost), live.val2, live.val3,
 		    live.val4 } });
-	payload.crew_after = { ship->crew.index,
-			       static_cast<int32_t>(std::lround(ship->crew.sail_skill * 1000)),
-			       static_cast<int32_t>(std::lround(ship->crew.guns_skill * 1000)),
-			       static_cast<int32_t>(std::lround(ship->crew.rpar_skill * 1000)),
-			       ship->crew.sail_chief,
-			       ship->crew.guns_chief,
-			       ship->crew.rpar_chief };
+	payload.crew_before = capture_crew(ship->crew);
+	payload.crew_after = payload.crew_before;
 	payload.market_after.push_back(cargo_trade_prepare_cell(
 		goods == divine_trade_goods::cargo ? BOUGHT_CARGO : BOUGHT_CONTRA, port, port,
 		quantity));
@@ -558,6 +572,7 @@ try
 			payload.market_after.push_back(adjusted);
 		else
 			*cell = adjusted;
+		payload.slots_before.push_back(capture_slot(static_cast<uint8_t>(slot), live));
 		payload.slots_after.push_back({ static_cast<uint8_t>(slot),
 						SLOT_EMPTY,
 						-1,
@@ -583,6 +598,7 @@ try
 		send_to_char("Your purse cannot hold that payment.\r\n", ch);
 		return true;
 	}
+	payload.crew_before = capture_crew(ship->crew);
 	ShipCrew crew = ship->crew;
 	const auto normal_payment = static_cast<int64_t>(std::floor(normal));
 	if (normal_payment > 0)
@@ -592,13 +608,7 @@ try
 		crew.rpar_skill_raise((static_cast<float>(normal_payment) / 1000000.0) /
 				      (goods == divine_trade_goods::cargo ? 2.0 : 3.0));
 	}
-	payload.crew_after = { crew.index,
-			       static_cast<int32_t>(std::lround(crew.sail_skill * 1000)),
-			       static_cast<int32_t>(std::lround(crew.guns_skill * 1000)),
-			       static_cast<int32_t>(std::lround(crew.rpar_skill * 1000)),
-			       crew.sail_chief,
-			       crew.guns_chief,
-			       crew.rpar_chief };
+	payload.crew_after = capture_crew(crew);
 	bool trader_completed = false;
 	if (goods == divine_trade_goods::cargo)
 	{
