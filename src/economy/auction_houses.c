@@ -1632,7 +1632,10 @@ bool auction_publish_committed_event(const auction_command_result &result,
 {
 	if (result.event_type == auction_event_type::money_claimed ||
 	    result.event_type == auction_event_type::item_claimed)
+	{
+		auction_transaction_outbox_published(outbox_id, true);
 		return true;
+	}
 	if (!result.auction_id)
 		return false;
 	return sql_read(
@@ -1649,6 +1652,7 @@ bool auction_publish_committed_event(const auction_command_result &result,
 				      "Auction outbox %llu for auction %u was not published: "
 				      "the auction could not be read",
 				      outbox_id, result.auction_id);
+			auction_transaction_outbox_published(outbox_id, ok && !rows.empty());
 		});
 }
 

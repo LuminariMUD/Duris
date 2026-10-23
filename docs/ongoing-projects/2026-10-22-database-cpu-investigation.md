@@ -98,7 +98,7 @@ and removes it afterward. It does not read the production `.env`.
   `python3 tests/async/test_txn_publication_copyover_drain.py`: pass. Executable
   source probes cover all four publisher calls, copyover cancellation, account
   deletion refusal/resume, and shutdown's report-and-continue policy.
-- `python3 tests/async/test_auction_transactional_cutover.py`: 7 tests pass;
+- `python3 tests/async/test_auction_transactional_cutover.py`: 8 tests pass;
   `python3 tests/async/test_collector_transaction.py`: executable harness passes;
   `python3 tests/async/test_combat_outcome_transactional_cutover.py`: 5 tests pass;
   `python3 tests/async/test_artifact_guild_transactional_cutover.py`: 3 tests pass.
@@ -112,6 +112,39 @@ audit still reports legitimate omissions as candidates/degraded until chunk 2
 changes its semantics. Future durable retries can exceed a lifecycle drain's
 three-second budget and must cause bounded failure; this change does not accelerate
 or bypass backoff. No production schema, data, process, or service was changed.
+
+PR #300 review repair: auction publication previously treated admission of its
+asynchronous row read as completed publication. The transaction now stays in
+`publishing` until the game-thread callback actually broadcasts/notifies, returning
+to queued after a failed/empty read; immediate claim events acknowledge directly.
+The drain progress callback also pumps `sql_async_pulse()` so completed reads can
+finish while recurring pulses are blocked. The executable auction regression
+uses the actual producer/dispatcher functions to verify delayed callback, worker
+retry, read refusal/error/empty rows, successful publication, and immediate claim
+acknowledgement. The full server build and focused auction/lifecycle/client-free
+checks pass after this repair. The worker's full MySQL 8.0 harness also passes;
+the handler-counter probe uses portable `SHOW SESSION STATUS`. MariaDB worker
+evidence remains valid because its SQL, cadence and drain implementation did not
+change. Qualification tags distinguish the original worker and this review repair.
+
+### Separate stone-fixture repair
+
+While qualifying the expectation-metadata prerequisite, the epic-stone SQL journey
+failed before reaching its new assertions. The same failure reproduces on worker
+head `c42275a80`, without metadata changes: `verify_awards` expected SQL `epics` to
+increase immediately, but the current writer advances the revision/ledger and the
+canonical player save owns that balance. This is a stale test expectation.
+
+The focused repair on `branch/issue-292-stone-proof` retains the saved balance at
+100 and verifies the actual award in **both** the canonical receipt and the epic
+ledger's balance/revision, rather than just its delta. No game source changes.
+On a disposable MariaDB 10.11 instance, `EPIC_STONE_MYSQL_TEST=1 python3
+tests/async/test_epic_stone_transaction.py` passes both tests, including maximum
+group, recovered claim, replay, rejection, and SQL rollback/retry. Provision using
+`tests/async/with_disposable_mariadb.sh`, map `TEST_DB_HOST/PORT/USER/PASSWORD` to
+`DB_HOST/PORT/USER/PASSWD`, and set `EPIC_TEST_DB_NAME=epic_stone_test_issue292`.
+The harness creates that fresh named database and refuses an existing one. This
+repair will be its own PR above #300, then carried into metadata qualification.
 
 ## Recommended change
 

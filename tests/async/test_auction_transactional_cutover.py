@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Command-codec, route, schema, and publication contracts for auction cutover."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 import subprocess
 import tempfile
@@ -133,6 +133,86 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         transaction = (SRC / "auction_transaction.c").read_text()
         self.assertIn("auction_transaction_outbox_delivery", transaction)
         self.assertIn("outbox_publication_state::published", transaction)
+
+    def test_outbox_waits_for_async_publication_callback(self):
+        transaction = (SRC / "auction_transaction.c").read_text()
+        declarations = transaction[transaction.index("enum class outbox_publication_state"):
+                                   transaction.index("std::string operation_key(")]
+        houses = (SRC / "auction_houses.c").read_text()
+        houses = houses[houses.index("#else", houses.index("#ifdef __NO_MYSQL__")):]
+        producer = section(houses, "bool auction_publish_committed_event(",
+                           "// syntax: auction offer")
+        harness = r'''
+#include "economy/auction_transaction.h"
+#include "sql/sql_async.h"
+#include <cassert>
+#include <mutex>
+#include <unordered_map>
+static std::function<void(bool, const sql_rows &)> done;
+static bool accept_read = true;
+static unsigned int broadcasts = 0, resumes = 0, reads = 0;
+void logit(const char *, const char *, ...) {}
+std::string sql_format(const char *, ...) { return "auction lookup"; }
+bool sql_read_at(persistence_query_site, std::string,
+                 std::function<void(bool, const sql_rows &)> callback) {
+    ++reads;
+    if (!accept_read) return false;
+    assert(!done); done = std::move(callback); return true;
+}
+void critical_outbox_resume() { ++resumes; }
+critical_outbox_delivery_result critical_outbox_test_destination(const critical_outbox_record &, void *) {
+    return critical_outbox_delivery_result::terminal_failure;
+}
+bool auction_command_decode_result(const uint8_t *, size_t, auction_command_result *result) {
+    result->auction_id = 7; result->event_type = auction_event_type::listed; return true;
+}
+static void auction_publish_event(const auction_command_result &, unsigned long long,
+                                  const sql_row &) { ++broadcasts; }
+''' + declarations + producer + \
+            extract_function("auction_transaction.c", "critical_outbox_delivery_result\nauction_transaction_outbox_delivery(") + \
+            extract_function("auction_transaction.c", "void auction_transaction_outbox_published(") + \
+            extract_function("auction_transaction.c", "void auction_transaction_publish_outbox(") + r'''
+static void complete(bool ok, const sql_rows &rows) {
+    assert(done); auto callback = std::move(done); done = {}; callback(ok, rows);
+}
+int main() {
+    auction_command_result result = {};
+    result.auction_id = 7; result.event_type = auction_event_type::listed;
+    critical_outbox_record record = {};
+    record.outbox_id = 11; record.destination = 5; record.event_type = 1; record.payload_version = 1;
+    assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::retryable_failure);
+    auction_transaction_publish_outbox();
+    assert(done && !broadcasts && !resumes);
+    assert(outbox_publications.at(11).state == outbox_publication_state::publishing);
+    // The read may be delayed past any worker retry or lifecycle deadline.
+    auction_transaction_publish_outbox(); assert(reads == 1 && !resumes);
+    assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::retryable_failure);
+    complete(false, {}); // Failed reads must return to queued, without acknowledgement.
+    assert(outbox_publications.at(11).state == outbox_publication_state::queued);
+    auction_transaction_publish_outbox(); complete(true, {}); // Missing auction is also failure.
+    assert(!resumes && outbox_publications.at(11).state == outbox_publication_state::queued);
+    accept_read = false; auction_transaction_publish_outbox();
+    assert(!done && outbox_publications.at(11).state == outbox_publication_state::queued);
+    accept_read = true; auction_transaction_publish_outbox();
+    complete(true, sql_rows{sql_row{}});
+    assert(broadcasts == 1 && resumes == 1);
+    assert(outbox_publications.at(11).state == outbox_publication_state::published);
+    assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::delivered);
+    auction_transaction_publish_outbox(); assert(broadcasts == 1);
+    result.event_type = auction_event_type::money_claimed;
+    outbox_publications.emplace(12, pending_outbox_publication{result, outbox_publication_state::queued});
+    auction_transaction_publish_outbox();
+    assert(!done && resumes == 2 && outbox_publications.at(12).state == outbox_publication_state::published);
+}
+'''
+        (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="auction-outbox-callback-", dir=ROOT / "bin/tests") as directory:
+            path = Path(directory)
+            (path / "test.cpp").write_text(harness)
+            subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pthread",
+                            "-Isrc", "-I/usr/include/libxml2", str(path / "test.cpp"),
+                            "-o", str(path / "test")], cwd=ROOT, check=True)
+            subprocess.run([str(path / "test")], check=True)
 
     def test_mysql_reads_and_bookkeeping_leave_the_game_loop(self):
         # Step 8: the listings, an auction's details, what waits for pickup, the resort and

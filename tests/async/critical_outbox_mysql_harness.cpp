@@ -120,6 +120,18 @@ static unsigned long long scalar(const char *sql)
 	return value;
 }
 
+static unsigned long long next_reads()
+{
+	execute("SHOW SESSION STATUS LIKE 'Handler_read_next'");
+	MYSQL_RES *result = mysql_store_result(database_connection);
+	assert(result);
+	MYSQL_ROW row = mysql_fetch_row(result);
+	assert(row && row[1]);
+	const auto value = strtoull(row[1], nullptr, 10);
+	mysql_free_result(result);
+	return value;
+}
+
 static void clear_rows()
 {
 	execute("DELETE d FROM critical_outbox_delivery_dedupe d JOIN critical_outbox o ON "
@@ -379,8 +391,7 @@ int main()
 	}
 	auto row_work = [&]
 	{
-		const auto before = scalar(
-			"SELECT VARIABLE_VALUE FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME='Handler_read_next'");
+		const auto before = next_reads();
 		execute(operational.c_str());
 		MYSQL_RES *result = mysql_store_result(database_connection);
 		assert(result);
@@ -388,8 +399,7 @@ int main()
 		assert(row && strtoull(row[0], nullptr, 10) == 1 &&
 		       strtoull(row[1], nullptr, 10) == 1 && strtoull(row[3], nullptr, 10) == 1);
 		mysql_free_result(result);
-		return scalar("SELECT VARIABLE_VALUE FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME='Handler_read_next'") -
-		       before;
+		return next_reads() - before;
 	};
 	const auto before_history = row_work();
 	std::string digits =

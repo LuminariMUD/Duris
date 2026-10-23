@@ -333,6 +333,18 @@ auction_transaction_outbox_delivery(const critical_outbox_record &record, void *
 	return critical_outbox_delivery_result::retryable_failure;
 }
 
+void auction_transaction_outbox_published(unsigned long long outbox_id, bool succeeded)
+{
+	std::lock_guard<std::mutex> lock(outbox_mutex);
+	auto found = outbox_publications.find(outbox_id);
+	if (found == outbox_publications.end())
+		return;
+	found->second.state = succeeded ? outbox_publication_state::published :
+					  outbox_publication_state::queued;
+	if (succeeded)
+		critical_outbox_resume();
+}
+
 void auction_transaction_publish_outbox(void)
 {
 	std::vector<std::pair<uint64_t, auction_command_result>> work;
@@ -349,19 +361,11 @@ void auction_transaction_publish_outbox(void)
 			}
 		}
 	}
-	bool published = false;
 	for (const auto &[outbox_id, result] : work)
 	{
-		const bool succeeded = auction_publish_committed_event(result, outbox_id);
-		std::lock_guard<std::mutex> lock(outbox_mutex);
-		auto found = outbox_publications.find(outbox_id);
-		if (found != outbox_publications.end())
-			found->second.state = succeeded ? outbox_publication_state::published :
-							  outbox_publication_state::queued;
-		published = published || succeeded;
+		if (!auction_publish_committed_event(result, outbox_id))
+			auction_transaction_outbox_published(outbox_id, false);
 	}
-	if (published)
-		critical_outbox_resume();
 }
 
 void auction_transaction_reset_for_tests(void)
