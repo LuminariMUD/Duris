@@ -180,19 +180,30 @@ int main() {
     result.auction_id = 7; result.event_type = auction_event_type::listed;
     critical_outbox_record record = {};
     record.outbox_id = 11; record.destination = 5; record.event_type = 1; record.payload_version = 1;
-    assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::retryable_failure);
+    assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::publication_pending);
     auction_transaction_publish_outbox();
     assert(done && !broadcasts && !resumes);
     assert(outbox_publications.at(11).state == outbox_publication_state::publishing);
     // The read may be delayed past any worker retry or lifecycle deadline.
     auction_transaction_publish_outbox(); assert(reads == 1 && !resumes);
-    assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::retryable_failure);
-    complete(false, {}); // Failed reads must return to queued, without acknowledgement.
-    assert(outbox_publications.at(11).state == outbox_publication_state::queued);
+    for (unsigned int i = 0; i < 10; ++i)
+        assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::publication_pending);
+    auto retry_after_failure = [&] {
+        // The worker observes a real failure and records normal durable backoff.
+        assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::retryable_failure);
+        // This visit represents the next due attempt, not a progress callback retry.
+        assert(auction_transaction_outbox_delivery(record, nullptr) == critical_outbox_delivery_result::publication_pending);
+    };
+    complete(false, {});
+    assert(outbox_publications.at(11).state == outbox_publication_state::failed);
+    auction_transaction_publish_outbox(); assert(!done); // No read storm before the worker retries.
+    retry_after_failure();
     auction_transaction_publish_outbox(); complete(true, {}); // Missing auction is also failure.
-    assert(!resumes && outbox_publications.at(11).state == outbox_publication_state::queued);
+    assert(!resumes && outbox_publications.at(11).state == outbox_publication_state::failed);
+    retry_after_failure();
     accept_read = false; auction_transaction_publish_outbox();
-    assert(!done && outbox_publications.at(11).state == outbox_publication_state::queued);
+    assert(!done && outbox_publications.at(11).state == outbox_publication_state::failed);
+    retry_after_failure();
     accept_read = true; auction_transaction_publish_outbox();
     complete(true, sql_rows{sql_row{}});
     assert(broadcasts == 1 && resumes == 1);

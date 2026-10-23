@@ -32,6 +32,8 @@ enum class critical_outbox_delivery_result : uint8_t
 	already_delivered,
 	retryable_failure,
 	terminal_failure,
+	// Accepted game-thread work is not a failed delivery attempt.
+	publication_pending,
 };
 
 struct critical_outbox_record
