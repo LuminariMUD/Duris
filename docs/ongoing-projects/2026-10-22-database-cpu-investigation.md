@@ -76,7 +76,7 @@ recovered-claim expectation assertion; full build, eight auction tests,
 lifecycle/client-free/boot checks, formatting and whitespace pass too.
 No expectation-metadata PR is open yet; publishing it is the next step.
 
-The migration `migrations/critical_outbox_expectations.sql` is guarded and
+The migration `migrations/immutable/0050_critical_outbox_expectations.sql` is guarded and
 re-runnable and requires `ALGORITHM=INSTANT` rather than silently copying the
 history table. New schemas include the nullable column; the normal migration
 runner installs it before schema verification, and boot requires its presence.
@@ -87,6 +87,25 @@ receipts. Historical NULL is never backfilled from existing outbox rows or
 rewritten by replay. Reader/result codecs are unchanged. Keep this additive
 column and evidence on binary rollback; do not drop it. No production migration
 has run. The audit consumer still awaits its separately reviewed change.
+
+PR #302 deployment-path correction: register the single canonical apply/verifier
+as immutable `0050_critical_outbox_expectations`, advance the compiled/runtime
+ledger contract to head 50, and measure its fingerprints on clean MariaDB 10.11
+and MySQL 8.0 schemas. The exact reviewed online runner option
+`--online-outbox-expectations` retains the target/backup/allow-list/advisory-lock,
+sealed-checksum, prior-history and success-last protections, with INSTANT-only DDL
+and one-second waits. It accepts only a 0049 prefix and the sealed 0050 manifest.
+The old root SQL copy is removed; fresh schema, legacy runner and fixtures use
+the canonical immutable step. No production migration has run or been authorized.
+
+Focused qualification uses the normal runner twice on disposable old-0049
+schemas, proving upgrade/replay, success-last history, retained legacy NULL and
+rejection of signed/default-zero drift. Both engines pass the new runtime
+compatibility verifier after measured fingerprints are installed. Local evidence
+and the focused authoring driver are under ignored `bin/analysis/issue292/` in
+the metadata worktree; no production-derived clone or broad telemetry regression
+matrix is used. Migration runner tests: 23 pass, including exact online scope,
+authorization, engine, checksum and lock-timeout guards.
 
 ### Chunk 1 local qualification
 

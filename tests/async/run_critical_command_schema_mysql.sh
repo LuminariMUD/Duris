@@ -38,11 +38,12 @@ done
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e "ALTER TABLE critical_operation_inbox DROP COLUMN expected_outbox_events;
 INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,command_type,schema_version,payload_version,status,result_payload)
 VALUES(UNHEX(REPEAT('ff',16)),UNHEX(REPEAT('11',32)),UNHEX(REPEAT('22',32)),1,1,1,1,'');"
-"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/critical_outbox_expectations.sql"
-"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/critical_outbox_expectations.sql"
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sql"
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sql"
 [[ "$("${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e 'SELECT COUNT(*) FROM critical_operation_inbox WHERE expected_outbox_events IS NULL')" == 1 ]]
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e "DELETE FROM critical_operation_inbox WHERE operation_id=UNHEX(REPEAT('ff',16));"
 DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/verify_critical_command_schema.sh"
+DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sh"
 
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
