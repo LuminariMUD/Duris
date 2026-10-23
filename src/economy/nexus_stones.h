@@ -126,6 +126,7 @@ int init_nexus_stones();
 int load_nexus_stones(bool report_empty = false);
 bool nexus_stone_info(int stone_id, NexusStoneInfo *info);
 int check_nexus_bonus(P_char ch, int amount, int type);
+bool check_nexus_bonus_preview(P_char ch, int amount, int type, int *result);
 double check_nexus_bonus_precise(P_char ch, double amount, int type, bool announce = true);
 int update_nexus_stone_align(int stone_id, int align);
 int nexus_stone(P_obj stone, P_char ch, int cmd, char *arg);

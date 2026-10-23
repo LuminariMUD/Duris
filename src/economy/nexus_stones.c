@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <vector>
 #include <type_traits>
+#include <limits>
+#include <cmath>
 using namespace std;
 
 #include "core/prototypes.h"
@@ -328,14 +330,17 @@ bool nexus_stone_info(int stone_id, NexusStoneInfo *info)
 }
 
 template <typename Amount>
-static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announce = true)
+static bool nexus_bonus_amount(P_char ch, Amount amount, int type, bool announce, Amount *result)
 {
+	if (!result)
+		return false;
+	*result = amount;
 	char buff[MAX_STRING_LENGTH], buff2[MAX_STRING_LENGTH];
 
 	if (!ch)
 	{
 		debug("check_nexus_bonus(): passed invalid ch pointer to function");
-		return amount;
+		return true;
 	}
 
 	int align = 0;
@@ -343,7 +348,7 @@ static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announ
 	std::vector<flatfile_nexus_record> records;
 	std::string error;
 	if (!flat_nexus_records(&records, &error))
-		return amount;
+		return true;
 	const auto found = std::find_if(records.begin(), records.end(),
 					[type](const auto &record)
 					{
@@ -352,7 +357,7 @@ static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announ
 						       record.bonus == type;
 					});
 	if (found == records.end())
-		return amount;
+		return true;
 	align = found->align;
 #else
 	const auto found = std::find_if(nexus_rows.begin(), nexus_rows.end(),
@@ -362,7 +367,7 @@ static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announ
 						       row.bonus == type;
 					});
 	if (found == nexus_rows.end())
-		return amount;
+		return true;
 	align = found->align;
 #endif
 	int racewar;
@@ -383,8 +388,19 @@ static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announ
 		double multiplier = configured;
 		if constexpr (std::is_same_v<Amount, double>)
 			multiplier = divine_boon_modifier(configured);
-		newamnt = MAX(nexus_bonus_data[type].minval,
-			      static_cast<Amount>((double)amount * multiplier));
+		double bonus = static_cast<double>(amount) * multiplier;
+		if (!std::isfinite(bonus))
+			return false;
+		bonus = std::max<double>(nexus_bonus_data[type].minval, bonus);
+		if constexpr (std::is_integral_v<Amount>)
+			bonus = std::trunc(bonus);
+		if (bonus > std::numeric_limits<Amount>::max())
+			return false;
+		newamnt = static_cast<Amount>(bonus);
+		if (amount > std::numeric_limits<Amount>::max() - newamnt ||
+		    (announce && type == NEXUS_BONUS_CARGO && bonus > INT_MAX))
+			return false;
+		*result = amount + newamnt;
 
 		switch (type)
 		{
@@ -404,23 +420,32 @@ static Amount nexus_bonus_amount(P_char ch, Amount amount, int type, bool announ
 			break;
 		}
 
-		return amount + newamnt;
+		return true;
 	}
 	else
 	{
-		return amount;
+		return true;
 	}
 }
 
 int check_nexus_bonus(P_char ch, int amount, int type)
 {
-	return nexus_bonus_amount(ch, amount, type);
+	int result = amount;
+	nexus_bonus_amount(ch, amount, type, true, &result);
+	return result;
 }
 
 // Prepared Divine EXP/epic awards retain fractions until the final payout.
 double check_nexus_bonus_precise(P_char ch, double amount, int type, bool announce)
 {
-	return nexus_bonus_amount(ch, amount, type, announce);
+	double result = amount;
+	nexus_bonus_amount(ch, amount, type, announce, &result);
+	return result;
+}
+
+bool check_nexus_bonus_preview(P_char ch, int amount, int type, int *result)
+{
+	return nexus_bonus_amount(ch, amount, type, false, result);
 }
 
 int update_nexus_stone_align(int stone_id, int align)

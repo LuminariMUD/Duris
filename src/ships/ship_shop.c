@@ -72,7 +72,6 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include <math.h>
-#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include "world/achievements.h"
@@ -986,9 +985,8 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom, int already_pai
 		cost = cost * 0.6;
 	if (already_paid > INT_MAX - cost)
 		return 0;
-	const double payout = check_nexus_bonus_precise(
-		ch, static_cast<double>(already_paid) + cost, NEXUS_BONUS_CARGO, false);
-	if (!std::isfinite(payout) || payout < 0 || payout > INT_MAX)
+	int payout;
+	if (!check_nexus_bonus_preview(ch, already_paid + cost, NEXUS_BONUS_CARGO, &payout))
 		return 0;
 	ship->slot[slot].clear();
 
@@ -1167,9 +1165,8 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom, int already_pa
 		cost = cost * 0.6;
 	if (already_paid > INT_MAX - cost)
 		return 0;
-	const double payout = check_nexus_bonus_precise(
-		ch, static_cast<double>(already_paid) + cost, NEXUS_BONUS_CARGO, false);
-	if (!std::isfinite(payout) || payout < 0 || payout > INT_MAX)
+	int payout;
+	if (!check_nexus_bonus_preview(ch, already_paid + cost, NEXUS_BONUS_CARGO, &payout))
 		return 0;
 	ship->slot[slot].clear();
 

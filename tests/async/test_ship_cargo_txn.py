@@ -88,7 +88,11 @@ void adjust_ship_market(int,int,int,int) {}
 affected_type *get_spell_from_char(P_char,int) {return &achievement;}
 affected_type *apply_achievement(P_char,int) {return &achievement;}
 double nexus_multiplier=1;
-double check_nexus_bonus_precise(P_char,double value,int,bool) {return value*nexus_multiplier;}
+bool check_nexus_bonus_preview(P_char,int value,int,int *result) {
+ const double total=value*nexus_multiplier;
+ if(!std::isfinite(total) || total>INT_MAX)return false;
+ *result=total;return true;
+}
 int check_nexus_bonus(P_char,int value,int) {assert(value*nexus_multiplier<=INT_MAX);return value*nexus_multiplier;}
 void update_crew(P_ship) {}
 void update_ship_status(P_ship) {}
