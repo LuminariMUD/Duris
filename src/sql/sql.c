@@ -4230,8 +4230,9 @@ bool sql_pwipe(int code_verify)
 		send_to_all("  success!\n");
 		logit(LOG_DEBUG, "sql_pwipe: Clearing zone alignments, trophy and touches... .. .");
 		send_to_all("Clearing zone alignments, trophy and touches... .. .");
-		if (sql_clear_zone_trophy() && qry("DELETE FROM zone_trophy") &&
-		    qry("DELETE FROM zone_touches"))
+		// The shared writer is fenced: reset through the owning SQL connection.
+		if (qry("UPDATE zones SET alignment=0 WHERE epic_type > 0") &&
+		    qry("DELETE FROM zone_trophy") && qry("DELETE FROM zone_touches"))
 		{
 			logit(LOG_DEBUG, "  success!");
 			send_to_all("  success!\n");

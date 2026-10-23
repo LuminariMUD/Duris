@@ -104,6 +104,14 @@ existing status + completion timestamp already encode the SQL-ready handoff.
   boundary, full installed service sandbox and SQL-stage recovery. W2, W4, W5 and
   the fresh-gameplay journey remain open. Do not sign off #264 or #97.
 
+- Follow-up on PR #311: the normal `sql_clear_zone_trophy()` queues on the writer.
+  Pwipe must perform its own zone reset through the main SQL connection after the
+  gate closes. Replaced that call and extended the private DB harness to compile
+  and execute the actual full `sql_pwipe()` and its schema pre/postflight. That
+  executable passed with the real MariaDB schema and zone reset assertions; both
+  backend incremental rebuilds passed. This remains a controlled-peripheral SQL
+  journey, not the real game command journey.
+
 ### Writer-quiescence chunk (stacked after PR #310)
 
 PR #310: https://github.com/LuminariMUD/Duris/pull/310 at `3224c38d1`, ready for review.
