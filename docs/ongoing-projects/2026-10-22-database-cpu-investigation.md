@@ -5,6 +5,12 @@ metadata and audit changes locally qualified and published in PRs #300–#303.
 Owner independent review/merge is the next gate. Production rollout/CPU measurement remain open.
 No deployment or production mutation performed.
 
+**Owner review boundary:** the owner keeps independent review, issue addressing
+and merge. Do not merge PRs or deploy until that step is complete. Worker-only
+rollout authority exists after it; production is the VPS reached with
+`ssh duris-staging`, not this WSL host. Later 0050 schema/audit rollout is outside
+that worker-only production authority.
+
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
 Work branch:
 [`branch/issue-292-database-cpu`](https://github.com/LuminariMUD/Duris/tree/branch/issue-292-database-cpu).
@@ -155,6 +161,22 @@ lifecycle evidence from the preceding chunks remains valid. The runbook and
 pipeline guide now describe candidate/coverage counts separately from proven
 integrity failures. No fixed-count subtraction, blanket epic exemption, historical
 backfill, purge, or recent-only audit window was introduced.
+
+Final integrated qualification after carrying the worker review fixes and
+immutable-ledger correction into the audit branch: full build; 23 migration
+runner tests; seven runtime-boot contract tests; eight auction tests; actual
+SQL/client-free staff and drain contracts; executable lifecycle-policy probe;
+and the full MariaDB 11.8 worker/schema suite all pass. The latter includes the
+2,300 ms pending-publication regression with zero consumed attempts, the typed
+audit fixtures, cadence/failures/recovery and retained-history scaling. Prior
+unchanged MySQL 8.0 audit evidence and measured dual-engine 0050 runtime contracts
+are reused. Formatting, commit hooks and whitespace checks pass.
+
+Review heads before this documentation-only closeout: worker `67fb3e0b3`, stone
+proof `2c6c0e31a`, immutable metadata `6e46964dc`, integrated audit `509ec5464`.
+Current complete-stack qualification tag: `issue-292/audit-review-20261023`.
+All four PRs are ready for owner review; issue #292 remains open for rollout and
+measurement-gated work. No hosted CI wait or merge override is used.
 
 ### Next session / remaining gates
 
