@@ -477,6 +477,19 @@ static void check_unloaded_cleanup() {
 }
 
 
+static void busy_delete()
+{
+ P_ship ship=make_ship(0,2);const auto ref=ship->runtime_ref;
+ invalidate_ok=false;
+ assert(shipObjHash.erase(ship));delete_ship(ship);
+ assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE));
+ assert(ship->save_pending && ship->save_retry_after>0);
+ invalidate_ok=true;persistence_ok=true;ship->save_retry_after=0;
+ flush_pending_ship_saves();
+ assert(!find_ship_by_runtime_ref(ref));
+ puts("PASS first deletion retains intent while proof is busy and retries");
+}
+
 static void busy_effects()
 {
  P_ship first=make_ship(0,2),later=make_ship(NPCSHIP,3);
@@ -498,7 +511,8 @@ static void busy_effects()
 int main(int argc, char **argv) {
     assert(argc == 2);
     objects[1].virtual_number = VOBJ_ALL_SHIPS;
-    if (!strcmp(argv[1],"busy-effects")) busy_effects();
+    if (!strcmp(argv[1],"busy-delete")) busy_delete();
+    else if (!strcmp(argv[1],"busy-effects")) busy_effects();
     else if (!strcmp(argv[1], "sinking")) check_sinking(false);
     else if (!strcmp(argv[1], "passenger")) check_sinking(true);
     else if (!strcmp(argv[1], "purge")) check_npc_removal(true);
@@ -529,7 +543,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
+        for case in ("busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
                      "occupied", "references", "unloaded", "ambiguous"):
             if case=="ambiguous" and backend=="mysql":
                 continue

@@ -615,6 +615,11 @@ void initialize_ships()
  */
 void shutdown_ships()
 {
+#ifndef __NO_MYSQL__
+	// The caller drained the writer. Publish completed proof receipts before
+	// final saves inspect the account fences shared by multiple ships.
+	sql_ship_write_pulse();
+#endif
 	int i;
 	P_char ch, ch_next;
 	P_obj obj, obj_next;
@@ -1241,7 +1246,9 @@ void delete_ship(P_ship ship, bool npc)
 		return;
 	}
 
+#ifdef __NO_MYSQL__
 	const bool retrying = !npc && IS_SET(ship->flags, TO_DELETE);
+#endif
 	if (!npc)
 		REMOVE_BIT(ship->flags, TO_DELETE | CUSTOMS_PENDING);
 	auto defer_delete = [&]
@@ -1263,12 +1270,7 @@ void delete_ship(P_ship ship, bool npc)
 		before_proof = divine_trade_runtime_ship_books(static_cast<uint32_t>(ship->db_id));
 		if (!divine_trade_runtime_invalidate(ship))
 		{
-			if (retrying)
-			{
-				defer_delete();
-				return;
-			}
-			shipObjHash.add(ship);
+			defer_delete();
 			return;
 		}
 	}

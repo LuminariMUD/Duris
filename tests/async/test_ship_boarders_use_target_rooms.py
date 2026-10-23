@@ -19,6 +19,7 @@ from _paths import ROOT, extract_function
 
 HARNESS = r'''
 #include "core/prototypes.h"
+#include "economy/divine_trade_runtime.h"
 #include "core/structs.h"
 #include "ships/ship_npc_ai.h"
 #include "ships/ship_npc.h"
@@ -31,6 +32,8 @@ HARNESS = r'''
 
 static std::vector<int> boarded_rooms;
 static int stolen = 0, draws = 0;
+static bool proof_busy = true;
+bool divine_trade_runtime_busy(const ShipData *) { return proof_busy; }
 static char_data grunt;
 
 NPCShipAI::NPCShipAI(P_ship s, P_char ch) : ship(s), debug_char(ch) {}
@@ -66,7 +69,12 @@ int main()
 	ai.type = NPC_AI_PIRATE;
 	ai.crew_data = &crew;
 	ai.did_board = nullptr;
+	ai.mode = NPC_AI_ENGAGING;
 
+	ai.board_target();
+	assert(pirate.target == &target && !ai.did_board && ai.mode == NPC_AI_ENGAGING);
+	assert(boarded_rooms.empty() && stolen == 0);
+	proof_busy = false;
 	ai.board_target();
 
 	const std::set<int> rooms(vnums, vnums + 7);

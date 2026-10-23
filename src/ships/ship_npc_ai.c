@@ -832,6 +832,9 @@ bool NPCShipAI::check_boarding_conditions()
  */
 void NPCShipAI::board_target()
 {
+	// Leave the encounter pending until its cargo proof can be retired.
+	if (type == NPC_AI_PIRATE && divine_trade_runtime_busy(ship->target))
+		return;
 	// send_message_to_debug("=============BOARDING TARGET=============\r\n");
 	did_board = ship->target;
 

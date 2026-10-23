@@ -147,8 +147,11 @@ bool sql_begin_transaction(void) { return true; }
 bool sql_commit(void) { return true; }
 bool sql_rollback(void) { return true; }
 static int writes = 0;
+static bool proof_receipt_pending = false;
+bool sql_ship_write_pulse() { proof_receipt_pending = false; return true; }
 int write_ship(P_ship ship) // like the real one, it refuses an unloaded ship
 {
+	assert(!proof_receipt_pending);
 	if (!SHIP_LOADED(ship))
 		return FALSE;
 	++writes;
@@ -344,7 +347,9 @@ int main()
 	set_ship_layout(unplaced, SH_FRIGATE);
 	shipObjHash.add(unplaced);
 
+	proof_receipt_pending = true;
 	shutdown_ships();
+	assert(!proof_receipt_pending);
 	assert(writes == frigates_placed + 1);
 
 	puts("a full ship-room pool leaves every registered ship placed, and shuts down cleanly");
