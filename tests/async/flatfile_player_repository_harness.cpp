@@ -917,6 +917,75 @@ static void divine_trade_settlement(const fs::path &base)
 				domain.domains.wallet == std::array<uint64_t, 4>{ 1, 3, 3, 15 } &&
 				domain.domains.wallet_revision == 8,
 			"paid purchase wallet did not recover");
+		if (boundary == 0)
+		{
+			divine_trade_removal loss;
+			loss.ship_id = 1;
+			loss.slot = 3;
+			loss.goods = goods;
+			loss.source_port = 2;
+			loss.at = 150;
+			loss.slot_quantity_before = loss.quantity = 10;
+			loss.slot_basis_before = 1000;
+			divine_trade_book retired;
+			divine_trade_consumption removed;
+			require(divine_trade_prepare_removal(purchase.book_after, {}, loss,
+							     &retired, &removed) &&
+					retired.lots.empty() && !retired.consumed &&
+					retired.first_full_hold == 10,
+				"prepare complete ordinary cargo loss");
+			flatfile_authority_operation proof;
+			proof.filename = "divine-trade-17-" + std::to_string(account.id) + ".book";
+			require(divine_trade_book_encode(retired, &proof.bytes),
+				"encode loss proof");
+			const std::vector<flatfile_authority_operation> after_images{ proof };
+			for (bool deletion : { false, true })
+				for (int interrupted = 0; interrupted <= 2; ++interrupted)
+				{
+					const auto clone =
+						base /
+						(std::string(deletion ? "delete-" : "loss-") +
+						 std::to_string(interrupted));
+					fs::copy(path, clone, fs::copy_options::recursive);
+					auto changed = ships[0];
+					changed.slots[0] = {
+						3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 }
+					};
+					const std::string step = std::to_string(interrupted);
+					const char *fault =
+						interrupted ?
+							"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION" :
+							"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL";
+					setenv(fault, interrupted ? step.c_str() : "1", 1);
+					const auto saved =
+						deletion ? flatfile_ship_remove(clone.string(), 1,
+										changed.owner_name,
+										&error,
+										&after_images) :
+							   flatfile_ship_upsert(clone.string(),
+										&changed, &error,
+										&after_images);
+					unsetenv(fault);
+					require(saved == flatfile_ship_result::io_error,
+						"ordinary ship loss fault did not fire");
+					std::vector<flatfile_ship_record> restored_ships;
+					require(flatfile_ship_list(clone.string(), &restored_ships,
+								   &error) ==
+								flatfile_ship_result::ok &&
+							(deletion ? restored_ships.empty() :
+								    restored_ships[0]
+										    .slots[0]
+										    .slot_type ==
+									    SLOT_EMPTY),
+						"loss inventory journal recovery");
+					std::vector<divine_trade_book> restored_books;
+					require(divine_trade_flatfile_books(clone.string(), 17,
+									    &restored_books) &&
+							restored_books.size() == 1 &&
+							restored_books[0] == retired,
+						"loss proof/cap did not recover with inventory");
+				}
+		}
 		auto conflict = purchase;
 		conflict.wallet_after.amount[0]++;
 		require(divine_trade_command_build(&command, buy_id, conflict),

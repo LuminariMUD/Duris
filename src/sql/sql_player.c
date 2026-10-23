@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 // sql_player.c
 // MariaDB storage for players, accounts, lockers, corpses, shopkeepers and saved items
 
@@ -21,6 +22,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <algorithm>
+#include <map>
 #include <chrono>
 #include <functional>
 #include <map>
@@ -253,7 +255,7 @@ bool sql_load_all_ships(void)
 {
 	return false;
 }
-bool sql_delete_ship(const char *owner_name)
+bool sql_delete_ship(const char *owner_name, uint32_t ship_id)
 {
 	return false;
 }
@@ -4498,9 +4500,38 @@ void sql_restore_saved_items(void)
 /* The next ships row id: the boot load reads the highest stored one, and -1 means it
  * could not, so no new ship is saved over a stored one. */
 static int ship_next_db_id = -1;
+void sql_reserve_ship_ids(uint32_t maximum)
+{
+	if (ship_next_db_id >= 0 && maximum <= static_cast<uint32_t>(INT32_MAX))
+		ship_next_db_id = std::max(ship_next_db_id, static_cast<int>(maximum));
+}
 
 /* A ship's statements: its row (inserted or updated by its id), then its armor, crew
  * and slots. A new ship takes its id from memory here. Empty when no id can be given. */
+static bool sql_append_trade_books(uint32_t ship_id, std::vector<std::string> *statements)
+{
+	constexpr char digits[] = "0123456789abcdef";
+	for (const auto &book : divine_trade_runtime_ship_books(ship_id))
+	{
+		std::vector<uint8_t> bytes;
+		if (!divine_trade_book_encode(book, &bytes))
+			return false;
+		std::string hex;
+		hex.reserve(bytes.size() * 2);
+		for (uint8_t byte : bytes)
+		{
+			hex += digits[byte >> 4];
+			hex += digits[byte & 15];
+		}
+		statements->push_back(
+			"INSERT INTO divine_trade_state(account_key,boon_id,revision,snapshot) VALUES(" +
+			std::to_string(book.account) + "," + std::to_string(book.boon_id) + "," +
+			std::to_string(book.revision) + ",UNHEX('" + hex +
+			"')) ON DUPLICATE KEY UPDATE snapshot=IF(revision<=VALUES(revision),VALUES(snapshot),snapshot),revision=GREATEST(revision,VALUES(revision))");
+	}
+	return true;
+}
+
 static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 {
 	if (ship->db_id == -1)
@@ -4557,16 +4588,70 @@ static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 			ship->slot[i].position, ship->slot[i].timer, ship->slot[i].val0,
 			ship->slot[i].val1, ship->slot[i].val2, ship->slot[i].val3,
 			ship->slot[i].val4));
+	if (!sql_append_trade_books(static_cast<uint32_t>(ship->db_id), &statements))
+		return {};
 	return statements;
+}
+
+// Game-thread metadata only. The writer owns the immutable statements/receipt.
+struct divine_ship_save_receipt
+{
+	ShipRuntimeRef ship;
+	uint64_t proof = 0;
+	std::shared_ptr<sql_write_receipt> receipt;
+};
+static std::map<uint32_t, divine_ship_save_receipt> divine_ship_saves;
+static std::map<uint32_t, divine_ship_save_receipt> divine_ship_deletes;
+
+void sql_ship_write_pulse()
+{
+	for (auto it = divine_ship_saves.begin(); it != divine_ship_saves.end();)
+	{
+		const auto &capture = it->second;
+		if (!capture.receipt || !capture.receipt->finished.load(std::memory_order_acquire))
+		{
+			++it;
+			continue;
+		}
+		P_ship ship = find_ship_by_runtime_ref(capture.ship);
+		if (capture.receipt->ok &&
+		    divine_trade_runtime_ship_revision(it->first) == capture.proof)
+			divine_trade_runtime_ship_saved(it->first);
+		else if (ship)
+		{
+			// Undo optimistic save acknowledgement on failure or an obsolete capture.
+			ship->save_saved_signature = 0;
+			queue_ship_save(ship, "uncommitted Divine ship proof");
+		}
+		it = divine_ship_saves.erase(it);
+	}
 }
 
 /* Save one ship: its statements are one writer job. */
 bool sql_save_ship(P_ship ship)
 {
+	if (divine_trade_runtime_busy(ship))
+		return false;
 	if (!ship || !ship->ownername)
 		return false;
 	const std::vector<std::string> statements = sql_save_ship_statements(ship);
-	return !statements.empty() && sql_queue_statements(statements);
+
+	if (statements.empty())
+		return false;
+	const uint32_t id = static_cast<uint32_t>(ship->db_id);
+	if (divine_trade_runtime_ship_books(id).empty())
+		return sql_queue_statements(statements);
+	auto receipt = std::make_shared<sql_write_receipt>();
+	auto [entry, inserted] = divine_ship_saves.try_emplace(id);
+	const uint64_t proof = divine_trade_runtime_ship_revision(id);
+	if (!sql_queue_statements(statements, receipt))
+	{
+		if (inserted)
+			divine_ship_saves.erase(entry);
+		return false;
+	}
+	entry->second = { ship->runtime_ref, proof, std::move(receipt) };
+	return true;
 }
 
 /* The stored rows of one ship: its ships row, then its armor, crew and slot rows. */
@@ -4772,10 +4857,51 @@ std::string sql_delete_ship_statement(const char *owner_name)
 }
 
 /* Delete a ship's rows on the writer, and forget its stored rows and snapshot. */
-bool sql_delete_ship(const char *owner_name)
+bool sql_delete_ship(const char *owner_name, uint32_t ship_id)
 {
-	if (!owner_name || !sql_queue("%s", sql_delete_ship_statement(owner_name).c_str()))
+	if (!owner_name)
 		return false;
+
+	const bool proof = !divine_trade_runtime_ship_books(ship_id).empty();
+	auto waiting = divine_ship_deletes.find(ship_id);
+	if (waiting != divine_ship_deletes.end())
+	{
+		if (!waiting->second.receipt->finished.load(std::memory_order_acquire))
+			return false;
+		const bool ok = waiting->second.receipt->ok;
+		const uint64_t proof_revision = waiting->second.proof;
+		divine_ship_deletes.erase(waiting);
+		if (!ok)
+			return false; // The runtime retains TO_DELETE and retries.
+		if (divine_trade_runtime_ship_revision(ship_id) == proof_revision)
+			divine_trade_runtime_ship_saved(ship_id);
+	}
+	else
+	{
+		std::vector<std::string> statements{
+			ship_id ? "DELETE FROM ships WHERE id=" + std::to_string(ship_id) :
+				  sql_delete_ship_statement(owner_name)
+		};
+		if (!sql_append_trade_books(ship_id, &statements))
+			return false;
+		if (proof)
+		{
+			auto receipt = std::make_shared<sql_write_receipt>();
+			auto [entry, inserted] = divine_ship_deletes.try_emplace(ship_id);
+			if (!sql_queue_statements(statements, receipt))
+			{
+				if (inserted)
+					divine_ship_deletes.erase(entry);
+				return false;
+			}
+			entry->second = { {},
+					  divine_trade_runtime_ship_revision(ship_id),
+					  std::move(receipt) };
+			return false; // Acceptance is not permission to free the live ship.
+		}
+		if (!sql_queue_statements(statements))
+			return false;
+	}
 
 	const auto stored = stored_ship(owner_name);
 	if (stored != stored_ships.end())

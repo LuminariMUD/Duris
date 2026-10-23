@@ -5,10 +5,11 @@ cd "$ROOT"
 source "$ROOT/tests/async/disposable_schema.sh"
 bash migrations/immutable/0050_divine_trade_state.sh
 mkdir -p bin/tests
+python3 tests/async/divine_ship_save_capture.py "$ROOT/bin/tests/divine_ship_save_capture.cpp"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
 g++ -std=c++20 -ffunction-sections -fdata-sections -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
-    "${MYSQL_CFLAGS[@]}" tests/async/divine_trade_mysql_harness.cpp tests/async/harness_stubs.cpp \
+    "${MYSQL_CFLAGS[@]}" tests/async/divine_trade_mysql_harness.cpp "$ROOT/bin/tests/divine_ship_save_capture.cpp" tests/async/harness_stubs.cpp \
 	 src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
 	 src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c src/economy/auction_command.c \
 	 src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \

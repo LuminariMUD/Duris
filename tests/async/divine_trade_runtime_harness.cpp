@@ -1,5 +1,16 @@
 #include <cstdarg>
 #include <new>
+#include <cmath>
+#include "flatfile/flatfile_ship_repository.h"
+#include <set>
+#include "player/player_save_worker.h"
+#include "economy/divine_trade_repository.h"
+#include "economy/divine_boon.h"
+bool route_open = true;
+bool divine_boon_cargo_eligible(const divine_boon_slot &)
+{
+	return route_open;
+}
 
 #include "core/utils.h"
 #include "net/comm.h"
@@ -17,6 +28,36 @@
 #include <vector>
 
 static room_data rooms[1]{};
+const WeaponData weapon_data[MAXWEAPON] = {};
+const EquipmentData equipment_data[MAXEQUIPMENT] = {};
+int eq_ram_weight(const ShipData *)
+{
+	return 0;
+}
+int eq_levistone_weight(const ShipData *)
+{
+	return 0;
+}
+const PortData ports[NUM_PORTS] = { { 111, "Customs Port", 0 } };
+static int inspection_rolls = 0;
+int number(int, int)
+{
+	++inspection_rolls;
+	return 0;
+}
+float get_property(const char *key, double value)
+{
+	return std::string(key) == "ship.contraband.baseConfiscationChance" ? 100 : value;
+}
+void debug(const char *, ...) {}
+char buf[MAX_STRING_LENGTH];
+
+void act_to_all_in_ship(P_ship, const char *) {}
+void act_to_all_in_ship_f(P_ship, const char *, ...) {}
+std::string strip_ansi(const char *value)
+{
+	return value;
+}
 P_room world = rooms;
 // Everything queued, in order: "save:<pid>" and "bank:<copper delta>", plus
 // "completion" when a completion runs.
@@ -56,13 +97,14 @@ const char *get_account_name_safe(P_char ch)
 {
 	return ch && GET_PID(ch) == 45 ? "other_account" : "money_account";
 }
+static persistence_mode fixture_mode = PERSISTENCE_MODE_MARIADB_PRIMARY;
 persistence_mode persistence_mode_get(void)
 {
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
+	return fixture_mode;
 }
 const char *persistence_mode_flatfile_root(void)
 {
-	return nullptr;
+	return "fixture";
 }
 player_save_apply_result flatfile_bank_delta_apply(const std::string &, const std::string &, int8_t,
 						   const std::array<int64_t, 4> &,
@@ -161,12 +203,39 @@ bool divine_boon_runtime_pending()
 {
 	return false;
 }
+
+static std::vector<divine_trade_book> boot_books;
+static std::set<uint32_t> durable_ship_ids;
+static uint32_t reserved_ship_id = 0;
+void sql_reserve_ship_ids(uint32_t id)
+{
+	reserved_ship_id = id;
+}
+flatfile_ship_result flatfile_ship_list(const std::string &,
+					std::vector<flatfile_ship_record> *ships, std::string *)
+{
+	ships->clear();
+	for (uint32_t id : durable_ship_ids)
+	{
+		flatfile_ship_record s;
+		s.ship_id = id;
+		ships->push_back(s);
+	}
+	return flatfile_ship_result::ok;
+}
+flatfile_ship_result flatfile_ship_reserve_ids(const std::string &, uint32_t id, std::string *)
+{
+	reserved_ship_id = id;
+	return flatfile_ship_result::ok;
+}
 bool divine_trade_sql_books(MYSQL *, uint64_t, std::vector<divine_trade_book> *)
 {
 	return true;
 }
-bool divine_trade_flatfile_books(const std::string &, uint64_t, std::vector<divine_trade_book> *)
+bool divine_trade_flatfile_books(const std::string &, uint64_t,
+				 std::vector<divine_trade_book> *books)
 {
+	*books = boot_books;
 	return true;
 }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
@@ -200,6 +269,16 @@ bool cargo_trade_market_available()
 {
 	return true;
 }
+static bool physical_ship_exists = true;
+static P_ship physical_ship = nullptr;
+P_ship find_ship_by_database_id(uint32_t id)
+{
+	return physical_ship_exists && physical_ship &&
+			       id == static_cast<uint32_t>(physical_ship->db_id) ?
+		       physical_ship :
+		       nullptr;
+}
+
 bool cargo_trade_publish(uint64_t expected, const std::vector<divine_trade_market_cell> &)
 {
 	if (expected != market_generation)
@@ -295,6 +374,28 @@ affected_type *affect_to_char(P_char ch, affected_type *af)
 	ch->affected = copy;
 	return copy;
 }
+const char *cargo_type_name(int)
+{
+	return "cargo";
+}
+const char *contra_type_name(int)
+{
+	return "contraband";
+}
+int jettison_crates(P_ship, int, int, int)
+{
+	return TRUE;
+}
+void queue_ship_save(P_ship ship, const char *)
+{
+	ship->save_pending = true;
+}
+int write_ship(P_ship ship)
+{
+	ship->save_pending = false;
+	divine_trade_runtime_ship_saved(static_cast<uint32_t>(ship->db_id));
+	return TRUE;
+}
 static divine_trade_payload prepared()
 {
 	divine_trade_payload p;
@@ -387,6 +488,7 @@ int main()
 	character_list = &alice.ch;
 	GET_COPPER(&alice.ch) = 1000;
 	ShipData ship{};
+	physical_ship = &ship;
 	live_ship = &ship;
 	ship.db_id = 1;
 	ship.crew.index = 0;
@@ -414,6 +516,10 @@ int main()
 	assert(divine_trade_runtime_busy(&ship) && capture_reserved && ship.slot[0].val0 == 9 &&
 	       GET_COPPER(&alice.ch) == 1000);
 	assert(trade_messages.find("You buy") == std::string::npos);
+
+	const int initial_rolls = inspection_rolls;
+	check_contraband(&ship, 0);
+	assert(IS_SET(ship.flags, CUSTOMS_PENDING) && inspection_rolls == initial_rolls);
 	auto buy = prepared();
 	assert(buy.book_after.lots.size() == 1 && buy.book_after.first_full_hold == 10);
 	assert(captured_trade.operation == retained.operation_id.bytes &&
@@ -435,6 +541,15 @@ int main()
 	       market_generation == 1);
 	assert(wallet(&alice.ch) == (std::array<int64_t, 4>{ 0, 2, 9, 0 }));
 	assert(trade_messages.find("You buy 1 crates of test cargo") != std::string::npos);
+
+	REMOVE_BIT(ship.flags, CUSTOMS_PENDING);
+	rooms[0].number = 111;
+	ship.slot[1].type = SLOT_CONTRABAND;
+	ship.slot[1].index = 2;
+	ship.slot[1].val0 = 1;
+	ship.slot[1].val1 = 1;
+	check_contraband(&ship, 0);
+	assert(ship.slot[1].type == SLOT_EMPTY && inspection_rolls > initial_rolls);
 	affected_type progress{};
 	progress.type = PLAYER_TRADE_CARGO_AFFECT;
 	progress.modifier = 9995;
@@ -544,6 +659,207 @@ int main()
 	seadog = diplomat = false;
 	character_list = &restored.ch;
 	boon.id = 18;
+	// Old stock is lost first, then exact paid basis; a different ship cannot
+	// publish this shared account book before the changed inventory is saved.
+	boon.id = 19;
+	ship.slot[0].type = SLOT_CARGO;
+	ship.slot[0].index = 2;
+	ship.slot[0].val0 = 2;
+	ship.slot[0].val1 = 200;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 3, 300,
+					     divine_trade_goods::cargo));
+	complete();
+	auto before_loss = divine_trade_runtime_ship_books(1);
+	assert(before_loss.size() == 1 && before_loss[0].lots[0].remaining_quantity == 3);
+	assert(jettison_cargo(&restored.ch, &ship, 2));
+	assert(ship.slot[0].val1 == 300 &&
+	       divine_trade_runtime_ship_books(1)[0].lots[0].remaining_quantity == 3);
+	const auto intact_revision = divine_trade_runtime_ship_revision(1);
+	assert(jettison_cargo(&restored.ch, &ship, 1));
+	auto lost = divine_trade_runtime_ship_books(1);
+	assert(lost[0].lots[0].remaining_quantity == 2 && lost[0].lots[0].remaining_basis == 200 &&
+	       !lost[0].consumed);
+	assert(ship.slot[0].val1 == 200 &&
+	       divine_trade_runtime_ship_revision(1) != intact_revision);
+	ShipData other{};
+	other.db_id = 2;
+	other.crew.index = 0;
+	other.slot[0].type = SLOT_EMPTY;
+	assert(divine_trade_runtime_purchase(&restored.ch, &other, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(!divine_trade_runtime_busy() && other.slot[0].type == SLOT_EMPTY);
+	// The current ship's save precedes its next financial command.
+	ship.save_pending = true;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_busy() && !ship.save_pending);
+	complete();
+	auto retained_proof = divine_trade_runtime_ship_books(1);
+	assert(divine_trade_runtime_invalidate(&ship));
+	assert(divine_trade_runtime_ship_books(1)[0].lots.empty());
+	divine_trade_runtime_restore_books(retained_proof);
+	assert(divine_trade_runtime_ship_books(1)[0] == retained_proof[0]);
+	clear_cargo(&ship);
+	assert(ship.slot[0].type == SLOT_EMPTY);
+	divine_trade_runtime_ship_saved(1);
+	auto retired = divine_trade_runtime_ship_books(1);
+	assert(retired[0].lots.empty() && retired[0].first_full_hold == 10 && !retired[0].consumed);
+
+	ShipData salvage{};
+	salvage.db_id = 2;
+	assert(add_crate(&salvage, 2, 1));
+	assert(salvage.slot[0].val1 == 0 &&
+	       !divine_trade_runtime_sale(&restored.ch, &salvage, 0, 4, divine_trade_goods::cargo));
+	boon.id = 20;
+	ship.slot[2].type = SLOT_CONTRABAND;
+	ship.slot[2].index = 2;
+	ship.slot[2].val0 = 1;
+	ship.slot[2].val1 = 0;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 2, 2, 2, 101,
+					     divine_trade_goods::contraband));
+	complete();
+	assert(jettison_contraband(&restored.ch, &ship, INT_MAX));
+	assert(ship.slot[2].type == SLOT_EMPTY &&
+	       divine_trade_runtime_ship_books(1)[0].lots.empty() &&
+	       !divine_trade_runtime_ship_books(1)[0].consumed);
+	// A later unverifiable slot must not discard the earlier completed removal's
+	// save request when an all-slot jettison stops part way through the hold.
+	divine_trade_runtime_ship_saved(1);
+	ship.save_pending = false;
+	ship.slot[3].type = SLOT_CARGO;
+	ship.slot[3].index = 2;
+	ship.slot[3].val0 = 1;
+	ship.slot[3].val1 = 0;
+	ship.slot[4].type = SLOT_CARGO;
+	ship.slot[4].index = 2;
+	ship.slot[4].val0 = 1;
+	ship.slot[4].val1 = -1;
+	assert(jettison_cargo(&restored.ch, &ship, INT_MAX));
+	assert(ship.slot[3].type == SLOT_EMPTY && ship.slot[4].type == SLOT_EMPTY &&
+	       ship.save_pending);
+
+	SET_BIT(ship.flags, TO_DELETE);
+	assert(divine_trade_runtime_busy(&ship));
+	REMOVE_BIT(ship.flags, TO_DELETE);
+
+	// A refused first purchase on a different ship publishes no associations.
+	ShipData rejected = ship;
+	rejected.db_id = 100;
+	admission = critical_submit_result::unavailable;
+	assert(divine_trade_runtime_purchase(&restored.ch, &rejected, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_ship_books(100).empty() &&
+	       !divine_trade_runtime_busy(&rejected));
+	admission = critical_submit_result::accepted;
+
+	// Ownership transfer cannot merge a new account's paid lot into an old
+	// account's proof. The old proof is saved away before any new charge.
+	fixture_mode = PERSISTENCE_MODE_FLATFILE_PRIMARY;
+	boon.id = 17;
+	auto transferred = buy.book_after;
+	transferred.account += 1;
+	transferred.consumed = 5;
+	transferred.lots[0].purchased_quantity = transferred.lots[0].remaining_quantity = 2;
+	transferred.lots[0].invoice_basis = transferred.lots[0].remaining_basis = 200;
+	boot_books = { transferred };
+	durable_ship_ids = { 1 };
+	assert(divine_trade_runtime_boot(17));
+	ship.slot[0].type = SLOT_CARGO;
+	ship.slot[0].index = 2;
+	ship.slot[0].val0 = 2;
+	ship.slot[0].val1 = 200;
+	const auto old_money = GET_MONEY(&restored.ch);
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(!divine_trade_runtime_busy() && ship.save_pending &&
+	       GET_MONEY(&restored.ch) == old_money);
+	assert(divine_trade_runtime_book(transferred.account, 17).lots.empty());
+	write_ship(&ship);
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	complete();
+	assert(divine_trade_runtime_book(transferred.account, 17).consumed == 5 &&
+	       divine_trade_runtime_book(buy.book_after.account, 17).lots.size() == 1);
+
+	fixture_mode = PERSISTENCE_MODE_FLATFILE_PRIMARY;
+	boon.id = 17;
+	auto mixed_a = buy.book_after;
+	auto mixed_b = mixed_a;
+	mixed_a.revision = 20;
+	mixed_a.consumed = 4;
+	mixed_a.lots[0].purchased_quantity = mixed_a.lots[0].remaining_quantity = 3;
+	mixed_a.lots[0].invoice_basis = mixed_a.lots[0].remaining_basis = 300;
+	mixed_b.account = mixed_a.account + 1;
+	mixed_b.revision = 30;
+	mixed_b.consumed = 5;
+	mixed_b.lots[0].purchase.bytes[0] ^= 0x55;
+	mixed_b.lots[0].purchased_quantity = mixed_b.lots[0].remaining_quantity = 2;
+	mixed_b.lots[0].invoice_basis = mixed_b.lots[0].remaining_basis = 200;
+	boot_books = { mixed_a, mixed_b };
+	durable_ship_ids = { 1 };
+	assert(divine_trade_runtime_boot(17));
+	ship.slot[0].type = SLOT_CARGO;
+	ship.slot[0].index = 2;
+	ship.slot[0].val0 = 5;
+	ship.slot[0].val1 = 500;
+	const auto mixed_money = GET_MONEY(&restored.ch);
+	assert(divine_trade_runtime_sale(&restored.ch, &ship, 0, 4, divine_trade_goods::cargo));
+	assert(!divine_trade_runtime_busy() && GET_MONEY(&restored.ch) == mixed_money &&
+	       ship.slot[0].val0 == 5);
+	assert(divine_trade_runtime_book(mixed_a.account, 17).lots.empty() &&
+	       divine_trade_runtime_book(mixed_b.account, 17).lots.empty());
+	assert(divine_trade_runtime_boot(17));
+	assert(divine_trade_runtime_loss(&ship, 0, 4));
+	ship.slot[0].val0 -= 4;
+	assert(ship.slot[0].val0 == 1 && ship.slot[0].val1 == 100);
+	assert(divine_trade_runtime_book(mixed_a.account, 17).lots.empty() &&
+	       divine_trade_runtime_book(mixed_a.account, 17).consumed == 4);
+	assert(divine_trade_runtime_book(mixed_b.account, 17).lots.empty() &&
+	       divine_trade_runtime_book(mixed_b.account, 17).consumed == 5);
+	divine_trade_runtime_ship_saved(1);
+
+	auto orphan = buy.book_after;
+	orphan.revision = 40;
+	orphan.consumed = 4;
+	auto absent = orphan.lots[0];
+	absent.ship_id = 999;
+	absent.purchase.bytes[0] ^= 0x22;
+	auto unplaced = orphan.lots[0];
+	unplaced.ship_id = 700;
+	unplaced.purchase.bytes[0] ^= 0x33;
+	orphan.lots.push_back(absent);
+	orphan.lots.push_back(unplaced);
+	boot_books = { orphan };
+	durable_ship_ids = { 1, 700 };
+	assert(divine_trade_runtime_boot(17) && reserved_ship_id == 999);
+	auto recovered = divine_trade_runtime_book(orphan.account, 17);
+	assert(recovered.lots.size() == 2 && recovered.revision == 41 &&
+	       recovered.first_full_hold == 10 && recovered.consumed == 4);
+	for (const auto &lot : recovered.lots)
+		assert(lot.ship_id != 999);
+	assert(ship.save_pending);
+	divine_trade_runtime_ship_saved(1);
+	// A committed runtime-only deletion retires proof, without leaving a dead
+	// dirty owner. Unplaced but durable ships keep their legitimate paid lots.
+	physical_ship_exists = false;
+	divine_trade_runtime_ship_deleted(1);
+	divine_trade_runtime_retire_pulse();
+	recovered = divine_trade_runtime_book(orphan.account, 17);
+	assert(recovered.lots.size() == 1 && recovered.lots[0].ship_id == 700 &&
+	       recovered.consumed == 4);
+	physical_ship_exists = true;
+	ship.db_id = 2;
+	ship.slot[0].clear();
+	ship.save_pending = false;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(!divine_trade_runtime_busy() && ship.save_pending); // Records cleanup before buying.
+	write_ship(&ship);
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	complete();
+	assert(divine_trade_runtime_book(orphan.account, 17).first_full_hold == 10 &&
+	       divine_trade_runtime_book(orphan.account, 17).consumed == 4);
 
 	while (alice.ch.affected)
 	{

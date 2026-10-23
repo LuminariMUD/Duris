@@ -24,6 +24,7 @@
 #include <string>
 #include "core/mm.h"
 #include "ships/ships.h"
+#include "economy/divine_trade_runtime.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
@@ -1582,6 +1583,8 @@ static bool store_character_name(P_char doofus, const char *from, const char *to
 	// The ship's statements carry its new owner; memory keeps the old one until then.
 	P_ship ship = get_ship_from_owner(const_cast<char *>(from));
 	ShipOwnerChange change;
+	if (ship && divine_trade_runtime_busy(ship))
+		return false;
 	if (ship && !begin_ship_owner_change(ship, to, &change))
 		return false;
 	const std::vector<std::string> statements =

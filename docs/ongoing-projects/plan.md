@@ -103,6 +103,43 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
+### Published loss persistence (#290)
+
+[PR #290](https://github.com/LuminariMUD/Duris/pull/290) is open and ready at
+`e35d599db`, stacked on #288. Next source is `branch/issue-245-divine-controls`,
+based on #290 plus this handoff. Both builds, native qualification, formatting,
+LLVM 22 clang-tidy and whitespace checks pass.
+Exact ordinary loss/invalidation now prepares game-thread book after-images for
+clear, jettison, customs, NPC theft, reset and deletion. SQL ordinary ship jobs
+include guarded book snapshots; flat-file upsert/removal carries prepared book
+bytes in the existing authority journal. Ship save signatures observe proof
+revisions. A book with an unsaved loss stays attached to its changed ship;
+another account ship cannot persist that revision until the inventory save is
+accepted. The same ship flushes its pending save before another prepared trade.
+Rejected deletion restores its existing in-memory book preimages. Ambiguous
+flat-file deletion first recovers/reads its journal. If it is still unresolved,
+the existing TO_DELETE/save-retry path fences this ship and its account proof
+until deletion can finish; copyover refuses to discard that pending intent.
+The sanitizer check caught a use-after-free when retry destroyed a ship during
+hash traversal. Retry now collects generation-checked references and destroys
+them after traversal, preserving unrelated save progress.
+
+Passed so far: real SQL ship snapshot capture/transaction rolls inventory and
+proof back together, retries exact partial basis (3/101 -> 2/68), rejects old
+proof restoration and co-commits full ship deletion. Flat-file upsert/deletion
+recovers ship+proof at the journal and both after-image boundaries. Existing
+ship ID/save, rename, room-pool, repository, teardown/heartbeat checks pass.
+The new ambiguous-deletion case now executes the real retry loop under ASan/UBSan.
+The final sanitized controller check executes the real partial/all jettison,
+clear and salvage functions, including old-stock-first loss, shared account
+serialization, failed-deletion rollback, retained cap, a partial jettison refusal
+and pending-delete fencing. Both final backend builds pass. NPC theft and customs
+now queue the changed target's inventory/proof themselves. Formatting/tidy and
+publication pass. The full issue remains incomplete and inactive by default. Keep this status incomplete until those pass and the chunk
+is pushed/PR ready. Next direct work is native failure/reload proof, then selector/
+activation/commands/help and final integrated journeys. Reuse the green sale,
+receipt, market, Nexus, EXP/PvP/zone evidence where sources are unchanged.
+
 ### Published trade producers (#288), next loss persistence
 
 [PR #287](https://github.com/LuminariMUD/Duris/pull/287) is open, ready and
@@ -1245,3 +1282,12 @@ concrete delivery. #287 and #288 were implemented, qualified and published in
 this continuation. No active test/build processes remain. Do not restart discovery:
 continue the loss sites named above, then selection/activation/commands/help and
 one final integrated campaign for the remaining acceptance items.
+
+### Forecast recorded after the owner's ETA request
+
+At approximately 21:07 UTC / 00:07 Asia/Jerusalem (2026-10-23), the estimate was
+another 1-2 hours with low confidence. This is a forecast, not a replacement
+budget or a promised deadline. Original start/deadline remain unchanged and
+missed. Remaining full scope includes selection/activation/cutover, commands/help
+and final integrated gameplay proof. Disclose immediately if evidence invalidates
+this forecast; do not reset it after another turn or PR.

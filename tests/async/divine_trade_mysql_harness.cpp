@@ -1,3 +1,4 @@
+#include <cassert>
 #include "economy/divine_trade_repository.h"
 #include "player/player_snapshot_codec.h"
 #include "player/player_snapshot_repository.h"
@@ -11,6 +12,9 @@
 #include <iostream>
 #include <string>
 
+bool fixture_ship_save(P_ship, const std::vector<divine_trade_book> &, std::vector<std::string> *);
+bool fixture_ship_delete(P_ship, const std::vector<divine_trade_book> &,
+			 std::vector<std::string> *);
 namespace
 {
 void require(bool ok, const std::string &message)
@@ -44,8 +48,11 @@ std::string scalar(MYSQL *db, const std::string &sql)
 }
 }
 
+bool fixture_ship_receipt_tests();
 int main()
 {
+	assert(fixture_ship_receipt_tests());
+
 	require(environment("ENVIRONMENT") == "test", "disposable test environment required");
 	MYSQL *db = mysql_init(nullptr);
 	const auto host = environment("DB_HOST"), user = environment("DB_USER"),
@@ -481,6 +488,127 @@ int main()
 				spent->first_full_hold == 10,
 			"sale lost its shared spent allowance");
 	}
+
+	// Ordinary snapshots co-commit the actual ship statements with exact loss
+	// proof, including rollback after an earlier statement already changed slots.
+	{
+		const uint32_t ship_id = 501;
+		execute(db, "INSERT INTO accounts(account_name) VALUES('loss_case')");
+		execute(db,
+			"INSERT INTO player_data(pid,name,account_name) VALUES(150,'LossTrader','loss_case')");
+		execute(db,
+			"INSERT INTO ships(id,owner_name,ship_name,ship_class) VALUES(501,'LossTrader','Loss fixture',0)");
+		critical_entity_key account;
+		require(currency_account_key("loss_case", 0, &account), "loss account key");
+		divine_boon_slot boon;
+		boon.id = 91;
+		boon.category = divine_boon_category::cargo;
+		boon.starts_at = 100;
+		boon.expires_at = 14500;
+		boon.source_port = boon.cargo_commodity = boon.contraband_commodity = 2;
+		boon.destination_port = 4;
+		critical_operation_id id;
+		require(critical_operation_id_generate(&id), "loss purchase id");
+		divine_trade_purchase purchase;
+		purchase.operation = id;
+		purchase.account = account.id;
+		purchase.ship_id = ship_id;
+		purchase.full_hold = 10;
+		purchase.slot = 0;
+		purchase.source_port = 2;
+		purchase.at = 101;
+		purchase.quantity = 3;
+		purchase.paid = 101;
+		divine_trade_book before;
+		require(divine_trade_prepare_purchase({}, boon, purchase, &before),
+			"loss opening proof");
+		ShipData ship{};
+		ship.db_id = ship_id;
+		ship.ownername = const_cast<char *>("LossTrader");
+		ship.name = const_cast<char *>("Loss fixture");
+		ship.slot[0].type = SLOT_CARGO;
+		ship.slot[0].index = 2;
+		ship.slot[0].position = SLOT_HOLD;
+		ship.slot[0].val0 = 3;
+		ship.slot[0].val1 = 101;
+		std::vector<std::string> statements;
+		require(fixture_ship_save(&ship, { before }, &statements),
+			"capture opening loss ship");
+		const auto apply_save = [&]()
+		{
+			return sql_work_repository_apply(
+				db,
+				[&](MYSQL *connection)
+				{
+					for (const auto &statement : statements)
+						if (mysql_real_query(connection, statement.data(),
+								     statement.size()))
+							return mysql_errno(connection);
+					return 0U;
+				});
+		};
+		require(apply_save().outcome == player_save_apply_outcome::applied,
+			"opening loss snapshot");
+		divine_trade_removal loss;
+		loss.ship_id = ship_id;
+		loss.slot = 0;
+		loss.source_port = 2;
+		loss.at = 200;
+		loss.slot_quantity_before = 3;
+		loss.slot_basis_before = 101;
+		loss.quantity = 1;
+		divine_trade_book after;
+		divine_trade_consumption removed;
+		require(divine_trade_prepare_removal(before, {}, loss, &after, &removed) &&
+				removed.removed_basis == 33 && !after.consumed,
+			"partial paid loss basis");
+		ship.slot[0].val0 = 2;
+		ship.slot[0].val1 = 68;
+		require(fixture_ship_save(&ship, { after }, &statements),
+			"capture exact loss ship");
+		execute(db,
+			"CREATE TRIGGER loss_snapshot_fault BEFORE INSERT ON divine_trade_state FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic loss fault'");
+		require(apply_save().outcome != player_save_apply_outcome::applied,
+			"loss fault did not fire");
+		require(scalar(db,
+			       "SELECT CONCAT(val0,':',val1) FROM ship_slots WHERE ship_id=501 AND slot_index=0") ==
+				"3:101",
+			"failed proof write left partial inventory loss");
+		std::vector<divine_trade_book> books;
+		require(divine_trade_sql_books(db, 91, &books) && books.size() == 1 &&
+				books[0] == before,
+			"failed ship save changed paid proof");
+		execute(db, "DROP TRIGGER loss_snapshot_fault");
+		require(apply_save().outcome == player_save_apply_outcome::applied &&
+				apply_save().outcome == player_save_apply_outcome::applied,
+			"loss snapshot retry");
+		require(scalar(db,
+			       "SELECT CONCAT(val0,':',val1) FROM ship_slots WHERE ship_id=501 AND slot_index=0") ==
+					"2:68" &&
+				divine_trade_sql_books(db, 91, &books) && books[0] == after,
+			"loss inventory/proof did not reload together");
+		// An older captured proof cannot restore a retired quantity or allowance.
+		require(fixture_ship_save(&ship, { before }, &statements) &&
+				apply_save().outcome == player_save_apply_outcome::applied &&
+				divine_trade_sql_books(db, 91, &books) && books[0] == after,
+			"stale snapshot restored paid proof");
+		divine_trade_book retired;
+		require(divine_trade_prepare_invalidation(after, ship_id, -1, &retired),
+			"prepare deleted ship proof");
+		require(fixture_ship_delete(&ship, { retired }, &statements),
+			"capture ship deletion proof");
+		execute(db,
+			"CREATE TRIGGER loss_delete_fault BEFORE INSERT ON divine_trade_state FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic delete fault'");
+		require(apply_save().outcome != player_save_apply_outcome::applied &&
+				scalar(db, "SELECT COUNT(*) FROM ships WHERE id=501") == "1" &&
+				divine_trade_sql_books(db, 91, &books) && books[0] == after,
+			"failed proof write left a partial ship deletion");
+		execute(db, "DROP TRIGGER loss_delete_fault");
+		require(apply_save().outcome == player_save_apply_outcome::applied &&
+				scalar(db, "SELECT COUNT(*) FROM ships WHERE id=501") == "0" &&
+				divine_trade_sql_books(db, 91, &books) && books[0] == retired,
+			"ship deletion and proof did not commit together");
+	}
 	// Execute the real maintenance producer against the settled market. A
 	// restored legacy capture has generation zero and must not erase trade 20.
 	maintenance_request request{};
@@ -522,5 +650,5 @@ int main()
 			" modifier=" + current_market);
 	mysql_close(db);
 	std::cout
-		<< "PASS: SQL Divine purchase/sale receipts and rollback at ten financial boundaries\n";
+		<< "PASS: SQL trade receipts, ten financial rollback boundaries and atomic ordinary loss/deletion snapshots\n";
 }

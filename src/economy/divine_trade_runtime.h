@@ -15,5 +15,17 @@ bool divine_trade_runtime_purchase(char_data *ch, ShipData *ship, int slot, int 
 				   int cost, divine_trade_goods goods);
 bool divine_trade_runtime_sale(char_data *ch, ShipData *ship, int slot, int port,
 			       divine_trade_goods goods);
+// Game thread, before ordinary cargo loss. Updates exact remaining invoice basis
+// and prepares book after-images for the same subsequent ship save.
+bool divine_trade_runtime_loss(ShipData *ship, int slot, int quantity);
+bool divine_trade_runtime_invalidate(ShipData *ship, int slot = -1);
+std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t ship_id);
+uint64_t divine_trade_runtime_ship_revision(uint32_t ship_id);
+void divine_trade_runtime_ship_deleted(uint32_t ship_id);
+void divine_trade_runtime_retire_pulse();
+void divine_trade_runtime_ship_saved(uint32_t ship_id);
+// Only when an ordinary ship deletion was refused before its writer accepted it.
+void divine_trade_runtime_restore_books(std::vector<divine_trade_book> before,
+					uint32_t dirty_ship = 0);
 void divine_trade_runtime_completions(const critical_completion *results, size_t count);
 #endif

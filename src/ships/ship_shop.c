@@ -989,6 +989,8 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom, int already_pai
 	int payout;
 	if (!check_nexus_bonus_preview(ch, already_paid + cost, NEXUS_BONUS_CARGO, &payout))
 		return 0;
+	if (!divine_trade_runtime_loss(ship, slot, crates))
+		return 0;
 	ship->slot[slot].clear();
 
 	if (IS_WARSHIP(ship))
@@ -1140,8 +1142,8 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom, int already_pa
 		return 0;
 
 	const int type = ship->slot[slot].index;
-	if (ship->slot[slot].type != SLOT_CONTRABAND || type < 0 ||
-	    type >= NUM_PORTS || ship->slot[slot].val0 < 0)
+	if (ship->slot[slot].type != SLOT_CONTRABAND || type < 0 || type >= NUM_PORTS ||
+	    ship->slot[slot].val0 < 0)
 		return 0;
 
 	/*if (type == rroom)
@@ -1171,6 +1173,8 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom, int already_pa
 		return 0;
 	int payout;
 	if (!check_nexus_bonus_preview(ch, already_paid + cost, NEXUS_BONUS_CARGO, &payout))
+		return 0;
+	if (!divine_trade_runtime_loss(ship, slot, crates))
 		return 0;
 	ship->slot[slot].clear();
 
@@ -1396,6 +1400,12 @@ int sell_slot(P_char ch, P_ship ship, int slot)
  */
 void check_contraband(P_ship ship, int to_room)
 {
+	if (divine_trade_runtime_busy(ship))
+	{
+		SET_BIT(ship->flags, CUSTOMS_PENDING);
+		queue_ship_save(ship, "pending customs inspection");
+		return;
+	}
 	int rroom = 0;
 	for (rroom = 0; rroom < NUM_PORTS; ++rroom)
 		if (ports[rroom].loc_room == world[to_room].number)
@@ -1457,6 +1467,8 @@ void check_contraband(P_ship ship, int to_room)
 
 			if (confiscated > 0)
 			{
+				if (!divine_trade_runtime_loss(ship, slot, confiscated))
+					continue;
 				sprintf(buf,
 					"CONTRABAND: %s had &+W%d&n/&+W%d&n %s&n confiscated in %s [%d]",
 					SHIP_OWNER(ship), confiscated, crates,
@@ -1475,6 +1487,11 @@ void check_contraband(P_ship ship, int to_room)
 				did_confiscate = true;
 			}
 		}
+	}
+	if (did_confiscate)
+	{
+		update_ship_status(ship);
+		queue_ship_save(ship, "contraband confiscation");
 	}
 	if (!did_confiscate)
 		act_to_all_in_ship(ship, "&+L...&+Bbut don't find anything suspicious.&n");
