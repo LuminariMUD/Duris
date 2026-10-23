@@ -3507,7 +3507,7 @@ void land_ship(P_ship ship)
  */
 int write_ship(P_ship ship)
 {
-	if (divine_trade_runtime_busy(ship))
+	if (divine_trade_runtime_save_busy(ship))
 	{
 		ship->save_pending = true;
 		return FALSE;
@@ -3593,7 +3593,7 @@ void flush_pending_ship_saves(void)
 			retry_deletions.push_back(ship->runtime_ref);
 			continue;
 		}
-		if (divine_trade_runtime_busy(ship))
+		if (divine_trade_runtime_save_busy(ship))
 			continue;
 
 		unsigned long long current_signature = ship_save_signature(ship);

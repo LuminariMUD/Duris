@@ -8,6 +8,9 @@ struct ShipData;
 bool divine_trade_runtime_boot(uint64_t boon_id);
 const divine_trade_book &divine_trade_runtime_book(uint64_t account, uint64_t boon_id);
 bool divine_trade_runtime_busy(const ShipData *ship = nullptr);
+// Persist deferred inspection intent while still fencing financial work/deletion.
+bool divine_trade_runtime_save_busy(const ShipData *ship);
+
 bool divine_trade_runtime_submit(char_data *ch, ShipData *ship, critical_operation_id operation,
 				 divine_trade_payload payload);
 // True means this qualifying purchase was handled (queued or refused).

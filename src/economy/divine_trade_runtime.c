@@ -192,19 +192,20 @@ void divine_trade_runtime_ship_deleted(uint32_t ship_id)
 }
 void divine_trade_runtime_retire_pulse()
 {
-	if (pending || retired_ships.empty())
+	if (pending)
 		return;
 	for (auto &[account, book] : books)
 	{
-		if (!book.revision)
+		const auto dirty = dirty_owner.find(account);
+		const bool unowned = dirty != dirty_owner.end() && dirty->second == UINT32_MAX;
+		if (!book.revision || (retired_ships.empty() && !unowned))
 			continue;
 		const size_t old = book.lots.size();
 		if (book.revision == UINT64_MAX)
 			continue;
 		std::erase_if(book.lots,
 			      [&](const auto &lot) { return retired_ships.count(lot.ship_id); });
-		const auto dirty = dirty_owner.find(account);
-		if (old == book.lots.size() &&
+		if (old == book.lots.size() && !unowned &&
 		    (dirty == dirty_owner.end() || !retired_ships.count(dirty->second)))
 			continue;
 		if (old != book.lots.size())
@@ -239,11 +240,11 @@ const divine_trade_book &divine_trade_runtime_book(uint64_t account, uint64_t bo
 	const auto found = books.find(account);
 	return found == books.end() ? empty_book : found->second;
 }
-bool divine_trade_runtime_busy(const ShipData *ship)
+bool divine_trade_runtime_save_busy(const ShipData *ship)
 {
 	if (!ship)
 		return pending != nullptr;
-	if (!IS_NPC_SHIP(ship) && IS_SET(ship->flags, TO_DELETE | CUSTOMS_PENDING))
+	if (!IS_NPC_SHIP(ship) && IS_SET(ship->flags, TO_DELETE))
 		return true;
 	const auto id = static_cast<uint32_t>(ship->db_id);
 	const auto participants = ship_accounts.find(id);
@@ -257,6 +258,12 @@ bool divine_trade_runtime_busy(const ShipData *ship)
 				return true;
 		}
 	return pending && pending->after.ship_id == id;
+}
+
+bool divine_trade_runtime_busy(const ShipData *ship)
+{
+	return (ship && !IS_NPC_SHIP(ship) && IS_SET(ship->flags, CUSTOMS_PENDING)) ||
+	       divine_trade_runtime_save_busy(ship);
 }
 
 bool divine_trade_runtime_submit(P_char ch, P_ship ship, critical_operation_id operation,

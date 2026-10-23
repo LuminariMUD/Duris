@@ -39,6 +39,7 @@ FUNCTIONS = "\n\n".join(
 HARNESS = r'''#include "economy/divine_trade_runtime.h"
 static const ShipData *blocked_ship=nullptr;
 bool divine_trade_runtime_busy(const ShipData *ship) {return ship && ship==blocked_ship;}
+bool divine_trade_runtime_save_busy(const ShipData *ship) {return divine_trade_runtime_busy(ship);}
 std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t) {return {};}
 uint64_t divine_trade_runtime_ship_revision(uint32_t) {return 0;}
 void divine_trade_runtime_ship_saved(uint32_t) {}

@@ -542,6 +542,8 @@ int main()
 	assert(wallet(&alice.ch) == (std::array<int64_t, 4>{ 0, 2, 9, 0 }));
 	assert(trade_messages.find("You buy 1 crates of test cargo") != std::string::npos);
 
+	assert(divine_trade_runtime_busy(&ship) && !divine_trade_runtime_save_busy(&ship));
+	write_ship(&ship);
 	REMOVE_BIT(ship.flags, CUSTOMS_PENDING);
 	rooms[0].number = 111;
 	ship.slot[1].type = SLOT_CONTRABAND;
@@ -848,13 +850,16 @@ int main()
 	assert(recovered.lots.size() == 1 && recovered.lots[0].ship_id == 700 &&
 	       recovered.consumed == 4);
 	physical_ship_exists = true;
+	ship.db_id = 700;
+	ship.save_pending = false;
+	assert(divine_trade_runtime_busy(&ship));
+	divine_trade_runtime_retire_pulse();
+	assert(!divine_trade_runtime_busy(&ship) && ship.save_pending);
+	write_ship(&ship);
+	assert(!divine_trade_runtime_busy(&ship));
 	ship.db_id = 2;
 	ship.slot[0].clear();
 	ship.save_pending = false;
-	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
-					     divine_trade_goods::cargo));
-	assert(!divine_trade_runtime_busy() && ship.save_pending); // Records cleanup before buying.
-	write_ship(&ship);
 	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
 	complete();

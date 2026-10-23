@@ -4637,7 +4637,7 @@ bool sql_ship_write_pulse()
 /* Save one ship: its statements are one writer job. */
 bool sql_save_ship(P_ship ship)
 {
-	if (divine_trade_runtime_busy(ship))
+	if (divine_trade_runtime_save_busy(ship))
 		return false;
 	if (!ship || !ship->ownername)
 		return false;
