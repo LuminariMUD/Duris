@@ -36,6 +36,30 @@ int main()
                                              &decoded_result));
     assert(decoded_result.entries[0].boon_id == 5);
 
+    // Existing inbox/outbox and flat-file bytes remain readable. Only the SQL
+    // empty-result encoder emits version 2; nonempty results retain old bytes.
+    std::vector<uint8_t> compact;
+    assert(boon_reward_command_encode_result(boon_result, &compact));
+    assert(std::equal(compact.begin(), compact.end(), boon_bytes.begin()));
+    boon_result.entry_count = 0;
+    assert(boon_reward_command_encode_result(boon_result, &boon_bytes));
+    assert(boon_reward_command_decode_result(boon_bytes.data(), boon_bytes.size(),
+                                            &decoded_result));
+    assert(boon_reward_command_encode_result(boon_result, &compact));
+    assert(compact.size() == BOON_REWARD_EMPTY_RESULT_BYTES && compact[6] == 2);
+    assert(boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+    assert(decoded_result.pid == 42 && decoded_result.entry_count == 0);
+    for (size_t length = 0; length < compact.size(); ++length)
+        assert(!boon_reward_command_decode_result(compact.data(), length, &decoded_result));
+    compact[6] = 3;
+    assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+    compact[6] = 2;
+    compact[4] = 1;
+    assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+    compact[4] = 0;
+    compact[0] = 0;
+    assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
+
     boon_shop_payload shop = {42, 3};
     critical_command shop_command = {};
     assert(boon_shop_command_build(&shop_command, operation, shop));

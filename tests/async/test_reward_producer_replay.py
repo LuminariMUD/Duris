@@ -24,10 +24,14 @@ HARNESS = r'''
 #include "player/player_save_worker.h"
 #include "world/db.h"
 #include "core/utils.h"
+#include "sql/sql_async.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include <thread>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 P_room world = nullptr;
 zone_data *zone_table = nullptr;
@@ -37,6 +41,33 @@ static pc_only_data pcs[2] = {};
 static bool online[2] = { true, true };
 static unsigned int boon_publications = 0, combat_publications = 0, stone_publications = 0;
 static std::vector<critical_operation_id> artifact_parents;
+static bool allow_definition_read = false;
+static std::function<void(bool, const sql_rows &)> definition_read;
+static std::atomic<time_t> clock_offset{0};
+extern "C" int clock_gettime(clockid_t clock, timespec *value) noexcept
+{
+	const int result = syscall(SYS_clock_gettime, clock, value);
+	if (!result && clock == CLOCK_MONOTONIC)
+		value->tv_sec += clock_offset;
+	return result;
+}
+bool sql_read_at(persistence_query_site, std::string sql,
+		 std::function<void(bool, const sql_rows &)> done)
+{
+	assert(sql.find("FROM boons WHERE active=1") != std::string::npos);
+	if (!allow_definition_read)
+		return false;
+	assert(!definition_read);
+	definition_read = std::move(done);
+	return true;
+}
+static void definitions_ready(bool ok, const sql_rows &rows)
+{
+	assert(definition_read);
+	auto done = std::move(definition_read);
+	definition_read = {};
+	done(ok, rows);
+}
 P_char find_player_by_pid(int pid)
 {
 	for (size_t i = 0; i < 2; ++i)
@@ -156,6 +187,77 @@ static void replay()
 	combat_outcome_transaction_handle_completions(original.data(), original.size());
 	zone_touch_transaction_handle_completions(original.data(), original.size());
 }
+static void definition_view_checks()
+{
+	allow_definition_read = true;
+	const auto initial = boon_reward_transaction_health_copy();
+	const auto submitted = [] { return boon_reward_transaction_health_copy().submitted; };
+	const auto check = [] { assert(boon_reward_transaction_submit(&actors[0], nullptr, 51, BOPT_LEVEL)); };
+	const auto forwarded = [&] {
+		const auto before = submitted();
+		check();
+		assert(submitted() == before + 1);
+	};
+	const auto filtered = [&] {
+		const auto before = submitted();
+		check();
+		assert(submitted() == before);
+	};
+	forwarded(); // Missing and loading views use the canonical writer.
+	forwarded();
+	definitions_ready(true, {});
+	for (int i = 0; i < 100; ++i)
+		filtered();
+	const auto burst = boon_reward_transaction_health_copy();
+	assert(burst.checked - initial.checked == 102 && burst.submitted - initial.submitted == 2 &&
+	       burst.filtered - initial.filtered == 100);
+	puts("definition view burst: 102 checks, 2 cold/loading submissions, 100 filtered before ID allocation");
+	// A writer retry can apply after a newer view has already arrived.
+	std::thread writer_retry([] { boon_reward_definition_view_invalidate(); });
+	writer_retry.join();
+	forwarded();
+	definitions_ready(true, {});
+	boon_reward_definition_view_invalidate(); // An activation/edit invalidates now.
+	forwarded();
+	boon_reward_definition_view_invalidate();
+	definitions_ready(true, {}); // In-flight pre-edit read cannot restore negatives.
+	forwarded();
+	definitions_ready(true, { sql_row{ { "2", "2", "42" } } });
+	filtered(); // Side mismatch.
+	actors[0].player.racewar = 2;
+	forwarded(); // A changed side is evaluated from the current payload.
+	actors[0].player.racewar = RACEWAR_GOOD;
+	boon_reward_definition_view_invalidate();
+	forwarded();
+	definitions_ready(true, { sql_row{ { "2", "0", "99" } } });
+	filtered(); // Target mismatch.
+	boon_reward_definition_view_invalidate();
+	forwarded();
+	definitions_ready(true, { sql_row{ { "2", "0", "42" } } });
+	forwarded(); // Retargeted definition applies immediately after its fresh read.
+	boon_reward_definition_view_invalidate();
+	forwarded();
+	definitions_ready(true, { sql_row{ { "3", "0", "0" } } });
+	filtered(); // Another option cannot match.
+	clock_offset += 61;
+	forwarded(); // Expired negative view never drops an event.
+	definitions_ready(false, {});
+	forwarded(); // Read failure falls back.
+	definitions_ready(true, { sql_row{ { "2", "0" } } });
+	forwarded(); // An incomplete view falls back.
+	definitions_ready(true, sql_rows(100, sql_row{ { "3", "0", "0" } }));
+	forwarded(); // Truncated/oversize views cannot prove absence.
+	clock_offset += 61;
+	definitions_ready(true, {});
+	forwarded(); // A delayed response is already stale at arrival.
+	definitions_ready(true, {});
+	filtered();
+	boon_reward_definition_view_invalidate();
+	allow_definition_read = false;
+	forwarded(); // Refused asynchronous read falls back too.
+	assert(boon_reward_transaction_health_copy().definition_failures >= 4);
+	assert(critical_command_coordinator_drain(5000));
+}
 int main()
 {
 	for (size_t i = 0; i < 2; ++i)
@@ -228,6 +330,7 @@ int main()
 	zone_touch_transaction_player_ready(&actors[1]);
 	assert(stone_publications == 2 && artifact_parents.size() == 2 && pcs[1].epics == 8);
 	assert(boon_publications == 1 && combat_publications == 1);
+	definition_view_checks();
 	assert(persistence_writer_wait_idle(5000));
 	critical_command_coordinator_reset_for_tests();
 	player_save_worker_reset_for_tests();

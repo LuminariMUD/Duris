@@ -145,12 +145,36 @@ bool boon_reward_command_encode_result(const boon_reward_result &result,
 	return true;
 }
 
+bool boon_reward_command_encode_result(const boon_reward_result &result,
+				       std::vector<uint8_t> *encoded)
+{
+	if (!encoded || !result.pid)
+		return false;
+	if (!result.entry_count)
+	{
+		encoded->clear();
+		append_le<uint32_t>(encoded, result.pid);
+		append_le<uint16_t>(encoded, 0);
+		append_le<uint16_t>(encoded, 2); // Empty result format version.
+		return true;
+	}
+	std::array<uint8_t, BOON_REWARD_RESULT_BYTES> legacy;
+	if (!boon_reward_command_encode_result(result, &legacy))
+		return false;
+	encoded->assign(legacy.begin(), legacy.end());
+	return true;
+}
+
 bool boon_reward_command_decode_result(const uint8_t *encoded, size_t size,
 				       boon_reward_result *result)
 {
 	constexpr size_t HEADER = 8;
 	constexpr size_t ENTRY = 56;
-	if (!encoded || !result || size != BOON_REWARD_RESULT_BYTES)
+	if (!encoded || !result ||
+	    (size != BOON_REWARD_RESULT_BYTES && size != BOON_REWARD_EMPTY_RESULT_BYTES))
+		return false;
+	if (size == BOON_REWARD_EMPTY_RESULT_BYTES &&
+	    (encoded[4] || encoded[5] || encoded[6] != 2 || encoded[7]))
 		return false;
 	*result = {};
 	for (size_t byte = 0; byte < 4; ++byte)

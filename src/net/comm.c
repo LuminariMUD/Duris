@@ -247,6 +247,8 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 	for (size_t index = 0; index < count; ++index)
 	{
 		const auto &result = results[index];
+		if (result.job_id == maintenance_job_id::boon_scan)
+			boon_reward_definition_view_invalidate();
 		if (result.job_id == maintenance_job_id::cargo_market &&
 		    (result.outcome == maintenance_outcome::complete ||
 		     result.outcome == maintenance_outcome::permanent_failure))

@@ -21,8 +21,10 @@
 #include "core/prototypes.h"
 #include "magic/spells.h"
 #include "core/utils.h"
+#include "sql/sql_async.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <new>
 #include <string>
@@ -40,12 +42,74 @@ struct pending_reward
 
 std::unordered_map<std::string, pending_reward> pending;
 boon_reward_health health = {};
+sql_rows definitions;
+std::atomic<uint64_t> definition_generation{ 0 };
+uint64_t definitions_generation = 0;
+uint64_t definitions_read_at_msec = 0;
+bool definitions_available = false;
+bool definitions_loading = false;
+constexpr uint64_t DEFINITION_FRESH_MSEC = 60000;
 
 uint64_t monotonic_msec()
 {
 	return std::chrono::duration_cast<std::chrono::milliseconds>(
 		       std::chrono::steady_clock::now().time_since_epoch())
 		.count();
+}
+
+bool definition_may_match(const boon_reward_payload &payload)
+{
+	if (persistence_mode_get() != PERSISTENCE_MODE_MARIADB_PRIMARY)
+		return true;
+	const uint64_t now = monotonic_msec();
+	if (!definitions_available || definitions_generation != definition_generation.load() ||
+	    now - definitions_read_at_msec >= DEFINITION_FRESH_MSEC)
+	{
+		if (!definitions_loading)
+		{
+			definitions_loading = true;
+			const uint64_t generation = definition_generation.load();
+			if (!sql_read("SELECT opt,racewar,pid FROM boons WHERE active=1 LIMIT 100",
+				      [generation, now](bool ok, const sql_rows &rows)
+				      {
+					      definitions_loading = false;
+					      if (!ok || rows.size() > MAX_BOONS ||
+						  std::any_of(rows.begin(), rows.end(),
+							      [](const sql_row &row) {
+								      return !row[0] || !row[1] ||
+									     !row[2];
+							      }))
+					      {
+						      ++health.definition_failures;
+						      return;
+					      }
+					      if (generation != definition_generation.load())
+						      return;
+					      definitions = rows;
+					      definitions_read_at_msec = now;
+					      definitions_generation = generation;
+					      definitions_available = true;
+					      ++health.definition_refreshes;
+				      }))
+			{
+				definitions_loading = false;
+				++health.definition_failures;
+			}
+		}
+		// Never delay or discard an event while its view is missing or stale.
+		return true;
+	}
+	// Deliberately conservative: criteria and progress stay on the authoritative
+	// writer. Check the current payload's side and target, never a cached player.
+	return std::any_of(definitions.begin(), definitions.end(),
+			   [&payload](const sql_row &row)
+			   {
+				   return atoi(row[0]) == payload.option &&
+					  (!atoi(row[1]) || atoi(row[1]) == payload.racewar) &&
+					  (!strtoul(row[2], nullptr, 10) ||
+					   strtoul(row[2], nullptr, 10) == payload.pid);
+			   }) ||
+	       definitions_generation != definition_generation.load();
 }
 
 std::string operation_key(const critical_operation_id &operation_id)
@@ -104,6 +168,11 @@ bool publish_reward(P_char character, const critical_operation_id &operation_id,
 }
 } // namespace
 
+void boon_reward_definition_view_invalidate(void)
+{
+	++definition_generation;
+}
+
 bool boon_reward_transaction_submit(P_char character, P_char victim, double data, int option)
 {
 	if (!divine_boon_legacy_admissions_allowed())
@@ -128,6 +197,14 @@ bool boon_reward_transaction_submit(P_char character, P_char victim, double data
 			!affected_by_spell(victim, TAG_CONJURED_PET)) ||
 		       (IS_PC(victim) && GET_RACEWAR(character) != GET_RACEWAR(victim))))
 		payload.victim_flags |= 2;
+	++health.checked;
+	if (!definition_may_match(payload))
+	{
+		// This check has not generated or admitted an operation ID. All accepted
+		// IDs, including ambiguous retries, still go through the canonical writer.
+		++health.filtered;
+		return true;
+	}
 	critical_operation_id operation_id = {};
 	critical_command command = {};
 	if (!critical_operation_id_generate(&operation_id) ||
@@ -175,6 +252,8 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 			 completions[index].outcome == critical_apply_outcome::already_applied);
 		if (committed)
 		{
+			if (result.entry_count)
+				boon_reward_definition_view_invalidate();
 			P_char character = find_player_by_pid(found->second.pid);
 			if (character || found->second.published)
 			{
@@ -259,4 +338,8 @@ void boon_reward_transaction_reset_for_tests(void)
 {
 	pending.clear();
 	health = {};
+	boon_reward_definition_view_invalidate();
+	definitions_available = false;
+	definitions.clear();
+	definitions_loading = false;
 }
