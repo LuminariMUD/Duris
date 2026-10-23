@@ -40,6 +40,33 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — collector retirement and recovery view
+
+Branch `branch/issue-264-collector-reset`, based on PR #322 at `297045583`.
+Outcome: use existing `collector::reason::season_reset` cancellations through the
+normal audited critical repository. Candidates close; held stock moves to destroyed
+custody; record blobs, payloads, receipts and listing-ID allocation survive. Derive
+operation identity from reset epoch/listing. Preflight validates pending records and
+held payload/custody after writer drain, before advancing the epoch. Reset then
+commits each normal command; retry skips already-terminal rows. Normal bootstrap
+must omit terminal history whose beneficiary is retired, so protected old receipts
+do not consume the new season's bounded catalog. The reset scan needs pending rows
+across all owners, including deleted beneficiaries. Reuse the existing bootstrap,
+codec and command executor; no new store, binary offsets or un-audited status patch.
+Files: SQL orchestration, collector bootstrap query/header, existing native DB tests,
+manifest and runbook/plan. Proof: real candidate/held/paused records, destruction
+ledger, restart view, receipt/payload/ID retention, stale purchase refusal and failure/
+retry fencing. Positive native cases and the existing full SQL collector suite
+passed; the final matrix now includes real pre-reset purchase rejection, new-owner
+bootstrap, corrupt payload, delegated schema loss and partial cancellation/retry.
+Preflight reuses the existing runtime metadata fingerprint rather than duplicating
+all delegated writer column lists. The complete native matrix and existing SQL collector
+suite passed, together with the real writer/quiescence harness, reset-fence/reward
+contracts, 12 season-manifest and 14 lifecycle checks. MariaDB and flat-file development
+builds and the optimized MariaDB production build passed. Final review confirmed the
+authoritative cache accepts an equal-revision refresh when retired history disappears;
+no extra revision mechanism is needed. Publication remains; full readiness is open.
+
 ## Current continuation — retire active Divine Boons
 
 Branch `branch/issue-264-divine-reset`, stacked on kingdom PR #321 at `2640ae94d`

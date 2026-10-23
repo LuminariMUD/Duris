@@ -49,6 +49,8 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <new>
 #include <sys/wait.h>
 #include <spawn.h>
 #include <time.h>
@@ -66,6 +68,9 @@
 #include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
 #include "economy/boon.h"
+#include "economy/collector_repository.h"
+#include "economy/collector_purchase_preparation.h"
+#include "persistence/critical_command_repository.h"
 #include "economy/divine_boon_repository.h"
 #include "world/epic.h"
 #include "world/epic_zone_defaults.h"
@@ -3882,6 +3887,123 @@ bool sql_clear_zone_trophy()
 	return TRUE;
 }
 
+// One preparation path serves the read-only preflight and the fenced reset.
+// Use normal collector commands so custody, serialized records and receipts agree.
+static bool sql_reset_collector_state(bool apply)
+try
+{
+	collector_bootstrap_snapshot snapshot;
+	if (!collector_repository_read_bootstrap(DB, &snapshot, true))
+	{
+		logit(LOG_STATUS, "Collector reset: invalid bootstrap (error %d).", errno);
+		return false;
+	}
+	std::sort(snapshot.held_items.begin(), snapshot.held_items.end(),
+		  [](const auto &left, const auto &right)
+		  { return left.item_uid < right.item_uid; });
+	if (snapshot.catalog.records.size() > UINT64_MAX - snapshot.catalog.revision)
+		return false;
+	critical_operation_id parent = {};
+	std::copy_n("pwipe-co", 8, parent.bytes.begin());
+	for (size_t byte = 0; byte < sizeof(current_season_epoch); ++byte)
+		parent.bytes[8 + byte] = static_cast<uint8_t>(current_season_epoch >> (byte * 8));
+	for (const auto &entry : snapshot.catalog.records)
+	{
+		auto payload = std::make_unique<collector_command_payload>();
+		payload->action = collector_action::cancel;
+		payload->cancel_reason = collector::reason::season_reset;
+		payload->listing = entry.listing;
+		payload->expected_listing_revision = entry.revision;
+		payload->observed_at = static_cast<uint64_t>(time(nullptr));
+		if (entry.status != collector::state::candidate)
+		{
+			collector_listing_detail detail;
+			bool found = false;
+			player_item_snapshot item;
+			if (!collector_repository_read_listing(DB, entry.listing, &detail,
+							       &found) ||
+			    !found ||
+			    collector_listing_decode_item(entry, detail, &item) !=
+				    collector_listing_decode_outcome::decoded)
+			{
+				logit(LOG_STATUS,
+				      "Collector reset: invalid held item payload (error %d).",
+				      errno);
+				return false;
+			}
+			const auto held = std::lower_bound(snapshot.held_items.begin(),
+							   snapshot.held_items.end(), entry.uid,
+							   [](const auto &owner, uint64_t uid)
+							   { return owner.item_uid < uid; });
+			if (held == snapshot.held_items.end() || held->item_uid != entry.uid ||
+			    held->vnum != item.vnum)
+				return false;
+			MYSQL_RES *rows = db_query(
+				"SELECT COALESCE(MAX(revision),0) FROM item_owner_revision "
+				"WHERE owner_type=%u AND owner_id=0 AND owner_context_id=0",
+				static_cast<unsigned>(item_owner_type::destruction));
+			MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
+			char *end = nullptr;
+			errno = 0;
+			const uint64_t destruction_revision =
+				row && row[0] ? strtoull(row[0], &end, 10) : 0;
+			const bool valid = row && row[0] && end && !*end && !errno &&
+					   (apply ? 1 : snapshot.held_items.size()) <=
+						   UINT64_MAX - destruction_revision;
+			if (rows)
+				mysql_free_result(rows);
+			if (!valid)
+				return false;
+			payload->from_owner = held->owner;
+			payload->to_owner = { item_owner_type::destruction, 0, 0 };
+			payload->expected_from_owner_revision = held->owner_revision;
+			payload->expected_to_owner_revision = destruction_revision;
+			payload->selected_item_uid = entry.uid;
+			payload->target_state = item_custody_state::destroyed;
+			payload->item_count = 1;
+			payload->items[0] = {
+				held->item_uid,	     held->root_item_uid, held->parent_item_uid,
+				held->item_revision, held->vnum,	  held->state
+			};
+			payload->item_blob_size = static_cast<uint32_t>(detail.item_blob.size());
+			std::copy(detail.item_blob.begin(), detail.item_blob.end(),
+				  payload->item_blob.begin());
+		}
+		critical_operation_id operation;
+		critical_command command;
+		if (!critical_operation_id_derive(
+			    parent, static_cast<uint32_t>(critical_command_type::collector),
+			    entry.listing, &operation) ||
+		    !collector_command_build(&command, operation, *payload,
+					     critical_source_site::operator_repair,
+					     critical_deadline_class::recovery))
+			return false;
+		if (!apply)
+			continue;
+		struct timeval accepted;
+		if (gettimeofday(&accepted, nullptr) != 0)
+			return false;
+		command.accepted_at_usec = static_cast<uint64_t>(accepted.tv_sec) * 1000000 +
+					   static_cast<uint64_t>(accepted.tv_usec);
+		const auto result = critical_command_repository_apply(DB, command);
+		if ((result.outcome != critical_apply_outcome::applied &&
+		     result.outcome != critical_apply_outcome::already_applied) ||
+		    result.error_code)
+		{
+			logit(LOG_STATUS,
+			      "Collector reset: cancellation failed at listing %llu (outcome %u, error %u).",
+			      static_cast<unsigned long long>(entry.listing),
+			      static_cast<unsigned>(result.outcome), result.error_code);
+			return false;
+		}
+	}
+	return true;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
+}
+
 /* Verify every runtime table and column referenced by sql_pwipe() before the
  * first destructive statement.  This must describe final runtime schema, not
  * migration-only helper tables. */
@@ -3917,6 +4039,12 @@ bool sql_verify_pwipe_manifest(void)
 					      "corpse_item_extra_descr",
 					      "corpse_items",
 					      "corpses",
+					      "collector_catalog_state",
+					      "collector_deaths",
+					      "collector_listings",
+					      "collector_ledger",
+					      "item_current_owner",
+					      "item_owner_revision",
 					      "ctf_data",
 					      "epic_bonus",
 					      "epic_gain",
@@ -4244,7 +4372,7 @@ bool sql_pwipe(int code_verify)
 		/* -- Preflight: verify critical tables exist and have correct engines -- */
 		logit(LOG_DEBUG, "sql_pwipe: Preflight schema check... .. .");
 		send_to_all("Preflight schema check... .. .");
-		if (!sql_verify_persistence_schema())
+		if (!sql_verify_metadata_fingerprint() || !sql_verify_persistence_schema())
 		{
 			logit(LOG_DEBUG,
 			      "sql_pwipe: Preflight failed: persistence schema incomplete.");
@@ -4305,6 +4433,14 @@ bool sql_pwipe(int code_verify)
 			return FALSE;
 		}
 
+		if (!sql_reset_collector_state(false))
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Collector retirement preflight failed; old season remains active.");
+			pwipe_resume_writers();
+			return FALSE;
+		}
+
 		if (!sql_begin_pwipe_epoch())
 		{
 			logit(LOG_DEBUG,
@@ -4316,6 +4452,12 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "  success!");
 		send_to_all("  success!\n");
+		if (!sql_reset_collector_state(true))
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Collector retirement failed; reset remains fenced.");
+			return FALSE;
+		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing zone alignments, trophy and touches... .. .");
 		send_to_all("Clearing zone alignments, trophy and touches... .. .");
 		// The shared writer is fenced: reset through the owning SQL connection.

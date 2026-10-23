@@ -1525,13 +1525,18 @@ bool collector_repository_enroll_death(MYSQL *connection, const collector_death_
 	return true;
 }
 
-bool collector_repository_read_bootstrap(MYSQL *connection, collector_bootstrap_snapshot *snapshot)
+bool collector_repository_read_bootstrap(MYSQL *connection, collector_bootstrap_snapshot *snapshot,
+					 bool pending_only)
 {
 	static_assert(collector::catalog_max_records == 262144,
 		      "update the bounded collector catalog query when its limit changes");
 	static_assert(static_cast<unsigned int>(item_owner_type::collector) == 10,
 		      "update the collector bootstrap ownership predicate");
-	static const char QUERY[] =
+	const std::string listing_scope =
+		pending_only ?
+			"l.status BETWEEN 1 AND 3" :
+			"(l.status BETWEEN 1 AND 3 OR EXISTS (SELECT 1 FROM player_data p WHERE p.pid=l.beneficiary_pid AND p.active=1))";
+	const std::string QUERY =
 		"SELECT s.catalog_revision,s.next_listing,l.listing_id,"
 		"HEX(l.death_operation_id),l.beneficiary_pid,l.item_uid,l.status,"
 		"l.holding_paused,l.due_at,l.due_at IS NULL,l.listing_revision,"
@@ -1539,15 +1544,23 @@ bool collector_repository_read_bootstrap(MYSQL *connection, collector_bootstrap_
 		"o.parent_item_uid,o.owner_type,o.owner_id,o.owner_context_id,o.item_revision,"
 		"o.vnum,o.state,r.revision,h.held_count FROM collector_catalog_state s "
 		"CROSS JOIN (SELECT COUNT(*) held_count FROM item_current_owner WHERE owner_type=10) h "
-		"LEFT JOIN collector_listings l ON TRUE LEFT JOIN item_current_owner o "
+		"LEFT JOIN collector_listings l ON " +
+		listing_scope +
+		" LEFT JOIN item_current_owner o "
 		"ON o.item_uid=l.item_uid AND o.owner_type=10 LEFT JOIN item_owner_revision r "
 		"ON r.owner_type=o.owner_type AND r.owner_id=o.owner_id "
 		"AND r.owner_context_id=o.owner_context_id "
 		"WHERE s.state_id=1 ORDER BY l.listing_id LIMIT 262145";
-	static const char DEATH_QUERY[] =
+	const std::string DEATH_QUERY =
 		"SELECT HEX(death_operation_id),beneficiary_pid,death_time,collection_delay,"
 		"sale_delay,holding_duration,price_percent,minimum_value,hint_state,hint_revision "
-		"FROM collector_deaths ORDER BY beneficiary_pid,death_time,death_operation_id "
+		"FROM collector_deaths d WHERE " +
+		std::string(
+			pending_only ?
+				"" :
+				"EXISTS (SELECT 1 FROM player_data p WHERE p.pid=d.beneficiary_pid AND p.active=1) OR ") +
+		"EXISTS (SELECT 1 FROM collector_listings l WHERE l.death_operation_id=d.death_operation_id AND l.status BETWEEN 1 AND 3) "
+		"ORDER BY beneficiary_pid,death_time,death_operation_id "
 		"LIMIT 262145";
 	if (!connection || !snapshot)
 	{

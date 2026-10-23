@@ -43,7 +43,10 @@ bool collector_repository_read_catalog(MYSQL *connection, collector::catalog *ca
 // The restart path additionally reads and validates the exact collector-held
 // custody authority in the same statement snapshot. On failure, snapshot is
 // unchanged.
-bool collector_repository_read_bootstrap(MYSQL *connection, collector_bootstrap_snapshot *snapshot);
+// Reset preparation scans only pending records, including retired beneficiaries.
+// Normal recovery also keeps terminal records for current characters.
+bool collector_repository_read_bootstrap(MYSQL *connection, collector_bootstrap_snapshot *snapshot,
+					 bool pending_only = false);
 
 // Bounded, non-locking detail read for an asynchronous inspect/buy preparation.
 // Not-found is a successful read with found=false. On failure, detail and found

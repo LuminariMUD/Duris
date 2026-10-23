@@ -225,6 +225,15 @@ cargo allowance's boon ID. Snapshot validation precedes the irreversible boundar
 a failed durable retirement leaves the reset fenced. Protected cargo receipts/books
 are retained; their recovery isolation is qualified separately.
 
+Collector candidates and held stock close through the normal audited season-reset
+cancellation. Held items move to destroyed custody; listing records, payloads,
+receipts and increasing listing IDs remain as history. Normal recovery excludes
+terminal history belonging to retired characters, so it cannot fill the new catalog
+or sell old stock. Preflight validates pending records/payloads after writer drain.
+A failed cancellation leaves the reset fenced; retry skips already-closed listings.
+The full existing runtime schema fingerprint is rechecked before the boundary,
+including columns used by delegated ledger/custody writers.
+
 Reward policy uses the durable reset start time and validates the current resetting
 epoch. Grant changes and their policy timestamp commit together, so retrying an
 unfinished reset cannot decrement grants again, even months later or after a lost
