@@ -53,6 +53,7 @@ struct trade_operation
 	bool trader_completed = false;
 	bool warship = false, seadog = false, diplomat = false;
 	std::string audit;
+	std::string receipt;
 };
 std::unique_ptr<trade_operation> pending;
 P_char player(uint32_t pid)
@@ -184,6 +185,15 @@ try
 			 buying ? after.item_index : before.index, static_cast<long long>(quantity),
 			 static_cast<long long>(buying ? -prepared.payment : before.val1));
 		next->audit += record;
+		if (buying)
+		{
+			snprintf(record, sizeof(record), "You buy %lld crates of %s for %s.\r\n",
+				 static_cast<long long>(quantity),
+				 cargo ? cargo_type_name(after.item_index) :
+					 contra_type_name(after.item_index),
+				 coin_stringv(static_cast<int>(-prepared.payment)));
+			next->receipt += record;
+		}
 	}
 	// Allocate the publication destination before handing the immutable command off.
 	books.try_emplace(next->after.book_after.account);
@@ -343,6 +353,7 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 								 PLAYER_COMPONENT_AFFECTS) :
 							 player_component_mask_t{ 0 }),
 					RENT_CRASH, NOWHERE);
+				send_to_char(pending->receipt.c_str(), ch);
 				send_to_char_f(ch, "Your cargo trade is complete: %s %s.\r\n",
 					       p.payment < 0 ? "paid" : "received",
 					       coin_stringv(static_cast<int>(
@@ -517,6 +528,8 @@ try
 	payload.wallet_revision = ch->only.pc->wallet_revision;
 	payload.admitted_at = now;
 	double ordinary = 0, extra = 0;
+	std::string receipt;
+	int64_t receipt_total = 0;
 	uint64_t cargo_count = 0;
 	for (int slot = 0; slot < MAXSLOTS; ++slot)
 	{
@@ -565,6 +578,21 @@ try
 				     1.1 :
 				     1.0);
 		extra += static_cast<double>(consumed.qualifying_quantity) * unit * .25 * penalty;
+		const double cumulative = std::floor(
+			check_nexus_bonus_precise(ch, ordinary, NEXUS_BONUS_CARGO, false) + extra);
+		if (!std::isfinite(cumulative) || cumulative < 0 || cumulative > INT32_MAX)
+			return true;
+		const int64_t proceeds = static_cast<int64_t>(cumulative) - receipt_total;
+		receipt_total = static_cast<int64_t>(cumulative);
+		const int64_t profit = live.val1 > 0 ? (proceeds - live.val1) * 100 / live.val1 : 0;
+		char line[512];
+		snprintf(line, sizeof(line),
+			 "You sell %d crates of %s for %s, making %lld%% profit.\r\n", live.val0,
+			 goods == divine_trade_goods::cargo ? cargo_type_name(live.index) :
+							      contra_type_name(live.index),
+			 coin_stringv(static_cast<int>(proceeds)), static_cast<long long>(profit));
+		receipt += line;
+
 		const auto adjusted = cargo_trade_prepare_cell(
 			goods == divine_trade_goods::cargo ? SOLD_CARGO : SOLD_CONTRA, port,
 			live.index, live.val0,
@@ -633,6 +661,7 @@ try
 		send_to_char("The merchants cannot settle this trade right now.\r\n", ch);
 	else
 	{
+		pending->receipt = std::move(receipt);
 		pending->trader_completed = trader_completed;
 		pending->nexus_bonus =
 			static_cast<int>(std::max(0.0, std::floor(normal) - std::floor(ordinary)));

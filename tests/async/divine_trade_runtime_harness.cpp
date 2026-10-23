@@ -268,6 +268,14 @@ void send_to_char_f(P_char, const char *format, ...)
 	va_end(args);
 	trade_messages += text;
 }
+const char *cargo_type_name(int)
+{
+	return "test cargo";
+}
+const char *contra_type_name(int)
+{
+	return "test contraband";
+}
 char *coin_stringv(int, int)
 {
 	static char coins[] = "coins";
@@ -405,6 +413,7 @@ int main()
 					     divine_trade_goods::cargo));
 	assert(divine_trade_runtime_busy(&ship) && capture_reserved && ship.slot[0].val0 == 9 &&
 	       GET_COPPER(&alice.ch) == 1000);
+	assert(trade_messages.find("You buy") == std::string::npos);
 	auto buy = prepared();
 	assert(buy.book_after.lots.size() == 1 && buy.book_after.first_full_hold == 10);
 	assert(captured_trade.operation == retained.operation_id.bytes &&
@@ -425,6 +434,7 @@ int main()
 	assert(GET_MONEY(&alice.ch) == 920 && alice.pc.wallet_revision == 2 &&
 	       market_generation == 1);
 	assert(wallet(&alice.ch) == (std::array<int64_t, 4>{ 0, 2, 9, 0 }));
+	assert(trade_messages.find("You buy 1 crates of test cargo") != std::string::npos);
 	affected_type progress{};
 	progress.type = PLAYER_TRADE_CARGO_AFFECT;
 	progress.modifier = 9995;
@@ -446,6 +456,8 @@ int main()
 	       10005);
 	assert(trade_messages.find("Trader") != std::string::npos &&
 	       trade_messages.find("Enlil") != std::string::npos);
+	assert(trade_messages.find("You sell 10 crates of test cargo") != std::string::npos &&
+	       trade_messages.find("35% profit") != std::string::npos);
 	const auto paid_messages = trade_messages;
 	complete();
 	assert(trade_messages == paid_messages);
