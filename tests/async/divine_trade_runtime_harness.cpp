@@ -1,6 +1,7 @@
 #include <cstdarg>
 
 #include "core/utils.h"
+#include "net/comm.h"
 #include "economy/currency_transaction.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_save_pipeline.h"
@@ -296,8 +297,66 @@ static void complete(bool committed = true)
 	divine_trade_runtime_completions(&completion, 1);
 	divine_trade_runtime_completions(&completion, 1); // duplicate publication is harmless
 }
+bool ac_can_see(P_char, P_char, bool)
+{
+	return true;
+}
+int IS_MORPH(P_char)
+{
+	return false;
+}
+void ADD_MONEY(P_char, int)
+{
+	abort();
+}
+int SUB_MONEY(P_char, int, int)
+{
+	abort();
+}
+void act(const char *, int, P_char, P_obj, void *, int) {}
+void half_chop(char *argument, char *first, char *second)
+{
+	sscanf(argument, "%s %s", first, second);
+}
+int coin_type(char *name)
+{
+	return !strcmp(name, "copper") ? 0 : -1;
+}
+extern const char *coin_names[];
+const char *coin_names[] = { "copper", "silver", "gold", "platinum" };
+
+// SPLIT_FUNCTIONS
+
+static void split_reservation_case()
+{
+	currency_transaction_reset_for_tests();
+	struct player donor(44), recipient(45);
+	group_list members[2] = { { &donor.ch, &members[1] }, { &recipient.ch, nullptr } };
+	donor.ch.group = members;
+	donor.ch.in_room = recipient.ch.in_room = 1;
+	GET_COPPER(&donor.ch) = 150;
+	GET_COPPER(&recipient.ch) = 10;
+	assert(currency_transaction_reserve_trade(&donor.ch, -100));
+	char command[] = "150 copper";
+	do_split(&donor.ch, command, 0);
+	assert(GET_MONEY(&donor.ch) == 150 && GET_MONEY(&recipient.ch) == 10);
+	currency_transaction_release_trade(44);
+	do_split(&donor.ch, command, 0);
+	assert(GET_MONEY(&donor.ch) == 75 && GET_MONEY(&recipient.ch) == 85);
+	// A recipient's reserved sale can refuse an otherwise valid credit.
+	GET_COPPER(&donor.ch) = 150;
+	GET_SILVER(&donor.ch) = GET_GOLD(&donor.ch) = GET_PLATINUM(&donor.ch) = 0;
+	GET_COPPER(&recipient.ch) = GET_SILVER(&recipient.ch) = GET_GOLD(&recipient.ch) =
+		GET_PLATINUM(&recipient.ch) = INT_MAX;
+	assert(currency_transaction_reserve_trade(&recipient.ch, 0));
+	do_split(&donor.ch, command, 0);
+	assert(GET_MONEY(&donor.ch) == 150);
+	currency_transaction_release_trade(45);
+}
+
 int main()
 {
+	split_reservation_case();
 	struct player alice(44);
 	character_list = &alice.ch;
 	GET_COPPER(&alice.ch) = 1000;
