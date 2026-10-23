@@ -207,6 +207,21 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 							    original.epic_spill_blood;
 			}
 		}
+		const bool durable =
+			completions[index].outcome == critical_apply_outcome::applied ||
+			completions[index].outcome == critical_apply_outcome::already_applied;
+		if (durable && !committed)
+		{
+			// This command co-committed its immutable children. Their native
+			// checks still prove delivery independently of this malformed result.
+			artifact_guild_delivery_complete(found->second.payload.artifact_deliveries,
+							 true);
+			++health.malformed_completions;
+			persistence_alert(AVATAR, "combat_outcome", "redacted", "none", "none",
+					  "committed_receipt_retained", "error=%u",
+					  completions[index].error_code);
+			continue; // A valid completion or restart can recover the original parent.
+		}
 		if (committed ||
 		    (completions[index].outcome != critical_apply_outcome::applied &&
 		     completions[index].outcome != critical_apply_outcome::already_applied))

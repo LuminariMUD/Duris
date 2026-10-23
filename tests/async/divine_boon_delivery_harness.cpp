@@ -450,6 +450,11 @@ int main()
 	assert(pc.epics == 100 && artifact_effects == artifacts_before_rejection);
 	assert(combat_outcome_transaction_submit(payload, nullptr, &admitted));
 	assert(pc.epics == 100 && pc.divine_boon_delivery_seq == 0);
+	critical_completion malformed{};
+	malformed.operation_id = admitted;
+	malformed.outcome = critical_apply_outcome::applied;
+	combat_outcome_transaction_handle_completions(&malformed, 1);
+	assert(combat_outcome_transaction_health_copy().pending == 1 && pc.epics == 100);
 	outcome.participants[0].epic_revision = 1;
 	assert(combat_outcome_command_encode_result(outcome, &bytes));
 	critical_completion completion = {};
