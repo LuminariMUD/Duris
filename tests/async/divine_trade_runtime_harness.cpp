@@ -619,6 +619,9 @@ int main()
 	const auto paid_messages = trade_messages;
 	complete();
 	assert(trade_messages == paid_messages);
+	assert(trade_messages.find("Trader", trade_messages.find("Trader") + 1) ==
+	       std::string::npos);
+	assert(trade_messages.find("Enlil", trade_messages.find("Enlil") + 1) == std::string::npos);
 	nexus_multiplier = 1;
 	route_open = true;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
@@ -907,6 +910,33 @@ int main()
 	complete();
 	assert(divine_trade_runtime_book(orphan.account, 17).first_full_hold == 10 &&
 	       divine_trade_runtime_book(orphan.account, 17).consumed == 4);
+
+	// An unexpected raw wallet mutation must not publish free cargo or drop
+	// reservations. Reconcile the same receipt after the purse becomes payable.
+	boot_books.clear();
+	boon.id = 99;
+	assert(divine_trade_runtime_boot(99));
+	ship.slot[0].clear();
+	ship.save_pending = false;
+	GET_COPPER(&restored.ch) = 100;
+	GET_SILVER(&restored.ch) = GET_GOLD(&restored.ch) = GET_PLATINUM(&restored.ch) = 0;
+	const auto generation_before_wallet_fault = market_generation;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	GET_COPPER(&restored.ch) = 0;
+	complete();
+	assert(divine_trade_runtime_busy() && capture_reserved && ship.slot[0].type == SLOT_EMPTY &&
+	       market_generation == generation_before_wallet_fault);
+	assert(currency_transaction_submit_wallet_value(
+		&restored.ch, 100, currency_reason_type::wallet_reward, 0,
+		critical_source_site::command, critical_deadline_class::interactive, completion,
+		nullptr, 0));
+	divine_trade_runtime_reconcile();
+	divine_trade_runtime_reconcile();
+	assert(!divine_trade_runtime_busy() && !capture_reserved &&
+	       ship.slot[0].type == SLOT_CARGO && ship.slot[0].val0 == 1 &&
+	       GET_MONEY(&restored.ch) == 0 &&
+	       market_generation == generation_before_wallet_fault + 1);
 
 	while (alice.ch.affected)
 	{

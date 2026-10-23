@@ -544,12 +544,34 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 		}
 		if (committed)
 		{
+			if (ch && ch->only.pc->divine_trade_payment_pending)
+			{
+				currency_vector before, payable;
+				before.amount = { GET_COPPER(ch), GET_SILVER(ch), GET_GOLD(ch),
+						  GET_PLATINUM(ch) };
+				if (ch->only.pc->wallet_revision == UINT64_MAX ||
+				    !currency_wallet_after_value(before, p.payment, &payable))
+				{
+					logit(LOG_SHIP, "Divine wallet publication fenced pid=%u",
+					      p.pid);
+					pending->needs_reconcile = true;
+					pending->verified = false;
+					continue;
+				}
+			}
 			if (!(pending->verified ?
 				      cargo_trade_reconcile(p.generation + 1, p.market_after) :
 				      cargo_trade_publish(p.generation, p.market_after)))
 			{
 				logit(LOG_SHIP, "Divine market publication mismatch ship=%u",
 				      p.ship_id);
+				pending->needs_reconcile = true;
+				pending->verified = false;
+				continue;
+			}
+			if (ch && ch->only.pc->divine_trade_payment_pending &&
+			    !currency_transaction_publish_trade(ch, p.payment))
+			{
 				pending->needs_reconcile = true;
 				pending->verified = false;
 				continue;
@@ -586,9 +608,6 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 			if (ch && ch->only.pc->divine_trade_payment_pending)
 			{
 				ch->only.pc->divine_trade_payment_pending = false;
-				if (!currency_transaction_publish_trade(ch, p.payment))
-					logit(LOG_SHIP, "Divine wallet publication mismatch pid=%u",
-					      p.pid);
 				if (p.has_cargo_effect)
 				{
 					auto *effect =
