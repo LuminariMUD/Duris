@@ -15,6 +15,7 @@ rewards = body[body.index('if (!account_bound_rewards_on_successful_pwipe())'):]
 assert rewards.index('return FALSE;') < rewards.index('sql_prepare_pwipe_filesystem()')
 assert '{ "player_data", "learned_flight_stops" }' in source
 assert 'UPDATE player_data SET active = 0, learned_flight_stops = 0' in body
-assert 'WHERE active = 1 OR learned_flight_stops <> 0' in body
+assert 'Only clean, recreated Overlords may be active.' in body
+assert 'WHERE learned_flight_stops <> 0 OR ' in body
 
 print("sql pwipe completion reporting checks passed")

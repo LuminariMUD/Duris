@@ -159,6 +159,27 @@ All 14 lifecycle and 12 season-manifest checks passed, as did the standalone
 validator (200/30/42), both backend incremental builds and `git diff --check`.
 No production operations.
 
+### Exact level-62 Overlord recreation (stacked after PR #312)
+
+PR #312: https://github.com/LuminariMUD/Duris/pull/312 at `d8919da5f`, review-ready.
+Outcome: recreate only current exact level-62 staff under the same accounts/names,
+with new monotonic PIDs and clean progression/assets. In one transaction snapshot
+only their identity/physical template, retire all old rows under reserved `~pwipe-PID`
+names, insert clean staff and opening baselines, and restore only those account links.
+Retired SQL history stays inactive; names become available without reusing ledger IDs.
+Clear old summon-to-body links independently of the 28-day grant-decrement guard.
+No durable table/framework or old inventory/preferences copy is needed. Files: SQL,
+existing native DB journey/source contract and runbook. Proof: extend the actual SQL
+journey with levels 56/61/62/63, new identity/baseline/zero assets/name reuse; full login
+proof and replay isolation still belong to W6/W4. The native SQL journey passed
+exact-level selection, clean fresh identities/baselines, account mapping and mortal
+name reuse; an injected mid-recreation SQL failure rolled back the entire roster
+and left the SQL fence in place. Both backend builds and focused source/lifecycle
+checks passed (14 lifecycle tests, 12 manifest checks plus SQL/fence/writer tests).
+The final test extension also removes a required recreation column and proves a
+pre-boundary refusal with unchanged epoch. Publication awaits that focused result
+and commit hooks.
+
 ## What the code currently does
 
 These are baseline observations, not claims that every failure has been reproduced.

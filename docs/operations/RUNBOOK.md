@@ -205,8 +205,14 @@ Reset policy confirmed by the owner for #264: every account-bank balance resets,
 including staff and every racewar side. Bank rows are deleted without resetting
 their allocator; accounts, credentials and donation history survive. Retained bank
 ledger/baseline evidence keeps old bank IDs and cannot become a new bank's opening
-balance. Only exact level-62 Overlords are to be recreated; that recreation remains
-an unimplemented readiness gate until its own executable proof is recorded.
+balance. Only current exact level-62 Overlords are recreated under the same account
+and name, with new PIDs, clean progression/currency, empty items/skills and fresh
+opening baselines. Other characters and staff are retired. Their rows remain inactive
+under reserved `~pwipe-PID` names, releasing ordinary names for the new season.
+The roster change is one transaction: failure rolls back name/account/body changes
+and retains the incomplete-reset fence. Old summon links are cleared every reset,
+independently of the 28-day grant-decrement policy. Full staff login/gameplay proof
+and persistent replay isolation are still issue #264 readiness gates.
 
 Before the boundary, the server checks `wipe_it_all --check` along with its existing
 schema/Redis checks. Missing artifacts, unexpected store symlinks/types and denied
