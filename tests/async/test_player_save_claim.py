@@ -21,7 +21,8 @@ DATABASE_TESTS = (ROOT / "tests/run_db_tests.sh").read_text()
 
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
-    "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
+    "flatfile_item_repository.c",
+    "divine_trade.c", "divine_trade_command.c", "divine_trade_flatfile.c", "flatfile_cargo_repository.c", "flatfile_ship_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
     "collector_command.c", "collector_codec.c", "collector_policy.c",
     "flatfile_player_snapshot_file.c",
     "flatfile_locker_repository.c", "flatfile_world_item_repository.c",

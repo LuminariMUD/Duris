@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory(prefix="divine-trade-", dir=output_root) as dir
          "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
          "-ffunction-sections", "-fdata-sections", "-Isrc",
          "tests/async/divine_trade_harness.cpp", "src/economy/divine_trade.c",
+         "src/economy/divine_trade_command.c",
          "src/persistence/critical_command.c", str(HARNESS_STUBS),
          "-Wl,--gc-sections", "-lcrypto", "-o", binary], cwd=ROOT, check=True,
     )

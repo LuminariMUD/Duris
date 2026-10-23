@@ -2,6 +2,7 @@
 // MariaDB storage for players, accounts, lockers, corpses, shopkeepers and saved items
 
 #include "core/prototypes.h"
+#include <cmath>
 #include "core/structs.h"
 #include "net/comm.h"
 #include "net/output_preference_codec.h"
@@ -4533,12 +4534,15 @@ static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 		"values (%d, %d, %d, %d, %d, %d, %d, %d) "
 		"on duplicate key update crew_index=%d, sail_skill=%d, guns_skill=%d, rpar_skill=%d, "
 		"sail_chief=%d, guns_chief=%d, rpar_chief=%d",
-		ship->db_id, ship->crew.index, (int)(ship->crew.sail_skill * 1000),
-		(int)(ship->crew.guns_skill * 1000), (int)(ship->crew.rpar_skill * 1000),
-		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief,
-		ship->crew.index, (int)(ship->crew.sail_skill * 1000),
-		(int)(ship->crew.guns_skill * 1000), (int)(ship->crew.rpar_skill * 1000),
-		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief));
+		ship->db_id, ship->crew.index,
+		static_cast<int>(std::lround(ship->crew.sail_skill * 1000)),
+		static_cast<int>(std::lround(ship->crew.guns_skill * 1000)),
+		static_cast<int>(std::lround(ship->crew.rpar_skill * 1000)), ship->crew.sail_chief,
+		ship->crew.guns_chief, ship->crew.rpar_chief, ship->crew.index,
+		static_cast<int>(std::lround(ship->crew.sail_skill * 1000)),
+		static_cast<int>(std::lround(ship->crew.guns_skill * 1000)),
+		static_cast<int>(std::lround(ship->crew.rpar_skill * 1000)), ship->crew.sail_chief,
+		ship->crew.guns_chief, ship->crew.rpar_chief));
 	for (int i = 0; i < MAXSLOTS; i++)
 		statements.push_back(sql_format(
 			"insert into ship_slots (ship_id, slot_index, slot_type, item_index, position, "
@@ -4689,6 +4693,10 @@ P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 		return NULL;
 	}
 
+	const auto raw_sail = ship->crew.sail_skill;
+	const auto raw_guns = ship->crew.guns_skill;
+	const auto raw_repair = ship->crew.rpar_skill;
+
 	name_ship(ship->name, ship);
 	if (!load_ship(ship, real_room0(ship->anchor)))
 	{
@@ -4705,6 +4713,12 @@ P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 	reset_crew_stamina(ship);
 	set_ship_armor(ship, false);
 	update_ship_status(ship);
+	if (ship->crew.sail_skill != raw_sail || ship->crew.guns_skill != raw_guns ||
+	    ship->crew.rpar_skill != raw_repair)
+	{
+		ship->save_saved_signature = 0;
+		queue_ship_save(ship, "normalized loaded crew");
+	}
 	stored_ships.erase(stored);
 	return ship;
 }

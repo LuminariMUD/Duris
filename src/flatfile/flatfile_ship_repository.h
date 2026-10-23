@@ -30,7 +30,14 @@ struct flatfile_ship_slot_record
 	int32_t position = 0;
 	int32_t timer = 0;
 	std::array<int32_t, 5> values = {};
+	bool operator==(const flatfile_ship_slot_record &) const = default;
 };
+
+// Missing legacy slot rows materialize through ShipSlot::clear() in both loaders.
+inline flatfile_ship_slot_record flatfile_ship_empty_slot(uint8_t index)
+{
+	return { index, 0, -1, -1, 0, { -1, -1, -1, -1, -1 } };
+}
 
 struct flatfile_ship_crew_record
 {
@@ -41,6 +48,7 @@ struct flatfile_ship_crew_record
 	int32_t sail_chief = 0;
 	int32_t guns_chief = 0;
 	int32_t repair_chief = 0;
+	bool operator==(const flatfile_ship_crew_record &) const = default;
 };
 
 struct flatfile_ship_record
@@ -86,6 +94,15 @@ flatfile_ship_result flatfile_ship_list(const std::string &root,
 					std::string *error);
 flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship,
 					  std::string *error);
+// Caller owns the authority lock and commits this catalogue after-image with
+// the prepared player, market, account allowance and command receipt.
+flatfile_ship_result flatfile_ship_prepare_trade(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t ship_id,
+	uint32_t owner_pid, const std::vector<flatfile_ship_slot_record> &before_slots,
+	const flatfile_ship_crew_record &before_crew,
+	const std::vector<flatfile_ship_slot_record> &slots, const flatfile_ship_crew_record &crew,
+	flatfile_authority_operation *operation, std::string *error);
+
 flatfile_ship_result flatfile_ship_remove(const std::string &root, uint32_t ship_id,
 					  const std::string &expected_owner, std::string *error);
 flatfile_ship_result flatfile_ship_import_legacy(const std::string &root,

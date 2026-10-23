@@ -533,6 +533,15 @@ static bool flat_ship_materialize(const flatfile_ship_record &record, std::strin
 	ship->save_pending = false;
 	ship->save_retry_after = 0;
 	ship->save_saved_signature = ship_save_signature(ship);
+	if (ship->crew.sail_skill != record.crew.sail_skill_milli / 1000.0f ||
+	    ship->crew.guns_skill != record.crew.guns_skill_milli / 1000.0f ||
+	    ship->crew.rpar_skill != record.crew.repair_skill_milli / 1000.0f)
+	{
+		// update_crew raises old records to the crew's native minimums. Persist
+		// that materialized state before a prepared trade relies on its preimage.
+		ship->save_saved_signature = 0;
+		queue_ship_save(ship, "normalized loaded crew");
+	}
 	return true;
 }
 #endif

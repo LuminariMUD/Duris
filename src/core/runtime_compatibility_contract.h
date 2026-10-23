@@ -22,7 +22,7 @@ constexpr const char *RUNTIME_BASELINE_ID = "duris-schema-2026-08-27-session11";
 constexpr const char *RUNTIME_BASELINE_FINGERPRINT =
 	"db13d7a42bf82bcbd32bac8d83224913c755fefd000ade6d4e798b1bd4f494dd";
 constexpr unsigned RUNTIME_BASELINE_TABLE_COUNT = 170;
-constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 199;
+constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 200;
 constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'account_banks','account_bound_reward_pwipe_state','account_bound_reward_summons',"
 	"'account_bound_rewards','account_characters','account_erasure_evidence',"
@@ -40,7 +40,7 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'combat_outcome','combat_outcome_participant','corpse_catalog_state','corpse_item_affects',"
 	"'corpse_item_extra_descr','corpse_items','corpses','critical_operation_inbox','critical_outbox',"
 	"'critical_outbox_delivery_dedupe','critical_test_state','ctf_data','currency_bank_baseline',"
-	"'currency_ledger','currency_wallet_baseline','divine_boon_state','epic_balance_baseline','epic_bonus','epic_gain',"
+	"'currency_ledger','currency_wallet_baseline','divine_boon_state','divine_trade_state','epic_balance_baseline','epic_bonus','epic_gain',"
 	"'epic_ledger','epic_stone_claim','eq_drop','frag_leaderboard','guild_members',"
 	"'guild_outcome_ledger','guild_ranks','guild_transactions','guildhall_rooms','guildhalls',"
 	"'guilds','ip_info','item_current_owner','item_owner_audit','item_owner_revision',"
@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"b91573aed9fddaf36bb1f53ab92473a12dc0a0fcabb75644cbb80385589504f3";
+	"3784a52c16a75c750b43e54d870dc6afebe8b927a61618c40632bebc9f2beaae";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"acf44ed3829201031b6486d8d88ed4b952d93683d00b81f4d1a472d197e35a87";
+	"40af700e2ba089cec046f4e0e0857a5fb4a64eead42fbc13f4b06cd53ebcb4f0";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -104,16 +104,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0047 retains rejected artifact UIDs across canonical generations.
  * Migration 0048 adds revision-checked Divine Boon rotation state.
  * Migration 0049 checkpoints prepared Divine award delivery with player status.
- * Migration 0050 records nullable exact outbox event expectations with inbox results.
+ * Migration 0050 stores exact Divine trade manifests and the market generation.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0050_critical_outbox_expectations";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 50;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0050_divine_trade_state";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 51;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"fc3590231a567095458ff25bf19635a479eac3f2b63f0eb360900c5279cf423a";
+	"3657f30c78faea6b728e456220c62737aceea2e44968d0e1b88d27e57674861c";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"0e46e28c7f4bb57110b03dbe6c338d9a48d9169ea0b595c9971f7620e29fff94";
+	"6e580109ffc73d3e1e82493c1b6b9b4df5dad38fbb9a244de1c7b2e1f53b9508";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"b0a0b26f48bf13d07eeb984e789bb13cd0c348fa050fb5e935104b83227f6688";
+	"8bb28550f565350760daff6fb74228a5f1c43f956aad2f41ce10160877bbdbf0";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

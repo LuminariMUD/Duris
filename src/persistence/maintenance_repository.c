@@ -14,6 +14,7 @@
 
 #include "persistence/maintenance_repository.h"
 #include "economy/divine_boon_repository.h"
+#include "economy/divine_trade_repository.h"
 
 #include "combat/frag_cap_config.h"
 #include "core/defines.h"
@@ -697,18 +698,29 @@ maintenance_result execute_boon_scan(MYSQL *connection, const maintenance_reques
 maintenance_result execute_cargo_market(MYSQL *connection, const maintenance_request &request)
 {
 	constexpr size_t ports = 10;
-	constexpr size_t expected_values = 3 + ports * ports * 4;
-	if (request.value_count != expected_values || request.values[0] <= 0 ||
-	    (request.values[1] != 0 && request.values[1] != 1) ||
+	constexpr size_t legacy_values = 3 + ports * ports * 4;
+	constexpr size_t expected_values = legacy_values + 1;
+	if ((request.value_count != expected_values && request.value_count != legacy_values) ||
+	    (request.value_count == expected_values && request.values[legacy_values] < 0) ||
+	    request.values[0] <= 0 || (request.values[1] != 0 && request.values[1] != 1) ||
 	    (request.values[2] != 0 && request.values[2] != 1) ||
 	    (!request.values[1] && !request.values[2]) || request.row_budget < ports * ports)
 		return failure(request, maintenance_outcome::permanent_failure, EINVAL);
 	if (!begin_transaction(connection))
 		return sql_failure(connection, request);
+	uint64_t stored_generation = 0;
+	if (!divine_trade_sql_generation(connection, &stored_generation, true))
+		return sql_failure(connection, request);
+	const uint64_t captured_generation =
+		request.value_count == expected_values ?
+			static_cast<uint64_t>(request.values[legacy_values]) :
+			0;
 	bool already_applied = false;
 	if (!marker_matches_and_lock(connection, "maintenance_cargo", request.work_id, 0,
 				     &already_applied))
 		return sql_failure(connection, request);
+	if (stored_generation != captured_generation)
+		already_applied = true; // Retire restored old work without replacing market/timers.
 	if (!already_applied)
 	{
 		if (request.values[1])

@@ -152,12 +152,49 @@ static void write_legacy_ship(const fs::path &path, const std::string &owner)
 }
 
 /* Exercise cargo clearing before the normal repository behavior suite. */
+static void implicit_empty_trade(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	auto stored = ship(700, 42, "Captain");
+	stored.slots.clear();
+	stored.crew = {};
+	require(flatfile_ship_establish(root.string(), { stored }, &error) ==
+			flatfile_ship_result::ok,
+		"seed implicit empty trade slots");
+	ShipSlot materialized{};
+	materialized.clear();
+	const auto empty = flatfile_ship_empty_slot(0);
+	require(persisted_slot(0, materialized) == empty,
+		"empty preimage disagrees with native materialization");
+	const flatfile_ship_slot_record cargo{ 0,	  SLOT_CARGO, 2,
+					       SLOT_HOLD, 0,	      { 1, 100, -1, -1, -1 } };
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "lock empty trade fixture");
+		flatfile_authority_operation image;
+		require(flatfile_ship_prepare_trade(root.string(), lock, 700, 42, { empty }, {},
+						    { cargo }, {}, &image,
+						    &error) == flatfile_ship_result::ok,
+			"implicit empty slot was refused as a stale preimage");
+		require(flatfile_authority_transaction_commit_operations(root.string(), lock,
+									 { image }, &error) ==
+				flatfile_authority_transaction_result::ok,
+			"commit implicit slot purchase");
+		require(flatfile_ship_prepare_trade(root.string(), lock, 700, 42, { empty }, {},
+						    { cargo }, {}, &image,
+						    &error) == flatfile_ship_result::conflict,
+			"an existing changed slot was mistaken for an absent empty row");
+	}
+}
+
 int main(int argc, char **argv)
 {
 	/* Security-sensitive fixture metadata must not depend on the invoking
 	 * account's umask (developer accounts commonly use 0002). */
 	umask(0077);
 	require(argc == 2, "state root argument required");
+	implicit_empty_trade(fs::path(argv[1]) / "implicit-empty");
 	const fs::path root = fs::path(argv[1]) / "ship";
 	prepare_root(root);
 	std::string error;

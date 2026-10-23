@@ -1983,3 +1983,63 @@ flatfile_player_domain_result flatfile_zone_touch_load(const std::string &root, 
 		       load_zone_state(root, number, state, error) :
 		       recovered;
 }
+
+flatfile_player_domain_result flatfile_player_domain_prepare_wallet(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
+	uint64_t expected_revision, uint64_t expected_account,
+	const std::array<uint64_t, 4> &wallet,
+	std::vector<flatfile_authority_operation> *operations, std::string *error)
+{
+	if (!operations || !pid || !lock.matches(root) || !expected_account ||
+	    expected_revision == UINT64_MAX)
+		return flatfile_player_domain_result::invalid;
+	player_authority player;
+	const auto loaded = load_player_authority(root, pid, &player, error);
+	if (loaded != flatfile_player_domain_result::ok)
+		return loaded;
+	critical_entity_key account;
+	if (!currency_account_key(player.record.account_name.c_str(), 0, &account) ||
+	    account.id != expected_account ||
+	    player.record.domains.wallet_revision > expected_revision)
+		return flatfile_player_domain_result::conflict;
+	player_snapshot snapshot;
+	const auto read =
+		flatfile_player_snapshot_read(root, static_cast<int32_t>(pid), &snapshot, error);
+	if (read != flatfile_player_load_result::ok)
+		return read == flatfile_player_load_result::io_error ?
+			       flatfile_player_domain_result::io_error :
+		       read == flatfile_player_load_result::not_found ?
+			       flatfile_player_domain_result::not_found :
+			       flatfile_player_domain_result::invalid;
+	if (snapshot.wallet_revision > expected_revision)
+		return flatfile_player_domain_result::conflict;
+	unsigned found = 0;
+	for (auto &field : snapshot.status_integers)
+		if (field.field >= player_status_field::copper &&
+		    field.field <= player_status_field::platinum)
+		{
+			const auto index = static_cast<unsigned>(field.field) -
+					   static_cast<unsigned>(player_status_field::copper);
+			if ((found & (1U << index)) || wallet[index] > INT64_MAX)
+				return flatfile_player_domain_result::invalid;
+			found |= 1U << index;
+			field = { field.field, 0, wallet[index], true };
+		}
+	if (found != 15)
+		return flatfile_player_domain_result::invalid;
+	snapshot.wallet_revision = expected_revision + 1;
+	player.record.domains.wallet = wallet;
+	player.record.domains.wallet_revision = snapshot.wallet_revision;
+	flatfile_authority_operation saved, domain;
+	saved.store = flatfile_authority_store::players;
+	saved.filename = flatfile_player_snapshot_file::player_filename(static_cast<int32_t>(pid));
+	domain.filename = player_filename(pid);
+	if (!flatfile_player_snapshot_encode_file(&snapshot, &saved.bytes) ||
+	    !encode_player_authority(player, &domain.bytes))
+		return flatfile_player_domain_result::invalid;
+	auto prepared = *operations;
+	prepared.push_back(std::move(saved));
+	prepared.push_back(std::move(domain));
+	*operations = std::move(prepared);
+	return flatfile_player_domain_result::ok;
+}

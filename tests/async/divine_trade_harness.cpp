@@ -1,4 +1,5 @@
-#include "economy/divine_trade.h"
+#include "economy/divine_trade_command.h"
+#include "ships/ships.h"
 
 #include <algorithm>
 #include <cassert>
@@ -244,5 +245,191 @@ int main()
 	corrupt = book;
 	corrupt.revision = std::numeric_limits<uint64_t>::max();
 	assert(!divine_trade_prepare_invalidation(corrupt, 21, -1, &after));
+	// The actual critical-command codec carries the prepared financial boundary,
+	// including canonical player/account/ship/market reservations and retry identity.
+	divine_trade_payload payload;
+	payload.pid = 42;
+	payload.ship_id = 21;
+	payload.ship_owner_pid = 42;
+	payload.generation = 1;
+	payload.wallet_revision = 9;
+	payload.admitted_at = 101;
+	payload.payment = -100;
+	payload.wallet_after.amount = { 0, 0, 0, 1 };
+	payload.slots_after.push_back({ 3, SLOT_CARGO, 2, SLOT_HOLD, 0, { 1, 100, 0, 0, 0 } });
+	payload.slots_before.push_back({ 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } });
+	payload.market_after.push_back({ 2, 2, divine_trade_goods::cargo, 1.03f, 100 });
+	payload.book_after = book;
+	critical_command command;
+	assert(divine_trade_command_build(&command, operation(900), payload));
+	auto other_owner = payload;
+	other_owner.ship_owner_pid++;
+	critical_command invalid_owner;
+	assert(!divine_trade_command_build(&invalid_owner, operation(900), other_owner));
+	for (size_t field = 0; field < 7; ++field)
+	{
+		auto altered = payload;
+		int32_t *values[] = { &altered.crew_after.crew_index,
+				      &altered.crew_after.sail_skill_milli,
+				      &altered.crew_after.guns_skill_milli,
+				      &altered.crew_after.repair_skill_milli,
+				      &altered.crew_after.sail_chief,
+				      &altered.crew_after.guns_chief,
+				      &altered.crew_after.repair_chief };
+		++*values[field];
+		assert(!divine_trade_command_build(&invalid_owner, operation(900), altered));
+	}
+	auto missing_preimage = payload;
+	missing_preimage.slots_before.clear();
+	critical_command refused_preimage;
+	assert(!divine_trade_command_build(&refused_preimage, operation(900), missing_preimage));
+
+	for (size_t coin = 0; coin < 4; ++coin)
+	{
+		auto overflow = payload;
+		overflow.wallet_after.amount[coin] = static_cast<int64_t>(INT32_MAX) + 1;
+		critical_command refused;
+		assert(!divine_trade_command_build(&refused, operation(900), overflow));
+	}
+	for (size_t field = 0; field < 3; ++field)
+		for (int chief : { -1, MAXCHIEFS })
+		{
+			auto malformed = payload;
+			int32_t *chiefs[] = { &malformed.crew_after.sail_chief,
+					      &malformed.crew_after.guns_chief,
+					      &malformed.crew_after.repair_chief };
+			*chiefs[field] = chief;
+			critical_command refused;
+			assert(!divine_trade_command_build(&refused, operation(900), malformed));
+		}
+	command.accepted_at_usec = 123456;
+	divine_trade_payload decoded;
+	assert(divine_trade_command_decode(command, &decoded));
+	assert(decoded.book_after == book && decoded.wallet_revision == 9);
+	assert(command.keys.size() == 4 && command.keys.back().type == critical_entity_type::ship);
+	assert(divine_trade_book_transition_valid(blank, decoded));
+	// Repository preimage checks preserve the exact manifest, not just its cap.
+	auto next_buy = purchase(901);
+	next_buy.slot_quantity_before = 1;
+	next_buy.slot_basis_before = 100;
+	auto next_payload = payload;
+	next_payload.book_revision = book.revision;
+	next_payload.slots_before = payload.slots_after;
+	next_payload.slots_after[0].values[0] = 2;
+	next_payload.slots_after[0].values[1] = 200;
+	assert(divine_trade_prepare_purchase(book, boon, next_buy, &next_payload.book_after));
+	assert(divine_trade_book_transition_valid(book, next_payload));
+	assert(divine_trade_command_build(&command, operation(901), next_payload));
+	for (size_t field : { size_t{ 0 }, size_t{ 1 } })
+		for (int adjustment : { -1, 1 })
+		{
+			auto phantom = next_payload;
+			phantom.slots_after[0].values[field] += adjustment;
+			critical_command refused;
+			assert(!divine_trade_command_build(&refused, operation(901), phantom));
+		}
+	// Retain the original receipt for the legacy wire checks below.
+	assert(divine_trade_command_build(&command, operation(900), payload));
+	command.accepted_at_usec = 123456;
+
+	auto forged = next_payload;
+	forged.book_after.lots.erase(forged.book_after.lots.begin());
+	assert(!divine_trade_book_transition_valid(book, forged));
+	forged = next_payload;
+	forged.book_after.lots[0].purchase = operation(999);
+	assert(!divine_trade_book_transition_valid(book, forged));
+	forged = next_payload;
+	forged.book_after.revision++;
+	assert(!divine_trade_book_transition_valid(book, forged));
+	auto unsold_buy = purchase(902);
+	unsold_buy.ship_id = 99;
+	unsold_buy.slot = 4;
+	divine_trade_book with_unsold;
+	assert(divine_trade_prepare_purchase(next_payload.book_after, boon, unsold_buy,
+					     &with_unsold));
+	auto sale_payload = next_payload;
+	sale_payload.action = divine_trade_action::sale;
+	sale_payload.slots_before = next_payload.slots_after;
+	sale_payload.book_revision = with_unsold.revision;
+	sale_payload.payment = 250;
+	sale_payload.admitted_at = 200;
+	sale_payload.slots_after[0] = { 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } };
+	sale_payload.market_after[0].port = 4;
+	divine_trade_consumption sale_used;
+	assert(divine_trade_prepare_removal(with_unsold, boon, removal(2, 2, 200),
+					    &sale_payload.book_after, &sale_used));
+	sale_payload.qualifying_quantity = sale_used.qualifying_quantity;
+	assert(divine_trade_book_transition_valid(with_unsold, sale_payload));
+	critical_command checked_sale;
+	assert(divine_trade_command_build(&checked_sale, operation(903), sale_payload));
+	auto wrong_sale = sale_payload;
+	wrong_sale.slots_before[0].slot_type = SLOT_EMPTY;
+	assert(!divine_trade_command_build(&checked_sale, operation(903), wrong_sale));
+	wrong_sale = sale_payload;
+	wrong_sale.market_after[0].commodity = 7;
+	assert(!divine_trade_command_build(&checked_sale, operation(903), wrong_sale));
+	wrong_sale = sale_payload;
+	wrong_sale.market_after[0].goods = divine_trade_goods::contraband;
+	assert(!divine_trade_command_build(&checked_sale, operation(903), wrong_sale));
+	wrong_sale = sale_payload;
+	--wrong_sale.slots_before[0].values[0];
+	assert(!divine_trade_book_transition_valid(with_unsold, wrong_sale));
+	wrong_sale = sale_payload;
+	--wrong_sale.slots_before[0].values[1];
+	assert(!divine_trade_book_transition_valid(with_unsold, wrong_sale));
+
+	forged = sale_payload;
+	forged.book_after.lots.clear();
+	assert(!divine_trade_book_transition_valid(with_unsold, forged));
+	forged = sale_payload;
+	forged.book_after.lots[0].purchase = operation(999);
+	assert(!divine_trade_book_transition_valid(with_unsold, forged));
+	forged = sale_payload;
+	forged.book_after.revision--;
+	assert(!divine_trade_book_transition_valid(with_unsold, forged));
+
+	std::vector<uint8_t> wire;
+	critical_command restored_command;
+	assert(critical_command_encode(command, &wire) == critical_command_codec_result::ok);
+	assert(critical_command_decode(wire.data(), wire.size(), &restored_command) ==
+	       critical_command_codec_result::ok);
+	assert(divine_trade_command_decode(restored_command, &decoded));
+	std::vector<uint8_t> retained_book;
+	assert(divine_trade_book_encode(payload.book_after, &retained_book));
+	auto old_command = command;
+	old_command.payload_version = 1;
+	const size_t preimage_bytes = 4 + 7 * sizeof(int32_t) + payload.slots_before.size() * 37;
+	const auto book_offset = old_command.payload.size() - retained_book.size();
+	old_command.payload.erase(old_command.payload.begin() + book_offset - preimage_bytes,
+				  old_command.payload.begin() + book_offset);
+	assert(divine_trade_command_decode(old_command, &decoded) && decoded.slots_before.empty());
+
+	auto bad_command = command;
+	bad_command.keys.back().id = 22;
+	assert(!divine_trade_command_decode(bad_command, &decoded));
+	bad_command = command;
+	bad_command.payload.push_back(0);
+	assert(!divine_trade_command_decode(bad_command, &decoded));
+	for (size_t length = 0; length < command.payload.size(); ++length)
+	{
+		bad_command = command;
+		bad_command.payload.resize(length);
+		assert(!divine_trade_command_decode(bad_command, &decoded));
+	}
+	auto invalid_transition = payload;
+	invalid_transition.book_revision = book.revision;
+	invalid_transition.book_after.first_full_hold = 500;
+	invalid_transition.book_after.revision++;
+	assert(!divine_trade_book_transition_valid(book, invalid_transition));
+	divine_trade_result result{ 42, 21, 2, 10, book.revision, -100, 0 };
+	std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> result_bytes;
+	assert(divine_trade_result_encode(result, &result_bytes));
+	divine_trade_result decoded_result;
+	assert(divine_trade_result_decode(result_bytes.data(), result_bytes.size(),
+					  &decoded_result));
+	assert(decoded_result.payment == -100 && decoded_result.generation == 2);
+	result_bytes.back() = 1;
+	assert(!divine_trade_result_decode(result_bytes.data(), result_bytes.size(),
+					   &decoded_result));
 	puts("PASS: exact Divine trade lots, partial basis, shared fixed cap, loss and checked reload");
 }

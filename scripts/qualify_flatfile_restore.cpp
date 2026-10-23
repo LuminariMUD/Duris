@@ -17,6 +17,7 @@
 #include "flatfile/flatfile_boon_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "kingdom/kingdom_restore.h"
+#include "economy/divine_trade_repository.h"
 
 // Native parsers may log diagnostics containing identities; this process reports
 // only aggregate success or a fixed failure code.
@@ -151,6 +152,7 @@ int main(int argc, char **argv)
 			flatfile_player_domain_result::ok);
 		// Mini-world boot does not materialize every persistent world domain.
 		// Exercise their native decoders before any qualification receipt.
+		require(divine_trade_flatfile_restore_validate(root, &error));
 		require(flatfile_shop_trade_repository_validate(root, &error));
 		require(kingdom_flatfile_restore_validate(root, &error));
 		std::vector<flatfile_boon_definition> boons;

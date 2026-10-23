@@ -127,7 +127,10 @@ void char_from_room(P_char) {}
 bool char_to_room(P_char, int, int) { return true; }
 void name_ship(const char *, P_ship) {}
 void name_ship_rooms(P_ship) {}
-void update_crew(P_ship) {}
+static bool normalize_crew = false;
+static int normalized_saves = 0;
+void update_crew(P_ship ship) { if(normalize_crew)ship->crew.sail_skill=100; }
+void queue_ship_save(P_ship ship,const char *) {++normalized_saves;ship->save_pending=true;}
 void reset_crew_stamina(P_ship) {}
 void set_ship_armor(P_ship, bool) {}
 void update_ship_status(P_ship, P_ship) {}
@@ -309,11 +312,15 @@ int main()
 	}
 	const int waiting = unplaced_ship_owners.size();
 	assert(!get_ship_from_owner(const_cast<char *>("Frigate555")));
+	normalize_crew=true;
 	retry_unplaced_ships();
+	normalize_crew=false;
+	assert(normalized_saves==2);
 	for (const char *back : { "Frigate555", "Frigate556" })
 	{
 		P_ship ship = get_ship_from_owner(const_cast<char *>(back));
 		assert(ship && SHIP_LOADED(ship));
+		assert(ship->crew.sail_skill==100 && ship->save_pending && !ship->save_saved_signature);
 	}
 	assert((int)unplaced_ship_owners.size() == waiting - 2);
 	assert(rooms_in_use() == pool);

@@ -202,6 +202,10 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/divine_boon_selection.o \
 				 economy/divine_boon_delivery.o \
 				 economy/divine_trade.o \
+				 economy/divine_trade_command.o \
+				 economy/divine_trade_repository.o \
+				 economy/divine_trade_flatfile.o \
+				 flatfile/flatfile_cargo_repository.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \
          economy/cardgames.o \

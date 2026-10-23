@@ -52,6 +52,7 @@ enum class critical_entity_type : uint8_t
 	shopkeeper,
 	collector,
 	pet,
+	ship,
 };
 
 struct critical_entity_key
@@ -77,6 +78,7 @@ enum class critical_command_type : uint16_t
 	boon_shop = 14,
 	shop_trade = 15,
 	collector = 18,
+	divine_trade = 19,
 };
 
 enum class critical_source_site : uint16_t

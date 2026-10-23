@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
         rel("flatfile_auction_repository.c"),
         rel("flatfile_boon_repository.c"),
         rel("flatfile_item_repository.c"),
+        rel("divine_trade.c"), rel("divine_trade_command.c"), rel("divine_trade_flatfile.c"), rel("flatfile_cargo_repository.c"), rel("flatfile_ship_repository.c"),
         rel("item_claim.c"),
         rel("dupe_log.c"),
         rel("flatfile_player_snapshot_file.c"),

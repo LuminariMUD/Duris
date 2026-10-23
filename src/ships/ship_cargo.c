@@ -61,7 +61,8 @@
  * -----------
  * The market is saved through read_cargo() / write_cargo(), which have two
  * backends selected by __NO_MYSQL__: SQL tables, or a checksummed flat-file
- * record built by the anonymous-namespace helpers at the top of this file.
+ * record encoded by flatfile_cargo_repository.c. Its authority journal also
+ * accepts the market after-image in a compound Divine trade.
  * There is a third path -- cargo_maintenance_snapshot() /
  * cargo_maintenance_complete() -- used when the periodic update is driven by
  * the maintenance subsystem rather than by the game loop; it hands the work
@@ -83,13 +84,17 @@
 #include "world/graph.h"
 #include "item/objmisc.h"
 #include "ships/ships.h"
+#include "ships/ship_cargo_transaction.h"
+#include "economy/divine_trade_repository.h"
+#include "persistence/critical_command_coordinator.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "world/timers.h"
 #ifdef __NO_MYSQL__
-#include "flatfile/flatfile_store.h"
+#include "flatfile/flatfile_cargo_repository.h"
+static_assert(NUM_PORTS == FLATFILE_CARGO_PORTS);
 #include "persistence/persistence_mode.h"
 
 #include <algorithm>
@@ -102,6 +107,7 @@
 #include <openssl/sha.h>
 #include <string>
 #include <vector>
+#include <set>
 #endif
 
 float ship_cargo_market_mod[NUM_PORTS][NUM_PORTS];
@@ -110,8 +116,9 @@ float ship_contra_market_mod[NUM_PORTS][NUM_PORTS];
 static int cargo_maintenance_last_update;
 static int cargo_maintenance_last_delayed_update;
 static uint64_t cargo_maintenance_work_id;
+static uint64_t trade_generation;
 static size_t cargo_maintenance_value_count;
-static int64_t cargo_maintenance_values[3 + NUM_PORTS * NUM_PORTS * 4];
+static int64_t cargo_maintenance_values[4 + NUM_PORTS * NUM_PORTS * 4];
 
 /*
  * Keep a market modifier inside its configured band, ship.cargo.minPriceMod
@@ -129,277 +136,10 @@ static float bound_market_mod(bool contraband, float modifier)
 #ifdef __NO_MYSQL__
 namespace
 {
-constexpr std::array<uint8_t, 8> cargo_magic = { 'D', 'U', 'R', 'C', 'A', 'R', 'G', 'O' };
-constexpr uint32_t cargo_version = 1;
-constexpr size_t cargo_value_count = NUM_PORTS * NUM_PORTS;
-constexpr size_t cargo_record_size = cargo_magic.size() + sizeof(uint32_t) + sizeof(uint64_t) +
-				     cargo_value_count * sizeof(uint32_t) * 2 +
-				     SHA256_DIGEST_LENGTH;
-constexpr const char *cargo_filename = "cargo_market";
-constexpr const char *cargo_lock_filename = "cargo_market.lock";
-
-enum class flat_cargo_result
-{
-	ok,
-	not_found,
-	invalid,
-	io_error
-};
-
-struct flat_cargo_record
-{
-	uint64_t revision = 0;
-	std::array<float, cargo_value_count> cargo = {};
-	std::array<float, cargo_value_count> contraband = {};
-};
-
-/*
- * Directory the flat-file market record lives in, or "" when the flat-file
- * backend is not configured.
- */
-std::string flat_cargo_directory()
+std::string flat_cargo_root()
 {
 	const char *root = persistence_mode_flatfile_root();
-	return root ? std::string(root) + "/metadata" : std::string();
-}
-
-/*
- * Whether `value` is a believable market modifier: finite and within
- * [0, 1000].  Every modifier that crosses the persistence boundary is checked
- * against this, so a corrupt file cannot inject an infinity or a negative
- * price into the live market.
- */
-bool valid_market_modifier(float value)
-{
-	return std::isfinite(value) && value >= 0.0f && value <= 1000.0f;
-}
-
-/*
- * Append `value` to `bytes` as 4 little-endian octets.  The record format is
- * explicitly byte-ordered so a saved market survives a move between hosts.
- */
-void append_u32(std::vector<uint8_t> *bytes, uint32_t value)
-{
-	for (size_t offset = 0; offset < sizeof(value); ++offset)
-	{
-		bytes->push_back(static_cast<uint8_t>(value & 0xff));
-		value >>= 8;
-	}
-}
-
-/*
- * Append `value` to `bytes` as 8 little-endian octets.  See append_u32().
- */
-void append_u64(std::vector<uint8_t> *bytes, uint64_t value)
-{
-	for (size_t offset = 0; offset < sizeof(value); ++offset)
-	{
-		bytes->push_back(static_cast<uint8_t>(value & 0xff));
-		value >>= 8;
-	}
-}
-
-/*
- * Read a little-endian uint32 from `bytes`.  The caller must already have
- * checked that at least 4 octets are available.
- */
-uint32_t read_u32(const uint8_t *bytes)
-{
-	uint32_t value = 0;
-	for (size_t offset = 0; offset < sizeof(value); ++offset)
-		value |= static_cast<uint32_t>(bytes[offset]) << (offset * 8);
-	return value;
-}
-
-/*
- * Read a little-endian uint64 from `bytes`.  The caller must already have
- * checked that at least 8 octets are available.
- */
-uint64_t read_u64(const uint8_t *bytes)
-{
-	uint64_t value = 0;
-	for (size_t offset = 0; offset < sizeof(value); ++offset)
-		value |= static_cast<uint64_t>(bytes[offset]) << (offset * 8);
-	return value;
-}
-
-/*
- * Whether `record` is safe to write out or to load into the live market:
- * a non-zero revision and every one of its modifiers plausible.
- */
-bool valid_flat_cargo_record(const flat_cargo_record &record)
-{
-	if (!record.revision)
-		return false;
-	for (float value : record.cargo)
-		if (!valid_market_modifier(value))
-			return false;
-	for (float value : record.contraband)
-		if (!valid_market_modifier(value))
-			return false;
-	return true;
-}
-
-/*
- * Serialise `record` into `bytes`: magic, version, revision, the two
- * modifier matrices, then a SHA-256 of everything before it.
- *
- * Returns false for a bad output pointer, an implausible record, or an
- * allocation failure -- never a partially written buffer.
- */
-bool encode_flat_cargo(const flat_cargo_record &record, std::vector<uint8_t> *bytes)
-{
-	static_assert(sizeof(float) == sizeof(uint32_t));
-	if (!bytes || !valid_flat_cargo_record(record))
-		return false;
-	try
-	{
-		bytes->clear();
-		bytes->reserve(cargo_record_size);
-		bytes->insert(bytes->end(), cargo_magic.begin(), cargo_magic.end());
-		append_u32(bytes, cargo_version);
-		append_u64(bytes, record.revision);
-		for (float value : record.cargo)
-			append_u32(bytes, std::bit_cast<uint32_t>(value));
-		for (float value : record.contraband)
-			append_u32(bytes, std::bit_cast<uint32_t>(value));
-		std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-		SHA256(bytes->data(), bytes->size(), digest.data());
-		bytes->insert(bytes->end(), digest.begin(), digest.end());
-	}
-	catch (const std::bad_alloc &)
-	{
-		bytes->clear();
-		return false;
-	}
-	return bytes->size() == cargo_record_size;
-}
-
-/*
- * Parse and verify a serialised market record.
- *
- * Checks length, magic, version and the trailing SHA-256 digest before
- * accepting anything, then validates the decoded modifiers.  Returns false
- * and leaves `record` untouched on any failure, so a damaged file degrades
- * to "no record" rather than to a corrupt market.
- */
-bool decode_flat_cargo(const std::vector<uint8_t> &bytes, flat_cargo_record *record)
-{
-	if (!record || bytes.size() != cargo_record_size ||
-	    !std::equal(cargo_magic.begin(), cargo_magic.end(), bytes.begin()) ||
-	    read_u32(bytes.data() + cargo_magic.size()) != cargo_version)
-		return false;
-	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-	SHA256(bytes.data(), bytes.size() - digest.size(), digest.data());
-	if (CRYPTO_memcmp(bytes.data() + bytes.size() - digest.size(), digest.data(),
-			  digest.size()))
-		return false;
-	flat_cargo_record decoded;
-	size_t offset = cargo_magic.size() + sizeof(uint32_t);
-	decoded.revision = read_u64(bytes.data() + offset);
-	offset += sizeof(uint64_t);
-	for (float &value : decoded.cargo)
-	{
-		value = std::bit_cast<float>(read_u32(bytes.data() + offset));
-		offset += sizeof(uint32_t);
-	}
-	for (float &value : decoded.contraband)
-	{
-		value = std::bit_cast<float>(read_u32(bytes.data() + offset));
-		offset += sizeof(uint32_t);
-	}
-	if (offset + digest.size() != bytes.size() || !valid_flat_cargo_record(decoded))
-		return false;
-	*record = decoded;
-	return true;
-}
-
-/*
- * Read and decode the market record from `directory`, assuming the caller
- * already holds the store lock.
- *
- * Returns ok, not_found when the file is absent, invalid when it fails to
- * decode, or io_error.  `error` receives a human-readable reason.
- */
-flat_cargo_result read_flat_cargo_unlocked(const std::string &directory, flat_cargo_record *record,
-					   std::string *error)
-{
-	std::vector<uint8_t> bytes;
-	const auto result =
-		flatfile_read(directory, cargo_filename, cargo_record_size, &bytes, error);
-	if (result == flatfile_read_result::not_found)
-		return flat_cargo_result::not_found;
-	if (result == flatfile_read_result::io_error)
-		return flat_cargo_result::io_error;
-	if (result != flatfile_read_result::ok || !decode_flat_cargo(bytes, record))
-	{
-		if (error && error->empty())
-			*error = "cargo market authority is corrupt";
-		return flat_cargo_result::invalid;
-	}
-	return flat_cargo_result::ok;
-}
-
-/*
- * Take the store lock and read the market record.  The locked wrapper around
- * read_flat_cargo_unlocked(); same return values.
- */
-flat_cargo_result load_flat_cargo(flat_cargo_record *record, std::string *error)
-{
-	const std::string directory = flat_cargo_directory();
-	if (directory.empty() || !record)
-		return flat_cargo_result::invalid;
-	int lock_fd = -1;
-	if (!flatfile_lock_acquire(directory, cargo_lock_filename, &lock_fd, error))
-		return flat_cargo_result::io_error;
-	const auto result = read_flat_cargo_unlocked(directory, record, error);
-	flatfile_lock_release(lock_fd);
-	return result;
-}
-
-/*
- * Write `record` out under the store lock, bumping its revision past
- * whatever is already on disk.
- *
- * Re-reading first is what makes the revision monotonic even if another
- * writer got there in between; the write itself goes through the flat-file
- * store's atomic replace, so a crash mid-save leaves the previous market
- * intact rather than a truncated one.
- */
-flat_cargo_result save_flat_cargo(flat_cargo_record record, std::string *error)
-{
-	const std::string directory = flat_cargo_directory();
-	if (directory.empty())
-		return flat_cargo_result::invalid;
-	int lock_fd = -1;
-	if (!flatfile_lock_acquire(directory, cargo_lock_filename, &lock_fd, error))
-		return flat_cargo_result::io_error;
-	flat_cargo_record existing;
-	const auto loaded = read_flat_cargo_unlocked(directory, &existing, error);
-	if (loaded == flat_cargo_result::ok)
-	{
-		if (existing.revision == std::numeric_limits<uint64_t>::max())
-		{
-			flatfile_lock_release(lock_fd);
-			return flat_cargo_result::invalid;
-		}
-		record.revision = existing.revision + 1;
-	}
-	else if (loaded == flat_cargo_result::not_found)
-		record.revision = 1;
-	else
-	{
-		flatfile_lock_release(lock_fd);
-		return loaded;
-	}
-	std::vector<uint8_t> bytes;
-	const bool encoded = encode_flat_cargo(record, &bytes);
-	const bool stored = encoded &&
-			    flatfile_atomic_write(directory, cargo_filename, bytes, error);
-	flatfile_lock_release(lock_fd);
-	return stored  ? flat_cargo_result::ok :
-	       encoded ? flat_cargo_result::io_error :
-			 flat_cargo_result::invalid;
+	return root ? root : "";
 }
 
 /*
@@ -410,6 +150,7 @@ flat_cargo_result save_flat_cargo(flat_cargo_record record, std::string *error)
 flat_cargo_record capture_flat_cargo()
 {
 	flat_cargo_record record;
+	record.trade_generation = trade_generation;
 	for (int port = 0; port < NUM_PORTS; ++port)
 		for (int type = 0; type < NUM_PORTS; ++type)
 		{
@@ -429,6 +170,7 @@ flat_cargo_record capture_flat_cargo()
  */
 void replace_live_cargo(const flat_cargo_record &record)
 {
+	trade_generation = record.trade_generation;
 	for (int port = 0; port < NUM_PORTS; ++port)
 		for (int type = 0; type < NUM_PORTS; ++type)
 		{
@@ -501,6 +243,8 @@ const char *contra_name[NUM_PORTS] = {
  */
 void reset_cargo()
 {
+	// The trade generation names the durable market, not these values; a staff
+	// reset must not make later saves, maintenance and trades look stale.
 	for (int i = 0; i < NUM_PORTS; i++)
 	{
 		for (int j = 0; j < NUM_PORTS; j++)
@@ -586,11 +330,11 @@ int read_cargo()
 #ifdef __NO_MYSQL__
 	std::string error;
 	flat_cargo_record record;
-	auto result = load_flat_cargo(&record, &error);
+	auto result = flatfile_cargo_load(flat_cargo_root(), &record, &error);
 	if (result == flat_cargo_result::not_found)
 	{
 		record = capture_flat_cargo();
-		result = save_flat_cargo(record, &error);
+		result = flatfile_cargo_save(flat_cargo_root(), record, &error);
 	}
 	if (result != flat_cargo_result::ok)
 	{
@@ -602,6 +346,12 @@ int read_cargo()
 		replace_live_cargo(record);
 	return TRUE;
 #else
+	uint64_t generation = 0;
+	if (!divine_trade_sql_generation(DB, &generation, false))
+	{
+		logit(LOG_DEBUG, "read_cargo(): market generation query failed!");
+		return FALSE;
+	}
 	if (!qry("%s", CARGO_MODS_QUERY))
 	{
 		logit(LOG_DEBUG, "read_cargo(): cargo query failed!");
@@ -617,7 +367,7 @@ int read_cargo()
 		apply_cargo_mod(row[0], row[1], row[2], row[3]);
 
 	mysql_free_result(res);
-
+	trade_generation = generation;
 	return TRUE;
 
 #endif
@@ -636,7 +386,8 @@ int write_cargo()
 {
 #ifdef __NO_MYSQL__
 	std::string error;
-	if (save_flat_cargo(capture_flat_cargo(), &error) == flat_cargo_result::ok)
+	const auto saved = flatfile_cargo_save(flat_cargo_root(), capture_flat_cargo(), &error);
+	if (saved == flat_cargo_result::ok || saved == flat_cargo_result::stale)
 		return TRUE;
 	logit(LOG_SHIP, "Error writing flat cargo market values: %s",
 	      error.empty() ? "authority failure" : error.c_str());
@@ -665,10 +416,28 @@ int write_cargo()
 						      type, ship_contra_market_mod[port][type]);
 		}
 	}
-	sql_queue_statements({ "delete from ship_cargo_market_mods",
-			       "delete from ship_cargo_prices", cargo_prices, contraband_prices,
-			       cargo_mods, contraband_mods });
-	return TRUE;
+	std::vector<std::string> statements{ "delete from ship_cargo_market_mods",
+					     "delete from ship_cargo_prices",
+					     cargo_prices,
+					     contraband_prices,
+					     cargo_mods,
+					     contraband_mods };
+	const uint64_t captured_generation = trade_generation;
+	return sql_queue_work(
+		[statements = std::move(statements), captured_generation](MYSQL *connection)
+		{
+			uint64_t stored = 0;
+			if (!divine_trade_sql_generation(connection, &stored, true))
+				return mysql_errno(connection) ? mysql_errno(connection) :
+								 static_cast<unsigned>(EILSEQ);
+			if (stored != captured_generation)
+				return 0U; // Obsolete full-market capture must not erase a committed trade.
+			for (const auto &statement : statements)
+				if (mysql_real_query(connection, statement.data(),
+						     statement.size()))
+					return mysql_errno(connection);
+			return 0U;
+		});
 #endif
 }
 
@@ -912,12 +681,15 @@ void cargo_activity()
  */
 bool flatfile_cargo_maintenance_apply(const int64_t *values, size_t count)
 {
-	constexpr size_t expected = 3 + NUM_PORTS * NUM_PORTS * 4;
-	if (!values || count != expected || values[0] <= 0 || values[0] > INT_MAX ||
-	    (values[1] != 0 && values[1] != 1) || (values[2] != 0 && values[2] != 1) ||
-	    (!values[1] && !values[2]))
+	constexpr size_t legacy_expected = 3 + NUM_PORTS * NUM_PORTS * 4;
+	constexpr size_t expected = legacy_expected + 1;
+	if (!values || (count != expected && count != legacy_expected) || values[0] <= 0 ||
+	    values[0] > INT_MAX || (values[1] != 0 && values[1] != 1) ||
+	    (values[2] != 0 && values[2] != 1) || (!values[1] && !values[2]))
 		return false;
 	flat_cargo_record record;
+	if (count == expected)
+		record.trade_generation = static_cast<uint64_t>(values[legacy_expected]);
 	for (int port = 0; port < NUM_PORTS; ++port)
 		for (int type = 0; type < NUM_PORTS; ++type)
 		{
@@ -934,7 +706,11 @@ bool flatfile_cargo_maintenance_apply(const int64_t *values, size_t count)
 	if (values[1])
 	{
 		std::string error;
-		if (save_flat_cargo(record, &error) != flat_cargo_result::ok)
+		const auto saved = flatfile_cargo_save(flat_cargo_root(), record, &error);
+		// As in SQL, retire restored old work without replacing market or timers.
+		if (saved == flat_cargo_result::stale)
+			return true;
+		if (saved != flat_cargo_result::ok)
 		{
 			logit(LOG_SHIP, "Error writing scheduled flat cargo market values: %s",
 			      error.empty() ? "authority failure" : error.c_str());
@@ -963,7 +739,7 @@ bool flatfile_cargo_maintenance_apply(const int64_t *values, size_t count)
  */
 size_t cargo_maintenance_snapshot(uint64_t work_id, int64_t *values, size_t capacity)
 {
-	constexpr size_t required = 3 + NUM_PORTS * NUM_PORTS * 4;
+	constexpr size_t required = 4 + NUM_PORTS * NUM_PORTS * 4;
 	if (!values || capacity < required)
 		return 0;
 	if (cargo_maintenance_work_id == work_id && cargo_maintenance_value_count == required)
@@ -971,6 +747,9 @@ size_t cargo_maintenance_snapshot(uint64_t work_id, int64_t *values, size_t capa
 		memcpy(values, cargo_maintenance_values, sizeof(cargo_maintenance_values));
 		return required;
 	}
+	if (critical_command_coordinator_is_fenced(
+		    { critical_entity_type::system, DIVINE_TRADE_MARKET_KEY }, nullptr))
+		return 0;
 	const int now = time(nullptr);
 	const bool cargo_due =
 		now > cargo_maintenance_last_update + get_property("ship.cargo.update.secs", 1800);
@@ -1001,6 +780,7 @@ size_t cargo_maintenance_snapshot(uint64_t work_id, int64_t *values, size_t capa
 			cargo_maintenance_values[offset++] = static_cast<int64_t>(
 				llround(ship_contra_market_mod[port][type] * 1000000.0));
 		}
+	cargo_maintenance_values[offset++] = static_cast<int64_t>(trade_generation);
 	cargo_maintenance_work_id = work_id;
 	cargo_maintenance_value_count = offset;
 	memcpy(values, cargo_maintenance_values, sizeof(cargo_maintenance_values));
@@ -1619,4 +1399,35 @@ void do_world_cargo(P_char ch, char *arg)
 		send_to_char("Updating cargo prices...\r\n", ch);
 		update_cargo(true);
 	}
+}
+
+uint64_t cargo_trade_generation()
+{
+	return trade_generation;
+}
+
+bool cargo_trade_market_available()
+{
+	return !cargo_maintenance_work_id && trade_generation != UINT64_MAX;
+}
+
+bool cargo_trade_publish(uint64_t expected_generation,
+			 const std::vector<divine_trade_market_cell> &cells)
+{
+	if (trade_generation != expected_generation || trade_generation == UINT64_MAX)
+		return false;
+	for (const auto &cell : cells)
+	{
+		if (cell.port >= NUM_PORTS || cell.commodity >= NUM_PORTS ||
+		    !std::isfinite(cell.modifier) || cell.modifier < 0 || cell.modifier > 1000 ||
+		    (cell.goods != divine_trade_goods::cargo &&
+		     cell.goods != divine_trade_goods::contraband))
+			return false;
+	}
+	for (const auto &cell : cells)
+		(cell.goods == divine_trade_goods::cargo ?
+			 ship_cargo_market_mod :
+			 ship_contra_market_mod)[cell.port][cell.commodity] = cell.modifier;
+	++trade_generation;
+	return true;
 }

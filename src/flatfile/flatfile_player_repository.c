@@ -36,9 +36,6 @@
 #include <mutex>
 #include <new>
 #include <numeric>
-#include <openssl/crypto.h>
-#include <openssl/sha.h>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -48,22 +45,6 @@ namespace
 {
 using namespace flatfile_player_snapshot_file;
 std::mutex player_mutex;
-
-struct encoder
-{
-	std::vector<uint8_t> bytes;
-
-	template <typename T> void number(T value)
-	{
-		using unsigned_type = std::make_unsigned_t<T>;
-		unsigned_type bits = static_cast<unsigned_type>(value);
-		for (size_t index = 0; index < sizeof(T); ++index)
-		{
-			bytes.push_back(static_cast<uint8_t>(bits & 0xff));
-			bits >>= 8;
-		}
-	}
-};
 
 std::string player_lock_filename(int32_t pid)
 {
@@ -563,39 +544,6 @@ invalid:
 		result->error_code = EILSEQ;
 	result->failed_component = "item_ownership";
 	return false;
-}
-
-bool normalize_size(player_snapshot *snapshot, std::vector<uint8_t> *payload)
-{
-	if (!snapshot || !payload)
-		return false;
-	snapshot->encoded_size_bound = 1;
-	if (player_snapshot_encode(*snapshot, payload) != player_snapshot_codec_result::ok)
-		return false;
-	snapshot->encoded_size_bound = payload->size();
-	return player_snapshot_encode(*snapshot, payload) == player_snapshot_codec_result::ok;
-}
-
-bool encode_file(player_snapshot *snapshot, std::vector<uint8_t> *bytes)
-{
-	std::vector<uint8_t> payload;
-	if (!bytes || !normalize_size(snapshot, &payload))
-		return false;
-	unsigned char digest[SHA256_DIGEST_LENGTH];
-	SHA256(payload.data(), payload.size(), digest);
-	encoder out;
-	out.bytes.insert(out.bytes.end(), player_magic.begin(), player_magic.end());
-	out.number<uint32_t>(player_file_version);
-	out.number<uint32_t>(payload.size());
-	out.number<int32_t>(snapshot->pid);
-	out.number<uint64_t>(snapshot->revision);
-	out.number<uint64_t>(snapshot->components);
-	out.bytes.insert(out.bytes.end(), digest, digest + sizeof(digest));
-	out.bytes.insert(out.bytes.end(), payload.begin(), payload.end());
-	if (out.bytes.size() > player_file_maximum)
-		return false;
-	*bytes = std::move(out.bytes);
-	return true;
 }
 
 bool replace_items_together(player_component_mask_t components)
@@ -1123,7 +1071,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			}
 	}
 	std::vector<uint8_t> bytes;
-	if (!encode_file(&materialized, &bytes))
+	if (!flatfile_player_snapshot_encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::vector<flatfile_authority_operation> operations;
 	try

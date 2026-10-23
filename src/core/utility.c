@@ -1163,6 +1163,8 @@ static const char *critical_command_label(critical_command_type type)
 		return "shop trade";
 	case critical_command_type::collector:
 		return "collector transaction";
+	case critical_command_type::divine_trade:
+		return "Divine cargo transaction";
 	}
 	return "unknown operation";
 }
