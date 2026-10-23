@@ -1,13 +1,13 @@
 # Issue #264: qualify the full pwipe lifecycle
 
-Status: implementation plan complete; implementation and wipe qualification have not started.
+Status: implementation started 2026-10-24; full wipe readiness remains OPEN.
 Prepared 2026-10-23 for [#264](https://github.com/LuminariMUD/Duris/issues/264),
 the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris/issues/97).
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
-four verification requirements, and four completion criteria. The previous #245
-plan is preserved byte-for-byte in [plan-issue-245.md](plan-issue-245.md).
+four verification requirements, and four completion criteria. The latest master #245
+plan is preserved in [plan-issue-245.md](plan-issue-245.md).
 
 ## Outcome, non-goals, files, and proof
 
@@ -39,6 +39,31 @@ real server/launcher execution; targeted writer/failure tests; SQL/filesystem/Re
 postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
+
+## Implementation handoff — 2026-10-24
+
+- Reused `/home/aiwithapex/projects/duris-issue264-plan`, clean at `1ec58eee5`;
+  merged current master `7d3bd3b95` as `3031b0fef` without rewriting history.
+  Merge hooks passed changed-line format and tidy. Preserved current master’s
+  Divine Boons plan in `plan-issue-245.md`; this document remains the #264 plan.
+- First focused dependency: remove the validator/test's duplicate hand-maintained
+  schema lists. Reuse the migration runner's sealed, ordered manifest plus the
+  two supported bootstrap sources. This covers 200 SQL tables on this revision,
+  including recent Divine trade state; no reset behavior or retention policy changes.
+  Found and repaired phantom foreign-key dependencies from tables dropped by later
+  supported migrations; the complete sequence exposed this validator crash.
+  Proof: `python3 tests/async/test_data_lifecycle_manifest.py` (14 passed),
+  `python3 scripts/validate_data_lifecycle.py` (200 SQL tables, 30 other stores,
+  42 Redis surfaces). No C/C++ change: no server rebuild needed.
+- The wider migration-runner check exposed an existing test tied to “last migration”
+  instead of its reviewed manifest prefix. Corrected that test separately, matching
+  the other reviewed-online-migration fixtures; all 23 runner tests passed.
+- Next chunk: W3 SQL-to-launcher completion/failure contract, including fenced
+  post-boundary failures, durable SQL-ready state and guarded filesystem completion.
+  W2 writer drain and W4 completeness/carryovers remain required before runtime
+  readiness. No production actions, readiness sign-off or release tag.
+- The baseline list failures were repaired on master before this continuation;
+  removing the remaining duplication prevents the same drift recurring.
 
 ## What the code currently does
 
@@ -138,8 +163,9 @@ These are baseline observations, not claims that every failure has been reproduc
   inventories, lockers/account lockers/chests/corpses/pets; ships/cargo;
   guilds/alliances/kingdoms/world ownership; auctions/currency; rankings/statistics/
   reports; quests; collectors; Divine Boons and epic-stone claims.
-- [ ] Fix the duplicated schema inventory behind the failing lifecycle test and
-  prove current-schema coverage without introducing another reset manifest.
+- [x] Remove duplicate schema inventories via the sealed migration manifest;
+  lifecycle scanner and runner tests pass. Actual fully migrated DB inventory
+  comparison remains in the first W1 item.
 - [ ] Seed synthetic old-season data/carryovers, connected/linkdead characters,
   pending saves/outbox records, recovery receipts, Redis and external-client state.
   Reuse `run_copyover_runtime_journey.py`, `test_flatfile_combat_journey.py` and

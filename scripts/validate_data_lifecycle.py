@@ -11,32 +11,12 @@ import stat
 import sys
 from pathlib import Path
 
+import migration_runner
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "migrations" / "data_lifecycle_manifest.json"
 DEFAULT_REDIS_REGISTRY = ROOT / "src/redis/redis_key_registry.def"
-DEFAULT_SCHEMA_FILES = (
-    ROOT / "migrations" / "bootstrap_multithread_safe.sql",
-    ROOT / "migrations" / "bootstrap_legacy_baseline.sql",
-    ROOT / "migrations" / "immutable" / "0001_lookup_dataset_state.sql",
-    ROOT / "migrations" / "immutable" / "0003_season_reset_state.sql",
-    ROOT / "migrations" / "immutable" / "0004_server_reboots.sql",
-    ROOT / "migrations" / "immutable" / "0006_kingdom_realms.sql",
-    ROOT / "migrations" / "immutable" / "0009_kingdom_garrison.sql",
-    ROOT / "migrations" / "immutable" / "0014_telemetry_storage.sql",
-    ROOT / "migrations" / "immutable" / "0012_epic_stone_claim.sql",
-    ROOT / "migrations" / "immutable" / "0016_artifact_mana.sql",
-    ROOT / "migrations" / "immutable" / "0017_telemetry_rollup_support.sql",
-    ROOT / "migrations" / "immutable" / "0018_collector_catalog.sql",
-    ROOT / "migrations" / "immutable" / "0019_corpse_lifecycle_authority.sql",
-    ROOT / "migrations" / "immutable" / "0026_zone_story_quest_state.sql",
-    ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
-    ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
-    ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
-    ROOT / "migrations" / "immutable" / "0048_divine_boon_state.sql",
-    ROOT / "migrations" / "immutable" / "0050_divine_trade_state.sql",
-)
-
 ROOT_FIELDS = {
     "schema_version", "policy_id", "status", "technical_owner_default",
     "decision_semantics", "allowed_actions", "destructive_actions",
@@ -246,6 +226,19 @@ def read_schema_source(path: Path) -> str:
                      for line in source.splitlines())
 
 
+def default_schema_files() -> tuple[Path, ...]:
+    """Scan the supported bootstrap followed by the sealed migration sequence."""
+    try:
+        migrations = migration_runner.load_manifest().migrations
+    except migration_runner.MigrationContractError as error:
+        raise ValidationError(f"migration inventory is invalid: {error}") from error
+    return (
+        ROOT / "migrations" / "bootstrap_multithread_safe.sql",
+        ROOT / "migrations" / "bootstrap_legacy_baseline.sql",
+        *(migration.apply_path for migration in migrations),
+    )
+
+
 def schema_tables(paths: tuple[Path, ...]) -> set[str]:
     """Return every table the authoritative schema sources create.
 
@@ -287,7 +280,8 @@ def schema_dependencies(paths: tuple[Path, ...]) -> dict[str, set[str]]:
             parents.discard(table)
             if parents:
                 dependencies[table] = parents
-    return dependencies
+    live_tables = schema_tables(paths)
+    return {table: parents for table, parents in dependencies.items() if table in live_tables}
 
 
 def load_manifest(path: Path) -> dict:
@@ -548,7 +542,7 @@ def main() -> int:
     arguments = parse_args()
     try:
         manifest = load_manifest(arguments.manifest)
-        schema_paths = tuple(arguments.schema_file) if arguments.schema_file else DEFAULT_SCHEMA_FILES
+        schema_paths = tuple(arguments.schema_file) if arguments.schema_file else default_schema_files()
         tables = schema_tables(schema_paths)
         dependencies = schema_dependencies(schema_paths)
         entries = validate_manifest(manifest, tables, dependencies, arguments.redis_registry)
