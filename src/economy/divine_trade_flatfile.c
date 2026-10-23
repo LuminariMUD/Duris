@@ -284,7 +284,7 @@ try
 	bool committed = false;
 	if (read == flatfile_read_result::ok)
 	{
-		const auto retained = replay(receipt, tag.command_hash);
+		const auto retained = replay(receipt, operation, tag.command_hash);
 		divine_trade_result result;
 		if (retained.result_size != DIVINE_TRADE_RESULT_BYTES ||
 		    !divine_trade_result_decode(retained.result_payload.data(),
