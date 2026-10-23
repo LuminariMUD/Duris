@@ -50,6 +50,20 @@ Both current server builds pass. Fresh complete campaigns pass on MariaDB and fl
 
 ### Review-repair closeout, 2026-10-23
 
+The owner's final ending instruction closes this pass against the received
+finding cohort. Confirmed follow-ups now fix native reset progress, structural
+trade owner/cargo/market/crew consistency, publication of indexes only after
+commit, malformed committed-parent retention, restored boon-scan drain, safe
+ACKs beyond ambiguous legacy receipts, and fault injection only on live trades.
+The proposed wallet mismatch is rejected by the actual live submission boundary;
+the native fixture proves both forged rejection and valid-control admission.
+The ship-save race was already fenced by dependent #290. These dispositions are
+posted on their original PR threads. The affected native/sanitizer/runtime,
+restored scheduler, real SQL rollback and flat cargo checks pass, as do both
+incremental server builds. Earlier loaded campaigns and restore evidence are
+reused for these bounded guards. The carried source/test trees exactly match the
+qualified focused commits. No further review cycle is part of this closeout.
+
 Late #294 review added independent live manifest-quote assertions for the exact
 credited cargo and contraband amounts, including the staff fixture's separate
 Seadog contribution, plus an immediate `paused=yes` check after final restart.
