@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as tem
             rel("flatfile_store.c"),
             rel("epic_command.c"), rel("zone_touch_command.c"),
             rel("currency_command.c"),
-            rel("combat_outcome_command.c"),
+            rel("combat_outcome_command.c"), rel("artifact_guild_command.c"),
             rel("critical_command.c"),
             "-lcrypto",
             "-pthread",

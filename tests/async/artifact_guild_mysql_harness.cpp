@@ -1,4 +1,5 @@
 #include "guild/artifact_guild_command.h"
+#include "guild/artifact_guild_repository.h"
 #include "guild/artifact_guild_transaction.h"
 #include "redis/redis_report_cache.h"
 #include <cstdarg>
@@ -430,6 +431,104 @@ int main()
 	current_state();
 	execute(db, "DELETE FROM critical_outbox WHERE operation_id=UNHEX('" + operation + "')");
 	std::cout << "PASS committed v1 receipt and old pending outbox; no state reapplication\n";
+
+	// The parent transaction retains an intent, without overwriting live assets.
+	artifact_guild_payload intent{};
+	assert(critical_operation_id_generate(&intent.parent_operation_id));
+	insert_parent(db, intent.parent_operation_id);
+	intent.actor_pid = ACTOR_PID;
+	intent.guild_id = GUILD_ID;
+	intent.guild_identity = artifact_guild_legacy_identity(GUILD_ID);
+	intent.prestige_before = 95;
+	intent.prestige_after = 115;
+	intent.prestige_delta = 20;
+	intent.construction_after = intent.construction_delta = 1;
+	intent.construction_notch = 100;
+	intent.feeding_cap = OPENING_TIMER + 100000;
+	intent.artifact_count = 1;
+	intent.artifacts[0] = { ARTIFACT_VNUM,
+				ARTIFACT_DELTA_FEED,
+				OPENING_TIMER,
+				OPENING_TIMER + 300,
+				static_cast<int32_t>(ACTOR_PID),
+				static_cast<int32_t>(ACTOR_PID),
+				0,
+				0,
+				99,
+				300 };
+	critical_operation_id effect{};
+	assert(critical_operation_id_derive(intent.parent_operation_id,
+					    ARTIFACT_GUILD_DERIVATION_DOMAIN, ACTOR_PID, &effect));
+	critical_command child;
+	assert(artifact_guild_command_build_prepared(&child, effect, intent));
+	child.accepted_at_usec = 1;
+	const std::string child_id = hex_id(effect);
+	execute(db, "START TRANSACTION");
+	assert(artifact_guild_repository_prepare_delivery(db, child));
+	assert(scalar(db, "SELECT COUNT(*) FROM critical_outbox WHERE operation_id=UNHEX('" +
+				  child_id + "')") == 1);
+	execute(db, "ROLLBACK");
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
+			      child_id + "')") == 0);
+	assert(scalar(db, "SELECT COUNT(*) FROM critical_outbox WHERE operation_id=UNHEX('" +
+				  child_id + "')") == 0);
+	execute(db, "START TRANSACTION");
+	assert(artifact_guild_repository_prepare_delivery(db, child));
+	execute(db, "COMMIT");
+	current_state();
+	execute(db,
+		"UPDATE critical_outbox SET status=2 WHERE operation_id=UNHEX('" + child_id + "')");
+	std::vector<critical_command> pending_deliveries;
+	assert(artifact_guild_repository_pending_deliveries(db, &pending_deliveries) &&
+	       pending_deliveries.size() == 1 &&
+	       pending_deliveries.front().payload == child.payload);
+	assert(scalar(db, "SELECT status FROM critical_outbox WHERE operation_id=UNHEX('" +
+				  child_id + "')") == 0);
+	execute(db,
+		"UPDATE artifact_domain_state SET canonical_item_uid=99,identity_state=1 WHERE vnum=" +
+			std::to_string(ARTIFACT_VNUM));
+	bool saved = true, acknowledged = true;
+	assert(artifact_guild_repository_delivery_saved(db, child, &saved) && !saved);
+	execute(db,
+		"UPDATE artifact_domain_state SET timer_epoch=timer_epoch+300,delivery_ids=UNHEX('" +
+			child_id + "') WHERE vnum=" + std::to_string(ARTIFACT_VNUM));
+	assert(artifact_guild_repository_delivery_saved(db, child, &saved) && !saved);
+	execute(db, "UPDATE guilds SET prestige=prestige+20,delivery_ids=UNHEX('" + child_id +
+			    "') WHERE id=" + std::to_string(GUILD_ID));
+	assert(artifact_guild_repository_delivery_saved(db, child, &saved) && saved);
+	assert(artifact_guild_repository_delivery_acknowledged(db, child, &acknowledged) &&
+	       !acknowledged);
+	execute(db,
+		"UPDATE critical_outbox SET status=1 WHERE operation_id=UNHEX('" + child_id + "')");
+	assert(artifact_guild_repository_delivery_acknowledged(db, child, &acknowledged) &&
+	       !acknowledged);
+	execute(db, "UPDATE critical_operation_inbox SET result_code=1 WHERE operation_id=UNHEX('" +
+			    child_id + "')");
+	assert(artifact_guild_repository_delivery_acknowledged(db, child, &acknowledged) &&
+	       acknowledged);
+	critical_command retained_child;
+	assert(artifact_guild_repository_load_delivery(db, effect, &retained_child,
+						       &acknowledged) &&
+	       acknowledged && retained_child.payload == child.payload);
+	// Later state changes cannot make an already saved effect unpaid again.
+	execute(db, "UPDATE guilds SET prestige=prestige-7 WHERE id=" + std::to_string(GUILD_ID));
+	execute(db, "UPDATE artifact_domain_state SET timer_epoch=timer_epoch+500 WHERE vnum=" +
+			    std::to_string(ARTIFACT_VNUM));
+	assert(artifact_guild_repository_delivery_saved(db, child, &saved) && saved);
+	critical_operation_id replacement{};
+	assert(critical_operation_id_generate(&replacement));
+	execute(db, "UPDATE guilds SET delivery_identity=UNHEX('" + hex_id(replacement) +
+			    "'),delivery_ids=NULL WHERE id=" + std::to_string(GUILD_ID));
+	execute(db,
+		"UPDATE artifact_domain_state SET canonical_item_uid=100,delivery_ids=NULL WHERE vnum=" +
+			std::to_string(ARTIFACT_VNUM));
+	assert(artifact_guild_repository_delivery_saved(db, child, &saved) && saved);
+	execute(db, "DELETE FROM critical_outbox WHERE operation_id=UNHEX('" + child_id + "')");
+	execute(db, "DELETE FROM critical_operation_inbox WHERE operation_id=UNHEX('" + child_id +
+			    "')");
+	std::cout
+		<< "PASS immutable intent rollback/commit, partial entity checkpoints, later state, durable ACK and target replacement\n";
 
 	// History records captures even if subsequent gameplay removed the entity.
 	execute(db,

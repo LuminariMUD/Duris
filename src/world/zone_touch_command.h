@@ -16,6 +16,7 @@
 #define ZONE_TOUCH_COMMAND_H
 
 #include "persistence/critical_command.h"
+#include "guild/artifact_guild_command.h"
 
 #include <array>
 
@@ -50,6 +51,8 @@ struct zone_touch_payload
 	uint8_t record_zone = 1;
 	std::array<zone_touch_award, ZONE_TOUCH_MAX_PARTICIPANTS> awards = {};
 	bool prepared_delivery = false; // v3: saved recipient checkpoint owns payment
+	bool artifact_intents = false; // v4: immutable entity effects co-commit with the award
+	std::vector<critical_command> artifact_deliveries;
 };
 
 struct zone_touch_result : zone_touch_payload

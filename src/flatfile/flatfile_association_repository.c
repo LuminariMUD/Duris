@@ -34,7 +34,7 @@ constexpr std::array<uint8_t, 8> ledger_magic = { 'D', 'U', 'R', 'G', 'L', 'D', 
 constexpr std::array<uint8_t, 8> alliance_magic = { 'D', 'U', 'R', 'A', 'L', 'L', 'Y', 0 };
 constexpr std::array<uint8_t, 8> guildhall_magic = { 'D', 'U', 'R', 'G', 'H', 'A', 'L', 'L' };
 constexpr std::array<uint8_t, 8> outpost_magic = { 'D', 'U', 'R', 'O', 'U', 'T', 'P', 0 };
-constexpr uint32_t catalog_version = 1;
+constexpr uint32_t catalog_version = 2;
 constexpr uint32_t ledger_version = 1;
 constexpr uint32_t alliance_version = 1;
 constexpr uint32_t guildhall_version = 1;
@@ -238,6 +238,7 @@ bool valid_catalog(const association_catalog &catalog)
 		{
 			const auto &guild = catalog.associations[guild_index];
 			if (!guild.association_id || !guild.revision ||
+			    !artifact_guild_delivery_ids_valid(guild.delivery_ids) ||
 			    !valid_text(guild.name, association_name_maximum, true, true) ||
 			    !valid_text(guild.top_fragger, top_fragger_maximum, false, false) ||
 			    guild.top_fragger != canonical_name(guild.top_fragger) ||
@@ -309,6 +310,12 @@ bool encode_catalog(const association_catalog &catalog, std::vector<uint8_t> *by
 			payload.number(member.contributed_frags);
 			payload.number(member.revision);
 		}
+		for (uint8_t byte : guild.delivery_identity.bytes)
+			payload.number(byte);
+		payload.number<uint16_t>(guild.delivery_ids.size());
+		for (const auto &id : guild.delivery_ids)
+			for (uint8_t byte : id)
+				payload.number(byte);
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -337,7 +344,7 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, association_catalog *cata
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || version != catalog_version || !revision ||
+	    !header.number(&revision) || version < 1 || version > catalog_version || !revision ||
 	    payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
@@ -385,6 +392,23 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, association_catalog *cata
 				    !payload.number(&member.contributed_frags) ||
 				    !payload.number(&member.revision))
 					return false;
+			if (version >= 2)
+			{
+				for (auto &byte : guild.delivery_identity.bytes)
+					if (!payload.number(&byte))
+						return false;
+				uint16_t delivery_count = 0;
+				if (!payload.number(&delivery_count) ||
+				    delivery_count > ARTIFACT_GUILD_PENDING_MAX ||
+				    delivery_count > (payload.size - payload.offset) /
+							     CRITICAL_COMMAND_ID_BYTES)
+					return false;
+				guild.delivery_ids.resize(delivery_count);
+				for (auto &id : guild.delivery_ids)
+					for (auto &byte : id)
+						if (!payload.number(&byte))
+							return false;
+			}
 		}
 	}
 	catch (const std::bad_alloc &)
@@ -454,7 +478,9 @@ bool association_content_equal(const flatfile_association_record &left,
 	    left.silver != right.silver || left.copper != right.copper ||
 	    left.frags != right.frags || left.top_frags != right.top_frags ||
 	    left.top_fragger != right.top_fragger || left.ranks != right.ranks ||
-	    left.members.size() != right.members.size())
+	    left.members.size() != right.members.size() ||
+	    left.delivery_ids != right.delivery_ids ||
+	    left.delivery_identity.bytes != right.delivery_identity.bytes)
 		return false;
 	for (size_t index = 0; index < left.members.size(); ++index)
 		if (!member_content_equal(left.members[index], right.members[index]))
@@ -1144,6 +1170,16 @@ flatfile_association_list(const std::string &root,
 	flatfile_authority_lock lock;
 	if (!lock.acquire(root, error))
 		return flatfile_association_result::io_error;
+	return flatfile_association_list_locked(root, lock, associations, error);
+}
+
+flatfile_association_result
+flatfile_association_list_locked(const std::string &root, const flatfile_authority_lock &lock,
+				 std::vector<flatfile_association_record> *associations,
+				 std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !associations)
+		return flatfile_association_result::invalid;
 	const auto recovered = recover(root, lock, error);
 	if (recovered != flatfile_association_result::ok)
 		return recovered;

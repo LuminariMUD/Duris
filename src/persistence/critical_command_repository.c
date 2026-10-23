@@ -683,6 +683,43 @@ bool execute_epic_state(MYSQL *connection, const critical_command &command,
 
 } // namespace
 
+bool artifact_guild_repository_prepare_delivery(MYSQL *connection, const critical_command &command)
+{
+	artifact_guild_payload payload{};
+	std::vector<uint8_t> encoded;
+	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest{}, keys{};
+	if (!connection || command.payload_version != ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION ||
+	    !artifact_guild_command_decode_payload(command, &payload) ||
+	    !artifact_guild_command_valid_delivery(command, payload.parent_operation_id) ||
+	    critical_command_encode(command, &encoded) != critical_command_codec_result::ok ||
+	    encoded.size() > CRITICAL_COMMAND_RESULT_MAX_BYTES ||
+	    !command_hashes(command, &digest, &keys))
+	{
+		errno = EINVAL;
+		return false;
+	}
+	constexpr char pending_sql[] =
+		"SELECT COUNT(*) FROM critical_outbox WHERE destination=7 AND event_type=2 AND status<>1";
+	if (mysql_real_query(connection, pending_sql, sizeof(pending_sql) - 1))
+		return false;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
+	const bool room = row && row[0] &&
+			  strtoull(row[0], nullptr, 10) < ARTIFACT_GUILD_PENDING_MAX;
+	if (rows)
+		mysql_free_result(rows);
+	if (!room)
+	{
+		errno = ENOSPC;
+		return false;
+	}
+	return insert_inbox(connection, command, digest, keys) &&
+	       insert_outbox_event(connection, command.operation_id, 0, 7, 2,
+				   ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION, encoded.data(),
+				   encoded.size()) &&
+	       finish_inbox(connection, command, 0, 0, encoded.data(), encoded.size(), 1);
+}
+
 critical_apply_result critical_command_repository_apply(MYSQL *connection,
 							const critical_command &command)
 {
@@ -1368,6 +1405,16 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 		if (zone_payload.stone_uid && !result_code)
 			mutation_applied =
 				true; // Successful recovery also needs its own receipt outbox.
+		if (!result_code && !zone_result.recovered_claim)
+			for (const auto &effect : zone_payload.artifact_deliveries)
+				if (!artifact_guild_repository_prepare_delivery(connection, effect))
+				{
+					const auto error = database_error(connection);
+					rollback(connection);
+					return failure(error ? error :
+							       static_cast<unsigned int>(
+								       errno ? errno : EIO));
+				}
 		std::array<uint8_t, ZONE_TOUCH_RESULT_BYTES> result_payload = {};
 		if (zone_result.prepared_delivery && !result_code && !zone_result.recovered_claim)
 		{

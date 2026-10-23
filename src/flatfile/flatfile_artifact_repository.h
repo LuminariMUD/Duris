@@ -15,6 +15,7 @@
 #ifndef DURIS_FLATFILE_ARTIFACT_REPOSITORY_H
 #define DURIS_FLATFILE_ARTIFACT_REPOSITORY_H
 
+#include "guild/artifact_guild_delivery_ids.h"
 #include "flatfile/flatfile_authority_transaction.h"
 #include "guild/artifact_identity.h"
 #include "item/item_transfer_command.h"
@@ -47,6 +48,7 @@ struct flatfile_artifact_record
 	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 	bool identity_only = false; // retain reservations without inventing legacy gameplay rows
 	std::vector<uint64_t> rejected_item_uids = {};
+	artifact_guild_delivery_ids delivery_ids = {};
 	bool operator==(const flatfile_artifact_record &) const = default;
 };
 
@@ -72,6 +74,9 @@ flatfile_artifact_result flatfile_artifact_list(const std::string &root,
 flatfile_artifact_result flatfile_artifact_get(const std::string &root, int32_t vnum,
 					       flatfile_artifact_record *record,
 					       std::string *error);
+flatfile_artifact_result
+flatfile_artifact_get_locked(const std::string &root, const flatfile_authority_lock &lock,
+			     int32_t vnum, flatfile_artifact_record *record, std::string *error);
 // One writer capture, applied atomically to the catalog. Record revisions are
 // assigned by the repository; unchanged captures do not advance them.
 flatfile_artifact_result

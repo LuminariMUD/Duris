@@ -13,6 +13,8 @@
 #include "guild/artifact_cache_codec.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_population.h"
+#include "guild/artifact_guild_state.h"
+#include "guild/artifact_guild_delivery.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/object_template.h"
@@ -139,6 +141,7 @@ struct artifact_row
 	bool removed = false;
 	uint64_t canonical_item_uid = 0;
 	std::vector<uint64_t> rejected_item_uids = {};
+	artifact_guild_delivery_ids delivery_ids = {};
 	artifact_identity_state identity_state = artifact_identity_state::unresolved;
 	artifact_population_reason population_reason = artifact_population_reason::incomplete;
 	std::vector<artifact_payload_projection> canonical_payloads = {};
@@ -170,7 +173,7 @@ const char ARTIFACT_ROWS_QUERY[] =
 const char ARTIFACT_BINDS_QUERY[] = "SELECT 'b', vnum, owner_pid, timer FROM artifact_bind";
 const char ARTIFACT_IDENTITIES_QUERY[] =
 	"SELECT 'i',vnum,IF(owned,'Y','N'),loc_type,location,timer_epoch,artifact_type,"
-	"canonical_item_uid,identity_state,rejected_item_uids FROM artifact_domain_state";
+	"canonical_item_uid,identity_state,rejected_item_uids,HEX(delivery_ids) FROM artifact_domain_state";
 
 /* artifact_domain_state repeats each artifact's row and soul for persistence
  * reconciliation and item ownership references, so every
@@ -243,6 +246,8 @@ template <typename Row> bool artifact_row_read(const Row &row, std::map<int, art
 	{
 		records.at(vnum).canonical_item_uid = uid;
 		records.at(vnum).identity_state = static_cast<artifact_identity_state>(state);
+		if (!artifact_guild_delivery_ids_read_hex(row[10], &records.at(vnum).delivery_ids))
+			return false;
 		auto &rejected = records.at(vnum).rejected_item_uids;
 		rejected.clear();
 		if (row[9])
@@ -273,7 +278,8 @@ template <typename Row> bool artifact_row_read(const Row &row, std::map<int, art
 // Owned and past its timer (a row with no timer never expires).
 bool artifact_expired(const artifact_row &row)
 {
-	return !row.removed && row.owned && row.timer && row.timer < time(NULL);
+	return !row.removed && row.owned && row.timer && row.timer < time(NULL) &&
+	       !artifact_guild_delivery_holds(row.canonical_item_uid);
 }
 
 void artifact_save_error(int vnum, const char *kind, artifact_save &save, const char *stage,
@@ -348,17 +354,18 @@ std::vector<std::string> artifact_snapshot_statements(int vnum, const artifact_r
 	}
 	const std::string domain = sql_format(
 		"INSERT INTO artifact_domain_state (vnum,owned,loc_type,location,timer_epoch,"
-		"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state,rejected_item_uids) "
-		"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u,'%s') ON DUPLICATE KEY UPDATE "
+		"artifact_type,bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state,rejected_item_uids,delivery_ids) "
+		"VALUES(%d,%u,%d,%d,%lld,%d,%d,%d,%s,%u,'%s',UNHEX('%s')) ON DUPLICATE KEY UPDATE "
 		"owned=VALUES(owned),loc_type=VALUES(loc_type),location=VALUES(location),"
 		"timer_epoch=VALUES(timer_epoch),artifact_type=VALUES(artifact_type),"
 		"bind_owner_pid=VALUES(bind_owner_pid),bind_timer_epoch=VALUES(bind_timer_epoch),"
 		"canonical_item_uid=VALUES(canonical_item_uid),identity_state=VALUES(identity_state),"
-		"rejected_item_uids=VALUES(rejected_item_uids)",
+		"rejected_item_uids=VALUES(rejected_item_uids),delivery_ids=VALUES(delivery_ids)",
 		vnum, row->owned ? 1u : 0u, row->locType, row->location,
 		static_cast<long long>(row->timer), row->type, bind.owner_pid, bind.timer,
 		row->canonical_item_uid ? std::to_string(row->canonical_item_uid).c_str() : "NULL",
-		static_cast<unsigned>(row->identity_state), rejected.c_str());
+		static_cast<unsigned>(row->identity_state), rejected.c_str(),
+		artifact_guild_delivery_ids_hex(row->delivery_ids).c_str());
 	if (row->removed)
 		return { soul, domain, sql_format("DELETE FROM artifacts WHERE vnum=%d", vnum),
 			 sql_format("DELETE FROM artifacts_mortal WHERE vnum=%d", vnum) };
@@ -390,7 +397,8 @@ flatfile_artifact_record artifact_flat_capture(int vnum, const artifact_row &row
 		 row.canonical_item_uid,
 		 row.identity_state,
 		 row.removed,
-		 row.rejected_item_uids };
+		 row.rejected_item_uids,
+		 row.delivery_ids };
 }
 
 bool artifact_queue_flat(std::vector<flatfile_artifact_record> records,
@@ -769,6 +777,7 @@ bool artifacts_load(void)
 			row.canonical_item_uid = record.canonical_item_uid;
 			row.identity_state = record.identity_state;
 			row.rejected_item_uids = record.rejected_item_uids;
+			row.delivery_ids = record.delivery_ids;
 			row.removed = record.identity_only;
 			binds[record.vnum] = { record.bind_owner_pid,
 					       static_cast<int>(record.bind_timer) };
@@ -1339,6 +1348,96 @@ void artifacts_forget_deleted_account_character(int pid)
 		if (entry.second.owner_pid == pid)
 			entry.second = { -1, 0 };
 	arti_cache_invalidate();
+}
+
+bool artifact_apply_delivery(const critical_operation_id &operation,
+			     const artifact_guild_delta &delta, int64_t feeding_cap,
+			     bool *newly_applied)
+{
+	if (!newly_applied)
+		return false;
+	*newly_applied = false;
+	auto found = artifact_rows.find(delta.vnum);
+	if (found == artifact_rows.end() || found->second.pending != artifact_pending::none ||
+	    found->second.identity_state == artifact_identity_state::unresolved)
+		return false;
+	auto &row = found->second;
+	if (row.identity_state != artifact_identity_state::present ||
+	    row.canonical_item_uid != delta.canonical_item_uid)
+		return true; // The original physical artifact has been retired.
+	auto at =
+		std::lower_bound(row.delivery_ids.begin(), row.delivery_ids.end(), operation.bytes);
+	if (at != row.delivery_ids.end() && *at == operation.bytes)
+		return true;
+	if (row.delivery_ids.size() >= ARTIFACT_GUILD_PENDING_MAX || feeding_cap <= 0 ||
+	    (delta.feed_seconds > 0 && row.timer > INT64_MAX - delta.feed_seconds))
+		return false;
+	artifact_row fed = row;
+	fed.delivery_ids.insert(fed.delivery_ids.begin() + (at - row.delivery_ids.begin()),
+				operation.bytes);
+	const int64_t target = std::clamp<int64_t>(row.timer + delta.feed_seconds, 0, feeding_cap);
+	// A later feed may already have moved this artifact past the captured cap.
+	fed.timer =
+		row.timer == delta.timer_before ?
+			delta.timer :
+			(delta.feed_seconds > 0 ? std::max<int64_t>(row.timer, target) : target);
+	row.delivery_ids = std::move(fed.delivery_ids);
+	row.timer = fed.timer;
+	*newly_applied = true;
+	row.save = {};
+	row.save.dirty = true;
+	artifact_row_save(delta.vnum, row);
+	arti_cache_invalidate();
+	return true;
+}
+
+void artifact_delivery_markers(int32_t *cursor, critical_operation_id *after,
+			       artifact_guild_delivery_ids *ids)
+{
+	ids->clear();
+	auto row = artifact_rows.lower_bound(*cursor);
+	for (size_t visited = 0; row != artifact_rows.end() && visited < 8; ++visited)
+	{
+		if (row->first != *cursor)
+		{
+			*cursor = row->first;
+			*after = {};
+		}
+		auto id = std::upper_bound(row->second.delivery_ids.begin(),
+					   row->second.delivery_ids.end(), after->bytes);
+		while (id != row->second.delivery_ids.end() && ids->size() < 32)
+		{
+			ids->push_back(*id);
+			after->bytes = *id++;
+		}
+		if (id != row->second.delivery_ids.end())
+			return;
+		++row;
+		*after = {};
+		*cursor = row == artifact_rows.end() ? 0 : row->first;
+		if (!ids->empty())
+			return;
+	}
+	if (row == artifact_rows.end())
+	{
+		*cursor = 0;
+		*after = {};
+	}
+}
+
+void artifact_forget_delivery(int vnum, const critical_operation_id &operation)
+{
+	auto found = artifact_rows.find(vnum);
+	if (found == artifact_rows.end())
+		return;
+	auto &row = found->second;
+	auto at =
+		std::lower_bound(row.delivery_ids.begin(), row.delivery_ids.end(), operation.bytes);
+	if (at == row.delivery_ids.end() || *at != operation.bytes)
+		return;
+	row.delivery_ids.erase(at);
+	row.save.dirty = true;
+	artifact_row_save(vnum, row);
 }
 
 void artifact_feed_set_timer(int vnum, time_t timer)

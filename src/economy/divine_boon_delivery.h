@@ -30,6 +30,7 @@ struct divine_epic_delivery
 	int32_t stone_level = 0;
 	int32_t errand = 0;
 	uint8_t flags = 0;
+	bool artifact_intents = false;
 };
 
 constexpr size_t DIVINE_EPIC_RECOVERY_MAX = 512;

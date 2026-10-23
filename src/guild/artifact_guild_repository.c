@@ -15,6 +15,7 @@
 #include "guild/artifact_guild_repository.h"
 #include "core/utility.h"
 #include "core/files.h"
+#include "guild/artifact_identity.h"
 #include "persistence/persistence_log.h"
 
 #include <algorithm>
@@ -22,6 +23,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <mysql.h>
+#include <openssl/sha.h>
 #include <string>
 
 namespace
@@ -224,4 +226,191 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 		return storage_failure();
 	*mutation_applied = true; // history/outbox only; gameplay state was already applied
 	return true;
+}
+
+// These reads run on the persistence writer, after the entity snapshot jobs.
+bool artifact_guild_repository_delivery_saved(MYSQL *connection, const critical_command &command,
+					      bool *saved)
+{
+	artifact_guild_payload payload{};
+	if (!connection || !saved ||
+	    command.payload_version != ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION ||
+	    !artifact_guild_command_decode_payload(command, &payload))
+		return false;
+	*saved = false;
+	for (size_t i = 0; i < payload.artifact_count; ++i)
+	{
+		const auto &entry = payload.artifacts[i];
+		if (!execute(
+			    connection,
+			    "SELECT canonical_item_uid,identity_state,HEX(delivery_ids) FROM artifact_domain_state WHERE vnum=" +
+				    std::to_string(entry.vnum)))
+			return false;
+		MYSQL_RES *rows = mysql_store_result(connection);
+		MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
+		artifact_guild_delivery_ids ids;
+		const bool decoded = row && row[1] &&
+				     artifact_guild_delivery_ids_read_hex(row[2], &ids);
+		const unsigned state = row && row[1] ? strtoul(row[1], nullptr, 10) : 0;
+		const uint64_t uid = row && row[0] ? strtoull(row[0], nullptr, 10) : 0;
+		const bool retired =
+			state == static_cast<unsigned>(artifact_identity_state::retired) ||
+			state == static_cast<unsigned>(artifact_identity_state::absent) ||
+			(state == static_cast<unsigned>(artifact_identity_state::present) &&
+			 uid != entry.canonical_item_uid);
+		const bool present =
+			state == static_cast<unsigned>(artifact_identity_state::present) &&
+			uid == entry.canonical_item_uid &&
+			std::binary_search(ids.begin(), ids.end(), command.operation_id.bytes);
+		if (rows)
+			mysql_free_result(rows);
+		if (!decoded || state > static_cast<unsigned>(artifact_identity_state::absent) ||
+		    !artifact_identity_valid(uid, static_cast<artifact_identity_state>(state)))
+			return false;
+		if (!retired && !present)
+			return true;
+	}
+	if (payload.guild_id)
+	{
+		if (!execute(connection,
+			     "SELECT HEX(delivery_identity),HEX(delivery_ids) FROM guilds WHERE id=" +
+				     std::to_string(payload.guild_id)))
+			return false;
+		MYSQL_RES *rows = mysql_store_result(connection);
+		if (!rows)
+			return false;
+		MYSQL_ROW row = mysql_fetch_row(rows);
+		artifact_guild_delivery_ids incarnation, ids;
+		const bool exists = row != nullptr;
+		const bool decoded = !exists ||
+				     (artifact_guild_delivery_ids_read_hex(row[0], &incarnation) &&
+				      incarnation.size() <= 1 &&
+				      artifact_guild_delivery_ids_read_hex(row[1], &ids));
+		const auto identity =
+			incarnation.empty() ?
+				artifact_guild_legacy_identity(payload.guild_id).bytes :
+				incarnation.front();
+		const bool ready =
+			!exists || identity != payload.guild_identity.bytes ||
+			std::binary_search(ids.begin(), ids.end(), command.operation_id.bytes);
+		mysql_free_result(rows);
+		if (!decoded)
+			return false;
+		if (!ready)
+			return true;
+	}
+	*saved = true;
+	return true;
+}
+
+bool artifact_guild_repository_load_delivery(MYSQL *connection,
+					     const critical_operation_id &operation,
+					     critical_command *command, bool *acknowledged)
+{
+	if (!connection || !command || !acknowledged || critical_operation_id_is_zero(operation))
+		return false;
+	*acknowledged = false;
+	const std::string id = bytes_hex(operation.bytes.data(), operation.bytes.size());
+	if (!execute(
+		    connection,
+		    "SELECT command_hash,result_code,result_payload FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
+			    id + "') AND command_type=9 AND payload_version=3 AND status=1"))
+		return false;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
+	const auto lengths = row ? mysql_fetch_lengths(rows) : nullptr;
+	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest{};
+	artifact_guild_payload payload{};
+	bool valid = row && lengths && row[0] && lengths[0] == digest.size() && row[1] &&
+		     (std::string(row[1]) == "0" || std::string(row[1]) == "1") && row[2] &&
+		     lengths[2] <= 2048;
+	if (valid)
+	{
+		SHA256(reinterpret_cast<const uint8_t *>(row[2]), lengths[2], digest.data());
+		valid = std::equal(digest.begin(), digest.end(),
+				   reinterpret_cast<const uint8_t *>(row[0])) &&
+			critical_command_decode(reinterpret_cast<const uint8_t *>(row[2]),
+						lengths[2],
+						command) == critical_command_codec_result::ok &&
+			command->operation_id.bytes == operation.bytes &&
+			artifact_guild_command_decode_payload(*command, &payload) &&
+			artifact_guild_command_valid_delivery(*command,
+							      payload.parent_operation_id);
+		*acknowledged = valid && row[1][0] == '1';
+	}
+	if (rows)
+		mysql_free_result(rows);
+	if (!valid)
+		errno = EILSEQ;
+	return valid;
+}
+
+bool artifact_guild_repository_delivery_acknowledged(MYSQL *connection,
+						     const critical_command &expected,
+						     bool *acknowledged)
+{
+	critical_command stored;
+	return artifact_guild_repository_load_delivery(connection, expected.operation_id, &stored,
+						       acknowledged) &&
+	       critical_command_equal(expected, stored);
+}
+
+bool artifact_guild_repository_pending_deliveries(MYSQL *connection,
+						  std::vector<critical_command> *commands)
+{
+	if (!connection || !commands)
+		return false;
+	commands->clear();
+	if (!execute(
+		    connection,
+		    "SELECT operation_id,payload,status FROM critical_outbox WHERE destination=7 AND event_type=2 AND payload_version=3 AND status<>1 ORDER BY outbox_id LIMIT " +
+			    std::to_string(ARTIFACT_GUILD_PENDING_MAX + 1)))
+		return false;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	if (!rows)
+		return false;
+	bool valid = mysql_num_rows(rows) <= ARTIFACT_GUILD_PENDING_MAX;
+	while (valid)
+	{
+		MYSQL_ROW row = mysql_fetch_row(rows);
+		if (!row)
+			break;
+		const auto lengths = mysql_fetch_lengths(rows);
+		critical_command command;
+		artifact_guild_payload payload{};
+		valid = lengths && row[0] && lengths[0] == CRITICAL_COMMAND_ID_BYTES && row[1] &&
+			lengths[1] <= 2048 && row[2] && (atoi(row[2]) == 0 || atoi(row[2]) == 2) &&
+			critical_command_decode(reinterpret_cast<const uint8_t *>(row[1]),
+						lengths[1],
+						&command) == critical_command_codec_result::ok &&
+			std::equal(command.operation_id.bytes.begin(),
+				   command.operation_id.bytes.end(),
+				   reinterpret_cast<const uint8_t *>(row[0])) &&
+			artifact_guild_command_decode_payload(command, &payload) &&
+			artifact_guild_command_valid_delivery(command, payload.parent_operation_id);
+		bool acknowledged = false;
+		if (valid)
+			valid = artifact_guild_repository_delivery_acknowledged(connection, command,
+										&acknowledged) &&
+				!acknowledged;
+		if (valid && atoi(row[2]) == 2)
+		{
+			const std::string id = bytes_hex(command.operation_id.bytes.data(),
+							 command.operation_id.bytes.size());
+			valid = execute(
+				connection,
+				"UPDATE critical_outbox SET status=0,attempt_count=0,next_attempt_at=CURRENT_TIMESTAMP(6),dead_lettered_at=NULL,last_error_code=0 WHERE operation_id=UNHEX('" +
+					id +
+					"') AND destination=7 AND event_type=2 AND payload_version=3 AND status=2");
+		}
+		if (valid)
+			commands->push_back(std::move(command));
+	}
+	mysql_free_result(rows);
+	if (!valid)
+	{
+		commands->clear();
+		errno = EILSEQ;
+	}
+	return valid;
 }

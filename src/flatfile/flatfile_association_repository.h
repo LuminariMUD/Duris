@@ -15,6 +15,7 @@
 #ifndef DURIS_FLATFILE_ASSOCIATION_REPOSITORY_H
 #define DURIS_FLATFILE_ASSOCIATION_REPOSITORY_H
 
+#include "guild/artifact_guild_delivery_ids.h"
 #include "flatfile/flatfile_authority_transaction.h"
 
 #include <array>
@@ -61,6 +62,8 @@ struct flatfile_association_record
 	std::array<std::string, FLATFILE_ASSOCIATION_RANK_COUNT> ranks;
 	uint64_t revision = 0;
 	std::vector<flatfile_association_member_record> members;
+	artifact_guild_delivery_ids delivery_ids = {};
+	critical_operation_id delivery_identity = {};
 };
 
 struct flatfile_alliance_record
@@ -126,6 +129,10 @@ flatfile_association_result
 flatfile_association_list(const std::string &root,
 			  std::vector<flatfile_association_record> *associations,
 			  std::string *error);
+flatfile_association_result
+flatfile_association_list_locked(const std::string &root, const flatfile_authority_lock &lock,
+				 std::vector<flatfile_association_record> *associations,
+				 std::string *error);
 flatfile_association_result
 flatfile_association_save(const std::string &root, const flatfile_association_record &association,
 			  std::string *error);

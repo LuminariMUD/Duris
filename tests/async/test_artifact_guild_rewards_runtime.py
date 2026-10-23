@@ -31,6 +31,12 @@ class ArtifactGuildRuntimeTests(unittest.TestCase):
             str(HARNESS_STUBS), '-Wl,--gc-sections', '-lcrypto', '-o', str(cls.binary),
         ], cwd=ROOT, check=True)
 
+    def test_prepared_guild_state_preserves_later_changes(self):
+        subprocess.run([str(self.binary), 'delivery-state'], check=True, timeout=30)
+
+    def test_prepared_child_preserves_canonical_targets(self):
+        subprocess.run([str(self.binary), 'prepared-codec'], check=True, timeout=30)
+
     def test_existing_live_rewards(self):
         subprocess.run([str(self.binary)], check=True, timeout=30)
 

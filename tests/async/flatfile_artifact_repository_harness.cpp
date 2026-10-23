@@ -146,8 +146,25 @@ static void identity_storage(const fs::path &root)
 	// Legacy bytes have no identity evidence and must never decode as absent.
 	std::ifstream input(root / "domains/artifact_catalog", std::ios::binary);
 	std::vector<uint8_t> legacy{ std::istreambuf_iterator<char>(input), {} };
-	require(legacy.size() == 56 + 4 + 63 + 4 && legacy[8] == 4,
+	require(legacy.size() == 56 + 4 + 63 + 4 + 2 && legacy[8] == 5,
 		"unexpected single-record artifact catalog wire shape");
+	// v5 adds an empty delivery-ID vector. Freeze an actual v4 catalog first.
+	legacy.resize(legacy.size() - 2);
+	legacy[8] = 4;
+	const uint32_t v4_size = legacy.size() - 56;
+	for (size_t byte = 0; byte < sizeof(v4_size); ++byte)
+		legacy[12 + byte] = static_cast<uint8_t>(v4_size >> (byte * 8));
+	SHA256(legacy.data() + 56, v4_size, legacy.data() + 24);
+	const fs::path v4_root = root.parent_path() / "version-four-identity";
+	prepare_root(v4_root);
+	require(flatfile_atomic_write((v4_root / "domains").string(), "artifact_catalog", legacy,
+				      &error),
+		"could not write v4 artifact fixture");
+	flatfile_artifact_record v4_record;
+	require(flatfile_artifact_get(v4_root.string(), 100, &v4_record, &error) ==
+				flatfile_artifact_result::ok &&
+			v4_record == loaded,
+		"v4 identity or gameplay state changed");
 	legacy.resize(legacy.size() - 4);
 	auto version_two = legacy;
 	version_two.pop_back();
@@ -295,10 +312,44 @@ static void snapshot_captures(const fs::path &root)
 		"capture lost a retired UID tombstone");
 }
 
+static void delivery_storage(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	flatfile_artifact_record record;
+	record.vnum = 100;
+	record.type = 1;
+	record.revision = 1;
+	record.timer = 1234;
+	std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES> id{};
+	id.back() = 1;
+	record.delivery_ids = { id };
+	require(flatfile_artifact_establish(root.string(), { record }, &error) ==
+			flatfile_artifact_result::ok,
+		"artifact effect ID did not persist with timer");
+	flatfile_artifact_record loaded;
+	require(flatfile_artifact_get(root.string(), 100, &loaded, &error) ==
+				flatfile_artifact_result::ok &&
+			loaded == record,
+		"artifact effect ID/timer did not round trip");
+	record.delivery_ids.push_back(id);
+	require(flatfile_artifact_snapshot_apply(root.string(), { record }, &error) ==
+			flatfile_artifact_result::invalid,
+		"duplicate artifact effect ID accepted");
+	record.delivery_ids.clear();
+	require(flatfile_artifact_snapshot_apply(root.string(), { record }, &error) ==
+				flatfile_artifact_result::ok &&
+			flatfile_artifact_get(root.string(), 100, &loaded, &error) ==
+				flatfile_artifact_result::ok &&
+			loaded.delivery_ids.empty() && loaded.timer == 1234,
+		"acknowledged effect ID pruning changed timer");
+}
+
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");
 	identity_storage(fs::path(argv[1]) / "identity");
+	delivery_storage(fs::path(argv[1]) / "delivery");
 	snapshot_captures(fs::path(argv[1]) / "captures");
 	const fs::path root = fs::path(argv[1]) / "release";
 	prepare_root(root);

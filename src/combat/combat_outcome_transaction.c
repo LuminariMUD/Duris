@@ -19,11 +19,15 @@
 #include "persistence/persistence_checkpoint.h"
 #include "core/utils.h"
 #include "economy/divine_boon_delivery.h"
+#include "guild/artifact_guild_delivery.h"
+#include "guild/artifact_guild_state.h"
+#include "world/epic.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <mutex>
+#include <limits>
 #include <new>
 #include <string>
 #include <unordered_map>
@@ -94,29 +98,61 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 				       combat_outcome_completion_fn completion,
 				       critical_operation_id *submitted_operation_id)
 {
-	if (pending.size() >= COMBAT_OUTCOME_PENDING_MAX)
+	if (pending.size() >= COMBAT_OUTCOME_PENDING_MAX ||
+	    payload.participant_count > COMBAT_OUTCOME_MAX_PARTICIPANTS)
 		return false;
 	critical_operation_id operation_id = {};
-	critical_command command = {};
-	if (!critical_operation_id_generate(&operation_id) ||
-	    !combat_outcome_command_build(&command, operation_id, payload))
+	if (!critical_operation_id_generate(&operation_id))
 		return false;
-	const std::string key = operation_key(operation_id);
+	combat_outcome_payload prepared;
+	std::string key;
+	bool reserved = false;
 	try
 	{
+		prepared = payload;
+		prepared.artifact_deliveries.clear();
+		prepared.artifact_intents = prepared.prepared_at != 0;
+		if (prepared.artifact_intents)
+			for (size_t i = 0; i < prepared.participant_count; ++i)
+			{
+				const auto &entry = prepared.participants[i];
+				if (!(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
+					continue;
+				if (entry.epic_delta <= 0 ||
+				    entry.epic_delta > std::numeric_limits<int>::max())
+					return false;
+				critical_command child;
+				const auto captured = artifact_guild_state_prepare_delivery(
+					find_player_by_pid(entry.pid),
+					static_cast<int>(entry.epic_delta), EPIC_PVP, operation_id,
+					&child);
+				if (captured == artifact_guild_capture_status::ready)
+					prepared.artifact_deliveries.push_back(std::move(child));
+				else if (captured != artifact_guild_capture_status::no_effect)
+					return false;
+			}
+		critical_command command = {};
+		if (!combat_outcome_command_build(&command, operation_id, prepared) ||
+		    !artifact_guild_delivery_reserve(prepared.artifact_deliveries))
+			return false;
+		reserved = true;
+		key = operation_key(operation_id);
 		pending.emplace(key,
-				pending_combat_outcome{ payload, completion, monotonic_msec() });
+				pending_combat_outcome{ prepared, completion, monotonic_msec() });
+		const auto submitted = critical_command_coordinator_submit(std::move(command));
+		if (!critical_submit_result_keeps_operation(submitted))
+		{
+			artifact_guild_delivery_complete(prepared.artifact_deliveries, false);
+			pending.erase(key);
+			++health.submission_failures;
+			return false;
+		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		return false;
-	}
-	const critical_submit_result submitted =
-		critical_command_coordinator_submit(std::move(command));
-	if (!critical_submit_result_keeps_operation(submitted))
-	{
+		if (reserved)
+			artifact_guild_delivery_complete(prepared.artifact_deliveries, false);
 		pending.erase(key);
-		++health.submission_failures;
 		return false;
 	}
 	++health.submitted;
@@ -152,7 +188,8 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 			const auto &expected = found->second.payload;
 			committed = result.participant_count == expected.participant_count &&
 				    result.victim_pid == expected.victim_pid &&
-				    result.prepared_at == expected.prepared_at;
+				    result.prepared_at == expected.prepared_at &&
+				    result.artifact_intents == expected.artifact_intents;
 			for (size_t participant = 0;
 			     committed && participant < expected.participant_count; ++participant)
 			{
@@ -170,6 +207,11 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 							    original.epic_spill_blood;
 			}
 		}
+		if (committed ||
+		    (completions[index].outcome != critical_apply_outcome::applied &&
+		     completions[index].outcome != critical_apply_outcome::already_applied))
+			artifact_guild_delivery_complete(found->second.payload.artifact_deliveries,
+							 committed);
 		if (committed)
 			++health.committed;
 		else

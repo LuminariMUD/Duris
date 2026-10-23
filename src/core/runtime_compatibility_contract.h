@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"3784a52c16a75c750b43e54d870dc6afebe8b927a61618c40632bebc9f2beaae";
+	"6163e4fef607d6a3e4b2a74d496d4b0c8a008304ec7e507cf0c149de0444d2cc";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"40af700e2ba089cec046f4e0e0857a5fb4a64eead42fbc13f4b06cd53ebcb4f0";
+	"01202564c50c93723525ecce3c88ee983447f29d376dac9924e69e8758f34abf";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -105,15 +105,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0048 adds revision-checked Divine Boon rotation state.
  * Migration 0049 checkpoints prepared Divine award delivery with player status.
  * Migration 0050 stores exact Divine trade manifests and the market generation.
+ * Migration 0051 saves prepared artifact/guild delivery proof with entity snapshots.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0050_divine_trade_state";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 51;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0051_divine_effect_delivery";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 52;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"3657f30c78faea6b728e456220c62737aceea2e44968d0e1b88d27e57674861c";
+	"60c23ec1a9a172ad04fda08dc041bc0d90192e69054008b06d282b00b86a32b7";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"6e580109ffc73d3e1e82493c1b6b9b4df5dad38fbb9a244de1c7b2e1f53b9508";
+	"3f37071ddb6706e39a4736daa0bcd3d156acbb192e08acbf760985ef706b6c2c";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"8bb28550f565350760daff6fb74228a5f1c43f956aad2f41ce10160877bbdbf0";
+	"fdcf9799b735cba8e58ad5cb6964ba14db947f11a26e4b105138580191b687dd";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";
