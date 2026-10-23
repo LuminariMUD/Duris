@@ -189,11 +189,23 @@ int main(int argc, char **argv) {
                 "','fixturebank'," + str(level) + "," + str(level) + ",1,1,1,999,888,777,63)")
             sql("INSERT INTO account_characters(account_name,pid,char_name) VALUES('fixturebank'," +
                 str(pid) + ",'" + name + "')")
+        sql("INSERT INTO associations(id,name,prestige) VALUES(777,'old guild',999)")
+        sql("INSERT INTO kingdom_realms(assoc_id,realm_id,hall_vnum,highest_claim,res_wood) "
+            "VALUES(777,3,900,80,9999)")
+        sql("INSERT INTO kingdom_garrison(assoc_id,slot,guard_class,level) VALUES(777,0,1,50)")
+        sql("INSERT INTO kingdom_land(kingdom_id,start_vnum,end_vnum) VALUES(777,900,980)")
         epoch_call("wipe", 1, 0, cwd=root)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
+        for table in ("kingdom_garrison", "kingdom_land", "kingdom_realms"):
+            assert sql("SELECT COUNT(*) FROM " + table) == "0", table
+        sql("INSERT INTO associations(id,name) VALUES(777,'new guild')")
+        assert sql("SELECT COUNT(*) FROM kingdom_realms WHERE assoc_id=777") == "0"
+        assert sql("SELECT COUNT(*) FROM kingdom_garrison WHERE assoc_id=777") == "0"
+        print("Kingdom reset: territory/resources/guards absent, including a reused association ID", flush=True)
+
         assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "1"
         new_god = int(sql("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1 AND level=62"))
         assert new_god > 1004
@@ -238,6 +250,14 @@ int main(int argc, char **argv) {
         finally:
             sql("ALTER TABLE player_data RENAME COLUMN fixture_base_luk TO base_luk")
         print("Missing recreation schema rejected before the irreversible boundary", flush=True)
+        sql("RENAME TABLE kingdom_realms TO fixture_kingdom_realms")
+        try:
+            epoch_call("wipe", 3, 1, cwd=root)
+            assert sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1") == before
+        finally:
+            sql("RENAME TABLE fixture_kingdom_realms TO kingdom_realms")
+        print("Missing kingdom store rejected before the irreversible boundary", flush=True)
+
 
         # Exercise the real policy hook. Its fixed reset boundary separates retry
         # identity from the 28-day business protection, with no schema extension.

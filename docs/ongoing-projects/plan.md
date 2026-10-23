@@ -40,6 +40,23 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — kingdom reset completeness
+
+Branch `branch/issue-264-kingdom-reset`, stacked on reward retry PR #318 at
+`b35af6d08` (https://github.com/LuminariMUD/Duris/pull/318), review-ready.
+Outcome: remove realm resources/territory, purchased garrisons and legacy land before
+removing their association owners. Those association IDs are reused; current SQL
+loads are unscoped by season. Add the three real stores to preflight, postflight and
+the existing lifecycle classifications. Non-goals: new schema, realm mechanics,
+protected historical ledgers or another reset manifest. Files: SQL, manifest,
+existing native SQL journey, runbook/plan. Proof: seed real positive world rows,
+execute the actual reset, reuse an association ID and prove no holdings/guards;
+missing-store preflight must preserve the old epoch. The actual SQL journey passed
+positive territory/resource/guard deletion, association-ID reuse and missing-store
+preflight; both builds passed. It exposed another stale source-test schema list,
+now replaced with the same sealed migration inventory already used by the lifecycle
+validator. Final contracts/hooks and publication remain.
+
 ## Current continuation — reward retry accounting
 
 Branch `branch/issue-264-reward-retries`, based on PR #317 at `7fc360575`.
@@ -55,7 +72,7 @@ approved grant rates/lifetimes. Existing singleton + policy timestamp suffice.
 The real hook/private-DB matrix passed, including invalid boundaries, delayed
 retries, fixed-boundary 28-day protection, both configurations, rollback and lost
 ACK. Both backend builds and the exact reward source contract passed; format/hooks
-and publication remain. Full readiness remains open.
+and publication passed. Published as PR #318 at `b35af6d08`. Full readiness remains open.
 
 ## Implementation handoff — 2026-10-24
 
