@@ -10,7 +10,7 @@ Status: the owner's 2026-10-23 review-repair request is complete locally and pub
 
 ### Review repair continuation, 2026-10-23
 
-Use the repository ablation skill: preserve the complete review/integration outcome, fix the existing paths, and avoid unrelated cleanup. Current master is `e2a2166f34fc56b814d553feed0a43d952b4a4d2`. The twelve original PRs plus focused repair #307 form one dependency chain; parent repairs were carried forward with explicit expected-head leases. #283 now targets #307, which follows #282 and precedes activation #291.
+Use the repository ablation skill: preserve the complete review/integration outcome, fix the existing paths, and avoid unrelated cleanup. Current master is `b7b64639cb90838c026fe8e3e58940ba65a98dbd`; the code-qualified base is `e2a2166f34fc56b814d553feed0a43d952b4a4d2`. The final master advance changes only its database-investigation document. The `src`, `migrations`, `tests` and `scripts` Git trees remain identical across that carry, so executable evidence is reused. The twelve original PRs plus focused repair #307 form one dependency chain; parent repairs were carried forward with explicit expected-head leases. #283 now targets #307, which follows #282 and precedes activation #291.
 
 Completed source/test repairs:
 
