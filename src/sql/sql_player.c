@@ -1226,6 +1226,8 @@ bool sql_save_account(struct acct_entry *acc)
 	const std::string confirmation =
 		escape_str(acc->acct_confirmation ? acc->acct_confirmation : "");
 	std::vector<std::string> statements;
+	// A queued capture may outlive its owner deletion. Refuse to resurrect
+	// the ship; dependent row writes then fail in the same writer transaction.
 	statements.push_back(sql_format(
 		"insert into accounts (account_name, email, password, confirmation_code, "
 		"confirmed, confirmation_sent, blocked, last_login, last_good_char, last_evil_char, "
@@ -4545,13 +4547,14 @@ static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 	std::vector<std::string> statements;
 	statements.push_back(sql_format(
 		"insert into ships (id, owner_name, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags) "
-		"values (%d, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, %lu) "
+		"select %d, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, %lu "
+		"where exists (select 1 from player_data where name='%s') "
 		"on duplicate key update owner_name=values(owner_name), ship_name=values(ship_name), "
 		"ship_class=values(ship_class), frags=values(frags), anchor_room=values(anchor_room), "
 		"time_played=values(time_played), mainsail=values(mainsail), race=values(race), "
 		"money=values(money), flags=values(flags)",
 		ship->db_id, owner.c_str(), name.c_str(), ship->m_class, ship->frags, ship->anchor,
-		ship->time, ship->mainsail, ship->race, ship->money, ship->flags));
+		ship->time, ship->mainsail, ship->race, ship->money, ship->flags, owner.c_str()));
 	for (int i = 0; i < 4; i++)
 		statements.push_back(
 			sql_format("insert into ship_armor (ship_id, side, armor, internal) "

@@ -608,6 +608,17 @@ int main()
 				scalar(db, "SELECT COUNT(*) FROM ships WHERE id=501") == "0" &&
 				divine_trade_sql_books(db, 91, &books) && books[0] == retired,
 			"ship deletion and proof did not commit together");
+		// The deletion writer has committed; its game-thread callback has not
+		// removed the live ship yet. A previously captured save must stay dead.
+		execute(db, "DELETE FROM player_data WHERE pid=150");
+		require(fixture_ship_save(&ship, { before }, &statements),
+			"capture stale save behind character deletion");
+		require(apply_save().outcome != player_save_apply_outcome::applied &&
+				scalar(db, "SELECT COUNT(*) FROM ships WHERE id=501") == "0" &&
+				scalar(db, "SELECT COUNT(*) FROM ship_slots WHERE ship_id=501") ==
+					"0" &&
+				divine_trade_sql_books(db, 91, &books) && books[0] == retired,
+			"queued save resurrected deleted character's ship or paid proof");
 	}
 	// Execute the real maintenance producer against the settled market. A
 	// restored legacy capture has generation zero and must not erase trade 20.
