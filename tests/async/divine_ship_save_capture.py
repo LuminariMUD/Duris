@@ -61,11 +61,11 @@ bool fixture_ship_receipt_tests()
  divine_trade_book book;book.revision=1;book.account=9;book.boon_id=17;book.first_ship_id=101;book.first_full_hold=10;
  captured_books={book};
  queue_admits=false;assert(!sql_save_ship(&ship));assert(!acknowledged);
- queue_admits=true;assert(sql_save_ship(&ship));sql_ship_write_pulse();assert(!acknowledged);
+ queue_admits=true;assert(sql_save_ship(&ship));assert(!sql_ship_write_pulse());assert(!acknowledged);
  last_receipt->ok=false;last_receipt->finished.store(true,std::memory_order_release);
- sql_ship_write_pulse();assert(!acknowledged && retries==1 && ship.save_pending);
+ assert(!sql_ship_write_pulse());assert(!acknowledged && retries==1 && ship.save_pending);
  assert(sql_save_ship(&ship));last_receipt->ok=true;last_receipt->finished.store(true,std::memory_order_release);
- sql_ship_write_pulse();assert(acknowledged==1);
+ assert(sql_ship_write_pulse());assert(acknowledged==1);
  assert(sql_save_ship(&ship));++captured_books[0].revision;
  last_receipt->ok=true;last_receipt->finished.store(true,std::memory_order_release);
  sql_ship_write_pulse();assert(acknowledged==1 && retries==2);

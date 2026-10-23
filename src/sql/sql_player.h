@@ -181,6 +181,7 @@ bool sql_remove_spellbook_mob(int pid, int mob_vnum);
 bool sql_has_spellbook_mob(int pid, int mob_vnum);
 int *sql_get_spellbook_mobs(int pid, int *count);
 
-void sql_ship_write_pulse();
+// False while a ship receipt is unfinished or needs a retry before copyover.
+bool sql_ship_write_pulse();
 void sql_reserve_ship_ids(uint32_t maximum);
 #endif // __SQL_PLAYER_H_INCLUDED__

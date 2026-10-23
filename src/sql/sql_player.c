@@ -4603,13 +4603,15 @@ struct divine_ship_save_receipt
 static std::map<uint32_t, divine_ship_save_receipt> divine_ship_saves;
 static std::map<uint32_t, divine_ship_save_receipt> divine_ship_deletes;
 
-void sql_ship_write_pulse()
+bool sql_ship_write_pulse()
 {
+	bool complete = true;
 	for (auto it = divine_ship_saves.begin(); it != divine_ship_saves.end();)
 	{
 		const auto &capture = it->second;
 		if (!capture.receipt || !capture.receipt->finished.load(std::memory_order_acquire))
 		{
+			complete = false;
 			++it;
 			continue;
 		}
@@ -4617,14 +4619,19 @@ void sql_ship_write_pulse()
 		if (capture.receipt->ok &&
 		    divine_trade_runtime_ship_revision(it->first) == capture.proof)
 			divine_trade_runtime_ship_saved(it->first);
-		else if (ship)
+		else
 		{
-			// Undo optimistic save acknowledgement on failure or an obsolete capture.
-			ship->save_saved_signature = 0;
-			queue_ship_save(ship, "uncommitted Divine ship proof");
+			complete = false;
+			if (ship)
+			{
+				// Undo optimistic save acknowledgement on failure or an obsolete capture.
+				ship->save_saved_signature = 0;
+				queue_ship_save(ship, "uncommitted Divine ship proof");
+			}
 		}
 		it = divine_ship_saves.erase(it);
 	}
+	return complete;
 }
 
 /* Save one ship: its statements are one writer job. */
