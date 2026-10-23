@@ -151,6 +151,18 @@ int main() {
         }
     }
     assert(menu(RACE_FIRBOLG, nullptr).size() == 3);
+    // The unlocked legacy roster retains its existing good tutorial rows;
+    // the approved additions do not give every nominally-good legacy race
+    // new towns. The outer creation admission still owns the unlock toggle.
+    all_races = true;
+    for (int index = 0; restricted_races[index].race_id != -1; ++index) {
+        const int race = restricted_races[index].race_id;
+        const int side = ws_resolve_racewar_side(race, 1);
+        for (int home : {HOME_NEWBIE, HOME_PLANE_OF_LIFE})
+            assert(creation_hometown_available(race, side, home) ==
+                (side == RACEWAR_GOOD && avail_hometowns[home][race] == 1));
+    }
+    all_races = false;
     for (int race : {RACE_THRIKREEN, RACE_MINOTAUR, RACE_TIEFLING}) {
         const auto homes = menu(race, nullptr);
         assert(homes.size() == 1);

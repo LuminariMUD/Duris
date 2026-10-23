@@ -3303,7 +3303,8 @@ bool creation_hometown_available(int race, int racewar, int hometown)
 	if (race < 1 || race > LAST_RACE || hometown < 1 || hometown > LAST_HOME)
 		return false;
 	if (hometown == HOME_NEWBIE || hometown == HOME_PLANE_OF_LIFE)
-		return racewar == RACEWAR_GOOD && OLD_RACE_GOOD(race, 1000);
+		return racewar == RACEWAR_GOOD && (avail_hometowns[hometown][race] == 1 ||
+						   race == RACE_FIRBOLG || OLD_RACE_NEUTRAL(race));
 	return avail_hometowns[hometown][race] == 1;
 }
 
