@@ -1100,7 +1100,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 			rollback(connection);
 			return failure(error);
 		}
-		std::array<uint8_t, BOON_REWARD_RESULT_BYTES> result_payload = {};
+		std::vector<uint8_t> result_payload;
 		if (!boon_reward_command_encode_result(boon_result, &result_payload) ||
 		    (mutation_applied && !insert_outbox(connection, command, result_payload.data(),
 							result_payload.size())) ||

@@ -23,6 +23,7 @@
 constexpr uint16_t BOON_REWARD_PAYLOAD_VERSION = 1;
 constexpr size_t BOON_REWARD_MAX_RESULTS = 32;
 constexpr size_t BOON_REWARD_RESULT_BYTES = 2080;
+constexpr size_t BOON_REWARD_EMPTY_RESULT_BYTES = 8;
 
 constexpr uint8_t BOON_RESULT_PROGRESS = 1 << 0;
 constexpr uint8_t BOON_RESULT_COMPLETED = 1 << 1;
@@ -67,6 +68,10 @@ bool boon_reward_command_decode_payload(const critical_command &command,
 					boon_reward_payload *payload);
 bool boon_reward_command_encode_result(const boon_reward_result &result,
 				       std::array<uint8_t, BOON_REWARD_RESULT_BYTES> *encoded);
+// SQL can compact a proven empty result. Keep the fixed-size encoder for old
+// flat-file catalogs and the decoder compatible with both receipt formats.
+bool boon_reward_command_encode_result(const boon_reward_result &result,
+				       std::vector<uint8_t> *encoded);
 bool boon_reward_command_decode_result(const uint8_t *encoded, size_t size,
 				       boon_reward_result *result);
 

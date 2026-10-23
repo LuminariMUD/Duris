@@ -11,6 +11,7 @@
 #include "player/player_save_worker.h"
 #include "economy/divine_boon_activity.h"
 #include "economy/divine_boon_delivery.h"
+#include "sql/sql_async.h"
 
 #include <cstdlib>
 #include <cerrno>
@@ -59,6 +60,11 @@ HARNESS_STUB bool divine_boon_legacy_admissions_allowed()
 HARNESS_STUB boon_reward_health boon_reward_transaction_health_copy()
 {
 	return {};
+}
+HARNESS_STUB bool sql_read_at(persistence_query_site, std::string,
+			      std::function<void(bool, const sql_rows &)>)
+{
+	return false;
 }
 
 // Fixtures that do not link the artifact authority have no artifact state to
@@ -167,10 +173,9 @@ HARNESS_STUB bool isname(const char *, const char *)
 	return false;
 }
 
-// sql/sql_pool.h needs <mysql.h>; the pool's functions have C linkage, so these need not.
+// sql_async.h supplies the backend's MYSQL type; the pool has C linkage.
 extern "C"
 {
-	typedef struct st_mysql MYSQL;
 	HARNESS_STUB MYSQL *sql_pool_acquire(void)
 	{
 		return nullptr;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <mysql.h>
@@ -149,9 +150,9 @@ int main()
 		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type IN (11,12) "
 		      "AND result_code=0 AND (expected_outbox_events IS NULL OR expected_outbox_events<>1)") ==
 	       0);
-	// A zero-match boon still owns its canonical result and its current delivery
-	// event. Future producer optimization must deliberately change both contracts.
+	// An accepted zero-match operation keeps its answer without delivery work.
 	boon.option = 0;
+	boon.zone_number = 100;
 	assert(critical_operation_id_generate(&boon_operation));
 	assert(boon_reward_command_build(&boon_command, boon_operation, boon));
 	boon_command.accepted_at_usec = 3;
@@ -160,8 +161,101 @@ int main()
 	assert(boon_reward_command_decode_result(zero_match.result_payload.data(),
 						 zero_match.result_size, &decoded_boon));
 	assert(decoded_boon.entry_count == 0);
+	assert(zero_match.result_size == BOON_REWARD_EMPTY_RESULT_BYTES);
+	char zero_operation_hex[33];
+	assert(critical_operation_id_to_hex(boon_operation, zero_operation_hex,
+					    sizeof(zero_operation_hex)));
 	assert(scalar(db, "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=11 "
-			  "AND expected_outbox_events=1") == 2);
+			  "AND expected_outbox_events=0") == 1);
+	assert(scalar(db, "SELECT COUNT(*) FROM critical_outbox WHERE operation_id=UNHEX('" +
+				  std::string(zero_operation_hex) + "')") == 0);
+	// A lost COMMIT response must replay that empty answer, even after activation.
+	execute(db, "UPDATE boons SET opt=0,criteria=100 WHERE author='transaction-harness'");
+	const auto zero_replayed = critical_command_repository_apply(db, boon_command);
+	assert(zero_replayed.outcome == critical_apply_outcome::already_applied);
+	assert(zero_replayed.result_size == zero_match.result_size);
+	assert(std::equal(zero_match.result_payload.begin(),
+			  zero_match.result_payload.begin() + zero_match.result_size,
+			  zero_replayed.result_payload.begin()));
+	// Existing 2,080-byte empty receipts must replay their original bytes too.
+	execute(db, "UPDATE critical_operation_inbox SET result_payload=CONCAT("
+		    "SUBSTR(result_payload,1,6),UNHEX('0000'),REPEAT(CHAR(0),2072)),"
+		    "expected_outbox_events=NULL WHERE operation_id=UNHEX('" +
+			    std::string(zero_operation_hex) + "')");
+	const auto legacy_replayed = critical_command_repository_apply(db, boon_command);
+	assert(legacy_replayed.outcome == critical_apply_outcome::already_applied);
+	assert(legacy_replayed.result_size == BOON_REWARD_RESULT_BYTES);
+	assert(boon_reward_command_decode_result(legacy_replayed.result_payload.data(),
+						 legacy_replayed.result_size, &decoded_boon));
+	assert(decoded_boon.entry_count == 0);
+	assert(scalar(db, "SELECT expected_outbox_events IS NULL FROM critical_operation_inbox "
+			  "WHERE operation_id=UNHEX('" +
+				  std::string(zero_operation_hex) + "')") == 1);
+
+	execute(db, "UPDATE boons SET active=0 WHERE author='transaction-harness'");
+	execute(db, "UPDATE boons_shop SET points=0 WHERE pid=" + std::to_string(PID));
+	execute(db, "INSERT INTO boons(time,duration,racewar,type,opt,criteria,criteria2,bonus,"
+		    "author,active,pid) VALUES(0,-1,1,10,3,2,700,3,'transaction-harness',1,99)");
+	boon_id = mysql_insert_id(db);
+	boon = { PID, 1, 55, ZONE, 3, 1, 700, 9, 1 };
+	const auto apply_boon = [&]()
+	{
+		assert(critical_operation_id_generate(&boon_operation));
+		assert(boon_reward_command_build(&boon_command, boon_operation, boon));
+		boon_command.accepted_at_usec = 4;
+		const auto applied = critical_command_repository_apply(db, boon_command);
+		assert(applied.outcome == critical_apply_outcome::applied);
+		assert(boon_reward_command_decode_result(applied.result_payload.data(),
+							 applied.result_size, &decoded_boon));
+		return applied;
+	};
+	apply_boon();
+	assert(decoded_boon.entry_count == 0); // Wrong target.
+	execute(db, "UPDATE boons SET pid=" + std::to_string(PID) +
+			    " WHERE id=" + std::to_string(boon_id));
+	boon.racewar = 2;
+	apply_boon();
+	assert(decoded_boon.entry_count == 0); // Wrong side.
+	boon.racewar = 1;
+	boon.victim_flags = 0;
+	apply_boon();
+	assert(decoded_boon.entry_count == 0); // Ineligible pet.
+	boon.victim_flags = 1;
+	boon.victim_vnum = 701;
+	apply_boon();
+	assert(decoded_boon.entry_count == 0); // Wrong mob.
+	boon.victim_vnum = 700;
+	apply_boon();
+	assert(decoded_boon.entry_count == 1 && decoded_boon.entries[0].counter == 1);
+	assert(decoded_boon.entries[0].flags == BOON_RESULT_PROGRESS);
+	assert(critical_command_repository_apply(db, boon_command).outcome ==
+	       critical_apply_outcome::already_applied);
+	apply_boon();
+	assert(decoded_boon.entries[0].counter == -1 &&
+	       (decoded_boon.entries[0].flags & BOON_RESULT_COMPLETED));
+	assert(scalar(db, "SELECT points FROM boons_shop WHERE pid=" + std::to_string(PID)) == 3);
+	assert(scalar(db, "SELECT active FROM boons WHERE id=" + std::to_string(boon_id)) == 0);
+	apply_boon();
+	assert(decoded_boon.entry_count == 0); // Personal completion deactivates the boon.
+	execute(db, "UPDATE boons SET active=1,rpt=1 WHERE id=" + std::to_string(boon_id));
+	execute(db, "UPDATE boons_progress SET counter=0 WHERE boonid=" + std::to_string(boon_id));
+	apply_boon();
+	assert(decoded_boon.entries[0].counter == 1);
+	apply_boon();
+	assert(decoded_boon.entries[0].counter == 0 &&
+	       (decoded_boon.entries[0].flags & BOON_RESULT_COMPLETED));
+	assert(scalar(db, "SELECT points FROM boons_shop WHERE pid=" + std::to_string(PID)) == 6);
+
+	boon.option = 0;
+	const auto start = std::chrono::steady_clock::now();
+	for (int i = 0; i < 100; ++i)
+		assert(apply_boon().result_size == BOON_REWARD_EMPTY_RESULT_BYTES);
+	const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+				     std::chrono::steady_clock::now() - start)
+				     .count();
+	std::cout << "zero-match: 100 accepted receipts, result bytes 2080 -> 8, "
+		     "outbox inserts 1 -> 0, mean transaction us="
+		  << elapsed / 100 << '\n';
 	cleanup(db);
 	mysql_close(db);
 	std::cout << "boon reward and immutable group zone-touch apply/replay passed\n";

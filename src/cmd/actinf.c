@@ -50,6 +50,7 @@ using namespace std;
 #include "world/zone_story_quest_runtime.h"
 #include "economy/nexus_stones.h"
 #include "economy/currency_transaction.h"
+#include "economy/boon_reward_transaction.h"
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "persistence/persistence_checkpoint.h"
@@ -4441,6 +4442,17 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)currency_transactions.committed,
 		 (unsigned long long)currency_transactions.rejected,
 		 (unsigned long long)currency_transactions.bank_deltas);
+	send_to_char(line, ch);
+
+	const boon_reward_health boons = boon_reward_transaction_health_copy();
+	snprintf(line, sizeof(line),
+		 "boon_rewards checked=%llu filtered=%llu submitted=%llu committed=%llu "
+		 "rejected=%llu pending=%llu definition_refreshes=%llu definition_failures=%llu\n",
+		 (unsigned long long)boons.checked, (unsigned long long)boons.filtered,
+		 (unsigned long long)boons.submitted, (unsigned long long)boons.committed,
+		 (unsigned long long)boons.rejected, (unsigned long long)boons.pending,
+		 (unsigned long long)boons.definition_refreshes,
+		 (unsigned long long)boons.definition_failures);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
