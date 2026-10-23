@@ -157,7 +157,10 @@ and reports its age. A stale or unavailable sample makes the aggregate state
 An outbox drain requests a new worker observation after any in-flight batch and
 checks for all pending rows, including future retries. While waiting within the
 existing deadline, the game thread runs the same auction, collector, combat, and
-artifact publishers as normal pulses. Publication does not bypass durable retry
+artifact publishers as normal pulses. Auction events remain unacknowledged until
+their asynchronous read's
+game-thread callback has actually published; drains pump completed SQL callbacks
+as well as the publishers. Publication does not bypass durable retry
 backoff; a future retry may truthfully make a bounded drain fail. A SQL build
 without an initialized worker fails closed; the flat-file backend intentionally
 has no SQL outbox and retains its successful absent-worker drain behavior.

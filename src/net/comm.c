@@ -325,6 +325,12 @@ static void critical_gameplay_publish_outbox(void)
 	artifact_guild_transaction_publish_outbox();
 }
 
+static void critical_gameplay_drain_outbox(void)
+{
+	sql_async_pulse();
+	critical_gameplay_publish_outbox();
+}
+
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
 {
@@ -1075,7 +1081,7 @@ int run_the_game(int port, int sslport)
 	critical_apply = flatfile_critical_command_repository_apply_selected;
 #else
 	const bool critical_outbox_ready = critical_outbox_init(
-		critical_gameplay_outbox_delivery, NULL, critical_gameplay_publish_outbox);
+		critical_gameplay_outbox_delivery, NULL, critical_gameplay_drain_outbox);
 #endif
 	if (
 #ifndef __NO_MYSQL__

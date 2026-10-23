@@ -86,13 +86,13 @@ assert "locker_async_drain" in copyover
 # The SQL harness separately runs the actual worker concurrently with a draining
 # game thread; this probe proves which publishers and caller policies it reaches.
 comm = (SRC / "comm.c").read_text()
-assert "critical_gameplay_publish_outbox);" in comm
+assert "critical_gameplay_drain_outbox);" in comm
 runtime = r'''
 #include <cassert>
 #include <cstdint>
 #include <string>
 static bool outbox_empty = false;
-static unsigned int resumed = 0, saved = 0, alerts = 0, published = 0;
+static unsigned int resumed = 0, saved = 0, alerts = 0, published = 0, pumped = 0;
 static int _pwipe = 0;
 static const char *AVATAR = "test", *LOG_STATUS = "test";
 void maintenance_scheduler_quiesce() {}
@@ -120,15 +120,17 @@ void auction_transaction_publish_outbox() { published |= 1; }
 void collector_transaction_publish_outbox() { published |= 2; }
 void combat_outcome_transaction_publish_outbox() { published |= 4; }
 void artifact_guild_transaction_publish_outbox() { published |= 8; }
+void sql_async_pulse() { ++pumped; }
 ''' + extract_function("account.c", "class account_deletion_drain_guard") + ";\n" + \
     extract_function("comm.c", "static void critical_gameplay_publish_outbox(") + \
+    extract_function("comm.c", "static void critical_gameplay_drain_outbox(") + \
     "\nbool copyover_gate() {\n" + extract_function("copyover.c", "if (!critical_outbox_drain(3000))") + \
     "\nreturn true; }\nvoid shutdown_gate() {\n" + \
     comm[comm.index("if (!_pwipe && !critical_outbox_drain(3000))"):
          comm.index("\n\tif (!_pwipe)\n", comm.index("if (!_pwipe && !critical_outbox_drain(3000))"))] + r'''
 }
 int main() {
-    critical_gameplay_publish_outbox(); assert(published == 15);
+    critical_gameplay_drain_outbox(); assert(published == 15 && pumped == 1);
     { account_deletion_drain_guard guard; assert(!guard.drain()); }
     assert(saved == 0 && resumed == 3);
     assert(!copyover_gate()); assert(resumed == 4);

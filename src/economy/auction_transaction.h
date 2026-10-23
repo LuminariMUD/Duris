@@ -41,6 +41,8 @@ bool auction_transaction_player_busy(P_char character);
 critical_outbox_delivery_result
 auction_transaction_outbox_delivery(const critical_outbox_record &record, void *context);
 void auction_transaction_publish_outbox(void);
+// A queued SQL read is acknowledged only after its game-thread publication callback.
+void auction_transaction_outbox_published(unsigned long long outbox_id, bool succeeded);
 void auction_transaction_reset_for_tests(void);
 
 #endif

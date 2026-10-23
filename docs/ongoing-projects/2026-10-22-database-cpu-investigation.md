@@ -74,7 +74,7 @@ and removes it afterward. It does not read the production `.env`.
   `python3 tests/async/test_txn_publication_copyover_drain.py`: pass. Executable
   source probes cover all four publisher calls, copyover cancellation, account
   deletion refusal/resume, and shutdown's report-and-continue policy.
-- `python3 tests/async/test_auction_transactional_cutover.py`: 7 tests pass;
+- `python3 tests/async/test_auction_transactional_cutover.py`: 8 tests pass;
   `python3 tests/async/test_collector_transaction.py`: executable harness passes;
   `python3 tests/async/test_combat_outcome_transactional_cutover.py`: 5 tests pass;
   `python3 tests/async/test_artifact_guild_transactional_cutover.py`: 3 tests pass.
@@ -88,6 +88,20 @@ audit still reports legitimate omissions as candidates/degraded until chunk 2
 changes its semantics. Future durable retries can exceed a lifecycle drain's
 three-second budget and must cause bounded failure; this change does not accelerate
 or bypass backoff. No production schema, data, process, or service was changed.
+
+PR #300 review repair: auction publication previously treated admission of its
+asynchronous row read as completed publication. The transaction now stays in
+`publishing` until the game-thread callback actually broadcasts/notifies, returning
+to queued after a failed/empty read; immediate claim events acknowledge directly.
+The drain progress callback also pumps `sql_async_pulse()` so completed reads can
+finish while recurring pulses are blocked. The executable auction regression
+uses the actual producer/dispatcher functions to verify delayed callback, worker
+retry, read refusal/error/empty rows, successful publication, and immediate claim
+acknowledgement. The full server build and focused auction/lifecycle/client-free
+checks pass after this repair. The worker's full MySQL 8.0 harness also passes;
+the handler-counter probe uses portable `SHOW SESSION STATUS`. MariaDB worker
+evidence remains valid because its SQL, cadence and drain implementation did not
+change. Qualification tags distinguish the original worker and this review repair.
 
 ## Recommended change
 
