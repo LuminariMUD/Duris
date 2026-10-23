@@ -526,6 +526,10 @@ int main()
 		ship.db_id = ship_id;
 		ship.ownername = const_cast<char *>("LossTrader");
 		ship.name = const_cast<char *>("Loss fixture");
+		ship.crew.sail_skill = 38 / 1000.0f;
+		ship.crew.guns_skill = 14 / 1000.0f;
+		ship.crew.rpar_skill = 13 / 1000.0f;
+
 		ship.slot[0].type = SLOT_CARGO;
 		ship.slot[0].index = 2;
 		ship.slot[0].position = SLOT_HOLD;
@@ -549,6 +553,11 @@ int main()
 		};
 		require(apply_save().outcome == player_save_apply_outcome::applied,
 			"opening loss snapshot");
+		require(scalar(db,
+			       "SELECT CONCAT(sail_skill,':',guns_skill,':',rpar_skill) FROM ship_crew WHERE ship_id=501") ==
+				"38:14:13",
+			"ordinary ship capture drifted persisted crew milliseconds");
+
 		divine_trade_removal loss;
 		loss.ship_id = ship_id;
 		loss.slot = 0;

@@ -11,6 +11,7 @@ source=r'''
 #undef sql_queue_statements
 #include <cstdarg>
 #include <cstdio>
+#include <cmath>
 #include <map>
 #include <cassert>
 #include <strings.h>
