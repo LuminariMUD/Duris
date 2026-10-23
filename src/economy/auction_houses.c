@@ -231,6 +231,21 @@ void flat_item_claim_completed(P_char ch, bool committed, const auction_command_
 			continue;
 		}
 		object->obj_uid = result.item_uids[index];
+		// A prototype may have become an artifact since this item was listed.
+		// Auction decoding does not admit artifacts; retain the durable claim
+		// for staff recovery instead of publishing an untracked duplicate.
+		if (IS_ARTIFACT(object))
+		{
+			persistence_alert(AVATAR, "auction", "player", "unknown", "claim_publish",
+					  "artifact_withheld", "auction_id=%u item_uid=%llu",
+					  result.auction_id,
+					  static_cast<unsigned long long>(object->obj_uid));
+			extract_obj(object);
+			send_to_char(
+				"Your auction item requires immortal assistance to recover.\r\n",
+				ch);
+			continue;
+		}
 		obj_to_char(object, ch);
 		send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n", object->short_description);
 	}
@@ -1544,6 +1559,21 @@ void auction_item_claim_completed(P_char ch, bool committed, const auction_comma
 			continue;
 		}
 		object->obj_uid = result.item_uids[index];
+		// A prototype may have become an artifact since this item was listed.
+		// Auction decoding does not admit artifacts; retain the durable claim
+		// for staff recovery instead of publishing an untracked duplicate.
+		if (IS_ARTIFACT(object))
+		{
+			persistence_alert(AVATAR, "auction", "player", "unknown", "claim_publish",
+					  "artifact_withheld", "auction_id=%u item_uid=%llu",
+					  result.auction_id,
+					  static_cast<unsigned long long>(object->obj_uid));
+			extract_obj(object);
+			send_to_char(
+				"Your auction item requires immortal assistance to recover.\r\n",
+				ch);
+			continue;
+		}
 		obj_to_char(object, ch);
 		send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n", object->short_description);
 	}
