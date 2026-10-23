@@ -427,6 +427,11 @@ int main()
 	worker_pending = true;
 	assert(player_save_pipeline_load_held(1));
 	assert(!player_save_pipeline_load_held(0));
+	worker_pending = false;
+	trade_player_pid = 1;
+	assert(player_save_pipeline_load_held(1) && !player_save_pipeline_load_held(2));
+	trade_player_pid = 0;
+	assert(!player_save_pipeline_load_held(1));
 
 	// The real outcome submitter defers this epic delta until a committed result.
 	combat_outcome_transaction_reset_for_tests();

@@ -446,10 +446,16 @@ bool player_save_pipeline_is_nonterminal_type(int save_intent)
 
 bool player_save_pipeline_load_held(int pid)
 {
-	return pid > 0 &&
-	       (player_save_worker_pid_pending(pid) ||
-		critical_command_coordinator_is_fenced(
-			{ critical_entity_type::player, static_cast<uint64_t>(pid) }, nullptr));
+	if (pid <= 0)
+		return false;
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		if (trade_player_pid == static_cast<uint32_t>(pid))
+			return true;
+	}
+	return player_save_worker_pid_pending(pid) ||
+	       critical_command_coordinator_is_fenced(
+		       { critical_entity_type::player, static_cast<uint64_t>(pid) }, nullptr);
 }
 
 void player_save_pipeline_end_session(int pid)
