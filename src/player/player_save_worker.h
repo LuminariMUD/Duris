@@ -158,6 +158,9 @@ size_t player_save_worker_pulse(player_save_completion *completions_out, size_t 
 // True while this owner has a save queued or being written.
 bool player_save_worker_pid_pending(int pid);
 bool persistence_writer_pending(persistence_job_kind kind, uint64_t owner);
+// Reject new shared-writer captures without discarding accepted jobs.
+void persistence_writer_quiesce(void);
+void persistence_writer_resume(void);
 // Blocks until nothing is queued or being written, or the timeout passes.
 bool persistence_writer_wait_idle(uint64_t timeout_msec);
 std::vector<persistence_job_owner> persistence_writer_pending_owners(void);

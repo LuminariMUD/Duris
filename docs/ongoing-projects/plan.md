@@ -104,6 +104,35 @@ existing status + completion timestamp already encode the SQL-ready handoff.
   boundary, full installed service sandbox and SQL-stage recovery. W2, W4, W5 and
   the fresh-gameplay journey remain open. Do not sign off #264 or #97.
 
+### Writer-quiescence chunk (stacked after PR #310)
+
+PR #310: https://github.com/LuminariMUD/Duris/pull/310 at `3224c38d1`, ready for review.
+Current outcome: drain accepted coordinator/outbox/maintenance/player/locker/artifact
+work before SQL's boundary, then close the actual shared writer's admission gate.
+Reuse existing drains; add only reversible quiesce/resume at the one writer because
+player-pipeline quiescence alone does not cover SQL, banks and world-save jobs.
+Pre-boundary failure resumes existing workers; an ambiguous boundary never resumes.
+Suppress post-reset kingdom writeback and the remaining old-world pulse, and join
+the drained writer on pwipe exit. Full W2 is still open for external/direct writers
+and startup recovery isolation; W4/W5/W6 are still required.
+
+- Found a concrete outbox defect: quiesce only changed health, while its background
+  loop continued polling. Quiesced workers now poll only to satisfy an explicit
+  drain; game-thread preparation closes admission again after publication callbacks.
+- Proof: real shared-writer held/callback/late-refusal/abort-resume and accepted-write
+  failure tests pass; existing worker and coordinator suites pass, as do copyover
+  guards and durable-boundary checks. Both final backend incremental builds passed.
+  `bash tests/async/run_critical_command_schema_mysql.sh` passed on private MySQL 8,
+  including actual pause/drain/resume and the existing 60-second audit cadence case.
+  Source modified time precedes the executed outbox binary; no repeated full suite
+  is needed for unchanged outbox code. Required format/tidy hooks run at commit.
+- Owner decision, 2026-10-24: **reset all account-bank balances; recreate only
+  level-62 staff (Overlords)**. All other characters are wiped, including staff below
+  62. Preserve the associated accounts; recreation must not restore seasonal items,
+  money, progression or ownership. Implement and prove this in W1/W4; current code
+  still retains bank balances and soft-deletes every account-character link.
+- No production operations.
+
 ## What the code currently does
 
 These are baseline observations, not claims that every failure has been reproduced.
@@ -197,7 +226,8 @@ These are baseline observations, not claims that every failure has been reproduc
   audit/erasure evidence, backups and archives. Account-character soft-delete
   includes staff links: prove a staff access path after wipe. Do not infer every
   bank balance or staff character is an approved carryover; list unresolved owner
-  policy by affected store.
+  policy by affected store. Owner has resolved banks/staff: reset all account-bank
+  balances; recreate only exact level-62 Overlords, without old seasonal assets.
 - [ ] Cover characters/progression/discoveries; item ownership/equipment;
   inventories, lockers/account lockers/chests/corpses/pets; ships/cargo;
   guilds/alliances/kingdoms/world ownership; auctions/currency; rankings/statistics/

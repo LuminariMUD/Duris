@@ -336,6 +336,15 @@ int main()
     assert(owners[1] == persistence_job_owner(persistence_job_kind::player, 2));
     assert(owners[3] == persistence_job_owner(persistence_job_kind::artifact, 8));
     assert(owners[6] == persistence_job_owner(persistence_job_kind::player, 2));
+    // Closing admission retains the blocked/queued generation. A timeout does
+    // not discard it; later callbacks cannot sneak another job behind the fence.
+    persistence_writer_quiesce();
+    assert(!persistence_writer_wait_idle(10));
+    assert(player_save_worker_submit(snapshot_for(15, 1)) == player_save_submit_result::unavailable);
+    assert(errno == ESHUTDOWN);
+    assert(persistence_writer_submit(persistence_job_kind::sql, 16, 64, locker_job(16)) ==
+           player_save_submit_result::unavailable);
+    assert(persistence_writer_pending_owners() == owners);
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         state.release_first = true;
@@ -360,6 +369,10 @@ int main()
     assert(health.submitted == 7 && health.replaced == 1 && health.applied == 7);
     assert(health.queued_jobs == 0 && health.inflight_jobs == 0 && health.queued_bytes == 0);
     assert(health.high_water_jobs >= 5);
+
+    assert(persistence_writer_submit(persistence_job_kind::sql, 16, 64, locker_job(16)) ==
+           player_save_submit_result::unavailable);
+    persistence_writer_resume();
 
     // A lost connection is retried at the head: pid 6 waits for pid 5.
     assert(player_save_worker_submit(snapshot_for(5, 1)) == player_save_submit_result::accepted);

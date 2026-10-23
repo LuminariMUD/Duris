@@ -4210,11 +4210,20 @@ bool sql_pwipe(int code_verify)
 			return FALSE;
 		}
 
+		if (!pwipe_quiesce_writers())
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Writer drain failed; old season remains active.");
+			return FALSE;
+		}
+
 		if (!sql_begin_pwipe_epoch())
 		{
 			logit(LOG_DEBUG,
 			      "sql_pwipe: Failed to establish durable season reset boundary.");
 			send_to_all("Preflight FAILED: season reset boundary unavailable!\n");
+			if (!pwipe_crossed_boundary)
+				pwipe_resume_writers();
 			return FALSE;
 		}
 		logit(LOG_DEBUG, "  success!");

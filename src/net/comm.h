@@ -234,4 +234,8 @@ int io_processFDS(fd_set * rfds, fd_set * wfds, fd_set * efds);
  * "say $O" and act() casts the vict_obj character pointer to P_obj. */
 void escape_act_dollars(char *dst, size_t dst_size, const char *src);
 
+// Game thread: settle accepted work, then fence every shared-writer producer.
+bool pwipe_quiesce_writers(void);
+void pwipe_resume_writers(void);
+
 #endif /* _SOJ_COMM_H_ */
