@@ -97,6 +97,8 @@ int check_nexus_bonus(P_char,int value,int) {assert(value*nexus_multiplier<=INT_
 void update_crew(P_ship) {}
 void update_ship_status(P_ship) {}
 void queue_ship_save(P_ship value,const char *) {value->save_pending=true;}
+enum class divine_trade_goods {cargo,contraband};
+bool divine_trade_runtime_sale(P_char,P_ship,int,int,divine_trade_goods) {return false;}
 // REAL_FUNCTIONS
 int main() {
  MYSQL db;
@@ -216,8 +218,4 @@ with tempfile.TemporaryDirectory(prefix="cargo-producers-", dir=output) as direc
                     "-fno-pie", "-no-pie", str(source), "-o", binary], cwd=ROOT, check=True)
     subprocess.run([binary], cwd=ROOT, check=True)
 
-# Preserve the existing staff reload boundary: its result returns on the writer.
-source_text = (ROOT / "src/ships/ship_cargo.c").read_text()
-command = source_text[source_text.index("void do_world_cargo("):]
-reload_path = command[command.index('is_abbrev(arg, "reload")'):command.index('is_abbrev(arg, "reset")')]
-assert "sql_read_for(ch, CARGO_MODS_QUERY" in reload_path
+# Staff reload admission and late callbacks execute natively in test_cargo_staff_trade_barrier.py.

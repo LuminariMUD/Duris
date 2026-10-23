@@ -86,6 +86,7 @@ bool currency_transaction_submit_bank_payment(P_char character, int64_t value,
 void currency_transaction_save_first(P_char character);
 // One cargo market operation reserves its future purse while other wallet
 // changes keep the facade's synchronous behavior. No money moves here.
+bool currency_transaction_publish_trade(P_char character, int64_t payment);
 bool currency_transaction_reserve_trade(P_char character, int64_t payment);
 void currency_transaction_release_trade(uint32_t pid);
 currency_transaction_health currency_transaction_health_copy(void);

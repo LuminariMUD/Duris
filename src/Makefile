@@ -205,6 +205,7 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/divine_trade_command.o \
 				 economy/divine_trade_repository.o \
 				 economy/divine_trade_flatfile.o \
+                 economy/divine_trade_runtime.o \
 				 flatfile/flatfile_cargo_repository.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \

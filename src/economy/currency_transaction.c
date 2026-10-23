@@ -383,3 +383,23 @@ void currency_transaction_release_trade(uint32_t pid)
 		reserved_trade_payment = 0;
 	}
 }
+
+bool currency_transaction_publish_trade(P_char character, int64_t payment)
+{
+	if (!character || IS_NPC(character) || !character->only.pc ||
+	    character->only.pc->wallet_revision == UINT64_MAX)
+		return false;
+	currency_vector before, after;
+	before.amount = { GET_COPPER(character), GET_SILVER(character), GET_GOLD(character),
+			  GET_PLATINUM(character) };
+	if (!currency_wallet_after_value(before, payment, &after))
+		return false;
+	GET_COPPER(character) = static_cast<int>(after.amount[0]);
+	GET_SILVER(character) = static_cast<int>(after.amount[1]);
+	GET_GOLD(character) = static_cast<int>(after.amount[2]);
+	GET_PLATINUM(character) = static_cast<int>(after.amount[3]);
+	++character->only.pc->wallet_revision;
+	mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
+	gmcp_char_vitals(character);
+	return true;
+}

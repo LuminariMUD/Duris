@@ -1,4 +1,5 @@
 #include "economy/divine_boon_runtime.h"
+#include "economy/divine_trade_runtime.h"
 
 #include "economy/divine_boon_repository.h"
 #include "economy/boon_reward_transaction.h"
@@ -158,9 +159,15 @@ bool divine_boon_runtime_boot(int64_t now)
 	if (result == store_result::not_found)
 	{
 		loaded.last_opportunity = now - now % DIVINE_BOON_HOUR;
-		return stage(loaded, 0);
+		return divine_trade_runtime_boot(0) && stage(loaded, 0);
 	}
 	if (result != store_result::ok)
+		return false;
+	uint64_t cargo_boon = 0;
+	for (const auto &slot : loaded.slots)
+		if (slot.category == divine_boon_category::cargo)
+			cargo_boon = slot.id;
+	if (!divine_trade_runtime_boot(cargo_boon))
 		return false;
 	published = loaded;
 	if (divine_boon_reconcile(&loaded, now))

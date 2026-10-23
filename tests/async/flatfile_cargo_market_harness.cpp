@@ -2,6 +2,7 @@
 #include "persistence/maintenance_snapshot.h"
 #include "persistence/critical_command_coordinator.h"
 #include "economy/divine_trade_command.h"
+#include "economy/divine_trade_runtime.h"
 #include "ships/ship_cargo_transaction.h"
 #include "flatfile/flatfile_cargo_repository.h"
 #include <openssl/sha.h>
@@ -27,6 +28,11 @@ void reset_cargo();
 static std::string state_root;
 static bool configured = true;
 static bool market_fenced = false;
+static bool projection_pending = false;
+bool divine_trade_runtime_busy(const ShipData *)
+{
+	return projection_pending;
+}
 bool critical_command_coordinator_is_fenced(const critical_entity_key &key, critical_operation_id *)
 {
 	return market_fenced && key.type == critical_entity_type::system &&
@@ -253,6 +259,12 @@ int main(int argc, char **argv)
 			ship_cargo_market_mod_delayed[4][5] == delayed,
 		"pending trade allowed maintenance to mutate the live market");
 	market_fenced = false;
+	projection_pending = true;
+	require(!maintenance_prepare_request(request, nullptr) &&
+			ship_cargo_market_mod[4][5] == unadjusted &&
+			ship_cargo_market_mod_delayed[4][5] == delayed,
+		"retired writer fence allowed drift before trade projection");
+	projection_pending = false;
 
 	require(maintenance_prepare_request(request, nullptr) &&
 			request.value_count == 4 + NUM_PORTS * NUM_PORTS * 4,

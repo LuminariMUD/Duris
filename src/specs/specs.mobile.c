@@ -1570,6 +1570,12 @@ int money_changer(P_char me, P_char ch, int cmd, char *arg)
 	/*
 	 * else cmd == CMD_EXCHANGE
 	 */
+	if (IS_PC(ch) && ch->only.pc->divine_trade_payment_pending)
+	{
+		send_to_char("Your purse is settling a cargo trade. Try the exchange shortly.\r\n",
+			     ch);
+		return TRUE;
+	}
 	arg = one_argument(arg, Gbuf1);
 	if (strlen(Gbuf1) > 6)
 	{
@@ -16185,6 +16191,13 @@ int smelter(P_char ch, P_char pl, int cmd, char *argument)
 			if (!*arg1 || !(ch == get_char_room_vis(pl, arg1)))
 			{
 				return FALSE;
+			}
+			if (IS_PC(pl) && pl->only.pc->divine_trade_payment_pending)
+			{
+				send_to_char(
+					"Your purse is settling a cargo trade. Try the payment shortly.\r\n",
+					pl);
+				return TRUE;
 			}
 			pl->points.cash[type] -= amount;
 			ch->points.cash[type] += amount;

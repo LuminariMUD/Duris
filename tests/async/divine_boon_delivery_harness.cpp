@@ -94,7 +94,7 @@ int check_nexus_bonus(P_char, int value, int)
 {
 	return value + static_cast<int>(value * nexus);
 }
-double check_nexus_bonus_precise(P_char, double value, int)
+double check_nexus_bonus_precise(P_char, double value, int, bool)
 {
 	return value * (1 + nexus);
 }

@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /*****************************************************
  * ship_shop.c
  *
@@ -1068,6 +1069,9 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
 		return 0;
 	}
 
+	if (divine_trade_runtime_sale(ch, ship, slot, rroom, divine_trade_goods::cargo))
+		return TRUE;
+
 	if (slot == -1)
 	{
 		for (i = 0; i < MAXSLOTS; i++)
@@ -1219,6 +1223,9 @@ int sell_contra(P_char ch, P_ship ship, int slot)
 	}
 
 	int total_cost = 0;
+	if (divine_trade_runtime_sale(ch, ship, slot, rroom, divine_trade_goods::contraband))
+		return TRUE;
+
 	if (slot == -1)
 	{
 		int none_to_sell = true;
@@ -2188,6 +2195,10 @@ int buy_cargo(P_char ch, P_ship ship, char *arg)
 		return TRUE;
 	}
 
+	if (divine_trade_runtime_purchase(ch, ship, slot, rroom, asked_for, cost,
+					  divine_trade_goods::cargo))
+		return TRUE;
+
 	int placed = asked_for;
 	if (ship->slot[slot].type == SLOT_CARGO)
 	{
@@ -2384,6 +2395,10 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 			       coin_stringv(cost));
 		return TRUE;
 	}
+
+	if (divine_trade_runtime_purchase(ch, ship, slot, rroom, asked_for, cost,
+					  divine_trade_goods::contraband))
+		return TRUE;
 
 	int placed = asked_for;
 	if (ship->slot[slot].type == SLOT_CONTRABAND)
@@ -3033,6 +3048,13 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 		while (shipObjHash.get_next(svs));
 	}
 
+	if (ship && divine_trade_runtime_busy(ship) && cmd != CMD_LIST)
+	{
+		send_to_char("Your crew is settling a cargo trade. Please try again shortly.\r\n",
+			     ch);
+		return TRUE;
+	}
+
 	if (owned)
 	{
 		if (ship->location != ch->in_room)
@@ -3331,6 +3353,13 @@ int crew_shop_proc(int room, P_char ch, int cmd, char *arg)
 	if (!ship)
 	{
 		send_to_char("&+gYou own no ship; no one here wants to talk to you.&n\n", ch);
+		return TRUE;
+	}
+
+	if (cmd == CMD_HIRE && divine_trade_runtime_busy(ship))
+	{
+		send_to_char("Your crew is settling a cargo trade. Please try again shortly.\r\n",
+			     ch);
 		return TRUE;
 	}
 

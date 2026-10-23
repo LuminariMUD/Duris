@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /*****************************************************
  * ship_npc_ai.c
  *
@@ -924,7 +925,8 @@ void NPCShipAI::steal_target_cargo()
 		stolen_pt = 1.0 / coeff;
 	float lost_pt = stolen_pt * lost;
 
-	for (int i = 0; i < MAXSLOTS; i++) // TODO: not all maybe, not instantly etc
+	for (int i = 0; !divine_trade_runtime_busy(ship->target) && i < MAXSLOTS;
+	     i++) // TODO: not all maybe, not instantly etc
 	{
 		if (ship->target->slot[i].type == SLOT_CARGO ||
 		    ship->target->slot[i].type == SLOT_CONTRABAND)
