@@ -282,12 +282,6 @@ static bool build_version(critical_command *command, critical_operation_id opera
 	return true;
 }
 
-bool divine_trade_command_build(critical_command *command, critical_operation_id operation,
-				const divine_trade_payload &payload)
-{
-	return build_version(command, operation, payload, DIVINE_TRADE_PAYLOAD_VERSION);
-}
-
 bool divine_trade_command_decode(const critical_command &command, divine_trade_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::divine_trade ||

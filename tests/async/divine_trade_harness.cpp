@@ -419,9 +419,9 @@ int main()
 	sale.payment = 150;
 	sale.book_revision = book.revision;
 	sale.qualifying_quantity = 1;
-	divine_trade_consumption sale_used;
+	divine_trade_consumption effect_used;
 	assert(divine_trade_prepare_removal(book, boon, removal(1, 1, 100), &sale.book_after,
-					    &sale_used));
+					    &effect_used));
 	sale.slots_after = { { 3, SLOT_EMPTY, -1, -1, 0, { -1, -1, -1, -1, -1 } } };
 	sale.market_after = { { 4, 2, divine_trade_goods::cargo, .95f, 120 } };
 	sale.has_cargo_effect = true;
@@ -432,6 +432,17 @@ int main()
 	assert(divine_trade_command_build(&effect_command, operation(901), sale) &&
 	       divine_trade_command_decode(effect_command, &decoded) && decoded.has_cargo_effect &&
 	       decoded.cargo_effect.modifier == 10005);
+	std::vector<uint8_t> effect_book;
+	assert(divine_trade_book_encode(sale.book_after, &effect_book));
+	auto v2_effect = effect_command;
+	v2_effect.payload_version = 2;
+	const auto effect_book_offset = v2_effect.payload.size() - effect_book.size();
+	v2_effect.payload.erase(v2_effect.payload.begin() + effect_book_offset -
+					(preimage_bytes - 4),
+				v2_effect.payload.begin() + effect_book_offset);
+	assert(divine_trade_command_decode(v2_effect, &decoded) && decoded.has_cargo_effect &&
+	       decoded.cargo_effect.modifier == 10005 && decoded.slots_before.empty());
+
 	auto bad_command = command;
 	bad_command.keys.back().id = 22;
 	assert(!divine_trade_command_decode(bad_command, &decoded));
