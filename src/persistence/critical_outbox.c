@@ -359,6 +359,8 @@ void worker_main(std::promise<bool> startup)
 			{
 				delivered = critical_outbox_delivery_result::retryable_failure;
 			}
+			if (delivered == critical_outbox_delivery_result::publication_pending)
+				continue;
 			if (!record_delivery(record, delivered))
 			{
 				std::lock_guard<std::mutex> lock(outbox_mutex);
