@@ -3028,7 +3028,6 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 {
 	P_ship ship;
 	ShipVisitor svs;
-	bool owned;
 
 	if (!IS_ALIVE(ch) || IS_NPC(ch))
 		return FALSE;
@@ -3047,7 +3046,6 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 
 	// Look for ch's ship.
 	ship = NULL;
-	owned = FALSE;
 	// If there are any ships in the game..
 	if (shipObjHash.get_first(svs))
 	{
@@ -3057,13 +3055,14 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 			if (isname(svs->ownername, GET_NAME(ch)))
 			{
 				ship = svs;
-				owned = TRUE;
 				break;
 			}
 		}
 		// If ch not the owner, move to next ship.
 		while (shipObjHash.get_next(svs));
 	}
+
+	const bool owned = ship != nullptr;
 
 	if (ship && divine_trade_runtime_busy(ship) && cmd != CMD_LIST)
 	{
