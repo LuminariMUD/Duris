@@ -97,6 +97,8 @@ int check_nexus_bonus(P_char,int value,int) {assert(value*nexus_multiplier<=INT_
 void update_crew(P_ship) {}
 void update_ship_status(P_ship) {}
 void queue_ship_save(P_ship value,const char *) {value->save_pending=true;}
+enum class divine_trade_goods {cargo,contraband};
+bool divine_trade_runtime_sale(P_char,P_ship,int,int,divine_trade_goods) {return false;}
 // REAL_FUNCTIONS
 int main() {
  MYSQL db;

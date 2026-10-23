@@ -1,3 +1,8 @@
+#include "economy/divine_trade_runtime.h"
+bool divine_trade_runtime_sale(char_data *, ShipData *, int, int, divine_trade_goods)
+{
+	return false;
+}
 #include "core/prototypes.h"
 #include "core/defines.h"
 #include "core/utils.h"

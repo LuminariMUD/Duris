@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 
 /*****************************************************
  * ship_cargo.c
@@ -605,6 +606,8 @@ static void adjust_cargo_market()
  */
 void update_cargo(bool force)
 {
+	if (divine_trade_runtime_busy())
+		return;
 	if (!force && !has_elapsed("update_cargo", get_property("ship.cargo.update.secs", 1800)))
 		return;
 	debug("update_cargo()");
@@ -741,6 +744,8 @@ bool flatfile_cargo_maintenance_apply(const int64_t *values, size_t count)
  */
 size_t cargo_maintenance_snapshot(uint64_t work_id, int64_t *values, size_t capacity)
 {
+	if (divine_trade_runtime_busy())
+		return 0;
 	constexpr size_t required = 4 + NUM_PORTS * NUM_PORTS * 4;
 	if (!values || capacity < required)
 		return 0;
@@ -1037,36 +1042,40 @@ int contra_buy_price(int location, int type)
  * The four rates are runtime properties; contraband moves several times
  * further per crate than ordinary cargo.
  */
+divine_trade_market_cell cargo_trade_prepare_cell(int transaction, int location, int type,
+						  int volume, float before)
+{
+	const bool contra = transaction == SOLD_CONTRA || transaction == BOUGHT_CONTRA;
+	float modifier = before < 0 ? (contra ? ship_contra_market_mod :
+						ship_cargo_market_mod)[location][type] :
+				      before;
+	if (transaction == SOLD_CARGO)
+		modifier *= 1.0 - get_property("ship.cargo.sellAdjustMod", 0.005) * volume;
+	else if (transaction == BOUGHT_CARGO)
+		modifier *= 1.0 + get_property("ship.cargo.buyAdjustMod", 0.003) * volume;
+	else if (transaction == SOLD_CONTRA)
+		modifier *= 1.0 - get_property("ship.contraband.sellAdjustMod", 0.025) * volume;
+	else
+		modifier *= 1.0 + get_property("ship.contraband.buyAdjustMod", 0.015) * volume;
+	modifier = bound_market_mod(contra, modifier);
+	const auto base = contra ? cargo_location_data[type].base_cost_contra :
+				   cargo_location_data[type].base_cost_cargo;
+	const int price =
+		location == type ?
+			static_cast<int>(1000 * base * modifier) :
+			static_cast<int>(1500 * base *
+					 (cargo_location_mod[location][type] / 100.0) * modifier);
+	return { static_cast<uint8_t>(location), static_cast<uint8_t>(type),
+		 contra ? divine_trade_goods::contraband : divine_trade_goods::cargo, modifier,
+		 price };
+}
+
 void adjust_ship_market(int transaction, int location, int type, int volume)
 {
-	if (transaction == SOLD_CARGO)
-	{
-		// player sold cargo, so adjust market price downwards slightly
-		ship_cargo_market_mod[location][type] =
-			ship_cargo_market_mod[location][type] *
-			(1.0 - get_property("ship.cargo.sellAdjustMod", 0.005) * volume);
-	}
-	else if (transaction == BOUGHT_CARGO)
-	{
-		// player bought cargo, so adjust market price upwards slightly
-		ship_cargo_market_mod[location][type] =
-			ship_cargo_market_mod[location][type] *
-			(1.0 + get_property("ship.cargo.buyAdjustMod", 0.003) * volume);
-	}
-	else if (transaction == SOLD_CONTRA)
-	{
-		// player sold contraband, so adjust market price downwards slightly
-		ship_contra_market_mod[location][type] =
-			ship_contra_market_mod[location][type] *
-			(1.0 - get_property("ship.contraband.sellAdjustMod", 0.025) * volume);
-	}
-	else if (transaction == BOUGHT_CONTRA)
-	{
-		// player bought contraband, so adjust market price upwards slightly
-		ship_contra_market_mod[location][type] =
-			ship_contra_market_mod[location][type] *
-			(1.0 + get_property("ship.contraband.buyAdjustMod", 0.015) * volume);
-	}
+	const auto after = cargo_trade_prepare_cell(transaction, location, type, volume);
+	(after.goods == divine_trade_goods::cargo ?
+		 ship_cargo_market_mod :
+		 ship_contra_market_mod)[location][type] = after.modifier;
 	ship_cargo_market_mod[location][type] =
 		bound_market_mod(false, ship_cargo_market_mod[location][type]);
 	ship_contra_market_mod[location][type] =

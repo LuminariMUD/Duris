@@ -119,6 +119,7 @@ struct NexusBonusData
 
 #ifndef __NO_MYSQL__
 extern MYSQL *DB;
+#endif
 
 namespace
 {
@@ -134,7 +135,7 @@ NexusStoneInfo *nexus_row(int stone_id)
 	return nullptr;
 }
 } // namespace
-#else
+#ifdef __NO_MYSQL__
 namespace
 {
 const char *flat_nexus_root()
@@ -230,6 +231,7 @@ int load_nexus_stones(bool report_empty)
 		      error.empty() ? "flat nexus authority failure" : error.c_str());
 		return FALSE;
 	}
+	std::vector<NexusStoneInfo> restored;
 	size_t loaded = 0;
 	for (const auto &record : records)
 	{
@@ -241,8 +243,12 @@ int load_nexus_stones(bool report_empty)
 			      record.id, loaded);
 			return FALSE;
 		}
+		NexusStoneInfo info;
+		copy_nexus_info(record, &info);
+		restored.push_back(std::move(info));
 		++loaded;
 	}
+	nexus_rows = std::move(restored);
 #else
 	// Boot only: the rows stay in memory (nexus_rows).
 	if (!qry("SELECT id, name, room_vnum, align, stat_affect, affect_amount, bonus, "
@@ -344,22 +350,7 @@ static bool nexus_bonus_amount(P_char ch, Amount amount, int type, bool announce
 	}
 
 	int align = 0;
-#ifdef __NO_MYSQL__
-	std::vector<flatfile_nexus_record> records;
-	std::string error;
-	if (!flat_nexus_records(&records, &error))
-		return true;
-	const auto found = std::find_if(records.begin(), records.end(),
-					[type](const auto &record)
-					{
-						return (record.align == STONE_ALIGN_GOOD ||
-							record.align == STONE_ALIGN_EVIL) &&
-						       record.bonus == type;
-					});
-	if (found == records.end())
-		return true;
-	align = found->align;
-#else
+
 	const auto found = std::find_if(nexus_rows.begin(), nexus_rows.end(),
 					[type](const NexusStoneInfo &row) {
 						return (row.align == STONE_ALIGN_GOOD ||
@@ -369,7 +360,6 @@ static bool nexus_bonus_amount(P_char ch, Amount amount, int type, bool announce
 	if (found == nexus_rows.end())
 		return true;
 	align = found->align;
-#endif
 	int racewar;
 	Amount newamnt;
 
@@ -457,7 +447,14 @@ int update_nexus_stone_align(int stone_id, int align)
 		root ? flatfile_nexus_update_state(root, stone_id, align, time(nullptr), &error) :
 		       flatfile_nexus_result::io_error;
 	if (result == flatfile_nexus_result::ok || result == flatfile_nexus_result::unchanged)
+	{
+		if (NexusStoneInfo *row = nexus_row(stone_id))
+		{
+			row->align = align;
+			row->last_touched_at = time(nullptr);
+		}
 		return TRUE;
+	}
 	logit(LOG_DEBUG, "update_nexus_stone_align(): %s",
 	      error.empty() ? "flat nexus authority failure" : error.c_str());
 	return FALSE;
@@ -1744,6 +1741,11 @@ void expire_nexus_stone(int stone_id)
 		logit(LOG_DEBUG, "expire_nexus_stone(): %s",
 		      error.empty() ? "flat nexus authority failure" : error.c_str());
 		return;
+	}
+	if (NexusStoneInfo *cached = nexus_row(stone_id))
+	{
+		cached->align = 0;
+		cached->last_touched_at = 0;
 	}
 	flatfile_nexus_record record;
 	if (!flat_nexus_record(stone_id, &record, &error))

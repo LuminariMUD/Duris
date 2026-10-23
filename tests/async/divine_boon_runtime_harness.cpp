@@ -1,3 +1,8 @@
+#include <cstdint>
+bool divine_trade_runtime_boot(uint64_t)
+{
+	return true;
+}
 #include "economy/divine_boon_runtime.h"
 #include "economy/divine_boon_repository.h"
 #include "economy/boon_reward_transaction.h"

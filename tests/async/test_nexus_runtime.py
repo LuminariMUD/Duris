@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix="nexus-runtime-", dir=build) as temporar
     utility = directory / "char_stat.cpp"
     headers = '\n'.join(f'#include "{name}"' for name in (
         "core/prototypes.h", "core/defines.h", "core/utils.h", "core/utility.h",
-        "economy/nexus_stones.h", "world/epic.h", "world/epic_bonus.h",
+        "economy/nexus_stones.h", "economy/divine_trade_runtime.h", "world/epic.h", "world/epic_bonus.h",
         "world/difficulty.h", "ships/ships.h",
     ))
     utility.write_text(headers + '\nextern int errand_notch;\n' +

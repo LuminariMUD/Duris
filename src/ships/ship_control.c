@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /*****************************************************
  * ship_control.c
  *
@@ -1895,6 +1896,13 @@ int ship_panel_proc(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		send_to_char("Error: ship is not loaded!\r\n", ch);
 		return FALSE;
+	}
+
+	if (divine_trade_runtime_busy(ship) && cmd != CMD_LOOK && cmd != CMD_SCAN)
+	{
+		send_to_char("Your crew is settling a cargo trade. Please try again shortly.\r\n",
+			     ch);
+		return TRUE;
 	}
 
 	if ((cmd == CMD_GET) && arg)

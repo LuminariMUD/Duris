@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /****************************************************************************
  *
  *  File: comm.c                                                Part of Duris
@@ -350,6 +351,7 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	combat_outcome_transaction_handle_completions(completions, count);
 	artifact_guild_transaction_handle_completions(completions, count);
 	boon_reward_transaction_handle_completions(completions, count);
+	divine_trade_runtime_completions(completions, count);
 	boon_shop_transaction_handle_completions(completions, count);
 	zone_touch_transaction_handle_completions(completions, count);
 }

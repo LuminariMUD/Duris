@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /**************************************************************
  *ship_base.c                                                 *
  *                                                            *
@@ -2360,6 +2361,8 @@ void ship_activity()
 	{
 		P_ship ship = svs;
 
+		if (divine_trade_runtime_busy(ship))
+			continue;
 		// Check timers
 		if (!SHIP_LOADED(ship))
 			continue;
@@ -3390,6 +3393,11 @@ void land_ship(P_ship ship)
  */
 int write_ship(P_ship ship)
 {
+	if (divine_trade_runtime_busy(ship))
+	{
+		ship->save_pending = true;
+		return FALSE;
+	}
 	if (IS_NPC_SHIP(ship))
 		return FALSE;
 	if (!SHIP_LOADED(ship))
@@ -3445,6 +3453,8 @@ void flush_pending_ship_saves(void)
 	{
 		P_ship ship = svs;
 		if (!ship || !ship->save_pending)
+			continue;
+		if (divine_trade_runtime_busy(ship))
 			continue;
 		if (ship->save_retry_after && ship->save_retry_after > now)
 			continue;
