@@ -3,6 +3,18 @@
 Date: 2026-10-22. Status: investigation complete; implementation and deployment have
 not started. This document is the deliverable for the database CPU investigation.
 
+Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
+Work branch:
+[`branch/issue-292-database-cpu`](https://github.com/LuminariMUD/Duris/tree/branch/issue-292-database-cpu).
+Branch base: [master `fc1c94e15155`](https://github.com/LuminariMUD/Duris/commit/fc1c94e15155c3f3249bdf328d55c5d1530c0e88).
+Original investigation:
+[`ed0f9acb8817`](https://github.com/LuminariMUD/Duris/commit/ed0f9acb88177cac884b8a60563968c8fd310c55).
+
+Branch prepared 2026-10-23 for implementation tracked by issue #292. This branch
+setup adds tracking links only. Start with the worker scheduling and truthful-drain
+change below; audit semantics, boon amplification, and any retention design remain
+separate follow-up work with their own acceptance gates.
+
 ## Recommended change
 
 Replace the outbox health query's historical aggregates with indexed queries over
