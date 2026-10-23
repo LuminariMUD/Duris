@@ -105,7 +105,7 @@ checkpoints cannot be restarted now; they count as missed.
 
 ## Implementation handoff (2026-10-22)
 
-### Delivery closeout (2026-10-23 00:47 UTC / 03:47 Asia/Jerusalem)
+### Delivery closeout (2026-10-23 01:01 UTC / 04:01 Asia/Jerusalem)
 
 All 23 implementation and local qualification items below are complete. The open
 stack is synchronized with master fc1c94e15155; every published branch has one
@@ -154,8 +154,25 @@ all historical checkpoints below. Issue #245 remains open for review/integration
 - Memory remains the gameplay authority for selection, eligibility, prices,
   bonuses, caps and prepared after-images. SQL/flat-file validate durable identity
   and revisions and commit prepared outcomes; backend reads do not decide rewards.
+- Final review corrections: #290 processes SQL ship receipts after the terminal
+  copyover writer drain and aborts replacement for unfinished/failed receipts.
+  #291 caches native water paths at boot and validates their edges without graph
+  searches in commands or hourly selection; 100 repeated eligibility checks cause
+  no searches, and a newly locked edge is rejected. Staff status shows stored
+  targets even when player-facing eligibility changes.
+- The tightened complete campaigns pass on both backends: NPC-only EXP is sampled
+  before PvP (flat 1000000 -> 1000050; SQL 1000000 -> 1000037), paired with exact
+  native 200% and additive 220/160 amount checks. These two campaigns precede the
+  final cache/copyover-only review corrections; affected native tests and both
+  builds qualify those final changes without another broad campaign.
+- Human review remains required. The prior #291 changes-requested review has code
+  fixes published and its inline findings resolved. Legacy retention design
+  comments remain visible on #293: bounded process-local publication markers,
+  old post-restart ambiguity and checkpoint-dependent SQL dead-letter retention.
+  Their documented behavior preserves original recoverable receipts; it does not
+  claim automatic recovery of old formats without publication proof.
 - Original clock: start 2026-10-22 08:41:02 UTC, deadline 14:41:02 UTC, missed.
-  At 00:47 UTC elapsed is 16h 06m, overrun 10h 06m. The owner approved full-scope
+  At 01:01 UTC elapsed is 16h 20m, overrun 10h 20m. The owner approved full-scope
   continuation. The later 23:00 UTC estimate was also missed; neither is reset.
 - Next session: review/integrate the already published stack in the order above.
   Preserve successor-owned commits when a parent is squash-merged. Keep production
