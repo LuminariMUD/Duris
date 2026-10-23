@@ -4,6 +4,18 @@ Status: implementation started 2026-10-24; full wipe readiness remains OPEN.
 Prepared 2026-10-23 for [#264](https://github.com/LuminariMUD/Duris/issues/264),
 the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris/issues/97).
 Implementation branch: `branch/issue-264-pwipe-qualification`.
+
+**Continuation pointer (2026-10-24):** current implementation/evidence and remaining
+blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-runtime-qualification/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-runtime-qualification`, [PR #317](https://github.com/LuminariMUD/Duris/pull/317).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, which is on that branch.
+Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317, plus independent
+production-build repair #316. The real MariaDB/Redis-off five-minute reset through
+recreated staff login and fresh mortal gameplay/save/reconnect/another boot passed;
+full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
+balances and recreate only exact level-62 Overlords. Continue from the linked current
+plan; the baseline planning detail below is retained for provenance.
+
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
 four verification requirements, and four completion criteria. The latest master #245
