@@ -6,7 +6,24 @@
 > A forecast outside the remaining budget is a delivery failure to disclose
 > immediately, not permission to continue spending time.
 
-Status: implementation and local qualification complete; published stacked PRs are ready for review. Production has not been activated. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
+Status: feature implementation/local qualification was completed previously; the owner's 2026-10-23 request to verify and fully address every review on open PRs #276–#294 is IN PROGRESS. The stack is not yet claimed ready to merge. Production has not been activated. The owner explicitly approved continuing the full scope past the old deadline on 2026-10-22.
+
+### Review repair continuation, 2026-10-23
+
+Use the repository ablation skill: preserve the complete review/integration outcome, fix the existing paths, and avoid unrelated cleanup. Current master is `fc1c94e15155c3f3249bdf328d55c5d1530c0e88`. The twelve open PRs form one dependency chain; parent repairs are carried forward with explicit expected-head leases.
+
+Completed source/test repairs so far:
+
+- #276: replace the obsolete full-history rejection assertion with successful compaction and stable replay proof.
+- #277: include prepared SQL awards in completion history; persist sorted flat-file recipient zone history in the claim transaction; submit exactly one zone artifact effect. Also repair the affected harness fixtures and account for the final COMMIT within the bounded 24-query login.
+- #279: preserve the newer durable wallet while persisting the stale capture's remaining components. Terminal saves no longer depend on recapturing an already extracted character.
+- #282: inventory both flat-file trade filename families in the lifecycle policy and its verifier; carry forward proof that stale checkpoints preserve committed trade money.
+- #287: validate the aggregate snapshot codec budget before adding a cargo effect, preserving the input on refusal; restore the harness state required by this slice's pending-trade capture.
+
+Passing local evidence: domain receipt repository; prepared epic math/publication under ASan/UBSan for both backend compile modes; flat-file player repository including journal/six-after-image trade recovery; disposable MariaDB player load and save/claim/load-filter harnesses; ten SQL trade rollback boundaries and ordinary loss/deletion transactions; snapshot codec sanitizer harness; nine currency contract checks; twelve lifecycle checks; MariaDB server build through the carried stack; changed-line formatting/LLVM 22 tidy and whitespace checks for the completed repair commits.
+
+Still required: finish the remaining #287/#288 financial/publication review items, #290 deferred deletion and orderly shutdown findings, and #293 legacy receipt review dispositions; verify all review comments including prior resolved claims, recheck new reviews after publication, qualify both final backend builds and affected journeys/tests, and audit every open PR's current base/head and readiness. Existing feature campaign evidence is historical and is reused only for unchanged behavior. Do not mark this review goal complete until this list and the live PR state prove completion.
+
 Revised 2026-10-22 for [Duris #245](https://github.com/LuminariMUD/Duris/issues/245).
 Original plan branch: `branch/issue-245-divine-boons` (PR #265 was merged
 and its branch removed by the separate integration workflow). Current handoff
