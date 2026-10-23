@@ -1329,7 +1329,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 				critical_command child;
 				if (!zone_touch_award_command(command, i, &child) ||
 				    !finish_inbox(connection, child, zone_result.revisions[i], 0,
-						  result_payload.data(), result_payload.size()))
+						  result_payload.data(), result_payload.size(), 1))
 				{
 					const auto error = database_error(connection);
 					rollback(connection);
