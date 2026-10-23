@@ -77,6 +77,28 @@ critical_apply_result replay(const std::vector<uint8_t> &bytes,
 	std::copy_n(data, DIVINE_TRADE_RESULT_BYTES, applied.result_payload.begin());
 	return applied;
 }
+bool read_book(const std::string &root, const std::string &name, divine_trade_book *book,
+	       std::string *error)
+{
+	constexpr size_t prefix = sizeof("divine-trade-") - 1;
+	const auto separator = name.find('-', prefix);
+	if (separator == std::string::npos || !name.ends_with(".book"))
+		return false;
+	uint64_t boon = 0, account = 0;
+	const char *first = name.data() + prefix;
+	const char *middle = name.data() + separator;
+	const char *last = name.data() + name.size() - 5;
+	const auto parsed_boon = std::from_chars(first, middle, boon);
+	const auto parsed_account = std::from_chars(middle + 1, last, account);
+	std::vector<uint8_t> bytes;
+	return parsed_boon.ec == std::errc{} && parsed_boon.ptr == middle && boon &&
+	       parsed_account.ec == std::errc{} && parsed_account.ptr == last && account &&
+	       name == book_filename(account, boon) &&
+	       flatfile_read(root + "/domains", name, CRITICAL_COMMAND_MAX_PAYLOAD_BYTES, &bytes,
+			     error) == flatfile_read_result::ok &&
+	       divine_trade_book_decode(bytes, book) && book->account == account &&
+	       book->boon_id == boon;
+}
 }
 
 critical_apply_result divine_trade_flatfile_apply(const std::string &root,
@@ -225,19 +247,8 @@ bool divine_trade_flatfile_books(const std::string &root, uint64_t boon_id,
 		const std::string name = current->path().filename().string();
 		if (name.starts_with(prefix) && name.ends_with(".book"))
 		{
-			const char *first = name.data() + prefix.size();
-			const char *last = name.data() + name.size() - 5;
-			uint64_t account = 0;
-			const auto parsed = std::from_chars(first, last, account);
-			std::vector<uint8_t> bytes;
 			divine_trade_book book;
-			if (parsed.ec != std::errc{} || parsed.ptr != last || !account ||
-			    name != book_filename(account, boon_id) ||
-			    flatfile_read(root + "/domains", name,
-					  CRITICAL_COMMAND_MAX_PAYLOAD_BYTES, &bytes,
-					  &error) != flatfile_read_result::ok ||
-			    !divine_trade_book_decode(bytes, &book) || book.account != account ||
-			    book.boon_id != boon_id)
+			if (!read_book(root, name, &book, &error))
 				return false;
 			restored.push_back(std::move(book));
 		}
@@ -249,4 +260,49 @@ bool divine_trade_flatfile_books(const std::string &root, uint64_t boon_id,
 		  [](const auto &a, const auto &b) { return a.account < b.account; });
 	*books = std::move(restored);
 	return true;
+}
+
+bool divine_trade_flatfile_restore_validate(const std::string &root, std::string *error)
+{
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error) ||
+	    flatfile_authority_transaction_recover(root, lock, error) !=
+		    flatfile_authority_transaction_result::ok)
+		return false;
+	std::error_code ec;
+	std::filesystem::directory_iterator current(root + "/domains", ec), end;
+	for (; !ec && current != end; current.increment(ec))
+	{
+		const auto name = current->path().filename().string();
+		if (!name.starts_with("divine-trade-"))
+			continue;
+		if (name.ends_with(".book"))
+		{
+			divine_trade_book book;
+			if (!read_book(root, name, &book, error))
+				return false;
+		}
+		else if (name.starts_with("divine-trade-command-") && name.ends_with(".receipt"))
+		{
+			constexpr size_t prefix = sizeof("divine-trade-command-") - 1;
+			const auto key = name.substr(prefix, name.size() - prefix - 8);
+			critical_operation_id operation;
+			char canonical[CRITICAL_COMMAND_ID_HEX_SIZE];
+			if (!critical_operation_id_from_hex(key.c_str(), &operation))
+				return false;
+			critical_operation_id_to_hex(operation, canonical, sizeof(canonical));
+			if (key != canonical)
+				return false;
+			std::vector<uint8_t> bytes;
+			if (flatfile_read(root + "/domains", name, receipt_size, &bytes, error) !=
+				    flatfile_read_result::ok ||
+			    bytes.size() != receipt_size)
+				return false;
+			std::array<uint8_t, SHA256_DIGEST_LENGTH> digest;
+			std::copy_n(bytes.begin() + 12, digest.size(), digest.begin());
+			if (replay(bytes, digest).result_size != DIVINE_TRADE_RESULT_BYTES)
+				return false;
+		}
+	}
+	return !ec;
 }

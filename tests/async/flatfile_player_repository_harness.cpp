@@ -838,6 +838,34 @@ static void divine_trade_settlement(const fs::path &base)
 		require(divine_trade_flatfile_books(root, 17, &books) && books.size() == 1 &&
 				books[0] == purchase.book_after,
 			"buy manifest did not recover");
+		require(divine_trade_flatfile_restore_validate(root, &error),
+			"valid trade history did not qualify");
+		char buy_hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+		critical_operation_id_to_hex(buy_id, buy_hex, sizeof(buy_hex));
+		for (const auto &name :
+		     { std::string("divine-trade-17-") +
+			       std::to_string(purchase.book_after.account) + ".book",
+		       std::string("divine-trade-command-") + buy_hex + ".receipt" })
+		{
+			std::fstream file(std::filesystem::path(root) / "domains" / name,
+					  std::ios::in | std::ios::out | std::ios::binary);
+			char original;
+			file.seekg(-1, std::ios::end);
+			file.read(&original, 1);
+			require(file.good(), "open trade history corruption fixture");
+			const char corrupt = original ^ 1;
+			file.seekp(-1, std::ios::end);
+			file.write(&corrupt, 1);
+			file.flush();
+			require(!divine_trade_flatfile_restore_validate(root, &error),
+				"restore qualification ignored corrupt trade history");
+			file.seekp(-1, std::ios::end);
+			file.write(&original, 1);
+			file.flush();
+			require(divine_trade_flatfile_restore_validate(root, &error),
+				"repaired trade history did not qualify");
+		}
+
 		std::vector<flatfile_ship_record> ships;
 		require(flatfile_ship_list(root, &ships, &error) == flatfile_ship_result::ok &&
 				ships.size() == 1 && ships[0].slots[0].values[0] == 10,

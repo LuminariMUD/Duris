@@ -19,4 +19,7 @@ critical_apply_result divine_trade_flatfile_apply(const std::string &root,
 bool divine_trade_flatfile_books(const std::string &root, uint64_t boon_id,
 				 std::vector<divine_trade_book> *books);
 
+// Isolated restore: validate all retained books and permanent settlement receipts.
+bool divine_trade_flatfile_restore_validate(const std::string &root, std::string *error);
+
 #endif
