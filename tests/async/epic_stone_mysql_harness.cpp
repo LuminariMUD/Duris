@@ -228,6 +228,8 @@ void success_and_replay(uint32_t base, unsigned int count, bool record_zone = tr
 	assert(receipt(duplicate).recovered_claim);
 	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE " + operation_where(retouch)) ==
 	       1);
+	assert(scalar("SELECT expected_outbox_events FROM critical_operation_inbox WHERE " +
+		      operation_where(retouch)) == 1);
 	assert(scalar("SELECT COUNT(*) FROM epic_ledger") == ledger_count);
 	assert(scalar("SELECT COUNT(*) FROM critical_operation_inbox i WHERE status=1 AND result_code=0 "
 		      "AND NOT EXISTS (SELECT 1 FROM critical_outbox o WHERE o.operation_id=i.operation_id)") ==

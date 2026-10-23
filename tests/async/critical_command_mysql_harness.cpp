@@ -74,6 +74,8 @@ int main()
 	critical_command first = command(1, 5);
 	critical_apply_result applied = critical_command_repository_apply(connection, first);
 	assert(applied.outcome == critical_apply_outcome::applied && applied.durable_revision == 1);
+	assert(scalar(connection, "SELECT expected_outbox_events FROM critical_operation_inbox") ==
+	       1);
 	assert(scalar(connection,
 		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=1") == 1);
 	assert(scalar(connection,
@@ -95,6 +97,18 @@ int main()
 	applied = critical_command_repository_reconcile(connection, first);
 	assert(applied.outcome == critical_apply_outcome::already_applied &&
 	       applied.durable_revision == 1);
+	// An older canonical answer remains unknown on replay, rather than inventing
+	// expectations from its surviving outbox row.
+	static const char LEGACY[] =
+		"UPDATE critical_operation_inbox SET expected_outbox_events=NULL";
+	assert(mysql_real_query(connection, LEGACY, strlen(LEGACY)) == 0);
+	const auto legacy = critical_command_repository_apply(connection, first);
+	assert(legacy.outcome == critical_apply_outcome::already_applied &&
+	       legacy.result_payload == applied.result_payload &&
+	       legacy.result_size == applied.result_size);
+	assert(scalar(connection,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE expected_outbox_events IS NULL") ==
+	       1);
 
 	critical_command mismatch = first;
 	mismatch.payload[0] = 6;

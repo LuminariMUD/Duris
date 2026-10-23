@@ -387,6 +387,13 @@ int main()
 						    &prepared_result));
 	assert(prepared_result.participants[0].epic_revision == before_revision + 3 &&
 	       prepared_result.participants[0].epic_delivery_previous == before_revision + 2);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=2 "
+		      "AND (expected_outbox_events IS NULL OR expected_outbox_events<>0)") == 0);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=8 "
+		      "AND result_code=0 AND (expected_outbox_events IS NULL OR expected_outbox_events<>1)") ==
+	       0);
 	cleanup(db);
 	mysql_close(db);
 	std::cout

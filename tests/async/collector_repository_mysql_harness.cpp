@@ -550,6 +550,8 @@ int main()
 		    "payload_version) ORDER BY event_index) FROM critical_outbox WHERE "
 		    "operation_id=UNHEX('" +
 		    operation_hex(loot.operation_id) + "')") == "0:4:1:1,1:11:1:2");
+	assert(scalar("SELECT expected_outbox_events FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
+		      operation_hex(loot.operation_id) + "')") == 2);
 	assert(critical_command_repository_apply(database, loot).outcome ==
 	       critical_apply_outcome::already_applied);
 	assert(scalar("SELECT COUNT(*) FROM collector_ledger WHERE operation_id=UNHEX('" +
@@ -603,6 +605,8 @@ int main()
 	assert(text("SELECT GROUP_CONCAT(CONCAT(event_index,':',destination,':',payload_version) "
 		    "ORDER BY event_index) FROM critical_outbox WHERE operation_id=UNHEX('" +
 		    operation_hex(tree_loot.operation_id) + "')") == "0:4:1,1:11:2,2:11:2");
+	assert(scalar("SELECT expected_outbox_events FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
+		      operation_hex(tree_loot.operation_id) + "')") == 3);
 	assert(scalar("SELECT COUNT(*) FROM collector_listings WHERE item_uid IN (" +
 		      std::to_string(TREE_ROOT_UID) + "," + std::to_string(TREE_CHILD_UID) +
 		      ") AND status=5 AND item_revision=6") == 2);

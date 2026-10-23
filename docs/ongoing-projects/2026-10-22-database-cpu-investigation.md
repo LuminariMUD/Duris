@@ -45,8 +45,32 @@ cannot reliably reconstruct that historical event count from the result alone.
 Use explicit nullable event-expectation metadata in a separate additive migration;
 record new expectations from the mutation contract in the same transaction, not
 from surviving outbox rows. Keep old expectations unknown until proven from typed
-evidence. Legitimate session-audit and derived combat-child omissions still need
-positive receipt/identity proof. No metadata/schema implementation has started yet.
+  evidence. Legitimate session-audit and derived combat-child omissions still need
+  positive receipt/identity proof.
+
+Chunk 2 is now in progress on `branch/issue-292-outbox-expectations`, based on
+worker PR #300 (`cbb97b87d`). Outcome: a nullable expected-event count covering
+contiguous event indexes, committed atomically from the writer's mutation contract
+alongside each canonical inbox result. Known zero is distinct from historical
+NULL. This enables detecting a partially missing multi-event result without
+depending on the surviving event count. Non-goals: changing old receipts, audit
+classification, replay codecs, or production schema. Files: the additive migration,
+fresh/bootstrap schemas and verification/boot gates, repository finish paths,
+combat child receipts, focused DB harnesses, and documentation. Proof: upgrade
+idempotence and NULL preservation, writer transaction/replay/rollback checks,
+multi-event and zero-event fixtures, relevant domain harnesses, formatting/build.
+Publish this schema/writer prerequisite as its own stacked PR before implementing
+the audit consumer and historical classification.
+
+Chunk 2 qualification so far: full server build, schema/command/outbox MariaDB
+11.8 harness, collector multi-event repository harness (11.8), boon/zone,
+session-audit and combat SQL harnesses (10.11), boot/source contracts, formatting
+and whitespace pass. Upgrade runs twice and preserves historical NULL; replay
+does not rewrite an older NULL expectation. The epic-stone SQL journey exposed a
+baseline fixture that still expects direct SQL balance mutation despite the
+current receipt/ledger-only epic writer. Reproduce and repair that fixture as a
+separate focused change before claiming stone/recovered-claim qualification.
+No expectation-metadata PR is open yet.
 
 ### Chunk 1 local qualification
 
