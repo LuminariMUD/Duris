@@ -74,8 +74,7 @@ int find_mob_map_room(P_char random_mob);
 /* Gith Monks are player options; preserve the existing random-NPC class pool. */
 static bool random_mob_class_allowed(int race, int class_idx)
 {
-	if (class_idx == flag2idx(CLASS_MONK) &&
-	    (race == RACE_GITHYANKI || race == RACE_GITHZERAI))
+	if (class_idx == flag2idx(CLASS_MONK) && (race == RACE_GITHYANKI || race == RACE_GITHZERAI))
 		return false;
 
 	return class_table[race][class_idx] != 5;
@@ -680,47 +679,25 @@ P_char create_random_mob(int theme, int mob_level)
 	{
 		race = zones_random_data[zone_idx].races[number(0, races - 1)];
 	}
-	// Theme 4 is good race.
-	if (theme == 4)
+	// Select from eligible candidates, independently of the template's faction.
+	if (theme >= 4 && theme <= 6)
 	{
-		while (TRUE)
+		int eligible_races[27];
+		int eligible_count = 0;
+		for (int candidate = 1; candidate <= MIN(27, LAST_RACE); ++candidate)
+			if ((theme == 4 && OLD_RACE_GOOD(candidate, 1000)) ||
+			    (theme == 5 && OLD_RACE_EVIL(candidate, -1000)) ||
+			    (theme == 6 && OLD_RACE_PUNDEAD(candidate)))
+				eligible_races[eligible_count++] = candidate;
+		if (!eligible_count)
 		{
-			// Pick one of the first 27 races, or up to LAST_RACE if there are less than 27 races.
-			race = number(1, MIN(27, LAST_RACE));
-
-			// Stop looking when we find a good race.
-			if (IS_RACEWAR_GOOD(random_mob))
-			{
-				break;
-			}
+			extract_char(random_mob);
+			return NULL;
 		}
-	}
-	// Theme 5 is evil race.
-	else if (theme == 5)
-	{
-		while (TRUE)
-		{
-			race = number(1, MIN(27, LAST_RACE));
-
-			// If racewar == EVIL, then racewar != UNDEAD.
-			if (IS_RACEWAR_EVIL(random_mob))
-			{
-				break;
-			}
-		}
-	}
-	// Theme 6 is undead race.
-	else if (theme == 6)
-	{
-		while (TRUE)
-		{
-			race = number(1, MIN(27, LAST_RACE));
-
-			if (IS_RACEWAR_UNDEAD(random_mob))
-			{
-				break;
-			}
-		}
+		race = eligible_races[number(0, eligible_count - 1)];
+		GET_RACEWAR(random_mob) = theme == 4 ? RACEWAR_GOOD :
+					  theme == 5 ? RACEWAR_EVIL :
+						       RACEWAR_UNDEAD;
 	}
 	else if (theme == 7)
 	{

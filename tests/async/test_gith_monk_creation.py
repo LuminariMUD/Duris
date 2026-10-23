@@ -6,7 +6,7 @@ import re
 import subprocess
 import tempfile
 
-from _paths import ROOT, source
+from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 
 MONK = 7
@@ -67,34 +67,17 @@ assert "while (!random_mob_class_allowed(race, class_idx))" in mob
 # preserved for all combinations other than the two new player-only Gith Monks.
 harness = r"""
 #include <cassert>
-constexpr int LAST_RACE = 40;
-constexpr int CLASS_COUNT = 30;
-constexpr int RACE_HUMAN = 1;
-constexpr int RACE_ORC = 12;
-constexpr int RACE_GITHYANKI = 15;
-constexpr int RACE_GITHZERAI = 30;
-constexpr unsigned CLASS_MONK = 1u << 6;
-int class_table[LAST_RACE + 1][CLASS_COUNT + 1] = {};
-int flag2idx(unsigned bit) { assert(bit == CLASS_MONK); return 7; }
-""" + signature + predicate + "\n}\n" + r"""
+#include "core/prototypes.h"
+extern const int class_table[LAST_RACE + 1][CLASS_COUNT + 1];
+""" + extract_function('utility.c', 'int flag2idx(') + signature + predicate + "\n}\n" + r"""
 int main() {
-    for (auto &row : class_table)
-        for (auto &cell : row)
-            cell = 5;
-    class_table[RACE_GITHYANKI][7] = -1;
-    class_table[RACE_GITHZERAI][7] = 1;
-    class_table[RACE_GITHYANKI][1] = -1;
-    class_table[RACE_GITHZERAI][1] = 2;
-    class_table[RACE_HUMAN][7] = 1;
-    class_table[RACE_ORC][7] = -1;
-
     assert(!random_mob_class_allowed(RACE_GITHYANKI, 7));
     assert(!random_mob_class_allowed(RACE_GITHZERAI, 7));
     assert(random_mob_class_allowed(RACE_GITHYANKI, 1));
     assert(random_mob_class_allowed(RACE_GITHZERAI, 1));
     assert(random_mob_class_allowed(RACE_HUMAN, 7));
     assert(random_mob_class_allowed(RACE_ORC, 7));
-    assert(!random_mob_class_allowed(RACE_HUMAN, 2));
+    assert(!random_mob_class_allowed(RACE_THRIKREEN, 7));
 }
 """
 with tempfile.TemporaryDirectory(prefix="duris-gith-monk-") as temp_dir:
@@ -104,9 +87,13 @@ with tempfile.TemporaryDirectory(prefix="duris-gith-monk-") as temp_dir:
     subprocess.run(
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-            "-o", str(binary), str(cpp),
+            "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+            "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql",
+            str(cpp), str(HARNESS_STUBS), str(source('constant.c')),
+            "-Wl,--gc-sections", "-o", str(binary),
         ],
         check=True,
+        cwd=ROOT,
     )
     subprocess.run([str(binary)], check=True)
 
