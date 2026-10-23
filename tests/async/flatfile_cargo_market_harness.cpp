@@ -1,4 +1,12 @@
 #include "ships/ships.h"
+#include "persistence/maintenance_snapshot.h"
+#include "persistence/critical_command_coordinator.h"
+#include "economy/divine_trade_command.h"
+#include "economy/divine_trade_runtime.h"
+#include "ships/ship_cargo_transaction.h"
+#include "flatfile/flatfile_cargo_repository.h"
+#include <openssl/sha.h>
+#include <iterator>
 
 #include <cmath>
 #include <cstdarg>
@@ -18,16 +26,33 @@ extern float ship_contra_market_mod[NUM_PORTS][NUM_PORTS];
 void reset_cargo();
 
 static std::string state_root;
+static bool configured = true;
+static bool market_fenced = false;
+static bool projection_pending = false;
+bool divine_trade_runtime_busy(const ShipData *)
+{
+	return projection_pending;
+}
+bool critical_command_coordinator_is_fenced(const critical_entity_key &key, critical_operation_id *)
+{
+	return market_fenced && key.type == critical_entity_type::system &&
+	       key.id == DIVINE_TRADE_MARKET_KEY;
+}
+
 static int cargo_timer;
 static int delayed_timer;
 
 const char *persistence_mode_flatfile_root(void)
 {
-	return state_root.c_str();
+	return configured ? state_root.c_str() : nullptr;
 }
 
 // No price band is configured here, so loading keeps every modifier as stored.
 float get_property(const char *, double fallback)
+{
+	return fallback;
+}
+int get_property(const char *, int fallback)
 {
 	return fallback;
 }
@@ -74,6 +99,8 @@ static void require(bool condition, const std::string &message)
 static void prepare_root(const fs::path &root)
 {
 	fs::create_directories(root / "metadata");
+	fs::create_directories(root / "domains");
+	fs::permissions(root / "domains", fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(root, fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(root / "metadata", fs::perms::owner_all, fs::perm_options::replace);
 }
@@ -148,6 +175,106 @@ int main(int argc, char **argv)
 	require(!flatfile_cargo_maintenance_apply(values.data(), values.size() - 1),
 		"malformed scheduled cargo snapshot was accepted");
 
+	// A trade market after-image shares the existing authority transaction. A
+	// crash after its journal write is recovered before the next price read.
+	const std::vector<divine_trade_market_cell> trade_cells{ { 4, 5, divine_trade_goods::cargo,
+								   1.5f, 200 } };
+	{
+		flatfile_authority_lock lock;
+		std::string error;
+		require(lock.acquire(state_root, &error), error);
+		flatfile_authority_operation market;
+		require(flatfile_cargo_prepare_trade(state_root, lock, 0, trade_cells, &market,
+						     &error),
+			"trade market did not prepare: " + error);
+		require(cargo_trade_generation() == 0 && ship_cargo_market_mod[4][5] != 1.5f,
+			"preparation published an uncommitted market");
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+		require(flatfile_authority_transaction_commit_operations(state_root, lock,
+									 { market }, &error) ==
+				flatfile_authority_transaction_result::io_error,
+			"market journal fault did not fire");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+	}
+	require(read_cargo() && cargo_trade_generation() == 1 &&
+			ship_cargo_market_mod[4][5] == 1.5f,
+		"committed market after-image did not recover");
+	cargo_timer = delayed_timer = 0;
+	require(flatfile_cargo_maintenance_apply(values.data(), values.size()) && read_cargo() &&
+			ship_cargo_market_mod[4][5] == 1.5f,
+		"restored old maintenance erased a trade");
+	require(!cargo_timer && !delayed_timer, "restored old maintenance advanced timers");
+	{
+		flatfile_authority_lock lock;
+		std::string error;
+		require(lock.acquire(state_root, &error), error);
+		flatfile_authority_operation unchanged;
+		unchanged.filename = "sentinel";
+		require(!flatfile_cargo_prepare_trade(state_root, lock, 0, trade_cells, &unchanged,
+						      &error) &&
+				unchanged.filename == "sentinel",
+			"stale market generation prepared another trade");
+	}
+	reset_cargo();
+	require(cargo_trade_generation() == 1 && write_cargo() && read_cargo() &&
+			cargo_trade_generation() == 1 && ship_cargo_market_mod[4][5] == 1.0f,
+		"staff market reset changed the financial generation or failed to persist");
+	values.push_back(1); // Current maintenance carries the captured trade generation.
+	values[3 + (4 * NUM_PORTS + 5) * 4 + 2] = 1700000;
+	require(flatfile_cargo_maintenance_apply(values.data(), values.size()) && read_cargo() &&
+			ship_cargo_market_mod[4][5] == 1.7f && cargo_trade_generation() == 1,
+		"current maintenance could not advance the market");
+	// A staff reset replaces values, not the durable trade generation.
+	reset_cargo();
+	ship_cargo_market_mod[1][1] = 1.25f;
+	require(cargo_trade_generation() == 1 && write_cargo() && read_cargo() &&
+			ship_cargo_market_mod[1][1] == 1.25f && cargo_trade_generation() == 1,
+		"staff reset made the next market save stale");
+	ship_cargo_market_mod[4][5] = 1.7f;
+	require(write_cargo(), "market fixture was not restored after reset");
+	// A version-1 file has no trade generation and remains loadable as zero.
+	{
+		const auto path = fs::path(state_root) / "metadata/cargo_market";
+		std::ifstream input(path, std::ios::binary);
+		std::vector<uint8_t> legacy{ std::istreambuf_iterator<char>(input), {} };
+		require(legacy.size() > 28 && legacy[8] == 2, "version-2 fixture missing");
+		legacy.erase(legacy.begin() + 20, legacy.begin() + 28);
+		legacy[8] = 1;
+		SHA256(legacy.data(), legacy.size() - SHA256_DIGEST_LENGTH,
+		       legacy.data() + legacy.size() - SHA256_DIGEST_LENGTH);
+		std::ofstream output(path, std::ios::binary | std::ios::trunc);
+		output.write(reinterpret_cast<const char *>(legacy.data()), legacy.size());
+	}
+	require(read_cargo() && cargo_trade_generation() == 0 &&
+			ship_cargo_market_mod[4][5] == 1.7f,
+		"legacy cargo record failed to load without invented trade state");
+	maintenance_request request{};
+	request.job_id = maintenance_job_id::cargo_market;
+	request.work_id = 123456;
+	market_fenced = true;
+	const auto unadjusted = ship_cargo_market_mod[4][5];
+	const auto delayed = ship_cargo_market_mod_delayed[4][5];
+	require(!maintenance_prepare_request(request, nullptr) &&
+			ship_cargo_market_mod[4][5] == unadjusted &&
+			ship_cargo_market_mod_delayed[4][5] == delayed,
+		"pending trade allowed maintenance to mutate the live market");
+	market_fenced = false;
+	projection_pending = true;
+	require(!maintenance_prepare_request(request, nullptr) &&
+			ship_cargo_market_mod[4][5] == unadjusted &&
+			ship_cargo_market_mod_delayed[4][5] == delayed,
+		"retired writer fence allowed drift before trade projection");
+	projection_pending = false;
+
+	require(maintenance_prepare_request(request, nullptr) &&
+			request.value_count == 4 + NUM_PORTS * NUM_PORTS * 4,
+		"cargo dispatcher rejected its generation-bearing snapshot");
+	const auto captured_values = request.values;
+	require(maintenance_prepare_request(request, nullptr) && request.values == captured_values,
+		"repeated maintenance preparation adjusted the live market twice");
+	require(flatfile_cargo_maintenance_apply(request.values.data(), request.value_count),
+		"dispatched cargo maintenance was not persisted");
+
 	state_root = (fixtures / "symlink").string();
 	prepare_root(state_root);
 	const fs::path target = fixtures / "outside";
@@ -159,6 +286,10 @@ int main(int argc, char **argv)
 	reset_cargo();
 	require(!read_cargo() && !write_cargo(), "cargo authority symlink was followed");
 
+	configured = false;
+	require(!read_cargo() && !write_cargo() &&
+			!flatfile_cargo_maintenance_apply(values.data(), values.size()),
+		"an unconfigured cargo store did not fail safely");
 	std::cout << "flat-file cargo market passed\n";
 	return 0;
 }

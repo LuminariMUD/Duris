@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  *  File: flatfile_player_snapshot_file.c                       Part of Duris
- *  Usage: reads one published player snapshot file without locks
+ *  Usage: encodes and reads published player snapshot files
  *
  *  Copyright 1990, 1991 - see LICENSE for complete information
  *
@@ -25,6 +25,33 @@
 
 namespace
 {
+bool normalize_size(player_snapshot *snapshot, std::vector<uint8_t> *payload)
+{
+	if (!snapshot || !payload)
+		return false;
+	snapshot->encoded_size_bound = 1;
+	if (player_snapshot_encode(*snapshot, payload) != player_snapshot_codec_result::ok)
+		return false;
+	snapshot->encoded_size_bound = payload->size();
+	return player_snapshot_encode(*snapshot, payload) == player_snapshot_codec_result::ok;
+}
+
+struct encoder
+{
+	std::vector<uint8_t> bytes;
+
+	template <typename T> void number(T value)
+	{
+		using unsigned_type = std::make_unsigned_t<T>;
+		unsigned_type bits = static_cast<unsigned_type>(value);
+		for (size_t index = 0; index < sizeof(T); ++index)
+		{
+			bytes.push_back(static_cast<uint8_t>(bits & 0xff));
+			bits >>= 8;
+		}
+	}
+};
+
 struct decoder
 {
 	const uint8_t *data;
@@ -116,4 +143,26 @@ flatfile_player_snapshot_read_file(const std::string &directory, const std::stri
 		return flatfile_player_load_result::invalid;
 	*snapshot = std::move(decoded);
 	return flatfile_player_load_result::ok;
+}
+
+bool flatfile_player_snapshot_encode_file(player_snapshot *snapshot, std::vector<uint8_t> *bytes)
+{
+	std::vector<uint8_t> payload;
+	if (!bytes || !normalize_size(snapshot, &payload))
+		return false;
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	SHA256(payload.data(), payload.size(), digest);
+	encoder out;
+	out.bytes.insert(out.bytes.end(), player_magic.begin(), player_magic.end());
+	out.number<uint32_t>(player_file_version);
+	out.number<uint32_t>(payload.size());
+	out.number<int32_t>(snapshot->pid);
+	out.number<uint64_t>(snapshot->revision);
+	out.number<uint64_t>(snapshot->components);
+	out.bytes.insert(out.bytes.end(), digest, digest + sizeof(digest));
+	out.bytes.insert(out.bytes.end(), payload.begin(), payload.end());
+	if (out.bytes.size() > player_file_maximum)
+		return false;
+	*bytes = std::move(out.bytes);
+	return true;
 }

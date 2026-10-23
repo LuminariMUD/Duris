@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/async/disposable_schema.sh"
 mysql -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USER" "$DB_NAME" < "$ROOT/migrations/artifact_guild_outcome.sql"
 "$ROOT/migrations/verify_artifact_guild_outcome_schema.sh"
+"$ROOT/migrations/immutable/0051_divine_effect_delivery.sh"
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
@@ -18,9 +19,10 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/economy/boon_reward_command.c src/economy/boon_reward_repository.c \
     src/world/zone_touch_command.c src/world/zone_touch_repository.c \
     src/account/session_audit_command.c src/account/session_audit_repository.c \
-    src/player/player_snapshot_codec.c \
+    src/player/player_snapshot_codec.c src/player/player_snapshot_repository.c \
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
+    src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \
     src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
     -o "$ROOT/bin/tests/artifact_guild_mysql_harness"
 "$ROOT/bin/tests/artifact_guild_mysql_harness"

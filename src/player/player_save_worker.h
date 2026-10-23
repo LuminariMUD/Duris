@@ -66,6 +66,8 @@ enum class persistence_job_kind : uint8_t
 	artifact,
 	// Persist a Divine Boon opportunity before exposing its world bonus.
 	divine_boon,
+	// Native prepared artifact/guild delivery checks and ACKs.
+	artifact_delivery,
 };
 
 enum class player_save_apply_outcome : uint8_t

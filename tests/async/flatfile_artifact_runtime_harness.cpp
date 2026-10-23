@@ -3,6 +3,7 @@
 #include "sql/sql.h"
 #include "world/object_template.h"
 #include "guild/artifact_admission.h"
+#include "guild/artifact_guild_state.h"
 #include "guild/artifact_population_repository.h"
 #include "item/item_ownership_runtime.h"
 #include "flatfile/flatfile_identity_repository.h"
@@ -439,6 +440,80 @@ int main(int argc, char **argv)
 			    { return line.find("a report artifact") != std::string::npos; }),
 		"flat player artifact report omitted its cached template label");
 	std::cout << "flat artifact list/player reports inspect templates without objects\n";
+
+	critical_operation_id delivery{};
+	bool newly_applied = false;
+	delivery.bytes.back() = 1;
+	artifact_guild_delta delta{};
+	delta.vnum = 702;
+	delta.canonical_item_uid = 70201;
+	delta.feed_seconds = 300;
+	require(artifact_apply_delivery(delivery, delta, 100000, &newly_applied),
+		"prepared artifact delivery failed");
+	artifact_feed_set_timer(702, 4500); // A later ordinary change keeps the marker.
+	require(artifacts_load() &&
+			artifact_apply_delivery(delivery, delta, 100000, &newly_applied) &&
+			get_artifact_data_sql(702, &data) && data.timer == 4500,
+		"saved effect replay duplicated feed or erased later timer state");
+	require(flatfile_artifact_get(state_root, 702, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.delivery_ids == artifact_guild_delivery_ids{ delivery.bytes },
+		"effect ID was not saved with the artifact timer");
+	delivery.bytes.back() = 2;
+	require(artifact_apply_delivery(delivery, delta, 100000, &newly_applied) &&
+			get_artifact_data_sql(702, &data) && data.timer == 4800,
+		"new delivery did not add its own feed");
+	const fs::path retained = root / "domains/artifact_catalog.retained";
+	fs::rename(authority, retained);
+	fs::create_directory(authority);
+	delivery.bytes.back() = 3;
+	require(artifact_apply_delivery(delivery, delta, 100000, &newly_applied) &&
+			get_artifact_data_sql(702, &data) && data.timer == 5100,
+		"unavailable artifact save lost the live effect");
+	fs::remove(authority);
+	fs::rename(retained, authority);
+	require(artifacts_load() && get_artifact_data_sql(702, &data) && data.timer == 4800 &&
+			artifact_apply_delivery(delivery, delta, 100000, &newly_applied) &&
+			get_artifact_data_sql(702, &data) && data.timer == 5100,
+		"restart did not recover the unsaved effect exactly once");
+	artifact_forget_delivery(702, delivery);
+	require(artifacts_load() &&
+			flatfile_artifact_get(state_root, 702, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.timer == 5100 && stored.delivery_ids.size() == 2,
+		"ACK marker pruning changed the saved reward");
+	delta.canonical_item_uid = 99999;
+	delivery.bytes.back() = 4;
+	require(artifact_apply_delivery(delivery, delta, 100000, &newly_applied) &&
+			get_artifact_data_sql(702, &data) && data.timer == 5100,
+		"retired physical identity fed a different canonical artifact");
+	// Retained canonical identity can outlive its legacy gameplay projection.
+	// Deliver to that original UID without inventing a physical body or row.
+	stored.identity_only = true;
+	require(flatfile_artifact_snapshot_apply(state_root, { stored }, &error) ==
+				flatfile_artifact_result::ok &&
+			artifacts_load(),
+		"could not seed domain-only original identity");
+	delta.canonical_item_uid = 70201;
+	delta.timer_before = 5100;
+	delta.timer = 5400;
+	delivery.bytes.back() = 5;
+	require(artifact_apply_delivery(delivery, delta, 100000, &newly_applied) && newly_applied &&
+			flatfile_artifact_get(state_root, 702, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.identity_only && stored.timer == 5400 &&
+			std::binary_search(stored.delivery_ids.begin(), stored.delivery_ids.end(),
+					   delivery.bytes),
+		"original domain-only artifact lost its owed effect or materialized a legacy projection");
+	require(artifacts_load() &&
+			artifact_apply_delivery(delivery, delta, 100000, &newly_applied) &&
+			!newly_applied &&
+			flatfile_artifact_get(state_root, 702, &stored, &error) ==
+				flatfile_artifact_result::ok &&
+			stored.timer == 5400,
+		"domain-only original effect replayed after restart");
+	std::cout
+		<< "prepared artifact snapshots recover saved and unsaved effects without replaying later state\n";
 
 	std::fstream corrupt(authority, std::ios::in | std::ios::out | std::ios::binary);
 	require(corrupt.good(), "could not open artifact authority for corruption test");

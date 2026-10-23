@@ -168,6 +168,8 @@ bool get_boon_shop_data(int, struct BoonShop *);
 int validate_boon_data(struct BoonData *bd, int);
 int parse_boon_args(P_char, struct BoonData *bd, char *);
 void do_boon(P_char, char *, int);
+void do_divine_boon(P_char, char *, int);
+void do_divineboon(P_char, char *, int);
 void boon_shop(P_char, char *);
 int boon_display(P_char, char *);
 int create_boon(struct BoonData *bd, P_char ch);

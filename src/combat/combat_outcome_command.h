@@ -17,12 +17,13 @@
 
 #include "persistence/critical_command.h"
 #include "economy/currency_command.h"
+#include "guild/artifact_guild_command.h"
 
 #include <array>
 #include <cstdint>
 #include <string>
 
-constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 5;
+constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 6;
 constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 15;
 constexpr size_t COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES = 96;
 constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 255;
@@ -97,6 +98,8 @@ struct combat_outcome_payload
 	uint16_t participant_count;
 	std::array<combat_outcome_participant, COMBAT_OUTCOME_MAX_PARTICIPANTS> participants;
 	int64_t prepared_at = 0;
+	bool artifact_intents = false;
+	std::vector<critical_command> artifact_deliveries;
 };
 
 struct combat_outcome_participant_result
@@ -125,6 +128,7 @@ struct combat_outcome_result
 	std::array<combat_outcome_participant_result, COMBAT_OUTCOME_MAX_PARTICIPANTS> participants;
 	uint32_t victim_pid = 0;
 	int64_t prepared_at = 0;
+	bool artifact_intents = false;
 };
 
 inline size_t combat_outcome_result_size(const combat_outcome_result &result)

@@ -150,7 +150,7 @@ int main()
 	assert(refused([](critical_command &c) { c.keys[0].type = static_cast<critical_entity_type>(0); }));
 	assert(refused([](critical_command &c)
 		       { c.keys[1].type = static_cast<critical_entity_type>(
-				 static_cast<int>(critical_entity_type::pet) + 1); }));
+				 static_cast<int>(critical_entity_type::ship) + 1); }));
 	assert(refused([](critical_command &c) { c.keys[0].id = 0; }));
 	assert(refused([](critical_command &c) { std::swap(c.keys[0], c.keys[1]); }));
 	assert(refused([](critical_command &c) { c.expected_revisions[0].key.id = 99; }));

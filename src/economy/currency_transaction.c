@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "economy/currency_transaction.h"
+#include "economy/currency_value.h"
 
 #include "core/files.h"
 #include "flatfile/flatfile_player_repository.h"
@@ -38,53 +39,16 @@ namespace
 {
 currency_transaction_health health = {};
 
-currency_vector canonical_value(int64_t value)
-{
-	currency_vector result = {};
-	static constexpr std::array<int64_t, CURRENCY_DENOMINATION_COUNT> values = { 1, 10, 100,
-										     1000 };
-	for (size_t index = values.size(); index-- > 0;)
-	{
-		result.amount[index] = value / values[index];
-		value %= values[index];
-	}
-	return result;
-}
+uint32_t reserved_trade_pid;
+int64_t reserved_trade_payment;
 
-bool wallet_value_delta(P_char character, int64_t value_delta, currency_vector *delta)
+bool wallet_value_delta(P_char character, int64_t value, currency_vector *delta)
 {
-	if (!value_delta || value_delta == INT64_MIN)
+	if (!character || IS_NPC(character))
 		return false;
-	currency_vector wallet_delta = {};
-	if (value_delta > 0)
-		wallet_delta = canonical_value(value_delta);
-	else
-	{
-		if (!character || IS_NPC(character))
-			return false;
-		const std::array<int64_t, CURRENCY_DENOMINATION_COUNT> current = {
-			GET_COPPER(character), GET_SILVER(character), GET_GOLD(character),
-			GET_PLATINUM(character)
-		};
-		static constexpr std::array<int64_t, CURRENCY_DENOMINATION_COUNT> values = { 1, 10,
-											     100,
-											     1000 };
-		int64_t total = 0;
-		for (size_t index = 0; index < current.size(); ++index)
-		{
-			if (current[index] > (INT64_MAX - total) / values[index])
-				return false;
-			total += current[index] * values[index];
-		}
-		const int64_t spend = -value_delta;
-		if (total < spend)
-			return false;
-		const currency_vector after = canonical_value(total - spend);
-		for (size_t index = 0; index < current.size(); ++index)
-			wallet_delta.amount[index] = after.amount[index] - current[index];
-	}
-	*delta = wallet_delta;
-	return true;
+	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
+					GET_GOLD(character), GET_PLATINUM(character) } };
+	return currency_wallet_value_delta(before, value, delta);
 }
 
 bool bank_payment_deltas(P_char character, int64_t value, currency_vector *wallet,
@@ -118,7 +82,7 @@ bool bank_payment_deltas(P_char character, int64_t value, currency_vector *walle
 	}
 	currency_vector wallet_delta = {};
 	if (remaining < 0)
-		wallet_delta = canonical_value(-remaining);
+		wallet_delta = currency_canonical_value(-remaining);
 	*wallet = wallet_delta;
 	*bank = bank_delta;
 	return true;
@@ -202,6 +166,17 @@ bool apply(P_char character, const currency_command_payload &payload,
 		bank_loses = bank_loses || payload.bank_delta.amount[index] < 0;
 		if (result.wallet.amount[index] < 0 || result.wallet.amount[index] > INT_MAX ||
 		    result.bank.amount[index] < 0 || result.bank.amount[index] > INT_MAX)
+		{
+			++health.rejected;
+			if (completion)
+				completion(character, false, {}, ENOSPC, bytes, context_size);
+			return true;
+		}
+	}
+	if (reserved_trade_pid == payload.pid)
+	{
+		currency_vector eventual;
+		if (!currency_wallet_after_value(result.wallet, reserved_trade_payment, &eventual))
 		{
 			++health.rejected;
 			if (completion)
@@ -346,9 +321,9 @@ bool currency_transaction_submit_bank_reward(P_char character, int64_t value,
 {
 	if (value <= 0)
 		return false;
-	return currency_transaction_submit(character, {}, canonical_value(value), reason, reason_id,
-					   source_site, deadline_class, completion, context,
-					   context_size);
+	return currency_transaction_submit(character, {}, currency_canonical_value(value), reason,
+					   reason_id, source_site, deadline_class, completion,
+					   context, context_size);
 }
 
 bool currency_transaction_submit_bank_payment(P_char character, int64_t value,
@@ -381,5 +356,50 @@ currency_transaction_health currency_transaction_health_copy(void)
 
 void currency_transaction_reset_for_tests(void)
 {
+	reserved_trade_pid = 0;
+	reserved_trade_payment = 0;
 	health = {};
+}
+
+bool currency_transaction_reserve_trade(P_char character, int64_t payment)
+{
+	if (!character || IS_NPC(character) || GET_PID(character) <= 0 || reserved_trade_pid)
+		return false;
+	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
+					GET_GOLD(character), GET_PLATINUM(character) } };
+	currency_vector after;
+	if (!currency_wallet_after_value(before, payment, &after))
+		return false;
+	reserved_trade_pid = static_cast<uint32_t>(GET_PID(character));
+	reserved_trade_payment = payment;
+	return true;
+}
+
+void currency_transaction_release_trade(uint32_t pid)
+{
+	if (reserved_trade_pid == pid)
+	{
+		reserved_trade_pid = 0;
+		reserved_trade_payment = 0;
+	}
+}
+
+bool currency_transaction_publish_trade(P_char character, int64_t payment)
+{
+	if (!character || IS_NPC(character) || !character->only.pc ||
+	    character->only.pc->wallet_revision == UINT64_MAX)
+		return false;
+	currency_vector before, after;
+	before.amount = { GET_COPPER(character), GET_SILVER(character), GET_GOLD(character),
+			  GET_PLATINUM(character) };
+	if (!currency_wallet_after_value(before, payment, &after))
+		return false;
+	GET_COPPER(character) = static_cast<int>(after.amount[0]);
+	GET_SILVER(character) = static_cast<int>(after.amount[1]);
+	GET_GOLD(character) = static_cast<int>(after.amount[2]);
+	GET_PLATINUM(character) = static_cast<int>(after.amount[3]);
+	++character->only.pc->wallet_revision;
+	mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
+	gmcp_char_vitals(character);
+	return true;
 }

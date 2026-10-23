@@ -168,3 +168,6 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-pet-owner-") as director
     subprocess.run([str(binary)], check=True)
 
 print("copyover save guards passed")
+
+# A completed SQL writer is not proof that the ship transaction committed.
+assert copyover.index("player_save_pipeline_drain(30000)") < copyover.index("if (!sql_ship_write_pulse())") < copyover.index("/* Terminal player saves can dirty a locker")

@@ -41,6 +41,7 @@ int main() {
     assert(pc.learned_flight_stops == 0);
     pc.learned_flight_stops = (uint64_t{1} << 26) | 1;
     pc.divine_boon_delivery_seq = 3;
+    pc.wallet_revision = 19;
     GET_EXP(&ch) = 12345;
     ch.player.time.played = 3600;
     ch.player.time.logon = 9400;
@@ -58,6 +59,7 @@ int main() {
         assert(player_snapshot_encode(snapshot, &bytes) == player_snapshot_codec_result::ok);
         player_snapshot decoded;
         assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) == player_snapshot_codec_result::ok);
+        assert(decoded.wallet_revision == pc.wallet_revision);
         bool found_flights = false, found_exp = false, found_delivery = false;
         for (const auto &row : decoded.status_integers) {
             if (row.field == player_status_field::learned_flight_stops) {

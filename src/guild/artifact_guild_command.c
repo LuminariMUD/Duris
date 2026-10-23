@@ -15,6 +15,7 @@
 #include "guild/artifact_guild_command.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace
 {
@@ -36,7 +37,7 @@ template <typename T> bool read_le(const uint8_t **cursor, const uint8_t *end, T
 	return true;
 }
 
-bool valid(const artifact_guild_payload &payload, bool legacy)
+bool valid(const artifact_guild_payload &payload, bool legacy, bool prepared)
 {
 	if (critical_operation_id_is_zero(payload.parent_operation_id) || !payload.actor_pid ||
 	    payload.artifact_count > payload.artifacts.size() ||
@@ -54,6 +55,16 @@ bool valid(const artifact_guild_payload &payload, bool legacy)
 	     payload.construction_after !=
 		     payload.construction_before + payload.construction_delta))
 		return false;
+	if (prepared &&
+	    ((payload.guild_id && (!payload.construction_notch ||
+				   critical_operation_id_is_zero(payload.guild_identity))) ||
+	     (payload.artifact_count && payload.feeding_cap <= 0)))
+		return false;
+	if (prepared && payload.guild_id &&
+	    payload.prestige_after / payload.construction_notch -
+			    payload.prestige_before / payload.construction_notch !=
+		    static_cast<uint64_t>(payload.construction_delta))
+		return false;
 	for (size_t index = 0; index < payload.artifact_count; ++index)
 	{
 		const auto &entry = payload.artifacts[index];
@@ -66,21 +77,39 @@ bool valid(const artifact_guild_payload &payload, bool legacy)
 				entry.bind_owner_before != entry.bind_owner_pid ||
 				entry.bind_timer_before != entry.bind_timer))
 			return false;
+		if (prepared)
+		{
+			if (!entry.canonical_item_uid ||
+			    (entry.feed_seconds > 0 &&
+			     entry.timer_before > INT64_MAX - entry.feed_seconds))
+				return false;
+			const int64_t target = std::clamp<int64_t>(
+				entry.timer_before + entry.feed_seconds, 0, payload.feeding_cap);
+			if (target != entry.timer)
+				return false;
+		}
 		for (size_t other = 0; other < index; ++other)
-			if (payload.artifacts[other].vnum == entry.vnum)
+			if (payload.artifacts[other].vnum == entry.vnum ||
+			    (prepared && payload.artifacts[other].canonical_item_uid ==
+						 entry.canonical_item_uid))
 				return false;
 	}
 	return true;
 }
 
-void set_keys(critical_command *command, const artifact_guild_payload &payload)
+void set_keys(critical_command *command, const artifact_guild_payload &payload, bool prepared)
 {
 	command->keys.push_back({ critical_entity_type::player, payload.actor_pid });
 	if (payload.guild_id)
 		command->keys.push_back({ critical_entity_type::guild, payload.guild_id });
 	for (size_t index = 0; index < payload.artifact_count; ++index)
+	{
 		command->keys.push_back({ critical_entity_type::artifact,
 					  static_cast<uint64_t>(payload.artifacts[index].vnum) });
+		if (prepared)
+			command->keys.push_back({ critical_entity_type::item,
+						  payload.artifacts[index].canonical_item_uid });
+	}
 	std::sort(command->keys.begin(), command->keys.end(), critical_entity_key_less);
 }
 
@@ -101,13 +130,13 @@ uint64_t get_u64(const uint8_t *input)
 
 bool artifact_guild_payload_valid(const artifact_guild_payload &payload)
 {
-	return valid(payload, false);
+	return valid(payload, false, false);
 }
 
-bool artifact_guild_command_encode_payload(const artifact_guild_payload &payload,
-					   std::vector<uint8_t> *encoded)
+static bool encode_payload(const artifact_guild_payload &payload, std::vector<uint8_t> *encoded,
+			   bool prepared)
 {
-	if (!encoded || !valid(payload, false))
+	if (!encoded || !valid(payload, false, prepared))
 		return false;
 	encoded->clear();
 	encoded->insert(encoded->end(), payload.parent_operation_id.bytes.begin(),
@@ -120,6 +149,13 @@ bool artifact_guild_command_encode_payload(const artifact_guild_payload &payload
 	append_le<uint64_t>(encoded, payload.prestige_after);
 	append_le<uint64_t>(encoded, payload.construction_before);
 	append_le<uint64_t>(encoded, payload.construction_after);
+	if (prepared)
+	{
+		append_le<int64_t>(encoded, payload.feeding_cap);
+		append_le<uint64_t>(encoded, payload.construction_notch);
+		encoded->insert(encoded->end(), payload.guild_identity.bytes.begin(),
+				payload.guild_identity.bytes.end());
+	}
 	append_le<uint16_t>(encoded, payload.artifact_count);
 	for (size_t index = 0; index < payload.artifact_count; ++index)
 	{
@@ -132,16 +168,30 @@ bool artifact_guild_command_encode_payload(const artifact_guild_payload &payload
 		append_le<int32_t>(encoded, entry.bind_owner_pid);
 		append_le<int64_t>(encoded, entry.bind_timer_before);
 		append_le<int64_t>(encoded, entry.bind_timer);
+		if (prepared)
+		{
+			if (!entry.canonical_item_uid)
+				return false;
+			append_le<uint64_t>(encoded, entry.canonical_item_uid);
+			append_le<int32_t>(encoded, entry.feed_seconds);
+		}
 	}
 	return encoded->size() <= CRITICAL_COMMAND_MAX_PAYLOAD_BYTES;
+}
+
+bool artifact_guild_command_encode_payload(const artifact_guild_payload &payload,
+					   std::vector<uint8_t> *encoded)
+{
+	return encode_payload(payload, encoded, false);
 }
 
 bool artifact_guild_command_decode_payload(const critical_command &command,
 					   artifact_guild_payload *payload)
 {
 	const bool legacy = command.payload_version == 1;
+	const bool prepared = command.payload_version == ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION;
 	if (!payload || command.type != critical_command_type::artifact ||
-	    (!legacy && command.payload_version != ARTIFACT_GUILD_PAYLOAD_VERSION) ||
+	    (!legacy && !prepared && command.payload_version != ARTIFACT_GUILD_PAYLOAD_VERSION) ||
 	    command.payload.size() < CRITICAL_COMMAND_ID_BYTES)
 		return false;
 	*payload = {};
@@ -162,6 +212,17 @@ bool artifact_guild_command_decode_payload(const critical_command &command,
 			!read_le(&cursor, end, &payload->construction_before) ||
 			!read_le(&cursor, end, &payload->construction_after)))
 		return false;
+	if (prepared && (!read_le(&cursor, end, &payload->feeding_cap) ||
+			 !read_le(&cursor, end, &payload->construction_notch)))
+		return false;
+	if (prepared)
+	{
+		if (static_cast<size_t>(end - cursor) < payload->guild_identity.bytes.size())
+			return false;
+		std::copy_n(cursor, payload->guild_identity.bytes.size(),
+			    payload->guild_identity.bytes.begin());
+		cursor += payload->guild_identity.bytes.size();
+	}
 	if (!read_le(&cursor, end, &payload->artifact_count) ||
 	    payload->artifact_count > payload->artifacts.size())
 		return false;
@@ -180,7 +241,9 @@ bool artifact_guild_command_decode_payload(const critical_command &command,
 		    !read_le(&cursor, end, &entry.bind_owner_before) ||
 		    !read_le(&cursor, end, &entry.bind_owner_pid) ||
 		    !read_le(&cursor, end, &entry.bind_timer_before) ||
-		    !read_le(&cursor, end, &entry.bind_timer))
+		    !read_le(&cursor, end, &entry.bind_timer) ||
+		    (prepared && (!read_le(&cursor, end, &entry.canonical_item_uid) ||
+				  !read_le(&cursor, end, &entry.feed_seconds))))
 			return false;
 		if (legacy)
 			expected.expected_revisions.push_back(
@@ -188,9 +251,9 @@ bool artifact_guild_command_decode_payload(const critical_command &command,
 				    static_cast<uint64_t>(entry.vnum) },
 				  revision });
 	}
-	if (cursor != end || !valid(*payload, legacy))
+	if (cursor != end || !valid(*payload, legacy, prepared))
 		return false;
-	set_keys(&expected, *payload);
+	set_keys(&expected, *payload, prepared);
 	std::sort(expected.expected_revisions.begin(), expected.expected_revisions.end(),
 		  [](const auto &a, const auto &b)
 		  { return critical_entity_key_less(a.key, b.key); });
@@ -273,7 +336,7 @@ bool artifact_guild_command_decode_result(const uint8_t *encoded, size_t size,
 bool artifact_guild_command_build(critical_command *command, critical_operation_id operation_id,
 				  const artifact_guild_payload &payload)
 {
-	if (!command || !valid(payload, false))
+	if (!command || !valid(payload, false, false))
 		return false;
 	*command = { .schema_version = CRITICAL_COMMAND_SCHEMA_VERSION,
 		     .operation_id = operation_id,
@@ -285,7 +348,37 @@ bool artifact_guild_command_build(critical_command *command, critical_operation_
 		     .keys = {},
 		     .expected_revisions = {},
 		     .payload = {} };
-	set_keys(command, payload);
+	set_keys(command, payload, false);
 	return command->keys.size() <= CRITICAL_COMMAND_MAX_KEYS &&
 	       artifact_guild_command_encode_payload(payload, &command->payload);
+}
+
+bool artifact_guild_command_build_prepared(critical_command *command,
+					   const critical_operation_id &operation_id,
+					   const artifact_guild_payload &payload)
+{
+	if (!command)
+		return false;
+	critical_command prepared;
+	if (!artifact_guild_command_build(&prepared, operation_id, payload) ||
+	    !encode_payload(payload, &prepared.payload, true))
+		return false;
+	prepared.payload_version = ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION;
+	prepared.keys.clear();
+	set_keys(&prepared, payload, true);
+	*command = std::move(prepared);
+	return true;
+}
+
+bool artifact_guild_command_valid_delivery(const critical_command &command,
+					   const critical_operation_id &parent)
+{
+	artifact_guild_payload payload{};
+	critical_operation_id expected{};
+	return command.payload_version == ARTIFACT_GUILD_PREPARED_PAYLOAD_VERSION &&
+	       artifact_guild_command_decode_payload(command, &payload) &&
+	       payload.parent_operation_id.bytes == parent.bytes &&
+	       critical_operation_id_derive(parent, ARTIFACT_GUILD_DERIVATION_DOMAIN,
+					    payload.actor_pid, &expected) &&
+	       expected.bytes == command.operation_id.bytes;
 }

@@ -18,6 +18,8 @@
 #include "persistence/dupe_log.h"
 #include "player/player_snapshot_codec.h"
 #include "combat/combat_outcome_command.h"
+#include "world/zone_touch_command.h"
+#include "world/epic_command.h"
 #include "sql/item_extra_descr_codec.h"
 #include "world/vnum.obj.h"
 #include "core/structs.h"
@@ -148,7 +150,8 @@ player_load_outcome failure_outcome(unsigned int error)
 
 bool within_budget(const player_load_result &result)
 {
-	return result.metrics.query_count <= PLAYER_LOAD_QUERY_MAX &&
+	// Reserve the final COMMIT in the total query budget.
+	return result.metrics.query_count < PLAYER_LOAD_QUERY_MAX &&
 	       result.metrics.row_count <= PLAYER_SNAPSHOT_MAX_ROWS &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES;
 }
@@ -344,6 +347,7 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 	}
 	result->snapshot.revision = unsigned_value(row[column++]);
 	result->domains.wallet_revision = unsigned_value(row[column++]);
+	result->snapshot.wallet_revision = result->domains.wallet_revision;
 	result->domains.epic_revision = unsigned_value(row[column++]);
 	result->domains.frag_revision = unsigned_value(row[column++]);
 	for (int32_t &condition : result->snapshot.conditions)
@@ -1470,7 +1474,10 @@ bool load_gameplay_reads(MYSQL *connection, player_load_result *result)
 		"pid=" +
 		pid +
 		" AND type=0 UNION SELECT reason_id AS zone_number FROM epic_ledger WHERE pid=" +
-		pid + " AND reason_type=1) completed ORDER BY zone_number";
+		pid + " AND reason_type IN (" +
+		std::to_string(static_cast<unsigned>(epic_reason_type::zone_award)) + "," +
+		std::to_string(static_cast<unsigned>(epic_reason_type::divine_zone_award)) +
+		")) completed ORDER BY zone_number";
 	if (!load_rows(connection, completion_sql, result,
 		       [&](MYSQL_ROW row)
 		       {
@@ -1507,15 +1514,23 @@ bool load_divine_epics(MYSQL *connection, player_load_result *result)
 	uint64_t after = 0;
 	if (!player_snapshot_divine_delivery_sequence(result->snapshot, &after))
 		return false;
+	const std::string pid = std::to_string(result->pid), watermark = std::to_string(after);
+	// One bounded query retains the existing login query budget. Both producers
+	// are read from the same consistent snapshot and ordered by issued revision.
 	const std::string sql =
 		"SELECT HEX(p.operation_id),i.result_payload,OCTET_LENGTH(i.result_payload),p.epic_revision,"
-		"p.epic_delta,p.flags,i.status,i.result_code "
+		"p.epic_delta,p.flags,i.status,i.result_code,0 "
 		"FROM combat_outcome_participant p JOIN critical_operation_inbox i ON i.operation_id=p.operation_id "
 		"WHERE p.pid=" +
-		std::to_string(result->pid) + " AND p.epic_revision>" + std::to_string(after) +
-		" AND (p.flags & " + std::to_string(COMBAT_PARTICIPANT_DIVINE_EPIC) +
+		pid + " AND p.epic_revision>" + watermark + " AND (p.flags & " +
+		std::to_string(COMBAT_PARTICIPANT_DIVINE_EPIC) +
 		")<>0 "
-		"ORDER BY p.epic_revision LIMIT " +
+		"UNION ALL SELECT HEX(e.operation_id),i.result_payload,OCTET_LENGTH(i.result_payload),e.epic_revision,"
+		"e.delta,0,i.status,i.result_code,1 FROM epic_ledger e JOIN critical_operation_inbox i "
+		"ON i.operation_id=e.operation_id WHERE e.pid=" +
+		pid + " AND e.reason_type=" +
+		std::to_string(static_cast<uint16_t>(epic_reason_type::divine_zone_award)) +
+		" AND e.epic_revision>" + watermark + " ORDER BY 4 LIMIT " +
 		std::to_string(DIVINE_EPIC_RECOVERY_MAX + 1);
 	return load_rows(
 		connection, sql, result,
@@ -1527,10 +1542,8 @@ bool load_divine_epics(MYSQL *connection, player_load_result *result)
 				return false;
 			}
 			critical_operation_id operation;
-			uint64_t size = 0, sequence = 0;
-			uint64_t flags = 0, status = 0, code = 0;
+			uint64_t size = 0, sequence = 0, flags = 0, status = 0, code = 0, zone = 0;
 			int64_t amount = 0;
-			combat_outcome_result outcome;
 			if (!row[0] || !row[1] ||
 			    !critical_operation_id_from_hex(row[0], &operation) ||
 			    !parse_unsigned(row[2], COMBAT_OUTCOME_RESULT_BYTES, &size) ||
@@ -1538,29 +1551,64 @@ bool load_divine_epics(MYSQL *connection, player_load_result *result)
 			    !parse_signed(row[4], 1, INT32_MAX, &amount) ||
 			    !parse_unsigned(row[5], UINT8_MAX, &flags) ||
 			    !parse_unsigned(row[6], 1, &status) || status != 1 ||
-			    !parse_unsigned(row[7], 0, &code) ||
-			    !combat_outcome_command_decode_result(
-				    reinterpret_cast<const uint8_t *>(row[1]), size, &outcome))
+			    !parse_unsigned(row[7], 0, &code) || !parse_unsigned(row[8], 1, &zone))
 				return false;
-			for (size_t index = 0; index < outcome.participant_count; ++index)
+			divine_epic_delivery delivery;
+			if (zone)
 			{
-				const auto &entry = outcome.participants[index];
-				if (entry.pid != static_cast<uint32_t>(result->pid))
-					continue;
-				divine_epic_delivery delivery;
-				if (!divine_epic_delivery_from_combat(operation, outcome, index,
-								      &delivery) ||
-				    delivery.sequence != sequence || delivery.amount != amount ||
-				    entry.epic_delivery_flags !=
-					    (flags & (COMBAT_PARTICIPANT_DIVINE_EPIC |
-						      COMBAT_PARTICIPANT_SPILL_BLOOD)))
+				zone_touch_result touch;
+				if (!zone_touch_command_decode_result(
+					    reinterpret_cast<const uint8_t *>(row[1]), size,
+					    &touch))
 					return false;
-				result->divine_epic_deliveries.push_back(delivery);
-				return true;
+				// The ledger row must be the child of the parent embedded in
+				// this durable receipt, not merely a matching PID/amount.
+				critical_operation_id expected_child;
+				if (!critical_operation_id_derive(
+					    touch.parent_operation, 0x5a544132,
+					    static_cast<uint32_t>(result->pid), &expected_child) ||
+				    !critical_operation_id_equal(operation, expected_child))
+					return false;
+				for (size_t i = 0; i < touch.group_size; ++i)
+					if (touch.participant_pids[i] ==
+					    static_cast<uint32_t>(result->pid))
+					{
+						if (!divine_epic_delivery_from_zone(
+							    touch.parent_operation, touch, i,
+							    &delivery))
+							return false;
+						break;
+					}
 			}
-			return false;
+			else
+			{
+				combat_outcome_result outcome;
+				if (!combat_outcome_command_decode_result(
+					    reinterpret_cast<const uint8_t *>(row[1]), size,
+					    &outcome))
+					return false;
+				for (size_t i = 0; i < outcome.participant_count; ++i)
+					if (outcome.participants[i].pid ==
+					    static_cast<uint32_t>(result->pid))
+					{
+						if (!divine_epic_delivery_from_combat(
+							    operation, outcome, i, &delivery) ||
+						    outcome.participants[i].epic_delivery_flags !=
+							    (flags &
+							     (COMBAT_PARTICIPANT_DIVINE_EPIC |
+							      COMBAT_PARTICIPANT_SPILL_BLOOD)))
+							return false;
+						break;
+					}
+			}
+			if (!delivery.pid || delivery.sequence != sequence ||
+			    delivery.amount != amount)
+				return false;
+			result->divine_epic_deliveries.push_back(delivery);
+			return true;
 		});
 }
+
 } // namespace
 
 bool player_load_request_valid(const player_load_request &request, uint64_t now_usec)

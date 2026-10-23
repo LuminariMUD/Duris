@@ -215,6 +215,8 @@ int main(int argc, char **argv)
 	const fs::path root = argv[1];
 	const fs::path domains = root / "domains";
 	fs::create_directories(domains);
+	fs::create_directories(root / "players");
+	fs::permissions(root / "players", fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(root, fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(domains, fs::perms::owner_all, fs::perm_options::replace);
 
@@ -457,12 +459,14 @@ int main(int argc, char **argv)
 		require(unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL") == 0,
 			"clear interruption");
 		std::vector<divine_epic_delivery> receipts;
-		require(flatfile_player_domain_pending_divine_epics(root.string(), 42, 0, &receipts,
-								    &error) ==
-					flatfile_player_domain_result::ok &&
-				receipts.size() == 1 && receipts[0].sequence == 1 &&
-				receipts[0].previous == 0 && receipts[0].amount == 150,
-			"prepared journal recovery lost its receipt");
+		const auto recovered = flatfile_player_domain_pending_divine_epics(
+			root.string(), 42, 0, &receipts, &error);
+		require(recovered == flatfile_player_domain_result::ok && receipts.size() == 1 &&
+				receipts[0].sequence == 1 && receipts[0].previous == 0 &&
+				receipts[0].amount == 150,
+			"prepared journal recovery lost its receipt: result=" +
+				std::to_string(static_cast<unsigned>(recovered)) +
+				", count=" + std::to_string(receipts.size()) + ", error=" + error);
 		require(flatfile_player_domain_apply(root.string(), prepared).outcome ==
 				critical_apply_outcome::already_applied,
 			"prepared command was applied twice after recovery");
@@ -485,6 +489,189 @@ int main(int argc, char **argv)
 						    &error) == flatfile_player_domain_result::ok &&
 				loaded.domains.epics == before,
 			"preparation changed the saved balance before recipient publication");
+
+		// An old parent may exist only in player records. Compaction must copy
+		// its exact retry identity before the recipient checkpoint drops it.
+		auto first = prepared;
+		first.operation_id.bytes[0] = 70;
+		const auto first_result = flatfile_player_domain_apply(root.string(), first);
+		char first_hex[33];
+		require(critical_operation_id_to_hex(first.operation_id, first_hex,
+						     sizeof(first_hex)),
+			"receipt name");
+		const auto first_path =
+			domains / (std::string("command-") + first_hex + ".receipt");
+		fs::remove(first_path);
+		flatfile_saved_balances balances;
+		balances.wallet = loaded.domains.wallet;
+		balances.frags = loaded.domains.frags;
+		balances.old_frags = loaded.domains.old_frags;
+		balances.epics = before + 300;
+		balances.divine_boon_delivery_seq = 2;
+		auto checkpoint = [&]()
+		{
+			flatfile_authority_lock lock;
+			require(lock.acquire(root.string(), &error), "checkpoint lock");
+			flatfile_authority_operation write;
+			require(flatfile_player_domain_prepare_saved_balances(
+					root.string(), lock, 42, balances, &write, &error) ==
+					flatfile_player_domain_result::ok,
+				"compact checkpoint: " + error);
+			return flatfile_authority_transaction_commit_operations(root.string(), lock,
+										{ write }, &error);
+		};
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION", "1", 1);
+		require(checkpoint() == flatfile_authority_transaction_result::io_error,
+			"compaction fault");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION");
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 42, 2, &receipts,
+								    &error) ==
+					flatfile_player_domain_result::ok &&
+				receipts.empty(),
+			"compaction recovery");
+		const auto replay = flatfile_player_domain_apply(root.string(), first);
+		require(replay.outcome == critical_apply_outcome::already_applied &&
+				replay.result_size == first_result.result_size &&
+				replay.result_payload == first_result.result_payload,
+			"archived legacy parent changed on replay");
+
+		// Exercise more than the former lifetime ceiling through both ordinary
+		// command families and repeated prepared/checkpoint cycles.
+		for (uint32_t index = 1; index <= 520; ++index)
+		{
+			for (auto ordinary : { combat(80), epic(5, 0, 81) })
+			{
+				for (size_t byte = 0; byte < 4; ++byte)
+					ordinary.operation_id.bytes[4 + byte] =
+						static_cast<uint8_t>(index >> (byte * 8));
+				require(flatfile_player_domain_apply(root.string(), ordinary)
+							.outcome == critical_apply_outcome::applied,
+					"ordinary receipt lifetime ceiling");
+			}
+			prepared.operation_id.bytes[0] = 82;
+			for (size_t byte = 0; byte < 4; ++byte)
+				prepared.operation_id.bytes[4 + byte] =
+					static_cast<uint8_t>(index >> (byte * 8));
+			require(flatfile_player_domain_apply(root.string(), prepared).outcome ==
+					critical_apply_outcome::applied,
+				"prepared receipt lifetime ceiling");
+			require(flatfile_player_domain_pending_divine_epics(
+					root.string(), 42, balances.divine_boon_delivery_seq,
+					&receipts, &error) == flatfile_player_domain_result::ok &&
+					receipts.size() == 1 &&
+					receipts[0].previous == balances.divine_boon_delivery_seq &&
+					receipts[0].sequence ==
+						balances.divine_boon_delivery_seq + 1,
+				"compaction broke predecessor continuity");
+			balances.epics += receipts[0].amount;
+			balances.divine_boon_delivery_seq = receipts[0].sequence;
+			require(checkpoint() == flatfile_authority_transaction_result::ok,
+				"prepared checkpoint lifetime ceiling");
+		}
+		require(fs::file_size(domains / "player-42.domain") < 8192,
+			"paid detail grew without bound");
+		require(flatfile_player_domain_apply(root.string(), first).outcome ==
+				critical_apply_outcome::already_applied,
+			"old retry forgotten after compaction");
+		first.operation_id = prepared.operation_id;
+		first.accepted_at_usec = 2;
+		require(flatfile_player_domain_apply(root.string(), first).error_code == EEXIST,
+			"receipt identity collision accepted");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::ok,
+			"restore qualification rejected valid permanent receipts");
+		{
+			std::fstream file(first_path,
+					  std::ios::in | std::ios::out | std::ios::binary);
+			file.seekp(-1, std::ios::end);
+			file.put(0x5a);
+		}
+		first.operation_id.bytes = {};
+		first.operation_id.bytes[0] = 70;
+		require(flatfile_player_domain_apply(root.string(), first).error_code == EILSEQ,
+			"corrupt permanent receipt accepted");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::invalid,
+			"restore qualification ignored a corrupt permanent receipt");
+
+		// Unpaid awards stop at the recovery limit and wait for a retry. A full
+		// record whose parents lack permanent receipts archives every one of them.
+		std::vector<critical_command> owed;
+		std::vector<critical_apply_result> owed_results;
+		prepared.operation_id.bytes[0] = 83;
+		critical_apply_result full = {};
+		for (uint32_t index = 1; index <= DIVINE_EPIC_RECOVERY_MAX + 1; ++index)
+		{
+			for (size_t byte = 0; byte < 4; ++byte)
+				prepared.operation_id.bytes[4 + byte] =
+					static_cast<uint8_t>(index >> (byte * 8));
+			full = flatfile_player_domain_apply(root.string(), prepared);
+			if (full.outcome != critical_apply_outcome::applied)
+				break;
+			owed.push_back(prepared);
+			owed_results.push_back(full);
+		}
+		require(full.outcome == critical_apply_outcome::retryable_failure &&
+				full.error_code == ENOSPC,
+			"unpaid awards passed the recovery limit");
+		// Drop the permanent copies, except the newest award's: it stays in the
+		// record as the delivery edge, and only legacy parents lack a receipt.
+		for (size_t index = 0; index + 1 < owed.size(); ++index)
+		{
+			char hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+			require(critical_operation_id_to_hex(owed[index].operation_id, hex,
+							     sizeof(hex)),
+				"owed receipt name");
+			require(fs::remove(domains / (std::string("command-") + hex + ".receipt")),
+				"owed receipt was not permanent");
+		}
+		// Without a saved snapshot the paid edge still counts toward the limit.
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 42, 0, &receipts,
+								    &error) ==
+					flatfile_player_domain_result::ok &&
+				receipts.size() == DIVINE_EPIC_RECOVERY_MAX,
+			"recovery limit did not match the pending award list");
+		require(flatfile_player_domain_pending_divine_epics(
+				root.string(), 42, balances.divine_boon_delivery_seq, &receipts,
+				&error) == flatfile_player_domain_result::ok &&
+				receipts.size() == owed.size(),
+			"owed awards were not all pending");
+		for (const auto &receipt : receipts)
+			balances.epics += receipt.amount;
+		balances.divine_boon_delivery_seq = receipts.back().sequence;
+		require(checkpoint() == flatfile_authority_transaction_result::ok,
+			"full record checkpoint");
+		require(fs::file_size(domains / "player-42.domain") < 8192,
+			"full record was not compacted");
+		for (size_t index = 0; index < owed.size(); ++index)
+		{
+			const auto replay =
+				flatfile_player_domain_apply(root.string(), owed[index]);
+			require(replay.outcome == critical_apply_outcome::already_applied &&
+					replay.result_payload == owed_results[index].result_payload,
+				"full record compaction lost an exact retry: index=" +
+					std::to_string(index) + ", outcome=" +
+					std::to_string(static_cast<unsigned>(replay.outcome)) +
+					", error=" + std::to_string(replay.error_code) +
+					", size=" + std::to_string(replay.result_size) + "/" +
+					std::to_string(owed_results[index].result_size));
+		}
+		require(flatfile_player_domain_apply(root.string(), prepared).outcome ==
+				critical_apply_outcome::applied,
+			"paid checkpoint did not admit the waiting award");
+		// Receipts began at the current format; an older header is not one.
+		{
+			char hex[CRITICAL_COMMAND_ID_HEX_SIZE];
+			require(critical_operation_id_to_hex(prepared.operation_id, hex,
+							     sizeof(hex)),
+				"version receipt name");
+			std::fstream file(domains / (std::string("command-") + hex + ".receipt"),
+					  std::ios::in | std::ios::out | std::ios::binary);
+			file.seekp(8);
+			file.put(2);
+		}
+		require(flatfile_player_domain_apply(root.string(), prepared).error_code == EILSEQ,
+			"older-format permanent receipt accepted");
 	}
 
 	// A prepared receipt must be rejected before persistence if a recipient's
@@ -536,7 +723,7 @@ int main(int argc, char **argv)
 			"overflowing recipient acquired a durable receipt");
 	}
 
-	// A permanently full receipt history must not retain a writer fence forever.
+	// Legacy full histories compact before admitting another ordinary command.
 	{
 		auto saturated = baseline(82);
 		saturated.domains.bank = {};
@@ -562,9 +749,14 @@ int main(int argc, char **argv)
 			"full-store fixture build failed");
 		outcome.accepted_at_usec = 1;
 		const auto result = flatfile_player_domain_apply(root.string(), outcome);
-		require(result.outcome == critical_apply_outcome::terminal_failure &&
-				result.error_code == ENOSPC,
-			"full authority history incorrectly offered an infinite retry");
+		require(result.outcome == critical_apply_outcome::applied && !result.error_code,
+			"full legacy history did not compact before ordinary combat");
+		require(fs::file_size(domains / "player-82.domain") < 8192,
+			"full legacy history remained embedded after compaction");
+		const auto replay = flatfile_player_domain_apply(root.string(), outcome);
+		require(replay.outcome == critical_apply_outcome::already_applied &&
+				replay.result_payload == result.result_payload,
+			"ordinary combat changed after full-history compaction");
 	}
 
 	const fs::path player = domains / "player-42.domain";

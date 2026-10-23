@@ -333,6 +333,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "artifact";
 	case persistence_job_kind::divine_boon:
 		return "divine_boon";
+	case persistence_job_kind::artifact_delivery:
+		return "artifact_delivery";
 	}
 	return "unknown";
 }

@@ -3800,6 +3800,8 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 				ncoins = vcoins;
 			}
 			percent -= ncoins;
+			if (IS_PC(victim) && victim->only.pc->divine_trade_payment_pending)
+				failed = TRUE;
 
 			if (!failed)
 			{
@@ -4983,7 +4985,7 @@ void show_toggles(P_char ch)
 		 "&+r     Showspec    :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Web Info    :&+g %-3s    &+y|&N"
 		 "&+r     Show Quests :&+g %-3s    &+y|&N"
-		 "&+r     Boons       :&+g %-3s    &+y|&N\r\n"
+		 "&+r     Boons(auto) :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Newbie EQ   :&+g %-3s    &+y|&N"
 		 "&+r     No Beep     :&+g %-3s    &+y|&n"
 		 "&+r     Underline   :&+g %-3s    &+y|&N\r\n"
@@ -5012,7 +5014,7 @@ void show_toggles(P_char ch)
 		 ONOFF(PLR_FLAGGED(ch, PLR_AFK)), ONOFF(PLR2_FLAGGED(ch, PLR2_NCHAT)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_HINT_CHANNEL)), ONOFF(PLR2_FLAGGED(ch, PLR2_LGROUP)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_SPEC)), ONOFF(PLR2_FLAGGED(ch, PLR2_WEBINFO)),
-		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), ONOFF(PLR2_FLAGGED(ch, PLR2_BOON)),
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), "ON",
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_NEWBIEEQ)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOBEEP)),
 		 ONOFF(PLR3_FLAGGED(ch, PLR3_UNDERLINE)), ONOFF(PLR3_FLAGGED(ch, PLR3_SURNAMES)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_DAMAGE)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOLEVEL)),
@@ -5195,8 +5197,7 @@ static const char *tog_messages[][2] = {
 	{ "You will no longer see the acc channel.\r\n", "You will now see the acc channel.\r\n" },
 	{ "Quest NPC's will no longer show a &+Y(Q)&n.\r\n",
 	  "Quest NPC's will show a &+Y(Q)&n.\r\n" },
-	{ "You will no longer be affected by boons.\r\n",
-	  "You will now be affected by boons.\r\n" },
+	{ "Divine Boons apply automatically.\r\n", "Divine Boons apply automatically.\r\n" },
 	{ "You will not load with newbie EQ when you die.\r\n",
 	  "You will now load with newbie EQ when you die.\r\n" },
 	{ "You can be beeped.\r\n", "You can not be beeped.\r\n" },
@@ -5769,8 +5770,10 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_SHOW_QUEST);
 		break;
 	case 55:
-		result = PLR2_TOG(PLR2_BOON);
-		break;
+		send_to_char(
+			"Divine Boons apply automatically. Your stored legacy setting is preserved.\r\n",
+			send_ch);
+		return;
 	case 56:
 		result = PLR2_TOG(PLR2_NEWBIEEQ);
 		break;
@@ -5918,6 +5921,38 @@ void do_rub(P_char /*ch*/, char * /*argument*/, int /*cmd*/)
 	return;
 }
 
+// Currency completions run before submit returns; split needs the applied
+// result, rather than queue admission, before it gives anyone else money.
+static bool split_wallet_change(P_char ch, int64_t amount)
+{
+	// Morph bodies retain the ordinary NPC purse helpers.
+	if (IS_NPC(ch))
+	{
+		if (amount < -INT_MAX || amount > INT_MAX)
+			return false;
+		if (amount < 0)
+			return SUB_MONEY(ch, static_cast<int>(-amount), 0) == 0;
+		ADD_MONEY(ch, static_cast<int>(amount));
+		return true;
+	}
+	bool committed = false;
+	bool *destination = &committed;
+	return currency_transaction_submit_wallet_value(
+		       ch, amount,
+		       amount < 0 ? currency_reason_type::wallet_spend :
+				    currency_reason_type::wallet_reward,
+		       0, critical_source_site::command, critical_deadline_class::interactive,
+		       [](P_char, bool paid, const currency_command_result &, unsigned int,
+			  const uint8_t *context, size_t)
+		       {
+			       bool *result;
+			       memcpy(&result, context, sizeof(result));
+			       *result = paid;
+		       },
+		       &destination, sizeof(destination)) &&
+	       committed;
+}
+
 void do_split(P_char ch, char *argument, int /*cmd*/)
 {
 	char gold_str[MAX_INPUT_LENGTH], typestr[MAX_INPUT_LENGTH];
@@ -6029,24 +6064,33 @@ void do_split(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("There isn't enough money to go around!\r\n", ch);
 		return;
 	}
-	act("$n splits some money with $s group.", 1, ch, 0, 0, TO_ROOM);
 
 	share = gold / group_size; /*
 	                            * Calculate amount each player gets
 	                            */
 
 	group_size--;
+	const int coin_value = ctype == 0 ? 1 : ctype == 1 ? 10 : ctype == 2 ? 100 : 1000;
+	const int64_t share_value = static_cast<int64_t>(share) * coin_value;
+	if (!split_wallet_change(ch, -share_value * group_size))
+	{
+		send_to_char("Your purse cannot complete that split.\r\n", ch);
+		return;
+	}
+	act("$n splits some money with $s group.", 1, ch, 0, 0, TO_ROOM);
 
 	for (gl = ch->group; gl; gl = gl->next)
 	{
 		if ((ch->in_room == gl->ch->in_room) && CAN_SEE(ch, gl->ch) && (ch != gl->ch) &&
 		    (IS_PC(gl->ch) || IS_MORPH(gl->ch)))
 		{
-			const int coin_value = ctype == 0 ? 1 :
-					       ctype == 1 ? 10 :
-					       ctype == 2 ? 100 :
-							    1000;
-			ADD_MONEY(gl->ch, (int)(share * coin_value));
+			if (!split_wallet_change(gl->ch, share_value))
+			{
+				if (!split_wallet_change(ch, share_value))
+					logit(LOG_WIZ, "do_split: refund failed for pid %d",
+					      GET_PID(ch));
+				continue;
+			}
 			given += share;
 			snprintf(Gbuf1, MAX_STRING_LENGTH,
 				 "$n gives you your share:  %ld %s coins.", share,
@@ -6060,14 +6104,9 @@ void do_split(P_char ch, char *argument, int /*cmd*/)
 			                          */
 		}
 	}
-	const int split_coin_value = ctype == 0 ? 1 : ctype == 1 ? 10 : ctype == 2 ? 100 : 1000;
-	if (given > 0 && SUB_MONEY(ch, (int)(given * split_coin_value), 0) != 0)
-		logit(LOG_WIZ, "do_split: debit submission failed for pid %d", GET_PID(ch));
-
 	if (given == 0)
 	{
-		act("$n then notices that no one in $s group is around, and smiles greedily.", 1,
-		    ch, 0, 0, TO_ROOM);
+		send_to_char("No one in your group could receive those coins.\r\n", ch);
 	}
 	snprintf(Gbuf1, MAX_STRING_LENGTH, "You keep %ld %s coins for yourself.\r\n", gold - given,
 		 coin_names[ctype]);

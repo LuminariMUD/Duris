@@ -41,6 +41,9 @@ extern P_char character_list;
 
 namespace
 {
+uint32_t trade_player_pid = 0;
+player_pending_trade_snapshot trade_capture;
+
 /** Cache the explicit diagnostic switch for player-save capture and durability tracing. */
 bool trace_player_saves()
 {
@@ -261,6 +264,26 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 		++health.capture_failures;
 		return player_save_pipeline_result::capture_failed;
 	}
+	try
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		if (trade_player_pid == static_cast<uint32_t>(GET_PID(ch)))
+		{
+			snapshot.pending_trade = trade_capture;
+			const auto extra =
+				trade_capture.has_cargo_effect ?
+					trade_capture.cargo_effect.wear_off_character.size() +
+						trade_capture.cargo_effect.wear_off_room.size() :
+					0;
+			if (extra > PLAYER_SNAPSHOT_MAX_BYTES - snapshot.encoded_size_bound)
+				return player_save_pipeline_result::capture_failed;
+			snapshot.encoded_size_bound += extra;
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return player_save_pipeline_result::capture_failed;
+	}
 	if (trace_player_saves())
 		logit(LOG_STATUS,
 		      "PLAYER SAVE TRACE: stage=capture mono_us=%llu pid=%d revision=%llu components=%llu intent=%d room=%d",
@@ -423,10 +446,16 @@ bool player_save_pipeline_is_nonterminal_type(int save_intent)
 
 bool player_save_pipeline_load_held(int pid)
 {
-	return pid > 0 &&
-	       (player_save_worker_pid_pending(pid) ||
-		critical_command_coordinator_is_fenced(
-			{ critical_entity_type::player, static_cast<uint64_t>(pid) }, nullptr));
+	if (pid <= 0)
+		return false;
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		if (trade_player_pid == static_cast<uint32_t>(pid))
+			return true;
+	}
+	return player_save_worker_pid_pending(pid) ||
+	       critical_command_coordinator_is_fenced(
+		       { critical_entity_type::player, static_cast<uint64_t>(pid) }, nullptr);
 }
 
 void player_save_pipeline_end_session(int pid)
@@ -446,4 +475,36 @@ void player_save_pipeline_reset_for_tests(void)
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
 	health = {};
 	accepting = false;
+	trade_player_pid = 0;
+	trade_capture = {};
+}
+
+bool player_save_pipeline_reserve_trade(uint32_t pid, const player_pending_trade_snapshot &trade)
+try
+{
+	std::lock_guard<std::mutex> lock(pipeline_mutex);
+	if (!pid || trade_player_pid || !accepting || !health.initialized ||
+	    !std::any_of(trade.operation.begin(), trade.operation.end(),
+			 [](uint8_t b) { return b; }) ||
+	    !std::any_of(trade.command_hash.begin(), trade.command_hash.end(),
+			 [](uint8_t b) { return b; }) ||
+	    trade.payment < -static_cast<int64_t>(INT32_MAX) || trade.payment > INT32_MAX ||
+	    trade.wallet_revision == UINT64_MAX)
+		return false;
+	trade_capture = trade;
+	trade_player_pid = pid;
+	return true;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
+}
+void player_save_pipeline_release_trade(uint32_t pid)
+{
+	std::lock_guard<std::mutex> lock(pipeline_mutex);
+	if (trade_player_pid == pid)
+	{
+		trade_player_pid = 0;
+		trade_capture = {};
+	}
 }

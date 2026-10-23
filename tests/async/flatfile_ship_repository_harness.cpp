@@ -1,7 +1,18 @@
+#include "economy/divine_trade_runtime.h"
+bool divine_trade_runtime_busy(const ShipData *)
+{
+	return false;
+}
+bool divine_trade_runtime_loss(ShipData *, int, int)
+{
+	return true;
+}
 #include "flatfile/flatfile_ship_repository.h"
 #include "ships/ships.h"
 
 #include <cctype>
+#include <iterator>
+#include <openssl/sha.h>
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
@@ -152,12 +163,107 @@ static void write_legacy_ship(const fs::path &path, const std::string &owner)
 }
 
 /* Exercise cargo clearing before the normal repository behavior suite. */
+static void implicit_empty_trade(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	auto stored = ship(700, 42, "Captain");
+	stored.slots.clear();
+	stored.crew = {};
+	require(flatfile_ship_establish(root.string(), { stored }, &error) ==
+			flatfile_ship_result::ok,
+		"seed implicit empty trade slots");
+	ShipSlot materialized{};
+	materialized.clear();
+	const auto empty = flatfile_ship_empty_slot(0);
+	require(persisted_slot(0, materialized) == empty,
+		"empty preimage disagrees with native materialization");
+	const flatfile_ship_slot_record cargo{ 0,	  SLOT_CARGO, 2,
+					       SLOT_HOLD, 0,	      { 1, 100, -1, -1, -1 } };
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "lock empty trade fixture");
+		flatfile_authority_operation image;
+		require(flatfile_ship_prepare_trade(root.string(), lock, 700, 42, { empty }, {},
+						    { cargo }, {}, &image,
+						    &error) == flatfile_ship_result::ok,
+			"implicit empty slot was refused as a stale preimage");
+		require(flatfile_authority_transaction_commit_operations(root.string(), lock,
+									 { image }, &error) ==
+				flatfile_authority_transaction_result::ok,
+			"commit implicit slot purchase");
+		require(flatfile_ship_prepare_trade(root.string(), lock, 700, 42, { empty }, {},
+						    { cargo }, {}, &image,
+						    &error) == flatfile_ship_result::conflict,
+			"an existing changed slot was mistaken for an absent empty row");
+	}
+}
+
+static void monotonic_ids(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	auto first = ship(7, 71, "former");
+	require(flatfile_ship_establish(root.string(), { first }, &error) ==
+			flatfile_ship_result::ok,
+		error);
+	require(flatfile_ship_remove(root.string(), 7, "former", &error) ==
+			flatfile_ship_result::ok,
+		error);
+	auto replacement = ship(0, 72, "replacement");
+	require(flatfile_ship_upsert(root.string(), &replacement, &error) ==
+			flatfile_ship_result::ok,
+		error);
+	require(replacement.ship_id == 8, "deleted highest ID was reused");
+	require(flatfile_ship_remove(root.string(), 8, "replacement", &error) ==
+			flatfile_ship_result::ok,
+		error);
+	replacement = ship(0, 73, "next");
+	require(flatfile_ship_upsert(root.string(), &replacement, &error) ==
+			flatfile_ship_result::ok,
+		error);
+	require(replacement.ship_id == 9, "empty catalog forgot the ID high water mark");
+
+	// Produce the exact former v1 payload by removing the new allocator field.
+	const auto file = root / "domains/ship_catalog";
+	std::ifstream input(file, std::ios::binary);
+	std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), {});
+	input.close();
+	require(bytes.size() > 64, "missing v2 catalog");
+	bytes.erase(bytes.begin() + 56, bytes.begin() + 64);
+	auto put32 = [&](size_t offset, uint32_t value)
+	{
+		for (unsigned i = 0; i < 4; ++i)
+			bytes[offset + i] = value >> (8 * i);
+	};
+	put32(8, 1);
+	put32(12, bytes.size() - 56);
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	SHA256(bytes.data() + 56, bytes.size() - 56, digest);
+	std::copy(digest, digest + SHA256_DIGEST_LENGTH, bytes.begin() + 24);
+	std::ofstream legacy(file, std::ios::binary | std::ios::trunc);
+	legacy.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+	legacy.close();
+	std::vector<flatfile_ship_record> restored;
+	require(flatfile_ship_list(root.string(), &restored, &error) == flatfile_ship_result::ok &&
+			restored.size() == 1,
+		"v1 catalog did not restore");
+	require(flatfile_ship_reserve_ids(root.string(), 99, &error) == flatfile_ship_result::ok,
+		error);
+	auto reserved = ship(0, 74, "reserved");
+	require(flatfile_ship_upsert(root.string(), &reserved, &error) == flatfile_ship_result::ok,
+		error);
+	require(reserved.ship_id == 100, "boot manifest reservation was ignored");
+}
 int main(int argc, char **argv)
 {
+	monotonic_ids(fs::path(argv[1]) / "id-lifetime");
+
 	/* Security-sensitive fixture metadata must not depend on the invoking
 	 * account's umask (developer accounts commonly use 0002). */
 	umask(0077);
 	require(argc == 2, "state root argument required");
+	implicit_empty_trade(fs::path(argv[1]) / "implicit-empty");
 	const fs::path root = fs::path(argv[1]) / "ship";
 	prepare_root(root);
 	std::string error;

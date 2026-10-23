@@ -15,6 +15,7 @@
 #include "flatfile/flatfile_player_repository.h"
 
 #include "economy/collector_eligibility.h"
+#include "economy/divine_trade_repository.h"
 #include "flatfile/flatfile_collector_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -22,6 +23,7 @@
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/persistence_log.h"
 #include "persistence/dupe_log.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
@@ -36,9 +38,6 @@
 #include <mutex>
 #include <new>
 #include <numeric>
-#include <openssl/crypto.h>
-#include <openssl/sha.h>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -48,22 +47,6 @@ namespace
 {
 using namespace flatfile_player_snapshot_file;
 std::mutex player_mutex;
-
-struct encoder
-{
-	std::vector<uint8_t> bytes;
-
-	template <typename T> void number(T value)
-	{
-		using unsigned_type = std::make_unsigned_t<T>;
-		unsigned_type bits = static_cast<unsigned_type>(value);
-		for (size_t index = 0; index < sizeof(T); ++index)
-		{
-			bytes.push_back(static_cast<uint8_t>(bits & 0xff));
-			bits >>= 8;
-		}
-	}
-};
 
 std::string player_lock_filename(int32_t pid)
 {
@@ -565,39 +548,6 @@ invalid:
 	return false;
 }
 
-bool normalize_size(player_snapshot *snapshot, std::vector<uint8_t> *payload)
-{
-	if (!snapshot || !payload)
-		return false;
-	snapshot->encoded_size_bound = 1;
-	if (player_snapshot_encode(*snapshot, payload) != player_snapshot_codec_result::ok)
-		return false;
-	snapshot->encoded_size_bound = payload->size();
-	return player_snapshot_encode(*snapshot, payload) == player_snapshot_codec_result::ok;
-}
-
-bool encode_file(player_snapshot *snapshot, std::vector<uint8_t> *bytes)
-{
-	std::vector<uint8_t> payload;
-	if (!bytes || !normalize_size(snapshot, &payload))
-		return false;
-	unsigned char digest[SHA256_DIGEST_LENGTH];
-	SHA256(payload.data(), payload.size(), digest);
-	encoder out;
-	out.bytes.insert(out.bytes.end(), player_magic.begin(), player_magic.end());
-	out.number<uint32_t>(player_file_version);
-	out.number<uint32_t>(payload.size());
-	out.number<int32_t>(snapshot->pid);
-	out.number<uint64_t>(snapshot->revision);
-	out.number<uint64_t>(snapshot->components);
-	out.bytes.insert(out.bytes.end(), digest, digest + sizeof(digest));
-	out.bytes.insert(out.bytes.end(), payload.begin(), payload.end());
-	if (out.bytes.size() > player_file_maximum)
-		return false;
-	*bytes = std::move(out.bytes);
-	return true;
-}
-
 bool replace_items_together(player_component_mask_t components)
 {
 	const player_component_mask_t items = PLAYER_COMPONENT_EQUIPMENT |
@@ -624,6 +574,8 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 		materialized->conditions = incoming.conditions;
 		materialized->quest_values = incoming.quest_values;
 		materialized->output_preferences = incoming.output_preferences;
+		if (player_snapshot_writes_wallet(incoming))
+			materialized->wallet_revision = incoming.wallet_revision;
 	}
 	if (incoming.components & PLAYER_COMPONENT_LANGUAGES)
 		materialized->languages = incoming.languages;
@@ -896,9 +848,22 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 }
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
-							const player_snapshot &snapshot,
+							const player_snapshot &captured,
 							std::string *error)
 {
+	std::unique_ptr<player_snapshot> revised;
+	if (player_snapshot_trade_pending(captured))
+	{
+		try
+		{
+			revised = std::make_unique<player_snapshot>(captured);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+		}
+	}
+	const auto &snapshot = revised ? *revised : captured;
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	flatfile_player_snapshot_lock snapshot_lock;
@@ -923,6 +888,15 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	player_save_apply_result locked = lock_authority();
 	if (locked.outcome != player_save_apply_outcome::applied)
 		return locked;
+	bool unresolved_trade = false;
+	if (revised)
+	{
+		const auto settled = divine_trade_flatfile_settle_snapshot(root, *authority,
+									   revised.get(), error);
+		if (settled == flatfile_player_domain_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		unresolved_trade = settled != flatfile_player_domain_result::ok;
+	}
 	player_snapshot materialized = {};
 	bool new_player = false;
 	const flatfile_player_load_result loaded =
@@ -931,6 +905,39 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	if (unresolved_trade)
+	{
+		if (loaded != flatfile_player_load_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		if (snapshot.components & PLAYER_COMPONENT_STATUS)
+		{
+			auto coin = [](const auto &row) {
+				return row.field >= player_status_field::copper &&
+				       row.field <= player_status_field::platinum;
+			};
+			std::erase_if(revised->status_integers, coin);
+			for (const auto &row : materialized.status_integers)
+				if (coin(row))
+					revised->status_integers.push_back(row);
+			revised->wallet_revision = materialized.wallet_revision;
+		}
+		if ((snapshot.components & PLAYER_COMPONENT_AFFECTS) &&
+		    captured.pending_trade.has_cargo_effect)
+		{
+			auto cargo = [](const auto &row)
+			{ return row.type == PLAYER_TRADE_CARGO_AFFECT; };
+			std::erase_if(revised->affects, cargo);
+			for (const auto &row : materialized.affects)
+				if (cargo(row))
+					revised->affects.push_back(row);
+		}
+		revised->pending_trade = {};
+		char record[128];
+		snprintf(record, sizeof(record),
+			 "player_save trade_receipt_unresolved pid=%d financial_state=retained",
+			 captured.pid);
+		persistence_log_submit(record);
+	}
 	uint64_t incoming_sequence = 0, stored_sequence = 0;
 	if (!player_snapshot_divine_delivery_sequence(snapshot, &incoming_sequence))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
@@ -1064,9 +1071,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			materialized.items.push_back(std::move(item));
 		}
 	}
-	std::vector<uint8_t> bytes;
-	if (!encode_file(&materialized, &bytes))
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	// A save that carries everything the player holds replaces what earlier
 	// transfers gave it, as a MariaDB save replaces the player_items rows they wrote.
 	constexpr player_component_mask_t held_components =
@@ -1085,12 +1089,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
 	// The wallet, epic points and frags are memory's: a save that carries them writes
-	// them into the player's domain record. A new player's baseline above already holds
-	// them.
+	// them into the player's domain record with the captured wallet revision.
 	flatfile_authority_operation saved_balances;
 	flatfile_saved_balances balances;
 	const bool saves_balances =
-		!new_player && status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
+		status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 		snapshot_unsigned(snapshot, player_status_field::copper, &balances.wallet[0]) &&
 		snapshot_unsigned(snapshot, player_status_field::silver, &balances.wallet[1]) &&
 		snapshot_unsigned(snapshot, player_status_field::gold, &balances.wallet[2]) &&
@@ -1102,6 +1105,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	if (saves_balances)
 	{
+		balances.divine_boon_delivery_seq = incoming_sequence;
+		balances.wallet_revision = snapshot.wallet_revision;
 		const auto prepared = flatfile_player_domain_prepare_saved_balances(
 			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
 			&saved_balances, error);
@@ -1109,7 +1114,22 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (prepared != flatfile_player_domain_result::ok)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		materialized.wallet_revision = balances.wallet_revision;
+		for (auto &row : materialized.status_integers)
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				row.unsigned_value =
+					balances.wallet[static_cast<size_t>(row.field) -
+							static_cast<size_t>(
+								player_status_field::copper)];
+				row.signed_value = 0;
+				row.is_unsigned = true;
+			}
 	}
+	std::vector<uint8_t> bytes;
+	if (!flatfile_player_snapshot_encode_file(&materialized, &bytes))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{

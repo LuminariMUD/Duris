@@ -29,7 +29,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'A', 'R', 'T', 'F', 0 };
-constexpr uint32_t catalog_version = 4;
+constexpr uint32_t catalog_version = 5;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
 constexpr const char *catalog_filename = "artifact_catalog";
 constexpr uint32_t artifact_extra_flag = 1U << 28;
@@ -112,7 +112,8 @@ bool record_less(const flatfile_artifact_record &left, const flatfile_artifact_r
 
 bool valid_record(const flatfile_artifact_record &record)
 {
-	return record.vnum > 0 && record.location_type >= FLATFILE_ARTIFACT_NOT_IN_GAME &&
+	return artifact_guild_delivery_ids_valid(record.delivery_ids) && record.vnum > 0 &&
+	       record.location_type >= FLATFILE_ARTIFACT_NOT_IN_GAME &&
 	       record.location_type <= FLATFILE_ARTIFACT_ON_CORPSE && record.timer >= 0 &&
 	       record.type >= 1 && record.type <= 3 && record.last_update >= 0 &&
 	       record.bind_owner_pid >= -1 && record.bind_timer >= 0 && record.revision &&
@@ -178,6 +179,10 @@ bool encode_catalog(const artifact_catalog &catalog, std::vector<uint8_t> *bytes
 		payload.number<uint32_t>(record.rejected_item_uids.size());
 		for (uint64_t uid : record.rejected_item_uids)
 			payload.number(uid);
+		payload.number<uint16_t>(record.delivery_ids.size());
+		for (const auto &id : record.delivery_ids)
+			for (uint8_t byte : id)
+				payload.number(byte);
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -271,6 +276,20 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, artifact_catalog *catalog
 				for (auto &uid : record.rejected_item_uids)
 					if (!payload.number(&uid))
 						return false;
+			}
+			if (version >= 5)
+			{
+				uint16_t delivery_count = 0;
+				if (!payload.number(&delivery_count) ||
+				    delivery_count > ARTIFACT_GUILD_PENDING_MAX ||
+				    delivery_count > (payload.size - payload.offset) /
+							     CRITICAL_COMMAND_ID_BYTES)
+					return false;
+				record.delivery_ids.resize(delivery_count);
+				for (auto &id : record.delivery_ids)
+					for (auto &byte : id)
+						if (!payload.number(&byte))
+							return false;
 			}
 		}
 	}
@@ -417,6 +436,15 @@ flatfile_artifact_result flatfile_artifact_get(const std::string &root, int32_t 
 	flatfile_authority_lock lock;
 	if (!lock.acquire(root, error))
 		return flatfile_artifact_result::io_error;
+	return flatfile_artifact_get_locked(root, lock, vnum, record, error);
+}
+
+flatfile_artifact_result
+flatfile_artifact_get_locked(const std::string &root, const flatfile_authority_lock &lock,
+			     int32_t vnum, flatfile_artifact_record *record, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || vnum <= 0 || !record)
+		return flatfile_artifact_result::invalid;
 	const auto recovered = recover(root, lock, error);
 	if (recovered != flatfile_artifact_result::ok)
 		return recovered;

@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /**************************************************************
  *ship_base.c                                                 *
  *                                                            *
@@ -225,6 +226,10 @@ unsigned long long ship_save_signature(const P_ship ship)
 			hash = ship_save_signature_mix(hash, &sig_zero__, 1);               \
 		}                                                                           \
 	} while (0)
+
+	const auto trade_revision =
+		divine_trade_runtime_ship_revision(static_cast<uint32_t>(ship->db_id));
+	SHIP_SIG_MIX(trade_revision);
 
 	SHIP_SIG_MIX(ship->m_class);
 	SHIP_SIG_MIX_CSTR(ship->name);
@@ -533,6 +538,15 @@ static bool flat_ship_materialize(const flatfile_ship_record &record, std::strin
 	ship->save_pending = false;
 	ship->save_retry_after = 0;
 	ship->save_saved_signature = ship_save_signature(ship);
+	if (ship->crew.sail_skill != record.crew.sail_skill_milli / 1000.0f ||
+	    ship->crew.guns_skill != record.crew.guns_skill_milli / 1000.0f ||
+	    ship->crew.rpar_skill != record.crew.repair_skill_milli / 1000.0f)
+	{
+		// update_crew raises old records to the crew's native minimums. Persist
+		// that materialized state before a prepared trade relies on its preimage.
+		ship->save_saved_signature = 0;
+		queue_ship_save(ship, "normalized loaded crew");
+	}
 	return true;
 }
 #endif
@@ -601,6 +615,11 @@ void initialize_ships()
  */
 void shutdown_ships()
 {
+#ifndef __NO_MYSQL__
+	// The caller drained the writer. Publish completed proof receipts before
+	// final saves inspect the account fences shared by multiple ships.
+	sql_ship_write_pulse();
+#endif
 	int i;
 	P_char ch, ch_next;
 	P_obj obj, obj_next;
@@ -985,7 +1004,6 @@ bool rename_ship_owner(char *old_name, char *new_name)
 			FREE(old_ship_name);
 		return FALSE;
 	}
-
 	CAP(new_name);
 	str_free(ship->ownername);
 	ship->ownername = str_dup(new_name);
@@ -1226,14 +1244,45 @@ void delete_ship(P_ship ship, bool npc)
 		return;
 	}
 
+#ifdef __NO_MYSQL__
+	const bool retrying = !npc && IS_SET(ship->flags, TO_DELETE);
+#endif
+	const auto deferred_customs = ship->flags & CUSTOMS_PENDING;
+	if (!npc)
+		REMOVE_BIT(ship->flags, TO_DELETE | CUSTOMS_PENDING);
+	auto defer_delete = [&]
+	{
+		ship->flags |= deferred_customs;
+		SET_BIT(ship->flags, TO_DELETE);
+		ship->save_pending = true;
+		ship->save_retry_after = time(nullptr) + 1;
+		shipObjHash.add(ship);
+	};
+
+#ifdef __NO_MYSQL__
+	const uint32_t prior_dirty_ship = ship->save_pending ? static_cast<uint32_t>(ship->db_id) :
+							       0;
+#endif
+
+	std::vector<divine_trade_book> before_proof;
+	if (!npc)
+	{
+		before_proof = divine_trade_runtime_ship_books(static_cast<uint32_t>(ship->db_id));
+		if (!divine_trade_runtime_invalidate(ship))
+		{
+			defer_delete();
+			return;
+		}
+	}
+
 	if (!npc)
 	{
 #ifndef __NO_MYSQL__
-		if (!sql_delete_ship(ship->ownername))
+		if (!sql_delete_ship(ship->ownername, static_cast<uint32_t>(ship->db_id)))
 		{
 			logit(LOG_DEBUG, "Failed to delete ship row for %s; aborting ship removal.",
 			      ship->ownername);
-			shipObjHash.add(ship);
+			defer_delete();
 			return;
 		}
 #else
@@ -1241,10 +1290,47 @@ void delete_ship(P_ship ship, bool npc)
 		{
 			const char *root = persistence_mode_flatfile_root();
 			std::string error;
-			const auto result = root ? flatfile_ship_remove(
-							   root, static_cast<uint32_t>(ship->db_id),
-							   ship->ownername, &error) :
-						   flatfile_ship_result::invalid;
+
+			std::vector<flatfile_authority_operation> proof;
+			bool encoded = true;
+			for (const auto &book :
+			     divine_trade_runtime_ship_books(static_cast<uint32_t>(ship->db_id)))
+			{
+				flatfile_authority_operation image;
+				image.filename = "divine-trade-" + std::to_string(book.boon_id) +
+						 "-" + std::to_string(book.account) + ".book";
+				if (!divine_trade_book_encode(book, &image.bytes))
+				{
+					encoded = false;
+					break;
+				}
+				proof.push_back(std::move(image));
+			}
+			auto result = root && encoded ?
+					      flatfile_ship_remove(
+						      root, static_cast<uint32_t>(ship->db_id),
+						      ship->ownername, &error, &proof) :
+					      flatfile_ship_result::invalid;
+
+			if (result == flatfile_ship_result::io_error)
+			{
+				// The journal may have committed before the acknowledgement failed.
+				// Recover/read before freeing or exposing this ship's old inventory.
+				std::vector<flatfile_ship_record> persisted;
+				if (flatfile_ship_list(root, &persisted, &error) ==
+					    flatfile_ship_result::ok &&
+				    std::none_of(persisted.begin(), persisted.end(),
+						 [&](const auto &stored) {
+							 return stored.ship_id ==
+								static_cast<uint32_t>(ship->db_id);
+						 }))
+					result = flatfile_ship_result::ok;
+				else
+				{
+					defer_delete();
+					return;
+				}
+			}
 			if (result != flatfile_ship_result::ok &&
 			    result != flatfile_ship_result::unchanged)
 			{
@@ -1252,12 +1338,27 @@ void delete_ship(P_ship ship, bool npc)
 				      "Failed to delete flat ship for %s; aborting ship removal: %s",
 				      ship->ownername,
 				      error.empty() ? "authority failure" : error.c_str());
+				if (retrying)
+				{
+					defer_delete();
+					return;
+				}
+				ship->flags |= deferred_customs;
+				divine_trade_runtime_restore_books(std::move(before_proof),
+								   prior_dirty_ship);
 				shipObjHash.add(ship);
 				return;
 			}
 		}
 #endif
 	}
+
+#ifdef __NO_MYSQL__
+	if (!npc)
+		divine_trade_runtime_ship_saved(static_cast<uint32_t>(ship->db_id));
+#endif
+	if (!npc)
+		divine_trade_runtime_ship_deleted(static_cast<uint32_t>(ship->db_id));
 
 	// Failed loads have an abstract layout without assigned world rooms.
 	if (SHIP_LOADED(ship))
@@ -1877,6 +1978,8 @@ void set_ship_armor(P_ship ship, bool equal)
  */
 void reset_ship(P_ship ship, bool clear_slots)
 {
+	if (clear_slots && !divine_trade_runtime_invalidate(ship))
+		return;
 	set_ship_armor(ship, true);
 	ship->mainsail = SHIPTYPE_MAX_SAIL(ship->m_class);
 	ship->repair = SHIPTYPE_HULL_WEIGHT(ship->m_class);
@@ -2351,6 +2454,14 @@ void ship_activity()
 	{
 		P_ship ship = svs;
 
+		if (IS_SET(ship->flags, CUSTOMS_PENDING))
+		{
+			REMOVE_BIT(ship->flags, CUSTOMS_PENDING);
+			check_contraband(ship, ship->location);
+			queue_ship_save(ship, "deferred customs inspection");
+		}
+		if (divine_trade_runtime_busy(ship))
+			continue;
 		// Check timers
 		if (!SHIP_LOADED(ship))
 			continue;
@@ -3126,6 +3237,11 @@ void crash_land(P_ship ship)
  */
 void finish_sinking(P_ship ship)
 {
+	if (divine_trade_runtime_busy(ship))
+	{
+		ship->timer[T_SINKING] = 1;
+		return;
+	}
 	// The zone ship does not sink completely.
 	// if( ship == zone_ship )
 	//  return;
@@ -3268,6 +3384,14 @@ void summon_ship_event(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *da
 			if (isname(buf, ship->ownername) && ship->timer[T_BSTATION] == 0 &&
 			    !SHIP_SINKING(ship))
 			{
+				if (divine_trade_runtime_busy(ship))
+				{
+					add_event(summon_ship_event, 1, nullptr, nullptr, nullptr,
+						  strlen(static_cast<const char *>(data)) + 1, data,
+						  0);
+					return;
+				}
+
 				ship->location = to_room;
 				obj_from_room(ship->shipobj);
 				obj_to_room(ship->shipobj, to_room);
@@ -3381,6 +3505,11 @@ void land_ship(P_ship ship)
  */
 int write_ship(P_ship ship)
 {
+	if (divine_trade_runtime_save_busy(ship))
+	{
+		ship->save_pending = true;
+		return FALSE;
+	}
 	if (IS_NPC_SHIP(ship))
 		return FALSE;
 	if (!SHIP_LOADED(ship))
@@ -3402,8 +3531,23 @@ int write_ship(P_ship ship)
 	const char *root = persistence_mode_flatfile_root();
 	std::string error;
 	flatfile_ship_record record;
+	std::vector<flatfile_authority_operation> proof;
+	for (const auto &book : divine_trade_runtime_ship_books(static_cast<uint32_t>(ship->db_id)))
+	{
+		flatfile_authority_operation image;
+		image.filename = "divine-trade-" + std::to_string(book.boon_id) + "-" +
+				 std::to_string(book.account) + ".book";
+		if (!divine_trade_book_encode(book, &image.bytes))
+		{
+			ship->save_pending = true;
+			return FALSE;
+		}
+		proof.push_back(std::move(image));
+	}
+
 	if (!root || !flat_ship_capture(ship, &record, &error) ||
-	    flatfile_ship_upsert(root ? root : "", &record, &error) != flatfile_ship_result::ok)
+	    flatfile_ship_upsert(root ? root : "", &record, &error, &proof) !=
+		    flatfile_ship_result::ok)
 	{
 		ship->save_pending = true;
 		ship->save_retry_after = time(NULL) + 1;
@@ -3412,6 +3556,7 @@ int write_ship(P_ship ship)
 		return FALSE;
 	}
 	ship->db_id = static_cast<int>(record.ship_id);
+	divine_trade_runtime_ship_saved(static_cast<uint32_t>(ship->db_id));
 	ship->save_pending = false;
 	ship->save_retry_after = 0;
 	ship->save_saved_signature = ship_save_signature(ship);
@@ -3431,6 +3576,7 @@ void flush_pending_ship_saves(void)
 {
 	time_t now = time(NULL);
 	int flushed = 0;
+	std::vector<ShipRuntimeRef> retry_deletions;
 	ShipVisitor svs;
 	for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
 	{
@@ -3438,6 +3584,14 @@ void flush_pending_ship_saves(void)
 		if (!ship || !ship->save_pending)
 			continue;
 		if (ship->save_retry_after && ship->save_retry_after > now)
+			continue;
+
+		if (IS_SET(ship->flags, TO_DELETE))
+		{
+			retry_deletions.push_back(ship->runtime_ref);
+			continue;
+		}
+		if (divine_trade_runtime_save_busy(ship))
 			continue;
 
 		unsigned long long current_signature = ship_save_signature(ship);
@@ -3462,6 +3616,13 @@ void flush_pending_ship_saves(void)
 			ship->save_retry_after = now + 1;
 		}
 	}
+	// ShipObjHash's visitor reads the current ship when advancing. Destroy only
+	// after traversal, using generation-checked references for the retry batch.
+	for (const auto ref : retry_deletions)
+		if (P_ship ship = find_ship_by_runtime_ref(ref);
+		    ship && IS_SET(ship->flags, TO_DELETE) && shipObjHash.erase(ship))
+			delete_ship(ship, false);
+
 	if (flushed > 0)
 		logit(LOG_DEBUG, "Flushed %d pending ship save(s).", flushed);
 }
@@ -3478,6 +3639,12 @@ bool drain_pending_ship_saves(void)
 		P_ship ship = svs;
 		if (!ship || !ship->save_pending)
 			continue;
+
+		if (IS_SET(ship->flags, TO_DELETE))
+		{
+			drained = false;
+			continue;
+		}
 
 		if (!write_ship(ship))
 		{
@@ -3747,7 +3914,22 @@ void delete_ship(char *owner_name)
 	delete_ship_by_owner(owner_name, true);
 }
 
+P_ship find_ship_by_database_id(uint32_t id)
+{
+	ShipVisitor visitor;
+	for (bool found = shipObjHash.get_first(visitor); found;
+	     found = shipObjHash.get_next(visitor))
+		if (visitor && visitor->db_id > 0 && static_cast<uint32_t>(visitor->db_id) == id)
+			return visitor;
+	return nullptr;
+}
 void delete_ship_runtime(const char *owner_name)
 {
+#ifndef __NO_MYSQL__
+	sql_forget_ship(owner_name);
+#endif
+	if (P_ship ship = get_ship_from_owner(const_cast<char *>(owner_name));
+	    ship && ship->db_id > 0)
+		divine_trade_runtime_ship_deleted(ship->db_id);
 	delete_ship_by_owner(owner_name, false);
 }

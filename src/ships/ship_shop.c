@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /*****************************************************
  * ship_shop.c
  *
@@ -933,18 +934,24 @@ int summon_ship(P_char ch, P_ship ship, bool time_only)
  * was paid, moves the market with adjust_ship_market(), and clears the slot.
  * Returns the amount paid.
  */
-int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
+int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom, int already_paid = 0)
 {
-	int type = ship->slot[slot].index;
-	int crates = ship->slot[slot].val0;
-	int cost = crates * cargo_buy_price(rroom, type);
+	if (slot < 0 || slot >= MAXSLOTS || rroom < 0 || rroom >= NUM_PORTS)
+		return 0;
+
+	const int type = ship->slot[slot].index;
+	if (ship->slot[slot].type != SLOT_CARGO || type < 0 || type >= NUM_PORTS ||
+	    ship->slot[slot].val0 < 0)
+		return 0;
+
+	const int crates = ship->slot[slot].val0;
+	const int price = cargo_buy_price(rroom, type);
+	// Refuse unrepresentable payouts without consuming the cargo.
+	if (price < 0 || (crates > 0 && price > INT_MAX / crates))
+		return 0;
+	int cost = crates * price;
 	int profit = 100;
 	struct affected_type *paf;
-
-	if (type >= NUM_PORTS)
-	{
-		return 0;
-	}
 
 	/* Random snippet.. Supposed to stop from selling cargo at the port you buy it in I guess.
 	 if (type == rroom)
@@ -960,6 +967,8 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 	}
 	if (has_innate(ch, INNATE_SEADOG))
 	{
+		if (static_cast<double>(cost) * 1.10 > INT_MAX)
+			return 0;
 		send_to_char(
 			"Your &+csea&+Cfaring&n heritage has earned you a &+Ybonus&n in your sale...&n\r\n",
 			ch);
@@ -967,9 +976,21 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 	}
 	if (ship->slot[slot].val1 != 0)
 	{
-		profit = (int)((((float)cost / (float)ship->slot[slot].val1) - 1.00) *
-			       float(profit));
+		const double percentage =
+			(static_cast<double>(cost) / ship->slot[slot].val1 - 1.0) * 100.0;
+		profit = percentage > INT_MAX ? INT_MAX :
+			 percentage < INT_MIN ? INT_MIN :
+						static_cast<int>(percentage);
 	}
+	if (IS_WARSHIP(ship))
+		cost = cost * 0.6;
+	if (already_paid > INT_MAX - cost)
+		return 0;
+	int payout;
+	if (!check_nexus_bonus_preview(ch, already_paid + cost, NEXUS_BONUS_CARGO, &payout))
+		return 0;
+	if (!divine_trade_runtime_loss(ship, slot, crates))
+		return 0;
 	ship->slot[slot].clear();
 
 	if (IS_WARSHIP(ship))
@@ -977,7 +998,6 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 		send_to_char(
 			"&+gBecause your cargo is obviosly stolen, local merchants bargain the price down.&n\n",
 			ch);
-		cost = cost * 0.6;
 	}
 
 	sprintf(buf, "CARGO: %s sold &+W%d&n %s&n at %s&n [%d] for %s&n (%d percent profit)",
@@ -1007,14 +1027,16 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom)
 		paf = apply_achievement(ch, AIP_CARGOCOUNT);
 		paf->modifier = 0;
 	}
-	if (paf->modifier < 10000 && paf->modifier + crates >= 10000)
+	const int64_t cargo_count = static_cast<int64_t>(paf->modifier) + crates;
+	if (paf->modifier < 10000 && cargo_count >= 10000)
 	{
 		send_to_char(
 			"&+rCon&+Rgra&+Wtula&+Rtio&+rns! You have completed the &+RTrader&+r achievement!&n\n",
 			ch);
 	}
-	paf->modifier += crates;
+	paf->modifier = static_cast<int>(std::min<int64_t>(INT_MAX, cargo_count));
 
+	queue_ship_save(ship, "cargo sale");
 	return cost;
 }
 
@@ -1049,6 +1071,9 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
 		return 0;
 	}
 
+	if (divine_trade_runtime_sale(ch, ship, slot, rroom, divine_trade_goods::cargo))
+		return TRUE;
+
 	if (slot == -1)
 	{
 		for (i = 0; i < MAXSLOTS; i++)
@@ -1071,7 +1096,8 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
 			{
 				if (ship->slot[i].type == SLOT_CARGO)
 				{
-					total_cost += sell_cargo_slot(ch, ship, i, rroom);
+					total_cost +=
+						sell_cargo_slot(ch, ship, i, rroom, total_cost);
 				}
 			}
 		}
@@ -1100,7 +1126,6 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
 
 		update_crew(ship);
 		update_ship_status(ship);
-		queue_ship_save(ship, "cargo sale");
 
 		write_cargo();
 	}
@@ -1111,10 +1136,14 @@ int sell_cargo(P_char ch, P_ship ship, int slot)
  * Sell the contraband in one slot at port `rroom`, at contra_buy_price() per
  * crate, moving the market afterwards.  Returns the amount paid.
  */
-int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
+int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom, int already_paid = 0)
 {
-	int type = ship->slot[slot].index;
-	if (type >= NUM_PORTS)
+	if (slot < 0 || slot >= MAXSLOTS || rroom < 0 || rroom >= NUM_PORTS)
+		return 0;
+
+	const int type = ship->slot[slot].index;
+	if (ship->slot[slot].type != SLOT_CONTRABAND || type < 0 || type >= NUM_PORTS ||
+	    ship->slot[slot].val0 < 0)
 		return 0;
 
 	/*if (type == rroom)
@@ -1124,11 +1153,29 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
 	}
 	else
 	{*/
-	int crates = ship->slot[slot].val0;
-	int cost = crates * contra_buy_price(rroom, type);
+	const int crates = ship->slot[slot].val0;
+	const int price = contra_buy_price(rroom, type);
+	if (price < 0 || (crates > 0 && price > INT_MAX / crates))
+		return 0;
+	int cost = crates * price;
 	int profit = 100;
 	if (ship->slot[slot].val1 != 0)
-		profit = (int)((((float)cost / (float)ship->slot[slot].val1) - 1.00) * 100.0);
+	{
+		const double percentage =
+			(static_cast<double>(cost) / ship->slot[slot].val1 - 1.0) * 100.0;
+		profit = percentage > INT_MAX ? INT_MAX :
+			 percentage < INT_MIN ? INT_MIN :
+						static_cast<int>(percentage);
+	}
+	if (IS_WARSHIP(ship))
+		cost = cost * 0.6;
+	if (already_paid > INT_MAX - cost)
+		return 0;
+	int payout;
+	if (!check_nexus_bonus_preview(ch, already_paid + cost, NEXUS_BONUS_CARGO, &payout))
+		return 0;
+	if (!divine_trade_runtime_loss(ship, slot, crates))
+		return 0;
 	ship->slot[slot].clear();
 
 	if (IS_WARSHIP(ship))
@@ -1136,7 +1183,6 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
 		send_to_char(
 			"&+gBecause your contraband is obviosly stolen, local merchants bargain the price down.&n\n",
 			ch);
-		cost = cost * 0.6;
 	}
 
 	sprintf(buf, "CONTRABAND: %s sold &+W%d&n %s&n at %s&n [%d] for %s&n (%d percent profit)",
@@ -1153,6 +1199,7 @@ int sell_contra_slot(P_char ch, P_ship ship, int slot, int rroom)
 	// economy affect
 	adjust_ship_market(SOLD_CONTRA, rroom, type, crates);
 
+	queue_ship_save(ship, "cargo sale");
 	return cost;
 	//}
 }
@@ -1180,6 +1227,9 @@ int sell_contra(P_char ch, P_ship ship, int slot)
 	}
 
 	int total_cost = 0;
+	if (divine_trade_runtime_sale(ch, ship, slot, rroom, divine_trade_goods::contraband))
+		return TRUE;
+
 	if (slot == -1)
 	{
 		int none_to_sell = true;
@@ -1200,7 +1250,8 @@ int sell_contra(P_char ch, P_ship ship, int slot)
 			{
 				if (ship->slot[i].type == SLOT_CONTRABAND)
 				{
-					total_cost += sell_contra_slot(ch, ship, i, rroom);
+					total_cost +=
+						sell_contra_slot(ch, ship, i, rroom, total_cost);
 				}
 			}
 		}
@@ -1222,7 +1273,6 @@ int sell_contra(P_char ch, P_ship ship, int slot)
 
 		update_crew(ship);
 		update_ship_status(ship);
-		queue_ship_save(ship, "cargo sale");
 
 		write_cargo();
 	}
@@ -1350,6 +1400,12 @@ int sell_slot(P_char ch, P_ship ship, int slot)
  */
 void check_contraband(P_ship ship, int to_room)
 {
+	if (divine_trade_runtime_busy(ship))
+	{
+		SET_BIT(ship->flags, CUSTOMS_PENDING);
+		queue_ship_save(ship, "pending customs inspection");
+		return;
+	}
 	int rroom = 0;
 	for (rroom = 0; rroom < NUM_PORTS; ++rroom)
 		if (ports[rroom].loc_room == world[to_room].number)
@@ -1411,6 +1467,8 @@ void check_contraband(P_ship ship, int to_room)
 
 			if (confiscated > 0)
 			{
+				if (!divine_trade_runtime_loss(ship, slot, confiscated))
+					continue;
 				sprintf(buf,
 					"CONTRABAND: %s had &+W%d&n/&+W%d&n %s&n confiscated in %s [%d]",
 					SHIP_OWNER(ship), confiscated, crates,
@@ -1429,6 +1487,11 @@ void check_contraband(P_ship ship, int to_room)
 				did_confiscate = true;
 			}
 		}
+	}
+	if (did_confiscate)
+	{
+		update_ship_status(ship);
+		queue_ship_save(ship, "contraband confiscation");
 	}
 	if (!did_confiscate)
 		act_to_all_in_ship(ship, "&+L...&+Bbut don't find anything suspicious.&n");
@@ -2149,6 +2212,10 @@ int buy_cargo(P_char ch, P_ship ship, char *arg)
 		return TRUE;
 	}
 
+	if (divine_trade_runtime_purchase(ch, ship, slot, rroom, asked_for, cost,
+					  divine_trade_goods::cargo))
+		return TRUE;
+
 	int placed = asked_for;
 	if (ship->slot[slot].type == SLOT_CARGO)
 	{
@@ -2345,6 +2412,10 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 			       coin_stringv(cost));
 		return TRUE;
 	}
+
+	if (divine_trade_runtime_purchase(ch, ship, slot, rroom, asked_for, cost,
+					  divine_trade_goods::contraband))
+		return TRUE;
 
 	int placed = asked_for;
 	if (ship->slot[slot].type == SLOT_CONTRABAND)
@@ -2994,6 +3065,13 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 		while (shipObjHash.get_next(svs));
 	}
 
+	if (ship && divine_trade_runtime_busy(ship) && cmd != CMD_LIST)
+	{
+		send_to_char("Your crew is settling a cargo trade. Please try again shortly.\r\n",
+			     ch);
+		return TRUE;
+	}
+
 	if (owned)
 	{
 		if (ship->location != ch->in_room)
@@ -3292,6 +3370,13 @@ int crew_shop_proc(int room, P_char ch, int cmd, char *arg)
 	if (!ship)
 	{
 		send_to_char("&+gYou own no ship; no one here wants to talk to you.&n\n", ch);
+		return TRUE;
+	}
+
+	if (cmd == CMD_HIRE && divine_trade_runtime_busy(ship))
+	{
+		send_to_char("Your crew is settling a cargo trade. Please try again shortly.\r\n",
+			     ch);
 		return TRUE;
 	}
 

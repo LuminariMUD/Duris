@@ -3,6 +3,10 @@
 #include "combat/justice.h"
 #include "core/prototypes.h"
 #include "world/db.h"
+#include "sql/sql.h"
+#include "world/epic.h"
+#include "ships/ships.h"
+#include "world/graph.h"
 
 #include <cassert>
 #include <iostream>
@@ -28,6 +32,39 @@ int top_of_zone_table = 4;
 hometown_data hometowns[LAST_HOME] = {};
 extern const int guild_locations[LAST_HOME + 1][CLASS_COUNT + 1] = { {}, { 132500 }, { 36329 } };
 
+std::vector<zone_info> epic_metadata;
+index_data stone_index[1] = {};
+P_index obj_index = nullptr;
+P_obj object_list = nullptr;
+int stone_zone = 2;
+int obj_zone_id(P_obj)
+{
+	return stone_zone;
+}
+int top_of_objt = -1;
+const std::vector<zone_info> &sql_zones()
+{
+	return epic_metadata;
+}
+bool get_zone_info(int number, zone_info *info)
+{
+	for (const auto &entry : epic_metadata)
+		if (entry.number == number)
+		{
+			*info = entry;
+			return true;
+		}
+	return false;
+}
+bool epic_zone_done_now(int)
+{
+	return false;
+}
+int epic_stone(P_obj, P_char, int, char *)
+{
+	return false;
+}
+
 int real_room(const int number)
 {
 	for (int i = 0; i <= top_of_world; ++i)
@@ -46,10 +83,10 @@ int world_quest_policy_combat_level(int mob)
 {
 	return mob >= 0 && mob < 4 ? levels[mob] : -1;
 }
-int number(int low, int)
+int number(int low, int high)
 {
 	++random_calls;
-	return random_value ? random_value : low;
+	return random_value ? std::min(random_value, high) : low;
 }
 int inn(int, P_char, int, char *)
 {
@@ -60,6 +97,8 @@ int unsafe_room(int, P_char, int, char *)
 	return false;
 }
 void logit(const char *, const char *, ...) {}
+void send_to_char_f(P_char, const char *, ...) {}
+
 const divine_boon_state *divine_boon_runtime_state()
 {
 	return &authority;
@@ -78,6 +117,42 @@ bool divine_boon_runtime_queue(const divine_boon_state &next)
 std::array<divine_boon_population, 2> divine_boon_activity_population()
 {
 	return current_population;
+}
+
+const PortData ports[NUM_PORTS] = { { 103, "Source", 108 }, { 104, "Destination", 109 } };
+bool water_connected = true;
+int water_searches = 0;
+bool valid_ship_edge(int, int)
+{
+	return true;
+}
+bool dijkstra(int from, int to, valid_edge_func *edge, std::vector<int> &path)
+{
+	assert(((from == 8 && to == 9) || (from == 9 && to == 8)) && edge == valid_ship_edge);
+	++water_searches;
+	path = { 5 };
+	return water_connected;
+}
+
+int ship_shop_proc(int, P_char, int, char *)
+{
+	return false;
+}
+int cargo_sell_price(int, bool)
+{
+	return 100;
+}
+int contra_sell_price(int)
+{
+	return 100;
+}
+int cargo_buy_price(int, int, bool)
+{
+	return 120;
+}
+int contra_buy_price(int, int)
+{
+	return 120;
 }
 
 int main()
@@ -121,6 +196,9 @@ int main()
 	assert(divine_boon_selection_bootstrap());
 	assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
 	assert(divine_boon_zone_eligible(20, 0));
+	rooms[0].funct = inn; // The real hometown spawn can be an ordinary inn.
+	assert(divine_boon_zone_eligible(18, 0));
+	rooms[0].funct = nullptr;
 	assert(!divine_boon_zone_eligible(999, 0));
 	assert(!divine_boon_zone_eligible(18, 2));
 	rooms[0].funct = inn; // Tharn's ordinary spawn uses the movement-safe inn.
@@ -341,5 +419,97 @@ int main()
 	divine_boon_selection_pulse(3601);
 	assert(random_calls == before_invalid && !queued.slots[0].id);
 	zones[2].flags = 0;
+	// A cached metadata row alone cannot advertise an epic. Require the real
+	// functional, payable stone at its reset location and an ordinary side path.
+	zone_info metadata = {};
+	metadata.number = 18;
+	metadata.epic_payout = 100;
+	metadata.suggested_group_size = 100;
+	metadata.stonecount = 1;
+	metadata.epic_type = EPIC_ZONE_TYPE_SMALL;
+	epic_metadata.push_back(metadata);
+	obj_index = stone_index;
+	top_of_objt = 0;
+	stone_index[0].func.obj = epic_stone;
+	stone_index[0].virtual_number = EPIC_SMALL_STONE;
+	low_resets[5] = { 'O', false, 0, 1, 3, 100 };
+	low_resets[6].command = 'S';
+	assert(divine_boon_selection_bootstrap());
+	assert(!divine_boon_epic_zone_eligible(18, 0));
+	obj_data stone = {};
+	stone.R_num = 0;
+	stone.obj_uid = 123;
+	stone.extra2_flags = ITEM2_MAGIC;
+	stone.value[0] = stone.value[1] = 100;
+	stone.value[2] = 18;
+	rooms[3].contents = &stone;
+	object_list = &stone;
+	// The live stone remains eligible after looting its defeated carrier.
+	rooms[3].contents = nullptr;
+	assert(divine_boon_epic_zone_eligible(18, 0));
+	stone_zone = 3;
+	assert(!divine_boon_epic_zone_eligible(18, 0));
+	stone_zone = 2;
+	assert(divine_boon_epic_zone_eligible(18, 0));
+	stone.extra2_flags = 0;
+	assert(!divine_boon_epic_zone_eligible(18, 0));
+	stone.extra2_flags = ITEM2_MAGIC;
+	epic_metadata[0].epic_payout = 0;
+	assert(!divine_boon_epic_zone_eligible(18, 0));
+	epic_metadata[0].epic_payout = 100;
+	zones[2].flags = ZONE_TOWN;
+	assert(!divine_boon_epic_zone_eligible(18, 0));
+	zones[2].flags = 0;
+	divine_boon_state epic_state;
+	assert(divine_boon_set_mode(&epic_state, divine_boon_mode::draining, 0));
+	assert(divine_boon_set_mode(&epic_state, divine_boon_mode::divine, 0));
+	std::array<divine_boon_population, 2> epic_population = {};
+	epic_population[0].active_accounts = epic_population[0].brackets[0] = 1;
+	assert(divine_boon_select(epic_state, 3600, epic_population, &choice));
+	assert(choice.category == divine_boon_category::experience); // Crowd requires two accounts.
+	epic_population[0].active_accounts = epic_population[0].brackets[0] = 2;
+	assert(divine_boon_select(epic_state, 3600, epic_population, &choice));
+	assert(choice.category == divine_boon_category::epic && choice.zones[0] == 18);
+	divine_boon_slot route;
+	route.category = divine_boon_category::cargo;
+	route.source_port = route.cargo_commodity = route.contraband_commodity = 0;
+	route.destination_port = 1;
+	zones[2].flags = 0;
+	zones[2].hometown = 0;
+	zones[2].reset_mode = 2;
+	rooms[3].funct = rooms[4].funct = ship_shop_proc;
+	exits[0].exit_info = exits[2].exit_info = exits[3].exit_info = 0;
+	rooms[3].room_flags = rooms[4].room_flags = 0;
+	rooms[3].sector_type = rooms[4].sector_type = SECT_FIELD;
+	room_direction_data water_exits[2] = {};
+	water_exits[0].to_room = 9;
+	water_exits[1].to_room = 8;
+	rooms[8].dir_option[5] = &water_exits[0];
+	rooms[9].dir_option[5] = &water_exits[1];
+	rooms[8].sector_type = rooms[9].sector_type = SECT_OCEAN;
+	const int searches = water_searches;
+	for (int i = 0; i < 100; ++i)
+		assert(divine_boon_cargo_eligible(route));
+	assert(water_searches == searches);
+	water_exits[0].exit_info = EX_CLOSED | EX_LOCKED;
+	assert(!divine_boon_cargo_eligible(route));
+	water_exits[0].exit_info = 0;
+	water_connected = false;
+	assert(divine_boon_selection_bootstrap());
+	assert(!divine_boon_cargo_eligible(route));
+	water_connected = true;
+	assert(divine_boon_selection_bootstrap());
+	route.destination_port = 0;
+	assert(!divine_boon_cargo_eligible(route));
+	route.destination_port = 1;
+	route.cargo_commodity = 1;
+	assert(!divine_boon_cargo_eligible(route));
+	route.cargo_commodity = 0;
+	rooms[4].funct = nullptr;
+	assert(!divine_boon_cargo_eligible(route));
+	rooms[4].funct = ship_shop_proc;
+	zones[2].flags = ZONE_CLOSED;
+	assert(!divine_boon_cargo_eligible(route));
+
 	std::cout << "Divine candidate paths, flags, account brackets and thin pools passed\n";
 }

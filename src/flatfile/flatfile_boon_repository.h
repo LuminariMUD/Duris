@@ -90,7 +90,8 @@ flatfile_boon_result flatfile_boon_load_player(const std::string &root, uint32_t
 					       std::string *error);
 flatfile_boon_result flatfile_boon_find_pending_reward(const std::string &root, uint32_t pid,
 						       flatfile_boon_pending_reward *reward,
-						       std::string *error);
+						       std::string *error,
+						       bool checkpoint_free_only = false);
 flatfile_boon_result flatfile_boon_acknowledge_reward(const std::string &root,
 						      const critical_operation_id &operation_id,
 						      std::string *error);

@@ -51,7 +51,7 @@ DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/immutable/0050_critical_outbo
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
-g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
+g++ -std=c++20 -ffunction-sections -fdata-sections -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/critical_command_mysql_harness.cpp tests/async/harness_stubs.cpp \
 	 src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
 	 src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c src/economy/auction_command.c \
@@ -61,11 +61,12 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
 	 src/economy/boon_reward_command.c src/economy/boon_reward_repository.c \
 	 src/world/zone_touch_command.c src/world/zone_touch_repository.c \
 	 src/account/session_audit_command.c src/account/session_audit_repository.c \
-    src/player/player_snapshot_codec.c \
+    src/player/player_snapshot_codec.c src/player/player_snapshot_repository.c \
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
+    src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \
     src/persistence/critical_command_repository.c \
-    "${MYSQL_LIBS[@]}" -lcrypto \
+    "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
     -o "$ROOT/bin/tests/critical_command_mysql_harness"
 "$ROOT/bin/tests/critical_command_mysql_harness"
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \

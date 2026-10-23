@@ -25,12 +25,12 @@ with tempfile.TemporaryDirectory(prefix="nexus-runtime-", dir=build) as temporar
     utility = directory / "char_stat.cpp"
     headers = '\n'.join(f'#include "{name}"' for name in (
         "core/prototypes.h", "core/defines.h", "core/utils.h", "core/utility.h",
-        "economy/nexus_stones.h", "world/epic.h", "world/epic_bonus.h",
+        "economy/nexus_stones.h", "economy/divine_trade_runtime.h", "world/epic.h", "world/epic_bonus.h",
         "world/difficulty.h", "ships/ships.h",
     ))
     utility.write_text(headers + '\nextern int errand_notch;\n' +
-        'int sell_cargo_slot(P_char, P_ship, int, int);\n'
-        'int sell_contra_slot(P_char, P_ship, int, int);\n' +
+        'int sell_cargo_slot(P_char, P_ship, int, int, int = 0);\n'
+        'int sell_contra_slot(P_char, P_ship, int, int, int = 0);\n' +
         extract_function("utility.c", "sh_int *char_stat(") + '\n' +
         extract_function("epic.c", "struct epic_award_context") + ';\n' +
         extract_function("epic.c", "static bool prepare_epic_award(") + '\n' +

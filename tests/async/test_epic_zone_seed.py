@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import re
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 from pathlib import Path
@@ -19,6 +20,16 @@ class EpicZoneSeedTest(unittest.TestCase):
     def cli(self, *args):
         return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=ROOT,
                               text=True, capture_output=True)
+
+    def test_native_flatfile_defaults_match_the_authoritative_seed(self):
+        manifest = json.loads(self.cli("manifest").stdout)
+        expected = [(z["number"], z["epic_payout"], z["suggested_group_size"], z["stone_loads"], z["epic_type"])
+                    for z in manifest["zones"] if z["status"] == "known" and z["epic_payout"] > 0]
+        native = (ROOT / "src/world/epic_zone_defaults.h").read_text()
+        actual = [tuple(map(int, row)) for row in re.findall(
+            r"\{\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\}", native)]
+        self.assertEqual(actual, expected)
+        self.assertEqual(self.cli("runtime").returncode, 0)
 
     def test_source_coverage_and_known_values(self):
         result = self.cli("manifest")

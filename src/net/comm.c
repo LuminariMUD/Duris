@@ -1,3 +1,4 @@
+#include "economy/divine_trade_runtime.h"
 /****************************************************************************
  *
  *  File: comm.c                                                Part of Duris
@@ -139,6 +140,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_catalog_cache.h"
+#include "economy/divine_trade_command.h"
 #include "economy/collector_listing_pipeline.h"
 #include "economy/collector_maintenance.h"
 #include "economy/collector_presence.h"
@@ -146,6 +148,7 @@
 #include "economy/collector_transaction.h"
 #include "combat/combat_outcome_transaction.h"
 #include "guild/artifact_guild_transaction.h"
+#include "guild/artifact_guild_delivery.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/divine_boon_runtime.h"
 #include "economy/divine_boon_selection.h"
@@ -327,11 +330,13 @@ static void critical_gameplay_publish_outbox(void)
 	artifact_guild_transaction_publish_outbox();
 }
 
+#ifndef __NO_MYSQL__
 static void critical_gameplay_drain_outbox(void)
 {
 	sql_async_pulse();
 	critical_gameplay_publish_outbox();
 }
+#endif
 
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
@@ -346,6 +351,7 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	combat_outcome_transaction_handle_completions(completions, count);
 	artifact_guild_transaction_handle_completions(completions, count);
 	boon_reward_transaction_handle_completions(completions, count);
+	divine_trade_runtime_completions(completions, count);
 	boon_shop_transaction_handle_completions(completions, count);
 	zone_touch_transaction_handle_completions(completions, count);
 }
@@ -362,6 +368,20 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		return boon_reward_transaction_outbox_delivery(record, context);
 	if (record.destination == 9)
 		return zone_touch_transaction_outbox_delivery(record, context);
+	if (record.destination == DIVINE_TRADE_OUTBOX_DESTINATION)
+	{
+		// The transaction has already saved the complete financial after-images.
+		// A restart restores those records; the outbox never applies a wallet delta.
+		divine_trade_result result;
+		return record.event_type == 1 &&
+				       (record.payload_version == 1 ||
+					record.payload_version == 2 ||
+					record.payload_version == DIVINE_TRADE_PAYLOAD_VERSION) &&
+				       divine_trade_result_decode(record.payload.data(),
+								  record.payload.size(), &result) ?
+			       critical_outbox_delivery_result::already_delivered :
+			       critical_outbox_delivery_result::terminal_failure;
+	}
 	if (record.destination == COLLECTOR_OUTBOX_DESTINATION)
 		return collector_transaction_outbox_delivery(record, context);
 	return auction_transaction_outbox_delivery(record, context);
@@ -1098,6 +1118,10 @@ int run_the_game(int port, int sslport)
 		persistence_alert(AVATAR, "critical_command", "pipeline", "none", "none",
 				  "start_failed", "check critical schema");
 	}
+	if (!artifact_guild_delivery_boot())
+		persistence_alert(
+			AVATAR, "artifact_delivery", "redacted", "none", "none", "boot_pending",
+			"prepared effects remain protected until native recovery is ready");
 	if (!collector_catalog_cache_refresh())
 		logit(LOG_STATUS,
 		      "Collector catalog refresh unavailable; collector gameplay fails closed.");
@@ -2255,6 +2279,10 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				     loop_tick);
 	}
 	sql_async_pulse();
+	divine_trade_runtime_retire_pulse();
+#ifndef __NO_MYSQL__
+	sql_ship_write_pulse();
+#endif
 	artifact_guild_transaction_pulse();
 	if (!(pulse % (WAIT_SEC * 60)))
 		sql_mud_info_refresh();

@@ -348,7 +348,7 @@ with tempfile.TemporaryDirectory(prefix='reward-replay-', dir=outputs) as direct
         'persistence/persistence_observability.c', 'player/player_save_worker.c',
         'economy/boon_reward_command.c', 'economy/boon_reward_transaction.c',
         'economy/currency_command.c',
-        'combat/combat_outcome_command.c', 'combat/combat_outcome_transaction.c',
+        'combat/combat_outcome_command.c', 'guild/artifact_guild_command.c', 'combat/combat_outcome_transaction.c',
         'world/zone_touch_command.c', 'world/zone_touch_transaction.c', 'world/epic_command.c',
     ]
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',

@@ -6,7 +6,7 @@ runs under `make test-db` because it needs Docker.
 """
 
 import re
-from _paths import SRC, rel
+from _paths import HARNESS_STUBS, SRC, rel
 import pathlib
 import subprocess
 import tempfile
@@ -21,7 +21,8 @@ DATABASE_TESTS = (ROOT / "tests/run_db_tests.sh").read_text()
 
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
-    "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
+    "flatfile_item_repository.c",
+    "divine_trade.c", "divine_trade_command.c", "divine_trade_flatfile.c", "flatfile_cargo_repository.c", "flatfile_ship_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
     "collector_command.c", "collector_codec.c", "collector_policy.c",
     "flatfile_player_snapshot_file.c",
     "flatfile_locker_repository.c", "flatfile_world_item_repository.c",
@@ -31,7 +32,7 @@ SOURCES = [
     "flatfile_player_domain_repository.c", "flatfile_authority_transaction.c",
     "player_snapshot_codec.c", "flatfile_store.c", "item_transfer_command.c",
     "shop_trade_command.c", "critical_command.c",
-    "epic_command.c", "currency_command.c", "auction_command.c", "combat_outcome_command.c",
+    "epic_command.c", "zone_touch_command.c", "currency_command.c", "auction_command.c", "combat_outcome_command.c", "artifact_guild_command.c",
     "boon_reward_command.c", "boon_shop_command.c", "persistence_observability.c",
     "persistence_mode.c", "flatfile_ip_activity_repository.c",
 ]
@@ -41,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix="flat-claim-test-", dir=ROOT / "bin/test
     work = pathlib.Path(temporary)
     binary = work / "flatfile_player_save_claim"
     built = subprocess.run(
-        ["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-D__NO_MYSQL__",
+        ["g++", str(HARNESS_STUBS), "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-D__NO_MYSQL__",
          "-Isrc", "-Isrc/no_mysql", "tests/async/flatfile_player_save_claim_harness.cpp",
          *[rel(name) for name in SOURCES], "-lcrypto", "-pthread", "-o", str(binary)],
         cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -67,7 +68,7 @@ assert "flatfile_item_repository_prepare_claim(" in FLAT_PLAYER
 assert "item_claim_leaves_out(record->state)" in FLAT_ITEMS
 assert "establish_item_baseline" not in FLAT_PLAYER
 assert "replay_fence" not in REPOSITORY and "legacy_replay" not in FLAT_PLAYER
-assert "ensure_player_row(connection, snapshot, &created)" in REPOSITORY
+assert "query = ensure_player_row(connection, snapshot, &created," in REPOSITORY
 # A new character's first save goes through the writer: the row it creates gets the
 # opening baselines the accounting ledgers start from, and nanny no longer forces a
 # synchronous first save on MariaDB.

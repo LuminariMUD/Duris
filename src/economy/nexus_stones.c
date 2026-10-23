@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <vector>
 #include <type_traits>
+#include <limits>
+#include <cmath>
 using namespace std;
 
 #include "core/prototypes.h"
@@ -117,6 +119,7 @@ struct NexusBonusData
 
 #ifndef __NO_MYSQL__
 extern MYSQL *DB;
+#endif
 
 namespace
 {
@@ -132,7 +135,7 @@ NexusStoneInfo *nexus_row(int stone_id)
 	return nullptr;
 }
 } // namespace
-#else
+#ifdef __NO_MYSQL__
 namespace
 {
 const char *flat_nexus_root()
@@ -228,6 +231,7 @@ int load_nexus_stones(bool report_empty)
 		      error.empty() ? "flat nexus authority failure" : error.c_str());
 		return FALSE;
 	}
+	std::vector<NexusStoneInfo> restored;
 	size_t loaded = 0;
 	for (const auto &record : records)
 	{
@@ -239,8 +243,12 @@ int load_nexus_stones(bool report_empty)
 			      record.id, loaded);
 			return FALSE;
 		}
+		NexusStoneInfo info;
+		copy_nexus_info(record, &info);
+		restored.push_back(std::move(info));
 		++loaded;
 	}
+	nexus_rows = std::move(restored);
 #else
 	// Boot only: the rows stay in memory (nexus_rows).
 	if (!qry("SELECT id, name, room_vnum, align, stat_affect, affect_amount, bonus, "
@@ -327,33 +335,22 @@ bool nexus_stone_info(int stone_id, NexusStoneInfo *info)
 #endif
 }
 
-template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount amount, int type)
+template <typename Amount>
+static bool nexus_bonus_amount(P_char ch, Amount amount, int type, bool announce, Amount *result)
 {
+	if (!result)
+		return false;
+	*result = amount;
 	char buff[MAX_STRING_LENGTH], buff2[MAX_STRING_LENGTH];
 
 	if (!ch)
 	{
 		debug("check_nexus_bonus(): passed invalid ch pointer to function");
-		return amount;
+		return true;
 	}
 
 	int align = 0;
-#ifdef __NO_MYSQL__
-	std::vector<flatfile_nexus_record> records;
-	std::string error;
-	if (!flat_nexus_records(&records, &error))
-		return amount;
-	const auto found = std::find_if(records.begin(), records.end(),
-					[type](const auto &record)
-					{
-						return (record.align == STONE_ALIGN_GOOD ||
-							record.align == STONE_ALIGN_EVIL) &&
-						       record.bonus == type;
-					});
-	if (found == records.end())
-		return amount;
-	align = found->align;
-#else
+
 	const auto found = std::find_if(nexus_rows.begin(), nexus_rows.end(),
 					[type](const NexusStoneInfo &row) {
 						return (row.align == STONE_ALIGN_GOOD ||
@@ -361,9 +358,8 @@ template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount am
 						       row.bonus == type;
 					});
 	if (found == nexus_rows.end())
-		return amount;
+		return true;
 	align = found->align;
-#endif
 	int racewar;
 	Amount newamnt;
 
@@ -382,8 +378,19 @@ template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount am
 		double multiplier = configured;
 		if constexpr (std::is_same_v<Amount, double>)
 			multiplier = divine_boon_modifier(configured);
-		newamnt = MAX(nexus_bonus_data[type].minval,
-			      static_cast<Amount>((double)amount * multiplier));
+		double bonus = static_cast<double>(amount) * multiplier;
+		if (!std::isfinite(bonus))
+			return false;
+		bonus = std::max<double>(nexus_bonus_data[type].minval, bonus);
+		if constexpr (std::is_integral_v<Amount>)
+			bonus = std::trunc(bonus);
+		if (bonus > std::numeric_limits<Amount>::max())
+			return false;
+		newamnt = static_cast<Amount>(bonus);
+		if (amount > std::numeric_limits<Amount>::max() - newamnt ||
+		    (announce && type == NEXUS_BONUS_CARGO && bonus > INT_MAX))
+			return false;
+		*result = amount + newamnt;
 
 		switch (type)
 		{
@@ -392,6 +399,8 @@ template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount am
 		case NEXUS_BONUS_EXP:
 			break;
 		case NEXUS_BONUS_CARGO:
+			if (!announce)
+				break;
 			snprintf(buff2, MAX_STRING_LENGTH,
 				 "&+yEnlil&n grants you an additional %s&n.\r\n",
 				 coin_stringv(static_cast<int>(newamnt)));
@@ -401,23 +410,32 @@ template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount am
 			break;
 		}
 
-		return amount + newamnt;
+		return true;
 	}
 	else
 	{
-		return amount;
+		return true;
 	}
 }
 
 int check_nexus_bonus(P_char ch, int amount, int type)
 {
-	return nexus_bonus_amount(ch, amount, type);
+	int result = amount;
+	nexus_bonus_amount(ch, amount, type, true, &result);
+	return result;
 }
 
 // Prepared Divine EXP/epic awards retain fractions until the final payout.
-double check_nexus_bonus_precise(P_char ch, double amount, int type)
+double check_nexus_bonus_precise(P_char ch, double amount, int type, bool announce)
 {
-	return nexus_bonus_amount(ch, amount, type);
+	double result = amount;
+	nexus_bonus_amount(ch, amount, type, announce, &result);
+	return result;
+}
+
+bool check_nexus_bonus_preview(P_char ch, int amount, int type, int *result)
+{
+	return nexus_bonus_amount(ch, amount, type, false, result);
 }
 
 int update_nexus_stone_align(int stone_id, int align)
@@ -429,7 +447,14 @@ int update_nexus_stone_align(int stone_id, int align)
 		root ? flatfile_nexus_update_state(root, stone_id, align, time(nullptr), &error) :
 		       flatfile_nexus_result::io_error;
 	if (result == flatfile_nexus_result::ok || result == flatfile_nexus_result::unchanged)
+	{
+		if (NexusStoneInfo *row = nexus_row(stone_id))
+		{
+			row->align = align;
+			row->last_touched_at = time(nullptr);
+		}
 		return TRUE;
+	}
 	logit(LOG_DEBUG, "update_nexus_stone_align(): %s",
 	      error.empty() ? "flat nexus authority failure" : error.c_str());
 	return FALSE;
@@ -1680,6 +1705,16 @@ void reload_nexus_stone(P_char ch, int stone_id)
 #endif
 	if (!loaded)
 		send_to_char("Nexus reload failed; check the server log.\r\n", ch);
+#ifdef __NO_MYSQL__
+	else if (NexusStoneInfo *cached = nexus_row(stone_id))
+		copy_nexus_info(record, cached);
+	else
+	{
+		NexusStoneInfo restored;
+		copy_nexus_info(record, &restored);
+		nexus_rows.push_back(std::move(restored));
+	}
+#endif
 }
 
 bool nexus_stone_expired(int stone_id)
@@ -1716,6 +1751,11 @@ void expire_nexus_stone(int stone_id)
 		logit(LOG_DEBUG, "expire_nexus_stone(): %s",
 		      error.empty() ? "flat nexus authority failure" : error.c_str());
 		return;
+	}
+	if (NexusStoneInfo *cached = nexus_row(stone_id))
+	{
+		cached->align = 0;
+		cached->last_touched_at = 0;
 	}
 	flatfile_nexus_record record;
 	if (!flat_nexus_record(stone_id, &record, &error))

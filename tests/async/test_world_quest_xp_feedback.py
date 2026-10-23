@@ -113,7 +113,7 @@ double difficulty_multiplier(difficulty_dial dial) {
 }
 int check_nexus_bonus(P_char, int xp, int) { return xp; }
 double nexus_percent = 0;
-double check_nexus_bonus_precise(P_char, double xp, int) { return xp * (1 + nexus_percent); }
+double check_nexus_bonus_precise(P_char, double xp, int, bool) { return xp * (1 + nexus_percent); }
 divine_boon_state divine_state;
 bool divine_enabled = false, target_eligible = true;
 const divine_boon_state *divine_boon_runtime_state() { return divine_enabled ? &divine_state : nullptr; }

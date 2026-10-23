@@ -30,6 +30,28 @@ artifact_guild_capture_status
 artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			     const critical_operation_id &parent_operation_id,
 			     artifact_guild_payload *payload);
+artifact_guild_capture_status
+artifact_guild_state_prepare_delivery(P_char character, int epics, int epic_type,
+				      const critical_operation_id &parent,
+				      critical_command *command);
+
+// Prepared delivery IDs are saved in the same snapshot as their effects.
+bool artifact_guild_state_apply_delivery(const critical_operation_id &operation,
+					 const artifact_guild_payload &payload,
+					 artifact_guild_payload *published);
+bool artifact_apply_delivery(const critical_operation_id &operation,
+			     const artifact_guild_delta &delta, int64_t feeding_cap,
+			     bool *newly_applied);
+void artifact_forget_delivery(int vnum, const critical_operation_id &operation);
+// At most eight entities per game-thread cleanup slice.
+void artifact_delivery_markers(int32_t *cursor, critical_operation_id *after,
+			       artifact_guild_delivery_ids *ids);
+void artifact_guild_state_guild_markers(uint32_t *cursor, critical_operation_id *after,
+					artifact_guild_delivery_ids *ids);
+// Call only after the native delivery ACK is confirmed durable.
+void artifact_guild_state_forget_delivery(const critical_operation_id &operation,
+					  const artifact_guild_payload &payload);
+
 // Immediate live application; never use this for history replay.
 void artifact_guild_state_apply(P_char character, const artifact_guild_payload &payload);
 

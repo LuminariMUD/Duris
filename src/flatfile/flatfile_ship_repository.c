@@ -36,7 +36,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'S', 'H', 'I', 'P', 0 };
-constexpr uint32_t catalog_version = 1;
+constexpr uint32_t catalog_version = 2;
 constexpr size_t catalog_maximum_bytes = 64 * 1024 * 1024;
 constexpr size_t ship_maximum = 65536;
 constexpr size_t slot_maximum = 256;
@@ -63,6 +63,7 @@ enum class legacy_read_result
 struct ship_catalog
 {
 	uint64_t revision = 1;
+	uint64_t next_id = 1;
 	std::vector<flatfile_ship_record> ships;
 };
 
@@ -364,7 +365,9 @@ bool slot_less(const flatfile_ship_slot_record &left, const flatfile_ship_slot_r
 
 bool valid_catalog(const ship_catalog &catalog)
 {
-	if (!catalog.revision || catalog.ships.size() > ship_maximum ||
+	if (!catalog.revision || !catalog.next_id ||
+	    (!catalog.ships.empty() && catalog.next_id <= catalog.ships.back().ship_id) ||
+	    catalog.ships.size() > ship_maximum ||
 	    !std::is_sorted(catalog.ships.begin(), catalog.ships.end(), ship_less))
 		return false;
 	std::unordered_set<uint32_t> owner_pids;
@@ -682,6 +685,7 @@ bool encode_catalog(const ship_catalog &catalog, std::vector<uint8_t> *bytes)
 	if (!bytes || !valid_catalog(catalog))
 		return false;
 	encoder payload;
+	payload.number(catalog.next_id);
 	payload.number<uint32_t>(catalog.ships.size());
 	for (const auto &ship : catalog.ships)
 		encode_ship(payload, ship);
@@ -712,8 +716,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, ship_catalog *catalog)
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || version != catalog_version || !revision ||
-	    payload_size != bytes.size() - header_size)
+	    !header.number(&revision) || (version != 1 && version != catalog_version) ||
+	    !revision || payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
@@ -721,11 +725,15 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, ship_catalog *catalog)
 	if (CRYPTO_memcmp(bytes.data() + 24, digest.data(), digest.size()))
 		return false;
 	decoder payload{ payload_bytes, payload_size };
+	uint64_t next_id = 1;
+	if (version >= 2 && !payload.number(&next_id))
+		return false;
 	uint32_t count = 0;
 	if (!payload.number(&count) || count > ship_maximum)
 		return false;
 	ship_catalog decoded;
 	decoded.revision = revision;
+	decoded.next_id = next_id;
 	try
 	{
 		decoded.ships.resize(count);
@@ -737,6 +745,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, ship_catalog *catalog)
 	{
 		return false;
 	}
+	if (version == 1 && !decoded.ships.empty())
+		decoded.next_id = static_cast<uint64_t>(decoded.ships.back().ship_id) + 1;
 	if (payload.offset != payload.size || !valid_catalog(decoded))
 		return false;
 	*catalog = std::move(decoded);
@@ -782,7 +792,10 @@ bool catalog_equal(ship_catalog left, ship_catalog right)
 	       left_bytes == right_bytes;
 }
 
-flatfile_ship_result publish(const std::string &root, ship_catalog *catalog, std::string *error)
+flatfile_ship_result
+publish(const std::string &root, ship_catalog *catalog, std::string *error,
+	const flatfile_authority_lock *lock = nullptr,
+	const std::vector<flatfile_authority_operation> *after_images = nullptr)
 {
 	if (!catalog || catalog->revision == std::numeric_limits<uint64_t>::max())
 		return flatfile_ship_result::invalid;
@@ -790,6 +803,23 @@ flatfile_ship_result publish(const std::string &root, ship_catalog *catalog, std
 	std::vector<uint8_t> encoded;
 	if (!encode_catalog(*catalog, &encoded))
 		return flatfile_ship_result::invalid;
+	if (after_images && !after_images->empty())
+	{
+		if (!lock || !lock->matches(root))
+			return flatfile_ship_result::invalid;
+		auto operations = *after_images;
+		flatfile_authority_operation saved;
+		saved.filename = catalog_filename;
+		saved.bytes = std::move(encoded);
+		operations.push_back(std::move(saved));
+		const auto committed = flatfile_authority_transaction_commit_operations(
+			root, *lock, operations, error);
+		return committed == flatfile_authority_transaction_result::ok ?
+			       flatfile_ship_result::ok :
+		       committed == flatfile_authority_transaction_result::io_error ?
+			       flatfile_ship_result::io_error :
+			       flatfile_ship_result::invalid;
+	}
 	return flatfile_atomic_write(domains_directory(root), catalog_filename, encoded, error) ?
 		       flatfile_ship_result::ok :
 		       flatfile_ship_result::io_error;
@@ -814,6 +844,9 @@ flatfile_ship_result flatfile_ship_establish(const std::string &root,
 			std::sort(ship.slots.begin(), ship.slots.end(), slot_less);
 		}
 		std::sort(candidate.ships.begin(), candidate.ships.end(), ship_less);
+		if (!candidate.ships.empty())
+			candidate.next_id =
+				static_cast<uint64_t>(candidate.ships.back().ship_id) + 1;
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -862,8 +895,28 @@ flatfile_ship_result flatfile_ship_list(const std::string &root,
 	return flatfile_ship_result::ok;
 }
 
-flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship,
-					  std::string *error)
+flatfile_ship_result flatfile_ship_reserve_ids(const std::string &root, uint32_t maximum,
+					       std::string *error)
+{
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error))
+		return flatfile_ship_result::io_error;
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_ship_result::ok)
+		return recovered;
+	ship_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_ship_result::ok)
+		return loaded;
+	if (catalog.next_id > maximum)
+		return flatfile_ship_result::unchanged;
+	catalog.next_id = static_cast<uint64_t>(maximum) + 1;
+	return publish(root, &catalog, error, &lock);
+}
+
+flatfile_ship_result
+flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship, std::string *error,
+		     const std::vector<flatfile_authority_operation> *after_images)
 {
 	if (root.empty() || !ship)
 		return flatfile_ship_result::invalid;
@@ -913,10 +966,9 @@ flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship
 	{
 		if (catalog.ships.size() >= ship_maximum)
 			return flatfile_ship_result::invalid;
-		const uint32_t last_id = catalog.ships.empty() ? 0 : catalog.ships.back().ship_id;
-		if (last_id >= static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+		if (catalog.next_id > static_cast<uint64_t>(std::numeric_limits<int32_t>::max()))
 			return flatfile_ship_result::invalid;
-		candidate.ship_id = last_id + 1;
+		candidate.ship_id = static_cast<uint32_t>(catalog.next_id++);
 		candidate.revision = 1;
 		try
 		{
@@ -942,7 +994,7 @@ flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship
 		}
 	}
 
-	const auto result = publish(root, &catalog, error);
+	const auto result = publish(root, &catalog, error, &lock, after_images);
 	if (result == flatfile_ship_result::ok)
 	{
 		ship->ship_id = candidate.ship_id;
@@ -951,8 +1003,10 @@ flatfile_ship_result flatfile_ship_upsert(const std::string &root, flatfile_ship
 	return result;
 }
 
-flatfile_ship_result flatfile_ship_remove(const std::string &root, uint32_t ship_id,
-					  const std::string &expected_owner, std::string *error)
+flatfile_ship_result
+flatfile_ship_remove(const std::string &root, uint32_t ship_id, const std::string &expected_owner,
+		     std::string *error,
+		     const std::vector<flatfile_authority_operation> *after_images)
 {
 	if (root.empty() || !ship_id ||
 	    !valid_text(expected_owner, owner_name_maximum, true, false))
@@ -971,11 +1025,13 @@ flatfile_ship_result flatfile_ship_remove(const std::string &root, uint32_t ship
 				       [](const auto &entry, uint32_t id)
 				       { return entry.ship_id < id; });
 	if (stored == catalog.ships.end() || stored->ship_id != ship_id)
-		return flatfile_ship_result::unchanged;
+		return after_images && !after_images->empty() ?
+			       publish(root, &catalog, error, &lock, after_images) :
+			       flatfile_ship_result::unchanged;
 	if (stored->owner_name != canonical_name(expected_owner))
 		return flatfile_ship_result::conflict;
 	catalog.ships.erase(stored);
-	return publish(root, &catalog, error);
+	return publish(root, &catalog, error, &lock, after_images);
 }
 
 flatfile_ship_result flatfile_ship_import_legacy(const std::string &root,
@@ -1101,5 +1157,70 @@ flatfile_ship_prepare_player_remove(const std::string &root, const flatfile_auth
 	operation->kind = flatfile_authority_operation_kind::write;
 	operation->filename = catalog_filename;
 	operation->bytes = std::move(encoded);
+	return flatfile_ship_result::ok;
+}
+
+flatfile_ship_result flatfile_ship_prepare_trade(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t ship_id,
+	uint32_t owner_pid, const std::vector<flatfile_ship_slot_record> &before_slots,
+	const flatfile_ship_crew_record &before_crew,
+	const std::vector<flatfile_ship_slot_record> &slots, const flatfile_ship_crew_record &crew,
+	flatfile_authority_operation *operation, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !ship_id || !owner_pid || !operation ||
+	    slots.empty() || slots.size() > slot_maximum || before_slots.size() != slots.size())
+		return flatfile_ship_result::invalid;
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_ship_result::ok)
+		return recovered;
+	ship_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_ship_result::ok)
+		return loaded;
+	auto ship = std::lower_bound(catalog.ships.begin(), catalog.ships.end(), ship_id,
+				     [](const auto &entry, uint32_t id)
+				     { return entry.ship_id < id; });
+	if (ship == catalog.ships.end() || ship->ship_id != ship_id ||
+	    ship->owner_pid != owner_pid || ship->revision == UINT64_MAX ||
+	    catalog.revision == UINT64_MAX)
+		return flatfile_ship_result::conflict;
+	if (ship->crew != before_crew)
+		return flatfile_ship_result::conflict;
+	for (const auto &expected : before_slots)
+	{
+		const auto current = std::lower_bound(ship->slots.begin(), ship->slots.end(),
+						      expected.slot_index,
+						      [](const auto &slot, uint8_t index)
+						      { return slot.slot_index < index; });
+		if (current == ship->slots.end() || current->slot_index != expected.slot_index)
+		{
+			if (expected != flatfile_ship_empty_slot(expected.slot_index))
+				return flatfile_ship_result::conflict;
+		}
+		else if (*current != expected)
+			return flatfile_ship_result::conflict;
+	}
+	std::unordered_set<uint8_t> changed;
+	for (const auto &slot : slots)
+	{
+		if (slot.slot_index >= slot_maximum || !valid_legacy_slot(slot) ||
+		    !changed.insert(slot.slot_index).second)
+			return flatfile_ship_result::invalid;
+		auto stored = std::lower_bound(ship->slots.begin(), ship->slots.end(),
+					       slot.slot_index, [](const auto &entry, uint8_t index)
+					       { return entry.slot_index < index; });
+		if (stored != ship->slots.end() && stored->slot_index == slot.slot_index)
+			*stored = slot;
+		else
+			ship->slots.insert(stored, slot);
+	}
+	ship->crew = crew;
+	++ship->revision;
+	++catalog.revision;
+	flatfile_authority_operation prepared;
+	prepared.filename = catalog_filename;
+	if (!encode_catalog(catalog, &prepared.bytes))
+		return flatfile_ship_result::invalid;
+	*operation = std::move(prepared);
 	return flatfile_ship_result::ok;
 }

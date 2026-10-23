@@ -10,6 +10,7 @@
 #define _ASSOCS_H_
 
 #include "core/structs.h"
+#include "guild/artifact_guild_delivery_ids.h"
 #include <stdio.h>
 #include <string>
 #include <vector>
@@ -200,6 +201,7 @@ class Guild
 	friend Guild *sql_load_guild(unsigned int guild_id);
 	friend bool sql_load_all_guilds();
 	friend int migrate_guilds_from_files(void);
+	friend bool found_asc(P_char god, P_char leader, const char *bits, char *asc_name);
 
     public:
 	unsigned int get_id() { return id_number; }
@@ -222,6 +224,11 @@ class Guild
 		save();
 	}
 
+	const critical_operation_id &delivery_incarnation() const { return delivery_identity; }
+	const artifact_guild_delivery_ids &applied_deliveries() const { return delivery_ids; }
+	bool apply_delivery(const critical_operation_id &operation, uint64_t amount,
+			    uint64_t notch);
+	void forget_delivery(const critical_operation_id &operation);
 	unsigned long get_prestige() { return prestige; }
 	void add_prestige(int prest)
 	{
@@ -381,6 +388,8 @@ class Guild
 	unsigned int id_number;
 	unsigned long prestige;
 	unsigned long construction;
+	artifact_guild_delivery_ids delivery_ids;
+	critical_operation_id delivery_identity = {};
 	unsigned int platinum, gold, silver, copper;
 	unsigned int member_count;
 	unsigned int bits;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import rel
+from _paths import HARNESS_STUBS, rel
 import pathlib
 import subprocess
 import tempfile
@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
         rel("flatfile_auction_repository.c"),
         rel("flatfile_boon_repository.c"),
         rel("flatfile_item_repository.c"),
+        rel("divine_trade.c"), rel("divine_trade_command.c"), rel("divine_trade_flatfile.c"), rel("flatfile_cargo_repository.c"), rel("flatfile_ship_repository.c"),
         rel("item_claim.c"),
         rel("dupe_log.c"),
         rel("flatfile_player_snapshot_file.c"),
@@ -40,9 +41,9 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
         rel("auction_command.c"),
         rel("item_transfer_command.c"),
         rel("shop_trade_command.c"),
-        rel("epic_command.c"),
+        rel("epic_command.c"), rel("zone_touch_command.c"),
         rel("currency_command.c"),
-        rel("combat_outcome_command.c"),
+        rel("combat_outcome_command.c"), rel("artifact_guild_command.c"),
         rel("boon_reward_command.c"),
         rel("boon_shop_command.c"),
         rel("critical_command.c"),
@@ -51,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
     ]
     compile_result = subprocess.run(
         [
-            "g++",
+            "g++", str(HARNESS_STUBS),
             "-std=c++20",
             "-Wall",
             "-Wextra",

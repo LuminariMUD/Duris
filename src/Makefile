@@ -199,8 +199,15 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/divine_boon_repository.o \
 				 economy/divine_boon_runtime.o \
 				 economy/divine_boon_activity.o \
+				 economy/divine_boon_commands.o \
 				 economy/divine_boon_selection.o \
 				 economy/divine_boon_delivery.o \
+				 economy/divine_trade.o \
+				 economy/divine_trade_command.o \
+				 economy/divine_trade_repository.o \
+				 economy/divine_trade_flatfile.o \
+                 economy/divine_trade_runtime.o \
+				 flatfile/flatfile_cargo_repository.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \
          economy/cardgames.o \
@@ -315,6 +322,7 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_item_repository.o \
 				 flatfile/flatfile_collector_repository.o \
 				 flatfile/flatfile_artifact_repository.o \
+				 flatfile/flatfile_artifact_guild_delivery.o \
 				 flatfile/flatfile_corpse_ownership.o \
 				 flatfile/flatfile_corpse_restore.o \
 				 flatfile/flatfile_association_repository.o \
@@ -369,6 +377,7 @@ OBJS =  $(SHIP_OBJS) \
 				 guild/artifact_guild_command.o \
 				 guild/artifact_guild_repository.o \
 				 guild/artifact_guild_state.o \
+				 guild/artifact_guild_delivery.o \
 				 guild/artifact_guild_transaction.o \
 				 economy/boon_reward_command.o \
 				 economy/boon_reward_repository.o \
