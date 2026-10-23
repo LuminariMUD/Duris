@@ -36,6 +36,7 @@ def build_campaign_helper(output):
              'src/flatfile/flatfile_player_snapshot_file.c','src/player/player_snapshot_codec.c',
              'src/flatfile/flatfile_player_domain_repository.c', 'src/economy/divine_boon_delivery.c',
              'src/combat/combat_outcome_command.c', 'src/world/zone_touch_command.c',
+             'src/guild/artifact_guild_command.c',
              'src/flatfile/flatfile_authority_transaction.c','src/flatfile/flatfile_store.c',
              'src/persistence/critical_command.c']
     subprocess.run(['g++','-std=c++20','-g','-Og','-ffunction-sections','-fdata-sections',
