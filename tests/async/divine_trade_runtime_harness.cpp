@@ -374,14 +374,6 @@ affected_type *affect_to_char(P_char ch, affected_type *af)
 	ch->affected = copy;
 	return copy;
 }
-const char *cargo_type_name(int)
-{
-	return "cargo";
-}
-const char *contra_type_name(int)
-{
-	return "contraband";
-}
 int jettison_crates(P_ship, int, int, int)
 {
 	return TRUE;
