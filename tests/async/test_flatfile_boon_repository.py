@@ -15,6 +15,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-boon-") as temporary:
         "tests/async/flatfile_boon_repository_harness.cpp",
         rel("flatfile_boon_repository.c"),
         rel("flatfile_player_domain_repository.c"),
+        rel("flatfile_player_snapshot_file.c"),
+        rel("player_snapshot_codec.c"),
         rel("flatfile_authority_transaction.c"),
         rel("flatfile_store.c"),
         rel("boon_reward_command.c"),

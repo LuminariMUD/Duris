@@ -8,6 +8,7 @@
 #include <cstring>
 #include <stdlib.h>
 #include <vector>
+#include <type_traits>
 using namespace std;
 
 #include "core/prototypes.h"
@@ -18,6 +19,7 @@ using namespace std;
 #include "core/utility.h"
 #include "core/utils.h"
 #include "economy/boon.h"
+#include "economy/divine_boon_math.h"
 #include "combat/damage.h"
 #include "core/defines.h"
 #include "world/epic.h"
@@ -325,7 +327,7 @@ bool nexus_stone_info(int stone_id, NexusStoneInfo *info)
 #endif
 }
 
-int check_nexus_bonus(P_char ch, int amount, int type)
+template <typename Amount> static Amount nexus_bonus_amount(P_char ch, Amount amount, int type)
 {
 	char buff[MAX_STRING_LENGTH], buff2[MAX_STRING_LENGTH];
 
@@ -362,7 +364,8 @@ int check_nexus_bonus(P_char ch, int amount, int type)
 		return amount;
 	align = found->align;
 #endif
-	int racewar, newamnt;
+	int racewar;
+	Amount newamnt;
 
 	if (align == STONE_ALIGN_GOOD)
 		racewar = RACEWAR_GOOD;
@@ -375,8 +378,12 @@ int check_nexus_bonus(P_char ch, int amount, int type)
 
 	if (GET_RACEWAR(ch) == racewar)
 	{
+		const float configured = get_property(buff, 0.100);
+		double multiplier = configured;
+		if constexpr (std::is_same_v<Amount, double>)
+			multiplier = divine_boon_modifier(configured);
 		newamnt = MAX(nexus_bonus_data[type].minval,
-			      (int)((double)amount * (double)get_property(buff, 0.100)));
+			      static_cast<Amount>((double)amount * multiplier));
 
 		switch (type)
 		{
@@ -387,19 +394,30 @@ int check_nexus_bonus(P_char ch, int amount, int type)
 		case NEXUS_BONUS_CARGO:
 			snprintf(buff2, MAX_STRING_LENGTH,
 				 "&+yEnlil&n grants you an additional %s&n.\r\n",
-				 coin_stringv(newamnt));
+				 coin_stringv(static_cast<int>(newamnt)));
 			send_to_char(buff2, ch);
 			break;
 		default:
 			break;
 		}
 
-		return (int)(amount + newamnt);
+		return amount + newamnt;
 	}
 	else
 	{
 		return amount;
 	}
+}
+
+int check_nexus_bonus(P_char ch, int amount, int type)
+{
+	return nexus_bonus_amount(ch, amount, type);
+}
+
+// Prepared Divine EXP/epic awards retain fractions until the final payout.
+double check_nexus_bonus_precise(P_char ch, double amount, int type)
+{
+	return nexus_bonus_amount(ch, amount, type);
 }
 
 int update_nexus_stone_align(int stone_id, int align)

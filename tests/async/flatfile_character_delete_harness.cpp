@@ -176,14 +176,13 @@ static void establish(const fs::path &root, bool establish_boons, bool player_lo
 			std::vector<flatfile_locker_record>{ player_locker } :
 			std::vector<flatfile_locker_record>{ guild_locker, player_locker,
 							     account_locker };
-	const std::vector<flatfile_locker_access_record> locker_access =
-		player_locker_only ? std::vector<flatfile_locker_access_record>{ { "player.locker",
-										   "guest", 1 } } :
-				     std::vector<flatfile_locker_access_record>{
-					     { "player.locker", "guest", 1 },
-					     { "guild.7.locker", "player", 1 },
-					     { "account.account.1.locker", "visitor", 1 }
-				     };
+	std::vector<flatfile_locker_access_record> locker_access = { { "player.locker", "guest",
+								       1 } };
+	if (!player_locker_only)
+	{
+		locker_access.push_back({ "guild.7.locker", "player", 1 });
+		locker_access.push_back({ "account.account.1.locker", "visitor", 1 });
+	}
 	require(flatfile_locker_establish(root.string(), lockers, locker_access, &error) ==
 			flatfile_locker_result::ok,
 		"locker baseline failed: " + error);

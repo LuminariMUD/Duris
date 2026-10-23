@@ -21,6 +21,7 @@
 #include "combat/chaos_config.h"
 #include <string.h>
 #include "world/epic.h"
+#include "world/experience_share.h"
 #include "ships/ships.h"
 #include "magic/spells.h"
 #include "world/vnum.mob.h"
@@ -774,8 +775,12 @@ void update_addicted_to_blood(P_char ch, P_char victim)
 						allies++;
 					}
 				}
-				gain_exp(ch, victim, GET_EXP(victim) * bonus / (allies * 100),
-					 EXP_KILL_BONUS);
+				gain_exp_combat_share(ch, victim,
+						      static_cast<double>(GET_EXP(victim)) * bonus /
+							      (allies * 100),
+						      static_cast<int64_t>(GET_EXP(victim)) *
+							      bonus / (allies * 100),
+						      EXP_KILL_BONUS);
 			}
 			// Cap at 45 kills and 20% bonus exp.
 			if (af->modifier < 45)

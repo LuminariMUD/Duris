@@ -64,6 +64,7 @@
 #include "world/weather.h"
 #include "net/ws_handlers.h"
 #include "core/safe_format.h"
+#include "classes/paladins.h"
 
 /*
  * external variables
@@ -5674,13 +5675,19 @@ void roll_basic_attributes(P_char ch, int type)
 		faces = 10;
 		base = 40;
 	}
-	// Normal rolls - 80 to 95.
+	// Default rolls - 87 to 90 (also used by staff rerolls).
 	else if (type == ROLL_NORMAL)
 	{
-		// Used to be 5 8 53, then 3 6 77.
 		rolls = 1;
 		faces = 4;
 		base = 86;
+	}
+	// Advanced creation rolls - 80 to 95, with interactive rerolling.
+	else if (type == ROLL_ADVANCED)
+	{
+		rolls = 3;
+		faces = 6;
+		base = 77;
 	}
 	// Normal mob rolls - 68 - 98.
 	else if (type == ROLL_MOB_NORMAL)
@@ -10085,8 +10092,6 @@ void do_unspec(P_char ch, char *argument, int /*cmd*/)
 	if (IS_NPC(victim))
 		return;
 
-	update_skills(ch);
-
 	if (!IS_SPECIALIZED(victim))
 	{
 		victim->only.pc->time_unspecced = 0;
@@ -10094,6 +10099,9 @@ void do_unspec(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 	victim->player.spec = 0;
+	if (GET_CLASS(victim, CLASS_CLERIC))
+		purge_linked_auras(victim);
+	update_skills(victim);
 	send_to_char("You are no longer specialized.\n", victim);
 	send_to_char("They are no longer specialized.\n", ch);
 }
@@ -10140,17 +10148,16 @@ void tranquilize(P_char ch, P_char victim)
 			return;
 	}
 
+	for (P_char tch = world[victim->in_room].people; tch; tch = tch->next_in_room)
+	{
+		if (GET_OPPONENT(tch) == victim)
+		{
+			stop_fighting(tch);
+			clearMemory(tch);
+		}
+	}
 	if (GET_OPPONENT(victim))
 	{
-		for (P_char tch = world[victim->in_room].people; tch; tch = tch->next_in_room)
-		{
-			if (GET_OPPONENT(tch) && (GET_OPPONENT(tch) == victim))
-			{
-				stop_fighting(tch);
-				clearMemory(tch);
-			}
-		}
-
 		stop_fighting(victim);
 		clearMemory(victim);
 	}

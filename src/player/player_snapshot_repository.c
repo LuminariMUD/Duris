@@ -228,8 +228,9 @@ const char *status_column(player_status_field field)
 		"aggressive",
 		"highest_level",
 	};
-	static constexpr std::array<const char *, 3> tail = { "screen_length", "last_ip",
-							      "learned_flight_stops" };
+	static constexpr std::array<const char *, 4> tail = { "screen_length", "last_ip",
+							      "learned_flight_stops",
+							      "divine_boon_delivery_seq" };
 	const size_t index = static_cast<size_t>(field);
 	if (index < columns.size())
 		return columns[index];
@@ -825,10 +826,10 @@ query_result apply_trophies(MYSQL *connection, const player_snapshot &snapshot)
 }
 
 query_result apply_components(MYSQL *connection, const player_snapshot &snapshot,
-			      std::vector<claimed_graph> *claims)
+			      std::vector<claimed_graph> *claims, bool status_current)
 {
 	query_result result = { true, 0 };
-	if (snapshot.components & PLAYER_COMPONENT_STATUS)
+	if ((snapshot.components & PLAYER_COMPONENT_STATUS) && status_current)
 		result = apply_status(connection, snapshot);
 	if (result.ok)
 		result = apply_replacement_rows(connection, snapshot);
@@ -850,19 +851,32 @@ query_result apply_components(MYSQL *connection, const player_snapshot &snapshot
 
 // A character with no player_data row yet gets one (*created). The rest of the save fills
 // it in.
-query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot, bool *created)
+query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot, bool *created,
+			       player_revision_t *stored_revision, uint64_t *delivered_sequence)
 {
 	*created = false;
-	query_result result =
-		execute(connection, "SELECT save_revision FROM player_data WHERE pid=" +
-					    std::to_string(snapshot.pid) + " FOR UPDATE");
+	*stored_revision = 0;
+	*delivered_sequence = 0;
+	query_result result = execute(
+		connection,
+		"SELECT save_revision,divine_boon_delivery_seq FROM player_data WHERE pid=" +
+			std::to_string(snapshot.pid) + " FOR UPDATE");
 	if (!result.ok)
 		return result;
 	MYSQL_RES *rows = mysql_store_result(connection);
 	if (!rows)
 		return { false, mysql_errno(connection) };
-	const bool present = mysql_fetch_row(rows) != nullptr;
+	MYSQL_ROW row = mysql_fetch_row(rows);
+	const bool present = row != nullptr;
+	if (present && row[0] && row[1])
+	{
+		*stored_revision = strtoull(row[0], nullptr, 10);
+		*delivered_sequence = strtoull(row[1], nullptr, 10);
+	}
+	const bool valid = !present || (row[0] && row[1]);
 	mysql_free_result(rows);
+	if (!valid)
+		return { false, EINVAL };
 	if (present)
 		return { true, 0 };
 	const auto name = std::find_if(snapshot.status_strings.begin(),
@@ -906,15 +920,35 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 		return { player_save_apply_outcome::terminal_failure, 0, ENOTSUP };
+	uint64_t delivered_sequence = 0;
+	if (!player_snapshot_divine_delivery_sequence(snapshot, &delivered_sequence))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 
 	query_result query = execute(connection, "START TRANSACTION");
 	if (!query.ok)
 		return failure(query.error_code);
 	std::vector<claimed_graph> claims;
 	bool created = false;
-	query = ensure_player_row(connection, snapshot, &created);
+	player_revision_t stored_revision = 0;
+	uint64_t stored_delivery_sequence = 0;
+	query = ensure_player_row(connection, snapshot, &created, &stored_revision,
+				  &stored_delivery_sequence);
+	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
+	    delivered_sequence > stored_delivery_sequence &&
+	    std::none_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
+			 [](const auto &field)
+			 { return field.field == player_status_field::epics; }))
+		query = { false, EINVAL };
+	const bool status_current = delivered_sequence >= stored_delivery_sequence;
+	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
+	{
+		const auto rolled_back = execute(connection, "ROLLBACK");
+		if (!rolled_back.ok)
+			return failure(rolled_back.error_code);
+		return { player_save_apply_outcome::stale_revision, stored_revision, 0 };
+	}
 	if (query.ok)
-		query = apply_components(connection, snapshot, &claims);
+		query = apply_components(connection, snapshot, &claims, status_current);
 	if (query.ok && created)
 		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)

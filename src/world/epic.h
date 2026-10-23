@@ -92,8 +92,11 @@ bool gain_epic(P_char, int type, int data, int amount);
 // Epic skills are learned from epic.skills.minLevel (default 30) upward.
 int epic_skills_min_level();
 void group_gain_epic(P_char, int type, int data, int amount);
-void epic_frag(P_char, int victim_pid, int amount);
 int epic_calculate_pvp_award(P_char ch, int amount);
+struct combat_outcome_participant;
+bool epic_prepare_pvp_award(P_char ch, P_char victim, double base, int ordinary_base,
+			    int spill_blood, int64_t prepared_at,
+			    combat_outcome_participant *prepared);
 void epic_publish_pvp_award(P_char ch, int amount);
 const char *epic_prestige(P_char);
 void init_guild_frags();

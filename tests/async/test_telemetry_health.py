@@ -23,6 +23,7 @@ def verify_wiring() -> None:
     assert "telemetry/telemetry_health.o" in makefile
     for field in (
         "last_commit_monotonic_us", "last_commit_age_ms", "last_failure_monotonic_us",
+        "last_consumption_monotonic_us", "last_consumption_age_ms",
         "failure class=%s error=%u", "record_kinds=%s", "queue depth=%llu capacity=%u",
         "retry inflight=%u repository=%u", "advisory_lock=%s", "coverage gaps=%llu",
     ):

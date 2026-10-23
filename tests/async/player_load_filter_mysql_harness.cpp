@@ -9,6 +9,7 @@
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_repository.h"
 #include "sql/sql_pool.h"
+#include "combat/combat_outcome_command.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -391,6 +392,113 @@ int main()
 				player_save_apply_outcome::applied &&
 			progress(11) == std::pair(uint64_t{ 7 }, int64_t{ 54321 }),
 		"discovery checkpoint retry failed");
+
+	player_snapshot delivery = discovery;
+	delivery.revision++;
+	delivery.status_integers = { { player_status_field::epics, 450, 0, false },
+				     { player_status_field::divine_boon_delivery_seq, 0, 3,
+				       true } };
+	require(player_snapshot_repository_apply(test_connection, delivery).outcome ==
+			player_save_apply_outcome::applied,
+		"Divine delivery checkpoint failed");
+	const auto delivered = [&]()
+	{
+		const auto result = load(11, 499);
+		require(result.outcome == player_load_outcome::applied &&
+				result.snapshot.status_integers.size() ==
+					PLAYER_STATUS_INTEGER_COUNT,
+			"Divine checkpoint status could not reload");
+		for (const auto &field : result.snapshot.status_integers)
+			if (field.field == player_status_field::divine_boon_delivery_seq)
+			{
+				require(field.is_unsigned, "Divine marker loaded as signed");
+				return std::pair(result.domains.epics, field.unsigned_value);
+			}
+		std::abort();
+	};
+	require(delivered() == std::pair(int64_t{ 450 }, uint64_t{ 3 }),
+		"Divine marker and epic balance did not reload together");
+	execute("CREATE TRIGGER reject_divine_save BEFORE UPDATE ON player_data FOR EACH ROW "
+		"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic delivery failure'");
+	delivery.revision++;
+	delivery.status_integers[0].signed_value = 500;
+	delivery.status_integers[1].unsigned_value = 4;
+	require(player_snapshot_repository_apply(test_connection, delivery).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			delivered() == std::pair(int64_t{ 450 }, uint64_t{ 3 }),
+		"failed delivery checkpoint changed the balance or applied marker");
+	execute("DROP TRIGGER reject_divine_save");
+
+	// Read an actual prepared parent result through the ordinary login query.
+	combat_outcome_result pending = {};
+	pending.event_id = 1;
+	pending.victim_pid = 12;
+	pending.prepared_at = 150;
+	pending.participant_count = 2;
+	pending.participants[0].pid = 11;
+	pending.participants[0].epic_revision = 4;
+	pending.participants[0].epic_delivery_previous = 3;
+	pending.participants[0].epic_delivery_delta = 30;
+	pending.participants[0].epic_boon_id = 7;
+	pending.participants[0].epic_base = 20;
+	pending.participants[0].epic_delivery_flags = COMBAT_PARTICIPANT_DIVINE_EPIC;
+	pending.participants[1].pid = 12;
+	std::array<uint8_t, COMBAT_OUTCOME_RESULT_BYTES> pending_bytes;
+	require(combat_outcome_command_encode_result(pending, &pending_bytes),
+		"encode prepared parent");
+	std::string parent_hex;
+	static const char digits[] = "0123456789abcdef";
+	for (uint8_t byte : pending_bytes)
+	{
+		parent_hex += digits[byte >> 4];
+		parent_hex += digits[byte & 15];
+	}
+	const std::string operation = "0123456789abcdef0123456789abcdef";
+	execute("INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,command_type,"
+		"schema_version,payload_version,status,result_code,durable_revision,result_payload,committed_at) "
+		"VALUES(UNHEX('" +
+		operation + "'),REPEAT(CHAR(0),32),REPEAT(CHAR(0),32),8,1,5,1,0,4,UNHEX('" +
+		parent_hex + "'),CURRENT_TIMESTAMP(6))");
+	execute("INSERT INTO pkill_event(stamp,room_vnum,room_name) VALUES(NOW(),1,'Divine fixture')");
+	const auto event = mysql_insert_id(test_connection);
+	execute("INSERT INTO combat_outcome(operation_id,pkill_event_id,victim_pid,room_vnum,participant_count,killer_allies) "
+		"VALUES(UNHEX('" +
+		operation + "')," + std::to_string(event) + ",12,1,2,1)");
+	execute("INSERT INTO combat_outcome_participant(operation_id,participant_index,pid,role,flags,frag_delta,"
+		"epic_delta,wallet_delta_copper,frag_after,frag_revision,epic_revision,wallet_revision,bank_revision) "
+		"VALUES(UNHEX('" +
+		operation +
+		"'),0,11,1,9,100,30,0,0,0,4,0,0),"
+		"(UNHEX('" +
+		operation + "'),1,12,3,1,0,0,0,0,0,0,0,0)");
+	const auto owed = load(11, 501);
+	require(owed.outcome == player_load_outcome::applied && owed.domains.epics == 450 &&
+			owed.divine_epic_deliveries.size() == 1 &&
+			owed.divine_epic_deliveries[0].previous == 3 &&
+			owed.divine_epic_deliveries[0].sequence == 4 &&
+			owed.divine_epic_deliveries[0].amount == 30,
+		"login did not retain the unpaid prepared award");
+	execute("UPDATE critical_operation_inbox SET result_payload=CONCAT(CHAR(0),SUBSTRING(result_payload,2)) "
+		"WHERE operation_id=UNHEX('" +
+		operation + "')");
+	const auto corrupt_parent = load(11, 502);
+	require(corrupt_parent.outcome == player_load_outcome::component_failure &&
+			std::string(corrupt_parent.failed_component) == "divine_epic_delivery",
+		"login accepted a corrupt prepared parent");
+	execute("UPDATE critical_operation_inbox SET result_payload=UNHEX('" + parent_hex +
+		"') "
+		"WHERE operation_id=UNHEX('" +
+		operation + "')");
+	delivery.revision++;
+	delivery.status_integers[0].signed_value = 480;
+	require(player_snapshot_repository_apply(test_connection, delivery).outcome ==
+			player_save_apply_outcome::applied,
+		"prepared payout checkpoint failed");
+	const auto paid_parent = load(11, 503);
+	require(paid_parent.outcome == player_load_outcome::applied &&
+			paid_parent.domains.epics == 480 &&
+			paid_parent.divine_epic_deliveries.empty(),
+		"paid parent was offered again after checkpoint");
 
 	mysql_close(test_connection);
 	mysql_library_end();

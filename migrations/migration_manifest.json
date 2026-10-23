@@ -638,6 +638,46 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "40177ee8fa931b8f06150dd96194e680517f7567192f22bb68c78d285735d2b6",
       "verify_checksum": "bae36e32b7c3deef76d308c34a5ca1f4f5a2ed9f91f5e3d1eafe86f98882f35f"
+    },
+    {
+      "id": "0047_artifact_rejected_identities",
+      "sequence": 47,
+      "description": "Persist rejected artifact UIDs with automatic canonical recovery",
+      "apply": "immutable/0047_artifact_rejected_identities.sql",
+      "verify": "immutable/0047_artifact_rejected_identities.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "5692e9ddcaef423f6b1d487005f0fdafc50b6bccbd85c66fc5ce8875c218bb4b",
+      "verify_checksum": "c88ba4baed7333bfa6f39a5df551bae5b08d267a7d8a929a659b09125004b4a8"
+    },
+    {
+      "id": "0048_divine_boon_state",
+      "sequence": 48,
+      "description": "Persist revision-checked Divine Boon rotation snapshots",
+      "apply": "immutable/0048_divine_boon_state.sql",
+      "verify": "immutable/0048_divine_boon_state.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "7c84955a35a6f34e4618773b2f08c2470219a54a982b0bf3e5a161ece78d0a68",
+      "verify_checksum": "beb92063f46b04089b21520f242334d15dd127d35ef381030d40a2da17822234"
+    },
+    {
+      "id": "0049_divine_boon_delivery",
+      "sequence": 49,
+      "description": "Checkpoint prepared Divine reward delivery with recipient status",
+      "apply": "immutable/0049_divine_boon_delivery.sql",
+      "verify": "immutable/0049_divine_boon_delivery.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "e4e0268f5f7ab27b6872f87d44453c862116829b80fdc247191c968a207a41b3",
+      "verify_checksum": "d9ace2841a6cc5b9fb2ef28a8a9fa46467cf99f63be71fdfa96bb4ff08bc7f15"
+    },
+    {
+      "id": "0050_critical_outbox_expectations",
+      "sequence": 50,
+      "description": "Record nullable exact outbox event expectations with canonical results",
+      "apply": "immutable/0050_critical_outbox_expectations.sql",
+      "verify": "immutable/0050_critical_outbox_expectations.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "fc3590231a567095458ff25bf19635a479eac3f2b63f0eb360900c5279cf423a",
+      "verify_checksum": "0e46e28c7f4bb57110b03dbe6c338d9a48d9169ea0b595c9971f7620e29fff94"
     }
   ],
   "engine_verifiers": [

@@ -198,14 +198,28 @@ template <typename Clock> std::uint64_t elapsed_ns(const Clock &started, const C
 }
 
 std::uint64_t percentile(std::array<std::uint64_t, MAX_SAMPLES> &samples, std::size_t count,
-			 std::uint32_t percentile_value)
+			 std::uint32_t per_mille)
 {
 	if (count == 0U)
 		return 0U;
 	std::sort(samples.begin(), samples.begin() + static_cast<std::ptrdiff_t>(count));
-	const std::size_t rank = (count * percentile_value + 99U) / 100U;
+	const std::size_t rank = (count * per_mille + 999U) / 1000U;
 	const std::size_t index = rank == 0U ? 0U : rank - 1U;
 	return samples[index < count ? index : count - 1U];
+}
+
+void verify_percentiles()
+{
+	std::array<std::uint64_t, MAX_SAMPLES> samples{};
+	for (std::size_t index = 0U; index < 2'000U; ++index)
+		samples[index] = 2'000U - index;
+	if (percentile(samples, 2'000U, 500U) != 1'000U ||
+	    percentile(samples, 2'000U, 950U) != 1'900U ||
+	    percentile(samples, 2'000U, 990U) != 1'980U ||
+	    percentile(samples, 2'000U, 999U) != 1'998U ||
+	    percentile(samples, 1'001U, 999U) != 1'000U || percentile(samples, 0U, 999U) != 0U ||
+	    percentile(samples, 1U, 999U) != 1U)
+		fail("nearest-rank percentile regression");
 }
 
 benchmark_result run(mode selected, std::uint32_t records, std::uint32_t repetitions)
@@ -318,12 +332,12 @@ benchmark_result run(mode selected, std::uint32_t records, std::uint32_t repetit
 		result.cpu_ns = static_cast<std::uint64_t>(
 			(static_cast<long double>(cpu_finished - cpu_started) * 1'000'000'000.0L) /
 			static_cast<long double>(CLOCKS_PER_SEC));
-	result.p50_ns = percentile(samples, sample_count, 50U);
-	result.p95_ns = percentile(samples, sample_count, 95U);
-	result.p99_ns = percentile(samples, sample_count, 99U);
+	result.p50_ns = percentile(samples, sample_count, 500U);
+	result.p95_ns = percentile(samples, sample_count, 950U);
+	result.p99_ns = percentile(samples, sample_count, 990U);
 	result.p999_ns = percentile(samples, sample_count, 999U);
-	result.worker_p95_ns = percentile(worker_samples, worker_count, 95U);
-	result.worker_p99_ns = percentile(worker_samples, worker_count, 99U);
+	result.worker_p95_ns = percentile(worker_samples, worker_count, 950U);
+	result.worker_p99_ns = percentile(worker_samples, worker_count, 990U);
 	result.worker_p999_ns = percentile(worker_samples, worker_count, 999U);
 	return result;
 }
@@ -391,6 +405,7 @@ telemetry_health_snapshot telemetry_repository_health_copy(void)
 
 int main(int argc, char **argv)
 {
+	verify_percentiles();
 	if (argc != 4)
 		fail("usage: <off|capture_only|capture_write> <records> <repetitions>");
 	const mode selected = parse_mode(argv[1]);

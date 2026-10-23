@@ -259,14 +259,14 @@ enum class telemetry_gap_reason : std::uint8_t
 };
 
 /*
- * SQL is the only initial sink.  flatfile_disabled is an intentional status:
- * flat-file authority does not write a hidden telemetry file and must report
- * telemetry as disabled/unsupported rather than as healthy zero activity.
+ * PostHog is independent of gameplay persistence. The two legacy values stay
+ * stable for historical records and repository regression fixtures.
  */
 enum class telemetry_storage_backend : std::uint8_t
 {
 	sql = 1,
 	flatfile_disabled = 2,
+	posthog = 3,
 };
 
 /*
@@ -341,7 +341,7 @@ enum class telemetry_schema_check : std::uint8_t
 	engine = 5, // a table is not InnoDB
 };
 
-/* What the worker's outage ledger refused at startup, with the errno in
+/* What the worker's setup or outage/quota storage refused, with the errno in
  * last_error_code. */
 enum class telemetry_storage_check : std::uint8_t
 {
@@ -352,6 +352,8 @@ enum class telemetry_storage_check : std::uint8_t
 	owner = 3, // another process holds outages.owner
 	ledger = 4, // the ledger or a whole pending frame does not decode
 	io = 5, // open, read, write, fsync or rename failed; errno says which
+	configuration = 6, // PostHog credentials, scope or sender configuration
+	quota = 7, // missing or mismatched durable quota binding
 };
 
 enum class telemetry_disabled_reason : std::uint8_t
@@ -854,6 +856,9 @@ struct telemetry_health_snapshot
 	telemetry_producer_id producer;
 	telemetry_record_sequence last_admitted_record_seq;
 	telemetry_record_sequence last_committed_record_seq;
+	/* Native consumption is not durable delivery or an HTTP acknowledgement. */
+	telemetry_record_sequence last_consumed_record_seq;
+	std::uint64_t consumed_records;
 	telemetry_record_sequence inflight_first_record_seq;
 	telemetry_record_sequence inflight_last_record_seq;
 	std::uint64_t inflight_record_kind_mask;
@@ -982,7 +987,8 @@ constexpr bool telemetry_gap_reason_is_valid(telemetry_gap_reason reason) noexce
 constexpr bool telemetry_storage_backend_is_valid(telemetry_storage_backend backend) noexcept
 {
 	return backend == telemetry_storage_backend::sql ||
-	       backend == telemetry_storage_backend::flatfile_disabled;
+	       backend == telemetry_storage_backend::flatfile_disabled ||
+	       backend == telemetry_storage_backend::posthog;
 }
 
 constexpr bool telemetry_progression_kind_is_valid(telemetry_progression_kind kind) noexcept

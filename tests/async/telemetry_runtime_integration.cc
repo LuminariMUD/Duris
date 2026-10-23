@@ -1,6 +1,7 @@
 #include "telemetry/telemetry_config_private.h"
 #include "telemetry/telemetry_config_reload.h"
 #include "telemetry/telemetry_runtime.h"
+#include "telemetry/telemetry_posthog.h"
 #include "telemetry/telemetry_transport_private.h"
 #include "core/structs.h"
 
@@ -14,6 +15,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <vector>
 #include "telemetry_test_runtime.h"
 #include <unistd.h>
 
@@ -149,6 +151,7 @@ struct fake_repository
 	blocked_callback apply_callback;
 	std::atomic<telemetry_monotonic_usec> transport_now{ 0U };
 	telemetry_dimensions dimensions{};
+	std::vector<telemetry_record> records;
 };
 
 struct reload_property_values
@@ -264,6 +267,7 @@ telemetry_apply_batch_result fake_apply(void *context, const telemetry_record *r
 	}
 	for (std::size_t index = 0U; index < count; ++index)
 	{
+		fake->records.push_back(records[index]);
 		result.results[index].key = records[index].header.key;
 		result.results[index].outcome = telemetry_apply_outcome::applied;
 		if (records[index].header.kind == telemetry_record_kind::session_lifecycle)
@@ -392,6 +396,8 @@ void check_disabled_default()
 			telemetry_runtime_outcome::disabled;
 	assert(telemetry_runtime_init(options) == expected);
 	assert(telemetry_runtime_health_copy().state == telemetry_health_state::disabled);
+	assert(telemetry_runtime_health_copy().advisory_lock_state ==
+	       telemetry_advisory_lock_state::not_applicable);
 	assert(telemetry_runtime_shutdown({ 0U, 0U, {} }) == telemetry_runtime_outcome::accepted);
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
@@ -401,7 +407,9 @@ void check_environment_options()
 {
 	clear_telemetry_environment();
 	setenv("TELEMETRY_ENABLED", "TRUE", 1);
-	setenv("TELEMETRY_BACKEND", "sql", 1);
+	setenv("TELEMETRY_BACKEND", "posthog", 1);
+	setenv("ENVIRONMENT", "local", 1);
+	setenv("TELEMETRY_ENVIRONMENT_ID", "1000", 1);
 	setenv("TELEMETRY_INTERVAL_USEC", "1000000", 1);
 	setenv("TELEMETRY_CHECKPOINT_INTERVAL_USEC", "2000000", 1);
 	setenv("TELEMETRY_ACTIVE_WINDOW_USEC", "3000000", 1);
@@ -428,15 +436,29 @@ void check_environment_options()
 	assert(enabled.config.context_segments_per_minute == 8U);
 	assert(enabled.config.pulse_slot_count == 2U);
 	assert(telemetry_config_is_valid(enabled.config));
-#ifdef __NO_MYSQL__
-	assert(enabled.config.enabled == 0U);
-	assert(enabled.config.backend == telemetry_storage_backend::flatfile_disabled);
-#else
 	assert(enabled.config.enabled == 1U);
-	assert(enabled.config.backend == telemetry_storage_backend::sql);
+	assert(enabled.config.backend == telemetry_storage_backend::posthog);
 	assert(enabled.config.property_version == 0xA1B2C3D4U);
 	assert(enabled.property_capture_enabled == 1U);
-#endif
+	for (const auto *role : { "production", "staging", "local", "unknown", "" })
+		for (const auto *scope : { "", "0", "1", "2", "3", "1000", "bad" })
+		{
+			setenv("ENVIRONMENT", role, 1);
+			setenv("TELEMETRY_ENVIRONMENT_ID", scope, 1);
+			const bool valid =
+				(std::strcmp(role, "production") == 0 &&
+				 std::strcmp(scope, "1") == 0) ||
+				(std::strcmp(role, "staging") == 0 &&
+				 std::strcmp(scope, "2") == 0) ||
+				(std::strcmp(role, "local") == 0 &&
+				 (std::strcmp(scope, "3") == 0 || std::strcmp(scope, "1000") == 0));
+			assert((telemetry_runtime_options_from_environment().config.enabled !=
+				0U) == valid);
+		}
+	unsetenv("TELEMETRY_ENVIRONMENT_ID");
+	assert(telemetry_runtime_options_from_environment().config.enabled == 0U);
+	setenv("ENVIRONMENT", "local", 1);
+	setenv("TELEMETRY_ENVIRONMENT_ID", "1000", 1);
 
 	unsetenv("TELEMETRY_PROPERTY_CATALOG_FILE");
 	const telemetry_runtime_options missing_catalog =
@@ -561,6 +583,110 @@ void check_enabled_lifecycle()
 	assert(fake.applied_records != 0U);
 	assert(fake.shutdown_calls == 1U);
 	telemetry_transport_unbind_for_tests();
+}
+
+void check_zone_withdrawal_closes_combat()
+{
+	fake_repository fake{};
+	const telemetry_transport_repository_binding repository = { fake_init, fake_apply,
+								    fake_request_stop,
+								    fake_shutdown, &fake };
+	const telemetry_transport_clock_binding clock = { fake_clock, nullptr };
+	assert(telemetry_transport_bind_for_tests(&repository, &clock) ==
+	       telemetry_transport_outcome::started);
+	const auto options = make_enabled_options();
+	telemetry_test_start_runtime(options);
+	room_data rooms[2]{};
+	zone_data zones[2]{};
+	rooms[1].zone = 1U;
+	zones[0].number = 700;
+	zones[1].number = 701;
+	world = rooms;
+	zone_table = zones;
+	top_of_world = top_of_zone_table = 1;
+	char_data players[2]{};
+	pc_only_data pcs[2]{};
+	for (int index = 0; index < 2; ++index)
+	{
+		players[index].only.pc = &pcs[index];
+		pcs[index].pid = 42 + index;
+		players[index].player.level = 11U;
+		players[index].player.m_class = CLASS_WARRIOR;
+		players[index].player.race = RACE_HUMAN;
+		players[index].player.racewar = RACEWAR_GOOD;
+	}
+	// Repeated withdrawals must release combat slots as well as roster slots.
+	for (unsigned int run = 0U; run < TELEMETRY_ENCOUNTER_MAX_ACTIVE + 1U; ++run)
+	{
+		players[0].in_room = 0;
+		assert(telemetry_runtime_game_encounter_begin(&players[0],
+							      telemetry_encounter_mode::pve)
+			       .outcome == telemetry_runtime_outcome::accepted);
+		players[0].in_room = 1;
+		assert(telemetry_runtime_game_encounter_observe(&players[0]).outcome ==
+		       telemetry_runtime_outcome::accepted);
+	}
+	group_list member{ &players[1], nullptr };
+	group_list leader{ &players[0], &member };
+	players[0].group = players[1].group = &leader;
+	players[0].in_room = players[1].in_room = 0;
+	assert(telemetry_runtime_game_encounter_begin(&players[0], telemetry_encounter_mode::pve)
+		       .outcome == telemetry_runtime_outcome::accepted);
+	telemetry_monotonic_usec now = 0U;
+	telemetry_utc_usec utc = 0;
+	players[1].in_room = 1;
+	assert(telemetry_runtime_game_encounter_observe(&players[1]).outcome ==
+	       telemetry_runtime_outcome::accepted);
+	players[0].in_room = 1;
+	assert(telemetry_runtime_game_encounter_observe(&players[0]).outcome ==
+	       telemetry_runtime_outcome::accepted);
+	assert(telemetry_runtime_now(&now, &utc));
+	assert(telemetry_runtime_shutdown({ now + 5'000'000U, 1U, {} }) ==
+	       telemetry_runtime_outcome::accepted);
+	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
+	telemetry_transport_unbind_for_tests();
+	telemetry_posthog_reducer_config reducer{};
+	reducer.environment_id = options.config.environment_id;
+	reducer.season_id = options.config.season_id;
+	reducer.producer = options.producer;
+	reducer.identity_key[0] = 1U;
+	assert(telemetry_posthog_reducer_init(reducer));
+	unsigned int runs = 0U, member_summaries = 0U;
+	for (const auto &record : fake.records)
+	{
+		if (record.header.kind == telemetry_record_kind::combat_summary &&
+		    record.payload.combat_summary.owner_subject_id == 43U)
+		{
+			const auto &combat = record.payload.combat_summary;
+			assert(combat.participant_count == 2U);
+			assert(combat.outcome == telemetry_encounter_outcome::withdrawal);
+			++member_summaries;
+		}
+		assert(telemetry_posthog_consume(record, now, utc));
+		assert(telemetry_posthog_seal_through(now, utc));
+		const auto count = telemetry_posthog_reducer_health_copy().output_events;
+		for (std::size_t index = 0U; index < count; ++index)
+		{
+			const auto json = telemetry_posthog_output_peek(index).json;
+			if (json.find("\"row_type\":\"run\"") != std::string_view::npos)
+			{
+				assert(json.find("\"native_terminal_complete\":true") !=
+				       std::string_view::npos);
+				++runs;
+			}
+		}
+		if (count != 0U)
+			assert(telemetry_posthog_output_retire(
+				count, telemetry_posthog_output_disposition::http_acknowledged));
+	}
+	assert(runs == TELEMETRY_ENCOUNTER_MAX_ACTIVE + 2U && member_summaries == 1U);
+	const auto health = telemetry_posthog_reducer_health_copy();
+	assert(health.runs == 0U && health.incomplete_runs == 0U &&
+	       health.terminal_conflicts == 0U);
+	telemetry_posthog_reducer_reset();
+	world = nullptr;
+	zone_table = nullptr;
+	top_of_world = top_of_zone_table = -1;
 }
 
 void check_game_context_and_copyover_handoff()
@@ -1120,6 +1246,7 @@ int main()
 	check_transport_shutdown_without_writer();
 	check_transport_db_down_shutdown();
 	check_enabled_lifecycle();
+	check_zone_withdrawal_closes_combat();
 	check_game_context_and_copyover_handoff();
 	check_copyover_durability_barrier(false, false, false);
 	check_copyover_durability_barrier(true, false, false);

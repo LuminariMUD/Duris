@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_materialize.h"
+#include "economy/divine_boon_delivery.h"
 #include "net/output_preference_codec.h"
 
 #include "item/item_ownership_runtime.h"
@@ -55,7 +56,7 @@ bool valid_snapshot(const player_load_result &result)
 	     result.snapshot.components != PLAYER_LOAD_SESSION02_COMPONENTS &&
 	     result.snapshot.components != PLAYER_LOAD_SESSION03_COMPONENTS) ||
 	    result.snapshot.status_strings.size() != 8 ||
-	    result.snapshot.status_integers.size() != 64)
+	    result.snapshot.status_integers.size() != PLAYER_STATUS_INTEGER_COUNT)
 		return false;
 	std::unordered_set<unsigned int> integers;
 	std::unordered_set<unsigned int> strings;
@@ -64,8 +65,9 @@ bool valid_snapshot(const player_load_result &result)
 		return false;
 	for (const player_snapshot_integer &entry : result.snapshot.status_integers)
 		if (entry.field < player_status_field::class_primary ||
-		    entry.field > player_status_field::learned_flight_stops ||
-		    (entry.field == player_status_field::learned_flight_stops &&
+		    entry.field > player_status_field::divine_boon_delivery_seq ||
+		    ((entry.field == player_status_field::learned_flight_stops ||
+		      entry.field == player_status_field::divine_boon_delivery_seq) &&
 		     !entry.is_unsigned) ||
 		    !integers.insert(static_cast<unsigned int>(entry.field)).second)
 			return false;
@@ -383,6 +385,9 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		break;
 	case player_status_field::learned_flight_stops:
 		ch->only.pc->learned_flight_stops = entry.unsigned_value;
+		break;
+	case player_status_field::divine_boon_delivery_seq:
+		ch->only.pc->divine_boon_delivery_seq = entry.unsigned_value;
 		break;
 	case player_status_field::copper:
 	case player_status_field::silver:
@@ -817,5 +822,7 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 	affect_total(ch, FALSE);
 	GET_MANA(ch) = BOUNDED(1, loaded_mana, GET_MAX_MANA(ch));
 	GET_VITALITY(ch) = BOUNDED(1, loaded_vitality, GET_MAX_VITALITY(ch));
+	if (!divine_boon_delivery_recover(ch, result.divine_epic_deliveries))
+		return refuse("divine_epic_delivery", "unresolved_receipt_chain");
 	return true;
 }

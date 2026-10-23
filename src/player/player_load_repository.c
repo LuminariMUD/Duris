@@ -17,6 +17,7 @@
 #include "persistence/persistence_observability.h"
 #include "persistence/dupe_log.h"
 #include "player/player_snapshot_codec.h"
+#include "combat/combat_outcome_command.h"
 #include "sql/item_extra_descr_codec.h"
 #include "world/vnum.obj.h"
 #include "core/structs.h"
@@ -49,7 +50,7 @@ struct status_column
 	bool unsigned_value;
 };
 
-constexpr std::array<status_column, 64> STATUS_COLUMNS = { {
+constexpr std::array<status_column, PLAYER_STATUS_INTEGER_COUNT> STATUS_COLUMNS = { {
 	{ player_status_field::class_primary, "m_class", false, false },
 	{ player_status_field::class_secondary, "secondary_class", false, false },
 	{ player_status_field::specialization, "spec", false, false },
@@ -114,6 +115,7 @@ constexpr std::array<status_column, 64> STATUS_COLUMNS = { {
 	{ player_status_field::screen_length, "screen_length", false, false },
 	{ player_status_field::last_ip, "last_ip", false, true },
 	{ player_status_field::learned_flight_stops, "learned_flight_stops", false, true },
+	{ player_status_field::divine_boon_delivery_seq, "divine_boon_delivery_seq", false, true },
 } };
 
 constexpr std::array<const char *, 8> STATUS_STRINGS = {
@@ -1499,6 +1501,66 @@ bool load_gameplay_reads(MYSQL *connection, player_load_result *result)
 	result->read_components |= PLAYER_LOAD_READ_EPIC_COMPLETIONS;
 	return true;
 }
+
+bool load_divine_epics(MYSQL *connection, player_load_result *result)
+{
+	uint64_t after = 0;
+	if (!player_snapshot_divine_delivery_sequence(result->snapshot, &after))
+		return false;
+	const std::string sql =
+		"SELECT HEX(p.operation_id),i.result_payload,OCTET_LENGTH(i.result_payload),p.epic_revision,"
+		"p.epic_delta,p.flags,i.status,i.result_code "
+		"FROM combat_outcome_participant p JOIN critical_operation_inbox i ON i.operation_id=p.operation_id "
+		"WHERE p.pid=" +
+		std::to_string(result->pid) + " AND p.epic_revision>" + std::to_string(after) +
+		" AND (p.flags & " + std::to_string(COMBAT_PARTICIPANT_DIVINE_EPIC) +
+		")<>0 "
+		"ORDER BY p.epic_revision LIMIT " +
+		std::to_string(DIVINE_EPIC_RECOVERY_MAX + 1);
+	return load_rows(
+		connection, sql, result,
+		[&](MYSQL_ROW row)
+		{
+			if (result->divine_epic_deliveries.size() == DIVINE_EPIC_RECOVERY_MAX)
+			{
+				result->outcome = player_load_outcome::limit_exceeded;
+				return false;
+			}
+			critical_operation_id operation;
+			uint64_t size = 0, sequence = 0;
+			uint64_t flags = 0, status = 0, code = 0;
+			int64_t amount = 0;
+			combat_outcome_result outcome;
+			if (!row[0] || !row[1] ||
+			    !critical_operation_id_from_hex(row[0], &operation) ||
+			    !parse_unsigned(row[2], COMBAT_OUTCOME_RESULT_BYTES, &size) ||
+			    !parse_unsigned(row[3], UINT64_MAX, &sequence) ||
+			    !parse_signed(row[4], 1, INT32_MAX, &amount) ||
+			    !parse_unsigned(row[5], UINT8_MAX, &flags) ||
+			    !parse_unsigned(row[6], 1, &status) || status != 1 ||
+			    !parse_unsigned(row[7], 0, &code) ||
+			    !combat_outcome_command_decode_result(
+				    reinterpret_cast<const uint8_t *>(row[1]), size, &outcome))
+				return false;
+			for (size_t index = 0; index < outcome.participant_count; ++index)
+			{
+				const auto &entry = outcome.participants[index];
+				if (entry.pid != static_cast<uint32_t>(result->pid))
+					continue;
+				divine_epic_delivery delivery;
+				if (!divine_epic_delivery_from_combat(operation, outcome, index,
+								      &delivery) ||
+				    delivery.sequence != sequence || delivery.amount != amount ||
+				    entry.epic_delivery_flags !=
+					    (flags & (COMBAT_PARTICIPANT_DIVINE_EPIC |
+						      COMBAT_PARTICIPANT_SPILL_BLOOD)))
+					return false;
+				result->divine_epic_deliveries.push_back(delivery);
+				return true;
+			}
+			return false;
+		});
+}
 } // namespace
 
 bool player_load_request_valid(const player_load_request &request, uint64_t now_usec)
@@ -1578,6 +1640,8 @@ player_load_result player_load_repository_execute(MYSQL *connection,
 		return fail("pets");
 	if (!load_gameplay_reads(connection, &result))
 		return fail("gameplay_reads");
+	if (!load_divine_epics(connection, &result))
+		return fail("divine_epic_delivery");
 	if (!load_bank(connection, request, &result))
 		return fail("bank");
 	result.snapshot.pid = result.pid;

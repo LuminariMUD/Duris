@@ -1788,6 +1788,7 @@ CREATE TABLE `critical_operation_inbox` (
   `result_payload` varbinary(4096) NOT NULL,
   `created_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `committed_at` timestamp(6) NULL DEFAULT NULL,
+  `expected_outbox_events` smallint unsigned DEFAULT NULL,
   PRIMARY KEY (`operation_id`),
   KEY `idx_critical_inbox_status_created` (`status`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -2143,6 +2144,7 @@ CREATE TABLE `artifact_domain_state` (
   `updated_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   `canonical_item_uid` bigint unsigned DEFAULT NULL,
   `identity_state` tinyint unsigned NOT NULL DEFAULT '0',
+  `rejected_item_uids` longtext DEFAULT NULL,
   PRIMARY KEY (`vnum`), KEY `idx_artifact_domain_owner` (`loc_type`,`location`,`vnum`),
   KEY `idx_artifact_domain_item` (`item_uid`),
   UNIQUE KEY `uq_artifact_canonical_uid` (`canonical_item_uid`),

@@ -98,6 +98,10 @@ int main()
 	assert(scalar(db, "SELECT COUNT(*) FROM session_audit_outcome WHERE pid=" +
 				  std::to_string(PID + 6) +
 				  " AND account_name IS NULL AND is_staff IS NULL") == 1);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox i JOIN session_audit_outcome s "
+		      "ON s.operation_id=i.operation_id WHERE i.expected_outbox_events IS NULL OR i.expected_outbox_events<>0") ==
+	       0);
 	mysql_close(db);
 	std::cout << "typed session audit apply and replay passed\n";
 }

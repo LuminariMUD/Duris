@@ -291,7 +291,7 @@ matter despite a lower HP input.
 | Psionicist / Pyrokinetic | Githzerai | 0.55 | Mental offense and defenses, cell adjustment/lend health, wormhole; Pyrokinetic adds flame tools. Mana use differs from memorized spell slots. |
 | Paladin / Crusader | Human | 1.00 | Weapon combat, lay hands, heal/group heal, auras; smite evil and Holy Sacrifice. Alignment and PvP/PvE conditions constrain the combined benefit. |
 | Anti-Paladin / Dark Knight | Orc | 1.00 | Weapon combat, vampiric touch/life drain, fear and auras; Blood Tithe and Hellfire. Recovery is not interchangeable with Healer's group restoration. |
-| Cleric / Healer | Human | 0.80 | Full/group healing, cleansing, warding faith and resurrection; the spec removes multiple offensive spells and kick. Healing can also refill the caster's ward. |
+| Cleric / Healer | Human | 0.80 | Full/group healing, cleansing, warding faith, resurrection and the white Improved Healing aura; ordinary Cleric offense, Kick (40%) and Negative Energy Barrier remain available. Healing can also refill the caster's ward. |
 | Monk / Red Dragon | Human | 0.70 | Martial arts, combination attack, fist of dragon, regenerate, diamond soul, evasion; equipment/body and attack conditions matter. |
 | Druid / Forest Druid | Human | 0.70 | Nature's Touch, regeneration, charm/shapechange, plane shift/moonwell; forest spells add control and summons. Terrain and form requirements limit breadth. |
 | Shaman / Spiritualist | Human | 0.70 | Mending/wellness, spirit damage, attribute buffs and wards; improved healing and resurrection tools trade specialization space with other paths. |

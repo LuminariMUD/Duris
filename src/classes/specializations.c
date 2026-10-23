@@ -26,6 +26,7 @@ using namespace std;
 #include "world/epic.h"
 #include "world/epic_transaction.h"
 #include "classes/specializations.h"
+#include "classes/paladins.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 
@@ -736,6 +737,8 @@ void do_specialize(P_char ch, char *argument, int /*cmd*/)
 				 GET_SPEC_NAME(ch->player.m_class, i));
 			ch->player.spec = i + 1;
 			update_skills(ch);
+			if (GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER))
+				remove_incoming_healing_aura(ch);
 			mobsay(teacher, buf);
 			return;
 		}
@@ -756,6 +759,8 @@ void unspecialize_committed(P_char ch, bool committed, const epic_command_result
 	}
 	send_to_char("Your old habits fall away and you feel ready to learn new ways.\n", ch);
 	ch->player.spec = 0;
+	if (GET_CLASS(ch, CLASS_CLERIC))
+		purge_linked_auras(ch);
 	update_skills(ch);
 	forget_spells(ch, -1);
 }

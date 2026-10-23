@@ -923,25 +923,8 @@ void apply_affs(P_char ch, int mode)
 		GET_C_LUK(ch) = GET_C_LUK(ch) + 10;
 	}
 
-	if (has_innate(ch, INNATE_WARDING_FAITH))
-	{
-		int multi = (int)get_property("innate.wardingFaith.multiplier", 3.0);
-		multi += (GET_CHAR_SKILL(ch, SKILL_EPIC_WARDING_FAITH) / 33);
-		if (IS_NPC(ch))
-		{
-			multi *= 2;
-		}
-		double rechargeTimeInSeconds =
-			get_property("innate.wardingFaith.rechargeTime", 120.0);
-
-		ch->points.base_ward = GET_LEVEL(ch) * multi;
-		TmpAffs.ward_reg += (int)(((double)ch->points.base_ward / rechargeTimeInSeconds) *
-					  PULSES_IN_TICK);
-	}
-	else
-	{
-		ch->points.base_ward = 0;
-	}
+	// Warding Faith is retired; external ward affects remain supported.
+	ch->points.base_ward = 0;
 
 	// sure best if we store max_hp in pfile :(
 	// now lets use diff approach - store in pfile not HP, but difference max-curr HP
@@ -963,8 +946,8 @@ void apply_affs(P_char ch, int mode)
 	GET_MANA(ch) = GET_MAX_MANA(ch) - t1;
 
 	t1 = GET_MAX_WARD(ch) - GET_WARD(ch);
-	GET_MAX_WARD(ch) = ch->points.base_ward + ((mode) ? TmpAffs.Ward : 0);
-	GET_WARD(ch) = GET_MAX_WARD(ch) - t1;
+	GET_MAX_WARD(ch) = MAX(0, ch->points.base_ward + ((mode) ? TmpAffs.Ward : 0));
+	GET_WARD(ch) = BOUNDED(0, GET_MAX_WARD(ch) - t1, GET_MAX_WARD(ch));
 
 	ch->points.hit_reg = TmpAffs.hit_reg;
 	ch->points.move_reg = TmpAffs.move_reg;
@@ -2093,6 +2076,19 @@ void affect_remove(P_char ch, struct affected_type *af)
 	if (IS_SET(af->flags, AFFTYPE_LINKED_OBJ))
 	{
 		unlink_char_obj_affect(ch, af);
+	}
+
+	// A cured/expired poison must not leave a timer that can target a new coating.
+	if (IS_POISON(af->type))
+	{
+		P_nevent next;
+		for (pnev = ch->nevents; pnev; pnev = next)
+		{
+			next = pnev->next_char_nev;
+			if (pnev->func == event_poison && pnev->data &&
+			    *((short int *)pnev->data) == af->type)
+				nevent_cancel(nevent_handle_from_event(pnev));
+		}
 	}
 
 	if (af->type == TAG_WEB_SPRAY)

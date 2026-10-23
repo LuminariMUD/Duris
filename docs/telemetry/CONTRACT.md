@@ -42,6 +42,505 @@ telemetry, retention, account linkage or automatic balance changes are authorize
 
 ## Units, identity and time
 
+### Reporting scope reserved for PostHog (#59)
+
+Preparation reserves `TELEMETRY_ENVIRONMENT_ID=1` for production, `2` for staging,
+and `3` for the initial local development world. Match the configured environment
+role, not the checkout directory name. Fresh isolated test worlds use distinct
+non-production IDs starting at `1000`; never reuse an exported world's identity
+for a restored or independently created world. Keep that identity stable across
+reconnects, process restarts, and copyover within the same world.
+Before export can be enabled, require an explicit nonzero environment ID and
+validate its role: production `1`, staging `2`, local `3` or an isolated-world ID
+at least `1000`. Missing, malformed or role-mismatched IDs disable export; the
+runtime's independent production-valued default cannot enable the exporter.
+Both environment option parsing and worker setup enforce this role check.
+
+`TELEMETRY_SEASON_ID=1` starts the first PostHog reporting season; it does not claim
+a historical game-wipe number. Change the season when a wipe/reset starts a new
+character population, not on deployment or restart. Tag cloud test runs separately
+and exclude their environment IDs from production dashboard queries.
+
+These settings scope reporting identities. PostHog delivery is connected to both
+gameplay backends; enabling it also requires the explicit telemetry opt-in,
+reviewed catalog, credentials and initialized quota journal. The SQL-specific sections below describe the
+existing native path; this section defines its replacement export contract.
+
+### Compact PostHog export schema 1 (#59)
+
+The native record schema remains unchanged. Worker reduction produces six event
+families, rather than forwarding native rows. These mappings cover all eight
+native kinds:
+
+| Native kind | External meaning |
+| --- | --- |
+| `interval` | Add deltas to `duris_character_summary`, retaining observed category and historical allocation. |
+| `session_lifecycle` | `duris_session` with `transition` equal to `logical_entry`, `logical_exit`, `connection_attached` or `connection_detached`. Only logical entries count as entries. |
+| `session_checkpoint` | Latest absolute counters/revision are reconciliation evidence on a later summary/lifecycle event. No periodic checkpoint event and no addition to interval deltas. |
+| `coverage_gap` | Mark affected family coverage and coalesce bounded incident evidence into `duris_telemetry_health`. Process-wide unknown scope stays unknown. |
+| `configuration` | `duris_configuration` once when first required or changed. Validate the complete fingerprint; do not repeat the full object on activity events. |
+| `progression` | XP attempts reduce into character summaries. Observed level advance/loss emits `duris_level_change`. Threshold consumption is separate from awarded XP. |
+| `encounter` | Start/join/leave maintain bounded state. Terminal `duris_encounter_summary` rows use `row_type=run` or `participant`. |
+| `combat_summary` | Join player/pet contributions into terminal participant rows. Unsupported NPC detail is suppressed with accounting; no raw combat stream. |
+
+Each sealed JSON row has `event`, `uuid`, an explicit UTC `timestamp`, and
+`properties`. At batch level use only the capture project token (`api_key`) and
+`batch`; the project ID is administrative metadata. Set
+`$process_person_profile=false` in every row. `duris_event_id` equals `uuid`.
+Generate UUID v4 once with OpenSSL randomness when sealing the row. Persist it
+in the bounded in-memory serialized output; retry exactly those bytes, without
+new IDs, timestamps, properties or reducer input. No payload spool is introduced.
+For a duration summary the timestamp is its first known occurrence, so a fragment
+ending exactly at midnight retains the day in which its time occurred. Explicit
+occurrence bounds and allocation fields remain authoritative for reports.
+
+Common properties are:
+
+| Property | Representation / meaning |
+| --- | --- |
+| `duris_schema_version` | JSON integer `1`, independent of native schema. |
+| `duris_environment_id`, `duris_season_id` | Nonzero unsigned decimal strings. |
+| `duris_event_id` | Canonical lowercase UUID matching `uuid`; report deduplication key. |
+| `duris_identity_key_version` | JSON integer `1`; rotation requires an explicit version/identity decision. |
+| `duris_character_id`, `duris_session_id`, `duris_run_id` | Canonical identities below; null when not applicable or not captured. |
+| `distinct_id` | Character pseudonym for character/player rows; pet actor identity for pet rows; scoped system/run identity for health/config/run rows. Never count these latter identities as characters. |
+| `duris_config_id` | Captured unsigned decimal string, null only when no identity was captured. Missing metadata keeps the captured ID and adds missing-configuration coverage. |
+| `classifier_version`, `policy_version` | Captured JSON integers, null when unavailable. Configuration events also carry build/content/property versions and the validated fingerprint. |
+| `class_id`, `race_id`, `faction_id`, `level_band` | Captured JSON integers; null when unknown. Exact before/after levels are available only on progression. |
+| `duris_quality_flags` | Native captured quality mask as a JSON integer. |
+| `duris_coverage` | Bounded array of export coverage names listed below; empty only when no export coverage fault is known. |
+| `occurrence_start_utc_usec`, `occurrence_end_utc_usec` | Signed decimal strings, or null when UTC attribution is unknown. Durations always come from monotonic observations. |
+| `timestamp_basis` | `occurrence` or `emitted_at`. The latter uses a known sealing clock solely for transport, retains null occurrence bounds, and is excluded from occurrence-day totals. |
+| `duris_test_run` | Null for normal data; bounded synthetic run identifier for cloud fixtures. Production reports require environment `1`, the selected season/schema and null test tag. |
+
+Export coverage names are `native_gap`, `unattributed_time`, `unattributed_xp`,
+`missing_configuration`, `counter_overflow`, `incomplete_terminal`,
+`output_suppressed`, `unclosed_tail`, `occurrence_utc_unknown`, `late_fragment`,
+`historical_dimensions_unavailable` and `unsupported_actor`. Emit each at most
+once per row; retain scope-specific detail in bounded health counters. These
+flags describe known evidence and do not certify a missing producer as healthy.
+After local output suppression, subsequent sealed rows retain `output_suppressed`
+as producer-lifetime evidence, using the existing cumulative loss counter. This
+is global loss evidence, not a claim that every later character/window lost data.
+Already-retained JSON remains immutable; resetting the reducer clears this scope.
+`unattributed_combat` marks a retained run whose combined roster/player/pet
+identity limit required keeping known contributions without actor attribution.
+
+Identity encodings are implemented in
+[`telemetry_posthog.c`](../../src/telemetry/telemetry_posthog.c) and independently
+checked against [golden vectors](../../tests/async/fixtures/telemetry/posthog/encodings.json):
+
+- `TELEMETRY_IDENTITY_KEY` is exactly 64 hexadecimal characters encoding 32 random
+  bytes. Reject missing, wrong-length, nonhex and all-zero keys. It is independent
+  of the project token, never exported/logged, and must be preserved privately
+  through restart/restore. Parsing failure clears the output key; no raw-ID fallback.
+- Character pseudonym: `dc1_` followed by 64 lowercase hexadecimal digits from
+  HMAC-SHA-256. Its message is the ASCII bytes `duris:posthog:character:v1` with
+  **no trailing NUL**, then environment, season and native subject ID, each as
+  exactly eight unsigned big-endian bytes. The subject is the captured character
+  identity, never the account. No decimal-string concatenation or native padding.
+- Logical session: `ds1:<environment>:<season>:<boot>:<process>:<session_sequence>`.
+  Run: `dr1:<environment>:<season>:<boot>:<process>:<run_sequence>`. Each component
+  uses unsigned decimal without leading zeroes and must be nonzero. Retain the
+  original session/run producer across copyover; the current exporter producer
+  does not replace it. Maximum length is 108 bytes, plus a NUL in native storage.
+- Health/configuration use scoped system identity `dh1:<environment>:<season>`;
+  run-only rows use their run ID. A pet's `dp1_` pseudonym uses HMAC-SHA-256 over
+  ASCII `duris:posthog:pet:v1` without NUL followed by environment, season,
+  original run boot/process/sequence and native actor ID, all eight-byte unsigned
+  big-endian integers. Pet rows also carry the owner's character pseudonym.
+  These encodings are implemented; pet vectors are independently checked with
+  Python HMAC, including each scope component and unsigned 64-bit maximum.
+- UTC format is exactly `YYYY-MM-DDTHH:MM:SS.ffffffZ`, years 0001–9999, independent
+  of the process timezone. Zero is the epoch, negative microseconds use floor
+  seconds, and `TELEMETRY_UTC_UNKNOWN` is rejected. No clock value may silently
+  become a server-assigned timestamp. Invalid encodings clear the output buffer.
+
+All 64-bit IDs, XP values, counters, durations, revisions and UTC microseconds are
+decimal JSON **strings**, including small values of these types. Signed values
+have an optional minus sign; unsigned values never do; zero is `"0"`. This avoids
+cJSON's double precision limit and keeps one type per property. Small enums,
+versions, dimensions and masks fit JSON numbers. Unknown/unavailable values are
+JSON null, never the string `"null"` or a fabricated zero. Reports must perform
+explicit signed/unsigned integer conversion and deduplicate by `duris_event_id`
+before summing. Live read-only literal/JSON queries in project `678214` on
+2026-10-21 verified `toInt` for signed 64-bit values and
+`accurateCastOrNull(value, 'UInt64')` for unsigned values. `toUInt64` is not a
+supported HogQL spelling; `toDecimal` cannot hold unsigned 64-bit maximum.
+Use `accurateCastOrNull(value, 'Int128')` / `'UInt128'` before sums to avoid
+64-bit aggregate overflow. Null/invalid inputs remain null. Count unavailable
+inputs separately so an all-missing aggregate cannot appear as a measured zero.
+These [supported conversion functions](https://posthog.com/docs/sql/clickhouse-functions)
+were checked with the following queries; actual ingested-property/dashboard
+round trips remain a separate cloud acceptance gate:
+
+```sql
+SELECT
+    toString(accurateCastOrNull(
+        JSONExtractString('{"v":"18446744073709551615"}', 'v'), 'UInt64'
+    )) AS unsigned_max,
+    toString(toInt(JSONExtractString('{"v":"-9223372036854775808"}', 'v'))) AS signed_min,
+    toInt(JSONExtractString('{"v":null}', 'v')) AS unavailable,
+    toInt('invalid') AS invalid
+-- 18446744073709551615 | -9223372036854775808 | NULL | NULL
+
+SELECT toString(sum(accurateCastOrNull(v, 'UInt128'))) AS unsigned_sum
+FROM (SELECT arrayJoin(['18446744073709551615', '1']) AS v)
+-- 18446744073709551616
+
+SELECT toString(sum(accurateCastOrNull(v, 'Int128'))) AS signed_sum
+FROM (SELECT arrayJoin(['-9223372036854775808', '-9223372036854775808']) AS v)
+-- -18446744073709551616
+```
+
+Character summaries retain connected/active/idle/unknown/linkdead and resident
+microsecond deltas; `connected = active + idle + unknown` and
+`resident = connected + linkdead`. They also retain requested/computed/applied XP,
+attempts and zero-applied attempts. Absolute checkpoints/revisions stay in a
+separate reconciliation object; missing detail is not attributed to a guessed
+dimension or added again to the observed totals. Observed XP is not committed-save
+authority. Before/after levels and threshold XP remain separate level-change data.
+An unknown level endpoint (`0` in native records) is JSON null, including on
+level-advanced/lost rows; known endpoints remain JSON numbers.
+
+Within a summary, retain at most 32 time-allocation buckets keyed by captured
+class/race/faction/level-band/zone/group-size/activity context and 32 XP buckets
+keyed by captured class/race/faction/level-band/zone/group-size plus
+source/reason/modifier mask/observation status. Seal affected data on known
+character-dimension, config, classifier/policy
+or exact observed-XP-level changes, including a change within one level band.
+`xp_observed_level` applies to XP observations only; it never invents an exact
+level for time intervals. Unknown context dimensions stay unattributed within the
+fragment, without triggering extra periodic rows. If any character dimensions
+are unknown, summary-level character dimensions are null with explicit coverage;
+known time/XP allocation buckets retain their own captured dimensions. Preserve time and XP arrays
+independently; expanding both in one report join would multiply their totals.
+Overflow adds known values to explicit unattributed totals and marks lost detail.
+Checked-arithmetic overflow makes that metric unavailable with overflow coverage;
+never wrap, round or invent a zero.
+Known overall totals remain available if only a signed allocation bucket
+overflows; that bucket becomes null with overflow/attribution coverage.
+
+Unknown and known exact XP levels also form separate fragments; a later known
+level cannot label earlier observations whose level was unavailable. Direct
+lifecycle and level-change rows flag missing historical character dimensions,
+as do rows carrying the native unknown-dimension quality flag.
+
+A configuration enters the materialized cache only after its JSON row is
+retained in output. Event/byte pressure or JSON allocation failure leaves it
+unpublished; dependent rows retain missing-configuration coverage and a later
+publication of the same fingerprint can retry. Input sequence gaps include a
+missing prefix before the first consumed record, since producer sequences start
+at one.
+
+The reconciliation object includes the latest checkpoint revision/time/quality,
+absolute counters, observed counters through that checkpoint, and a separate
+missing-detail difference only when comparison is valid. A logical entry must
+have been observed by this producer; a post-copyover/reconnect checkpoint does
+not establish a zero baseline. Detail delivered after the checkpoint but before
+sealing updates its observed comparison. Stale revisions cannot regress it;
+conflicting/nonmonotonic totals are refused with local coverage counters.
+
+There are 256 session slots, at most two retained window fragments per session,
+64 complete configuration identities, 128 active encounter runs and a separate
+128 pending terminal joins, each retaining at most 64 actors. A terminal run
+waits for its participant/combat evidence and a captured native-queue fence, or
+closes after 120 seconds with explicit missing coverage. If pending capacity is
+full, finalize its oldest known prefix early with incomplete-terminal coverage
+before accepting another close; later evidence is explicit late loss. Pending
+joins do not consume the active-run allowance. Test both bounds simultaneously.
+Unavailable encounter character/session dimensions remain null; do not look up
+the current character. Run duration and participation are distinct. Pet and player
+contributions remain separate, and unwired control effects remain null.
+The encounter reducer consumes native close, roster and combat rows across
+separate drains. Expected combat arrivals include unsupported NPCs: count their
+terminal revisions before dropping their identities/details. A close and complete
+roster alone cannot certify combat completion. `native_terminal_complete` means
+the locally observed start, close, roster and all declared combat revisions are
+present without a terminal conflict; it makes no claim about cloud delivery.
+Run mode merges captured evidence: the native roster can become mixed while
+combat retains its initial PvE/PvP classification. A later initial-mode combat
+row cannot regress an already observed mixed run.
+
+Run rows contain `run_elapsed_usec`, `expected_reward_credit_count`,
+`roster_expected`/`roster_received`, `combat_expected`/`combat_received`,
+`native_dropped_actor_attempts`, `unique_player_count`, `unsupported_npc_rows`
+and `participant_rows_expected`. Reward membership is separate from participation.
+The native dropped-actor count records refusal attempts, not distinct actors.
+Count durations/outcomes on run rows, and contributions on participant rows.
+`participant_rows_expected` permits detecting output or ingestion loss even if
+the run arrived. Every participant retains null character dimensions/session ID
+with reason `not_captured_in_native_encounter`; no current-character lookup occurs.
+
+Participant rows have `actor_kind=player|pet`, `duris_actor_id`, optional
+`duris_owner_character_id`, nullable `participant_usec`, and nullable `combat`.
+`participant_time_basis=terminal|observed_lower_bound` distinguishes a complete
+participant summary from known cumulative leave effort retained after terminal
+loss. Rejoins/repeated leaves never add absolute cumulative observations twice.
+Player IDs use the character pseudonym; pet IDs are run-scoped pseudonyms, with
+the captured owner's character pseudonym. Pet totals never enter player totals.
+The combat object contains decimal-string damage, healing, casting counts/time
+and tanking time, with `control_applications=null` and reason `not_instrumented`.
+Captured power bands, opponent count and modifier flags are separate properties.
+Native cardinality/saturation flags mark counters as lower bounds; checked reducer
+aggregate overflow instead becomes null with `counter_overflow` coverage.
+
+At most 64 combined player/pet identities are retained per run. If the union of
+native roster and combat actors exceeds this, run-row
+`unattributed_player_combat`, `unattributed_pet_combat`,
+`unattributed_player_rows`, `unattributed_pet_rows` and `unattributed_roster_usec`
+retain known overflow contributions separately. Add these only to the corresponding
+participant totals, once per run; they are not all-actor run totals. Missing
+combat/time evidence is null, not a fabricated zero. A terminal orphan preserves
+known combat/outcome/duration, with incomplete coverage and no invented roster.
+An open run remains open despite silence; forced lifecycle sealing marks its
+unclosed tail without inventing an end, duration or outcome.
+
+Terminal assembly waits at most 120 seconds from its first terminal observation.
+After the admitted-tail fence, complete runs serialize incrementally across
+output drains. A cursor prevents resealing the already immutable prefix; capacity
+at the deadline explicitly suppresses remaining rows. Finalized IDs use 128 exact
+tombstones and an evicted sequence prefix to prevent late data becoming a second
+run. Existing older active runs remain valid. An unseen orphan older than that
+prefix is conservatively refused and counted as late loss because bounded state
+can no longer distinguish it from a replay. Native runs close before copyover;
+new run IDs must belong to the current native producer, while session IDs retain
+their original producer across copyover.
+If a native lifecycle exit is lost, 3,720 seconds of complete input silence for
+that session seals retained data with unknown-tail coverage and releases its
+slot. This combines the maximum native cadence and queue allowance; it invents
+no logout or logical entry. Later data retains the same logical identity while
+checkpoint comparison remains unavailable without a locally observed entry.
+
+Initial export windows are 900 seconds (1800 when the full measured mix requires
+it), split at UTC midnight and required lifecycle/config/level boundaries.
+Consume native rows once through the admitted-tail fence before timer sealing.
+An older row arriving after sealing creates a new uniquely identified partial
+fragment, coalesced until the next flush; it cannot mutate an immutable retry.
+Every known-window seal advances this boundary, including eviction, forced/aged
+flushes and version changes, as well as completed timer windows.
+Unknown UTC retains monotonic totals as unallocated evidence. Extra fragments
+count toward both loss reporting and the volume budget.
+Per-record splitting is bounded to 64 windows. An extreme interval extending
+farther retains its remaining duration in `unattributed_time`, with unknown UTC
+and explicit coverage rather than looping over unbounded calendar history. This
+is a fault bound, not a substitute for splitting ordinary intervals at their boundaries.
+
+Serialized output, including retries, is bounded by 128 events / 512 KiB total,
+32 KiB per event, and a 120-second maximum age. Batches contain at most 64 events /
+256 KiB and flush within two seconds after sealing. Suppress with coverage when
+count/bytes/age/quota cannot retain output; continue draining native capture.
+Keep consumed/reduced/suppressed/attempted/HTTP-acknowledged counts separate.
+HTTP acceptance does not prove query-visible ingestion.
+The character reducer exposes worker-only output views; appending preserves
+them, while retirement, expiry and reset invalidate them. The sender must resolve
+its immutable retry prefix before these operations. The packed 512 KiB arena
+reserves 512 bytes for batch framing and counts terminating NULs; there is no
+second retained event buffer. Scratch JSON construction is separately bounded
+by bucket counts and the 32 KiB serializer cap. Known native gap counts/durations
+are saturating lower bounds; zero known duration never certifies an empty gap.
+`duris_telemetry_health` uses the same bounded arena and system identity. Its
+initial/hourly snapshots and incident changes are coalesced to at most one seal
+attempt per minute; quota enforcement still charges every eventual HTTP attempt.
+The sender also paces health attempts with the existing durable daily reservation
+count: at elapsed UTC-day microseconds `t`, at most
+`min(health_limit, 1 + floor(t * health_limit / 86400000000))` may be reserved.
+For the production limit of 100, one attempt is available at midnight and another
+every 864 seconds (14 minutes 24 seconds). Unused allowance can accumulate;
+restarts do not renew it, and retries use the same allowance. Daily hard limits
+and the journal format are unchanged. A new UTC day uses the existing quota rollover.
+While paced out, incidents remain in the reducer's coalescing state without
+queueing a health snapshot. A health retry that cannot reserve an attempt is
+retired with its actual delivery uncertainty and its incident reasons retained
+for a fresh snapshot; gameplay output can continue. If an unattempted health
+snapshot becomes ineligible between sealing and sending, it is returned to the
+coalescing state and counted in `coalesced_health_events`, without suppression
+or a new incident. Local logs and `world telemetry` keep their current cadence.
+Transient native alert/recovery reasons survive coalescing even if current state
+has recovered. Missing clocks or output capacity count as local loss and retry
+only at the coalescing boundary. Counters are cumulative for the named producer;
+snapshot values precede insertion of the health row itself.
+Unknown dimensions during linkdead or unobserved context retain their time and
+coverage flags and increment `unattributed_time_fragments`, but do not trigger an
+incident. Attribution lost to bucket/context or interval-splitting limits still
+triggers an incident; ordinary unknown context stays on the hourly cadence.
+
+`native_transport` retains copied native state/counters, including its existing
+`applied_records`; this is separate from reducer `http_acknowledged` and makes no
+PostHog durability claim. `reducer` reports current occupancy/limits and loss
+counters; `native_reduction_by_kind` separates consumed/refused records, and
+`output_by_family` separates created, suppressed, expired, HTTP-acknowledged and
+ambiguous events for all six families. Expiry is included in suppression unless
+an attempted batch remains ambiguous.
+Scoped/process native gap counts stay distinct, with unknown duration remaining
+unknown despite a zero known-duration total. Health counters never count refusal
+attempts as distinct omitted players.
+
+Runtime integration, producer capacity/admission metrics, journal/quota/HTTP
+health and ingestion acceptance remain pending. Current component tests do not
+prove cloud delivery.
+
+### Complete event-volume fixture (#59)
+
+[`volume.json`](../../tests/async/fixtures/telemetry/posthog/volume.json) is a
+declared 31-day workload oracle, **not measured player capacity**. It includes
+all six families, two percent additional detached residents, lifecycle edges,
+extra boundary summaries, encounters, configuration, health, retries and the
+entire 100-attempt cloud fixture. Its assumptions are explicit: three logical
+entries and one reconnect per average connected character/day, two extra summary
+boundaries per character/day, one level change and one encounter per two
+character-days, six terminal rows per encounter (run, four players, one pet),
+two copyovers, two configuration rows/day, hourly health plus four incidents/day,
+and two percent retries on game traffic. Cloud test attempts are already inclusive
+of their retries and are not charged twice in this forecast.
+Each logical login/logout emits two lifecycle rows (entry and exit). Each
+reconnect emits two additional rows (detach and attach); normal entry/exit does
+not also emit attach/detach rows. Copyover adds its retained-session attach row.
+
+| Average connected | Window | All submissions / 31 days | ≤450,000 target |
+| --- | --- | ---: | --- |
+| 50 | 15 minutes | 177,306 | Fits this fixture |
+| 100 | 15 minutes | 353,563 | Fits this fixture |
+| 200 | 15 minutes | 706,077 | Fails |
+| 200 | 30 minutes | 396,454 | Fits this fixture |
+
+The release uses 30-minute summaries. The serial `release-mix` native scenario
+counts 97 actual output rows: 48 periodic plus two boundary summaries, six
+entry/exit plus two reconnect plus two copyover rows, one level change, six
+encounter rows (run, four PCs, pet), two configurations and 28 health rows.
+Those measured shapes reconcile all four projections above without output
+suppression. Population, boundary and retry frequencies remain explicit workload
+assumptions; this serial stream does not prove concurrent capacity or daily burst
+headroom. Real native journeys cover both gameplay builds; the paired performance
+and bounded cloud/report acceptance are tracked in the active plan.
+
+Retain the 20,000/day shared hard ceiling, 100 reserved health attempts, explicit
+sender allocations, durable pre-send reservations, and no payload backlog at
+exhaustion. Thirty-one days can touch 32 UTC dates, so the hard bound is 640,000,
+not necessarily 620,000. Sender/runtime fixtures exercise actual HTTPS attempt
+charging and immutable retries; the forecast's two-percent retry frequency is
+an assumption, not a production observation.
+
+### Worker HTTPS sender (#59)
+
+`telemetry_posthog_sender_*` is owned by the existing worker. It streams a pinned
+prefix directly from the reducer arena to `https://us.i.posthog.com/batch/`;
+there is no second retained payload, SDK, service or disk spool. Required capture
+fields are validated before sealing. Appending remains safe while pinned;
+external retire/expiry refuses to compact a pinned prefix. Reset closes the
+sender before clearing the arena. The journal must outlive sender close.
+
+One easy/multi handle pair advances through nonblocking pulses. TLS peer/host
+checks stay enabled; redirects and environment proxies are disabled. HTTP/1.1
+with fresh connections prevents hidden connection-reuse retries from escaping
+per-attempt quota accounting. Requests have 1s connect / 2s total limits, shortened
+by lifecycle deadlines. Bodies and headers each have a 16 KiB receive cap;
+response payloads are discarded and never enter health/logs. The loopback endpoint
+and CA override exist only in `TELEMETRY_POSTHOG_TESTING` builds; TLS remains on.
+
+Each attempt reserves its exact event count durably first. Batches contain one
+contiguous health/non-health class, so refusing a normal batch cannot consume
+reserved health allowance. Missing/rollback clocks refuse delivery. Quota refusal
+discards the affected prefix; no old-day payload is held for tomorrow. Journal
+failure and permanent configuration/TLS/authentication/HTTP rejection open a
+circuit until reinitialization. An invalid clock cannot clear that circuit.
+
+Network failures, 408, 429 and 5xx retain exactly the original bytes/IDs for at
+most five attempts with 1/2/4/8s backoff. Valid delta/date `Retry-After` can extend
+that delay. A delay outside retention/deadline releases the payload with explicit
+loss/uncertainty and postpones recovery by at least that delay. Exhaustion allows
+one probe after 60s; another failure releases that probe and waits again.
+Successful HTTP acknowledgement resumes ordinary sending. It does not establish
+query-visible ingestion. Attempted transfers with unresolved acceptance are
+ambiguous; a permanent HTTP rejection with no prior uncertain attempt is known
+suppression. Deadlines stop the sender and release unresolved output.
+
+`http_delivery` health reports state, HTTP/curl/quota codes, pending batch bounds,
+reserved/submitted events and submitted bytes, attempts/retries/probes/refusals,
+cancellations, response-limit failures, last HTTP acknowledgement, next attempt
+and the current journal quota day/counts/limits. State numbers follow
+`telemetry_posthog_sender_state` in the public header. Counters describe admitted
+HTTP attempts, not bytes received by PostHog. Failure/recovery evidence requests
+a coalesced health incident through the existing reducer cadence.
+
+The installed libcurl 8.18.0 uses a threaded asynchronous resolver. Normal easy
+cleanup can join a pending lookup after cancellation; the sender requires async
+DNS, TLS, thread-safe global init and `CURLOPT_QUICK_EXIT` (7.87+). The fixture
+uses `stall.invalid` to avoid libcurl's localhost shortcut, records that the
+injected libc resolver ran, and stalls it for one second. It checks 250ms
+lifecycle cancellation, <100ms close and zero received requests. The cancelled
+resolver's private library context can live until
+its lookup returns; no telemetry worker is detached. This component test does
+not qualify all resolver resource behavior or the eventual gameplay shutdown
+path; those remain lifecycle/performance acceptance work.
+
+### Durable sender quota (#59)
+
+The existing native outage journal now supports wire version 2: the unchanged
+40-word historical observations plus ten quota words for project/sender/scope
+binding, normal/health/combined daily limits, UTC day high-water and reservation
+counts. Version 1 remains readable/writable when quota is absent. No payloads are
+stored. Each batch attempt must durably reserve its exact normal/health counts
+before HTTP, including retries; failed or ambiguous attempts receive no refund.
+The combined daily limit is at most 20,000 and health at most 100 per sender.
+Production's allocation is 19,900 combined: 19,800 normal plus 100 health; cloud
+tests share a separate declared allocation of at most 100 total attempts.
+Independent directories do not create additional authorized project allowances.
+
+Publication retains checksums, owner-only modes, exclusive ownership,
+close-on-exec descriptors, pending-frame validation, atomic rename and fsync.
+The owner file holds a 48-byte generation/digest witness for quota frames;
+restoring only a ledger or replacing its contents at the same generation is
+refused. Whole valid pending reservations may be recovered conservatively.
+Publication failure disables reservations for that open owner until reopen and
+validation. Missing initialization, binding/limit mismatch, exhausted allowance
+and clock rollback refuse export. Existing result categories use `error_code`
+`ENODATA`, `EINVAL`, `EDQUOT` and `ERANGE`, respectively. A valid new UTC day
+starts a fresh allowance without carryover. Producer archive rotation preserves
+quota and publication generation; a durable archive copy leaves the live frame
+available until the next producer's frame is committed.
+
+The one-shot native command uses this same implementation. Build with
+`make -C src telemetry-state`; the executable is `bin/tools/telemetry-state`
+(or under the chosen `BIN_ROOT`). Its argument order is:
+
+```text
+telemetry-state initialize DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH
+telemetry-state exhaust-day DIRECTORY PROJECT SENDER ENVIRONMENT SEASON TOTAL NORMAL HEALTH
+telemetry-state rollover-season DIRECTORY PROJECT SENDER ENVIRONMENT NEW_SEASON TOTAL NORMAL HEALTH
+```
+
+The absolute directory must already be private (`0700`) and owned by the sender.
+Initialize explicitly once before enablement; startup never creates allowance.
+Read quota with the existing `scripts/telemetry/outage.py DIRECTORY` exporter.
+After restoring every local file, a complete rollback is inherently undetectable:
+run `exhaust-day` with the original binding before resuming. It preserves the
+original frame as `outages.ledger.recovery.<generation>` and consumes the affected
+day's remaining allowance without sending. Corrupt/mismatched files stay refused;
+preserve them and restore a consistent backup before this conservative recovery.
+
+Stop the worker before any state command. At a documented world reset, keep the
+same directory and run `rollover-season` with the new season ID before restarting
+with the new `TELEMETRY_SEASON_ID`. Project, sender, environment and limits must
+match the existing allocation. This preserves the original frame under the same
+recovery naming scheme, changes only the quota season binding, and exhausts both
+classes for the current UTC day. Historical observations retain their old scopes
+and generation continues. Normal allowance resumes on the next UTC day; changing
+season or creating a directory never grants an additional project allocation.
+Interrupted rollover publications use the same validated pending recovery; a
+changed season is recoverable only with an exhausted allowance and unchanged
+project/sender/environment/limits. Clock rollback remains refused.
+Repeated recovery commands for the same already-exhausted day/season are
+idempotent: they create no archive or generation. Reopen and validate after a
+publication error before retrying; a successful rename may already have applied
+the requested state.
+Initialization/recovery against production belongs to separately authorized
+enablement/operations. No production journal was initialized by implementation
+tests. Worker cadence, exporter coverage watermarks and HTTP integration remain
+open in the implementation plan.
+
+### Native record units and identity
+
 All v1 durations and monotonic endpoints are unsigned **microseconds**; UTC
 occurrence labels are signed Unix-epoch microseconds. This deliberately chooses
 microseconds rather than the storage design's illustrative millisecond columns.
@@ -351,3 +850,21 @@ Shared fixtures live in `tests/async/fixtures/telemetry/contract/`. Downstream
 implementations must consume the same cases through their actual boundaries; the
 reference oracle is not a substitute for queue, repository or classifier tests.
 The gameplay journey is `tests/async/run_telemetry_player_journey.py`.
+
+### Runtime connection (#59)
+
+Both gameplay persistence builds use opt-in backend `posthog` (`3`). The old SQL
+writer is absent from active linking. The worker consumes native records once,
+keeps the admitted-tail fence before sealing, and preserves valid logical
+copyover identity even when the bounded flush fails. `world telemetry` exposes
+native consumption separately from reducer acknowledgements/suppression and
+HTTP/quota/journal state. See [TRANSPORT.md](TRANSPORT.md#current-posthog-path-59)
+and [OUTAGE_STORAGE.md](OUTAGE_STORAGE.md) for current lifecycle/evidence behavior.
+
+Startup requires the fixed US host, project 678214, dedicated stable hex identity
+key, sender allocation, reviewed property catalog and matching initialized quota.
+`.env.example` lists the names. Production defaults to 19,800 normal + 100 health
+attempts/day; tagged synthetic worlds >=1000 are limited to 100 total. The native
+state tool initializes or exhausts allowance explicitly; boot never resets it.
+Real native gameplay, performance and queried cloud-report acceptance remain
+pending in the [delivery plan](../ongoing-projects/plan.md).

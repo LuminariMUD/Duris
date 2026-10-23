@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 9;
+constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 10;
 constexpr size_t PLAYER_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 constexpr size_t PLAYER_SNAPSHOT_MAX_ROWS = 8192;
 constexpr size_t PLAYER_SNAPSHOT_MAX_OBJECTS = 4096;
@@ -108,7 +108,11 @@ enum class player_status_field : uint16_t
 	screen_length,
 	last_ip,
 	learned_flight_stops,
+	divine_boon_delivery_seq,
 };
+
+constexpr size_t PLAYER_STATUS_INTEGER_COUNT =
+	static_cast<size_t>(player_status_field::divine_boon_delivery_seq) + 1;
 
 enum class player_status_string_field : uint8_t
 {

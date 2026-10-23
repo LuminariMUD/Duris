@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused #265 runtime lifecycle journey with a bounded fake repository."""
+"""Focused native runtime journeys with a fake repository or loopback PostHog."""
 
 from pathlib import Path
 import subprocess
@@ -27,7 +27,7 @@ def verify_shutdown_contract() -> None:
         assert f"return {status};" in run
 
 
-def main(*, exhaustion: bool = False, outage: bool = False) -> None:
+def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = False) -> None:
     verify_shutdown_contract()
     artifacts = ROOT / "bin/tests"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -52,6 +52,8 @@ def main(*, exhaustion: bool = False, outage: bool = False) -> None:
             ]
             if no_mysql:
                 command.append("-D__NO_MYSQL__")
+            if posthog:
+                command += ["-DTELEMETRY_POSTHOG_TESTING", "-fsanitize=undefined", "-fno-sanitize-recover=all"]
             command += [
                 "-I",
                 str(ROOT / "src"),
@@ -61,7 +63,8 @@ def main(*, exhaustion: bool = False, outage: bool = False) -> None:
             if mysql_include is not None:
                 command.append("-DTELEMETRY_TEST_STUB_REPOSITORY")
             command += [
-                str(ROOT / "tests/async" / ("telemetry_runtime_outage.cc" if outage else
+                str(ROOT / "tests/async" / ("telemetry_runtime_posthog.cc" if posthog else
+                                          "telemetry_runtime_outage.cc" if outage else
                                           "telemetry_runtime_exhaustion.cc" if exhaustion
                                           else "telemetry_runtime_integration.cc")),
                 *[
@@ -74,6 +77,7 @@ def main(*, exhaustion: bool = False, outage: bool = False) -> None:
                         "telemetry_failure.c",
                         "telemetry_health.c",
                         "telemetry_outage.c",
+                    "telemetry_posthog.c",
                         "telemetry_queue.c",
                         "telemetry_progression.c",
                         "telemetry_runtime.c",
@@ -89,11 +93,15 @@ def main(*, exhaustion: bool = False, outage: bool = False) -> None:
                 command += ["-Wl,--wrap=write", "-Wl,--wrap=fsync"]
             command += [
                 str(HARNESS_STUBS),
-                "-lcrypto",
+                "-lcrypto", "-lcurl", "-lcjson",
                 "-o",
                 executable,
             ]
             subprocess.run(command, cwd=ROOT, check=True, timeout=120)
+            if posthog:
+                from telemetry_posthog_http import runtime_tests
+                runtime_tests(Path(executable), Path(directory) / (label + "-https"))
+                continue
             completed = subprocess.run(
                 [executable], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30
             )
@@ -107,4 +115,7 @@ def main(*, exhaustion: bool = False, outage: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--posthog", action="store_true", help="exercise native reducer/HTTPS/quota lifecycle")
+    main(posthog=parser.parse_args().posthog)

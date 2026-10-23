@@ -203,6 +203,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(screen_length, ch->only.pc->screen_length);
 	ADD_STATUS(last_ip, ch->only.pc->last_ip);
 	ADD_STATUS(learned_flight_stops, ch->only.pc->learned_flight_stops);
+	ADD_STATUS(divine_boon_delivery_seq, ch->only.pc->divine_boon_delivery_seq);
 #undef ADD_STATUS
 
 	for (size_t index = 0; index < snapshot.conditions.size(); ++index)
@@ -308,6 +309,20 @@ player_snapshot_capture_result capture_affects(P_char ch, player_snapshot &snaps
 		player_affect_snapshot row = {};
 		row.type = affect->type;
 		row.duration = affect->duration;
+		if (IS_SET(affect->flags, AFFTYPE_SHORT))
+		{
+			P_nevent event;
+			LOOP_EVENTS_CH(event, ch->nevents)
+			{
+				if (event->func == event_short_affect && event->data &&
+				    static_cast<event_short_affect_data *>(event->data)->af ==
+					    affect)
+				{
+					row.duration = ne_event_time(event);
+					break;
+				}
+			}
+		}
 		row.flags = affect->flags;
 		row.modifier = affect->modifier;
 		row.location = affect->location;

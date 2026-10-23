@@ -19,10 +19,11 @@ source = r"""
 #include <cstdio>
 #include <map>
 #include <string>
+#include <vector>
 static size_t mutations=0, constructions=0;
 static std::string output, logged;
 static obj_data live_copy={};
-struct inspected_artifact { uint64_t canonical_item_uid=0; artifact_identity_state identity_state=artifact_identity_state::unresolved; };
+struct inspected_artifact { uint64_t canonical_item_uid=0; artifact_identity_state identity_state=artifact_identity_state::unresolved; std::vector<uint64_t> rejected_item_uids={}; };
 std::map<int,inspected_artifact> artifact_rows;
 index_data indexes[1]={}; P_index obj_index=indexes;
 room_data rooms[1]={}; P_room world=rooms;
@@ -101,6 +102,11 @@ source = source.replace("// CALL", r"""
  cut.item_sources[0].custody_found=false; cut.item_sources[0].item_uid=70000;
  arti_hunt_owner(&staff,"CanonicalUID",cut);
  assert(output.find("canonical_uid=70000")!=std::string::npos);
+ output.clear(); artifact_rows[900].rejected_item_uids={70001};
+ cut.item_sources[0].item_uid=70001;
+ arti_hunt_owner(&staff,"RejectedUID",cut);
+ assert(output.find("canonical_uid=70000")!=std::string::npos);
+ assert(artifact_rows.at(900).rejected_item_uids==std::vector<uint64_t>{70001});
  output.clear(); cut.outcome=player_load_outcome::timed_out;
  arti_hunt_owner(&staff,"Offline",cut);
  assert(output.find("source unavailable")!=std::string::npos && output.find("audit complete")==std::string::npos);

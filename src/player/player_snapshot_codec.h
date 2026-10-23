@@ -30,6 +30,10 @@ enum class player_snapshot_codec_result : uint8_t
 	allocation_failure,
 };
 
+// Missing in old/partial snapshots means no delivered Divine award. A duplicate
+// or signed marker is malformed, rather than permission to reset delivery.
+bool player_snapshot_divine_delivery_sequence(const player_snapshot &snapshot, uint64_t *sequence);
+
 player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snapshot,
 						    std::vector<uint8_t> *encoded_out);
 player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size_t encoded_size,

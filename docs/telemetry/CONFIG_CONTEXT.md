@@ -143,7 +143,7 @@ are not claimed to be allocation-free; hashing is outside per-action capture. Th
 the record sequence; #263 does not reconstruct historical properties with a
 private counter.
 
-For an enabled SQL snapshot:
+For an enabled PostHog snapshot (backend `3`, in either gameplay persistence build):
 
 1. Validate the full public representation and recompute SHA-256.
 2. Remember/check the `(config_id, fingerprint)` pair.
@@ -172,9 +172,10 @@ identity guard is full, the new context is rejected/degraded explicitly; no entr
 is overwritten. Repeated disabled and flat-file-disabled publications keep their
 disabled outcome and emit no record.
 
-A disabled SQL config is a valid `valid_disabled` snapshot but emits no control
-record. The flat-file backend is a valid `valid_flatfile_disabled` snapshot and
-also emits no hidden file. Both outcomes are exposed through the public runtime
+A disabled config is a valid `valid_disabled` snapshot and emits no control
+record. Historical backend `2` remains `valid_flatfile_disabled`; it is distinct
+from flat-file gameplay, which supports the PostHog sink. No hidden telemetry
+file is written. Both outcomes are exposed through the public runtime
 result and disabled quality state. No gameplay path is made dependent on the
 telemetry sink.
 
@@ -265,3 +266,39 @@ unadmitted pending attempts; the shared key owner must handle reservation
 cancellation without reusing an allocated replay key for a different payload.
 An accepted FIFO drain may concern an older config: dependent capture uses the
 public current-snapshot accessor, never the input or result payload alone.
+
+
+## PostHog enable, disable and recovery (#59)
+
+Production activation is a separate owner-authorized operation. Prepare the
+settings in the private owner-only `0600` `.env`, copying `.env.example` first
+if needed and leaving placeholders in the tracked template. Keep export disabled
+while preparing the fixed US host, project
+678214, explicitly allocated sender/environment/season, reviewed effective-property
+catalog, and a dedicated stable 32-byte hex identity key. Generate that key once
+with `openssl rand -hex 32`, store it privately with owner-only access, and back it
+up privately; never reuse the capture token or regenerate it on routine restart.
+Use the existing property catalog procedure above rather than inventing versions.
+
+With the worker stopped, create its private 0700 ledger directory and initialize
+its exact allocation using the executable command documented in
+[OUTAGE_STORAGE.md](OUTAGE_STORAGE.md#quota-setup-restore-and-season-rollover).
+For production the agreed limits are 19,900 total, 19,800 normal and 100 health
+attempts per UTC day. Tagged tests use distinct environment IDs >=1000 and at
+most 100 attempts; all other fixture traffic uses loopback mocks.
+
+Set `TELEMETRY_BACKEND=posthog` and `TELEMETRY_ENABLED=TRUE` only for the authorized
+activation, then start a process with those settings. Editing `.env` does not
+update a running process; copyover can inherit its old environment. Verify
+`world telemetry` reports backend `posthog`, consumed records, matching scope,
+quota, and no refusal/storage errors; then verify scoped cloud query receipt.
+No telemetry SQL credentials or SQL writer fallback are required.
+
+Rollback sets `TELEMETRY_ENABLED=FALSE` and starts a process with that environment.
+Preserve the identity key, ledger, witness and archives. Do not refund attempts,
+reinitialize quota, or resume the obsolete SQL writer. After a backup restore,
+stop the worker and use `exhaust-day` with the original binding before restart;
+for a new reporting season use `rollover-season`. Both preserve recovery evidence
+and exhaust the current day. Missing/corrupt/mismatched state needs a consistent
+backup and documented recovery, never a fresh allowance. Check local health
+while cloud reports are unavailable.

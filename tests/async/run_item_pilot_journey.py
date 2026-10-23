@@ -112,6 +112,17 @@ def mana_rows(state):
     return rows
 
 
+def vitality_stats(client):
+    """Observe native derived HP through the ordinary player score command."""
+    weapon.drain(client, .1)
+    client.send('score')
+    output = client.expect('Hit points:', timeout=10) + weapon.drain(client, .2)
+    level = re.search(r'Level:\s*(\d+)', output)
+    hits = re.search(r'Hit points:\s*-?\d+\s*\(\s*(\d+)\)', output)
+    assert level and hits, output
+    return int(level[1]), int(hits[1])
+
+
 class Server:
     def __init__(self,binary,root,state,family,environment=None):
         self.binary,self.root,self.state,self.family=binary,root,state,family
@@ -181,7 +192,9 @@ def run_case(binary,inspector,family,enabled,abort):
                 result=dict(case=case,attack_to_paid_interception_s=round(elapsed,3),committed_mana=row,
                     real_native_incoming_spell=True,real_native_deflection=True)
                 print(json.dumps(result),flush=True); return result
-            if family=='tsunami': client.send('wield '+name); client.expect('You wield')
+            if family=='tsunami':
+                client.send('wield '+name); client.expect('You wield')
+                vitality_level, hp_before = vitality_stats(client)
             command='tap trident' if family=='tsunami' else 'use prism sentinel'
             warning='Water begins gathering' if family=='tsunami' else 'A brilliant light gathers along the blade.'
             effect='You feel vitalized.' if family=='tsunami' else 'magic missile hits'
@@ -199,7 +212,11 @@ def run_case(binary,inspector,family,enabled,abort):
             started=time.monotonic(); client.send(command)
             if not enabled:
                 observed=client.expect(effect,timeout=8); assert warning not in observed
-                return dict(case=case,command_to_effect_s=round(time.monotonic()-started,3))
+                _, hp_after = vitality_stats(client)
+                expected = 4 * min(vitality_level + 15, 60)
+                assert hp_after - hp_before == expected, (hp_before,hp_after,expected)
+                return dict(case=case,command_to_effect_s=round(time.monotonic()-started,3),
+                            vitality=dict(level=vitality_level,hp_before=hp_before,hp_after=hp_after,bonus=expected))
             client.expect(warning,timeout=8); warned=time.monotonic()
             if abort=='crash':
                 weapon.drain(client,.4)
@@ -219,6 +236,12 @@ def run_case(binary,inspector,family,enabled,abort):
             else:
                 observed=client.expect(effect,timeout=8); elapsed=time.monotonic()-warned
                 assert elapsed>=1.65,(elapsed,observed)
+            vitality = None
+            if family=='tsunami':
+                _, hp_after = vitality_stats(client)
+                expected = 0 if abort else 4 * min(vitality_level + 15, 60)
+                assert hp_after - hp_before == expected, (hp_before,hp_after,expected)
+                vitality = dict(level=vitality_level,hp_before=hp_before,hp_after=hp_after,bonus=expected)
             weapon.drain(client,.5); after=mana_rows(state); assert after.keys()==before.keys()
             uid=next(iter(before)); old,new=before[uid],after[uid]
             expected=min(old['capacity'],old['reserve']+(new['settled']-old['settled'])*old['regeneration'])-2000
@@ -277,6 +300,7 @@ def run_case(binary,inspector,family,enabled,abort):
                 assert any(item['uid']==uid and item['vnum']==31514 for item in authority['player_items']),authority
                 assert mana_rows(state)==before_death,(before_death,mana_rows(state))
                 result['corpse_loot']={'same_uid':True,'durable_mana_unchanged':True,'real_player_death_and_loot':True}
+            if family=='tsunami': result['vitality'] = vitality
             print(json.dumps(result),flush=True)
             return result
         except Exception:

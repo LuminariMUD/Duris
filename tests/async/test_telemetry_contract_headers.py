@@ -20,6 +20,7 @@ PUBLIC_HEADERS = (
     "telemetry/telemetry_transport.h",
     "telemetry/telemetry_repository.h",
     "telemetry/telemetry_config.h",
+    "telemetry/telemetry_posthog.h",
 )
 
 

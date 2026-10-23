@@ -68,14 +68,23 @@ for path in tracked_files():
         for token in (
             b"CURLOPT_VERBOSE",
             b"CURLOPT_ERRORBUFFER",
-            b"CURLOPT_SSL_VERIFYPEER",
-            b"CURLOPT_SSL_VERIFYHOST",
             b"CURLUSESSL_TRY",
         ):
             if token in data:
                 failures.append(
                     f"{relative} exposes or weakens the libcurl mail transport with {token.decode()}"
                 )
+        for token, secure_value in (
+            (b"CURLOPT_SSL_VERIFYPEER", b"1L"),
+            (b"CURLOPT_SSL_VERIFYHOST", b"2L"),
+        ):
+            # Explicitly enabling verification is safe in both curl_easy_setopt and
+            # the PostHog HTTP_OPTION wrapper. Reject every other use of the option.
+            remaining = re.sub(
+                rb"\b" + token + rb"\s*,\s*" + secure_value + rb"\s*\)", b"", data
+            )
+            if token in remaining:
+                failures.append(f"{relative} weakens TLS verification with {token.decode()}")
     elif relative.endswith(".sh") and re.search(rb"\$\{MAIL_PASSWORD[:-]", data):
         failures.append(f"{relative} restores mail password fallback ${{MAIL_PASSWORD:-")
 

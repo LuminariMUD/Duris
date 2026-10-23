@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS critical_operation_inbox (
     result_payload VARBINARY(4096) NOT NULL,
     created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     committed_at TIMESTAMP(6) NULL DEFAULT NULL,
+    expected_outbox_events SMALLINT UNSIGNED NULL DEFAULT NULL,
     PRIMARY KEY (operation_id),
     KEY idx_critical_inbox_status_created (status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

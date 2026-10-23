@@ -33,6 +33,9 @@
 #include <string.h>
 #include "account/account_reward.h"
 #include "world/achievements.h"
+#include "economy/divine_boon_delivery.h"
+#include "economy/divine_boon_math.h"
+#include "world/experience_share.h"
 #include "combat/arena.h"
 #include "combat/arenadef.h"
 #include "combat/attack_continuation.h"
@@ -436,9 +439,6 @@ int check_damage_ward(P_char attacker, P_char ch, int dam)
 		    FALSE, attacker, 0, ch, TO_VICT | ACT_NOTTERSE);
 		act("&+CThe ward around&n $N&+C flashes briefly as it absorbs your assault!&n",
 		    FALSE, attacker, 0, ch, TO_CHAR | ACT_NOTTERSE);
-
-		if (GET_CHAR_SKILL(ch, SKILL_EPIC_WARDING_FAITH) > 0)
-			notch_skill(ch, SKILL_EPIC_WARDING_FAITH, 2);
 	}
 
 	return (int)ceil(absorbed / wardMitigation);
@@ -527,7 +527,7 @@ bool opposite_racewar(P_char ch, P_char victim)
 	return IS_PC(ch) && IS_PC(victim) && GET_RACEWAR(ch) != GET_RACEWAR(victim);
 }
 
-int vamp(P_char ch, double fhits, double fcap)
+int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 {
 	struct affected_type *af;
 	static char buf[100];
@@ -577,7 +577,9 @@ int vamp(P_char ch, double fhits, double fcap)
 		}
 	}
 
-	if (IS_PC(ch) && IS_AFFECTED3(ch, AFF3_PALADIN_AURA) && has_aura(ch, AURA_HEALING))
+	const bool eligible = allow_improved_healing && IS_PC(ch);
+	const bool non_healer = eligible && !GET_SPEC(ch, CLASS_CLERIC, SPEC_HEALER);
+	if (non_healer && IS_AFFECTED3(ch, AFF3_PALADIN_AURA) && has_aura(ch, AURA_HEALING))
 	{
 		// This stops the massive healing when used with the following: Nov08 -Lucrot
 		if (!IS_SET(ch->specials.affected_by4, AFF4_REGENERATION) &&
@@ -634,7 +636,8 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 	}
 	*/
 	const int attempted_hits = MAX(0, hits);
-	hits = vamp(ch, hits, cap);
+	// Healer spells cannot gain the incoming Paladin healing multiplier.
+	hits = vamp(ch, hits, cap, !GET_SPEC(healer, CLASS_CLERIC, SPEC_HEALER));
 	telemetry_runtime_game_combat_healing(healer, ch,
 					      static_cast<std::uint64_t>(attempted_hits),
 					      static_cast<std::uint64_t>(MAX(0, hits)), 0U);
@@ -648,11 +651,6 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 		send_to_char(buf, healer);
 	}
 
-	if (GET_SPEC(healer, CLASS_CLERIC, SPEC_HEALER))
-	{
-		// healing replenishes ward
-		GET_WARD(healer) = BOUNDED(0, GET_WARD(healer) + (hits / 5), GET_MAX_WARD(healer));
-	}
 	// debug("Hitting heal function in fight with (%d) hits.", hits);
 	if (IS_PC(healer) && IS_FIGHTING(ch))
 		gain_exp(healer, ch, hits, EXP_HEALING);
@@ -914,7 +912,7 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 			af.duration = get_property("epic.frag.thrill.duration", 45) * WAIT_SEC;
 			affect_from_char(ch, TAG_PLR_RECENT_FRAG);
 			affect_to_char(ch, &af);
-			if (entry.epic_delta)
+			if (entry.epic_delta && !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 				epic_publish_pvp_award(ch, static_cast<int>(entry.epic_delta));
 			if (entry.wallet_delta_copper)
 			{
@@ -922,7 +920,8 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 					 coin_stringv(entry.wallet_delta_copper));
 				send_to_char(buffer, ch);
 			}
-			if (entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD)
+			if ((entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD) &&
+			    !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			{
 				struct affected_type *task = get_epic_task(ch);
 				if (task && abs(task->modifier) == SPILL_BLOOD)
@@ -949,7 +948,8 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 			af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
 			af.duration = 60 * WAIT_SEC;
 			affect_to_char(ch, &af);
-			if (entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD)
+			if ((entry.flags & COMBAT_PARTICIPANT_SPILL_BLOOD) &&
+			    !(entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			{
 				send_to_char("The &+yGods of Duris&n are very pleased with YOUR "
 					     "&+Rblood&n, too!!!\n",
@@ -977,6 +977,7 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 		ch = ch->following;
 	}
 	combat_outcome_payload payload = {};
+	const int64_t prepared_at = time(nullptr);
 	payload.victim_pid = static_cast<uint32_t>(GET_PID(victim));
 	payload.room_vnum = world[ch->in_room].number;
 	strlcpy(payload.room_name.data(), world[ch->in_room].name, payload.room_name.size());
@@ -1049,13 +1050,28 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 				epic_gain = std::clamp(
 					epic_gain, get_property("epic.frag.minimum.epics", 100),
 					get_property("epic.frag.maximum.epics", 1500));
+				const double precise_base = std::clamp(
+					(static_cast<double>(real_gain) / 100.0) *
+							divine_boon_modifier(get_property(
+								"epic.frag.amount", 20.000)) +
+						GET_FRAGS(victim),
+					static_cast<double>(
+						get_property("epic.frag.minimum.epics", 100)),
+					static_cast<double>(
+						get_property("epic.frag.maximum.epics", 1500)));
+				int spill_blood = 0;
 				struct affected_type *task = get_epic_task(current);
 				if (task && abs(task->modifier) == SPILL_BLOOD)
 				{
-					epic_gain += 500;
+					spill_blood = 500;
 					entry->flags |= COMBAT_PARTICIPANT_SPILL_BLOOD;
 				}
-				entry->epic_delta = epic_calculate_pvp_award(current, epic_gain);
+				if (!epic_prepare_pvp_award(current, victim, precise_base,
+							    epic_gain, spill_blood, prepared_at,
+							    entry))
+					return false;
+				if (entry->flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+					payload.prepared_at = prepared_at;
 			}
 			if (GET_RACE(current) == RACE_HALFLING ||
 			    GET_CLASS(current, CLASS_MERCENARY))
@@ -1091,7 +1107,8 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
 		const auto &entry = payload.participants[index];
-		if (entry.epic_delta <= 0)
+		// Prepared Divine rewards are published only from a committed receipt.
+		if (entry.epic_delta <= 0 || (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC))
 			continue;
 		P_char participant = find_player_by_pid(entry.pid);
 		if (!participant || IS_NPC(participant) ||
@@ -3130,16 +3147,31 @@ void kill_gain(P_char ch, P_char victim)
 		{
 			XP = (int)(((float)GET_LEVEL(gl->ch) / (float)highest_level) *
 				   ((float)gain / exp_divider));
+			double precise_XP =
+				(static_cast<double>(GET_LEVEL(gl->ch)) / highest_level) *
+				(static_cast<double>(gain) / exp_divider);
 
 			/* power leveler stopgap measure */
 			if ((GET_LEVEL(gl->ch) + 40) < highest_level)
+			{
 				XP /= 5000;
+				precise_XP /= 5000;
+			}
 			else if ((GET_LEVEL(gl->ch) + 30) < highest_level)
+			{
 				XP /= 1000;
+				precise_XP /= 1000;
+			}
 			else if ((GET_LEVEL(gl->ch) + 20) < highest_level)
+			{
 				XP /= 150;
+				precise_XP /= 150;
+			}
 			else if ((GET_LEVEL(gl->ch) + 15) < highest_level)
+			{
 				XP /= 40;
+				precise_XP /= 40;
+			}
 
 			if (XP && IS_PC(gl->ch))
 			{
@@ -3149,7 +3181,7 @@ void kill_gain(P_char ch, P_char victim)
 			}
 
 			send_to_char("You receive your share of experience.\r\n", gl->ch);
-			gain_exp(gl->ch, victim, XP, EXP_KILL);
+			gain_exp_combat_share(gl->ch, victim, precise_XP, XP, EXP_KILL);
 			if (IS_PC(gl->ch))
 				add_bloodlust(gl->ch, victim);
 			// this is for all kinds of kill-type quests
@@ -7536,14 +7568,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 			return TRUE;
 	}
 
-	if (weapon && weapon->value[4] != 0)
-	{
-		if (IS_POISON(weapon->value[4]))
-			(skills[weapon->value[4]].spell_pointer)(10, ch, 0, 0, victim, 0);
-		else
-			poison_lifeleak(10, ch, 0, 0, victim, 0);
-		weapon->value[4] = 0; /* remove on success */
-	}
+	deliver_weapon_poison(ch, victim, weapon);
 
 	if (weapon && is_char_in_room(ch, room) && is_char_in_room(victim, room) &&
 	    IS_ALIVE(victim) && (!IS_PC_PET(ch) || OBJ_VNUM(weapon) != 1251))

@@ -40,6 +40,7 @@ struct player_state
 	int64_t epics;
 	uint64_t frag_revision;
 	uint64_t epic_revision;
+	uint64_t delivery_previous = 0;
 };
 
 bool execute(MYSQL *connection, const std::string &sql)
@@ -119,10 +120,10 @@ bool insert_child_inbox(MYSQL *connection, const critical_operation_id &child,
 	const std::string sql =
 		"INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,"
 		"command_type,schema_version,payload_version,status,result_code,durable_revision,"
-		"result_payload,committed_at) VALUES(UNHEX('" +
+		"result_payload,committed_at,expected_outbox_events) VALUES(UNHEX('" +
 		operation + "'),UNHEX('" + hash + "'),UNHEX('" + hash + "')," +
 		std::to_string(static_cast<uint16_t>(type)) + ",1,1,1,0," +
-		std::to_string(revision) + ",'',CURRENT_TIMESTAMP(6))";
+		std::to_string(revision) + ",'',CURRENT_TIMESTAMP(6),0)";
 	return execute(connection, sql);
 }
 
@@ -160,14 +161,14 @@ bool load_player(MYSQL *connection, uint32_t pid, size_t payload_index, player_s
 	return ok &&
 	       ledger_tail(connection,
 			   "SELECT frags_after FROM combat_frag_ledger WHERE pid=" +
-				   std::to_string(pid) +
-				   " AND frag_revision=" + std::to_string(state->frag_revision),
+				   std::to_string(pid) + " AND frag_revision=" +
+				   std::to_string(state->frag_revision) + " FOR UPDATE",
 			   &state->frags) &&
-	       ledger_tail(
-		       connection,
-		       "SELECT balance_after FROM epic_ledger WHERE pid=" + std::to_string(pid) +
-			       " AND epic_revision=" + std::to_string(state->epic_revision),
-		       &state->epics);
+	       ledger_tail(connection,
+			   "SELECT balance_after FROM epic_ledger WHERE pid=" +
+				   std::to_string(pid) + " AND epic_revision=" +
+				   std::to_string(state->epic_revision) + " FOR UPDATE",
+			   &state->epics);
 }
 } // namespace
 
@@ -208,6 +209,24 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 			*result_code = ENOENT;
 			return true;
 		}
+		if (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+		{
+			if (!execute(connection,
+				     "SELECT epic_revision FROM epic_ledger WHERE pid=" +
+					     std::to_string(entry.pid) + " AND reason_type=" +
+					     std::to_string(static_cast<uint16_t>(
+						     epic_reason_type::divine_pvp_award)) +
+					     " ORDER BY epic_revision DESC LIMIT 1 FOR UPDATE"))
+				return false;
+			MYSQL_RES *rows = mysql_store_result(connection);
+			MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
+			const bool valid = rows &&
+					   (!row || parse_u64(row[0], &state.delivery_previous));
+			if (rows)
+				mysql_free_result(rows);
+			if (!valid || state.delivery_previous > state.epic_revision)
+				return false;
+		}
 		players.push_back(std::move(state));
 	}
 	const std::string operation =
@@ -231,6 +250,8 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 		return false;
 
 	result->event_id = event_id;
+	result->victim_pid = payload.victim_pid;
+	result->prepared_at = payload.prepared_at;
 	result->participant_count = payload.participant_count;
 	for (player_state &state : players)
 	{
@@ -311,7 +332,9 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 					    std::to_string(state.epics) + "," +
 					    std::to_string(state.epic_revision) + "," +
 					    std::to_string(static_cast<uint16_t>(
-						    epic_reason_type::pvp_award)) +
+						    (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC) ?
+							    epic_reason_type::divine_pvp_award :
+							    epic_reason_type::pvp_award)) +
 					    "," + std::to_string(payload.victim_pid) + "," +
 					    std::to_string(static_cast<uint16_t>(
 						    critical_source_site::combat)) +
@@ -369,6 +392,18 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 						.epic_revision = state.epic_revision,
 						.wallet_revision = 0,
 						.bank_revision = 0 };
+		if (entry.flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+		{
+			auto &delivered = result->participants[index];
+			delivered.epic_delivery_previous = state.delivery_previous;
+			delivered.epic_delivery_delta = entry.epic_delta;
+			delivered.epic_boon_id = entry.epic_boon_id;
+			delivered.epic_base = entry.epic_base;
+			delivered.epic_spill_blood = entry.epic_spill_blood;
+			delivered.epic_delivery_flags =
+				entry.flags &
+				(COMBAT_PARTICIPANT_DIVINE_EPIC | COMBAT_PARTICIPANT_SPILL_BLOOD);
+		}
 	}
 	*mutation_applied = true;
 	return true;

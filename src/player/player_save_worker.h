@@ -64,6 +64,8 @@ enum class persistence_job_kind : uint8_t
 	sql,
 	// Complete flat-file artifact/soul captures, on the same ordered writer.
 	artifact,
+	// Persist a Divine Boon opportunity before exposing its world bonus.
+	divine_boon,
 };
 
 enum class player_save_apply_outcome : uint8_t

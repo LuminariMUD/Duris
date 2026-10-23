@@ -55,6 +55,35 @@ def parse_payouts(text: str) -> dict[int, int]:
     return payouts
 
 
+def parse_approved_payouts(text: str, historical: dict[int, int]) -> dict[int, int]:
+    """Approve positive payouts only for historically disabled or unresolved zones."""
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate approved payout zone: {key}")
+            result[key] = value
+        return result
+
+    try:
+        data = json.loads(text, object_pairs_hook=unique_pairs)
+    except json.JSONDecodeError as error:
+        raise ValueError("invalid approved epic payout JSON") from error
+    if not isinstance(data, dict) or not data:
+        raise ValueError("approved epic payouts must be a nonempty JSON object")
+
+    payouts = {}
+    for raw_number, payout in data.items():
+        if (not re.fullmatch(r"[1-9][0-9]*", raw_number) or
+                type(payout) is not int or not 0 < payout <= 2147483647):
+            raise ValueError(f"invalid approved epic payout: {raw_number}")
+        number = int(raw_number)
+        if historical.get(number, 0) > 0:
+            raise ValueError(f"approved payout conflicts with historical positive zone: {number}")
+        payouts[number] = payout
+    return payouts
+
+
 def parse_zones(text: str, source: str, stones: dict[int, int]) -> dict[int, dict]:
     zones = {}
     current = None
@@ -94,6 +123,9 @@ def derive(root: Path = ROOT) -> dict:
         return data.decode("latin-1")
 
     payouts = parse_payouts(read("migrations/epic-zone-payout.sql"))
+    approved = parse_approved_payouts(
+        read("migrations/seeds/epic_zone_payout_overrides.json"), payouts)
+    payouts.update(approved)
     stones = parse_stones(read("src/world/epic.h"))
     areas = read("areas/AREA")
     zones = {}
@@ -108,6 +140,9 @@ def derive(root: Path = ROOT) -> dict:
         if zones.keys() & parsed.keys():
             raise ValueError(f"duplicate active zone numbers in {relative}")
         zones.update(parsed)
+    for number in approved:
+        if number not in zones or not zones[number]["stones"]:
+            raise ValueError(f"approved payout zone {number} has no active epic stone")
     rows = []
     for number, zone in sorted(zones.items()):
         if not zone["stones"]:

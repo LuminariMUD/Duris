@@ -117,7 +117,7 @@
 #define MINLVLIMMORTAL 57 /* bottom of immortal levels */
 #define MAX_CIRCLE 12 /* Alter at your own peril! */
 #define MAX_CMD_LIST 1000 /* maximum number of total commands */
-#define MAX_CMD 866 // current number of commands, including the final newline
+#define MAX_CMD 871 // current number of commands, including the final newline
 #define MAX_CONNECTIONS 256 /* last descriptor allowed, really; needs fixed */
 #define MAX_LOGIN_CONNECTIONS_PER_ADDRESS 8 /* open and not yet logged in to an account */
 #define LOGIN_PROMPT_TIMEOUT (120 * WAIT_SEC) /* silence at a login prompt */

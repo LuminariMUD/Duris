@@ -1018,10 +1018,12 @@ unsigned int player_load_items_qualify(player_load_result *result)
 			projection.custody_owner_revision_found =
 				source.custody_owner_revision_found;
 			projection.custody = source.custody;
-			if (artifact_player_source_error(projection))
+			const unsigned int error = artifact_player_source_error(projection);
+			if (error && error != EIDRM)
 				source.retain = true;
 		}
 		std::vector<artifact_payload_projection> projections(items.size());
+		std::vector<bool> retired(items.size(), false);
 		std::vector<size_t> withheld;
 		bool alerted = false;
 		for (size_t index = 0; index < items.size(); ++index)
@@ -1072,7 +1074,13 @@ unsigned int player_load_items_qualify(player_load_result *result)
 					identities[item.parent_index].database_id);
 			}
 			const unsigned int error = artifact_player_source_error(projection);
-			if (error)
+			if (error == EIDRM)
+			{
+				// Durable retirement proves this copy cannot return. Omit it from
+				// the next save; the normal topology recovery preserves its contents.
+				retired[index] = true;
+			}
+			else if (error)
 			{
 				if (raw == source_by_id.end())
 					return ENODATA; // No trustworthy retention selector: do not save a loss.
@@ -1120,20 +1128,19 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		std::vector<player_item_snapshot> kept;
 		std::vector<player_load_item_identity> kept_identities;
 		std::vector<artifact_payload_projection> admitted;
-		std::vector<size_t> remap(items.size());
 		for (size_t index = 0; index < items.size(); ++index)
 		{
 			const auto raw = source_by_id.find(identities[index].database_id);
-			if (raw != source_by_id.end() && held[raw->second])
+			if (retired[index] || (raw != source_by_id.end() && held[raw->second]))
 				continue;
-			remap[index] = kept.size();
 			kept.push_back(items[index]);
 			kept_identities.push_back(identities[index]);
 			admitted.push_back(projections[index]);
 		}
-		for (auto &item : kept)
-			if (item.parent_index >= 0)
-				item.parent_index = static_cast<int32_t>(remap[item.parent_index]);
+		if (!player_load_reconcile_item_topology(&kept, &kept_identities,
+							 &result->promoted_item_rows,
+							 &result->repaired_item_rows))
+			return EINVAL;
 		result->snapshot.items = std::move(kept);
 		result->item_identities = std::move(kept_identities);
 		result->item_admission_sources = std::move(admitted);

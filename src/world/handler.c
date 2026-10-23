@@ -12,6 +12,7 @@
 #include "core/prototypes.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/item_actions.h"
+#include "item/objmisc.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/world_singletons.h"
@@ -717,6 +718,48 @@ int room_light(int room_nr, int flag)
  * common initial setup for poison
  */
 
+void deliver_weapon_poison(P_char ch, P_char victim, P_obj weapon)
+{
+	if (!weapon || !weapon->value[4] || !IS_ALIVE(ch) || !IS_ALIVE(victim))
+		return;
+
+	int poison = weapon->value[4];
+	weapon->value[4] = 0;
+	// Old coatings used a non-ID marker for Lifeleak.
+	if (!IS_POISON(poison))
+		poison = POISON_LIFELEAK;
+	if (!skills[poison].spell_pointer || affected_by_spell(victim, poison))
+		return;
+
+	// Player morphs retain their owner's PvP defenses and attacker classification.
+	P_char player_victim = IS_MORPH(victim) ? victim->only.npc->orig_char : victim;
+	P_char player_attacker = IS_MORPH(ch) ? ch->only.npc->orig_char : ch;
+	if (IS_PC(player_victim) && (IS_PC(player_attacker) || IS_PC_PET(ch)))
+	{
+		if (IS_DRAGON(victim) || IS_DEMON(victim) || IS_ELEMENTAL(victim) ||
+		    IS_UNDEAD(victim))
+			return;
+		int mod =
+			BOUNDED(-3, (GET_LEVEL(player_attacker) - GET_LEVEL(player_victim)) / 5, 3);
+		if (NewSaves(player_victim, SAVING_PARA, mod))
+			return;
+	}
+
+	(skills[poison].spell_pointer)(GET_LEVEL(player_attacker), ch, nullptr,
+				       SPELL_TYPE_WEAPON_POISON, victim, nullptr);
+	if (!affected_by_spell(victim, poison))
+		return;
+
+	const char *noun = IS_DAGGER(weapon) || IS_SWORD(weapon) || IS_AXE(weapon) ? "blade" :
+										     "weapon";
+	char message[256];
+	snprintf(
+		message, sizeof(message),
+		"&+RYou feel a sharp burning sensation as &+gpoison&+R from your attacker's %s enters your bloodstream!&n\r\n",
+		noun);
+	send_to_char(message, victim);
+}
+
 // common function for removing all poisons
 int poison_common_remove(P_char ch)
 {
@@ -916,18 +959,28 @@ void poison_neurotoxin(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unu
 }
 
 /*
- * lose strength, lost value changes randomly from 5 to 20 every minute
+ * Weapon-delivered Weakness keeps the delivery level for each later strength roll.
  */
-void poison_weakness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
-		     P_char victim, struct affected_type *af)
+void poison_weakness(int level, P_char /*ch*/, char * /*arg*/, int type, P_char victim,
+		     struct affected_type *af)
 {
 	if (!af)
 	{
 		if (!(af = poison_common(victim, POISON_WEAKNESS)))
 			return;
 		af->location = APPLY_STR;
+		if (type == SPELL_TYPE_WEAPON_POISON)
+			af->level = level;
 	}
-	af->modifier = -1 * number(5, IS_AFFECTED(victim, AFF_SLOW_POISON) ? 8 : 20);
+	// Zero preserves the old potency for legacy affects and non-weapon sources.
+	int ceiling = 20;
+	if (af->level > 0 && af->level < 41)
+		ceiling = 10;
+	else if (af->level >= 41 && af->level < 51)
+		ceiling = 15;
+	if (IS_AFFECTED(victim, AFF_SLOW_POISON))
+		ceiling = MIN(ceiling, 8);
+	af->modifier = -number(5, ceiling);
 	balance_affects(victim);
 
 	if (number(0, 100))
@@ -955,7 +1008,8 @@ void poison_slowness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unuse
 		if (!(af = poison_common(victim, POISON_SLOWNESS)))
 			return;
 		af->duration = 1;
-		af->bitvector2 = AFF2_SLOW;
+		af->bitvector2 |= AFF2_SLOW;
+		SET_BIT(victim->specials.affected_by2, AFF2_SLOW);
 
 		send_to_char("&+cYe feel a wave of strange weakness running through yer body.&n\n",
 			     victim);

@@ -1278,6 +1278,9 @@ struct pc_only_data
 	uint64_t frag_revision; /* Transactional PvP frag-domain revision. */
 	long epics; /* # of epic points                           */
 	uint64_t epic_revision; /* Transactional epic domain revision. */
+	uint64_t divine_boon_delivery_seq; /* Prepared awards included in the saved epic balance. */
+	bool divine_boon_delivery_ready; /* Transient: materialization and recovery finished. */
+	bool divine_boon_delivery_applying; /* Defer nested captures until reward effects finish. */
 	long epic_skill_points;
 	struct EpicBonusState epic_bonus_state;
 	struct gameplay_read_state gameplay_reads;
@@ -1676,12 +1679,21 @@ struct txt_q
 #define CON_ACCT_RESET_CODE 90 // account recovery: waiting for the emailed code (or CANCEL)
 #define CON_ACCT_RESET_NEWPW 91 // account recovery: waiting for the new password
 #define CON_ACCT_RESET_NEWPW2 92 // account recovery: waiting for the confirmation
+#define CON_STAT_METHOD 93 // choose starting stat distribution before rolling
 
 #define PLAYER_LOAD_MODE_NONE 0
 #define PLAYER_LOAD_MODE_ACCOUNT 1
 #define PLAYER_LOAD_MODE_ACCOUNT_DELETE 3
 
-#define TOTAL_CON 92
+#define TOTAL_CON 93
+
+enum ws_chargen_phase
+{
+	CHARGEN_UNSTARTED,
+	CHARGEN_ROLLING,
+	CHARGEN_BONUSES,
+	CHARGEN_READY
+};
 
 /* modes of confirmation- SAM 7-94 */
 #define CONFIRM_NONE 0
@@ -1838,6 +1850,8 @@ struct descriptor_data
 	/* chargen state for webclient */
 	struct stat_data chargen_stats;
 	int chargen_race;
+	int chargen_method;
+	ws_chargen_phase chargen_phase;
 	int chargen_bonus_remaining;
 	int chargen_hometown;
 	int chargen_hardcore;

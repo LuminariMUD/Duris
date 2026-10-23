@@ -5,6 +5,10 @@ onboarding path. This directory holds the development, architecture, operations,
 database, and builder references. Open work lives in the
 plan under `ongoing-projects/`, not here.
 
+The [new player retention strategy](ongoing-projects/new-player-retention.md)
+contains the source analysis, agreed game rules, diagrams, and proposed measurements
+for the first session and later returns.
+
 ```
 docs/
   reference/     how the server works          persistence/  durability and data lifecycle
@@ -26,6 +30,7 @@ docs/
 |----------|---------|
 | [ARCHITECTURE.md](reference/ARCHITECTURE.md) | Process model, boot gate, game loop, typed persistence, recovery, and networking. |
 | [CODEBASE.md](reference/CODEBASE.md) | Module-by-module map of the server sources. |
+| [WORLD_ZONE_ROUTES.md](reference/WORLD_ZONE_ROUTES.md) | Current zone entrances, map footprints, preservation rules, validation, and historical placement decisions. |
 | [CLASSES.md](reference/CLASSES.md) | PC class catalogue, help resources, creation eligibility, specializations, multiclassing, and progression rules. |
 | [DATABASE.md](reference/DATABASE.md) | Database authority, typed reads/writes, schema, reconciliation, and migrations. |
 | [EVENTS.md](reference/EVENTS.md) | The `nevent` deferred-work scheduler: the timer wheel, scheduling, cancellation, the per-pulse budget, and catch-up. |

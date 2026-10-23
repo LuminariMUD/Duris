@@ -16,7 +16,7 @@ if [[ "$IMAGE" == mariadb:* ]]; then
 else
     PASSWORD_ENV=MYSQL_ROOT_PASSWORD
 fi
-docker run -d --name "$NAME" -p 127.0.0.1::3306 \
+docker run -d --name "$NAME" --memory=512m --cpus=1 -p 127.0.0.1::3306 \
     -e "$PASSWORD_ENV=$PASSWORD" "$IMAGE" >/dev/null
 mapping="$(docker port "$NAME" 3306/tcp)"
 export ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="${mapping##*:}"
@@ -32,9 +32,21 @@ done
 [[ "$ready" == 1 ]]
 "${MYSQL[@]}" -e "CREATE DATABASE $CRITICAL_TEST_DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
+# The historical audit validates typed receipts and combat parent/child identity.
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/bootstrap_multithread_safe.sql"
+
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/critical_command_inbox_outbox.sql"
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/critical_command_inbox_outbox.sql"
+# Upgrade a production-shaped older schema without assigning historical zeroes.
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e "ALTER TABLE critical_operation_inbox DROP COLUMN expected_outbox_events;
+INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,command_type,schema_version,payload_version,status,result_payload)
+VALUES(UNHEX(REPEAT('ff',16)),UNHEX(REPEAT('11',32)),UNHEX(REPEAT('22',32)),1,1,1,1,'');"
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sql"
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sql"
+[[ "$("${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e 'SELECT COUNT(*) FROM critical_operation_inbox WHERE expected_outbox_events IS NULL')" == 1 ]]
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e "DELETE FROM critical_operation_inbox WHERE operation_id=UNHEX(REPEAT('ff',16));"
 DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/verify_critical_command_schema.sh"
+DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sh"
 
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
@@ -60,7 +72,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/critical_outbox_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/persistence/critical_outbox.c \
     src/item/item_transfer_command.c src/player/player_snapshot_codec.c \
-    src/persistence/critical_command.c "${MYSQL_LIBS[@]}" -lcrypto \
+    src/persistence/critical_command.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--wrap=mysql_real_query \
     -o "$ROOT/bin/tests/critical_outbox_mysql_harness"
 "$ROOT/bin/tests/critical_outbox_mysql_harness"
 printf 'critical command and outbox isolated MySQL transactional checks passed\n'

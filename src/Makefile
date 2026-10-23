@@ -72,6 +72,7 @@ TOOL_BIN_DIR      ?= $(BIN_ROOT)/tools
 OBJDIR            ?= $(BIN_ROOT)/objects/server/$(PERSISTENCE_BACKEND)/$(BUILD_PROFILE)
 DMS_BINARY        ?= $(SERVER_BIN_DIR)/dms_new
 PFILE_BINARY      ?= $(TOOL_BIN_DIR)/pfile
+TELEMETRY_STATE_BINARY ?= $(TOOL_BIN_DIR)/telemetry-state
 BACKEND_STAMP     := $(dir $(DMS_BINARY)).$(notdir $(DMS_BINARY))-backend
 DEPFLAGS := -MMD -MP
 
@@ -194,6 +195,12 @@ OBJS =  $(SHIP_OBJS) \
          magic/blispells.o \
 				 cmd/boards.o \
 				 economy/boon.o \
+				 economy/divine_boon.o \
+				 economy/divine_boon_repository.o \
+				 economy/divine_boon_runtime.o \
+				 economy/divine_boon_activity.o \
+				 economy/divine_boon_selection.o \
+				 economy/divine_boon_delivery.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \
          economy/cardgames.o \
@@ -554,7 +561,7 @@ OBJS =  $(SHIP_OBJS) \
 				 telemetry/telemetry_failure.o \
 				 telemetry/telemetry_health.o \
 				 telemetry/telemetry_outage.o \
-				 telemetry/telemetry_repository.o \
+				 telemetry/telemetry_posthog.o \
 				 telemetry/telemetry_runtime.o \
 				 telemetry/telemetry_progression.o \
 				 telemetry/telemetry_session.o \
@@ -588,7 +595,13 @@ endif
 
 all: $(PROGS)
 
-.PHONY: dms_new pfile clean clean-server debug valgrind FORCE
+.PHONY: dms_new pfile telemetry-state clean clean-server debug valgrind FORCE
+
+telemetry-state: $(TELEMETRY_STATE_BINARY)
+
+$(TELEMETRY_STATE_BINARY): telemetry/telemetry_state.cc $(OBJDIR)/telemetry/telemetry_outage.o
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ -lcrypto $(EXTRA_LDFLAGS)
 
 dms_new: $(DMS_BINARY)
 
@@ -652,6 +665,7 @@ clean-server:
 clean: clean-server
 	rm -f *~ */*~ .depend */.depend
 	rm -f $(PFILE_BINARY)
+	rm -f $(TELEMETRY_STATE_BINARY)
 
 debug: $(PROGS)
 	cd ..; ./scripts/gdbdms

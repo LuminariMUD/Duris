@@ -128,7 +128,8 @@ void verify_awards(const zone_touch_payload &payload, const critical_command &co
 	for (size_t i = 0; i < payload.group_size; ++i)
 	{
 		const auto pid = std::to_string(payload.participant_pids[i]);
-		assert(scalar("SELECT epics FROM player_data WHERE pid=" + pid) == 110 + i);
+		// The writer records the award; the player's canonical save owns epics.
+		assert(scalar("SELECT epics FROM player_data WHERE pid=" + pid) == 100);
 		assert(scalar("SELECT epic_revision FROM player_data WHERE pid=" + pid) == 1);
 		assert(result.balances[i] == 110 + static_cast<int64_t>(i) &&
 		       result.revisions[i] == 1);
@@ -137,7 +138,9 @@ void verify_awards(const zone_touch_payload &payload, const critical_command &co
 		critical_command child;
 		assert(zone_touch_award_command(command, i, &child));
 		assert(scalar("SELECT COUNT(*) FROM epic_ledger WHERE " + operation_where(child) +
-			      " AND pid=" + pid + " AND delta=" + std::to_string(10 + i)) == 1);
+			      " AND pid=" + pid + " AND delta=" + std::to_string(10 + i) +
+			      " AND balance_after=" + std::to_string(110 + i) +
+			      " AND epic_revision=1") == 1);
 		assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE " +
 			      operation_where(child)) == 1);
 	}
@@ -228,6 +231,8 @@ void success_and_replay(uint32_t base, unsigned int count, bool record_zone = tr
 	assert(receipt(duplicate).recovered_claim);
 	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE " + operation_where(retouch)) ==
 	       1);
+	assert(scalar("SELECT expected_outbox_events FROM critical_operation_inbox WHERE " +
+		      operation_where(retouch)) == 1);
 	assert(scalar("SELECT COUNT(*) FROM epic_ledger") == ledger_count);
 	assert(scalar("SELECT COUNT(*) FROM critical_operation_inbox i WHERE status=1 AND result_code=0 "
 		      "AND NOT EXISTS (SELECT 1 FROM critical_outbox o WHERE o.operation_id=i.operation_id)") ==

@@ -231,6 +231,47 @@ int main()
 	}
 	expect(classify({ extra }, { { 900, 111, state::present } }), state::present, 111, 0,
 	       reason::conflicting_identities);
+	// Legacy tracking identifies a holder, never an arbitrary first/last UID.
+	auto other_owner = item(333, 900, 83);
+	artifact_population_identity legacy = {
+		900, 0, state::unresolved, { item_owner_type::player, 83, 0 }
+	};
+	for (const auto &rows : { std::vector{ current, extra, other_owner },
+				  std::vector{ other_owner, extra, current } })
+	{
+		const auto recovered = classify(rows, { legacy });
+		expect(recovered, state::present, 333, 1);
+		assert((recovered.identity.rejected_item_uids ==
+			std::vector<uint64_t>{ 111, 222 }));
+		// Expiry and restart cannot re-elect either of the retained old copies.
+		auto retired = recovered.identity;
+		retired.state = state::retired;
+		expect(classify(rows, { retired }), state::retired, 333, 0);
+		expect(classify({ current, extra }, { retired }), state::retired, 333, 0);
+	}
+	expect(classify({ current, extra, other_owner }, { legacy }, false), state::unresolved, 0,
+	       0, reason::incomplete);
+	auto ambiguous_owner = item(444, 900, 83);
+	expect(classify({ current, other_owner, ambiguous_owner }, { legacy }), state::unresolved,
+	       0, 0, reason::conflicting_identities);
+	auto invalid_owner = other_owner;
+	invalid_owner.custody.owner.id = 99;
+	expect(classify({ current, extra, invalid_owner }, { legacy }), state::unresolved, 0, 0,
+	       reason::conflicting_identities);
+	legacy.canonical_item_uid = 111;
+	legacy.state = state::present;
+	expect(classify({ current, other_owner }, { legacy }), state::present, 111, 1);
+	legacy.canonical_item_uid = 0;
+	legacy.state = state::unresolved;
+	legacy.tracked_owner = { item_owner_type::room, 1234, 0 };
+	legacy.bound_player_pid = 83;
+	expect(classify({ current, extra, other_owner }, { legacy }), state::present, 333, 1);
+	expect(classify({ current, other_owner, ambiguous_owner }, { legacy }), state::unresolved,
+	       0, 0, reason::conflicting_identities);
+	legacy.tracked_owner = { item_owner_type::player, 12, 0 };
+	// A conflicting current holder is never overridden by the soul hint.
+	expect(classify({ current, extra, other_owner }, { legacy }), state::unresolved, 0, 0,
+	       reason::conflicting_identities);
 	expect(classify({ current }, { { 902, 111, state::present } }), state::unresolved, 0, 0,
 	       reason::unqualified_payload);
 
@@ -365,16 +406,49 @@ int main()
 	expect(classify({ request, request }), state::absent, 0, 0);
 	expect(classify({ request, current }), state::present, 111, 1);
 	expect(classify({ request }, {}, false), state::unresolved, 0, 0, reason::incomplete);
+	// Legacy auction blobs inherit prototype flags when O_U_EXTRA is omitted.
+	// Ordinary stock and its retained history must not invent unresolved artifacts.
+	for (const auto source :
+	     { domain::auction, domain::auction_legacy, domain::auction_pickup })
+	{
+		auto inherited = item(777, 901);
+		inherited.domain = source;
+		inherited.extra_flags_present = false;
+		for (const auto saved_role : { role::stored, role::history })
+		{
+			inherited.role = saved_role;
+			expect(classify({ inherited }, { { 901, 0, state::unresolved } }, true,
+					901),
+			       state::absent, 0, 0);
+		}
+		inherited.role = role::stored;
+		inherited.vnum = inherited.custody.vnum = 900;
+		expect(classify({ inherited }), state::present, 777, 1);
+		inherited.extra_flags_present = true;
+		inherited.extra_flags = 0;
+		expect(classify({ inherited }), state::absent, 0, 0);
+	}
 
 	expect(classify({}, { { 900, 111, state::retired } }), state::retired, 111, 0);
-	expect(classify({ current }, { { 900, 111, state::retired } }), state::retired, 111, 0,
-	       reason::retired_payload);
+	expect(classify({ current }, { { 900, 111, state::retired } }), state::retired, 111, 0);
 	expect(classify({ extra }, { { 900, 111, state::retired } }), state::retired, 111, 0,
 	       reason::conflicting_identities);
 	expect(classify({}, { { 900, 111, state::present } }), state::absent, 0, 0);
 
 	// No invalid input publishes even a prefix over the previous output.
 	std::vector<artifact_population_decision> output = { classify({ current }) };
+	for (const std::vector<uint64_t> &rejected :
+	     { std::vector<uint64_t>{ 0 }, { 222, 111 }, { 222, 222 }, { 111 } })
+	{
+		assert(artifact_population_classify({}, prototypes,
+						    { { 900, 111, state::present, {}, rejected } },
+						    true, &output) == EINVAL);
+		assert(output[0].identity.canonical_item_uid == 111);
+	}
+	assert(artifact_population_classify({}, prototypes,
+					    { { 900, 111, state::present, {}, { 222 } },
+					      { 902, 222, state::retired } },
+					    true, &output) == EINVAL);
 	assert(artifact_population_classify({}, prototypes, { { 900, 0, state::present } }, true,
 					    &output) == EINVAL);
 	assert(output.size() == 1 && output[0].identity.canonical_item_uid == 111);

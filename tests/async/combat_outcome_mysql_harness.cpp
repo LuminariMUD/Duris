@@ -1,5 +1,6 @@
 #include "combat/combat_outcome_command.h"
 #include "persistence/critical_command_repository.h"
+#include "world/epic_command.h"
 
 #include <cassert>
 #include <cstdio>
@@ -319,6 +320,80 @@ int main()
 	assert(text_value(db, "SELECT log" + latest_snapshot) == payload.participants[0].log);
 	assert(critical_command_repository_apply(db, legacy).outcome ==
 	       critical_apply_outcome::already_applied);
+	// Prepared Divine epics are sequenced on the locked recipient row. The
+	// player balance is credited later at its status/watermark checkpoint.
+	auto prepared = payload;
+	prepared.prepared_at = 150;
+	for (auto &entry : prepared.participants)
+	{
+		entry.equipment.clear();
+		entry.log.clear();
+		entry.webinfo_at_capture = combat_webinfo::off;
+		entry.wallet_delta_copper = 0;
+	}
+	prepared.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM |
+					 COMBAT_PARTICIPANT_DIVINE_EPIC;
+	prepared.participants[0].frag_delta = 100;
+	prepared.participants[0].epic_delta = 150;
+	prepared.participants[0].epic_boon_id = 7;
+	prepared.participants[0].epic_base = 100;
+	prepared.participants[1].racewar = 2;
+	prepared.participants[1].epic_delta = 0;
+	const auto before_revision =
+		scalar(db, "SELECT epic_revision FROM player_data WHERE pid=" + killer);
+	const auto before_balance = scalar(db, "SELECT epics FROM player_data WHERE pid=" + killer);
+	auto write_prepared = [&]
+	{
+		critical_operation_id id = {};
+		assert(critical_operation_id_generate(&id));
+		critical_command cmd;
+		assert(combat_outcome_command_build(&cmd, id, prepared));
+		cmd.accepted_at_usec = 3;
+		return cmd;
+	};
+	const auto first_prepared = write_prepared();
+	const auto first_written = critical_command_repository_apply(db, first_prepared);
+	assert(first_written.outcome == critical_apply_outcome::applied);
+	combat_outcome_result prepared_result;
+	assert(combat_outcome_command_decode_result(first_written.result_payload.data(),
+						    first_written.result_size, &prepared_result));
+	assert(prepared_result.participants[0].epic_revision == before_revision + 1);
+	assert(prepared_result.participants[0].epic_delivery_previous == 0);
+	assert(prepared_result.participants[0].epic_delivery_delta == 150);
+	assert(critical_command_repository_apply(db, first_prepared).outcome ==
+	       critical_apply_outcome::already_applied);
+	const auto second_written = critical_command_repository_apply(db, write_prepared());
+	assert(second_written.outcome == critical_apply_outcome::applied);
+	assert(combat_outcome_command_decode_result(second_written.result_payload.data(),
+						    second_written.result_size, &prepared_result));
+	assert(prepared_result.participants[0].epic_revision == before_revision + 2 &&
+	       prepared_result.participants[0].epic_delivery_previous == before_revision + 1);
+	assert(scalar(db, "SELECT epics FROM player_data WHERE pid=" + killer) == before_balance);
+	execute(db,
+		"CREATE TRIGGER reject_divine_ledger BEFORE INSERT ON epic_ledger FOR EACH ROW "
+		"BEGIN IF NEW.reason_type=" +
+			std::to_string(static_cast<uint16_t>(epic_reason_type::divine_pvp_award)) +
+			" THEN SIGNAL SQLSTATE '40001' SET MYSQL_ERRNO=1213,MESSAGE_TEXT='fixture'; END IF; END");
+	const auto failed_prepared = write_prepared();
+	assert(critical_command_repository_apply(db, failed_prepared).outcome ==
+	       critical_apply_outcome::retryable_failure);
+	assert(scalar(db, "SELECT epic_revision FROM player_data WHERE pid=" + killer) ==
+	       before_revision + 2);
+	execute(db, "DROP TRIGGER reject_divine_ledger");
+	const auto retried_prepared = critical_command_repository_apply(db, failed_prepared);
+	assert(retried_prepared.outcome == critical_apply_outcome::applied);
+	assert(combat_outcome_command_decode_result(retried_prepared.result_payload.data(),
+						    retried_prepared.result_size,
+						    &prepared_result));
+	assert(prepared_result.participants[0].epic_revision == before_revision + 3 &&
+	       prepared_result.participants[0].epic_delivery_previous == before_revision + 2);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=2 "
+		      "AND (expected_outbox_events IS NULL OR expected_outbox_events<>0)") == 0);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=8 "
+		      "AND result_code=0 AND (expected_outbox_events IS NULL OR expected_outbox_events<>1)") ==
+	       0);
 	cleanup(db);
 	mysql_close(db);
 	std::cout

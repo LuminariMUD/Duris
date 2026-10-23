@@ -338,7 +338,7 @@ static bool write_telemetry_copyover_state(FILE *fp, int expected_count)
 				  telemetry_runtime_outcome::accepted;
 		if (!durable)
 			logit(LOG_STATUS,
-			      "copyover: telemetry durability unavailable; recovering as absent");
+			      "copyover: telemetry flush incomplete; preserving logical session");
 	}
 	telemetry_copyover_header header{};
 	memcpy(header.magic, TELEMETRY_COPYOVER_MAGIC, sizeof(header.magic));
@@ -354,8 +354,12 @@ static bool write_telemetry_copyover_state(FILE *fp, int expected_count)
 		if (written >= expected_count)
 			return false;
 		telemetry_copyover_entry entry{};
-		if (durable && !entries.empty())
+		if (!entries.empty())
+		{
 			entry = entries[static_cast<std::size_t>(written)];
+			if (!durable && entry.handoff_valid != 0U)
+				entry.handoff.quality_flags |= TELEMETRY_QUALITY_UNCLOSED_TAIL;
+		}
 		entry.fd = d->descriptor;
 		if (GET_NAME(d->character) != nullptr)
 			strlcpy(entry.player_name, GET_NAME(d->character),
@@ -1843,6 +1847,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				d->character = ch;
 				ch->desc = d;
 				d->connected = CON_PLAYING;
+				if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+					update_ingame_racewar(GET_RACEWAR(ch));
 
 #ifdef USE_ACCOUNT
 				// restore account for preserved telnet connections

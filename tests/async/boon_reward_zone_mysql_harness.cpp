@@ -145,6 +145,23 @@ int main()
 	       critical_apply_outcome::already_applied);
 	assert(scalar(db, "SELECT COUNT(*) FROM zone_touches WHERE zone_number=" +
 				  std::to_string(ZONE)) == 1);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type IN (11,12) "
+		      "AND result_code=0 AND (expected_outbox_events IS NULL OR expected_outbox_events<>1)") ==
+	       0);
+	// A zero-match boon still owns its canonical result and its current delivery
+	// event. Future producer optimization must deliberately change both contracts.
+	boon.option = 0;
+	assert(critical_operation_id_generate(&boon_operation));
+	assert(boon_reward_command_build(&boon_command, boon_operation, boon));
+	boon_command.accepted_at_usec = 3;
+	const auto zero_match = critical_command_repository_apply(db, boon_command);
+	assert(zero_match.outcome == critical_apply_outcome::applied);
+	assert(boon_reward_command_decode_result(zero_match.result_payload.data(),
+						 zero_match.result_size, &decoded_boon));
+	assert(decoded_boon.entry_count == 0);
+	assert(scalar(db, "SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=11 "
+			  "AND expected_outbox_events=1") == 2);
 	cleanup(db);
 	mysql_close(db);
 	std::cout << "boon reward and immutable group zone-touch apply/replay passed\n";

@@ -2,7 +2,7 @@
 
 Duris has two deliberately separate histories:
 
-- `migrations/run_migration.sh` is the legacy additive upgrade path. Its 145 progress
+- `migrations/run_migration.sh` is the legacy additive upgrade path. Its 146 progress
   steps and `mud_schema_migrations` data-copy markers are not complete historical
   execution evidence and are never backfilled as if they were.
 - `migrations/migration_manifest.json` is the authoritative immutable history after
@@ -22,6 +22,24 @@ The legacy runner creates the ledger and attempts verified adoption only after i
 schema operation. Extra, missing, or renamed tables refuse adoption. This creates one
 honest observation at the current boundary; it does not invent timestamps or checksums
 for historical steps.
+
+Migration `0050_critical_outbox_expectations` adds nullable
+`critical_operation_inbox.expected_outbox_events` after `committed_at`. NULL keeps
+historical intent unknown; new writers record a known zero or exact contiguous
+event count atomically with the canonical result. The guarded INSTANT addition
+does not rewrite existing receipts. Its sealed verifier rejects incompatible
+type/default/nullability/position instead of silently recording success.
+
+The exact `run --online-outbox-expectations` path supports this sealed step only
+on MariaDB 11.8 InnoDB, with the normal production target, allow-list, fresh
+backup, advisory lock, checksum, prefix-history and success-last safeguards.
+It requires an applied 0049 prefix and a manifest ending at 0050; it cannot apply
+earlier pending steps or arbitrary later migrations. INSTANT-only execution and
+one-second metadata/InnoDB lock waits fail rather than rebuilding the history
+table or requiring an outage. Running writers name inbox columns explicitly and
+remain compatible with the default-NULL addition. Apply and verify 0050 before
+starting the metadata writer/audit consumer; the worker-only PR #300 does not
+require it. Production execution still requires the owner's separate authority.
 
 For a fresh isolated database:
 
@@ -260,6 +278,38 @@ The running game caches the catalogue at boot and updates existing IDs; it canno
 touch the absent stones. The two inserts can therefore run while it stays online,
 with activation at the scheduled reboot. Check the live catalogue and writers
 again before reuse; this option does not authorize arbitrary online migrations.
+
+`run --online-artifact-rejections` accepts only the sealed manifest ending at
+0047, with all 46 earlier steps applied. It adds the nullable `rejected_item_uids`
+column to InnoDB `artifact_domain_state` on MariaDB 11.8, preserving the production
+target, allow-list, backup, checksum, advisory-lock, history and verifier safeguards.
+It executes the checksum-checked ALTER as `ALTER ONLINE TABLE` with
+`alter_algorithm=INSTANT` and one-second metadata and row-lock timeouts. Unsupported
+online DDL or lock contention fails without an offline fallback; the sealed file
+and recorded checksum remain unchanged.
+
+The pre-0047 artifact readers and writers name their columns explicitly. Existing
+rows and inserts receive NULL for the new field, which the new code treats as an
+empty rejection set; old updates leave it untouched. Check the deployed writers
+before reuse. Applying this schema migration leaves the game running; activating
+the new artifact recovery code is a separate deployment.
+
+`run --online-divine-boon` accepts only the sealed manifest ending at 0049,
+with all steps through 0047 already applied. It creates `divine_boon_state` (0048)
+and adds the default-zero `player_data.divine_boon_delivery_seq` column (0049).
+It retains production target, allow-list, fresh backup, checksum, advisory-lock,
+ordered-history and success-last verification safeguards. It requires MariaDB
+11.8 and InnoDB `player_data`, executes the sealed CREATE unchanged, and strengthens
+only the sealed ALTER to `ALTER ONLINE TABLE` with `alter_algorithm=INSTANT` and
+one-second metadata and row-lock waits. Unsupported instant DDL or lock contention
+fails without a rebuild or offline fallback. A completed 0048 resumes at 0049.
+
+The October 22 production review found 127 player rows, InnoDB DYNAMIC format,
+no full-text indexes or triggers, and both additions absent. The running binary
+uses named-column player inserts and updates; its existing reads tolerate the new
+column. Coordinate schema-aware backups across both steps and verify the current
+runtime contract afterward. The old binary remains compatible while running but
+its exact boot contract requires an updated build before the next restart.
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
 Before opening a database, the runner reads every file with no-follow and fixed-size

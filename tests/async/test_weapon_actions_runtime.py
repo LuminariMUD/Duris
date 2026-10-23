@@ -117,7 +117,7 @@ int wear(P_char actor, P_obj source, int slot, bool) {
     return 1;
 }
 void spell_stone_skin(int, P_char, char *, int, P_char, P_obj) { ++stone_calls; }
-int vamp(P_char ch, double amount, double cap) {
+int vamp(P_char ch, double amount, double cap, bool) {
     effects.push_back({-1, static_cast<int>(amount), static_cast<int>(cap), ch->runtime_id, 0});
     return 0;
 }

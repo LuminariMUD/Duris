@@ -9,7 +9,9 @@
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
 #include "core/defines.h"
+#include "magic/spells.h"
 #include "world/vnum.obj.h"
+#include "combat/combat_outcome_command.h"
 #include <algorithm>
 #include <cstring>
 #include <ctime>
@@ -177,6 +179,14 @@ static void inspect_authority(const std::string &root, int32_t pid)
 				"invalid acknowledgement in inspection fixture");
 			std::cout << ",\"last_read_news_hash\":\"" << entry.value << '"';
 		}
+	std::cout << ",\"base_stats\":[";
+	for (size_t i = 0; i < domains.domains.base_stats.size(); ++i)
+	{
+		if (i)
+			std::cout << ',';
+		std::cout << domains.domains.base_stats[i];
+	}
+	std::cout << ']';
 	std::cout << ",\"snapshot_uids\":[";
 	for (size_t i = 0; i < snapshot.items.size(); ++i)
 	{
@@ -885,6 +895,109 @@ int main(int argc, char **argv)
 		inspect_authority(argv[1], std::stoi(argv[3]));
 		return 0;
 	}
+	if (argc >= 4 && std::string(argv[2]).starts_with("cleric-"))
+	{
+		// This command is used only against the journey's disposable saved players.
+		std::string error;
+		player_snapshot snapshot;
+		require(flatfile_player_snapshot_load(argv[1], std::stoi(argv[3]), &snapshot,
+						      &error) == flatfile_player_load_result::ok,
+			"Cleric fixture load: " + error);
+		if (std::string(argv[2]) == "cleric-inspect")
+		{
+			std::cout << '[';
+			bool first = true;
+			for (const auto &af : snapshot.affects)
+			{
+				if (!first)
+					std::cout << ',';
+				first = false;
+				std::cout << "[" << af.type << ',' << af.duration << ',' << af.flags
+					  << ',' << af.modifier << ',' << int(af.location) << ']';
+			}
+			std::cout << "]\n";
+			return 0;
+		}
+		if (std::string(argv[2]) == "cleric-expire")
+		{
+			for (auto &af : snapshot.affects)
+				if (af.flags & AFFTYPE_SHORT)
+					af.duration = 40;
+		}
+		else
+		{
+			require(argc == 6 && std::string(argv[2]) == "cleric-seed",
+				"Cleric seed expects PID, specialization, level");
+			for (auto &field : snapshot.status_integers)
+			{
+				int value;
+				switch (field.field)
+				{
+				case player_status_field::class_primary:
+					value = CLASS_CLERIC;
+					break;
+				case player_status_field::class_secondary:
+					value = 0;
+					break;
+				case player_status_field::specialization:
+					value = std::stoi(argv[4]);
+					break;
+				case player_status_field::level:
+				case player_status_field::highest_level:
+					value = std::stoi(argv[5]);
+					break;
+				case player_status_field::base_hit:
+					value = 2000;
+					break;
+				case player_status_field::hit_difference:
+					value = 500;
+					break;
+				default:
+					continue;
+				}
+				field.signed_value = field.unsigned_value = value;
+			}
+			const int spells[] = { SPELL_MIRACLE, SPELL_TRUE_SEEING,
+					       SPELL_DIVINE_WARDING, SPELL_VITAL_INTERCESSION };
+			snapshot.skills.clear();
+			snapshot.affects.clear();
+			for (int spell : spells)
+			{
+				snapshot.skills.push_back({ spell, 100, 100 });
+				for (int i = 0; i < ((spell == SPELL_DIVINE_WARDING ||
+						      spell == SPELL_MIRACLE) ?
+							     2 :
+							     1);
+				     ++i)
+				{
+					player_affect_snapshot af{};
+					af.type = TAG_MEMORIZE;
+					af.flags = AFFTYPE_STORE | AFFTYPE_PERM | MEMTYPE_FULL;
+					af.duration = -1;
+					af.modifier = spell;
+					snapshot.affects.push_back(af);
+				}
+			}
+			for (int skill : { SKILL_SPELL_KNOWLEDGE_CLERICAL, SKILL_QUICK_CHANT,
+					   SKILL_CONCENTRATION })
+				snapshot.skills.push_back({ skill, 100, 100 });
+			player_affect_snapshot pending{};
+			pending.type = TAG_MEMORIZE;
+			pending.flags = AFFTYPE_STORE | AFFTYPE_PERM;
+			pending.duration = -1;
+			pending.modifier = SPELL_VITAL_INTERCESSION;
+			snapshot.affects.push_back(pending);
+			pending.modifier = SPELL_MIRACLE;
+			snapshot.affects.push_back(pending);
+		}
+		++snapshot.revision;
+		snapshot.components = PLAYER_CHECKPOINT_COMPONENT_ALL;
+		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+		require(flatfile_player_snapshot_apply(argv[1], snapshot, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"Cleric fixture save: " + error);
+		return 0;
+	}
 	if (argc >= 4 && std::string(argv[2]) == "inspect-world-items")
 	{
 		inspect_world_items(argv[1], argc, argv);
@@ -921,6 +1034,17 @@ int main(int argc, char **argv)
 			applied.error_code == ENOENT,
 		"partial snapshot created a missing player baseline");
 	player_snapshot full = make_full(1);
+	std::vector<uint8_t> legacy_bytes;
+	require(player_snapshot_encode(full, &legacy_bytes) == player_snapshot_codec_result::ok,
+		"could not encode legacy-compatible status fixture");
+	legacy_bytes[0] = 9; // Version 9 has the same layout, without the new status field.
+	player_snapshot legacy;
+	uint64_t legacy_sequence = 99;
+	require(player_snapshot_decode(legacy_bytes.data(), legacy_bytes.size(), &legacy) ==
+				player_snapshot_codec_result::ok &&
+			player_snapshot_divine_delivery_sequence(legacy, &legacy_sequence) &&
+			!legacy_sequence,
+		"version-9 player status did not upgrade with an empty delivery marker");
 	applied = flatfile_player_snapshot_apply(root.string(), full, &error);
 	require(applied.outcome == player_save_apply_outcome::applied &&
 			applied.durable_revision == 1,
@@ -1124,7 +1248,153 @@ int main(int argc, char **argv)
 			"player domain removal was not prepared: " + error);
 	}
 
+	// Prepare an award, load it through the ordinary login reader, then commit
+	// the actual full status checkpoint containing its balance and watermark.
+	{
+		flatfile_player_domain_record opponent;
+		opponent.pid = 43;
+		opponent.account_name = "divine-victim";
+		opponent.racewar = 2;
+		require(flatfile_player_domain_establish(root.string(), opponent, &error) ==
+				flatfile_player_domain_result::ok,
+			"establish Divine opponent");
+		combat_outcome_payload event = {};
+		event.victim_pid = 43;
+		event.participant_count = 2;
+		event.prepared_at = 150;
+		event.participants[0].pid = 42;
+		event.participants[0].role = combat_participant_role::killer;
+		event.participants[0].racewar = 1;
+		event.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM |
+					      COMBAT_PARTICIPANT_DIVINE_EPIC;
+		event.participants[0].frag_delta = 100;
+		event.participants[0].epic_delta = 150;
+		event.participants[0].epic_boon_id = 7;
+		event.participants[0].epic_base = 100;
+		event.participants[1].pid = 43;
+		event.participants[1].role = combat_participant_role::victim;
+		event.participants[1].racewar = 2;
+		critical_operation_id identity = {};
+		identity.bytes[0] = 223;
+		critical_command command;
+		require(combat_outcome_command_build(&command, identity, event),
+			"build prepared PvP");
+		command.accepted_at_usec = 1;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+				critical_apply_outcome::applied,
+			"prepare PvP receipt");
+		player_load_request recovery = {};
+		recovery.request_id = 900;
+		recovery.pid = 42;
+		recovery.account_name = "account-one";
+		recovery.deadline_usec =
+			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+		const auto owed = flatfile_player_load_repository_execute(root.string(), recovery);
+		require(owed.outcome == player_load_outcome::applied &&
+				owed.divine_epic_deliveries.size() == 1 &&
+				owed.divine_epic_deliveries[0].amount == 150 &&
+				owed.divine_epic_deliveries[0].sequence == 1,
+			"flat login omitted an unpaid prepared receipt");
+		auto credited = make_full(11);
+		for (auto &field : credited.status_integers)
+			if (field.field == player_status_field::epics)
+				field.signed_value = owed.domains.epics + 150;
+		credited.status_integers.push_back(
+			{ player_status_field::divine_boon_delivery_seq, 0, 1, true });
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+		require(flatfile_player_snapshot_apply(root.string(), credited, &error).outcome ==
+				player_save_apply_outcome::retryable_failure,
+			"prepared checkpoint interruption");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+		const auto paid_credit =
+			flatfile_player_load_repository_execute(root.string(), recovery);
+		require(paid_credit.outcome == player_load_outcome::applied &&
+				paid_credit.divine_epic_deliveries.empty() &&
+				paid_credit.domains.epics == owed.domains.epics + 150,
+			"flat checkpoint recovery lost or duplicated the prepared payout: outcome=" +
+				std::to_string(static_cast<unsigned>(paid_credit.outcome)) +
+				", balance=" + std::to_string(paid_credit.domains.epics) +
+				", before=" + std::to_string(owed.domains.epics) + ", pending=" +
+				std::to_string(paid_credit.divine_epic_deliveries.size()) +
+				", component=" +
+				(paid_credit.failed_component ? paid_credit.failed_component :
+								"none"));
+	}
+
 	const fs::path snapshot_path = players / "42.snapshot";
+	player_snapshot paid = make_status(12, 51, 1201);
+	paid.status_integers.insert(paid.status_integers.end(),
+				    { { player_status_field::copper, 11, 0, false },
+				      { player_status_field::silver, 12, 0, false },
+				      { player_status_field::gold, 13, 0, false },
+				      { player_status_field::platinum, 14, 0, false },
+				      { player_status_field::frags, 16, 0, false },
+				      { player_status_field::old_frags, 17, 0, false } });
+	paid.status_integers.push_back({ player_status_field::epics, 450, 0, false });
+	paid.status_integers.push_back(
+		{ player_status_field::divine_boon_delivery_seq, 0, 3, true });
+	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+	require(flatfile_player_snapshot_apply(root.string(), paid, &error).outcome ==
+			player_save_apply_outcome::retryable_failure,
+		"delivery fault did not interrupt the authority commit");
+	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+	require(flatfile_player_snapshot_apply(root.string(), paid, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"Divine status checkpoint failed: " + error);
+	auto stale_delivery = paid;
+	stale_delivery.revision = 13;
+	stale_delivery.status_integers[stale_delivery.status_integers.size() - 2].signed_value = 1;
+	stale_delivery.status_integers.back().unsigned_value = 2;
+	require(flatfile_player_snapshot_apply(root.string(), stale_delivery, &error).outcome ==
+			player_save_apply_outcome::stale_revision,
+		"stale Divine capture was applied");
+	auto mixed_delivery = stale_delivery;
+	mixed_delivery.components |= PLAYER_COMPONENT_SKILLS | PLAYER_COMPONENT_LANGUAGES;
+	mixed_delivery.skills = { { 9, 73, 2 } };
+	mixed_delivery.languages = { { 1, 82, 0 } };
+	require(flatfile_player_snapshot_apply(root.string(), mixed_delivery, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"stale status discarded unrelated components");
+	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
+			flatfile_player_load_result::ok,
+		"paid Divine checkpoint could not reload");
+	uint64_t delivered_sequence = 0;
+	require(player_snapshot_divine_delivery_sequence(loaded, &delivered_sequence) &&
+			delivered_sequence == 3 &&
+			loaded.status_integers[loaded.status_integers.size() - 2].signed_value ==
+				450,
+		"stale save erased the Divine balance or applied marker");
+	require(loaded.revision == mixed_delivery.revision && loaded.skills.size() == 1 &&
+			loaded.skills[0].learned == 73 && loaded.languages.size() == 1 &&
+			loaded.languages[0].value == 82,
+		"mixed stale status lost skill/language changes");
+	flatfile_identity_record delivery_identity;
+	flatfile_player_domain_record delivery_domains;
+	require(flatfile_identity_lookup_pid(root.string(), 42, &delivery_identity, &error) ==
+				flatfile_identity_result::ok &&
+			flatfile_player_domain_load(root.string(), 42, delivery_identity.account,
+						    delivery_identity.racewar, &delivery_domains,
+						    &error) == flatfile_player_domain_result::ok &&
+			delivery_domains.domains.epics == 450,
+		"delivery marker advanced without the authoritative epic balance");
+	auto incomplete_delivery = make_status(14, 51, 1201);
+	incomplete_delivery.status_integers.push_back(
+		{ player_status_field::epics, 500, 0, false });
+	incomplete_delivery.status_integers.push_back(
+		{ player_status_field::divine_boon_delivery_seq, 0, 4, true });
+	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"marker advanced without a complete financial checkpoint");
+	auto malformed_delivery = paid;
+	malformed_delivery.status_integers.back().is_unsigned = false;
+	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"signed delivery marker was accepted");
+	malformed_delivery = paid;
+	malformed_delivery.status_integers.push_back(paid.status_integers.back());
+	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"duplicate delivery marker was accepted");
 	{
 		std::fstream file(snapshot_path, std::ios::in | std::ios::out | std::ios::binary);
 		require(file.good(), "could not open player snapshot for corruption test");

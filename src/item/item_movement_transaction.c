@@ -24,6 +24,7 @@
 #include "player/player_load_items.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "net/gmcp.h"
 
 #include <algorithm>
 #include <array>
@@ -756,6 +757,8 @@ void creation_grant_completion(P_char actor, bool committed, const item_transfer
 					     "Your Chaos Equipment has been prepared!!\r\n" :
 					     "Your starter kit is ready.\r\n",
 				     actor);
+			// The detached kit changes derived vitals after the initial entry snapshot.
+			gmcp_char_vitals(actor);
 			actor->desc->prompt_mode = TRUE;
 		}
 		else if (announce_on_completion && actor->desc &&
@@ -847,7 +850,10 @@ void creation_grant_batch_completion(P_char actor, bool committed, const item_tr
 		send_to_char("Your Chaos Equipment has been prepared!!\r\n", actor);
 	}
 	if (blocks_actor_commands && actor->desc)
+	{
+		gmcp_char_vitals(actor);
 		actor->desc->prompt_mode = TRUE;
+	}
 }
 
 void account_health()

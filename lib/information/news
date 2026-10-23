@@ -1,11 +1,228 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 18, 2026&n
+&+WUpdated: October 22, 2026&n
 
-Welcome back! Marduk and Enlil return, and your mental reserves recover
-more reliably. Newest changes come first; later updates replace older rules.
+Welcome back! Staff can call a cleaner halt to combat.
+Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/22/26&n &+L-&n &+YA quieter end to the fight&n
+&+W----------------------------------------------------------------------&n
+
+&+CA clean break when staff intervene&n
+&+Y-&n Staff &+C'tranquilize'&n now stops everyone in the room attacking
+  its target, even when that target is not fighting back. Unrelated
+  fights continue as before.
+
+&+R10/21/26&n &+L-&n &+YAuras, antidotes, and an escape route&n
+&+W----------------------------------------------------------------------&n
+
+&+CClerics choose their protection&n
+&+Y-&n Zealots now receive &+C'innate aura_of_protection'&n. Healers receive
+  &+C'innate aura_of_spell_protection'&n. Holymen retain both protections.
+&+Y-&n Warding Faith is retired: Healers no longer have its shield, passive
+  refill, or refill from healing. Epic Warding Faith is no longer taught.
+  Wards granted by other effects still work.
+&+Y-&n Healers no longer provide or receive Improved Healing, including
+  another character's aura. Healing cast by a Healer also receives no
+  Improved Healing bonus from the recipient's aura. Other eligible
+  characters can still benefit from a Paladin's Improved Healing.
+  These changes replace the Healer ward and aura rules announced below.
+
+&+CWatch your back, watch your blade&n
+&+Y-&n Trained &+C'awareness'&n now helps below 75% proficiency and counts
+  as awareness against backstabs. Mountain dwarf and duergar attackers
+  no longer bypass that protection. Critical stabs and unconscious
+  targets keep their existing exceptions.
+&+Y-&n Weapon coatings now follow the same rules for melee hits,
+  backstabs, and thrown weapons. A coating is spent on delivery even
+  when the target resists or already has that poison. Successful
+  poisoning gives the victim a clear warning.
+&+Y-&n In player combat, poisoned weapons allow a paralysis save, adjusted
+  by the level difference. Player dragon, demon, elemental, and undead
+  forms resist these coatings; transformed players retain their owner's
+  defenses. Poisoned darts now use their coating's ordinary effect.
+&+Y-&n Weapon-delivered Weakness uses the attacker's level for its strength
+  loss: &+Y5-10&n below level 41, &+Y5-15&n at levels 41-50, and &+Y5-20&n
+  at level 51 or higher. Slow Poison caps the loss at &+Y8&n. Existing
+  Weakness effects and other poison sources retain their old potency.
+&+Y-&n Slowness poison can now be cured properly. Curing or losing a poison
+  also stops its old timer from interfering with a later poisoning.
+&+Y-&n Assassin recipes now require level &+Y36&n for Moveleak, &+Y41&n for
+  Slowness, and &+Y46&n for Heart Toxin and Neurotoxin. Neurotoxin also
+  requires &+Y80%&n Mix Poison skill. Use &+C'mixpoison'&n to inspect
+  recipes available to you; their ingredients are unchanged.
+
+&+CChoose your exit&n
+&+Y-&n Rogues trained in Control Flee can use &+C'flee <direction>'&n to
+  request one safe exit. Success follows your skill, up to &+Y95%&n at
+  100% proficiency. Losing control falls back to a random safe exit;
+  invalid or blocked requested exits are rejected before the attempt.
+&+Y-&n Flee messages now follow where you actually went, including an
+  unexpected diversion, instead of claiming the intended escape worked.
+
+&+CAt a glance&n
+&+Y-&n &+C'Who'&n now shows the peak simultaneous connections from the
+  previous completed server hour. This counts connections, including
+  login screens, rather than unique players. A fresh boot needs a full
+  hour before a peak is available; the current hour stays private.
+&+Y-&n Class and specialization help now uses consistent colors and layout.
+  Read &+C'help healer'&n, &+C'help zealot'&n, and your skill help for the
+  current rules.
+
+&+R10/20/26&n &+L-&n &+YOne artifact, its rightful owner&n
+&+W----------------------------------------------------------------------&n
+
+&+CArtifacts find their way back&n
+&+Y-&n At restart, artifacts held back by conflicting old records can now
+  return when saved ownership identifies one valid copy. Your recorded
+  holder takes priority; a soul-bound owner's saved copy can also resolve
+  an outdated location. Unclear ownership still keeps an artifact withheld.
+&+Y-&n Once the valid copy is established, obsolete duplicates stay retired
+  across later restarts and replacements. Retired copies are removed when
+  loading your character; items inside a retired container are preserved.
+&+Y-&n Older auction saves now recognize artifact status inherited from the
+  original item, helping valid auctioned artifacts survive recovery.
+&+Y-&n Artifact expiry now follows the verified saved holder when old
+  records name a room or former owner, so being offline no longer leaves
+  the expiry check looking in the wrong place.
+
+&+R10/20/26&n &+L-&n &+YYour next beginning, your next blessing&n
+&+W----------------------------------------------------------------------&n
+
+&+CChoose your starting stats&n
+&+Y-&n New characters can choose &+YDefault&n for consistently strong stats
+  and a quick start, or &+YAdvanced&n for a wider range and rerolling
+  until you accept a set. Both methods give &+Yfour +5 bonuses&n and
+  let you swap stats afterward. A stat already at 100 uses no bonus.
+&+Y-&n Browser connections follow the same four-bonus sequence. Accept
+  Advanced rolls before adding bonuses; finish bonuses before swapping
+  stats or entering the world. Reset creation to change race or method
+  after accepting stats. Your new character's account listing and vital
+  displays now catch up correctly after first entry and starter equipment.
+
+&+CClerics bring the whole toolkit&n
+&+Y-&n Healers regain ordinary Cleric offensive spells, sixth-circle
+  Negative Energy Barrier, and Kick training up to &+Y40%&n. Specializing
+  as a Healer at &+Ylevel 30&n also grants the white Improved Healing
+  aura: use &+C'innate aura_of_improved_healing'&n. It helps nearby
+  groupmates receive healing, and multiple copies do not stack.
+&+Y-&n For all Clerics, Miracle moves from seventh to &+Yeighth circle&n
+  (level 36), while True Seeing moves from eleventh to &+Ytenth circle&n.
+  Holymen no longer receive Vital Intercession. Leaving a Cleric
+  specialization now clears its linked auras properly.
+&+Y-&n &+Ccast 'divine warding'&n now protects only you. Its seven protections
+  each last &+Y11 elapsed minutes&n, can be dispelled separately, and
+  keep their remaining duration when saved. Recasting refreshes all seven;
+  casting an individual protection afterward gives that protection its
+  ordinary duration instead.
+&+Y-&n A Healer's Warding Faith now refills from empty in &+Y240 seconds&n
+  in an ordinary room without other modifiers. Passive recovery stops
+  in combat and no-heal rooms; healing rooms improve it. Epic training
+  increases capacity without extending that baseline refill time.
+&+Y-&n Your healing now refills your ward by &+Y10%&n of HP actually restored,
+  down from 20%, rounded down separately for each recipient. Overhealing
+  adds nothing. This refill still works in combat and on group healing.
+  See &+C'help healer'&n, &+C'help warding faith'&n and
+  &+C'help divine warding'&n for the revised rules.
+
+&+CStorms and stone rewards&n
+&+Y-&n Tapping &+MTsunami&n grants Vitality at your level plus &+Y15&n,
+  capped at level &+Y60&n. It strengthens weaker ordinary Vitality and
+  refreshes its duration without weakening a stronger one. Only you and
+  groupmates in the room benefit; reflections and deity-specific Vitality
+  remain excluded.
+&+Y-&n Epic stone base payouts are now &+Y300&n for Ancient Halls of
+  Ironstar, &+Y1200&n for Ravenloft Catacombs, and &+Y700&n for Grumbar's
+  Domain. Existing stone modifiers can change the final award.
+  &+C'Epic zones'&n now lists zones in ascending order of base payout.
+
+&+CThe right locker, the right company&n
+&+Y-&n &+C'Enter locker <character>'&n now finds that character's account
+  locker even when their account has a different name. It takes precedence
+  over an old personal locker; use &+C'enter locker <character>.locker'&n
+  to select the old locker explicitly. Their contents and grants stay
+  separate. Full account and guild locker names accept a final .locker.
+&+Y-&n Grants still require the same racewar side. Grant a character name
+  for one visitor, or an account name for that account's characters on
+  your side. Leave the locker and let its save finish before your visitor
+  enters. &+C'Enter locker guild'&n and your guild's numbered name apply
+  the same membership, parole and prestige checks. Occupied lockers no
+  longer risk loading a second copy. See &+C'help locker'&n and &+C'help grant'&n.
+&+Y-&n Ordinary &+C'who'&n once again says when the opposing side has
+  someone online, without giving its population. This replaces yesterday's
+  removal of that message; public status replies still omit population.
+
+&+CAt the noticeboard and the builder's desk&n
+&+Y-&n The welcome screen now carries the pwipe announcement for
+  &+YOctober 28 at 18:00 UTC&n, plus links for feedback, Mudlet upgrades,
+  the website and Discord. Bring your crew and your best grudges.
+&+Y-&n Staff &+C'rlist'&n, &+C'mlist'&n and &+C'olist'&n default to your current
+  zone, accept explicit zone numbers or inclusive VNUM ranges, and show
+  at most &+Y500 entries&n. Enable paging for results. These lists read
+  names without creating creatures or items; use each command's help
+  for its syntax and &+C'rlist'&n offsets.
+
+&+R10/19/26&n &+L-&n &+YBags in balance, grudges in working order&n
+&+W----------------------------------------------------------------------&n
+
+&+CYour pack tells the truth&n
+&+Y-&n Moving items through nested bags and weight-reducing containers now
+  keeps your carried weight accurate, including worn bags and odd-weight
+  items. Bags loaded from lockers also recover their proper weight.
+&+Y-&n Locker sorting keeps containers and corpses out of equipment and ore
+  chests, even when their bonuses or names would otherwise match.
+&+Y-&n Firing ammunition from a quiver no longer subtracts its weight twice
+  from your load.
+
+&+COld grudges, honest rewards&n
+&+Y-&n Racial Hatred now recognizes visible enemies of the appropriate races
+  in your room. Its combat and spell speed benefits stay active while
+  such an enemy is visible and clear when none remains. Reconnecting,
+  gaining the innate or changing form no longer leaves it stuck or doubled.
+&+Y-&n Bonus experience from Addicted to Blood no longer counts the same
+  victim twice toward kill and race boons. You still receive the bonus XP.
+&+Y-&n Reconnecting no longer repeats a boon reward already delivered when
+  the game could not finish recording its receipt.
+&+Y-&n Epic stones no longer try to buy stone levels below &+Ylevel 50&n.
+  Lower-level epic awards and the separate free levels at &+Y46-49&n remain.
+
+&+CWho is out there?&n
+&+Y-&n Ordinary &+C'who'&n keeps its familiar visible names and count, but no
+  longer reveals the global hourly connection record or whether the
+  opposing side has anyone online. Public MUD directory status replies
+  are disabled, and the game's exported status report omits population.
+
+&+CBetter help for your next choice&n
+&+Y-&n Class and specialization help now gives fuller skill, spell, innate,
+  race and progression information. Start with &+C'help classes'&n,
+  &+C'help <class>'&n, &+C'help <class> skills'&n or &+C'help specialization'&n.
+  This refresh describes the existing rules; it does not rebalance classes.
+&+Y-&n &+C'Help epic skill cost'&n lists all &+Y45&n skills alphabetically with
+  corrected first-step and full-training totals. Prices have not changed.
+  Training starts at &+Ylevel 30&n; secondary-class-only training still
+  costs twice the epics and three times the platinum. Ask your teacher
+  for the exact price of your next step.
+
+&+R10/18/26&n &+L-&n &+YFamiliar places, corrected paths&n
+&+W----------------------------------------------------------------------&n
+
+&+CRoads and landmarks&n
+&+Y-&n Arcium now occupies the former Abandoned Elven Homestead site in the
+  Evermeet woodlands. The Homestead moves to Turopolis's former site in
+  Hearth Valley, keeping both its east and south wilderness approaches.
+&+Y-&n Turopolis moves to Eagle Ridge Delta; its Zoo connection remains.
+  Outcasts Tower takes the former Temple of Lizizania approach south of
+  Kimordril and keeps its Underworld route. Lizizania moves to the Evil
+  Continent south of Torg. Map labels and return paths match these moves.
+  These locations replace the earlier route announcements below.
+
+&+CA little stagecraft for staff&n
+&+Y-&n Staff arrival and departure messages preview as they appear during
+  travel, keep the default message when cleared, and accept up to
+  &+Y512 characters&n including color codes. Name approval no longer
+  replaces a custom arrival message with "Accepted".
 
 &+R10/18/26&n &+L-&n &+YTwo stones, two sides, fresh battles&n
 &+W----------------------------------------------------------------------&n

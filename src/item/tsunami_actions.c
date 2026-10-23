@@ -19,11 +19,50 @@
 #include "item/artifact_mana.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include <ctime>
 #include <vector>
 
 extern P_room world;
 extern P_index obj_index;
+
+bool apply_tsunami_vitality(int wielder_level, P_char actor, P_char target)
+{
+	if (!IS_ALIVE(actor) || !IS_ALIVE(target) || actor->in_room != target->in_room ||
+	    (target != actor && (!actor->group || actor->group != target->group)) ||
+	    (IS_NPC(target) && GET_VNUM(target) == IMAGE_REFLECTION_VNUM))
+		return false;
+
+	const int power = MIN(wielder_level + 15, 60);
+	if (affected_by_spell(target, SPELL_MIELIKKI_VITALITY) ||
+	    affected_by_spell(target, SPELL_FALUZURES_VITALITY) ||
+	    affected_by_spell(target, SPELL_ESHABALAS_VITALITY))
+	{
+		// Reuse the spell's existing deity-specific rejection explanation.
+		spell_vitality(power, actor, nullptr, SPELL_TYPE_SPELL, target, nullptr);
+		return false;
+	}
+
+	for (auto *af = target->affected; af; af = af->next)
+	{
+		if (af->type != SPELL_VITALITY)
+			continue;
+		if (af->modifier < 4 * power)
+		{
+			// Preserve source links and finish HP recalculation before observing position.
+			all_affects(target, FALSE);
+			af->modifier = 4 * power;
+			all_affects(target, TRUE);
+			update_pos(target);
+		}
+		af->duration = 15;
+		gmcp_char_vitals(target);
+		gmcp_char_affects(target);
+		return true;
+	}
+	spell_vitality(power, actor, nullptr, SPELL_TYPE_SPELL, target, nullptr);
+	return true;
+}
 
 namespace
 {
@@ -112,20 +151,7 @@ class tsunami_adapter final : public item_action_adapter
 				continue;
 			if (command == CMD_TAP)
 			{
-				// Both initial application and refresh are restricted to self/group.
-				if (target != actor &&
-				    (!actor->group || actor->group != target->group))
-					continue;
-				if (affected_by_spell(target, SPELL_VITALITY))
-				{
-					for (auto *affect = target->affected; affect;
-					     affect = affect->next)
-						if (affect->type == SPELL_VITALITY)
-							affect->duration = 15;
-				}
-				else
-					spell_vitality(level, actor, nullptr, SPELL_TYPE_SPELL,
-						       target, nullptr);
+				apply_tsunami_vitality(level, actor, target);
 				continue; // Native spells may remove any participant; reacquire next iteration.
 			}
 			if (!native_artifact_hostile(actor, target) ||

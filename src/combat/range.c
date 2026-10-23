@@ -1133,28 +1133,6 @@ void do_fire(P_char ch, char *argument, int cmd)
 	}
 }
 
-void event_poisoned_dart(P_char ch, P_char vict, P_obj /*obj*/, void *args)
-{
-	int dam;
-	int poison;
-	struct damage_messages messages = {
-		"$N suddenly turns &+ggreen &nas your poison reaches $S &+Wvital &norgans.",
-		"You suddenly feel &+gsick &nas $n's poison reaches your &+Wvital &norgans.",
-		"$N suddenly turns &+ggreen &nas your poison reaches $S &+Wvital &norgans.",
-		"$N suddenly turns &+Ggreen &nholds $S throat and vomits &+Rblood &nas $S soul leaves the body forever.",
-		"A &+gsickening &nwave going up your throat is the last thing you feel..",
-		"$N suddenly turns &+Ggreen &nholds $S throat and vomits &+Rblood &nas $S soul leaves the body forever.",
-	};
-
-	poison = *((int *)args);
-	dam = 200 + 2 * poison + number(0, 30);
-
-	if (IS_AFFECTED(vict, AFF_SLOW_POISON))
-		dam = (int)(dam * 0.7);
-
-	raw_damage(ch, vict, dam, RAWDAM_DEFAULT, &messages);
-}
-
 /*
  * Throw a weapon
  *
@@ -1359,17 +1337,7 @@ void do_throw(P_char ch, char *argument, int /*cmd*/)
 			result = melee_damage(ch, vict, dmg, PHSDAM_NOENGAGE | PHSDAM_NOSHIELDS,
 					      &messages);
 			if (result == DAM_NONEDEAD)
-			{
-				if (IS_DART(weapon) && weapon->value[4] &&
-				    GET_CHAR_SKILL(ch, SKILL_DARTS) > number(0, 100))
-				{
-					add_event(event_poisoned_dart,
-						  number(PULSE_VIOLENCE / 2, 2 * PULSE_VIOLENCE),
-						  ch, vict, 0, 0, &(weapon->value[4]), sizeof(int));
-					weapon->value[4] = 0;
-					break;
-				}
-			}
+				deliver_weapon_poison(ch, vict, weapon);
 			else
 				break;
 		}

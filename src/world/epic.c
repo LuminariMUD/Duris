@@ -36,6 +36,10 @@ using namespace std;
 #include "world/zone_touch_transaction.h"
 #include "economy/auction_houses.h"
 #include "economy/boon.h"
+#include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_math.h"
+#include "combat/combat_outcome_command.h"
+#include <limits>
 #include "combat/damage.h"
 #include "economy/currency_transaction.h"
 #include "world/epic.h"
@@ -676,27 +680,6 @@ bool has_epic_task(P_char ch)
 	return (get_epic_task(ch) != NULL);
 }
 
-void epic_frag(P_char ch, int victim_pid, int amount)
-{
-	struct affected_type *afp;
-
-	if ((afp = get_epic_task(ch)))
-	{
-		if (abs(afp->modifier) == SPILL_BLOOD)
-		{
-			send_to_char(
-				"The &+rGods of Duris&n are very pleased with this &+rblood&n.\n",
-				ch);
-			send_to_char("You can now progress further in your quest for epic power!\n",
-				     ch);
-			// Spill blood task is now a flat 500 epics, not a multiplier since that very easily translates to 3*0=0.
-			amount += 500;
-			affect_remove(ch, afp);
-		}
-	}
-	gain_epic(ch, EPIC_PVP, victim_pid, amount);
-}
-
 int epic_calculate_pvp_award(P_char ch, int amount)
 {
 	if (!ch || IS_NPC(ch) || amount < 1 || errand_notch < 1)
@@ -710,6 +693,68 @@ int epic_calculate_pvp_award(P_char ch, int amount)
 	if (GET_RACEWAR(ch) == RACEWAR_EVIL)
 		amount = static_cast<int>(amount * get_property("epic.gain.modifier.evil", 1.000));
 	return amount;
+}
+
+bool epic_prepare_pvp_award(P_char ch, P_char victim, double base, int ordinary_base,
+			    int spill_blood, int64_t prepared_at,
+			    combat_outcome_participant *prepared)
+{
+	if (!ch || !victim || !prepared || IS_NPC(ch) || IS_NPC(victim) || ordinary_base < 0 ||
+	    !std::isfinite(base) || base < 0 || (spill_blood != 0 && spill_blood != 500))
+		return false;
+	prepared->flags &= ~(COMBAT_PARTICIPANT_DIVINE_EPIC | COMBAT_PARTICIPANT_SPILL_BLOOD);
+	if (spill_blood)
+		prepared->flags |= COMBAT_PARTICIPANT_SPILL_BLOOD;
+	prepared->epic_boon_id = 0;
+	prepared->epic_base = 0;
+	prepared->epic_spill_blood = 0;
+	const auto *state = divine_boon_runtime_state();
+	const divine_boon_slot *boon = nullptr;
+	if (base > 0 && ordinary_base > 0 && state && state->mode == divine_boon_mode::divine &&
+	    ((IS_RACEWAR_GOOD(ch) && IS_RACEWAR_EVIL(victim)) ||
+	     (IS_RACEWAR_EVIL(ch) && IS_RACEWAR_GOOD(victim))) &&
+	    GET_LEVEL(ch) <= MAXLVLMORTAL && GET_LEVEL(victim) <= MAXLVLMORTAL &&
+	    ch->in_room >= 0 && ch->in_room == victim->in_room &&
+	    !IS_ROOM(ch->in_room, ROOM_SAFE | ROOM_GUILD | ROOM_ARENA) &&
+	    !IS_SET(zone_table[world[ch->in_room].zone].flags,
+		    ZONE_TOWN | ZONE_SAFE | ZONE_PRIVATE | ZONE_CLOSED))
+		for (const auto &slot : state->slots)
+			if (slot.category == divine_boon_category::pvp &&
+			    divine_boon_active(slot, prepared_at))
+			{
+				boon = &slot;
+				break;
+			}
+	if (!boon)
+	{
+		prepared->epic_delta = epic_calculate_pvp_award(ch, ordinary_base + spill_blood);
+		return true;
+	}
+	if (!std::isfinite(base) || base <= 0 || errand_notch < 1)
+		return false;
+	double amount = base + spill_blood;
+	double contribution = base * 0.5;
+	auto modify = [&](double multiplier)
+	{
+		amount *= multiplier;
+		contribution *= std::min(1.0, multiplier);
+	};
+	if (IS_AFFECTED4(ch, AFF4_EPIC_INCREASE))
+		modify(divine_boon_modifier(get_property("epic.witch.multiplier", 1.5)));
+	amount = check_nexus_bonus_precise(ch, amount, NEXUS_BONUS_EPICS);
+	modify(1.0 + get_epic_bonus_precise(ch, EPIC_BONUS_EPIC_POINT));
+	modify(divine_boon_modifier(get_property(IS_RACEWAR_GOOD(ch) ? "epic.gain.modifier.good" :
+								       "epic.gain.modifier.evil",
+						 1.000)));
+	amount += contribution;
+	if (!std::isfinite(amount) || amount < 1 || amount > std::numeric_limits<int>::max())
+		return false;
+	prepared->epic_delta = static_cast<int>(amount);
+	prepared->epic_boon_id = boon->id;
+	prepared->epic_base = base;
+	prepared->epic_spill_blood = spill_blood;
+	prepared->flags |= COMBAT_PARTICIPANT_DIVINE_EPIC;
+	return true;
 }
 
 void epic_publish_pvp_award(P_char ch, int amount)
@@ -2018,11 +2063,7 @@ vector<epic_zone_data> get_epic_zones()
 		if (zone.epic_type > 0)
 			epic.push_back(zone);
 	// sql_zones() is in id order, so equal values keep it.
-	stable_sort(epic.begin(), epic.end(),
-		    [](const zone_info &a, const zone_info &b) {
-			    return a.suggested_group_size * a.epic_payout <
-				   b.suggested_group_size * b.epic_payout;
-		    });
+	std::ranges::stable_sort(epic, {}, &zone_info::epic_payout);
 
 	vector<epic_zone_data> zones;
 	for (const zone_info &zone : epic)

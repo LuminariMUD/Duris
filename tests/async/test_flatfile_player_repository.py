@@ -112,13 +112,15 @@ with lock as publication:
         state_root = temporary_path / "state"
         run_result = subprocess.run(
             [str(binary), str(state_root)],
-            cwd=ROOT,
+            cwd=temporary_path,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
         if run_result.returncode:
             raise SystemExit(run_result.stdout)
+        if not (temporary_path / "logs/log/item_claims").is_file():
+            raise SystemExit("player repository claims were not logged in the isolated runtime")
 
         domain_source = (SRC / "flatfile_player_domain_repository.c").read_text()
         player_source = (SRC / "flatfile_player_repository.c").read_text()

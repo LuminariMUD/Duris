@@ -18,10 +18,15 @@ prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "magic/spells.h"
+#include "classes/necromancy.h"
 #include <cassert>
 #include <cstdio>
 
 Skill skills[MAX_SKILLS];
+int numSkills;
+char class_innates[LAST_INNATE + 2][CLASS_COUNT][5];
+unsigned int class_innates_at_all[LAST_INNATE + 2];
+char racial_innates[LAST_INNATE + 1][LAST_RACE + 1];
 float get_property(const char *, double fallback) { return fallback; }
 '''
 production = "\n".join(extract_function(file, signature) for file, signature in (
@@ -35,7 +40,125 @@ production = "\n".join(extract_function(file, signature) for file, signature in 
     ("memorize.c", "int get_spell_circle(P_char ch, int spl)"),
     ("memorize.c", "void *has_memorized(P_char ch, int spell)"),
     ("memorize.c", "int knows_spell(P_char ch, int spell)"),
+    ("skills.c", "void SPEC_SPELL_ADD("),
+    ("skills.c", "void SPELL_ADD("),
+    ("skills.c", "void SPEC_SKILL_ADD("),
+    ("skills.c", "void SKILL_ADD("),
+    ("affects.c", "struct affected_type *get_spell_from_char("),
+    ("innates.c", "static int innate_char_race("),
+    ("innates.c", "static int innate_unlock_level("),
+    ("innates.c", "bool has_innate("),
 ))
+
+# Replay the current registration statements, including all spec overrides, through
+# the real registration functions. Expected circles below are independent of input.
+grants = []
+clean = re.sub(r"/\*.*?\*/|//[^\n]*", "", source("skills.c").read_text(), flags=re.S)
+for block in re.split(r"\b(?:SPELL|SKILL)_CREATE(?:_MSG|_WITH_MESSAGES)?\(", clean)[1:]:
+    match = re.match(r'"[^"]+",\s*((?:SPELL|SKILL)_\w+)', block)
+    if not match:
+        continue
+    statements = re.findall(r"^\s*((?:SPEC_)?(?:SPELL|SKILL)_ADD\([^;]+;)", block, re.M)
+    if not any("CLASS_CLERIC" in line for line in statements) and match[1] != "SPELL_VITAL_INTERCESSION":
+        continue
+    grants.append(f"numSkills = {match[1]}; skills[numSkills].targets = TAR_SPELL;\n" + "\n".join(statements))
+
+cleric_driver = r'''
+    REGISTER_CLERIC
+    const int restored[][2] = {
+        {SPELL_CAUSE_LIGHT, 1}, {SPELL_CAUSE_SERIOUS, 2}, {SPELL_CAUSE_CRITICAL, 3},
+        {SPELL_EARTHQUAKE, 3}, {SPELL_DISPEL_EVIL, 3}, {SPELL_DISPEL_GOOD, 3},
+        {SPELL_DESTROY_UNDEAD, 5}, {SPELL_HARM, 6}, {SPELL_FLAMESTRIKE, 6},
+        {SPELL_HOLY_WORD, 9}, {SPELL_UNHOLY_WORD, 9}, {SPELL_FULL_HARM, 10},
+        {SPELL_TAINT, 10}, {SPELL_NEG_ENERGY_BARRIER, 6},
+        {SPELL_MIRACLE, 8}, {SPELL_TRUE_SEEING, 10}, {SPELL_DIVINE_WARDING, 11}
+    };
+    char_data cleric{};
+    cleric.player.m_class = CLASS_CLERIC;
+    cleric.player.race = RACE_HUMAN;
+    affected_type saved{};
+    saved.type = TAG_MEMORIZE;
+    cleric.affected = &saved;
+    const int levels[] = {25,26,29,30,31,35,36,40,41,45,46,50,51,56};
+    for (int spec : {0, SPEC_HEALER, SPEC_HOLYMAN, SPEC_ZEALOT}) {
+        cleric.player.spec = spec;
+        for (int level : levels) {
+            cleric.player.level = level;
+            for (const auto &entry : restored) {
+                assert(get_spell_circle(&cleric, entry[0]) == entry[1]);
+                saved.modifier = entry[0];
+                for (int flags : {0u, MEMTYPE_FULL}) {
+                    saved.flags = flags;
+                    assert(bool(knows_spell(&cleric, entry[0])) == (level >= 5 * (entry[1] - 1) + 1));
+                }
+            }
+            saved.modifier = SPELL_VITAL_INTERCESSION;
+            for (int flags : {0u, MEMTYPE_FULL}) {
+                saved.flags = flags;
+                assert(get_spell_circle(&cleric, SPELL_VITAL_INTERCESSION) == MAX_CIRCLE + 1);
+                assert(!knows_spell(&cleric, SPELL_VITAL_INTERCESSION));
+            }
+            assert(get_spell_circle(&cleric, SPELL_HOLY_INTERCESSION) ==
+                   (spec == SPEC_HOLYMAN ? 10 : MAX_CIRCLE + 1));
+            assert(SKILL_DATA_ALL(&cleric, SKILL_KICK).maxlearn[spec] == (spec == SPEC_ZEALOT ? 90 : 40));
+        }
+    }
+    // A fighter/Cleric still receives the lawful secondary spell circle (+1).
+    cleric.player.spec = 0;
+    cleric.player.m_class = CLASS_WARRIOR;
+    cleric.player.secondary_class = CLASS_CLERIC;
+    cleric.player.level = 56;
+    assert(get_spell_circle(&cleric, SPELL_MIRACLE) == 9);
+    saved.modifier = SPELL_VITAL_INTERCESSION;
+    saved.flags = MEMTYPE_FULL;
+    assert(!knows_spell(&cleric, SPELL_VITAL_INTERCESSION));
+    cleric.affected = nullptr;
+    puts("Cleric source grants: all restored offense, progression boundaries, saved full/pending spells, specs and multiclass passed");
+'''.replace("REGISTER_CLERIC", "\n".join(grants))
+
+expected_auras = {
+    "HEALING": {("CLASS_PALADIN", "30", "0")},
+    "PROTECTION": {
+        ("CLASS_PALADIN", "1", "0"),
+        ("CLASS_CLERIC", "1", "SPEC_HOLYMAN"),
+        ("CLASS_CLERIC", "1", "SPEC_ZEALOT"),
+        ("CLASS_ANTIPALADIN", "1", "0"),
+    },
+    "SPELL_PROTECTION": {
+        ("CLASS_CLERIC", "1", "SPEC_HOLYMAN"),
+        ("CLASS_CLERIC", "1", "SPEC_HEALER"),
+    },
+}
+innate_source = source("innates.c").read_text()
+for aura, expected in expected_auras.items():
+    innate = f"INNATE_AURA_{aura}"
+    actual = set(re.findall(
+        rf"^\s*ADD_CLASS_INNATE\({innate}, (CLASS_\w+), (\d+), (\w+)\);",
+        innate_source, re.M))
+    assert actual == expected, (innate, actual)
+    for cls, level, spec in sorted(actual):
+        cleric_driver += f"class_innates[{innate}][flag2idx({cls}) - 1][{spec}] = {level};\n"
+        cleric_driver += f"class_innates_at_all[{innate}] |= {cls};\n"
+cleric_driver += r'''
+    cleric.player.secondary_class = 0;
+    cleric.player.m_class = CLASS_CLERIC;
+    for (int spec : {0, SPEC_HEALER, SPEC_HOLYMAN, SPEC_ZEALOT}) {
+        cleric.player.spec = spec;
+        cleric.player.level = 30;
+        assert(!has_innate(&cleric, INNATE_AURA_HEALING));
+        assert(has_innate(&cleric, INNATE_AURA_PROTECTION) ==
+               (spec == SPEC_HOLYMAN || spec == SPEC_ZEALOT));
+        assert(has_innate(&cleric, INNATE_AURA_SPELL_PROTECTION) ==
+               (spec == SPEC_HOLYMAN || spec == SPEC_HEALER));
+    }
+    cleric.player.spec = 0;
+    cleric.player.m_class = CLASS_PALADIN;
+    cleric.player.level = 29;
+    assert(!has_innate(&cleric, INNATE_AURA_HEALING));
+    cleric.player.level = 30;
+    assert(has_innate(&cleric, INNATE_AURA_HEALING));
+    puts("Cleric protection auras and Paladin level-30 Improved Healing entitlement passed");
+'''
 driver = r'''
 int main() {
     const int spell = SPELL_FREEDOM_OF_MOVEMENT;
@@ -83,6 +206,7 @@ int main() {
     puts("Saved spell eligibility: levels 46-50 reject, level 51 accepts, across six classes");
 }
 '''.replace("CLASSES", ", ".join(cls for cls, _ in classes))
+driver = driver.replace('    puts("Saved spell eligibility:', cleric_driver + '\n    puts("Saved spell eligibility:')
 
 # The real cast path must reject a zero result before handling the prepared (-1) path.
 casting = source("sparser.c").read_text()

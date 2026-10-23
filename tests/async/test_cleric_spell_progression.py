@@ -12,7 +12,8 @@ for block in re.split(r"\n\s*SPELL_CREATE", source)[1:]:
     if name and assignment:
         circles[name[1]] = int(assignment[1])
 
-assert circles["miracle"] == 7, "Clerics must receive Miracle at seventh circle"
+assert circles["miracle"] == 8, "Clerics must receive Miracle at level 36/eighth circle"
+assert circles["true seeing"] == 10
 assert circles["divine warding"] == 11
 assert circles["mass purification"] == 12
 assert circles["mass preserve"] == 6
@@ -32,11 +33,13 @@ for name, circle in {
 def cleric_help(path):
     text = (ROOT / path).read_text().lower()
     if path == "lib/information/help_index":
-        return next(entry for entry in text.split("\n#\n")
+        text = next(entry for entry in text.split("\n#\n")
                     if entry.strip().startswith("skill_cleric ("))
-    start = text.index("the following is a list of all skills and spells available to the cleric class:")
-    return re.search(r"==spells==\n(.*?)(?:\n\s*\n|\n#0|\Z)",
-                     text[start:], re.S)[1]
+    else:
+        start = text.index("the following is a list of all skills and spells available to the cleric class:")
+        text = text[start:]
+    section = re.search(r"==spells==\n(.*?)(?=\n==|\n#|\Z)", text, re.S)[1]
+    return re.sub(r"&(?:\+[a-z]|[n])", "", section)
 
 
 for path in ("help/duris_help_parsed.hlp",
@@ -49,7 +52,7 @@ for path in ("help/duris_help_parsed.hlp",
             if name.strip():
                 assert name.strip() not in listed, (path, name)
                 listed[name.strip()] = int(match[1])
-    for name in ("miracle", "mass preserve", "divine warding", "mass purification"):
+    for name in ("miracle", "true seeing", "mass preserve", "divine warding", "mass purification"):
         assert listed[name] == circles[name], (path, name)
     full_help = (ROOT / path).read_text().lower()
     assert "cast 'divine warding'" in full_help, path
@@ -67,7 +70,7 @@ assert int(dict(ids)[last_spell]) >= int(dict(ids)["SPELL_MASS_PURIFICATION"])
 first_skill = int(re.search(r"^#define FIRST_SKILL (\d+)", header, re.M)[1])
 assert int(dict(ids)[last_spell]) < first_skill
 for name, spell_id, target in (
-    ("divine warding", "SPELL_DIVINE_WARDING", "TAR_CHAR_ROOM"),
+    ("divine warding", "SPELL_DIVINE_WARDING", "TAR_SELF_ONLY"),
     ("mass purification", "SPELL_MASS_PURIFICATION", "TAR_IGNORE"),
 ):
     assert re.search(r'SPELL_CREATE\("' + name + r'", ' + spell_id +

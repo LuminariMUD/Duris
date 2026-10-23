@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded, offline, read-only export of worker outage evidence (wire version 1)."""
+"""Bounded, offline, read-only export of worker outage evidence (wire versions 1-3)."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,8 @@ import sys
 MAGIC = b"DMSTLJ01"
 MAX_PRODUCERS = 256
 WORDS = 40
-MAX_BYTES = 64 + MAX_PRODUCERS * WORDS * 8
+QUOTA_WORDS = 10
+MAX_BYTES = 64 + QUOTA_WORDS * 8 + MAX_PRODUCERS * 43 * 8
 UNKNOWN_UTC = -(1 << 63)
 KNOWN_KINDS = (1 << 9) - 2
 PHASES = {1: "running", 2: "clean_drained", 3: "abandoned", 4: "unknown_tail"}
@@ -43,17 +44,32 @@ class EvidenceError(Exception):
 
 
 def decode(data: bytes) -> dict:
-    if not 384 <= len(data) <= MAX_BYTES or data[:8] != MAGIC:
+    version = 3 if data[:8] == b"DMSTLJ03" else 2 if data[:8] == b"DMSTLJ02" else 1
+    if not 64 <= len(data) <= MAX_BYTES or data[:8] not in (MAGIC, b"DMSTLJ02", b"DMSTLJ03"):
         raise EvidenceError("corrupt")
     if hashlib.sha256(data[:-32]).digest() != data[-32:]:
         raise EvidenceError("corrupt")
     generation, count, reserved = struct.unpack_from(">3Q", data, 8)
-    if not generation or not 1 <= count <= MAX_PRODUCERS or reserved or len(data) != 64 + count * WORDS * 8:
+    extra = reserved if version == 3 else QUOTA_WORDS if version == 2 else 0
+    words = 43 if version == 3 else WORDS
+    if (not generation or not (0 if extra else 1) <= count <= MAX_PRODUCERS
+        or extra not in (0, QUOTA_WORDS) or reserved != extra or len(data) != 64 + extra * 8 + count * words * 8):
         raise EvidenceError("corrupt")
+    quota = None
+    if extra:
+        q = struct.unpack_from(f">{QUOTA_WORDS}Q", data, 32)
+        day = q[7] - (1 << 64) if q[7] >= (1 << 63) else q[7]
+        if (not all(q[:4]) or not 0 < q[6] <= 20000 or q[4] > q[6] or
+            q[5] > min(q[6], 100) or not q[4] + q[5] or not -719162 <= day <= 2932896 or
+            q[8] > q[4] or q[9] > q[5] or q[8] + q[9] > q[6]):
+            raise EvidenceError("corrupt")
+        quota = dict(zip(("project_id", "sender_id", "environment_id", "season_id",
+                          "normal_limit", "health_limit", "total_limit", "utc_day",
+                          "normal_reserved", "health_reserved"), (*q[:7], day, *q[8:])))
     observations = []
     producers = set()
     for index in range(count):
-        w = struct.unpack_from(f">{WORDS}Q", data, 32 + index * WORDS * 8)
+        w = struct.unpack_from(f">{words}Q", data, 32 + extra * 8 + index * words * 8)
         producer = w[:2]
         accepted = w[10] + w[11]
         acknowledged = w[13] + w[14] + w[15]
@@ -68,6 +84,11 @@ def decode(data: bytes) -> dict:
             raise EvidenceError("corrupt")
         producers.add(producer)
         row = dict(zip(FIELDS, w))
+        if version == 3:
+            if w[40] not in (0, 3) or w[41] > w[12]:
+                raise EvidenceError("corrupt")
+            row.update(backend="posthog" if w[40] == 3 else "sql",
+                       last_consumed_record_seq=w[41], consumed_records=w[42])
         for name in ("registered_utc_usec", "observed_utc_usec"):
             value = row[name]
             signed = value - (1 << 64) if value >= (1 << 63) else value
@@ -79,8 +100,11 @@ def decode(data: bytes) -> dict:
         row["known_abandoned_unattempted_records"] = w[25] if w[8] == 3 else 0
         row["unknown_after_last_sample"] = w[8] in (1, 4)
         observations.append(row)
-    return {"ledger_version": 1, "generation": generation, "producer_count": count,
-            "max_producers": MAX_PRODUCERS, "observations": observations}
+    result = {"ledger_version": version, "generation": generation, "producer_count": count,
+              "max_producers": MAX_PRODUCERS, "observations": observations}
+    if quota is not None:
+        result["quota"] = quota
+    return result
 
 
 def safe_file(fd: int) -> os.stat_result:
@@ -103,7 +127,8 @@ def read_evidence(directory: Path, name: str = "outages.ledger") -> dict:
         if status.st_uid != os.geteuid() or stat.S_IMODE(status.st_mode) != 0o700:
             raise EvidenceError("unsafe_storage")
         owner = os.open("outages.owner", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
-        if safe_file(owner).st_size != 0:
+        marker_size = safe_file(owner).st_size
+        if marker_size not in (0, 48):
             raise EvidenceError("unsafe_storage")
         try:
             fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -120,11 +145,19 @@ def read_evidence(directory: Path, name: str = "outages.ledger") -> dict:
                 raise EvidenceError("pending_publication")
         ledger = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
         size = safe_file(ledger).st_size
-        if not 384 <= size <= MAX_BYTES:
+        if not 64 <= size <= MAX_BYTES:
             raise EvidenceError("corrupt")
         with os.fdopen(ledger, "rb", closefd=False) as stream:
             data = stream.read(MAX_BYTES + 1)
-        return decode(data)
+        result = decode(data)
+        if name == "outages.ledger" and result.get("quota") is not None:
+            marker = os.pread(owner, 48, 0)
+            if (marker_size != 48 or marker[:8] != b"DMSQW001" or
+                struct.unpack_from(">Q", marker, 8)[0] != result["generation"] or marker[16:] != data[-32:]):
+                raise EvidenceError("rollback_or_incomplete_publication")
+        elif name == "outages.ledger" and marker_size:
+            raise EvidenceError("rollback_or_incomplete_publication")
+        return result
     finally:
         for fd in (ledger, owner, root):
             if fd is not None:

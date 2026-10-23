@@ -158,6 +158,10 @@ void apply_aura_to_group(P_char ch, int aura)
 /* actually apply the aura to victim char */
 void apply_aura(P_char ch, P_char victim, int aura)
 {
+	// Healers cannot receive Improved Healing, even from Paladins.
+	if (aura == AURA_HEALING && GET_SPEC(victim, CLASS_CLERIC, SPEC_HEALER))
+		return;
+
 	if (is_linked_to(ch, victim, LNK_PALADIN_AURA) || has_aura(victim, aura))
 	{
 		return;
@@ -216,6 +220,23 @@ void apply_aura(P_char ch, P_char victim, int aura)
 	snprintf(_buff, MAX_STRING_LENGTH, "You are surrounded by a %s.",
 		 auras[aura - FIRST_AURA].glow_name);
 	act(_buff, FALSE, victim, 0, victim, TO_CHAR);
+}
+
+// Remove any incoming Improved Healing link when choosing Healer.
+// Do not disturb other auras or outgoing aura effects.
+void remove_incoming_healing_aura(P_char victim)
+{
+	for (struct char_link_data *link = victim->linking; link;)
+	{
+		if (link->type == LNK_PALADIN_AURA && link->affect &&
+		    link->affect->type == AURA_HEALING)
+		{
+			unlink_char(victim, link->linked, LNK_PALADIN_AURA);
+			link = victim->linking;
+		}
+		else
+			link = link->next_linking;
+	}
 }
 
 /* hook from show_visual_status() in actinf.c, to show auras on glance/look listing */

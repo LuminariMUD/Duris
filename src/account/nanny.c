@@ -69,6 +69,7 @@
 #include "account/multiplay_whitelist.h"
 #include "classes/paladins.h"
 #include "player/player_load_materialize.h"
+#include "economy/divine_boon_delivery.h"
 #include "player/player_load_items.h"
 #include "player/player_load_pets.h"
 #include "player/player_load_pipeline.h"
@@ -1877,6 +1878,7 @@ void enter_game(P_desc d)
 		schedule_chaos_starting_bank(ch);
 	}
 	zone_touch_transaction_player_ready(ch);
+	divine_boon_delivery_player_ready(ch);
 	locker_identify_replay(ch);
 	item_movement_transaction_player_ready(ch);
 	shop_trade_transaction_player_ready(ch);
@@ -2556,6 +2558,47 @@ void select_race(P_desc d, char *arg)
 
 /* Krov: select_class_info eaten up by select_class */
 
+static void prompt_stat_method(P_desc d)
+{
+	SEND_TO_Q("\r\nChoose your stat rolling system.\r\n"
+		  "Default gives consistently strong starting stats, a higher average per roll,\r\n"
+		  "and a faster start. Advanced gives a wider range and lets you reroll for a\r\n"
+		  "potentially stronger set, which may take time.\r\n"
+		  "Both choices receive four +5 bonuses and allow stat swaps.\r\n\r\n"
+		  "D) Default / quick start\r\nA) Advanced / rerolling\r\n"
+		  "Your stat rolling system [D]: ",
+		  d);
+	STATE(d) = CON_STAT_METHOD;
+}
+
+static void select_stat_method(P_desc d, char *arg)
+{
+	for (; isspace(*arg); arg++)
+		;
+	if (*arg && LOWER(*arg) != 'd' && LOWER(*arg) != 'a')
+	{
+		prompt_stat_method(d);
+		return;
+	}
+
+	bool advanced = LOWER(*arg) == 'a';
+	roll_basic_attributes(d->character, advanced ? ROLL_ADVANCED : ROLL_NORMAL);
+	display_characteristics(d);
+	display_stats(d);
+	SEND_TO_Q(reroll, d);
+	if (advanced)
+	{
+		STATE(d) = CON_REROLL;
+		SEND_TO_Q("Do you want to reroll this char (y/n) [y]:  ", d);
+	}
+	else
+	{
+		STATE(d) = CON_BONUS1;
+		SEND_TO_Q(bonus, d);
+		SEND_TO_Q("\r\nEnter stat for first bonus:  ", d);
+	}
+}
+
 void select_reroll(P_desc d, char *arg)
 {
 	/* skip whitespaces */
@@ -2568,11 +2611,10 @@ void select_reroll(P_desc d, char *arg)
 	case 'n':
 		SEND_TO_Q("\r\n\r\nAccepting these stats.\r\n\r\n", d);
 		STATE(d) = CON_BONUS1;
-		// STATE(d) = CON_REROLL;
 		break;
 	default:
 		SEND_TO_Q("\r\n\r\nRerolling this character.\r\n\r\n", d);
-		roll_basic_attributes(d->character, ROLL_NORMAL);
+		roll_basic_attributes(d->character, ROLL_ADVANCED);
 		display_stats(d);
 		SEND_TO_Q(reroll, d);
 		SEND_TO_Q("Do you want to reroll this char (y/n) [y]:  ", d);
@@ -2667,7 +2709,13 @@ void select_bonus(P_desc d, char *arg)
 		SEND_TO_Q("Enter desired bonus stat, or '?' to see explanation again:  ", d);
 		return;
 	}
-	/* Krov: this now adds randomly 5/10/15 points */
+	if ((i == 9 ? d->character->base_stats.Luk : d->character->base_stats[i - 1]) >= 100)
+	{
+		SEND_TO_Q("\r\nThat stat is already at its maximum. No bonus was used.\r\n"
+			  "Enter another bonus stat:  ",
+			  d);
+		return;
+	}
 	add_stat_bonus(d->character, i, 5);
 
 	if (STATE(d) == CON_BONUS5)
@@ -2875,15 +2923,7 @@ void select_class(P_desc d, char *arg)
 	GET_BIRTHPLACE(d->character) = home;
 	GET_ORIG_BIRTHPLACE(d->character) = home;
 
-	/* Krov: didn't get hometown choice either, roll the stats */
-	STATE(d) = CON_BONUS1;
-	//STATE(d) = CON_REROLL;
-	roll_basic_attributes(d->character, ROLL_NORMAL);
-	display_characteristics(d);
-
-	display_stats(d); //
-	SEND_TO_Q(reroll, d); //
-	SEND_TO_Q("\r\nPress return to continue with adding stat bonuses.\r\n", d);
+	prompt_stat_method(d);
 }
 
 /* Krov: this procedure displays the classtable according to race */
@@ -3016,12 +3056,7 @@ void select_alignment(P_desc d, char *arg)
 	GET_BIRTHPLACE(d->character) = home;
 	GET_ORIG_BIRTHPLACE(d->character) = home;
 
-	STATE(d) = CON_BONUS1;
-	roll_basic_attributes(d->character, ROLL_NORMAL);
-	display_characteristics(d);
-	display_stats(d);
-	SEND_TO_Q(reroll, d);
-	SEND_TO_Q("\r\nPress return to continue with adding stat bonuses.\r\n", d);
+	prompt_stat_method(d);
 }
 
 /* Krov: HOMETOWN connects now to REROLL */
@@ -3071,12 +3106,7 @@ void select_hometown(P_desc d, char *arg)
 	GET_BIRTHPLACE(d->character) = home;
 	GET_ORIG_BIRTHPLACE(d->character) = home;
 
-	STATE(d) = CON_BONUS1;
-	roll_basic_attributes(d->character, ROLL_NORMAL);
-	display_characteristics(d);
-	display_stats(d);
-	SEND_TO_Q(reroll, d);
-	SEND_TO_Q("\r\nPress return to continue with adding stat bonuses.\r\n", d);
+	prompt_stat_method(d);
 }
 
 void select_keepchar(P_desc d, char *arg)
@@ -4058,6 +4088,10 @@ void nanny(P_desc d, char *arg)
 			;
 		display_available_races(d);
 		STATE(d) = CON_GET_RACE;
+		break;
+
+	case CON_STAT_METHOD:
+		select_stat_method(d, arg);
 		break;
 
 		/* Reroll stats for new player */

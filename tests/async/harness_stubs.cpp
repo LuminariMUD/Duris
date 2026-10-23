@@ -5,14 +5,61 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "economy/boon_reward_transaction.h"
 #include "guild/artifact_admission.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
+#include "economy/divine_boon_activity.h"
+#include "economy/divine_boon_delivery.h"
 
 #include <cstdlib>
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+
+// Legacy-only load/transaction fixtures carry no prepared Divine receipts.
+// Dedicated delivery tests link the real publication and recovery implementation.
+HARNESS_STUB void divine_boon_delivery_completed(const divine_epic_delivery &) {}
+HARNESS_STUB bool divine_boon_delivery_recover(char_data *,
+					       const std::vector<divine_epic_delivery> &deliveries)
+{
+	return deliveries.empty();
+}
+HARNESS_STUB void divine_boon_delivery_player_ready(char_data *) {}
+HARNESS_STUB bool critical_command_coordinator_is_fenced(const critical_entity_key &,
+							 critical_operation_id *)
+{
+	return false;
+}
+
+// Input-queue fixtures do not collect population. The focused Divine activity
+// harness links the real observer in place of these no-op boundaries.
+HARNESS_STUB divine_boon_input_activity divine_boon_activity_begin(char_data *, int)
+{
+	return {};
+}
+HARNESS_STUB void divine_boon_activity_end(const divine_boon_input_activity &) {}
+HARNESS_STUB void divine_boon_runtime_pulse() {}
+HARNESS_STUB bool divine_boon_runtime_pending()
+{
+	return false;
+}
+HARNESS_STUB int ordered_command_number(const char *)
+{
+	return 0;
+}
+
+// Legacy-only fixtures have no Divine runtime. Divine integration harnesses
+// link the real gate and exercise draining/unavailable states explicitly.
+HARNESS_STUB bool divine_boon_legacy_admissions_allowed()
+{
+	return true;
+}
+
+HARNESS_STUB boon_reward_health boon_reward_transaction_health_copy()
+{
+	return {};
+}
 
 // Fixtures that do not link the artifact authority have no artifact state to
 // checkpoint. Focused admission tests and server builds use the real methods.
@@ -45,6 +92,7 @@ HARNESS_STUB player_save_submit_result persistence_writer_submit(persistence_job
 	errno = ESHUTDOWN;
 	return player_save_submit_result::unavailable;
 }
+HARNESS_STUB void gmcp_char_vitals(P_char) {}
 HARNESS_STUB void debug(const char *, ...) {}
 HARNESS_STUB void wizlog(int, const char *, ...) {}
 HARNESS_STUB void statuslog(int, const char *, ...) {}
@@ -75,6 +123,20 @@ HARNESS_STUB void send_to_char(const char *, P_char, int) {}
 HARNESS_STUB void act(const char *, int, P_char, P_obj, void *, int) {}
 HARNESS_STUB void update_pos(P_char) {}
 HARNESS_STUB void updateShortAffects(P_char) {}
+// Snapshot fixtures without short affects only need these symbols to link.
+// Tests that exercise scheduled expiry supply their own implementations.
+HARNESS_STUB void event_short_affect(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
+HARNESS_STUB void event_poison(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
+HARNESS_STUB int ne_event_time(P_nevent)
+{
+	std::abort();
+}
 // Scheduler fixtures identify this callback but do not run mana regeneration.
 HARNESS_STUB void event_mana_regen(P_char, P_char, P_obj, void *)
 {

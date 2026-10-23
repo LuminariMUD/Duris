@@ -29,7 +29,7 @@ int main()
 {
     static_assert(std::is_move_constructible_v<player_snapshot>);
     static_assert(std::is_move_assignable_v<player_snapshot>);
-    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 9);
+    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 10);
     static_assert(PLAYER_SNAPSHOT_MAX_BYTES == 4 * 1024 * 1024);
     static_assert(PLAYER_SNAPSHOT_MAX_OBJECTS < PLAYER_SNAPSHOT_MAX_ROWS);
     static_assert(PLAYER_SNAPSHOT_MAX_DEPTH > 0);
@@ -203,6 +203,8 @@ HELD_PETS_HARNESS = r"""
 #include <vector>
 
 bool training_dummy_capture_target_allowed(P_char) { return true; }
+void event_short_affect(P_char, P_char, P_obj, void *) {}
+int ne_event_time(P_nevent event) { return static_cast<int>(event->due_tick - 1000); }
 
 index_data indexes[3] = {};
 P_index obj_index = indexes;
@@ -255,6 +257,21 @@ int main()
     player_snapshot affects;
     assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_AFFECTS, RENT_QUIT, 22800, &affects) == player_snapshot_capture_result::ok);
     assert(affects.affects.size() == 1 && affects.affects[0].type == SPELL_BLESS);
+
+    // The asynchronous save route bypasses the legacy updateShortAffects call.
+    // Capture event time without mutating live state or renewing the original TTL.
+    ordinary.flags = AFFTYPE_SHORT;
+    ordinary.duration = 2640;
+    event_short_affect_data payload{&ch, &ordinary};
+    nevent_data expiry{};
+    expiry.func = event_short_affect;
+    expiry.data = &payload;
+    expiry.due_tick = 1800;
+    ch.nevents = &expiry;
+    assert(player_snapshot_capture(&ch, 100, PLAYER_COMPONENT_AFFECTS, RENT_QUIT, 22800, &affects) == player_snapshot_capture_result::ok);
+    assert(affects.affects.size() == 1 && affects.affects[0].duration == 800);
+    assert(ordinary.duration == 2640);
+    ch.nevents = nullptr;
     ch.affected = nullptr;
     player_held_pet_state held;
     player_pet_snapshot retained = {};

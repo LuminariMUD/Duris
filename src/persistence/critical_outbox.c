@@ -15,6 +15,8 @@
 #include "persistence/critical_outbox.h"
 
 #include "economy/collector_command.h"
+#include "combat/combat_outcome_command.h"
+#include "world/epic_command.h"
 #include "sql/sql_thread_init.h"
 
 #include "sql/sql_pool.h"
@@ -44,8 +46,13 @@ std::condition_variable outbox_changed;
 std::thread outbox_worker;
 critical_outbox_deliver_fn deliver_callback = nullptr;
 void *deliver_context = nullptr;
+critical_outbox_progress_fn drain_progress = nullptr;
 critical_outbox_health health = {};
 bool stop_requested = false;
+bool work_requested = false;
+uint64_t drain_requested = 0;
+uint64_t drain_completed = 0;
+std::chrono::steady_clock::time_point counts_refreshed, audit_refreshed;
 
 bool execute(MYSQL *connection, const std::string &sql)
 {
@@ -101,25 +108,20 @@ bool delivery_is_recorded(MYSQL *connection, uint64_t outbox_id)
 bool refresh_counts(MYSQL *connection)
 {
 	static const char SQL[] =
-		"SELECT SUM(status=0),SUM(status=2),"
-		"COALESCE(TIMESTAMPDIFF(MICROSECOND,MIN(CASE WHEN status=0 THEN created_at END),"
-		"CURRENT_TIMESTAMP(6)) DIV 1000,0),"
-		"(SELECT COUNT(*) FROM critical_operation_inbox WHERE status<>1),"
-		"(SELECT COUNT(*) FROM critical_operation_inbox i WHERE status=1 AND result_code=0 "
-		"AND NOT EXISTS "
-		"(SELECT 1 FROM critical_outbox o WHERE o.operation_id=i.operation_id)) "
-		"FROM critical_outbox";
+		"SELECT (SELECT COUNT(*) FROM critical_outbox WHERE status=0),"
+		"(SELECT COUNT(*) FROM critical_outbox WHERE status=2),"
+		"(SELECT COALESCE(TIMESTAMPDIFF(MICROSECOND,MIN(created_at),"
+		"CURRENT_TIMESTAMP(6)) DIV 1000,0) FROM critical_outbox WHERE status=0),"
+		"(SELECT COUNT(*) FROM critical_operation_inbox WHERE status<>1)";
 	if (!execute(connection, SQL))
 		return false;
 	MYSQL_RES *result = mysql_store_result(connection);
 	if (!result)
 		return false;
 	MYSQL_ROW row = mysql_fetch_row(result);
-	uint64_t pending = 0, dead = 0, oldest = 0, incomplete = 0, missing = 0;
-	const bool ok = row && (!row[0] || parse_u64(row[0], &pending)) &&
-			(!row[1] || parse_u64(row[1], &dead)) &&
-			(!row[2] || parse_u64(row[2], &oldest)) && parse_u64(row[3], &incomplete) &&
-			parse_u64(row[4], &missing);
+	uint64_t pending = 0, dead = 0, oldest = 0, incomplete = 0;
+	const bool ok = row && parse_u64(row[0], &pending) && parse_u64(row[1], &dead) &&
+			parse_u64(row[2], &oldest) && parse_u64(row[3], &incomplete);
 	mysql_free_result(result);
 	if (!ok)
 		return false;
@@ -128,8 +130,103 @@ bool refresh_counts(MYSQL *connection)
 	health.dead_letter = dead;
 	health.oldest_age_msec = oldest;
 	health.incomplete_inbox = incomplete;
-	health.committed_without_outbox = missing;
+	health.counts_available = true;
+	health.counts_stale = false;
+	counts_refreshed = std::chrono::steady_clock::now();
 	return true;
+}
+
+bool refresh_audit(MYSQL *connection)
+{
+	// Expectations come from the atomic writer contract, never surviving outbox
+	// rows. Historical omissions need positive typed evidence; otherwise coverage
+	// remains unknown. In particular, empty epic results alone do not prove a child.
+	static const std::string SQL =
+		"/* critical_outbox_audit */ SELECT "
+		"COALESCE(SUM(IF(c.expected_events IS NOT NULL AND "
+		"(c.expected_events<>COALESCE(o.event_count,0) OR o.last_index>=c.expected_events),1,0)),0),"
+		"COALESCE(SUM(c.expected_events IS NULL),0),"
+		"COALESCE(SUM(c.expected_events IS NULL AND COALESCE(o.event_count,0)=0),0) "
+		"FROM (SELECT i.operation_id,COALESCE(i.expected_outbox_events,CASE "
+		"WHEN i.result_code<>0 THEN 0 "
+		"WHEN i.command_type=13 AND EXISTS(SELECT 1 FROM session_audit_outcome s "
+		"WHERE s.operation_id=i.operation_id) THEN 0 "
+		"WHEN i.command_type=2 AND i.schema_version=1 AND i.payload_version=1 "
+		"AND OCTET_LENGTH(i.result_payload)=0 "
+		"AND i.command_hash=UNHEX(SHA2(i.operation_id,256)) AND i.keys_hash=i.command_hash "
+		"AND EXISTS(SELECT 1 FROM epic_ledger e "
+		"JOIN combat_outcome_participant p ON p.pid=e.pid AND p.epic_revision=e.epic_revision "
+		"JOIN combat_outcome c ON c.operation_id=p.operation_id "
+		"JOIN critical_operation_inbox parent ON parent.operation_id=p.operation_id "
+		"WHERE e.operation_id=i.operation_id AND e.delta=p.epic_delta AND p.epic_delta<>0 "
+		"AND i.durable_revision=e.epic_revision AND e.reason_id=c.victim_pid "
+		"AND parent.command_type=8 AND parent.status=1 AND parent.result_code=0 "
+		"AND p.participant_index<c.participant_count AND p.participant_index<" +
+		std::to_string(COMBAT_OUTCOME_MAX_PARTICIPANTS) + " AND e.source_site=" +
+		std::to_string(static_cast<uint16_t>(critical_source_site::combat)) +
+		" AND e.reason_type=IF(p.flags & " +
+		std::to_string(COMBAT_PARTICIPANT_DIVINE_EPIC) + "," +
+		std::to_string(static_cast<uint16_t>(epic_reason_type::divine_pvp_award)) + "," +
+		std::to_string(static_cast<uint16_t>(epic_reason_type::pvp_award)) +
+		") "
+		"AND i.operation_id=UNHEX(LEFT(SHA2(CONCAT(p.operation_id,"
+		"CHAR(1,p.participant_index & 255,p.participant_index >> 8 USING binary)),256),32))) THEN 0 "
+		"WHEN i.command_type=1 THEN 1 "
+		"WHEN i.command_type=2 AND EXISTS(SELECT 1 FROM epic_ledger e "
+		"WHERE e.operation_id=i.operation_id) THEN 1 "
+		"WHEN i.command_type=7 AND EXISTS(SELECT 1 FROM auction_ledger a "
+		"WHERE a.operation_id=i.operation_id) THEN 1 "
+		"WHEN i.command_type=8 AND EXISTS(SELECT 1 FROM combat_outcome c "
+		"WHERE c.operation_id=i.operation_id) THEN 1 "
+		"WHEN i.command_type=9 AND EXISTS(SELECT 1 FROM artifact_guild_outcome a "
+		"WHERE a.operation_id=i.operation_id) THEN 1 "
+		"WHEN i.command_type=11 AND EXISTS(SELECT 1 FROM boon_reward_outcome b "
+		"WHERE b.operation_id=i.operation_id) THEN 1 "
+		"WHEN i.command_type=12 AND EXISTS(SELECT 1 FROM zone_touch_outcome z "
+		"WHERE z.operation_id=i.operation_id) THEN 1 "
+		"WHEN i.command_type=18 AND EXISTS(SELECT 1 FROM collector_ledger c "
+		"WHERE c.operation_id=i.operation_id) THEN 1 "
+		"ELSE NULL END) expected_events FROM critical_operation_inbox i WHERE i.status=1) c "
+		"LEFT JOIN (SELECT operation_id,COUNT(*) event_count,MAX(event_index) last_index "
+		"FROM critical_outbox GROUP BY operation_id) o ON o.operation_id=c.operation_id";
+	if (!execute(connection, SQL))
+		return false;
+	MYSQL_RES *result = mysql_store_result(connection);
+	MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
+	uint64_t mismatches = 0, unknown = 0, candidates = 0;
+	const bool ok = row && parse_u64(row[0], &mismatches) && parse_u64(row[1], &unknown) &&
+			parse_u64(row[2], &candidates);
+	if (result)
+		mysql_free_result(result);
+	if (!ok)
+		return false;
+	std::lock_guard<std::mutex> lock(outbox_mutex);
+	health.committed_without_outbox = candidates;
+	health.outbox_expectation_mismatches = mismatches;
+	health.unknown_outbox_expectations = unknown;
+	health.audit_available = true;
+	health.audit_stale = false;
+	audit_refreshed = std::chrono::steady_clock::now();
+	return true;
+}
+
+bool observe_drain(MYSQL *connection, uint64_t requested)
+{
+	if (!execute(connection, "SELECT EXISTS(SELECT 1 FROM critical_outbox WHERE status=0)"))
+		return false;
+	MYSQL_RES *result = mysql_store_result(connection);
+	MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
+	uint64_t pending = 0;
+	const bool ok = row && parse_u64(row[0], &pending);
+	if (result)
+		mysql_free_result(result);
+	if (ok && !pending)
+	{
+		std::lock_guard<std::mutex> lock(outbox_mutex);
+		drain_completed = requested;
+		outbox_changed.notify_all();
+	}
+	return ok;
 }
 
 bool fetch_batch(MYSQL *connection, std::vector<critical_outbox_record> *records)
@@ -276,31 +373,33 @@ void worker_main(std::promise<bool> startup)
 		return;
 	}
 	startup.set_value(true);
+	auto next_audit = std::chrono::steady_clock::now();
 	for (;;)
 	{
 		{
 			std::unique_lock<std::mutex> lock(outbox_mutex);
 			outbox_changed.wait_for(lock, std::chrono::milliseconds(250),
-						[] { return stop_requested; });
+						[] { return stop_requested || work_requested; });
 			if (stop_requested)
 				break;
+			work_requested = false;
 		}
 		MYSQL *connection = sql_pool_acquire();
 		if (!connection)
 		{
 			std::lock_guard<std::mutex> lock(outbox_mutex);
 			++health.db_failures;
+			health.counts_stale = true;
 			continue;
 		}
 		std::vector<critical_outbox_record> records;
-		const bool fetched = refresh_counts(connection) &&
-				     fetch_batch(connection, &records);
+		const bool fetched = fetch_batch(connection, &records);
 		release_after_query(connection, fetched);
 		if (!fetched)
 		{
 			std::lock_guard<std::mutex> lock(outbox_mutex);
 			++health.db_failures;
-			continue;
+			records.clear();
 		}
 		for (const critical_outbox_record &record : records)
 		{
@@ -313,18 +412,76 @@ void worker_main(std::promise<bool> startup)
 			{
 				delivered = critical_outbox_delivery_result::retryable_failure;
 			}
+			if (delivered == critical_outbox_delivery_result::publication_pending)
+				continue;
 			if (!record_delivery(record, delivered))
 			{
 				std::lock_guard<std::mutex> lock(outbox_mutex);
 				++health.db_failures;
 			}
 		}
+
+		// Delivery and its transaction never depend on diagnostic success. A new
+		// borrow retains the pool's ownership guard after callbacks have run.
+		connection = sql_pool_acquire();
+		uint64_t requested = 0;
+		{
+			std::lock_guard<std::mutex> lock(outbox_mutex);
+			if (drain_requested != drain_completed)
+				requested = drain_requested;
+		}
+		bool ok = connection != nullptr;
+		if (requested && connection)
+		{
+			ok = observe_drain(connection, requested);
+			if (!ok)
+			{
+				std::lock_guard<std::mutex> lock(outbox_mutex);
+				++health.db_failures;
+			}
+		}
+		// Never issue another query on a handle known to have lost its connection.
+		if (connection && (ok || !is_connection_error(mysql_errno(connection))))
+		{
+			const bool counted = refresh_counts(connection);
+			if (!counted)
+			{
+				std::lock_guard<std::mutex> lock(outbox_mutex);
+				health.counts_stale = true;
+				++health.db_failures;
+			}
+			ok = counted;
+		}
+		else
+		{
+			std::lock_guard<std::mutex> lock(outbox_mutex);
+			health.counts_stale = true;
+			if (!connection)
+				++health.db_failures;
+		}
+		if (std::chrono::steady_clock::now() >= next_audit)
+		{
+			const bool audited =
+				connection &&
+				(ok || !is_connection_error(mysql_errno(connection))) &&
+				refresh_audit(connection);
+			next_audit = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+			if (!audited)
+			{
+				std::lock_guard<std::mutex> lock(outbox_mutex);
+				health.audit_stale = true;
+				++health.db_failures;
+			}
+			ok = audited;
+		}
+		release_after_query(connection, ok);
 	}
 	mysql_thread_end();
 }
 } // namespace
 
-bool critical_outbox_init(critical_outbox_deliver_fn deliver, void *context)
+bool critical_outbox_init(critical_outbox_deliver_fn deliver, void *context,
+			  critical_outbox_progress_fn progress)
 {
 	if (!deliver)
 		return false;
@@ -337,7 +494,10 @@ bool critical_outbox_init(critical_outbox_deliver_fn deliver, void *context)
 	health.running = true;
 	deliver_callback = deliver;
 	deliver_context = context;
+	drain_progress = progress;
 	stop_requested = false;
+	work_requested = false;
+	drain_requested = drain_completed = 0;
 	std::promise<bool> startup;
 	std::future<bool> started = startup.get_future();
 	try
@@ -374,6 +534,7 @@ void critical_outbox_shutdown(void)
 	health = {};
 	deliver_callback = nullptr;
 	deliver_context = nullptr;
+	drain_progress = nullptr;
 }
 
 void critical_outbox_quiesce(void)
@@ -386,29 +547,65 @@ void critical_outbox_resume(void)
 {
 	std::lock_guard<std::mutex> lock(outbox_mutex);
 	if (health.initialized && !stop_requested)
+	{
 		health.accepting = true;
+		work_requested = true;
+	}
 	outbox_changed.notify_all();
 }
 
 bool critical_outbox_drain(uint64_t timeout_msec)
 {
+#ifdef __NO_MYSQL__
+	(void)timeout_msec;
+	return true; // This backend intentionally has no SQL outbox worker.
+#else
 	const auto deadline =
 		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
+	std::unique_lock<std::mutex> lock(outbox_mutex);
+	if (!health.initialized || stop_requested)
+		return false;
+	const uint64_t requested = ++drain_requested;
+	work_requested = true;
+	outbox_changed.notify_all();
 	for (;;)
 	{
-		critical_outbox_health snapshot = critical_outbox_health_copy();
-		if (!snapshot.pending)
+		if (!health.initialized || stop_requested)
+			return false;
+		if (drain_completed >= requested)
 			return true;
 		if (std::chrono::steady_clock::now() >= deadline)
 			return false;
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		const critical_outbox_progress_fn progress = drain_progress;
+		lock.unlock();
+		if (progress)
+			progress();
+		lock.lock();
+		outbox_changed.wait_until(lock,
+					  std::min(deadline, std::chrono::steady_clock::now() +
+								     std::chrono::milliseconds(5)));
 	}
+#endif
 }
 
 critical_outbox_health critical_outbox_health_copy(void)
 {
 	std::lock_guard<std::mutex> lock(outbox_mutex);
-	return health;
+	critical_outbox_health snapshot = health;
+	const auto now = std::chrono::steady_clock::now();
+	if (snapshot.counts_available)
+		snapshot.counts_age_msec = std::chrono::duration_cast<std::chrono::milliseconds>(
+						   now - counts_refreshed)
+						   .count();
+	if (snapshot.audit_available)
+		snapshot.audit_age_msec =
+			std::chrono::duration_cast<std::chrono::milliseconds>(now - audit_refreshed)
+				.count();
+	snapshot.counts_stale = !snapshot.counts_available || snapshot.counts_stale ||
+				snapshot.counts_age_msec > 1000;
+	snapshot.audit_stale = !snapshot.audit_available || snapshot.audit_stale ||
+			       snapshot.audit_age_msec > 61000;
+	return snapshot;
 }
 
 critical_outbox_delivery_result

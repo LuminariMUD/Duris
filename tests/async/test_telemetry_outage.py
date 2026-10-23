@@ -17,6 +17,7 @@ def main() -> None:
         binary = Path(directory) / "telemetry-outage"
         subprocess.run([
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pedantic",
+            "-fsanitize=undefined", "-fno-sanitize-recover=all",
             "-I", str(ROOT / "src"),
             str(ROOT / "src/telemetry/telemetry_outage.c"),
             str(ROOT / "tests/async/telemetry_outage_harness.cc"),
@@ -75,6 +76,60 @@ def main() -> None:
                 holder.kill()
                 holder.wait(timeout=10)
         print("outage offline bounded read-only evidence export passed")
+        tool = Path(directory) / "telemetry-state"
+        subprocess.run([
+            "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pedantic",
+            "-I", str(ROOT / "src"), str(ROOT / "src/telemetry/telemetry_outage.c"),
+            str(ROOT / "src/telemetry/telemetry_state.cc"), "-lcrypto", "-o", str(tool),
+        ], cwd=ROOT, check=True, timeout=60)
+        with tempfile.TemporaryDirectory(prefix="quota-state-", dir=artifacts) as quota_directory:
+            path = Path(quota_directory)
+            binding = ["678214", "1", "1000", "1", "19900", "19800", "100"]
+
+            def invoke(command: str, fields: list[str] = [], valid: bool = True) -> dict:
+                call = subprocess.run([str(tool), command, quota_directory, *fields],
+                                      cwd=ROOT, text=True, capture_output=True, timeout=10)
+                assert call.returncode == (0 if valid else 2), call
+                assert not call.stderr, call.stderr
+                return json.loads(call.stdout)
+
+            initialized = invoke("initialize", binding)
+            assert initialized["normal_reserved"] == initialized["health_reserved"] == 0
+            assert initialized["total_limit"] == 19900
+            before = (path / "outages.ledger").read_bytes()
+            assert invoke("initialize", binding, valid=False)["result"] != 0
+            assert (path / "outages.ledger").read_bytes() == before
+            packet = subprocess.run([sys.executable, str(ROOT / "scripts/telemetry/outage.py"), quota_directory],
+                                    text=True, capture_output=True, check=True, timeout=10)
+            decoded = json.loads(packet.stdout)
+            assert decoded["ledger_version"] == 2 and decoded["producer_count"] == 0
+            assert decoded["quota"]["normal_limit"] == 19800 and decoded["quota"]["health_limit"] == 100
+            wrong = ["678215", *binding[1:]]
+            invoke("exhaust-day", wrong, valid=False)
+            exhausted = invoke("exhaust-day", binding)
+            assert exhausted["normal_reserved"] == 19800 and exhausted["health_reserved"] == 100
+            assert len(list(path.glob("outages.ledger.recovery.*"))) == 1
+            durable = {item.name: item.read_bytes() for item in path.iterdir()}
+            assert invoke("exhaust-day", binding) == exhausted
+            assert {item.name: item.read_bytes() for item in path.iterdir()} == durable
+            before_rollover = (path / "outages.ledger").read_bytes()
+            new_season = [*binding[:3], "2", *binding[4:]]
+            invoke("rollover-season", ["678215", *new_season[1:]], valid=False)
+            assert (path / "outages.ledger").read_bytes() == before_rollover
+            rolled = invoke("rollover-season", new_season)
+            assert rolled["normal_reserved"] == 19800 and rolled["health_reserved"] == 100
+            durable = {item.name: item.read_bytes() for item in path.iterdir()}
+            assert invoke("rollover-season", new_season) == rolled
+            assert invoke("exhaust-day", new_season) == rolled
+            assert {item.name: item.read_bytes() for item in path.iterdir()} == durable
+            invoke("exhaust-day", binding, valid=False)
+            packet = subprocess.run([sys.executable, str(ROOT / "scripts/telemetry/outage.py"), quota_directory],
+                                    text=True, capture_output=True, check=True, timeout=10)
+            assert json.loads(packet.stdout)["quota"]["season_id"] == 2
+            assert len(list(path.glob("outages.ledger.recovery.*"))) == 2
+            for item in path.iterdir():
+                assert item.stat().st_mode & 0o777 == 0o600
+        print("quota native initialize/restore-exhaustion/season-rollover commands and v2 offline export passed")
 
 
 if __name__ == "__main__":

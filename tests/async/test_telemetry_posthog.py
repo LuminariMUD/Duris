@@ -1,0 +1,607 @@
+#!/usr/bin/env python3
+"""PostHog worker reducer, encoding regressions and declared volume fixture.
+
+No host .env, external network, database, player data or live journal is used.
+The serial release mix counts actual reducer output before scaling the explicit
+workload/retry frequencies. It does not establish concurrent-player capacity.
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import math
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+import uuid
+
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / "tests/async/fixtures/telemetry/posthog"
+TEST_ENV = {
+    "PATH": os.environ.get("PATH", os.defpath),
+    "ENVIRONMENT": "local",
+    "TZ": "Pacific/Honolulu",
+    "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
+}
+
+
+def encoding_tests(binary: Path) -> None:
+    fixture = json.loads((FIXTURES / "encodings.json").read_text())
+
+    def invoke(*arguments: object, valid: bool = True) -> str:
+        result = subprocess.run([str(binary), *(str(value) for value in arguments)],
+                                cwd=ROOT, env=TEST_ENV,
+                                text=True, capture_output=True, timeout=10)
+        assert result.returncode == (0 if valid else 1), (arguments, result)
+        assert not result.stderr, result.stderr
+        if not valid:
+            assert not result.stdout, result.stdout
+        return result.stdout.rstrip("\n")
+
+    key = fixture["key_hex"]  # Synthetic 00..1f, never a real environment key.
+    identities = []
+    for vector in fixture["characters"]:
+        fields = [int(vector[name]) for name in ("environment", "season", "subject")]
+        message = b"duris:posthog:character:v1" + b"".join(
+            field.to_bytes(8, "big") for field in fields)
+        reference = "dc1_" + hmac.new(bytes.fromhex(key), message, hashlib.sha256).hexdigest()
+        assert reference == vector["expected"]
+        actual = invoke("character", key, *fields)
+        assert actual == reference
+        assert invoke("character", key.upper(), *fields) == actual
+        assert invoke("character", key, *fields) == actual  # Restart stable.
+        identities.append(actual)
+    assert len(set(identities)) == len(identities)
+    assert invoke("character", "ff" * 32, 1000, 1, 44) != identities[0]
+
+    for invalid_key in ("", "a" * 63, "a" * 65, "00" * 32, "z0" * 32,
+                        "gg" + key[2:], key[:62] + "xx"):
+        invoke("character", invalid_key, 1000, 1, 44, valid=False)
+    for fields in ((0, 1, 44), (1000, 0, 44), (1000, 1, 0)):
+        invoke("character", key, *fields, valid=False)
+
+    for vector in fixture["scoped"]:
+        fields = [int(vector[name]) for name in ("environment", "season", "boot", "process", "sequence")]
+        session = invoke("session", *fields)
+        assert session == vector["session"]
+        assert invoke("session", *fields) == session  # Handoff retains original producer.
+        assert invoke("run", *fields) == vector["run"]
+    for kind in ("session", "run"):
+        for index in range(5):
+            fields = [1000, 1, 11, 22, 33]
+            fields[index] = 0
+            invoke(kind, *fields, valid=False)
+
+    pets = []
+    for fields in ((1000, 1, 11, 22, 1, 99), (1000, 1, 11, 22, 2, 99),
+                   (1001, 1, 11, 22, 1, 99), (1000, 2, 11, 22, 1, 99),
+                   (1000, 1, 12, 22, 1, 99), (1000, 1, 11, 23, 1, 99),
+                   (1000, 1, 11, 22, 1, 100), ((1 << 64) - 1,) * 6):
+        message = b"duris:posthog:pet:v1" + b"".join(field.to_bytes(8, "big") for field in fields)
+        reference = "dp1_" + hmac.new(bytes.fromhex(key), message, hashlib.sha256).hexdigest()
+        actual = invoke("pet", key, *fields)
+        assert actual == reference
+        pets.append(actual)
+    assert len(set(pets)) == len(pets)
+    for index in range(6):
+        fields = [1000, 1, 11, 22, 1, 99]
+        fields[index] = 0
+        invoke("pet", key, *fields, valid=False)
+
+    for vector in fixture["timestamps"]:
+        assert invoke("timestamp", vector["usec"]) == vector["expected"]
+    for value in fixture["invalid_timestamps"]:
+        invoke("timestamp", value, valid=False)
+
+    ids = [invoke("uuid") for _ in range(16)]
+    assert len(set(ids)) == len(ids)
+    for identity in ids:
+        parsed = uuid.UUID(identity)
+        assert parsed.version == 4 and parsed.variant == uuid.RFC_4122
+        assert str(parsed) == identity
+
+
+def reducer_tests(binary: Path) -> None:
+    cases = (
+        "conservation", "boundaries", "midnight", "unknown-utc", "missing-clock",
+        "buckets", "byte-capacity", "integer-overflow", "bucket-overflow", "sessions", "config-capacity",
+        "checkpoint", "checkpoint-late-detail", "dimension-unknown", "level-config",
+        "gap-scope", "long-interval", "expiry", "allocation-failure", "missing-config",
+        "clock-flag", "initialization", "lost-exit",
+        "config-output-pressure", "config-byte-pressure", "config-allocation-failure",
+        "sealed-force", "sealed-age", "sealed-config", "sealed-dimensions",
+        "sealed-level", "sealed-eviction", "initial-gap", "unknown-xp-level",
+        "direct-unknown-dimensions", "xp-dimensions",
+        "output-suppression-coverage", "unknown-transition-levels",
+        "encounter-native", "encounter-missing",
+        "encounter-orphan", "encounter-open", "encounter-conflict", "encounter-overflow",
+        "encounter-counter-overflow", "encounter-burst", "encounter-replay", "encounter-expiry",
+        "encounter-capacity", "encounter-scope-clock", "flush-characters", "flush-encounters", "flush-bytes",
+        "encounter-allocation-failure",
+        "health-cadence", "health-incidents", "health-linkdead", "health-time-overflow",
+        "health-context-overflow", "health-split-overflow", "health-loss", "health-capacity",
+        "health-faults", "health-family-expiry",
+    )
+    observed = {}
+    forbidden = {"pid", "subject_id", "actor_pid", "name", "email", "account_id", "ip",
+                 "command", "chat", "room", "room_id", "api_key", "identity_key",
+                 "$session_id", "$groups", "$set", "$set_once"}
+    decimal_names = {"requested_xp", "computed_xp", "applied_xp", "threshold_xp", "attempts",
+                     "zero_applied", "revision", "interval_observations", "duris_config_id",
+                     "duris_environment_id", "duris_season_id", "damage_dealt", "damage_taken",
+                     "healing_attempted", "effective_healing", "overhealing", "control_applications",
+                     "casting_attempts", "casting_completions", "casting_aborts"}
+    decimal_names |= {"consumed", "refused", "created", "suppressed", "expired",
+                      "http_acknowledged", "ambiguous", "producer_boot_id", "producer_process_id"}
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            assert not forbidden.intersection(value), forbidden.intersection(value)
+            for key, item in value.items():
+                if item is not None and (key.endswith("_usec") or key in decimal_names):
+                    assert isinstance(item, str), (key, item)
+                    assert str(int(item)) == item, (key, item)
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    def summaries(rows: list[dict]) -> list[dict]:
+        return [row["properties"] for row in rows if row["event"] == "duris_character_summary"]
+
+    for case in cases:
+        result = subprocess.run([str(binary), "reduce", case], cwd=ROOT, env=TEST_ENV,
+                                text=True, capture_output=True, timeout=20)
+        assert result.returncode == 0, (case, result.stderr)
+        assert not result.stderr, (case, result.stderr)
+        decoded = [json.loads(line) for line in result.stdout.splitlines()]
+        health = decoded.pop()["_fixture_health"]
+        assert health["output_events"] + health["drained_events"] == len(decoded)
+        assert health["output_events"] <= 128 and health["output_bytes"] <= 512 * 1024
+        assert len(health["by_family"]) == 6
+        for field, total in (("created", "created_events"), ("suppressed", "output_suppressed"),
+                             ("expired", "output_expired"), ("http_acknowledged", "http_acknowledged"),
+                             ("ambiguous", "ambiguous_events")):
+            assert sum(family[field] for family in health["by_family"]) == health[total], (case, field)
+        assert sum(health["refused_by_kind"]) == health["reduction_refusals"]
+        seen = set()
+        for row in decoded:
+            walk(row)
+            props = row["properties"]
+            assert uuid.UUID(row["uuid"]).version == 4
+            assert props["duris_event_id"] == row["uuid"]
+            assert row["uuid"] not in seen
+            seen.add(row["uuid"])
+            assert props["$process_person_profile"] is False
+            assert props["duris_schema_version"] == 1
+            assert props["duris_environment_id"] == "1000" and props["duris_season_id"] == "1"
+            assert props["duris_test_run"] == "native-unit-fixture"
+            assert len(props["duris_coverage"]) == len(set(props["duris_coverage"]))
+            assert len(json.dumps(row, separators=(",", ":"))) <= 32 * 1024
+            if props["duris_character_id"] is not None:
+                assert props["distinct_id"] == props["duris_character_id"]
+                if row["event"] == "duris_encounter_summary":
+                    assert props["duris_session_id"] is None
+                else:
+                    original = "7:8" if case == "checkpoint" else "11:22"
+                    assert props["duris_session_id"].startswith(f"ds1:1000:1:{original}:")
+            elif row["event"] == "duris_encounter_summary":
+                assert props["distinct_id"] == (props["duris_run_id"] if props["row_type"] == "run"
+                                                else props["duris_actor_id"])
+            else:
+                assert props["distinct_id"] == "dh1:1000:1"
+            if row["event"] == "duris_encounter_summary":
+                assert props["duris_run_id"].startswith("dr1:1000:1:11:22:")
+                assert all(props[name] is None for name in ("class_id", "race_id", "faction_id",
+                                                            "level_band", "duris_session_id"))
+                assert "historical_dimensions_unavailable" in props["duris_coverage"]
+                assert props["control_applications_reason"] == "not_instrumented"
+                if props.get("actor_kind") == "pet":
+                    assert props["distinct_id"].startswith("dp1_")
+                    assert props["duris_owner_character_id"].startswith("dc1_")
+                    assert props["duris_character_id"] is None and props["participant_usec"] is None
+                if isinstance(props.get("combat"), dict):
+                    assert props["combat"]["control_applications"] is None
+            if row["event"] == "duris_character_summary":
+                assert len(props["time_allocations"]) <= 32 and len(props["xp_allocations"]) <= 32
+                for metric, value in props["time"].items():
+                    if value is not None:
+                        parts = [part[metric] for part in props["time_allocations"]]
+                        parts.append(props["unattributed_time"][metric])
+                        if all(part is not None for part in parts):
+                            assert int(value) == sum(int(part) for part in parts), (case, metric)
+                        else:
+                            assert "counter_overflow" in props["duris_coverage"]
+                for metric, value in props["xp"].items():
+                    if value is not None:
+                        parts = [part[metric] for part in props["xp_allocations"]]
+                        parts.append(props["unattributed_xp"][metric])
+                        if all(part is not None for part in parts):
+                            assert int(value) == sum(int(part) for part in parts), (case, metric)
+                        else:
+                            assert "counter_overflow" in props["duris_coverage"]
+        observed[case] = (decoded, health)
+
+    rows, health = observed["conservation"]
+    parts = summaries(rows)
+    assert len(parts) == 2 and health["sessions"] == 0
+    expected_time = {"connected_usec": 35000000, "active_usec": 20000000, "idle_usec": 10000000,
+                     "unknown_usec": 5000000, "resident_usec": 42000000, "linkdead_usec": 7000000}
+    assert parts[0]["time"] == {key: str(value) for key, value in expected_time.items()}
+    assert parts[0]["xp"] == {"requested_xp": "100", "computed_xp": "140", "applied_xp": "110",
+                              "attempts": "3", "zero_applied": "1"}
+    assert parts[1]["xp"]["applied_xp"] == "5"
+    assert [part["xp_observed_level"] for part in parts] == [12, 13]
+    reconcile = parts[0]["reconciliation"]
+    assert reconcile["comparison_available"] is True
+    assert reconcile["checkpoint"]["resident_usec"] == "44000000"
+    assert reconcile["missing_detail"]["active_usec"] == "2000000"
+    assert reconcile["missing_detail"]["linkdead_usec"] == "0"
+    transitions = [row["properties"]["transition"] for row in rows if row["event"] == "duris_session"]
+    assert transitions == ["logical_entry", "connection_detached", "connection_attached", "logical_exit"]
+    levels = [row["properties"] for row in rows if row["event"] == "duris_level_change"]
+    assert len(levels) == 1 and levels[0]["before_level"] == 12 and levels[0]["after_level"] == 13
+    assert levels[0]["threshold_xp"] == "9223372036854775809"
+    assert "applied_xp" not in levels[0]
+    assert len({part["duris_character_id"] for part in parts}) == 1
+    assert not health["output_suppressed"]
+
+    parts = summaries(observed["boundaries"][0])
+    assert len(parts) == 3
+    assert sum(int(part["time"]["active_usec"]) for part in parts) == 1500000
+    late = [part for part in parts if "late_fragment" in part["duris_coverage"]]
+    assert len(late) == 1 and late[0]["time"]["active_usec"] == "500000"
+    assert sum(int(part["xp"]["applied_xp"]) for part in parts) == 1
+    assert observed["boundaries"][1]["invalid_records"] == 1  # Re-consuming never adds XP.
+
+    midnight = [row for row in observed["midnight"][0] if row["event"] == "duris_character_summary"]
+    assert len(midnight) == 2
+    assert [row["properties"]["time"]["active_usec"] for row in midnight] == ["2000000", "2000000"]
+    assert midnight[0]["timestamp"][:10] != midnight[1]["timestamp"][:10]
+    assert int(midnight[1]["properties"]["window_start_utc_usec"]) % 86400000000 == 0
+    unknown = summaries(observed["unknown-utc"][0])[0]
+    assert unknown["timestamp_basis"] == "emitted_at"
+    assert unknown["occurrence_start_utc_usec"] is None and unknown["occurrence_end_utc_usec"] is None
+    assert unknown["window_start_utc_usec"] is None and unknown["time"]["active_usec"] == "1000"
+    assert unknown["xp"]["applied_xp"] == "2"
+    assert "occurrence_utc_unknown" in unknown["duris_coverage"]
+    assert not summaries(observed["missing-clock"][0])
+    assert observed["missing-clock"][1]["clock_failures"] == 1
+
+    bucket = summaries(observed["buckets"][0])[0]
+    assert len(bucket["time_allocations"]) == len(bucket["xp_allocations"]) == 32
+    assert bucket["time"]["active_usec"] == "34" and bucket["unattributed_time"]["active_usec"] == "2"
+    assert bucket["xp"]["requested_xp"] == "340000000000000000"
+    assert bucket["unattributed_xp"]["requested_xp"] == "20000000000000000"
+    assert bucket["xp"]["attempts"] == "34" and bucket["xp"]["zero_applied"] == "34"
+    assert {"unattributed_time", "unattributed_xp"} <= set(bucket["duris_coverage"])
+    byte_health = observed["byte-capacity"][1]
+    assert byte_health["output_suppressed"] > 0 and byte_health["http_acknowledged"] > 0
+    assert byte_health["output_events"] < 128  # Byte limit, not the row count, was reached.
+    retained_lifecycle = [row for row in observed["byte-capacity"][0] if row["event"] == "duris_session"]
+    assert "output_suppressed" in retained_lifecycle[-1]["properties"]["duris_coverage"]
+    overflow = summaries(observed["integer-overflow"][0])
+    assert len(overflow) == 3
+    for part in overflow[:2]:
+        assert all(part["xp"][key] is None for key in ("requested_xp", "computed_xp", "applied_xp"))
+        assert part["xp"]["attempts"] == "2" and "counter_overflow" in part["duris_coverage"]
+    assert overflow[2]["time"]["active_usec"] is None
+    assert "counter_overflow" in overflow[2]["duris_coverage"]
+    assert observed["integer-overflow"][1]["counter_overflow_rows"] == 3
+    bucket_overflow = summaries(observed["bucket-overflow"][0])[0]
+    assert bucket_overflow["xp"]["applied_xp"] == "9223372036854775807"
+    assert bucket_overflow["xp_allocations"][0]["applied_xp"] is None
+    assert {"counter_overflow", "unattributed_xp"} <= set(bucket_overflow["duris_coverage"])
+
+    assert observed["sessions"][1]["sessions"] == 256 and observed["sessions"][1]["session_refusals"] == 1
+    assert observed["sessions"][1]["http_acknowledged"] == 128
+    assert observed["config-capacity"][1]["configurations"] == 64
+    assert observed["config-capacity"][1]["configuration_refusals"] == 2
+    assert len(observed["config-capacity"][0]) == 64  # Duplicate publication stays coalesced.
+    checkpoint = summaries(observed["checkpoint"][0])[0]["reconciliation"]
+    assert checkpoint["revision"] == "2" and checkpoint["comparison_available"] is False
+    assert checkpoint["missing_detail"] is None  # No invented pre-copyover baseline.
+    assert observed["checkpoint"][1]["checkpoint_conflicts"] == 2
+    assert observed["checkpoint"][1]["stale_checkpoints"] == 1
+    late_checkpoint = summaries(observed["checkpoint-late-detail"][0])[0]["reconciliation"]
+    assert late_checkpoint["comparison_available"] is True
+    assert set(late_checkpoint["missing_detail"].values()) == {"0"}
+    unknown_dims = summaries(observed["dimension-unknown"][0])
+    assert len(unknown_dims) == 1  # Unknown context does not trigger per-minute cloud rows.
+    assert unknown_dims[0]["class_id"] is None
+    assert unknown_dims[0]["time"]["active_usec"] == "19"
+    assert unknown_dims[0]["unattributed_time"]["active_usec"] == "9"
+    assert unknown_dims[0]["xp_allocations"][0]["class_id"] == 3
+    assert [part["xp"]["applied_xp"] for part in summaries(observed["level-config"][0])] == ["1", "2", "3", "4"]
+    assert observed["gap-scope"][1]["reduction_refusals"] == 1
+    assert observed["gap-scope"][1]["input_sequence_gaps"] == 1
+    assert observed["gap-scope"][1]["native_dropped_records"] == 2
+    assert "native_gap" in summaries(observed["gap-scope"][0])[0]["duris_coverage"]
+    long_parts = summaries(observed["long-interval"][0])
+    assert len(long_parts) == 65
+    assert sum(int(part["time"]["active_usec"]) for part in long_parts) == 900000000000000
+    assert any("occurrence_utc_unknown" in part["duris_coverage"] for part in long_parts)
+    assert observed["expiry"][1]["output_expired"] == 1 and observed["expiry"][1]["ambiguous_events"] == 1
+    assert not observed["expiry"][0]
+    assert observed["allocation-failure"][1]["serialization_failures"] == 4
+    assert observed["allocation-failure"][1]["output_suppressed"] == 4
+    retained_lifecycle = [row for row in observed["allocation-failure"][0]
+                          if row["event"] == "duris_session"]
+    assert len(retained_lifecycle) == 1
+    assert "output_suppressed" in retained_lifecycle[0]["properties"]["duris_coverage"]
+    assert "missing_configuration" in summaries(observed["missing-config"][0])[0]["duris_coverage"]
+    assert observed["missing-config"][1]["missing_configuration_rows"] == 1
+    flagged_clock = summaries(observed["clock-flag"][0])[0]
+    assert flagged_clock["timestamp_basis"] == "emitted_at" and flagged_clock["window_start_utc_usec"] is None
+    assert flagged_clock["occurrence_start_utc_usec"] is None
+    assert not observed["initialization"][0] and observed["initialization"][1]["invalid_records"] == 1
+    abandoned = summaries(observed["lost-exit"][0])
+    assert len(abandoned) == 2 and observed["lost-exit"][1]["abandoned_sessions"] == 1
+    assert "unclosed_tail" in abandoned[0]["duris_coverage"]
+    assert abandoned[0]["duris_session_id"] == abandoned[1]["duris_session_id"]
+    assert len([row for row in observed["lost-exit"][0] if row["event"] == "duris_session"]) == 1
+
+    for case in ("config-output-pressure", "config-byte-pressure", "config-allocation-failure"):
+        rows, health = observed[case]
+        assert [row["event"] for row in rows] == [
+            "duris_session", "duris_configuration", "duris_character_summary",
+        ], case
+        assert "missing_configuration" in rows[0]["properties"]["duris_coverage"], case
+        assert "missing_configuration" not in rows[1]["properties"]["duris_coverage"], case
+        assert "missing_configuration" not in rows[2]["properties"]["duris_coverage"], case
+        assert health["output_suppressed"] > 0 and health["missing_configuration_rows"] == 1
+    for case in ("sealed-force", "sealed-age", "sealed-config", "sealed-dimensions",
+                 "sealed-level", "sealed-eviction"):
+        parts = summaries(observed[case][0])
+        first_window = [part for part in parts
+                        if part["window_start_utc_usec"] == parts[0]["window_start_utc_usec"]]
+        assert len(first_window) >= 2, case
+        assert "late_fragment" not in first_window[0]["duris_coverage"], case
+        assert all("late_fragment" in part["duris_coverage"] for part in first_window[1:]), case
+        assert sum(int(part["time"]["active_usec"]) for part in parts) == (
+            3 if case == "sealed-eviction" else 1), case
+    assert observed["initial-gap"][1]["input_sequence_gaps"] == 1
+    unknown_levels = summaries(observed["unknown-xp-level"][0])
+    assert [part["xp_observed_level"] for part in unknown_levels] == [None, 12, None]
+    assert [part["xp"]["applied_xp"] for part in unknown_levels] == ["3", "3", "4"]
+    xp_dimensions = summaries(observed["xp-dimensions"][0])
+    assert len(xp_dimensions) == 1
+    assert xp_dimensions[0]["xp"]["applied_xp"] == "10"
+    assert xp_dimensions[0]["xp"]["attempts"] == "4"
+    allocations = xp_dimensions[0]["xp_allocations"]
+    assert [(part["zone"], part["group_size"], part["applied_xp"]) for part in allocations] == [
+        (10, 1, "5"), (11, 1, "2"), (11, 2, "3"),
+    ]
+    direct_rows = observed["direct-unknown-dimensions"][0]
+    direct = [row for row in direct_rows if row["event"] in ("duris_session", "duris_level_change")]
+    assert len(direct) == 8
+    for index, dimension in enumerate(("class_id", "race_id", "faction_id", "level_band")):
+        for row in direct[index * 2:index * 2 + 2]:
+            assert row["properties"][dimension] is None
+            assert "historical_dimensions_unavailable" in row["properties"]["duris_coverage"]
+    assert "historical_dimensions_unavailable" in summaries(direct_rows)[0]["duris_coverage"]
+    remainder = next(part for part in long_parts if part["window_start_utc_usec"] is None)
+    assert remainder["window_start_utc_usec"] is None
+    assert not remainder["time_allocations"]
+    assert remainder["unattributed_time"]["active_usec"] == str(900000000000000 - 64 * 900000000)
+    assert remainder["time"] == remainder["unattributed_time"]
+    assert {"unattributed_time", "occurrence_utc_unknown"} <= set(remainder["duris_coverage"])
+    recovered, health = observed["output-suppression-coverage"]
+    assert [row["event"] for row in recovered] == ["duris_session", "duris_character_summary"]
+    assert health["output_suppressed"] == 1 and health["http_acknowledged"] == 128
+    assert summaries(recovered)[0]["xp"]["applied_xp"] == "7"  # The lost row is not restored.
+    assert all("output_suppressed" in row["properties"]["duris_coverage"] for row in recovered)
+    transitions = [row["properties"] for row in observed["unknown-transition-levels"][0]
+                   if row["event"] == "duris_level_change"]
+    assert [(row["before_level"], row["after_level"]) for row in transitions] == [(None, 1), (1, None)]
+    def encounters(case: str, kind: str) -> list[dict]:
+        return [row["properties"] for row in observed[case][0]
+                if row["event"] == "duris_encounter_summary" and row["properties"]["row_type"] == kind]
+
+    run, = encounters("encounter-native", "run")
+    assert run["mode"] == 3  # Roster becomes mixed; native combat retains initial PvE.
+    assert run["native_terminal_complete"] is True and run["run_elapsed_usec"] == "10000000"
+    assert run["expected_reward_credit_count"] == 9 and run["roster_expected"] == run["roster_received"] == 2
+    assert run["combat_expected"] == run["combat_received"] == 3
+    assert run["unsupported_npc_rows"] == 1 and run["participant_rows_expected"] == 3
+    actors = encounters("encounter-native", "participant")
+    assert len(actors) == 3
+    player, = [actor for actor in actors if actor["actor_kind"] == "player" and actor["combat"] is not None]
+    pet, = [actor for actor in actors if actor["actor_kind"] == "pet"]
+    assert pet["duris_owner_character_id"] == player["duris_character_id"]
+    assert player["participant_usec"] == "5000000"
+    assert player["combat"]["damage_dealt"] == "11" and pet["combat"]["damage_dealt"] == "7"
+    assert player["combat"]["healing_attempted"] == "20"
+    assert player["combat"]["effective_healing"] == "12" and player["combat"]["overhealing"] == "8"
+    assert player["combat"]["casting_elapsed_usec"] == "5" and player["combat"]["tanking_usec"] == "9999995"
+    roster_only, = [actor for actor in actors if actor["combat"] is None]
+    assert roster_only["participant_usec"] == "10000000"
+    assert observed["encounter-native"][1]["unsupported_npc_rows"] == 1
+    assert observed["encounter-native"][1]["incomplete_runs"] == 0
+
+    run, = encounters("encounter-missing", "run")
+    assert run["native_terminal_complete"] is False and run["combat_expected"] is None
+    assert encounters("encounter-missing", "participant")[0]["combat"] is None
+    assert observed["encounter-missing"][1]["late_encounter_records"] == 1
+    run, = encounters("encounter-orphan", "run")
+    assert run["native_terminal_complete"] is False and run["expected_reward_credit_count"] is None
+    assert run["roster_expected"] is None and run["run_elapsed_usec"] == "10000000"
+    assert encounters("encounter-orphan", "participant")[0]["combat"]["damage_dealt"] == "10"
+    run, = encounters("encounter-open", "run")
+    assert run["run_elapsed_usec"] is None and run["outcome"] is None
+    assert {"unclosed_tail", "incomplete_terminal"} <= set(run["duris_coverage"])
+    actor, = encounters("encounter-open", "participant")
+    assert actor["participant_usec"] == "1000000" and actor["participant_time_basis"] == "observed_lower_bound"
+    conflict = observed["encounter-conflict"][1]
+    assert conflict["terminal_duplicates"] == 3 and conflict["terminal_conflicts"] == 1
+    assert len(encounters("encounter-conflict", "run")) == 1
+    assert len(encounters("encounter-conflict", "participant")) == 2
+
+    run, = encounters("encounter-overflow", "run")
+    assert run["native_terminal_complete"] is True and run["participant_rows_expected"] == 64
+    assert run["unattributed_pet_rows"] == 64 and run["unattributed_pet_combat"]["damage_dealt"] == "640"
+    assert observed["encounter-overflow"][1]["actor_attribution_overflows"] == 64
+    assert "unattributed_combat" in run["duris_coverage"]
+    run, = encounters("encounter-counter-overflow", "run")
+    assert run["unattributed_pet_combat"]["damage_dealt"] is None
+    assert "counter_overflow" in run["duris_coverage"]
+    assert observed["encounter-counter-overflow"][1]["counter_overflow_rows"] == 1
+    assert len(encounters("encounter-burst", "run")) == 8
+    assert len(encounters("encounter-burst", "participant")) == 8 * 17
+    assert observed["encounter-burst"][1]["output_suppressed"] == 0
+    assert len(encounters("encounter-replay", "run")) == 131
+    assert observed["encounter-replay"][1]["late_encounter_records"] == 2
+    assert observed["encounter-expiry"][1]["output_suppressed"] == 6
+    assert not encounters("encounter-expiry", "run")
+    assert observed["encounter-capacity"][1]["run_refusals"] == 1
+    assert observed["encounter-capacity"][1]["incomplete_runs"] == 128
+    assert observed["encounter-capacity"][1]["runs"] == 0
+    assert observed["encounter-scope-clock"][1]["reduction_refusals"] == 2
+    for row in encounters("encounter-scope-clock", "run"):
+        assert row["timestamp_basis"] == "emitted_at" and row["occurrence_start_utc_usec"] is None
+    assert observed["encounter-allocation-failure"][1]["serialization_failures"] == 8
+    assert observed["encounter-allocation-failure"][1]["output_suppressed"] == 8
+
+    def health_rows(case: str) -> list[dict]:
+        return [row["properties"] for row in observed[case][0] if row["event"] == "duris_telemetry_health"]
+
+    cadence = health_rows("health-cadence")
+    assert [row["health_trigger"] for row in cadence] == ["initial", "hourly"]
+    assert int(cadence[1]["sampled_monotonic_usec"]) - int(cadence[0]["sampled_monotonic_usec"]) == 3600000000
+    assert cadence[0]["reducer"]["created_events"] == "1"  # Sample precedes its own insertion.
+    assert cadence[1]["reducer"]["http_acknowledged"] == "2"
+    assert cadence[1]["reducer"]["output_oldest_age_usec"] is None
+    linkdead = health_rows("health-linkdead")
+    assert len(linkdead) == 25  # Initial + hourly fits the 100/day health allowance.
+    assert [row["health_trigger"] for row in linkdead] == ["initial"] + ["hourly"] * 24
+    assert linkdead[-1]["reducer"]["unattributed_time_fragments"] == "1440"
+    linkdead_parts = summaries(observed["health-linkdead"][0])
+    assert sum(int(part["unattributed_time"]["linkdead_usec"]) for part in linkdead_parts) == 86400000000
+    assert all(not part["time_allocations"] for part in linkdead_parts)
+    for case in ("health-time-overflow", "health-context-overflow", "health-split-overflow"):
+        overflow = health_rows(case)
+        assert [row["health_trigger"] for row in overflow] == ["initial", "incident"]
+        assert int(overflow[-1]["reducer"]["unattributed_time_fragments"]) > 0
+    incident = health_rows("health-incidents")
+    assert len(incident) == 2 and incident[1]["health_trigger"] == "incident"
+    assert incident[1]["native_transport"]["state"] == "healthy"
+    assert incident[1]["coalesced_reason_mask"] & 1  # The brief degraded state survived coalescing.
+    assert incident[1]["coalesced_severity"] == "warning" and incident[1]["active_reason_mask"] == 0
+    loss = health_rows("health-loss")[-1]
+    assert loss["health_trigger"] == "incident"
+    assert loss["health_scope"] == "producer" and loss["health_counter_basis"] == "cumulative_since_producer_start"
+    assert loss["producer_boot_id"] == "11" and loss["producer_process_id"] == "22"
+    assert loss["native_transport"]["applied_records"] == "9007199254740993"
+    assert loss["native_transport"]["last_committed_record_seq"] == "18446744073709551615"
+    assert loss["native_transport"]["last_success_age_usec"] is None
+    assert loss["reducer"]["http_acknowledged"] == "0"  # Native applied is never relabeled as an HTTP ack.
+    assert loss["reducer"]["native_scoped_gaps"] == loss["reducer"]["native_process_gaps"] == "1"
+    assert loss["reducer"]["native_dropped_records"] == "6"
+    assert loss["reducer"]["native_gap_known_usec"] == "0"  # Zero known duration is not completeness.
+    assert len(loss["native_reduction_by_kind"]) == 8 and len(loss["output_by_family"]) == 6
+    progression, = [kind for kind in loss["native_reduction_by_kind"] if kind["kind"] == 6]
+    assert progression["consumed"] == "2" and progression["refused"] == "1"
+    for row in (cadence[0], cadence[1], loss):
+        assert all(isinstance(value, str) for key, value in row["reducer"].items()
+                   if key not in {"sessions", "session_limit", "runs", "run_limit", "configurations",
+                                  "configuration_limit", "output_events", "output_event_limit",
+                                  "output_bytes", "output_byte_limit", "output_oldest_age_usec"})
+    capacity, = health_rows("health-capacity")
+    assert capacity["reducer"]["output_suppressed"] == "2"
+    by_family = {family["event"]: family for family in capacity["output_by_family"]}
+    assert by_family["duris_telemetry_health"]["suppressed"] == "1"
+    assert by_family["duris_configuration"]["suppressed"] == "1"
+    faults = health_rows("health-faults")
+    assert len(faults) == 2
+    assert faults[0]["reducer"]["invalid_health_snapshots"] == "3"
+    assert faults[0]["reducer"]["serialization_failures"] == "2"
+    assert faults[0]["reducer"]["clock_failures"] == "2"
+    assert faults[1]["reducer"]["clock_failures"] == "3"
+    expiry, = health_rows("health-family-expiry")
+    families = {family["event"]: family for family in expiry["output_by_family"]}
+    assert families["duris_configuration"]["http_acknowledged"] == "1"
+    assert families["duris_telemetry_health"]["ambiguous"] == "1"
+    assert families["duris_telemetry_health"]["suppressed"] == "1"
+    assert families["duris_telemetry_health"]["expired"] == "1"
+    print(f"PostHog reducer: {len(cases)} executable semantic/capacity/fault scenarios PASS")
+
+
+def volume_tests(binary: Path) -> None:
+    result = subprocess.run([str(binary), "reduce", "release-mix"], cwd=ROOT,
+                            env=TEST_ENV, text=True, capture_output=True, check=True, timeout=30)
+    rows = [json.loads(line) for line in result.stdout.splitlines()]
+    health = rows.pop()["_fixture_health"]
+    assert health["output_suppressed"] == health["reduction_refusals"] == 0, health
+    from collections import Counter
+    emitted = Counter(row["event"] for row in rows)
+    assert emitted == {"duris_configuration": 2, "duris_session": 10,
+                       "duris_character_summary": 50, "duris_level_change": 1,
+                       "duris_encounter_summary": 6, "duris_telemetry_health": 28}, emitted
+    assert sum(row["properties"].get("actor_kind") == "pet" for row in rows) == 1
+    print("emitted release mix: 48 periodic + 2 boundary summaries, 6 entry/exit + 2 reconnect + 2 copyover rows, 1 level, 6 encounter, 2 config, 28 health: PASS")
+    fixture = json.loads((FIXTURES / "volume.json").read_text())
+    days = fixture["days"]
+    assumptions = fixture["assumptions"]
+    for profile in fixture["profiles"]:
+        population = profile["average_connected"]
+        residents = population + math.ceil(population * assumptions["detached_percent"] / 100)
+        counts = {
+            "periodic_summaries": residents * days * (emitted["duris_character_summary"] - 2) * 1800 // profile["window_seconds"],
+            "boundary_summaries": population * days * (emitted["duris_character_summary"] - 48),
+            "session": population * days * (emitted["duris_session"] - assumptions["copyovers"])
+            + population * assumptions["copyovers"],
+            "level_change": population * days * emitted["duris_level_change"] // assumptions["character_days_per_level_change"],
+            "encounter": population * days * emitted["duris_encounter_summary"]
+            // assumptions["character_days_per_run"],
+            "configuration": days * emitted["duris_configuration"],
+            "health": days * emitted["duris_telemetry_health"],
+            "cloud_test": assumptions["cloud_test_submissions"],
+        }
+        # Tests already count all their attempts; only the game mix gets retries.
+        retry_base = sum(counts.values()) - counts["cloud_test"]
+        counts["retries"] = math.ceil(retry_base * assumptions["retry_percent"] / 100)
+        assert counts == profile["expected"], (profile, counts)
+        total = sum(counts.values())
+        assert (total <= fixture["normal_target"]) == profile["fits_normal_target"]
+        print(f"forecast: {population} average connected, {profile['window_seconds']}s, "
+              f"{total} submissions/31 days; measured emitted shapes, assumed workload/retry frequencies")
+    assert 24 + assumptions["health_incidents_per_day"] <= 100
+    assert assumptions["cloud_test_submissions"] <= 100
+    # A rolling 31-day billing window can touch 32 UTC dates.
+    assert fixture["daily_ceiling"] * 32 == 640000
+
+
+def main() -> None:
+    output_root = ROOT / "bin/tests"
+    output_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="telemetry-posthog-", dir=output_root) as directory:
+        for backend, defines in (("mariadb", []), ("flatfile", ["-D__NO_MYSQL__"])):
+            binary = output_root / ("telemetry-posthog-" + backend)
+            subprocess.run([
+                *shlex.split(os.environ.get("CXX", "g++")), "-std=c++20", "-O1", "-g",
+                "-Wall", "-Wextra", "-Werror", "-pedantic", "-fsanitize=undefined",
+                "-fno-sanitize-recover=all", "-DTELEMETRY_POSTHOG_TESTING", *defines, "-I", str(ROOT / "src"),
+                str(ROOT / "src/telemetry/telemetry_posthog.c"),
+                str(ROOT / "src/telemetry/telemetry_config.c"),
+                str(ROOT / "src/telemetry/telemetry_health.c"),
+                str(ROOT / "src/telemetry/telemetry_outage.c"),
+                str(ROOT / "src/telemetry/telemetry_encounter.c"),
+                str(ROOT / "src/telemetry/telemetry_combat_summary.c"),
+                str(ROOT / "tests/async/telemetry_posthog_harness.cc"),
+                str(ROOT / "tests/async/telemetry_posthog_reducer_harness.cc"),
+                "-lcrypto", "-lcjson", "-lcurl", "-o", str(binary),
+            ], cwd=ROOT, env=TEST_ENV, check=True, timeout=60)
+            encoding_tests(binary)
+            reducer_tests(binary)
+            from telemetry_posthog_http import http_tests
+            http_tests(binary, Path(directory) / (backend + "-http"), TEST_ENV)
+            print(f"PostHog encodings ({backend}, UBSan): PASS")
+    volume_tests(binary)
+    print("PostHog encoding/reducer/forecast fixtures: PASS; delivery acceptance still pending")
+
+
+if __name__ == "__main__":
+    main()

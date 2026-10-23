@@ -1394,6 +1394,7 @@ struct material_data
 #define ROLL_MOB_NORMAL 1
 #define ROLL_MOB_GOOD 2
 #define ROLL_MOB_ELITE 3
+#define ROLL_ADVANCED 4
 
 // It is IMPERATIVE that EXP_MOD_CLS_* == flag2idx(CLASS_*)
 // If you add a new class, you MUST add EXP_MOD_CLS_<newclass> and shift the rest of the values down one!!!

@@ -223,11 +223,11 @@ int main(int argc, char **argv)
 				&error) == flatfile_authority_transaction_result::invalid,
 			"removal operation with a payload was accepted");
 	}
+	const auto legacy_intent = legacy_journal({ { "legacy-one", bytes("new-legacy") } });
 	require(flatfile_atomic_write(domains.string(), "legacy-one", bytes("old-legacy"),
 				      &error) &&
-			flatfile_atomic_write(
-				domains.string(), ".critical-authority-transaction",
-				legacy_journal({ { "legacy-one", bytes("new-legacy") } }), &error),
+			flatfile_atomic_write(domains.string(), ".critical-authority-transaction",
+					      legacy_intent, &error),
 		"could not establish legacy journal fixture: " + error);
 	{
 		flatfile_authority_lock lock;
@@ -243,14 +243,14 @@ int main(int argc, char **argv)
 	// An older server's critical command or death save also named the player death
 	// records (store 6) and the accounting evidence (store 7). Recovery skips those
 	// operations, applies the rest and clears the intent.
+	const auto older_intent =
+		older_journal({ { 1, 1, "older-one", bytes("from-older-server") },
+				{ 6, 1, "44.death", bytes("death record") },
+				{ 7, 1, "evidence-1", bytes("accounting evidence") },
+				{ 2, 2, "44", {} } });
 	require(flatfile_atomic_write(players.string(), "44", bytes("old-player"), &error) &&
-			flatfile_atomic_write(
-				domains.string(), ".critical-authority-transaction",
-				older_journal({ { 1, 1, "older-one", bytes("from-older-server") },
-						{ 6, 1, "44.death", bytes("death record") },
-						{ 7, 1, "evidence-1", bytes("accounting evidence") },
-						{ 2, 2, "44", {} } }),
-				&error),
+			flatfile_atomic_write(domains.string(), ".critical-authority-transaction",
+					      older_intent, &error),
 		"could not establish the older server's intent: " + error);
 	{
 		flatfile_authority_lock lock;

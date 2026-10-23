@@ -59,6 +59,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections \
     -Isrc "${MYSQL_CFLAGS[@]}" tests/async/player_load_filter_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/player/player_load_repository.c src/player/player_load_topology.c \
+    src/combat/combat_outcome_command.c src/economy/currency_command.c src/persistence/critical_command.c \
     src/player/player_snapshot_repository.c src/player/player_snapshot_codec.c \
     src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c \
     src/sql/item_extra_descr_codec.c src/persistence/persistence_observability.c \

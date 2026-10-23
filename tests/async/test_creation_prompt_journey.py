@@ -262,7 +262,7 @@ def sexless_chaos_menu(client, server):
         reply(client, "z", RACE_MENU)
 
 
-def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=False):
+def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=False, method=""):
     reply(client, "h", "Male or Female")
     if exercise_retries:
         reply(client, "?", "Please select either F")
@@ -284,22 +284,74 @@ def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=
     reply(client, "g", RACE_MENU)
     if exercise_retries:
         reply(client, "?", "Please choose a real hometown: ")
-    reply(client, "p", "Press return to continue")
-    reply(client, "", "first bonus")
-    for next_bonus in ("second bonus", "third bonus", "fourth bonus"):
-        if exercise_retries:
-            reply(client, "?", "bonus:")
-        reply(client, "s", next_bonus)
+    before = reply(client, "p", "Your stat rolling system [D]:")
+    require("Very good" not in before and "Enter stat" not in before,
+            "stats were rolled before method choice")
     if exercise_retries:
-        reply(client, "?", "fourth bonus:")
-    reply(client, "s", "swap stats (Y/N): ")
+        for invalid in ("?", "x"):
+            before = reply(client, invalid, "Your stat rolling system [D]:")
+            require("Very good" not in before and "Enter stat" not in before,
+                    "invalid method advanced creation")
+    require_prompt_framed(client, "Your stat rolling system [D]: ")
+    if method == "a":
+        reply(client, "a", "(y/n) [y]:")
+        reply(client, "", "(y/n) [y]:")
+        reply(client, "y", "(y/n) [y]:")
+        reply(client, "n", "first bonus")
+    else:
+        reply(client, method, "first bonus")
+    if exercise_retries and method != "a":
+        reply(client, "k", "first bonus:")
+        reply(client, "s", "second bonus")
+        reply(client, "s", "third bonus")
+        client.send("s")
+        prompt, _ = client.expect_any(("fourth bonus", "Enter another bonus stat:"))
+        if prompt == "Enter another bonus stat:":
+            reply(client, "d", "fourth bonus")
+        # Strength is now capped whether two or three bonuses were needed.
+        reply(client, "s", "No bonus was used")
+        client.expect("Enter another bonus stat:")
+        reply(client, "l", "swap stats (Y/N): ")
+    else:
+        for next_bonus, stat in zip(("second bonus", "third bonus", "fourth bonus"), "sda"):
+            reply(client, stat, next_bonus)
+        reply(client, "l", "swap stats (Y/N): ")
     if exercise_retries:
         reply(client, "?", "swap stats (Y/N): ")
         reply(client, "y", "Enter two letters separated by a space to swap:")
         reply(client, "bogus", "swap stats (Y/N): ")
         reply(client, "y", "Enter two letters separated by a space to swap:")
+        reply(client, "s k", "swap stats (Y/N): ")
+        reply(client, "y", "Enter two letters separated by a space to swap:")
         reply(client, "s d", "swap more stats (Y/N): ")
+        reply(client, "y", "Enter two letters separated by a space to swap:")
+        reply(client, "d l", "swap more stats (Y/N): ")
     reply(client, "n", KEEP)
+
+
+def advanced_creation(client, server):
+    reach_race(client)
+    finish_character_choices(client, method="a", exercise_retries=True)
+    reply(client, "y", "PRESS RETURN")
+    reply(client, "", "Your starter kit is ready")
+    client.expect("Pos: standing >")
+    reply(client, "save", "Save complete for Taverek.")
+
+
+def method_fixed_home(client, server, *, alignment):
+    reach_race(client)
+    reply(client, "k" if alignment else "u", "Male or Female")
+    reply(client, "m", "H (for Hardcore), N (for Normal)")
+    reply(client, "n", "Class Selection")
+    client.expect(RACE_MENU)
+    if alignment:
+        reply(client, "w", "Alignment only affects")
+        client.expect(RACE_MENU)
+        output = reply(client, "g", "Your stat rolling system [D]:")
+    else:
+        output = reply(client, "w", "Your stat rolling system [D]:")
+    require("Very good" not in output, "fixed-home route rolled before choice")
+    reply(client, "d", "first bonus")
 
 
 def keep_confirmation(client, server):
@@ -393,6 +445,9 @@ SCENARIOS = (
     ("invitation-only race rejection", invitation_rejection),
     ("invited evil-race creation", invitation_allowed),
     ("sexless race creation with Hardcore disabled in Chaos", sexless_chaos_menu),
+    ("class completion reaches method before rolling", lambda c, s: method_fixed_home(c, s, alignment=False)),
+    ("alignment completion reaches method before rolling", lambda c, s: method_fixed_home(c, s, alignment=True)),
+    ("Advanced reroll, acceptance and save", advanced_creation),
     ("selection retries and final discard", keep_confirmation),
     ("final quit flushes its farewell without saving a character", quit_confirmation),
     ("Hardcore correction, world entry, save/restart and relog", normal_after_hardcore),
@@ -422,5 +477,7 @@ def run_journeys(binary):
 
 
 if __name__ == "__main__":
-    with tempfile.TemporaryDirectory(prefix="creation-prompts-build-") as build_tmp:
+    build_root = Path(__file__).resolve().parents[2] / "bin/tests"
+    build_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="creation-prompts-build-", dir=build_root) as build_tmp:
         run_journeys(build_flatfile_server(Path(build_tmp)))

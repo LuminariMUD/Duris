@@ -19,6 +19,9 @@
 #include "combat/combat_outcome_command.h"
 #include "economy/currency_command.h"
 #include "world/epic_command.h"
+#include "flatfile/flatfile_identity_repository.h"
+#include "flatfile/flatfile_player_snapshot_file.h"
+#include "player/player_snapshot_codec.h"
 
 #include <algorithm>
 #include <array>
@@ -42,11 +45,13 @@ constexpr uint32_t domain_format_version = 3;
 constexpr std::array<uint8_t, 8> player_magic = { 'D', 'U', 'R', 'P', 'D', 'O', 'M', 0 };
 constexpr std::array<uint8_t, 8> bank_magic = { 'D', 'U', 'R', 'B', 'A', 'N', 'K', 0 };
 constexpr std::array<uint8_t, 8> transaction_magic = { 'D', 'U', 'R', 'T', 'X', 'N', 0, 0 };
-constexpr size_t domain_maximum_bytes = 64 * 1024;
+constexpr size_t domain_maximum_operations = 512;
+// Accommodate the declared receipt count, including complete combat results.
+constexpr size_t domain_maximum_bytes =
+	(FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES + 64) * domain_maximum_operations + 64 * 1024;
 constexpr size_t transaction_maximum_records = COMBAT_OUTCOME_MAX_PARTICIPANTS * 2;
 constexpr size_t transaction_maximum_bytes =
 	domain_maximum_bytes * transaction_maximum_records + 4096;
-constexpr size_t domain_maximum_operations = 512;
 constexpr size_t account_maximum_bytes = PLAYER_LOAD_ACCOUNT_MAX;
 constexpr const char *transaction_filename = ".player-domain-transaction";
 std::mutex domain_mutex;
@@ -324,24 +329,6 @@ flatfile_player_domain_result read_bytes(const std::string &root, const std::str
 		return flatfile_player_domain_result::invalid;
 	return read == flatfile_read_result::ok ? flatfile_player_domain_result::ok :
 						  flatfile_player_domain_result::io_error;
-}
-
-bool encode_transaction(const domain_transaction &transaction, std::vector<uint8_t> *bytes)
-{
-	if (transaction.players.empty() || transaction.players.size() > transaction_maximum_records)
-		return false;
-	encoder payload;
-	payload.number<uint16_t>(transaction.players.size());
-	// The bank count: a new transaction carries no banks.
-	payload.number<uint16_t>(0);
-	for (const transaction_player &player : transaction.players)
-	{
-		payload.number(player.pid);
-		payload.number<uint32_t>(player.bytes.size());
-		payload.raw(player.bytes.data(), player.bytes.size());
-	}
-	return payload.valid && encode_envelope(transaction_magic, payload.bytes, 1,
-						transaction_maximum_bytes, bytes);
 }
 
 flatfile_player_domain_result decode_transaction(const std::vector<uint8_t> &bytes,
@@ -1231,6 +1218,8 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 	if (!combat_result.event_id)
 		combat_result.event_id = 1;
 	combat_result.participant_count = payload.participant_count;
+	combat_result.victim_pid = payload.victim_pid;
+	combat_result.prepared_at = payload.prepared_at;
 	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
 		const auto &domains = players[index].record.domains;
@@ -1243,15 +1232,48 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 						      .epic_revision = domains.epic_revision,
 						      .wallet_revision = 0,
 						      .bank_revision = 0 };
+		if (payload.participants[index].flags & COMBAT_PARTICIPANT_DIVINE_EPIC)
+		{
+			auto &entry = combat_result.participants[index];
+			if (domains.epic_revision == UINT64_MAX ||
+			    domains.epics > INT64_MAX - payload.participants[index].epic_delta)
+				return { critical_apply_outcome::terminal_failure, 0, ERANGE };
+			for (const auto &prior : players[index].operations)
+			{
+				if (prior.result_size != COMBAT_OUTCOME_RESULT_BYTES ||
+				    memcmp(prior.result.data(), "DBCOMB05", 8))
+					continue;
+				combat_outcome_result previous;
+				if (!combat_outcome_command_decode_result(
+					    prior.result.data(), prior.result_size, &previous))
+					return { critical_apply_outcome::terminal_failure, 0,
+						 EILSEQ };
+				for (size_t p = 0; p < previous.participant_count; ++p)
+					if (previous.participants[p].pid == entry.pid &&
+					    previous.participants[p].epic_delivery_flags)
+						entry.epic_delivery_previous = std::max(
+							entry.epic_delivery_previous,
+							previous.participants[p].epic_revision);
+			}
+			entry.epic_revision = ++candidates[index].record.domains.epic_revision;
+			entry.epic_delivery_delta = payload.participants[index].epic_delta;
+			entry.epic_boon_id = payload.participants[index].epic_boon_id;
+			entry.epic_base = payload.participants[index].epic_base;
+			entry.epic_spill_blood = payload.participants[index].epic_spill_blood;
+			entry.epic_delivery_flags =
+				payload.participants[index].flags &
+				(COMBAT_PARTICIPANT_DIVINE_EPIC | COMBAT_PARTICIPANT_SPILL_BLOOD);
+		}
 	}
 	std::array<uint8_t, COMBAT_OUTCOME_RESULT_BYTES> encoded_result = {};
+	const size_t encoded_size = combat_outcome_result_size(combat_result);
 	if (!combat_outcome_command_encode_result(combat_result, &encoded_result))
 		return { critical_apply_outcome::terminal_failure, 0, EBADMSG };
 	domain_operation operation = {};
 	operation.operation_id = command.operation_id;
 	operation.command_digest = digest;
 	operation.result_code = result_code;
-	operation.result_size = encoded_result.size();
+	operation.result_size = encoded_size;
 	std::copy(encoded_result.begin(), encoded_result.end(), operation.result.begin());
 	try
 	{
@@ -1262,33 +1284,33 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 	{
 		return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
 	}
-	domain_transaction transaction;
+	std::vector<flatfile_authority_operation> operations;
 	try
 	{
-		transaction.players.reserve(candidates.size());
-		for (const player_authority &candidate : candidates)
+		for (const auto &candidate : candidates)
 		{
-			transaction.players.push_back({ candidate.record.pid, {} });
-			if (!encode_player_authority(candidate, &transaction.players.back().bytes))
+			flatfile_authority_operation write;
+			write.filename = player_filename(candidate.record.pid);
+			if (!encode_player_authority(candidate, &write.bytes))
 				return { critical_apply_outcome::terminal_failure, 0, ENOSPC };
+			operations.push_back(std::move(write));
 		}
 	}
 	catch (const std::bad_alloc &)
 	{
 		return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
 	}
-	std::vector<uint8_t> transaction_bytes;
-	if (!encode_transaction(transaction, &transaction_bytes))
-		return { critical_apply_outcome::terminal_failure, 0, ENOSPC };
-	if (!flatfile_atomic_write(domains_directory(root), transaction_filename, transaction_bytes,
-				   &error))
-		return { critical_apply_outcome::retryable_failure, 0, EIO };
-	for (const transaction_player &player : transaction.players)
-		if (!flatfile_atomic_write(domains_directory(root), player_filename(player.pid),
-					   player.bytes, &error))
-			return { critical_apply_outcome::retryable_failure, 0, EIO };
-	if (!flatfile_atomic_remove(domains_directory(root), transaction_filename, false, &error))
-		return { critical_apply_outcome::retryable_failure, 0, EIO };
+	const auto committed =
+		flatfile_authority_transaction_commit_operations(root, lock, operations, &error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 critical_apply_outcome::retryable_failure :
+				 critical_apply_outcome::terminal_failure,
+			 0,
+			 static_cast<unsigned int>(
+				 committed == flatfile_authority_transaction_result::io_error ?
+					 EIO :
+					 EILSEQ) };
 	uint64_t durable_revision = 0;
 	for (const player_authority &candidate : candidates)
 		durable_revision =
@@ -1298,7 +1320,7 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 	critical_apply_result result = { result_code ? critical_apply_outcome::terminal_failure :
 						       critical_apply_outcome::applied,
 					 durable_revision, result_code };
-	result.result_size = encoded_result.size();
+	result.result_size = encoded_size;
 	std::copy(encoded_result.begin(), encoded_result.end(), result.result_payload.begin());
 	return result;
 }
@@ -1311,4 +1333,136 @@ critical_apply_result flatfile_player_domain_apply(const std::string &root,
 	if (command.type == critical_command_type::combat_outcome)
 		return apply_combat_outcome_command(root, command);
 	return { critical_apply_outcome::terminal_failure, 0, ENOTSUP };
+}
+
+static flatfile_player_domain_result
+collect_divine_epics(const player_authority &player, uint32_t pid, uint64_t after,
+		     std::vector<divine_epic_delivery> *deliveries)
+{
+	std::vector<divine_epic_delivery> pending;
+	for (const auto &operation : player.operations)
+	{
+		if (operation.result_code || operation.result_size != COMBAT_OUTCOME_RESULT_BYTES ||
+		    memcmp(operation.result.data(), "DBCOMB05", 8))
+			continue;
+		combat_outcome_result result;
+		if (!combat_outcome_command_decode_result(operation.result.data(),
+							  operation.result_size, &result))
+			return flatfile_player_domain_result::invalid;
+		for (size_t index = 0; index < result.participant_count; ++index)
+		{
+			const auto &row = result.participants[index];
+			if (row.pid != pid || !row.epic_delivery_flags ||
+			    row.epic_revision <= after)
+				continue;
+			divine_epic_delivery delivery;
+			if (!divine_epic_delivery_from_combat(operation.operation_id, result, index,
+							      &delivery))
+				return flatfile_player_domain_result::invalid;
+			pending.push_back(delivery);
+		}
+	}
+	std::sort(pending.begin(), pending.end(), [](const auto &left, const auto &right)
+		  { return left.sequence < right.sequence; });
+	*deliveries = std::move(pending);
+	return flatfile_player_domain_result::ok;
+}
+
+flatfile_player_domain_result
+flatfile_player_domain_pending_divine_epics(const std::string &root, uint32_t pid, uint64_t after,
+					    std::vector<divine_epic_delivery> *deliveries,
+					    std::string *error)
+{
+	if (!deliveries || !pid)
+		return flatfile_player_domain_result::invalid;
+	std::lock_guard<std::mutex> guard(domain_mutex);
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error))
+		return flatfile_player_domain_result::io_error;
+	const auto recovered = recover_authority(root, lock, error);
+	if (recovered != flatfile_player_domain_result::ok)
+		return recovered;
+	player_authority player;
+	const auto loaded = load_player_authority(root, pid, &player, error);
+	if (loaded != flatfile_player_domain_result::ok)
+		return loaded;
+	return collect_divine_epics(player, pid, after, deliveries);
+}
+
+flatfile_player_domain_result
+flatfile_player_domain_load_checkpoint(const std::string &root,
+				       const flatfile_identity_record &identity,
+				       player_load_result *result, std::string *error)
+try
+{
+	std::string account;
+	if (!result || identity.pid <= 0 || !canonical_account(identity.account, &account))
+		return flatfile_player_domain_result::invalid;
+	std::lock_guard<std::mutex> guard(domain_mutex);
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error))
+		return flatfile_player_domain_result::io_error;
+	const auto recovered = recover_authority(root, lock, error);
+	if (recovered != flatfile_player_domain_result::ok)
+		return recovered;
+	// All native snapshot writes own authority. Read without a player lock,
+	// preserving the snapshot writer's player->authority acquisition order.
+	const auto snapshot =
+		flatfile_player_snapshot_read(root, identity.pid, &result->snapshot, error);
+	if (snapshot != flatfile_player_load_result::ok)
+	{
+		result->failed_component = "snapshot";
+		return snapshot == flatfile_player_load_result::not_found ?
+			       flatfile_player_domain_result::not_found :
+		       snapshot == flatfile_player_load_result::io_error ?
+			       flatfile_player_domain_result::io_error :
+			       flatfile_player_domain_result::invalid;
+	}
+	player_authority player;
+	const auto loaded = load_player_authority(root, identity.pid, &player, error);
+	if (loaded != flatfile_player_domain_result::ok)
+		return loaded;
+	if (player.record.account_name != account)
+		return flatfile_player_domain_result::conflict;
+	bool race_found = false;
+	for (const auto &field : result->snapshot.status_integers)
+		if (field.field == player_status_field::racewar)
+		{
+			if (race_found || (field.is_unsigned && field.unsigned_value > INT8_MAX))
+				return flatfile_player_domain_result::invalid;
+			const int64_t race = field.is_unsigned ?
+						     static_cast<int64_t>(field.unsigned_value) :
+						     field.signed_value;
+			if (race != player.record.racewar ||
+			    (identity.racewar && race != identity.racewar))
+			{
+				result->failed_component = "domain_identity";
+				return flatfile_player_domain_result::conflict;
+			}
+			race_found = true;
+		}
+	if (!race_found)
+		return flatfile_player_domain_result::invalid;
+	bank_record bank;
+	const auto bank_loaded = load_bank(root, account, player.record.racewar, &bank, error);
+	if (bank_loaded != flatfile_player_domain_result::ok)
+		return bank_loaded;
+	result->domains = player.record.domains;
+	result->domains.bank = bank.balances;
+	result->domains.bank_revision = bank.revision;
+	result->recent_pvp_deaths = player.record.recent_pvp_deaths;
+	result->completed_epic_zones = player.record.completed_epic_zones;
+	result->read_components = PLAYER_LOAD_SESSION04_READS;
+	uint64_t after = 0;
+	if (!player_snapshot_divine_delivery_sequence(result->snapshot, &after))
+		return flatfile_player_domain_result::invalid;
+	const auto receipts =
+		collect_divine_epics(player, identity.pid, after, &result->divine_epic_deliveries);
+	if (receipts != flatfile_player_domain_result::ok)
+		result->failed_component = "divine_epic_delivery";
+	return receipts;
+}
+catch (const std::bad_alloc &)
+{
+	return flatfile_player_domain_result::io_error;
 }

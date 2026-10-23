@@ -78,7 +78,7 @@ void send_to_char(const char *text, P_char) {
 }
 void stop_meditation(P_char owner) { REMOVE_BIT(owner->specials.affected_by, AFF_MEDITATE); }
 int hit_regen(P_char, bool) { return 0; }
-int ward_regen(P_char, bool) { return 0; }
+float ward_regen(P_char, bool) { return 0; }
 void event_hit_regen(P_char, P_char, P_obj, void *) { assert(false); }
 void event_ward_regen(P_char, P_char, P_obj, void *) { assert(false); }
 
@@ -116,7 +116,7 @@ int get_circle_memtime(P_char, int) { assert(false); return 0; }
 
 bool resists_spell(P_char, P_char) { return false; }
 bool saves_spell(P_char, int) { return true; }
-int vamp(P_char, double, double) { return 0; }
+int vamp(P_char, double, double, bool) { return 0; }
 int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) {
     return DAM_NONEDEAD;
 }

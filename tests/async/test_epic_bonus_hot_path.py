@@ -26,7 +26,9 @@ epic = (SRC / "epic.c").read_text()
 state_header = (SRC / "epic_bonus_state.h").read_text()
 structs = (SRC / "structs.h").read_text()
 
-read_body = function_body(bonus, "float get_epic_bonus(P_char ch, int type)")
+read_body = function_body(bonus, "double get_epic_bonus_precise(P_char ch, int type)")
+ordinary_body = function_body(bonus, "float get_epic_bonus(P_char ch, int type)")
+assert "static_cast<float>(get_epic_bonus_precise(ch, type))" in ordinary_body
 selection_body = function_body(bonus, "void epic_bonus_set(P_char ch, int type)")
 hydration_body = function_body(bonus, "void epic_bonus_hydrate(P_char ch)")
 publish_body = function_body(bonus, "static bool epic_bonus_publish_rows(")

@@ -488,9 +488,34 @@ dropped on any other error; their owners are marked dirty and saved again. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
 For `critical_outbox`, pending age may briefly rise during destination recovery.
-`dead_letter>0`, `incomplete_inbox>0`, or `committed_without_outbox>0` is an integrity
-incident. Preserve the database rows, stop affected domain cutovers, and run
-the typed reconciliation report. After correcting the destination, retry only the
+`critical_outbox_health` reports operational counts and the historical audit
+separately: `unavailable` means no successful refresh yet, `stale` means a failed
+refresh or an overdue observation, and `fresh` includes the age of the last good
+sample. Operational counts refresh with the 250 ms delivery loop; the historical
+audit runs after delivery, initially and then 60 seconds after each attempt.
+`state=unknown` must not be interpreted as an empty queue. Lifecycle drains use a
+new worker observation rather than these diagnostic counts, and allow the normal
+game-thread outbox publishers to progress within the existing caller deadline.
+`dead_letter>0`, `incomplete_inbox>0`, or `outbox_mismatches>0` is an integrity
+incident. The last counter counts committed operations whose expected event set
+differs from the actual set, including partial loss, wrong indexes, and unexpected
+events for a zero-effect operation. Preserve the database rows, stop affected
+domain cutovers, and run the typed reconciliation report.
+
+`state=reconciliation` and `unknown_expectations>0` mean some historical event
+sets cannot yet be proven. `reconciliation_candidates` is the subset without any
+outbox row; it is a candidate count, not proof of loss. An old multi-event
+operation can remain unknown even with a surviving event. Investigate that
+coverage rather than assuming zero or declaring the audit clean. The audit scans
+all committed history on each scheduled attempt. Session audits require their
+typed receipt to prove an omission; combat children require the exact derived
+parent/participant identity, hashes, ledger revision/delta, reason, and source.
+New operations record their expected event count atomically. No-op/rejected
+operations can expect zero; recovered stone receipts still expect their event.
+Never backfill unknown expectations from surviving outbox rows, subtract a fixed
+candidate count, delete evidence, or manufacture events to make the display green.
+
+After correcting the destination, retry only the
 specific numeric dead-letter ID through the guarded repair API; never edit payloads or
 execute SQL copied from a command.
 

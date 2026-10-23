@@ -2,9 +2,11 @@
 
 import server_build_artifacts
 
+import errno
 import json
 import os
 import pathlib
+import resource
 import signal
 import socket
 import stat
@@ -214,6 +216,52 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-build-") as build_tmp:
                             process.kill()
                             process.wait(timeout=5)
 
+            # Listener failures happen after real background workers have started.
+            # They must return through shutdown, including when only TLS fails.
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+            for mode in ("plain", "tls", "unavailable"):
+                with socket.socket() as blocker:
+                    blocker.bind(("127.0.0.1", 0))
+                    blocker.listen()
+                    blocked_port = blocker.getsockname()[1]
+                    failure_port = blocked_port if mode == "plain" else available_game_port()
+                    failure_environment = dict(environment)
+                    failure_environment["DURIS_TLS_PORT"] = str(
+                        blocked_port if mode == "tls" else failure_port + 1
+                    )
+                    expected_errno = errno.EADDRINUSE
+                    if mode == "unavailable":
+                        failure_environment["LISTEN_ADDRESS"] = "192.0.2.1"
+                        expected_errno = errno.EADDRNOTAVAIL
+                    failed_boot = subprocess.run(
+                        [str(binary), "--minimal", "-d", str(run_root), str(failure_port)],
+                        cwd=run_root,
+                        env=failure_environment,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        timeout=30,
+                    )
+                    require(
+                        failed_boot.returncode == 52,
+                        f"{mode} listener failure did not exit through cold restart "
+                        f"({failed_boot.returncode}):\n" + failed_boot.stdout,
+                    )
+                    failed_port = blocked_port if mode == "tls" else failure_port
+                    for diagnostic in (
+                        f"]:{failed_port} failed:", os.strerror(expected_errno),
+                        f"errno={expected_errno}", "Rebooting.",
+                    ):
+                        require(diagnostic in failed_boot.stdout,
+                                f"{mode} listener failure omitted {diagnostic!r}:\n"
+                                + failed_boot.stdout)
+                    require(
+                        "terminate called" not in failed_boot.stdout
+                        and "Entering game loop." not in failed_boot.stdout,
+                        f"{mode} listener failure aborted or accepted players:\n"
+                        + failed_boot.stdout,
+                    )
+
             # A normal install may be started before `make world` has generated
             # the full-world files.  That is a configuration error, but it must
             # remain a controlled exit: no joinable worker may turn it into a
@@ -269,4 +317,4 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-build-") as build_tmp:
                 require(mode == 0o700, f"insecure mode {mode:o} on {path}")
 
 print("client-free build, no listener without DURIS_WEBSOCKET, health with it, game-loop boot, "
-      "and clean shutdown preflight passed")
+      "listener failure cleanup, and clean shutdown preflight passed")
