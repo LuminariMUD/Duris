@@ -66,6 +66,8 @@ struct trade_operation
 	int nexus_bonus = 0;
 	bool trader_completed = false;
 	bool warship = false, seadog = false, diplomat = false;
+	ship_account_index indexed_ships;
+	book_dirty_index indexed_dirty;
 	std::string audit;
 	std::string receipt;
 };
@@ -361,9 +363,9 @@ try
 	}
 	// Allocate the publication destination before handing the immutable command off.
 	books.try_emplace(next->after.book_after.account);
-	auto indexed_ships = ship_accounts;
-	auto indexed_dirty = dirty_owner;
-	index_book(next->after.book_after, indexed_ships, indexed_dirty);
+	next->indexed_ships = ship_accounts;
+	next->indexed_dirty = dirty_owner;
+	index_book(next->after.book_after, next->indexed_ships, next->indexed_dirty);
 	if (!currency_transaction_reserve_trade(ch, next->after.payment))
 		return false;
 	if (!player_save_pipeline_reserve_trade(static_cast<uint32_t>(GET_PID(ch)), tag))
@@ -380,8 +382,6 @@ try
 		pending.reset();
 		return false;
 	}
-	ship_accounts.swap(indexed_ships);
-	dirty_owner.swap(indexed_dirty);
 	ch->only.pc->divine_trade_payment_pending = true;
 	send_to_char("The merchants are settling your cargo trade.\r\n", ch);
 	return true;
@@ -442,6 +442,8 @@ void divine_trade_runtime_completions(const critical_completion *results, size_t
 				      p.ship_id);
 				continue;
 			}
+			ship_accounts.swap(pending->indexed_ships);
+			dirty_owner.swap(pending->indexed_dirty);
 			books[p.book_after.account] = std::move(p.book_after);
 			if (P_ship ship = find_ship_by_runtime_ref(pending->ship);
 			    ship && static_cast<uint32_t>(ship->db_id) == p.ship_id)
