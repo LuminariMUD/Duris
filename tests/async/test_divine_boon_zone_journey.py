@@ -372,6 +372,7 @@ def run(backend, binary):
                             release_gate.unlink()
                             saw_prepared = True
                         if time.monotonic() >= next_attack:
+                            command(god, 'purge') # Wandering NPCs must not steal the PvP death.
                             player.send('kill ' + ('human' if side else 'orc'))
                             next_attack = time.monotonic() + .8
                         victim._receive()
