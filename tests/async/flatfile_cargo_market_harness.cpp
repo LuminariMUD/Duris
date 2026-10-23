@@ -1,5 +1,7 @@
 #include "ships/ships.h"
 #include "persistence/maintenance_snapshot.h"
+#include "persistence/critical_command_coordinator.h"
+#include "economy/divine_trade_command.h"
 #include "ships/ship_cargo_transaction.h"
 #include "flatfile/flatfile_cargo_repository.h"
 #include <openssl/sha.h>
@@ -24,6 +26,13 @@ void reset_cargo();
 
 static std::string state_root;
 static bool configured = true;
+static bool market_fenced = false;
+bool critical_command_coordinator_is_fenced(const critical_entity_key &key, critical_operation_id *)
+{
+	return market_fenced && key.type == critical_entity_type::system &&
+	       key.id == DIVINE_TRADE_MARKET_KEY;
+}
+
 static int cargo_timer;
 static int delayed_timer;
 
@@ -232,6 +241,15 @@ int main(int argc, char **argv)
 	maintenance_request request{};
 	request.job_id = maintenance_job_id::cargo_market;
 	request.work_id = 123456;
+	market_fenced = true;
+	const auto unadjusted = ship_cargo_market_mod[4][5];
+	const auto delayed = ship_cargo_market_mod_delayed[4][5];
+	require(!maintenance_prepare_request(request, nullptr) &&
+			ship_cargo_market_mod[4][5] == unadjusted &&
+			ship_cargo_market_mod_delayed[4][5] == delayed,
+		"pending trade allowed maintenance to mutate the live market");
+	market_fenced = false;
+
 	require(maintenance_prepare_request(request, nullptr) &&
 			request.value_count == 4 + NUM_PORTS * NUM_PORTS * 4,
 		"cargo dispatcher rejected its generation-bearing snapshot");

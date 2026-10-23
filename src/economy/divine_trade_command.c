@@ -48,6 +48,9 @@ bool valid(const divine_trade_payload &p)
 		if (coin < 0 || coin > INT32_MAX)
 			return false;
 	const auto &crew = p.crew_after;
+	for (int32_t chief : { crew.sail_chief, crew.guns_chief, crew.repair_chief })
+		if (chief < 0 || chief >= MAXCHIEFS)
+			return false;
 	if (crew.sail_skill_milli < 0 || crew.guns_skill_milli < 0 || crew.repair_skill_milli < 0)
 		return false;
 	std::set<uint8_t> slots;

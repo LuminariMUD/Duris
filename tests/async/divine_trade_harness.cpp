@@ -268,6 +268,17 @@ int main()
 		critical_command refused;
 		assert(!divine_trade_command_build(&refused, operation(900), overflow));
 	}
+	for (size_t field = 0; field < 3; ++field)
+		for (int chief : { -1, MAXCHIEFS })
+		{
+			auto malformed = payload;
+			int32_t *chiefs[] = { &malformed.crew_after.sail_chief,
+					      &malformed.crew_after.guns_chief,
+					      &malformed.crew_after.repair_chief };
+			*chiefs[field] = chief;
+			critical_command refused;
+			assert(!divine_trade_command_build(&refused, operation(900), malformed));
+		}
 	command.accepted_at_usec = 123456;
 	divine_trade_payload decoded;
 	assert(divine_trade_command_decode(command, &decoded));

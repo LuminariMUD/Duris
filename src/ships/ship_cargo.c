@@ -86,6 +86,7 @@
 #include "ships/ships.h"
 #include "ships/ship_cargo_transaction.h"
 #include "economy/divine_trade_repository.h"
+#include "persistence/critical_command_coordinator.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
@@ -746,6 +747,9 @@ size_t cargo_maintenance_snapshot(uint64_t work_id, int64_t *values, size_t capa
 		memcpy(values, cargo_maintenance_values, sizeof(cargo_maintenance_values));
 		return required;
 	}
+	if (critical_command_coordinator_is_fenced(
+		    { critical_entity_type::system, DIVINE_TRADE_MARKET_KEY }, nullptr))
+		return 0;
 	const int now = time(nullptr);
 	const bool cargo_due =
 		now > cargo_maintenance_last_update + get_property("ship.cargo.update.secs", 1800);
