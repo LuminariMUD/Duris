@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Source-contract checks for transaction ownership and commit ordering fixes."""
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
+import subprocess
+import tempfile
 
 root = Path(__file__).resolve().parents[2]
 locker = (SRC / "storage_lockers.c").read_text()
@@ -80,4 +82,71 @@ assert "if (!drain_pending_ship_saves())" in copyover
 assert "notify_copyover_failure" in copyover[copyover.index("if (!drain_pending_ship_saves())") :]
 assert "locker_async_drain" in copyover
 
-print("locker ownership, auction commit ordering, and copyover ship drain checks passed")
+# Execute the real lifecycle guards and the game-thread publication wiring.
+# The SQL harness separately runs the actual worker concurrently with a draining
+# game thread; this probe proves which publishers and caller policies it reaches.
+comm = (SRC / "comm.c").read_text()
+assert "critical_gameplay_drain_outbox);" in comm
+runtime = r'''
+#include <cassert>
+#include <cstdint>
+#include <string>
+static bool outbox_empty = false;
+static unsigned int resumed = 0, saved = 0, alerts = 0, published = 0, pumped = 0;
+static int _pwipe = 0;
+static const char *AVATAR = "test", *LOG_STATUS = "test";
+void maintenance_scheduler_quiesce() {}
+void critical_command_coordinator_quiesce() {}
+void critical_outbox_quiesce() {}
+void player_save_pipeline_quiesce() {}
+void player_save_pipeline_resume() { ++resumed; }
+void critical_outbox_resume() { ++resumed; }
+void critical_command_coordinator_resume() { ++resumed; }
+void maintenance_scheduler_resume() { ++resumed; }
+bool maintenance_scheduler_drain(uint64_t) { return true; }
+bool critical_command_coordinator_drain(uint64_t) { return true; }
+bool critical_outbox_drain(uint64_t timeout) { assert(timeout == 3000); return outbox_empty; }
+bool persistence_flush_all_character_saves() { ++saved; return true; }
+bool player_save_pipeline_drain(uint64_t) { return true; }
+bool locker_async_drain(uint64_t) { return true; }
+bool artifact_save_drain(uint64_t) { return true; }
+void logit(const char *, const char *) {}
+void notify_copyover_failure(const char *) { ++resumed; }
+void persistence_alert(const char *, const char *, const char *, const char *,
+                       const char *, const char *, const char *policy) {
+    assert(std::string(policy) == "shutdown_cancelled=0"); ++alerts;
+}
+void auction_transaction_publish_outbox() { published |= 1; }
+void collector_transaction_publish_outbox() { published |= 2; }
+void combat_outcome_transaction_publish_outbox() { published |= 4; }
+void artifact_guild_transaction_publish_outbox() { published |= 8; }
+void sql_async_pulse() { ++pumped; }
+''' + extract_function("account.c", "class account_deletion_drain_guard") + ";\n" + \
+    extract_function("comm.c", "static void critical_gameplay_publish_outbox(") + \
+    extract_function("comm.c", "static void critical_gameplay_drain_outbox(") + \
+    "\nbool copyover_gate() {\n" + extract_function("copyover.c", "if (!critical_outbox_drain(3000))") + \
+    "\nreturn true; }\nvoid shutdown_gate() {\n" + \
+    comm[comm.index("if (!_pwipe && !critical_outbox_drain(3000))"):
+         comm.index("\n\tif (!_pwipe)\n", comm.index("if (!_pwipe && !critical_outbox_drain(3000))"))] + r'''
+}
+int main() {
+    critical_gameplay_drain_outbox(); assert(published == 15 && pumped == 1);
+    { account_deletion_drain_guard guard; assert(!guard.drain()); }
+    assert(saved == 0 && resumed == 3);
+    assert(!copyover_gate()); assert(resumed == 4);
+    shutdown_gate(); assert(alerts == 1);
+    outbox_empty = true;
+    { account_deletion_drain_guard guard; assert(guard.drain()); }
+    assert(saved == 1 && resumed == 8);
+    assert(copyover_gate()); shutdown_gate(); assert(alerts == 1);
+}
+'''
+(root / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="outbox-lifecycle-", dir=root / "bin/tests") as directory:
+    path = Path(directory)
+    (path / "probe.cpp").write_text(runtime)
+    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+                    str(path / "probe.cpp"), "-o", str(path / "probe")], check=True)
+    subprocess.run([str(path / "probe")], check=True)
+
+print("transaction ordering, all four outbox publishers, and copyover/account/shutdown drain policies passed")

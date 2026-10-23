@@ -1,7 +1,128 @@
 # Database CPU investigation and remediation plan
 
-Date: 2026-10-22. Status: investigation complete; implementation and deployment have
-not started. This document is the deliverable for the database CPU investigation.
+Investigation date: 2026-10-22. Updated: 2026-10-23. Status: first worker
+implementation locally qualified and published for review; no deployment or production
+mutation performed.
+
+Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
+Work branch:
+[`branch/issue-292-database-cpu`](https://github.com/LuminariMUD/Duris/tree/branch/issue-292-database-cpu).
+Branch base: [master `fc1c94e15155`](https://github.com/LuminariMUD/Duris/commit/fc1c94e15155c3f3249bdf328d55c5d1530c0e88).
+Original investigation:
+[`ed0f9acb8817`](https://github.com/LuminariMUD/Duris/commit/ed0f9acb88177cac884b8a60563968c8fd310c55).
+
+## Implementation handoff (2026-10-23)
+
+- Worktree: `/home/aiwithapex/projects/duris-issue292`, on the dedicated issue
+  branch above. Base is still `fc1c94e15155`; initial tracking commit is
+  `a4ba9402b2e7`. The shared `duris` checkout belongs to another task.
+- Outcome for chunk 1: indexed operational counts, independent 60-second
+  historical audit, last-good health with freshness, and fresh bounded worker
+  drain observations with game-thread publication progress.
+- Non-goals for this chunk: schema changes, changed audit expectations, boon
+  filtering/codecs, retention, deployment, or replacing the pool/worker scheduler.
+  Those retain the acceptance gates below and will be separate review chunks.
+- Files: `critical_outbox.c/.h`, `comm.c`, `actinf.c`, the existing executable
+  outbox harness and its wrapper, focused lifecycle/publication tests, the runbook
+  and pipeline guide, and this
+  handoff. A small optional drain progress callback reuses the four existing
+  game-thread publishers; SQL stays on the worker.
+- Ablation: use existing indexes and worker; retain the 250 ms interval, delivery
+  transactions, retry policy, and caller deadlines. No migration, cached counters,
+  general scheduler, or purge is needed. Raw audit semantics remain unchanged in
+  this chunk so cadence and semantic correction can be reviewed independently.
+- Delivery: [PR #300](https://github.com/LuminariMUD/Duris/pull/300), ready for
+  review against `master`; code/validation commit `cd76e30a1b2a`. The local merge
+  tree equals that qualified head's tree. No merge has been requested/performed.
+- Proof: the commands and results in the next subsection qualify chunk 1 locally.
+- Next: implement audit-semantic correction on a dependent
+  branch. Boon changes remain gated on measuring the worker improvement; retention
+  remains conditional on post-change growth and replay-horizon decisions.
+
+Chunk 2 discovery: item-transfer results retain only a catalog-changed flag,
+whereas publication may include several collector events. Remaining typed receipts
+cannot reliably reconstruct that historical event count from the result alone.
+Use explicit nullable event-expectation metadata in a separate additive migration;
+record new expectations from the mutation contract in the same transaction, not
+from surviving outbox rows. Keep old expectations unknown until proven from typed
+evidence. Legitimate session-audit and derived combat-child omissions still need
+positive receipt/identity proof. No metadata/schema implementation has started yet.
+
+### Chunk 1 local qualification
+
+All checks use the isolated worktree. The database wrapper creates a separate
+MariaDB 11.8 container on a random local port, capped at 512 MiB and one CPU,
+and removes it afterward. It does not read the production `.env`.
+
+- `CRITICAL_DB_IMAGE=mariadb:11.8 tests/async/run_critical_command_schema_mysql.sh`:
+  schema idempotence, command transactions/replay, and actual outbox worker pass.
+  Coverage includes fresh startup drain, commit after observed zero, in-flight
+  delivery, future retry, retained stale positive counts, query failure, pool
+  outage/recovery, killed-connection replacement, ambiguous delivery commit,
+  duplicate callback, restart/backoff, terminal failure, and publication progress
+  on the draining thread. A real 60-second interval verifies independent audit
+  scheduling, last-good stale values, failure backoff, and no resume catch-up.
+- Mixed counters return one pending, one dead letter and one incomplete inbox.
+  Operational SQL performs **three indexed next reads**, unchanged after adding
+  **100,000 delivered rows**; EXPLAIN has neither full table nor full index scans.
+  A separate **10,001 pending-row** fixture verifies large active-backlog counts
+  and includes future retries in drain failure.
+- `python3 tests/async/test_critical_transaction_contract.py`: passes, including
+  linking/executing the actual worker with both MySQL and client-free headers;
+  absent SQL worker fails closed, intentionally absent flat-file worker succeeds.
+- `python3 tests/async/test_copyover_failure_runtime.py` and
+  `python3 tests/async/test_txn_publication_copyover_drain.py`: pass. Executable
+  source probes cover all four publisher calls, copyover cancellation, account
+  deletion refusal/resume, and shutdown's report-and-continue policy.
+- `python3 tests/async/test_auction_transactional_cutover.py`: 8 tests pass;
+  `python3 tests/async/test_collector_transaction.py`: executable harness passes;
+  `python3 tests/async/test_combat_outcome_transactional_cutover.py`: 5 tests pass;
+  `python3 tests/async/test_artifact_guild_transactional_cutover.py`: 3 tests pass.
+- `make -C src -j4`: full MariaDB development server build passes, with the
+  repository warning profile. `./scripts/format.sh --check` and
+  `git diff --check` pass.
+
+Limits: these are local executable worker/domain/lifecycle checks, not a full-world
+gameplay deployment or a measured production CPU improvement. The raw historical
+audit still reports legitimate omissions as candidates/degraded until chunk 2
+changes its semantics. Future durable retries can exceed a lifecycle drain's
+three-second budget and must cause bounded failure; this change does not accelerate
+or bypass backoff. No production schema, data, process, or service was changed.
+
+PR #300 review repair: auction publication previously treated admission of its
+asynchronous row read as completed publication. The transaction now stays in
+`publishing` until the game-thread callback actually broadcasts/notifies, returning
+to queued after a failed/empty read; immediate claim events acknowledge directly.
+The drain progress callback also pumps `sql_async_pulse()` so completed reads can
+finish while recurring pulses are blocked. The executable auction regression
+uses the actual producer/dispatcher functions to verify delayed callback, worker
+retry, read refusal/error/empty rows, successful publication, and immediate claim
+acknowledgement. The full server build and focused auction/lifecycle/client-free
+checks pass after this repair. The worker's full MySQL 8.0 harness also passes;
+the handler-counter probe uses portable `SHOW SESSION STATUS`. MariaDB worker
+evidence remains valid because its SQL, cadence and drain implementation did not
+change. Qualification tags distinguish the original worker and this review repair.
+
+PR #300 review repair 2: accepted asynchronous auction publication now returns
+`publication_pending`, which leaves the durable row due and consumes no failed
+attempt. The completed callback wakes the worker for immediate acknowledgement.
+Actual read/admission failures enter a failed state until the worker records the
+normal durable backoff; progress callbacks cannot resubmit them in a tight loop.
+The executable worker fixture delays publication 2,300 ms, observes more than eight
+pending visits, and completes within the existing three-second drain with zero
+attempts/retries/dead letters. Actual auction-function probes cover pending and
+failed states; build, SQL/client-free/lifecycle checks and the MariaDB worker suite
+pass. Current worker qualification tag: `issue-292/worker-review-2-20261023`.
+
+Owner boundary (2026-10-23): the user authorized a worker-only rollout, then
+reserved independent review, issue addressing, and GitHub merge to themselves.
+Do not merge PRs or start deployment before that review/merge step. Deployment
+authorization remains for worker #300 only; later schema/audit changes are not
+authorized for production. The user clarified that this WSL host is **not** the
+production machine: access the VPS with `ssh duris-staging`. SSH connectivity
+confirmed `/home/staging`; no production checkout, database, service, or schedule
+was changed. Take a fresh baseline on that actual VPS before cutover rather than
+assuming the original investigation's 44% interval describes its current load.
 
 ## Recommended change
 

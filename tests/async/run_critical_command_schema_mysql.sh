@@ -16,7 +16,7 @@ if [[ "$IMAGE" == mariadb:* ]]; then
 else
     PASSWORD_ENV=MYSQL_ROOT_PASSWORD
 fi
-docker run -d --name "$NAME" -p 127.0.0.1::3306 \
+docker run -d --name "$NAME" --memory=512m --cpus=1 -p 127.0.0.1::3306 \
     -e "$PASSWORD_ENV=$PASSWORD" "$IMAGE" >/dev/null
 mapping="$(docker port "$NAME" 3306/tcp)"
 export ENVIRONMENT=test DB_HOST=127.0.0.1 DB_PORT="${mapping##*:}"
@@ -60,7 +60,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/critical_outbox_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/persistence/critical_outbox.c \
     src/item/item_transfer_command.c src/player/player_snapshot_codec.c \
-    src/persistence/critical_command.c "${MYSQL_LIBS[@]}" -lcrypto \
+    src/persistence/critical_command.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--wrap=mysql_real_query \
     -o "$ROOT/bin/tests/critical_outbox_mysql_harness"
 "$ROOT/bin/tests/critical_outbox_mysql_harness"
 printf 'critical command and outbox isolated MySQL transactional checks passed\n'

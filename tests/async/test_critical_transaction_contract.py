@@ -91,6 +91,15 @@ extern "C" struct st_mysql *sql_pool_acquire(void) { return nullptr; }
 extern "C" struct st_mysql *sql_pool_replace_connection(struct st_mysql *) { return nullptr; }
 int main()
 {
+#ifdef __NO_MYSQL__
+    assert(critical_outbox_drain(0));
+#else
+    assert(!critical_outbox_drain(0));
+    assert(critical_outbox_init(critical_outbox_test_destination, nullptr));
+    assert(!critical_outbox_drain(20));
+    critical_outbox_shutdown();
+    assert(!critical_outbox_drain(0));
+#endif
     critical_outbox_record valid = {};
     valid.outbox_id = 1;
     valid.operation_id.bytes[0] = 1;
@@ -124,6 +133,18 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-") as temporary:
         ] + mysql_flags,
         cwd=ROOT,
         check=True,
+    )
+    subprocess.run([str(binary)], check=True)
+    # Link the actual worker against the client-free backend too: this build
+    # deliberately never starts a SQL outbox and lifecycle drains must succeed.
+    subprocess.run(
+        [
+            "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+            "-pthread", "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc",
+            str(source), rel("critical_outbox.c"), rel("item_transfer_command.c"),
+            rel("player_snapshot_codec.c"), rel("critical_command.c"), "-lcrypto",
+            str(HARNESS_STUBS), "-o", str(binary),
+        ], cwd=ROOT, check=True,
     )
     subprocess.run([str(binary)], check=True)
 

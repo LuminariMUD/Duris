@@ -4397,10 +4397,11 @@ static void show_world_persistence(P_char ch)
 		"critical_outbox state=%s pending=%llu dead_letter=%llu oldest_age_ms=%llu "
 		"incomplete_inbox=%llu committed_without_outbox=%llu fetched=%llu delivered=%llu "
 		"duplicates=%llu retries=%llu terminal=%llu db_failures=%llu high_water=%llu/%llu\n",
-		!critical_outbox.initialized ? "stopped" :
+		!critical_outbox.initialized				    ? "stopped" :
+		critical_outbox.counts_stale || critical_outbox.audit_stale ? "unknown" :
 		critical_outbox.dead_letter || critical_outbox.incomplete_inbox ||
 				critical_outbox.committed_without_outbox ?
-					       "degraded" :
+									      "degraded" :
 		critical_outbox.pending ? "pending" :
 					  "ready",
 		(unsigned long long)critical_outbox.pending,
@@ -4416,6 +4417,17 @@ static void show_world_persistence(P_char ch)
 		(unsigned long long)critical_outbox.db_failures,
 		(unsigned long long)critical_outbox.high_water_records,
 		(unsigned long long)critical_outbox.high_water_bytes);
+	send_to_char(line, ch);
+	snprintf(line, sizeof(line),
+		 "critical_outbox_health counts=%s counts_age_ms=%llu audit=%s audit_age_ms=%llu\n",
+		 !critical_outbox.counts_available ? "unavailable" :
+		 critical_outbox.counts_stale	   ? "stale" :
+						     "fresh",
+		 (unsigned long long)critical_outbox.counts_age_msec,
+		 !critical_outbox.audit_available ? "unavailable" :
+		 critical_outbox.audit_stale	  ? "stale" :
+						    "fresh",
+		 (unsigned long long)critical_outbox.audit_age_msec);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

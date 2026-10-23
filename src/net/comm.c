@@ -317,6 +317,20 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 	}
 }
 
+static void critical_gameplay_publish_outbox(void)
+{
+	auction_transaction_publish_outbox();
+	collector_transaction_publish_outbox();
+	combat_outcome_transaction_publish_outbox();
+	artifact_guild_transaction_publish_outbox();
+}
+
+static void critical_gameplay_drain_outbox(void)
+{
+	sql_async_pulse();
+	critical_gameplay_publish_outbox();
+}
+
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
 {
@@ -1066,8 +1080,8 @@ int run_the_game(int port, int sslport)
 #ifdef __NO_MYSQL__
 	critical_apply = flatfile_critical_command_repository_apply_selected;
 #else
-	const bool critical_outbox_ready =
-		critical_outbox_init(critical_gameplay_outbox_delivery, NULL);
+	const bool critical_outbox_ready = critical_outbox_init(
+		critical_gameplay_outbox_delivery, NULL, critical_gameplay_drain_outbox);
 #endif
 	if (
 #ifndef __NO_MYSQL__
@@ -2202,10 +2216,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 			critical_command_coordinator_pulse(critical_completions, 64);
 		critical_gameplay_handle_completions(critical_completions,
 						     critical_completion_count);
-		auction_transaction_publish_outbox();
-		collector_transaction_publish_outbox();
-		combat_outcome_transaction_publish_outbox();
-		artifact_guild_transaction_publish_outbox();
+		critical_gameplay_publish_outbox();
 		player_save_pipeline_pulse();
 		divine_boon_runtime_pulse();
 		divine_boon_selection_pulse(static_cast<int64_t>(time(nullptr)));

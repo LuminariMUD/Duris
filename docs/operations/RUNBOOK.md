@@ -488,6 +488,14 @@ dropped on any other error; their owners are marked dirty and saved again. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
 For `critical_outbox`, pending age may briefly rise during destination recovery.
+`critical_outbox_health` reports operational counts and the historical audit
+separately: `unavailable` means no successful refresh yet, `stale` means a failed
+refresh or an overdue observation, and `fresh` includes the age of the last good
+sample. Operational counts refresh with the 250 ms delivery loop; the historical
+audit runs after delivery, initially and then 60 seconds after each attempt.
+`state=unknown` must not be interpreted as an empty queue. Lifecycle drains use a
+new worker observation rather than these diagnostic counts, and allow the normal
+game-thread outbox publishers to progress within the existing caller deadline.
 `dead_letter>0`, `incomplete_inbox>0`, or `committed_without_outbox>0` is an integrity
 incident. Preserve the database rows, stop affected domain cutovers, and run
 the typed reconciliation report. After correcting the destination, retry only the
