@@ -570,7 +570,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertIn("requires run", result.stderr)
 
     def test_online_outbox_expectations_scope_and_lock_mode(self):
-        manifest = runner.load_manifest()
+        current = runner.load_manifest()
+        manifest = runner.replace(current, migrations=current.migrations[:50])
         step = manifest.migrations[-1]
         self.assertEqual(step.migration_id, "0050_critical_outbox_expectations")
         environment = {
