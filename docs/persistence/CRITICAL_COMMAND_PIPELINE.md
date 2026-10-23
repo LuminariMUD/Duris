@@ -146,6 +146,22 @@ shutdown drain commands first and outbox records second.
 incomplete inbox rows, committed operations missing outbox rows, delivery/retry/error
 totals, and high-water records/bytes.
 
+Operational counts use the existing status indexes on the 250 ms delivery cadence;
+the full historical missing-outbox audit runs after delivery, initially and then
+60 seconds after each attempt, including failures. Diagnostic errors preserve the
+last successful values and do not gate delivery on a usable connection. The
+`critical_outbox_health` line labels each sample `unavailable`, `stale`, or `fresh`
+and reports its age. A stale or unavailable sample makes the aggregate state
+`unknown`, never proof of an empty queue.
+
+An outbox drain requests a new worker observation after any in-flight batch and
+checks for all pending rows, including future retries. While waiting within the
+existing deadline, the game thread runs the same auction, collector, combat, and
+artifact publishers as normal pulses. Publication does not bypass durable retry
+backoff; a future retry may truthfully make a bounded drain fail. A SQL build
+without an initialized worker fails closed; the flat-file backend intentionally
+has no SQL outbox and retains its successful absent-worker drain behavior.
+
 Treat a growing oldest age as a stop condition for copyover/shutdown and affected
 gameplay: restore the underlying database or destination and investigate before
 restarting.

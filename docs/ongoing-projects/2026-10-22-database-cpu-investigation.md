@@ -1,7 +1,8 @@
 # Database CPU investigation and remediation plan
 
-Date: 2026-10-22. Status: investigation complete; implementation and deployment have
-not started. This document is the deliverable for the database CPU investigation.
+Investigation date: 2026-10-22. Updated: 2026-10-23. Status: first worker
+implementation locally qualified, preparing PR; no deployment or production
+mutation performed.
 
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
 Work branch:
@@ -10,10 +11,72 @@ Branch base: [master `fc1c94e15155`](https://github.com/LuminariMUD/Duris/commit
 Original investigation:
 [`ed0f9acb8817`](https://github.com/LuminariMUD/Duris/commit/ed0f9acb88177cac884b8a60563968c8fd310c55).
 
-Branch prepared 2026-10-23 for implementation tracked by issue #292. This branch
-setup adds tracking links only. Start with the worker scheduling and truthful-drain
-change below; audit semantics, boon amplification, and any retention design remain
-separate follow-up work with their own acceptance gates.
+## Implementation handoff (2026-10-23)
+
+- Worktree: `/home/aiwithapex/projects/duris-issue292`, on the dedicated issue
+  branch above. Base is still `fc1c94e15155`; initial tracking commit is
+  `a4ba9402b2e7`. The shared `duris` checkout belongs to another task.
+- Outcome for chunk 1: indexed operational counts, independent 60-second
+  historical audit, last-good health with freshness, and fresh bounded worker
+  drain observations with game-thread publication progress.
+- Non-goals for this chunk: schema changes, changed audit expectations, boon
+  filtering/codecs, retention, deployment, or replacing the pool/worker scheduler.
+  Those retain the acceptance gates below and will be separate review chunks.
+- Files: `critical_outbox.c/.h`, `comm.c`, `actinf.c`, the existing executable
+  outbox harness and its wrapper, focused lifecycle/publication tests, the runbook
+  and pipeline guide, and this
+  handoff. A small optional drain progress callback reuses the four existing
+  game-thread publishers; SQL stays on the worker.
+- Ablation: use existing indexes and worker; retain the 250 ms interval, delivery
+  transactions, retry policy, and caller deadlines. No migration, cached counters,
+  general scheduler, or purge is needed. Raw audit semantics remain unchanged in
+  this chunk so cadence and semantic correction can be reviewed independently.
+- Proof: the commands and results in the next subsection qualify chunk 1 locally.
+  No PR has been opened yet.
+- Next: publish chunk 1 as a focused PR. Then implement audit-semantic correction on a dependent
+  branch. Boon changes remain gated on measuring the worker improvement; retention
+  remains conditional on post-change growth and replay-horizon decisions.
+
+### Chunk 1 local qualification
+
+All checks use the isolated worktree. The database wrapper creates a separate
+MariaDB 11.8 container on a random local port, capped at 512 MiB and one CPU,
+and removes it afterward. It does not read the production `.env`.
+
+- `CRITICAL_DB_IMAGE=mariadb:11.8 tests/async/run_critical_command_schema_mysql.sh`:
+  schema idempotence, command transactions/replay, and actual outbox worker pass.
+  Coverage includes fresh startup drain, commit after observed zero, in-flight
+  delivery, future retry, retained stale positive counts, query failure, pool
+  outage/recovery, killed-connection replacement, ambiguous delivery commit,
+  duplicate callback, restart/backoff, terminal failure, and publication progress
+  on the draining thread. A real 60-second interval verifies independent audit
+  scheduling, last-good stale values, failure backoff, and no resume catch-up.
+- Mixed counters return one pending, one dead letter and one incomplete inbox.
+  Operational SQL performs **three indexed next reads**, unchanged after adding
+  **100,000 delivered rows**; EXPLAIN has neither full table nor full index scans.
+  A separate **10,001 pending-row** fixture verifies large active-backlog counts
+  and includes future retries in drain failure.
+- `python3 tests/async/test_critical_transaction_contract.py`: passes, including
+  linking/executing the actual worker with both MySQL and client-free headers;
+  absent SQL worker fails closed, intentionally absent flat-file worker succeeds.
+- `python3 tests/async/test_copyover_failure_runtime.py` and
+  `python3 tests/async/test_txn_publication_copyover_drain.py`: pass. Executable
+  source probes cover all four publisher calls, copyover cancellation, account
+  deletion refusal/resume, and shutdown's report-and-continue policy.
+- `python3 tests/async/test_auction_transactional_cutover.py`: 7 tests pass;
+  `python3 tests/async/test_collector_transaction.py`: executable harness passes;
+  `python3 tests/async/test_combat_outcome_transactional_cutover.py`: 5 tests pass;
+  `python3 tests/async/test_artifact_guild_transactional_cutover.py`: 3 tests pass.
+- `make -C src -j4`: full MariaDB development server build passes, with the
+  repository warning profile. `./scripts/format.sh --check` and
+  `git diff --check` pass.
+
+Limits: these are local executable worker/domain/lifecycle checks, not a full-world
+gameplay deployment or a measured production CPU improvement. The raw historical
+audit still reports legitimate omissions as candidates/degraded until chunk 2
+changes its semantics. Future durable retries can exceed a lifecycle drain's
+three-second budget and must cause bounded failure; this change does not accelerate
+or bypass backoff. No production schema, data, process, or service was changed.
 
 ## Recommended change
 

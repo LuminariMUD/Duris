@@ -60,6 +60,12 @@ struct critical_outbox_health
 	uint64_t db_failures;
 	uint64_t high_water_records;
 	uint64_t high_water_bytes;
+	uint64_t counts_age_msec;
+	uint64_t audit_age_msec;
+	bool counts_available;
+	bool counts_stale;
+	bool audit_available;
+	bool audit_stale;
 	bool initialized;
 	bool accepting;
 	bool running;
@@ -68,7 +74,10 @@ struct critical_outbox_health
 using critical_outbox_deliver_fn =
 	critical_outbox_delivery_result (*)(const critical_outbox_record &record, void *context);
 
-bool critical_outbox_init(critical_outbox_deliver_fn deliver, void *context);
+// Called on the draining game thread so queued publication can finish.
+using critical_outbox_progress_fn = void (*)(void);
+bool critical_outbox_init(critical_outbox_deliver_fn deliver, void *context,
+			  critical_outbox_progress_fn progress = nullptr);
 void critical_outbox_shutdown(void);
 void critical_outbox_quiesce(void);
 void critical_outbox_resume(void);
