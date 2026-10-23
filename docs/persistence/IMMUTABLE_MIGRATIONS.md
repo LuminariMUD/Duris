@@ -2,7 +2,7 @@
 
 Duris has two deliberately separate histories:
 
-- `migrations/run_migration.sh` is the legacy additive upgrade path. Its 145 progress
+- `migrations/run_migration.sh` is the legacy additive upgrade path. Its 146 progress
   steps and `mud_schema_migrations` data-copy markers are not complete historical
   execution evidence and are never backfilled as if they were.
 - `migrations/migration_manifest.json` is the authoritative immutable history after
@@ -22,6 +22,24 @@ The legacy runner creates the ledger and attempts verified adoption only after i
 schema operation. Extra, missing, or renamed tables refuse adoption. This creates one
 honest observation at the current boundary; it does not invent timestamps or checksums
 for historical steps.
+
+Migration `0050_critical_outbox_expectations` adds nullable
+`critical_operation_inbox.expected_outbox_events` after `committed_at`. NULL keeps
+historical intent unknown; new writers record a known zero or exact contiguous
+event count atomically with the canonical result. The guarded INSTANT addition
+does not rewrite existing receipts. Its sealed verifier rejects incompatible
+type/default/nullability/position instead of silently recording success.
+
+The exact `run --online-outbox-expectations` path supports this sealed step only
+on MariaDB 11.8 InnoDB, with the normal production target, allow-list, fresh
+backup, advisory lock, checksum, prefix-history and success-last safeguards.
+It requires an applied 0049 prefix and a manifest ending at 0050; it cannot apply
+earlier pending steps or arbitrary later migrations. INSTANT-only execution and
+one-second metadata/InnoDB lock waits fail rather than rebuilding the history
+table or requiring an outage. Running writers name inbox columns explicitly and
+remain compatible with the default-NULL addition. Apply and verify 0050 before
+starting the metadata writer/audit consumer; the worker-only PR #300 does not
+require it. Production execution still requires the owner's separate authority.
 
 For a fresh isolated database:
 

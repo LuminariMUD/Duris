@@ -45,8 +45,67 @@ cannot reliably reconstruct that historical event count from the result alone.
 Use explicit nullable event-expectation metadata in a separate additive migration;
 record new expectations from the mutation contract in the same transaction, not
 from surviving outbox rows. Keep old expectations unknown until proven from typed
-evidence. Legitimate session-audit and derived combat-child omissions still need
-positive receipt/identity proof. No metadata/schema implementation has started yet.
+  evidence. Legitimate session-audit and derived combat-child omissions still need
+  positive receipt/identity proof.
+
+Chunk 2 is locally qualified on `branch/issue-292-outbox-expectations`, stacked
+above [stone-fixture PR #301](https://github.com/LuminariMUD/Duris/pull/301) and
+worker PR #300. Outcome: a nullable expected-event count covering
+contiguous event indexes, committed atomically from the writer's mutation contract
+alongside each canonical inbox result. Known zero is distinct from historical
+NULL. This enables detecting a partially missing multi-event result without
+depending on the surviving event count. Non-goals: changing old receipts, audit
+classification, replay codecs, or production schema. Files: the additive migration,
+fresh/bootstrap schemas and verification/boot gates, repository finish paths,
+combat child receipts, focused DB harnesses, and documentation. Proof: upgrade
+idempotence and NULL preservation, writer transaction/replay/rollback checks,
+multi-event and zero-event fixtures, relevant domain harnesses, formatting/build.
+Publish this schema/writer prerequisite as its own stacked PR before implementing
+the audit consumer and historical classification.
+
+Chunk 2 qualification: full server build, schema/command/outbox MariaDB
+11.8 **and MySQL 8.0** harnesses, collector multi-event repository harness (11.8), boon/zone,
+session-audit and combat SQL harnesses (10.11), boot/source contracts, formatting
+and whitespace pass. Upgrade runs twice and preserves historical NULL; replay
+does not rewrite an older NULL expectation. The epic-stone SQL journey exposed a
+baseline fixture that still expects direct SQL balance mutation despite the
+current receipt/ledger-only epic writer. The baseline failure was reproduced on
+`c42275a80` and fixed separately in PR #301. After merging that repair and the
+worker review fix into this branch, both epic-stone tests pass with the new
+recovered-claim expectation assertion; full build, eight auction tests,
+lifecycle/client-free/boot checks, formatting and whitespace pass too.
+No expectation-metadata PR is open yet; publishing it is the next step.
+
+The migration `migrations/immutable/0050_critical_outbox_expectations.sql` is guarded and
+re-runnable and requires `ALGORITHM=INSTANT` rather than silently copying the
+history table. New schemas include the nullable column; the normal migration
+runner installs it before schema verification, and boot requires its presence.
+New writers store expectations in the existing inbox completion UPDATE, with no
+extra query. New session audits/combat children record zero; each mutation owns
+its event count, including item/collector event indexes and recovered stone
+receipts. Historical NULL is never backfilled from existing outbox rows or
+rewritten by replay. Reader/result codecs are unchanged. Keep this additive
+column and evidence on binary rollback; do not drop it. No production migration
+has run. The audit consumer still awaits its separately reviewed change.
+
+PR #302 deployment-path correction: register the single canonical apply/verifier
+as immutable `0050_critical_outbox_expectations`, advance the compiled/runtime
+ledger contract to head 50, and measure its fingerprints on clean MariaDB 10.11
+and MySQL 8.0 schemas. The exact reviewed online runner option
+`--online-outbox-expectations` retains the target/backup/allow-list/advisory-lock,
+sealed-checksum, prior-history and success-last protections, with INSTANT-only DDL
+and one-second waits. It accepts only a 0049 prefix and the sealed 0050 manifest.
+The old root SQL copy is removed; fresh schema, legacy runner and fixtures use
+the canonical immutable step. No production migration has run or been authorized.
+
+Focused qualification uses the normal runner twice on disposable old-0049
+schemas, proving upgrade/replay, success-last history, retained legacy NULL and
+rejection of signed/default-zero drift. Both engines pass the new runtime
+compatibility verifier after measured fingerprints are installed. Local evidence
+and the focused authoring driver are under ignored `bin/analysis/issue292/` in
+the metadata worktree; no production-derived clone or broad telemetry regression
+matrix is used. Migration runner tests: 23 pass, including exact online scope,
+authorization, engine, checksum and lock-timeout guards.
 
 ### Chunk 1 local qualification
 

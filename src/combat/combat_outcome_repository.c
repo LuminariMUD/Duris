@@ -120,10 +120,10 @@ bool insert_child_inbox(MYSQL *connection, const critical_operation_id &child,
 	const std::string sql =
 		"INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,"
 		"command_type,schema_version,payload_version,status,result_code,durable_revision,"
-		"result_payload,committed_at) VALUES(UNHEX('" +
+		"result_payload,committed_at,expected_outbox_events) VALUES(UNHEX('" +
 		operation + "'),UNHEX('" + hash + "'),UNHEX('" + hash + "')," +
 		std::to_string(static_cast<uint16_t>(type)) + ",1,1,1,0," +
-		std::to_string(revision) + ",'',CURRENT_TIMESTAMP(6))";
+		std::to_string(revision) + ",'',CURRENT_TIMESTAMP(6),0)";
 	return execute(connection, sql);
 }
 

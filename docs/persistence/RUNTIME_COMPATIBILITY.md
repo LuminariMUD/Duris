@@ -20,8 +20,8 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0046_nexus_phase1`, and the contract
-describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
+The current head is `0050_critical_outbox_expectations`, and the contract
+describes 199 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
 NULL DEFAULT 0` immediately after `result_code`; it creates no table. A legacy clone
@@ -48,6 +48,14 @@ success; their metadata does not match the runtime contract.
 Fingerprints are measured on clean `mysql:8.0` and `mariadb:10.11` schemas with
 `tests/async/telemetry_rollup_schema_mysql.py --update-contract`; they must not be
 copied from a production-derived clone.
+
+0050 adds nullable `critical_operation_inbox.expected_outbox_events` after
+`committed_at`, without adding a table or assigning historical zeroes. The writer
+commits new expectations with the existing canonical result; replay preserves
+historical NULL. The immutable runner must apply/verify sequence 50 before this
+writer boots. The exact MariaDB 11.8 online option is
+`--online-outbox-expectations`; target/backup/allow-list/history/lock safeguards
+remain in force. See [IMMUTABLE_MIGRATIONS.md](IMMUTABLE_MIGRATIONS.md).
 
 0042 widens the ten base stats to signed shorts. 0043 adds
 `player_data.last_read_news_hash VARBINARY(64) NOT NULL DEFAULT ''` for the

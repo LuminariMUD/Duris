@@ -1788,6 +1788,7 @@ CREATE TABLE `critical_operation_inbox` (
   `result_payload` varbinary(4096) NOT NULL,
   `created_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `committed_at` timestamp(6) NULL DEFAULT NULL,
+  `expected_outbox_events` smallint unsigned DEFAULT NULL,
   PRIMARY KEY (`operation_id`),
   KEY `idx_critical_inbox_status_created` (`status`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
