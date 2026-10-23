@@ -408,8 +408,10 @@ int write_cargo()
 						   cargo_buy_price(port, type);
 			cargo_prices +=
 				sql_format("%s('CARGO', %d, %d, %d)", comma, port, type, price);
+			const int contra_price = port == type ? contra_sell_price(port) :
+								contra_buy_price(port, type);
 			contraband_prices += sql_format("%s('CONTRABAND', %d, %d, %d)", comma, port,
-							type, price);
+							type, contra_price);
 			cargo_mods += sql_format("%s('CARGO', %d, %d, %f)", comma, port, type,
 						 ship_cargo_market_mod[port][type]);
 			contraband_mods += sql_format("%s('CONTRABAND', %d, %d, %f)", comma, port,

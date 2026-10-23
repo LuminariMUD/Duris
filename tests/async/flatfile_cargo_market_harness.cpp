@@ -209,6 +209,10 @@ int main(int argc, char **argv)
 				unchanged.filename == "sentinel",
 			"stale market generation prepared another trade");
 	}
+	reset_cargo();
+	require(cargo_trade_generation() == 1 && write_cargo() && read_cargo() &&
+			cargo_trade_generation() == 1 && ship_cargo_market_mod[4][5] == 1.0f,
+		"staff market reset changed the financial generation or failed to persist");
 	values.push_back(1); // Current maintenance carries the captured trade generation.
 	values[3 + (4 * NUM_PORTS + 5) * 4 + 2] = 1700000;
 	require(flatfile_cargo_maintenance_apply(values.data(), values.size()) && read_cargo() &&
