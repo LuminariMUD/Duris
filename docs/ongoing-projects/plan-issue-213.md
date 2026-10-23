@@ -105,6 +105,13 @@ class/account services are controlled stubs; this is not actual character-save
 or browser proof. Existing creation availability/all-races/all-classes controls,
 format/diff checks and the required `make -C src -j4` pass for this chunk.
 
+The later restricted-roster audit tightened the good tutorial predicate to its
+existing eligibility rows plus only the approved Firbolg/neutral additions.
+Nominally-good legacy races such as Agathinon/Eladrin must not gain unrelated
+new hometowns when `CREATION_ALL_RACES` is enabled. The executable test now
+checks the restricted roster too. Focused ASan/UBSan checks and incremental
+MariaDB/flat-file builds passed for this correction; no full suite was repeated.
+
 The tutorial content audit found 105 Ailvio mobile templates spanning multiple
 playable races; `convertMob()` and `affect_total()` derive stats/HP from race,
 and XP also has a victim-race modifier. Do not claim numerical field equality
