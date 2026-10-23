@@ -348,6 +348,7 @@ static void check_sinking(bool passenger) {
 static void check_delete(bool ownerless, int db_id = 42) {
     P_ship ship = make_ship(0, 2), observer = make_ship(NPCSHIP, 3);
     if (ownerless) ship->ownername = nullptr;
+    if (!ownerless) SET_BIT(ship->flags,CUSTOMS_PENDING);
     ship->db_id = db_id;
     observer->target = ship;
     observer->npc_ai->escort = observer->npc_ai->did_board = ship;
@@ -357,6 +358,7 @@ static void check_delete(bool ownerless, int db_id = 42) {
     assert(shipObjHash.erase(ship)); delete_ship(ship);
     assert(find_ship_by_runtime_ref(ref) == ship && shipObjHash.find(ship->shipobj) == ship);
     assert(shipObjHash.size() == 2 && observer->target == ship);
+    if (!ownerless) assert(IS_SET(ship->flags,CUSTOMS_PENDING));
     assert(observer->npc_ai->escort == ship && observer->npc_ai->did_board == ship);
     assert(passenger.in_room == 2 && world[2].people == &passenger);
     assert(world[2].funct && world[2].contents == ship->panel);

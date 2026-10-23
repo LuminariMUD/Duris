@@ -251,6 +251,9 @@ bool sql_ship_stored(const char * /*owner_name*/)
 {
 	return false;
 }
+
+void sql_forget_ship(const char *) {}
+
 bool sql_load_all_ships(void)
 {
 	return false;
@@ -4913,11 +4916,31 @@ bool sql_delete_ship(const char *owner_name, uint32_t ship_id)
 			return false;
 	}
 
+	sql_forget_ship(owner_name);
+	return true;
+}
+
+// Pure game-thread cleanup after an owning transaction already deleted the row.
+// It must not depend on admission to the SQL writer for a redundant DELETE.
+void sql_forget_ship(const char *owner_name)
+{
 	const auto stored = stored_ship(owner_name);
 	if (stored != stored_ships.end())
+	{
+		// Owning character/account deletion has already committed. An unplaced
+		// ship has no runtime object from which delete_ship_runtime can get its ID.
+		if (!stored->second.ship.empty() && stored->second.ship[0][0])
+		{
+			const char *text = stored->second.ship[0][0];
+			char *end = nullptr;
+			errno = 0;
+			const auto id = strtoul(text, &end, 10);
+			if (!errno && end != text && !*end && id && id <= UINT32_MAX)
+				divine_trade_runtime_ship_deleted(static_cast<uint32_t>(id));
+		}
 		stored_ships.erase(stored);
+	}
 	redis_invalidate_ship_snapshot(owner_name);
-	return true;
 }
 
 /* One guild's statements: its row, then its ranks and members, which are replaced

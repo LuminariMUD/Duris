@@ -1249,10 +1249,12 @@ void delete_ship(P_ship ship, bool npc)
 #ifdef __NO_MYSQL__
 	const bool retrying = !npc && IS_SET(ship->flags, TO_DELETE);
 #endif
+	const auto deferred_customs = ship->flags & CUSTOMS_PENDING;
 	if (!npc)
 		REMOVE_BIT(ship->flags, TO_DELETE | CUSTOMS_PENDING);
 	auto defer_delete = [&]
 	{
+		ship->flags |= deferred_customs;
 		SET_BIT(ship->flags, TO_DELETE);
 		ship->save_pending = true;
 		ship->save_retry_after = time(nullptr) + 1;
@@ -1327,10 +1329,7 @@ void delete_ship(P_ship ship, bool npc)
 					result = flatfile_ship_result::ok;
 				else
 				{
-					SET_BIT(ship->flags, TO_DELETE);
-					ship->save_pending = true;
-					ship->save_retry_after = time(nullptr) + 1;
-					shipObjHash.add(ship);
+					defer_delete();
 					return;
 				}
 			}
@@ -1346,6 +1345,7 @@ void delete_ship(P_ship ship, bool npc)
 					defer_delete();
 					return;
 				}
+				ship->flags |= deferred_customs;
 				divine_trade_runtime_restore_books(std::move(before_proof),
 								   prior_dirty_ship);
 				shipObjHash.add(ship);
@@ -3927,6 +3927,9 @@ P_ship find_ship_by_database_id(uint32_t id)
 }
 void delete_ship_runtime(const char *owner_name)
 {
+#ifndef __NO_MYSQL__
+	sql_forget_ship(owner_name);
+#endif
 	if (P_ship ship = get_ship_from_owner(const_cast<char *>(owner_name));
 	    ship && ship->db_id > 0)
 		divine_trade_runtime_ship_deleted(ship->db_id);

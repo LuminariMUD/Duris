@@ -164,6 +164,7 @@ bool sql_save_ship(struct ShipData *ship);
 bool sql_load_all_ships(void);
 struct ShipData *sql_place_ship(const char *owner_name, bool *unplaced);
 bool sql_ship_stored(const char *owner_name);
+void sql_forget_ship(const char *owner_name);
 std::string sql_delete_ship_statement(const char *owner_name);
 bool sql_delete_ship(const char *owner_name, uint32_t ship_id = 0);
 

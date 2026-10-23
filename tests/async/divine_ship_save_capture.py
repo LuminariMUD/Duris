@@ -13,6 +13,8 @@ source=r'''
 #include <cstdio>
 #include <map>
 #include <cassert>
+#include <strings.h>
+#include <cerrno>
 static int ship_next_db_id=1000;
 static std::vector<divine_trade_book> captured_books;
 static std::vector<std::string> captured_statements;
@@ -23,14 +25,18 @@ static bool queue_admits=true;
 std::string escape_str(const char *value) {return value ? value : "";}
 std::string sql_format(const char *format,...)
 {char text[4096];va_list args;va_start(args,format);vsnprintf(text,sizeof(text),format,args);va_end(args);return text;}
-std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t) {return captured_books;}
+std::vector<divine_trade_book> divine_trade_runtime_ship_books(uint32_t id) {return id ? captured_books : std::vector<divine_trade_book>{};}
 bool divine_trade_runtime_busy(const ShipData *) {return false;}
 uint64_t divine_trade_runtime_ship_revision(uint32_t) {return captured_books.empty() ? 0 : captured_books.front().revision;}
 void divine_trade_runtime_ship_saved(uint32_t) {++acknowledged;}
 P_ship find_ship_by_runtime_ref(ShipRuntimeRef) {return captured_ship;}
 void queue_ship_save(P_ship ship,const char *) {++retries;ship->save_pending=true;}
-static std::vector<std::pair<std::string,int>> stored_ships;
-auto stored_ship(const char *) {return stored_ships.end();}
+struct stored_rows {sql_rows ship;};
+static std::vector<std::pair<std::string,stored_rows>> stored_ships;
+auto stored_ship(const char *owner) {return std::find_if(stored_ships.begin(),stored_ships.end(),
+ [owner](const auto &entry) {return !strcasecmp(entry.first.c_str(),owner);});}
+static uint32_t retired_unplaced=0;
+void divine_trade_runtime_ship_deleted(uint32_t id) {retired_unplaced=id;}
 void redis_invalidate_ship_snapshot(const char *) {}
 bool sql_queue_statements(std::vector<std::string> statements)
 {captured_statements=std::move(statements);return queue_admits;}
@@ -80,6 +86,14 @@ bool fixture_ship_receipt_tests()
  last_receipt->ok=true;last_receipt->finished.store(true,std::memory_order_release);
  assert(sql_delete_ship("capture",101) && acknowledged==3);
  captured_books.clear();captured_ship=nullptr;
+ sql_row unplaced;unplaced.fields.emplace_back("202");
+ stored_ships.push_back({"unplaced",{sql_rows{unplaced}}});
+ queue_admits=false;assert(!sql_delete_ship("unplaced",202) && !retired_unplaced && stored_ships.size()==1);
+ // The owning delete already committed: memory cleanup must work with no writer slot.
+ sql_forget_ship("unplaced");assert(retired_unplaced==202 && stored_ships.empty());
+ sql_row another;another.fields.emplace_back("203");
+ stored_ships.push_back({"another",{sql_rows{another}}});
+ queue_admits=true;assert(sql_delete_ship("another",203) && retired_unplaced==203 && stored_ships.empty());
  return true;
 }
 
