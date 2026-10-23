@@ -44,6 +44,8 @@ was run during planning.
 
 Branch `branch/issue-264-divine-reset`, stacked on kingdom PR #321 at `2640ae94d`
 (https://github.com/LuminariMUD/Duris/pull/321), review-ready.
+Published as PR #322 (https://github.com/LuminariMUD/Duris/pull/322), implementation
+`af12278b2`; current worktree is clean and pushed after this handoff update.
 Outcome: retire old active objectives and selection-repeat preferences in one
 versioned state transition, while preserving monotonic boon IDs, staff recent history,
 mode/pause configuration and protected cargo-book identities. Reuse the existing
@@ -55,8 +57,9 @@ repeat, corrupt-state preflight and failed durable update fencing. The ASan/UBSa
 test and actual SQL/native matrix passed, including a database-triggered failed
 update followed by one repaired retirement. Both development backends and the
 optimized MariaDB production build passed, as did all 12 season-manifest checks,
-14 lifecycle tests, reward/SQL contracts and diff checks. Commit hooks/publication
-remain; the earlier full five-minute journey is reused for unchanged reset paths.
+14 lifecycle tests, reward/SQL contracts and diff checks. Commit hooks passed
+and PR #322 is ready for review; earlier five-minute evidence is reused for unchanged
+reset paths. No readiness sign-off, merge, release tag or deployment is claimed.
 
 Next retained-state consumers to trace: collector listings/custody in
 `src/economy/collector_repository.c`, artifact current ownership/baselines in
