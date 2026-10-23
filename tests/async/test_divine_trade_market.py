@@ -16,6 +16,7 @@ float ship_contra_market_mod[NUM_PORTS][NUM_PORTS]{};
 float ship_cargo_market_mod_delayed[NUM_PORTS][NUM_PORTS]{};
 struct prices {float base_cost_cargo,base_cost_contra;};
 prices cargo_location_data[NUM_PORTS]{};
+static uint64_t trade_generation=0;
 float cargo_location_mod[NUM_PORTS][NUM_PORTS]{};
 float get_property(const char *,double value) {return value;}
 float bound_market_mod(bool,float value) {return std::clamp(value,.05f,2.f);}
@@ -23,7 +24,8 @@ int write_cargo() {return true;}
 void logit(const char *,const char *,...) {}
 '''
 for signature in ["int cargo_sell_price(","int cargo_buy_price(","int contra_sell_price(","int contra_buy_price(",
-                  "divine_trade_market_cell cargo_trade_prepare_cell(","void adjust_ship_market("]:
+                  "divine_trade_market_cell cargo_trade_prepare_cell(","void adjust_ship_market(",
+                  "static bool cargo_trade_cells_valid(","bool cargo_trade_publish(","bool cargo_trade_reconcile("]:
     source+=extract_function("ship_cargo.c",signature)+"\n"
 source+=r'''
 int main()
@@ -48,6 +50,13 @@ int main()
       (port==2 ? cargo_sell_price(port,false) : cargo_buy_price(port,2,false));
     assert(cell.price==price);
    }
+ divine_trade_market_cell committed{2,2,divine_trade_goods::cargo,1.25f,120};
+ assert(cargo_trade_publish(0,{committed}) && trade_generation==1);
+ trade_generation=99;
+ assert(cargo_trade_reconcile(1,{committed}) && trade_generation==1 && ship_cargo_market_mod[2][2]==1.25f);
+ committed.modifier=2000;
+ assert(!cargo_trade_reconcile(2,{committed}) && trade_generation==1 && ship_cargo_market_mod[2][2]==1.25f);
+
 }
 '''
 with tempfile.TemporaryDirectory(prefix="divine-market-",dir=ROOT / "bin/tests") as temporary:

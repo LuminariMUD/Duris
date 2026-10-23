@@ -5014,7 +5014,7 @@ void show_toggles(P_char ch)
 		 ONOFF(PLR_FLAGGED(ch, PLR_AFK)), ONOFF(PLR2_FLAGGED(ch, PLR2_NCHAT)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_HINT_CHANNEL)), ONOFF(PLR2_FLAGGED(ch, PLR2_LGROUP)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_SPEC)), ONOFF(PLR2_FLAGGED(ch, PLR2_WEBINFO)),
-		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), ONOFF(PLR2_FLAGGED(ch, PLR2_BOON)),
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), "AUTO",
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_NEWBIEEQ)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOBEEP)),
 		 ONOFF(PLR3_FLAGGED(ch, PLR3_UNDERLINE)), ONOFF(PLR3_FLAGGED(ch, PLR3_SURNAMES)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_DAMAGE)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOLEVEL)),
@@ -5771,8 +5771,10 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_SHOW_QUEST);
 		break;
 	case 55:
-		result = PLR2_TOG(PLR2_BOON);
-		break;
+		send_to_char(
+			"Divine Boons apply automatically. Your stored legacy setting is preserved.\r\n",
+			send_ch);
+		return;
 	case 56:
 		result = PLR2_TOG(PLR2_NEWBIEEQ);
 		break;

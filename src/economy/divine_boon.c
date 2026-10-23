@@ -8,7 +8,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> magic = { 'D', 'U', 'R', 'D', 'B', 'N', '0', '1' };
-constexpr uint32_t version = 1;
+constexpr uint32_t version = 2;
 constexpr size_t maximum_bytes = 4096;
 
 bool valid_time(int64_t now)
@@ -46,6 +46,9 @@ bool valid_objective(const divine_boon_slot &slot)
 
 void remember(divine_boon_state &state, const divine_boon_slot &slot, int64_t expired_at)
 {
+	state.recent.push_back({ slot, expired_at });
+	if (state.recent.size() > DIVINE_BOON_RECENT_MAX)
+		state.recent.erase(state.recent.begin());
 	if (!pve(slot.category))
 		return;
 	for (size_t side = 0; side < slot.zones.size(); ++side)
@@ -109,6 +112,35 @@ template <typename T> bool read(const std::vector<uint8_t> &bytes, size_t &offse
 	value = static_cast<T>(decoded);
 	return true;
 }
+void append_slot(std::vector<uint8_t> &encoded, const divine_boon_slot &slot)
+{
+	append(encoded, slot.id);
+	append(encoded, static_cast<uint8_t>(slot.category));
+	append(encoded, slot.starts_at);
+	append(encoded, slot.expires_at);
+	for (int32_t zone : slot.zones)
+		append(encoded, zone);
+	append(encoded, slot.source_port);
+	append(encoded, slot.destination_port);
+	append(encoded, slot.cargo_commodity);
+	append(encoded, slot.contraband_commodity);
+}
+bool read_slot(const std::vector<uint8_t> &bytes, size_t &offset, divine_boon_slot &slot)
+{
+	uint8_t category = 0;
+	if (!read(bytes, offset, slot.id) || !read(bytes, offset, category) ||
+	    !read(bytes, offset, slot.starts_at) || !read(bytes, offset, slot.expires_at))
+		return false;
+	slot.category = static_cast<divine_boon_category>(category);
+	for (int32_t &zone : slot.zones)
+		if (!read(bytes, offset, zone))
+			return false;
+	if (!read(bytes, offset, slot.source_port) || !read(bytes, offset, slot.destination_port) ||
+	    !read(bytes, offset, slot.cargo_commodity) ||
+	    !read(bytes, offset, slot.contraband_commodity))
+		return false;
+	return true;
+}
 }
 
 int64_t divine_boon_duration(divine_boon_category category)
@@ -151,7 +183,9 @@ bool divine_boon_state_valid(const divine_boon_state &state)
 {
 	if (!state.revision || !state.next_id || !valid_time(state.last_opportunity) ||
 	    state.last_opportunity != hour(state.last_opportunity) ||
-	    state.mode > divine_boon_mode::divine || state.history.size() > DIVINE_BOON_HISTORY_MAX)
+	    state.mode > divine_boon_mode::divine ||
+	    state.history.size() > DIVINE_BOON_HISTORY_MAX ||
+	    state.recent.size() > DIVINE_BOON_RECENT_MAX)
 		return false;
 	for (size_t index = 0; index < state.slots.size(); ++index)
 	{
@@ -193,6 +227,23 @@ bool divine_boon_state_valid(const divine_boon_state &state)
 			    state.history[previous].side == entry.side)
 				return false;
 	}
+	for (size_t index = 0; index < state.recent.size(); ++index)
+	{
+		const auto &entry = state.recent[index];
+		const auto &slot = entry.objective;
+		if (!slot.id || slot.id >= state.next_id || !valid_objective(slot) ||
+		    !valid_time(slot.starts_at) || slot.starts_at != hour(slot.starts_at) ||
+		    slot.expires_at != slot.starts_at + divine_boon_duration(slot.category) ||
+		    entry.ended_at < slot.starts_at || entry.ended_at > slot.expires_at)
+			return false;
+		for (const auto &active : state.slots)
+			if (active.id == slot.id)
+				return false;
+		for (size_t prev = 0; prev < index; ++prev)
+			if (state.recent[prev].objective.id == slot.id)
+				return false;
+	}
+
 	return true;
 }
 
@@ -280,18 +331,7 @@ bool divine_boon_state_encode(const divine_boon_state &state, std::vector<uint8_
 	append(encoded, static_cast<uint8_t>(state.mode));
 	append(encoded, static_cast<uint8_t>(state.paused));
 	for (const auto &slot : state.slots)
-	{
-		append(encoded, slot.id);
-		append(encoded, static_cast<uint8_t>(slot.category));
-		append(encoded, slot.starts_at);
-		append(encoded, slot.expires_at);
-		for (int32_t zone : slot.zones)
-			append(encoded, zone);
-		append(encoded, slot.source_port);
-		append(encoded, slot.destination_port);
-		append(encoded, slot.cargo_commodity);
-		append(encoded, slot.contraband_commodity);
-	}
+		append_slot(encoded, slot);
 	append(encoded, static_cast<uint32_t>(state.history.size()));
 	for (const auto &entry : state.history)
 	{
@@ -299,6 +339,13 @@ bool divine_boon_state_encode(const divine_boon_state &state, std::vector<uint8_
 		append(encoded, entry.side);
 		append(encoded, entry.expired_at);
 	}
+	append(encoded, static_cast<uint32_t>(state.recent.size()));
+	for (const auto &entry : state.recent)
+	{
+		append_slot(encoded, entry.objective);
+		append(encoded, entry.ended_at);
+	}
+
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
 	SHA256(encoded.data(), encoded.size(), digest.data());
 	encoded.insert(encoded.end(), digest.begin(), digest.end());
@@ -320,7 +367,8 @@ bool divine_boon_state_decode(const std::vector<uint8_t> &bytes, divine_boon_sta
 	size_t offset = magic.size();
 	uint32_t decoded_version = 0, history_size = 0;
 	uint8_t mode = 0, paused = 0;
-	if (!read(bytes, offset, decoded_version) || decoded_version != version ||
+	if (!read(bytes, offset, decoded_version) ||
+	    (decoded_version != 1 && decoded_version != version) ||
 	    !read(bytes, offset, decoded.revision) || !read(bytes, offset, decoded.next_id) ||
 	    !read(bytes, offset, decoded.last_opportunity) || !read(bytes, offset, mode) ||
 	    !read(bytes, offset, paused) || paused > 1)
@@ -328,21 +376,8 @@ bool divine_boon_state_decode(const std::vector<uint8_t> &bytes, divine_boon_sta
 	decoded.mode = static_cast<divine_boon_mode>(mode);
 	decoded.paused = paused;
 	for (auto &slot : decoded.slots)
-	{
-		uint8_t category = 0;
-		if (!read(bytes, offset, slot.id) || !read(bytes, offset, category) ||
-		    !read(bytes, offset, slot.starts_at) || !read(bytes, offset, slot.expires_at))
+		if (!read_slot(bytes, offset, slot))
 			return false;
-		slot.category = static_cast<divine_boon_category>(category);
-		for (int32_t &zone : slot.zones)
-			if (!read(bytes, offset, zone))
-				return false;
-		if (!read(bytes, offset, slot.source_port) ||
-		    !read(bytes, offset, slot.destination_port) ||
-		    !read(bytes, offset, slot.cargo_commodity) ||
-		    !read(bytes, offset, slot.contraband_commodity))
-			return false;
-	}
 	if (!read(bytes, offset, history_size) || history_size > DIVINE_BOON_HISTORY_MAX)
 		return false;
 	for (uint32_t index = 0; index < history_size; ++index)
@@ -353,6 +388,21 @@ bool divine_boon_state_decode(const std::vector<uint8_t> &bytes, divine_boon_sta
 			return false;
 		decoded.history.push_back(entry);
 	}
+	if (decoded_version >= 2)
+	{
+		uint32_t count = 0;
+		if (!read(bytes, offset, count) || count > DIVINE_BOON_RECENT_MAX)
+			return false;
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			divine_boon_retired entry;
+			if (!read_slot(bytes, offset, entry.objective) ||
+			    !read(bytes, offset, entry.ended_at))
+				return false;
+			decoded.recent.push_back(entry);
+		}
+	}
+
 	if (offset != payload_size || !divine_boon_state_valid(decoded))
 		return false;
 	*state = std::move(decoded);

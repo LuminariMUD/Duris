@@ -116,13 +116,22 @@ player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_
 {
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
-player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t, size_t,
-						    persistence_job_write_fn)
+player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
+						    size_t, persistence_job_write_fn write)
 {
-	assert(kind == persistence_job_kind::bank);
-	order.push_back("bank");
+	if (kind == persistence_job_kind::divine_boon)
+	{
+		assert(owner == 2);
+		write();
+	}
+	else
+	{
+		assert(kind == persistence_job_kind::bank);
+		order.push_back("bank");
+	}
 	return player_save_submit_result::accepted;
 }
+
 player_save_pipeline_result player_save_pipeline_request(P_char ch, player_component_mask_t, int,
 							 int)
 {
@@ -269,6 +278,22 @@ bool cargo_trade_market_available()
 {
 	return true;
 }
+static bool fail_market_publish = false;
+static int reconciled_commands = 0;
+critical_apply_result critical_command_repository_apply_from_pool(const critical_command &command,
+								  void *)
+{
+	assert(command.operation_id.bytes == retained.operation_id.bytes &&
+	       command.payload == retained.payload);
+	++reconciled_commands;
+	return { critical_apply_outcome::already_applied, 0, 0 };
+}
+critical_apply_result divine_trade_flatfile_apply(const std::string &,
+						  const critical_command &command)
+{
+	return critical_command_repository_apply_from_pool(command, nullptr);
+}
+
 static bool physical_ship_exists = true;
 static P_ship physical_ship = nullptr;
 P_ship find_ship_by_database_id(uint32_t id)
@@ -279,9 +304,15 @@ P_ship find_ship_by_database_id(uint32_t id)
 		       nullptr;
 }
 
+bool cargo_trade_reconcile(uint64_t generation, const std::vector<divine_trade_market_cell> &)
+{
+	market_generation = generation;
+	fail_market_publish = false;
+	return true;
+}
 bool cargo_trade_publish(uint64_t expected, const std::vector<divine_trade_market_cell> &)
 {
-	if (expected != market_generation)
+	if (fail_market_publish || expected != market_generation)
 		return false;
 	++market_generation;
 	return true;
@@ -413,8 +444,25 @@ static void complete(bool committed = true)
 	assert(divine_trade_result_encode(result, &bytes));
 	completion.result_size = bytes.size();
 	std::copy(bytes.begin(), bytes.end(), completion.result_payload.begin());
+
+	static unsigned injected = 0;
+	const unsigned fault = committed && injected < 3 ? ++injected : 0;
+	if (fault == 1)
+		completion.result_payload[0] ^= 1;
+	if (fault == 2)
+		++market_generation;
+	if (fault == 3)
+		fail_market_publish = true;
 	divine_trade_runtime_completions(&completion, 1);
 	divine_trade_runtime_completions(&completion, 1); // duplicate publication is harmless
+	if (fault)
+	{
+		assert(divine_trade_runtime_busy() && capture_reserved);
+		divine_trade_runtime_reconcile();
+		divine_trade_runtime_reconcile();
+		assert(!divine_trade_runtime_busy() && !capture_reserved &&
+		       reconciled_commands == static_cast<int>(fault));
+	}
 }
 bool ac_can_see(P_char, P_char, bool)
 {
@@ -550,6 +598,7 @@ int main()
 	affect_to_char(&alice.ch, &progress);
 	trade_messages.clear();
 	nexus_multiplier = 1.1;
+	route_open = false; // Paid lots remain eligible after intermediate topology closes.
 	assert(divine_trade_runtime_sale(&alice.ch, &ship, -1, 4, divine_trade_goods::cargo));
 	assert(trade_messages.find("Trader") == std::string::npos &&
 	       trade_messages.find("Enlil") == std::string::npos);
@@ -571,6 +620,7 @@ int main()
 	complete();
 	assert(trade_messages == paid_messages);
 	nexus_multiplier = 1;
+	route_open = true;
 	assert(divine_trade_runtime_purchase(&alice.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
 	complete(false);
