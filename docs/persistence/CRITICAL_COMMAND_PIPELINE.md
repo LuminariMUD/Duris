@@ -165,6 +165,12 @@ backoff; a future retry may truthfully make a bounded drain fail. A SQL build
 without an initialized worker fails closed; the flat-file backend intentionally
 has no SQL outbox and retains its successful absent-worker drain behavior.
 
+An accepted auction read returns `publication_pending`: its row remains due,
+without consuming retry attempts or moving `next_attempt_at`. Its completed
+game-thread callback wakes the worker for acknowledgement immediately. A failed
+read/admission is observed as a real failure by the worker and retains the normal
+durable backoff before another read can be submitted.
+
 Treat a growing oldest age as a stop condition for copyover/shutdown and affected
 gameplay: restore the underlying database or destination and investigate before
 restarting.

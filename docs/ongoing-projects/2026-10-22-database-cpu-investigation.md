@@ -103,6 +103,27 @@ the handler-counter probe uses portable `SHOW SESSION STATUS`. MariaDB worker
 evidence remains valid because its SQL, cadence and drain implementation did not
 change. Qualification tags distinguish the original worker and this review repair.
 
+PR #300 review repair 2: accepted asynchronous auction publication now returns
+`publication_pending`, which leaves the durable row due and consumes no failed
+attempt. The completed callback wakes the worker for immediate acknowledgement.
+Actual read/admission failures enter a failed state until the worker records the
+normal durable backoff; progress callbacks cannot resubmit them in a tight loop.
+The executable worker fixture delays publication 2,300 ms, observes more than eight
+pending visits, and completes within the existing three-second drain with zero
+attempts/retries/dead letters. Actual auction-function probes cover pending and
+failed states; build, SQL/client-free/lifecycle checks and the MariaDB worker suite
+pass. Current worker qualification tag: `issue-292/worker-review-2-20261023`.
+
+Owner boundary (2026-10-23): the user authorized a worker-only rollout, then
+reserved independent review, issue addressing, and GitHub merge to themselves.
+Do not merge PRs or start deployment before that review/merge step. Deployment
+authorization remains for worker #300 only; later schema/audit changes are not
+authorized for production. The user clarified that this WSL host is **not** the
+production machine: access the VPS with `ssh duris-staging`. SSH connectivity
+confirmed `/home/staging`; no production checkout, database, service, or schedule
+was changed. Take a fresh baseline on that actual VPS before cutover rather than
+assuming the original investigation's 44% interval describes its current load.
+
 ## Recommended change
 
 Replace the outbox health query's historical aggregates with indexed queries over
