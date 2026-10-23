@@ -1,7 +1,7 @@
 # Database CPU investigation and remediation plan
 
 Investigation date: 2026-10-22. Updated: 2026-10-23. Status: first worker
-implementation locally qualified, preparing PR; no deployment or production
+implementation locally qualified and published for review; no deployment or production
 mutation performed.
 
 Tracking: [issue #292](https://github.com/LuminariMUD/Duris/issues/292).
@@ -31,11 +31,22 @@ Original investigation:
   transactions, retry policy, and caller deadlines. No migration, cached counters,
   general scheduler, or purge is needed. Raw audit semantics remain unchanged in
   this chunk so cadence and semantic correction can be reviewed independently.
+- Delivery: [PR #300](https://github.com/LuminariMUD/Duris/pull/300), ready for
+  review against `master`; code/validation commit `cd76e30a1b2a`. The local merge
+  tree equals that qualified head's tree. No merge has been requested/performed.
 - Proof: the commands and results in the next subsection qualify chunk 1 locally.
-  No PR has been opened yet.
-- Next: publish chunk 1 as a focused PR. Then implement audit-semantic correction on a dependent
+- Next: implement audit-semantic correction on a dependent
   branch. Boon changes remain gated on measuring the worker improvement; retention
   remains conditional on post-change growth and replay-horizon decisions.
+
+Chunk 2 discovery: item-transfer results retain only a catalog-changed flag,
+whereas publication may include several collector events. Remaining typed receipts
+cannot reliably reconstruct that historical event count from the result alone.
+Use explicit nullable event-expectation metadata in a separate additive migration;
+record new expectations from the mutation contract in the same transaction, not
+from surviving outbox rows. Keep old expectations unknown until proven from typed
+evidence. Legitimate session-audit and derived combat-child omissions still need
+positive receipt/identity proof. No metadata/schema implementation has started yet.
 
 ### Chunk 1 local qualification
 
