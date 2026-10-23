@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — prepared cargo replay proof
 
 Branch `branch/issue-264-cargo-replay`, based on artifact PR #324 at `75367cc07`.
+Review-ready PR #325 (https://github.com/LuminariMUD/Duris/pull/325), implementation
+`205e7bbbf`; the worktree is clean and pushed after this handoff update.
 Outcome: prove retained cargo books/receipts and a pre-reset prepared trade cannot
 restore wiped wallets, ships, cargo or markets, including a fresh same-named mortal
 and new ship. Use the actual policy, command codec, SQL executor and receipt path.
@@ -57,7 +59,8 @@ higher-ID ship, and the normal critical repository refused the pending command.
 Both old/new wallets, retained books/generation, and deleted cargo/market tables
 remained unchanged. No source behavior change, new epoch field or generic cutoff
 was needed. Existing build and five-minute gameplay evidence is reused for this
-test/documentation-only chunk. Publication remains; full readiness is open.
+test/documentation-only chunk. Commit hooks passed and PR #325 is ready for review;
+full readiness remains open.
 
 Next W1 retained payload consumers: `auction_item_custody` (pickup reads plus
 artifact population scanning), and `siege_items`/children (artifact population
