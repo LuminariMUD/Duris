@@ -11,6 +11,23 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Gith Monk creation eligibility
+
+Normal character creation permits Githzerai Monks with fixed good alignment and
+Githyanki Monks with fixed evil alignment in both Telnet and WebSocket clients.
+The Monk starter kits and both Monk specializations were already defined for
+these races; changing creation eligibility must not broaden random NPC class
+selection. The random-mobile selector continues to skip Monk for both Gith
+races, while using the unchanged `class_table` permission for other races.
+
+`python3 tests/async/test_gith_monk_creation.py` validates the two matrix
+cells, the client entry points, specialization and kit coverage, and the help
+and documentation; it also compiles and runs the actual isolated random-mobile
+class eligibility predicate to check Gith suppression and control races.
+The full server build and live Telnet/WebSocket character journeys still need
+their normal CI/integration checks before merging. Existing races and NPCs are
+not otherwise rebalanced.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,
