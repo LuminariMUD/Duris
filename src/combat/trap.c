@@ -123,6 +123,11 @@ void do_trapstat(P_char ch, char *argument, int /*cmd*/)
 	case TRAP_DAM_SLASH:
 		send_to_char("Damage type is slash.\r\n", ch);
 		break;
+	default:
+		send_to_char_f(ch,
+			       "Damage type %d is unsupported; this trap needs builder repair.\r\n",
+			       obj->trap_dam);
+		break;
 	}
 
 	if (obj->trap_eff == 0)
@@ -498,6 +503,13 @@ void trapdamage(P_char ch, P_obj obj)
 
 	if (!obj->trap_charge)
 		return;
+
+	if (obj->trap_dam < TRAP_DAM_SLEEP || obj->trap_dam > TRAP_DAM_SLASH)
+	{
+		logit(LOG_WIZ, "Trap object %d has unsupported damage type %d; charge preserved.",
+		      OBJ_VNUM(obj), obj->trap_dam);
+		return;
+	}
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
 		return;
