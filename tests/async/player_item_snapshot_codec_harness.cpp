@@ -325,6 +325,105 @@ int main(int argc, char **argv)
 	require(player_snapshot_encode(snapshot, &encoded) ==
 			player_snapshot_codec_result::invalid_value,
 		"a snapshot of pid 0 was encoded");
+	// A logout snapshot observes ordinary money changes while a trade waits.
+	// The receipt selects committed or refused; settlement is absolute and once.
+	player_snapshot pending{};
+	pending.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	pending.pid = 41;
+	pending.revision = 100;
+	pending.components = PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS;
+	pending.encoded_size_bound = 4096;
+	pending.wallet_revision = 6;
+	for (unsigned i = 0; i < 4; ++i)
+		pending.status_integers.push_back(
+			{ static_cast<player_status_field>(
+				  static_cast<unsigned>(player_status_field::copper) + i),
+			  0,
+			  i == 0 ? 50u :
+			  i == 3 ? 10u :
+				   0u,
+			  true });
+	pending.pending_trade.operation[0] = 1;
+	pending.pending_trade.command_hash[0] = 2;
+	pending.pending_trade.payment = -100;
+	pending.pending_trade.wallet_revision = 5;
+	pending.pending_trade.has_cargo_effect = true;
+	pending.pending_trade.cargo_effect.type = PLAYER_TRADE_CARGO_AFFECT;
+	pending.pending_trade.cargo_effect.modifier = 10005;
+	std::vector<uint8_t> tagged;
+	require(player_snapshot_encode(pending, &tagged) == player_snapshot_codec_result::ok &&
+			player_snapshot_decode(tagged.data(), tagged.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			player_snapshot_trade_pending(read_back),
+		"pending trade snapshot did not round trip");
+	auto crowded = pending;
+	crowded.components |= PLAYER_COMPONENT_LANGUAGES;
+	crowded.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+	crowded.languages.resize(PLAYER_SNAPSHOT_MAX_ROWS - crowded.status_integers.size());
+	require(player_snapshot_encode(crowded, &tagged) == player_snapshot_codec_result::ok &&
+			player_snapshot_settle_trade(&crowded, true) ==
+				player_snapshot_codec_result::ok &&
+			crowded.affects.size() == 1 && crowded.wallet_revision == 7 &&
+			player_snapshot_encode(crowded, &tagged) ==
+				player_snapshot_codec_result::ok,
+		"committed cargo projection lost a full ordinary capture");
+	crowded.languages.push_back({});
+	require(player_snapshot_encode(crowded, &tagged) ==
+			player_snapshot_codec_result::limit_exceeded,
+		"protected cargo row allowed a second excess ordinary row");
+	auto tight = pending;
+	tight.components |= PLAYER_COMPONENT_INVENTORY;
+	tight.items = heavy;
+	tight.items[0].name.resize(tight.items[0].name.size() - 2048);
+	tight.pending_trade = {};
+	tight.affects.push_back(pending.pending_trade.cargo_effect);
+	require(player_snapshot_encode(tight, &tagged) == player_snapshot_codec_result::ok,
+		"tight settled image");
+	const auto extra = PLAYER_SNAPSHOT_MAX_BYTES - tagged.size() - 128;
+	// Spread the padding_left bytes without crossing any individual string bound.
+	size_t padding_left = extra;
+	for (auto &item : tight.items)
+		for (std::string *value : { &item.name, &item.short_description, &item.description,
+					    &item.action_description })
+		{
+			const auto added = std::min(padding_left, PLAYER_SNAPSHOT_MAX_STRING_BYTES -
+									  value->size());
+			value->append(added, 'x');
+			padding_left -= added;
+		}
+	require(!padding_left, "tight image padding");
+	tight.affects.clear();
+	tight.pending_trade = pending.pending_trade;
+	require(player_snapshot_encode(tight, &tagged) == player_snapshot_codec_result::ok &&
+			player_snapshot_settle_trade(&tight, true) ==
+				player_snapshot_codec_result::ok &&
+			!player_snapshot_trade_pending(tight) &&
+			player_snapshot_encode(tight, &tagged) == player_snapshot_codec_result::ok,
+		"settlement validated a transient duplicate tag instead of its final image");
+	auto refused = read_back;
+	require(player_snapshot_settle_trade(&refused, false) == player_snapshot_codec_result::ok &&
+			refused.wallet_revision == 6 &&
+			refused.status_integers[0].unsigned_value == 50 &&
+			!player_snapshot_trade_pending(refused),
+		"refused trade altered captured money");
+	require(player_snapshot_settle_trade(&read_back, true) ==
+				player_snapshot_codec_result::ok &&
+			read_back.wallet_revision == 7 &&
+			read_back.status_integers[0].unsigned_value == 0 &&
+			read_back.status_integers[1].unsigned_value == 5 &&
+			read_back.status_integers[2].unsigned_value == 9 &&
+			read_back.status_integers[3].unsigned_value == 9 &&
+			read_back.affects.size() == 1 && read_back.affects[0].modifier == 10005,
+		"committed trade lost intervening money or progress");
+	require(player_snapshot_settle_trade(&read_back, true) ==
+				player_snapshot_codec_result::ok &&
+			read_back.wallet_revision == 7,
+		"snapshot settlement applied a payment twice");
+	pending.pending_trade.payment = 0;
+	require(player_snapshot_settle_trade(&pending, true) == player_snapshot_codec_result::ok &&
+			pending.wallet_revision == 7 &&
+			pending.status_integers[0].unsigned_value == 50,
+		"zero sale did not advance its snapshot watermark");
 	// Every proper prefix of a whole snapshot is truncated too.
 	auto full = snapshot_fixture();
 	full.wallet_revision = 42;
@@ -354,6 +453,8 @@ int main(int argc, char **argv)
 	const auto wire = [&](uint32_t version)
 	{
 		auto bytes = current;
+		if (version < 12)
+			bytes.resize(bytes.size() - 1);
 		if (version < 11)
 			bytes.resize(bytes.size() - sizeof(uint64_t));
 		if (version < 3) // the restore state's length, its one byte, the hold reason
@@ -450,12 +551,12 @@ int main(int argc, char **argv)
 					}),
 			"old player file did not load with empty flight discoveries: " + error);
 	}
-	for (uint32_t version : { 9u, 10u })
+	for (uint32_t version : { 9u, 10u, 11u })
 	{
 		const auto bytes = wire(version);
 		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
 					player_snapshot_codec_result::ok &&
-				read_back.wallet_revision == 0 &&
+				read_back.wallet_revision == (version >= 11 ? 42u : 0u) &&
 				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION,
 			"old snapshot did not default its absent wallet revision");
 	}
@@ -513,7 +614,7 @@ int main(int argc, char **argv)
 	changed.status_integers.clear();
 	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok,
 		"partial legacy fixture did not encode");
-	other.resize(other.size() - sizeof(uint64_t));
+	other.resize(other.size() - sizeof(uint64_t) - 1);
 	put32(other, 0, 7);
 	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&

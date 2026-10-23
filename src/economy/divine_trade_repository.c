@@ -1,4 +1,5 @@
 #include "economy/divine_trade_repository.h"
+#include "player/player_snapshot_repository.h"
 
 #include <cerrno>
 #include <charconv>
@@ -241,6 +242,9 @@ bool divine_trade_sql_execute(MYSQL *connection, const critical_command &command
 		wallet += std::string(",") + coins[i] + "=" +
 			  std::to_string(p.wallet_after.amount[i]);
 	if (!execute(connection, wallet + " WHERE pid=" + std::to_string(p.pid)))
+		return false;
+	if (p.has_cargo_effect &&
+	    !player_snapshot_repository_write_cargo_effect(connection, p.pid, p.cargo_effect))
 		return false;
 	for (const auto &slot : p.slots_after)
 	{

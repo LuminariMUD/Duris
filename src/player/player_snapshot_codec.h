@@ -35,6 +35,16 @@ enum class player_snapshot_codec_result : uint8_t
 bool player_snapshot_divine_delivery_sequence(const player_snapshot &snapshot, uint64_t *sequence);
 // Partial status operations that do not touch money do not advance its revision.
 bool player_snapshot_writes_wallet(const player_snapshot &snapshot);
+// One affect row, shared with compound cargo settlement. Its enclosing payload
+// owns the wire version, independently of full player snapshots.
+player_snapshot_codec_result player_affect_snapshot_encode(const player_affect_snapshot &affect,
+							   std::vector<uint8_t> *bytes);
+player_snapshot_codec_result player_affect_snapshot_decode(const uint8_t *bytes, size_t size,
+							   player_affect_snapshot *affect);
+bool player_snapshot_trade_pending(const player_snapshot &snapshot);
+// Reconcile only the captured operation, once, in an owned snapshot copy.
+player_snapshot_codec_result player_snapshot_settle_trade(player_snapshot *snapshot,
+							  bool committed);
 
 player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snapshot,
 						    std::vector<uint8_t> *encoded_out);

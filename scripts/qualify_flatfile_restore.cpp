@@ -17,11 +17,16 @@
 #include "flatfile/flatfile_boon_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "kingdom/kingdom_restore.h"
+#include "persistence/persistence_log.h"
 #include "economy/divine_trade_repository.h"
 
 // Native parsers may log diagnostics containing identities; this process reports
 // only aggregate success or a fixed failure code.
 void logit(const char *, const char *, ...) {}
+bool persistence_log_submit(const char *)
+{
+	return true;
+}
 
 #include <chrono>
 #include <charconv>

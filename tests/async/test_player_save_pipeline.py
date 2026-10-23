@@ -29,6 +29,7 @@ HARNESS = r'''
 #include "player/player_save_pipeline.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
+#include "player/player_snapshot_codec.h"
 #include "combat/combat_outcome_command.h"
 #include "persistence/persistence_observability.h"
 #include "core/prototypes.h"
@@ -204,6 +205,11 @@ int main()
     assert(player_save_pipeline_checkpoint_dirty(&alice.ch, 1, 3001) ==
            player_save_pipeline_result::unchanged);
 
+    player_pending_trade_snapshot trade;
+    trade.operation[0]=1;trade.command_hash[0]=2;trade.payment=-80;
+    assert(player_save_pipeline_reserve_trade(41,trade));
+    assert(!player_save_pipeline_reserve_trade(42,trade));
+    player_save_pipeline_release_trade(42);
     // A queued save leaves its owner clean: the writer has it.
     hold_writer(true);
     assert(player_save_pipeline_request(&bob.ch, PLAYER_COMPONENT_SKILLS, 1, 3001) ==
@@ -246,6 +252,14 @@ int main()
     assert((take_order() == std::vector<std::string>{"42:1", "41:8", "44:1", "41:10", "42:2"}));
     player_save_pipeline_pulse();
     assert(player_revision_snapshot_copy(41, &revision) && revision.written_revision == 10);
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        assert(state.committed[41].pending_trade.operation==trade.operation);
+        assert(state.committed[41].pending_trade.payment==-80);
+        assert(!player_snapshot_trade_pending(state.committed[42]));
+    }
+    player_save_pipeline_release_trade(41);
+
 
     // A failed write is reported and its owner is dirty again.
     state.failures[44] = 1;

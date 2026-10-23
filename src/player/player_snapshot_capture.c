@@ -298,13 +298,19 @@ player_snapshot_capture_result capture_affects(P_char ch, player_snapshot &snaps
 					       capture_budget &budget)
 {
 	std::unordered_set<const affected_type *> seen;
+	bool cargo_count_seen = false;
 	for (const affected_type *affect = ch->affected; affect; affect = affect->next)
 	{
 		if (!seen.insert(affect).second)
 			return player_snapshot_capture_result::object_cycle;
 		if (IS_SET(affect->flags, AFFTYPE_NOSAVE))
 			continue;
-		if (!budget.add(sizeof(player_affect_snapshot), 1))
+		const bool cargo_count = affect->type == PLAYER_TRADE_CARGO_AFFECT;
+		if (cargo_count && cargo_count_seen)
+			return player_snapshot_capture_result::malformed_source;
+		cargo_count_seen = cargo_count_seen || cargo_count;
+		// Match the codec's one protected cargo row across later checkpoints.
+		if (!budget.add(sizeof(player_affect_snapshot), cargo_count ? 0 : 1))
 			return player_snapshot_capture_result::limit_exceeded;
 		player_affect_snapshot row = {};
 		row.type = affect->type;

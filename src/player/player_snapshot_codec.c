@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_snapshot_codec.h"
+#include "economy/currency_value.h"
 #include "net/output_preference_state.h"
 #include "core/files.h"
 #include "classes/necromancy.h"
@@ -142,7 +143,8 @@ struct decoder
 		uint32_t count = 0;
 		if (!number(count))
 			return false;
-		if (count > PLAYER_SNAPSHOT_MAX_ROWS || rows > PLAYER_SNAPSHOT_MAX_ROWS - count ||
+		if (count > PLAYER_SNAPSHOT_MAX_ROWS ||
+		    rows > PLAYER_SNAPSHOT_MAX_ROWS + 1 - count ||
 		    (object_rows && (count > PLAYER_SNAPSHOT_MAX_OBJECTS ||
 				     objects > PLAYER_SNAPSHOT_MAX_OBJECTS - count)))
 		{
@@ -288,8 +290,47 @@ bool decode_items(decoder &in, std::vector<player_item_snapshot> &items)
 		true);
 }
 
+void encode_affect(encoder &out, const player_affect_snapshot &row)
+{
+	out.number<int16_t>(row.type);
+	out.number<int32_t>(row.duration);
+	out.number<uint32_t>(row.flags);
+	out.number<int32_t>(row.modifier);
+	out.number<uint8_t>(row.location);
+	out.number<uint16_t>(row.level);
+	for (uint64_t bits : row.bitvectors)
+		out.number<uint64_t>(bits);
+	out.string(row.wear_off_character);
+	out.string(row.wear_off_room);
+}
+bool decode_affect(decoder &in, player_affect_snapshot &row)
+{
+	if (!in.number(row.type) || !in.number(row.duration) || !in.number(row.flags) ||
+	    !in.number(row.modifier) || !in.number(row.location) || !in.number(row.level))
+		return false;
+	for (auto &bits : row.bitvectors)
+		if (!in.number(bits))
+			return false;
+	return in.string(row.wear_off_character) && in.string(row.wear_off_room);
+}
+bool valid_trade_tag(const player_snapshot &snapshot)
+{
+	const auto &tag = snapshot.pending_trade;
+	const bool hash = std::any_of(tag.command_hash.begin(), tag.command_hash.end(),
+				      [](uint8_t b) { return b; });
+	if (!player_snapshot_trade_pending(snapshot))
+		return !hash && !tag.payment && !tag.wallet_revision && !tag.has_cargo_effect;
+	return hash && tag.payment >= -static_cast<int64_t>(INT32_MAX) &&
+	       tag.payment <= INT32_MAX && tag.wallet_revision < UINT64_MAX &&
+	       snapshot.wallet_revision >= tag.wallet_revision &&
+	       (!tag.has_cargo_effect || (tag.cargo_effect.type == PLAYER_TRADE_CARGO_AFFECT &&
+					  tag.cargo_effect.modifier >= 0));
+}
+
 bool valid_metadata(const player_snapshot &snapshot)
 {
+	if (!valid_trade_tag(snapshot))
+		return false;
 	return snapshot.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION && snapshot.pid > 0 &&
 	       snapshot.revision && snapshot.components &&
 	       !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
@@ -561,20 +602,7 @@ player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snaps
 				   out.number<uint8_t>(row.learned);
 				   out.number<uint8_t>(row.taught);
 			   });
-		out.vector(snapshot.affects,
-			   [&](const auto &row)
-			   {
-				   out.number<int16_t>(row.type);
-				   out.number<int32_t>(row.duration);
-				   out.number<uint32_t>(row.flags);
-				   out.number<int32_t>(row.modifier);
-				   out.number<uint8_t>(row.location);
-				   out.number<uint16_t>(row.level);
-				   for (uint64_t bitvector : row.bitvectors)
-					   out.number<uint64_t>(bitvector);
-				   out.string(row.wear_off_character);
-				   out.string(row.wear_off_room);
-			   });
+		out.vector(snapshot.affects, [&](const auto &row) { encode_affect(out, row); });
 		encode_items(out, snapshot.items);
 		out.vector(snapshot.pets,
 			   [&](const auto &pet)
@@ -611,6 +639,20 @@ player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snaps
 		out.boolean(snapshot.recipes_are_external);
 		out.string(snapshot.output_preferences, OUTPUT_PREFERENCE_MAX_BYTES);
 		out.number<uint64_t>(snapshot.wallet_revision);
+		const auto &tag = snapshot.pending_trade;
+		out.boolean(player_snapshot_trade_pending(snapshot));
+		if (player_snapshot_trade_pending(snapshot))
+		{
+			for (uint8_t byte : tag.operation)
+				out.number<uint8_t>(byte);
+			for (uint8_t byte : tag.command_hash)
+				out.number<uint8_t>(byte);
+			out.number<int64_t>(tag.payment);
+			out.number<uint64_t>(tag.wallet_revision);
+			out.boolean(tag.has_cargo_effect);
+			if (tag.has_cargo_effect)
+				encode_affect(out, tag.cargo_effect);
+		}
 		if (!out.valid || out.bytes.size() > PLAYER_SNAPSHOT_MAX_BYTES)
 			return player_snapshot_codec_result::limit_exceeded;
 		player_snapshot validated = {};
@@ -644,7 +686,7 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		const uint32_t wire_version = snapshot.schema_version;
 		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
 		    wire_version == 7 || wire_version == 8 || wire_version == 9 ||
-		    wire_version == 10)
+		    wire_version == 10 || wire_version == 11)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -708,18 +750,7 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 					      in.number(row.taught);
 			       }) ||
 		    !in.vector(snapshot.affects,
-			       [&](auto &row)
-			       {
-				       if (!in.number(row.type) || !in.number(row.duration) ||
-					   !in.number(row.flags) || !in.number(row.modifier) ||
-					   !in.number(row.location) || !in.number(row.level))
-					       return false;
-				       for (uint64_t &bitvector : row.bitvectors)
-					       if (!in.number(bitvector))
-						       return false;
-				       return in.string(row.wear_off_character) &&
-					      in.string(row.wear_off_room);
-			       }) ||
+			       [&](auto &row) { return decode_affect(in, row); }) ||
 		    !decode_items(in, snapshot.items) ||
 		    !in.vector(snapshot.pets,
 			       [&](auto &pet)
@@ -763,8 +794,40 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			return in.failure();
 		if (wire_version >= 11 && !in.number(snapshot.wallet_revision))
 			return in.failure();
+		if (wire_version >= 12)
+		{
+			bool pending = false;
+			if (!in.boolean(pending))
+				return in.failure();
+			if (pending)
+			{
+				auto &tag = snapshot.pending_trade;
+				for (auto &byte : tag.operation)
+					if (!in.number(byte))
+						return in.failure();
+				for (auto &byte : tag.command_hash)
+					if (!in.number(byte))
+						return in.failure();
+				if (!in.number(tag.payment) || !in.number(tag.wallet_revision) ||
+				    !in.boolean(tag.has_cargo_effect) ||
+				    (tag.has_cargo_effect && !decode_affect(in, tag.cargo_effect)))
+					return in.failure();
+				if (!player_snapshot_trade_pending(snapshot))
+					return player_snapshot_codec_result::invalid_value;
+			}
+		}
+		if (!valid_trade_tag(snapshot))
+			return player_snapshot_codec_result::invalid_value;
 		if (in.offset != in.size)
 			return player_snapshot_codec_result::invalid_value;
+		// One protected cargo-count row can be committed while an otherwise
+		// full ordinary capture waits on the writer. Keep that bounded row
+		// without discarding the capture's unrelated state.
+		if (in.rows > PLAYER_SNAPSHOT_MAX_ROWS &&
+		    std::none_of(snapshot.affects.begin(), snapshot.affects.end(),
+				 [](const auto &row)
+				 { return row.type == PLAYER_TRADE_CARGO_AFFECT; }))
+			return player_snapshot_codec_result::limit_exceeded;
 		if (!valid_item_relationships(snapshot.items))
 			return player_snapshot_codec_result::invalid_value;
 		for (const player_pet_snapshot &pet : snapshot.pets)
@@ -798,4 +861,129 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		return player_snapshot_codec_result::allocation_failure;
 	}
 	return player_snapshot_codec_result::ok;
+}
+
+player_snapshot_codec_result player_affect_snapshot_encode(const player_affect_snapshot &affect,
+							   std::vector<uint8_t> *bytes)
+try
+{
+	if (!bytes)
+		return player_snapshot_codec_result::invalid_value;
+	encoder out;
+	encode_affect(out, affect);
+	if (!out.valid)
+		return player_snapshot_codec_result::limit_exceeded;
+	*bytes = std::move(out.bytes);
+	return player_snapshot_codec_result::ok;
+}
+catch (const std::bad_alloc &)
+{
+	return player_snapshot_codec_result::allocation_failure;
+}
+
+player_snapshot_codec_result player_affect_snapshot_decode(const uint8_t *bytes, size_t size,
+							   player_affect_snapshot *affect)
+try
+{
+	if (!bytes || !affect || size > PLAYER_SNAPSHOT_MAX_BYTES)
+		return player_snapshot_codec_result::invalid_value;
+	decoder in{ bytes, size };
+	player_affect_snapshot decoded;
+	if (!decode_affect(in, decoded))
+		return in.failure();
+	if (in.offset != in.size)
+		return player_snapshot_codec_result::invalid_value;
+	*affect = std::move(decoded);
+	return player_snapshot_codec_result::ok;
+}
+catch (const std::bad_alloc &)
+{
+	return player_snapshot_codec_result::allocation_failure;
+}
+
+bool player_snapshot_trade_pending(const player_snapshot &snapshot)
+{
+	return std::any_of(snapshot.pending_trade.operation.begin(),
+			   snapshot.pending_trade.operation.end(),
+			   [](uint8_t byte) { return byte != 0; });
+}
+
+player_snapshot_codec_result player_snapshot_settle_trade(player_snapshot *snapshot, bool committed)
+try
+{
+	if (!snapshot || !valid_trade_tag(*snapshot))
+		return player_snapshot_codec_result::invalid_value;
+	if (!player_snapshot_trade_pending(*snapshot))
+		return player_snapshot_codec_result::ok;
+	const auto &tag = snapshot->pending_trade;
+	currency_vector before{}, after{};
+	unsigned found = 0;
+	if (committed && player_snapshot_writes_wallet(*snapshot))
+	{
+		if (snapshot->wallet_revision == UINT64_MAX)
+			return player_snapshot_codec_result::invalid_value;
+		for (const auto &row : snapshot->status_integers)
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				const unsigned index =
+					static_cast<unsigned>(row.field) -
+					static_cast<unsigned>(player_status_field::copper);
+				if ((found & (1U << index)) ||
+				    (row.is_unsigned && row.unsigned_value > INT32_MAX))
+					return player_snapshot_codec_result::invalid_value;
+				found |= 1U << index;
+				before.amount[index] =
+					row.is_unsigned ? static_cast<int64_t>(row.unsigned_value) :
+							  row.signed_value;
+			}
+		if (found != 15 || !currency_wallet_after_value(before, tag.payment, &after))
+			return player_snapshot_codec_result::invalid_value;
+	}
+	std::vector<player_affect_snapshot> effects;
+	const bool writes_effect = committed && tag.has_cargo_effect &&
+				   (snapshot->components & PLAYER_COMPONENT_AFFECTS);
+	if (writes_effect)
+	{
+		effects = snapshot->affects;
+		auto found_effect = std::find_if(effects.begin(), effects.end(), [](const auto &af)
+						 { return af.type == PLAYER_TRADE_CARGO_AFFECT; });
+		if (found_effect != effects.end())
+			*found_effect = tag.cargo_effect;
+		else
+		{
+			effects.push_back(tag.cargo_effect);
+			// The codec counts rows across every vector, including nested items.
+			// Validate that same budget before changing the capture.
+			auto candidate = *snapshot;
+			candidate.affects = effects;
+			candidate.pending_trade = {};
+			std::vector<uint8_t> encoded;
+			const auto valid = player_snapshot_encode(candidate, &encoded);
+			if (valid != player_snapshot_codec_result::ok)
+				return valid;
+		}
+	}
+	if (found)
+	{
+		for (auto &row : snapshot->status_integers)
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				const unsigned index =
+					static_cast<unsigned>(row.field) -
+					static_cast<unsigned>(player_status_field::copper);
+				row = { row.field, 0, static_cast<uint64_t>(after.amount[index]),
+					true };
+			}
+		++snapshot->wallet_revision;
+	}
+	if (writes_effect)
+		snapshot->affects = std::move(effects);
+	snapshot->pending_trade = {};
+	return player_snapshot_codec_result::ok;
+}
+catch (const std::bad_alloc &)
+{
+	return player_snapshot_codec_result::allocation_failure;
 }

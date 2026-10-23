@@ -2,13 +2,14 @@
 #define DIVINE_TRADE_COMMAND_H
 
 #include "economy/divine_trade.h"
+#include "economy/divine_trade_result.h"
+#include "player/player_snapshot.h"
 #include "economy/currency_command.h"
 #include "flatfile/flatfile_ship_repository.h"
 
 constexpr uint16_t DIVINE_TRADE_PAYLOAD_VERSION = 3;
 constexpr uint16_t DIVINE_TRADE_OUTBOX_DESTINATION = 12;
 constexpr uint64_t DIVINE_TRADE_MARKET_KEY = 0x445452414445;
-constexpr size_t DIVINE_TRADE_RESULT_BYTES = 48;
 
 enum class divine_trade_action : uint8_t
 {
@@ -47,25 +48,13 @@ struct divine_trade_payload
 	divine_trade_book book_after;
 	flatfile_ship_crew_record crew_before;
 	std::vector<flatfile_ship_slot_record> slots_before;
-};
-
-struct divine_trade_result
-{
-	uint32_t pid = 0;
-	uint32_t ship_id = 0;
-	uint64_t generation = 0;
-	uint64_t wallet_revision = 0;
-	uint64_t book_revision = 0;
-	int64_t payment = 0;
-	uint32_t qualifying_quantity = 0;
+	bool has_cargo_effect = false;
+	player_affect_snapshot cargo_effect{};
 };
 
 bool divine_trade_command_build(critical_command *command, critical_operation_id operation,
 				const divine_trade_payload &payload);
 bool divine_trade_command_decode(const critical_command &command, divine_trade_payload *payload);
-bool divine_trade_result_encode(const divine_trade_result &result,
-				std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> *bytes);
-bool divine_trade_result_decode(const uint8_t *bytes, size_t size, divine_trade_result *result);
 // Checked persisted preimage versus game-thread preparation; never reprice an
 // operation from database state. The first hold and spent cap cannot roll back.
 bool divine_trade_book_transition_valid(const divine_trade_book &before,

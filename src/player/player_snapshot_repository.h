@@ -28,6 +28,8 @@
 #include <vector>
 
 // Caller owns the transaction. Shared by checkpoint and legacy save adapters.
+bool player_snapshot_repository_write_cargo_effect(MYSQL *connection, int32_t pid,
+						   const player_affect_snapshot &effect);
 bool player_snapshot_repository_write_pets(MYSQL *connection, const player_snapshot &snapshot);
 
 player_save_apply_result player_snapshot_repository_apply(MYSQL *connection,

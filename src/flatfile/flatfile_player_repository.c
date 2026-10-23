@@ -15,6 +15,7 @@
 #include "flatfile/flatfile_player_repository.h"
 
 #include "economy/collector_eligibility.h"
+#include "economy/divine_trade_repository.h"
 #include "flatfile/flatfile_collector_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -22,6 +23,7 @@
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/persistence_log.h"
 #include "persistence/dupe_log.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
@@ -846,9 +848,22 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 }
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
-							const player_snapshot &snapshot,
+							const player_snapshot &captured,
 							std::string *error)
 {
+	std::unique_ptr<player_snapshot> revised;
+	if (player_snapshot_trade_pending(captured))
+	{
+		try
+		{
+			revised = std::make_unique<player_snapshot>(captured);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+		}
+	}
+	const auto &snapshot = revised ? *revised : captured;
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	flatfile_player_snapshot_lock snapshot_lock;
@@ -873,6 +888,15 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	player_save_apply_result locked = lock_authority();
 	if (locked.outcome != player_save_apply_outcome::applied)
 		return locked;
+	bool unresolved_trade = false;
+	if (revised)
+	{
+		const auto settled = divine_trade_flatfile_settle_snapshot(root, *authority,
+									   revised.get(), error);
+		if (settled == flatfile_player_domain_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		unresolved_trade = settled != flatfile_player_domain_result::ok;
+	}
 	player_snapshot materialized = {};
 	bool new_player = false;
 	const flatfile_player_load_result loaded =
@@ -881,6 +905,39 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	if (unresolved_trade)
+	{
+		if (loaded != flatfile_player_load_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		if (snapshot.components & PLAYER_COMPONENT_STATUS)
+		{
+			auto coin = [](const auto &row) {
+				return row.field >= player_status_field::copper &&
+				       row.field <= player_status_field::platinum;
+			};
+			std::erase_if(revised->status_integers, coin);
+			for (const auto &row : materialized.status_integers)
+				if (coin(row))
+					revised->status_integers.push_back(row);
+			revised->wallet_revision = materialized.wallet_revision;
+		}
+		if ((snapshot.components & PLAYER_COMPONENT_AFFECTS) &&
+		    captured.pending_trade.has_cargo_effect)
+		{
+			auto cargo = [](const auto &row)
+			{ return row.type == PLAYER_TRADE_CARGO_AFFECT; };
+			std::erase_if(revised->affects, cargo);
+			for (const auto &row : materialized.affects)
+				if (cargo(row))
+					revised->affects.push_back(row);
+		}
+		revised->pending_trade = {};
+		char record[128];
+		snprintf(record, sizeof(record),
+			 "player_save trade_receipt_unresolved pid=%d financial_state=retained",
+			 captured.pid);
+		persistence_log_submit(record);
+	}
 	uint64_t incoming_sequence = 0, stored_sequence = 0;
 	if (!player_snapshot_divine_delivery_sequence(snapshot, &incoming_sequence))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };

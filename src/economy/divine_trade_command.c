@@ -1,6 +1,7 @@
 #include "economy/divine_trade_command.h"
 
 #include "ships/ships.h"
+#include "player/player_snapshot_codec.h"
 
 #include <algorithm>
 #include <bit>
@@ -100,6 +101,10 @@ bool valid(const divine_trade_payload &p, uint16_t version)
 					return false;
 		}
 	}
+	if (p.has_cargo_effect &&
+	    (p.action != divine_trade_action::sale ||
+	     p.cargo_effect.type != PLAYER_TRADE_CARGO_AFFECT || p.cargo_effect.modifier < 0))
+		return false;
 	for (int64_t coin : p.wallet_after.amount)
 		if (coin < 0 || coin > INT32_MAX)
 			return false;
@@ -197,11 +202,22 @@ static bool build_version(critical_command *command, critical_operation_id opera
 		append(bytes, std::bit_cast<uint32_t>(cell.modifier));
 		append(bytes, cell.price);
 	}
+	if (version >= 2)
+	{
+		std::vector<uint8_t> effect;
+		if (p.has_cargo_effect)
+		{
+			if (player_affect_snapshot_encode(p.cargo_effect, &effect) !=
+			    player_snapshot_codec_result::ok)
+				return false;
+		}
+		append(bytes, static_cast<uint32_t>(effect.size()));
+		bytes.insert(bytes.end(), effect.begin(), effect.end());
+	}
+	else if (p.has_cargo_effect)
+		return false;
 	if (version >= 3)
 	{
-		// Reserved affect field keeps the v3 framing shared with the later
-		// recipient-capture bridge; this preparation-only slice writes it empty.
-		append(bytes, uint32_t{ 0 });
 		for (int32_t field : { p.crew_before.crew_index, p.crew_before.sail_skill_milli,
 				       p.crew_before.guns_skill_milli,
 				       p.crew_before.repair_skill_milli, p.crew_before.sail_chief,
@@ -266,17 +282,10 @@ static bool build_version(critical_command *command, critical_operation_id opera
 	return true;
 }
 
-bool divine_trade_command_build(critical_command *command, critical_operation_id operation,
-				const divine_trade_payload &payload)
-{
-	return build_version(command, operation, payload, DIVINE_TRADE_PAYLOAD_VERSION);
-}
-
 bool divine_trade_command_decode(const critical_command &command, divine_trade_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::divine_trade ||
-	    (command.payload_version != 1 &&
-	     command.payload_version != DIVINE_TRADE_PAYLOAD_VERSION) ||
+	    (command.payload_version < 1 || command.payload_version > DIVINE_TRADE_PAYLOAD_VERSION) ||
 	    !critical_command_valid(command))
 		return false;
 	divine_trade_payload p;
@@ -325,11 +334,23 @@ bool divine_trade_command_decode(const critical_command &command, divine_trade_p
 		cell.goods = static_cast<divine_trade_goods>(goods);
 		cell.modifier = std::bit_cast<float>(modifier);
 	}
+	if (command.payload_version >= 2)
+	{
+		uint32_t size = 0;
+		if (!read(bytes, offset, size) || size > bytes.size() - offset)
+			return false;
+		if (size)
+		{
+			if (player_affect_snapshot_decode(bytes.data() + offset, size,
+							  &p.cargo_effect) !=
+			    player_snapshot_codec_result::ok)
+				return false;
+			p.has_cargo_effect = true;
+		}
+		offset += size;
+	}
 	if (command.payload_version >= 3)
 	{
-		uint32_t affect_bytes = 0;
-		if (!read(bytes, offset, affect_bytes) || affect_bytes)
-			return false;
 		for (int32_t *field :
 		     { &p.crew_before.crew_index, &p.crew_before.sail_skill_milli,
 		       &p.crew_before.guns_skill_milli, &p.crew_before.repair_skill_milli,
@@ -361,48 +382,6 @@ bool divine_trade_command_decode(const critical_command &command, divine_trade_p
 	if (!critical_command_equal(expected, command))
 		return false;
 	*payload = std::move(p);
-	return true;
-}
-
-bool divine_trade_result_encode(const divine_trade_result &r,
-				std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> *bytes)
-{
-	if (!bytes || !r.pid || r.pid > INT32_MAX || !r.ship_id || r.ship_id > INT32_MAX ||
-	    !r.generation || !r.wallet_revision || !r.book_revision ||
-	    r.payment < -static_cast<int64_t>(INT32_MAX) || r.payment > INT32_MAX ||
-	    r.qualifying_quantity > INT32_MAX)
-		return false;
-	std::vector<uint8_t> encoded;
-	append(encoded, r.pid);
-	append(encoded, r.ship_id);
-	append(encoded, r.generation);
-	append(encoded, r.wallet_revision);
-	append(encoded, r.book_revision);
-	append(encoded, r.payment);
-	append(encoded, r.qualifying_quantity);
-	append(encoded, uint32_t{ 0 });
-	std::copy(encoded.begin(), encoded.end(), bytes->begin());
-	return true;
-}
-
-bool divine_trade_result_decode(const uint8_t *bytes, size_t size, divine_trade_result *result)
-{
-	if (!bytes || size != DIVINE_TRADE_RESULT_BYTES || !result)
-		return false;
-	const std::vector<uint8_t> encoded(bytes, bytes + size);
-	divine_trade_result r;
-	size_t offset = 0;
-	uint32_t reserved = 0;
-	if (!read(encoded, offset, r.pid) || !read(encoded, offset, r.ship_id) ||
-	    !read(encoded, offset, r.generation) || !read(encoded, offset, r.wallet_revision) ||
-	    !read(encoded, offset, r.book_revision) || !read(encoded, offset, r.payment) ||
-	    !read(encoded, offset, r.qualifying_quantity) || !read(encoded, offset, reserved) ||
-	    reserved)
-		return false;
-	std::array<uint8_t, DIVINE_TRADE_RESULT_BYTES> checked;
-	if (!divine_trade_result_encode(r, &checked))
-		return false;
-	*result = r;
 	return true;
 }
 
@@ -480,4 +459,10 @@ bool divine_trade_book_transition_valid(const divine_trade_book &before,
 		      });
 	return expected == after.lots && p.qualifying_quantity <= removed &&
 	       after.revision == before.revision + changed.size();
+}
+
+bool divine_trade_command_build(critical_command *command, critical_operation_id operation,
+				const divine_trade_payload &payload)
+{
+	return build_version(command, operation, payload, DIVINE_TRADE_PAYLOAD_VERSION);
 }

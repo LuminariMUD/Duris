@@ -46,6 +46,7 @@ bool worker_pending = false, command_pending = false;
 critical_command submitted;
 std::mutex pipeline_mutex;
 uint32_t trade_player_pid = 0;
+player_pending_trade_snapshot trade_capture;
 player_save_pipeline_health health;
 struct captured
 {
@@ -426,6 +427,11 @@ int main()
 	worker_pending = true;
 	assert(player_save_pipeline_load_held(1));
 	assert(!player_save_pipeline_load_held(0));
+	worker_pending = false;
+	trade_player_pid = 1;
+	assert(player_save_pipeline_load_held(1) && !player_save_pipeline_load_held(2));
+	trade_player_pid = 0;
+	assert(!player_save_pipeline_load_held(1));
 
 	// The real outcome submitter defers this epic delta until a committed result.
 	combat_outcome_transaction_reset_for_tests();
