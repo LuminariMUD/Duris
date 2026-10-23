@@ -950,6 +950,14 @@ int main()
 	const auto generation_before_wallet_fault = market_generation;
 	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
 					     divine_trade_goods::cargo));
+	auto initial_hold = prepared();
+	complete(false);
+	auto inflated_hold = initial_hold;
+	inflated_hold.book_after.first_full_hold = 500;
+	const auto hold_id = retained.operation_id;
+	assert(!divine_trade_runtime_submit(&restored.ch, &ship, hold_id, inflated_hold));
+	assert(!divine_trade_runtime_busy());
+	assert(divine_trade_runtime_submit(&restored.ch, &ship, hold_id, initial_hold));
 	GET_COPPER(&restored.ch) = 0;
 	complete();
 	assert(divine_trade_runtime_busy() && capture_reserved && ship.slot[0].type == SLOT_EMPTY &&
@@ -964,6 +972,44 @@ int main()
 	       ship.slot[0].type == SLOT_CARGO && ship.slot[0].val0 == 1 &&
 	       GET_MONEY(&restored.ch) == 0 &&
 	       market_generation == generation_before_wallet_fault + 1);
+
+	// An unrelated loss while A settles must retain B's cross-ship save fence.
+	boon.id = 101;
+	auto unrelated = buy.book_after;
+	unrelated.boon_id = 101;
+	unrelated.account += 900;
+	unrelated.first_ship_id = 2;
+	unrelated.lots[0].ship_id = 2;
+	unrelated.lots[0].purchased_quantity = unrelated.lots[0].remaining_quantity = 2;
+	unrelated.lots[0].invoice_basis = unrelated.lots[0].remaining_basis = 200;
+	auto linked_lot = unrelated.lots[0];
+	linked_lot.ship_id = 3;
+	linked_lot.purchase.bytes[0] ^= 0x77;
+	unrelated.lots.push_back(linked_lot);
+	boot_books = { unrelated };
+	durable_ship_ids = { 1, 2, 3 };
+	assert(divine_trade_runtime_boot(101));
+	ship.db_id = 1;
+	ship.slot[0].clear();
+	ship.save_pending = false;
+	GET_COPPER(&restored.ch) = 500;
+	ShipData loss_ship{}, linked_ship{};
+	loss_ship.db_id = 2;
+	linked_ship.db_id = 3;
+	loss_ship.slot[0].type = SLOT_CARGO;
+	loss_ship.slot[0].index = 2;
+	loss_ship.slot[0].val0 = 2;
+	loss_ship.slot[0].val1 = 200;
+	assert(divine_trade_runtime_purchase(&restored.ch, &ship, 0, 2, 1, 100,
+					     divine_trade_goods::cargo));
+	assert(divine_trade_runtime_busy());
+	assert(divine_trade_runtime_loss(&loss_ship, 0, 1));
+	assert(divine_trade_runtime_save_busy(&linked_ship));
+	complete();
+	assert(!divine_trade_runtime_busy());
+	assert(divine_trade_runtime_save_busy(&linked_ship));
+	divine_trade_runtime_ship_saved(2);
+	assert(!divine_trade_runtime_save_busy(&linked_ship));
 
 	while (alice.ch.affected)
 	{

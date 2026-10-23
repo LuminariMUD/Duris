@@ -238,6 +238,12 @@ int main()
  assert(!zone_touch_transaction_busy(p.stone_uid,p.zone_number));
  zone_touch_transaction_handle_completions(&prepared,1);
  assert(prepared_deliveries.size()==2);
+ p.stone_uid=101;
+ assert(zone_touch_transaction_submit(p));
+ auto malformed_prepared=complete(critical_apply_outcome::already_applied,false);
+ zone_touch_transaction_handle_completions(&malformed_prepared,1);
+ assert(activations==4 && reservations==6 && releases==2);
+ assert(zone_touch_transaction_busy(p.stone_uid,p.zone_number));
 }
 '''
 

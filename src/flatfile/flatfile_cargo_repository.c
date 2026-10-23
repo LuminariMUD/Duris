@@ -227,6 +227,16 @@ flat_cargo_result flatfile_cargo_load(const std::string &root, flat_cargo_record
 	    flatfile_authority_transaction_recover(root, authority, error) !=
 		    flatfile_authority_transaction_result::ok)
 		return flat_cargo_result::io_error;
+	return flatfile_cargo_load(root, authority, record, error);
+}
+
+flat_cargo_result flatfile_cargo_load(const std::string &root,
+				      const flatfile_authority_lock &authority,
+				      flat_cargo_record *record, std::string *error)
+{
+	if (!authority.matches(root) || !record)
+		return flat_cargo_result::invalid;
+	const auto directory = root + "/metadata";
 	int lock_fd = -1;
 	if (!flatfile_lock_acquire(directory, cargo_lock_filename, &lock_fd, error))
 		return flat_cargo_result::io_error;

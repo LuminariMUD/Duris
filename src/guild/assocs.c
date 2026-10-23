@@ -948,6 +948,7 @@ bool Guild::save_with_kingdom(const kingdom_realm &realm)
 bool Guild::save()
 {
 #ifdef __NO_MYSQL__
+	save_dirty = true;
 	const char *configured_root = persistence_mode_flatfile_root();
 	if (!configured_root)
 	{
@@ -971,6 +972,7 @@ bool Guild::save()
 				  "flat guild save failed: %s", error.c_str());
 		return false;
 	}
+	save_dirty = false;
 	return true;
 #else
 	if (!sql_save_guild(this))
@@ -1004,6 +1006,9 @@ bool Guild::save_pending([[maybe_unused]] bool retry)
 		save_receipt.reset();
 	}
 	if (retry && save_dirty && !save_receipt)
+		save();
+#else
+	if (retry && save_dirty)
 		save();
 #endif
 	return save_dirty;

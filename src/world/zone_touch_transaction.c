@@ -199,6 +199,8 @@ void zone_touch_transaction_handle_completions(const critical_completion *comple
 		    (!entry.result.recovered_claim &&
 		     entry.result.artifact_intents != entry.payload.artifact_intents))
 		{
+			// The parent committed its immutable children even when its result is unreadable.
+			artifact_guild_delivery_complete(entry.payload.artifact_deliveries, true);
 			notify(entry.payload,
 			       "The stone reward receipt is unavailable. Please contact staff.\r\n");
 			continue; // Unknown committed result must not become a new award attempt.

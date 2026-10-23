@@ -1043,8 +1043,6 @@ bool rename_ship_owner(char *old_name, char *new_name)
  */
 bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange *change)
 {
-	if (divine_trade_runtime_busy(ship))
-		return FALSE;
 	if (!ship || !new_owner || !*new_owner)
 		return FALSE;
 

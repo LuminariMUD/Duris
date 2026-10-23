@@ -353,6 +353,7 @@ bool divine_trade_flatfile_restore_validate(const std::string &root, std::string
 	    flatfile_authority_transaction_recover(root, lock, error) !=
 		    flatfile_authority_transaction_result::ok)
 		return false;
+	uint64_t highest_generation = 0;
 	std::error_code ec;
 	std::filesystem::directory_iterator current(root + "/domains", ec), end;
 	for (; !ec && current != end; current.increment(ec))
@@ -385,10 +386,27 @@ bool divine_trade_flatfile_restore_validate(const std::string &root, std::string
 			std::array<uint8_t, SHA256_DIGEST_LENGTH> digest;
 			std::copy_n(bytes.begin() + 12 + CRITICAL_COMMAND_ID_BYTES, digest.size(),
 				    digest.begin());
-			if (replay(bytes, operation, digest).result_size !=
-			    DIVINE_TRADE_RESULT_BYTES)
+			const auto result = replay(bytes, operation, digest);
+			if (result.result_size != DIVINE_TRADE_RESULT_BYTES)
 				return false;
+			if (result.outcome == critical_apply_outcome::already_applied)
+				highest_generation =
+					std::max(highest_generation, result.durable_revision);
 		}
 	}
-	return !ec;
+	if (ec)
+		return false;
+	if (highest_generation)
+	{
+		flat_cargo_record market;
+		if (flatfile_cargo_load(root, lock, &market, error) != flat_cargo_result::ok ||
+		    market.trade_generation != highest_generation)
+		{
+			if (error)
+				*error =
+					"cargo market generation does not match retained trade receipts";
+			return false;
+		}
+	}
+	return true;
 }
