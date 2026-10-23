@@ -94,6 +94,7 @@ struct flatfile_saved_balances
 	int64_t epics = 0;
 	int64_t frags = 0;
 	int64_t old_frags = 0;
+	uint64_t divine_boon_delivery_seq = 0;
 };
 flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,

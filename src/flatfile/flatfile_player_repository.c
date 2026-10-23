@@ -1102,6 +1102,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	if (saves_balances)
 	{
+		balances.divine_boon_delivery_seq = incoming_sequence;
 		const auto prepared = flatfile_player_domain_prepare_saved_balances(
 			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
 			&saved_balances, error);

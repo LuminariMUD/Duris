@@ -1283,6 +1283,10 @@ int main(int argc, char **argv)
 		require(flatfile_player_domain_apply(root.string(), command).outcome ==
 				critical_apply_outcome::applied,
 			"prepare PvP receipt");
+		command.operation_id.bytes[0] = 224;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+				critical_apply_outcome::applied,
+			"prepare second PvP receipt");
 		player_load_request recovery = {};
 		recovery.request_id = 900;
 		recovery.pid = 42;
@@ -1291,16 +1295,18 @@ int main(int argc, char **argv)
 			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
 		const auto owed = flatfile_player_load_repository_execute(root.string(), recovery);
 		require(owed.outcome == player_load_outcome::applied &&
-				owed.divine_epic_deliveries.size() == 1 &&
+				owed.divine_epic_deliveries.size() == 2 &&
 				owed.divine_epic_deliveries[0].amount == 150 &&
-				owed.divine_epic_deliveries[0].sequence == 1,
+				owed.divine_epic_deliveries[0].sequence == 1 &&
+				owed.divine_epic_deliveries[1].sequence == 2 &&
+				owed.divine_epic_deliveries[1].previous == 1,
 			"flat login omitted an unpaid prepared receipt");
 		auto credited = make_full(11);
 		for (auto &field : credited.status_integers)
 			if (field.field == player_status_field::epics)
-				field.signed_value = owed.domains.epics + 150;
+				field.signed_value = owed.domains.epics + 300;
 		credited.status_integers.push_back(
-			{ player_status_field::divine_boon_delivery_seq, 0, 1, true });
+			{ player_status_field::divine_boon_delivery_seq, 0, 2, true });
 		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
 		require(flatfile_player_snapshot_apply(root.string(), credited, &error).outcome ==
 				player_save_apply_outcome::retryable_failure,
@@ -1310,7 +1316,7 @@ int main(int argc, char **argv)
 			flatfile_player_load_repository_execute(root.string(), recovery);
 		require(paid_credit.outcome == player_load_outcome::applied &&
 				paid_credit.divine_epic_deliveries.empty() &&
-				paid_credit.domains.epics == owed.domains.epics + 150,
+				paid_credit.domains.epics == owed.domains.epics + 300,
 			"flat checkpoint recovery lost or duplicated the prepared payout: outcome=" +
 				std::to_string(static_cast<unsigned>(paid_credit.outcome)) +
 				", balance=" + std::to_string(paid_credit.domains.epics) +
