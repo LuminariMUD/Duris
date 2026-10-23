@@ -500,6 +500,7 @@ bool insert_outbox(MYSQL *connection, const critical_command &command, const uin
 	{
 		destination = DIVINE_TRADE_OUTBOX_DESTINATION;
 		event_type = 1;
+		payload_version = DIVINE_TRADE_PAYLOAD_VERSION;
 	}
 	else if (command.type == critical_command_type::collector)
 	{

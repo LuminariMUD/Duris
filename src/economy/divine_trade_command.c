@@ -196,6 +196,21 @@ static bool build_version(critical_command *command, critical_operation_id opera
 		    p.slots_after[0].values[0] < static_cast<int64_t>(lot->purchased_quantity) ||
 		    p.slots_after[0].values[1] < lot->invoice_basis)
 			return false;
+		if (version >= 3)
+		{
+			const auto &before = p.slots_before.front();
+			const auto &after = p.slots_after.front();
+			const bool empty = before.slot_type == SLOT_EMPTY;
+			if ((!empty && (before.slot_type != after.slot_type ||
+					before.item_index != after.item_index ||
+					before.values[0] < 0 || before.values[1] < 0)) ||
+			    static_cast<int64_t>(after.values[0]) !=
+				    (empty ? 0 : before.values[0]) +
+					    static_cast<int64_t>(lot->purchased_quantity) ||
+			    static_cast<int64_t>(after.values[1]) !=
+				    (empty ? 0 : before.values[1]) + lot->invoice_basis)
+				return false;
+		}
 	}
 	if (!critical_command_normalize(&next) || !critical_command_valid(next))
 		return false;

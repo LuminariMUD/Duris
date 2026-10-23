@@ -266,6 +266,10 @@ int main()
 		auto result = critical_command_repository_apply(db, command);
 		require(result.outcome == critical_apply_outcome::applied,
 			"purchase did not commit after fault removal");
+		require(scalar(db,
+			       "SELECT COUNT(*) FROM critical_outbox WHERE destination=12 AND event_type=1 AND payload_version=3") !=
+				"0",
+			"trade outbox result version does not match its delivery handler");
 		require(critical_command_repository_apply(db, command).outcome ==
 					critical_apply_outcome::already_applied &&
 				wallet() == "1:3:3:15:8" &&

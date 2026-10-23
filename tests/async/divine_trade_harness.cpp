@@ -302,6 +302,19 @@ int main()
 	next_payload.slots_after[0].values[1] = 200;
 	assert(divine_trade_prepare_purchase(book, boon, next_buy, &next_payload.book_after));
 	assert(divine_trade_book_transition_valid(book, next_payload));
+	assert(divine_trade_command_build(&command, operation(901), next_payload));
+	for (size_t field : { size_t{ 0 }, size_t{ 1 } })
+		for (int adjustment : { -1, 1 })
+		{
+			auto phantom = next_payload;
+			phantom.slots_after[0].values[field] += adjustment;
+			critical_command refused;
+			assert(!divine_trade_command_build(&refused, operation(901), phantom));
+		}
+	// Retain the original receipt for the legacy wire checks below.
+	assert(divine_trade_command_build(&command, operation(900), payload));
+	command.accepted_at_usec = 123456;
+
 	auto forged = next_payload;
 	forged.book_after.lots.erase(forged.book_after.lots.begin());
 	assert(!divine_trade_book_transition_valid(book, forged));
