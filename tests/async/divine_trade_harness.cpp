@@ -118,10 +118,17 @@ int main()
 	assert(used.removed_basis == 105 && book.lots.empty() && book.consumed == 5);
 
 	// One account/boon allowance combines both goods and all ships/alts/sides.
-	buy = purchase(4, 25);
-	assert(divine_trade_prepare_purchase(blank, boon, buy, &book));
-	assert(divine_trade_prepare_removal(book, boon, removal(25, 25, 2500), &book, &used));
-	assert(used.qualifying_quantity == 25 && book.consumed == 25);
+	book = {};
+	for (uint64_t id = 40; id < 43; ++id)
+	{
+		const uint32_t quantity = id == 42 ? 5 : 10;
+		buy = purchase(id, quantity);
+		assert(divine_trade_prepare_purchase(book, boon, buy, &book));
+		assert(divine_trade_prepare_removal(
+			book, boon, removal(quantity, quantity, quantity * 100), &book, &used));
+		assert(used.qualifying_quantity == quantity);
+	}
+	assert(book.consumed == 25);
 	reload(book); // Empty lots must not discard the already-spent allowance.
 	buy = purchase(5, 10);
 	buy.ship_id = 99;

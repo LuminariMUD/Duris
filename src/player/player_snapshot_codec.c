@@ -317,6 +317,16 @@ bool valid_item_relationships(const std::vector<player_item_snapshot> &items)
 
 } // namespace
 
+bool player_snapshot_writes_wallet(const player_snapshot &snapshot)
+{
+	return (snapshot.components & PLAYER_COMPONENT_STATUS) &&
+	       std::any_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
+			   [](const auto &row) {
+				   return row.field >= player_status_field::copper &&
+					  row.field <= player_status_field::platinum;
+			   });
+}
+
 bool player_snapshot_divine_delivery_sequence(const player_snapshot &snapshot, uint64_t *sequence)
 {
 	if (!sequence)
@@ -600,6 +610,7 @@ player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snaps
 			   });
 		out.boolean(snapshot.recipes_are_external);
 		out.string(snapshot.output_preferences, OUTPUT_PREFERENCE_MAX_BYTES);
+		out.number<uint64_t>(snapshot.wallet_revision);
 		if (!out.valid || out.bytes.size() > PLAYER_SNAPSHOT_MAX_BYTES)
 			return player_snapshot_codec_result::limit_exceeded;
 		player_snapshot validated = {};
@@ -632,7 +643,8 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			return in.failure();
 		const uint32_t wire_version = snapshot.schema_version;
 		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
-		    wire_version == 7 || wire_version == 8 || wire_version == 9)
+		    wire_version == 7 || wire_version == 8 || wire_version == 9 ||
+		    wire_version == 10)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -748,6 +760,8 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 			return in.failure();
 		if (wire_version >= 5 &&
 		    !in.string(snapshot.output_preferences, OUTPUT_PREFERENCE_MAX_BYTES))
+			return in.failure();
+		if (wire_version >= 11 && !in.number(snapshot.wallet_revision))
 			return in.failure();
 		if (in.offset != in.size)
 			return player_snapshot_codec_result::invalid_value;

@@ -33,6 +33,8 @@ enum class player_snapshot_codec_result : uint8_t
 // Missing in old/partial snapshots means no delivered Divine award. A duplicate
 // or signed marker is malformed, rather than permission to reset delivery.
 bool player_snapshot_divine_delivery_sequence(const player_snapshot &snapshot, uint64_t *sequence);
+// Partial status operations that do not touch money do not advance its revision.
+bool player_snapshot_writes_wallet(const player_snapshot &snapshot);
 
 player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snapshot,
 						    std::vector<uint8_t> *encoded_out);

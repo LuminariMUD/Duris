@@ -531,7 +531,7 @@ int main()
 	}
 	critical_operation_id child_operation = {};
 	require(critical_operation_id_derive(zone.parent_operation, 0x5a544132, 11,
-						  &child_operation),
+					     &child_operation),
 		"derive zone award child");
 	char child_hex[CRITICAL_COMMAND_ID_HEX_SIZE] = {};
 	critical_operation_id_to_hex(child_operation, child_hex, sizeof(child_hex));
@@ -566,8 +566,8 @@ int main()
 		wrong_parent_hex += digits[byte >> 4];
 		wrong_parent_hex += digits[byte & 15];
 	}
-	execute("UPDATE critical_operation_inbox SET result_payload=UNHEX('" +
-		wrong_parent_hex + "') WHERE operation_id=UNHEX('" + child + "')");
+	execute("UPDATE critical_operation_inbox SET result_payload=UNHEX('" + wrong_parent_hex +
+		"') WHERE operation_id=UNHEX('" + child + "')");
 	require(load(11, 505).outcome == player_load_outcome::component_failure,
 		"unrelated zone parent receipt was accepted");
 	execute("UPDATE critical_operation_inbox SET result_payload=CONCAT(CHAR(0),SUBSTRING(result_payload,2)) WHERE operation_id=UNHEX('" +

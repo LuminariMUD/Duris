@@ -780,6 +780,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		snapshot.save_intent = save_intent;
 		snapshot.room_vnum = save_room_vnum(ch, room_vnum);
 		snapshot.recipes_are_external = true;
+		snapshot.wallet_revision = ch->only.pc->wallet_revision;
 		capture_budget budget;
 		if ((components & PLAYER_COMPONENT_STATUS) &&
 		    !capture_status(ch, snapshot, budget, save_intent))

@@ -624,6 +624,8 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 		materialized->conditions = incoming.conditions;
 		materialized->quest_values = incoming.quest_values;
 		materialized->output_preferences = incoming.output_preferences;
+		if (player_snapshot_writes_wallet(incoming))
+			materialized->wallet_revision = incoming.wallet_revision;
 	}
 	if (incoming.components & PLAYER_COMPONENT_LANGUAGES)
 		materialized->languages = incoming.languages;
@@ -1064,9 +1066,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			materialized.items.push_back(std::move(item));
 		}
 	}
-	std::vector<uint8_t> bytes;
-	if (!encode_file(&materialized, &bytes))
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	// A save that carries everything the player holds replaces what earlier
 	// transfers gave it, as a MariaDB save replaces the player_items rows they wrote.
 	constexpr player_component_mask_t held_components =
@@ -1085,12 +1084,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
 	// The wallet, epic points and frags are memory's: a save that carries them writes
-	// them into the player's domain record. A new player's baseline above already holds
-	// them.
+	// them into the player's domain record with the captured wallet revision.
 	flatfile_authority_operation saved_balances;
 	flatfile_saved_balances balances;
 	const bool saves_balances =
-		!new_player && status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
+		status_current && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 		snapshot_unsigned(snapshot, player_status_field::copper, &balances.wallet[0]) &&
 		snapshot_unsigned(snapshot, player_status_field::silver, &balances.wallet[1]) &&
 		snapshot_unsigned(snapshot, player_status_field::gold, &balances.wallet[2]) &&
@@ -1103,6 +1101,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	if (saves_balances)
 	{
 		balances.divine_boon_delivery_seq = incoming_sequence;
+		balances.wallet_revision = snapshot.wallet_revision;
 		const auto prepared = flatfile_player_domain_prepare_saved_balances(
 			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
 			&saved_balances, error);
@@ -1110,7 +1109,22 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (prepared != flatfile_player_domain_result::ok)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		materialized.wallet_revision = balances.wallet_revision;
+		for (auto &row : materialized.status_integers)
+			if (row.field >= player_status_field::copper &&
+			    row.field <= player_status_field::platinum)
+			{
+				row.unsigned_value =
+					balances.wallet[static_cast<size_t>(row.field) -
+							static_cast<size_t>(
+								player_status_field::copper)];
+				row.signed_value = 0;
+				row.is_unsigned = true;
+			}
 	}
+	std::vector<uint8_t> bytes;
+	if (!encode_file(&materialized, &bytes))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{
