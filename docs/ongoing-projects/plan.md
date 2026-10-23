@@ -50,6 +50,13 @@ Both current server builds pass. Fresh complete campaigns pass on MariaDB and fl
 
 ### Review-repair closeout, 2026-10-23
 
+Late #294 review added independent live manifest-quote assertions for the exact
+credited cargo and contraband amounts, including the staff fixture's separate
+Seadog contribution, plus an immediate `paused=yes` check after final restart.
+Both full current-code campaigns pass these assertions: MariaDB cargo 1,114,495
+and contraband 1,003,275 copper; flat cargo 1,263,559 and contraband 1,118,625.
+Both still prove the real stone, NPC EXP, expiry-held PvP and saved login.
+
 - Both final server backends build against current master; changed-line LLVM 22 tidy, formatting and whitespace pass.
 - MySQL 8 real outbox transactions, ambiguous ACK, publication waiting, exact expected-event audit and production audit cadence pass. MariaDB intent/partial-snapshot/ACK/identity tests and ten trade rollback boundaries pass.
 - Native delivery covers primary journal recovery, partial entity saves, interrupted ACK, ACK-before-prune restart, stale handoff, bounded admission, all 15 zone recipients and recovered-claim suppression. Actual artifact/guild tests retain later ordinary rewards/spending and preserve original identities.

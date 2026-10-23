@@ -28,6 +28,17 @@ PORTS = [559633,635260,88846,82669,66689,9967,22441,49090,43158,83786]
 SEED = json.loads((ROOT / 'migrations/seeds/epic_zone_payouts.json').read_text())['zones']
 
 
+def plain_text(value):
+    value = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', value)
+    return re.sub(r'&\+[A-Za-z]|&[nN]', '', value)
+
+
+def coin_value(value):
+    units = {'platinum': 1000, 'gold': 100, 'silver': 10, 'copper': 1}
+    return sum(int(amount) * units[coin] for amount, coin in
+               re.findall(r'(\d+)\s+(platinum|gold|silver|copper)', plain_text(value)))
+
+
 def build_campaign_helper(output):
     sources=['tests/async/divine_boon_campaign_fixture.cpp','src/economy/divine_boon.c',
              'src/economy/divine_boon_repository.c','src/economy/divine_trade.c',
@@ -250,9 +261,16 @@ def run(backend, binary):
                 while fixture('ready').strip() != 'READY':
                     assert time.monotonic() < deadline, 'crew normalization did not persist'
                     time.sleep(.1)
+                purchases = {}
                 for goods, quantity in (('cargo', 6), ('contraband', 1)):
+                    began = len(god.transcript)
                     god.send(f'buy {goods} {quantity}')
                     god.expect('Your cargo trade is complete: paid', timeout=60)
+                    god.expect('\n', timeout=30)
+                    receipt = plain_text(bytes(god.transcript[began:]).decode(errors='replace'))
+                    commodity = re.search(r'You buy (\d+) crates of (.*?) for ', receipt)
+                    assert commodity and int(commodity.group(1)) == quantity, receipt
+                    purchases[goods] = (quantity, commodity.group(2))
                 save(god, GOD)
                 stop()
                 bought = fixture('inspect')
@@ -261,9 +279,25 @@ def run(backend, binary):
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
                 command(god, f'goto {PORTS[destination]}')
+                sale_quotes = plain_text(command(god, 'list cargo'))
                 for goods in ('cargo', 'contraband'):
+                    quantity, commodity = purchases[goods]
+                    # The manifest quotes both goods even when the captain's
+                    # alignment hides the contraband shop-price section.
+                    quote = re.search(r'(?m)^\s*' + re.escape(commodity) +
+                                      r'\s+(\d+) crates\.\r?\n\s*Paid[^\n]*\n\s*Sell([^\n]+)', sale_quotes)
+                    assert quote and int(quote.group(1)) == quantity, (goods, commodity, sale_quotes)
+                    base = coin_value(quote.group(2))
+                    # The staff fixture has Seadog: cargo gets its existing 10%
+                    # plus Divine's separate 25% of base; contraband gets only 25%.
+                    ordinary = base * 11 // 10 if goods == 'cargo' else base
+                    expected = base * 27 // 20 if goods == 'cargo' else base * 5 // 4
+                    assert ordinary > 0 and expected > ordinary, (goods, quote)
                     god.send('sell ' + goods)
                     god.expect('Your cargo trade is complete: received', timeout=60)
+                    payment = god.expect('\n', timeout=30)
+                    assert coin_value(payment) == expected, (goods, ordinary, expected, payment)
+                    print(f'{backend}: {goods} credited={expected}, ordinary={ordinary}, Divine=25%', flush=True)
                 save(god, GOD)
                 stop()
                 sold = fixture('inspect')
@@ -405,6 +439,8 @@ def run(backend, binary):
                 score = command(player, 'score')
                 assert f'Epic points(total): {amount}(' in score, score
                 god = login(GOD, GOD_ACCOUNT)
+                restored_status = command(god, 'divineboon status')
+                assert 'paused=yes' in restored_status, restored_status
                 # Four hours passed while the real PvP payment was held above.
                 # Expired short events stay absent through restart and pause;
                 clock_file.write_text(str(epoch + 5 * 3600))
