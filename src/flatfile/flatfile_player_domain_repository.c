@@ -24,6 +24,7 @@
 #include "player/player_snapshot_codec.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <array>
 #include <cerrno>
 #include <cstring>
@@ -927,7 +928,35 @@ flatfile_player_domain_result flatfile_player_domain_restore_recover(const std::
 	flatfile_authority_lock authority;
 	if (!authority.acquire(root, error))
 		return flatfile_player_domain_result::io_error;
-	return recover_authority(root, authority, error);
+	const auto recovered = recover_authority(root, authority, error);
+	if (recovered != flatfile_player_domain_result::ok)
+		return recovered;
+	std::error_code ec;
+	std::filesystem::directory_iterator current(domains_directory(root), ec), end;
+	if (ec == std::errc::no_such_file_or_directory)
+		return flatfile_player_domain_result::ok;
+	for (; !ec && current != end; current.increment(ec))
+	{
+		const auto name = current->path().filename().string();
+		if (!name.starts_with("command-") || !name.ends_with(".receipt"))
+			continue;
+		constexpr size_t prefix = sizeof("command-") - 1;
+		constexpr size_t suffix = sizeof(".receipt") - 1;
+		constexpr size_t hex_size = CRITICAL_COMMAND_ID_HEX_SIZE - 1;
+		critical_operation_id operation;
+		if (name.size() != prefix + hex_size + suffix ||
+		    !critical_operation_id_from_hex(name.substr(prefix, hex_size).c_str(),
+						    &operation) ||
+		    name != receipt_filename(operation))
+			return flatfile_player_domain_result::invalid;
+		domain_operation receipt;
+		const auto retained = load_receipt(root, operation, &receipt, error);
+		if (retained != flatfile_player_domain_result::ok)
+			return retained == flatfile_player_domain_result::io_error ?
+				       retained :
+				       flatfile_player_domain_result::invalid;
+	}
+	return ec ? flatfile_player_domain_result::io_error : flatfile_player_domain_result::ok;
 }
 
 flatfile_player_domain_result flatfile_player_domain_load(const std::string &root, int32_t pid,

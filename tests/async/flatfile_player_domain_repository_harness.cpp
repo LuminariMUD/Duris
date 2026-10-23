@@ -577,6 +577,9 @@ int main(int argc, char **argv)
 		first.accepted_at_usec = 2;
 		require(flatfile_player_domain_apply(root.string(), first).error_code == EEXIST,
 			"receipt identity collision accepted");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::ok,
+			"restore qualification rejected valid permanent receipts");
 		{
 			std::fstream file(first_path,
 					  std::ios::in | std::ios::out | std::ios::binary);
@@ -587,6 +590,9 @@ int main(int argc, char **argv)
 		first.operation_id.bytes[0] = 70;
 		require(flatfile_player_domain_apply(root.string(), first).error_code == EILSEQ,
 			"corrupt permanent receipt accepted");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::invalid,
+			"restore qualification ignored a corrupt permanent receipt");
 
 		// Unpaid awards stop at the recovery limit and wait for a retry. A full
 		// record whose parents lack permanent receipts archives every one of them.
