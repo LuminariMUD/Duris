@@ -218,8 +218,8 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         outbox = transaction[transaction.index("boon_reward_transaction_outbox_delivery"):transaction.index("boon_reward_health boon_reward_transaction_health_copy")]
         self.assertNotIn("persistence_alert(", outbox)
         self.assertNotIn("wizlog(", outbox)
-        self.assertIn("needs_checkpoint(result)", outbox)
-        self.assertIn("needs_checkpoint(result)", publication)
+        self.assertIn("boon_reward_requires_checkpoint(result)", outbox)
+        self.assertIn("boon_reward_requires_checkpoint(result)", publication)
         self.assertIn("published_flat.insert(key)", publication)
         self.assertIn("if (retain)", publication)
         self.assertIn("flatfile_boon_find_pending_reward", ready)

@@ -127,24 +127,12 @@ std::string operation_key(const critical_operation_id &operation_id)
 			   operation_id.bytes.size());
 }
 
-bool needs_checkpoint(const boon_reward_result &result)
-{
-	for (size_t index = 0; index < result.entry_count; ++index)
-	{
-		const auto &entry = result.entries[index];
-		if ((entry.flags & BOON_RESULT_COMPLETED) && entry.type != BTYPE_STATS &&
-		    entry.type != BTYPE_POINT)
-			return true;
-	}
-	return false;
-}
-
 bool publish_reward(P_char character, const critical_operation_id &operation_id, double data,
 		    const boon_reward_result &result)
 {
 	const std::string key = operation_key(operation_id);
 	const bool retain = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY &&
-			    needs_checkpoint(result);
+			    boon_reward_requires_checkpoint(result);
 	if (retain && published_flat.contains(key))
 		return false;
 	bool publish;
@@ -292,7 +280,7 @@ void boon_reward_transaction_handle_completions(const critical_completion *compl
 				publish_reward(character, completions[index].operation_id, data,
 					       result);
 			}
-			else if (!needs_checkpoint(result))
+			else if (!boon_reward_requires_checkpoint(result))
 			{
 				// Progress and shop counters are already committed. No player
 				// callback/checkpoint is needed to finish their admission.
@@ -349,7 +337,7 @@ try
 	for (const auto &[key, entry] : pending)
 		if (entry.pid == static_cast<uint32_t>(GET_PID(character)) &&
 		    entry.committed_result.pid &&
-		    (!entry.published || !needs_checkpoint(entry.committed_result)))
+		    (!entry.published || !boon_reward_requires_checkpoint(entry.committed_result)))
 			known.push_back(key);
 	std::sort(
 		known.begin(), known.end(), [](const auto &left, const auto &right)
@@ -370,12 +358,14 @@ try
 	const char *root = persistence_mode_flatfile_root();
 	if (!root)
 		return;
+	bool safe_only = false;
 	for (size_t delivered = 0; delivered < 64; ++delivered)
 	{
 		flatfile_boon_pending_reward reward;
 		std::string error;
 		const auto found = flatfile_boon_find_pending_reward(
-			root, static_cast<uint32_t>(GET_PID(character)), &reward, &error);
+			root, static_cast<uint32_t>(GET_PID(character)), &reward, &error,
+			safe_only);
 		if (found == flatfile_boon_result::not_found)
 			break;
 		if (found != flatfile_boon_result::ok)
@@ -387,8 +377,11 @@ try
 		}
 
 		if (published_flat.contains(operation_key(reward.operation_id)))
-			break;
-		if (needs_checkpoint(reward.result) &&
+		{
+			safe_only = true;
+			continue;
+		}
+		if (boon_reward_requires_checkpoint(reward.result) &&
 		    pending.find(operation_key(reward.operation_id)) == pending.end())
 		{
 			// Old receipts cannot distinguish an unpaid reward from a reward
@@ -400,11 +393,16 @@ try
 			persistence_alert(AVATAR, "boon_reward", "player", "unknown",
 					  "load_pending", "legacy_uncheckpointed", "pid=%u",
 					  reward.result.pid);
-			break;
+			safe_only = true;
+			continue;
 		}
 		if (!publish_reward(character, reward.operation_id, reward.event_data,
 				    reward.result))
-			break;
+		{
+			if (!boon_reward_requires_checkpoint(reward.result))
+				break; // A checkpoint-free ACK failed; keep its retry visible.
+			safe_only = true;
+		}
 	}
 }
 
@@ -426,8 +424,9 @@ boon_reward_transaction_outbox_delivery(const critical_outbox_record &record, vo
 		return critical_outbox_delivery_result::terminal_failure;
 	// This callback runs on the outbox worker. Health/status exposes retained
 	// records; never call game-thread descriptor/wizlog notification here.
-	return needs_checkpoint(result) ? critical_outbox_delivery_result::terminal_failure :
-					  critical_outbox_delivery_result::delivered;
+	return boon_reward_requires_checkpoint(result) ?
+		       critical_outbox_delivery_result::terminal_failure :
+		       critical_outbox_delivery_result::delivered;
 }
 
 boon_reward_health boon_reward_transaction_health_copy(void)

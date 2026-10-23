@@ -504,6 +504,45 @@ static void ordered_offline_rewards()
 	assert(experience == 32 && boon_reward_transaction_health_copy().pending == 0);
 }
 
+static void safe_rewards_after_ambiguous(const std::string &root)
+{
+	reset_actor(20, 100);
+	flat_root = root;
+	std::filesystem::create_directories(root + "/domains");
+	std::filesystem::permissions(root, std::filesystem::perms::owner_all);
+	std::filesystem::permissions(root + "/domains", std::filesystem::perms::owner_all);
+	flatfile_boon_definition definition{};
+	definition.id = 7;
+	definition.type = BTYPE_EPIC;
+	definition.option = BOPT_LEVEL;
+	definition.criteria = 20;
+	definition.bonus = 4;
+	definition.active = true;
+	definition.author = "test";
+	std::string error;
+	assert(flatfile_boon_establish(root, { definition }, &error) == flatfile_boon_result::ok);
+	assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	assert(flatfile_boon_repository_apply(root, commands.back()).outcome ==
+	       critical_apply_outcome::applied);
+	const auto ambiguous = commands.back().operation_id;
+	// A later progress-only result has no recipient checkpoint to guess.
+	assert(boon_reward_transaction_submit(&actor, nullptr, 0, BOPT_LEVEL));
+	const auto safe = commands.back().operation_id;
+	assert(flatfile_boon_repository_apply(root, commands.back()).outcome ==
+	       critical_apply_outcome::applied);
+	boon_reward_transaction_reset_for_tests();
+	boon_reward_transaction_player_ready(&actor);
+	flatfile_boon_pending_reward reward;
+	assert(flatfile_boon_find_pending_reward(root, 42, &reward, &error) ==
+		       flatfile_boon_result::ok &&
+	       critical_operation_id_equal(reward.operation_id, ambiguous));
+	assert(flatfile_boon_find_pending_reward(root, 42, &reward, &error, true) ==
+	       flatfile_boon_result::not_found);
+	assert(!critical_operation_id_equal(ambiguous, safe) && pc.epics == 100 &&
+	       artifact_awards == 0);
+	flat_root.clear();
+}
+
 static void checkpoint_free_offline(const std::string &root)
 {
 	for (bool flat : { false, true })
@@ -784,6 +823,7 @@ int main(int argc, char **argv)
 	sql_offline_rewards();
 	ordered_offline_rewards();
 	checkpoint_free_offline(std::string(argv[1]) + "/checkpoint-free");
+	safe_rewards_after_ambiguous(std::string(argv[1]) + "/safe-after-ambiguous");
 	checkpoint_free_outbox();
 	checkpoint_free_online_ack_failure(std::string(argv[1]) + "/online-ack-failure");
 	checkpoint_free_online_ack_failure(std::string(argv[1]) + "/offline-ack-failure", false);
