@@ -1,4 +1,5 @@
 #include "ships/ships.h"
+#include "persistence/maintenance_snapshot.h"
 #include "ships/ship_cargo_transaction.h"
 #include "flatfile/flatfile_cargo_repository.h"
 #include <openssl/sha.h>
@@ -33,6 +34,10 @@ const char *persistence_mode_flatfile_root(void)
 
 // No price band is configured here, so loading keeps every modifier as stored.
 float get_property(const char *, double fallback)
+{
+	return fallback;
+}
+int get_property(const char *, int fallback)
 {
 	return fallback;
 }
@@ -224,6 +229,18 @@ int main(int argc, char **argv)
 	require(read_cargo() && cargo_trade_generation() == 0 &&
 			ship_cargo_market_mod[4][5] == 1.7f,
 		"legacy cargo record failed to load without invented trade state");
+	maintenance_request request{};
+	request.job_id = maintenance_job_id::cargo_market;
+	request.work_id = 123456;
+	require(maintenance_prepare_request(request, nullptr) &&
+			request.value_count == 4 + NUM_PORTS * NUM_PORTS * 4,
+		"cargo dispatcher rejected its generation-bearing snapshot");
+	const auto captured_values = request.values;
+	require(maintenance_prepare_request(request, nullptr) && request.values == captured_values,
+		"repeated maintenance preparation adjusted the live market twice");
+	require(flatfile_cargo_maintenance_apply(request.values.data(), request.value_count),
+		"dispatched cargo maintenance was not persisted");
+
 	state_root = (fixtures / "symlink").string();
 	prepare_root(state_root);
 	const fs::path target = fixtures / "outside";

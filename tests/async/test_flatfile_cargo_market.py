@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import SRC, rel
+from _paths import SRC, rel, extract_function
 import pathlib
 import subprocess
 import tempfile
@@ -13,6 +13,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix="duris-flat-cargo-") as temporary:
     temporary_path = pathlib.Path(temporary)
     binary = temporary_path / "flatfile_cargo_market_test"
+    dispatcher = temporary_path / "dispatcher.cpp"
+    dispatcher.write_text(
+        '#include "core/prototypes.h"\n'
+        '#include "ships/ships.h"\n'
+        '#include "persistence/maintenance_snapshot.h"\n'
+        '#include <cmath>\n#include <ctime>\n'
+        'static bool prepare_web_status(maintenance_request &) { return false; }\n'
+        'static bool prepare_statistics(maintenance_request &) { return false; }\n'
+        'static bool prepare_boon_scan(maintenance_request &) { return false; }\n' +
+        extract_function("persistence/maintenance_snapshot.c", "int64_t scaled(") + '\n' +
+        extract_function("persistence/maintenance_snapshot.c", "bool maintenance_prepare_request("))
+
     compile_result = subprocess.run(
         [
             "g++",
@@ -30,6 +42,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-cargo-") as temporary:
             "-Isrc/ships",
             "-I/usr/include/libxml2",
             "tests/async/flatfile_cargo_market_harness.cpp",
+            str(dispatcher),
             rel("ship_cargo.c"),
             rel("flatfile_store.c"),
             rel("flatfile_authority_transaction.c"),

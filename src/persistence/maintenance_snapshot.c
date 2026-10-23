@@ -210,7 +210,7 @@ bool maintenance_prepare_request(maintenance_request &request, void *)
 	case maintenance_job_id::cargo_market:
 		request.value_count = cargo_maintenance_snapshot(
 			request.work_id, request.values.data(), request.values.size());
-		return request.value_count == 3 + NUM_PORTS * NUM_PORTS * 4;
+		return request.value_count == 4 + NUM_PORTS * NUM_PORTS * 4;
 	default:
 		return true;
 	}

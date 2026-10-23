@@ -45,7 +45,7 @@ bool valid(const divine_trade_payload &p)
 	    p.crew_after.crew_index >= MAXCREWS)
 		return false;
 	for (int64_t coin : p.wallet_after.amount)
-		if (coin < 0)
+		if (coin < 0 || coin > INT32_MAX)
 			return false;
 	const auto &crew = p.crew_after;
 	if (crew.sail_skill_milli < 0 || crew.guns_skill_milli < 0 || crew.repair_skill_milli < 0)

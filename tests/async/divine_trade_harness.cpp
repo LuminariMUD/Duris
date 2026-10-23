@@ -261,6 +261,13 @@ int main()
 	payload.book_after = book;
 	critical_command command;
 	assert(divine_trade_command_build(&command, operation(900), payload));
+	for (size_t coin = 0; coin < 4; ++coin)
+	{
+		auto overflow = payload;
+		overflow.wallet_after.amount[coin] = static_cast<int64_t>(INT32_MAX) + 1;
+		critical_command refused;
+		assert(!divine_trade_command_build(&refused, operation(900), overflow));
+	}
 	command.accepted_at_usec = 123456;
 	divine_trade_payload decoded;
 	assert(divine_trade_command_decode(command, &decoded));
