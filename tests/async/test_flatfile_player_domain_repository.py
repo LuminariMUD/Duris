@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as tem
             rel("flatfile_player_snapshot_file.c"), rel("player_snapshot_codec.c"),
             rel("flatfile_authority_transaction.c"),
             rel("flatfile_store.c"),
-            rel("epic_command.c"),
+            rel("epic_command.c"), rel("zone_touch_command.c"),
             rel("currency_command.c"),
             rel("combat_outcome_command.c"),
             rel("critical_command.c"),

@@ -15,6 +15,8 @@ with tempfile.TemporaryDirectory(prefix="divine-delivery-", dir=output_root) as 
         ("CHECKPOINT_BODY", "player/player_save_pipeline.c", "player_save_pipeline_result player_save_pipeline_checkpoint_dirty("),
         ("LOAD_HOLD_BODY", "player/player_save_pipeline.c", "bool player_save_pipeline_load_held("),
         ("ORDINARY_PVP_MATH", "world/epic.c", "int epic_calculate_pvp_award("),
+        ("PRECISE_STONE_BASE", "world/epic.c", "static double epic_stone_payout_precise("),
+        ("PREPARED_ZONE_MATH", "world/epic.c", "static bool prepare_stone_award("),
         ("PREPARED_PVP_MATH", "world/epic.c", "bool epic_prepare_pvp_award("),
     ):
         text = text.replace("// " + marker, extract_function(path, signature))
@@ -27,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="divine-delivery-", dir=output_root) as 
              "-fno-pie", "-no-pie", "-ffunction-sections", "-fdata-sections", "-Isrc",
              *(["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []),
              str(source), "src/economy/divine_boon_delivery.c", "src/economy/divine_boon.c",
-             "src/combat/combat_outcome_command.c", "src/persistence/critical_command.c",
+             "src/combat/combat_outcome_command.c", "src/world/zone_touch_command.c", "src/world/epic_command.c", "src/persistence/critical_command.c",
              "src/combat/combat_outcome_transaction.c",
              "src/economy/currency_command.c", str(HARNESS_STUBS),
              "-Wl,--gc-sections", "-lcrypto", "-o", binary], cwd=ROOT, check=True,

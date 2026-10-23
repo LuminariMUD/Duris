@@ -298,7 +298,7 @@ def test_epic_boon_publication() -> None:
         subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                         '-ffunction-sections', '-fdata-sections', '-fsanitize=address,undefined',
                         '-g', '-no-pie', '-Isrc', '-I/usr/include/mysql', str(cpp),
-                        'src/world/epic_transaction.c', 'src/world/epic_command.c',
+                        'src/world/epic_transaction.c', 'src/world/epic_command.c', 'src/world/zone_touch_command.c',
                         'src/economy/boon_reward_transaction.c', 'src/economy/boon_reward_command.c',
                         'src/economy/boon_shop_transaction.c',
                         'src/economy/boon_shop_command.c', 'src/economy/currency_command.c',

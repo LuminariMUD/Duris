@@ -38,6 +38,7 @@ using namespace std;
 #include "core/utils.h"
 #include "combat/ctf.h"
 #include "world/epic.h"
+#include "economy/divine_boon_selection.h"
 #include "world/epic_bonus.h"
 #include "world/epic_transaction.h"
 #include "guild/artifact_guild_transaction.h"
@@ -4273,6 +4274,7 @@ static void show_world_persistence(P_char ch)
 		 epic_task_catalog_ready(), epic_task_catalog_size(),
 		 epic_task_catalog_last_refresh(), pending_tasks, pending_reads_unavailable);
 	send_to_char(line, ch);
+	divine_boon_selection_status(ch);
 
 	snprintf(line, sizeof(line),
 		 "maintenance state=%s queued=%llu inflight=%llu completions=%llu "

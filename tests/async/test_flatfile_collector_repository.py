@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
         rel("auction_command.c"),
         rel("item_transfer_command.c"),
         rel("shop_trade_command.c"),
-        rel("epic_command.c"),
+        rel("epic_command.c"), rel("zone_touch_command.c"),
         rel("currency_command.c"),
         rel("combat_outcome_command.c"),
         rel("boon_reward_command.c"),

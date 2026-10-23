@@ -63,7 +63,8 @@ uint64_t get_u64(const uint8_t *input)
 bool valid_reason(epic_reason_type reason)
 {
 	return reason > epic_reason_type::unknown &&
-	       reason <= epic_reason_type::chaos_starter_reward;
+	       (reason <= epic_reason_type::chaos_starter_reward ||
+		reason == epic_reason_type::divine_zone_award);
 }
 } // namespace
 

@@ -1137,6 +1137,7 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 		unsigned int result_code = 0;
 		bool mutation_applied = false;
 		static_cast<zone_touch_payload &>(zone_result) = zone_payload;
+		zone_result.parent_operation = command.operation_id;
 		if (zone_payload.stone_uid)
 		{
 			// The claim, every child ledger, and zone history share this transaction.
@@ -1233,13 +1234,60 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 									&award_bytes) ||
 					    !insert_outbox(connection, child, award_bytes.data(),
 							   award_bytes.size()) ||
-					    !finish_inbox(connection, child, award_result.revision,
-							  0, award_bytes.data(), award_bytes.size(),
-							  1))
+					    (!zone_payload.prepared_delivery &&
+					     !finish_inbox(connection, child, award_result.revision,
+							   0, award_bytes.data(), award_bytes.size(), 1)))
 					{
 						const auto error = database_error(connection);
 						rollback(connection);
 						return failure(error ? error : EIO);
+					}
+					if (zone_payload.prepared_delivery)
+					{
+						const std::string prior_sql =
+							"SELECT epic_revision FROM epic_ledger WHERE pid=" +
+							std::to_string(
+								zone_payload.participant_pids[i]) +
+							" AND epic_revision<" +
+							std::to_string(award_result.revision) +
+							" AND reason_type IN (" +
+							std::to_string(static_cast<uint16_t>(
+								epic_reason_type::divine_pvp_award)) +
+							"," +
+							std::to_string(static_cast<uint16_t>(
+								epic_reason_type::divine_zone_award)) +
+							") ORDER BY epic_revision DESC LIMIT 1 FOR UPDATE";
+						if (!execute(connection, prior_sql.c_str()))
+						{
+							const auto error =
+								database_error(connection);
+							rollback(connection);
+							return failure(error);
+						}
+						MYSQL_RES *rows = mysql_store_result(connection);
+						if (!rows)
+						{
+							rollback(connection);
+							return failure(EIO);
+						}
+						MYSQL_ROW row = mysql_fetch_row(rows);
+						bool valid = !row;
+						if (row && row[0] && *row[0] && *row[0] != '-')
+						{
+							char *end = nullptr;
+							errno = 0;
+							zone_result.previous[i] =
+								strtoull(row[0], &end, 10);
+							valid = !errno && end && !*end &&
+								zone_result.previous[i] <
+									award_result.revision;
+						}
+						mysql_free_result(rows);
+						if (!valid)
+						{
+							rollback(connection);
+							return failure(EILSEQ);
+						}
 					}
 					zone_result.balances[i] = award_result.balance;
 					zone_result.revisions[i] = award_result.revision;
@@ -1269,6 +1317,26 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 			mutation_applied =
 				true; // Successful recovery also needs its own receipt outbox.
 		std::array<uint8_t, ZONE_TOUCH_RESULT_BYTES> result_payload = {};
+		if (zone_result.prepared_delivery && !result_code && !zone_result.recovered_claim)
+		{
+			if (!zone_touch_command_encode_result(zone_result, &result_payload))
+			{
+				rollback(connection);
+				return failure(EBADMSG);
+			}
+			for (size_t i = 0; i < zone_result.group_size; ++i)
+			{
+				critical_command child;
+				if (!zone_touch_award_command(command, i, &child) ||
+				    !finish_inbox(connection, child, zone_result.revisions[i], 0,
+						  result_payload.data(), result_payload.size(), 1))
+				{
+					const auto error = database_error(connection);
+					rollback(connection);
+					return failure(error ? error : EIO);
+				}
+			}
+		}
 		if (!zone_touch_command_encode_result(zone_result, &result_payload) ||
 		    (mutation_applied && !insert_outbox(connection, command, result_payload.data(),
 							result_payload.size())) ||

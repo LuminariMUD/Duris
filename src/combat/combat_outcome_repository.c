@@ -213,10 +213,13 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 		{
 			if (!execute(connection,
 				     "SELECT epic_revision FROM epic_ledger WHERE pid=" +
-					     std::to_string(entry.pid) + " AND reason_type=" +
+					     std::to_string(entry.pid) + " AND reason_type IN (" +
 					     std::to_string(static_cast<uint16_t>(
 						     epic_reason_type::divine_pvp_award)) +
-					     " ORDER BY epic_revision DESC LIMIT 1 FOR UPDATE"))
+					     "," +
+					     std::to_string(static_cast<uint16_t>(
+						     epic_reason_type::divine_zone_award)) +
+					     ") ORDER BY epic_revision DESC LIMIT 1 FOR UPDATE"))
 				return false;
 			MYSQL_RES *rows = mysql_store_result(connection);
 			MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;

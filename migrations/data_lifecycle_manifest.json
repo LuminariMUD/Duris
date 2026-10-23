@@ -6493,6 +6493,64 @@
       "exception": "protected_recovery_replay_or_restore_horizon",
       "protected_record": true,
       "dependencies": []
+    },
+    {
+      "id": "file:epic-zone-state",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/zone-*.state",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "not_subject_scoped",
+      "technical_purpose": "Saved epic-zone alignment and last-touch state for flat-file recovery",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
+      "id": "file:epic-stone-claims",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_ROOT/domains/stone-*.claim",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "participant_player_pids",
+      "technical_purpose": "Permanent stone claims and prepared participant awards for idempotent epic recovery",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
     }
   ]
 }

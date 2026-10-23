@@ -12,6 +12,7 @@
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "combat/combat_outcome_command.h"
+#include "world/zone_touch_command.h"
 #include <algorithm>
 #include <cstring>
 #include <ctime>
@@ -1325,10 +1326,123 @@ int main(int argc, char **argv)
 				", component=" +
 				(paid_credit.failed_component ? paid_credit.failed_component :
 								"none"));
+		zone_touch_payload touch = {};
+		touch.zone_number = 18;
+		touch.toucher_pid = 42;
+		touch.stone_uid = 987654321;
+		touch.touched_at = 1200;
+		touch.boot_time = 1000;
+		touch.group_size = 1;
+		touch.participant_pids[0] = 42;
+		touch.epic_value = 100;
+		touch.alignment_delta = 1;
+		touch.prepared_delivery = true;
+		touch.awards[0] = { 150, 0, 0, 7, 100 };
+		critical_command stone;
+		critical_operation_id stone_id;
+		stone_id.bytes[0] = 225;
+		require(zone_touch_command_build(&stone, stone_id, touch), "build prepared stone");
+		stone.accepted_at_usec = 1;
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+		require(flatfile_player_domain_apply(root.string(), stone).outcome ==
+				critical_apply_outcome::retryable_failure,
+			"stone claim journal fault");
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+		const auto stone_replay = flatfile_player_domain_apply(root.string(), stone);
+		require(stone_replay.outcome == critical_apply_outcome::already_applied,
+			"stone claim recovery");
+		zone_touch_result stone_receipt;
+		require(zone_touch_command_decode_result(stone_replay.result_payload.data(),
+							 stone_replay.result_size,
+							 &stone_receipt) &&
+				stone_receipt.revisions[0] == 3 && stone_receipt.previous[0] == 2 &&
+				stone_receipt.awards[0].amount == 150,
+			"stone receipt lost preparation");
+		const auto stone_owed =
+			flatfile_player_load_repository_execute(root.string(), recovery);
+		require(stone_owed.outcome == player_load_outcome::applied &&
+				stone_owed.divine_epic_deliveries.size() == 1 &&
+				stone_owed.divine_epic_deliveries[0].zone &&
+				stone_owed.divine_epic_deliveries[0].sequence == 3 &&
+				stone_owed.domains.epics == paid_credit.domains.epics,
+			"unpaid stone reload changed balance");
+		require(std::binary_search(stone_owed.completed_epic_zones.begin(),
+					   stone_owed.completed_epic_zones.end(), 18),
+			"recovered stone claim lost recipient completion history");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::ok,
+			"restore qualification rejected valid stone history");
+		for (const auto *name : { "stone-987654321.claim", "zone-18.state" })
+		{
+			std::fstream file(root / "domains" / name,
+					  std::ios::in | std::ios::out | std::ios::binary);
+			char original;
+			file.seekg(-1, std::ios::end);
+			file.read(&original, 1);
+			require(file.good(), "open stone history corruption fixture");
+			const char corrupt = original ^ 1;
+			file.seekp(-1, std::ios::end);
+			file.write(&corrupt, 1);
+			file.flush();
+			require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+					flatfile_player_domain_result::invalid,
+				"restore qualification ignored corrupt stone history");
+			file.seekp(-1, std::ios::end);
+			file.write(&original, 1);
+			file.flush();
+			require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+					flatfile_player_domain_result::ok,
+				"repaired stone history did not qualify");
+		}
+		flatfile_zone_touch_state zone;
+		require(flatfile_zone_touch_load(root.string(), 18, &zone, &error) ==
+					flatfile_player_domain_result::ok &&
+				zone.alignment == 1 && zone.last_touch == 1200,
+			"zone history missing after recovered claim");
+		stone_id.bytes[0] = 226;
+		touch.awards[0].amount = 999;
+		require(zone_touch_command_build(&stone, stone_id, touch), "retouch changed boon");
+		stone.accepted_at_usec = 1;
+		const auto retouch = flatfile_player_domain_apply(root.string(), stone);
+		require(retouch.outcome == critical_apply_outcome::applied &&
+				zone_touch_command_decode_result(retouch.result_payload.data(),
+								 retouch.result_size,
+								 &stone_receipt) &&
+				stone_receipt.recovered_claim &&
+				stone_receipt.awards[0].amount == 150,
+			"retouch paid or recomputed a committed stone");
+		command.operation_id.bytes[0] = 227;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+				critical_apply_outcome::applied,
+			"prepare PvP after zone");
+		const auto mixed = flatfile_player_load_repository_execute(root.string(), recovery);
+		require(mixed.outcome == player_load_outcome::applied &&
+				mixed.divine_epic_deliveries.size() == 2 &&
+				mixed.divine_epic_deliveries[1].sequence == 4 &&
+				mixed.divine_epic_deliveries[1].previous == 3,
+			"zone and PvP recipient chain diverged");
+		auto combined = credited;
+		combined.revision = 12;
+		for (auto &field : combined.status_integers)
+		{
+			if (field.field == player_status_field::epics)
+				field.signed_value = paid_credit.domains.epics + 300;
+			if (field.field == player_status_field::divine_boon_delivery_seq)
+				field.unsigned_value = 4;
+		}
+		require(flatfile_player_snapshot_apply(root.string(), combined, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"mixed award checkpoint");
+		const auto settled =
+			flatfile_player_load_repository_execute(root.string(), recovery);
+		require(settled.outcome == player_load_outcome::applied &&
+				settled.divine_epic_deliveries.empty() &&
+				settled.domains.epics == paid_credit.domains.epics + 300,
+			"mixed award checkpoint lost or duplicated credit");
 	}
 
 	const fs::path snapshot_path = players / "42.snapshot";
-	player_snapshot paid = make_status(12, 51, 1201);
+	player_snapshot paid = make_status(13, 51, 1201);
 	paid.status_integers.insert(paid.status_integers.end(),
 				    { { player_status_field::copper, 11, 0, false },
 				      { player_status_field::silver, 12, 0, false },
@@ -1338,7 +1452,7 @@ int main(int argc, char **argv)
 				      { player_status_field::old_frags, 17, 0, false } });
 	paid.status_integers.push_back({ player_status_field::epics, 450, 0, false });
 	paid.status_integers.push_back(
-		{ player_status_field::divine_boon_delivery_seq, 0, 3, true });
+		{ player_status_field::divine_boon_delivery_seq, 0, 5, true });
 	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
 	require(flatfile_player_snapshot_apply(root.string(), paid, &error).outcome ==
 			player_save_apply_outcome::retryable_failure,
@@ -1348,7 +1462,7 @@ int main(int argc, char **argv)
 			player_save_apply_outcome::applied,
 		"Divine status checkpoint failed: " + error);
 	auto stale_delivery = paid;
-	stale_delivery.revision = 13;
+	stale_delivery.revision = 14;
 	stale_delivery.status_integers[stale_delivery.status_integers.size() - 2].signed_value = 1;
 	stale_delivery.status_integers.back().unsigned_value = 2;
 	require(flatfile_player_snapshot_apply(root.string(), stale_delivery, &error).outcome ==
@@ -1366,7 +1480,7 @@ int main(int argc, char **argv)
 		"paid Divine checkpoint could not reload");
 	uint64_t delivered_sequence = 0;
 	require(player_snapshot_divine_delivery_sequence(loaded, &delivered_sequence) &&
-			delivered_sequence == 3 &&
+			delivered_sequence == 5 &&
 			loaded.status_integers[loaded.status_integers.size() - 2].signed_value ==
 				450,
 		"stale save erased the Divine balance or applied marker");
@@ -1383,14 +1497,6 @@ int main(int argc, char **argv)
 						    &error) == flatfile_player_domain_result::ok &&
 			delivery_domains.domains.epics == 450,
 		"delivery marker advanced without the authoritative epic balance");
-	auto incomplete_delivery = make_status(14, 51, 1201);
-	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::epics, 500, 0, false });
-	incomplete_delivery.status_integers.push_back(
-		{ player_status_field::divine_boon_delivery_seq, 0, 4, true });
-	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
-			player_save_apply_outcome::terminal_failure,
-		"marker advanced without a complete financial checkpoint");
 	auto malformed_delivery = paid;
 	malformed_delivery.status_integers.back().is_unsigned = false;
 	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
@@ -1401,6 +1507,14 @@ int main(int argc, char **argv)
 	require(flatfile_player_snapshot_apply(root.string(), malformed_delivery, &error).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"duplicate delivery marker was accepted");
+	auto incomplete_delivery = make_status(14, 51, 1201);
+	incomplete_delivery.status_integers.push_back(
+		{ player_status_field::epics, 500, 0, false });
+	incomplete_delivery.status_integers.push_back(
+		{ player_status_field::divine_boon_delivery_seq, 0, 6, true });
+	require(flatfile_player_snapshot_apply(root.string(), incomplete_delivery, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"marker advanced without a complete financial checkpoint");
 	{
 		std::fstream file(snapshot_path, std::ios::in | std::ios::out | std::ios::binary);
 		require(file.good(), "could not open player snapshot for corruption test");

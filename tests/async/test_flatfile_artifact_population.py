@@ -13,7 +13,7 @@ sources = [
     "flatfile_item_repository.c", "flatfile_auction_repository.c",
     "flatfile_collector_repository.c", "collector_command.c", "collector_codec.c", "collector_policy.c",
     "auction_command.c", "flatfile_player_domain_repository.c", "currency_command.c",
-    "epic_command.c", "combat_outcome_command.c", "boon_reward_command.c", "shop_trade_command.c",
+    "epic_command.c", "zone_touch_command.c", "combat_outcome_command.c", "boon_reward_command.c", "shop_trade_command.c",
     "flatfile_shop_trade_materialization.c", "legacy_object_identity.c", "flatfile_authority_transaction.c", "flatfile_store.c",
     "player_snapshot_codec.c", "item_transfer_command.c", "critical_command.c",
     "item_claim.c", "dupe_log.c", "persistence_observability.c",

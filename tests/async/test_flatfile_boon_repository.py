@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-boon-") as temporary:
         rel("flatfile_store.c"),
         rel("boon_reward_command.c"),
         rel("boon_shop_command.c"),
-        rel("epic_command.c"),
+        rel("epic_command.c"), rel("zone_touch_command.c"),
         rel("currency_command.c"),
         rel("combat_outcome_command.c"),
         rel("critical_command.c"),

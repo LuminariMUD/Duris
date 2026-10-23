@@ -118,4 +118,14 @@ flatfile_player_domain_result flatfile_player_domain_prepare_account_remove(
 	const std::string &account_name, std::vector<flatfile_authority_operation> *operations,
 	std::string *error);
 
+struct flatfile_zone_touch_state
+{
+	uint32_t number = 0;
+	int32_t alignment = 0;
+	int64_t last_touch = 0;
+};
+flatfile_player_domain_result flatfile_zone_touch_load(const std::string &root, uint32_t number,
+						       flatfile_zone_touch_state *state,
+						       std::string *error);
+
 #endif

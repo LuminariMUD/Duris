@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-character-delete-test-") as 
         rel("item_transfer_command.c"),
         rel("shop_trade_command.c"),
         rel("critical_command.c"),
-        rel("epic_command.c"),
+        rel("epic_command.c"), rel("zone_touch_command.c"),
         rel("currency_command.c"),
         rel("auction_command.c"),
         rel("combat_outcome_command.c"),

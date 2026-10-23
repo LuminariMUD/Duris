@@ -202,7 +202,7 @@ with tempfile.TemporaryDirectory(prefix="duris-bank-hydration-") as temporary:
         "src/flatfile/flatfile_player_domain_repository.c",
         "src/flatfile/flatfile_player_snapshot_file.c", "src/player/player_snapshot_codec.c",
         "src/flatfile/flatfile_authority_transaction.c", "src/flatfile/flatfile_store.c",
-        "src/world/epic_command.c", "src/economy/currency_command.c",
+        "src/world/epic_command.c", "src/world/zone_touch_command.c", "src/economy/currency_command.c",
         "src/combat/combat_outcome_command.c", "src/persistence/critical_command.c",
         "-lcrypto", "-pthread", "-o", str(binary),
     ], cwd=ROOT, check=True)

@@ -4,11 +4,13 @@
 #include "persistence/critical_command.h"
 
 #include <vector>
+#include <cmath>
+#include <limits>
 
 struct char_data;
 struct combat_outcome_result;
 
-// A committed PvP parent receipt identifies the complete prepared epic award.
+// A committed combat or stone parent identifies the complete prepared epic award.
 // Sequence is its issued epic revision; previous links only prepared deliveries,
 // so ordinary ledger revisions may occur between them without creating a gap.
 struct divine_epic_delivery
@@ -23,11 +25,26 @@ struct divine_epic_delivery
 	int64_t prepared_at = 0;
 	double base = 0;
 	int32_t spill_blood = 0;
+	bool zone = false;
+	uint32_t zone_number = 0;
+	int32_t stone_level = 0;
+	int32_t errand = 0;
+	uint8_t flags = 0;
 };
 
 constexpr size_t DIVINE_EPIC_RECOVERY_MAX = 512;
 
-bool divine_epic_delivery_valid(const divine_epic_delivery &delivery);
+inline bool divine_epic_delivery_valid(const divine_epic_delivery &delivery)
+{
+	return !critical_operation_id_is_zero(delivery.operation_id) && delivery.pid &&
+	       (delivery.zone ? (!delivery.spill_blood && delivery.flags <= 3) :
+				(delivery.victim_pid && delivery.pid != delivery.victim_pid &&
+				 delivery.boon_id)) &&
+	       delivery.sequence > delivery.previous && delivery.prepared_at > 0 &&
+	       delivery.amount > 0 && delivery.amount <= std::numeric_limits<int>::max() &&
+	       std::isfinite(delivery.base) && delivery.base > 0 &&
+	       (delivery.spill_blood == 0 || delivery.spill_blood == 500);
+}
 bool divine_epic_delivery_from_combat(const critical_operation_id &operation,
 				      const combat_outcome_result &result, size_t index,
 				      divine_epic_delivery *delivery);
