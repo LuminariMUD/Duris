@@ -943,9 +943,15 @@ try
 			*found_effect = tag.cargo_effect;
 		else
 		{
-			if (effects.size() == PLAYER_SNAPSHOT_MAX_ROWS)
-				return player_snapshot_codec_result::limit_exceeded;
 			effects.push_back(tag.cargo_effect);
+			// The codec counts rows across every vector, including nested items.
+			// Validate that same budget before changing the capture.
+			auto candidate = *snapshot;
+			candidate.affects = effects;
+			std::vector<uint8_t> encoded;
+			const auto valid = player_snapshot_encode(candidate, &encoded);
+			if (valid != player_snapshot_codec_result::ok)
+				return valid;
 		}
 	}
 	if (found)

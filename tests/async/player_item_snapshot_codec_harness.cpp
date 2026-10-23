@@ -356,6 +356,17 @@ int main(int argc, char **argv)
 				player_snapshot_codec_result::ok &&
 			player_snapshot_trade_pending(read_back),
 		"pending trade snapshot did not round trip");
+	auto crowded = pending;
+	crowded.components |= PLAYER_COMPONENT_LANGUAGES;
+	crowded.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+	crowded.languages.resize(PLAYER_SNAPSHOT_MAX_ROWS - crowded.status_integers.size());
+	require(player_snapshot_encode(crowded, &tagged) == player_snapshot_codec_result::ok,
+		"exact aggregate row limit rejected before settlement");
+	require(player_snapshot_settle_trade(&crowded, true) ==
+				player_snapshot_codec_result::limit_exceeded &&
+			crowded.affects.empty() && crowded.wallet_revision == 6 &&
+			player_snapshot_trade_pending(crowded),
+		"settlement exceeded the aggregate row budget or changed a rejected capture");
 	auto refused = read_back;
 	require(player_snapshot_settle_trade(&refused, false) == player_snapshot_codec_result::ok &&
 			refused.wallet_revision == 6 &&

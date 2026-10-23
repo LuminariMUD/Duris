@@ -46,6 +46,7 @@ bool worker_pending = false, command_pending = false;
 critical_command submitted;
 std::mutex pipeline_mutex;
 uint32_t trade_player_pid = 0;
+player_pending_trade_snapshot trade_capture;
 player_save_pipeline_health health;
 struct captured
 {
