@@ -25,6 +25,7 @@
 #include "player/player_snapshot_codec.h"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <array>
 #include <cerrno>
@@ -1006,6 +1007,41 @@ flatfile_player_domain_result flatfile_player_domain_restore_recover(const std::
 	for (; !ec && current != end; current.increment(ec))
 	{
 		const auto name = current->path().filename().string();
+		if (name.starts_with("stone-") && name.ends_with(".claim"))
+		{
+			const auto key = name.substr(6, name.size() - 12);
+			uint64_t uid = 0;
+			const auto parsed =
+				std::from_chars(key.data(), key.data() + key.size(), uid);
+			domain_operation receipt;
+			zone_touch_result result;
+			if (parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size() ||
+			    !uid || name != "stone-" + std::to_string(uid) + ".claim" ||
+			    load_receipt_file(root, name, &receipt, error) !=
+				    flatfile_player_domain_result::ok ||
+			    receipt.result_code ||
+			    !zone_touch_command_decode_result(receipt.result.data(),
+							      receipt.result_size, &result) ||
+			    result.stone_uid != uid ||
+			    !critical_operation_id_equal(result.parent_operation,
+							 receipt.operation_id))
+				return flatfile_player_domain_result::invalid;
+			continue;
+		}
+		if (name.starts_with("zone-") && name.ends_with(".state"))
+		{
+			const auto key = name.substr(5, name.size() - 11);
+			uint32_t number = 0;
+			const auto parsed =
+				std::from_chars(key.data(), key.data() + key.size(), number);
+			flatfile_zone_touch_state state;
+			if (parsed.ec != std::errc{} || parsed.ptr != key.data() + key.size() ||
+			    !number || name != "zone-" + std::to_string(number) + ".state" ||
+			    load_zone_state(root, number, &state, error) !=
+				    flatfile_player_domain_result::ok)
+				return flatfile_player_domain_result::invalid;
+			continue;
+		}
 		if (!name.starts_with("command-") || !name.ends_with(".receipt"))
 			continue;
 		constexpr size_t prefix = sizeof("command-") - 1;

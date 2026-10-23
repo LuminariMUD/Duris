@@ -1369,6 +1369,31 @@ int main(int argc, char **argv)
 		require(std::binary_search(stone_owed.completed_epic_zones.begin(),
 					   stone_owed.completed_epic_zones.end(), 18),
 			"recovered stone claim lost recipient completion history");
+		require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+				flatfile_player_domain_result::ok,
+			"restore qualification rejected valid stone history");
+		for (const auto *name : { "stone-987654321.claim", "zone-18.state" })
+		{
+			std::fstream file(root / "domains" / name,
+					  std::ios::in | std::ios::out | std::ios::binary);
+			char original;
+			file.seekg(-1, std::ios::end);
+			file.read(&original, 1);
+			require(file.good(), "open stone history corruption fixture");
+			const char corrupt = original ^ 1;
+			file.seekp(-1, std::ios::end);
+			file.write(&corrupt, 1);
+			file.flush();
+			require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+					flatfile_player_domain_result::invalid,
+				"restore qualification ignored corrupt stone history");
+			file.seekp(-1, std::ios::end);
+			file.write(&original, 1);
+			file.flush();
+			require(flatfile_player_domain_restore_recover(root.string(), &error) ==
+					flatfile_player_domain_result::ok,
+				"repaired stone history did not qualify");
+		}
 		flatfile_zone_touch_state zone;
 		require(flatfile_zone_touch_load(root.string(), 18, &zone, &error) ==
 					flatfile_player_domain_result::ok &&
