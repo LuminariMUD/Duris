@@ -16,6 +16,16 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path)
 args = parser.parse_args()
 functions = [
+    ('utility.c', 'string strip_ansi('),
+    ('ship_utils.c', 'char *ShipSlot::get_status_str('),
+    ('ship_utils.c', 'const char *ShipSlot::get_position_str('),
+    ('ship_utils.c', 'char *ShipSlot::get_description('),
+    ('ship_utils.c', 'int ShipSlot::get_weight('),
+    ('ship_utils.c', 'int ShipData::slot_weight('),
+    ('ship_utils.c', 'const char *ShipCrew::get_stamina_prefix('),
+    ('ship_utils.c', 'int ShipCrew::get_display_stamina('),
+    ('ship_utils.c', 'int eq_ram_weight('),
+    ('ship_utils.c', 'int eq_levistone_weight('),
     ('gmcp.c', 'void gmcp_send_group_status('),
     ('gmcp.c', 'void gmcp_char_status('),
     ('gmcp.c', 'void gmcp_char_affects('),
