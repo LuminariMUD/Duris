@@ -40,6 +40,29 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — artifact retirement
+
+Branch `branch/issue-264-artifact-reset`, based on collector PR #323 at `025a6da7c`.
+Outcome: clear current artifact ownership, timers and souls while retaining retired
+canonical UIDs, rejected UIDs, delivery markers and immutable history. Reuse the
+existing retired/absent identity states so both runtime and SQL delivery recovery
+recognize old bodies as retired and new bodies may spawn. Keep ledger revisions and
+baseline history unchanged: current repository revisions derive from the greatest
+ledger/baseline revision; historical outcomes do not replay gameplay snapshots.
+Non-goals: deleting audit/baselines, new schema, or a second artifact lifecycle.
+Files: SQL reset/manifest, existing native SQL and artifact boot tests, runbook/plan,
+and the existing reconciliation check (domain-only retired rows are valid history).
+Proof: seeded owned/retired/unresolved records, actual reset and boot/population/new
+creation, old pending-delivery and receipt replay, retained history/revision, and
+failed-update fencing. The full native SQL/launcher matrix passed, including the
+actual boot/population/creation/save/reload executable and old pending delivery/
+receipt replay. All existing artifact snapshot cases passed under UBSan. The
+reconciliation tool now accepts cleared domain-only identity history and returned
+zero for all checks against the reset DB; baseline and ledger rows were unchanged.
+MariaDB and flat-file development builds, optimized MariaDB production build,
+12 season-manifest and 14 lifecycle checks and reset-fence contracts passed.
+Publication remains; full readiness stays open.
+
 ## Current continuation — collector retirement and recovery view
 
 Branch `branch/issue-264-collector-reset`, based on PR #322 at `297045583`.

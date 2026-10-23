@@ -883,8 +883,57 @@ static void report_inspection_cases()
 	puts("PASS artifact JSON inspection: cached labels, missing/ordinary templates, no gameplay constructor");
 }
 
+static void pwipe_recovery_cases()
+{
+	open_disposable_database();
+	indexes[0].virtual_number = 900;
+	assert(artifacts_load());
+	assert(artifact_rows.at(900).removed && !artifact_rows.at(900).owned &&
+	       artifact_rows.at(900).timer == 0 && artifact_rows.at(900).location == 0 &&
+	       artifact_rows.at(900).canonical_item_uid == 880001 &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::retired);
+	assert(artifact_rows.at(901).identity_state == artifact_identity_state::retired &&
+	       artifact_rows.at(902).identity_state == artifact_identity_state::absent);
+	assert(artifact_binds.empty());
+	assert(artifacts_stage_population({}, { { 900, ITEM_ARTIFACT } }, true));
+	critical_operation_id operation{};
+	operation.bytes.fill(17);
+	artifact_guild_delta old{
+		900, ARTIFACT_DELTA_FEED, 1999999700, 2000000000, 1004, 1004, 20, 20, 880001, 300
+	};
+	bool applied = true;
+	assert(artifact_apply_delivery(operation, old, 2000100000, &applied) && !applied &&
+	       artifact_rows.at(900).timer == 0 && artifact_binds.empty());
+	obj_data fresh{};
+	fresh.R_num = 0;
+	fresh.obj_uid = 880010;
+	fresh.extra_flags = ITEM_ARTIFACT;
+	assert(artifact_begin_creation(&fresh));
+	artifact_object_placed(&fresh);
+	assert(artifact_is_canonical(&fresh) && artifact_rows.at(900).timer == 0 &&
+	       artifact_binds.at(900).owner_pid == 0 &&
+	       artifact_rows.at(900).rejected_item_uids ==
+		       (std::vector<uint64_t>{ 879999, 880001 }));
+	assert(artifact_apply_delivery(operation, old, 2000100000, &applied) && !applied &&
+	       artifact_rows.at(900).timer == 0 && artifact_binds.at(900).owner_pid == 0);
+	while (artifact_save_pulse(true))
+		for (size_t index = database_next_job; index < jobs.size(); ++index)
+			finish(index);
+	artifact_object_extracted(&fresh, false);
+	assert(artifacts_load() && artifact_rows.at(900).canonical_item_uid == 880010 &&
+	       artifact_rows.at(900).identity_state == artifact_identity_state::present &&
+	       artifact_rows.at(900).timer == 0 && artifact_binds.at(900).owner_pid == 0);
+	mysql_close(payment_db);
+	puts("PASS pwipe artifact boot/population, fresh creation/save/reload and old delivery refusal");
+}
+
 int main(int argc, char **argv)
 {
+	if (argc == 2 && std::string(argv[1]) == "--pwipe-recovery")
+	{
+		pwipe_recovery_cases();
+		return 0;
+	}
 	report_inspection_cases();
 	if (argc == 2)
 	{

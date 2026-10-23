@@ -78,6 +78,14 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+Artifact reset coverage seeds owned, retired and unresolved identities plus real
+historical receipts and a pending delivery. The actual SQL reset clears current
+ownership/timers/souls while retaining UID rejection, history and revisions. The
+existing artifact snapshot executable then loads that DB, scans population, creates
+a fresh body, saves and reloads it; old delivery and receipt replay do not restore
+old timers or bindings. A failed domain update leaves the reset fenced. Baselines
+and ledgers remain byte-for-byte unchanged.
+
 The native SQL journey now seeds collector candidates, collected, available and
 paused stock and prepares a real purchase before reset. Wipe closes them through
 the real critical executor, destroys held custody, preserves payload/audit/IDs and
