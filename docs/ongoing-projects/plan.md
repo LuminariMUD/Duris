@@ -180,6 +180,87 @@ The final test extension also removes a required recreation column and proves a
 pre-boundary refusal with unchanged epoch. Publication awaits that focused result
 and commit hooks.
 
+### Runtime qualification continuation
+
+PR #313: https://github.com/LuminariMUD/Duris/pull/313 at `427860b58`, review-ready.
+Current branch: `branch/issue-264-runtime-qualification`, based on that stack.
+`tests/async/run_pwipe_runtime_journey.py` is being exercised (uncommitted): private
+MariaDB via the existing wrapper, supported adopt/run migrations, copied real launcher
+and binary, synthetic world/account, real five-minute pwipe, explicit next boot,
+recreated staff login and fresh mortal combat/save/reconnect/reboot. It uses no
+checkout `.env`; mail/Discord/telemetry are absent/disabled. Extends the existing
+creation fixture only to log into the preserved account before creating a mortal.
+First real execution passed mortal denial, malformed/cancelled requests and actual
+countdown -> exit 55 -> filesystem cleanup -> active epoch 2. The test then failed
+its timing assertion because it started measurement after buffered notice output;
+start time now precedes command send. A second run again completed activation but
+showed the same ~293-second monotonic measurement; collect wall-clock duration
+against the actual calendar-based shutdown deadline in the next run. Do not call
+the discrepancy solved or weaken the real configured five-minute countdown.
+A 10-second host probe measured 10.884 seconds of wall time versus 10.000 seconds
+of monotonic time; the clocks drift here. The game uses a calendar deadline, so
+record both durations and assert the wall-clock interval. GDB read-only inspection
+of the disposable server confirmed its stored deadline (no timer acceleration).
+Source review found the game SIGCHLD handler can reap the preflight child first;
+reuse `take_reaped_child_status()` on ECHILD. The native handoff test now forces
+that real reaper ordering. Full runtime success is still unclaimed. Outputs remain
+uncommitted under `bin/analysis`.
+
+Consumer review during countdown: `zone_story_quest_runtime.c` already derives
+`current_season_id()` from the SQL epoch and passes it to rendering, assignments,
+transactions and character registration. Existing `test_zone_story_quest_feature.py`
+passed; preserve the season-keyed history. Kingdom ownership has no such epoch gate:
+`kingdom_realms` is loaded by association ID (which can be reused), with garrison/land
+side state; it must reset. Divine Boons' `next_id` must remain monotonic if active
+slots are expired at cutover, to avoid reusing retained cargo-book boon identities.
+Do not blanket-delete protected ledgers; trace live consumers and reset current views.
+
+Independent production-build finding: `ship_shop_proc` maintained `owned` separately
+from `ship`, causing an optimized `-Werror=null-dereference` failure. Isolated minimal
+repair is review-ready as PR #316 at `ee152d2ba`, in
+`/home/aiwithapex/projects/duris-issue264-ship-build` on
+`branch/fix-ship-shop-production-ownership`. Full MariaDB production build and the
+native ship-panel/staff-cargo guards passed there. Incorporate that commit into the
+qualification stack before executing the full production-unit fixture. No production
+service or user worktree was changed. Production repair was merged into the qualification branch as `f6694e7fe` and
+the combined production build passed. Runtime changes await publication.
+
+Next focused implementation candidates after runtime publication:
+
+- Reward retry accounting: current guard compares `last_processed_at` to retry-time
+  `NOW()`, so an old unfinished reset retried after 28 days can consume again.
+  Evaluate the existing durable `reset_started_at`/epoch instead: base eligibility
+  on that fixed boundary and stamp it atomically with grant policy. This may meet
+  exact retry accounting without a new migration/ledger. Prove same reset after
+  >28 days, distinct resets inside/outside the business guard, both preserve modes,
+  grant expiry, summon clearing and lost COMMIT acknowledgment before choosing it.
+- W5 companion source rechecked at DurisWeb `7147e6b1`: active-season presence/cache
+  reads already query the SQL fence, but failed 60-second subscriber refresh retains
+  its previous channel. The manual workflow must stop external seasonal writers
+  before reset and restart them only after activation; exercise it and fix stale
+  event handling independently if needed. No DurisWeb edits or operations yet.
+
+Runtime result: **PASS**, MariaDB-primary with Redis disabled, using the real
+five-minute command (300.581 wall seconds; 292.483 monotonic on this drifting host).
+Mortal denial, malformed confirmation, cancellation, old-season observations,
+actual exit 55, full SQL/launcher/filesystem cleanup, epoch 2 activation, existing
+account + recreated level-62 login, fresh mortal combat/loot/save, reconnect and
+another boot all passed. Old PID 1 stayed inactive; fresh staff PID 2 and mortal
+PID 3 persisted. Old pfile/ship sentinels disappeared and backup sentinel survived.
+Evidence: `bin/analysis/pwipe-runtime-mariadb.json` (uncommitted), binary SHA-256
+`69adaed05e55b82e5b2a0f44ae47fb4570e89757fa5a451eca95bdc981b4830b`, source
+`427860b58` plus the reaper repair. Later ship ownership repair was independently
+qualified and merged as `f6694e7fe`; no repeated five-minute campaign for that
+unchanged reset path. Required `format.sh --all --check` passed all 1,147 C/C++ files;
+MariaDB development, isolated flat-file and the full combined MariaDB production
+builds passed. Forced actual reaper/SQL/launcher failure tests and affected source
+contracts passed. This proves the mini-world, Redis-off path, not full wipe readiness.
+
+Remaining blocking work is still W1's complete consumer inventory, W2 direct/external
+writers/replay, W4 active retained stores and epoch-bound reward retries, W5 website/
+Redis/telemetry cutover, and W6 failure/recovery/full installed service evidence.
+The finished PRs do not sign off the wipe. Continue autonomous local qualification.
+
 ## What the code currently does
 
 These are baseline observations, not claims that every failure has been reproduced.

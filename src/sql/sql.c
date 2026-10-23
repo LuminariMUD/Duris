@@ -4265,8 +4265,10 @@ bool sql_pwipe(int code_verify)
 			{
 				waited = waitpid(wipe_child, &status, 0);
 			} while (waited < 0 && errno == EINTR);
-			filesystem_ready = waited == wipe_child && WIFEXITED(status) &&
-					   WEXITSTATUS(status) == 0;
+			filesystem_ready = (waited == wipe_child ||
+					    (waited < 0 && errno == ECHILD &&
+					     take_reaped_child_status(wipe_child, &status))) &&
+					   WIFEXITED(status) && WEXITSTATUS(status) == 0;
 		}
 		if (!filesystem_ready)
 		{

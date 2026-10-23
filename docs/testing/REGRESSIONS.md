@@ -49,6 +49,19 @@ fenced; a missing recreation column is refused before the boundary. The bank cas
 reset every side while retaining credentials, donations and historical baselines.
 Real staff login and cold replay remain part of the full #264 journey.
 
+`python3 tests/async/run_pwipe_runtime_journey.py /absolute/mariadb/server` runs the
+real command and unaccelerated five-minute wall-clock deadline through the copied
+launcher in a private MariaDB/world/filesystem. It checks mortal rejection, invalid
+confirmation, cancellation, cleanup, preserved account and recreated Overlord login,
+then fresh mortal creation/combat/loot/save/reconnect and another boot. MariaDB
+migration adopt/run uses the supported runner; only tracked scripts/migrations and
+synthetic state are copied. The report records wall and monotonic durations (which
+drift on some hosts), revision/diff and binary hash under `bin/analysis`. Redis is
+disabled and the mini world is used: optional systems, Redis-on cutover and installed
+system-service qualification remain separate #264 gates. The native handoff runner
+also forces the actual SIGCHLD reaper to finish preflight first and proves the SQL
+caller consumes its saved exit status rather than spuriously rejecting ECHILD.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,
