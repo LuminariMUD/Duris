@@ -80,6 +80,7 @@
 #include <unordered_map>
 #include <new>
 #include <string>
+#include <fstream>
 #include <utility>
 #include <vector>
 
@@ -439,22 +440,23 @@ int is_valid_email(const char *email)
 bool is_email_taken([[maybe_unused]] const char *email)
 {
 #ifdef REQUIRE_EMAIL_VERIFICATION
-	FILE *f = NULL;
-	char db_name[MAX_INPUT_LENGTH];
-
-	f = fopen(ACCOUNT_EMAIL_DB, "r");
-	if (!f)
+	std::ifstream registry(ACCOUNT_EMAIL_DB);
+	if (!registry)
 	{
 		statuslog(56, "Couldn't open Email DB!");
 		return TRUE;
 	}
 
-	while (fscanf(f, "%s\n", &db_name) != 0)
+	std::string registered_email;
+	while (registry >> registered_email)
 	{
-		if (!strcmp(email, db_name))
-		{
+		if (registered_email == email)
 			return TRUE;
-		}
+	}
+	if (!registry.eof())
+	{
+		statuslog(56, "Couldn't read Email DB!");
+		return TRUE;
 	}
 #endif
 
