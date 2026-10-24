@@ -6,23 +6,23 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-flatfile-rejection/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-flatfile-rejection`, [PR #327](https://github.com/LuminariMUD/Duris/pull/327).
+blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-systemd-qualification/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-systemd-qualification`, [PR #330](https://github.com/LuminariMUD/Duris/pull/330).
 Reuse `/home/aiwithapex/projects/duris-issue264-plan`, which is on that branch at
-`f1db24d4d` (clean and pushed).
-Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327,
-plus independent production-build repair #316. The real MariaDB/Redis-off five-minute
-reset through recreated staff login and fresh mortal gameplay/save/reconnect/another
-boot passed. Reward retry accounting, kingdom ownership, active Divine retirement,
-collector stock retirement/restart isolation, artifact retirement/new-body creation,
-prepared cargo/receipt replay isolation, remaining auction/siege payload cleanup,
-and actual flat-file command rejection/continuation are qualified. All three maintained
-build profiles passed the source-changing chunks; cargo proof reused that evidence.
+`ba1da4967` (clean and pushed).
+Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330,
+plus independent production-build repair #316. MariaDB reset-to-fresh-gameplay
+journeys now pass with Redis off and with Redis on under the complete systemd
+sandbox/restart settings (private mini world, production-profile binary). Actual
+exit 58 and 55 both stay stopped with zero restarts; new mortal presence, combat,
+loot, save/reconnect/another boot pass. Real Redis provider failures before/after
+the boundary are also qualified. Earlier reward, ownership, collector/artifact,
+cargo replay and flat-file rejection evidence remains valid.
 Full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
-balances and recreate only exact level-62 Overlords. Next: general custody/baselines, SQL recovery/restore, Redis-on/external cutover
-and full service qualification. Hybrid fallback is already unsupported at startup;
-the client-free flat-file build safely refuses pwipe without a countdown. Continue from
-the linked current plan; baseline planning detail below is retained for provenance.
+balances and recreate only exact level-62 Overlords. Next: the DurisWeb stale-event
+finding recorded in the current plan, general custody/inventory, matched recovery/
+restore, Redis re-enable with old payloads and external/telemetry cutover. Continue
+from the linked current plan; baseline planning detail below is retained for provenance.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
