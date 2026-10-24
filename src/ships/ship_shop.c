@@ -98,68 +98,65 @@ extern struct affected_type *get_spell_from_char(P_char ch, int spell, void *con
 
 namespace
 {
-	struct ship_hull_purchase_context
-	{
-		int hull_type;
-		int old_hull;
-		int coin_delta;
-		int epic_cost;
-		int room;
-		bool owned;
-		bool quickbuild;
-		bool free_tattoo_hull;
-		// 20 visible characters, each with a color code and UTF-8, plus reset/NUL.
-		char name[192];
-	};
+struct ship_hull_purchase_context
+{
+	int hull_type;
+	int old_hull;
+	int coin_delta;
+	int epic_cost;
+	int room;
+	bool owned;
+	bool quickbuild;
+	bool free_tattoo_hull;
+	// 20 visible characters, each with a color code and UTF-8, plus reset/NUL.
+	char name[192];
+};
 
-	static_assert(sizeof(ship_hull_purchase_context) <= EPIC_PENDING_CONTEXT_MAX_BYTES);
+static_assert(sizeof(ship_hull_purchase_context) <= EPIC_PENDING_CONTEXT_MAX_BYTES);
 
-	/*
+/*
  * Give back the epic points a hull purchase charged, when the purchase could
  * not be completed.  A no-op when the hull cost no epics.
  */
-	void refund_ship_epics(P_char ch, const ship_hull_purchase_context &context)
-	{
-		if (context.epic_cost > 0)
-			epic_transaction_submit(ch, context.epic_cost,
-						epic_reason_type::ship_purchase, context.hull_type,
-						0, critical_source_site::recovery,
-						critical_deadline_class::recovery, nullptr, nullptr,
-						0);
-	}
+void refund_ship_epics(P_char ch, const ship_hull_purchase_context &context)
+{
+	if (context.epic_cost > 0)
+		epic_transaction_submit(ch, context.epic_cost, epic_reason_type::ship_purchase,
+					context.hull_type, 0, critical_source_site::recovery,
+					critical_deadline_class::recovery, nullptr, nullptr, 0);
+}
 
-	/*
+/*
  * Tell `ch` they cannot buy a first ship because they own one that is stored
  * but not in the world, first trying to bring it back.  Returns false when
  * they have no stored ship.  A second ship could never be saved beside the
  * stored one, because ships are unique by owner.
  */
-	static bool refuse_for_stored_ship(P_char ch)
+static bool refuse_for_stored_ship(P_char ch)
+{
+	switch (place_stored_ship(GET_NAME(ch)))
 	{
-		switch (place_stored_ship(GET_NAME(ch)))
-		{
-		case stored_ship_state::none:
-			return false;
-		case stored_ship_state::placed:
-			send_to_char(
-				"&+gYou already own a ship.  It was waiting in dry dock, and is back at its dock now.&n\n",
-				ch);
-			break;
-		case stored_ship_state::no_room:
-			send_to_char(
-				"&+gYou already own a ship, in dry dock until the harbour has room for it.  Try again later.&n\n",
-				ch);
-			break;
-		case stored_ship_state::unreadable:
-			send_to_char(
-				"&+gYour ship's records could not be read.  Please notify a god.&n\n",
-				ch);
-			break;
-		}
-		return true;
+	case stored_ship_state::none:
+		return false;
+	case stored_ship_state::placed:
+		send_to_char(
+			"&+gYou already own a ship.  It was waiting in dry dock, and is back at its dock now.&n\n",
+			ch);
+		break;
+	case stored_ship_state::no_room:
+		send_to_char(
+			"&+gYou already own a ship, in dry dock until the harbour has room for it.  Try again later.&n\n",
+			ch);
+		break;
+	case stored_ship_state::unreadable:
+		send_to_char("&+gYour ship's records could not be read.  Please notify a god.&n\n",
+			     ch);
+		break;
 	}
+	return true;
+}
 
-	/*
+/*
  * Completion callback for a hull purchase's epic-point transaction: the point
  * at which the ship actually changes.
  *
@@ -174,108 +171,106 @@ namespace
  * quickbuild effect, and is multiplied by five while the ocean is in a PvP
  * state, so wartime hull changes take five times longer.
  */
-	void ship_hull_purchase_committed(P_char ch, bool committed, const epic_command_result &,
-					  unsigned int, const uint8_t *raw_context,
-					  size_t context_size)
+void ship_hull_purchase_committed(P_char ch, bool committed, const epic_command_result &,
+				  unsigned int, const uint8_t *raw_context, size_t context_size)
+{
+	if (!committed || context_size != sizeof(ship_hull_purchase_context))
 	{
-		if (!committed || context_size != sizeof(ship_hull_purchase_context))
-		{
-			send_to_char("Your ship purchase was declined.\n", ch);
-			return;
-		}
-		ship_hull_purchase_context context = {};
-		memcpy(&context, raw_context, sizeof(context));
-		P_ship ship = nullptr;
-		if (context.owned)
-		{
-			ship = get_ship_from_owner(ch->player.name);
-			if (!ship || ship->m_class != context.old_hull ||
-			    SHIP_CONTRA(ship) + SHIP_CARGO(ship) > 0)
-			{
-				send_to_char(
-					"Your ship changed while the purchase was pending; your epics are being refunded.\n",
-					ch);
-				refund_ship_epics(ch, context);
-				return;
-			}
-			if (!ship_rooms_fit_class(ship, context.hull_type))
-			{
-				send_to_char(
-					"The shipyard has no room to build that hull now; your epics are being refunded.\n",
-					ch);
-				refund_ship_epics(ch, context);
-				return;
-			}
-		}
-		else if (refuse_for_stored_ship(ch))
-		{
-			refund_ship_epics(ch, context);
-			return;
-		}
-		if (context.coin_delta > 0 && GET_MONEY(ch) < context.coin_delta)
+		send_to_char("Your ship purchase was declined.\n", ch);
+		return;
+	}
+	ship_hull_purchase_context context = {};
+	memcpy(&context, raw_context, sizeof(context));
+	P_ship ship = nullptr;
+	if (context.owned)
+	{
+		ship = get_ship_from_owner(ch->player.name);
+		if (!ship || ship->m_class != context.old_hull ||
+		    SHIP_CONTRA(ship) + SHIP_CARGO(ship) > 0)
 		{
 			send_to_char(
-				"You no longer have the required coins; your epics are being refunded.\n",
+				"Your ship changed while the purchase was pending; your epics are being refunded.\n",
 				ch);
 			refund_ship_epics(ch, context);
 			return;
 		}
-		if (!context.owned)
+		if (!ship_rooms_fit_class(ship, context.hull_type))
 		{
-			ship = new_ship(context.hull_type);
-			if (!ship)
-			{
-				send_to_char(
-					"The shipyard could not create your ship; your epics are being refunded.\n",
-					ch);
-				refund_ship_epics(ch, context);
-				return;
-			}
-			ship->ownername = str_dup(GET_NAME(ch));
-			ship->anchor = world[context.room].number;
-			name_ship(context.name, ship);
-			if (!load_ship(ship, context.room))
-			{
-				shipObjHash.erase(ship);
-				delete_ship(ship, true);
-				send_to_char(
-					"The shipyard could not load your ship; your epics are being refunded.\n",
-					ch);
-				refund_ship_epics(ch, context);
-				return;
-			}
+			send_to_char(
+				"The shipyard has no room to build that hull now; your epics are being refunded.\n",
+				ch);
+			refund_ship_epics(ch, context);
+			return;
 		}
-		if (context.coin_delta > 0)
-			SUB_MONEY(ch, context.coin_delta, 0);
-		else if (context.coin_delta < 0)
-			ADD_MONEY(ch, -context.coin_delta);
-		if (context.free_tattoo_hull)
-			affect_from_char(ch, AIP_FREESLOOP);
-		int buildtime =
-			context.owned ?
+	}
+	else if (refuse_for_stored_ship(ch))
+	{
+		refund_ship_epics(ch, context);
+		return;
+	}
+	if (context.coin_delta > 0 && GET_MONEY(ch) < context.coin_delta)
+	{
+		send_to_char(
+			"You no longer have the required coins; your epics are being refunded.\n",
+			ch);
+		refund_ship_epics(ch, context);
+		return;
+	}
+	if (!context.owned)
+	{
+		ship = new_ship(context.hull_type);
+		if (!ship)
+		{
+			send_to_char(
+				"The shipyard could not create your ship; your epics are being refunded.\n",
+				ch);
+			refund_ship_epics(ch, context);
+			return;
+		}
+		ship->ownername = str_dup(GET_NAME(ch));
+		ship->anchor = world[context.room].number;
+		name_ship(context.name, ship);
+		if (!load_ship(ship, context.room))
+		{
+			shipObjHash.erase(ship);
+			delete_ship(ship, true);
+			send_to_char(
+				"The shipyard could not load your ship; your epics are being refunded.\n",
+				ch);
+			refund_ship_epics(ch, context);
+			return;
+		}
+	}
+	if (context.coin_delta > 0)
+		SUB_MONEY(ch, context.coin_delta, 0);
+	else if (context.coin_delta < 0)
+		ADD_MONEY(ch, -context.coin_delta);
+	if (context.free_tattoo_hull)
+		affect_from_char(ch, AIP_FREESLOOP);
+	int buildtime = context.owned ?
 				75 * (context.hull_type > context.old_hull ?
 					      context.hull_type / 2 - context.old_hull / 3 :
 					      context.old_hull / 2 - context.hull_type / 3) :
 				75 * SHIPTYPE_ID(context.hull_type) / 4;
-		if (ocean_pvp_state())
-			buildtime *= 5;
-		if (context.quickbuild)
-			buildtime /= 2;
-		if (context.owned)
-		{
-			kick_everyone_off(ship);
-			ship->m_class = context.hull_type;
-			reset_ship(ship, false);
-		}
-		if (!IS_TRUSTED(ch) && BUILDTIME)
-			ship->timer[T_MAINTENANCE] += buildtime;
-		update_ship_status(ship);
-		queue_ship_save(ship, "committed ship hull purchase");
-		send_to_char_f(ch, "&+gYour committed hull purchase will take &n%d&+g hours.&n\n",
-			       buildtime / 75);
+	if (ocean_pvp_state())
+		buildtime *= 5;
+	if (context.quickbuild)
+		buildtime /= 2;
+	if (context.owned)
+	{
+		kick_everyone_off(ship);
+		ship->m_class = context.hull_type;
+		reset_ship(ship, false);
 	}
+	if (!IS_TRUSTED(ch) && BUILDTIME)
+		ship->timer[T_MAINTENANCE] += buildtime;
+	update_ship_status(ship);
+	queue_ship_save(ship, "committed ship hull purchase");
+	send_to_char_f(ch, "&+gYour committed hull purchase will take &n%d&+g hours.&n\n",
+		       buildtime / 75);
+}
 
-	/*
+/*
  * Start a hull purchase.
  *
  * Purchases that cost no epic points complete synchronously; the rest are
@@ -283,24 +278,24 @@ namespace
  * ship_hull_purchase_committed().  Returns false, having told `ch`, only when
  * the transaction could not be submitted at all.
  */
-	bool submit_ship_hull_purchase(P_char ch, const ship_hull_purchase_context &context)
+bool submit_ship_hull_purchase(P_char ch, const ship_hull_purchase_context &context)
+{
+	if (context.epic_cost == 0)
 	{
-		if (context.epic_cost == 0)
-		{
-			ship_hull_purchase_committed(ch, true, {}, 0,
-						     reinterpret_cast<const uint8_t *>(&context),
-						     sizeof(context));
-			return true;
-		}
-		if (epic_transaction_submit(
-			    ch, -context.epic_cost, epic_reason_type::ship_purchase,
-			    context.hull_type, EPIC_COMMAND_REQUIRE_FUNDS,
-			    critical_source_site::command, critical_deadline_class::interactive,
-			    ship_hull_purchase_committed, &context, sizeof(context)))
-			return true;
-		send_to_char("The epic transaction service is busy. Please try again.\n", ch);
-		return false;
+		ship_hull_purchase_committed(ch, true, {}, 0,
+					     reinterpret_cast<const uint8_t *>(&context),
+					     sizeof(context));
+		return true;
 	}
+	if (epic_transaction_submit(ch, -context.epic_cost, epic_reason_type::ship_purchase,
+				    context.hull_type, EPIC_COMMAND_REQUIRE_FUNDS,
+				    critical_source_site::command,
+				    critical_deadline_class::interactive,
+				    ship_hull_purchase_committed, &context, sizeof(context)))
+		return true;
+	send_to_char("The epic transaction service is busy. Please try again.\n", ch);
+	return false;
+}
 } // namespace
 
 /*

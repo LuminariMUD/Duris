@@ -153,7 +153,7 @@ item. The stopped old Redis payload is hashed and left in place while a new proc
 runs the real countdown/reset with Redis disabled. Epoch-2 re-enable must ignore
 that floor marker and old namespace, publish new presence, and pass fresh combat/
 save/reconnect/second-boot recovery. Old payload bytes and unrelated keys remain.
-This option uses the direct launcher and excludes restore/systemd/flat-file modes.
+This option uses the direct launcher and excludes restore/flat-file modes.
 
 `python3 tests/async/test_shutdown_broadcast.py` executes the actual command,
 countdown, broadcast and shutdown-info writer with an isolated descriptor/event
@@ -192,6 +192,13 @@ and connection configuration uses the owned loopback target; this does not repla
 their subsystem, runtime exclusion or full command journeys. The MySQL variant is
 `TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh python3 tests/async/run_pwipe_writer_mysql.py`.
 Both MariaDB 10.11.19 and MySQL 8.0.46 pass success/timeout/error.
+
+The native journey also verifies the real loader sees a positive save timestamp
+for every recreated Overlord, initialized with birth time. A failing baseline loaded
+zero. Later cases recreate active level-62 bodies with missing, stale-name and
+wrong-account mappings through durable ownership, repair canonical new-PID links,
+exclude explicit deletion tombstones/unregistered owners, and keep the same roster
+and clocks on recovery. No old assets or progression are copied.
 
 The same native SQL journey now seeds levels 56, 61, 62 and 63. Only the exact
 62 is recreated, under its account/name with a higher PID, clean currency and
@@ -308,23 +315,18 @@ repository revisions/diffs and binary hash. No cloud provider, real data/setting
 production service or frontend release is used. Run the companion's separate
 PrivateTmp keeper and mount/alias native cases for the pre-stop preservation gate.
 
-The existing real countdown journey supports `--redis --systemd` with an absolute
-MariaDB production-profile binary path and `--systemd-helper /installed/helper`.
-Run the qualifier as an ordinary user, never root. Install the reviewed
-`tests/async/pwipe_systemd_helper.py` and production service template together in a
-root-owned directory whose parents are not writable by other users; authorize only
-that helper through sudo. The helper uses isolated Python, fixed manager actions,
-and caller-owned private units; it never imports checkout code or invokes Git.
-`test_pwipe_systemd_helper.py /installed/helper` checks refusals, nonroot service
-identity, sandbox, exit 55/no restart, logs and cleanup. The qualifier creates its
-own DB, Redis process/namespace, runtime
-and uniquely named `duris-pwipe-qualification-*` system units. The service keeps all
-production-template sandbox/restart settings, runs unprivileged, and substitutes
-`--minimal` with local test configuration. A private active After target retains
-successful exit statistics without starting or restarting the service. The journey
-checks actual unit state, exit 58/55 without restart, scoped Redis cleanup, unrelated
-key preservation, new-epoch presence, staff access and fresh gameplay/save/reconnect/
-second boot. Results go to `bin/analysis/pwipe-runtime-mariadb-redis-systemd.json`.
+Run the direct-launcher qualifier as an ordinary user, never through sudo.
+The root-required systemd mode has been removed. Historical systemd exit-55/58
+results cover the unchanged service restart policy; this qualifier does not
+create units or install privileged helpers. The supported wipe procedure uses
+supervised downtime and explicit service stop/start.
+
+The roster checkpoint migration is guarded and re-runnable on both database
+families. Legacy NULL values and committed markers survive migration replay;
+malformed shape/value are refused. The native SQL journey proves begin arms 0,
+roster failure rolls back its marker with the bodies, successful recreation commits
+1, SQL-ready refuses an uncommitted checkpoint, and post-roster Redis failure retains
+1 while fenced. Filesystem resume remains compatible with legacy SQL-ready NULL.
 
 The roster checkpoint migration is guarded and re-runnable on both database
 families. Legacy NULL values and committed markers survive migration replay;
