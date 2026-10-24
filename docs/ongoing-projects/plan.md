@@ -6,12 +6,12 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-maintenance-state-isolation/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-maintenance-state-isolation`, [PR #352](https://github.com/LuminariMUD/Duris/pull/352).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `812169708`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-email-fix-integration/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-email-fix-integration`, [PR #356](https://github.com/LuminariMUD/Duris/pull/356).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `82814f58b`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352,
-plus independent production-build repair #316. PR #334 adds the sealed nullable
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352 -> #353 -> #354 -> #356,
+plus independent production-build repair #316 and email registry repair #355 (included in #356). PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
 uses the original Redis epoch. Real cold recovery, SIGKILL/rollback, concurrent
@@ -158,6 +158,27 @@ pass; fresh checkpoints survive duplicate/ambiguous-activation retries. Wiper ha
 logs, command/build evidence reuse and exact remaining inventory targets are in the
 current stack-tip plan. All changes committed/pushed/review-ready; full readiness
 remains open and no production operation was performed.
+
+PR #353 repairs actual name-keyed MUD mail replay. Normal boot scans Accounts/mail
+or Players/mail; the actual native producer/index/reader proves the prior wiper leaves
+old multi-block messages reachable by a reused name. Cleanup now privately archives
+both paths before activation. Native current/legacy/dual-spool proof, 16 filesystem
+cases and both full engine/launcher matrices pass; fresh mail survives duplicate/
+ambiguous activation retry. Wiper SHA and logs are in the current stack-tip plan.
+PR #354 proves all four retained locker receipt states stay isolated from a new PID
+on the same account/side (both modeled purses), copied-PID aliases refuse, old bytes
+remain exact and fresh purchase succeeds. It reconciles legacy SQL-only admission
+and adds actual registration, admission-policy and client-free namespace inventory:
+current 200 SQL tables / 35 other stores / 42 Redis surfaces. Focused executable
+pipeline/mode, receipt/crash matrix, filesystem and lifecycle checks pass.
+An independent optional email lookup EOF loop/FILE leak found in that audit is fixed
+in review-ready PR #355 against master (source worktree duris-account-email-fix,
+commit 9b61a23f0). PR #356 integrates it into the qualification stack; native actual-
+helper ASan/UBSan enabled/disabled and incremental MariaDB build pass. Default
+verification stays disabled. No full timer rerun for this unrelated helper.
+All changes are committed/pushed/review-ready. Full retained SQL/worker audit and
+final manual/readiness reconciliation remain open; no GitHub merge or production
+operation. The plan records exact evidence, dependency order and next targets.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
