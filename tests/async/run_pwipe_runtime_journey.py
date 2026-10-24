@@ -10,6 +10,7 @@ if os.geteuid() == 0:
 
 from pathlib import Path
 import argparse
+import contextlib
 import shlex
 import hashlib
 import json
@@ -28,7 +29,7 @@ STAFF = "Wipekeeper"
 GIT = ["git"]
 
 
-def run(binary, with_redis=False, systemd=False, systemd_helper=None):
+def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_helper=None):
     if systemd:
         assert systemd_helper is not None, "--systemd requires an installed helper"
         for path in (systemd_helper, *systemd_helper.parents):
@@ -40,7 +41,7 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
-                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else [])])
+                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else []), *(["--restore"] if matched_restore else [])])
     assert os.environ["TEST_DB_HOST"] == "127.0.0.1"
     assert not Path("/usr/bin/sendemail").exists(), "fixture requires the launcher mail command absent"
     database = "pwipe_journey_" + uuid.uuid4().hex[:12]
@@ -67,15 +68,17 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
     report = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
               "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "status": "running"}
+              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "status": "running"}
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
             result = subprocess.run([sys.executable, "scripts/migration_runner.py", *arguments],
                                     cwd=ROOT, env=env, capture_output=True, text=True)
             assert result.returncode == 0, result.stdout + result.stderr
-        with tempfile.TemporaryDirectory(prefix="pwipe-runtime-", dir=ROOT / "bin/tests") as temporary:
-            root = Path(temporary)
+        with tempfile.TemporaryDirectory(prefix="pwipe-runtime-", dir=None if matched_restore else ROOT / "bin/tests") as temporary:
+            base = Path(temporary)
+            root = base / "runtime" if matched_restore else base
+            root.mkdir(mode=0o700, exist_ok=True)
             journey.make_fixture(root)
             journey.generate_certificate(root)
             tracked = subprocess.check_output([*GIT, "ls-files", "scripts", "migrations"],
@@ -103,7 +106,7 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
                        DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
                        CRITICAL_COMMAND_JOURNAL_DIR=str(root / "journals/critical"))
             path = root / "launcher.out"
-            process = client = redis_server = None
+            process = client = redis_server = restored_redis_server = None
             unit_created = False
             unit_name = "duris-pwipe-qualification-" + str(os.geteuid()) + "-" + uuid.uuid4().hex + ".service"
             output_file = path.open("w")
@@ -204,6 +207,9 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
                             break
                         time.sleep(.05)
                     else: raise AssertionError("private Redis did not start")
+                if matched_restore:
+                    env.update(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_SECRET="synthetic-pwipe-restore-world-secret",
+                               REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_MAX_AGE="3600")
                 if systemd:
                     template = (ROOT / "deploy/systemd/duris-mud-production.service.in").read_text()
                     (root / ".env").write_text("".join(key + "=" + shlex.quote(value) + "\n" for key, value in env.items()))
@@ -250,6 +256,58 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
                 (root / "Players/a/old-season").write_text("old pfile")
                 (root / "Ships/old-season").write_text("old ship")
                 (root / "Players/Backup/preserve").write_text("archive")
+                if matched_restore:
+                    # All game writers are stopped; this private Redis has no external writers.
+                    # Keep supplements outside the immutable SQL generation and bind their hashes.
+                    import tarfile
+                    from test_persistence_backup import policy
+                    sys.path.insert(0, str(ROOT / "scripts"))
+                    import persistence_backup as backup
+                    import persistence_restore as restore
+                    import build_restore_qualifier as native
+                    qualifier = native.build()
+                    recovery = base / "recovery"
+                    recovery.mkdir(mode=0o700)
+                    p = policy(base)
+                    p["live_roots"] = [root]
+                    p["journal_roots"] = {"critical": root / "journals/critical"}
+                    (root / "journals").chmod(0o700)
+                    p["journal_roots"]["critical"].chmod(0o700)
+                    policy_file = recovery / "policy.json"
+                    backup.write_json(policy_file, {key: {name: str(path) for name, path in value.items()}
+                                                   if key == "journal_roots" else value
+                                                   for key, value in p.items()} | {
+                                                       "root": str(p["root"]), "restore_root": str(p["restore_root"]),
+                                                       "live_roots": [str(root)]})
+                    world_key = env["REDIS_NAMESPACE"] + ":season:1:world_state:current"
+                    world_generation = redis("GET", world_key)
+                    assert world_generation, "stopped old world must have a real recovery generation"
+                    sql("INSERT INTO account_bound_rewards(account_name,remaining_pwipes,created_at) VALUES('" +
+                        journey.ACCOUNT + "',3,NOW())")
+                    frozen_roster = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
+                    captured = subprocess.run([sys.executable, str(ROOT / "scripts/persistence_backup.py"),
+                                               "--policy", str(policy_file), "backup"], env=env,
+                                              capture_output=True, text=True, check=True)
+                    generation = p["root"] / json.loads(captured.stdout)["generation"]
+                    backup.verify(generation)
+                    filesystem = recovery / "runtime.tar"
+                    with tarfile.open(filesystem, "w") as archive:
+                        for entry in sorted(root.iterdir()):
+                            if entry.name not in ("redis", "logs", "launcher.out", "test-tmp", "areas", "docs"):
+                                archive.add(entry, arcname=entry.name)
+                    filesystem.chmod(0o600)
+                    redis_rdb = recovery / "redis.rdb"
+                    subprocess.run(["redis-cli", "-h", "127.0.0.1", "-p", env["REDIS_PORT"],
+                                    "--rdb", str(redis_rdb)], check=True, capture_output=True)
+                    redis_rdb.chmod(0o600)
+                    matched = {"epoch": 1, "sql_generation": generation.name,
+                               "sql_manifest_sha256": backup.digest(generation / "manifest.json"),
+                               "filesystem_sha256": backup.digest(filesystem), "redis_sha256": backup.digest(redis_rdb),
+                               "binary_sha256": report["binary_sha256"], "world_generation": world_generation}
+                    backup.write_json(recovery / "matched.json", matched)
+                    backup.sync_tree(recovery)
+                    report["matched_capture"] = matched
+                    print("Frozen matched SQL/journal, filesystem and authenticated Redis world generation captured", flush=True)
                 boot()
                 client = journey.reconnect_character(plain, character=STAFF)
                 client.send("shutdown pwipe confirm"); client.expect("You must")
@@ -339,6 +397,100 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
                 report.update(status="passed", fresh_pid=fresh_pid,
                               assertions="real command/cancel/countdown/launcher/filesystem/staff login/fresh combat/save/reconnect/reboot")
                 print("Recreated Overlord login and fresh mortal combat/loot/save/reconnect/second boot passed", flush=True)
+                if matched_restore:
+                    source_root = root
+                    source_world_key = env["REDIS_NAMESPACE"] + ":season:2:world_state:current"
+                    source_world_generation = redis("GET", source_world_key)
+                    assert source_world_generation
+                    source_epoch = sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state")
+                    source_roster = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
+                    assert source_epoch == "2:active"
+                    assert sql("SELECT remaining_pwipes FROM account_bound_rewards") == "2"
+                    backup.verify(generation)
+                    assert backup.digest(generation / "manifest.json") == matched["sql_manifest_sha256"]
+                    assert backup.digest(filesystem) == matched["filesystem_sha256"]
+                    assert backup.digest(redis_rdb) == matched["redis_sha256"]
+                    ledger = recovery / "tombstones.json"
+                    backup.write_json(ledger, dict(version=1, captured_at=int(time.time()), tombstones=[],
+                                                   policy_sha256=backup.digest(ROOT / "migrations/data_lifecycle_manifest.json")))
+                    restore.tombstone_preflight(ledger, p, backup.verify(generation)["created"])
+                    candidate = base / "restored"
+                    candidate.mkdir(mode=0o700)
+                    backup.write_json(candidate / "ISOLATED_RESTORE", {"generation": generation.name})
+                    restored_root = candidate / "runtime"
+                    restored_root.mkdir(mode=0o700)
+                    with tarfile.open(filesystem) as archive:
+                        archive.extractall(restored_root, filter="data")
+                    for name in ("areas", "docs"):
+                        (restored_root / name).symlink_to(ROOT / name, target_is_directory=True)
+                    shutil.copytree(generation / "journals", candidate / "journals")
+                    backup.run([str(qualifier), "--receipts", str(candidate)], phase="matched_restore_receipts")
+                    original_env = dict(env)
+                    env["REDIS_PORT"] = str(journey.available_ports()[0])
+                    restored_redis = candidate / "redis"
+                    restored_redis.mkdir(mode=0o700)
+                    shutil.copy2(redis_rdb, restored_redis / "dump.rdb")
+                    restored_redis_server = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", env["REDIS_PORT"],
+                                                     "--save", "", "--appendonly", "no", "--dir", str(restored_redis)],
+                                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    for _ in range(100):
+                        probe = subprocess.run(["redis-cli", "-p", env["REDIS_PORT"], "PING"], capture_output=True, text=True)
+                        if probe.returncode == 0 and probe.stdout.strip() == "PONG": break
+                        assert restored_redis_server.poll() is None
+                        time.sleep(.05)
+                    else: raise AssertionError("restored Redis did not start")
+                    assert redis("GET", world_key) == world_generation
+                    def restore_environment():
+                        env.clear(); env.update(original_env)
+                    with restore.private_database(candidate) as restored_env, contextlib.ExitStack() as cleanup:
+                        cleanup.callback(restore_environment)
+                        restore.database_import(generation, restored_env)
+                        restore.database_qualify(restored_env, "matched_restore_import")
+                        def restored_sql(statement):
+                            return backup.run(["mysql", "--no-defaults", "--protocol=socket", "--socket=" + restored_env["DB_SOCKET"],
+                                               "--user=restore", "-N", "-B", "duris_restore", "-e", statement],
+                                              phase="matched_restore_check", env=restored_env).decode().strip()
+                        assert restored_sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
+                        assert restored_sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == frozen_roster
+                        assert restored_sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid)) == old_items
+                        assert restored_sql("SELECT bank_platinum FROM account_banks") == "9"
+                        assert restored_sql("SELECT remaining_pwipes FROM account_bound_rewards") == "3"
+                        root = restored_root
+                        env.update({key: value for key, value in restored_env.items() if key.startswith("DB_") or key == "MYSQL_PWD"},
+                                   CRITICAL_COMMAND_JOURNAL_DIR=str(candidate / "journals/critical"))
+                        assert (root / "Players/a/old-season").read_text() == "old pfile"
+                        assert (root / "Ships/old-season").read_text() == "old ship"
+                        assert (root / "Players/Backup/preserve").read_text() == "archive"
+                        boot()
+                        # Each boot rotates logs/log; validate its own captured generation.
+                        assert "restored world recovery generation sequence=" + world_generation + " " in (root / "logs/log/sys").read_text()
+                        client = journey.reconnect_character(plain, character=STAFF)
+                        client.send("inventory"); client.expect("mace")
+                        save(STAFF)
+                        stop()
+                        restored_sequence = redis("GET", world_key)
+                        assert restored_sequence
+                        boot()
+                        assert "restored world recovery generation sequence=" + restored_sequence + " " in (root / "logs/log/sys").read_text()
+                        client = journey.reconnect_character(plain, character=STAFF)
+                        save(STAFF); stop()
+                        restore.database_qualify(restored_env, "matched_restore_after_gameplay")
+                        assert restored_sql("SELECT pid FROM player_data WHERE name='" + STAFF + "' AND active=1") == str(old_pid)
+                        assert restored_sql("SELECT COUNT(*) FROM player_data WHERE pid=" + str(fresh_pid)) == "0"
+                    restored_redis_server.terminate(); restored_redis_server.wait(timeout=10)
+                    restored_redis_server = None
+                    assert not (source_root / "Players/a/old-season").exists()
+                    assert not (source_root / "Ships/old-season").exists()
+                    assert redis("GET", source_world_key) == source_world_generation
+                    assert redis("EXISTS", world_key) == "0"
+                    assert redis("MGET", *retained_keys).splitlines() == ["fixture"] * len(retained_keys)
+                    assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == source_epoch
+                    assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == source_roster
+                    backup.verify(generation)
+                    assert backup.digest(filesystem) == matched["filesystem_sha256"]
+                    assert backup.digest(redis_rdb) == matched["redis_sha256"]
+                    report["matched_restore_assertions"] = "frozen matched hashes/epoch, fresh private DB, banks/rewards/old PID/files restored, authenticated world recovery, account login/save/reconnect/reboot, source SQL/files/Redis/generation unchanged"
+                    print("Matched pre-wipe SQL/filesystem/Redis restore, original account/body/world and second boot passed", flush=True)
             except Exception:
                 report["status"] = "failed"
                 print(path.read_text(errors="replace")[-8000:])
@@ -350,6 +502,8 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
                 stop()
                 if unit_created:
                     unit_control("cleanup")
+                if restored_redis_server:
+                    restored_redis_server.terminate(); restored_redis_server.wait(timeout=10)
                 if redis_server:
                     redis_server.terminate(); redis_server.wait(timeout=10)
                 output_file.close()
@@ -358,6 +512,7 @@ def run(binary, with_redis=False, systemd=False, systemd_helper=None):
         raise
     finally:
         suffix = "mariadb-redis-systemd" if systemd and with_redis else "mariadb-redis" if with_redis else "mariadb"
+        suffix += "-restore" if matched_restore else ""
         (output / ("pwipe-runtime-" + suffix + ".json")).write_text(json.dumps(report, indent=2) + "\n")
         sql("DROP DATABASE " + database, False)
 
@@ -472,6 +627,7 @@ def flatfile_rejection(binary):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flatfile-rejection", action="store_true")
+    parser.add_argument("--restore", action="store_true", help="rehearse a matched pre-wipe restore (requires --redis)")
     parser.add_argument("--redis", action="store_true", help="use a disposable Redis process")
     parser.add_argument("--systemd", action="store_true", help="use a disposable system unit through an installed privileged helper")
     parser.add_argument("--systemd-helper", type=Path, help="reviewed root-owned helper installed outside the checkout")
@@ -481,9 +637,11 @@ if __name__ == "__main__":
         parser.error("--systemd and --systemd-helper must be supplied together")
     if options.systemd_helper:
         options.systemd_helper = options.systemd_helper.absolute()
+    if options.restore and (not options.redis or options.systemd or options.flatfile_rejection):
+        parser.error("--restore requires --redis and the direct MariaDB launcher")
     binary = Path(options.binary).resolve(strict=True)
     if options.flatfile_rejection:
-        assert not options.redis and not options.systemd
+        assert not options.redis and not options.systemd and not options.restore
         flatfile_rejection(binary)
     else:
-        run(binary, options.redis, options.systemd, options.systemd_helper)
+        run(binary, options.redis, options.systemd, options.restore, options.systemd_helper)
