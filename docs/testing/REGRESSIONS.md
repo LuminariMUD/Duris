@@ -328,6 +328,13 @@ roster failure rolls back its marker with the bodies, successful recreation comm
 1, SQL-ready refuses an uncommitted checkpoint, and post-roster Redis failure retains
 1 while fenced. Filesystem resume remains compatible with legacy SQL-ready NULL.
 
+The roster checkpoint migration is guarded and re-runnable on both database
+families. Legacy NULL values and committed markers survive migration replay;
+malformed shape/value are refused. The native SQL journey proves begin arms 0,
+roster failure rolls back its marker with the bodies, successful recreation commits
+1, SQL-ready refuses an uncommitted checkpoint, and post-roster Redis failure retains
+1 while fenced. Filesystem resume remains compatible with legacy SQL-ready NULL.
+
 The native SQL journey also exercises the actual Redis maintenance provider against
 a private process. An unavailable endpoint aborts before the boundary with unchanged
 SQL/Redis state. A SCAN-denying ACL causes post-boundary invalidation to fail and

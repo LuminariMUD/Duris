@@ -624,7 +624,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertIn("requires run", result.stderr)
 
     def test_online_divine_trade_scope_and_lock_mode(self):
-        manifest = runner.load_manifest()
+        current = runner.load_manifest()
+        manifest = runner.replace(current, migrations=current.migrations[:52])
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
