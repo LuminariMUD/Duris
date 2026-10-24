@@ -223,7 +223,11 @@ The same versioned authority keeps its increasing boon-ID counter, bounded staff
 history and pause/mode configuration. New-season objectives cannot reuse an old
 cargo allowance's boon ID. Snapshot validation precedes the irreversible boundary;
 a failed durable retirement leaves the reset fenced. Protected cargo receipts/books
-are retained; their recovery isolation is qualified separately.
+are retained. The native reset journey proves committed receipt replay is inert,
+and an unapplied pre-reset purchase is stale after ship deletion, including after
+a same-named fresh mortal receives a higher-ID ship. Historical books/generation
+remain unchanged; old wallet/cargo/market after-images do not return. Current boon
+IDs are monotonic, so old books do not supply a new objective's allowance.
 
 Artifact domain rows clear ownership, location, timers, souls and legacy custody
 references. Canonical UIDs become retired (or absent when none existed), preserving
