@@ -36,6 +36,7 @@
 #include "sql/sql.h"
 #include "economy/tradeskill.h"
 #include "world/vnum.obj.h"
+#include "world/vnum.mob.h"
 #include "world/vnum.room.h"
 #include "world/weather.h"
 #include "world/world_quest.h"
@@ -11304,11 +11305,14 @@ int newbie_paladin(P_char ch, P_char pl, int cmd, char *arg)
 	}
 	affect_from_char(pl, TAG_LIFESTREAMNEWBIE);
 
-	mobsay(ch, "&+bOgres&n, &+mDrow Elfs&n and &+gTrolls&n must die!&n");
-	mobsay(ch, "Many evils died to this sword, it does me no good now, use it well.");
+	const bool chaos = GET_VNUM(ch) == VMOB_CHAOS_GUIDE;
+	mobsay(ch, chaos ? "&+CHumans&n, &+cGrey Elves&n and &+YMountain Dwarves&n must die!&n" :
+			   "&+bOgres&n, &+mDrow Elfs&n and &+gTrolls&n must die!&n");
+	mobsay(ch, chaos ? "Many goods died to this sword, it does me no good now, use it well." :
+			   "Many evils died to this sword, it does me no good now, use it well.");
 	mobsay(ch, "TYPE \"HELP RACEWAR\" for more information");
 
-	sword = read_object(VOBJ_NEWBIE2_SWORD_BLESSED, VIRTUAL);
+	sword = read_object(chaos ? VOBJ_CHAOS_SWORD_BLESSED : VOBJ_NEWBIE2_SWORD_BLESSED, VIRTUAL);
 	act("$n gives $q to $N!", TRUE, ch, sword, pl, TO_NOTVICT);
 	act("$n gives you $q!", TRUE, ch, sword, pl, TO_VICT);
 	obj_to_char(sword, pl);

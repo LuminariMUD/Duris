@@ -76,6 +76,7 @@ HARNESS = r'''
 #include "account/newbie_kit_plan.h"
 #include "core/config.h"
 #include "core/defines.h"
+#include "world/vnum.room.h"
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -83,22 +84,32 @@ HARNESS = r'''
 namespace room_fixture {
 struct character { int in_room; };
 struct room { int number; };
-room world[] = {{29201}, {42}};
-const int top_of_world = 1;
+room world[] = {{29201}, {42}, {91401}};
+const int top_of_world = 2;
 bool ailvio(character *ch) {
     newbie_kit_input input;
     ROOM_ASSIGNMENT
     return input.ailvio;
 }
+bool wutvr(character *ch) {
+    newbie_kit_input input;
+    WUTVR_ROOM_ASSIGNMENT
+    return input.wutvr;
+}
 }
 int main() {
-    for (int room : {-2, NOWHERE, 2, INT_MAX}) {
+    for (int room : {-2, NOWHERE, 3, INT_MAX}) {
         room_fixture::character ch{room};
         assert(!room_fixture::ailvio(&ch));
+        assert(!room_fixture::wutvr(&ch));
     }
     room_fixture::character first{0}, last{1};
     assert(room_fixture::ailvio(&first));
     assert(!room_fixture::ailvio(&last));
+    room_fixture::character copied{2};
+    assert(room_fixture::wutvr(&copied));
+    assert(!room_fixture::ailvio(&copied));
+    assert(!room_fixture::wutvr(&first));
     const auto coverage = newbie_kit_template_vnums();
     for (int race = 0; race <= LAST_RACE; ++race)
     for (int cls = 0; cls < CLASS_COUNT; ++cls)
@@ -108,6 +119,16 @@ int main() {
         newbie_kit_input input{race, align, 1 << cls, all,
             (1U << cls) == CLASS_BLIGHTER, additions, additions, additions};
         const auto plan = make_newbie_kit_plan(input);
+        auto wutvr_input = input;
+        wutvr_input.ailvio = false;
+        wutvr_input.wutvr = additions;
+        const auto copied_plan = make_newbie_kit_plan(wutvr_input);
+        assert(copied_plan.size() == plan.size());
+        for (size_t i = 0; i < plan.size(); ++i) {
+            const int expected = !plan[i].regular && plan[i].vnum == 29319 ? 91519 : plan[i].vnum;
+            assert(copied_plan[i].vnum == expected && copied_plan[i].regular == plan[i].regular);
+            assert(std::binary_search(coverage.begin(), coverage.end(), copied_plan[i].vnum));
+        }
         uint64_t hash = 14695981039346656037ULL;
         for (const auto &item : plan) {
             assert(std::binary_search(coverage.begin(), coverage.end(), item.vnum));
@@ -146,6 +167,8 @@ int main() {
 nanny = (ROOT / 'src/account/nanny.c').read_text()
 loader = nanny.split('static std::vector<prepared_newbie_item> prepare_legacy_newbie_plan', 1)[1].split('/* check for a legal player name', 1)[0]
 room_assignment = re.search(r'input\.ailvio\s*=[^;]+;', loader).group(0)
+wutvr_room_assignment = re.search(r'input\.wutvr\s*=[^;]+;', loader).group(0)
+HARNESS = HARNESS.replace('WUTVR_ROOM_ASSIGNMENT', wutvr_room_assignment)
 HARNESS = HARNESS.replace('ROOM_ASSIGNMENT', room_assignment)
 assert 'read_object(' not in loader
 entry = loader.split('void load_obj_to_newbies(P_char ch)', 1)[1]

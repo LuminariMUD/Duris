@@ -2017,6 +2017,7 @@ void startPvP(P_char ch, bool racewar);
 void set_npc_multi(P_char);
 void convertMob(P_char);
 void convertMob(P_char, bool apply_mob_gold);
+int tutorial_mobile_mechanics_race(P_char);
 /* Re-stamp an NPC's castable circles from its CURRENT level (mob/mobconv.c).
  * Call after anything that raises a mob's level once it is in the world. */
 void refresh_npc_spell_slots(P_char);

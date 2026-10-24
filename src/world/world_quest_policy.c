@@ -53,6 +53,7 @@ constexpr int WORLD_QUEST_MAX_ZONE_NUMBER = 4000;
 constexpr int WORLD_QUEST_EXPLICIT_DENY_ZONES[] = {
 	0,
 	292,
+	914,
 	536,
 };
 

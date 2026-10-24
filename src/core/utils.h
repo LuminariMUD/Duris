@@ -764,11 +764,14 @@ int race_size(int race);
 #define IS_DEMON(ch) (GET_RACE(ch) == RACE_DEMON)
 #define IS_DEVIL(ch) (GET_RACE(ch) == RACE_DEVIL)
 
-#define IS_GIANT(ch)                                                           \
-	((GET_RACE(ch) == RACE_GIANT) || (GET_RACE(ch) == RACE_OGRE) ||        \
-	 (GET_RACE(ch) == RACE_SGIANT) || (GET_RACE(ch) == RACE_MINOTAUR) ||   \
-	 (GET_RACE(ch) == RACE_SNOW_OGRE) || (GET_RACE(ch) == RACE_FIRBOLG) || \
-	 (GET_RACE(ch) == RACE_FIREGIANT) || (GET_RACE(ch) == RACE_FROSTGIANT))
+int tutorial_mobile_mechanics_race(P_char);
+inline bool is_giant_race(int race)
+{
+	return race == RACE_GIANT || race == RACE_OGRE || race == RACE_SGIANT ||
+	       race == RACE_MINOTAUR || race == RACE_SNOW_OGRE || race == RACE_FIRBOLG ||
+	       race == RACE_FIREGIANT || race == RACE_FROSTGIANT;
+}
+#define IS_GIANT(ch) is_giant_race(tutorial_mobile_mechanics_race(ch))
 
 #define IS_INSECT(ch) ((GET_RACE(ch) == RACE_INSECT))
 

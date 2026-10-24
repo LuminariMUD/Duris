@@ -10,17 +10,17 @@ HF 0 0 0 2
 0.0.0.0 0
 8 8 0
 #91201
-paladin spirit~
-&+Wa &+wsolemn&+W paladin&n~
-&+CA ho&+cly spir&+Wit of a palad&+Cin stan&+cds here.&n
+reaver spirit~
+&+Wa &+wsolemn&+W reaver&n~
+&+CA ch&+caotic spir&+Wit of a reave&+Cr stan&+cds here.&n
 ~
-&+wThis strong paladin is wearing a long cloak, over top some brilliant
+&+wThis strong reaver is wearing a long cloak, over top some brilliant
 &+wwhite armor.  He gazes you up and down as you enter, and with a single
-&+wfinger he beckons you to speak with him. &+W Ask Paladin racewars&+w
+&+wfinger he beckons you to speak with him. &+W Ask reaver racewars&+w
 &+wwill probably &+wprovide more knowledge of these lands.&n
 ~
 8390666 0 0 0 0 0 0 0 1000 S
-PH 0 8 0 -1
+HO 0 8 0 -1
 50 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1

@@ -1732,6 +1732,8 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 
 	if (input.ailvio)
 		result.push_back({ 29319, false });
+	else if (input.wutvr)
+		result.push_back({ 91519, false });
 	if (input.bandages)
 		for (int i = 0; i < 4; ++i)
 			result.push_back({ 393, false });
@@ -1742,7 +1744,7 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 
 std::vector<int> newbie_kit_template_vnums()
 {
-	std::vector<int> result = { 29319, 393, 458 };
+	std::vector<int> result = { 29319, 91519, 393, 458 };
 	const auto append = [&result](const int *items)
 	{
 		for (int i = 0; items && items[i] != -1; ++i)

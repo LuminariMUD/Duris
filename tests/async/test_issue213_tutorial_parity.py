@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Exact authored/generated parity for the issue-213 tutorial ID-copy foundation.
+"""Exact authored/generated parity outside issue 213's explicit reskin mapping.
 
-Only the explicit typed references and location names below may differ. Final
-NPC names/race compatibility and compiled bindings are a subsequent delivery;
-this fixture does not claim those or loaded-world mechanical acceptance.
+This checks authored fields, not derived NPC mechanics or runtime dispatch.
+Those require the loaded-world comparison and gameplay journeys as well.
 """
 import re
 
@@ -30,6 +29,35 @@ SHARED = {
             1120, 1121, 1122, 1124, 1126, 1127, 1128, 1129, 1130, 1131, 1132,
             1134, 1135, 1136, 1137, 1138, 1139, 1140, 1141, 1142, 1143, 1144,
             1145, 1146, 1147, 1148, 1149, 1150, 1151, 3097, 87700, 88502, 98621},
+}
+NAMES = {
+    "Burbul": "Grubruk", "Fleurita": "Vexira", "Janella": "Zarneth", "Laurel": "Zereth",
+    "Chyron": "Zyrrak", "Mier": "Zhar", "Sadev": "Kuleth", "Maerg": "Grash",
+    "Gandharvas": "Nethravas", "Brodi": "Ghoruk", "Saelryn": "Vhaezra",
+    "Drinnan": "Krizzik", "Llerrad": "Vargesh", "Creyset": "Kresht", "Lapney": "Mordrak",
+    "Roshenbly": "Skritch", "Nalk": "Skarrix", "Agare": "Zhaleth", "Grinda": "Khardra",
+    "Eian": "Orvak", "Deline": "Velkris", "Tor": "Grath", "Vaugh": "Urzak",
+    "Victa": "Vorka", "Burnarg": "Morzag", "Kord": "Krag", "Quek": "Zikk",
+    "Risp": "Brusk", "Perr": "Xerr", "Foet": "Vaex", "Osule": "Ozuk",
+    "Esera": "Kessra", "Taiz": "Zair", "Hellfax": "Kharzul", "Lardeus": "Vorrik",
+    "Silva": "Varka", "Hizzy": "Skizz",
+}
+MOB_RACES = {"PH": "HO", "PB": "HO", "PF": "HG", "PG": "KB", "PE": "PL",
+             "PM": "PD", "P2": "TF", "CT": "MT", "GZ": "GI"}
+# Taiz's visible source identity is Half-Elf despite its PH mechanical header.
+# Keep that identity mapping coherent while retaining the source PH profile.
+MOB_RACE_OVERRIDES = {29264: "TF"}
+RACE_LABELS = {
+    "PH": {"human": "orc", "humans": "orcs"},
+    "PB": {"barbarian": "orc", "barbarians": "orcs"},
+    "PF": {"halfling": "goblin", "halflings": "goblins"},
+    "PG": {"gnome": "kobold", "gnomes": "kobolds", "gnomish": "kobold"},
+    "PE": {"grey elf": "drow elf", "grey elves": "drow elves", "grey-elf": "drow elf"},
+    "PM": {"mountain dwarf": "duergar", "mountain dwarves": "duergar", "dwarf": "duergar",
+           "dwarves": "duergar", "dwarven": "duergar"},
+    "P2": {"half-elf": "tiefling", "half-elven": "tiefling", "half-elves": "tieflings", "half elf": "tiefling"},
+    "CT": {"centaur": "minotaur", "centaurs": "minotaurs"},
+    "GZ": {"githzerai": "githyanki"},
 }
 
 
@@ -82,59 +110,105 @@ def after_strings(lines, index, count):
     return index
 
 
-def renamed(text, source):
-    # Match visible text across existing MUD colour changes. Keep every colour
-    # token in its original order, anchoring it to the replacement's characters.
-    names = {"Ail-v-io": "Wutvr", "Ailvio": "Wutvr"}
-    if source == "newbie2":
-        names.update({"Plane of Life": "Plane of Chaos", "Plains of Life": "Plane of Chaos",
-                      "Life Stream": "Chaos Stream"})
+def room_exit_fields(lines):
+    """Typed exits for the parity fixture and authored-world walking journey."""
+    index = after_strings(lines, 1, 2) + 1
+    while index < len(lines) and lines[index].strip() != "S":
+        marker = lines[index].strip()
+        if re.fullmatch(r"D[0-9]", marker):
+            direction = int(marker[1])
+            index = after_strings(lines, index + 1, 2)
+            values = [int(value) for value in lines[index].split()]
+            assert len(values) == 3
+            yield direction, index, values
+            index += 1
+        elif marker == "E":
+            index = after_strings(lines, index + 1, 2)
+        else:
+            raise AssertionError(f"unexpected room field: {marker}")
+
+
+def replace_visible(text, replacements, flags=re.I):
+    """Replace whole visible names/phrases without consuming ANSI or other words."""
     colour = r"&(?:[+-].|=..|[nN])"
-    for old, new in names.items():
-        pattern = "".join(re.escape(char) + f"(?:{colour})*" for char in old)
-        def replace(match):
-            tokens = re.findall(colour + r"|.", match[0], re.S)
-            trailing = []
-            while tokens and tokens[-1].startswith("&"):
-                trailing.insert(0, tokens.pop())
-            visible = re.sub(colour, "", match[0])
-            replacement = new.lower() if visible.islower() else new.upper() if visible.isupper() else new
-            result, index = [], 0
-            for token in tokens:
-                if token.startswith("&"):
-                    result.append(token)
-                else:
-                    if index < len(replacement):
-                        result.append(replacement[index])
-                    index += 1
-            return "".join(result) + replacement[index:] + "".join(trailing)
-        text = re.sub(pattern, replace, text, flags=re.I)
+    visible, offsets = [], []
+    for token in re.finditer(colour + r"|.", text, re.S):
+        if not token[0].startswith("&"):
+            visible.append(token[0])
+            offsets.append(token.start())
+    plain = "".join(visible)
+    pattern = r"(?<![A-Za-z])(?:" + "|".join(re.escape(key) for key in sorted(replacements, key=len, reverse=True)) + r")(?![A-Za-z])"
+    lookup = {key.lower(): value for key, value in replacements.items()}
+    for match in reversed(list(re.finditer(pattern, plain, flags))):
+        start, end = offsets[match.start()], offsets[match.end() - 1] + 1
+        new = lookup[match[0].lower()]
+        new = new.lower() if match[0].islower() else new.upper() if match[0].isupper() else new
+        result, index = [], 0
+        for token in re.findall(colour + r"|.", text[start:end], re.S):
+            if token.startswith("&"):
+                result.append(token)
+            else:
+                if index < len(new):
+                    result.append(new[index])
+                index += 1
+        text = text[:start] + "".join(result) + new[index:] + text[end:]
+    return text
+
+
+def renamed(text, source, kind, ident, race):
+    text = replace_visible(text, {"Ail-v-io": "Wutvr", "Ailvio": "Wutvr"})
+    if source == "newbie2":
+        return replace_visible(text, {"Plane of Life": "Plane of Chaos", "Plains of Life": "Plane of Chaos",
+                                      "Life Stream": "Chaos Stream", "paladin": "reaver", "holy": "chaotic", "angelic": "chaotic"})
+    text = replace_visible(text, NAMES)
+    # Red is a person's name here, but lowercase red elsewhere is an unchanged
+    # colour/quest ingredient. Handle only the name and explicit command target.
+    text = replace_visible(text, {"Red": "Vraz"}, flags=0)
+    text = replace_visible(text, {"tell red": "tell vraz", "ask red": "ask vraz",
+                                  "evil races": "good races"})
+    if kind == "mob":
+        labels = RACE_LABELS.get("P2" if ident == 29264 else race, {})
+        if labels:
+            text = replace_visible(text, labels)
+        header, keywords, rest = text.split("\n", 2)
+        if ident == 29233:
+            keywords = replace_visible(keywords, {"red": "vraz"})
+        if race == "PE":
+            keywords = replace_visible(keywords, {"grey": "drow"})
+        text = header + "\n" + keywords + "\n" + rest
+    elif kind == "wld" and ident < 29312 or kind == "obj":
+        # Resident/cultural references change; generic forest-width comparisons
+        # and the existing geography descriptions are preserved.
+        text = replace_visible(text, {**RACE_LABELS["CT"], **RACE_LABELS["PB"]})
+    elif kind == "qst":
+        # The ranger's statement about non-centaurs is a lesson, not NPC identity.
+        text = replace_visible(text, {"the human bard": "the orc bard"})
+        if ident == 29304:
+            text = replace_visible(text, {**RACE_LABELS["P2"], "bandage human": "bandage orc"})
+    if kind == "wld" and ident == 29312:
+        text = replace_visible(text, {"All races can choose to enter here": "Only its existing residents return here"})
     return text
 
 
 def copied_record(source, kind, record):
     lines = record.splitlines(keepends=True)
     ident = int(re.match(r"#(\d+)", lines[0])[1])
+    record_id, old_race = ident, None
     header_kind = "mob" if kind == "qst" else kind
     lines[0] = lines[0].replace(str(ident), str(remap(header_kind, ident)), 1)
     if kind == "wld":
         index = after_strings(lines, 1, 2)
         zone = int(lines[index].split()[0])
         lines[index] = numbers(lines[index], {0: remap("zon", zone)})
-        index += 1
-        while index < len(lines) and lines[index].strip() != "S":
-            marker = lines[index].strip()
-            if re.fullmatch(r"D[0-9]", marker):
-                index = after_strings(lines, index + 1, 2)
-                values = [int(value) for value in lines[index].split()]
-                assert len(values) == 3
-                lines[index] = numbers(lines[index], {1: remap("obj", values[1]),
-                                                     2: remap("wld", values[2])})
-                index += 1
-            elif marker == "E":
-                index = after_strings(lines, index + 1, 2)
-            else:
-                raise AssertionError(f"unexpected room field {source}:{ident}: {marker}")
+        for _, field, values in room_exit_fields(lines):
+            lines[field] = numbers(lines[field], {1: remap("obj", values[1]),
+                                                 2: remap("wld", values[2])})
+    elif kind == "mob":
+        index = after_strings(lines, 1, 4)
+        old_race = lines[index + 1].split()[0].upper()
+        new_race = "HO" if source == "newbie2" and ident == 22801 else MOB_RACE_OVERRIDES.get(ident, MOB_RACES.get(old_race, old_race))
+        if new_race != old_race:
+            lines[index + 1] = re.sub(r"^(\s*)\S+", lambda match: match[1] + new_race, lines[index + 1], count=1)
     elif kind == "obj":
         index = after_strings(lines, 1, 4)
         object_type = int(lines[index].split()[0])
@@ -187,7 +261,7 @@ def copied_record(source, kind, record):
         index = after_strings(lines, index + 1, 7)
         lines[index + 2] = numbers(lines[index + 2], {0: remap("mob", int(lines[index + 2]))})
         lines[index + 4] = numbers(lines[index + 4], {0: remap("wld", int(lines[index + 4]))})
-    return renamed("".join(lines), source)
+    return renamed("".join(lines), source, kind, record_id, old_race)
 
 
 def expected_copy(source, kind):

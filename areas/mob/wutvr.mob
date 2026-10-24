@@ -1,9 +1,9 @@
 #91401
-burbul halfling newbie~
-&+GB&+gurbu&+Gl &+ythe halfling&N~
-&+GB&+gurbu&+Gl&n, &+ythe halfling&n &+wgleams from behind his &+ywooden stand.&n
+grubruk goblin newbie~
+&+GG&+grubr&+Guk &+ythe goblin&N~
+&+GG&+grubr&+Guk&n, &+ythe goblin&n &+wgleams from behind his &+ywooden stand.&n
 ~
-&+yThis halfling is armed with a positively staggering array of miscellaneous maps,
+&+yThis goblin is armed with a positively staggering array of miscellaneous maps,
 &+ynotes, papers and travel equipment for such a small personage.  As he moves, he
 &+ylooks like a minature whirlwind that flutters with items attached to every
 &+ypossible clothing surface.  His garb is simple leather adventuring clothes which
@@ -12,13 +12,13 @@ burbul halfling newbie~
 &+ybewildering streaks of color produced by his rapid movements.&N
 ~
 10 0 0 0 0 0 0 0 0 S
-PF 6 32768 0 -1
+HG 6 32768 0 -1
 15 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91402
-woman fleurita silver whore~
-&+CFleurita&n~
+woman vexira silver whore~
+&+CVexira&n~
 &+CA graceful looking woman with hair of &+wsi&+Wlv&+wer &+Cstands here.&n
 ~
 &+CA stunningly beautiful woman with a surprising sense of inner serenity&n
@@ -28,59 +28,59 @@ woman fleurita silver whore~
 &+Cathletic body as she moves around the alcove.&n
 ~
 33566798 0 0 0 0 0 0 0 0 S
-P2 15 0 0 3
+TF 15 0 0 3
 13 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91403
-janella lady woman whore barbarian~
-&+rJanella&n~
-&+rA fl&+Ram&+Ye h&+Rai&+rred barbarian woman lies here smiling seductively.&n
+zarneth lady woman whore orc~
+&+rZarneth&n~
+&+rA fl&+Ram&+Ye h&+Rai&+rred orc woman lies here smiling seductively.&n
 ~
-&+rJanella's pouting lips tilt up in welcoming, self satisfied smile,&n
+&+rZarneth's pouting lips tilt up in welcoming, self satisfied smile,&n
 &+rartfully tossing her &+Rfi&+Yr&+Rey &+rred hair back over her bare creamy&n
 &+rshoulders. To your acute embarrassment, the lady does not appear to be&n
 &+rwearing anything more than the brown wollen blanket precariously&n
 &+rhanging from her ample bosom.&n
 ~
 33566798 0 0 0 0 0 0 0 0 S
-PB 11 0 0 4
+HO 11 0 0 4
 13 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91404
-lady laurel centaur woman whore~
-&+yLady Laurel&n~
-&+yA centaur woman, dressed in leather leans wearily against the wall.&n
+lady zereth minotaur woman whore~
+&+yLady Zereth&n~
+&+yA minotaur woman, dressed in leather leans wearily against the wall.&n
 ~
-&+yA well built centaur woman stands proud and tall, her arms crossed&n
+&+yA well built minotaur woman stands proud and tall, her arms crossed&n
 &+ywith a feirce stare on her handsome well sculptured face. Long dark&n
 &+ychestnut hair flows down her shoulders and back, giving a feminine&n
 &+ysoft look that sets off her well muscled and toned body.&n
 ~
 33566798 0 0 0 0 0 0 0 0 S
-CT 14 0 0 4
+MT 14 0 0 4
 13 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91405
-boy slave barbarian serving~
+boy slave orc serving~
 &+wa serving boy&n~
-&+wA small unkempt &+Bbarbarian&n serving boy rushes through the room.&n
+&+wA small unkempt &+Borc&n serving boy rushes through the room.&n
 ~
-&+wA rather frail looking barbarian boy struggles to carry a load of&n
+&+wA rather frail looking orc boy struggles to carry a load of&n
 &+wmiscellaneous items for the patrons. Dark brown hair flops forward over&n
 &+whis forehead obscuring his eyes, which are downcast, avoiding any eye&n
 &+wcontact. Dark, angry bruises on his arms and legs are a testament to&n
 &+whis harsh, demanding lifestyle, and ill tempered employers.&n
 ~
 33566798 0 0 0 0 0 0 0 0 S
-PB 10 0 0 2
+HO 10 0 0 2
 5 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91406
-minstrel human performer~
+minstrel orc performer~
 &+wa performing &+mminstrel&n~
 &+wA &+mmin&+Mst&+mrel &+wentertains the crowd with a happy tune.&n
 ~
@@ -92,22 +92,22 @@ minstrel human performer~
 &+mlikely keeping a watch for pretty women.&n
 ~
 33566798 0 0 0 0 0 0 0 0 S
-PH 0 32768 0 3
+HO 0 32768 0 3
 11 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91407
-elderly man gnome~
-&+wan elderly &+Rgnome &+wman&n~
-&+wA tiny, elderly &+Rgnome &+wman hops about dancing a jig.&n
+elderly man kobold~
+&+wan elderly &+Rkobold &+wman&n~
+&+wA tiny, elderly &+Rkobold &+wman hops about dancing a jig.&n
 ~
 &+wBright, sparkling, merry eyes peer from a face worn and wrinkled with&n
 &+wthe ravages of time. Barely knee high to the average centaur, the tiny&n
-&+wgrizzled gnome man giggles gleefully as his stumpy legs pump up and&n
+&+wgrizzled kobold man giggles gleefully as his stumpy legs pump up and&n
 &+wdown dancing in time to the music.&n
 ~
 33566794 0 0 0 0 0 0 0 0 S
-PG 7 0 0 1
+KB 7 0 0 1
 8 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -150,7 +150,7 @@ fish gurnard~
 &+yA large ugly red-orange fish slowly swims ponderously along.&n
 ~
 &+yLarge mouth open the gurnard slowly swims through the water aimlessly&n
-&+yhoping some morsel of food will just filter into its huge mouth. Red&n
+&+yhoping some morsel of food will just filter into its huge mouth. Vraz&n
 &+yorange bright in color its scales and fins are fantastic like some&n
 &+yunder-water winged creature, beautiful yet deadly sharp.&n
 ~
@@ -212,14 +212,14 @@ lady cook fat~
 &+ca fat cook&n~
 &+cA large fat lady bustles about the kitchen cooking.&n
 ~
-&+cThe cook, "The Fat Lady", an aging barbarian woman is aptly named. Her&n
+&+cThe cook, "The Fat Lady", an aging orc woman is aptly named. Her&n
 &+clarge bulk somehow smoothly manuevours through the cramped untidy&n
 &+ckitchen, as she stirs each pot in its turn. Wiping her hands on her&n
 &+cgrubby stained apron, she turns to you and grins toothlessly, her&n
 &+cjowls quivering grossly.&n
 ~
 33566794 0 0 0 33554728 0 0 0 0 S
-PB 10 0 0 4
+HO 10 0 0 4
 15 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -236,32 +236,32 @@ wench serving barmaid lady woman~
 &+cquizzically.&n
 ~
 33587278 0 0 0 0 0 0 0 0 S
-PH 0 0 0 3
+HO 0 0 0 3
 9 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91416
-centaur alchemist old chyron~
-&+gCh&+wyr&+gon, the &+gcen&+Ltaur&n alchemist&n~
-&+gCh&+wyr&+gon, the aging &+gcen&+Ltaur&n &+grumages about searching for something.&n
+minotaur alchemist old zyrrak~
+&+gZy&+wrr&+gak, the &+gmin&+Lotaur&n alchemist&n~
+&+gZy&+wrr&+gak, the aging &+gmin&+Lotaur&n &+grumages about searching for something.&n
 ~
-&+gAn old centaur in simple brown spun wool clothing, unassuming attire
+&+gAn old minotaur in simple brown spun wool clothing, unassuming attire
 &+gnecessary for the work of an alchemist as can be seen from the scorch
 &+gmarks and ingredient stains.  His bristled steel grey eyebrows are drawn
 &+gtogether in a frustrated frown of worry as he mutters about something lost
 &+gand brushes vials and parchments aside as he searches frantically.&n
 ~
 10 0 0 0 0 0 0 0 0 S
-CT 16 0 0 4
+MT 16 0 0 4
 60 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91417
-mier sadev pimp proprietor~
-&+wMier Sadev the pimp&n~
-&+MMier Sadev&n, the proprietor leans against the wall here.&n
+zhar kuleth pimp proprietor~
+&+wZhar Kuleth the pimp&n~
+&+MZhar Kuleth&n, the proprietor leans against the wall here.&n
 ~
-&+wMier Sadev is a huge, bulky Centaur male with an interesting, and&n
+&+wZhar Kuleth is a huge, bulky minotaur male with an interesting, and&n
 &+wrather tacky sense of style that runs from a brightly co&+Ml&+Yo&+Mr&+wed coat&n
 &+wto an ill matched &+ydull brown leather cloak&+w. Neither his strength or&n
 &+wintellect can be challenged however, as his impressive muscles flex&n
@@ -269,14 +269,14 @@ mier sadev pimp proprietor~
 &+wan eye on his girls.&n
 ~
 33566794 0 0 0 0 0 0 0 0 S
-CT 14 0 0 5
+MT 14 0 0 5
 20 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91418
-herb woman old hag maerg~
-&+yMaerg, an old herb woman&n~
-&+yMaerg, the old herb woman leans unsteadily over her stall here.&n
+herb woman old hag grash~
+&+yGrash, an old herb woman&n~
+&+yGrash, the old herb woman leans unsteadily over her stall here.&n
 ~
 &+yThe old herb woman is bent and hunched with age, long dark grey&n
 &+ystreaked hair hangs down in a tangled, greasy unkempt mess. She is the&n
@@ -286,7 +286,7 @@ herb woman old hag maerg~
 &+ypretty sight.&n
 ~
 33566798 0 0 0 0 0 0 0 -500 S
-PH 0 256 0 3
+HO 0 256 0 3
 15 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -303,16 +303,16 @@ dubious beggar thief figure man gentleman~
 &+Lthe intentions of this seemingly harmless gentleman.&n
 ~
 33566734 0 0 0 0 0 0 0 0 S
-PF 6 65536 0 2
+HG 6 65536 0 2
 9 0 0 1d1+1 1d1+1
 0.0.0.4 0
 8 8 1
 #91420
-grubby barbarian child waif~
+grubby orc child waif~
 &+wa grubby child&n~
-&+wA grubby &+Bbarbarian &+wchild sits here enjoying the music.&n
+&+wA grubby &+Borc &+wchild sits here enjoying the music.&n
 ~
-&+wA small &+Bbarbarian &+wchild sits crosslegged here, swaying slowly from&n
+&+wA small &+Borc &+wchild sits crosslegged here, swaying slowly from&n
 &+wside to side and trying unsuccesfully to clap her hands to the music.&n
 &+wHer youthful, chubby face is marked and streaked with &+ygrime and dirt&+w,&n
 &+wclothing in a similar state, torn and unclean. Nevertheless she seems&n
@@ -320,32 +320,32 @@ grubby barbarian child waif~
 &+wher face.&n
 ~
 33566794 0 0 0 0 0 0 0 0 S
-PB 10 0 0 2
+HO 10 0 0 2
 4 0 0 1d1+1 1d1+1
 0.0.0.0 0
 6 6 2
 #91421
-child centaur~
-&+ga cen&+Ltau&+gr child&n~
-&+gA small cen&+Ltaur&n &+gchild gallops gayly through the streets.&n
+child minotaur~
+&+ga min&+Lota&+gur child&n~
+&+gA small min&+Lotaur&n &+gchild gallops gayly through the streets.&n
 ~
-&+yA very young, female Centaur child laughs happily, trotting through&n
+&+yA very young, female minotaur child laughs happily, trotting through&n
 &+ythe streets. Although still very undeveloped with mottled coat&n
 &+ycolorings, and a short, spiked tawny mane, she is an undeniably&n
 &+yadorable mini version of the proud and majestic Wutvr outpost&n
-&+ycentaurs.&n
+&+yminotaurs.&n
 ~
 33566796 0 0 0 0 0 0 0 0 S
-CT 14 0 0 2
+MT 14 0 0 2
 3 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91422
-forest sprite gandharvas~
-&+ga gandharvas&n~
-&+gA gandharvas, or forest sprite, flickers in and out of the trees.&n
+forest sprite nethravas~
+&+ga nethravas&n~
+&+gA nethravas, or forest sprite, flickers in and out of the trees.&n
 ~
-&+gOne of the Gandharvas. A sprite of the woodlands and wilds, it fades&n
+&+gOne of the Nethravas. A sprite of the woodlands and wilds, it fades&n
 &+gand flickers in and out of sight between the trees, its pure high voice&n
 &+gfloating a song on the winds. Tall, with the upper torso and face of a&n
 &+ghuman male, that is where the similarity ends, rising from its&n
@@ -408,11 +408,11 @@ PL 2 0 0 3
 0.0.0.0 0
 8 8 2
 #91426
-brodi fisherman old man~
-&+cBrodi, an old fi&+wsherm&+can&n~
-&+cBrodi, the old fi&+wsherm&+can crouches here over &+ybaskets &+cof fish.&n
+ghoruk fisherman old man~
+&+cGhoruk, an old fi&+wsherm&+can&n~
+&+cGhoruk, the old fi&+wsherm&+can crouches here over &+ybaskets &+cof fish.&n
 ~
-&+cThe old centaur fisherman, is bent and twisted from a long life of
+&+cThe old minotaur fisherman, is bent and twisted from a long life of
 &+chard labour and poverty. His rust brown colored coat is patchy and
 &+cbalding in spots, hooves covered in thick mud, giving a very
 &+cdisreputable and filthy impression.  Living in such close proximity
@@ -420,7 +420,7 @@ brodi fisherman old man~
 &+cdoes know and if asked he may provide a wealth of information.&n
 ~
 33828938 0 0 0 0 0 0 0 0 S
-CT 14 0 0 3
+MT 14 0 0 3
 15 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -440,11 +440,11 @@ A 0 0 0 2
 3.0.0.0 0
 8 8 0
 #91428
-drunk centaur~
-&+ya slightly drunk centaur&n~
-&+wA &+gcent&+Laur&n suffering the after effects of too much &+ralcohol&n weaves about.&n
+drunk minotaur~
+&+ya slightly drunk minotaur&n~
+&+wA &+gmino&+Ltaur&n suffering the after effects of too much &+ralcohol&n weaves about.&n
 ~
-&+yThe large male centaur seems to be talking to himself, and more than&n
+&+yThe large male minotaur seems to be talking to himself, and more than&n
 &+ythat he seems to be finding it funny. A little unsteady, and weaving&n
 &+yabout, wine stains leave long streaks down his clothing, and food&n
 &+yscraps appear to be stuck in his beard. Looking up he finally notices&n
@@ -452,7 +452,7 @@ drunk centaur~
 &+ystomach.&n
 ~
 10 0 0 0 0 0 0 0 0 S
-CT 16 0 0 4
+MT 16 0 0 4
 9 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -468,12 +468,12 @@ woman maenad worshiper dancer~
 &+garound her face and over her mad eyes.&n
 ~
 2056 0 0 0 0 0 0 0 0 S
-PH 15 0 0 3
+HO 15 0 0 3
 6 0 0 1d1+1 1d1+1
 0.0.5.0 0
 8 8 2
 #91430
-mother centaur young~
+mother minotaur young~
 &+ga young mother&n~
 &+gA young mother tries to keep her children out of trouble.&n
 ~
@@ -484,30 +484,30 @@ mother centaur young~
 &+gare her charges.&n
 ~
 67110920 0 0 0 0 0 0 0 0 S
-CT 15 0 0 4
+MT 15 0 0 4
 7 0 0 1d1+1 1d1+1
 0.0.10.0 0
 8 8 2
 #91431
-centaur child~
-&+ga cen&+Ltau&+gr child&n~
-&+gA cen&+Ltaur &+gchild tears about chasing small forest animals.&n
+minotaur child~
+&+ga min&+Lota&+gur child&n~
+&+gA min&+Lotaur &+gchild tears about chasing small forest animals.&n
 ~
 &+gMischevious eyes twinkling and a playful grin on his face, the young&n
-&+gcentaur boy is charmingly charismatic, despite a strong tendancy for&n
+&+gminotaur boy is charmingly charismatic, despite a strong tendancy for&n
 &+gunruly, wild behaviour. Small twigs are caught in the longer hair&n
 &+gabove his hooves, his body is streaked with dirt and his hair sticks&n
 &+gout in spikes. He appears to have avoided bathing for quite some time.&n
 ~
 2056 0 0 0 0 0 0 0 0 S
-CT 15 0 0 2
+MT 15 0 0 2
 4 0 0 1d1+1 1d1+1
 0.2.0.0 0
 8 8 1
 #91432
-elf grey elven sorceress saelryn teacher sorc~
-Saelryn, the &+celven&n &+msorceress&n~
-Saelryn, the &+celven&n &+msorceress&n stands here floating in mid-air.
+elf drow elven sorceress vhaezra teacher sorc~
+Vhaezra, the &+celven&n &+msorceress&n~
+Vhaezra, the &+celven&n &+msorceress&n stands here floating in mid-air.
 ~
 Saelyrn is a beautiful young Sorceress who has a deep passion for magic
 and a fiery spirit. She wears a long purple gown and bits of loose jewelry
@@ -517,32 +517,32 @@ abilities are never questioned, atleast not from anyone who has lived to
 tell about it.
 ~
 32778 0 0 0 134217728 0 0 67239936 1000 S
-PE 0 512 0 2
+PL 0 512 0 2
 40 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91433
-human red alchemist teacher~
-Red, the &+Chuman&n &+Calc&+chem&+Cist&n~
-Red, the &+Chuman&n &+Calc&+chem&+Cist&n arranges items on his workbench.
+orc vraz alchemist teacher~
+Vraz, the &+Corc&n &+Calc&+chem&+Cist&n~
+Vraz, the &+Corc&n &+Calc&+chem&+Cist&n arranges items on his workbench.
 ~
-Red is a robust alchemist who got his name not from the color of
+Vraz is a robust alchemist who got his name not from the color of
 his hair, but his penchant for throwing fireball potions. He is
 an avid gardener and loves to forge and is always quick to help
 others learn how to mix potions. He wears white overalls with alot
 of pockets and has a twinkle in his eyes.
 ~
 34826 0 0 0 134217728 0 0 67239936 1000 S
-PH 0 524288 0 3
+HO 0 524288 0 3
 40 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91434
-halfling drinnan illusionist teacher~
-Drinnan, the &+yhalfling&n il&+Clu&+csi&+Con&nist~
-Drinnan, the &+yhalfling&n il&+Clu&+csi&+Con&nist&n casts spells while waiting for visitors.
+goblin krizzik illusionist teacher~
+Krizzik, the &+ygoblin&n il&+Clu&+csi&+Con&nist~
+Krizzik, the &+ygoblin&n il&+Clu&+csi&+Con&nist&n casts spells while waiting for visitors.
 ~
-&+CDrinnan&n &+cis the daughter of the Duke of Wutvr and a powerful&n
+&+CKrizzik&n &+cis the daughter of the Duke of Wutvr and a powerful&n
 &+cIllusionist in her own right. She has devoted her life to stamping&n
 &+cout the dark gods and their destruction of the towns and villages&n
 &+caround her countryside. While as a child she was full of mischief&n
@@ -553,35 +553,35 @@ Drinnan, the &+yhalfling&n il&+Clu&+csi&+Con&nist&n casts spells while waiting f
 &+ccamouflage her when needed.&n
 ~
 34826 0 0 0 134217728 0 0 67239936 1000 S
-PF 0 4194304 0 1
+HG 0 4194304 0 1
 40 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91435
-centaur llerrad ranger teacher~
-Llerrad, the &+gcen&+Ltaur &+Granger&n~
-Llerrad, the &+gcen&+Ltaur &+Granger&+w practices his aim with his bow.&n
+minotaur vargesh ranger teacher~
+Vargesh, the &+gmin&+Lotaur &+Granger&n~
+Vargesh, the &+gmin&+Lotaur &+Granger&+w practices his aim with his bow.&n
 ~
-Llerrad stands tall over others in the room. His majestic horse-body
+Vargesh stands tall over others in the room. His majestic horse-body
 is strong with a thick leather saddle with &+cancient&n &+Lruins&n.
 Wielded is a dragonbone longbow, said to have the best range of any
-bow. Upon Llerrad's face are scars of battle, he has retired now to
+bow. Upon Vargesh's face are scars of battle, he has retired now to
 train instruct rangers.
 ~
 32778 0 0 0 134217728 0 0 0 1000 S
-CT 0 2 0 4
+MT 0 2 0 4
 51 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91436
-minotaur mino shaman creyset teacher~
-Creyset, the &+Lmino&+rtaur &+Cshaman&n~
-Creyset, the &+Lmino&+rtaur &+Cshaman &+wholds her totem solemnly to her chest.&n
+minotaur mino shaman kresht teacher~
+Kresht, the &+Lmino&+rtaur &+Cshaman&n~
+Kresht, the &+Lmino&+rtaur &+Cshaman &+wholds her totem solemnly to her chest.&n
 ~
-Creyset is a large &+LMino&+rtaur&N with a loose fitting gown around her
+Kresht is a large &+LMino&+rtaur&N with a loose fitting gown around her
 cow-like body. A leaf-made crown sits crooked apon a single horn and
 she has a friendly smile upon her face. Despite her large size,
-Creyset is very dainty in nature and always willing to help when
+Kresht is very dainty in nature and always willing to help when
 called upon.
 ~
 32778 0 0 0 134217728 0 0 67239936 1000 S
@@ -590,11 +590,11 @@ MT 0 256 0 4
 0.0.0.0 0
 8 8 2
 #91437
-centaur lapney druid teacher~
-Lapney, the &+gcen&+Ltaur &+gdruid&n~
-Lapney, the &+gcen&+Ltaur &+gdruid &+wpeacefully communes.&n
+minotaur mordrak druid teacher~
+Mordrak, the &+gmin&+Lotaur &+gdruid&n~
+Mordrak, the &+gmin&+Lotaur &+gdruid &+wpeacefully communes.&n
 ~
-&+G   Lapney is a powerfully built &+gcen&+Ltaur &+Gdruid who has spent
+&+G   Mordrak is a powerfully built &+gmin&+Lotaur &+Gdruid who has spent
 &+Gmuch of his lifetime devoted to helping people find peace and serenity
 &+Gin a life of increasingly violence.  His black hair is tied in several
 &+Gplaces, and hangs down his backside far enough to touch his almost
@@ -604,16 +604,16 @@ Lapney, the &+gcen&+Ltaur &+gdruid &+wpeacefully communes.&n
 &+Gembedded solidly within.  He watches you carefully as you gaze at him.&N
 ~
 32778 0 0 0 0 0 0 0 1000 S
-CT 0 128 0 4
+MT 0 128 0 4
 25 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91438
-gnome cleric roshenbly gnomish teacher~
-&+WRoshenbly, the &+Rgnomish &+Wcleric&n~
-&+WRoshenbly, a &+Rgnome &+Wcleric is here, praying silently.&n
+kobold cleric skritch kobold teacher~
+&+WSkritch, the &+Rkobold &+Wcleric&n~
+&+WSkritch, a &+Rkobold &+Wcleric is here, praying silently.&n
 ~
-&+W   Roshenbly is a short, squat gnome with a rather innocent looking face and
+&+W   Skritch is a short, squat kobold with a rather innocent looking face and
 &+Wa very bright pair of blue eyes.  Her robes are shimmering white with gilded
 &+Wgolden threading and a scripted series of holy symbols down the left side.
 &+WHer small hands carefully work their way around a rosary chain that dangles
@@ -622,16 +622,16 @@ gnome cleric roshenbly gnomish teacher~
 &+Wentering and leaving, but she makes no move to help until asked.&N
 ~
 32778 0 0 0 0 0 0 0 1000 S
-PG 0 32 0 2
+KB 0 32 0 2
 20 0 0 1d1+1 1d1+1
 0.0.0.0 0
 5 8 2
 #91439
-nalk warrior teacher thri thri-kreen~
-Nalk, the &+Gthri-&+Ykreen&n &+Bwarrior&n~
-Nalk, the &+Gthri-&+Ykreen&n &+Bwarrior&n arranges his weapons.
+skarrix warrior teacher thri thri-kreen~
+Skarrix, the &+Gthri-&+Ykreen&n &+Bwarrior&n~
+Skarrix, the &+Gthri-&+Ykreen&n &+Bwarrior&n arranges his weapons.
 ~
-Nalk is a lean, dusty yellow colored &+GThri-&+Ykreen&n. He wields razor
+Skarrix is a lean, dusty yellow colored &+GThri-&+Ykreen&n. He wields razor
 sharp gythka's in four of his limbs and wears no clothing on his
 insect-like body. He comes from a much feared hunting clan, and
 students should feel honored someone such of his prestige decides
@@ -643,29 +643,29 @@ TK 13 1 0 4
 0.0.0.0 0
 5 8 1
 #91440
-half-elf half agare paladin teacher~
-Agare, the &+Chalf-&+celf &+Wpaladin&n~
-Agare, the &+Chalf-&+celf &+Wpaladin &+wrests here waiting for your greeting.&n
+tiefling half zhaleth paladin teacher~
+Zhaleth, the &+Ctiefl&+cing &+Wpaladin&n~
+Zhaleth, the &+Ctiefl&+cing &+Wpaladin &+wrests here waiting for your greeting.&n
 ~
-Agare is a rugged male &+CHalf-&+cElf&n that stands proud in his choosen
+Zhaleth is a rugged male &+Ctiefl&+cing&n that stands proud in his choosen
 path as a Holy Warrior. His armor is polished with a few dents from
 battle and he wields the blade of a true Paladin, the artifact known
 as &+ythe holy avenger of Ambran&n. He bows to you as he notices you
 enter.
 ~
 34826 0 0 0 134217728 0 1073741824 0 1000 S
-P2 0 8 0 3
+TF 0 8 0 3
 56 0 0 1d1+1 1d1+1
 0.0.0.0 0
 5 8 1
 #91441
-grinda master builder~
-&+yGrinda, the Ship Master&n~
-&+yGrinda, the ship master labours over a new hull here.&n
+khardra master builder~
+&+yKhardra, the Ship Master&n~
+&+yKhardra, the ship master labours over a new hull here.&n
 ~
-&+yStout and sturdy as all of his race, Grinda tirelessly works on one of&n
+&+yStout and sturdy as all of his race, Khardra tirelessly works on one of&n
 &+ythe many ship hulls currently under construction at the docks.&n
-&+yAlthough Grinda has no love of the sea nor sailing himself, his innate&n
+&+yAlthough Khardra has no love of the sea nor sailing himself, his innate&n
 &+ymastery of stonecraft has been applied to the design and manipulation&n
 &+yof wood and the construction of the most solid and study sea vessels&n
 &+yto be found. Now an old man, his beard and braids greying with age he&n
@@ -673,16 +673,16 @@ grinda master builder~
 &+yenquiry.&n
 ~
 33845322 0 0 0 0 0 0 0 0 S
-PM 0 1 0 3
+PD 0 1 0 3
 50 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91442
-eian human collector~
-&+yEian, the Collector&n~
-&+LEian&n stands here holding a &+ycollection bag&n
+orvak orc collector~
+&+yOrvak, the Collector&n~
+&+LOrvak&n stands here holding a &+ycollection bag&n
 ~
-&+WEian&n, &+La lanky and somewhat unkempt &+CHuman&n &+Lwith bright yet somewhat&n
+&+WOrvak&n, &+La lanky and somewhat unkempt &+Corc&n &+Lwith bright yet somewhat&n
 &+Lcrazed eyes appears to be a collector of some sort. Clutching a very&n
 &+Lbattered leather satchel bag and wearing an extensive array of various&n
 &+Lbadges and buttons that adorn his long black cloak. Moving around the&n
@@ -691,24 +691,24 @@ eian human collector~
 &+Labout the bank financial services or the equipment &+Wlockers&n &+Lalso here.&n
 ~
 33583114 0 0 0 268435464 0 0 0 0 S
-PH 0 0 0 3
+HO 0 0 0 3
 25 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91443
-deline beast mistress woman~
-&+CDeline, &+cthe Beast Mistress&n~
-&+CDeline, &+cthe beast mistress carefully tends to the animals here.&n
+velkris beast mistress woman~
+&+CVelkris, &+cthe Beast Mistress&n~
+&+CVelkris, &+cthe beast mistress carefully tends to the animals here.&n
 ~
 &+cWispy blonde hair hangs down, hiding a large pair of gentle green eyes&n
 &+cand delicate sculptured features. Her movements are graceful, but&n
 &+cslow and careful, and you realise that her otherwise flawless beauty&n
-&+cis marred by a twisted and deformed foot and leg. Shy of nature Deline&n
+&+cis marred by a twisted and deformed foot and leg. Shy of nature Velkris&n
 &+chas a natural empathy and affinity with animals both great and small,&n
 &+cmaking her job here at the Stables a perfect match.&n
 ~
 33583178 0 0 0 0 0 0 0 0 S
-PH 0 0 0 3
+HO 0 0 0 3
 20 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -764,39 +764,39 @@ archery apprentice youth~
 &+yan archery apprentice&n~
 &+yLeaning heavily on a tall longbow, an apprentice wearily stretches.&n
 ~
-&+yThe barbarian youth appears to be in his middle teens, sill lanky of&n
+&+yThe orc youth appears to be in his middle teens, sill lanky of&n
 &+ylimb and ungainly, but with the underlying strong bone structure that&n
-&+ywill later shape itself into the raw strength of the adult barbarian&n
+&+ywill later shape itself into the raw strength of the adult orc&n
 &+yrace. He seems weary and exhausted, stretching out and flexing the&n
 &+ytired muscles of his arms, sore from the long and strenuous archery&n
 &+ylessons and practise.&n
 ~
 33957960 0 0 0 0 0 0 0 0 S
-PB 0 2 0 4
+HO 0 2 0 4
 7 0 0 1d1+1 1d1+1
 0.0.0.4 0
 8 8 1
 #91448
-druid apprentice child centaur~
+druid apprentice child minotaur~
 &+ya druid apprentice&n~
-&+yA small &+gcent&+Laur&n &+ychild studiously reads from a large book.&n
+&+yA small &+gmino&+Ltaur&n &+ychild studiously reads from a large book.&n
 ~
 &+yToo long hair flops foward and falls over the soft, gentle brown eyes&n
-&+yof the young Centaur druid apprentice. A shy smile flutters at the&n
+&+yof the young minotaur druid apprentice. A shy smile flutters at the&n
 &+ycorners of his mouth as he nervously twists his fingers around each&n
 &+yother, visibly squirming under your gaze.&n
 ~
 33566794 0 0 0 0 0 0 0 0 S
-CT 0 0 0 3
+MT 0 0 0 3
 8 0 0 1d1+1 1d1+1
 0.0.0.0 0
 6 6 1
 #91449
-tor chief guardsman guard~
-&+LTor, the Chief G&+bua&+Lrdsman&n~
-&+LTor, the chief g&+bua&+Lrdsman watches the area here.&n
+grath chief guardsman guard~
+&+LGrath, the Chief G&+bua&+Lrdsman&n~
+&+LGrath, the chief g&+bua&+Lrdsman watches the area here.&n
 ~
-&+LTall, even for a barbarian, Tor is in the prime of his life. Fit,&n
+&+LTall, even for a orc, Grath is in the prime of his life. Fit,&n
 &+Lstrong and healthy he wears his Chiefs Guardsmans uniform with pride.&n
 &+LHis strong hands do show evidence of his many years of service in&n
 &+Lactive battle, scars and old injuries criss cross nearly every inch&n
@@ -804,23 +804,23 @@ tor chief guardsman guard~
 &+Linterested in asking his advice.&n
 ~
 1107703882 0 0 0 0 0 0 0 0 S
-PB 0 1 0 4
+HO 0 1 0 4
 30 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91450
-vaugh tired adventurer~
-&+CVaugh, a tired adventurer&n~
-&+CVaugh, a tired adventurer lies on a bunk here.&n
+urzak tired adventurer~
+&+CUrzak, a tired adventurer&n~
+&+CUrzak, a tired adventurer lies on a bunk here.&n
 ~
-&+CVaugh appears to be a seasoned adventurer, tough plain clothing worn&n
+&+CUrzak appears to be a seasoned adventurer, tough plain clothing worn&n
 &+Cand faded from use. His wiry, strong frame is stretched out relaxing&n
 &+Con one of the bunks as he rests from a recent day of long travel. He&n
 &+Cmotions you to take a seat, and appears very friendly and happy to&n
 &+Ctalk about his experiences in the wilds.&n
 ~
 2122 0 0 0 0 0 0 0 0 S
-PH 0 0 0 3
+HO 0 0 0 3
 13 0 0 1d1+1 1d1+1
 0.0.0.0 0
 5 5 1
@@ -841,11 +841,11 @@ B 0 0 0 1
 0.0.0.0 0
 8 8 0
 #91452
-victa beast hawk master man~
-&+yVicta, &+Lthe Hawk Master&n~
-&+yVicta, &+Lthe hawk master tends to the pets here.&n
+vorka beast hawk master man~
+&+yVorka, &+Lthe Hawk Master&n~
+&+yVorka, &+Lthe hawk master tends to the pets here.&n
 ~
-&+yVicta tends carefully to his pets, sliding small morsels of food&n
+&+yVorka tends carefully to his pets, sliding small morsels of food&n
 &+ythrough the cage bars and keeping the surfaces clean. Tall, strong and&n
 &+ystout of frame, his hands show deep scars, leftover markings of many&n
 &+yyears of training hawks. He has now diversified in his later years&n
@@ -854,7 +854,7 @@ victa beast hawk master man~
 &+yresidents.&n
 ~
 33583178 0 0 0 0 0 0 0 0 S
-PH 0 0 0 3
+HO 0 0 0 3
 20 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -912,43 +912,43 @@ AE 0 0 0 3
 0.0.0.0 0
 8 8 1
 #91456
-burnarg armorer man~
-&+LBurnarg, &+ythe armorer&n~
-&+LBurnarg, &+ythe armorer lovingly polishes a sword.&n
+morzag armorer man~
+&+LMorzag, &+ythe armorer&n~
+&+LMorzag, &+ythe armorer lovingly polishes a sword.&n
 ~
 &+yStrong arms, with corded muscles stretching his thin leather jerkin&n
 &+ylovingly polish and sharpen the many weapons and armor in his care.&n
-&+yOne of the oringal Barbarian families of the outpost, this armory and&n
+&+yOne of the oringal orc families of the outpost, this armory and&n
 &+ystore have been passed down the generations from father to son and&n
-&+ythe quality of the products sold by Burnarg are a particular point of&n
+&+ythe quality of the products sold by Morzag are a particular point of&n
 &+ypride and honor.&n
 ~
 74 0 0 0 0 0 0 0 0 S
-PB 0 1 0 4
+HO 0 1 0 4
 17 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91457
-kord mercenary teacher barbarian~
-Kord, the &+Bbarbarian&n &+ymercenary&n~
-Kord, the &+Bbarbarian&n &+mmercenary&n holds a rope in his hand.
+krag mercenary teacher orc~
+Krag, the &+Borc&n &+ymercenary&n~
+Krag, the &+Borc&n &+mmercenary&n holds a rope in his hand.
 ~
-Kord is a large muscular barbarian with a roguish appearance. He spends
+Krag is a large muscular orc with a roguish appearance. He spends
 much of his day perfecting his art, practicing his skills and teaching
 new recruits. Today he's showing students how to use a rope and capture
 a target.
 ~
 34826 0 0 0 134217728 0 0 0 0 S
-PB 10 16384 0 4
+HO 10 16384 0 4
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91458
-rogue teacher halfling quek~
-Quek, the &+yhalfling&n &+rRogue&n~
-Quek, the &+yhalfling&n &+rrogue&n sneaks around the room.
+rogue teacher goblin zikk~
+Zikk, the &+ygoblin&n &+rRogue&n~
+Zikk, the &+ygoblin&n &+rrogue&n sneaks around the room.
 ~
-Quek is a small and innocent looking halfling. His innocense helps add
+Zikk is a small and innocent looking goblin. His innocense helps add
 to his deception as he is one of the most diabolical thieves around.
 Story has it that once he even tricked &+LLolth&n the spider queen
 herself into believing her was one of her transformed zarbons, and
@@ -956,49 +956,49 @@ trusting him with her Jewels. Needless to say he escaped with the
 jewels and more importantly, he lived to tell the story.
 ~
 34890 0 0 0 0 0 0 0 0 S
-PF 7 4096 0 2
+HG 7 4096 0 2
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91459
-risp dwarf assassin teacher~
-Risp, the &+Ydwarf&n &+rassassin&n~
-Risp, the &+Ydwarf&n &+rassassin&n hides here in the shadows.
+brusk duergar assassin teacher~
+Brusk, the &+Yduergar&n &+rassassin&n~
+Brusk, the &+Yduergar&n &+rassassin&n hides here in the shadows.
 ~
-Risp stands by with one eye on the entrance and the other constantly
+Brusk stands by with one eye on the entrance and the other constantly
 roaming.  He wears all dark clothing with many hidden pockets to
 place disguise kits, daggers and other tools of his trade. A fading
 scar on his chin is the only evidence that this man knows battle. He
-is lean by dwarven standards as he is constantly on the go and training
+is lean by duergar standards as he is constantly on the go and training
 to stay fit.
 ~
 34954 0 0 0 0 0 0 0 0 S
-PM 6 8192 0 3
+PD 6 8192 0 3
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91460
-perr githzerai monk~
-Perr, the &+WGith&+Gzerai&n &+Lm&+Won&+Lk&n~
-Perr, the &+WGith&+Gzerai&n &+Lm&+Won&+Lk&n chants quietly to himself.
+xerr githyanki monk~
+Xerr, the &+Wgith&+Gyanki&n &+Lm&+Won&+Lk&n~
+Xerr, the &+Wgith&+Gyanki&n &+Lm&+Won&+Lk&n chants quietly to himself.
 ~
-Perr comes from a family of monks. He has four brothers who all trained
-in the ancient martial arts. Perr wears loose fitting pants and a
+Xerr comes from a family of monks. He has four brothers who all trained
+in the ancient martial arts. Xerr wears loose fitting pants and a
 wrap-around robe which is made of simple cloth. His dark hair is pulled
 back into a simple band and a long braid hangs down his back. He greets
 new students with care but make sure not to confuse that with weakness.
 ~
 34826 0 0 0 134217728 0 0 0 0 S
-GZ 0 64 0 3
+GI 0 64 0 3
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91461
-foet grey elf bard teacher~
-Foet, the &+cgrey elf&n &+Lb&+bar&+Ld&n~
-Foet, the &+cgrey elf&n &+Lb&+bar&+Ld&n sings softly to herself.
+vaex drow elf bard teacher~
+Vaex, the &+cdrow elf&n &+Lb&+bar&+Ld&n~
+Vaex, the &+cdrow elf&n &+Lb&+bar&+Ld&n sings softly to herself.
 ~
-Foet is a beautiful young elf, well young by elven standards, she is
+Vaex is a beautiful young elf, well young by elven standards, she is
 300 years old. In that time she has gotten quite good at playing her
 instruments. She is often asked to journey away to play for groups
 of people. Her hair is pulled back off her shoulders in a pig-tail,
@@ -1006,49 +1006,49 @@ and she wears a simple gown with matching slippers. A pouch dangles
 off her waist with other tools of the trade.
 ~
 34826 0 0 0 134742016 0 0 0 0 S
-PE 15 32768 0 -1
+PL 15 32768 0 -1
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91462
-osule human ethermancer teacher~
-Osule, the &+Chuman&n &+Lethermancer&n~
-Osule, the &+Chuman&n &+Lethermancer&n sits fiddling with a spell.
+ozuk orc ethermancer teacher~
+Ozuk, the &+Corc&n &+Lethermancer&n~
+Ozuk, the &+Corc&n &+Lethermancer&n sits fiddling with a spell.
 ~
-   &+COsule sits with her legs crossed at&+Lop of a large wooden table in the center
+   &+COzuk sits with her legs crossed at&+Lop of a large wooden table in the center
 &+Cof the room. She has long flowing hai&+Lr with several white streaks running
 &+Cthrough its deep brownish color. Thi&+Ls is very unusual since she seems young
-&+Cfor a human. Here robes do nothing &+Lto accentuate her girlish figure, however
+&+Cfor a orc. Here robes do nothing &+Lto accentuate her girlish figure, however
 &+Cshe does have long nails with what&+L appears to be small sparks of lightning
 &+Cforking between here left and rig&+Lht finger tips.
 ~
 34890 0 0 0 0 0 0 0 1000 S
-ph 0 33554432 0 3
+HO 0 33554432 0 3
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 5 6 2
 #91463
-esera gnome conjurer teacher wizard~
-Esera, the &+Rgnome&n &+Yconjurer&n~
-Esera, the &+Rgnome&n &+Yconjurer&n conjures an elemental.
+kessra kobold conjurer teacher wizard~
+Kessra, the &+Rkobold&n &+Yconjurer&n~
+Kessra, the &+Rkobold&n &+Yconjurer&n conjures an elemental.
 ~
-Osera is an older gnome and respected by all, not to mention
+Osera is an older kobold and respected by all, not to mention
 one of the best conjurer's in all the land. He barely reaches
 3 and 1/2 feet tall and wears a robe slightly too big for him.
 What he lacks in size and fashion sense he makes up in conjuring
 and teaching. Beware, he takes passion in his choosen path.
 ~
 34890 0 0 0 134217856 0 0 0 0 S
-PG 7 2048 0 1
+KB 7 2048 0 1
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91464
-taiz half-elf theurgist teacher~
-Taiz, the &+Chalf&+c-elf&n &+Cth&+Weurgi&+Cst&n~
-Taiz, the &+Chalf&+c-elf&n &+Cth&+Weurgi&+Cst&n stands here redeeming corpses.
+zair tiefling theurgist teacher~
+Zair, the &+Ctief&+cling&n &+Cth&+Weurgi&+Cst&n~
+Zair, the &+Ctief&+cling&n &+Cth&+Weurgi&+Cst&n stands here redeeming corpses.
 ~
-&+W   Standing before you, the redeemed half-elf studies the abandoned &+mnecromancer
+&+W   Standing before you, the redeemed tiefling studies the abandoned &+mnecromancer
 &+Lcrypt&+W. In an attempt to purify and cleanse the area, he has returned to cast
 &+Whis holy magics into the &+Ldark &+Wand &+Ldank &+Wareas where &+mnecromancy &+Whas seeped its
 &+Wevil claws into the world. Radiating an aura of calm and warmth, the revered
@@ -1056,7 +1056,7 @@ Taiz, the &+Chalf&+c-elf&n &+Cth&+Weurgi&+Cst&n stands here redeeming corpses.
 &+Wof the &+Ldeprived &+Wand &+rwicked&+W.&n
 ~
 32778 0 0 0 0 0 0 262144 0 S
-PH 0 134218752 0 3
+TF 0 134218752 0 3
 17 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -1074,16 +1074,16 @@ A 0 0 0 2
 0.0.0.0 0
 5 5 0
 #91466
-tired man father hellfax lardeus~
+tired man father kharzul vorrik~
 &+ca tired father&n~
-&+CLardeus,&n stands here looking tired and stressed.
+&+CVorrik,&n stands here looking tired and stressed.
 ~
 A man stands here, tired and worn by all the poverty and sickness that has
 plagued his family. He looks at you and asks, "&+CDo you have some food to
 &+Cspare?&n"
 ~
 74 0 0 0 134217728 0 0 0 0 S
-PH 0 1 0 3
+HO 0 1 0 3
 12 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -1096,7 +1096,7 @@ A small child vainly looks through the room from one side to another in an
 attempt to satisify his desperate need for food.
 ~
 24648 0 0 0 32768 0 0 2 0 S
-PH 0 524288 0 3
+HO 0 524288 0 3
 1 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -1122,14 +1122,14 @@ worries for her grandchild who has taken ill. She can barely move
 around much herself, much less seek the journey for medicine.
 ~
 74 32 0 0 0 1024 0 0 0 S
-PH 0 128 0 2
+HO 0 128 0 2
 46 0 0 1d1+1 1d1+1
 0.0.0.0 0
 5 5 2
 #91470
 illusion mob~
-&+Ba&n &+Yhuge&n &+Billusion of &+WDrinnan&n~
-&+BA&n &+Yhuge&n &+Billusion of &+WDrinnan&n &+Bstands here.&n
+&+Ba&n &+Yhuge&n &+Billusion of &+WKrizzik&n~
+&+BA&n &+Yhuge&n &+Billusion of &+WKrizzik&n &+Bstands here.&n
 ~
 This massive creature has beem summoned by an illusionist of
 superior ability. This huge being fades in and out of visibility,
@@ -1137,7 +1137,7 @@ almost as if it is struggling to return to where it came from. This
 creature harnesses great &+Cmagical&n abilities.
 ~
 10 0 0 0 0 0 0 0 0 S
-PH 0 0 0 -1
+HO 0 0 0 -1
 1 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 0
@@ -1166,17 +1166,17 @@ U 0 1 0 -1
 0.0.0.0 0
 8 8 0
 #91473
-girl human silva~
+girl orc varka~
 a &+cyoung&n girl~
-&+CSilva&n, a beautiful young girl sits quietly.
+&+CVarka&n, a beautiful young girl sits quietly.
 ~
-A beautiful young human girl sits here without her voice. She opens
+A beautiful young orc girl sits here without her voice. She opens
 her mouth to sing and nothing comes out. Sadly she tries again and again.
 Until recently the bard had one of the most angelic singing voices in
-the land, but a horrible evil witch stole the human's voice from her.
+the land, but a horrible evil witch stole the orc's voice from her.
 ~
 10 0 0 0 0 0 0 0 0 S
-PH 0 32768 0 -1
+HO 0 32768 0 -1
 35 0 0 1d1+1 1d1+1
 0.0.0.0 0
 6 6 2
@@ -1207,7 +1207,7 @@ A 0 1 0 2
 0.0.0.0 0
 4 4 1
 #91476
-acolyte cleric gnome~
+acolyte cleric kobold~
 a young &+Yacolyte&n~
 A young &+Yacolyte&n stands here, praying.
 ~
@@ -1215,7 +1215,7 @@ A young acolyte who has devoted his life to the clergy. He walks
 thoughtout the town giving blessings to those who pass by.
 ~
 8 0 0 0 0 0 0 0 0 S
-PG 7 32 0 2
+KB 7 32 0 2
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -1226,29 +1226,29 @@ A &+ggrubby&n bandit stands here pushing a &+Cgirl&n around.
 ~
 ~
 10 4 0 0 0 0 0 0 0 S
-PH 0 4096 0 3
+HO 0 4096 0 3
 5 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91478
-barbarian rugged bandit~
-a &+yrugged&n &+bbarbarian&n~
-A &+yrugged&n &+bbarbarian&n holds onto a girl roughly.&n
+orc rugged bandit~
+a &+yrugged&n &+borc&n~
+A &+yrugged&n &+borc&n holds onto a girl roughly.&n
 ~
 ~
 10 4 0 0 0 0 0 0 0 S
-PB 0 4096 0 3
+HO 0 4096 0 3
 5 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91479
-bandit dwarf~
-a &+ymountain dwarf&n~
-A &+ymountain dwarf&n stands here looking up a &+Cgirls&n dress.
+bandit duergar~
+a &+yduergar&n~
+A &+yduergar&n stands here looking up a &+Cgirls&n dress.
 ~
 ~
 10 4 0 0 0 0 0 0 0 S
-PM 0 4096 0 3
+PD 0 4096 0 3
 5 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
@@ -1259,7 +1259,7 @@ A &+cscared&n young &+Cgirl&n looks to be taken against her will.
 ~
 ~
 10 0 0 0 0 0 0 0 0 S
-PE 0 32 0 3
+PL 0 32 0 3
 5 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -1275,7 +1275,7 @@ EE 0 0 0 -1
 0.0.0.0 0
 8 8 0
 #91482
-acolyte cleric human~
+acolyte cleric orc~
 a young &+Yacolyte&n~
 A young &+Yacolyte&n stands here, praying.
 ~
@@ -1283,22 +1283,22 @@ A young acolyte who has devoted his life to the clergy. He walks the town
 giving blessings to those who pass by.
 ~
 8 0 0 0 0 0 0 0 0 S
-PH 0 32 0 2
+HO 0 32 0 2
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91483
-hizzy shop store owner magic~
-&+mHizzy, &+Mthe magic store owner&n~
-&+mHizzy, &nthe shopkeeper sells &+Mmagical&n items.
+skizz shop store owner magic~
+&+mSkizz, &+Mthe magic store owner&n~
+&+mSkizz, &nthe shopkeeper sells &+Mmagical&n items.
 ~
-The &+Rgnome&n mage sneers your way at entering her shop without an invitation, but
+The &+Rkobold&n mage sneers your way at entering her shop without an invitation, but
 acknowledges your presense, "&+Mitems of magic I sell, be careful of the items
 though, as they sometimes are too much for one to handle!&n" With a soft cackle
 to herself she turns away and looks through her pile of books.
 ~
 8 0 0 0 134217728 0 0 0 0 S
-PG 0 0 0 -1
+KB 0 0 0 -1
 40 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -1311,7 +1311,7 @@ A very sick child lies here coughing and sneezing, desperately holding onto
 what little life they have left.
 ~
 74 32 0 0 32768 1024 0 2 0 S
-PH 0 128 0 2
+HO 0 128 0 2
 5 0 0 1d1+1 1d1+1
 0.0.0.0 0
 5 5 2
@@ -1379,54 +1379,54 @@ HG 0 0 0 -1
 0.0.0.0 0
 8 8 0
 #91490
-young dwarf warrior~
+young duergar warrior~
 a young &+bwarrior&n~
 A young &+bwarrior&n practices his skills.
 ~
-A young dwarf who has come to test his skills and become a strong warrior like
+A young duergar who has come to test his skills and become a strong warrior like
 the other men in his tribe.
 ~
 8 0 0 0 0 0 0 0 0 S
-PM 7 1 0 3
+PD 7 1 0 3
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91491
-ranger human archer~
+ranger orc archer~
 a new &+Granger&n~
 A new &+Granger&n practices his archery.&n
 ~
-A young human who has come to test his skills and become a strong warrior like
+A young orc who has come to test his skills and become a strong warrior like
 the other men in his tribe.
 ~
 8 0 0 0 0 0 0 0 0 S
-PH 7 2 0 3
+HO 7 2 0 3
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
 #91492
-mage grey elf~
+mage drow elf~
 a young &+mmage&n~
 A young &+mmage&n practices spells.
 ~
-A young grey elf who is trying real hard to get the spells right so she may
+A young drow elf who is trying real hard to get the spells right so she may
 cast &+Bchilling touches&n like the rest of the students.
 ~
 8 0 0 0 0 0 0 0 0 S
-PE 7 2048 0 3
+PL 7 2048 0 3
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91493
-mage grey elf~
+mage drow elf~
 a young &+Mmage&n~
 A young &+Mmage&n practices spells.
 ~
-A young grey elf who is trying real hard to get the spells right so she may
+A young drow elf who is trying real hard to get the spells right so she may
 cast &+Bchill touch&n like the rest of the students.
 ~
 8 0 0 0 0 0 0 0 0 S
-PE 7 512 0 3
+PL 7 512 0 3
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -1472,11 +1472,11 @@ young druid~
 a young &+gdruid&n~
 A young &+gdruid&n tries out some new spells.
 ~
-This is a cute young human druid who is attempting to master some of the
+This is a cute young orc druid who is attempting to master some of the
 cantrips of the trade.
 ~
 10 0 0 0 0 0 0 0 0 S
-PH 0 128 0 -1
+HO 0 128 0 -1
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -1488,7 +1488,7 @@ A &+Yyoung child&n runs around playing without a care.&n
 &+YA child runs around without a care of the poverty around him.&n
 ~
 10 0 0 0 0 0 0 0 0 S
-PH 0 128 0 -1
+HO 0 128 0 -1
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
@@ -1500,7 +1500,7 @@ A young &+ymercenary&n in training lies on the ground, bound.&n
 A young &+ymercenary&n gets taught the effects of being bound, the hard way.
 ~
 10 0 0 0 0 0 0 0 0 S
-PH 0 16384 0 -1
+HO 0 16384 0 -1
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 9 9 1
@@ -1512,7 +1512,7 @@ A young &+ymercenary&n watches training.
 A young &+ymercenary&n gets taught the effects of being bound, the hard way.
 ~
 10 0 0 0 0 0 0 0 0 S
-PB 0 16384 0 -1
+HO 0 16384 0 -1
 6 0 0 1d1+1 1d1+1
 0.0.0.0 0
 9 9 1
@@ -1521,10 +1521,10 @@ amateur assassin student girl~
 an amateur &+Lassassin&n~
 An amateur &+Lassassin&n lurks in the &+bshadows.&n
 ~
-An amateur assassin that is still learning her trade from her instructor Risp.
+An amateur assassin that is still learning her trade from her instructor Brusk.
 ~
 10 0 0 0 0 0 0 0 0 S
-PH 0 8192 0 -1
+HO 0 8192 0 -1
 6 0 0 1d1+1 1d1+1
 0.0.0.2 0
 8 8 2
@@ -1537,30 +1537,30 @@ A young alchemist is busy foraging in the garden for ingredients to make up a
 batch of potions.
 ~
 10 0 0 0 0 0 0 0 0 S
-PG 0 524288 0 -1
+KB 0 524288 0 -1
 10 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 2
 #91503
-human man bleeding~
-&+wA &+rbleeding&N &+Chuman&+w man~
-&+wA &+Chuman&N &+wman with &+rse&+Rv&+re&+Rr&+re&+w claw marks is lying here.
+orc man bleeding~
+&+wA &+rbleeding&N &+Corc&+w man~
+&+wA &+Corc&N &+wman with &+rse&+Rv&+re&+Rr&+re&+w claw marks is lying here.
 ~
-&+wThis human male seems to have had some major bad luck. He is heavily scarred
+&+wThis orc male seems to have had some major bad luck. He is heavily scarred
 &+wwhich you can see through the rips and tears in what is remaining of his
 &+wclothes. He is lying down and seems to have recently been in a battle as
 &+whe clenches his sword with a deathly grasp. He is in desperate need of
 &+wsome bandaging.
 ~
 8 0 0 0 0 0 0 0 1000 S
-PH 0 2 0 -1
+HO 0 2 0 -1
 3 0 0 1d1+1 1d1+1
 0.0.0.0 0
 9 9 1
 #91504
-beautiful woman half-elf~
-&+wA beautiful &+Chalf&+c-elf&+w woman~
-&+wA &+Chalf&+c-elf&+w woman kneels over the &+rse&+Rv&+re&+Rr&+rely&+w wounded man's body.
+beautiful woman tiefling~
+&+wA beautiful &+Ctief&+cling&+w woman~
+&+wA &+Ctief&+cling&+w woman kneels over the &+rse&+Rv&+re&+Rr&+rely&+w wounded man's body.
 ~
 Here is a woman that has been obviously crying hysterically. She is draped
 in a green robe with rips in the cloth. Her necklace is made of strips of
@@ -1569,7 +1569,7 @@ markings close to her neck. Her dark brown hair is in a numberous amount
 of tangles and is clenching her hands together as if she is praying.
 ~
 8 0 0 0 0 0 0 0 0 S
-p2 0 128 0 -1
+TF 0 128 0 -1
 3 0 0 1d1+1 1d1+1
 0.0.0.0 0
 6 6 2

@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 text = (ROOT / "src/net/sparser.c").read_text()
@@ -25,12 +26,17 @@ harness = r'''
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 Skill skills[MAX_AFFECT_TYPES + 1];
 float spell_pulse_data[LAST_RACE + 1] = {};
 static float multiplier = 1.0f;
 static bool missing = false;
 static int calls = 0;
+index_data profiles[2]{};
+P_index mob_index = profiles;
+[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
+__MECHANICS__
 float get_property(const char *key, double fallback)
 {
     assert(std::strcmp(key, "spellcast.pulse.racial.All") == 0);
@@ -88,9 +94,21 @@ int main()
     expect(1, 1.0f, 1.0f, 1);
     expect(0, 1.0f, 2.0f, 1);
     expect(18, 1.0f, 0.0f, 1);
+    // The real copied profile also controls runtime cast timing, not just the
+    // loaded spell-pulse modifier. Other NPCs and players keep their own race.
+    char_data copied{}; npc_only_data npc{};
+    copied.only.npc = &npc; npc.R_num = 1; copied.specials.act = ACT_ISNPC;
+    copied.player.race = RACE_DROW; profiles[1].virtual_number = 91432;
+    spell_pulse_data[RACE_GREY] = 0.8f; spell_pulse_data[RACE_DROW] = 1.4f;
+    skills[SPELL_FULL_HEAL].beats = 20; multiplier = 1.0f;
+    assert(SpellCastTime(&copied, SPELL_FULL_HEAL) == 16);
+    profiles[1].virtual_number = 999;
+    assert(SpellCastTime(&copied, SPELL_FULL_HEAL) == 28);
+    copied.specials.act = 0;
+    assert(SpellCastTime(&copied, SPELL_FULL_HEAL) == 28);
     std::puts("[PASS] production SpellCastTime: missing/identity/fractional/doubled multiplier, racial truncation, gear, haste/flurry, one-beat floor");
 }
-'''.replace("__BODY__", body)
+'''.replace("__BODY__", body).replace("__MECHANICS__", extract_function('specs.ailvio.c', 'int tutorial_mobile_mechanics_race('))
 with tempfile.TemporaryDirectory(prefix="duris-issue-252-") as temporary:
     path = Path(temporary)
     source = path / "cast_time.cpp"

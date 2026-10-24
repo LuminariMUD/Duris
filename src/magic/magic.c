@@ -14622,7 +14622,8 @@ void single_unholy_word(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	else
 	{
 		int dam = level * 3 + 20;
-		dam = GET_RACE(victim) == RACE_GITHZERAI ? (int)(dam * 1.5) : dam;
+		dam = tutorial_mobile_mechanics_race(victim) == RACE_GITHZERAI ? (int)(dam * 1.5) :
+										 dam;
 		dam = dam * get_property("spell.area.damage.factor.unholyWord", 1.000);
 
 		if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
@@ -14714,7 +14715,8 @@ void single_voice_of_creation(int level, P_char ch, char * /*arg*/, int /*type*/
 	else
 	{
 		int dam = level * 3 + 20;
-		dam = GET_RACE(victim) == RACE_GITHYANKI ? (int)(dam * 1.5) : dam;
+		dam = tutorial_mobile_mechanics_race(victim) == RACE_GITHYANKI ? (int)(dam * 1.5) :
+										 dam;
 		if (spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, &messages) == DAM_NONEDEAD)
 		{
 			if (lev < (level / 2 + 2)) /* 14-27 blind */
@@ -14778,7 +14780,8 @@ void single_holy_word(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	else
 	{
 		int dam = level * 3 + 20;
-		dam = GET_RACE(victim) == RACE_GITHYANKI ? (int)(dam * 1.5) : dam;
+		dam = tutorial_mobile_mechanics_race(victim) == RACE_GITHYANKI ? (int)(dam * 1.5) :
+										 dam;
 		if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
 		{
 			dam = (int)(dam * 1.25);
@@ -15945,14 +15948,11 @@ void spell_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	 * restore lost exp from death
 	 */
 
-	if (IS_PC(t_ch) && !IS_TRUSTED(t_ch))
+	// Protected and level-one deaths legitimately have no XP to restore. The
+	// XP dispatcher floors ordinary gains at one, so skip a zero-loss corpse.
+	if (IS_PC(t_ch) && !IS_TRUSTED(t_ch) && obj->value[4] != 0)
 	{
 		resu_exp = obj->value[4];
-		if (resu_exp == 0)
-		{
-			// send_to_char("&-RERROR! Player corpse with zero exp, please notify a god!&n\r\n", ch);
-			wizlog(56, "MEMORY ERROR: Player corpse with zero exp!");
-		}
 
 		if (!IS_TRUSTED(ch))
 		{

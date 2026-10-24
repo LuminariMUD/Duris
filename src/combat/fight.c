@@ -6110,7 +6110,7 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 				return DAM_VICTDEAD;
 		}
 
-		if (IS_MINOTAUR(victim) && !number(0, 5) &&
+		if (tutorial_mobile_mechanics_race(victim) == RACE_MINOTAUR && !number(0, 5) &&
 		    (GET_HIT(victim) < GET_MAX_HIT(victim) / 6) &&
 		    !affected_by_spell(victim, SKILL_BERSERK))
 		{
@@ -7503,9 +7503,9 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	if (difficulty_world_npc(ch))
 		dam *= difficulty_multiplier(DIFFICULTY_MOB_MELEE);
 
-	if (GET_RACE(ch) == RACE_ORC)
+	if (tutorial_mobile_mechanics_race(ch) == RACE_ORC)
 		dam = orc_horde_dam_modifier(ch, dam, TRUE);
-	else if (GET_RACE(victim) == RACE_ORC)
+	else if (tutorial_mobile_mechanics_race(victim) == RACE_ORC)
 		dam = orc_horde_dam_modifier(victim, dam, FALSE);
 
 	if (weapon && IS_SLAYING(weapon, victim))
@@ -7560,7 +7560,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	if (GET_CLASS(ch, CLASS_PALADIN) && holy_weapon_proc(ch, victim))
 		return TRUE;
 
-	if (GET_RACE(ch) == RACE_MINOTAUR)
+	if (tutorial_mobile_mechanics_race(ch) == RACE_MINOTAUR)
 		minotaur_race_proc(ch, victim);
 
 	if (affected_by_spell(ch, ACH_YOUSTRAHDME) && IS_UNDEADRACE(victim) &&
@@ -8150,7 +8150,7 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	// Level 56 drow has 10% innate dodge.  Excessive weight will negate this bonus.
 	// This is actually a 9% dodge for all !stunned drow within weight limit..
 	//   I set the weight limit to 100 since the range for load_modifier is between 75 and 300.
-	if (GET_RACE(char_dodger) == RACE_DROW && !IS_STUNNED(char_dodger) &&
+	if (tutorial_mobile_mechanics_race(char_dodger) == RACE_DROW && !IS_STUNNED(char_dodger) &&
 	    (load_modifier(char_dodger) < 100) && !number(0, 10))
 	{
 		// debug("Drow dodge (%s).", GET_NAME(char_dodger));
@@ -10301,12 +10301,12 @@ double orc_horde_dam_modifier(P_char ch, double dam, int attacking)
 
 		if (attacking)
 		{
-			if (GET_RACE(horde) == RACE_ORC && ch != horde)
+			if (tutorial_mobile_mechanics_race(horde) == RACE_ORC && ch != horde)
 				c++;
 		}
 		else
 		{
-			if (GET_RACE(horde) == RACE_ORC)
+			if (tutorial_mobile_mechanics_race(horde) == RACE_ORC)
 				c--;
 		}
 	}

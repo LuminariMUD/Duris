@@ -377,7 +377,7 @@ static int innate_char_race(P_char ch)
 	int race;
 	struct affected_type *af, *af2;
 
-	race = ch->player.race;
+	race = tutorial_mobile_mechanics_race(ch);
 
 	if (IS_DISGUISE_SHAPE(ch))
 	{
@@ -3763,7 +3763,7 @@ int get_innate_resistance(P_char ch)
 	if (!IS_ALIVE(ch))
 		return 0;
 
-	res = racial_shrug_data[GET_RACE(ch)];
+	res = racial_shrug_data[tutorial_mobile_mechanics_race(ch)];
 	res -= MIN(6, 56 - lvl);
 	res = (int)(res * MIN(1., ((float)lvl) / 50));
 	res = MAX(5, res);
