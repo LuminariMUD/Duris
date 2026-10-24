@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-matched-restore/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-matched-restore`, [PR #337](https://github.com/LuminariMUD/Duris/pull/337).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `7bc1672de`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-copyover-season-fence/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-copyover-season-fence`, [PR #339](https://github.com/LuminariMUD/Duris/pull/339).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `8ec555765`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -26,14 +26,24 @@ passed, followed by an independent pre-wipe restore, original account/body/bank/
 reward/items/world, save/reconnect/second boot, and unchanged epoch-2 source
 SQL/files/Redis plus retained generation hashes. Exact command/revision/hash and
 coverage are in the stack-tip plan; no production promotion path was added.
+PR #339 closes an unscoped native-handoff gap: guarded filesystem cleanup archives
+configured publication/claim/consumption inputs before activation, outside both warm
+and cold readers. Bytes remain protected in private Players/Backup archives; normal
+copyover format stays unchanged. Ten filesystem tests, 12 ASan/UBSan native-reader
+scenarios and the final actual SQL/launcher matrix pass, including partial retry and
+fresh-handoff preservation after lost activation ACK. The missing native store is
+classified: current lifecycle inventory is 200 tables, 31 other stores, 42 Redis
+surfaces. Required incremental build/format/hooks pass; unchanged full-build evidence
+is reused. See the stack-tip plan for commands, hashes and remaining gates.
 Companion DurisWeb [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
 [#94](https://github.com/LuminariMUD/DurisWeb/pull/94) fence stale events and redact
 driver details, with backend checks and native SELECT-only lock proof. The clean
 pushed companion worktree is `/home/aiwithapex/projects/durisweb-issue264-presence`,
 branch `branch/issue-264-presence-diagnostics` at `69c8671`.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
-recreate only exact level-62 Overlords. Next: retained custody/baseline/inventory
-consumer proof and complete website/donation/client/telemetry cutover, then W2
+recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
+fallback consumer proof, Redis re-enable with retained authenticated old recovery
+payloads, and complete website/donation/client/telemetry cutover, then W2
 command edge cases and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
