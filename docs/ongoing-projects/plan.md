@@ -98,6 +98,13 @@ state formats. Final review disposition must also repair #310's base-plan confli
 and account for older head findings already fixed in dependent PRs; do not silently
 claim those threads are closed.
 
+The #309 consumer repair is also backported to its actual original-branch head in
+`b628e6aaa`; all 9/6/7/6 archive/telemetry-schema/erasure/export checks pass there.
+Its original review thread is resolved against that repaired head. Original branch
+continuation pointer now targets this #363 branch. #310's base refresh must retain
+that three-file consumer fix and resolve only its plan conflict, not discard source.
+Other old review threads remain open pending their explicit head/disposition audit.
+
 ## Current continuation — recovery path preflight guards
 
 Review-ready [PR #362](https://github.com/LuminariMUD/Duris/pull/362), fix/fixture
