@@ -8,6 +8,7 @@ import json
 import importlib.util
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,30 +19,12 @@ ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = ROOT / "scripts" / "validate_data_lifecycle.py"
 MANIFEST = ROOT / "migrations" / "data_lifecycle_manifest.json"
 REDIS_REGISTRY = SRC / "redis_key_registry.def"
-SCHEMA_FILES = (
-    ROOT / "migrations" / "bootstrap_multithread_safe.sql",
-    ROOT / "migrations" / "bootstrap_legacy_baseline.sql",
-    ROOT / "migrations" / "immutable" / "0001_lookup_dataset_state.sql",
-    ROOT / "migrations" / "immutable" / "0003_season_reset_state.sql",
-    ROOT / "migrations" / "immutable" / "0004_server_reboots.sql",
-    ROOT / "migrations" / "immutable" / "0006_kingdom_realms.sql",
-    ROOT / "migrations" / "immutable" / "0009_kingdom_garrison.sql",
-    ROOT / "migrations" / "immutable" / "0014_telemetry_storage.sql",
-    ROOT / "migrations" / "immutable" / "0016_artifact_mana.sql",
-    ROOT / "migrations" / "immutable" / "0017_telemetry_rollup_support.sql",
-    ROOT / "migrations" / "immutable" / "0018_collector_catalog.sql",
-    ROOT / "migrations" / "immutable" / "0019_corpse_lifecycle_authority.sql",
-    ROOT / "migrations" / "immutable" / "0026_zone_story_quest_state.sql",
-    ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
-    ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
-    ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
-    ROOT / "migrations" / "immutable" / "0048_divine_boon_state.sql",
-    ROOT / "migrations" / "immutable" / "0050_divine_trade_state.sql",
-)
+sys.path.insert(0, str(ROOT / "scripts"))
 VALIDATOR_SPEC = importlib.util.spec_from_file_location("validate_data_lifecycle", VALIDATOR)
 VALIDATOR_MODULE = importlib.util.module_from_spec(VALIDATOR_SPEC)
 assert VALIDATOR_SPEC.loader is not None
 VALIDATOR_SPEC.loader.exec_module(VALIDATOR_MODULE)
+SCHEMA_FILES = VALIDATOR_MODULE.default_schema_files()
 
 
 class LifecycleManifestTest(unittest.TestCase):
@@ -106,6 +89,14 @@ class LifecycleManifestTest(unittest.TestCase):
         registry = (ROOT / "src/redis/redis_key_registry.def").read_text()
         self.assertEqual(report["redis_surfaces"], registry.count("\nREDIS_SURFACE("))
         self.assertFalse(report["destructive_rules_enabled"])
+
+    def test_default_inventory_rejects_an_invalid_migration_contract(self) -> None:
+        runner = VALIDATOR_MODULE.migration_runner
+        with mock.patch.object(runner, "load_manifest", side_effect=
+                               runner.MigrationContractError("checksum mismatch")):
+            with self.assertRaisesRegex(VALIDATOR_MODULE.ValidationError,
+                                        "migration inventory is invalid: checksum mismatch"):
+                VALIDATOR_MODULE.default_schema_files()
 
     def test_telemetry_outage_evidence_is_required_protected_and_retained(self) -> None:
         entry_id = "file:telemetry_outage_ledger"
@@ -314,6 +305,17 @@ class LifecycleManifestTest(unittest.TestCase):
             )
             self.assertEqual(VALIDATOR_MODULE.schema_tables((schema,)),
                              {"lifecycle_commented"})
+            self.assertEqual(VALIDATOR_MODULE.schema_dependencies((schema,)), {})
+
+    def test_dropped_tables_do_not_leave_phantom_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            schema = Path(temporary) / "schema.sql"
+            schema.write_text(
+                "CREATE TABLE parent (id INT PRIMARY KEY) ENGINE=InnoDB;\n"
+                "CREATE TABLE child (id INT, FOREIGN KEY (id) REFERENCES parent(id)) "
+                "ENGINE=InnoDB;\nDROP TABLE child;\n"
+            )
+            self.assertEqual(VALIDATOR_MODULE.schema_tables((schema,)), {"parent"})
             self.assertEqual(VALIDATOR_MODULE.schema_dependencies((schema,)), {})
 
     def test_redis_registry_drives_manifest_coverage_and_fails_closed(self) -> None:
