@@ -336,6 +336,24 @@ before deletion. Repair/quarantine such input explicitly before retrying; do not
 bypass the check. A partial move remains fenced and a normal retry archives what
 remains. A duplicate already-active epoch skips all cleanup and keeps fresh state.
 
+Retained SQL receipts are consumed at their owning identity boundaries. The
+critical repository checks a duplicate operation's stored hashes/committed result
+before domain dispatch; it returns the receipt rather than applying the mutation
+again. The normal outbox fetches status 0, and its drain includes future retry rows.
+Prepared artifact/guild boot recovery can explicitly retry status-2 deliveries;
+its pre-boundary drain includes all pending delivery state. Retired artifact UID
+and guild incarnation checks keep historical deliveries from binding replacements,
+even when a numeric guild ID is reused. Preserve these books and their markers.
+
+Zone-story history/daily state uses the current SQL epoch and player PID. Retaining
+the history blob does not give a fresh PID its old namesake's progress or renown.
+Native reload proof covers old/new partitions, fresh assignment/completion and
+idempotent replay of an old completion. Epic-stone claims use persistent item UID;
+artifact mana is also UID-only counter/version state, not a serialized object.
+Fresh UID leases and isolated old physical recovery inputs prevent those histories
+from constructing or rewarding an old item. Legacy quest-trophy history has no
+enabled current gameplay caller; critical-test counters have no normal asset reader.
+
 The former `CRITICAL_COMMAND_JOURNAL_DIR` now holds only
 `locker-identification/<pid>.receipt` service receipts. Their filenames and encoded
 payment identities bind PID/account/side. Preserve prepared/paid/failed/delivered

@@ -393,6 +393,8 @@ int main()
 
 	completion_event daily_completion = completion("tx-daily", "zone-story:901:002", 901, 42,
 						       assignment.assigned_at + 100, { 42 });
+	daily_completion.party_context_known =
+		true; // Known solo context keeps the candidate eligible.
 	require(tracker.record_completion(daily_completion, &error) == result::applied,
 		"daily authoritative completion was not applied");
 	require(tracker.complete_daily(7, 42, "tx-daily", daily_completion.transaction.completed_at,
@@ -420,6 +422,43 @@ int main()
 	require(recovered.daily_for(7, 42, service::period_for(daily_now)).status ==
 			daily_status::completed,
 		"recovered daily assignment did not remain completed");
+
+	// Pwipe retains this history blob. A new SQL epoch and higher PID must start
+	// with no old progress/daily award, even when the display name is reused.
+	recovered.remember_character(8, 1042, "Alice");
+	require(recovered.summary_for(8, 1042).completed == 0 &&
+			recovered.summary_for(8, 1042).renown == 0 &&
+			recovered.progress_for_zone(8, 1042, 900).completed == 0 &&
+			recovered.daily_for(8, 1042, service::period_for(daily_now)).status ==
+				daily_status::none,
+		"new season/PID inherited retained quest progression or a daily award");
+	require(recovered.summary_for(8, 42).completed == 0 &&
+			recovered.summary_for(7, 1042).completed == 0,
+		"season and PID are not independent quest identity boundaries");
+	const auto fresh_assignment = recovered.assign_daily(8, 1042, 10, 1, daily_now, &error);
+	require(fresh_assignment.status == daily_status::assigned,
+		"retained old daily state prevented a fresh character assignment");
+	auto fresh_completion = completion("tx-fresh-season",
+					   fresh_assignment.quest_definition_id.c_str(), 901, 1042,
+					   daily_now + 200, { 1042 });
+	fresh_completion.transaction.season_id = 8;
+	fresh_completion.character_name = "Alice";
+	fresh_completion.party_context_known = true;
+	require(recovered.record_completion(fresh_completion, &error) == result::applied &&
+			recovered.summary_for(8, 1042).completed == 1 &&
+			recovered.summary_for(8, 1042).renown == 1,
+		"fresh season quest/daily progression did not work");
+	require(recovered.record_completion(daily_completion, &error) == result::already_applied &&
+			recovered.summary_for(8, 1042).renown == 1 &&
+			recovered.summary_for(7, 42).renown == 1 &&
+			recovered.summary_for(7, 42).completed == 3,
+		"retained old completion replay altered fresh or historical quest progress");
+	service season_reloaded(catalog);
+	season_reloaded.set_daily_policy(policy);
+	require(season_reloaded.deserialize_state(recovered.serialize_state(&error), &error) &&
+			season_reloaded.summary_for(8, 1042).renown == 1 &&
+			season_reloaded.summary_for(7, 42).completed == 3,
+		"new/old quest season partitions did not survive another state reload");
 
 	recovered.remember_character(8, 42, "OldSeasonName");
 	telemetry_observation deleted_observation;
