@@ -11,6 +11,21 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Contained-being learning feedback
+
+A failed recipe-learning roll reports the failure to the eligible summoner in
+both solo and group kills. A group member's failure does not suppress another
+member's successful attempt. Containment expiry announces that the target's
+essence can no longer be learned; its existing duration remains 25 seconds.
+
+`python3 tests/async/test_world_quest_xp_feedback.py` executes the production
+kill-experience paths and spell handler under ASan/UBSan on both persistence
+build variants. It enumerates every roll for representative levels, the strict
+success boundary, zero and guaranteed success, and the Charisma cap. It also
+covers per-recipient group feedback, inactive marks, existing eligibility
+rejection, and expiry message registration. Target eligibility and recipe
+persistence are stubbed; this is not a live-player or network journey.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,

@@ -22654,8 +22654,9 @@ void spell_contain_being(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unuse
 	af.type = SPELL_CONTAIN_BEING;
 	af.duration = 100;
 	af.flags = AFFTYPE_SHORT;
-	affect_to_char_with_messages(victim, &af, "You your physical composure returns to normal.",
-				     "$n's &+Yphysical composure slowly returns to &+Lnormal&n.");
+	affect_to_char_with_messages(
+		victim, &af, "Your containment fades; your essence can no longer be learned.",
+		"The containment around $n fades; its essence can no longer be learned.");
 }
 
 /* ---- DRAGOON SPELLS ----*/

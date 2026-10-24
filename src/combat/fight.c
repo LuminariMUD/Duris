@@ -3100,6 +3100,10 @@ void kill_gain(P_char ch, P_char victim)
 				if ((number(1, GET_C_INT(victim)) < chance) &&
 				    (GET_VNUM(victim) != 1255))
 					learn_conjure_recipe(ch, victim);
+				else if (!sql_has_spellbook_mob(GET_PID(ch), GET_VNUM(victim)))
+					send_to_char(
+						"&+yYou fail to learn how to conjure that being from its fading essence.&n\r\n",
+						ch);
 			}
 		}
 		return;
@@ -3224,6 +3228,11 @@ void kill_gain(P_char ch, P_char victim)
 					if ((number(1, GET_C_INT(victim)) < chance) &&
 					    (GET_VNUM(victim) != 1255))
 						learn_conjure_recipe(gl->ch, victim);
+					else if (!sql_has_spellbook_mob(GET_PID(gl->ch),
+									GET_VNUM(victim)))
+						send_to_char(
+							"&+yYou fail to learn how to conjure that being from its fading essence.&n\r\n",
+							gl->ch);
 				}
 			}
 		}
