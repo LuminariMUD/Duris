@@ -40,6 +40,38 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — shutdown operator flow
+
+Branch `branch/issue-264-shutdown-operator-flow`, based on PR #341 at `9ff8251dc`.
+Source findings: invalid/underlevel pwipe requests cancel existing timers before
+validation; issuer-disconnect cancellation is commented out despite help text;
+new requests leave old timer events queued, and terminal execution leaves its type
+armed; overdue deadlines can schedule a negative event delay. Outcome: validate
+requests before changing the existing countdown, require the full pwipe phrase and
+Overlord permission, maintain one timer through the existing nevent cancellation
+API, cancel manual countdowns when the real issuer leaves/loses permission, and
+execute terminal work once. Preserve automatic reboots and immediate launcher signals.
+Reuse existing shutdown metadata/event APIs; no new timer generation or state store.
+Files: owning command/countdown, native command/event/broadcast fixture, existing
+real runtime journey and help/runbook/plan. Proof: deterministic malformed/role/
+replacement/disconnect/switched/deadline/repeated-callback cases; real command,
+menu/linkdead cancellation and valid wipe; required builds and focused checks.
+Full W1/W4/W5 and final readiness remain open; production action is excluded.
+
+The native command/event regression reproduced mutation of a retained countdown on
+invalid input, then passes with the repair. It now covers strict phrase/delay/role/
+backend validation, cancellation/replacement with one queued timer, positive late
+final ticks, one terminal SQL attempt for success/pre-boundary/post-boundary outcomes,
+menu/link/permission loss at the final tick, switched identity, automatic reboot and
+launcher signals. Existing event cancellation runtime and pwipe quiescence/fence/
+completion checks pass. Three incremental builds (development MariaDB, optimized
+MariaDB, isolated flat-file) pass; format checks pass. The real journey now creates
+an underlevel staff observer, verifies actual invalid/repeated commands and menu/
+network departure cancellation, then runs a valid full wipe. Run this committed
+fixture against the rebuilt optimized binary before claiming operator qualification.
+No new timer state store was added: queued cleanup uses the existing global event
+lookup/cancel API only at request/cancel/final transitions.
+
 ## Current continuation — Redis disabled/reset/re-enable
 
 Review-ready [PR #341](https://github.com/LuminariMUD/Duris/pull/341); fixture revision

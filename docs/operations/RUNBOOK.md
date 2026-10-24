@@ -193,6 +193,17 @@ a deployment blocker, not a reason to weaken the unit or reuse development secre
 Do not use `pwipe` for ordinary restarts. The full supported reset is still under
 qualification in issue #264; this handoff repair alone is not wipe readiness.
 
+The in-game operator command requires Forger permission; `shutdown pwipe confirm yes`
+additionally requires Overlord permission and MariaDB-primary. The pwipe phrase
+accepts no extra arguments and always schedules five minutes, announced as PWIPE.
+Malformed input, unsupported mode and insufficient permission preserve an existing
+countdown. A plain `shutdown` cancels a manual request; a valid new request replaces
+it. Manual countdowns cancel when their real issuer leaves play, disconnects or loses
+permission, including the final pending tick. A switched staff body still identifies
+its original issuer. Automatic reboots and immediate launcher-signal requests keep
+their existing independent behavior. Cancellation ends when execution begins;
+post-boundary recovery follows the durable season fence below.
+
 Pwipe advances `season_reset_state.season_epoch` and records `resetting` before
 destructive SQL. Startup refuses any non-active season. The singleton also holds
 its handoff receipt: while `reset_status='resetting'`, a NULL `reset_completed_at`

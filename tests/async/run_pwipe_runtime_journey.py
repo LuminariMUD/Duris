@@ -22,6 +22,8 @@ import test_flatfile_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
 STAFF = "Wipekeeper"
+OBSERVER = "Watchkeeper"
+OBSERVER_ACCOUNT = "Shutdownacct"
 GIT = ["git", "-c", "safe.directory=" + str(ROOT)]
 
 
@@ -96,7 +98,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                        DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
                        CRITICAL_COMMAND_JOURNAL_DIR=str(root / "journals/critical"))
             path = root / "launcher.out"
-            process = client = redis_server = restored_redis_server = journal = None
+            process = client = observer = redis_server = restored_redis_server = journal = None
             unit_path = pin_path = None
             unit_created = pin_created = False
             unit_name = "duris-pwipe-qualification-" + uuid.uuid4().hex + ".service"
@@ -154,7 +156,9 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                                         stderr=subprocess.STDOUT, start_new_session=True)
 
             def stop():
-                nonlocal process, client
+                nonlocal process, client, observer
+                if observer:
+                    observer.close(); observer = None
                 if client:
                     client.close(); client = None
                 if systemd and unit_created:
@@ -260,10 +264,17 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 old_items = sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid))
                 assert int(old_items) > 0
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                observer = journey.MudClient(plain)
+                journey.create_character(observer, account=OBSERVER_ACCOUNT, character=OBSERVER,
+                                         email="shutdown@example.invalid")
+                observer.send("quit"); observer.expect("ACCOUNT MENU", timeout=30)
+                observer_pid = int(sql("SELECT pid FROM player_data WHERE name='" + OBSERVER + "'"))
                 stop()
                 # Synthetic staff promotion while offline, as other real-server fixtures do.
                 sql("UPDATE player_data SET level=62,highest_level=62 WHERE pid=" + str(old_pid))
                 sql("UPDATE account_characters SET racewar=0 WHERE pid=" + str(old_pid))
+                sql("UPDATE player_data SET level=61,highest_level=61 WHERE pid=" + str(observer_pid))
+                sql("UPDATE account_characters SET racewar=0 WHERE pid=" + str(observer_pid))
                 sql("INSERT INTO account_banks(account_name,racewar,bank_platinum) VALUES('" + journey.ACCOUNT + "',1,9)")
                 sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) "
                     "SELECT id,0,0,0,9 FROM account_banks")
@@ -324,10 +335,39 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     print("Frozen matched SQL/journal, filesystem and authenticated Redis world generation captured", flush=True)
                 boot()
                 client = journey.reconnect_character(plain, character=STAFF)
-                client.send("shutdown pwipe confirm"); client.expect("You must")
+                observer = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=OBSERVER)
+                observer.send("shutdown reboot 10 retained Forger request")
+                observer.expect("retained Forger request")
+                observer.send("shutdown pwipe confirm yes"); observer.expect("higher level")
+                observer.send("shutdown"); observer.expect("Scheduled reboot cancelled")
+                save(STAFF) # Flush earlier broadcasts before the next command group.
+                observer.send("save"); observer.expect("Save complete for " + OBSERVER + ".")
+                client.send("shutdown reboot 10 retained malformed-request control")
+                client.expect("retained malformed-request control")
+                for invalid, message in (("pwipe", "You must"), ("pwipe confirm", "You must"),
+                                         ("pwipe confirm yes extra", "You must"),
+                                         ("reboot -1", "Invalid shutdown delay"),
+                                         ("reboot 2junk", "Invalid shutdown delay")):
+                    client.send("shutdown " + invalid); client.expect(message)
+                client.send("shutdown"); client.expect("Scheduled reboot cancelled")
+                save(STAFF)
+                for _ in range(2):
+                    client.send("shutdown pwipe confirm yes"); client.expect("five")
+                    observer.expect("Confirmed player wipe")
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                observer.expect("Scheduled pwipe cancelled", timeout=15)
+                client.close(); client = journey.reconnect_character(plain, character=STAFF)
                 client.send("shutdown pwipe confirm yes"); client.expect("five")
-                client.send("shutdown"); client.expect("cancelled")
+                observer.expect("Confirmed player wipe")
+                client.close(); client = None
+                observer.expect("Scheduled pwipe cancelled", timeout=15)
+                client = journey.reconnect_character(plain, character=STAFF)
+                save(STAFF)
+                observer.close(); observer = None
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
+                assert (root / "Players/a/old-season").read_text() == "old pfile"
+                report["operator_assertions"] = "mortal dispatch refusal, Forger pwipe refusal preserving reboot, malformed input preserves countdown, repeated requests, issuer menu/connection departure cancels, reconnect/save and unchanged epoch/files"
+                print("Real operator permissions, malformed/repeated requests and menu/link disconnect cancellation passed", flush=True)
                 if redis_reenable:
                     assert "restored world recovery generation" in journey.runtime_logs(root)
                     client.send("get sword"); client.expect("get a long steel sword")
@@ -405,6 +445,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 assert sql("SELECT COUNT(*) FROM account_banks") == "0"
                 assert sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid)) == "0"
                 new_pid = int(sql("SELECT pid FROM player_data WHERE name='" + STAFF + "' AND active=1"))
+                assert sql("SELECT active FROM player_data WHERE pid=" + str(observer_pid)) == "0"
                 assert new_pid > old_pid
                 assert not (root / "Players/a/old-season").exists()
                 assert not (root / "Ships/old-season").exists()
