@@ -67,8 +67,8 @@ launcher signals. Existing event cancellation runtime and pwipe quiescence/fence
 completion checks pass. Three incremental builds (development MariaDB, optimized
 MariaDB, isolated flat-file) pass; format checks pass. The real journey now creates
 an underlevel staff observer, verifies actual invalid/repeated commands and menu/
-network departure cancellation, then runs a valid full wipe. Run this committed
-fixture against the rebuilt optimized binary before claiming operator qualification.
+network departure cancellation, then runs a valid full wipe. The final committed
+fixture passed against the rebuilt optimized binary; evidence is recorded below.
 No new timer state store was added: queued cleanup uses the existing global event
 lookup/cancel API only at request/cancel/final transitions.
 
@@ -83,8 +83,25 @@ Overlord minimum for pwipe. Native tests execute that shared predicate and cover
 grants, revocation and loss of trusted status; all three rebuilt profiles pass.
 The final real fixture seeds level 60, grants shutdown through the actual command,
 verifies ordinary countdown permission, revokes it live and observes cancellation,
-then continues the malformed/repeated/logout/link/full-wipe journey. Run this final
-committed fixture; no final operator pass is claimed until it completes.
+then continues the malformed/repeated/logout/link/full-wipe journey. This final
+journey passed at source `b20372b9f273cec3e57ee894f2cd98b6c4c89bf4`, C/C++ working
+diff empty, production binary SHA-256
+`ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`.
+Report: `bin/analysis/pwipe-runtime-mariadb.json`; log:
+`bin/analysis/pwipe-operator-runtime-final.log`. Countdown: 301.961 wall / 289.485
+monotonic seconds (known host clock drift). Old mortal PID 1 and delegated staff
+PID 2 retired; only the level-62 Overlord was recreated as PID 3, and the fresh
+mortal received PID 4. Banks reset, epoch 2 activated through the real launcher,
+and staff login plus fresh combat/loot/save/reconnect/second boot passed. The
+prechecks preserved epoch 1 and its files across invalid requests, replacements,
+revocation and menu/link cancellation. All owned disposable resources exited.
+Command: `python3 tests/async/run_pwipe_runtime_journey.py bin/qualification-production/server/dms_new`.
+The final native ASan/UBSan command/event and actual event-cancellation fixtures,
+shutdown writer bound/cleanup checks, three incremental builds and format/hooks
+pass. Reuse prior SQL/recovery/Redis/systemd evidence for unchanged components;
+this operator journey used MariaDB-primary with Redis off. W2's operator item is
+complete; remaining writer/replay, carryover, external integration and final
+readiness gates remain open. No production operation or readiness tag is authorized.
 
 ## Current continuation — Redis disabled/reset/re-enable
 
@@ -1028,7 +1045,7 @@ choices remain explicit readiness blockers, not inferred defaults.
 
 ### W2 — Quiesce writers before the irreversible boundary (6–10 hours)
 
-- [ ] Exercise nonstaff/underlevel staff, malformed requests, exact confirmation,
+- [x] Exercise nonstaff/underlevel staff, malformed requests, exact confirmation,
   cancellation/countdown boundaries, repeated requests and issuer disconnect.
   Align help/runbook behavior; ordinary reboot/copyover must never enter reset.
 - [ ] Order preparation: validate dependencies/recovery prerequisites, stop new
