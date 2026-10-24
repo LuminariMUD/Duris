@@ -28,10 +28,11 @@ ROOT = Path(__file__).resolve().parents[2]
 STAFF = "Wipekeeper"
 OBSERVER = "Watchkeeper"
 OBSERVER_ACCOUNT = "Shutdownacct"
+CLAIMANT = "Claimkeeper"
 GIT = ["git"]
 
 
-def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, systemd_helper=None):
+def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, discard_rewards=False, systemd_helper=None):
     if systemd:
         assert systemd_helper is not None, "--systemd requires an installed helper"
         for path in (systemd_helper, *systemd_helper.parents):
@@ -43,7 +44,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
-                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else []), *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else [])])
+                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else []), *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else []), *(["--discard-rewards"] if discard_rewards else [])])
     assert os.environ["TEST_DB_HOST"] == "127.0.0.1"
     assert not Path("/usr/bin/sendemail").exists(), "fixture requires the launcher mail command absent"
     database = "pwipe_journey_" + uuid.uuid4().hex[:12]
@@ -70,7 +71,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
     report = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
               "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "status": "running"}
+              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "preserve_rewards": not discard_rewards, "status": "running"}
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
@@ -82,6 +83,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
             root = base / "runtime" if matched_restore else base
             root.mkdir(mode=0o700, exist_ok=True)
             journey.make_fixture(root)
+            if discard_rewards:
+                (root / "lib/account_rewards.cfg").write_text("pwipe.preserve=false\nsummon.cooldown.seconds=3600\n")
             journey.generate_certificate(root)
             tracked = subprocess.check_output([*GIT, "ls-files", "scripts", "migrations"],
                                               cwd=ROOT, text=True).splitlines()
@@ -205,6 +208,35 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
 
             def save(name):
                 client.send("save"); client.expect("Save complete for " + name + ".", timeout=30)
+
+            def reward_items(pid):
+                rows = sql("SELECT name,obj_uid,vnum,item_type,weight,cost," +
+                           ",".join("value" + str(i) for i in range(8)) +
+                           " FROM player_items WHERE pid=" + str(pid) +
+                           " AND name LIKE 'account_reward:%' ORDER BY name")
+                items = {}
+                for row in rows.splitlines():
+                    name, *values = row.split("\t")
+                    grant_id = int(name.split(":")[1])
+                    assert grant_id not in items, "duplicate physical copy of one grant"
+                    items[grant_id] = tuple(map(int, values))
+                return items
+
+            def check_claims(pid, expected):
+                client.send("divineclaim list")
+                client.expect("Divine reward commands:")
+                if discard_rewards:
+                    client.send("divineclaim summon 1")
+                    client.expect("That reward number is not active.")
+                else:
+                    # The dismissed third grant must remain on cooldown through login/boot.
+                    for number in (1, 2):
+                        client.send("divineclaim summon " + str(number))
+                        client.expect("already with this character")
+                    client.send("divineclaim summon 3")
+                    client.expect("is still recovering")
+                save(CLAIMANT)
+                assert reward_items(pid) == expected, "claim retry/login/boot changed reward instances"
 
             try:
                 if with_redis:
@@ -340,6 +372,18 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     print("Frozen matched SQL/journal, filesystem and authenticated Redis world generation captured", flush=True)
                 boot()
                 client = journey.reconnect_character(plain, character=STAFF)
+                for lifetime in ("permanent", "days 7", "wipes 1", "wipes 3"):
+                    client.send("divineclaim mace " + OBSERVER_ACCOUNT + " " + lifetime)
+                    client.expect("The source item remains in your inventory.")
+                save(STAFF)
+                grants = []
+                for row in sql("SELECT id,reward_vnum,HEX(template_json),COALESCE(UNIX_TIMESTAMP(expires_at),0) "
+                               "FROM account_bound_rewards WHERE account_name='" + OBSERVER_ACCOUNT + "' ORDER BY id").splitlines():
+                    grant_id, vnum, encoded, expires = row.split("\t")
+                    template = json.loads(bytes.fromhex(encoded))
+                    grants.append(dict(id=int(grant_id), encoded=encoded, expires=expires,
+                                       payload=(int(vnum), template["type"], template["weight"], template["cost"], *template["values"])))
+                assert len(grants) == 4
                 observer = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=OBSERVER)
                 observer.send("shutdown pwipe confirm yes"); observer.expect("Pardon?")
                 client.send("grant " + OBSERVER + " shutdown")
@@ -422,6 +466,10 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 report["schedule_wall_time"] = wall_began
                 client.send("shutdown pwipe confirm yes"); client.expect("five")
                 next_progress = began + 60
+                assert int(sql("SELECT COUNT(*) FROM account_bound_reward_summons WHERE pid=" + str(observer_pid))) > 0
+                retired_reward_uids = {int(uid) for uid in sql("SELECT obj_uid FROM player_items WHERE pid=" +
+                                                            str(observer_pid) + " AND name LIKE 'account_reward:%'").splitlines()}
+                assert retired_reward_uids, "old body must actually hold a reward before reset"
                 print("Real pwipe scheduled; beginning the required five-minute countdown", flush=True)
                 while running():
                     elapsed = time.monotonic() - began
@@ -459,6 +507,13 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 client.close(); client = None; process = None
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "2:active"
                 assert sql("SELECT COUNT(*) FROM account_banks") == "0"
+                assert sql("SELECT COUNT(*) FROM account_bound_reward_summons") == "0"
+                surviving = sql("SELECT id,HEX(template_json),COALESCE(UNIX_TIMESTAMP(expires_at),0),"
+                                "COALESCE(remaining_pwipes,0) FROM account_bound_rewards WHERE account_name='" +
+                                OBSERVER_ACCOUNT + "' ORDER BY id")
+                expected_grants = [] if discard_rewards else [grants[i] for i in (0, 1, 3)]
+                assert surviving == "\n".join("\t".join((str(grant["id"]), grant["encoded"], grant["expires"],
+                                                         "2" if grant is grants[3] else "0")) for grant in expected_grants)
                 assert sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid)) == "0"
                 new_pid = int(sql("SELECT pid FROM player_data WHERE name='" + STAFF + "' AND active=1"))
                 assert sql("SELECT active FROM player_data WHERE pid=" + str(observer_pid)) == "0"
@@ -492,6 +547,39 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     assert redis("KEYS", env["REDIS_NAMESPACE"] + ":season:2:presence:session:*:" + str(old_pid)) == ""
                 journey.complete_npc_combat_journey(client)
                 client.close(); client = None
+                client = journey.MudClient(plain)
+                journey.create_character(client, existing_account=True, account=OBSERVER_ACCOUNT, character=CLAIMANT)
+                claimant_pid = int(sql("SELECT pid FROM player_data WHERE name='" + CLAIMANT + "' AND active=1"))
+                assert claimant_pid > observer_pid
+                if discard_rewards:
+                    client.send("divineclaim list"); client.expect("Your account has no active divine rewards.")
+                    claimed_items = {}
+                else:
+                    # Login summons the oldest eligible grant; explicitly summon the rest.
+                    # Character creation consumes output through the later starter-kit message.
+                    assert b"A divine account reward begins to materialize:" in client.transcript
+                    for number in (2, 3):
+                        client.send("divineclaim summon " + str(number))
+                        client.expect("A divine account reward begins to materialize:")
+                    save(CLAIMANT)
+                    claimed_items = reward_items(claimant_pid)
+                    assert set(claimed_items) == {grant["id"] for grant in expected_grants}
+                    assert len({item[0] for item in claimed_items.values()}) == 3
+                    for grant in expected_grants:
+                        assert claimed_items[grant["id"]][1:] == grant["payload"], "exact reward payload changed"
+                        assert claimed_items[grant["id"]][0] not in retired_reward_uids
+                    for number in (1, 2, 3):
+                        client.send("divineclaim summon " + str(number)); client.expect("already with this character")
+                    save(CLAIMANT)
+                    assert reward_items(claimant_pid) == claimed_items
+                    client.send("divineclaim dismiss 3"); client.expect("It may be summoned again in")
+                    del claimed_items[grants[3]["id"]]
+                check_claims(claimant_pid, claimed_items)
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                client.close(); client = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=CLAIMANT)
+                check_claims(claimant_pid, claimed_items)
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                client.close(); client = None
                 fresh_pid = int(sql("SELECT pid FROM player_data WHERE name='" + journey.CHARACTER + "' AND active=1"))
                 assert fresh_pid > new_pid
                 before = sql("SELECT exp,copper,silver,gold,platinum FROM player_data WHERE pid=" + str(fresh_pid))
@@ -508,6 +596,12 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 save(journey.CHARACTER)
                 assert sql("SELECT exp,copper,silver,gold,platinum FROM player_data WHERE pid=" + str(fresh_pid)) == before
                 assert sql("SELECT active FROM player_data WHERE pid=" + str(old_pid)) == "0"
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                client.close(); client = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=CLAIMANT)
+                check_claims(claimant_pid, claimed_items)
+                assert sql("SELECT COUNT(*) FROM account_bound_reward_summons WHERE pid=" + str(observer_pid)) == "0"
+                report.update(reward_claim_pid=claimant_pid, reward_claim_ids=sorted(claimed_items),
+                              reward_claim_assertions="real exact permanent/day/finite grants; policy/reset clears old summons; fresh account character claims or refuses under discard policy; unique new UIDs/exact payload; repeated summon, dismiss cooldown, save/reconnect/second boot")
                 stop()
                 report.update(status="passed", fresh_pid=fresh_pid,
                               assertions="real command/cancel/countdown/launcher/filesystem/staff login/fresh combat/save/reconnect/reboot")
@@ -527,7 +621,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     source_epoch = sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state")
                     source_roster = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
                     assert source_epoch == "2:active"
-                    assert sql("SELECT remaining_pwipes FROM account_bound_rewards") == "2"
+                    assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE account_name='" + journey.ACCOUNT + "'") == "2"
                     backup.verify(generation)
                     assert backup.digest(generation / "manifest.json") == matched["sql_manifest_sha256"]
                     assert backup.digest(filesystem) == matched["filesystem_sha256"]
@@ -635,6 +729,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
     finally:
         suffix = "mariadb-redis-systemd" if systemd and with_redis else "mariadb-redis" if with_redis else "mariadb"
         suffix += "-restore" if matched_restore else "-reenable" if redis_reenable else ""
+        suffix += "-discard-rewards" if discard_rewards else ""
         (output / ("pwipe-runtime-" + suffix + ".json")).write_text(json.dumps(report, indent=2) + "\n")
         sql("DROP DATABASE " + database, False)
 
@@ -749,6 +844,7 @@ def flatfile_rejection(binary):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flatfile-rejection", action="store_true")
+    parser.add_argument("--discard-rewards", action="store_true", help="qualify pwipe.preserve=false and refused new-character claims")
     parser.add_argument("--redis-reenable", action="store_true", help="wipe with Redis off then re-enable against retained old recovery data (requires --redis)")
     parser.add_argument("--restore", action="store_true", help="rehearse a matched pre-wipe restore (requires --redis)")
     parser.add_argument("--redis", action="store_true", help="use a disposable Redis process")
@@ -764,9 +860,11 @@ if __name__ == "__main__":
         parser.error("--restore requires --redis and the direct MariaDB launcher")
     if options.redis_reenable and (not options.redis or options.restore or options.systemd or options.flatfile_rejection):
         parser.error("--redis-reenable requires --redis and the direct MariaDB launcher without --restore")
+    if options.discard_rewards and (options.restore or options.flatfile_rejection):
+        parser.error("--discard-rewards requires a MariaDB wipe journey without --restore")
     binary = Path(options.binary).resolve(strict=True)
     if options.flatfile_rejection:
         assert not options.redis and not options.systemd and not options.restore
         flatfile_rejection(binary)
     else:
-        run(binary, options.redis, options.systemd, options.restore, options.redis_reenable, options.systemd_helper)
+        run(binary, options.redis, options.systemd, options.restore, options.redis_reenable, options.discard_rewards, options.systemd_helper)
