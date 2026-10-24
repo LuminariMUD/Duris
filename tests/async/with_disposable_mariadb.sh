@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Run a command against its own disposable MariaDB: a new container on a random
+# Run a command against disposable SQL (MariaDB by default): a new container on a random
 # loopback port, removed on exit. Never sources the checkout's .env.
 set -euo pipefail
+
+IMAGE="${TEST_DB_IMAGE:-mariadb:10.11}"
+case "$IMAGE" in
+    mariadb:10.11) PASSWORD_VARIABLE=MARIADB_ROOT_PASSWORD ;;
+    mysql:8.0) PASSWORD_VARIABLE=MYSQL_ROOT_PASSWORD ;;
+    *) echo "Unsupported disposable SQL image" >&2; exit 2 ;;
+esac
 
 NAME="duris-test-db-$$-$RANDOM"
 PASSWORD="test-db-$$-$RANDOM"
 cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT HUP INT TERM
-docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "MARIADB_ROOT_PASSWORD=$PASSWORD" \
-    mariadb:10.11 >/dev/null
+docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "$PASSWORD_VARIABLE=$PASSWORD" \
+    "$IMAGE" >/dev/null
 mapping="$(docker port "$NAME" 3306/tcp)"
 export TEST_DB_HOST=127.0.0.1 TEST_DB_PORT="${mapping##*:}" TEST_DB_USER=root
 export TEST_DB_PASSWORD="$PASSWORD"

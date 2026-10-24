@@ -96,6 +96,57 @@ unmanaged real copies. The full direct website journey uses no PrivateTmp unit.
 
 
 
+Final combined acceptance passed at server fixture
+`9569cc0aeaca6ee7331a97d049ad9f853ef60ef1` / companion
+`291869689c3b0d5195cd7ed37dedb7b735f40a53`, both working diffs empty at start.
+Command: owned MySQL 8.0 wrapper, then
+`python3 tests/async/run_pwipe_runtime_journey.py --redis --website /home/aiwithapex/projects/durisweb-issue264-presence bin/qualification-production/server/dms_new`.
+Binary SHA-256 `ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`;
+302.723 wall / 288.983 monotonic seconds. Extra old visible mortal PID 3 retired;
+Overlord PID 4, fresh combat mortal PID 5 and reward mortal PID 6 used new bodies.
+Banks reset, reward claims/persistence and another boot passed. The normal built
+backend preserved real HTTP sessions, closed both old WS peers normally (1000),
+then accepted current Overlord/current mortal reconnects. Old staff, rank and
+old-scope inputs stayed absent despite retained old general-role cache. Actual
+MUD login/WHO and fresh scoped cache readers passed. The queued signed donation
+published on epoch-2 `nchat`, reached the actual game client, and repeated webhook
+left total credit 123 cents with one outbox row. No mocked HTTP/session/WS service
+was used in this journey. Native keeper/mount controls are separate as above.
+Report `bin/analysis/pwipe-runtime-website-9569cc0ae.json`; logs
+`bin/analysis/pwipe-website-{runtime,server,probe}.log`. All owned processes,
+databases and runtime trees exited/cleaned. The built backend tree hash and Node
+version were captured immediately afterward, before any subsequent build; future
+reports capture them at start. Only that metadata collection and removal of two
+redundant decoder assertions followed the pass; reuse this valid behavior proof.
+No production source/schema changed, so reuse prior game builds and failure matrix.
+Backend format/lint/types/build and MUD-write verifier pass; exact final proof and
+remaining scope are recorded here for review. Source tracing confirms the Vue
+dashboard resubscribes and refetches WHO on reconnect; rendered-browser acceptance
+is not claimed. W5's website/backend/client wire item is qualified; the remaining
+manual/readiness record stays open for the final W1/W7 reconciliation.
+
+A follow-up narrow boot smoke on the old default MariaDB 10.11 was refused by the
+website's metadata-authority installer; its documented MariaDB baseline is 11.8.
+Do not infer that the full shared website fixture supports the MUD-only default.
+The owned wrapper now has a bounded MySQL 8 selection, used automatically for
+`--website`; ordinary MUD tests retain their MariaDB 10.11 default. This selects the
+same engine/image/credential behavior as the passing full run, so reuse that real
+journey and qualify only the wrapper selection/boot. Full combined execution here
+is MySQL 8; earlier MUD-only MariaDB journeys and both-engine consumer/native query
+proof remain valid. Joint MariaDB 11.8 execution is not claimed. Future reports
+record actual database version as well as the logical persistence backend.
+The committed-wrapper MySQL smoke installs both schemas, boots the normal backend,
+returns healthy and exits cleanly (`pwipe-website-supported-wrapper-smoke.log`).
+The unchanged MariaDB default passes all seven native account/HTTP tests
+(`pwipe-website-wrapper-default.log`); unsupported image values refuse before
+container creation. Reuse the identical-image full run, not another countdown.
+Website runtime artifact tree SHA-256 at acceptance:
+`9094e93d130887a4aa7aeafe07f6fe33b10f4ead1a5680cde55767a0ee09e5e0`,
+Node `v24.15.0`. Supported-Node keeper/mount runs pass separately. These are
+qualification-only changes; no new public changelog item is needed and existing
+unpublished feature/repair drafts remain unpublished.
+
+
 ## Current continuation — current website MUD permissions
 
 Review-ready companion [PR #96](https://github.com/LuminariMUD/DurisWeb/pull/96),
@@ -1393,7 +1444,7 @@ nor suppress an independent reset's required cleanup.
   journeys and real pre/post-boundary provider failures pass. The re-enable journey
   above now proves unexpired authenticated old world/floor payloads stay isolated
   while fresh presence/gameplay and new-scope recovery succeed.
-- [ ] Exercise website presence, cached lists/leaderboards, account characters,
+- [x] Exercise website presence, cached lists/leaderboards, account characters,
   websocket/reconnecting clients and queued donations against the disposable
   reset. Verify website writers cannot race it, including stale subscriptions
   during `resetting` and refresh. Link necessary DurisWeb fixes to #264 with their

@@ -31,6 +31,9 @@ GIT = ["git", "-c", "safe.directory=" + str(ROOT)]
 
 def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, discard_rewards=False, website=None):
     if not os.environ.get("TEST_DB_HOST"):
+        if website:
+            # MySQL 8 is supported by both the MUD and the website baseline.
+            os.environ.setdefault("TEST_DB_IMAGE", "mysql:8.0")
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
                                *(["--redis"] if with_redis else []), *(["--systemd"] if systemd else []),
@@ -59,13 +62,21 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
     output = ROOT / "bin/analysis"
     output.mkdir(parents=True, exist_ok=True)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    report = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+    report = {"database_version": sql("SELECT VERSION()"),
+              "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
               "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "preserve_rewards": not discard_rewards, "status": "running"}
     if website:
         report["website_revision"] = subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=website, text=True).strip()
         report["website_diff_sha256"] = hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD"], cwd=website)).hexdigest()
+        artifact = hashlib.sha256()
+        for path in sorted((website / "backend/dist").rglob("*")):
+            if path.is_file():
+                artifact.update(str(path.relative_to(website / "backend/dist")).encode() + b"\0")
+                artifact.update(path.read_bytes())
+        report["website_backend_tree_sha256"] = artifact.hexdigest()
+        report["website_node_version"] = subprocess.check_output(["node", "--version"], text=True).strip()
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
