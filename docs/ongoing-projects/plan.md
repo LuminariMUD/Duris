@@ -1,15 +1,115 @@
 # Issue #264: qualify the full pwipe lifecycle
 
-Status: implementation started 2026-10-24; full wipe readiness remains OPEN.
+Status: PAUSED at the owner's explicit stop request on 2026-10-24; full wipe readiness remains OPEN.
 Prepared 2026-10-23 for [#264](https://github.com/LuminariMUD/Duris/issues/264),
 the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris/issues/97).
-Implementation branch: `branch/issue-264-pwipe-qualification`.
+Original/PR #309 branch: `branch/issue-264-pwipe-qualification`.
+Current stopped worktree branch: `branch/issue-264-unprivileged-qualifier`.
+Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
+Issue #264 had no comments when inspected. This plan covers its seven review areas,
+four verification requirements, and four completion criteria. The latest master #245
+plan is preserved in [plan-issue-245.md](plan-issue-245.md).
 
-**Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-overlord-projection-repair/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-overlord-projection-repair`, [PR #363](https://github.com/LuminariMUD/Duris/pull/363).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `468ad4c0b`
-(clean and pushed). Review-ready server stack:
+## Stopped checkpoint — owner request, 2026-10-24
+
+Implementation stopped without another code commit, push, PR, merge, tag or production
+operation. The owner subsequently requested this documentation-only checkpoint update;
+that request does not resume implementation.
+Latest published server stack remains [PR #363](https://github.com/LuminariMUD/Duris/pull/363)
+(`10acd1176`), branch `branch/issue-264-overlord-projection-repair`; current dirty branch
+is `branch/issue-264-unprivileged-qualifier` in
+`/home/aiwithapex/projects/duris-issue264-plan`. Preserve its uncommitted helper,
+helper regression, runtime-runner and documentation edits. They are not a completed
+or review-ready chunk. Exact dirty files:
+
+- `docs/ongoing-projects/plan.md` (this checkpoint).
+- `docs/testing/REGRESSIONS.md` (helper installation/run guidance).
+- `tests/async/run_pwipe_runtime_journey.py` (ordinary-user qualifier draft).
+- New `tests/async/pwipe_systemd_helper.py` (installed privileged adapter draft).
+- New `tests/async/test_pwipe_systemd_helper.py` (installed adapter regression).
+
+Settled owner policy: reset **all account-bank balances**; recreate **only exact
+level-62 Overlords** from preserved accounts with new PIDs and clean seasonal
+assets/progression. Do not reopen these decisions.
+
+The installed helper boundary regression passed caller/name/action/path refusals,
+nonroot production-template sandbox, exit 55/no restart, journal and cleanup. A
+root-owned pinned qualifier copy rejected UID 0 before checkout imports/Git. The
+first full attempt exposed missing journal snapshots during boot; the dirty runner
+now refreshes bounded snapshots. The second actual UID-1000 systemd journey passed
+incomplete-reset exit 58/no restart and operator checks, entered the real countdown,
+and was interrupted at the owner's stop request after the logged 180-second
+observation. It did not complete the five-minute wipe. No full-pass claim is made. Its
+final report write also hit a pre-existing root-owned
+`bin/analysis/pwipe-runtime-mariadb-redis-systemd.json`; address evidence-file
+ownership before a future unprivileged rerun. Logs:
+`bin/analysis/pwipe-helper-boundary.log`, `pwipe-unprivileged-systemd.log`.
+
+The owned journey stopped and cleaned its disposable unit/target, SQL container,
+Redis process and runtime tree. The temporary installed helper/template, restricted
+sudo rule and empty private registration directory were removed. Unrelated
+containers/services/worktrees remain untouched.
+
+Companion `/home/aiwithapex/projects/durisweb-issue264-presence`, branch
+`branch/issue-264-website-runtime-journey`, has two uncommitted probe repairs plus
+a development-guide note: literal loopback principal escaping and bounded durable
+outbox-ACK polling. Its published HEAD is `c4772780bb998a52fb379effdd01b26d29f95ca5`
+([DurisWeb PR #97](https://github.com/LuminariMUD/DurisWeb/pull/97)). Dirty files:
+`backend/src/test/pwipeWebsiteProbe.ts` and `docs/development.md`. Backend commands
+`pnpm --dir backend format:check`, `lint`, `type-check`, `build`, and
+`test --runInBand src/services/__tests__/donationService.test.ts src/utils/__tests__/donationEvent.test.ts`
+passed (2 suites / 9 tests). Actual compiled probe selector/delayed-ACK/bounded-timeout
+checks also passed with Node v24.15.0. Logs: `/tmp/issue264-web-probe-{format,lint,type,build,tests,review}.log`;
+the temporary executable check is `/tmp/issue264-web-probe-review.mjs`. Those /tmp
+files are local ephemeral evidence, not committed regression coverage. No complete
+website/MUD journey was rerun for these two edits. No website commit/push or
+review-thread resolution was done for these edits.
+
+Still open: finish secure systemd qualification; repair first-boot matched-restore
+assertions and prove that journey; publish the two website probe fixes; reconcile
+#310's base conflict and all outstanding ancestor review findings; final W1–W7
+acceptance/evidence audit. The later historical sections describe completed
+published evidence and must not be read as a final readiness sign-off.
+
+Outstanding review disposition at stop (recheck live GitHub before future edits):
+
+- #309 inventory consumers: repaired on actual original head `b628e6aaa`; thread resolved.
+- #310: base-plan conflict remains. Refresh from the original branch while retaining
+  all three schema-consumer repairs; do not replace source wholesale to resolve docs.
+  Reaper race is fixed in later #317; original review thread still needs disposition.
+- #311 queued reset SQL: synchronous repair exists later in this stack; ancestor
+  head/thread disposition remains open.
+- #313 mapping/timestamp findings: fixed/proven in #363; ancestor threads remain open.
+- #330 privileged qualifier: current unpublished draft is only partially qualified.
+- #337 restore probe: combined log window can pass on second boot alone. Assert the
+  frozen generation immediately after first restored boot, wait for fresh checkpoints,
+  and independently assert second-boot recovery before claiming that gap closed.
+- #339 nested recovery parent and #352 hidden maintenance ancestor: fixed/proven
+  in #362; ancestor review threads still need explicit disposition.
+- DurisWeb #97: both findings have uncommitted fixes; threads remain open.
+
+Continuation evidence rules: reuse the completed both-engine native matrices and
+three maintained builds recorded under #363 (optimized binary SHA-256
+`de2aa15f93bc9afe9e50d74888439d5b3bc5f1714d588ede1a6135effaf1a7c4`).
+No C/C++ changed in the unpublished qualifier/probe drafts. Finish only their
+affected proof; do not restart full regression/builds without a relevant change.
+The prior root-run systemd report is historical evidence, not a successful result
+for the new ordinary-user qualifier; preserve it or choose a new owned report
+path rather than overwriting evidence blindly. No release tag, production wipe,
+deployment or GitHub merge is authorized by this checkpoint. No finish ETA is valid.
+
+Original W1–W7 checkboxes/estimates and older “current” notes below are historical
+snapshots. This stopped checkpoint is authoritative. The final requirement-by-
+requirement reconciliation is unfinished, so those snapshots must not imply either
+that all implementation remains to be done or that full acceptance is complete.
+Preserve unrelated work: primary Duris checkout is on
+`branch/contain-learning-feedback`; do not switch/reset/clean it.
+
+The full published chunk history through #363 remains in the [published stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-overlord-projection-repair/docs/ongoing-projects/plan.md).
+Use the stopped local worktree listed above for unpublished changes.
+
+## Historical original-branch overview — status claims superseded above
+
 #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352 -> #353 -> #354 -> #356 -> #358 -> #360 -> #361 -> #362 -> #363,
 plus independent production-build repair #316 and email registry repair #355 (included in #356). PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
