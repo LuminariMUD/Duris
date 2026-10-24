@@ -319,8 +319,45 @@ Repairing Redis cleanup alone does not declare SQL reset complete.
 Before stopping website writers, complete DurisWeb's
 [legacy temporary-copy preservation gate](https://github.com/LuminariMUD/DurisWeb/blob/7147e6b1bece2e650dbe3cb312c904edfa43bf9d/docs/deployment.md#legacy-temporary-copy-preservation-gate).
 Its service's private temporary directory can be removed on stop. The player-event
-season fence orders publication against the SQL boundary; the full external-writer,
-cache, donation and reconnect cutover still needs its separate rehearsal.
+season fence orders publication against the SQL boundary. The website cutover is
+owned jointly by the wipe operator and website service owner:
+
+1. Complete the legacy-copy inventory, keeper and verified byte-preservation gate
+   before stopping the configured website unit. Keep those protected copies in the
+   matched recovery inventory; do not adopt or delete unmanaged originals by guess.
+2. Stop the website through its configured service manager and wait for graceful
+   completion. HTTP must stop accepting work, websocket peers must close, and the
+   active donation publisher/audit jobs must settle before the SQL boundary. Keep
+   the website stopped during reset and matched recovery capture. Accepted webhook
+   records, monetary totals, sessions and pending outbox rows remain durable.
+3. Complete the authorized MUD reset, verify its exact SQL epoch is active, then
+   start the fresh game explicitly. Preserve the deployment namespace, webhook
+   verification token, independent donation signing secret and account credentials.
+   If donation delivery is enabled, verify the native
+   `REDIS_DONATION_SUBSCRIBER=TRUE`, matching secret and MUD hook are ready before
+   resuming the website publisher. Do not publish into a disabled game consumer.
+4. Start the website normally. It reads the active epoch for scoped Redis feeds;
+   it does not reuse old character rosters or derived MUD-permission caches. Obtain
+   fresh websocket capabilities through the surviving authenticated session and
+   reconnect. Recreated Overlords retain access; retired staff do not acquire it
+   through an old cookie or cached role. Explicit website-admin grants are separate.
+5. Verify fresh WHO/presence, live login/logout delivery, current ranking/character
+   lists and scoped cache inputs. Old-epoch keys or old general-cache values must
+   not supply new data. Reload the dashboard and check current account/role state.
+6. Reconcile queued donations by durable provider/event IDs. A queued row can be
+   published with the new active epoch; a repeated webhook must not add another
+   monetary credit. `published` records Redis publication, so also verify native
+   game delivery when that feature is enabled. Never reset outbox status or totals
+   merely to force a replay.
+
+The private normal-backend journey accepts `--redis --website CHECKOUT` and a
+production-profile MUD binary. It automatically uses owned MySQL 8 for the jointly
+supported schema; the MUD-only MariaDB 10.11 factory is not the website baseline.
+It refuses conflicting modes and checkout runtime
+environment files, uses synthetic data/owned SQL and Redis, and records exact
+server/companion revisions and binary hash. The separate explicit PrivateTmp keeper
+fixture rehearses source retention and protected-byte verification through both
+unit stops. These fixtures do not operate an installed website or production game.
 
 Native hotboot and cold artifact boot inspect `COPYOVER_STATE_FILE` (default
 `copyover.dat`) and its `.recovering` claim. These images contain no SQL epoch and
