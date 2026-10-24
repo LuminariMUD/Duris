@@ -77,7 +77,6 @@ extern void roll_basic_attributes(P_char ch, int type);
 extern const struct stat_data stat_factor[];
 extern const char *stat_to_string2(int val);
 extern const char *town_name_list[];
-extern const int avail_hometowns[][LAST_RACE + 1];
 
 /* forward declarations for helpers used by broadcast functions */
 static const char *ws_get_race_name(int race);
@@ -2158,7 +2157,13 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	sex = sex_item->valueint;
 
 	/* parse optional fields */
-	hometown_id = hometown_item && cJSON_IsNumber(hometown_item) ? hometown_item->valueint : -1;
+	if (hometown_item && (!cJSON_IsNumber(hometown_item) ||
+			      hometown_item->valuedouble != hometown_item->valueint))
+	{
+		ws_send_system(d, "error", "Invalid hometown selection");
+		return;
+	}
+	hometown_id = hometown_item ? hometown_item->valueint : -1;
 	is_hardcore = hardcore_item && cJSON_IsBool(hardcore_item) ? cJSON_IsTrue(hardcore_item) :
 								     0;
 	is_newbie = newbie_item && cJSON_IsBool(newbie_item) ? cJSON_IsTrue(newbie_item) : 1;
@@ -2261,15 +2266,22 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
+	const int actual_hometown = hometown_item ? hometown_id : find_hometown(race_id, true);
+	if (!creation_hometown_available(race_id, resolved_racewar, actual_hometown))
+	{
+		ws_send_system(d, "error", "That hometown is not available for your race and side");
+		return;
+	}
+
 	/* store chargen options in descriptor */
-	d->chargen_hometown = hometown_id;
+	d->chargen_hometown = actual_hometown;
 	d->chargen_hardcore = is_hardcore;
 	d->chargen_newbie = is_newbie;
 
 	/* actual character creation */
 
 	char capitalized_name[MAX_NAME_LENGTH + 1];
-	int i, actual_hometown;
+	int i;
 	P_char ch;
 
 	/* capitalize name */
@@ -2345,26 +2357,6 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	GET_RACEWAR(ch) = resolved_racewar;
 
 	/* set hometown */
-	if (hometown_id < 0 || hometown_id > LAST_HOME)
-	{
-		actual_hometown = find_hometown(race_id, false);
-		if (actual_hometown == HOME_CHOICE)
-		{
-			/* race has multiple choices - pick first available */
-			for (i = 0; i <= LAST_HOME; i++)
-			{
-				if (avail_hometowns[i][race_id] == 1)
-				{
-					actual_hometown = i;
-					break;
-				}
-			}
-		}
-	}
-	else
-	{
-		actual_hometown = hometown_id;
-	}
 	GET_HOME(ch) = actual_hometown;
 	GET_BIRTHPLACE(ch) = actual_hometown;
 	GET_ORIG_BIRTHPLACE(ch) = actual_hometown;
@@ -2576,22 +2568,52 @@ void ws_cmd_get_hometowns(struct descriptor_data *d, cJSON *data)
 
 	race_id = race_item->valueint;
 
-	if (race_id < 1 || race_id > LAST_RACE)
+	if (race_item->valuedouble != race_id || !ws_is_playable_race(race_id))
 	{
 		ws_send_system(d, "error", "Invalid race ID");
 		return;
 	}
 
+	int racewar = RACEWAR_NONE;
+	const char *alignment = NULL;
+	const char *faction = ws_get_race_faction(race_id);
+	cJSON *align_item = cJSON_GetObjectItem(data, "alignment");
+	if (!strcmp(faction, "neutral"))
+	{
+		if (align_item)
+		{
+			if (!cJSON_IsString(align_item) ||
+			    (strcmp(align_item->valuestring, "good") &&
+			     strcmp(align_item->valuestring, "evil")))
+			{
+				ws_send_system(d, "error", "Invalid alignment selection");
+				return;
+			}
+			alignment = align_item->valuestring;
+			racewar = ws_resolve_racewar_side(race_id,
+							  !strcmp(alignment, "good") ? 1 : -1);
+		}
+	}
+	else
+	{
+		alignment = faction;
+		racewar = ws_resolve_racewar_side(race_id, !strcmp(faction, "good") ? 1 : -1);
+	}
+
 	response = cJSON_CreateObject();
 	cJSON_AddStringToObject(response, "type", "hometowns");
 	cJSON_AddNumberToObject(response, "race", race_id);
+	if (alignment)
+		cJSON_AddStringToObject(response, "alignment", alignment);
+	else
+		cJSON_AddNullToObject(response, "alignment");
 
 	options = cJSON_CreateArray();
 
 	/* find available hometowns for this race */
 	for (i = 0; i <= LAST_HOME; i++)
 	{
-		if (avail_hometowns[i][race_id] == 1)
+		if (creation_hometown_available(race_id, racewar, i))
 		{
 			option = cJSON_CreateObject();
 			cJSON_AddNumberToObject(option, "id", i);
