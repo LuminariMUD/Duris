@@ -188,7 +188,7 @@
       "locator": "epic_stone_claim",
       "data_category": "reconciliation_or_replay_record",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "prevent duplicate epic stone awards and recover committed reward receipts",
+      "technical_purpose": "Once-only epic-stone claim and committed receipt lookup keyed by persistent stone item UID, not vnum/name. Fresh world/item UID allocation does not reuse old claims; duplicate old operations recover their existing result without reapplying awards.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -1797,7 +1797,7 @@
       "locator": "critical_test_state",
       "data_category": "world_or_gameplay_state",
       "data_subject_key": "none",
-      "technical_purpose": "shared world simulation, economy, competition, and season state",
+      "technical_purpose": "Native critical-command test counters and revision evidence; no normal gameplay consumer reconstructs seasonal assets from these rows. Retain test/reconciliation state.",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
@@ -4153,7 +4153,7 @@
       "locator": "quest_trophy",
       "data_category": "player_or_character_state",
       "data_subject_key": "player_id",
-      "technical_purpose": "character gameplay, inventory, progression, communication, and recovery",
+      "technical_purpose": "Retained legacy per-mob quest reward history; sql_load_recent_counts reads its cache at boot, but current quest gameplay call sites that use it are disabled. It is not active new-character progression or an object reconstruction source.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -6380,7 +6380,7 @@
       "locator": "zone_story_quest_state",
       "data_category": "reconciliation_or_replay_record",
       "data_subject_key": "season_id_and_pid",
-      "technical_purpose": "Durable zone-story quest completion facts, character identity projections, deletion tombstones, telemetry evidence, and exactly-once daily reward state",
+      "technical_purpose": "Durable zone-story completion/daily/renown and telemetry history. SQL runtime selects sql_season_epoch(), and live character progress/daily state is partitioned by season and PID; old transactions replay idempotently within their original partition. Preserve historical blob and deletion evidence.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -6409,7 +6409,7 @@
       "locator": "artifact_mana",
       "data_category": "reconciliation_or_replay_record",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "physical item mana authority and version fence against stale snapshots and crash replay",
+      "technical_purpose": "Physical item mana counter/version authority keyed by item UID; contains no object payload or independent materialization source. Retain old UID history while reset removes old item payloads and fresh items receive new UIDs.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
