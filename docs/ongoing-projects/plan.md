@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — name-scoped MUD mail isolation
 
-Branch `branch/issue-264-mail-state-isolation`, based on PR #352 at `812169708`.
+Review-ready [PR #353](https://github.com/LuminariMUD/Duris/pull/353), fix/fixture
+`2851281ca`, committed/pushed on `branch/issue-264-mail-state-isolation`,
+based on PR #352 at `812169708`.
 Outcome: isolate another actual unscoped old-character input before activation.
 `scan_mail_file` runs on normal boot, prefers `Accounts/mail`, falls back to
 `Players/mail`, and indexes recipient names. `postmaster_receive_mail` matches the
@@ -78,7 +80,8 @@ pass. Required incremental MariaDB build passes (no production C/C++ changes).
 Wiper SHA-256: `723320d4beb1b7f1bd07fbd24f83671aa70d97408d22d5c595b7b19eda05a961`.
 Reuse unchanged full game/flat-file/production builds and timer/gameplay/service/
 website evidence; actual launcher/native reader proof qualifies this delta.
-All owned fixture resources cleaned. Publication follows; full readiness remains open.
+All owned fixture resources cleaned. Full readiness remains open.
+No merge, release tag, deployment or production wipe was performed.
 The audit also locates account/admission evidence (`Accounts/email.db`,
 `Players/Invited`, `Players/Accepted`, `Players/Declined`) and explicit staff-only
 legacy import commands. Reconcile these alongside the remaining legacy/receipt/
