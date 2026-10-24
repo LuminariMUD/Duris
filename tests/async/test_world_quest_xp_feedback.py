@@ -436,20 +436,71 @@ int main() {
     assert(gain_exp(&player, nullptr, 100000, EXP_WORLD_QUEST) == 3333);
     assert(player.points.curr_exp == 3333);
     quest_line(3333);
-    // Zero applied awards: modifiers, integer truncation, XP caps and safe rooms.
-    for (int scenario = 0; scenario < 6; ++scenario) {
+    // Zero applied awards: modifiers, integer truncation, global XP limits and safe rooms.
+    for (int scenario = 0; scenario < 5; ++scenario) {
         reset();
         if (scenario == 0) earned_multiplier = 0;
         if (scenario == 1) racial_exp_mods[RACE_HUMAN] = 0.001f;
         if (scenario == 2) player.points.curr_exp = global_exp_limit;
-        if (scenario == 3) player.points.curr_exp = 2 * new_exp_table[21];
-        if (scenario == 4) rooms[0].room_flags = ROOM_SAFE;
-        if (scenario == 5) new_exp_table[21] = 2;
+        if (scenario == 3) rooms[0].room_flags = ROOM_SAFE;
+        if (scenario == 4) new_exp_table[21] = 2;
         const int before = player.points.curr_exp;
         quest_kill(&player, &mob);
         assert(player.points.curr_exp == before);
         assert(output.find("Quest EXP:") == std::string::npos);
     }
+    // The old twice-next-level XP gate is gone, but levelling still stops at the frag cap.
+    reset();
+    player.points.curr_exp = 2 * new_exp_table[21];
+    assert(gain_exp(&player, nullptr, 1000, EXP_WORLD_QUEST) == 1000);
+    assert(player.points.curr_exp == 21000 && player.player.level == 20);
+    assert(dirty == 1);
+    quest_line(1000);
+    // Capped combat awards earn 70% rather than the previous 55%.
+    reset();
+    player.points.curr_exp = new_exp_table[21];
+    exp_mods[EXPMOD_OVER_LEVEL_CAP] = 0.7f;
+    assert(gain_exp(&player, &mob, 1000, EXP_KILL) == 700);
+    assert(player.points.curr_exp == 10700 && player.player.level == 20);
+    assert(output == "&+CEXP:&+G 700 \r\n");
+    exp_mods[EXPMOD_OVER_LEVEL_CAP] = 1.0f;
+    // Only the available room under the global limit is credited.
+    reset();
+    global_exp_limit = 20500;
+    player.points.curr_exp = 20400;
+    assert(gain_exp(&player, nullptr, 1000, EXP_WORLD_QUEST) == 100);
+    assert(player.points.curr_exp == global_exp_limit && dirty == 1);
+    quest_line(100);
+    output.clear();
+    assert(gain_exp(&player, nullptr, 1000, EXP_WORLD_QUEST) == 0);
+    assert(output.find("Quest EXP:") == std::string::npos && dirty == 1);
+    // A misconfigured global ceiling cannot overflow the signed character XP field.
+    reset();
+    global_exp_limit = std::numeric_limits<long>::max();
+    player.points.curr_exp = INT_MAX - 30;
+    assert(gain_exp(&player, nullptr, 1000, EXP_WORLD_QUEST) == 30);
+    assert(player.points.curr_exp == INT_MAX);
+    quest_line(30);
+    output.clear();
+    assert(gain_exp(&player, nullptr, 1000, EXP_WORLD_QUEST) == 0);
+    assert(player.points.curr_exp == INT_MAX && output.empty());
+    // Banked XP cannot cross the locked cap, then advances normally upon unlock.
+    reset();
+    player.player.level = 29;
+    player.points.curr_exp = 30000;
+    maximum_exp_level = 29;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 100);
+    assert(player.player.level == 29 && player.points.curr_exp == 30100);
+    maximum_exp_level = 31;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 100);
+    assert(player.player.level == 31 && player.points.curr_exp == 10200);
+    maximum_exp_level = 20;
+    // Negative awards remain possible at the accumulation ceiling.
+    reset();
+    player.player.level = 30;
+    player.points.curr_exp = global_exp_limit;
+    assert(gain_exp(&player, nullptr, 0, EXP_DEATH) == -1000);
+    assert(player.points.curr_exp == global_exp_limit - 1000);
     reset();
     player.specials.act2 = 0;
     quest_kill(&player, &mob);
@@ -486,7 +537,7 @@ int main() {
     reset();
     player.points.curr_exp = global_exp_limit;
     gain_exp(&player, &mob, 100, EXP_KILL);
-    assert(player.points.curr_exp == global_exp_limit && output == "&+CEXP:&+G 100 \r\n");
+    assert(player.points.curr_exp == global_exp_limit && output.empty());
     reset();
     gain_exp(&player, nullptr, 100, EXP_QUEST);
     assert(player.points.curr_exp == 100 && output.empty());
@@ -931,6 +982,9 @@ int main() {
 
 
 def main() -> None:
+    properties = (ROOT / "lib" / "duris.properties").read_text(encoding="utf-8")
+    assert re.search(r"^exp\.factor\.overCap=0\.700$", properties, re.MULTILINE)
+    assert 'get_property("exp.factor.overCap", 0.700)' in source("limits.c").read_text(encoding="utf-8")
     functions = [
         extract_function("limits.c", signature)
         for signature in (
