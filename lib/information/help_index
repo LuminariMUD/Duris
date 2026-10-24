@@ -21206,12 +21206,20 @@ See also: SHUTDOWN
 SHUTDOWN (Immortal Command)
 ===========================================================================
 Syntax: shutdown ok|reboot|copyover|autoreboot [minutes] [reason]
-        shutdown pwipe confirm yes   (Overlord only)
+        shutdown pwipe confirm yes   (Overlord, MariaDB-primary only)
 
-Forger command (level 61). Schedules a server stop or restart after an optional delay in
-minutes, broadcasting countdown warnings to all players. Running
-shutdown again cancels the pending one. Reasons are recorded. The
-destructive 'pwipe' form requires the full confirm phrase and Overlord.
+Normally a Forger command (level 61); trusted staff may also use an explicit
+shutdown grant. Optional delays are nonnegative whole minutes. Reasons for ordinary stops are broadcast and recorded. A plain shutdown cancels
+a manual countdown; a valid new request replaces it. Invalid input leaves an
+existing countdown unchanged. Manual countdowns cancel if the issuer leaves play,
+disconnects or loses the required permission, including the final pending tick.
+Automatic reboots continue independently; shutdown copyover toggles their hotboot
+mode. Cancellation applies before execution begins.
+
+Pwipe requires the full confirm phrase with no extra arguments and Overlord
+permission. It gives five minutes to cancel and is announced as PWIPE. Account
+banks reset; only exact level-62 Overlords are recreated with clean seasonal
+assets. Accounts and approved account benefits survive under the reset policy.
 
 See also: WIZLOCK
 ===========================================================================
