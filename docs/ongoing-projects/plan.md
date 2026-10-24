@@ -71,13 +71,22 @@ The lifecycle inventory now includes protected `file:copyover-state`, regenerati
 live inputs while retaining archives under `backup:pfiles`: 200 tables, 31 other
 stores, 42 Redis surfaces; 14 lifecycle, 12 reset-manifest and 7 runtime-contract
 checks pass. No schema/migration change or production C/C++ change was needed.
-The complete SQL/launcher matrix already passed with native inputs seeded; a final
-run after path hardening is pending. It must verify SQL-unready preservation,
-archive-before-activation, failed-cleanup fencing and new-season handoff survival
-on duplicate/lost-ACK retry. Wiper SHA-256:
+Implementation `c1201c174`. The final complete SQL/launcher matrix passed on the
+committed implementation with MariaDB 10.11 and the existing optimized binary:
+`python3 tests/async/run_pwipe_handoff_mysql.py --server bin/qualification-production/server/dms_new`.
+It proves SQL-unready preservation, archive-before-activation, failed-cleanup fencing,
+and new-season handoff survival on duplicate/lost-ACK retry. Logs:
+`bin/analysis/pwipe-native-archive-handoff-final.log` and
+`bin/analysis/pwipe-native-handoff-readers.log`. No production source changed;
+existing both-engine SQL and full countdown/systemd/gameplay evidence is reused.
+Wiper SHA-256:
 `f259ef22ebc32be4b3a8508aca1c3e072ed1c4057ecbd4f17c516ab1ed8283bb`.
 Required incremental MariaDB build, Bash syntax, Python compilation, changed-line
-format and C++ fixture formatting pass; reuse #336's flat-file/optimized builds.
+format, C++ fixture formatting and commit hooks pass; reuse #336's flat-file/
+optimized builds. The native copyover input is now classified and isolated; general
+retained custody/baselines, legacy fallback inputs, Redis re-enable with retained
+authenticated recovery payloads and W5 external cutover remain open. Continue those
+proofs, command edge cases and W7 audit; full readiness is still OPEN.
 
 ## Current continuation — matched pre-wipe restore
 
