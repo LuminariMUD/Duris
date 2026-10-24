@@ -40,6 +40,53 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — complete SQL postflight coverage
+
+Branch `branch/issue-264-complete-postflight`, based on PR #358 at `7d1f04050`.
+The final W1/W4 audit found the runtime postflight checks only 35 of 103 canonical
+delete/reset tables. Outcome: reject leftover seasonal rows in every required
+empty store before SQL-ready publication. Extend the existing fixed postflight
+array to the canonical set and tie it to the existing lifecycle contract test;
+no runtime manifest parser or new reset framework. Add a real late account-locker
+row in the native matrix after its delete, prove old postflight incorrectly accepts
+it, then prove refusal/fenced same-epoch repair. Seed/reset actual nexus/outpost/
+timer/cap and zone values alongside already-covered versioned stores. Files: SQL
+postflight, existing manifest/native fixtures and owning runbook/plan. Proof: both
+SQL engines, narrow contracts and incremental maintained builds; reuse unchanged
+full timers/gameplay/website/service/restore evidence after the read-only postflight
+expansion. Keep final readiness open until the finding is fixed and verified.
+
+Reproduced on the old runtime body: a real SQL account-locker row inserted after
+its delete survived the 35-table postflight, and the function returned success /
+published SQL-ready. The baseline log records that incorrect result. The runtime
+array now covers all 103 canonical delete/reset stores; the focused contract checks
+exact set equality (13 total checks). Both complete MariaDB 10.11.19 and MySQL
+8.0.46 native matrices pass on the expanded check: the residual row refuses SQL-ready
+and launcher cleanup, same-epoch recovery clears it without another roster, and
+activation succeeds. A reused recovery-file canary initially needed recreation
+after the previous scenario's successful filesystem cleanup; the fixture was fixed
+and both full final runs pass. Logs: `bin/analysis/pwipe-postflight-{baseline,mariadb,mysql}.log`.
+The same final matrices seed/check cap/sides/deadline, every outpost field, nexus
+catalogue/alignment/touch, timers and zone catalogue/alignment, and actual before-SQL
+missing/nonexecutable artifact / denied target refusals. This adds actual values to
+the existing versioned-store and physical-payload assertions.
+All three maintained incremental builds pass (MariaDB development, client-free
+flat-file, optimized MariaDB). New optimized binary SHA-256:
+`c5e9411a27457c460973a2909994dc2b314dabbd1e6474d94b23402dc2fcfe20`.
+Only the fixed read-only postflight table set changes production behavior; prior
+full timers/gameplay/service/website/restore journeys remain valid with new native
+SQL/recovery proof. Array/contract replace no history or runtime format; no general
+manifest parser is added.
+
+Review audit found outstanding earlier findings to finish after publication:
+#309 schema consumers still use removed `DEFAULT_SCHEMA_FILES`; #313 durable-owner
+Overlord selection and newborn `last_save`; #330 root qualifier execution from a
+writable checkout; #337 first restored-world boot assertion; #339 nested copyover
+parent retryability; #352 inaccessible maintenance ancestors. #310 reaper and #311
+reset-owned SQL findings are already fixed in the later stack and need documented
+review disposition. #310 also needs its base-plan-only conflict repaired. These are
+explicit open work, not hidden by the new postflight success or the previous ETA.
+
 ## Current continuation — final SQL/worker consumer reconciliation
 
 Review-ready [PR #358](https://github.com/LuminariMUD/Duris/pull/358), fixture/proof

@@ -130,7 +130,7 @@ extern "C" int __wrap_posix_spawn(pid_t *pid, const char *path, const posix_spaw
     for (int tries = 0; !result && reaped_child_cursor == 0 && tries < 200; ++tries) usleep(10000);
     return result;
 }
-bool boundary_epoch_updated = false, boundary_commit_fault = false;
+bool boundary_epoch_updated = false, boundary_commit_fault = false, residual_inserted = false;
 extern "C" int __real_mysql_real_query(MYSQL *, const char *, unsigned long);
 extern "C" int __wrap_mysql_real_query(MYSQL *connection, const char *statement, unsigned long length) {
     const char *mode = getenv("PWIPE_TEST_BOUNDARY_ACK");
@@ -141,6 +141,12 @@ extern "C" int __wrap_mysql_real_query(MYSQL *connection, const char *statement,
         return 1;
     }
     const int result = __real_mysql_real_query(connection,statement,length);
+    if (!result && getenv("PWIPE_TEST_POSTFLIGHT_RESIDUE") && !residual_inserted &&
+        query.starts_with("UPDATE level_cap SET")) {
+        const char insert[] = "INSERT INTO account_lockers(id,account_name,racewar) VALUES(910001,'fixturebank',1)";
+        if (__real_mysql_real_query(connection, insert, sizeof(insert)-1)) return 1;
+        residual_inserted = true;
+    }
     if (!result && (before || after)) {
         if (query.starts_with("UPDATE season_reset_state SET season_epoch=")) boundary_epoch_updated = true;
         else if (after && boundary_epoch_updated && query == "COMMIT") {
@@ -527,7 +533,8 @@ int main(int argc, char **argv) {
         (boundary_commit_fault && pwipe_crossed_boundary && !pwipe_filesystem_ready && !ok && !writer_resumes);
     redis_connection_settings_destroy(settings);
     mysql_close(DB);
-    return boundary_ok ? (ok ? 0 : 1) : 3;
+    const bool residue_ok = !getenv("PWIPE_TEST_POSTFLIGHT_RESIDUE") || residual_inserted;
+    return boundary_ok && residue_ok ? (ok ? 0 : 1) : 3;
 }
 ''')
     binary = native.with_suffix("")
@@ -597,6 +604,12 @@ int main(int argc, char **argv) {
         sql("UPDATE season_reset_state SET season_epoch=1,reset_status='active',"
             "reset_completed_at=NULL WHERE state_id=1")
         sql("INSERT INTO zones(number,name,alignment,epic_type) VALUES(900,'fixture',1,1)")
+        sql("UPDATE level_cap SET most_frags=99,racewar_leader=2,level=56,level_good=55,level_evil=54,next_update='2020-01-01' WHERE id=1")
+        sql("INSERT INTO outposts(id,owner_id,level,walls,archers,resources,applied_resources,hitpoints,territory,portal_room,golems,meurtriere,scouts) "
+            "VALUES(910001,777,20,9,8,700,600,500,400,300,2,3,4)")
+        sql("INSERT INTO nexus_stones(id,name,room_vnum,align,stat_affect,affect_amount,last_touched_at,bonus) "
+            "VALUES(910001,'retained nexus catalogue',900,2,3,4,'2020-01-01',5)")
+        sql("INSERT INTO timers(name,date) VALUES('pwipe-test-old-timer',12345)")
         sql("INSERT INTO accounts(account_name,password,email,total_donated,confirmed) "
             "VALUES('fixturebank','fixture-password','fixture@example.invalid',123.45,1)")
         account_before = sql("SELECT CONCAT_WS(':',password,email,total_donated,confirmed) "
@@ -684,6 +697,23 @@ int main(int argc, char **argv) {
         assert [sql(query) for query in old_queries] == old_values
         assert recovery_canary.read_bytes() == canary
         print("Actual SQL connection killed before preflight: wipe refuses before boundary, no readiness/writer resume, old epoch/roster/account/bank/payload/files unchanged", flush=True)
+        ships_path = root / "Ships"; ships_path.mkdir(exist_ok=True)
+        original_wiper_mode = wiper.stat().st_mode & 0o777
+        original_ships_mode = ships_path.stat().st_mode & 0o777
+        held_wiper = wiper.with_name("fixture-held-wiper")
+        for failure in ("missing", "non-executable", "denied-target"):
+            if failure == "missing": wiper.rename(held_wiper)
+            elif failure == "non-executable": wiper.chmod(0o600)
+            else: ships_path.chmod(0o500)
+            try:
+                epoch_call("wipe", 1, 1, cwd=root)
+            finally:
+                if failure == "missing": held_wiper.rename(wiper)
+                wiper.chmod(original_wiper_mode)
+                ships_path.chmod(original_ships_mode)
+            assert [sql(query) for query in old_queries] == old_values
+            assert recovery_canary.read_bytes() == canary
+        print("Actual native before-boundary missing/non-executable artifact and denied target refuse with exact old SQL/files intact", flush=True)
         epoch_call("wipe", 1, 0, cwd=root)
         assert sql("SELECT * FROM item_current_owner WHERE item_uid=991001") == custody
         assert sql("SELECT * FROM item_owner_revision WHERE owner_type=1 AND owner_id=1002") == owner_revision
@@ -694,6 +724,15 @@ int main(int argc, char **argv) {
         assert int(sql("SELECT next_uid FROM item_uid_allocator WHERE allocator_id=1")) == allocator_before + 4
         print("Ordinary item custody/revision/baseline retained unchanged; actual loader finds no old payload, fresh Overlord has no old graph, allocator grants only new UIDs", flush=True)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
+        assert sql("SELECT CONCAT_WS(':',most_frags,racewar_leader,level,level_good,level_evil) FROM level_cap WHERE id=1") == "0:0:26:0:0"
+        assert sql("SELECT next_update BETWEEN NOW()-INTERVAL 5 MINUTE AND NOW() FROM level_cap WHERE id=1") == "1"
+        assert sql("SELECT CONCAT_WS(':',owner_id,level,walls,archers,resources,applied_resources,hitpoints,territory,portal_room,golems,meurtriere,scouts) "
+                   "FROM outposts WHERE id=910001") == "0:8:1:0:0:0:300000:0:0:0:0:0"
+        assert sql("SELECT CONCAT_WS(':',name,room_vnum,align,stat_affect,affect_amount,last_touched_at IS NULL,bonus) "
+                   "FROM nexus_stones WHERE id=910001") == "retained nexus catalogue:900:0:3:4:1:5"
+        assert sql("SELECT date FROM timers WHERE name='pwipe-test-old-timer'") == "0"
+        assert sql("SELECT CONCAT_WS(':',name,epic_type) FROM zones WHERE number=900") == "fixture:1"
+        print("Scalar/catalog reset values: cap/sides/deadline, every outpost field, nexus alignment/touch with catalogue retained, timers and zone catalogue/alignment passed", flush=True)
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
@@ -1355,6 +1394,27 @@ int main(int argc, char **argv) {
             old.write_text("fresh epoch-3 sentinel")
             launch(epoch=3, expected=55); assert old.read_text() == "fresh epoch-3 sentinel"
             print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state; actual direct/launcher fence and same-epoch recovery/one reward decrement/activation/retry passed", flush=True)
+            # Model a late writer's real residual account-locker row after its
+            # reset delete. Every canonical empty-store postcondition must gate readiness.
+            recovery_canary.write_text("SQL recovery must not clear files")
+            env["PWIPE_TEST_POSTFLIGHT_RESIDUE"] = "1"
+            try:
+                leftover = epoch_call("wipe", 3, 1, cwd=root)
+            finally:
+                del env["PWIPE_TEST_POSTFLIGHT_RESIDUE"]
+            assert "account_lockers" in leftover.stderr and "Postflight" in leftover.stderr
+            assert status() == "4:resetting"
+            assert sql("SELECT reset_completed_at IS NULL FROM season_reset_state") == "1"
+            assert sql("SELECT COUNT(*) FROM account_lockers WHERE id=910001") == "1"
+            assert old.read_text() == "fresh epoch-3 sentinel"
+            launch(epoch=4); assert old.read_text() == "fresh epoch-3 sentinel"
+            stopped_roster = sql("SELECT pid,name,active FROM player_data ORDER BY pid")
+            recover(4, 55)
+            assert sql("SELECT COUNT(*) FROM account_lockers") == "0"
+            assert sql("SELECT pid,name,active FROM player_data ORDER BY pid") == stopped_roster
+            launch(epoch=4, expected=55)
+            assert status() == "4:active"
+            print("Late residual account locker fails complete postflight; no SQL-ready/launcher cleanup; same-epoch repair clears it without another roster", flush=True)
         else:
             print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state and fenced launcher; actual server recovery not requested", flush=True)
 
