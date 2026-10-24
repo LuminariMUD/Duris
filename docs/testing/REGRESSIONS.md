@@ -41,6 +41,14 @@ owners and their order. `run_critical_command_schema_mysql.sh` executes actual
 outbox pause/drain/resume against its private database, including a record committed
 while paused. These do not replace the full server/reset/reconnect journey.
 
+The same native SQL journey now seeds levels 56, 61, 62 and 63. Only the exact
+62 is recreated, under its account/name with a higher PID, clean currency and
+progression, and new opening baselines. Retired names permit new characters. A
+failure after body insertion rolls back the entire roster and keeps the reset
+fenced; a missing recreation column is refused before the boundary. The bank cases
+reset every side while retaining credentials, donations and historical baselines.
+Real staff login and cold replay remain part of the full #264 journey.
+
 ## Contained-being learning feedback
 
 A failed recipe-learning roll reports the failure to the eligible summoner in
