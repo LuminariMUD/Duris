@@ -226,6 +226,11 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	for (const auto &field : snapshot.status_integers)
 	{
 		const char *name =
+			field.field == player_status_field::hometown   ? "hometown" :
+			field.field == player_status_field::birthplace ? "birthplace" :
+			field.field == player_status_field::original_birthplace ?
+									 "original_birthplace" :
+			field.field == player_status_field::race       ? "race" :
 			field.field == player_status_field::deaths     ? "death_count" :
 			field.field == player_status_field::experience ? "experience" :
 			field.field == player_status_field::level      ? "level" :

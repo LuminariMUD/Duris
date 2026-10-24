@@ -543,6 +543,8 @@ void apply_affs(P_char ch, int mode)
 	{
 		return;
 	}
+	const int mechanics_race = tutorial_mobile_mechanics_race(ch);
+
 	if (mode)
 	{
 		SET_BIT(ch->specials.affected_by, TmpAffs.BV_1);
@@ -719,26 +721,26 @@ void apply_affs(P_char ch, int mode)
 		}
 	}
 
-	t1 = (!mode || !TmpAffs.r_Str) ? (int)GET_RACE(ch) : TmpAffs.r_Str;
+	t1 = (!mode || !TmpAffs.r_Str) ? mechanics_race : TmpAffs.r_Str;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Str) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Str + ((mode) ? TmpAffs.c_Str : 0)), t3);
 	GET_C_STR(ch) = BOUNDED(1, (int)(stat_factor[t1].Str * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Dex) ? (int)GET_RACE(ch) : TmpAffs.r_Dex;
+	t1 = (!mode || !TmpAffs.r_Dex) ? mechanics_race : TmpAffs.r_Dex;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Dex) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Dex + ((mode) ? TmpAffs.c_Dex : 0)), t3);
 	GET_C_DEX(ch) = BOUNDED(1, (int)(stat_factor[t1].Dex * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Agi) ? (int)GET_RACE(ch) : TmpAffs.r_Agi;
+	t1 = (!mode || !TmpAffs.r_Agi) ? mechanics_race : TmpAffs.r_Agi;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Agi) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Agi + ((mode) ? TmpAffs.c_Agi : 0)), t3);
 	GET_C_AGI(ch) = BOUNDED(1, (int)(stat_factor[t1].Agi * t2 / 100. + .55), 511);
 
 	// t1 = which race to apply racial con with.
-	t1 = (!mode || !TmpAffs.r_Con) ? (int)GET_RACE(ch) : TmpAffs.r_Con;
+	t1 = (!mode || !TmpAffs.r_Con) ? mechanics_race : TmpAffs.r_Con;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	// t3 = the amount of maxcon to apply.
 	t3 = (mode) ? (100 + TmpAffs.m_Con) : 100;
@@ -749,37 +751,37 @@ void apply_affs(P_char ch, int mode)
 	//                 Makes more sense to do (actual con) * (racial modifier/100) + .55 (?)
 	GET_C_CON(ch) = BOUNDED(1, (int)(stat_factor[t1].Con * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Pow) ? (int)GET_RACE(ch) : TmpAffs.r_Pow;
+	t1 = (!mode || !TmpAffs.r_Pow) ? mechanics_race : TmpAffs.r_Pow;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Pow) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Pow + ((mode) ? TmpAffs.c_Pow : 0)), t3);
 	GET_C_POW(ch) = BOUNDED(1, (int)(stat_factor[t1].Pow * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Int) ? (int)GET_RACE(ch) : TmpAffs.r_Int;
+	t1 = (!mode || !TmpAffs.r_Int) ? mechanics_race : TmpAffs.r_Int;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Int) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Int + ((mode) ? TmpAffs.c_Int : 0)), t3);
 	GET_C_INT(ch) = BOUNDED(1, (int)(stat_factor[t1].Int * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Wis) ? (int)GET_RACE(ch) : TmpAffs.r_Wis;
+	t1 = (!mode || !TmpAffs.r_Wis) ? mechanics_race : TmpAffs.r_Wis;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Wis) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Wis + ((mode) ? TmpAffs.c_Wis : 0)), t3);
 	GET_C_WIS(ch) = BOUNDED(1, (int)(stat_factor[t1].Wis * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Cha) ? (int)GET_RACE(ch) : TmpAffs.r_Cha;
+	t1 = (!mode || !TmpAffs.r_Cha) ? mechanics_race : TmpAffs.r_Cha;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Cha) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Cha + ((mode) ? TmpAffs.c_Cha : 0)), t3);
 	GET_C_CHA(ch) = BOUNDED(1, (int)(stat_factor[t1].Cha * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Kar) ? (int)GET_RACE(ch) : TmpAffs.r_Kar;
+	t1 = (!mode || !TmpAffs.r_Kar) ? mechanics_race : TmpAffs.r_Kar;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Kar) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Kar + ((mode) ? TmpAffs.c_Kar : 0)), t3);
 	GET_C_KAR(ch) = BOUNDED(1, (int)(stat_factor[t1].Kar * t2 / 100. + .55), 511);
 
-	t1 = (!mode || !TmpAffs.r_Luc) ? (int)GET_RACE(ch) : TmpAffs.r_Luc;
+	t1 = (!mode || !TmpAffs.r_Luc) ? mechanics_race : TmpAffs.r_Luc;
 	t1 = BOUNDED(0, t1, LAST_RACE);
 	t3 = (mode) ? (100 + TmpAffs.m_Luc) : 100;
 	t2 = BOUNDED(1, (ch->base_stats.Luk + ((mode) ? TmpAffs.c_Luc : 0)), t3);
@@ -805,7 +807,7 @@ void apply_affs(P_char ch, int mode)
 
 	GET_AC(ch) = ch->points.base_armor + ((mode) ? TmpAffs.AC : 0);
 
-	int ch_race = BOUNDED(0, (int)GET_RACE(ch), LAST_RACE);
+	int ch_race = BOUNDED(0, mechanics_race, LAST_RACE);
 
 	if (GET_C_AGI(ch) > stat_factor[ch_race].Agi)
 	{
@@ -1669,7 +1671,7 @@ char affect_total(P_char ch, int kill_ch)
 		return TRUE;
 	}
 
-	int ch_race = BOUNDED(0, (int)GET_RACE(ch), LAST_RACE);
+	int ch_race = BOUNDED(0, tutorial_mobile_mechanics_race(ch), LAST_RACE);
 
 	// Almost the same as original, just changed get_prop... to pulse_all for speed.
 	ch->specials.base_combat_round = combat_by_race[ch_race][0] + pulse_all;

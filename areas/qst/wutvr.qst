@@ -1,7 +1,7 @@
 #91401
 M
 hi hello howdy greetings begin ready~
-$n &+ggrins wildly, "Hello adventurer. My name is &+GB&+gurbu&+Gl and I
+$n &+ggrins wildly, "Hello adventurer. My name is &+GG&+grubr&+Guk and I
 &+Gspeciali&+gze in information, and I have lots of it! Since you are new h&+Gere I will
 &+Gprovide &+gyou with some much needed information if you are to have any &+Gchance of
 &+Gsurvivin&+gg in this Realm. Firstly, you must understand that although t&+Ghere are
@@ -13,7 +13,7 @@ $n &+ggrins wildly, "Hello adventurer. My name is &+GB&+gurbu&+Gl and I
 &+Gwill be &+ghelp files available for those key words to give you more inf&+Gormation
 &+Gif you n&+geed it."
 
-&+G"I will &+gprovide you with information as well, just &+Wask &+GB&+gurbu&+Gl&N &+Winfo&+G."
+&+G"I will &+gprovide you with information as well, just &+Wask &+GG&+grubr&+Guk&N &+Winfo&+G."
 
 &+G"Oh! Bef&+gore I forget! If you get lost and need a map of this area, I &+Gcan give
 &+Gyou one,&+g just ask me for one. In fact, if you need other supplies for&+G your
@@ -40,7 +40,7 @@ $n &+gsays "A majority of players on your side of the r&+Gacewar are
 &+Gwhose cla&+gss has the ability to &+Wdisguise&+g themselves as other people or&+G even
 &+Gcreature&+gs. And it is not unusual for people who are on your same side&+G to
 &+Gattempt &+gto steal or even kill you. While this is not illegal behavior&+G in the
-&+Grealm of&+g Duris, it is frowned upon as our war should be against the e&+Gvil races.
+&+Grealm of&+g Duris, it is frowned upon as our war should be against the g&+Good races.
 &+GBut even&+g so, players are encouraged to settle their own disputes and &+Gnot to
 &+Ginvolve &+gadministrators unless rules have been broken."
 
@@ -107,8 +107,8 @@ $n &+gnods and says "Firstly, I will tell you about the m&+Gost
 M
 qc_action 50~
 $n says, "&+WWelcome&N &+cAdventurer&N to the &+yOutpost&n of &+cWu&+Ctv&+cr&n!
-Please come speak with  &+GB&+gurbu&+Gl&N.  I can help you in your travels through
-the world of &+rDu&+Rr&+ris&N, just &+Wtell &+GB&+gurbu&+Gl&N &+Whello&N."
+Please come speak with  &+GG&+grubr&+Guk&N.  I can help you in your travels through
+the world of &+rDu&+Rr&+ris&N, just &+Wtell &+GG&+grubr&+Guk&N &+Whello&N."
 ~
 M
 quest quests~
@@ -142,11 +142,11 @@ $n &+gsays "Commands are the avenue for which adventurer&+Gs affect
 ~
 M
 qc_action 150~
-&+GB&+gurbu&+Gl&N fiddles and organizes his &+Wmaps&N behind the &+ywooden&N "&+YInfo&+yr&+wmat&+Wion&N" &+ystand.&N
+&+GG&+grubr&+Guk&N fiddles and organizes his &+Wmaps&N behind the &+ywooden&N "&+YInfo&+yr&+wmat&+Wion&N" &+ystand.&N
 ~
 M
 qc_action 100~
-&+GB&+gurbu&+Gl&N beckons you towards him as he struggles to adjust the sign on his &+ystand.
+&+GG&+grubr&+Guk&N beckons you towards him as he struggles to adjust the sign on his &+ystand.
 ~
 Q
 $n &+wsays, &+c"Here ya go! You can drop it if you don't need it any more."
@@ -205,7 +205,7 @@ S
 #91417
 M
 hi hello howdy help advice~
-&+MMier grins at you and gives you a wink&N. &+c"Hello there friend, fancy&n
+&+MZhar grins at you and gives you a wink&N. &+c"Hello there friend, fancy&n
 &+ca minute or two with one of my ladies? If you do, just ensure you&n
 &+ccheck to make sure you're not missing anything when you leave! I&n
 &+cwon't vouch for what they may choose to use their talented fingers&n
@@ -238,7 +238,7 @@ $n &+wgrins, "So you want this jar? Fine ill trade you. You
 &+wthose spores for my collection of herbs. Bring me it and you can have this!"
 ~
 Q
-&+yMaerg's &+weyes open widely as you had her the spores.
+&+yGrash's &+weyes open widely as you had her the spores.
 
 &+w"What? Wow, thats very impressive. I was sure I would never see you again. Well
 &+wa deal is a deal I suppose. Here take the jar and be gone."
@@ -501,7 +501,7 @@ in your forgaging, just find me a few items. Go into the forest and
 forage, and bring me back some green herb, &+rdragons blood&N, &+mfaerie
 &+mdust&N and &+ymandrake root&N."
 
-  Red snaps and says, "Oh yes I almost forgot, you'll need to find me
+  Vraz snaps and says, "Oh yes I almost forgot, you'll need to find me
 some &+Weyes&N of a bull&+yfrog&N. Just make sure they are the correct eyes! That
 should do. Hurry now... I don't have all day!"
 ~
@@ -555,8 +555,8 @@ G I 91472
 G I 91471
 G I 91533
 Q
-  Red wipes off his hands and looks at the letter. 'Well ok then, lets get you
-hooked up! Here is some equipment. Now when you're ready come back and see me. <&+Wtell red hi>&n
+  Vraz wipes off his hands and looks at the letter. 'Well ok then, lets get you
+hooked up! Here is some equipment. Now when you're ready come back and see me. <&+Wtell vraz hi>&n
 ~
 R I 377
 R I 676
@@ -608,7 +608,7 @@ available to you into t&+Che book &+cyour holding!"
 ~
 M
 casting cast memorization memorize mem~
-&+WDrinnan&N clears his throat&+C and say&+cs,"To cast a spe&+Cll, you'&Nll have studied it and
+&+WKrizzik&N clears his throat&+C and say&+cs,"To cast a spe&+Cll, you'&Nll have studied it and
 committed it to memory be&+Cforehand&+c. To commit spel&+Cls to me&Nmory you must first be
 &+Yresting&N and have your spe&+Cllbook b&+ce accessible eit&+Cher in y&Nour  inventory, hands,
 or attached to your belt.&+C After t&+chat, simply &+Ymemorize&+C the&N spells that you wish.
@@ -668,7 +668,7 @@ at your confusion and says, "I love to do that."
 ~
 M
 qc_action 100~
-Drinnan &+Lvanishes&N! Only to appear elsewhere saying, "&+cHmm, are ready to begin&N?"
+Krizzik &+Lvanishes&N! Only to appear elsewhere saying, "&+cHmm, are ready to begin&N?"
 ~
 Q
 $n &+Clooks wide-eyed at you and says, "Wow you are truly amazing.
@@ -735,7 +735,7 @@ $n &+wclatters his hooves momentarily and then begins.
 ~
 M
 casting cast memorization memorize mem~
-&+WLLerrad&N &+wponders a moment then says,&+G"&+LTo cast a spell&+G, &+Lyou&+G'&+Lll have studied it and
+&+WVargesh&N &+wponders a moment then says,&+G"&+LTo cast a spell&+G, &+Lyou&+G'&+Lll have studied it and
 &+Lcommitted it to memory beforehand&+G. &+LTo commit spells to memory you must first be
 &+Wresting&+L and have your spellbook be accessible either in your  inventory&+G, &+Lhands&+G,
 &+Lor attached to your belt&+G. &+LAfter that&+G, &+Lsimply &+Wmemorize&+L the spells that you wish&+G.
@@ -831,7 +831,7 @@ causing trouble for far too long.  If you think you can brave the danger, bring
 ~
 M
 qc_action 100~
-&+WLlerrad &+Gtrots&n over to the &+Rarchery&n range and practices his aim.
+&+WVargesh &+Gtrots&n over to the &+Rarchery&n range and practices his aim.
 ~
 M
 qc_action 100~
@@ -1289,7 +1289,7 @@ R E 2500
 G I 91487
 Q
 $n &+Wregards you solemnly.  "A new initiate
-&+Whuh?  Well here is some equipment as Burbul requested.  Let me know when you
+&+Whuh?  Well here is some equipment as Grubruk requested.  Let me know when you
 &+Ware situated and ready to begin."
 ~
 R I 1119
@@ -1617,13 +1617,13 @@ M
 contact map list tactical~
 $n reaches for one of $s rolled maps and spreads it out.
 
-&+yGrinda&N concludes, "&+cWell your just becoming quite the inquisitive sailor arn't
+&+yKhardra&N concludes, "&+cWell your just becoming quite the inquisitive sailor arn't
 &+cya. Here is what you will see from your bridge when you &+Wlook tactical&+c. This
 &+cmap is a hex version on the large scale to allow you to see a far. A sailor
 &+cwith more experience could also use this command to look to other sections of
 &+cthe seas by entering tactical numbers after the &+Wlook tactical&+c command.&N"
 
-&+yGrinda&N cringes for just a moment as she speaks, "&+cDo not take your eye off this
+&+yKhardra&N cringes for just a moment as she speaks, "&+cDo not take your eye off this
 &+cwhen your sailing for very long. The way my story goes is this. I was running
 &+csome cargo between &+WSto&+Lrm &+bPort&+c and the &+GE&+glven&N Continent&+c and I was nearly sunk as
 &+ca enemy vessel approached. If you &+Wlook contact&+c it will give you information on
@@ -1781,13 +1781,13 @@ headbutt~
 M
 hide~
 $n disappears from your sight without notice.
-&+BKord&N &+Lwhispers from the &+yshadows, &+L"&+WHide&+y allows you to &+Lcleverly conceal yourself
+&+BKrag&N &+Lwhispers from the &+yshadows, &+L"&+WHide&+y allows you to &+Lcleverly conceal yourself
 &+Lfrom the occupants of a&+y room, regardless of whether t&+Lhey are other players or
-&+Lcreatures. &+BKord&+L steps fr&+yom the shadows, "Thats how it'&+Ls done, novice."
+&+Lcreatures. &+BKrag&+L steps fr&+yom the shadows, "Thats how it'&+Ls done, novice."
 ~
 M
 track tracking~
-&+BKord&n says, "&+Wlook&N" pointing to a spot in the room. As you look you see nothing.
+&+BKrag&n says, "&+Wlook&N" pointing to a spot in the room. As you look you see nothing.
 
 &+L"&+WTrack&+L will let you vi&+yew tracks and &+rblood&+y left behind &+Lthat are no longer
 &+Lvisible to the untraine&+yd eye. With proficiency in the s&+Lkill, one might even be
@@ -1796,13 +1796,13 @@ track tracking~
 ~
 M
 grapple grappling~
-&+BKord&N quickly sheaths $s daggers with lightning speed and then &+ybearhugs&N you.
+&+BKrag&N quickly sheaths $s daggers with lightning speed and then &+ybearhugs&N you.
 
 $n &+ysays, "Now if I squeezed&+L your guts would pop out!
 &+WGrapple&+L is an up and c&+ylose fighting skill mercenaries p&+Lossess. The mercenary
 &+Lwill need to remove his&+y weapons to utlitize his art of t&+Lwisting, squeezing, and
 &+Lbending of the opponents&+y body in such ways that they will&+L scream out in pain."
-&+BKord&+L releases you just as &+yquick as he grabbed you. "So wha&+Lts next?"
+&+BKrag&+L releases you just as &+yquick as he grabbed you. "So wha&+Lts next?"
 ~
 M
 quest quests~
@@ -2119,7 +2119,7 @@ chant chants~
 M
 spec specs specialization~
 $n &+Wponders for a moment before answer&+Ling, "Monks can take
-&+Lone of two paths in&+W specialization, &+rRe&+Rd Dra&+rgon&+W or &+gElap&+Ghi&+gdist&+L.  Each
+&+Lone of two paths in&+W specialization, &+rVr&+Raz Dra&+rgon&+W or &+gElap&+Ghi&+gdist&+L.  Each
 &+Lof these paths has &+Wtheir own unique skills available to the&+Lm.  You may wish to
 &+Llearn more about ea&+Wch path as you progress in your studies.&+L"
 ~
@@ -2238,7 +2238,7 @@ $n &+Cleans closer and whispers into your ear, "Try
 ~
 M
 casting cast memorization memorize mem~
-Foet &+Cclears $m throat and says, "To cast a spell, you'll have studied it and
+Vaex &+Cclears $m throat and says, "To cast a spell, you'll have studied it and
 &+Ccommitted it to memory beforehand. To commit spells to memory you must first be
 &+Wresting&+C and have your spellbook be accessible either in your  inventory, hands,
 &+Cor attac&+bhed to your b&+Celt. After that, simply &+Wmemorize&+C the spells that you wish.
@@ -2304,7 +2304,7 @@ M
 quest quests~
 &+CThe &+LB&+bar&+Ld&+C stops playing abruptly and sighs as she looks at her fellow bard. "The
 &+Cpoor girl, she had her voice stolen from an evil witch.  This witch has been
-&+Cseen coming in and out of town carrying some &+Bjar&+C. &+cSilva&+C now just sits here
+&+Cseen coming in and out of town carrying some &+Bjar&+C. &+cVarka&+C now just sits here
 &+Cday after day staring blankly.  I wish someone could find the evil witch who
 &+Cstole it so I could give it back to her and once again hear her beautiful
 &+Csinging."
@@ -2324,7 +2324,7 @@ $n holds the &+Mmagical &+Bjar&n in her hand and exclaims,&+W "Is
 
 $e examines the &+Bjar&N and excitedly runs over to the girl and hands her the &+Bjar&N.
 
-&+cSilva&n, the human bard who had been so silently sitting still blinks
+&+cVarka&n, the orc bard who had been so silently sitting still blinks
 a moment in confusion and then recognizes the jar.  She opens it and
 a &+Cblast of colorful &+Cair &nescapes from the jar and then leaps into her.
 Though a bit hoarse at first she opens her mouth wide and begins to sing a
@@ -2426,7 +2426,7 @@ $n &+Csays, "Speci&+Lalizations allow you to
 ~
 M
 qc_action 100~
-&+LOsule&+w begins casting and the &+cswirling air solidifies into a slender sword.
+&+LOzuk&+w begins casting and the &+cswirling air solidifies into a slender sword.
 $n &+wwields &+ca slender sword of vapor&+w.
 ~
 M
@@ -2802,7 +2802,7 @@ spec specs specialization~
 ~
 M
 quest quests~
-&+mTaiz&+L closes his dark book of spells and rubs his chin as he gazes at you and
+&+mZair&+L closes his dark book of spells and rubs his chin as he gazes at you and
 &+Lponders your request. Taking your hand in his clammy one, he walks you over to
 &+Lthe side of the room away from anyone else.
 
@@ -2822,7 +2822,7 @@ $n turns to you and gives you an almost eerie look.
 He says in a deep voice, "&+LReady to begin your instruction?"&n
 ~
 Q
-A &+rred fire&n burns behind &+mTaiz's&n eyes and he turns even more pale than usual as
+A &+rred fire&n burns behind &+mZair's&n eyes and he turns even more pale than usual as
 he takes the &+Wbones&n in his hands.  He begins to chant softly, touching the bones
 in different sections each time. The &+Ls&nk&+Lu&nl&+Ll&n glows in his hands and he hands the
 skull to you.&+L  "Use this well and do not let it fall into the hands of anyone
@@ -4135,8 +4135,8 @@ S
 #91504
 M
 hi hello help quest quests~
-&+wThe &+Chalf-&+celf&+w woman holds back the tears from streaming down her face just long
+&+wThe &+Ctiefl&+cing&+w woman holds back the tears from streaming down her face just long
 &+wenough to say, "&+WOhh, help me please. Mmma maa my friend is &+rd&+Ry&+ring&+W. He, He needs
-&+Ybandaging&+W. Please! Oh, please &+Ybandage human&+W if you have one in your inventory."
+&+Ybandaging&+W. Please! Oh, please &+Ybandage orc&+W if you have one in your inventory."
 ~
 S

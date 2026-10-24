@@ -98,6 +98,7 @@ void convertMob(P_char ch, bool apply_mob_gold)
 	if (!ch || IS_PC(ch))
 		return;
 
+	const int mechanics_race = tutorial_mobile_mechanics_race(ch);
 	set_npc_multi(ch);
 
 	/* default pos of sleeping = bad */
@@ -109,7 +110,7 @@ void convertMob(P_char ch, bool apply_mob_gold)
 
 	if (ch->player.size == SIZE_DEFAULT)
 	{
-		GET_SIZE(ch) = race_size(GET_RACE(ch));
+		GET_SIZE(ch) = race_size(mechanics_race);
 	}
 	/* end of size */
 
@@ -312,7 +313,7 @@ void convertMob(P_char ch, bool apply_mob_gold)
 	}
 
 	/* thac0 */
-	if (IS_MELEE_CLASS(ch) || IS_DRAGON(ch) || IS_DEMON(ch) || IS_GIANT(ch))
+	if (IS_MELEE_CLASS(ch) || IS_DRAGON(ch) || IS_DEMON(ch) || is_giant_race(mechanics_race))
 		ch->points.base_hitroll = BOUNDED(2, (level / 2), 35);
 	else
 		ch->points.base_hitroll = BOUNDED(0, (level / 3), 25);
@@ -460,7 +461,7 @@ void convertMob(P_char ch, bool apply_mob_gold)
 	 * two provided properties. /tharkun
 	 */
 	hits = (int)((0.00000045 *
-			      (stat_factor[GET_RACE(ch)].Con * stat_factor[GET_RACE(ch)].Con *
+			      (stat_factor[mechanics_race].Con * stat_factor[mechanics_race].Con *
 				       hp_mob_con_factor +
 			       100 * 100 * (1 - hp_mob_con_factor)) *
 			      level * level +
@@ -649,7 +650,7 @@ void apply_zone_modifier(P_char ch)
 
 int GetFormType(P_char ch)
 {
-	switch (GET_RACE(ch))
+	switch (tutorial_mobile_mechanics_race(ch))
 	{
 	case RACE_HUMAN:
 	case RACE_BARBARIAN:

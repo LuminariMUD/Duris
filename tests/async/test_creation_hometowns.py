@@ -34,6 +34,9 @@ prelude = r'''
 #include "cmd/interp.h"
 #include "account/creation_availability_config.h"
 #include "world/hardcore_config.h"
+#include "world/achievements.h"
+#include "world/vnum.room.h"
+#include "magic/spells.h"
 #include "sql/sql.h"
 #include <cassert>
 #include <algorithm>
@@ -42,6 +45,7 @@ prelude = r'''
 #include <vector>
 
 int accepted = 0, selected_home = -1, prompts = 0, disabled_race = -1;
+int tutorial_tags = 0;
 unsigned int game_locked = 0;
 bool all_races = false, admission_allowed = true;
 std::string output, error, json;
@@ -70,6 +74,11 @@ int websocket_send_text(P_desc, const char *text) { json = text; return 1; }
 void write_to_q(const char *text, txt_q *, int) { output += text; }
 void logit(const char *, const char *, ...) {}
 static void prompt_stat_method(P_desc) { ++prompts; }
+affected_type *apply_achievement(P_char, int tag) {
+    assert(tag == TAG_LIFESTREAMNEWBIE);
+    ++tutorial_tags;
+    return nullptr;
+}
 '''
 
 cases = r'''
@@ -110,8 +119,9 @@ int main() {
             show_avail_hometowns(&d);
             int count = 0;
             for (int home = 0; home <= LAST_HOME; ++home) {
-                const bool tutorial = home == HOME_NEWBIE || home == HOME_PLANE_OF_LIFE;
-                const bool expected = tutorial ? good : avail_hometowns[home][race.race_id] == 1;
+                const bool good_tutorial = home == HOME_NEWBIE || home == HOME_PLANE_OF_LIFE;
+                const bool evil_tutorial = home == HOME_WUTVR || home == HOME_PLANE_OF_CHAOS;
+                const bool expected = good_tutorial ? good : evil_tutorial ? !good : avail_hometowns[home][race.race_id] == 1;
                 assert(creation_hometown_available(race.race_id, side, home) == expected);
                 if (!expected) continue;
                 ++count;
@@ -124,13 +134,26 @@ int main() {
                 select_hometown(&d, key);
                 assert(prompts == before + 1 && GET_HOME(&ch) == home);
                 assert(GET_BIRTHPLACE(&ch) == home && GET_ORIG_BIRTHPLACE(&ch) == home);
+                // The two new entry rooms work for every class slot. This
+                // cannot enable a class: creation admission still runs first.
+                if (evil_tutorial) {
+                    for (int cls = 0; cls < CLASS_COUNT; ++cls) {
+                        ch.player.m_class = 1u << cls;
+                        ch.specials.alignment = good ? 1000 : -1000;
+                        tutorial_tags = 0;
+                        find_starting_location(&ch, home);
+                        assert(GET_HOME(&ch) == (home == HOME_WUTVR ? 91401 : 91200));
+                        assert(tutorial_tags == (home == HOME_PLANE_OF_CHAOS ? 1 : 0));
+                    }
+                }
             }
             assert(count == static_cast<int>(homes.size()));
             assert(find_hometown(race.race_id, false, side) == (count > 1 ? HOME_CHOICE : homes[0]));
             const int racial_home = find_hometown(race.race_id, true);
-            assert(racial_home != HOME_NEWBIE && racial_home != HOME_PLANE_OF_LIFE);
+            assert(racial_home != HOME_NEWBIE && racial_home != HOME_PLANE_OF_LIFE &&
+                racial_home != HOME_WUTVR && racial_home != HOME_PLANE_OF_CHAOS);
             d.chargen_race = race.race_id;
-            for (const char *home : {"0", "-1", "999999", "22.5", "\"22\"", "null", "false", "{}", "[]", "22", "23", "1", "13", "omitted"}) {
+            for (const char *home : {"0", "-1", "999999", "22.5", "\"22\"", "null", "false", "{}", "[]", "22", "23", "25", "26", "1", "13", "omitted"}) {
                 const bool omitted = !strcmp(home, "omitted");
                 std::string request = "{\"name\":\"Pupil\",\"race\":" + std::to_string(race.race_id) +
                     ",\"class\":1,\"sex\":1,\"alignment\":\"" + alignment + "\"";
@@ -151,6 +174,12 @@ int main() {
         }
     }
     assert(menu(RACE_FIRBOLG, nullptr).size() == 3);
+    assert(menu(RACE_OGRE, nullptr).size() == 3);
+    ch.player.race = RACE_TIEFLING;
+    ch.specials.alignment = -1000;
+    ch.player.m_class = CLASS_WARRIOR;
+    find_starting_location(&ch, 0);
+    assert(GET_HOME(&ch) == guild_locations[HOME_ARACHDRATHOS][0]);
     // The unlocked legacy roster retains its existing good tutorial rows;
     // the approved additions do not give every nominally-good legacy race
     // new towns. The outer creation admission still owns the unlock toggle.
@@ -158,15 +187,17 @@ int main() {
     for (int index = 0; restricted_races[index].race_id != -1; ++index) {
         const int race = restricted_races[index].race_id;
         const int side = ws_resolve_racewar_side(race, 1);
-        for (int home : {HOME_NEWBIE, HOME_PLANE_OF_LIFE})
+        for (int home : {HOME_NEWBIE, HOME_PLANE_OF_LIFE, HOME_WUTVR, HOME_PLANE_OF_CHAOS})
             assert(creation_hometown_available(race, side, home) ==
-                (side == RACEWAR_GOOD && avail_hometowns[home][race] == 1));
+                ((side == (home == HOME_NEWBIE || home == HOME_PLANE_OF_LIFE ?
+                    RACEWAR_GOOD : RACEWAR_EVIL)) && avail_hometowns[home][race] == 1));
     }
     all_races = false;
     for (int race : {RACE_THRIKREEN, RACE_MINOTAUR, RACE_TIEFLING}) {
         const auto homes = menu(race, nullptr);
         assert(homes.size() == 1);
-        assert(homes[0] != HOME_NEWBIE && homes[0] != HOME_PLANE_OF_LIFE);
+        assert(homes[0] != HOME_NEWBIE && homes[0] != HOME_PLANE_OF_LIFE &&
+            homes[0] != HOME_WUTVR && homes[0] != HOME_PLANE_OF_CHAOS);
     }
     assert(!creation_hometown_available(-1, RACEWAR_GOOD, HOME_NEWBIE));
     assert(!creation_hometown_available(LAST_RACE + 1, RACEWAR_GOOD, HOME_NEWBIE));
@@ -203,10 +234,13 @@ tables = "\n".join(table(declaration) for declaration in (
     "const char *town_name_list[] =",
     "const struct playable_race_info playable_races[] =",
     "const struct restricted_race_info restricted_races[] =",
+    "const int guild_locations[][CLASS_COUNT + 1] =",
 ))
-functions = [extract_function("nanny.c", signature) for signature in (
+functions = [extract_function("utility.c", "int flag2idx(")]
+functions += [extract_function("nanny.c", signature) for signature in (
     "bool creation_hometown_available(", "int find_hometown(",
     "static char hometown_selection_key(",
+    "void find_starting_location(",
     "void show_avail_hometowns(", "void select_hometown(",
 )]
 functions += [extract_function("ws_handlers.c", signature) for signature in (

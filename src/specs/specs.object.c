@@ -8899,21 +8899,26 @@ int stream_of_life(P_obj obj, P_char ch, int cmd, char *arg)
 	P_obj dummyobj;
 	int r_room;
 
-	if (cmd != CMD_ENTER || !arg || !IS_ALIVE(ch) || !*arg)
+	if (cmd != CMD_ENTER || !obj || !arg || !IS_ALIVE(ch) || !*arg)
 		return FALSE;
 
+	const bool chaos = OBJ_VNUM(obj) == VOBJ_CHAOS_STREAM;
 	generic_find(arg, FIND_OBJ_ROOM, ch, &dummy, &dummyobj);
 	if (obj == dummyobj)
 	{
 		if (affected_by_spell(ch, TAG_LIFESTREAMNEWBIE))
 		{
-			send_to_char("Your not ready yet, ask the paladin about racewar.\n", ch);
+			send_to_char(chaos ? "Your not ready yet, ask the reaver about racewar.\n" :
+					     "Your not ready yet, ask the paladin about racewar.\n",
+				     ch);
 			return TRUE;
 		}
 
-		send_to_char("You feel refreshed as you enter the realm of life.\n", ch);
+		send_to_char(chaos ? "You feel refreshed as you enter the realm of chaos.\n" :
+				     "You feel refreshed as you enter the realm of life.\n",
+			     ch);
 		GET_HIT(ch) = GET_MAX_HIT(ch);
-		if ((r_room = real_room(29201)) > 0)
+		if ((r_room = real_room(chaos ? VROOM_WUTVR_ENTRY : 29201)) > 0)
 		{
 			char_from_room(ch);
 			char_to_room(ch, r_room, -1);
@@ -8939,7 +8944,7 @@ int newbie_sign1(P_obj /*obj*/, P_char ch, int cmd, char *arg)
 		return FALSE;
 	one_argument(arg, Gbuf1);
 
-	if (arg && (cmd == CMD_LOOK || cmd == CMD_EXAMINE || cmd == CMD_LOOK))
+	if (arg && (cmd == CMD_LOOK || cmd == CMD_EXAMINE || cmd == CMD_READ))
 	{
 		if (!isname(arg, "sign"))
 			return FALSE;
@@ -8968,7 +8973,7 @@ int newbie_sign2(P_obj /*obj*/, P_char ch, int cmd, char *arg)
 		return FALSE;
 	one_argument(arg, Gbuf1);
 
-	if (arg && (cmd == CMD_LOOK || cmd == CMD_EXAMINE || cmd == CMD_LOOK))
+	if (arg && (cmd == CMD_LOOK || cmd == CMD_EXAMINE || cmd == CMD_READ))
 	{
 		if (!isname(arg, "sign"))
 			return FALSE;
