@@ -61,8 +61,17 @@ old-body summon postconditions. The preserve fixture then exposed an output
 consumption assumption: character creation consumes through the starter-kit line,
 which follows the successful automatic reward message. Check the captured login
 transcript for that message, then assert physical item payloads/UIDs as before.
-This is a fixture correction, not a server failure. The discard run remains live;
-no end-to-end reward claim pass is claimed until both final journeys complete.
+This is a fixture correction, not a server failure. The discard run completed
+successfully at fixture `7819c9916`, binary
+`ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`:
+303.250 wall / 290.500 monotonic seconds, epoch 2, recreated Overlord PID 3,
+fresh combat mortal PID 4 and fresh claim mortal PID 5. All four grants and old
+summons were absent; the new character's claim refused before/after reconnect and
+second boot. Report `bin/analysis/pwipe-runtime-mariadb-discard-rewards.json`, log
+`bin/analysis/pwipe-reward-discard.log`. Owned resources cleaned. Reuse this pass:
+the subsequent transcript correction affects only the preserving branch of the
+fixture. The final preserving run at `528d1e68d` remains live; no combined gate
+completion is claimed until it finishes.
 
 ## Current continuation — shutdown operator flow
 
