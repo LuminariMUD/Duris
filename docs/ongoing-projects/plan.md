@@ -65,9 +65,18 @@ the corrected test requires that exact logged reason and no game loop. The
 maintained launcher still refuses with 58. Actual SQL-only recovery completes
 successor epoch 3 once, gives one grant decrement (3 -> 2), clears old summons and
 payload, and preserves roster/stamp on retry; launcher activates 3 and its duplicate
-leaves a fresh file intact. No production defect was found in this pass. Final
-MySQL qualification follows the committed fixture; reuse the identical MariaDB
-source result rather than rerun a passing engine for a documentation commit.
+leaves a fresh file intact. No production defect was found in this pass. Final qualification passes on MariaDB 10.11.19 and MySQL 8.0.46 for committed
+fixture `361425efd` (MariaDB ran the identical source immediately before commit;
+MySQL afterward). Both full native matrices also retain the previous inventory,
+ordinary custody, reward, Redis failure and launcher checks. Logs:
+`bin/analysis/pwipe-boundary-ack-{mariadb,mysql}.log`. The production-profile binary
+is unchanged (`ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`).
+Python compilation, changed-line formatting and commit hooks pass; production
+source/schema is unchanged, so reuse game builds and full command/service/gameplay
+proof. All owned fixture resources exited/cleaned. The explicit boundary-COMMIT
+unknown-result gap is closed. Actual held shared-writer chains, launcher-kill/child
+lock inheritance and remaining store/path consumer reconciliation remain required;
+no full readiness or production claim.
 
 
 ## Current continuation — retained ordinary item custody
@@ -119,10 +128,8 @@ sourced. These boxes are now checked rather than left stale.
 
 Remaining work is concrete: finish the full retained SQL/path/worker consumer
 inventory (including legacy compatibility inputs); prove held accepted shared-
-writer/callback chains at the actual quiescence boundary; explicitly inject a
-lost ACK of the epoch-boundary COMMIT (the source conservatively sets its crossed
-flag before COMMIT, while current executable lost-ACK cases cover reward and
-activation commits). Then reconcile the final manual/backup record and W7 findings.
+writer/callback chains at the actual quiescence boundary; the epoch-boundary lost-ACK gap is now covered by the current continuation above.
+Then reconcile the final manual/backup record and W7 findings.
 A rendered visual browser pass was never an issue #264 acceptance item; the real
 HTTP/WS journey and traced Vue reconnect/refetch path cover the stated website
 reader/client gate. Do not invent a separate visual-release requirement or require
