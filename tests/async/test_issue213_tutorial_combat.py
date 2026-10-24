@@ -34,6 +34,9 @@ horde_dispatch = fight[horde_start:fight.index('\n\tif (weapon && IS_SLAYING', h
 dodge_start = fight.index('\tif (tutorial_mobile_mechanics_race(char_dodger) == RACE_DROW')
 dodge = fight[dodge_start:fight.index('\n\t// Dodge success.', dodge_start)]
 cold = block(mods, 'if (tutorial_mobile_mechanics_race(victim) == RACE_BARBARIAN)')
+racial_start = mods.index('const int casterRace = tutorial_mobile_mechanics_race(caster);')
+racial_end = mods.index('\n}\n}', mods.index('racial_spldam_defensive_factor[victimRace]', racial_start))
+racial_spell = mods[racial_start:racial_end + 2]
 gith = re.findall(r'dam\s*=\s*[^;]*RACE_GITH(?:ZERAI|YANKI)[^;]*;', magic)
 assert len(gith) == 3
 cast_start = parser.rfind('\tif (', 0, parser.index('!= RACE_MINOTAUR'))
@@ -45,6 +48,7 @@ prelude = r'''
 #include "magic/spells.h"
 #include "net/comm.h"
 #include "combat/dam_mods.h"
+#include "combat/damage.h"
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
@@ -52,6 +56,8 @@ prelude = r'''
 room_data rooms[3]{}; P_room world = rooms;
 index_data profiles[16]{}; P_index mob_index = profiles;
 char_data actors[16]{}; npc_only_data npcs[16]{};
+float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE]{};
+float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE]{};
 int berserks = 0, procs = 0; bool active_berserk = false;
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 float get_property(const char *, double fallback) { return fallback; }
@@ -85,6 +91,7 @@ functions += '\nvoid racial_hit(P_char ch, P_char victim) {\n' + hit + '\n}\n'
 functions += '\ndouble racial_damage(P_char ch, P_char victim, double dam) {\n' + horde_dispatch + '\nreturn dam; }\n'
 functions += '\nint racial_dodge(P_char char_dodger) { int percent=0; bool dragoon_dodge=false;\n' + dodge + '\nreturn dragoon_dodge ? 2 : 1; }\n'
 functions += '\ndouble cold_resistance(P_char victim) { damage_mod value{dam_mod_type::None, 0}; auto *dam_mod=&value;\n' + cold + '\nreturn value.mod; }\n'
+functions += '\ndouble racial_spell_damage(P_char caster, P_char victim, int damageType) { damage_mod value{dam_mod_type::None, 0}; auto *dam_mod=&value;\n' + racial_spell + '\nreturn value.mod; }\n'
 for index, line in enumerate(gith):
     functions += f'\nint gith_word_{index}(P_char victim, int dam) {{ {line} return dam; }}\n'
 functions += '\nbool can_cast_berserk(P_char ch) {\n' + cast + '\nreturn true; }\n'
@@ -117,6 +124,15 @@ int main() {
     assert(racial_dodge(&actors[9]) == 1);
     assert(cold_resistance(&actors[10]) == -.4 && cold_resistance(&actors[11]) == -.4);
     assert(cold_resistance(&actors[5]) == 0);
+    racial_spldam_offensive_factor[RACE_GREY][0] = 1.25;
+    racial_spldam_offensive_factor[RACE_DROW][0] = 1.75;
+    racial_spldam_defensive_factor[RACE_BARBARIAN][0] = .5;
+    racial_spldam_defensive_factor[RACE_ORC][0] = 1.5;
+    assert(racial_spell_damage(&actors[7], &actors[10], 0) == -.25);
+    assert(racial_spell_damage(&actors[8], &actors[11], 0) == -.25);
+    assert(racial_spell_damage(&actors[9], &actors[5], 0) == 1.25);
+    assert(racial_spell_damage(&actors[8], &actors[11], -1) == 0);
+    assert(racial_spell_damage(&actors[8], &actors[11], LAST_SPLDAM_TYPE) == 0);
     assert(gith_word_0(&actors[12], 200) == 300 && gith_word_0(&actors[13], 200) == 300);
     assert(gith_word_1(&actors[12], 200) == 200 && gith_word_1(&actors[13], 200) == 200);
     assert(gith_word_2(&actors[12], 200) == 200 && gith_word_2(&actors[13], 200) == 200);
