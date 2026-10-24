@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-email-fix-integration/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-email-fix-integration`, [PR #356](https://github.com/LuminariMUD/Duris/pull/356).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `82814f58b`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-consumer-reconciliation/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-consumer-reconciliation`, [PR #358](https://github.com/LuminariMUD/Duris/pull/358).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `7d1f04050`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352 -> #353 -> #354 -> #356,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352 -> #353 -> #354 -> #356 -> #358,
 plus independent production-build repair #316 and email registry repair #355 (included in #356). PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -179,6 +179,19 @@ verification stays disabled. No full timer rerun for this unrelated helper.
 All changes are committed/pushed/review-ready. Full retained SQL/worker audit and
 final manual/readiness reconciliation remain open; no GitHub merge or production
 operation. The plan records exact evidence, dependency order and next targets.
+
+PR #358 closes the actual pre-boundary SQL-loss proof: the private database kills
+the native caller connection; actual wipe refuses before boundary/readiness/resume,
+and independent exact old epoch/roster/account/bank/item/files remain unchanged.
+Both full native MariaDB 10.11.19 / MySQL 8.0.46 matrices pass. Retained quest engine
+history additionally proves independent season/PID partitions, zero inherited
+progress/daily/renown under a reused name, fresh completion, old replay idempotence
+and another reload. Five retained SQL purposes and actual outbox/artifact delivery
+consumer boundaries are clarified. In particular, prepared artifact bootstrap may
+retry dead letters; the owning drain/UID/guild-incarnation guards matter. No new
+production code/schema changes. Exact source/logs/checks and remaining full
+consumer/manual checklist audit are in the linked current plan; full readiness
+remains open. All completed chunks are pushed and ready for review.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
