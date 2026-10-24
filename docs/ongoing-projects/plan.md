@@ -42,8 +42,10 @@ was run during planning.
 
 ## Current continuation — new-character account reward claims
 
-Branch `branch/issue-264-reward-claim-journey`, based on review-ready PR #343 at
-`bb49e8d88`. Outcome: prove actual new-character claims on a surviving account
+Review-ready [PR #344](https://github.com/LuminariMUD/Duris/pull/344), fixture
+`7819c9916` plus transcript correction `528d1e68d`, proof record `5cc7f9c9a`.
+Branch `branch/issue-264-reward-claim-journey`, committed/pushed, based on
+review-ready PR #343 at `bb49e8d88`. Outcome: prove actual new-character claims on a surviving account
 under both `pwipe.preserve` settings. Extend the existing disposable real runtime
 journey with permanent, day-based, one-wipe and multi-wipe exact grants created
 through the staff command. After reset, inspect grant policy and cleared old-body
