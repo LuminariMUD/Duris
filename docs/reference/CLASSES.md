@@ -132,7 +132,7 @@ Code `5` forbids the combination. Alignment is distinct from racewar side.
 | Paladin | G: Human, Githzerai, Tiefling. |
 | Anti-Paladin | E: Orc, Githyanki, Tiefling. |
 | Cleric | A: Human, Grey Elf, Mountain Dwarf, Halfling, Gnome, Githzerai, Tiefling. E: Drow, Duergar, Orc, Githyanki, Goblin, Kobold. |
-| Monk | G: Human. E: Orc. A: Tiefling. |
+| Monk | G: Human, Githzerai. E: Orc, Githyanki. A: Tiefling. |
 | Druid | N: Human, Grey Elf, Halfling, Centaur, Githzerai. |
 | Shaman | A: Human, Barbarian, Grey Elf, Halfling, Gnome, Centaur, Minotaur, Tiefling. N: Firbolg. E: Drow, Ogre, Troll, Orc, Goblin, Kobold. |
 | Sorcerer | A: Human, Grey Elf, Halfling, Gnome, Githzerai, Minotaur, Tiefling. E: Drow, Orc, Githyanki, Goblin, Kobold, Drider. |
