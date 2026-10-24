@@ -40,6 +40,56 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — website current account characters
+
+Main source remains `branch/issue-264-telemetry-cutover` at `a85e496a7` / PR #345.
+Review-ready companion [PR #95](https://github.com/LuminariMUD/DurisWeb/pull/95),
+commit `1819a631d2d5672f3854a39486eef0b237c65c4a`, committed/pushed. Companion
+worktree `/home/aiwithapex/projects/durisweb-issue264-presence`, branch
+`branch/issue-264-current-account-characters`, based on PR #94 at `69c8671`.
+W5 source review found that `accountService` reads soft-deleted character links
+and caches both roster arrays (five minutes) and name-to-account ownership (one
+hour) outside the MUD's seasonal Redis namespace. A wiped body can remain in a
+surviving account's list, and a reused name can resolve to the retired account.
+Outcome: retain account metadata caching, read active character links afresh and
+resolve current name ownership from SQL. Ignore legacy cached character arrays/
+mappings; no new epoch/cache schema is needed. Prove warm-cache retirement and
+name reuse through actual service queries against owned disposable SQL, plus
+focused failure behavior. Files: account service/tests, backend docs and unpublished
+release-note payload. Complete website presence/cache/websocket/donation rehearsal and other W1/W2/W4/W7 gates
+remain open. No production operation or changelog publication.
+
+The three focused regressions fail against the original `69c8671` service:
+legacy cached roster returned, DB failure bypassed by cached roster, and reused
+name resolves to old account. The repaired unit suite and actual service queries
+pass on disposable MariaDB 10.11 and MySQL 8.0. Native proof warms old metadata and
+name caches, retires links, inserts a fresh Overlord and reuses a name on another
+account: old characters vanish, current owner resolves, further retirement leaves
+an empty list/no owner, while the surviving account's metadata stays intact.
+No real player data or configured application DB/Redis is used. Each native case
+creates/removes its own generated database; both wrappers exit successfully.
+Commands: focused `accountServiceRetirement.test.ts` with the owned wrapper's
+`TEST_DB_HOST/PORT/USER/PASSWORD`, plus `TEST_ACCOUNT_DB_PORT=TEST_DB_PORT` (the
+actual selected port value). The native guard rejects shared/default 3306/3307.
+Logs under this MUD worktree's `bin/analysis/pwipe-web-account-{before,unit,mariadb,mysql,focused,format,lint,types,build,writes}.log`.
+Combined account/presence unit checks: 28 pass, two native opt-ins skipped there;
+the account native case passes explicitly on both engines. Reuse #93's unchanged
+native presence-lock proof. Required backend format/lint/type-check/build and
+`verify:mud-writes --mud-manifest /home/aiwithapex/projects/duris-issue264-plan/migrations/migration_manifest.json`
+pass (53 existing classified writes). No MUD source/schema/write changed; reuse
+all prior game builds and reset proof. The public account release note is a local
+unpublished payload, separate from the prior admin presence draft.
+
+Next W5 proof must still cover the complete HTTP/client lifecycle. Source tracing
+also found the existing five-minute `permissionService` cache; the manual website
+cutover must invalidate/recompute it so retired staff cannot retain roles. Presence
+and cached MUD lists select SQL epochs, while the donation worker stamps epochs
+before publishing. Rehearse stopped/drained external writers, queued donations,
+reconnects and old general-cache entries before claiming that gate. Complete the
+legacy temporary-copy preservation gate before any service stop. This chunk proves
+the current account consumer only; W5 remains unchecked overall.
+
+
 ## Current continuation — telemetry season cutover
 
 Review-ready [PR #345](https://github.com/LuminariMUD/Duris/pull/345), fixture
