@@ -42,7 +42,10 @@ was run during planning.
 
 ## Current continuation — retained ordinary item custody
 
-Branch `branch/issue-264-retained-item-custody`, based on PR #347 at `82b8f7855`.
+Review-ready [PR #348](https://github.com/LuminariMUD/Duris/pull/348), native fixture
+`6eb621601`, proof/audit record `8ffa41777`. Branch
+`branch/issue-264-retained-item-custody`, committed/pushed, based on PR #347 at
+`82b8f7855`.
 Outcome: close the ordinary-item evidence gap in W1/W2/W4 by exercising the actual
 SQL player-load repository and UID allocator before/after the real reset. Seed a
 valid old body/item payload, current custody, owner revision, opening baseline and
