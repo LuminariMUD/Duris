@@ -78,6 +78,12 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+The native reset journey seeds auction custody plus nested siege items with affects
+and descriptions. Actual startup population readers see those bodies before reset
+and none afterward. Missing siege child schema aborts before epoch advance, and a
+triggered deletion failure leaves the reset fenced without SQL-ready publication.
+Canonical manifest and dependency-order checks cover the four stores.
+
 Cargo replay coverage prepares two real trades: one commits before wipe and the
 other remains unapplied. The actual reset preserves the first receipt and historical
 book/generation, deletes ships/cargo/markets and retires the player. Receipt replay
