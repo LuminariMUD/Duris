@@ -73,6 +73,28 @@ The existing root/private-mount legacy preservation native fixture also passes
 PrivateTmp keeper-unit lifecycle rehearsal. Keep that remaining manual prerequisite
 explicit; no service with real legacy data was stopped.
 
+The corrected full run `66a3ea05e` / companion `1f0f663` completed the actual
+five-minute reset and core fresh gameplay/reward/reboot, with normal website old
+HTTP/presence/cache/ranking, persisted sessions and both graceful WS closes. New-
+season reconnect/WHO, removal of the old rank, fresh cached-list scopes and retired
+staff refusal also passed before the donation observation failed. Source inspection
+found two fixture omissions: the donation channel suffix is `nchat`, and the MUD
+subscriber requires `REDIS_DONATION_SUBSCRIBER=TRUE`. Correct both and additionally
+require the signed queued donation to reach an actual in-game client. This run is
+not final combined acceptance; preserve its failing log before the final rerun.
+
+The actual PrivateTmp keeper-unit rehearsal now passes in a root private mount
+namespace with supported Node 24.15.0. Source fixture `f2322e8` starts only uniquely
+named disposable units, proves old/keeper temporary-file inode identity, uses the
+real byte-preservation service before stopping the source, confirms access through
+the keeper after that stop, then verifies the protected bundle after both units
+stop. Units/files are removed by the owned fixture. Log:
+`bin/analysis/pwipe-web-private-tmp-keeper.log`. No real website service/data was
+used. Together with the passed native mount/alias cases, this rehearses the legacy
+pre-stop preservation gate; it does not authorize publication/adoption or delete
+unmanaged real copies. The full direct website journey uses no PrivateTmp unit.
+
+
 
 ## Current continuation — current website MUD permissions
 

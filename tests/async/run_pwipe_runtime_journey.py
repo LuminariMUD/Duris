@@ -133,7 +133,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                                TEST_WEB_OBSERVER_ACCOUNT=OBSERVER_ACCOUNT, TEST_WEB_FRESH_CHARACTER=journey.CHARACTER,
                                DURISWEB_SECRET="synthetic-website-bridge-secret-264", DOTENV_CONFIG_QUIET="true")
                 env.update(DURISWEB_SECRET=web_env["DURISWEB_SECRET"],
-                           REDIS_DONATION_SECRET=web_env["MUD_REDIS_DONATION_SECRET"], DURIS_WEBSOCKET="TRUE")
+                           REDIS_DONATION_SECRET=web_env["MUD_REDIS_DONATION_SECRET"],
+                           REDIS_DONATION_SUBSCRIBER="TRUE", DURIS_WEBSOCKET="TRUE")
                 loader = website / "backend/node_modules/tsx/dist/loader.mjs"
                 web_node = ["node", "--import", str(loader)]
                 web_probe = website / "backend/src/test/pwipeWebsiteProbe.ts"
@@ -697,6 +698,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     website_probe = website_command("new", background=True)
                     website_wait("new-subscribed")
                     website_start()
+                    # The real game-thread consumer must accept the signed queued event.
+                    client.expect("season-queued-fixture", timeout=30)
                     website_wait("new-peer-ready")
                     # Reconnect a visible mortal through the actual MUD producer.
                     client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
@@ -705,6 +708,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     assert website_probe.wait(timeout=15) == 0, "new website probe failed"
                     website_probe = None
                     report["website_assertions"] = json.loads((website_root / "report.json").read_text())
+                    report["website_assertions"]["signedDonationAppliedByMud"] = True
                     website_stop()
                 report.update(reward_claim_pid=claimant_pid, reward_claim_ids=sorted(claimed_items),
                               reward_claim_assertions="real exact permanent/day/finite grants; policy/reset clears old summons; fresh account character claims or refuses under discard policy; unique new UIDs/exact payload; repeated summon, dismiss cooldown, save/reconnect/second boot")
