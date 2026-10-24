@@ -29,7 +29,7 @@ STAFF = "Wipekeeper"
 GIT = ["git"]
 
 
-def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_helper=None):
+def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, systemd_helper=None):
     if systemd:
         assert systemd_helper is not None, "--systemd requires an installed helper"
         for path in (systemd_helper, *systemd_helper.parents):
@@ -41,7 +41,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
-                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else []), *(["--restore"] if matched_restore else [])])
+                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else []), *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else [])])
     assert os.environ["TEST_DB_HOST"] == "127.0.0.1"
     assert not Path("/usr/bin/sendemail").exists(), "fixture requires the launcher mail command absent"
     database = "pwipe_journey_" + uuid.uuid4().hex[:12]
@@ -68,7 +68,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
     report = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
               "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "status": "running"}
+              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "status": "running"}
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
@@ -143,6 +143,19 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                 return subprocess.check_output(["redis-cli", "--raw", "-h", "127.0.0.1", "-p",
                                                 env["REDIS_PORT"], *arguments], text=True).strip()
 
+            def wait_old_world_checkpoint():
+                key = env["REDIS_NAMESPACE"] + ":season:1:world_state:current"
+                previous = int(redis("GET", key) or "0")
+                deadline = time.monotonic() + 45
+                while True:
+                    current = int(redis("GET", key) or "0")
+                    # One capture may already be in flight when the item drops.
+                    if current >= previous + 2:
+                        print("Post-drop world checkpoint acknowledged sequence=" + str(current), flush=True)
+                        return
+                    assert running() and time.monotonic() < deadline, "post-drop world checkpoint did not publish"
+                    time.sleep(.1)
+
             def expect_presence(pid, epoch):
                 deadline = time.monotonic() + 15
                 while True:
@@ -207,7 +220,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                             break
                         time.sleep(.05)
                     else: raise AssertionError("private Redis did not start")
-                if matched_restore:
+                if matched_restore or redis_reenable:
                     env.update(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_SECRET="synthetic-pwipe-restore-world-secret",
                                REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_MAX_AGE="3600")
                 if systemd:
@@ -243,6 +256,12 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                 old_pid = int(sql("SELECT pid FROM player_data WHERE name='" + STAFF + "'"))
                 if with_redis:
                     expect_presence(old_pid, 1)
+                if redis_reenable:
+                    old_floor_uid = int(sql("SELECT obj_uid FROM player_items WHERE pid=" + str(old_pid) + " AND vnum=1108"))
+                    assert old_floor_uid > 0
+                    client.send("drop sword"); client.expect("You drop a long steel sword.")
+                    save(STAFF)
+                    wait_old_world_checkpoint()
                 old_items = sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid))
                 assert int(old_items) > 0
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
@@ -314,6 +333,31 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                 client.send("shutdown pwipe confirm yes"); client.expect("five")
                 client.send("shutdown"); client.expect("cancelled")
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
+                if redis_reenable:
+                    assert "restored world recovery generation" in journey.runtime_logs(root)
+                    client.send("get sword"); client.expect("get a long steel sword")
+                    client.send("drop sword"); client.expect("You drop a long steel sword.")
+                    save(STAFF)
+                    wait_old_world_checkpoint()
+                    client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                    stop()
+                    old_world_key = env["REDIS_NAMESPACE"] + ":season:1:world_state:current"
+                    old_world_sequence = redis("GET", old_world_key)
+                    assert old_world_sequence
+                    old_payload_key = env["REDIS_NAMESPACE"] + ":season:1:world_state:generation:" + old_world_sequence
+                    def old_payload_hash():
+                        payload = subprocess.check_output(["redis-cli", "--raw", "-h", "127.0.0.1", "-p", env["REDIS_PORT"],
+                                                           "DUMP", old_payload_key])
+                        assert redis("EXISTS", old_payload_key) == "1"
+                        return hashlib.sha256(payload).hexdigest()
+                    old_payload_sha256 = old_payload_hash()
+                    report["retained_old_world"] = dict(epoch=1, sequence=old_world_sequence,
+                                                        payload_sha256=old_payload_sha256, floor_item_uid=old_floor_uid)
+                    env["REDIS"] = "FALSE"
+                    boot()
+                    assert "redis disabled (set REDIS=TRUE" in journey.runtime_logs(root)
+                    client = journey.reconnect_character(plain, character=STAFF)
+                    print("Authenticated old world/floor marker accepted; Redis disabled for the actual wipe", flush=True)
                 if with_redis:
                     old_keys = [env["REDIS_NAMESPACE"] + ":season:1:" + suffix for suffix in
                                 ("cache:pwipe-sentinel", "presence:session:pwipe-sentinel",
@@ -349,10 +393,18 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                     assert completed["NRestarts"] == "0" and completed["ActiveState"] == "inactive", completed
                     report["service_completed_reset"] = completed
                 if with_redis:
-                    assert redis("EXISTS", *old_keys) == "0"
+                    expected_old_keys = str(len(old_keys)) if redis_reenable else "0"
+                    assert redis("EXISTS", *old_keys) == expected_old_keys
                     assert redis("MGET", *retained_keys).splitlines() == ["fixture"] * len(retained_keys)
-                    report["redis_reset_assertions"] = "old scoped/legacy sentinels removed; unrelated namespaces preserved"
-                    print("Real Redis reset removed old epoch sentinels and preserved unrelated namespaces", flush=True)
+                    if redis_reenable:
+                        assert redis("GET", old_world_key) == old_world_sequence
+                        assert old_payload_hash() == old_payload_sha256
+                        env["REDIS"] = "TRUE"
+                        report["redis_reset_assertions"] = "disabled wipe retained old authenticated payload and keys; re-enable uses new epoch"
+                        print("Disabled Redis retained the old authenticated generation; re-enabling after epoch 2 activation", flush=True)
+                    else:
+                        report["redis_reset_assertions"] = "old scoped/legacy sentinels removed; unrelated namespaces preserved"
+                        print("Real Redis reset removed old epoch sentinels and preserved unrelated namespaces", flush=True)
                 client.close(); client = None; process = None
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "2:active"
                 assert sql("SELECT COUNT(*) FROM account_banks") == "0"
@@ -365,14 +417,19 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                 report.update(countdown_seconds=round(wall_elapsed, 2), old_pid=old_pid, new_staff_pid=new_pid)
                 print("Real command/launcher/filesystem reset passed; booting the new season", flush=True)
                 boot()
+                if redis_reenable:
+                    assert "restored world recovery generation" not in journey.runtime_logs(root)
+                    assert old_payload_hash() == old_payload_sha256
                 client = journey.reconnect_character(plain, character=STAFF)
+                if redis_reenable:
+                    client.send("get sword"); client.expect("You do not see a sword here.")
                 client.send("score"); client.expect("Level")
                 save(STAFF)
                 if with_redis:
                     # Staff login applies wizard invisibility; public presence
                     # must not reveal that body. Check a visible mortal below.
                     assert redis("KEYS", env["REDIS_NAMESPACE"] + ":season:2:presence:session:*:" + str(new_pid)) == ""
-                    assert redis("EXISTS", *old_keys) == "0"
+                    assert redis("EXISTS", *old_keys) == expected_old_keys
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                 client.close(); client = None
                 client = journey.MudClient(plain)
@@ -387,7 +444,13 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                 assert fresh_pid > new_pid
                 before = sql("SELECT exp,copper,silver,gold,platinum FROM player_data WHERE pid=" + str(fresh_pid))
                 assert int(sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(fresh_pid))) > 0
-                stop(); boot()
+                stop()
+                if redis_reenable:
+                    new_world_sequence = redis("GET", env["REDIS_NAMESPACE"] + ":season:2:world_state:current")
+                    assert new_world_sequence
+                boot()
+                if redis_reenable:
+                    assert "restored world recovery generation sequence=" + new_world_sequence + " " in journey.runtime_logs(root)
                 client = journey.reconnect_character(plain)
                 client.send("inventory"); client.expect("a banana")
                 save(journey.CHARACTER)
@@ -397,6 +460,13 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
                 report.update(status="passed", fresh_pid=fresh_pid,
                               assertions="real command/cancel/countdown/launcher/filesystem/staff login/fresh combat/save/reconnect/reboot")
                 print("Recreated Overlord login and fresh mortal combat/loot/save/reconnect/second boot passed", flush=True)
+                if redis_reenable:
+                    assert old_payload_hash() == old_payload_sha256
+                    assert redis("GET", old_world_key) == old_world_sequence
+                    assert redis("EXISTS", *old_keys) == expected_old_keys
+                    assert redis("MGET", *retained_keys).splitlines() == ["fixture"] * len(retained_keys)
+                    report["redis_reenable_assertions"] = "valid old snapshot/floor marker before wipe; disabled reset retains old payload bytes; epoch-2 boot ignores old marker; fresh presence/gameplay/save/reconnect/new-scope recovery succeeds; unrelated keys retained"
+                    print("Redis re-enable ignored retained authenticated epoch-1 payloads and recovered fresh epoch-2 gameplay", flush=True)
                 if matched_restore:
                     source_root = root
                     source_world_key = env["REDIS_NAMESPACE"] + ":season:2:world_state:current"
@@ -512,7 +582,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, systemd_
         raise
     finally:
         suffix = "mariadb-redis-systemd" if systemd and with_redis else "mariadb-redis" if with_redis else "mariadb"
-        suffix += "-restore" if matched_restore else ""
+        suffix += "-restore" if matched_restore else "-reenable" if redis_reenable else ""
         (output / ("pwipe-runtime-" + suffix + ".json")).write_text(json.dumps(report, indent=2) + "\n")
         sql("DROP DATABASE " + database, False)
 
@@ -627,6 +697,7 @@ def flatfile_rejection(binary):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flatfile-rejection", action="store_true")
+    parser.add_argument("--redis-reenable", action="store_true", help="wipe with Redis off then re-enable against retained old recovery data (requires --redis)")
     parser.add_argument("--restore", action="store_true", help="rehearse a matched pre-wipe restore (requires --redis)")
     parser.add_argument("--redis", action="store_true", help="use a disposable Redis process")
     parser.add_argument("--systemd", action="store_true", help="use a disposable system unit through an installed privileged helper")
@@ -639,9 +710,11 @@ if __name__ == "__main__":
         options.systemd_helper = options.systemd_helper.absolute()
     if options.restore and (not options.redis or options.systemd or options.flatfile_rejection):
         parser.error("--restore requires --redis and the direct MariaDB launcher")
+    if options.redis_reenable and (not options.redis or options.restore or options.systemd or options.flatfile_rejection):
+        parser.error("--redis-reenable requires --redis and the direct MariaDB launcher without --restore")
     binary = Path(options.binary).resolve(strict=True)
     if options.flatfile_rejection:
         assert not options.redis and not options.systemd and not options.restore
         flatfile_rejection(binary)
     else:
-        run(binary, options.redis, options.systemd, options.restore, options.systemd_helper)
+        run(binary, options.redis, options.systemd, options.restore, options.redis_reenable, options.systemd_helper)

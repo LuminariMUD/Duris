@@ -63,6 +63,15 @@ and native binary are pinned to the reported revision/hash. This option requires
 `--redis` and the direct launcher; existing system-service evidence is reused. Its
 private databases/Redis/temporary trees are removed afterward.
 
+`python3 tests/async/run_pwipe_runtime_journey.py --redis --redis-reenable /absolute/path/to/dms_new`
+qualifies Redis off during the actual wipe and back on after activation. It first
+accepts an authenticated epoch-1 world generation and retrieves/re-drops a real floor
+item. The stopped old Redis payload is hashed and left in place while a new process
+runs the real countdown/reset with Redis disabled. Epoch-2 re-enable must ignore
+that floor marker and old namespace, publish new presence, and pass fresh combat/
+save/reconnect/second-boot recovery. Old payload bytes and unrelated keys remain.
+This option uses the direct launcher and excludes restore/systemd/flat-file modes.
+
 `python3 tests/async/test_pwipe_quiescence.py` executes the production writer
 preparation with the real shared writer and controlled peripheral drains. Held
 jobs and read-callback follow-up writes finish before admission closes; late jobs
