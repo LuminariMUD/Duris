@@ -21,6 +21,14 @@ filesystem cleanup and activation of the same epoch. Exit 55 is cleanup-ready;
 58 is an incomplete reset and cannot authorize deletion. Neither restarts in the
 production service policy.
 
+`test_cycle_pwipe_status.py` also proves native handoff archival: default/custom
+paths (including an external directory and a wipe target), publication/claim and
+consumption barriers, byte preservation/private archive, unsafe-state refusal,
+partial move/retry and idempotence. `test_copyover_evidence.py` runs the actual native
+producer/reader under ASan/UBSan: a previously readable world/descriptor image is
+archived by the real wiper; cold inspection and warm preparation then see absence,
+while archived bytes remain exact. Ordinary pinning/format/race cases still pass.
+
 `python3 tests/async/run_pwipe_handoff_mysql.py` creates a private MariaDB via the
 existing disposable wrapper, applies the sealed migration sequence and compares
 all live tables with the lifecycle inventory. It compiles the actual native season
@@ -28,6 +36,9 @@ functions and executes begin/ready/boot fencing against that DB, then drives the
 actual launcher's resume path with synthetic filesystem data. Cases cover missing
 SQL readiness, wrong epoch, overlapping cleanup, unsafe paths/nonexecutable artifact,
 partial cleanup, fixed retries, duplicate completion and a lost activation ACK.
+Native inputs remain live when SQL is unready, move to retained archives before
+activation, stay archived after a failed cleanup, and a new season's handoff survives
+a duplicate or lost-ACK completion retry.
 Add `--server /absolute/path/to/bin/server/dms_new` to execute the native SQL-only
 recovery entry point against the same sealed private DB and synthetic data root.
 It proves wrong/active/legacy refusal, concurrent runtime exclusion, SIGKILL during

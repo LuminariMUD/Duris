@@ -2,6 +2,7 @@
 """Exercise actual copyover producers, bounded inspection, pinning and projections."""
 from pathlib import Path
 import subprocess
+import shutil
 import os
 import tempfile
 from _paths import ROOT, rel, HARNESS_STUBS
@@ -21,8 +22,11 @@ with tempfile.TemporaryDirectory(prefix="copyover-evidence-", dir=output) as dir
             "generated_npc_state.c", "pet_restore_state.c", "item_transfer_command.c")],
         str(HARNESS_STUBS), "-Wl,--gc-sections", "-Wl,--wrap=open", "-lz", "-lbsd", "-lgnutls", "-o", str(binary),
     ], cwd=ROOT, check=True)
-    for scenario in ("race-symlink", "race-inode", "race-claimed-inode", "limits", "formats", "pin", "failed", "two", "nonregular", "symlink", "absent"):
+    for scenario in ("race-symlink", "race-inode", "race-claimed-inode", "limits", "formats", "pwipe", "pin", "failed", "two", "nonregular", "symlink", "absent"):
         state = folder / scenario
         state.mkdir()
+        if scenario == "pwipe":
+            (state / "Players/wipers").mkdir(parents=True)
+            shutil.copy2(ROOT / "Players/wipers/wipe_it_all", state / "Players/wipers/wipe_it_all")
         subprocess.run([str(binary), scenario], cwd=state, check=True, timeout=30,
                        env=dict(os.environ, COPYOVER_STATE_FILE="copyover.dat"))

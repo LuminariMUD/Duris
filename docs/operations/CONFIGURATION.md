@@ -154,7 +154,7 @@ per-operation authority transfer is not supported.
 | `DB_SSL_CA` | Required for non-loopback hosts | Regular CA file used to verify the database server certificate. |
 | `CRITICAL_COMMAND_JOURNAL_DIR` | Required outside mini mode | Absolute server-user-owned `0700` directory for the locker identification receipts. It is named for the critical-command journal it held before the persistence reset; nothing is journaled any more. |
 | `MAINTENANCE_STATE_FILE` | Optional; `runtime/maintenance-scheduler.state` | Durable scheduler cursor/completion state. The server makes a missing parent directory with mode `0700`; an existing one must be server-user controlled. A write that fails is logged once per streak in `logs/log/status`. Keep it outside `bin/`, which `make clean-all` removes. |
-| `COPYOVER_STATE_FILE` | Optional; `copyover.dat` | State file a copyover writes and the new image reads; its `.tmp` sibling is in the same directory, which the server user must be able to write. Docker sets `/var/lib/duris/copyover.dat`. |
+| `COPYOVER_STATE_FILE` | Optional; `copyover.dat` | State file a copyover writes and the new image reads; `.tmp.*` staging files share its writable directory. Docker sets `/var/lib/duris/copyover.dat`. Pwipe preflight requires canonical non-symlink paths; guarded cleanup archives its live publication, `.recovering` and `.consuming` barriers in `Players/Backup/pwipe-copyover.*` before activation. |
 
 Maintenance state retains the existing v4 layout and reads v2/v3 pending work.
 New work uses an opaque random 64-bit identity, excluding the low bytes used by
