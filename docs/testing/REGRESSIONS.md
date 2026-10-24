@@ -11,6 +11,19 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Account email registry lookup
+
+With optional `REQUIRE_EMAIL_VERIFICATION` enabled, `is_email_taken` previously
+used `fscanf(...) != 0`: EOF is nonzero, so empty/nonmatching registries could loop
+forever; matching returns leaked the FILE. A baseline call against an owned empty
+registry exceeded its one-second process bound. The lookup now uses a scoped input
+stream, preserves whitespace-token/exact-case matching, terminates at EOF and fails
+closed on open/read errors. Default-disabled behavior still touches no registry.
+`python3 tests/async/test_account_email_registry.py` executes the actual function
+under ASan/UBSan in both configurations. It checks empty/nonmatching/matching input,
+whitespace/long tokens, missing/directory read failure and 2,000 repeated lookups
+with unchanged descriptor count. It uses private synthetic files and no mail send.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,
