@@ -77,7 +77,13 @@ eligible reset. SQL resume left the file canary; launcher resume removed it and
 activated epoch 3. Test setup now uses the canonical sealed migration runner and
 opening baselines, so the actual binary's full verifier runs unchanged. Source
 contracts now scope the real reset function and recovery's offline drain exception.
-MySQL 8 optimized-binary qualification is running; do not count it as passed yet.
+The same complete matrix passed on MySQL 8.0.46 with the optimized production
+binary. Both engines included real cold-recovery Redis SCAN denial, process
+interruption and reward/readiness failure cases. Logs are under ignored
+`bin/analysis/pwipe-sql-resume-{mariadb,mysql8}.log`. Optimized binary SHA-256:
+`4c5b38d73cbb017e2cc72c8bb3ed1ee183f614fad43b0f70063dfc894df3745c`.
+Native malformed/duplicate/missing epoch argument rejection passed; the flat-file
+binary refuses SQL-only recovery with exit 58 under valid private configuration.
 
 Development MariaDB, optimized MariaDB production, and isolated flat-file builds
 passed. Lifecycle (14), runtime compatibility (7), reset manifest (12), writer/drain,
