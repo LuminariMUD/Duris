@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — recovery path preflight guards
 
-Branch `branch/issue-264-recovery-path-guards`, based on PR #361 at `f3e098387`.
+Review-ready [PR #362](https://github.com/LuminariMUD/Duris/pull/362), fix/fixture
+`a5276c00d`, committed/pushed on `branch/issue-264-recovery-path-guards`,
+based on PR #361 at `f3e098387`.
 Resolve #339/#352 review findings. Recovery parents nested below a cleared target
 would disappear during cleanup and make retry impossible; reject that layout in
 read-only preflight while keeping direct target-root and external parents supported.
@@ -67,8 +69,9 @@ Logs: `bin/analysis/pwipe-recovery-path-{baseline,final,maintenance,mail,copyove
 No new epoch/version, archive deletion, reconstruction routine or configuration
 option. Nested cleared parents have an explicit preflight refusal/relocation route;
 this preserves retryability without changing ordinary copyover behavior. Review
-#339/#352 findings are repaired in this stack; publication and final review/branch
-reconciliation follow.
+#339/#352 findings are repaired in this stack and published for review. Wiper SHA:
+`38528ff839bb500412bbf41e01b693608722fa4d8dbf71314eaa102c9e9badef`.
+Final review/branch reconciliation remains open.
 
 ## Current continuation — schema-inventory consumer repair
 
