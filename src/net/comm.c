@@ -621,6 +621,7 @@ int main(int argc, char **argv)
 {
 	int port, sslport;
 	int pos = 1;
+	uint64_t pwipe_resume_epoch = 0;
 	const char *dir;
 
 	port = DFLT_PORT;
@@ -647,6 +648,23 @@ int main(int argc, char **argv)
 
 	while ((pos < argc) && (*(argv[pos]) == '-'))
 	{
+		if (!strcmp(argv[pos], "--resume-pwipe"))
+		{
+			if (pwipe_resume_epoch || pos + 1 >= argc)
+				fatal_boot_error(
+					"comm", "--resume-pwipe requires one expected reset epoch");
+			const char *epoch = argv[++pos];
+			char *end = nullptr;
+			errno = 0;
+			const unsigned long long parsed = strtoull(epoch, &end, 10);
+			if (*epoch < '1' || *epoch > '9' ||
+			    strspn(epoch, "0123456789") != strlen(epoch) || errno || !end || *end ||
+			    parsed < 2)
+				fatal_boot_error("comm", "Invalid expected pwipe reset epoch");
+			pwipe_resume_epoch = parsed;
+			++pos;
+			continue;
+		}
 		if (!strcmp(argv[pos], "--minimal"))
 		{
 			mini_mode = 1;
@@ -715,7 +733,7 @@ int main(int argc, char **argv)
 		{
 			fatal_boot_error("comm",
 					 "Usage: %s [-m|--minimal] [-s] [-p] [-f] "
-					 "[-d pathname] [ port # ]",
+					 "[--resume-pwipe EPOCH] [-d pathname] [ port # ]",
 					 argv[0]);
 		}
 		else if ((port = atoi(argv[pos])) <= 1024)
@@ -746,6 +764,9 @@ int main(int argc, char **argv)
 	{
 		fatal_boot_error("comm", "chdir failed: %s", strerror(errno));
 	}
+	if (pwipe_resume_epoch && (copyover_boot || material_rarity_report_mode))
+		fatal_boot_error("comm",
+				 "SQL pwipe recovery cannot combine with another boot mode");
 	if (material_rarity_report_mode)
 	{
 		boot_material_rarity_objects(mini_mode);
@@ -779,6 +800,20 @@ int main(int argc, char **argv)
 
 	if (!persistence_log_start(LOG_FILE, LOG_WIZ))
 		fatal_boot_error("comm", "Could not start persistence log worker");
+
+	// Lifecycle policy is needed by both ordinary/minimal play and SQL-only recovery.
+	boot_frag_cap_config();
+	boot_account_reward_config();
+	if (pwipe_resume_epoch)
+	{
+		const bool ready = persistence_mode_requires_mysql() &&
+				   sql_resume_pwipe(pwipe_resume_epoch);
+		logit(LOG_STATUS,
+		      ready ? "SQL pwipe recovery is ready for filesystem cleanup." :
+			      "SQL pwipe recovery refused or incomplete; startup remains fenced.");
+		(void)persistence_log_drain(2000);
+		return ready ? 55 : 58;
+	}
 
 	if (persistence_mode_requires_mysql() && initialize_mysql() < 0)
 	{
@@ -1084,12 +1119,6 @@ int run_the_game(int port, int sslport)
 
 		fprintf(stderr, "-- Booting crafting system\n");
 		boot_crafting_system();
-
-		fprintf(stderr, "-- Loading frag-cap configuration\n");
-		boot_frag_cap_config();
-
-		fprintf(stderr, "-- Loading account reward configuration\n");
-		boot_account_reward_config();
 
 		fprintf(stderr, "-- Loading Hardcore configuration\n");
 		boot_hardcore_config();
