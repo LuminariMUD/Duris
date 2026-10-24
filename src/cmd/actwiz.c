@@ -4619,6 +4619,12 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 
 	argument = one_argument(argument, arg);
 
+	if (!str_cmp(arg, "pwipe") && !persistence_mode_requires_mysql())
+	{
+		send_to_char("Pwipe is unavailable in flatfile-primary mode.\r\n", ch);
+		return;
+	}
+
 	int mins_to_reboot = 0;
 	const char *type = "reboot";
 	char reason[MAX_STRING_LENGTH] = "";
