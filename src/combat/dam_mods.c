@@ -229,7 +229,7 @@ else if (IS_AFFECTED2(victim, AFF2_PROT_COLD))
 	dam_mod->mod += dam_factor[DF_PROTECTION] - 1.0;
 }
 
-if (GET_RACE(victim) == RACE_BARBARIAN)
+if (tutorial_mobile_mechanics_race(victim) == RACE_BARBARIAN)
 {
 	dam_mod->type = dam_mod_type::More;
 	dam_mod->mod += -0.4;
