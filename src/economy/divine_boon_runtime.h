@@ -16,4 +16,9 @@ bool divine_boon_legacy_admissions_allowed();
 // safety and legacy settlement before requesting the corresponding transition.
 bool divine_boon_runtime_queue(const divine_boon_state &next);
 
+// Emit only after durable publication on the game thread; never for boot replay.
+void divine_boon_announce_changes(const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &previous,
+				  const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &current,
+				  int64_t now);
+
 #endif
