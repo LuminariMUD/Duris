@@ -40,6 +40,45 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — durable roster checkpoint
+
+Branch `branch/issue-264-roster-checkpoint`, based on PR #330 at `79593ec9d`.
+Outcome: distinguish an unfinished new reset's roster transaction from one that
+already committed, without inferring completion from character data or timestamps.
+Add one nullable `roster_recreated` field to the existing season singleton: NULL
+preserves legacy/unknown provenance, begin sets 0, and the atomic roster transaction
+sets 1. New SQL-ready publication requires 1. This is the dependency for safe
+same-epoch SQL-stage recovery; that recovery entry point remains the next chunk.
+Non-goals: another job store, new fields on every table, or claiming that existing
+SQL/journal backups already cover the filesystem and Redis. Files: additive sealed
+migration/verifier and synchronized runtime contract, SQL boundary/roster/readiness,
+existing native SQL regression and docs. Proof: both-engine guarded migration,
+legacy NULL preservation, transaction rollback/committed marker and readiness
+refusal without the checkpoint, focused contracts/builds. Existing SQL-ready legacy
+epochs retain filesystem-resume compatibility. Production operations are excluded.
+The guarded migration, replay/legacy-value preservation, malformed shape/value
+refusal and full sealed runtime contract pass on MariaDB 10.11.19 and MySQL 8.0.46.
+The actual native SQL/launcher matrix passes on both engines, including begin=0,
+transaction rollback=0, successful roster=1, SQL-ready refusal without 1 and a
+post-roster Redis failure retaining 1 while fenced. Legacy SQL-ready NULL filesystem
+resume also passes. Both development backends and optimized MariaDB production
+builds pass, plus 23 migration-runner tests, seven runtime/boot contracts, 14 lifecycle
+tests, 12 reset-manifest checks, writer/quiescence, completion/fence/reward contracts,
+format and diff checks. The runtime test's redundant hardcoded migration-head pin
+now reads the sealed owner manifest. A MySQL-incompatible constrained-column rename
+in an existing corruption fixture now uses the delegated ledger's unconstrained
+source-site column, preserving the same missing-schema preflight assertion.
+
+Next SQL recovery entry point must acquire the runtime exclusion guard and verify
+sealed schema/current resetting epoch without booting the world. Only a checkpoint-
+aware reset (0 or 1) may resume; legacy NULL without SQL-ready must retain the matched-
+restore route. A committed 1 must skip roster recreation; retries must retain the
+same epoch and fixed reward-policy boundary. Redis cleanup must use the original
+old epoch (expected reset epoch minus one), not the current resetting namespace.
+The existing SQL/journal backup tool still needs verified filesystem/Redis pairing
+and recovery rehearsal. Full SQL resume, matched restore and readiness remain open.
+Publication of this checkpoint dependency remains.
+
 ## Current continuation — DurisWeb presence fence
 
 Companion worktree `/home/aiwithapex/projects/durisweb-issue264-presence`.

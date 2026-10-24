@@ -303,9 +303,18 @@ cleanup, and returns 55 without starting the game. Repeating it for that already
 completed epoch does not delete new-season files. After an ambiguous activation
 acknowledgment, read the row or repeat this same command; do not invent another epoch.
 
+New reset epochs also record `roster_recreated` in the season singleton. Begin
+sets it to 0; Overlord recreation and its 1 checkpoint commit in the same transaction.
+New SQL-ready publication requires that committed checkpoint. NULL denotes legacy
+or unknown provenance; the additive migration preserves it. Previously SQL-ready
+legacy epochs can still use filesystem resume. This checkpoint prepares SQL-stage
+recovery; it does not by itself provide a SQL resume command.
+
 For `resetting` with NULL completion time, file cleanup is prohibited. The current
 supported recovery is a matched pre-wipe DB/filesystem/Redis restore under operator
-control, not an unqualified rerun of SQL or a manual `active` update. SQL-stage resume
+control, not an unqualified rerun of SQL or a manual `active` update. The MariaDB
+generations made by `persistence_backup.py` contain SQL and journals; filesystem
+and Redis recovery evidence must be verified separately for a matched wipe restore. SQL-stage resume
 and full carryover/recovery qualification remain tracked in #264. Never change the
 row to `active` merely to bypass the fence. Production reset/restore requires owner
 authorization. Once the complete workflow is qualified and the row is active,

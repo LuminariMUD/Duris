@@ -47,7 +47,16 @@ def run():
     expected = {entry["locator"] for entry in lifecycle["entries"] if entry["kind"] == "database_table"}
     actual = set(sql("SHOW TABLES").splitlines())
     assert actual == expected, (actual - expected, expected - actual)
-    print(f"Fully migrated MariaDB inventory matches all {len(actual)} lifecycle tables", flush=True)
+    assert sql("SELECT roster_recreated IS NULL FROM season_reset_state") == "1"
+    sql("UPDATE season_reset_state SET roster_recreated=1")
+    checkpoint = next(step for step in manifest.migrations if step.migration_id == "0052_pwipe_roster_checkpoint")
+    for _ in range(2):
+        subprocess.run(mysql + ["duris_test"], input=checkpoint.apply_path.read_bytes(), env=env,
+                       check=True, stdout=subprocess.DEVNULL)
+    assert sql("SELECT roster_recreated FROM season_reset_state") == "1"
+    sql("UPDATE season_reset_state SET roster_recreated=NULL")
+    print("Roster checkpoint migration preserves legacy NULL and committed values on repeat", flush=True)
+    print(f"Fully migrated SQL inventory matches all {len(actual)} lifecycle tables ({sql('SELECT VERSION()')})", flush=True)
 
     # Compile the actual season-state functions with a tiny real-MariaDB caller.
     # The surrounding server remains covered by the later full command journey.
@@ -468,9 +477,13 @@ int main(int argc, char **argv) {
     epoch_call("begin", 2, 1)
     assert sql("SELECT season_epoch FROM season_reset_state WHERE state_id=1") == "2"
     epoch_call("ready", 3, 1)
+    assert sql("SELECT roster_recreated FROM season_reset_state") == "0"
+    epoch_call("ready", 2, 1)
+    assert sql("SELECT reset_completed_at IS NULL FROM season_reset_state") == "1"
+    sql("UPDATE season_reset_state SET roster_recreated=1")
     epoch_call("ready", 2, 0)
     epoch_call("active", 2, 1)
-    print("Native begin/SQL-ready/boot fence passed with real MariaDB", flush=True)
+    print("Native begin/SQL-ready/boot fence passed with real SQL", flush=True)
 
     output = ROOT / "bin/tests"
     output.mkdir(parents=True, exist_ok=True)
@@ -609,6 +622,7 @@ int main(int argc, char **argv) {
                    "AND name=CONCAT('~pwipe-',pid)") == "4"
         assert sql("SELECT COUNT(*) FROM currency_wallet_baseline WHERE pid=" + str(new_god)) == "1"
         sql("INSERT INTO player_data(name,account_name) VALUES('Oldmortal','fixturebank')")
+        assert sql("SELECT roster_recreated FROM season_reset_state") == "1"
         print("Overlord recreation: exact 62 only, new PID, clean balances/progression, account mapping and freed mortal name passed", flush=True)
         new_trader = sql("SELECT pid FROM player_data WHERE name='Oldmortal' AND active=1")
         assert int(new_trader) > 1004
@@ -651,6 +665,7 @@ int main(int argc, char **argv) {
         assert sql("SELECT pid,char_name,deleted_at FROM account_characters ORDER BY id") == mappings_before
         assert sql("SELECT CONCAT(reset_status,':',reset_completed_at IS NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "resetting:1"
+        assert sql("SELECT roster_recreated FROM season_reset_state") == "0"
         print("Mid-recreation failure rolled back the entire roster and kept startup fenced", flush=True)
         sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
         before = sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1")
@@ -668,12 +683,12 @@ int main(int argc, char **argv) {
         finally:
             sql("RENAME TABLE fixture_kingdom_realms TO kingdom_realms")
         print("Missing kingdom store rejected before the irreversible boundary", flush=True)
-        sql("ALTER TABLE collector_ledger RENAME COLUMN closed_reason TO fixture_closed_reason")
+        sql("ALTER TABLE collector_ledger RENAME COLUMN source_site TO fixture_source_site")
         try:
             epoch_call("wipe", 3, 1, cwd=root)
             assert sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1") == before
         finally:
-            sql("ALTER TABLE collector_ledger RENAME COLUMN fixture_closed_reason TO closed_reason")
+            sql("ALTER TABLE collector_ledger RENAME COLUMN fixture_source_site TO source_site")
         print("Delegated collector ledger schema drift rejected before epoch advance", flush=True)
         sql("RENAME TABLE siege_item_extra_descr TO fixture_siege_item_extra_descr")
         try:
@@ -861,6 +876,7 @@ int main(int argc, char **argv) {
                 assert redis("ACL", "SETUSER", "default", "+scan") == "OK"
             assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "27:resetting:1"
             assert redis("GET", old_key) == "old"
+            assert sql("SELECT roster_recreated FROM season_reset_state") == "1"
             epoch_call("active", 27, 1)
             epoch_call("clear-redis", 26, 0)
             epoch_call("clear-redis", 26, 0)
@@ -877,7 +893,7 @@ int main(int argc, char **argv) {
 
         def prepare(ready=True):
             old.write_text("old season")
-            sql("UPDATE season_reset_state SET season_epoch=2,reset_status='resetting',"
+            sql("UPDATE season_reset_state SET season_epoch=2,reset_status='resetting',roster_recreated=NULL,"
                 "reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=" +
                 ("UTC_TIMESTAMP(6)" if ready else "NULL") + " WHERE state_id=1")
 
