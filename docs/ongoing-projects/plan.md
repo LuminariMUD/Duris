@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-telemetry-cutover/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-telemetry-cutover`, [PR #345](https://github.com/LuminariMUD/Duris/pull/345).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `ea36b04fd`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-website-runtime-journey/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-website-runtime-journey`, [PR #347](https://github.com/LuminariMUD/Duris/pull/347).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `82b8f7855`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -73,7 +73,7 @@ Companion DurisWeb [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
 [#94](https://github.com/LuminariMUD/DurisWeb/pull/94) fence stale events and redact
 driver details, with backend checks and native SELECT-only lock proof. The clean
 pushed companion worktree is `/home/aiwithapex/projects/durisweb-issue264-presence`,
-branch `branch/issue-264-current-mud-permissions` at `0add858`.
+branch `branch/issue-264-website-runtime-journey` at `c477278`.
 Companion [#95](https://github.com/LuminariMUD/DurisWeb/pull/95), stacked on #94,
 repairs retired-account characters and reused-name ownership across old caches.
 Three regressions fail on the parent and pass after repair; actual service queries
@@ -91,10 +91,23 @@ recreated Overlord. Explicit website-admin grants remain separate. The fixture
 stubs only active-session validity; session-persistence/full-client evidence is
 not replaced. Focused unit checks pass (36), all required backend checks pass.
 Existing websocket principals still need the stopped-service/reconnect cutover;
-full presence/cache/leaderboard/donation integration remains open.
+Paired server [#347](https://github.com/LuminariMUD/Duris/pull/347) and companion
+[#97](https://github.com/LuminariMUD/DurisWeb/pull/97) now qualify the normal backend
+through the real reset: old HTTP/session/WHO/rank/cache/MUD-login checks, graceful
+WS close/publisher drain, five-minute wipe, new authenticated reconnects, stale-role
+cache refusal, fresh feeds and actual game delivery of a queued signed donation.
+Repeated webhook leaves one 123-cent credit. Full proof server `9569cc0ae` /
+companion `2918696`, same production binary as #343, 302.723 wall seconds; all
+private resources clean. Reports/artifact hash/commands are in the stack-tip plan.
+A separate supported-Node root/private-mount keeper-unit rehearsal proves legacy
+source access after the old unit stops and protected bytes after both stop; mount/
+alias controls pass. The website factory now selects supported MySQL 8, with narrow
+wrapper/default/boot checks and reused full proof. Joint MariaDB 11.8 and rendered-
+browser/production acceptance are not claimed. W5 backend/client-wire integration
+is qualified; final manual/readiness and full store/writer reconciliation stay open.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
-fallback consumer proof, complete website/donation/client cutover, W2
+fallback consumer proof, final website/manual/browser readiness reconciliation, W2
 remaining writer/replay audit, W4 reset/retained-reader completeness and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
