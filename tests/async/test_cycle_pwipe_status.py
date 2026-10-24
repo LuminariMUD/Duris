@@ -23,9 +23,11 @@ class FilesystemWipeTest(unittest.TestCase):
         self.script = self.root / "Players/wipers/wipe_it_all"
         shutil.copy2(ROOT / "Players/wipers/wipe_it_all", self.script)
 
-    def run_wipe(self, *args, environment=None):
+    def run_wipe(self, *args, environment=None, maintenance_state=None):
         if environment is None:
             environment = dict(os.environ, COPYOVER_STATE_FILE=str(self.root / "copyover.dat"))
+        environment = dict(environment, MAINTENANCE_STATE_FILE=str(
+            maintenance_state or self.root / "runtime/maintenance-scheduler.state"))
         return subprocess.run([str(self.script), *args], capture_output=True, text=True, env=environment)
 
     def test_preflight_is_read_only_and_cleanup_preserves_carryovers(self):
@@ -86,14 +88,41 @@ class FilesystemWipeTest(unittest.TestCase):
         self.assertEqual((archive / "publication").read_bytes(), b"COPYinside season store")
         self.assertEqual(self.run_wipe(environment=env).returncode, 0)
 
-    def test_nested_native_parent_refused_before_cleanup(self):
-        source = self.root / "Players/a/native/copyover.dat"
-        source.parent.mkdir()
-        source.write_bytes(b"COPYnested")
-        env = dict(os.environ, COPYOVER_STATE_FILE=str(source))
-        for arguments in (("--check",), ()):
-            self.assertNotEqual(self.run_wipe(*arguments, environment=env).returncode, 0)
-            self.assertEqual(source.read_bytes(), b"COPYnested")
+    def test_nested_recovery_parent_refuses_before_cleanup_can_remove_it(self):
+        for maintenance in (False, True):
+            parent = self.root / "Players/a/native"
+            parent.mkdir()
+            state = parent / "state"
+            state.write_bytes(b"DMSMNT4old state" if maintenance else b"COPYold handoff")
+            env = dict(os.environ, COPYOVER_STATE_FILE=str(state if not maintenance else self.root / "copyover.dat"))
+            arguments = {"environment": env}
+            if maintenance: arguments["maintenance_state"] = state
+            self.assertNotEqual(self.run_wipe("--check", **arguments).returncode, 0)
+            self.assertNotEqual(self.run_wipe(**arguments).returncode, 0)
+            self.assertTrue(state.exists() and (self.root / "Players/a/old").exists())
+            state.unlink(); parent.rmdir()
+
+    @unittest.skipIf(os.geteuid() == 0, "permission checks require an unprivileged process")
+    def test_nonsearchable_maintenance_ancestors_are_not_absence(self):
+        for nested in (False, True):
+            parent = self.root / "runtime"
+            parent.mkdir()
+            location = parent / "nested" if nested else parent
+            location.mkdir(exist_ok=True)
+            state = location / "state"
+            state.write_bytes(b"DMSMNT4hidden old state")
+            for mode in (0o600, 0):
+                parent.chmod(mode)
+                try:
+                    self.assertNotEqual(self.run_wipe("--check", maintenance_state=state).returncode, 0)
+                    self.assertNotEqual(self.run_wipe(maintenance_state=state).returncode, 0)
+                    self.assertTrue((self.root / "Players/a/old").exists())
+                finally:
+                    parent.chmod(0o700)
+                self.assertEqual(state.read_bytes(), b"DMSMNT4hidden old state")
+            state.unlink()
+            if nested: location.rmdir()
+            parent.rmdir()
 
     def test_unsafe_native_state_refuses_before_seasonal_deletion(self):
         path = self.root / "copyover.dat"
@@ -157,6 +186,65 @@ class FilesystemWipeTest(unittest.TestCase):
         self.assertEqual(len(archives), 2)
         self.assertEqual(sorted(path.read_bytes() for archive in archives for path in archive.iterdir()
                                 if path.name != "source-path"), [b"COPYclaimed", b"COPYpublished"])
+
+    def test_maintenance_unsafe_inputs_refuse_before_any_deletion(self):
+        for case in ("unrecognized", "symlink", "directory", "parent-link", "temporary-unrecognized"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory(prefix="duris-maintenance-path-") as directory:
+                parent = Path(directory)
+                state = parent / "scheduler.state"
+                if case == "unrecognized":
+                    state.write_text("unrelated configuration")
+                elif case == "symlink":
+                    state.symlink_to(self.root / "Accounts/keep")
+                elif case == "directory":
+                    state.mkdir()
+                elif case == "parent-link":
+                    link = parent / "alias"
+                    link.symlink_to(self.root / "Accounts", target_is_directory=True)
+                    state = link / "absent"
+                else:
+                    Path(str(state) + ".tmp").write_text("unrelated temporary file")
+                self.assertNotEqual(self.run_wipe("--check", maintenance_state=state).returncode, 0)
+                self.assertNotEqual(self.run_wipe(maintenance_state=state).returncode, 0)
+                self.assertTrue((self.root / "Players/a/old").exists())
+                self.assertEqual((self.root / "Accounts/keep").read_text(), "sentinel")
+
+    @unittest.skipIf(os.geteuid() == 0, "permission checks require an unprivileged process")
+    def test_denied_maintenance_access_refuses_before_deletion(self):
+        state = self.root / "runtime/maintenance-scheduler.state"
+        state.parent.mkdir()
+        state.write_bytes(b"DMSMNT4protected state")
+        for path, mode in ((state, 0), (state.parent, 0o500)):
+            original_mode = path.stat().st_mode & 0o777
+            path.chmod(mode)
+            try:
+                self.assertNotEqual(self.run_wipe("--check").returncode, 0)
+                self.assertNotEqual(self.run_wipe().returncode, 0)
+                self.assertTrue((self.root / "Players/a/old").exists())
+            finally:
+                path.chmod(original_mode)
+
+    def test_partial_maintenance_archive_retries_without_losing_evidence(self):
+        state = self.root / "runtime/maintenance-scheduler.state"
+        state.parent.mkdir()
+        state.write_bytes(b"DMSMNT4old captured request")
+        temporary = Path(str(state) + ".tmp")
+        temporary.write_bytes(b"DMSMNT4interrupted state save")
+        commands = self.root / "commands"; commands.mkdir()
+        (commands / "mv").write_text("#!/bin/sh\ncase \"$*\" in *.state.tmp*) exit 1;; esac\nexec /usr/bin/mv \"$@\"\n")
+        (commands / "mv").chmod(0o700)
+        env = dict(os.environ, PATH=str(commands) + ":" + os.environ["PATH"],
+                   COPYOVER_STATE_FILE=str(self.root / "copyover.dat"))
+        self.assertNotEqual(self.run_wipe(environment=env).returncode, 0)
+        self.assertFalse(state.exists())
+        self.assertTrue(temporary.exists() and (self.root / "Players/a/old").exists())
+        self.assertEqual(self.run_wipe().returncode, 0)
+        self.assertFalse(temporary.exists())
+        archives = list((self.root / "Players/Backup").glob("pwipe-maintenance.*"))
+        self.assertEqual(len(archives), 2)
+        self.assertEqual(sorted(path.read_bytes() for archive in archives for path in archive.iterdir()
+                                if path.name != "source-path"),
+                         [b"DMSMNT4interrupted state save", b"DMSMNT4old captured request"])
 
     def test_top_level_symlinks_and_wrong_types_fail_before_any_deletion(self):
         for dangling in (False, True):

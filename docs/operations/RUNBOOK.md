@@ -324,6 +324,18 @@ successor and the durable SQL-ready receipt. Both terminal statuses propagate
 through notifications; the systemd unit prevents restart on 55 and 58. Ordinary
 reboots and crashes retain their restart policy. A crash during an incomplete reset
 is stopped by the durable fence on the next launch.
+The default `runtime/maintenance-scheduler.state`, or configured
+`MAINTENANCE_STATE_FILE`, and its `.tmp` sibling are also live native recovery
+inputs. Drain alone does not clear captured retries or unacknowledged completions.
+Guarded cleanup moves them to a private `Players/Backup/pwipe-maintenance.*` archive
+before activation; the archive records their configured source path. Keep these
+bytes with recovery evidence and never restore them into a new season's scheduler
+path. This also covers external configured paths and paths inside a wiped store.
+Unreadable, symlinked, noncanonical or unrecognized checkpoints refuse preflight
+before deletion. Repair/quarantine such input explicitly before retrying; do not
+bypass the check. A partial move remains fenced and a normal retry archives what
+remains. A duplicate already-active epoch skips all cleanup and keeps fresh state.
+
 The filesystem lock is inherited by the wipe child. Killing launcher parents
 therefore does not permit overlapping cleanup while that child is still running;
 a competing resume refuses. An orphan can finish file cleanup but cannot activate

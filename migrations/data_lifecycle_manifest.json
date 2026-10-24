@@ -5904,7 +5904,7 @@
       "locator": "MAINTENANCE_STATE_FILE",
       "data_category": "operational_or_nonpersonal",
       "data_subject_key": "none",
-      "technical_purpose": "exact maintenance retry and completion recovery",
+      "technical_purpose": "Exact native maintenance retry/completion recovery; guarded pwipe archives default/configured state and its temporary sibling under private Players/Backup/pwipe-maintenance.* before activation, outside automatic scheduler startup inputs",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
