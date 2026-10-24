@@ -59,6 +59,21 @@ Files: existing MUD journey, companion native probe, runbook/regression/plan. No
 production repair or new orchestration framework is planned absent a reproduced
 failure. Full W1/W2/W4/W7 remain open, and W5 stays open until the journey passes.
 
+Initial normal-backend boot passed on a fully migrated owned MySQL database with
+source-owned website baseline/forward migrations. The first combined journey at
+server `85df4ba7f` / companion `b7859a6` passed real HTTP login, session-backed WS
+subscription, actual MUD player-login delivery and Redis WHO. It stopped before
+scheduling the wipe at a fixture assumption: the ranking API omits PID and excludes
+zero-frag players. Match its actual name contract and seed a positive derived
+ranking for the real synthetic body. No production failure was found in this pass.
+Logs: `bin/analysis/pwipe-website-{boot-smoke,runtime,server,probe}.log`.
+The existing root/private-mount legacy preservation native fixture also passes
+(alias/mount boundaries, source preservation and independent byte-copy control):
+`bin/analysis/pwipe-web-legacy-preservation-mounts.log`. This is not yet the complete
+PrivateTmp keeper-unit lifecycle rehearsal. Keep that remaining manual prerequisite
+explicit; no service with real legacy data was stopped.
+
+
 ## Current continuation — current website MUD permissions
 
 Review-ready companion [PR #96](https://github.com/LuminariMUD/DurisWeb/pull/96),
