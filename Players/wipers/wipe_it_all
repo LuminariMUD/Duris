@@ -74,6 +74,30 @@ check_copyover_state() {
   fi
 }
 for index in "${!COPYOVER_SOURCES[@]}"; do check_copyover_state "$index"; done
+# A drained scheduler may still have a durable captured retry/completion. Its
+# native checkpoint is unscoped, so archive it before a new season can boot.
+MAINTENANCE_PATH="${MAINTENANCE_STATE_FILE:-runtime/maintenance-scheduler.state}"
+[[ "$MAINTENANCE_PATH" == /* ]] || MAINTENANCE_PATH="$ROOT/$MAINTENANCE_PATH"
+MAINTENANCE_SOURCES=("$MAINTENANCE_PATH" "$MAINTENANCE_PATH.tmp")
+MAINTENANCE_NAMES=(state state.tmp)
+check_maintenance_state() {
+  local path="$1" parent
+  if [[ -L "$path" || "$(readlink -m -- "$path")" != "$path" ]]; then
+    echo "Unsafe maintenance checkpoint path: $path" >&2
+    return 1
+  fi
+  [[ -e "$path" ]] || return 0
+  parent="$(dirname -- "$path")"
+  if [[ ! -f "$path" || ! -r "$path" || ! -r "$parent" || ! -w "$parent" || ! -x "$parent" ]]; then
+    echo "Inaccessible maintenance checkpoint: $path" >&2
+    return 1
+  fi
+  case "$(head -c 7 -- "$path")" in
+    DMSMNT[234]) ;;
+    *) echo "Unrecognized maintenance checkpoint: $path" >&2; return 1 ;;
+  esac
+}
+for path in "${MAINTENANCE_SOURCES[@]}"; do check_maintenance_state "$path"; done
 if [[ "${1:-}" == --check ]]; then
   echo "Filesystem wipe preflight passed; no files changed."
   exit 0
@@ -98,6 +122,26 @@ for path in "${COPYOVER_SOURCES[@]}"; do
   fi
 done
 [[ -z "$archive" ]] || echo "wipe_it_all: archived native handoff evidence at $archive"
+maintenance_archive=""
+for index in "${!MAINTENANCE_SOURCES[@]}"; do
+  path="${MAINTENANCE_SOURCES[$index]}"
+  check_maintenance_state "$path"
+  [[ -e "$path" ]] || continue
+  if [[ -z "$maintenance_archive" ]]; then
+    check_tree Players/Backup
+    mkdir -p Players/Backup
+    maintenance_archive="$(mktemp -d -- "$ROOT/Players/Backup/pwipe-maintenance.XXXXXX")"
+    printf '%s\n' "$MAINTENANCE_PATH" > "$maintenance_archive/source-path"
+  fi
+  mv -T -- "$path" "$maintenance_archive/${MAINTENANCE_NAMES[$index]}"
+done
+for path in "${MAINTENANCE_SOURCES[@]}"; do
+  if [[ -e "$path" || -L "$path" ]]; then
+    echo "Maintenance checkpoint remains live; refusing filesystem completion: $path" >&2
+    exit 1
+  fi
+done
+[[ -z "$maintenance_archive" ]] || echo "wipe_it_all: archived maintenance evidence at $maintenance_archive"
 for path in "${TARGETS[@]}"; do
   check_tree "$path"
   [[ -d "$path" ]] || continue

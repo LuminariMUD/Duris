@@ -21,6 +21,19 @@ filesystem cleanup and activation of the same epoch. Exit 55 is cleanup-ready;
 58 is an incomplete reset and cannot authorize deletion. Neither restarts in the
 production service policy.
 
+`test_maintenance_scheduler.py` now reproduces old captured-request replay after
+successful quiesce/drain through the actual native scheduler. Before the fix, the
+new pwipe assertion failed because its checkpoint remained live after cleanup.
+The actual wiper must archive default, external/custom and wipe-target checkpoints
+and `.tmp` byte-exact with private permissions, then actual scheduler init must
+have no restored work/cursor/completion. Ordinary same-season retry/version-2/3/4
+recovery remains covered. The filesystem suite additionally refuses unknown files,
+symlinks/parent aliases, wrong types and denied access before deletion, and proves
+partial main/temporary archive retry without lost evidence. The real SQL/launcher
+matrix archives these inputs before activation and preserves a fresh checkpoint
+on duplicate completion and activation-ACK retry. No checkpoint format change or
+new epoch column is needed because the automatic startup input is isolated.
+
 `test_cycle_pwipe_status.py` also proves native handoff archival: default/custom
 paths (including an external directory and a wipe target), publication/claim and
 consumption barriers, byte preservation/private archive, unsafe-state refusal,

@@ -40,6 +40,49 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — maintenance checkpoint isolation
+
+Branch `branch/issue-264-maintenance-state-isolation`, based on PR #351 at `9525db3a7`.
+Outcome: remove a live old-season replay input from automatic new-season startup.
+The actual maintenance scheduler persists captured request values/content and
+requeues `request_pending` on init; its drain waits for execution, not durable
+acknowledgment. The current wiper leaves its default/custom state and `.tmp` live,
+despite the lifecycle manifest classifying the store as regenerate. Preserve these
+inputs in a private archive before filesystem completion, using existing guarded
+cleanup rather than changing the native checkpoint format or adding epoch fields.
+Files: existing wiper, scheduler/filesystem/native handoff tests, manifest and
+runbook/regression/plan. Proof: actual scheduler creates/replays a captured old
+request; actual cleanup preserves bytes but makes init fresh, plus unsafe paths,
+partial archival/retry and actual launcher matrices on both SQL engines. No other
+legacy-store classifications are closed merely by this repair.
+
+Reproduction is confirmed: actual scheduler quiesce/drain/ack of a retry leaves a
+captured report that actual init replays. The initial pwipe assertion fails because
+the prior wiper leaves both main and temporary state live. The fixed wiper validates
+all checkpoint paths before any archival/deletion, then archives recognized native
+state and `.tmp` to private `Players/Backup/pwipe-maintenance.*` with source path.
+Actual scheduler tests pass default, external/custom and wipe-target paths, exact
+archive bytes/permissions and fresh init with no old work. All 13 filesystem tests
+pass, including unsafe input/access refusal and partial archive retry without lost
+evidence. Lifecycle purpose and operator steps now state the actual isolation.
+Full native SQL/launcher/recovery matrices pass on MariaDB 10.11.19 and MySQL
+8.0.46 with the new wiper. They prove archived state before activation, repaired
+retry and preservation of fresh checkpoints on duplicate/lost-activation-ACK retry.
+Logs: `bin/analysis/pwipe-maintenance-{baseline,final,mariadb,mysql}.log`. The baseline
+log records the reproduced failure; final native scheduler/default/custom/wipe-target
+and all legacy-version checks pass. Lifecycle (14), reset manifest (12), standalone
+validator (200 tables/31 other stores/42 Redis surfaces), reset fence, SQL completion,
+shared-writer regression, Python compilation, shell syntax and formatting pass.
+Wiper SHA-256: `efdf0f215bd13a448d7a3d9eeb5a6683c370249768bbfcd9506b90210b4becbb`.
+Publication follows; remaining full inventory/direct-writer audit stays open.
+No production C/C++ source/schema changed; reuse existing binaries/builds and full
+command/gameplay/service/website journeys with actual launcher proof for this delta.
+Next audit targets remain explicit: retained locker-identification receipts (real
+consumer uses PID/account/racewar, not names), legacy `lib/players`/`lib/accounts`
+and retired fallback/quarantine paths (no current server path references found yet),
+then the complete retained SQL/outbox/worker map and final manual readiness record.
+Do not mark these complete from name searches alone.
+
 ## Current continuation — killed launcher and orphan wipe child
 
 Review-ready [PR #351](https://github.com/LuminariMUD/Duris/pull/351), fixture
