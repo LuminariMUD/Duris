@@ -7,6 +7,7 @@
 #include "core/utils.h"
 #include "ships/ships.h"
 #include <cassert>
+#include <map>
 #include <cstdarg>
 #include <ctime>
 #include <iostream>
@@ -23,6 +24,10 @@ static divine_boon_state authority, queued;
 static bool available = true, pending = false, admit = true, eligible = true;
 static unsigned writes = 0, forces = 0, audits = 0;
 static string output;
+static bool capturing_echo = false;
+static string all_echoes;
+static map<P_char, string> recipient_echoes;
+P_desc descriptor_list = nullptr;
 const divine_boon_state *divine_boon_runtime_state()
 {
 	return available ? &authority : nullptr;
@@ -61,9 +66,16 @@ void wizlog(int, const char *, ...)
 {
 	++audits;
 }
-void send_to_char(const char *message, P_char)
+void send_to_char(const char *message, P_char ch)
 {
-	output += message;
+	if (capturing_echo)
+		recipient_echoes[ch] += message;
+	else
+		output += message;
+}
+void send_to_all(const char *message)
+{
+	all_echoes += message;
 }
 void send_to_char_f(P_char, const char *format, ...)
 {
@@ -136,23 +148,46 @@ int main()
 	player.player.name = const_cast<char *>("Tester");
 	auto shown = invoke(&player, "");
 	assert(shown.starts_with(
-		"The Gods of Duris have given you and your allies the following boons:\r\n"));
+		"&+YThe Gods of Duris have given you and your allies the following boons:&n\r\n"));
+	assert(shown.find("&+G[1] 200% Experience&n") != string::npos);
+	assert(shown.find("&+C[3] +25% Cargo & Contraband&n") != string::npos);
+	assert(shown.find("&+R[4] +50% PvP Epic Points&n") != string::npos);
 	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
-	assert(shown.find("Good defeats qualifying Evil") != string::npos);
+	assert(shown.find("Frags against Evil racewar") != string::npos);
 	assert(shown.find("&+CSource&n") != string::npos &&
 	       shown.find("&+YDestination&n") != string::npos);
-	assert(shown.find("200% total base") != string::npos &&
-	       shown.find("50% base") != string::npos &&
-	       shown.find("25% base sale") != string::npos);
-	assert(shown.find("Epic stone") == string::npos); // Invalid target is never advertised.
+	assert(shown.find("From:") == string::npos && shown.find("To:") == string::npos);
+	assert(shown.find("Next hourly opportunity:") == string::npos);
+	assert(shown.find("&+YNext Divine Boon opportunity in ") != string::npos);
+	assert(shown.find("base sale") == string::npos);
+	assert(shown.find("&+M[2]") == string::npos); // Invalid epic target is hidden.
+	// A single cargo boon occupies one aligned table row, not three separate lines.
+	const size_t cargo_at = shown.find("&+C[3]");
+	assert(cargo_at != string::npos);
+	const size_t cargo_start = shown.rfind("\r\n", cargo_at) + 2;
+	const size_t cargo_end = shown.find("\r\n", cargo_at);
+	const string cargo_line =
+		strip_ansi(shown.substr(cargo_start, cargo_end - cargo_start).c_str());
+	assert(cargo_line.size() == 79);
+	assert(cargo_line.substr(2, 4) == "[3] ");
+	assert(cargo_line.find("Source -> Destination", 35) != string::npos);
+	assert(cargo_line.substr(69, 10).find("h ") != string::npos);
+	// A valid epic target is magenta; zone colouring remains its original ANSI.
+	const int original_zone = zones[0].number;
+	zones[0].number = 21;
+	shown = invoke(&player, "");
+	assert(shown.find("&+M[2] +50% Epic Points&n") != string::npos);
+	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
+	zones[0].number = original_zone;
 	player.player.racewar = RACEWAR_EVIL;
 	shown = invoke(&player, "list");
-	assert(shown.find("Evil defeats qualifying Good") != string::npos &&
+	assert(shown.find("Frags against Good racewar") != string::npos &&
 	       shown.find("&+Gxxx") != string::npos);
 	player.player.racewar = RACEWAR_NEUTRAL;
 	shown = invoke(&player, "");
-	assert(shown.find("PvP") == string::npos && shown.find("Zone EXP") == string::npos &&
-	       shown.find("Cargo & contraband") != string::npos);
+	assert(shown.find("PvP Epic Points") == string::npos &&
+	       shown.find("200% Experience") == string::npos &&
+	       shown.find("+25% Cargo & Contraband") != string::npos);
 	eligible = false;
 	shown = invoke(&player, "");
 	assert(shown.find("no active boons") != string::npos);
@@ -196,6 +231,73 @@ int main()
 	invoke(&player, "pause", true);
 	assert(!pending && authority == previous);
 	assert(invoke(&player, "status", true).find("revision=") != string::npos);
+	// Ensure actual world messages are coloured, faction-specific and correctly
+	// suppressed for unchanged states, staff replacement and unaffiliated players.
+	char_data good = {}, evil = {}, neutral = {};
+	good.player.racewar = RACEWAR_GOOD;
+	evil.player.racewar = RACEWAR_EVIL;
+	neutral.player.racewar = RACEWAR_NEUTRAL;
+	descriptor_data gd = {}, ed = {}, nd = {};
+	gd.character = &good;
+	ed.character = &evil;
+	nd.character = &neutral;
+	gd.connected = ed.connected = nd.connected = CON_PLAYING;
+	gd.next = &ed;
+	ed.next = &nd;
+	descriptor_list = &gd;
+	capturing_echo = true;
+	std::array<divine_boon_slot, DIVINE_BOON_SLOTS> before = {}, after = {};
+	exp.id = 101;
+	exp.starts_at = hour;
+	exp.expires_at = hour + 8 * DIVINE_BOON_HOUR;
+	after[0] = exp;
+	divine_boon_announce_changes(before, after, now);
+	assert(recipient_echoes[&good].find("&+G200% Experience&n") != string::npos);
+	assert(recipient_echoes[&good].find("&+RNative coloured dungeon&n") != string::npos);
+	assert(recipient_echoes[&evil].find("&+G200% Experience&n") != string::npos);
+	assert(recipient_echoes[&evil].find("Native coloured dungeon") == string::npos);
+	assert(recipient_echoes[&neutral].empty() && all_echoes.empty());
+	const auto one = recipient_echoes[&good];
+	divine_boon_announce_changes(after, after, now);
+	assert(recipient_echoes[&good] == one && all_echoes.empty());
+	before = after;
+	cargo.id = 102;
+	cargo.starts_at = hour;
+	cargo.expires_at = hour + 4 * DIVINE_BOON_HOUR;
+	after[1] = cargo;
+	divine_boon_announce_changes(before, after, now);
+	assert(all_echoes.find("&+C+25% Cargo & Contraband&n") != string::npos);
+	assert(all_echoes.find("&+CSource&n") != string::npos);
+	assert(all_echoes.find("&+YDestination&n") != string::npos);
+	before = after;
+	after[1] = {};
+	const auto grant_echo = all_echoes;
+	divine_boon_announce_changes(before, after, now);
+	assert(all_echoes == grant_echo); // Manual replacement is not expiry.
+	divine_boon_announce_changes(before, after, cargo.expires_at);
+	assert(all_echoes.find("has expired") != string::npos);
+	before = after;
+	pvp.id = 103;
+	pvp.starts_at = hour;
+	pvp.expires_at = hour + 4 * DIVINE_BOON_HOUR;
+	after[2] = pvp;
+	divine_boon_announce_changes(before, after, now);
+	assert(all_echoes.find("&+R+50% PvP Epic Points&n") != string::npos);
+	before = after;
+	epic.id = 104;
+	epic.zones = { 18, -1 };
+	epic.starts_at = hour;
+	epic.expires_at = hour + 8 * DIVINE_BOON_HOUR;
+	after[3] = epic;
+	divine_boon_announce_changes(before, after, now);
+	assert(recipient_echoes[&good].find("&+M+50% Epic Points&n") != string::npos);
+	assert(recipient_echoes[&evil].find("&+M+50% Epic Points&n") == string::npos);
+	before = after;
+	after[0] = {};
+	divine_boon_announce_changes(before, after, exp.expires_at);
+	assert(recipient_echoes[&good].find("have withdrawn") != string::npos);
+	capturing_echo = false;
+	descriptor_list = nullptr;
 	std::cout
 		<< "Divine commands: native ANSI/80 columns, sides, invalid targets, automatic benefits, durable staff controls and history passed\n";
 }

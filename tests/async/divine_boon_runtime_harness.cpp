@@ -14,6 +14,7 @@ bool divine_trade_runtime_boot(uint64_t)
 #include "player/player_save_worker.h"
 
 #include <cassert>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -25,6 +26,22 @@ bool divine_trade_runtime_boot(uint64_t)
 
 unsigned long long ne_event_tick = 0;
 static uint64_t pending_rewards = 0;
+static unsigned grants = 0, expiries = 0;
+void divine_boon_announce_changes(const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &before,
+				  const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &after,
+				  int64_t now)
+{
+	for (const auto &slot : after)
+		if (slot.id &&
+		    std::none_of(before.begin(), before.end(),
+				 [id = slot.id](const auto &old) { return old.id == id; }))
+			++grants;
+	for (const auto &old : before)
+		if (old.id && old.expires_at <= now &&
+		    std::none_of(after.begin(), after.end(),
+				 [id = old.id](const auto &slot) { return slot.id == id; }))
+			++expiries;
+}
 
 boon_reward_health boon_reward_transaction_health_copy()
 {
@@ -164,6 +181,7 @@ int main(int argc, char **argv)
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::draining);
 	finish();
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::divine);
+	assert(grants == 0 && expiries == 0);
 	const auto base = divine_boon_runtime_state()->last_opportunity;
 	auto next = *divine_boon_runtime_state();
 
@@ -174,10 +192,12 @@ int main(int argc, char **argv)
 	assert(divine_boon_runtime_queue(next));
 	finish();
 	assert(divine_boon_runtime_state()->slots[0].id == 1);
+	assert(grants == 1 && expiries == 0);
 	assert(divine_boon_runtime_boot(base + 20 * DIVINE_BOON_HOUR));
 	assert(!divine_boon_runtime_state()); // Restart skips hours only after committing.
 	finish();
 	assert(!divine_boon_runtime_state()->slots[0].id);
+	assert(grants == 1 && expiries == 0); // No duplicate after reboot.
 	assert(divine_boon_runtime_state()->last_opportunity == base + 20 * DIVINE_BOON_HOUR);
 	next = *divine_boon_runtime_state();
 	assert(divine_boon_set_paused(&next, true, base + 20 * DIVINE_BOON_HOUR));
@@ -223,6 +243,7 @@ int main(int argc, char **argv)
 	assert(divine_boon_runtime_pending());
 	finish();
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::divine);
+	assert(grants == 1 && expiries == 0);
 	assert(!divine_boon_legacy_admissions_allowed());
 
 	player_save_worker_shutdown();

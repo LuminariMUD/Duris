@@ -31,6 +31,7 @@ struct pending_write
 	uint64_t expected_revision;
 	std::string flatfile_root;
 	bool flatfile;
+	bool announce = false;
 	store_result result = store_result::io_error;
 	std::atomic<bool> finished = false;
 };
@@ -122,6 +123,8 @@ bool stage(const divine_boon_state &next, uint64_t expected_revision)
 		pending = std::make_shared<pending_write>();
 		pending->next = next;
 		pending->expected_revision = expected_revision;
+		pending->announce = ready && published.mode == divine_boon_mode::divine &&
+				    next.mode == divine_boon_mode::divine;
 		pending->flatfile = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
 		const char *root = persistence_mode_flatfile_root();
 		pending->flatfile_root = root ? root : "";
@@ -220,9 +223,14 @@ void divine_boon_runtime_pulse()
 	const auto result = pending->result;
 	if (result == store_result::ok || result == store_result::already_applied)
 	{
+		const bool announce = pending->announce;
+		const auto previous_slots = published.slots;
 		published = std::move(pending->next);
 		ready = true;
 		pending.reset();
+		if (announce)
+			divine_boon_announce_changes(previous_slots, published.slots,
+						     time(nullptr));
 	}
 	else
 	{
