@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — isolate retained native handoffs
 
 Branch `branch/issue-264-copyover-season-fence`, based on PR #337 at `7bc1672de`.
+Review-ready [PR #339](https://github.com/LuminariMUD/Duris/pull/339), implementation
+`c1201c174`, qualification record `fb26afdca`; branch is committed/pushed.
 Source review found that native handoff images have no SQL epoch and survive the
 filesystem wipe. Warm `-C` preparation can claim them; cold artifact boot also reads
 the configured publication and `.recovering` image, so clearing descriptors alone
