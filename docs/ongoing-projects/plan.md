@@ -40,6 +40,52 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — current website MUD permissions
+
+Review-ready companion [PR #96](https://github.com/LuminariMUD/DurisWeb/pull/96),
+commit `0add8588686fc70492cd9e994704905e96d73fbd`, committed/pushed. Companion
+branch `branch/issue-264-current-mud-permissions`, based on review-ready
+PR #95 at `1819a63`. The actual HTTP middleware and websocket authorization call
+`getUserPermissions`, which returns a five-minute `perms:ACCOUNT` entry before
+reading current characters. `clearPermissionCache` targets `perm:user:` instead;
+manual cleanup through that function would miss the real entry. Outcome: derive
+MUD levels/guild permissions from current active SQL characters at each check,
+remove the derived-role cache and its obsolete invalidators/test cleanup, while
+preserving separately assigned website-admin permissions and their existing path.
+Extend the existing account-retirement fixture with real SQL role changes and an
+authenticated HTTP staff gate; verify stale cached role ignored, retired staff
+refused, recreated Overlord allowed, inactive bodies excluded and DB failure
+cannot reuse old privilege. No new role version, epoch lookup or cache framework.
+Files: permission service, focused existing fixture/probe cleanup and backend/news
+notes. Complete the wider website/client/donation cutover afterward; no deployment
+or live publication. Other W1/W2/W4/W7 requirements remain open.
+
+Two focused regressions fail against the original #95 permission service: the old
+cached staff role bypasses fresh SQL and a failed current query. After repair,
+seven tests pass on each disposable MariaDB 10.11 and MySQL 8.0 instance, including
+the extended actual service/HTTP journey. A real JWT with a fixed synthetic active
+session passes the staff gate at level 61, then the same token receives HTTP 403
+after native SQL retirement while old cached role data remains. A recreated level-
+62 Overlord receives HTTP 200; direct inactive-body lookup returns empty. Old guild
+privilege disappears; separately assigned website-admin permission remains.
+The active-session check is stubbed in this consumer fixture; it does not replace
+existing session-persistence evidence or prove full website/MUD cutover.
+Focused account/presence/websocket-access unit run: 36 pass, two native opt-ins
+skipped there; the account/HTTP native opt-in passes on both owned engines.
+Required backend format/lint/types/build and MUD-write allowlist pass (53 existing
+classified writes). Reuse unchanged presence-lock and MUD builds/journeys; no new
+SQL write or game source/schema changed. The obsolete role-cache invalidators and
+sole test-probe cleanup caller are removed. Native databases/wrappers exit cleanly.
+Logs: `bin/analysis/pwipe-web-permission-{before,unit,mariadb,mysql,focused,format,lint,types,build,writes}.log`.
+The unpublished admin news payload now includes this future access behavior.
+
+Next: finish the combined website presence/cache/leaderboard, stopped/drained
+queued-donation and websocket reconnect journey. Existing websocket principals
+must be disconnected by the website stop; fresh authorizations use the repaired
+current account/permission readers. Complete the legacy temporary-copy preservation
+gate before stopping a service. W5 remains open for that wider proof.
+
+
 ## Current continuation — website current account characters
 
 Main source remains `branch/issue-264-telemetry-cutover` at `a85e496a7` / PR #345.
@@ -81,8 +127,8 @@ all prior game builds and reset proof. The public account release note is a loca
 unpublished payload, separate from the prior admin presence draft.
 
 Next W5 proof must still cover the complete HTTP/client lifecycle. Source tracing
-also found the existing five-minute `permissionService` cache; the manual website
-cutover must invalidate/recompute it so retired staff cannot retain roles. Presence
+also found the old five-minute `permissionService` cache; the subsequent PR #96
+repair above removes that cache and recomputes current MUD-derived permissions. Presence
 and cached MUD lists select SQL epochs, while the donation worker stamps epochs
 before publishing. Rehearse stopped/drained external writers, queued donations,
 reconnects and old general-cache entries before claiming that gate. Complete the
