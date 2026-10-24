@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — schema-inventory consumer repair
 
-Branch `branch/issue-264-schema-consumers`, based on PR #360 at `89705bbeb`.
+Review-ready [PR #361](https://github.com/LuminariMUD/Duris/pull/361), repair
+`386cd488b`, committed/pushed on `branch/issue-264-schema-consumers`,
+based on PR #360 at `89705bbeb`.
 Resolve review finding on PR #309: removing the validator's old constant left the
 archive module and two test consumers referencing it. Actual archive execution
 regression fails at import with AttributeError; erasure/export import that module.
@@ -58,7 +60,7 @@ checks for archive, erasure and export and the canonical validator pass. Baselin
 `bin/analysis/pwipe-schema-consumers-baseline.log`; final logs:
 `pwipe-schema-{archive,telemetry,erasure,export}.log`. No other removed-validator
 constant references remain. Python compilation/diff and commit hooks pass. The #309
-review finding is repaired in the current stack; publication follows. This repairs
+review finding is repaired in the current stack and published for review. This repairs
 existing operational tools rather than bypassing their retention/privacy approval.
 
 ## Current continuation — complete SQL postflight coverage
