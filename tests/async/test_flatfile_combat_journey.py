@@ -393,24 +393,29 @@ def runtime_logs(run_root: pathlib.Path) -> str:
 def create_character(client: MudClient, expected_room: str | None = "The Regression Arena",
                      class_name: str = "w", *, account: str = ACCOUNT,
                      character: str = CHARACTER, email: str = EMAIL,
-                     hometown: str | None = None, race_name: str = "h") -> None:
+                     hometown: str | None = None, race_name: str = "h",
+                     existing_account: bool = False) -> None:
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
         client.send("9")
         client.expect("account name")
     client.send(account)
-    client.expect("is this correct?")
-    client.send("y")
-    client.expect("email address")
-    client.send(email)
-    client.expect("is this correct?")
-    client.send("y")
-    client.expect("enter your password")
-    client.send(PASSWORD)
-    client.expect("Please re-enter the same password to confirm:  ")
-    client.send(PASSWORD)
-    client.expect("information correct?")
-    client.send("y")
+    if existing_account:
+        client.expect("enter your password")
+        client.send(PASSWORD)
+    else:
+        client.expect("is this correct?")
+        client.send("y")
+        client.expect("email address")
+        client.send(email)
+        client.expect("is this correct?")
+        client.send("y")
+        client.expect("enter your password")
+        client.send(PASSWORD)
+        client.expect("Please re-enter the same password to confirm:  ")
+        client.send(PASSWORD)
+        client.expect("information correct?")
+        client.send("y")
     client.expect("PRESS RETURN")
     client.send("")
     client.expect("Please select an option")
