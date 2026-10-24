@@ -7,6 +7,8 @@
 #include <vector>
 
 constexpr size_t DIVINE_BOON_SLOTS = 8;
+// One slot each stays reserved for Cargo and PvP; Exp and Epic share the rest.
+constexpr size_t DIVINE_BOON_ZONE_SLOTS = DIVINE_BOON_SLOTS - 2;
 constexpr int64_t DIVINE_BOON_HOUR = 3600;
 constexpr int64_t DIVINE_BOON_REPEAT_WINDOW = 12 * DIVINE_BOON_HOUR;
 // Two sides for at most eight existing plus twelve newly expired hourly slots.
@@ -87,9 +89,11 @@ bool divine_boon_reconcile(divine_boon_state *state, int64_t now);
 bool divine_boon_reset_season(divine_boon_state *state, int64_t now);
 bool divine_boon_set_paused(divine_boon_state *state, bool paused, int64_t now);
 bool divine_boon_replace(divine_boon_state *state, size_t slot, int64_t now);
-// A null choice durably consumes an empty opportunity. Choice identity/times
-// must be unset; they are assigned here. A replay cannot consume the hour again.
-bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon_slot *choice);
+// No choice (null or zero count) durably consumes an empty opportunity. Each
+// choice fills the next empty slot. Choice identity/times must be unset; they
+// are assigned here. A replay cannot consume the hour again.
+bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon_slot *choices,
+			size_t count = 1);
 
 // Shared, versioned, checksummed snapshot for both persistence backends.
 bool divine_boon_state_encode(const divine_boon_state &state, std::vector<uint8_t> *bytes);

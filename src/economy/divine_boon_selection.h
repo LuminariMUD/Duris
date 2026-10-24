@@ -16,15 +16,17 @@ struct divine_boon_selection_diagnostic
 	bool pvp_eligible = false;
 	bool sampled = false;
 	const char *reason = "unavailable";
-	divine_boon_category selected = divine_boon_category::none;
+	unsigned categories = 0; // Bit per generated divine_boon_category.
 };
 
-// Uses the existing boot mobile profiles and actual reset locations. Unknown
-// content stays outside the reviewed pool. No item rewards or quest level gate.
+// Uses the existing boot mobile profiles and actual reset locations. Exp zones
+// pass the world-quest zone vetting. No item rewards or quest level gate.
 bool divine_boon_selection_bootstrap();
+// Up to one new objective per pool: Exp or Epic (while fewer than
+// DIVINE_BOON_ZONE_SLOTS are active), PvP and Cargo (each while none is active).
 bool divine_boon_select(const divine_boon_state &state, int64_t now,
 			const std::array<divine_boon_population, 2> &population,
-			divine_boon_slot *choice,
+			std::vector<divine_boon_slot> *choices,
 			divine_boon_selection_diagnostic *diagnostic = nullptr);
 // Rechecks runtime flags and the proved ordinary path for display/admission.
 bool divine_boon_zone_eligible(int zone_number, unsigned side);
