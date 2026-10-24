@@ -288,6 +288,13 @@ Rejected UIDs, delivery markers, baselines and immutable outcome/receipt history
 survive; revision allocation continues from that history. Pending old deliveries
 recognize the retired body and cannot feed or bind its replacement.
 
+Preparation drains the shared writer and its actual SQL read-completion chain
+before closing admission. Accepted player saves and SQL writes finish before reset;
+a timeout retains queued work and resumes normal admission. A terminal SQL failure
+during the drain rolls back its transaction and refuses reset. This joint behavior
+is covered by `run_pwipe_writer_mysql.py` against both disposable SQL engines;
+peripheral subsystem drain implementations keep their separate qualification.
+
 Collector candidates and held stock close through the normal audited season-reset
 cancellation. Held items move to destroyed custody; listing records, payloads,
 receipts and increasing listing IDs remain as history. Normal recovery excludes

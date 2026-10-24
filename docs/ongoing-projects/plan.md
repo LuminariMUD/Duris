@@ -40,6 +40,38 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — shared writer and real SQL callbacks
+
+Branch `branch/issue-264-writer-sql-quiescence`, based on PR #349 at `f43c43603`.
+Outcome: prove the actual `pwipe_quiesce_writers` drains accepted shared-writer
+player saves, SQL transactions and dependent read callbacks before destructive SQL.
+Hold real worker work, then exercise success, timeout and terminal SQL failure;
+verify accepted work survives refusal and normal admission resumes. Non-goals:
+a new production hook/framework, substituting the actual SQL callback queue, or
+repeating unchanged full command timers. Files: focused native SQL fixture/driver
+and the owning regression/runbook/plan records. Proof: both owned SQL engines,
+actual writer/async/repository/pool, canonical migrated schema and independent
+SQL observations. Peripheral subsystem drains are controlled empty boundaries;
+their full implementations and command integration retain their existing proof.
+No production source/schema change is proposed without a reproduced defect.
+
+The MariaDB 10.11.19 run passes all three scenarios. The real worker is held with
+one accepted player-language capture and one SQL update behind it. An independent
+connection sees revision/counter zero until release. Success commits revision 1 /
+proficiency 42, then both actual read callbacks and their dependent transaction
+(counter 3), closes admission and prevents deleted rows returning. Timeout preserves
+the same inflight/queued jobs and completes them after release. A real missing-column
+read fails after updating +100 inside its transaction; rollback leaves counter 3,
+reports the failed callback/health and refuses preparation. Both refusals accept and
+commit a fresh revision 2 / proficiency 43 and counter 7 after resuming. This closes
+the real-SQL shared-writer/callback gap without a production change. MySQL 8.0.46 passes the identical three scenarios. Logs:
+`bin/analysis/pwipe-writer-sql-{mariadb,mysql}.log`. The existing source/shared-writer
+quiescence regression, Python compilation, changed-line formatting and commit hooks
+pass. No production source/schema changed; reuse the previous production/flat-file
+builds and full timer/service/gameplay/website evidence. Full W2 remains open for
+final direct/external-writer and replay reconciliation. All owned resources cleaned.
+Review-ready publication is the next step.
+
 ## Current continuation — epoch-boundary COMMIT acknowledgment
 
 Review-ready [PR #349](https://github.com/LuminariMUD/Duris/pull/349), fixture
