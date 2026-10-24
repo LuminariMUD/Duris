@@ -40,6 +40,48 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — DurisWeb presence fence
+
+Companion worktree `/home/aiwithapex/projects/durisweb-issue264-presence`.
+Review-ready DurisWeb PR #93 (https://github.com/LuminariMUD/DurisWeb/pull/93), branch
+`branch/issue-264-presence-season-fence` at `34d27ca`, based on master `7147e6b1`.
+Review-ready stacked DurisWeb PR #94 (https://github.com/LuminariMUD/DurisWeb/pull/94),
+branch `branch/issue-264-presence-diagnostics` at `69c8671`; both branches are pushed
+and the companion worktree is clean.
+Outcome: prevent cached old-channel messages from being broadcast after the SQL
+season boundary. Reuse the current epoch lookup and InnoDB shared row lock through
+synchronous publication, ordered against pwipe's existing FOR UPDATE boundary.
+Recheck subscriber identity/channel and in-memory hook state after async work.
+Non-goals: another epoch store/cache, frontend protocol changes, new MUD writes,
+or deployment. Files: website subscriber, focused behavioral/native lock tests,
+architecture note and local release-note draft; keep this server plan updated.
+Proof: enabled/disabled delivery, resetting/changed/missing epoch and DB failures,
+stop/refresh/hook races, rollback/connection ownership, real SQL boundary ordering,
+and required backend checks. Focused unit/hook/security suites pass (78 tests;
+the opt-in native case is separately run). Native SELECT-only lock ordering passes
+on MariaDB 10.11 and MySQL 8.0: the MUD FOR UPDATE selector times out while publication
+holds its shared lock, then succeeds after commit; fenced old events are refused and
+a fresh subscription receives epoch 2. Backend format/lint/type/build and the 53-write
+MUD allowlist audit pass. No lockfile/dependency changes were needed (offline cache
+reuse). Local admin Website Changelog draft is prepared; publication waits for
+verified deployment. A separate diagnostics finding remains in this subscriber:
+startup/refresh/Redis/close callbacks forward raw driver messages. Four sentinel
+cases reproduced the disclosure; PR #94 replaces those details with fixed categories.
+All 82 focused tests and required backend checks pass. Native lock evidence from
+PR #93 is reused for this diagnostics-only follow-up. No extra public news entry
+is needed for internal log text. The admin draft is local/unpublished; no deployment
+or live application write occurred.
+
+Next: backup/recovery prerequisites and matched restore/SQL-stage recovery using
+`src/sql/sql.c`, `scripts/persistence_backup.py`, `scripts/persistence_restore.py`
+and existing disposable fixtures. Native SQL-stage resume remains unimplemented;
+never rerun the non-idempotent roster recreation or manually set active as a recovery.
+W5 also retains whole website/cache/donation/client/telemetry cutover acceptance.
+Before any website service stop, follow its `docs/deployment.md` legacy temporary-copy
+preservation gate: PrivateTmp cleanup can remove unmanaged copies. Rehearse that
+external-writer cutover with synthetic data; the source fence alone is not the full
+website integration journey.
+
 ## Redis dependency failure qualification
 
 Branch `branch/issue-264-redis-failure-qualification`, based on PR #327 at `f1db24d4d`.
@@ -89,15 +131,10 @@ Commit hooks passed; PR #330 is ready for review. Scope is the private mini worl
 open for inventory/custody/recovery, Redis re-enable, external cutover and the other
 W1–W7 acceptance items.
 
-Next external integration finding is source-confirmed in local DurisWeb master
-`7147e6b1` (clean, not edited): `backend/src/services/playerEventSubscriber.ts`
-refreshes channels every 60 seconds, retains the old channel after refresh failure,
-and dispatches events by cached channel equality without rechecking the active SQL
-epoch. Review its tests and async stop/hook races before a focused companion fix.
-`donationOutboxService.ts` and `onlinePlayersService.ts` have active-epoch queries;
-transaction ordering and manual external-writer cutover still need qualification.
-Follow that repository's AGENTS/readme/development/conventions/security instructions
-before editing; no website deployment or production operation is authorized.
+The source-confirmed DurisWeb stale-event finding at `7147e6b1` is addressed by
+companion PRs #93/#94 above. Their native shared-row-lock proof is local and backend
+scoped. Other website readers/writers, queued donations, cached lists, reconnecting
+clients and telemetry attribution still need the W5 cutover rehearsal.
 
 ## Current continuation — flat-file command rejection
 

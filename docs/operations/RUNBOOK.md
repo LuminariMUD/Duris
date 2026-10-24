@@ -286,6 +286,12 @@ checks separately exercise a real unavailable Redis endpoint and a denied cleanu
 command: the first preserves the old season, the second keeps the new epoch fenced.
 Repairing Redis cleanup alone does not declare SQL reset complete.
 
+Before stopping website writers, complete DurisWeb's
+[legacy temporary-copy preservation gate](https://github.com/LuminariMUD/DurisWeb/blob/7147e6b1bece2e650dbe3cb312c904edfa43bf9d/docs/deployment.md#legacy-temporary-copy-preservation-gate).
+Its service's private temporary directory can be removed on stop. The player-event
+season fence orders publication against the SQL boundary; the full external-writer,
+cache, donation and reconnect cutover still needs its separate rehearsal.
+
 After an interruption, stop the launcher/server and all external seasonal writers,
 preserve logs and the matching DB/filesystem/Redis backup generation, and inspect
 `SELECT season_epoch, reset_status, reset_started_at, reset_completed_at FROM
