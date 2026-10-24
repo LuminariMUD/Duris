@@ -9,7 +9,7 @@ Implementation branch: `branch/issue-264-pwipe-qualification`.
 blockers are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-systemd-qualification/docs/ongoing-projects/plan.md),
 branch `branch/issue-264-systemd-qualification`, [PR #330](https://github.com/LuminariMUD/Duris/pull/330).
 Reuse `/home/aiwithapex/projects/duris-issue264-plan`, which is on that branch at
-`ba1da4967` (clean and pushed).
+`79593ec9d` (clean and pushed).
 Review-ready delivery: #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330,
 plus independent production-build repair #316. MariaDB reset-to-fresh-gameplay
 journeys now pass with Redis off and with Redis on under the complete systemd
@@ -18,10 +18,17 @@ exit 58 and 55 both stay stopped with zero restarts; new mortal presence, combat
 loot, save/reconnect/another boot pass. Real Redis provider failures before/after
 the boundary are also qualified. Earlier reward, ownership, collector/artifact,
 cargo replay and flat-file rejection evidence remains valid.
+Companion DurisWeb PRs [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
+[#94](https://github.com/LuminariMUD/DurisWeb/pull/94) now fence stale player events
+and redact raw diagnostics. Their backend checks and focused tests pass, including
+native SELECT-only boundary locking on MariaDB/MySQL. The clean pushed companion
+worktree is `/home/aiwithapex/projects/durisweb-issue264-presence`, branch
+`branch/issue-264-presence-diagnostics` at `69c8671`.
 Full #264/#97 readiness remains OPEN. Owner-confirmed policy: reset all account-bank
-balances and recreate only exact level-62 Overlords. Next: the DurisWeb stale-event
-finding recorded in the current plan, general custody/inventory, matched recovery/
-restore, Redis re-enable with old payloads and external/telemetry cutover. Continue
+balances and recreate only exact level-62 Overlords. Next: backup/SQL recovery and
+matched restore, general custody/inventory, Redis re-enable with old payloads and
+full website/donation/client/telemetry cutover. The website stop procedure includes
+its legacy temporary-copy preservation gate. Nothing is deployed or published. Continue
 from the linked current plan; baseline planning detail below is retained for provenance.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
