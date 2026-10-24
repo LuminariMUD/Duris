@@ -1278,7 +1278,8 @@ bool account_bound_rewards_on_successful_pwipe(void)
 #ifdef __NO_MYSQL__
 	return true;
 #else
-	if (!sql_begin_transaction())
+	const uint64_t epoch = sql_season_epoch();
+	if (!epoch || !sql_begin_transaction())
 		return false;
 	if (!qry("INSERT INTO account_bound_reward_pwipe_state(id,last_processed_at) VALUES (1,NULL) ON DUPLICATE KEY UPDATE id=VALUES(id)"))
 	{
@@ -1286,49 +1287,53 @@ bool account_bound_rewards_on_successful_pwipe(void)
 		return false;
 	}
 
+	// Eligibility belongs to the durable reset, not the retry's wall clock.
+	// Stamping that same boundary with the policy commit makes even a much
+	// later retry ineligible, while preserving the separate 28-day protection.
 	MYSQL_RES *guard_result = db_query(
-		"SELECT CASE WHEN last_processed_at IS NULL OR last_processed_at <= NOW() - INTERVAL 28 DAY THEN 1 ELSE 0 END "
-		"FROM account_bound_reward_pwipe_state WHERE id=1 FOR UPDATE");
+		"SELECT CASE WHEN g.last_processed_at IS NULL OR "
+		"g.last_processed_at <= s.reset_started_at - INTERVAL 28 DAY THEN 1 ELSE 0 END "
+		"FROM account_bound_reward_pwipe_state g JOIN season_reset_state s ON s.state_id=1 "
+		"WHERE g.id=1 AND s.season_epoch=%llu AND s.reset_status='resetting' "
+		"AND s.reset_started_at IS NOT NULL FOR UPDATE",
+		(unsigned long long)epoch);
 	if (!guard_result)
 	{
 		sql_rollback();
 		return false;
 	}
 	MYSQL_ROW guard_row = mysql_fetch_row(guard_result);
-	bool has_guard_row = guard_row && guard_row[0];
-	bool should_process = has_guard_row && atoi(guard_row[0]) == 1;
+	const bool has_guard_row = guard_row && guard_row[0];
+	const bool should_process = has_guard_row && atoi(guard_row[0]) == 1;
 	mysql_free_result(guard_result);
 	if (!has_guard_row)
 	{
 		sql_rollback();
 		return false;
 	}
-	if (!should_process)
-	{
-		if (!sql_commit())
-		{
-			sql_rollback();
-			return false;
-		}
-		logit(LOG_DEBUG,
-		      "account rewards: successful pwipe already processed within the last 28 days; duplicate policy invocation ignored");
-		return true;
-	}
 
+	// These references belong to retired bodies, including distinct resets
+	// inside the grant-decrement protection window.
 	bool ok = qry("DELETE FROM account_bound_reward_summons");
-	if (ok && account_reward_config_preserve_on_pwipe())
+	if (ok && should_process)
 	{
-		ok = qry(
-			"UPDATE account_bound_rewards SET remaining_pwipes = remaining_pwipes - 1 WHERE remaining_pwipes IS NOT NULL AND remaining_pwipes > 0");
+		if (account_reward_config_preserve_on_pwipe())
+		{
+			ok = qry(
+				"UPDATE account_bound_rewards SET remaining_pwipes = remaining_pwipes - 1 WHERE remaining_pwipes IS NOT NULL AND remaining_pwipes > 0");
+			if (ok)
+				ok = qry(
+					"DELETE FROM account_bound_rewards WHERE (remaining_pwipes IS NOT NULL AND remaining_pwipes <= 0) OR (expires_at IS NOT NULL AND expires_at <= NOW())");
+		}
+		else
+			ok = qry("DELETE FROM account_bound_rewards");
 		if (ok)
 			ok = qry(
-				"DELETE FROM account_bound_rewards WHERE (remaining_pwipes IS NOT NULL AND remaining_pwipes <= 0) OR (expires_at IS NOT NULL AND expires_at <= NOW())");
+				"UPDATE account_bound_reward_pwipe_state g JOIN season_reset_state s ON s.state_id=1 "
+				"SET g.last_processed_at=s.reset_started_at WHERE g.id=1 AND s.season_epoch=%llu "
+				"AND s.reset_status='resetting'",
+				(unsigned long long)epoch);
 	}
-	else if (ok)
-		ok = qry("DELETE FROM account_bound_rewards");
-	if (ok)
-		ok = qry(
-			"UPDATE account_bound_reward_pwipe_state SET last_processed_at=NOW() WHERE id=1");
 	if (!ok || !sql_commit())
 	{
 		sql_rollback();

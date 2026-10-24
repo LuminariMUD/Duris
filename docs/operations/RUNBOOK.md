@@ -214,6 +214,13 @@ and retains the incomplete-reset fence. Old summon links are cleared every reset
 independently of the 28-day grant-decrement policy. Full staff login/gameplay proof
 and persistent replay isolation are still issue #264 readiness gates.
 
+Reward policy uses the durable reset start time and validates the current resetting
+epoch. Grant changes and their policy timestamp commit together, so retrying an
+unfinished reset cannot decrement grants again, even months later or after a lost
+COMMIT acknowledgment. The existing 28-day protection between distinct resets is
+preserved; eligibility is determined at each reset's start, not at retry time. Old
+summon/body links are cleared even when that protection keeps the grants unchanged.
+
 Before the boundary, the server checks `wipe_it_all --check` along with its existing
 schema/Redis checks. Missing artifacts, unexpected store symlinks/types and denied
 access abort before SQL reset. Cleanup revalidates the same fixed paths. Backups,

@@ -111,9 +111,12 @@ assert contains(source, "remaining_pwipes = remaining_pwipes - 1")
 assert contains(source, "DELETE FROM account_bound_reward_summons")
 lock_pos = index(source, "FOR UPDATE", source.index("bool account_bound_rewards_on_successful_pwipe"))
 delete_pos = index(source, "DELETE FROM account_bound_reward_summons", lock_pos)
-stamp_pos = index(source, "SET last_processed_at=NOW()", delete_pos)
+stamp_pos = index(source, "SET g.last_processed_at=s.reset_started_at", delete_pos)
 assert lock_pos < delete_pos < stamp_pos
 assert contains(source, "INTERVAL 28 DAY")
+assert contains(source, "s.season_epoch=%llu")
+assert contains(source, "s.reset_status='resetting'")
+assert contains(source, "g.last_processed_at <= s.reset_started_at")
 assert "account_bound_reward_pwipe_state" in verifier
 
 print("account reward exact-item/config/cooldown/expiry/pwipe source contract: ok")
