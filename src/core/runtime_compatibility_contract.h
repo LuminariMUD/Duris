@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"6163e4fef607d6a3e4b2a74d496d4b0c8a008304ec7e507cf0c149de0444d2cc";
+	"9cee0863c288168de33cd38d0c848fe21a93060cb1f8a30a5ffd13221d28bd69";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"01202564c50c93723525ecce3c88ee983447f29d376dac9924e69e8758f34abf";
+	"fd697ef0099fbfcf5dffc9abfd6b34da6b11d4aaa14fc5f5254ea678c55edb8c";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -107,14 +107,14 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0050 stores exact Divine trade manifests and the market generation.
  * Migration 0051 saves prepared artifact/guild delivery proof with entity snapshots.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0051_divine_effect_delivery";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 52;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0052_pwipe_roster_checkpoint";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 53;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"60c23ec1a9a172ad04fda08dc041bc0d90192e69054008b06d282b00b86a32b7";
+	"497c7d9eb21f5fdad4dca04edf1289a1f61e7f022129dc612d73b5963b1161ef";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"3f37071ddb6706e39a4736daa0bcd3d156acbb192e08acbf760985ef706b6c2c";
+	"5bc71cbd1a39cd1a036e2d907c9002cc7ff8f082c914d07948201ed4c0f86f8e";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"fdcf9799b735cba8e58ad5cb6964ba14db947f11a26e4b105138580191b687dd";
+	"8ba95d24dba36b69dea929c895985b95e00d6bce1eb8aea5a1907ef2df4abfca";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

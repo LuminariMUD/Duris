@@ -938,7 +938,7 @@ static bool sql_begin_pwipe_epoch(void)
 	char update[384];
 	snprintf(update, sizeof update,
 		 "UPDATE season_reset_state SET season_epoch=%llu,reset_status='resetting',"
-		 "reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=NULL "
+		 "reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=NULL,roster_recreated=0 "
 		 "WHERE state_id=1 AND season_epoch=%llu AND reset_status='active'",
 		 epoch + 1, epoch);
 	my_ulonglong affected = 0;
@@ -963,7 +963,7 @@ static bool sql_prepare_pwipe_filesystem(void)
 	snprintf(update, sizeof update,
 		 "UPDATE season_reset_state SET reset_completed_at=UTC_TIMESTAMP(6) "
 		 "WHERE state_id=1 AND season_epoch=%llu AND reset_status='resetting' "
-		 "AND reset_completed_at IS NULL",
+		 "AND reset_completed_at IS NULL AND roster_recreated=1",
 		 (unsigned long long)current_season_epoch);
 	my_ulonglong affected = 0;
 	return sql_connection_execute_affected(DB, update, &affected) && affected == 1;
@@ -4236,6 +4236,7 @@ bool sql_verify_pwipe_manifest(void)
 		{ "season_reset_state", "reset_status" },
 		{ "season_reset_state", "reset_started_at" },
 		{ "season_reset_state", "reset_completed_at" },
+		{ "season_reset_state", "roster_recreated" },
 		{ NULL, NULL }
 	};
 	char query[16384];
@@ -5045,6 +5046,13 @@ bool sql_pwipe(int code_verify)
 		// but release their unique names; never attach a new body to an old ledger.
 		if (!qry("START TRANSACTION"))
 			return FALSE;
+		char roster_checkpoint[384];
+		snprintf(
+			roster_checkpoint, sizeof roster_checkpoint,
+			"UPDATE season_reset_state SET roster_recreated=1 WHERE state_id=1 "
+			"AND season_epoch=%llu AND reset_status='resetting' AND roster_recreated=0",
+			static_cast<unsigned long long>(current_season_epoch));
+		my_ulonglong checkpoint_rows = 0;
 		const bool roster_ok =
 			qry("CREATE TEMPORARY TABLE pwipe_overlords AS "
 			    "SELECT p.name,account.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
@@ -5074,7 +5082,8 @@ bool sql_pwipe(int code_verify)
 			    "ON DUPLICATE KEY UPDATE account_name=VALUES(account_name),pid=VALUES(pid),deleted_at=NULL,"
 			    "racewar=VALUES(racewar),login_count=0,last_login=NULL,created_at=VALUES(created_at),last_ip=NULL",
 			    ACCT_IMMORTAL, OVERLORD) &&
-			qry("COMMIT");
+			sql_connection_execute_affected(DB, roster_checkpoint, &checkpoint_rows) &&
+			checkpoint_rows == 1 && qry("COMMIT");
 		if (!roster_ok)
 		{
 			qry("ROLLBACK");
