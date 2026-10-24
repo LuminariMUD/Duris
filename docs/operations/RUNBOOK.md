@@ -214,6 +214,10 @@ and retains the incomplete-reset fence. Old summon links are cleared every reset
 independently of the 28-day grant-decrement policy. Full staff login/gameplay proof
 and persistent replay isolation are still issue #264 readiness gates.
 
+Kingdom realms, purchased garrisons and legacy land ownership reset with guilds,
+even if the optional kingdom feature is disabled. Association IDs can be reused;
+retaining their old world rows would give a new guild the prior season's holdings.
+
 Reward policy uses the durable reset start time and validates the current resetting
 epoch. Grant changes and their policy timestamp commit together, so retrying an
 unfinished reset cannot decrement grants again, even months later or after a lost
