@@ -40,6 +40,37 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — recover dropped player items
+
+Branch `branch/fix-memory-held-floor-recovery`, based on PR #339 at `8ec555765`.
+The W5 re-enable fixture is preserved on `branch/issue-264-redis-reenable` at
+`5f5cabe8a` (mode `f95c581a0`, canary correction `a5326a2c0`), not yet published.
+It reproduced a separate data-loss precondition: after dropping/saving a starter
+sword, same-epoch Redis restart accepted a generation but the floor item was absent.
+`capture_item_tree()` rejects physical ground payloads whose cached record still
+names the player. Both recovery backends already distinguish a still-held saved
+player payload from a stale active player ownership row with no payload.
+Outcome: capture that active former-player tree without asserting matching durable
+room custody; existing recovery ownership lookup still excludes a tree if a saved
+player/economic/terminal fact owns it. Keep matching room authority strict, and keep
+terminal/non-player/vnum conflicts rejected. No new journal, custody mutation or
+recovery format is needed. Files: owning capture path, focused executable codec/
+ownership regressions and docs. Proof: reproduce capture omission, test bounds and
+held-item exclusion, required builds, and actual same-epoch floor recovery before
+continuing the W5 wipe/re-enable journey. Keep this runtime repair in its own PR.
+No production action or full readiness claim.
+
+The focused executable regression reproduced `capture_size == 0` for a real floor
+tree with stale active player custody. The capture patch now emits that physical
+tree without `AUTHORITY_REQUIRED`; matching room authority keeps its existing flag.
+Terminal, auction, wrong-vnum and conflicting-room rows still refuse capture. The
+ASan/UBSan pipeline fixture, transactional recovery contracts and codec vectors pass,
+including existing held-tree exclusion and rollback cases. Development MariaDB,
+optimized MariaDB and isolated flat-file builds pass. Merge this repair into the
+preserved qualification branch and verify the live floor precondition; wait for an
+acknowledged post-drop checkpoint before stopping so interval/RPO behavior cannot
+make the test's canary ambiguous. Full W5 qualification is still pending.
+
 ## Current continuation — isolate retained native handoffs
 
 Branch `branch/issue-264-copyover-season-fence`, based on PR #337 at `7bc1672de`.
