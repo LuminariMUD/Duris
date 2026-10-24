@@ -57,6 +57,16 @@ old/new PIDs, banks and epoch; new-scope presence and recovery; unrelated keys s
 Reuse the unchanged optimized binary/builds and existing failure/systemd evidence.
 Full external cutover, W1/W2/W4 and final audit remain open; production is excluded.
 
+The qualification fixture is committed at `a5326a2c0` (initial mode `f95c581a0`).
+Its pre-wipe canary exposed a separate real recovery finding: after dropping starter
+sword vnum 1108 and saving, a normal same-epoch Redis restart restored a generation
+but not the floor item. `capture_item_tree()` skips a physical ground tree while its
+cached custody still names the player; the legacy drop/save path leaves that old
+row/cache behind. Fix this independently on `branch/fix-memory-held-floor-recovery`
+from #339, with capture/ownership regressions and required builds, then merge that
+dependency here and rerun the full mode. No Redis re-enable proof is claimed yet.
+The failed owned fixture exited/cleaned up before scheduling a wipe.
+
 ## Current continuation — isolate retained native handoffs
 
 Branch `branch/issue-264-copyover-season-fence`, based on PR #337 at `7bc1672de`.
