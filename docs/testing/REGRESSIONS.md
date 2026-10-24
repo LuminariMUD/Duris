@@ -34,6 +34,19 @@ matrix archives these inputs before activation and preserves a fresh checkpoint
 on duplicate completion and activation-ACK retry. No checkpoint format change or
 new epoch column is needed because the automatic startup input is isolated.
 
+`python3 tests/async/test_pwipe_mail.py` compiles the actual native mail producer,
+boot scanner, block-chain reader, name matcher and memory pool with controlled
+allocation bookkeeping/network boundaries. Separate processes prove a valid old
+multi-block message can be read by name before cleanup. The previous wiper leaves
+that input live (recorded failing baseline). Current, legacy and dual-spool layouts
+must pass read-only preflight, archive each exact byte privately, and boot without
+old mail for the same name; fresh mail round-trips normally and archived bytes stay
+unchanged. The filesystem suite adds wrong-type/symlink/parent-alias/access refusal
+and partial preferred/fallback archival retry. The native SQL/launcher matrix
+archives both paths before activation and keeps fresh mail after duplicate or
+ambiguous activation acknowledgment. This qualifies input isolation and actual
+native reader behavior; it does not simulate a postmaster NPC interaction.
+
 `test_cycle_pwipe_status.py` also proves native handoff archival: default/custom
 paths (including an external directory and a wipe target), publication/claim and
 consumption barriers, byte preservation/private archive, unsafe-state refusal,

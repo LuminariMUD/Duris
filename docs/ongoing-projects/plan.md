@@ -40,6 +40,50 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — name-scoped MUD mail isolation
+
+Branch `branch/issue-264-mail-state-isolation`, based on PR #352 at `812169708`.
+Outcome: isolate another actual unscoped old-character input before activation.
+`scan_mail_file` runs on normal boot, prefers `Accounts/mail`, falls back to
+`Players/mail`, and indexes recipient names. `postmaster_receive_mail` matches the
+current character's name and materializes vnum-5 mail objects from the old spool.
+Reused names therefore remain a live consumer even with correct new SQL PIDs.
+Preserve both spool paths in private wipe archives, outside automatic startup;
+retain historical bytes rather than deleting messages or changing the native mail
+format. Files: existing wiper, focused actual mail producer/reader regression,
+filesystem/native handoff tests and manifest/runbook/plan. Proof: old mail readable
+before cleanup at both paths, absent to a same-named fresh reader afterward, exact
+archive bytes, refusal/partial retry and guarded launcher activation/duplicate retry.
+Reuse unchanged SQL/core builds and full timer/gameplay proof. Locker receipt and
+legacy source audit remains subsequent work; no blanket archive deletion or new
+mail identity framework.
+
+The actual native producer/index/block-chain reader and real name matcher reproduce
+the bug: a valid old multi-block message is readable by the reused name, and the
+old wiper fails the new assertion because the spool remains live. The fixed cleanup
+validates `Accounts` and both spool types/access before any deletion, then archives
+both preferred/fallback inputs privately before activation. Current, legacy and
+dual-spool native tests pass, including fresh same-name mail and unchanged archive
+bytes. Sixteen filesystem cases pass, including refusal and partial two-spool
+archival/retry. A missing inventory entry is now explicit `file:mud-mail`; current
+inventory is 200 SQL tables / 32 other stores / 42 Redis surfaces. No private mail
+or account data from the actual installation is read. Both full native SQL/launcher/
+recovery matrices pass on MariaDB 10.11.19 and MySQL 8.0.46: before activation both
+spools archive; partial retry finishes; fresh mail remains after duplicate and lost
+activation acknowledgment. Logs: `bin/analysis/pwipe-mail-{baseline,final,mariadb,mysql}.log`.
+Baseline records the reproduced live-input failure; final native producer/reader
+cases all pass. Lifecycle 14 / reset manifest 12 / validator 200 tables + 32 stores
++ 42 Redis surfaces, Python compilation, shell syntax and changed-file formatting
+pass. Required incremental MariaDB build passes (no production C/C++ changes).
+Wiper SHA-256: `723320d4beb1b7f1bd07fbd24f83671aa70d97408d22d5c595b7b19eda05a961`.
+Reuse unchanged full game/flat-file/production builds and timer/gameplay/service/
+website evidence; actual launcher/native reader proof qualifies this delta.
+All owned fixture resources cleaned. Publication follows; full readiness remains open.
+The audit also locates account/admission evidence (`Accounts/email.db`,
+`Players/Invited`, `Players/Accepted`, `Players/Declined`) and explicit staff-only
+legacy import commands. Reconcile these alongside the remaining legacy/receipt/
+SQL consumers; do not treat the old 31-store count as full inventory acceptance.
+
 ## Current continuation — maintenance checkpoint isolation
 
 Review-ready [PR #352](https://github.com/LuminariMUD/Duris/pull/352), fix/fixture

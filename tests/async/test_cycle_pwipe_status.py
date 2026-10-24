@@ -209,6 +209,65 @@ class FilesystemWipeTest(unittest.TestCase):
                                 if path.name != "source-path"),
                          [b"DMSMNT4interrupted state save", b"DMSMNT4old captured request"])
 
+    def test_mail_unsafe_spools_and_parent_alias_refuse_before_deletion(self):
+        for name in ("Accounts/mail", "Players/mail"):
+            path = self.root / name
+            for case in ("symlink", "directory", "fifo"):
+                with self.subTest(name=name, case=case):
+                    if case == "symlink": path.symlink_to(self.root / "Accounts/keep")
+                    elif case == "directory": path.mkdir()
+                    else: os.mkfifo(path, 0o600)
+                    self.assertNotEqual(self.run_wipe("--check").returncode, 0)
+                    self.assertNotEqual(self.run_wipe().returncode, 0)
+                    self.assertTrue((self.root / "Players/a/old").exists())
+                    if path.is_dir(): path.rmdir()
+                    else: path.unlink()
+        accounts = self.root / "Accounts"
+        saved = self.root / "preserved-accounts"
+        accounts.rename(saved); accounts.symlink_to(saved, target_is_directory=True)
+        self.assertNotEqual(self.run_wipe("--check").returncode, 0)
+        self.assertNotEqual(self.run_wipe().returncode, 0)
+        self.assertEqual((saved / "keep").read_text(), "sentinel")
+        accounts.unlink(); saved.rename(accounts)
+
+    @unittest.skipIf(os.geteuid() == 0, "permission checks require an unprivileged process")
+    def test_denied_mail_access_refuses_before_deletion(self):
+        for name in ("Accounts/mail", "Players/mail"):
+            path = self.root / name; path.write_bytes(b"retained old mail")
+            path.chmod(0)
+            try:
+                self.assertNotEqual(self.run_wipe("--check").returncode, 0)
+                self.assertNotEqual(self.run_wipe().returncode, 0)
+                self.assertTrue((self.root / "Players/a/old").exists())
+            finally:
+                path.chmod(0o600); path.unlink()
+        accounts = self.root / "Accounts"; accounts.chmod(0o500)
+        try:
+            self.assertNotEqual(self.run_wipe("--check").returncode, 0)
+            self.assertNotEqual(self.run_wipe().returncode, 0)
+            self.assertTrue((self.root / "Players/a/old").exists())
+        finally:
+            accounts.chmod(0o700)
+
+    def test_partial_mail_archive_retry_preserves_both_spools(self):
+        current, legacy = self.root / "Accounts/mail", self.root / "Players/mail"
+        current.write_bytes(b"current old mail"); legacy.write_bytes(b"legacy old mail")
+        commands = self.root / "commands"; commands.mkdir()
+        (commands / "mv").write_text("#!/bin/sh\ncase \"$*\" in *Players/mail*) exit 1;; esac\nexec /usr/bin/mv \"$@\"\n")
+        (commands / "mv").chmod(0o700)
+        env = dict(os.environ, PATH=str(commands) + ":" + os.environ["PATH"],
+                   COPYOVER_STATE_FILE=str(self.root / "copyover.dat"))
+        self.assertNotEqual(self.run_wipe(environment=env).returncode, 0)
+        self.assertFalse(current.exists())
+        self.assertTrue(legacy.exists() and (self.root / "Players/a/old").exists())
+        self.assertEqual(self.run_wipe().returncode, 0)
+        self.assertFalse(legacy.exists())
+        archives = list((self.root / "Players/Backup").glob("pwipe-mail.*"))
+        self.assertEqual(len(archives), 2)
+        self.assertEqual(sorted(path.read_bytes() for archive in archives for path in archive.iterdir()
+                                if path.name != "source-paths"), [b"current old mail", b"legacy old mail"])
+        self.assertEqual((self.root / "Accounts/keep").read_text(), "sentinel")
+
     def test_top_level_symlinks_and_wrong_types_fail_before_any_deletion(self):
         for dangling in (False, True):
             with self.subTest(dangling=dangling):
