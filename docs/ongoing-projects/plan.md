@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — independent email registry repair integration
 
-Branch `branch/issue-264-email-fix-integration`, based on PR #354 at `9383ca3ef`.
+Review-ready [PR #356](https://github.com/LuminariMUD/Duris/pull/356), integration
+`7d73f6477`, plan `707227d0f`, committed/pushed on
+`branch/issue-264-email-fix-integration`, based on PR #354 at `9383ca3ef`.
 Independent review-ready [PR #355](https://github.com/LuminariMUD/Duris/pull/355)
 targets master from `branch/fix-account-email-registry-eof`, repair `9b61a23f0`.
 Source worktree: `/home/aiwithapex/projects/duris-account-email-fix` (clean/pushed).
@@ -60,8 +62,8 @@ inactive-by-default helper. Logs: independent `bin/analysis/account-email-regist
 integration `bin/analysis/account-email-integration{,-build}.log`.
 Local merge `7d73f6477` integrates the independent repair on this review branch;
 the documentation-only merge conflict retained both complete regression sections.
-No GitHub PR or master was merged. Integration publication is next; remaining full
-SQL/worker/manual readiness reconciliation stays open.
+No GitHub PR or master was merged. Integration is review-ready with explicit #354 /
+#355 dependencies; remaining full SQL/worker/manual readiness reconciliation stays open.
 
 ## Current continuation — retained locker receipts and legacy admission inputs
 
