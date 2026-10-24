@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — flat-file command rejection
 
 Branch `branch/issue-264-flatfile-rejection`, based on payload PR #326 at `e332d12b5`.
+Review-ready PR #327 (https://github.com/LuminariMUD/Duris/pull/327), implementation
+`5dd0a44c8`; committed and pushed after this handoff update.
 Outcome: reject unsupported flatfile-primary pwipe before scheduling a countdown or
 changing an existing shutdown. Current code schedules five minutes and only then
 fails in the SQL stub. Use the existing persistence-mode predicate at command entry.
@@ -59,8 +61,8 @@ player snapshot and legacy file sentinel, preserved scheduled reboot, and normal
 save/logout/reconnect/second boot. Artifact `bin/analysis/pwipe-runtime-flatfile.json`
 records binary SHA256 `3482bd15b6df6c400db6b0523f3112357ac1de2e7bbcf5c67e5f620cb58ecd42`
 and the source diff digest at qualification. Both development builds, optimized
-MariaDB production build, formatting and reset-fence contracts passed. Publication
-remains; full readiness is open. Next: extend the existing MariaDB runtime journey
+MariaDB production build, formatting and reset-fence contracts passed. Commit hooks
+passed; PR #327 is ready for review. Full readiness remains open. Next: extend the existing MariaDB runtime journey
 with private Redis and, if practical, the full systemd sandbox in one five-minute
 run. The production restart properties were already tested in isolation; the real
 service should use a private mini-world and test-only unit name, never the live unit.
