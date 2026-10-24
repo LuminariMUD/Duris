@@ -42,10 +42,12 @@ was run during planning.
 
 ## Current continuation — Redis disabled/reset/re-enable
 
-Branch `branch/issue-264-redis-reenable`, now based on the merged dependency
-[PR #340](https://github.com/LuminariMUD/Duris/pull/340) at `138b66478` (unmerged on GitHub).
-The dependency was merged locally as `163549c9d`; fixture/checkpoint tip `4464aab01`
-is pushed. The complete wipe/re-enable journey is running; do not count it as passed.
+Branch `branch/issue-264-redis-reenable`, stacked on review-ready
+[PR #340](https://github.com/LuminariMUD/Duris/pull/340), latest parent `d2bc5a621`
+(implementation `138b66478`). It was merged locally as `163549c9d`; fixture/checkpoint
+revision `4464aab01` passed the complete actual wipe/re-enable journey. GitHub PRs
+remain unmerged. This first continuation is current; later sections preserve earlier
+chunk evidence and historical next-step notes.
 Outcome: prove the actual command/launcher reset with Redis disabled, followed by
 re-enable into the new SQL epoch while valid authenticated old world data, an old
 floor-item marker and old presence/cache keys remain. Extend the existing runtime
@@ -71,16 +73,35 @@ merged locally here. Native capture/ownership regressions and all three builds p
 The live precondition now passes: acknowledged checkpoints 2/4 and actual same-epoch
 get/re-drop confirm the old floor payload is valid. Optimized binary SHA-256:
 `e09aacfefb4aec8007d519b029b6af91c78292ceb624d11840571b3572df5cf3`.
-The actual five-minute wipe with Redis disabled is running; no completed re-enable
-proof is claimed yet. Current log: `bin/analysis/pwipe-redis-reenable.log`. Earlier
-failed fixtures cleaned up before scheduling any wipe.
+The actual five-minute wipe with Redis disabled and subsequent re-enable passed.
+Report: `bin/analysis/pwipe-runtime-mariadb-redis-reenable.json`; log:
+`bin/analysis/pwipe-redis-reenable.log`. Report revision
+`4464aab014424123b082c5080b2fb6c223a01e31`, C/C++ working diff empty, binary hash as
+above. Countdown was 302.040 wall / 290.492 monotonic seconds (known host clock drift).
+The old authenticated world sequence was 5, floor UID 815 (vnum 1108), payload hash
+`0290f4b2ac4e935ac09a751effcb20816c60e40f611a7623a76acaea129227a1`.
+It was actually accepted in epoch 1 and its sword retrieved/re-dropped after durable
+checkpoints. Redis stayed off through command/countdown/reset/launcher activation.
+Epoch 2 left the old unexpired payload/keys intact; re-enable ignored that floor
+marker, published fresh mortal presence in epoch 2 and passed fresh combat/loot/
+save/reconnect/second-boot recovery from the new namespace. Old PID 1 retired,
+Overlord PID 2 and fresh mortal PID 3 used new identities; banks reset. Old payload
+bytes and unrelated namespaces remained unchanged through the final boot.
+All owned resources cleaned up; earlier failed fixtures exited before scheduling
+any wipe. The runtime repair has its own PR #340; this qualification stays a separate
+stacked chunk. CLI invalid-mode checks, Python compilation and format/hooks pass;
+use #340's three rebuilt profiles and unchanged failure/systemd evidence. Full
+website/donation/client/telemetry cutover, retained custody/legacy fallback proof,
+command edge cases and W7 audit remain OPEN. No production operation occurred.
 
 ## Current continuation — recover dropped player items
 
 Branch `branch/fix-memory-held-floor-recovery`, based on PR #339 at `8ec555765`.
+Review-ready [PR #340](https://github.com/LuminariMUD/Duris/pull/340), implementation
+`138b66478`; branch is committed/pushed.
 The W5 re-enable fixture is preserved on `branch/issue-264-redis-reenable` at
-`4464aab01` (initial mode `f95c581a0`, canary correction `a5326a2c0`, checkpoint
-wait `4464aab01`), pushed with full re-enable qualification in progress.
+`0ed5225a4` (mode `f95c581a0`, canary correction `a5326a2c0`, checkpoint wait
+`4464aab01`), pushed with full re-enable qualification in progress.
 It reproduced a separate data-loss precondition: after dropping/saving a starter
 sword, same-epoch Redis restart accepted a generation but the floor item was absent.
 `capture_item_tree()` rejects physical ground payloads whose cached record still
@@ -102,10 +123,17 @@ tree without `AUTHORITY_REQUIRED`; matching room authority keeps its existing fl
 Terminal, auction, wrong-vnum and conflicting-room rows still refuse capture. The
 ASan/UBSan pipeline fixture, transactional recovery contracts and codec vectors pass,
 including existing held-tree exclusion and rollback cases. Development MariaDB,
-optimized MariaDB and isolated flat-file builds pass. Merge this repair into the
-preserved qualification branch and verify the live floor precondition; wait for an
-acknowledged post-drop checkpoint before stopping so interval/RPO behavior cannot
-make the test's canary ambiguous. Full W5 qualification is still pending.
+optimized MariaDB and isolated flat-file builds, format/tidy hooks pass. The repair
+is merged locally into the qualification branch as `163549c9d`. Its actual server
+precondition now accepts authenticated same-epoch recovery and retrieves/re-drops the
+sword after acknowledged checkpoints 2/4. Optimized binary SHA-256:
+`e09aacfefb4aec8007d519b029b6af91c78292ceb624d11840571b3572df5cf3`.
+The real five-minute wipe/re-enable run continues separately; no full W5 pass is
+claimed here. Logs remain in the qualification worktree under
+`bin/analysis/world-floor-capture-{before,after}.log` and
+`bin/analysis/pwipe-redis-reenable.log`. The before regression failed at
+`captured_size > 0`; the fixed ASan/UBSan codec/ownership fixture passes. Same-season
+normal floor recovery is now proven; general wipe readiness remains OPEN.
 
 ## Current continuation — isolate retained native handoffs
 
@@ -1032,12 +1060,13 @@ nor suppress an independent reset's required cleanup.
 
 ### W5 — Website, Redis and telemetry cutover (3–6 hours)
 
-- [ ] Exercise Redis enabled, disabled, unavailable before reset, failing after
+- [x] Exercise Redis enabled, disabled, unavailable before reset, failing after
   boundary, and re-enabled in the new epoch. Old data/events stay invisible and
   unrelated namespaces survive. Extend `test_redis_maintenance_live.py` and
   season-scope tests rather than building another subsystem. Redis-on/off actual
-  journeys and real pre/post-boundary provider failures now pass; re-enable with
-  retained old recovery payloads remains open.
+  journeys and real pre/post-boundary provider failures pass. The re-enable journey
+  above now proves unexpired authenticated old world/floor payloads stay isolated
+  while fresh presence/gameplay and new-scope recovery succeed.
 - [ ] Exercise website presence, cached lists/leaderboards, account characters,
   websocket/reconnecting clients and queued donations against the disposable
   reset. Verify website writers cannot race it, including stale subscriptions
