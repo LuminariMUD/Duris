@@ -250,6 +250,8 @@ void sql_get_sincesunk_frags(char owner, float *frags);
 void sql_add_sincesunk_frags(char owner, float frags);
 
 bool sql_pwipe(int code_verify);
+// SQL-only recovery; caller has not initialized the game or any writers.
+bool sql_resume_pwipe(uint64_t expected_epoch);
 bool sql_pwipe_crossed_boundary(void);
 bool sql_pwipe_filesystem_ready(void);
 uint64_t sql_season_epoch(void);

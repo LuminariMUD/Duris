@@ -22,7 +22,7 @@ start = checkpoint.index(signature)
 body = checkpoint[start:checkpoint.index("\n}", start) + 2]
 assert contains(body, "if (_pwipe)"), signature
 
-wipe = sql[sql.index("bool sql_pwipe(int code_verify)"):]
+wipe = sql[sql.rindex("bool sql_pwipe(int code_verify)"):]
 assert wipe.index("redis_validate_pwipe_state()") < wipe.index("sql_begin_pwipe_epoch()")
 assert contains(wipe, 'DELETE FROM persistence_item_events')
 assert contains(wipe, 'DELETE FROM persistence_scalar_events')

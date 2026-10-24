@@ -36,5 +36,7 @@ bool redis_maintenance_validate(const struct redis_maintenance_config *config);
 
 bool redis_clear_pwipe_state(void);
 bool redis_validate_pwipe_state(void);
+// Offline recovery only: validate/clear the original epoch without runtime workers.
+bool redis_recover_pwipe_state(uint64_t old_epoch, bool apply);
 
 #endif

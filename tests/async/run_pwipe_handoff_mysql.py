@@ -3,6 +3,7 @@
 
 This qualifies the cross-process handoff, not the real game command or writer drain.
 """
+import argparse
 import fcntl
 import os
 import re
@@ -19,10 +20,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import migration_runner
 
 
-def run():
+def run(server=None):
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
-        os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve())])
+        os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
     env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
                PERSISTENCE_MODE="mariadb-primary", DB_HOST=os.environ["TEST_DB_HOST"],
                DB_PORT=os.environ["TEST_DB_PORT"], DB_USER=os.environ["TEST_DB_USER"],
@@ -38,10 +39,11 @@ def run():
 
     sql("CREATE DATABASE duris_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", False)
     manifest = migration_runner.load_manifest()
-    for path in [ROOT / "migrations/bootstrap_multithread_safe.sql",
-                 *(step.apply_path for step in manifest.migrations)]:
-        subprocess.run(mysql + ["duris_test"], input=path.read_bytes(), env=env,
-                       check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(mysql + ["duris_test"], input=(ROOT / "migrations/bootstrap_multithread_safe.sql").read_bytes(),
+                   env=env, check=True, stdout=subprocess.DEVNULL)
+    for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
+        subprocess.run([sys.executable, str(ROOT / "scripts/migration_runner.py"), *arguments],
+                       env=env, cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     import json
     lifecycle = json.loads((ROOT / "migrations/data_lifecycle_manifest.json").read_text())
     expected = {entry["locator"] for entry in lifecycle["entries"] if entry["kind"] == "database_table"}
@@ -139,6 +141,9 @@ redis_maintenance_config fixture_redis{};
 bool redis_cache_store_delete(const char *) { return true; }
 bool redis_validate_pwipe_state() { return !fixture_redis.connection || redis_maintenance_validate(&fixture_redis); }
 bool redis_clear_pwipe_state() { return !fixture_redis.connection || redis_maintenance_clear(&fixture_redis); }
+bool redis_recover_pwipe_state(uint64_t, bool apply) {
+    return apply ? redis_clear_pwipe_state() : redis_validate_pwipe_state();
+}
 uint64_t current_season_epoch;
 MYSQL_RES *db_query(const char *format, ...) {
     char statement[16384]; va_list args; va_start(args, format);
@@ -489,12 +494,32 @@ int main(int argc, char **argv) {
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="pwipe-handoff-", dir=output) as temporary:
         root = Path(temporary)
-        for directory in ("scripts", "Players/wipers", "Players/a", "Players/Backup", "bin/server"):
+        for directory in ("scripts", "Players/wipers", "Players/a", "Players/Backup", "bin/server", "lib"):
             (root / directory).mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / "scripts/cycle_mud.sh", root / "scripts/cycle_mud.sh")
         wiper = root / "Players/wipers/wipe_it_all"
         shutil.copy2(ROOT / "Players/wipers/wipe_it_all", wiper)
         original = wiper.read_text()
+        (root / "lib/frag_cap.cfg").write_text("cap.reset.level=37\n")
+        reward_config = root / "lib/account_rewards.cfg"
+        reward_config.write_text("pwipe.preserve=true\n")
+        recovery_canary = root / "Players/a/recovery-keep"
+        recovery_canary.write_text("SQL recovery must not clear files")
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            recovery_port = listener.getsockname()[1]
+
+        def recovery_command(epoch):
+            return [str(server), "--resume-pwipe", str(epoch), str(recovery_port)]
+
+        def recover(epoch, expected, environment=None):
+            result = subprocess.run(recovery_command(epoch), env=environment or env, cwd=root,
+                                    capture_output=True, text=True, timeout=30)
+            assert result.returncode == expected, (result.returncode, result.stdout, result.stderr)
+            assert "Entering game loop" not in result.stderr
+            assert recovery_canary.read_text() == "SQL recovery must not clear files"
+            return result
+
         sql("UPDATE season_reset_state SET season_epoch=1,reset_status='active',"
             "reset_completed_at=NULL WHERE state_id=1")
         sql("INSERT INTO zones(number,name,alignment,epic_type) VALUES(900,'fixture',1,1)")
@@ -519,6 +544,12 @@ int main(int argc, char **argv) {
                 str(pid) + ",'" + name + "')")
         sql("UPDATE account_characters SET char_name='Stalename' WHERE pid=1005")
         sql("UPDATE account_characters SET deleted_at=NOW() WHERE pid=1006")
+        def cover_baselines():
+            sql("INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
+                "SELECT pid,copper,silver,gold,platinum,wallet_revision FROM player_data")
+            sql("INSERT IGNORE INTO epic_balance_baseline(pid,opening_balance,opening_revision) SELECT pid,epics,epic_revision FROM player_data")
+            sql("INSERT IGNORE INTO combat_frag_baseline(pid,opening_frags,opening_revision) SELECT pid,frags,frag_revision FROM player_data")
+        cover_baselines()
         sql("INSERT INTO associations(id,name,prestige) VALUES(777,'old guild',999)")
         sql("INSERT INTO kingdom_realms(assoc_id,realm_id,hall_vnum,highest_claim,res_wood) "
             "VALUES(777,3,900,80,9999)")
@@ -633,6 +664,7 @@ int main(int argc, char **argv) {
         assert sql("SELECT COUNT(*) FROM player_data WHERE name='Stalegod' AND active=1") == "1"
         assert sql("SELECT COUNT(*) FROM player_data WHERE name='Deletedgod' AND active=1") == "0"
         sql("INSERT INTO player_data(name,account_name) VALUES('Oldmortal','fixturebank')")
+        cover_baselines()
         assert sql("SELECT roster_recreated FROM season_reset_state") == "1"
         print("Overlord recreation: exact 62 only, new PID, clean balances/progression, account mapping and freed mortal name passed", flush=True)
         new_trader = sql("SELECT pid FROM player_data WHERE name='Oldmortal' AND active=1")
@@ -678,6 +710,53 @@ int main(int argc, char **argv) {
                    "FROM season_reset_state WHERE state_id=1") == "resetting:1"
         assert sql("SELECT roster_recreated FROM season_reset_state") == "0"
         print("Mid-recreation failure rolled back the entire roster and kept startup fenced", flush=True)
+        if server:
+            recover(4, 58)
+            sql("UPDATE season_reset_state SET reset_status='active'")
+            recover(3, 58)
+            sql("UPDATE season_reset_state SET reset_status='resetting',roster_recreated=NULL")
+            recover(3, 58)
+            sql("UPDATE season_reset_state SET roster_recreated=0")
+            assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == roster_before
+            sql("CREATE TRIGGER fixture_roster_pause BEFORE UPDATE ON season_reset_state "
+                "FOR EACH ROW SET @fixture_pause=IF(NEW.roster_recreated=1 AND OLD.roster_recreated=0,SLEEP(5),0)")
+            interrupted = subprocess.Popen(recovery_command(3), env=env, cwd=root,
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                for _ in range(200):
+                    if sql("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE "
+                           "LOWER(STATE)='user sleep'") != "0":
+                        break
+                    assert interrupted.poll() is None, interrupted.communicate()
+                    time.sleep(.05)
+                else:
+                    raise AssertionError("SQL recovery did not reach the roster commit checkpoint")
+                refusal = recover(3, 58)
+                assert "runtime exclusion guard" in (root / "logs/log/status").read_text()
+            finally:
+                if interrupted.poll() is None:
+                    interrupted.kill()
+                interrupted.communicate(timeout=10)
+                sql("DROP TRIGGER fixture_roster_pause")
+            assert sql("SELECT roster_recreated FROM season_reset_state") == "0"
+            assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == roster_before
+            assert sql("SELECT pid,char_name,deleted_at FROM account_characters ORDER BY id") == mappings_before
+            recover(3, 55)
+            assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',roster_recreated,':',"
+                       "reset_completed_at IS NOT NULL) FROM season_reset_state") == "3:resetting:1:1"
+            assert sql("SELECT level FROM level_cap") == "37"
+            resumed_roster = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
+            assert resumed_roster != roster_before
+            recover(3, 55)
+            assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == resumed_roster
+            result = subprocess.run([str(root / "scripts/cycle_mud.sh"), "--dev", "--resume-pwipe", "3"],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            assert result.returncode == 55, (result.returncode, result.stdout, result.stderr)
+            assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "3:active"
+            assert not recovery_canary.exists()
+            recovery_canary.write_text("SQL recovery must not clear files")
+            print("Real SQL-only binary refuses wrong/active/unknown resets, excludes another process, "
+                  "survives SIGKILL before roster commit, loads lifecycle config and completes the same epoch once", flush=True)
         sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
         before = sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1")
         sql("ALTER TABLE player_data RENAME COLUMN base_luk TO fixture_base_luk")
@@ -895,6 +974,54 @@ int main(int argc, char **argv) {
             assert redis("GET", "unrelated:fixture") == "retained"
             assert sql("SELECT reset_status FROM season_reset_state") == "resetting"
             print("Real post-boundary Redis SCAN denial stays fenced; repaired cleanup is idempotent and preserves unrelated keys", flush=True)
+            if server:
+                assert redis("SET", old_key, "old") == "OK"
+                new_key = "duris:local:pwipe-sql:season:27:cache:fixture"
+                assert redis("SET", new_key, "new") == "OK"
+                recovery_env = dict(env, REDIS="TRUE", REDIS_HOST="127.0.0.1",
+                                    REDIS_PORT=str(redis_port), REDIS_NAMESPACE="duris:local:pwipe-sql")
+                post_roster = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
+                assert redis("ACL", "SETUSER", "default", "-scan") == "OK"
+                try:
+                    recover(27, 58, recovery_env)
+                finally:
+                    assert redis("ACL", "SETUSER", "default", "+scan") == "OK"
+                assert sql("SELECT reset_completed_at IS NULL FROM season_reset_state") == "1"
+                assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == post_roster
+                assert redis("GET", old_key) == "old"
+                sql("UPDATE account_bound_reward_pwipe_state SET last_processed_at=NULL")
+                sql("INSERT INTO account_bound_rewards(id,account_name,remaining_pwipes,created_at) "
+                    "VALUES(10,'fixturebank',3,'2024-01-01')")
+                sql("CREATE TRIGGER fixture_ready_failure BEFORE UPDATE ON season_reset_state "
+                    "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture ready failure'")
+                try:
+                    recover(27, 58, recovery_env)
+                finally:
+                    sql("DROP TRIGGER fixture_ready_failure")
+                assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=10") == "2"
+                assert sql("SELECT reset_completed_at IS NULL FROM season_reset_state") == "1"
+                reward_stamp = sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state")
+                assert reward_stamp != "NULL"
+                assert redis("EXISTS", old_key) == "0"
+                assert redis("GET", new_key) == "new"
+                assert redis("GET", "unrelated:fixture") == "retained"
+                recover(27, 55, recovery_env)
+                assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=10") == "2"
+                assert sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state") == reward_stamp
+                assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == post_roster
+                assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',roster_recreated) "
+                           "FROM season_reset_state") == "27:resetting:1"
+                recover(27, 55, recovery_env)
+                assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=10") == "2"
+                # A distinct eligible reset uses the configured discard policy.
+                reward_config.write_text("pwipe.preserve=false\n")
+                sql("UPDATE season_reset_state SET season_epoch=28,reset_started_at='2035-01-01',"
+                    "reset_completed_at=NULL")
+                recover(28, 55, recovery_env)
+                assert sql("SELECT COUNT(*) FROM account_bound_rewards") == "0"
+                assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == post_roster
+                print("Real cold recovery selects the original Redis epoch, skips committed roster, "
+                      "retries after reward commit without double consumption and honors preserve=false", flush=True)
         finally:
             env.pop("PWIPE_TEST_REDIS_PORT", None)
             redis_process.terminate(); redis_process.wait(timeout=10)
@@ -922,6 +1049,8 @@ int main(int argc, char **argv) {
         with (root / "bin/server/.pwipe.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             launch(); assert old.exists()
+        if (root / "Ships").is_dir():
+            (root / "Ships").rmdir()
         (root / "Ships").symlink_to(root / "Players/Backup")
         launch(); assert old.exists() and status() == "2:resetting"
         (root / "Ships").unlink()
@@ -953,4 +1082,7 @@ int main(int argc, char **argv) {
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, help="also qualify SQL-only recovery using this built native server")
+    args = parser.parse_args()
+    run(args.server.resolve() if args.server else None)

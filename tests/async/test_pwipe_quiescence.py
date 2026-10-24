@@ -27,7 +27,7 @@ sql = (SRC / "sql.c").read_text()
 wipe = sql[sql.rindex("bool sql_pwipe(int code_verify)"):]
 assert wipe.index("pwipe_quiesce_writers()") < wipe.index("sql_begin_pwipe_epoch()")
 begin_failure = wipe[wipe.index("if (!sql_begin_pwipe_epoch())"):wipe.index('qry("UPDATE zones SET alignment=0')]
-assert "if (!pwipe_crossed_boundary)" in begin_failure
+assert "if (!pwipe_crossed_boundary && !pwipe_recovery_epoch)" in begin_failure
 assert "pwipe_resume_writers()" in begin_failure
 assert "if (!_pwipe)\n\t\tkingdom_shutdown();" in comm
 assert "if (_pwipe)\n\t\t\tbreak;" in comm

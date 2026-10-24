@@ -684,6 +684,11 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 
 void sql_mud_info_refresh(void) {}
 
+bool sql_resume_pwipe(uint64_t /*expected_epoch*/)
+{
+	return false;
+}
+
 bool sql_pwipe(int code_verify)
 {
 	if (code_verify == 1723699)
@@ -895,6 +900,9 @@ static bool sql_connection_execute_affected(MYSQL *conn, const char *statement,
 	return *affected != (my_ulonglong)-1 && mysql_next_result(conn) == -1;
 }
 
+static uint64_t pwipe_recovery_epoch = 0;
+static bool pwipe_roster_already_recreated = false;
+
 static bool sql_load_active_season_state(void)
 {
 	MYSQL_RES *result = db_query(
@@ -917,19 +925,36 @@ static bool sql_load_active_season_state(void)
 static bool sql_begin_pwipe_epoch(void)
 {
 	pwipe_crossed_boundary = false;
+	pwipe_roster_already_recreated = false;
 	if (!DB || !sql_connection_execute(DB, "START TRANSACTION"))
 		return false;
 	MYSQL_RES *result = db_query(
-		"SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1 FOR UPDATE");
+		"SELECT season_epoch,reset_status,roster_recreated,reset_completed_at,reset_started_at "
+		"FROM season_reset_state WHERE state_id=1 FOR UPDATE");
 	MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
 	char *end = NULL;
 	errno = 0;
 	unsigned long long epoch = row && row[0] ? strtoull(row[0], &end, 10) : 0;
-	const bool active = row && row[0] && end && !*end && !errno && epoch > 0 &&
-			    epoch < ULLONG_MAX && row[1] && !strcmp(row[1], "active") &&
-			    mysql_fetch_row(result) == NULL;
+	const bool valid = row && row[0] && end && !*end && !errno && epoch > 0 && row[1] &&
+			   mysql_fetch_row(result) == NULL;
+	const bool active = valid && epoch < ULLONG_MAX && !strcmp(row[1], "active");
+	const bool checkpoint = valid && row[2] && (!strcmp(row[2], "0") || !strcmp(row[2], "1"));
+	const bool sql_ready = valid && row[3] && (!row[2] || !strcmp(row[2], "1"));
+	const bool recovering = valid && pwipe_recovery_epoch > 1 &&
+				epoch == pwipe_recovery_epoch && !strcmp(row[1], "resetting") &&
+				row[4] && (sql_ready || (!row[3] && checkpoint));
+	pwipe_roster_already_recreated = recovering && row[2] && !strcmp(row[2], "1");
 	if (result)
 		mysql_free_result(result);
+	if (pwipe_recovery_epoch)
+	{
+		if (!sql_connection_execute(DB, "ROLLBACK") || !recovering)
+			return false;
+		pwipe_crossed_boundary = true;
+		pwipe_filesystem_ready = sql_ready;
+		current_season_epoch = epoch;
+		return true;
+	}
 	if (!active)
 	{
 		sql_connection_execute(DB, "ROLLBACK");
@@ -1466,13 +1491,13 @@ const char *sql_persistence_db_name(void)
 
 /* Open a connection to the database. The connection will remain open
  * throughout the mud session. */
-int initialize_mysql()
+static bool sql_open_main_connection()
 {
 	logit(LOG_STATUS, "Initializing validated MySQL connection.");
 	DB = sql_open_configured_connection(CLIENT_MULTI_STATEMENTS);
 	if (!DB)
 	{
-		return -1;
+		return false;
 	}
 	// This connection holds the runtime lock and the game thread issues no query on it
 	// after boot. MariaDB closes a connection idle past wait_timeout (8 hours by
@@ -1484,7 +1509,7 @@ int initialize_mysql()
 		      "FATAL: could not keep the main database connection open; aborting boot");
 		mysql_close(DB);
 		DB = NULL;
-		return -1;
+		return false;
 	}
 	if (!duris_sql_exclusion_guard_acquire(DB))
 	{
@@ -1492,10 +1517,18 @@ int initialize_mysql()
 		      "FATAL: database runtime exclusion guard is held by another session; aborting boot");
 		mysql_close(DB);
 		DB = NULL;
-		return -1;
+		return false;
 	}
 
 	logit(LOG_STATUS, "Connection established.");
+
+	return true;
+}
+
+int initialize_mysql()
+{
+	if (!sql_open_main_connection())
+		return -1;
 
 	sql_resetConnectTimes();
 	sql_load_ip_activity();
@@ -1577,6 +1610,32 @@ void shutdown_mysql(void)
 		mysql_close(DB);
 		DB = NULL;
 	}
+}
+
+bool sql_resume_pwipe(uint64_t expected_epoch)
+{
+	if (expected_epoch < 2 || DB || !sql_open_main_connection())
+		return false;
+	bool ready = false;
+	try
+	{
+		if (sql_verify_boot_database())
+		{
+			pwipe_recovery_epoch = expected_epoch;
+			current_season_epoch = expected_epoch;
+			if (sql_begin_pwipe_epoch())
+				ready = pwipe_filesystem_ready || sql_pwipe(1723699);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		logit(LOG_STATUS, "SQL pwipe recovery allocation failed; reset remains fenced.");
+	}
+	pwipe_recovery_epoch = 0;
+	duris_sql_exclusion_guard_release();
+	mysql_close(DB);
+	DB = nullptr;
+	return ready;
 }
 
 /* Handle a query, log possible errors and return results (if available) */
@@ -4400,7 +4459,9 @@ bool sql_pwipe(int code_verify)
 			send_to_all("Preflight FAILED: auction tables must be InnoDB!\n");
 			return FALSE;
 		}
-		if (!redis_validate_pwipe_state())
+		if (!(pwipe_recovery_epoch ?
+			      redis_recover_pwipe_state(pwipe_recovery_epoch - 1, false) :
+			      redis_validate_pwipe_state()))
 		{
 			logit(LOG_DEBUG,
 			      "sql_pwipe: Preflight failed: fresh Redis administrative connection unavailable.");
@@ -4429,11 +4490,11 @@ bool sql_pwipe(int code_verify)
 		if (!filesystem_ready)
 		{
 			logit(LOG_STATUS,
-			      "sql_pwipe: Filesystem preflight failed; reset not started.");
+			      "sql_pwipe: Filesystem preflight failed; reset work refused.");
 			return FALSE;
 		}
 
-		if (!pwipe_quiesce_writers())
+		if (!pwipe_recovery_epoch && !pwipe_quiesce_writers())
 		{
 			logit(LOG_STATUS,
 			      "sql_pwipe: Writer drain failed; old season remains active.");
@@ -4443,8 +4504,9 @@ bool sql_pwipe(int code_verify)
 		if (!sql_reset_collector_state(false))
 		{
 			logit(LOG_STATUS,
-			      "sql_pwipe: Collector retirement preflight failed; old season remains active.");
-			pwipe_resume_writers();
+			      "sql_pwipe: Collector retirement preflight failed; reset work refused.");
+			if (!pwipe_recovery_epoch)
+				pwipe_resume_writers();
 			return FALSE;
 		}
 
@@ -4453,7 +4515,7 @@ bool sql_pwipe(int code_verify)
 			logit(LOG_DEBUG,
 			      "sql_pwipe: Failed to establish durable season reset boundary.");
 			send_to_all("Preflight FAILED: season reset boundary unavailable!\n");
-			if (!pwipe_crossed_boundary)
+			if (!pwipe_crossed_boundary && !pwipe_recovery_epoch)
 				pwipe_resume_writers();
 			return FALSE;
 		}
@@ -5044,55 +5106,60 @@ bool sql_pwipe(int code_verify)
 		}
 		// Recreate only exact Overlords on new PIDs. Keep retired rows as history,
 		// but release their unique names; never attach a new body to an old ledger.
-		if (!qry("START TRANSACTION"))
-			return FALSE;
-		char roster_checkpoint[384];
-		snprintf(
-			roster_checkpoint, sizeof roster_checkpoint,
-			"UPDATE season_reset_state SET roster_recreated=1 WHERE state_id=1 "
-			"AND season_epoch=%llu AND reset_status='resetting' AND roster_recreated=0",
-			static_cast<unsigned long long>(current_season_epoch));
-		my_ulonglong checkpoint_rows = 0;
-		const bool roster_ok =
-			qry("CREATE TEMPORARY TABLE pwipe_overlords AS "
-			    "SELECT p.name,account.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
-			    "FROM player_data p JOIN accounts account ON account.account_name=p.account_name "
-			    "WHERE p.active=1 AND p.level=%d AND NOT EXISTS ("
-			    "SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
-			    "AND (tombstone.pid=p.pid OR LOWER(tombstone.char_name)=LOWER(p.name)))",
-			    OVERLORD) &&
-			qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
-			qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
-			qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,birthplace,orig_birthplace,"
-			    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
-			    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
-			    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,height,weight,"
-			    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
-			    "FROM pwipe_overlords",
-			    OVERLORD, OVERLORD) &&
-			qry("INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
-			    "SELECT p.pid,0,0,0,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
-			qry("INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
-			    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
-			qry("INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
-			    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
-			qry("INSERT INTO account_characters(account_name,pid,char_name,racewar,login_count,last_login,created_at,last_ip,deleted_at) "
-			    "SELECT o.account_name,p.pid,p.name,%d,0,NULL,UTC_TIMESTAMP(),NULL,NULL "
-			    "FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1 AND p.level=%d "
-			    "ON DUPLICATE KEY UPDATE account_name=VALUES(account_name),pid=VALUES(pid),deleted_at=NULL,"
-			    "racewar=VALUES(racewar),login_count=0,last_login=NULL,created_at=VALUES(created_at),last_ip=NULL",
-			    ACCT_IMMORTAL, OVERLORD) &&
-			sql_connection_execute_affected(DB, roster_checkpoint, &checkpoint_rows) &&
-			checkpoint_rows == 1 && qry("COMMIT");
-		if (!roster_ok)
+		if (!pwipe_roster_already_recreated)
 		{
-			qry("ROLLBACK");
-			logit(LOG_STATUS,
-			      "sql_pwipe: Overlord recreation failed; reset remains fenced.");
-			return FALSE;
+			if (!qry("START TRANSACTION"))
+				return FALSE;
+			char roster_checkpoint[384];
+			snprintf(
+				roster_checkpoint, sizeof roster_checkpoint,
+				"UPDATE season_reset_state SET roster_recreated=1 WHERE state_id=1 "
+				"AND season_epoch=%llu AND reset_status='resetting' AND roster_recreated=0",
+				static_cast<unsigned long long>(current_season_epoch));
+			my_ulonglong checkpoint_rows = 0;
+			const bool roster_ok =
+				qry("CREATE TEMPORARY TABLE pwipe_overlords AS "
+				    "SELECT p.name,account.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
+				    "FROM player_data p JOIN accounts account ON account.account_name=p.account_name "
+				    "WHERE p.active=1 AND p.level=%d AND NOT EXISTS ("
+				    "SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
+				    "AND (tombstone.pid=p.pid OR LOWER(tombstone.char_name)=LOWER(p.name)))",
+				    OVERLORD) &&
+				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
+				qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
+				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,birthplace,orig_birthplace,"
+				    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
+				    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
+				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,height,weight,"
+				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
+				    "FROM pwipe_overlords",
+				    OVERLORD, OVERLORD) &&
+				qry("INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
+				    "SELECT p.pid,0,0,0,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
+				qry("INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
+				    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
+				qry("INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
+				    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
+				qry("INSERT INTO account_characters(account_name,pid,char_name,racewar,login_count,last_login,created_at,last_ip,deleted_at) "
+				    "SELECT o.account_name,p.pid,p.name,%d,0,NULL,UTC_TIMESTAMP(),NULL,NULL "
+				    "FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1 AND p.level=%d "
+				    "ON DUPLICATE KEY UPDATE account_name=VALUES(account_name),pid=VALUES(pid),deleted_at=NULL,"
+				    "racewar=VALUES(racewar),login_count=0,last_login=NULL,created_at=VALUES(created_at),last_ip=NULL",
+				    ACCT_IMMORTAL, OVERLORD) &&
+				sql_connection_execute_affected(DB, roster_checkpoint,
+								&checkpoint_rows) &&
+				checkpoint_rows == 1 && qry("COMMIT");
+			if (!roster_ok)
+			{
+				qry("ROLLBACK");
+				logit(LOG_STATUS,
+				      "sql_pwipe: Overlord recreation failed; reset remains fenced.");
+				return FALSE;
+			}
+			if (!qry("DROP TEMPORARY TABLE pwipe_overlords"))
+				return FALSE;
 		}
-		if (!qry("DROP TEMPORARY TABLE pwipe_overlords"))
-			return FALSE;
+
 		logit(LOG_DEBUG, "sql_pwipe: Clearing persistence event data... .. .");
 		send_to_all("Clearing persistence event data... .. .");
 		if (qry("DELETE FROM persistence_item_events") &&
@@ -5122,7 +5189,9 @@ bool sql_pwipe(int code_verify)
 			send_to_all("        failure!\n");
 			return FALSE;
 		}
-		if (!redis_clear_pwipe_state())
+		if (!(pwipe_recovery_epoch ?
+			      redis_recover_pwipe_state(pwipe_recovery_epoch - 1, true) :
+			      redis_clear_pwipe_state()))
 		{
 			logit(LOG_DEBUG, "sql_pwipe: Redis pwipe invalidation failed.");
 			return FALSE;
