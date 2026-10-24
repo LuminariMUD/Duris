@@ -324,6 +324,13 @@ successor and the durable SQL-ready receipt. Both terminal statuses propagate
 through notifications; the systemd unit prevents restart on 55 and 58. Ordinary
 reboots and crashes retain their restart policy. A crash during an incomplete reset
 is stopped by the durable fence on the next launch.
+The filesystem lock is inherited by the wipe child. Killing launcher parents
+therefore does not permit overlapping cleanup while that child is still running;
+a competing resume refuses. An orphan can finish file cleanup but cannot activate
+the epoch after its launcher activator is gone. Inspect the recorded epoch, wait
+for that cleanup to end and resume that same epoch normally. Whole-process-group
+interruption can leave partial cleanup; the durable fence and idempotent resume
+cover that case too. Never remove the lock file to bypass a live cleanup.
 A boundary COMMIT with no acknowledgment is treated conservatively: the failed
 process does not resume writers or authorize filesystem cleanup, even if the
 transaction ultimately rolled back. Keep that process stopped and inspect the

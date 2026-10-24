@@ -40,6 +40,34 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — killed launcher and orphan wipe child
+
+Branch `branch/issue-264-launcher-interruption`, based on PR #350 at `0a78dfd15`.
+Outcome: exercise the actual launcher/wiper after partial physical cleanup, kill
+launcher parents while leaving its wipe child running, and prove the child retains
+the inherited filesystem lock. A competing launcher must refuse, completion by an
+orphan must leave SQL fenced, and a later legitimate resume must finish once.
+Also kill the owned whole process group at that barrier and prove partial cleanup
+remains recoverable. Non-goals: another full game timer, production kill operation,
+or a new supervisor. Files: existing native handoff matrix, runbook/regression/plan.
+Proof: controlled executable `find` barrier inside the real wiper, actual SIGKILL,
+real kernel flock/descriptor observations and durable SQL on both owned engines.
+Reuse earlier SQL interruption, service, activation-ACK and full gameplay evidence.
+
+The first MariaDB execution passes both actual SIGKILL cases, including the orphan
+child's lock exclusion and fenced completion. A later existing fixture assertion
+assumed exactly one retained copyover archive; the added retries legitimately create
+several. The assertion now identifies only the newly created archive, preserving
+all earlier evidence. This was a test isolation assumption, not a runtime defect.
+The corrected full matrix passes on MariaDB 10.11.19 and MySQL 8.0.46 through
+final boundary-ACK recovery, including both launcher-kill cases. Logs:
+`bin/analysis/pwipe-launcher-kill-{mariadb,mysql}.log`. The ten filesystem contracts,
+Python compilation, shell syntax, formatting and commit hooks pass. No production
+source changed; reuse binary `ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`
+and existing build/full-gameplay/service proof. Both new SIGKILL gaps are closed;
+remaining retained-store/direct-writer inventory and final readiness reconciliation
+stay open. All owned fixture trees/processes/containers cleaned. Publication follows.
+
 ## Current continuation — shared writer and real SQL callbacks
 
 Review-ready [PR #350](https://github.com/LuminariMUD/Duris/pull/350), fixture

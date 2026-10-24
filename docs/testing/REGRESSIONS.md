@@ -39,6 +39,15 @@ partial cleanup, fixed retries, duplicate completion and a lost activation ACK.
 Native inputs remain live when SQL is unready, move to retained archives before
 activation, stay archived after a failed cleanup, and a new season's handoff survives
 a duplicate or lost-ACK completion retry.
+The same matrix also pauses the unmodified wiper's actual `find` after clearing
+one old store and archiving native handoff evidence. It SIGKILLs both launcher
+parents while leaving the real wipe child alive: the child's inherited fd 9 must
+still name the lock inode and a second actual launcher must refuse overlap. After
+the orphan finishes, SQL remains resetting because its activator was killed. A
+second case SIGKILLs the entire owned process group at that partial-cleanup barrier.
+Both cases must resume the same epoch, preserve backups and leave fresh files
+untouched on duplicate completion. PID descriptors bound child-exit observation;
+only private fixture processes are signaled.
 Add `--server /absolute/path/to/bin/server/dms_new` to execute the native SQL-only
 recovery entry point against the same sealed private DB and synthetic data root.
 It proves wrong/active/legacy refusal, concurrent runtime exclusion, SIGKILL during

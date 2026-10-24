@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 import shutil
 import socket
+import select
+import signal
 import time
 import subprocess
 import sys
@@ -1125,6 +1127,92 @@ int main(int argc, char **argv) {
         with (root / "bin/server/.pwipe.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             launch(); assert old.exists()
+        # Pause the actual wiper after clearing Players/a and archiving copyover,
+        # before clearing Players/b. The test shim delegates to the real find after
+        # release; launcher and wiper sources are unmodified.
+        held_commands = root / "held-commands"; held_commands.mkdir()
+        held_find = held_commands / "find"
+        held_find.write_text("#!/usr/bin/env python3\nimport os, sys\nfrom pathlib import Path\n"
+                             "if len(sys.argv)>1 and sys.argv[1]=='Players/b':\n"
+                             "    with open(os.environ['PWIPE_FIXTURE_RELEASE'],'rb',buffering=0) as release:\n"
+                             "        ready=Path(os.environ['PWIPE_FIXTURE_READY'])\n"
+                             "        temporary=ready.with_suffix('.tmp')\n"
+                             "        temporary.write_text(str(os.getpid())+' '+str(os.getppid()))\n"
+                             "        temporary.replace(ready)\n"
+                             "        if release.read(1)!=b'1': sys.exit(1)\n"
+                             "os.execv('/usr/bin/find',['find',*sys.argv[1:]])\n")
+        held_find.chmod(0o700)
+        second = root / "Players/b/old"
+        second.parent.mkdir(exist_ok=True)
+        for kill_group in (False, True):
+            prepare(); second.write_text("second old payload")
+            ready = root / "held-find-ready"
+            release = root / "held-find-release"
+            os.mkfifo(release, 0o600)
+            release_fd = os.open(release, os.O_RDWR | os.O_NONBLOCK)
+            child_fd = None
+            held_env = dict(env, PATH=str(held_commands) + ":" + env["PATH"],
+                            PWIPE_FIXTURE_READY=str(ready), PWIPE_FIXTURE_RELEASE=str(release))
+            with (root / "launcher-kill.log").open("w+") as output:
+                process = subprocess.Popen([str(root / "scripts/cycle_mud.sh"), "--dev", "--resume-pwipe", "2"],
+                                           env=held_env, cwd=root, stdout=output, stderr=subprocess.STDOUT,
+                                           start_new_session=True)
+                try:
+                    deadline = time.monotonic() + 10
+                    while not ready.exists() and time.monotonic() < deadline and process.poll() is None:
+                        time.sleep(.01)
+                    output.flush(); output.seek(0)
+                    assert ready.exists(), (process.poll(), output.read())
+                    find_pid, child_pid = map(int, ready.read_text().split())
+                    # The real wiper is find's parent; finish_pwipe is its parent,
+                    # and the main launcher is one further parent.
+                    def parent_pid(pid):
+                        return int(next(line.split()[1] for line in Path(f"/proc/{pid}/status").read_text().splitlines()
+                                        if line.startswith("PPid:")))
+                    finish_pid = parent_pid(child_pid)
+                    assert parent_pid(finish_pid) == process.pid
+                    assert os.getpgid(find_pid) == os.getpgid(child_pid) == process.pid
+                    child_fd = os.pidfd_open(child_pid)
+                    lock_path = root / "bin/server/.pwipe.lock"
+                    inherited_lock = Path(f"/proc/{child_pid}/fd/9")
+                    assert inherited_lock.stat().st_ino == lock_path.stat().st_ino
+                    assert not old.exists() and second.exists() and not native_handoff.exists()
+                    assert status() == "2:resetting"
+                    if kill_group:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    else:
+                        process.kill(); os.kill(finish_pid, signal.SIGKILL)
+                    assert process.wait(timeout=5) == -signal.SIGKILL
+                    if not kill_group:
+                        # All launcher parents are dead. Its still-held real wipe
+                        # child keeps fd 9 and the kernel lock, so a second launcher
+                        # cannot overlap even though the original PID is gone.
+                        assert inherited_lock.stat().st_ino == lock_path.stat().st_ino
+                        refused = launch()
+                        assert "Another filesystem reset is in progress" in refused.stderr
+                        assert second.exists() and status() == "2:resetting"
+                        os.write(release_fd, b"1")
+                    assert select.select([child_fd], [], [], 10)[0], "owned wipe child did not exit"
+                    assert status() == "2:resetting" # No activator survived either kill.
+                    assert second.exists() == kill_group
+                    assert (root / "Players/Backup/keep").read_text() == "archive"
+                finally:
+                    if process.poll() is None or (child_fd is not None and not select.select([child_fd], [], [], 0)[0]):
+                        try: os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError: pass
+                    process.wait(timeout=5)
+                    if child_fd is not None: os.close(child_fd)
+                    os.close(release_fd)
+                    release.unlink()
+                    ready.unlink(missing_ok=True)
+            launch(expected=55)
+            assert status() == "2:active" and not second.exists()
+            old.write_text("fresh state after launcher kill")
+            launch(expected=55)
+            assert old.read_text() == "fresh state after launcher kill"
+        print("Real launcher SIGKILL: orphan wipe child retains inherited flock; concurrent resume refuses; "
+              "orphan completion and whole-group partial kill remain fenced, legitimate resume/duplicate preserve fresh state", flush=True)
+        prepare()
         if (root / "Ships").is_dir():
             (root / "Ships").rmdir()
         (root / "Ships").symlink_to(root / "Players/Backup")
@@ -1132,9 +1220,10 @@ int main(int argc, char **argv) {
         (root / "Ships").unlink()
         wiper.chmod(0o600); launch(); assert old.exists(); wiper.chmod(0o700)
         # Fail after real cleanup: no activation, and a repaired retry finishes once.
+        prior_archives = set((root / "Players/Backup").glob("pwipe-copyover.*"))
         wiper.write_text(original.replace('echo "wipe_it_all: filesystem cleanup completed"', 'exit 1'))
         launch(); assert not old.exists() and not native_handoff.exists() and status() == "2:resetting"
-        archive, = (root / "Players/Backup").glob("pwipe-copyover.*")
+        archive, = set((root / "Players/Backup").glob("pwipe-copyover.*")) - prior_archives
         assert (archive / "publication").read_bytes() == b"COPYold season handoff"
         wiper.write_text(original)
         launch(expected=55); assert status() == "2:active"
