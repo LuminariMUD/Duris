@@ -43,8 +43,11 @@ was run during planning.
 ## Current continuation — recover dropped player items
 
 Branch `branch/fix-memory-held-floor-recovery`, based on PR #339 at `8ec555765`.
+Review-ready [PR #340](https://github.com/LuminariMUD/Duris/pull/340), implementation
+`138b66478`; branch is committed/pushed.
 The W5 re-enable fixture is preserved on `branch/issue-264-redis-reenable` at
-`5f5cabe8a` (mode `f95c581a0`, canary correction `a5326a2c0`), not yet published.
+`0ed5225a4` (mode `f95c581a0`, canary correction `a5326a2c0`, checkpoint wait
+`4464aab01`), pushed with full re-enable qualification in progress.
 It reproduced a separate data-loss precondition: after dropping/saving a starter
 sword, same-epoch Redis restart accepted a generation but the floor item was absent.
 `capture_item_tree()` rejects physical ground payloads whose cached record still
@@ -66,10 +69,17 @@ tree without `AUTHORITY_REQUIRED`; matching room authority keeps its existing fl
 Terminal, auction, wrong-vnum and conflicting-room rows still refuse capture. The
 ASan/UBSan pipeline fixture, transactional recovery contracts and codec vectors pass,
 including existing held-tree exclusion and rollback cases. Development MariaDB,
-optimized MariaDB and isolated flat-file builds pass. Merge this repair into the
-preserved qualification branch and verify the live floor precondition; wait for an
-acknowledged post-drop checkpoint before stopping so interval/RPO behavior cannot
-make the test's canary ambiguous. Full W5 qualification is still pending.
+optimized MariaDB and isolated flat-file builds, format/tidy hooks pass. The repair
+is merged locally into the qualification branch as `163549c9d`. Its actual server
+precondition now accepts authenticated same-epoch recovery and retrieves/re-drops the
+sword after acknowledged checkpoints 2/4. Optimized binary SHA-256:
+`e09aacfefb4aec8007d519b029b6af91c78292ceb624d11840571b3572df5cf3`.
+The real five-minute wipe/re-enable run continues separately; no full W5 pass is
+claimed here. Logs remain in the qualification worktree under
+`bin/analysis/world-floor-capture-{before,after}.log` and
+`bin/analysis/pwipe-redis-reenable.log`. The before regression failed at
+`captured_size > 0`; the fixed ASan/UBSan codec/ownership fixture passes. Same-season
+normal floor recovery is now proven; general wipe readiness remains OPEN.
 
 ## Current continuation — isolate retained native handoffs
 
