@@ -42,7 +42,10 @@ was run during planning.
 
 ## Current continuation — Redis disabled/reset/re-enable
 
-Branch `branch/issue-264-redis-reenable`, based on PR #339 at `8ec555765`.
+Branch `branch/issue-264-redis-reenable`, now based on the merged dependency
+[PR #340](https://github.com/LuminariMUD/Duris/pull/340) at `138b66478` (unmerged on GitHub).
+The dependency was merged locally as `163549c9d`; fixture/checkpoint tip `4464aab01`
+is pushed. The complete wipe/re-enable journey is running; do not count it as passed.
 Outcome: prove the actual command/launcher reset with Redis disabled, followed by
 re-enable into the new SQL epoch while valid authenticated old world data, an old
 floor-item marker and old presence/cache keys remain. Extend the existing runtime
@@ -54,7 +57,8 @@ namespace or runtime fallback is needed unless the executable journey finds a de
 Files: existing journey and runbook/regression/continuation docs. Proof: authenticated
 old payload hash survives; old floor marker is absent after reset/re-enable; correct
 old/new PIDs, banks and epoch; new-scope presence and recovery; unrelated keys stay.
-Reuse the unchanged optimized binary/builds and existing failure/systemd evidence.
+Use the rebuilt optimized binary with the focused floor-capture repair; reuse
+existing unchanged failure/systemd evidence.
 Full external cutover, W1/W2/W4 and final audit remain open; production is excluded.
 
 The qualification fixture is committed at `a5326a2c0` (initial mode `f95c581a0`).
@@ -62,16 +66,21 @@ Its pre-wipe canary exposed a separate real recovery finding: after dropping sta
 sword vnum 1108 and saving, a normal same-epoch Redis restart restored a generation
 but not the floor item. `capture_item_tree()` skips a physical ground tree while its
 cached custody still names the player; the legacy drop/save path leaves that old
-row/cache behind. Fix this independently on `branch/fix-memory-held-floor-recovery`
-from #339, with capture/ownership regressions and required builds, then merge that
-dependency here and rerun the full mode. No Redis re-enable proof is claimed yet.
-The failed owned fixture exited/cleaned up before scheduling a wipe.
+row/cache behind. The independent repair is now review-ready as PR #340 and is
+merged locally here. Native capture/ownership regressions and all three builds pass.
+The live precondition now passes: acknowledged checkpoints 2/4 and actual same-epoch
+get/re-drop confirm the old floor payload is valid. Optimized binary SHA-256:
+`e09aacfefb4aec8007d519b029b6af91c78292ceb624d11840571b3572df5cf3`.
+The actual five-minute wipe with Redis disabled is running; no completed re-enable
+proof is claimed yet. Current log: `bin/analysis/pwipe-redis-reenable.log`. Earlier
+failed fixtures cleaned up before scheduling any wipe.
 
 ## Current continuation — recover dropped player items
 
 Branch `branch/fix-memory-held-floor-recovery`, based on PR #339 at `8ec555765`.
 The W5 re-enable fixture is preserved on `branch/issue-264-redis-reenable` at
-`5f5cabe8a` (mode `f95c581a0`, canary correction `a5326a2c0`), not yet published.
+`4464aab01` (initial mode `f95c581a0`, canary correction `a5326a2c0`, checkpoint
+wait `4464aab01`), pushed with full re-enable qualification in progress.
 It reproduced a separate data-loss precondition: after dropping/saving a starter
 sword, same-epoch Redis restart accepted a generation but the floor item was absent.
 `capture_item_tree()` rejects physical ground payloads whose cached record still
