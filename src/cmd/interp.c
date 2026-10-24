@@ -35,6 +35,7 @@
 #include "economy/boon.h"
 #include "world/buildings.h"
 #include "combat/ctf.h"
+#include "combat/training_dummy.h"
 #include "classes/disguise.h"
 #include "world/epic.h"
 #include "world/graph.h"
@@ -2826,7 +2827,7 @@ bool special(P_char ch, int cmd, char *arg)
 			{
 				continue;
 			}
-			if ((k != ch) && IS_NPC(k) && IS_AWAKE(k) &&
+			if ((k != ch) && IS_NPC(k) && !training_dummy_is(k) && IS_AWAKE(k) &&
 			    mob_index[GET_RNUM(k)].func.mob &&
 			    !affected_by_spell(k, TAG_CONJURED_PET) &&
 			    (!IS_IMMOBILE(k) ||
@@ -2842,7 +2843,7 @@ bool special(P_char ch, int cmd, char *arg)
 		 * quest mobile present?
 		 */
 		for (k = world[ch->in_room].people; k; k = k->next_in_room)
-			if ((k != ch) && IS_NPC(k) && IS_AWAKE(k) &&
+			if ((k != ch) && IS_NPC(k) && !training_dummy_is(k) && IS_AWAKE(k) &&
 			    mob_index[GET_RNUM(k)].qst_func)
 				if ((*mob_index[GET_RNUM(k)].qst_func)(k, ch, cmd, arg))
 					return (1);
