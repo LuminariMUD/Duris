@@ -94,6 +94,22 @@ owners and their order. `run_critical_command_schema_mysql.sh` executes actual
 outbox pause/drain/resume against its private database, including a record committed
 while paused. These do not replace the full server/reset/reconnect journey.
 
+`python3 tests/async/run_pwipe_writer_mysql.py` extends that proof through the
+actual SQL callback queue, player snapshot and SQL-work repositories, connection
+pool and shared writer on a canonically migrated disposable database. The owning
+preparation is extracted directly from `comm.c`. A held SQL read has a player save
+and SQL write queued behind it; success must commit both, then two dependent read
+callbacks and their final write before closing admission. Independent SQL observes
+no early commit, durable player revision/language payload and the final counter;
+late SQL/player captures are refused and deleted fixture rows stay absent. Timeout
+retains accepted jobs until release; a real missing-column error rolls back an
+otherwise successful update and refuses preparation. Both refusal paths resume
+normal accepted player/SQL saves. Peripheral drains are controlled empty stages,
+and connection configuration uses the owned loopback target; this does not replace
+their subsystem, runtime exclusion or full command journeys. The MySQL variant is
+`TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh python3 tests/async/run_pwipe_writer_mysql.py`.
+Both MariaDB 10.11.19 and MySQL 8.0.46 pass success/timeout/error.
+
 The same native SQL journey now seeds levels 56, 61, 62 and 63. Only the exact
 62 is recreated, under its account/name with a higher PID, clean currency and
 progression, and new opening baselines. Retired names permit new characters. A
