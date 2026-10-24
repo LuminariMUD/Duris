@@ -699,6 +699,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "60c23ec1a9a172ad04fda08dc041bc0d90192e69054008b06d282b00b86a32b7",
       "verify_checksum": "3f37071ddb6706e39a4736daa0bcd3d156acbb192e08acbf760985ef706b6c2c"
+    },
+    {
+      "id": "0052_pwipe_roster_checkpoint",
+      "sequence": 53,
+      "description": "Checkpoint atomic Overlord recreation for same-epoch recovery",
+      "apply": "immutable/0052_pwipe_roster_checkpoint.sql",
+      "verify": "immutable/0052_pwipe_roster_checkpoint.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "497c7d9eb21f5fdad4dca04edf1289a1f61e7f022129dc612d73b5963b1161ef",
+      "verify_checksum": "5bc71cbd1a39cd1a036e2d907c9002cc7ff8f082c914d07948201ed4c0f86f8e"
     }
   ],
   "engine_verifiers": [
