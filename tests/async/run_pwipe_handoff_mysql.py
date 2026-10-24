@@ -63,12 +63,39 @@ def run():
 #include <cstdlib>
 #include <cstring>
 MYSQL *DB;
-bool pwipe_crossed_boundary;
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#define TRUE true
+#define FALSE false
+#define LOG_DEBUG 0
+#define LOG_STATUS 1
+bool pwipe_crossed_boundary, pwipe_filesystem_ready;
+void logit(int, const char *format, ...) {
+    va_list args; va_start(args, format); vfprintf(stderr, format, args); va_end(args); fputc(10, stderr);
+}
+void send_to_all(const char *) {}
+int frag_cap_config_reset_level() { return 26; }
+bool pwipe_quiesce_writers() { return true; }
+void pwipe_resume_writers() {}
+bool redis_validate_pwipe_state() { return true; }
+bool redis_clear_pwipe_state() { return true; }
+bool account_bound_rewards_on_successful_pwipe() { return true; }
 uint64_t current_season_epoch;
-MYSQL_RES *db_query(const char *statement) {
+MYSQL_RES *db_query(const char *format, ...) {
+    char statement[16384]; va_list args; va_start(args, format);
+    vsnprintf(statement, sizeof statement, format, args); va_end(args);
     return mysql_real_query(DB, statement, strlen(statement)) ? nullptr : mysql_store_result(DB);
 }
-''' + functions + '''
+bool qry(const char *format, ...) {
+    char statement[16384]; va_list args; va_start(args, format);
+    vsnprintf(statement, sizeof statement, format, args); va_end(args);
+    if (mysql_real_query(DB, statement, strlen(statement))) return false;
+    MYSQL_RES *result = mysql_store_result(DB); if (result) mysql_free_result(result);
+    return true;
+}
+''' + functions + source[source.index("bool sql_verify_pwipe_manifest(void)"):
+                            source.index("void sql_log_player_login", source.rindex("bool sql_pwipe(int code_verify)"))] + '''
 int main(int argc, char **argv) {
     if (argc != 3) return 2;
     DB = mysql_init(nullptr);
@@ -76,7 +103,8 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     current_season_epoch = strtoull(argv[2], nullptr, 10);
     bool ok = !strcmp(argv[1], "begin") ? sql_begin_pwipe_epoch() :
-              !strcmp(argv[1], "ready") ? sql_prepare_pwipe_filesystem() : sql_load_active_season_state();
+              !strcmp(argv[1], "ready") ? sql_prepare_pwipe_filesystem() :
+              !strcmp(argv[1], "wipe") ? sql_pwipe(1723699) : sql_load_active_season_state();
     mysql_close(DB);
     return ok ? 0 : 1;
 }
@@ -85,9 +113,10 @@ int main(int argc, char **argv) {
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", str(native),
                     "-lmysqlclient", "-o", str(binary)], check=True)
 
-    def epoch_call(command, epoch, expected_code):
-        result = subprocess.run([str(binary), command, str(epoch)], env=env)
-        assert result.returncode == expected_code, (command, epoch, result.returncode)
+    def epoch_call(command, epoch, expected_code, cwd=None):
+        result = subprocess.run([str(binary), command, str(epoch)], env=env, cwd=cwd,
+                                capture_output=True, text=True)
+        assert result.returncode == expected_code, (command, epoch, result.returncode, result.stderr)
 
     epoch_call("active", 1, 0)
     epoch_call("begin", 1, 0)
@@ -109,6 +138,14 @@ int main(int argc, char **argv) {
         wiper = root / "Players/wipers/wipe_it_all"
         shutil.copy2(ROOT / "Players/wipers/wipe_it_all", wiper)
         original = wiper.read_text()
+        sql("UPDATE season_reset_state SET season_epoch=1,reset_status='active',"
+            "reset_completed_at=NULL WHERE state_id=1")
+        sql("INSERT INTO zones(number,name,alignment,epic_type) VALUES(900,'fixture',1,1)")
+        epoch_call("wipe", 1, 0, cwd=root)
+        assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
+        assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
+                   "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
+        print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"
 

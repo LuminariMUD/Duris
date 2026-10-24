@@ -338,6 +338,59 @@ static void critical_gameplay_drain_outbox(void)
 }
 #endif
 
+void pwipe_resume_writers(void)
+{
+	persistence_writer_resume();
+	player_save_pipeline_resume();
+	critical_outbox_resume();
+	critical_command_coordinator_resume();
+	maintenance_scheduler_resume();
+}
+
+bool pwipe_quiesce_writers(void)
+{
+	const uint64_t failures = player_save_worker_health_copy().failures;
+	const uint64_t command_failures =
+		critical_command_coordinator_health_copy().terminal_failures;
+	const uint64_t delivery_failures = critical_outbox_health_copy().terminal_failures;
+	if (!artifact_guild_transaction_drain(3000) || !locker_async_drain(3000))
+		return false;
+	maintenance_scheduler_quiesce();
+	critical_command_coordinator_quiesce();
+	critical_outbox_quiesce();
+	bool ready = maintenance_scheduler_drain(3000) &&
+		     critical_command_coordinator_drain(3000) && critical_outbox_drain(3000) &&
+		     persistence_flush_all_character_saves() && locker_async_drain(3000) &&
+		     artifact_save_drain(3000) && player_save_pipeline_drain(3000);
+#ifndef __NO_MYSQL__
+	ready = ready && sql_ship_write_pulse();
+#endif
+	// Read-completion callbacks can enqueue a dependent write or read. Finish
+	// that accepted chain before closing the shared writer's admission gate.
+	const uint64_t deadline = persistence_observability_now_usec() + 3000000;
+	while (ready)
+	{
+		ready = persistence_writer_wait_idle(3000) &&
+			persistence_observability_now_usec() < deadline;
+		if (!ready || !sql_async_pulse())
+			break;
+	}
+	if (ready)
+	{
+		// Publication callbacks may have resumed outbox polling while draining.
+		critical_outbox_quiesce();
+		persistence_writer_quiesce();
+		ready = persistence_writer_wait_idle(3000) &&
+			player_save_worker_health_copy().failures == failures &&
+			critical_command_coordinator_health_copy().terminal_failures ==
+				command_failures &&
+			critical_outbox_health_copy().terminal_failures == delivery_failures;
+	}
+	if (!ready)
+		pwipe_resume_writers();
+	return ready;
+}
+
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
 {
@@ -1158,7 +1211,8 @@ int run_the_game(int port, int sslport)
 	/* Flush dirty realms and reap the placed resource nodes while the
 	 * world and the store are still up. Idempotent and self-gating, so
 	 * a build with kingdoms disabled pays nothing here. */
-	kingdom_shutdown();
+	if (!_pwipe)
+		kingdom_shutdown();
 	maintenance_scheduler_shutdown();
 	redis_cleanup();
 	player_load_pipeline_shutdown();
@@ -1187,6 +1241,11 @@ int run_the_game(int port, int sslport)
 		artifact_guild_transaction_report_unsaved();
 		locker_async_shutdown();
 	}
+	else
+	{
+		// Pwipe already drained and closed admission before its SQL boundary.
+		player_save_worker_shutdown();
+	}
 
 	/* Don't need this anymore, as dropped artis are handled in real time on the DB.
 	// Look for dropped artis and remove them from the next boot.
@@ -1194,7 +1253,7 @@ int run_the_game(int port, int sslport)
 	*/
 
 #ifdef MEMCHK
-	if (!_copyover)
+	if (!_copyover && !_pwipe)
 	{
 		free_world();
 		dump_mem_log();
@@ -2762,6 +2821,8 @@ resume_game_loop:
 		run_session_input_phase(context);
 		run_output_phase(context);
 		run_event_phase(context);
+		if (_pwipe)
+			break;
 		run_recurring_persistence_phase(context);
 		run_activity_phase(context);
 		run_combat_phase(context);

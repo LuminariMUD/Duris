@@ -64,6 +64,7 @@ void *apply_context = nullptr;
 player_save_worker_health health = {};
 size_t queued_bytes = 0;
 bool stop_requested = false;
+bool accepting = false;
 // False while a writer thread runs, including one shutdown left behind.
 bool writer_exited = true;
 
@@ -243,7 +244,7 @@ void writer_main()
 player_save_submit_result enqueue(queued_job job)
 {
 	std::lock_guard<std::mutex> lock(worker_mutex);
-	if (!health.running || stop_requested)
+	if (!health.running || stop_requested || !accepting)
 	{
 		errno = ESHUTDOWN;
 		return player_save_submit_result::unavailable;
@@ -350,6 +351,7 @@ bool player_save_worker_init(player_save_apply_fn apply, void *context)
 		apply_callback = apply;
 		apply_context = context;
 		stop_requested = false;
+		accepting = true;
 		health.running = true;
 		health.stop_pending = false;
 		writer_exited = false;
@@ -470,6 +472,19 @@ bool persistence_writer_pending(persistence_job_kind kind, uint64_t owner)
 	if (inflight && inflight->kind == kind && inflight->owner == owner)
 		return true;
 	return queued_by_owner.count({ kind, owner }) != 0;
+}
+
+void persistence_writer_quiesce(void)
+{
+	std::lock_guard<std::mutex> lock(worker_mutex);
+	accepting = false;
+}
+
+void persistence_writer_resume(void)
+{
+	std::lock_guard<std::mutex> lock(worker_mutex);
+	if (health.running && !stop_requested)
+		accepting = true;
 }
 
 bool persistence_writer_wait_idle(uint64_t timeout_msec)

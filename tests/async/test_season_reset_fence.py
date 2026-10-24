@@ -46,7 +46,7 @@ assert boundary < begin.index('"COMMIT"', boundary)
 assert '"ROLLBACK"' in begin
 
 wipe = SQL[SQL.index("bool sql_pwipe(int code_verify)", SQL.index("#else")):]
-first_mutation = wipe.index("sql_clear_zone_trophy()")
+first_mutation = wipe.index('qry("UPDATE zones SET alignment=0')
 assert wipe.index("redis_validate_pwipe_state()") < wipe.index(
     "sql_begin_pwipe_epoch()"
 ) < first_mutation

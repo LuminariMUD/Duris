@@ -521,6 +521,17 @@ int main()
 	wait_until([] { return !critical_outbox_health_copy().counts_stale; });
 	assert(critical_outbox_health_copy().pending == 0);
 	assert(critical_outbox_health_copy().accepting);
+	// Quiesce must actually stop polling after the accepted generation drains.
+	critical_outbox_quiesce();
+	assert(critical_outbox_drain(1000));
+	const unsigned int paused_fetches = fetches;
+	insert_record(2);
+	std::this_thread::sleep_for(std::chrono::milliseconds(600));
+	assert(fetches == paused_fetches);
+	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=0") == 1);
+	critical_outbox_resume();
+	assert(critical_outbox_drain(1000));
+	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=0") == 0);
 	// SQL failure and pool outage cannot reuse an earlier successful drain.
 	fail_observation = true;
 	assert(!critical_outbox_drain(80));
