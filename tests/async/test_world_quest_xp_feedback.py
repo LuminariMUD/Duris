@@ -62,6 +62,7 @@ PRELUDE = r'''
 #include <cstring>
 #include <string>
 #include <vector>
+#include <tuple>
 
 room_data rooms[2]{};
 P_room world = rooms;
@@ -270,6 +271,32 @@ int main() {
         assert(output.find("Quest EXP:", output.find("Quest EXP:") + 1) == std::string::npos);
         assert(output.find("&+CEXP:") == std::string::npos);
     };
+    // Copied residents use their original victim-race XP factor, even when
+    // server configuration gives their visible race a different modifier.
+    for (auto [vnum, original_race, copied_race] : {
+        std::tuple{91201, RACE_HUMAN, RACE_ORC},
+        {91401, RACE_HALFLING, RACE_GOBLIN}, {91402, RACE_HALFELF, RACE_TIEFLING},
+        {91403, RACE_BARBARIAN, RACE_ORC}, {91404, RACE_CENTAUR, RACE_MINOTAUR},
+        {91407, RACE_GNOME, RACE_KOBOLD}, {91432, RACE_GREY, RACE_DROW},
+        {91441, RACE_MOUNTAIN, RACE_DUERGAR}, {91460, RACE_GITHZERAI, RACE_GITHYANKI},
+        {91464, RACE_HUMAN, RACE_TIEFLING}}) {
+        racial_exp_mod_victims[original_race] = .7f;
+        racial_exp_mod_victims[copied_race] = 1.3f;
+        mobs[0].virtual_number = vnum == 91201 ? 22801 : vnum - 62200;
+        mob.player.race = original_race;
+        const int original = gain_exp_modifiers_race_only(&player, &mob, 100);
+        mobs[0].virtual_number = vnum;
+        mob.player.race = copied_race;
+        assert(tutorial_mobile_mechanics_race(&mob) == original_race);
+        assert(IS_GIANT(&mob) == is_giant_race(original_race));
+        assert(gain_exp_modifiers_race_only(&player, &mob, 100) == original);
+        mobs[0].virtual_number = 55;
+        assert(tutorial_mobile_mechanics_race(&mob) == copied_race);
+        assert(IS_GIANT(&mob) == is_giant_race(copied_race));
+        assert(gain_exp_modifiers_race_only(&player, &mob, 100) != original);
+        for (auto &factor : racial_exp_mod_victims) factor = 1.0f;
+    }
+    mob.player.race = RACE_HUMAN;
     // Universal protection and ordinary penalties execute the real XP dispatcher,
     // including deleveling and the loss returned to corpse/resurrection accounting.
     for (int race : {RACE_HUMAN, RACE_OGRE, RACE_FIRBOLG}) {
@@ -919,6 +946,7 @@ def main() -> None:
         )
     ]
     functions += [extract_function("limits.c", "static bool divine_experience_active(")]
+    functions += [extract_function("specs.ailvio.c", "int tutorial_mobile_mechanics_race(")]
     for signature in ("static void apply_exp_modifier(", "Amount gain_exp_modifiers_race_only(",
                       "Amount gain_exp_modifiers(", "Amount gain_global_exp_modifiers(",
                       "static int gain_exp_amount("):

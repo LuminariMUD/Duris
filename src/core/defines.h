@@ -1108,8 +1108,10 @@ struct surname_struct
 #define HOME_NEWBIE 22
 #define HOME_PLANE_OF_LIFE 23
 #define HOME_OROGS 24 /* orog */
+#define HOME_WUTVR 25
+#define HOME_PLANE_OF_CHAOS 26
 
-#define LAST_HOME 24 /* number of last hometown */
+#define LAST_HOME 26 /* number of last hometown */
 
 /* initial alignments SAM 7-94 */
 #define ALIGN_EVIL -1

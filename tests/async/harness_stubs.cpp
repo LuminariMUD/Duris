@@ -20,6 +20,12 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Ordinary NPC fixtures use their own race. Tutorial profile/parity coverage
+// links the real lookup, including the full-world read_mobile_probe comparison.
+HARNESS_STUB int tutorial_mobile_mechanics_race(char_data *ch)
+{
+	return ch->player.race;
+}
 HARNESS_STUB bool divine_trade_runtime_save_busy(const ShipData *)
 {
 	return false;

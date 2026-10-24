@@ -229,7 +229,7 @@ else if (IS_AFFECTED2(victim, AFF2_PROT_COLD))
 	dam_mod->mod += dam_factor[DF_PROTECTION] - 1.0;
 }
 
-if (GET_RACE(victim) == RACE_BARBARIAN)
+if (tutorial_mobile_mechanics_race(victim) == RACE_BARBARIAN)
 {
 	dam_mod->type = dam_mod_type::More;
 	dam_mod->mod += -0.4;
@@ -519,17 +519,20 @@ affect_from_char(victim, SKILL_SPELL_PENETRATION);
 }
 }
 }
-, { MAKE_DAM_MOD_PRED(){ if (GET_RACE(caster) > RACE_NONE && GET_RACE(caster) <= LAST_RACE &&
-			     damageType >= 0 &&
-			     damageType < LAST_SPLDAM_TYPE){ dam_mod->type = dam_mod_type::More;
-dam_mod->mod += racial_spldam_offensive_factor[GET_RACE(caster)][damageType] - 1.0;
-}
-
-if (GET_RACE(victim) > RACE_NONE && GET_RACE(victim) <= LAST_RACE && damageType >= 0 &&
+, { MAKE_DAM_MOD_PRED(){ const int casterRace = tutorial_mobile_mechanics_race(caster);
+const int victimRace = tutorial_mobile_mechanics_race(victim);
+if (casterRace > RACE_NONE && casterRace <= LAST_RACE && damageType >= 0 &&
     damageType < LAST_SPLDAM_TYPE)
 {
 	dam_mod->type = dam_mod_type::More;
-	dam_mod->mod += racial_spldam_defensive_factor[GET_RACE(victim)][damageType] - 1.0;
+	dam_mod->mod += racial_spldam_offensive_factor[casterRace][damageType] - 1.0;
+}
+
+if (victimRace > RACE_NONE && victimRace <= LAST_RACE && damageType >= 0 &&
+    damageType < LAST_SPLDAM_TYPE)
+{
+	dam_mod->type = dam_mod_type::More;
+	dam_mod->mod += racial_spldam_defensive_factor[victimRace][damageType] - 1.0;
 }
 }
 }

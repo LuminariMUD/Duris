@@ -176,7 +176,7 @@ bow warbow oak oaken~
 &+goaken wood. Carefully maintained, its surface is a bright sheen of&n
 &+grich brown with small slivers of silver inlay that reflect the light&n
 &+glike small jewels. Nearly as tall as a man, it is obviously one of the&n
-&+glong range Centaur hunting bows, rare and much coveted across the&n
+&+glong range minotaur hunting bows, rare and much coveted across the&n
 &+glands.&n
 ~
 #91410
@@ -192,7 +192,7 @@ fish gurnard~
 &+yThe gurnard is a particularly ugly looking r&+re&+yd, b&+rro&+ywn fish from the&n
 &+ymurky depths of Wutvr's rivers and lakes. Despite the bulging, vacant,&n
 &+ystaring eyes and cat-like whiskers, this is one of the few delicacies&n
-&+yenjoyed by the Barbarians forced to live within the town of Centaurs.&n
+&+yenjoyed by the orcs forced to live within the town of minotaurs.&n
 ~
 #91411
 pickled herring fish~
@@ -208,7 +208,7 @@ pickled herring fish~
 &+Cpickling technique used to preserve the fish, and presumably add more&n
 &+Ctaste, to an otherwise rather bland tasting fish. Very small in size,&n
 &+Cit wil take more than just one or two of these to fill the belly of a&n
-&+Clarge Centaur or Barbarian.&n
+&+Clarge minotaur or orc.&n
 ~
 #91412
 flax basket~
@@ -258,7 +258,7 @@ statue dionysus~
 &+rA gleaming statue of the god Dionysus rises from the green forest&n
 &+rfloor. Moss and grasses creep up the feet of the statue dedicated to&n
 &+rthe god Dionysus "Twice-Born". Patron deity of wine, fertility of&n
-&+rnature and agriculture, he also represents features of the Centaurs&n
+&+rnature and agriculture, he also represents features of the minotaurs&n
 &+rpersonal religion, those of ecstasy and personal delivery from the&n
 &+rdaily world through physical or spiritual intoxication.&n
 ~
@@ -891,9 +891,9 @@ A
 A
 13 10
 #91457
-centaur woven blanket~
-a &+ya finely woven &+Gcent&+Laur&n &+yblanket&n~
-A finely woven &+Gcent&+Laur&n &+yblanket&n lies here.&n~
+minotaur woven blanket~
+a &+ya finely woven &+Gmino&+Ltaur&n &+yblanket&n~
+A finely woven &+Gmino&+Ltaur&n &+yblanket&n lies here.&n~
 ~
 9 15 3 0 5 0 8192 16777217 0 0 0
 0 0 0 0 0 0 0 0
@@ -1775,16 +1775,16 @@ sign~
 ~
 #91528
 maps~
-burbul map proc~
-The object containing the proc for '&+w<ask|tell> burbul map&n' is here.~
+grubruk map proc~
+The object containing the proc for '&+w<ask|tell> grubruk map&n' is here.~
 ~
 13 15 3 0 7 0 2 0 0 0 0
 0 0 0 0 0 0 0 0
 0 0 100
 #91529
-object chyron search~
-chyron_search_obj~
-chyron_search_obj~
+object zyrrak search~
+zyrrak_search_obj~
+zyrrak_search_obj~
 ~
 13 15 3 0 7 0 2 0 0 0 0
 0 0 0 0 0 0 0 0

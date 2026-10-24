@@ -205,10 +205,16 @@ void assign_mobiles(void)
 	/* Ailvio */
 	mob_index[real_mobile0(VMOB_AILVIO_INCAPACITATED)].func.mob = bandage_mob;
 	mob_index[real_mobile0(VMOB_AILVIO_WIFE)].func.mob = bandage_reward_mob;
+	mob_index[real_mobile0(VMOB_WUTVR_INCAPACITATED)].func.mob = bandage_mob;
+	mob_index[real_mobile0(VMOB_WUTVR_WIFE)].func.mob = bandage_reward_mob;
 	mob_index[real_mobile0(29236)].func.mob = newbie_spellup_mob;
 	mob_index[real_mobile0(29238)].func.mob = newbie_spellup_mob;
 	mob_index[real_mobile0(29232)].func.mob = newbie_spellup_mob;
-	mob_index[real_mobile0(29265)].func.mob = newbie_spellup_mob;
+	mob_index[real_mobile0(29237)].func.mob = newbie_spellup_mob;
+	mob_index[real_mobile0(91436)].func.mob = newbie_spellup_mob;
+	mob_index[real_mobile0(91438)].func.mob = newbie_spellup_mob;
+	mob_index[real_mobile0(91432)].func.mob = newbie_spellup_mob;
+	mob_index[real_mobile0(91437)].func.mob = newbie_spellup_mob;
 
 	/* Ako */
 	mob_index[real_mobile0(3715)].func.mob = ako_hypersquirrel;
@@ -1153,6 +1159,7 @@ void assign_mobiles(void)
 	mob_index[real_mobile0(82000)].func.mob = jindo_ticket_master;
 	/* newbie zone this mob gives a special item to the newbie */
 	mob_index[real_mobile0(22801)].func.mob = newbie_paladin;
+	mob_index[real_mobile0(VMOB_CHAOS_GUIDE)].func.mob = newbie_paladin;
 	// lowbie quest proc dont do this if your below lvl 35 thing
 	mob_index[real_mobile0(142215)].func.mob = newbie_quest;
 	mob_index[real_mobile0(142216)].func.mob = newbie_quest;
@@ -1237,6 +1244,8 @@ void assign_objects(void)
 	/* ailvio */
 	obj_index[real_object0(29328)].func.obj = burbul_map_obj;
 	obj_index[real_object0(29329)].func.obj = chyron_search_obj;
+	obj_index[real_object0(VOBJ_WUTVR_MAP_PROC)].func.obj = burbul_map_obj;
+	obj_index[real_object0(VOBJ_WUTVR_SEARCH_PROC)].func.obj = chyron_search_obj;
 
 	/* banks - add proc for storage lockers */
 	obj_index[real_object0(132581)].func.obj = storage_locker_obj_hook;
@@ -1999,6 +2008,9 @@ void assign_objects(void)
 	obj_index[real_object0(22803)].func.obj = stream_of_life;
 	obj_index[real_object0(22800)].func.obj = newbie_sign1;
 	obj_index[real_object0(22801)].func.obj = newbie_sign2;
+	obj_index[real_object0(VOBJ_CHAOS_STREAM)].func.obj = stream_of_life;
+	obj_index[real_object0(91200)].func.obj = newbie_sign1;
+	obj_index[real_object0(91201)].func.obj = newbie_sign2;
 
 	// god toys
 	obj_index[real_object0(174)].func.obj = vareena_statue;
@@ -2245,6 +2257,9 @@ void assign_rooms(void)
 	world[real_room0(29280)].funct = pet_shops;
 	world[real_room0(29282)].funct = pet_shops;
 	obj_index[real_object0(29236)].func.obj = newbie_portal;
+	world[real_room0(91480)].funct = pet_shops;
+	world[real_room0(91482)].funct = pet_shops;
+	obj_index[real_object0(91436)].func.obj = newbie_portal;
 	/* centaur fort */
 	world[real_room0(5300)].funct = inn;
 	mob_index[real_mobile0(5347)].func.mob = world_quest;
@@ -2351,6 +2366,8 @@ void assign_rooms(void)
 	world[real_room0(29812)].funct = inn;
 	world[real_room0(30104)].funct = inn;
 	world[real_room0(29202)].funct = inn;
+	world[real_room0(91505)].funct = inn;
+	world[real_room0(91402)].funct = inn;
 	world[real_room0(29403)].funct = inn;
 
 	/* clav's tundra zone */
