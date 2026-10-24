@@ -17,6 +17,9 @@
 
 #include <string>
 
+// After live keepers and produced stock are reconciled, initialize missing IDs.
+bool flatfile_shopkeeper_bootstrap_new(const std::string &root, std::string *error);
+
 enum class flatfile_shopkeeper_restore_result
 {
 	ok,

@@ -24,6 +24,7 @@
 
 #include "core/prototypes.h"
 #include "world/world_singletons.h"
+#include "flatfile/flatfile_shopkeeper_restore.h"
 #include "item/item_actions.h"
 #include "item/artifact_mana.h"
 #include "item/device_actions.h"
@@ -2726,6 +2727,15 @@ void game_loop(int port, int sslport)
 	if (!mini_mode)
 	{
 		reconcile_shopkeepers(copyover_boot != 0);
+		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		{
+			std::string error;
+			const char *root = persistence_mode_flatfile_root();
+			if (!flatfile_shopkeeper_bootstrap_new(root ? root : "", &error))
+				fatal_boot_error("shopkeeper", "new shop initialization failed: %s",
+						 error.empty() ? "invalid authoritative state" :
+								 error.c_str());
+		}
 		initialize_transport();
 		// The world is final: every artifact that boot, a copyover or a restored
 		// generation loads is in place, so the lists read now are not stale.

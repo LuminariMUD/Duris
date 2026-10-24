@@ -84,6 +84,14 @@ int main() {
  records={record}; records[0].revision=0;
  assert(flatfile_shopkeeper_restore_catalog("fixture",&error)==flatfile_shopkeeper_restore_result::io_error);
  assert(shop_trade_runtime_revision(0,&revision) && revision==7 && body_calls==3);
+ // A missing legacy prototype stays disabled; valid produced slots still
+ // require their actual exemplar in the saved stock.
+ records={record}; shops[0].number_items_produced=1; shops[0].producing[0]=-1;
+ assert(flatfile_shopkeeper_restore_catalog("fixture",&error)==flatfile_shopkeeper_restore_result::ok);
+ shops[0].producing[0]=1;
+ assert(flatfile_shopkeeper_restore_catalog("fixture",&error)==flatfile_shopkeeper_restore_result::invalid);
+ shops[0].producing[0]=0; objects[0].virtual_number=3000;
+ assert(flatfile_shopkeeper_restore_catalog("fixture",&error)==flatfile_shopkeeper_restore_result::invalid);
 }
 """
 output=ROOT/"bin/tests"; output.mkdir(parents=True,exist_ok=True)

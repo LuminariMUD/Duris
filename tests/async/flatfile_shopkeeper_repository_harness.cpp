@@ -261,6 +261,63 @@ int main(int argc, char **argv)
 			flatfile_shopkeeper_result::invalid,
 		"duplicate shopkeeper equipment slot was accepted");
 
+	// Newly authored shop IDs append without replacing traded stock/revisions.
+	auto addition = shop(3, 700);
+	addition.revision = 1;
+	flatfile_authority_after_image added;
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "could not lock shop addition");
+		require(flatfile_shopkeeper_prepare_addition(root.string(), lock, { addition },
+							     &added, &error) ==
+				flatfile_shopkeeper_result::ok,
+			"could not prepare a new shop: " + error);
+		require(flatfile_authority_transaction_commit(root.string(), lock, { added },
+							      &error) ==
+				flatfile_authority_transaction_result::ok,
+			"could not commit a new shop: " + error);
+	}
+	require(flatfile_shopkeeper_list(root.string(), &records, &error) ==
+				flatfile_shopkeeper_result::ok &&
+			records.size() == 3 && records[1].revision == 6 &&
+			records[1].items.size() == 3 && records[1].items.back().object_uid == 400 &&
+			records[2].shop_id == 3 && records[2].revision == 1 &&
+			records[2].items[0].object_uid == 700,
+		"new shop changed old stock/revisions or lost its own items");
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "could not lock addition retry");
+		auto changed = addition;
+		changed.items[0].cost++;
+		require(flatfile_shopkeeper_prepare_addition(root.string(), lock, { changed },
+							     &added, &error) ==
+					flatfile_shopkeeper_result::already_exists &&
+				added.bytes.empty(),
+			"an addition retry could overwrite an existing shop");
+		auto collision = shop(4, 700);
+		collision.revision = 1;
+		require(flatfile_shopkeeper_prepare_addition(root.string(), lock, { collision },
+							     &added, &error) ==
+				flatfile_shopkeeper_result::invalid,
+			"new shop could duplicate another shop's UIDs");
+	}
+	const auto fresh_root = fs::path(argv[1]) / "fresh";
+	prepare_root(fresh_root);
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(fresh_root.string(), &error),
+			"could not lock a fresh catalog");
+		require(flatfile_shopkeeper_prepare_addition(fresh_root.string(), lock,
+							     { addition }, &added, &error) ==
+					flatfile_shopkeeper_result::ok &&
+				!added.bytes.empty(),
+			"new shop required an existing catalog");
+		require(flatfile_authority_transaction_commit(fresh_root.string(), lock, { added },
+							      &error) ==
+				flatfile_authority_transaction_result::ok,
+			"fresh shop catalog did not commit");
+	}
+
 	const fs::path catalog = root / "domains/shopkeeper_catalog";
 	{
 		std::fstream file(catalog, std::ios::in | std::ios::out | std::ios::binary);

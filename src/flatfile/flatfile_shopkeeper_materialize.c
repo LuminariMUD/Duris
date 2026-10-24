@@ -25,6 +25,9 @@
 #include <limits>
 #include <vector>
 
+extern struct shop_data *shop_index;
+extern int number_of_shops;
+
 namespace
 {
 constexpr size_t shopkeeper_affect_maximum = 4096;
@@ -84,6 +87,11 @@ flatfile_shopkeeper_materialize(const std::string &root, const flatfile_shopkeep
 	const int mobile_rnum = real_mobile(record.mob_vnum);
 	if (mobile_rnum < 0)
 		return flatfile_shopkeeper_materialize_result::unknown_mobile;
+	// Quest/tradeskill keepers can have their own command procedure. Their
+	// authoritative identity is the shop definition, not that procedure pointer.
+	if (!shop_index || record.shop_id >= static_cast<uint32_t>(number_of_shops) ||
+	    shop_index[record.shop_id].keeper != mobile_rnum)
+		return flatfile_shopkeeper_materialize_result::invalid;
 	const int room_rnum = real_room(record.room_vnum);
 	if (room_rnum == NOWHERE)
 		return flatfile_shopkeeper_materialize_result::unknown_room;
@@ -103,8 +111,6 @@ flatfile_shopkeeper_materialize(const std::string &root, const flatfile_shopkeep
 	if (!character)
 		return flatfile_shopkeeper_materialize_result::allocation_failure;
 	staged_shopkeeper staged(character);
-	if (!IS_SHOPKEEPER(character))
-		return flatfile_shopkeeper_materialize_result::invalid;
 	bind_shopkeeper(character, static_cast<int>(record.shop_id));
 	GET_BIRTHPLACE(character) = record.room_vnum;
 	for (const auto &saved : record.affects)
