@@ -9,6 +9,9 @@
 #include "world/graph.h"
 
 #include <cassert>
+#include <cstdarg>
+#include <cstdio>
+#include <string>
 #include <iostream>
 
 namespace
@@ -97,7 +100,16 @@ int unsafe_room(int, P_char, int, char *)
 	return false;
 }
 void logit(const char *, const char *, ...) {}
-void send_to_char_f(P_char, const char *, ...) {}
+std::string diagnostic_output;
+void send_to_char_f(P_char, const char *format, ...)
+{
+	char line[512];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(line, sizeof(line), format, args);
+	va_end(args);
+	diagnostic_output += line;
+}
 
 const divine_boon_state *divine_boon_runtime_state()
 {
@@ -511,5 +523,38 @@ int main()
 	zones[2].flags = ZONE_CLOSED;
 	assert(!divine_boon_cargo_eligible(route));
 
+	// A zero-player server may generate cargo and then correctly record empty
+	// hourly opportunities while cargo remains active. No RNG from staff status.
+	zones[2].flags = 0; // Restore valid water-port access for the cargo-only fixture.
+	reset_hour();
+	current_population = {};
+	divine_boon_selection_pulse(3600);
+	assert(queued.slots[0].category == divine_boon_category::cargo);
+	queue_accepts = true;
+	divine_boon_selection_pulse(3601);
+	publish();
+	divine_boon_selection_pulse(3602);
+	const unsigned after_grant_rng = random_calls;
+	divine_boon_selection_pulse(7200);
+	publish();
+	divine_boon_selection_pulse(7201);
+	assert(random_calls == after_grant_rng);
+	char_data staff = {};
+	staff.player.level = IMMORTAL;
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("last_hour=7200 outcome=no-eligible-category") !=
+	       std::string::npos);
+	assert(diagnostic_output.find("side=good active=0") != std::string::npos);
+	assert(diagnostic_output.find("side=evil active=0") != std::string::npos);
+	assert(diagnostic_output.find("cargo_routes=0") != std::string::npos);
+	assert(diagnostic_output.find("recent hour=3600 outcome=generated") != std::string::npos);
+	const auto before_status_rng = random_calls;
+	divine_boon_selection_status(&staff);
+	assert(random_calls == before_status_rng);
+	reset_hour();
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("history=empty") != std::string::npos);
 	std::cout << "Divine candidate paths, flags, account brackets and thin pools passed\n";
 }

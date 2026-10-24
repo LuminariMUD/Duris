@@ -18,6 +18,7 @@
 #include "world/world_quest_policy.h"
 
 #include <algorithm>
+#include <deque>
 #include <new>
 #include <optional>
 #include <set>
@@ -59,6 +60,34 @@ std::vector<candidate> catalogue;
 std::array<std::array<std::vector<int>, NUM_PORTS>, NUM_PORTS> cargo_paths;
 std::array<std::vector<int>, 2> paths;
 std::optional<divine_boon_state> prepared_hour;
+// Ring of the last eight durably published hourly decisions (current boot only).
+constexpr size_t diagnostic_limit = 8;
+std::deque<divine_boon_selection_diagnostic> diagnostic_history;
+std::optional<divine_boon_selection_diagnostic> prepared_diagnostic;
+std::optional<divine_boon_selection_diagnostic> submitted_diagnostic;
+
+void confirm_diagnostic(const divine_boon_state &state, bool pending)
+{
+	if (!submitted_diagnostic || pending)
+		return;
+	if (state.revision == submitted_diagnostic->committed_revision &&
+	    state.last_opportunity == submitted_diagnostic->hour)
+	{
+		if (diagnostic_history.size() == diagnostic_limit)
+			diagnostic_history.pop_front();
+		try
+		{
+			diagnostic_history.push_back(*submitted_diagnostic);
+		}
+		catch (const std::bad_alloc &)
+		{
+			// Read-only diagnostics must never interrupt game commands.
+		}
+	}
+	// Never report a refused, superseded or failed write as committed.
+	if (state.revision >= submitted_diagnostic->committed_revision)
+		submitted_diagnostic.reset();
+}
 std::array<std::array<int32_t, DIVINE_BOON_SLOTS>, 2> reward_zones = {};
 uint64_t reward_revision = 0;
 int64_t reward_checked_at = -1;
@@ -279,6 +308,9 @@ try
 	catalogue.clear();
 	cargo_paths = {};
 	prepared_hour.reset();
+	prepared_diagnostic.reset();
+	submitted_diagnostic.reset();
+	diagnostic_history.clear();
 	reward_revision = 0;
 	reward_checked_at = -1;
 	if (!world || !zone_table || top_of_world < 0 || top_of_zone_table < 0)
@@ -412,7 +444,7 @@ bool divine_boon_cargo_eligible(const divine_boon_slot &slot)
 
 bool divine_boon_select(const divine_boon_state &published, int64_t now,
 			const std::array<divine_boon_population, 2> &population,
-			divine_boon_slot *choice)
+			divine_boon_slot *choice, divine_boon_selection_diagnostic *diagnostic)
 try
 {
 	if (!choice || published.mode != divine_boon_mode::divine || published.paused ||
@@ -421,6 +453,8 @@ try
 	auto state = published;
 	divine_boon_reconcile(&state, now); // Newly expired objectives join repeat history.
 	refresh_paths();
+	if (diagnostic)
+		diagnostic->population = population;
 	std::array<divine_boon_slot, 2> choices;
 	choices[0].category = divine_boon_category::experience;
 	choices[1].category = divine_boon_category::epic;
@@ -482,6 +516,16 @@ try
 						(1 + served[band]);
 					if (weight <= 0)
 						continue;
+					if (diagnostic)
+					{
+						unsigned &count =
+							selected.category == divine_boon_category::
+										     experience ?
+								diagnostic->experience_candidates
+									[side] :
+								diagnostic->epic_candidates[side];
+						++count;
+					}
 					total += weight;
 					if (number(0, 1000000) / 1000001.0 < weight / total)
 						selected.zones[side] = zone.number;
@@ -506,6 +550,8 @@ try
 					      return slot.category == divine_boon_category::pvp &&
 						     divine_boon_active(slot, now);
 				      });
+	if (diagnostic)
+		diagnostic->pvp_eligible = pvp;
 	if (pvp)
 	{
 		const unsigned weight =
@@ -566,6 +612,8 @@ try
 			if (number(1, ++count) == 1)
 				route = candidate;
 		}
+		if (diagnostic)
+			diagnostic->cargo_routes = count;
 		if (count)
 		{
 			total += 15;
@@ -574,6 +622,8 @@ try
 		}
 	}
 
+	if (diagnostic)
+		diagnostic->sampled = true;
 	if (!total)
 		return false;
 
@@ -641,6 +691,49 @@ void divine_boon_selection_status(P_char ch)
 	send_to_char_f(ch,
 		       "divine_routes count=%u shared=%u first_source=%d first_destination=%d\r\n",
 		       routes, shared, first_source, first_destination);
+
+	const auto *published = divine_boon_runtime_state();
+	if (published)
+		confirm_diagnostic(*published, divine_boon_runtime_pending());
+	if (diagnostic_history.empty())
+		send_to_char_f(ch, "divine_diag history=empty scope=current-boot\r\n");
+	else
+	{
+		const auto &latest = diagnostic_history.back();
+		send_to_char_f(
+			ch, "divine_diag last_hour=%lld outcome=%s category=%u revision=%llu\r\n",
+			static_cast<long long>(latest.hour), latest.reason,
+			static_cast<unsigned>(latest.selected),
+			static_cast<unsigned long long>(latest.committed_revision));
+		for (unsigned side = 0; side < latest.population.size(); ++side)
+		{
+			const auto &p = latest.population[side];
+			send_to_char_f(
+				ch,
+				"divine_diag side=%s active=%u levels=1-20:%u,21-35:%u,36-50:%u,51+:%u\r\n",
+				side ? "evil" : "good", p.active_accounts, p.brackets[0],
+				p.brackets[1], p.brackets[2], p.brackets[3]);
+			send_to_char_f(
+				ch,
+				"divine_diag side=%s pvp=%u exp_candidates=%u epic_candidates=%u\r\n",
+				side ? "evil" : "good", p.pvp_accounts,
+				latest.experience_candidates[side], latest.epic_candidates[side]);
+		}
+		send_to_char_f(ch, "divine_diag sampled=%s pvp_eligible=%s cargo_routes=%u\r\n",
+			       latest.sampled ? "yes" : "no", latest.pvp_eligible ? "yes" : "no",
+			       latest.cargo_routes);
+		for (const auto &item : diagnostic_history)
+			send_to_char_f(ch,
+				       "divine_diag recent hour=%lld outcome=%s category=%u\r\n",
+				       static_cast<long long>(item.hour), item.reason,
+				       static_cast<unsigned>(item.selected));
+	}
+	if (submitted_diagnostic)
+		send_to_char_f(ch, "divine_diag hour=%lld status=pending-durable-write\r\n",
+			       static_cast<long long>(submitted_diagnostic->hour));
+	else if (prepared_diagnostic)
+		send_to_char_f(ch, "divine_diag hour=%lld status=queue-refused\r\n",
+			       static_cast<long long>(prepared_diagnostic->hour));
 }
 
 void divine_boon_selection_pulse(int64_t now)
@@ -672,11 +765,15 @@ try
 		reward_revision = state->revision;
 		reward_checked_at = now;
 	}
+	confirm_diagnostic(*state, divine_boon_runtime_pending());
 	if (divine_boon_runtime_pending())
 		return;
 	const int64_t hour = now - now % DIVINE_BOON_HOUR;
 	if (prepared_hour && prepared_hour->revision != state->revision + 1)
+	{
 		prepared_hour.reset(); // A staff mutation superseded this unsubmitted choice.
+		prepared_diagnostic.reset();
+	}
 	if (hour <= state->last_opportunity)
 		return;
 	if (!prepared_hour || hour > prepared_hour->last_opportunity)
@@ -684,22 +781,36 @@ try
 		auto next = *state;
 		divine_boon_slot choice;
 		bool selected = false;
+		divine_boon_selection_diagnostic report;
+		report.hour = hour;
 		// A refused queue retains the exact choice for this hour. Once the hour
 		// has passed, skip it and consume the present opportunity without RNG.
-		if (!prepared_hour && hour - state->last_opportunity == DIVINE_BOON_HOUR &&
-		    !state->paused)
+		if (prepared_hour || hour - state->last_opportunity != DIVINE_BOON_HOUR)
+			report.reason = "missed-hour";
+		else if (state->paused)
+			report.reason = "paused";
+		else
 		{
 			auto candidates = *state;
 			divine_boon_reconcile(&candidates,
 					      now); // Include just-expired repeat history.
 			if (std::any_of(candidates.slots.begin(), candidates.slots.end(),
 					[](const auto &slot) { return !slot.id; }))
+			{
 				selected = divine_boon_select(candidates, now,
 							      divine_boon_activity_population(),
-							      &choice);
+							      &choice, &report);
+				report.reason = selected       ? "generated" :
+						report.sampled ? "no-eligible-category" :
+								 "selector-unavailable";
+			}
+			else
+				report.reason = "slots-full";
 		}
 		if (!divine_boon_rotate(&next, now, selected ? &choice : nullptr))
 			return;
+		report.selected = selected ? choice.category : divine_boon_category::none;
+		prepared_diagnostic = report;
 		prepared_hour = std::move(next);
 	}
 	bool targets_valid = true;
@@ -723,9 +834,22 @@ try
 		if (!divine_boon_rotate(&empty, now, nullptr))
 			return;
 		prepared_hour = std::move(empty); // Invalidate, never reroll.
+		if (prepared_diagnostic)
+		{
+			prepared_diagnostic->reason = "target-invalidated";
+			prepared_diagnostic->selected = divine_boon_category::none;
+		}
 	}
 	if (divine_boon_runtime_queue(*prepared_hour))
+	{
+		if (prepared_diagnostic)
+		{
+			prepared_diagnostic->committed_revision = prepared_hour->revision;
+			submitted_diagnostic = *prepared_diagnostic;
+		}
+		prepared_diagnostic.reset();
 		prepared_hour.reset();
+	}
 }
 catch (const std::bad_alloc &)
 {
