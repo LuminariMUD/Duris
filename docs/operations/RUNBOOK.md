@@ -225,6 +225,13 @@ cargo allowance's boon ID. Snapshot validation precedes the irreversible boundar
 a failed durable retirement leaves the reset fenced. Protected cargo receipts/books
 are retained; their recovery isolation is qualified separately.
 
+Artifact domain rows clear ownership, location, timers, souls and legacy custody
+references. Canonical UIDs become retired (or absent when none existed), preserving
+old-body rejection and allowing a fresh body through the existing creation path.
+Rejected UIDs, delivery markers, baselines and immutable outcome/receipt history
+survive; revision allocation continues from that history. Pending old deliveries
+recognize the retired body and cannot feed or bind its replacement.
+
 Collector candidates and held stock close through the normal audited season-reset
 cancellation. Held items move to destroyed custody; listing records, payloads,
 receipts and increasing listing IDs remain as history. Normal recovery excludes

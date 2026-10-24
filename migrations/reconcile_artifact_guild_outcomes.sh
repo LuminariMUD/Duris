@@ -20,7 +20,9 @@ WHERE s.vnum IS NULL OR NOT (s.owned <=> (a.owned='Y'))
  OR s.artifact_type<>COALESCE(a.type,0)
  OR s.bind_owner_pid<>COALESCE(b.owner_pid,0) OR s.bind_timer_epoch<>COALESCE(b.timer,0);
 SELECT 'artifact_missing_legacy_rows', COUNT(*)
-FROM artifact_domain_state s LEFT JOIN artifacts a ON a.vnum=s.vnum WHERE a.vnum IS NULL;
+FROM artifact_domain_state s LEFT JOIN artifacts a ON a.vnum=s.vnum
+WHERE a.vnum IS NULL AND (s.owned<>0 OR s.loc_type<>1 OR s.location<>0
+ OR s.timer_epoch<>0 OR s.bind_owner_pid<>0 OR s.bind_timer_epoch<>0);
 SELECT 'artifact_missing_item_owners', COUNT(*)
 FROM artifact_domain_state s LEFT JOIN item_current_owner i ON i.item_uid=s.item_uid
 WHERE s.item_uid IS NOT NULL AND i.item_uid IS NULL;

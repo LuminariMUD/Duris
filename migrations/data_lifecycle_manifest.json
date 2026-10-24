@@ -704,7 +704,7 @@
         "excluded_fields": [],
         "shared_fields": []
       },
-      "season_action": "retain",
+      "season_action": "reset_update",
       "active_retention": "current_season_or_operational_need",
       "archive_retention": "pending_controller_decision",
       "terminal_action": "retain",
