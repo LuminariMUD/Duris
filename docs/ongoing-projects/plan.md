@@ -40,6 +40,28 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — matched pre-wipe restore
+
+Branch `branch/issue-264-matched-restore`, based on PR #336 at `24d68b3d8`.
+Outcome: rehearse a frozen pre-wipe SQL/journal generation paired with legacy
+filesystem and real authenticated Redis world-recovery data; restore all three
+into fresh owned candidates, prove original epoch/bodies/banks/rewards/files/world
+and account access, and leave the wiped new-season source unchanged. Extend the
+existing executable runtime journey with an optional restore stage and document
+the manual cutover. Reuse backup capture/verifier, private DB import/reconciliation,
+tombstone gate and native receipt verifier; do not add a backup coordinator or
+production promotion feature. All writers are stopped across the frozen capture;
+a verified SQL-only generation alone is not a matched wipe backup.
+Files: existing runtime journey, runbook/regression notes and this plan. Proof:
+actual command/reset/fresh gameplay, matched hashes/epoch, independent SQL import,
+real Redis RDB restart/recovery, restored account login/save/reconnect, unchanged
+source and retained generation. Production action and full readiness are excluded.
+The first trial captured a verified SQL generation and real authenticated world RDB,
+then passed command/reset/filesystem cleanup; fresh gameplay/recovery is running.
+The fixture was tightened during review to give the restored Redis its own port
+and retain the post-wipe source for comparison. Run that final fixture before
+claiming the full matched restore. No C/C++ source changed; reuse #336 builds.
+
 ## Current continuation — same-epoch SQL resume
 
 Branch `branch/issue-264-sql-resume`, based on PR #334 at `613d15aa5`.

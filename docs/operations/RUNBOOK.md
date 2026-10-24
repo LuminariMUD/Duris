@@ -292,6 +292,33 @@ Its service's private temporary directory can be removed on stop. The player-eve
 season fence orders publication against the SQL boundary; the full external-writer,
 cache, donation and reconnect cutover still needs its separate rehearsal.
 
+Before scheduling a wipe, prepare and verify a **matched pre-wipe recovery point**.
+The regular MariaDB backup contains SQL and journals; `PREBOOT_BACKUP=1` does not
+add legacy filesystem or Redis coverage. After the website preservation gate above,
+stop external seasonal/account-benefit writers and stop/drain the game. Freeze DDL
+for the capture. With writers stopped, publish a verified SQL generation under the
+approved policy, capture the data-root filesystem stores from the reset/retention
+inventory (including wiped targets, accounts, bans, archives and configuration), and
+capture Redis recovery data. Record the active SQL epoch/status, SQL generation and
+manifest hash, filesystem archive hash, Redis capture hash, binary/world revision,
+namespace and required configuration/key custody together. Store supplements beside
+the SQL generation; do not modify its immutable manifest or files. Check age/capacity/
+replica/drill status under [BACKUPS.md](BACKUPS.md); missing or mismatched supplements
+mean the recovery preparation is incomplete. Keep external benefit writers stopped
+until the reset/cutover is complete; restrict the resumed countdown to maintenance.
+
+Rehearse restoration into fresh, isolated candidates before authorizing the wipe.
+Verify every recorded hash and the matching active epoch before starting a candidate;
+check current independent erasure/tombstone evidence. Use the existing private-DB
+import and migration/value reconciliation, native journal verification, filesystem
+copy and a separate Redis instance, then prove account login, saved items/balances,
+world recovery and another boot. A full Redis RDB belongs only in a dedicated
+candidate instance; never load it over shared live Redis or another application's
+namespace. Use the matching runtime/configuration and world authentication key.
+The optional `run_pwipe_runtime_journey.py --redis --restore` exercises this frozen
+capture and isolated matched recovery with synthetic data. It does not promote a
+candidate, install host backup policy or authorize a production restore.
+
 After an interruption, stop the launcher/server and all external seasonal writers,
 preserve logs and the matching DB/filesystem/Redis backup generation, and inspect
 `SELECT season_epoch, reset_status, reset_started_at, reset_completed_at FROM

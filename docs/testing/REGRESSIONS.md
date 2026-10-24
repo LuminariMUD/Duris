@@ -38,6 +38,20 @@ MySQL 8 fixture instead of creating MariaDB. No real `.env`, player data or exte
 notifications are used. This does not replace the full command/countdown, writer
 drain, gameplay, matched restore or external integration journeys in #264.
 
+`python3 tests/async/run_pwipe_runtime_journey.py --redis --restore /absolute/path/to/dms_new`
+extends the real command/reset/fresh-gameplay journey with a matched recovery drill.
+It stops all fixture game writers, captures a sealed SQL/journal backup through the
+actual CLI and pairs it with hashed filesystem and authenticated Redis RDB snapshots.
+After the actual wipe and new-season gameplay, it imports that generation into a
+new private Unix-socket MariaDB and restores filesystem/Redis into separate candidates.
+It checks original epoch/PID/bank/reward/item state, real authenticated world recovery,
+account login/save/reconnect/second boot, retained hashes and unchanged new-season
+source authorities. It uses existing backup/import/reconciliation/tombstone/native
+receipt verification; it adds no production promotion path. The source/code assets
+and native binary are pinned to the reported revision/hash. This option requires
+`--redis` and the direct launcher; existing system-service evidence is reused. Its
+private databases/Redis/temporary trees are removed afterward.
+
 `python3 tests/async/test_pwipe_quiescence.py` executes the production writer
 preparation with the real shared writer and controlled peripheral drains. Held
 jobs and read-callback follow-up writes finish before admission closes; late jobs
