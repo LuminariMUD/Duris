@@ -3,10 +3,16 @@
 
 Own disposable MariaDB/runtime only; never reads a checkout .env or real player data.
 """
+# Refuse elevation before importing checkout code or invoking Git.
+import os
+if os.geteuid() == 0:
+    raise SystemExit("Run this qualifier unprivileged; --systemd uses an installed root-owned helper")
+
 from pathlib import Path
+import argparse
+import shlex
 import hashlib
 import json
-import os
 import shutil
 import signal
 import subprocess
@@ -19,12 +25,22 @@ import test_flatfile_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
 STAFF = "Wipekeeper"
+GIT = ["git"]
 
 
-def run(binary):
+def run(binary, with_redis=False, systemd=False, systemd_helper=None):
+    if systemd:
+        assert systemd_helper is not None, "--systemd requires an installed helper"
+        for path in (systemd_helper, *systemd_helper.parents):
+            info = path.lstat()
+            assert not path.is_symlink() and info.st_uid == 0 and not info.st_mode & 0o022, "unsafe installed helper path"
+        subprocess.run(["sudo", "-n", str(systemd_helper), "check",
+                        "duris-pwipe-qualification-" + str(os.geteuid()) + "-" + "0" * 32 + ".service"],
+                       check=True, timeout=10, stdout=subprocess.DEVNULL)
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
-        os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary)])
+        os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
+                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else [])])
     assert os.environ["TEST_DB_HOST"] == "127.0.0.1"
     assert not Path("/usr/bin/sendemail").exists(), "fixture requires the launcher mail command absent"
     database = "pwipe_journey_" + uuid.uuid4().hex[:12]
@@ -49,9 +65,9 @@ def run(binary):
     output.mkdir(parents=True, exist_ok=True)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     report = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-              "source_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
-              "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "backend": "mariadb-primary", "redis": False, "status": "running"}
+              "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
+              "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "status": "running"}
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
@@ -62,7 +78,7 @@ def run(binary):
             root = Path(temporary)
             journey.make_fixture(root)
             journey.generate_certificate(root)
-            tracked = subprocess.check_output(["git", "ls-files", "scripts", "migrations"],
+            tracked = subprocess.check_output([*GIT, "ls-files", "scripts", "migrations"],
                                               cwd=ROOT, text=True).splitlines()
             for relative in tracked:
                 destination = root / relative
@@ -73,18 +89,83 @@ def run(binary):
                 (root / directory).mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / "Players/wipers/wipe_it_all", root / "Players/wipers/wipe_it_all")
             shutil.copy2(binary, root / "bin/server/dms_new")
-            plain, tls, websocket = journey.available_ports()
+            # A private allocator avoids another user's sticky-/tmp lock when
+            # both qualifier and game run as the ordinary fixture owner.
+            port_root = root / "test-tmp"
+            port_root.mkdir(mode=0o700)
+            prior_tempdir = tempfile.tempdir
+            tempfile.tempdir = str(port_root)
+            try:
+                plain, tls, websocket = journey.available_ports()
+            finally:
+                tempfile.tempdir = prior_tempdir
             env.update(DURIS_DEV_PORT=str(plain), DURIS_TLS_PORT=str(tls),
                        DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
                        CRITICAL_COMMAND_JOURNAL_DIR=str(root / "journals/critical"))
             path = root / "launcher.out"
-            process = client = None
+            process = client = redis_server = None
+            unit_created = False
+            unit_name = "duris-pwipe-qualification-" + str(os.geteuid()) + "-" + uuid.uuid4().hex + ".service"
             output_file = path.open("w")
+
+            def unit_control(action, *arguments, **options):
+                return subprocess.run(["sudo", "-n", str(systemd_helper), action, unit_name, *map(str, arguments)],
+                                      timeout=110, check=True, **options)
+
+            def unit_logs():
+                if systemd and unit_created:
+                    output_file.seek(0)
+                    unit_control("logs", stdout=output_file, stderr=subprocess.STDOUT)
+                    output_file.truncate()
+                    output_file.flush()
+
+            def unit_state():
+                properties = ("ExecMainStatus", "ActiveState", "SubState", "NRestarts", "Result")
+                text = subprocess.check_output(["systemctl", "show", unit_name,
+                                                *("--property=" + key for key in properties)], text=True)
+                return dict(line.split("=", 1) for line in text.splitlines())
+
+            def running():
+                # The system unit owns this lifetime; no CLI helper is a
+                # substitute for its actual state and final exit status.
+                return unit_state()["ActiveState"] not in ("failed", "inactive") if systemd else process.poll() is None
+
+            def exit_status():
+                if systemd:
+                    unit_logs()
+                    return int(unit_state()["ExecMainStatus"])
+                return process.returncode
+
+            def redis(*arguments):
+                return subprocess.check_output(["redis-cli", "--raw", "-h", "127.0.0.1", "-p",
+                                                env["REDIS_PORT"], *arguments], text=True).strip()
+
+            def expect_presence(pid, epoch):
+                deadline = time.monotonic() + 15
+                while True:
+                    prefix = env["REDIS_NAMESPACE"] + ":season:" + str(epoch) + ":presence:"
+                    generation = redis("GET", prefix + "current")
+                    session = prefix + "session:" + generation + ":" + str(pid)
+                    if generation and redis("EXISTS", session) == "1":
+                        return
+                    assert time.monotonic() < deadline, "visible character presence was not published"
+                    time.sleep(.1)
+
+            def start():
+                if systemd:
+                    unit_control("start", stdout=subprocess.DEVNULL, stderr=output_file)
+                    return None
+                return subprocess.Popen([str(root / "scripts/cycle_mud.sh"), "--minimal"],
+                                        cwd=root, env=env, stdout=output_file,
+                                        stderr=subprocess.STDOUT, start_new_session=True)
 
             def stop():
                 nonlocal process, client
                 if client:
                     client.close(); client = None
+                if systemd and unit_created:
+                    unit_control("stop")
+                    unit_logs()
                 if process and process.poll() is None:
                     process.terminate()
                     try: process.wait(timeout=45)
@@ -95,24 +176,67 @@ def run(binary):
             def boot():
                 nonlocal process
                 offset = path.stat().st_size
-                process = subprocess.Popen([str(root / "scripts/cycle_mud.sh"), "--minimal"],
-                                           cwd=root, env=env, stdout=output_file,
-                                           stderr=subprocess.STDOUT, start_new_session=True)
+                process = start()
                 deadline = time.monotonic() + 120
                 while "Entering game loop." not in path.read_text(errors="replace")[offset:]:
-                    assert process.poll() is None and time.monotonic() < deadline, "boot failed"
+                    unit_logs()
+                    assert running() and time.monotonic() < deadline, "boot failed"
                     time.sleep(0.1)
 
             def save(name):
                 client.send("save"); client.expect("Save complete for " + name + ".", timeout=30)
 
             try:
+                if with_redis:
+                    redis_root = root / "redis"
+                    redis_root.mkdir()
+                    redis_port = journey.available_ports()[0]
+                    assert redis_port not in (plain, tls, websocket)
+                    redis_server = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
+                                                     "--save", "", "--appendonly", "no", "--dir", str(redis_root)],
+                                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    env.update(REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port),
+                               REDIS_DB="0", REDIS_NAMESPACE="duris:local:pwipe-" + uuid.uuid4().hex[:12])
+                    for attempt in range(100):
+                        probe = subprocess.run(["redis-cli", "-h", "127.0.0.1", "-p", str(redis_port), "PING"],
+                                               capture_output=True, text=True)
+                        if probe.returncode == 0 and probe.stdout.strip() == "PONG":
+                            break
+                        time.sleep(.05)
+                    else: raise AssertionError("private Redis did not start")
+                if systemd:
+                    template = (ROOT / "deploy/systemd/duris-mud-production.service.in").read_text()
+                    (root / ".env").write_text("".join(key + "=" + shlex.quote(value) + "\n" for key, value in env.items()))
+                    (root / ".env").chmod(0o600)
+                    unit_created = True
+                    prepared = unit_control("prepare", root, capture_output=True, text=True)
+                    binding = json.loads(prepared.stdout)
+                    assert binding["uid"] == os.geteuid()
+                    assert binding["unit_template_sha256"] == hashlib.sha256(template.encode()).hexdigest()
+                    report.update(binding, qualifier_uid=os.geteuid(), systemd_helper=str(systemd_helper),
+                                  systemd_helper_sha256=hashlib.sha256(systemd_helper.read_bytes()).hexdigest())
+                    sql("UPDATE season_reset_state SET reset_status='resetting',reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=NULL")
+                    process = start()
+                    deadline = time.monotonic() + 90
+                    while running():
+                        assert time.monotonic() < deadline, "fenced unit did not stop"
+                        time.sleep(.1)
+                    assert exit_status() == 58, unit_state()
+                    time.sleep(12)
+                    fenced = unit_state()
+                    assert fenced["NRestarts"] == "0" and fenced["ActiveState"] in ("failed", "inactive"), fenced
+                    report["service_incomplete_reset"] = fenced
+                    sql("UPDATE season_reset_state SET reset_status='active',reset_started_at=NULL")
+                    process = None
+                    print("Actual full-sandbox system service refused an incomplete reset with exit 58 and no restart", flush=True)
                 boot()
                 client = journey.MudClient(plain)
                 journey.create_character(client, character=STAFF)
                 client.send("shutdown pwipe confirm yes"); client.expect("Pardon?")
                 save(STAFF)
                 old_pid = int(sql("SELECT pid FROM player_data WHERE name='" + STAFF + "'"))
+                if with_redis:
+                    expect_presence(old_pid, 1)
                 old_items = sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid))
                 assert int(old_items) > 0
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
@@ -132,13 +256,21 @@ def run(binary):
                 client.send("shutdown pwipe confirm yes"); client.expect("five")
                 client.send("shutdown"); client.expect("cancelled")
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
+                if with_redis:
+                    old_keys = [env["REDIS_NAMESPACE"] + ":season:1:" + suffix for suffix in
+                                ("cache:pwipe-sentinel", "presence:session:pwipe-sentinel",
+                                 "presence_op:pwipe-sentinel", "world_state:generation:pwipe-sentinel")]
+                    old_keys.append("mud:cache:pwipe-sentinel")
+                    retained_keys = ["unrelated:pwipe-sentinel", "duris:local:other:season:1:cache:pwipe-sentinel"]
+                    for key in old_keys + retained_keys:
+                        assert redis("SET", key, "fixture") == "OK"
                 began = time.monotonic()
                 wall_began = time.time()
                 report["schedule_wall_time"] = wall_began
                 client.send("shutdown pwipe confirm yes"); client.expect("five")
                 next_progress = began + 60
                 print("Real pwipe scheduled; beginning the required five-minute countdown", flush=True)
-                while process.poll() is None:
+                while running():
                     elapsed = time.monotonic() - began
                     assert elapsed < 420, "pwipe countdown/reset did not finish"
                     if time.time() - wall_began < 290:
@@ -152,7 +284,17 @@ def run(binary):
                 wall_elapsed = time.time() - wall_began
                 report.update(monotonic_countdown_seconds=elapsed, wall_countdown_seconds=wall_elapsed)
                 assert wall_elapsed >= 295, (wall_elapsed, elapsed)
-                assert process.returncode == 55, (process.returncode, path.read_text(errors="replace")[-6000:])
+                assert exit_status() == 55, (exit_status(), path.read_text(errors="replace")[-6000:])
+                if systemd:
+                    time.sleep(12)
+                    completed = unit_state()
+                    assert completed["NRestarts"] == "0" and completed["ActiveState"] == "inactive", completed
+                    report["service_completed_reset"] = completed
+                if with_redis:
+                    assert redis("EXISTS", *old_keys) == "0"
+                    assert redis("MGET", *retained_keys).splitlines() == ["fixture"] * len(retained_keys)
+                    report["redis_reset_assertions"] = "old scoped/legacy sentinels removed; unrelated namespaces preserved"
+                    print("Real Redis reset removed old epoch sentinels and preserved unrelated namespaces", flush=True)
                 client.close(); client = None; process = None
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "2:active"
                 assert sql("SELECT COUNT(*) FROM account_banks") == "0"
@@ -168,10 +310,19 @@ def run(binary):
                 client = journey.reconnect_character(plain, character=STAFF)
                 client.send("score"); client.expect("Level")
                 save(STAFF)
+                if with_redis:
+                    # Staff login applies wizard invisibility; public presence
+                    # must not reveal that body. Check a visible mortal below.
+                    assert redis("KEYS", env["REDIS_NAMESPACE"] + ":season:2:presence:session:*:" + str(new_pid)) == ""
+                    assert redis("EXISTS", *old_keys) == "0"
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                 client.close(); client = None
                 client = journey.MudClient(plain)
                 journey.create_character(client, existing_account=True)
+                if with_redis:
+                    fresh = int(sql("SELECT pid FROM player_data WHERE name='" + journey.CHARACTER + "' AND active=1"))
+                    expect_presence(fresh, 2)
+                    assert redis("KEYS", env["REDIS_NAMESPACE"] + ":season:2:presence:session:*:" + str(old_pid)) == ""
                 journey.complete_npc_combat_journey(client)
                 client.close(); client = None
                 fresh_pid = int(sql("SELECT pid FROM player_data WHERE name='" + journey.CHARACTER + "' AND active=1"))
@@ -196,9 +347,18 @@ def run(binary):
                 shutil.copy2(path, output / "pwipe-runtime-failed.log")
                 raise
             finally:
-                stop(); output_file.close()
+                stop()
+                if unit_created:
+                    unit_control("cleanup")
+                if redis_server:
+                    redis_server.terminate(); redis_server.wait(timeout=10)
+                output_file.close()
+    except Exception:
+        report["status"] = "failed"
+        raise
     finally:
-        (output / "pwipe-runtime-mariadb.json").write_text(json.dumps(report, indent=2) + "\n")
+        suffix = "mariadb-redis-systemd" if systemd and with_redis else "mariadb-redis" if with_redis else "mariadb"
+        (output / ("pwipe-runtime-" + suffix + ".json")).write_text(json.dumps(report, indent=2) + "\n")
         sql("DROP DATABASE " + database, False)
 
 
@@ -207,9 +367,9 @@ def flatfile_rejection(binary):
     output = ROOT / "bin/analysis"
     output.mkdir(parents=True, exist_ok=True)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    report = {"revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+    report = {"revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-              "source_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
+              "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "backend": "flatfile-primary", "status": "running"}
     with tempfile.TemporaryDirectory(prefix="pwipe-flatfile-", dir=ROOT / "bin/tests") as temporary:
         root = Path(temporary)
@@ -310,7 +470,20 @@ def flatfile_rejection(binary):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["--flatfile-rejection"]:
-        flatfile_rejection(Path(sys.argv[2]).resolve(strict=True))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--flatfile-rejection", action="store_true")
+    parser.add_argument("--redis", action="store_true", help="use a disposable Redis process")
+    parser.add_argument("--systemd", action="store_true", help="use a disposable system unit through an installed privileged helper")
+    parser.add_argument("--systemd-helper", type=Path, help="reviewed root-owned helper installed outside the checkout")
+    parser.add_argument("binary", nargs="?", default=str(ROOT / "bin/server/dms_new"))
+    options = parser.parse_args()
+    if options.systemd != (options.systemd_helper is not None):
+        parser.error("--systemd and --systemd-helper must be supplied together")
+    if options.systemd_helper:
+        options.systemd_helper = options.systemd_helper.absolute()
+    binary = Path(options.binary).resolve(strict=True)
+    if options.flatfile_rejection:
+        assert not options.redis and not options.systemd
+        flatfile_rejection(binary)
     else:
-        run(Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "bin/server/dms_new").resolve(strict=True))
+        run(binary, options.redis, options.systemd, options.systemd_helper)

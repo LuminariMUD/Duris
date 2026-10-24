@@ -705,3 +705,15 @@ changes, and companion website/quota cutover. Disposable systemd/DB/Redis access
 and owner policy decisions can add calendar delay. Re-estimate after W1 and the
 first real reset journey, and immediately when findings invalidate the range.
 Do not silently drop acceptance items to preserve the estimate.
+
+## Sequential merge repair: #330 privilege boundary
+
+The qualifier now refuses root before checkout imports, removes safe.directory
+overrides, and delegates only fixed systemd/log actions to an installed root-owned
+isolated-Python helper. Reused the unpublished helper draft without modifying its
+worktree. The real installed-helper regression passes caller/action/unit/path
+refusals, UID 1000 service identity, production sandbox, exit 55/no restart, journal
+and cleanup. Python compilation and CLI guards pass. Earlier five-minute gameplay
+evidence is retained; the complete five-minute journey was not repeated for this
+privilege separation. Temporary helper assets and sudo authorization are removed
+after the local regression. No production service was operated.

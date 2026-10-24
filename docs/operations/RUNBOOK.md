@@ -278,6 +278,26 @@ through notifications; the systemd unit prevents restart on 55 and 58. Ordinary
 reboots and crashes retain their restart policy. A crash during an incomplete reset
 is stopped by the durable fence on the next launch.
 
+The disposable runtime qualifier runs as an ordinary user and accepts
+`--redis --systemd --systemd-helper /installed/helper` and an absolute MariaDB
+production-profile binary path. Never run checkout Python or scripts as root.
+An administrator must review and install `tests/async/pwipe_systemd_helper.py`
+and `deploy/systemd/duris-mud-production.service.in` together outside the checkout
+in a root-owned directory with non-writable parents, then authorize only that
+installed helper through sudo. It creates only caller-bound disposable units; all
+checkout code, Git operations and runtime files stay under the ordinary user. It uses the production unit's sandbox and
+restart settings with private identity/path, local configuration and the mini-world
+launcher flag. It never starts the installed production unit. Native SQL dependency
+checks separately exercise a real unavailable Redis endpoint and a denied cleanup
+command: the first preserves the old season, the second keeps the new epoch fenced.
+Repairing Redis cleanup alone does not declare SQL reset complete.
+
+Before stopping website writers, complete DurisWeb's
+[legacy temporary-copy preservation gate](https://github.com/LuminariMUD/DurisWeb/blob/7147e6b1bece2e650dbe3cb312c904edfa43bf9d/docs/deployment.md#legacy-temporary-copy-preservation-gate).
+Its service's private temporary directory can be removed on stop. The player-event
+season fence orders publication against the SQL boundary; the full external-writer,
+cache, donation and reconnect cutover still needs its separate rehearsal.
+
 After an interruption, stop the launcher/server and all external seasonal writers,
 preserve logs and the matching DB/filesystem/Redis backup generation, and inspect
 `SELECT season_epoch, reset_status, reset_started_at, reset_completed_at FROM
