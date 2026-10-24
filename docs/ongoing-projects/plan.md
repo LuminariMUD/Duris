@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-launcher-interruption/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-launcher-interruption`, [PR #351](https://github.com/LuminariMUD/Duris/pull/351).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `9525db3a7`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-maintenance-state-isolation/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-maintenance-state-isolation`, [PR #352](https://github.com/LuminariMUD/Duris/pull/352).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `812169708`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -147,6 +147,17 @@ completion succeed without deleting fresh state. Both full native engine matrice
 focused contracts/format/hooks pass. No production code changed in these two chunks;
 reuse the existing builds/full runtime evidence. Remaining store/path/worker consumer
 reconciliation and final readiness remain open; see the current stack-tip plan.
+
+PR #352 repairs a reproduced maintenance-checkpoint replay gap: actual native
+scheduler init replays an old captured retry even after drain, and the previous
+wiper left that unscoped state live. Guarded cleanup now archives default/configured
+state and `.tmp` into private Players/Backup/pwipe-maintenance.* before activation,
+preserving exact bytes and source path. Actual scheduler default/custom/external/
+wipe-target proof, 13 filesystem contracts and both full native SQL/launcher matrices
+pass; fresh checkpoints survive duplicate/ambiguous-activation retries. Wiper hash,
+logs, command/build evidence reuse and exact remaining inventory targets are in the
+current stack-tip plan. All changes committed/pushed/review-ready; full readiness
+remains open and no production operation was performed.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
