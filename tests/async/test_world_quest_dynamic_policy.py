@@ -60,7 +60,7 @@ int main() {
 def test_explicit_deny_controls_are_not_an_approval_list() -> None:
     policy = source("world/world_quest_policy.c").read_text()
     assert "WORLD_QUEST_EXPLICIT_DENY_ZONES" in policy
-    for zone in ("0", "292", "536"):
+    for zone in ("0", "292", "914", "536"):
         assert zone in policy
     assert "get_zone_info" not in policy
     assert "ZONE_TOWN" in policy
