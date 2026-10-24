@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 import uuid
+import urllib.request
 
 import test_flatfile_combat_journey as journey
 
@@ -28,12 +29,12 @@ CLAIMANT = "Claimkeeper"
 GIT = ["git", "-c", "safe.directory=" + str(ROOT)]
 
 
-def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, discard_rewards=False):
+def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, discard_rewards=False, website=None):
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
                                *(["--redis"] if with_redis else []), *(["--systemd"] if systemd else []),
-                               *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else []), *(["--discard-rewards"] if discard_rewards else [])])
+                               *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else []), *(["--discard-rewards"] if discard_rewards else []), *(["--website", str(website)] if website else [])])
     assert not systemd or os.geteuid() == 0, "the disposable system-unit fixture requires root"
     assert os.environ["TEST_DB_HOST"] == "127.0.0.1"
     assert not Path("/usr/bin/sendemail").exists(), "fixture requires the launcher mail command absent"
@@ -62,6 +63,9 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
               "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "preserve_rewards": not discard_rewards, "status": "running"}
+    if website:
+        report["website_revision"] = subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=website, text=True).strip()
+        report["website_diff_sha256"] = hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD"], cwd=website)).hexdigest()
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
@@ -102,10 +106,81 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                        CRITICAL_COMMAND_JOURNAL_DIR=str(root / "journals/critical"))
             path = root / "launcher.out"
             process = client = observer = redis_server = restored_redis_server = journal = None
+            website_process = website_probe = web_mortal = None
             unit_path = pin_path = None
             unit_created = pin_created = False
             unit_name = "duris-pwipe-qualification-" + uuid.uuid4().hex + ".service"
             output_file = path.open("w")
+
+            if website:
+                website_root = root / "website"
+                website_root.mkdir(mode=0o700)
+                website_log = (website_root / "server.log").open("w")
+                website_probe_log = (website_root / "probe.log").open("w")
+                web_port = journey.available_ports()[0]
+                web_env = dict(env, NODE_ENV="development", DB_PASSWORD=env["DB_PASSWD"],
+                               TEST_DB_HOST="127.0.0.1", TEST_DB_PORT=env["DB_PORT"],
+                               TEST_PWIPE_WEBSITE="1", TEST_WEBSITE_DIRECTORY=str(website_root),
+                               HOST="127.0.0.1", PORT=str(web_port), SITE_URL="http://127.0.0.1:" + str(web_port),
+                               ALLOWED_ORIGINS="http://127.0.0.1:" + str(web_port), MUD_DIR=str(root),
+                               MUD_PROCESS_HOME=str(root), BACKUP_DIR=str(website_root / "backups"),
+                               MUD_WS_URL="ws://127.0.0.1:" + str(websocket), MUD_DATABASE_MODE="shared",
+                               MUD_REDIS_ENABLED="true", MUD_REDIS_HOST="127.0.0.1", MUD_REDIS_DB="0",
+                               MUD_REDIS_AUTH_MODE="none", MUD_REDIS_TLS="false", CACHE_REDIS_DB="1",
+                               DONATIONS_ENABLED="true", MUD_REDIS_DONATION_SECRET="synthetic-website-donation-secret-264",
+                               KOFI_VERIFICATION_TOKEN="synthetic-kofi-verification-264", TEST_GAME_PASSWORD=journey.PASSWORD,
+                               TEST_WEB_ACCOUNT=journey.ACCOUNT, TEST_WEB_EMAIL=journey.EMAIL,
+                               TEST_WEB_OBSERVER_ACCOUNT=OBSERVER_ACCOUNT, TEST_WEB_FRESH_CHARACTER=journey.CHARACTER,
+                               DURISWEB_SECRET="synthetic-website-bridge-secret-264", DOTENV_CONFIG_QUIET="true")
+                env.update(DURISWEB_SECRET=web_env["DURISWEB_SECRET"],
+                           REDIS_DONATION_SECRET=web_env["MUD_REDIS_DONATION_SECRET"], DURIS_WEBSOCKET="TRUE")
+                loader = website / "backend/node_modules/tsx/dist/loader.mjs"
+                web_node = ["node", "--import", str(loader)]
+                web_probe = website / "backend/src/test/pwipeWebsiteProbe.ts"
+
+            def website_command(phase, background=False):
+                command = [*web_node, str(web_probe), phase]
+                if background:
+                    return subprocess.Popen(command, cwd=website_root, env=web_env,
+                                            stdout=website_probe_log, stderr=subprocess.STDOUT)
+                subprocess.run(command, cwd=website_root, env=web_env, check=True, timeout=120,
+                               stdout=website_probe_log, stderr=subprocess.STDOUT)
+
+            def website_start():
+                nonlocal website_process
+                website_process = subprocess.Popen([*web_node, "--import", str(website / "backend/src/test/setupEnvironment.ts"),
+                                                     str(website / "backend/dist/index.js")], cwd=website_root,
+                                                    env=web_env, stdout=website_log, stderr=subprocess.STDOUT,
+                                                    start_new_session=True)
+                until = time.monotonic() + 60
+                while True:
+                    assert website_process.poll() is None, "website exited during boot"
+                    try:
+                        with urllib.request.urlopen(web_env["SITE_URL"] + "/health", timeout=1) as response:
+                            assert response.status == 200
+                        return
+                    except OSError:
+                        assert time.monotonic() < until, "website health timeout"
+                        time.sleep(.1)
+
+            def website_stop():
+                nonlocal website_process
+                if website_process and website_process.poll() is None:
+                    website_process.terminate()
+                    try:
+                        website_process.wait(timeout=20)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(website_process.pid, signal.SIGKILL)
+                        website_process.wait(timeout=10)
+                        raise AssertionError("website graceful shutdown did not complete")
+                    assert website_process.returncode == 0, "website shutdown failed"
+                website_process = None
+
+            def website_wait(marker):
+                until = time.monotonic() + 40
+                while not (website_root / marker).exists():
+                    assert website_probe.poll() is None and time.monotonic() < until, "website probe did not reach " + marker
+                    time.sleep(.1)
 
             def unit_state():
                 properties = ("ExecMainStatus", "ActiveState", "SubState", "NRestarts", "Result")
@@ -160,6 +235,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
 
             def stop():
                 nonlocal process, client, observer
+                if website:
+                    website_stop()
                 if observer:
                     observer.close(); observer = None
                 if client:
@@ -232,6 +309,9 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                             break
                         time.sleep(.05)
                     else: raise AssertionError("private Redis did not start")
+                if website:
+                    web_env.update(MUD_REDIS_PORT=env["REDIS_PORT"], CACHE_REDIS_PORT=env["REDIS_PORT"],
+                                   MUD_REDIS_NAMESPACE=env["REDIS_NAMESPACE"])
                 if matched_restore or redis_reenable:
                     env.update(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_SECRET="synthetic-pwipe-restore-world-secret",
                                REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_MAX_AGE="3600")
@@ -456,6 +536,23 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     retained_keys = ["unrelated:pwipe-sentinel", "duris:local:other:season:1:cache:pwipe-sentinel"]
                     for key in old_keys + retained_keys:
                         assert redis("SET", key, "fixture") == "OK"
+                if website:
+                    website_command("setup")
+                    website_start()
+                    website_probe = website_command("old", background=True)
+                    website_wait("old-peer-ready")
+                    web_mortal = journey.MudClient(plain)
+                    journey.create_character(web_mortal, account="Webacct", character="Webmortal", email="web@example.invalid")
+                    website_wait("old-verified")
+                    website_stop()
+                    assert website_probe.wait(timeout=15) == 0, "old website probe failed"
+                    website_probe = None
+                    web_mortal.send("quit"); web_mortal.expect("ACCOUNT MENU", timeout=30)
+                    web_mortal.close(); web_mortal = None
+                    # Donation publication remains disabled until the new website starts.
+                    assert sql("SELECT status FROM donation_outbox") == "pending"
+                    sql("UPDATE web_settings SET setting_value='true' WHERE setting_key='hook_enabled_donation_delivery'")
+                    print("Normal website old-season HTTP/presence/websocket and graceful drain passed", flush=True)
                 began = time.monotonic()
                 wall_began = time.time()
                 report["schedule_wall_time"] = wall_began
@@ -595,6 +692,20 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 client.close(); client = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=CLAIMANT)
                 check_claims(claimant_pid, claimed_items)
                 assert sql("SELECT COUNT(*) FROM account_bound_reward_summons WHERE pid=" + str(observer_pid)) == "0"
+                if website:
+                    # The probe subscribes to the new donation channel before the publisher starts.
+                    website_probe = website_command("new", background=True)
+                    website_wait("new-subscribed")
+                    website_start()
+                    website_wait("new-peer-ready")
+                    # Reconnect a visible mortal through the actual MUD producer.
+                    client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                    client.close(); client = journey.reconnect_character(plain)
+                    website_wait("new-verified")
+                    assert website_probe.wait(timeout=15) == 0, "new website probe failed"
+                    website_probe = None
+                    report["website_assertions"] = json.loads((website_root / "report.json").read_text())
+                    website_stop()
                 report.update(reward_claim_pid=claimant_pid, reward_claim_ids=sorted(claimed_items),
                               reward_claim_assertions="real exact permanent/day/finite grants; policy/reset clears old summons; fresh account character claims or refuses under discard policy; unique new UIDs/exact payload; repeated summon, dismiss cooldown, save/reconnect/second boot")
                 stop()
@@ -721,6 +832,14 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     restored_redis_server.terminate(); restored_redis_server.wait(timeout=10)
                 if redis_server:
                     redis_server.terminate(); redis_server.wait(timeout=10)
+                if website:
+                    if website_probe and website_probe.poll() is None:
+                        website_probe.terminate(); website_probe.wait(timeout=10)
+                    if web_mortal:
+                        web_mortal.close()
+                    website_log.close(); website_probe_log.close()
+                    shutil.copy2(website_root / "server.log", output / "pwipe-website-server.log")
+                    shutil.copy2(website_root / "probe.log", output / "pwipe-website-probe.log")
                 output_file.close()
     except Exception:
         report["status"] = "failed"
@@ -729,6 +848,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
         suffix = "mariadb-redis-systemd" if systemd and with_redis else "mariadb-redis" if with_redis else "mariadb"
         suffix += "-restore" if matched_restore else "-reenable" if redis_reenable else ""
         suffix += "-discard-rewards" if discard_rewards else ""
+        suffix += "-website" if website else ""
         (output / ("pwipe-runtime-" + suffix + ".json")).write_text(json.dumps(report, indent=2) + "\n")
         sql("DROP DATABASE " + database, False)
 
@@ -843,6 +963,7 @@ def flatfile_rejection(binary):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flatfile-rejection", action="store_true")
+    parser.add_argument("--website", type=Path, help="run the normal companion backend against the private Redis/MUD journey")
     parser.add_argument("--discard-rewards", action="store_true", help="qualify pwipe.preserve=false and refused new-character claims")
     parser.add_argument("--redis-reenable", action="store_true", help="wipe with Redis off then re-enable against retained old recovery data (requires --redis)")
     parser.add_argument("--restore", action="store_true", help="rehearse a matched pre-wipe restore (requires --redis)")
@@ -856,9 +977,19 @@ if __name__ == "__main__":
         parser.error("--redis-reenable requires --redis and the direct MariaDB launcher without --restore")
     if options.discard_rewards and (options.restore or options.flatfile_rejection):
         parser.error("--discard-rewards requires a MariaDB wipe journey without --restore")
+    if options.website:
+        if not options.redis or options.systemd or options.restore or options.redis_reenable or options.flatfile_rejection or options.discard_rewards:
+            parser.error("--website requires the direct --redis preserving MariaDB journey")
+        options.website = options.website.resolve(strict=True)
+        for name in (".env", "backend/.env", "backend/.env.test"):
+            if (options.website / name).exists():
+                parser.error("--website refuses a checkout with runtime environment files")
+        for name in ("backend/dist/index.js", "backend/src/test/pwipeWebsiteProbe.ts", "backend/node_modules/tsx/dist/loader.mjs"):
+            if not (options.website / name).is_file():
+                parser.error("--website requires the built backend and native probe")
     binary = Path(options.binary).resolve(strict=True)
     if options.flatfile_rejection:
         assert not options.redis and not options.systemd and not options.restore
         flatfile_rejection(binary)
     else:
-        run(binary, options.redis, options.systemd, options.restore, options.redis_reenable, options.discard_rewards)
+        run(binary, options.redis, options.systemd, options.restore, options.redis_reenable, options.discard_rewards, options.website)

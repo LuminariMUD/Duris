@@ -40,6 +40,25 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — combined website runtime cutover
+
+Server branch `branch/issue-264-website-runtime-journey`, based on PR #345 plus
+handoff `ea36b04fd`. Companion branch of the same name, based on PR #96 at
+`0add858`. Outcome: extend the existing private real command/launcher journey with
+an optional companion checkout; use its normal built backend listener and source-
+owned baseline/forward migrations against the fixture's owned SQL/Redis. Verify
+old account/session/staff reads, live presence and cached ranking inputs, websocket
+subscription and graceful close, stopped/drained queued donations across reset,
+then restart/reconnect against the new SQL epoch and fresh gameplay. Preserve
+old cached data as negative sentinels. Reuse existing component failure/locking,
+permission and telemetry evidence. No production service/settings/data or external
+mail/Discord/PostHog; refuse checkouts with runtime environment files. Use the
+existing private-temp preservation qualification as a distinct prerequisite where
+PrivateTmp is used; the direct disposable backend has no private systemd namespace.
+Files: existing MUD journey, companion native probe, runbook/regression/plan. No
+production repair or new orchestration framework is planned absent a reproduced
+failure. Full W1/W2/W4/W7 remain open, and W5 stays open until the journey passes.
+
 ## Current continuation — current website MUD permissions
 
 Review-ready companion [PR #96](https://github.com/LuminariMUD/DurisWeb/pull/96),
