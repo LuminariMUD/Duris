@@ -115,6 +115,16 @@ system-service qualification remain separate #264 gates. The native handoff runn
 also forces the actual SIGCHLD reaper to finish preflight first and proves the SQL
 caller consumes its saved exit status rather than spuriously rejecting ECHILD.
 
+The real journey also creates exact permanent, seven-day, one-wipe and three-wipe
+grants through the staff command for a separate surviving account. It checks the
+post-wipe grant payload/lifetime and old summon cleanup, creates a new mortal on
+that account, and verifies unique new reward UIDs, exact item values, duplicate
+summon refusal, dismissal cooldown, save/reconnect and second boot. Run the same
+journey with `--discard-rewards` to boot with `pwipe.preserve=false`; all grants
+must disappear and the new character's claims must refuse, including after reboot.
+The alternate report is `bin/analysis/pwipe-runtime-mariadb-discard-rewards.json`.
+This option cannot combine with the matched-restore or flat-file rejection modes.
+
 The handoff runner now executes the real account reward hook against the private DB.
 Permanent/unexpired grants survive, finite grants decrement once and exhausted/expired
 grants disappear under the configured policy. It checks wrong/zero epoch, active or

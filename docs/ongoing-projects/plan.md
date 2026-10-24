@@ -40,6 +40,22 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — new-character account reward claims
+
+Branch `branch/issue-264-reward-claim-journey`, based on review-ready PR #343 at
+`bb49e8d88`. Outcome: prove actual new-character claims on a surviving account
+under both `pwipe.preserve` settings. Extend the existing disposable real runtime
+journey with permanent, day-based, one-wipe and multi-wipe exact grants created
+through the staff command. After reset, inspect grant policy and cleared old-body
+summons, create a mortal on that account, summon eligible rewards, and prove exact
+payload/one copy, repeated claim, save/reconnect/second boot and cooldown behavior.
+Use a second account so rewards do not interfere with the existing combat journey.
+Add only the alternate discard-policy option; reuse the same fixture and binary,
+and existing native hook evidence for expiry, delayed/lost-ACK retries and distinct
+resets. Files: existing runtime journey, runbook/regression notes and this plan.
+No production code change is planned absent a reproduced defect. Full W1/W2/W5
+and final readiness remain open; production action is excluded.
+
 ## Current continuation — shutdown operator flow
 
 Review-ready [PR #343](https://github.com/LuminariMUD/Duris/pull/343), implementation

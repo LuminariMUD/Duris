@@ -220,6 +220,18 @@ logout, reconnect and another boot. A MariaDB client binary refuses flatfile-pri
 at startup; hybrid fallback mode is also rejected by existing configuration. This
 is rejection qualification, not a successful flat-file wipe.
 
+Account rewards follow `lib/account_rewards.cfg`: preserving grants does not
+preserve old inventory or summon-to-body links. Eligible new characters on the
+surviving account use `divineclaim list` and `divineclaim summon <number>`; each
+character may hold one copy of each grant. Permanent and unexpired day grants
+survive an eligible preserving reset; finite grants lose one wipe and disappear
+at zero. With `pwipe.preserve=false`, an eligible reset removes all grants. The
+28-day protection and fixed-boundary retry rules are documented in that config.
+The disposable runtime journey tests new-character claims under both settings
+(`--discard-rewards` selects false), including saved instances and cooldowns
+through reconnect and another boot. The native reset-hook matrix separately
+covers expiry, protection windows and failed/ambiguous commit retries.
+
 Reset policy confirmed by the owner for #264: every account-bank balance resets,
 including staff and every racewar side. Bank rows are deleted without resetting
 their allocator; accounts, credentials and donation history survive. Retained bank
