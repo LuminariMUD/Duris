@@ -135,6 +135,18 @@ payload. A real allocator lease yields a bounded, contiguous fresh range. These
 checks supplement the existing artifact, collector and cargo receipt readers;
 protected metadata alone is not a substitute for recovery-input season isolation.
 
+The native matrix wraps the real client query call only after the owning epoch
+UPDATE and hides its COMMIT result once before application and once after a real
+commit. It requires the SQL caller's crossed-boundary flag, no writer-resume call
+and no filesystem-ready flag, while old rows/payload/files/grants remain intact.
+The committed outcome rejects actual direct server startup at the explicit season
+fence and makes the real launcher refuse cleanup. Actual SQL-only recovery then
+finishes the same epoch, decrements an eligible grant once, clears old summons and
+payload, and supports readiness/activation retries without repeating the roster,
+rewards or deleting fresh files. Raw-server fatal status 1 is distinct from the
+maintained launcher's recovery status 58. This complements reward-COMMIT and
+activation lost-ACK cases; no proxy or production fault hook is introduced.
+
 The handoff runner now executes the real account reward hook against the private DB.
 Permanent/unexpired grants survive, finite grants decrement once and exhausted/expired
 grants disappear under the configured policy. It checks wrong/zero epoch, active or
