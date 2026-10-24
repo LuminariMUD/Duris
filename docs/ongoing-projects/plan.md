@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — complete Overlord recreation ownership/timestamps
 
-Branch `branch/issue-264-overlord-projection-repair`, based on PR #362 at `aac96fd54`.
+Review-ready [PR #363](https://github.com/LuminariMUD/Duris/pull/363), repair/fixture
+`9d0376105`, committed/pushed on `branch/issue-264-overlord-projection-repair`,
+based on PR #362 at `aac96fd54`.
 Resolve both #313 review findings. Snapshot eligible active exact-62 bodies through
 durable player/account ownership, with the same explicit deletion-tombstone guard
 as normal projection repair. Recreate clean bodies and upsert their canonical
@@ -74,6 +76,27 @@ loopback principal regex is overescaped, and event receipt precedes durable outb
 acknowledgment. Repair those focused fixture issues with proportional backend checks;
 prior successful runtime evidence covers wildcard-root and the observed fast-ACK
 case, not a guarantee for these two paths.
+
+Next implementation route for #330: run the journey as the ordinary user, reject
+root before checkout imports, and delegate only private unit prepare/start/stop/
+logs/cleanup to a fixed root-owned isolated-Python helper. Install its trusted
+production-template asset beside it; never let privileged code import checkout
+modules, execute Git or read arbitrary submitted unit content. Helper binds caller
+SUDO_UID to a strict private unit prefix, fixes User/Group to that nonroot caller,
+uses root-private registrations and only systemctl/journalctl on its own unit.
+Use a temporary local restricted sudo rule for qualification, then clean it and all
+owned units/helper assets. Keep every production sandbox/restart setting. The
+unprivileged fixture already owns its runtime, so remove root chown/tree management.
+Use bounded journal snapshots rather than a privileged follow process. Prove helper
+argument/ownership refusals and one actual systemd journey. This is a chosen route,
+not implemented evidence yet.
+For #337, require the frozen sequence's recovery log immediately after the first
+candidate boot, wait for fresh checkpoints before stopping, and separately check
+second-boot recovery. Re-run the matched restore journey on the current schema/API
+repairs; no combined-log-window success. These fixture fixes do not change game
+state formats. Final review disposition must also repair #310's base-plan conflict
+and account for older head findings already fixed in dependent PRs; do not silently
+claim those threads are closed.
 
 ## Current continuation — recovery path preflight guards
 
