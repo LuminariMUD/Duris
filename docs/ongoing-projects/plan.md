@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — shared writer and real SQL callbacks
 
-Branch `branch/issue-264-writer-sql-quiescence`, based on PR #349 at `f43c43603`.
+Review-ready [PR #350](https://github.com/LuminariMUD/Duris/pull/350), fixture
+`3d8bd134a`, committed/pushed on `branch/issue-264-writer-sql-quiescence`,
+based on PR #349 at `f43c43603`.
 Outcome: prove the actual `pwipe_quiesce_writers` drains accepted shared-writer
 player saves, SQL transactions and dependent read callbacks before destructive SQL.
 Hold real worker work, then exercise success, timeout and terminal SQL failure;
@@ -70,7 +72,7 @@ quiescence regression, Python compilation, changed-line formatting and commit ho
 pass. No production source/schema changed; reuse the previous production/flat-file
 builds and full timer/service/gameplay/website evidence. Full W2 remains open for
 final direct/external-writer and replay reconciliation. All owned resources cleaned.
-Review-ready publication is the next step.
+No merge, release tag, deployment or production wipe was performed.
 
 ## Current continuation — epoch-boundary COMMIT acknowledgment
 
