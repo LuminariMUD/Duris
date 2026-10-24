@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — complete SQL postflight coverage
 
-Branch `branch/issue-264-complete-postflight`, based on PR #358 at `7d1f04050`.
+Review-ready [PR #360](https://github.com/LuminariMUD/Duris/pull/360), fix/fixture
+`68d4fff78`, committed/pushed on `branch/issue-264-complete-postflight`,
+based on PR #358 at `7d1f04050`.
 The final W1/W4 audit found the runtime postflight checks only 35 of 103 canonical
 delete/reset tables. Outcome: reject leftover seasonal rows in every required
 empty store before SQL-ready publication. Extend the existing fixed postflight
