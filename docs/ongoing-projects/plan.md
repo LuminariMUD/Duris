@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — durable roster checkpoint
 
 Branch `branch/issue-264-roster-checkpoint`, based on PR #330 at `79593ec9d`.
+Review-ready PR #334 (https://github.com/LuminariMUD/Duris/pull/334), implementation
+`0d19e6272`; committed and pushed after this handoff update.
 Outcome: distinguish an unfinished new reset's roster transaction from one that
 already committed, without inferring completion from character data or timestamps.
 Add one nullable `roster_recreated` field to the existing season singleton: NULL
@@ -77,7 +79,8 @@ same epoch and fixed reward-policy boundary. Redis cleanup must use the original
 old epoch (expected reset epoch minus one), not the current resetting namespace.
 The existing SQL/journal backup tool still needs verified filesystem/Redis pairing
 and recovery rehearsal. Full SQL resume, matched restore and readiness remain open.
-Publication of this checkpoint dependency remains.
+Commit hooks passed; PR #334 is ready for review. Full SQL recovery remains the
+next implementation chunk, not a completed capability.
 
 ## Current continuation — DurisWeb presence fence
 
@@ -103,8 +106,8 @@ holds its shared lock, then succeeds after commit; fenced old events are refused
 a fresh subscription receives epoch 2. Backend format/lint/type/build and the 53-write
 MUD allowlist audit pass. No lockfile/dependency changes were needed (offline cache
 reuse). Local admin Website Changelog draft is prepared; publication waits for
-verified deployment. A separate diagnostics finding remains in this subscriber:
-startup/refresh/Redis/close callbacks forward raw driver messages. Four sentinel
+verified deployment. A separate diagnostics finding was fixed in this subscriber:
+startup/refresh/Redis/close callbacks previously forwarded raw driver messages. Four sentinel
 cases reproduced the disclosure; PR #94 replaces those details with fixed categories.
 All 82 focused tests and required backend checks pass. Native lock evidence from
 PR #93 is reused for this diagnostics-only follow-up. No extra public news entry
