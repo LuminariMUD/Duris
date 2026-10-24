@@ -537,6 +537,58 @@ flatfile_shopkeeper_establish(const std::string &root,
 }
 
 flatfile_shopkeeper_result
+flatfile_shopkeeper_prepare_addition(const std::string &root, const flatfile_authority_lock &lock,
+				     const std::vector<flatfile_shopkeeper_record> &records,
+				     flatfile_authority_after_image *after_image,
+				     std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || records.empty() || !after_image)
+		return flatfile_shopkeeper_result::invalid;
+	*after_image = {};
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_shopkeeper_result::ok)
+		return recovered;
+	shopkeeper_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_shopkeeper_result::ok &&
+	    loaded != flatfile_shopkeeper_result::not_found)
+		return loaded;
+	if (loaded == flatfile_shopkeeper_result::ok)
+	{
+		if (catalog.revision == UINT64_MAX)
+			return flatfile_shopkeeper_result::invalid;
+		++catalog.revision;
+	}
+	try
+	{
+		for (auto record : records)
+		{
+			if (record.revision != 1)
+				return flatfile_shopkeeper_result::invalid;
+			if (std::any_of(catalog.records.begin(), catalog.records.end(),
+					[&](const auto &existing)
+					{ return existing.shop_id == record.shop_id; }))
+				return flatfile_shopkeeper_result::already_exists;
+			std::sort(record.affects.begin(), record.affects.end(), affect_less);
+			catalog.records.push_back(std::move(record));
+		}
+		std::sort(catalog.records.begin(), catalog.records.end(), record_less);
+		if (!encode_catalog(catalog, &after_image->bytes))
+		{
+			if (error && error->empty())
+				*error = "new shop catalog encoding rejected";
+			return flatfile_shopkeeper_result::invalid;
+		}
+		after_image->filename = catalog_filename;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_shopkeeper_result::io_error;
+	}
+	return flatfile_shopkeeper_result::ok;
+}
+
+flatfile_shopkeeper_result
 flatfile_shopkeeper_list(const std::string &root, std::vector<flatfile_shopkeeper_record> *records,
 			 std::string *error)
 {

@@ -64,6 +64,12 @@ flatfile_shopkeeper_result
 flatfile_shopkeeper_establish(const std::string &root,
 			      const std::vector<flatfile_shopkeeper_record> &records,
 			      std::string *error);
+// Prepare only new shop IDs; the caller commits this with their item custody.
+flatfile_shopkeeper_result
+flatfile_shopkeeper_prepare_addition(const std::string &root, const flatfile_authority_lock &lock,
+				     const std::vector<flatfile_shopkeeper_record> &records,
+				     flatfile_authority_after_image *after_image,
+				     std::string *error);
 flatfile_shopkeeper_result
 flatfile_shopkeeper_list(const std::string &root, std::vector<flatfile_shopkeeper_record> *records,
 			 std::string *error);
