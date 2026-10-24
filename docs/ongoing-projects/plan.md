@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-consumer-reconciliation/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-consumer-reconciliation`, [PR #358](https://github.com/LuminariMUD/Duris/pull/358).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `7d1f04050`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-overlord-projection-repair/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-overlord-projection-repair`, [PR #363](https://github.com/LuminariMUD/Duris/pull/363).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `468ad4c0b`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352 -> #353 -> #354 -> #356 -> #358,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351 -> #352 -> #353 -> #354 -> #356 -> #358 -> #360 -> #361 -> #362 -> #363,
 plus independent production-build repair #316 and email registry repair #355 (included in #356). PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -192,6 +192,31 @@ retry dead letters; the owning drain/UID/guild-incarnation guards matter. No new
 production code/schema changes. Exact source/logs/checks and remaining full
 consumer/manual checklist audit are in the linked current plan; full readiness
 remains open. All completed chunks are pushed and ready for review.
+
+PR #360 repairs reproduced false SQL-ready publication: all 103 canonical
+reset-delete stores are independently checked, not the earlier 35-table subset.
+A real late account-locker row now keeps the epoch fenced; same-epoch recovery
+clears it without another roster. Actual scalar/catalogue reset values and before-
+SQL file refusal cases pass in both complete native engine matrices. All three
+incremental builds pass, with the exact binary hashes in the current plan.
+PR #361 repairs removed-schema-constant consumers (archive/erasure/export import
+failure); 9 archive, 6 telemetry-schema, 7 erasure and 6 export tests / CLI imports
+pass. The same three-reference repair is now also applied directly to this #309
+head, so its original review finding is fixed rather than only deferred.
+PR #362 repairs hidden maintenance ancestors and nested cleared recovery parents:
+18 filesystem cases, actual native scheduler/mail/copyover, and full MariaDB native
+SQL/launcher proof pass. Unsupported nested parents refuse before SQL with a clear
+relocation path; direct store-root/external paths remain supported.
+PR #363 selects exact-62 staff from durable ownership, preserves explicit deletion
+intent, repairs missing/stale/wrong-owner projections and initializes save/birth
+clocks. Old native baseline loads epoch zero; both final engine matrices and all
+three builds pass. Current optimized binary SHA is de2aa15f93bc9afe9e50d74888439d5b3bc5f1714d588ede1a6135effaf1a7c4.
+Review audit still requires #330 qualifier privilege separation, #337 first frozen-
+world boot assertion, two DurisWeb #97 probe fixes, #310 base-plan conflict and final
+consumer/manual readiness reconciliation. Chosen implementation route and exact
+source/log pointers are in the current plan. No readiness claim, GitHub merge or
+production operation. Do not repeat full timers for unchanged dependency metadata;
+re-run the actual affected security/restore journeys after their fixture repairs.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
