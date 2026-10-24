@@ -278,6 +278,14 @@ through notifications; the systemd unit prevents restart on 55 and 58. Ordinary
 reboots and crashes retain their restart policy. A crash during an incomplete reset
 is stopped by the durable fence on the next launch.
 
+The disposable runtime qualifier accepts `--redis --systemd` and an absolute
+MariaDB production-profile binary path. It uses the production unit's sandbox and
+restart settings with private identity/path, local configuration and the mini-world
+launcher flag. It never starts the installed production unit. Native SQL dependency
+checks separately exercise a real unavailable Redis endpoint and a denied cleanup
+command: the first preserves the old season, the second keeps the new epoch fenced.
+Repairing Redis cleanup alone does not declare SQL reset complete.
+
 After an interruption, stop the launcher/server and all external seasonal writers,
 preserve logs and the matching DB/filesystem/Redis backup generation, and inspect
 `SELECT season_epoch, reset_status, reset_started_at, reset_completed_at FROM

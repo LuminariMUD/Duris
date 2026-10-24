@@ -78,6 +78,24 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+The existing real countdown journey supports `--redis --systemd` with an absolute
+MariaDB production-profile binary path. Run this variant as root in the disposable
+qualification environment; it creates its own DB, Redis process/namespace, runtime
+and uniquely named `duris-pwipe-qualification-*` system units. The service keeps all
+production-template sandbox/restart settings, runs unprivileged, and substitutes
+`--minimal` with local test configuration. A private active After target retains
+successful exit statistics without starting or restarting the service. The journey
+checks actual unit state, exit 58/55 without restart, scoped Redis cleanup, unrelated
+key preservation, new-epoch presence, staff access and fresh gameplay/save/reconnect/
+second boot. Results go to `bin/analysis/pwipe-runtime-mariadb-redis-systemd.json`.
+
+The native SQL journey also exercises the actual Redis maintenance provider against
+a private process. An unavailable endpoint aborts before the boundary with unchanged
+SQL/Redis state. A SCAN-denying ACL causes post-boundary invalidation to fail and
+keeps SQL fenced. Repaired repeated cleanup preserves unrelated keys and never
+activates incomplete SQL. The command/worker path is qualified separately by the
+real runtime journey; the native harness holds those peripheral callbacks controlled.
+
 Run the real unsupported flat-file path with:
 `python3 tests/async/run_pwipe_runtime_journey.py --flatfile-rejection /absolute/path/to/flatfile/dms_new`.
 It reuses the private world/account/Overlord helpers and verifies immediate rejection,

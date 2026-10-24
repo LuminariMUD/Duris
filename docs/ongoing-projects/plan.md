@@ -43,6 +43,8 @@ was run during planning.
 ## Redis dependency failure qualification
 
 Branch `branch/issue-264-redis-failure-qualification`, based on PR #327 at `f1db24d4d`.
+Review-ready PR #329 (https://github.com/LuminariMUD/Duris/pull/329), implementation
+`4c2017f15`; committed and pushed.
 Outcome: exercise actual SQL reset orchestration with the real Redis maintenance
 provider against disposable endpoints. Non-goals: changing game behavior, a second
 Redis client implementation, or activating incomplete SQL after cache repair.
@@ -51,41 +53,39 @@ endpoint preserves old SQL/Redis state before the boundary; a real SCAN-denying 
 fails after the boundary and leaves epoch 27 fenced; repaired repeated cleanup
 preserves unrelated keys and does not activate SQL. The complete native matrix,
 existing live Redis maintenance test and both Redis surface contracts passed.
-The real service journey below is independent in-progress work in this worktree;
-its test/docs changes remain uncommitted until the complete gameplay journey passes.
+The complete real service/Redis journey is qualified separately below.
 
 ## Current continuation — Redis-on and systemd runtime journey
 
-Branch `branch/issue-264-redis-service-journey`, based on PR #327 at `f1db24d4d`.
-Outcome: execute the real five-minute reset with private Redis and the complete
-systemd sandbox/restart policy, then login/play/save/reconnect/reboot in the new
-epoch. Reuse the existing runtime journey, private DB/world/account helpers and
-production-profile binary. Render a uniquely named disposable system unit from the
-production template; only identity/path/description and ExecStart's `--minimal`
-fixture flag differ. It runs as the checkout owner, with local test configuration;
-no production unit or data is touched. Preserve unrelated Redis namespaces.
-Files: existing runtime journey, runbook/regression/plan. Proof: actual service
-incomplete-reset exit 58 without restart; successful real reset exit 55 without
-restart; old Redis sentinels gone, unrelated keys survive, new epoch presence and
-normal gameplay/save/reconnect/another boot. Non-goals: production deployment,
-new runtime framework, duplicating the fixture, or repeating a second countdown
-for already-qualified Redis-off behavior. Redis re-enable and SQL restore/resume
-qualification remain separate gates; dependency failure is covered below.
-The full service's exit-58 fence passed. The observation fixture now pins the
-private unit with an active After reference: systemd normally garbage-collects
-successful inactive units and discards their exit statistics. A short full-sandbox
-exit-55 probe verified retained status before rerunning the game; no production
-unit or restart setting changed. Existing scoped Redis maintenance/surface tests
-passed. The native actual-SQL matrix now uses the real Redis maintenance provider:
-an unavailable private endpoint preserves pre-boundary SQL/Redis state, and a real
-SCAN-denying ACL after the boundary leaves SQL fenced. Repaired cleanup is idempotent,
-preserves unrelated keys, and alone does not activate the unfinished SQL reset.
-The complete native matrix passed. The real service run proved reset completion, Redis cleanup/unrelated preservation,
-exit 55 with no restart and recreated staff login/save. A presence assertion wrongly
-expected invisible staff in public presence (the existing `account/nanny.c` staff login
-path sets `wiz_invis=56`). Fix it to verify visibility before the countdown on the original
-mortal, then new-epoch presence on the fresh mortal; hidden staff remain absent.
-The final whole journey must pass before sign-off.
+Branch `branch/issue-264-systemd-qualification`, based on PR #329 at `4c2017f15`.
+Outcome: real five-minute reset with private Redis and the complete systemd sandbox/
+restart settings, followed by staff access and fresh gameplay/save/reconnect/reboot.
+Reuse the existing runtime journey and production-profile binary; no game or launcher
+behavior changes. The uniquely named private service uses the production template
+with test identity/path/description, local configuration and `--minimal`; all sandbox/
+restart settings stay intact. An active After reference retains its exit statistics
+without starting or restarting it. Non-goals: production deployment, another runtime
+framework, or repeating valid Redis-off qualification. Files: existing journey and
+runbook/regression/plan.
+
+**Proof passed:** actual exit 58 stayed fenced without restart; the real countdown
+and SQL -> Redis -> exit 55 -> filesystem -> epoch-2 activation completed, and exit
+55 also stayed stopped. Old scoped/legacy Redis sentinels disappeared; unrelated
+namespaces survived. Recreated Overlord PID 2 could login/save, remained absent from
+public presence under existing wizard-invisibility policy, and a visible fresh
+mortal PID 3 published in epoch 2, fought/looted/saved/reconnected and survived another
+boot. Retired PID 1 stayed inactive. All fixture units/processes were cleaned up.
+
+Artifact: `bin/analysis/pwipe-runtime-mariadb-redis-systemd.json`, status `passed`;
+core source `f1db24d4d` with an empty source diff; binary SHA256
+`e10133dd69aaf1da8cb16b8585e8b750e9c8428a7b5775b30d9a7ff4d37a7033`.
+Wall countdown/reset observation: **303.049 seconds**, monotonic **292.201 seconds**;
+the game uses wall time and both clocks are recorded. Service results: exit 58,
+failed, zero restarts; exit 55, inactive/success, zero restarts. Existing three-build
+and Redis-off gameplay evidence is reused: this chunk changes only tests/docs.
+Publication remains. Scope is the private mini world; full #264 readiness remains
+open for inventory/custody/recovery, Redis re-enable, external cutover and the other
+W1–W7 acceptance items.
 
 Next external integration finding is source-confirmed in local DurisWeb master
 `7147e6b1` (clean, not edited): `backend/src/services/playerEventSubscriber.ts`
@@ -723,7 +723,9 @@ nor suppress an independent reset's required cleanup.
 - [ ] Exercise Redis enabled, disabled, unavailable before reset, failing after
   boundary, and re-enabled in the new epoch. Old data/events stay invisible and
   unrelated namespaces survive. Extend `test_redis_maintenance_live.py` and
-  season-scope tests rather than building another subsystem.
+  season-scope tests rather than building another subsystem. Redis-on/off actual
+  journeys and real pre/post-boundary provider failures now pass; re-enable with
+  retained old recovery payloads remains open.
 - [ ] Exercise website presence, cached lists/leaderboards, account characters,
   websocket/reconnecting clients and queued donations against the disposable
   reset. Verify website writers cannot race it, including stale subscriptions
@@ -763,9 +765,12 @@ and donations and retained telemetry/quota evidence remain correct.
 - [ ] Exercise resume and disposable restore, including interruption after reward
   commit but before completion. Preserve backup/audit sentinels and unrelated
   Redis keys through repeated cleanup attempts.
-- [ ] Execute production unit restart behavior in an isolated service-capable
-  environment. Mocks/unit text checks cannot prove systemd behavior; keep the
-  readiness gate open if that execution is unavailable.
+- [x] Execute production-template sandbox/restart behavior in an isolated real
+  system service. The production-profile mini-world journey proves exit 58/55
+  stay stopped with zero restarts, then explicit startup/fresh gameplay/reboot.
+  The fixture changes identity/path/description and the mini-world launch flag;
+  it preserves every sandbox/restart setting. Ordinary exit-52 restart policy
+  evidence from the earlier isolated systemd execution remains valid.
 - [ ] Fully qualify MariaDB-primary with Redis on/off. Build flat-file mode and
   execute unsupported-pwipe rejection, proving no data loss and normal continuation.
   Flat-file rejection/continuation is now proven by the actual client-free server
