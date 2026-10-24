@@ -77,7 +77,7 @@ production port 7777; the default remains 4000.
 | 55 | complete pwipe; explicit fresh start required | no |
 | 56 | mud hung reboot | yes |
 | 57 | auto reboot with copyover | yes |
-| 58 | incomplete pwipe; operator recovery required | no |
+| 58 | incomplete, unconfirmed or refused pwipe recovery; inspect durable state | no |
 | 139 | crash (SIGSEGV) | yes |
 | 128 + N | killed by signal N, named: 137 is `killed by SIGKILL` | yes |
 | other | unknown | yes |
@@ -317,6 +317,18 @@ successor and the durable SQL-ready receipt. Both terminal statuses propagate
 through notifications; the systemd unit prevents restart on 55 and 58. Ordinary
 reboots and crashes retain their restart policy. A crash during an incomplete reset
 is stopped by the durable fence on the next launch.
+A boundary COMMIT with no acknowledgment is treated conservatively: the failed
+process does not resume writers or authorize filesystem cleanup, even if the
+transaction ultimately rolled back. Keep that process stopped and inspect the
+exact durable epoch/status independently. If the old epoch is still active and
+old SQL/files are verified intact, restart that unchanged season explicitly; no
+pending epoch exists to resume. If the successor is resetting, recover that same
+epoch through the SQL-only and launcher steps below. Never edit the row to active.
+A raw server start also refuses a resetting epoch at its explicit season-state
+guard (currently generic fatal status 1). The maintained launcher/service reports
+58 and prevents restart; do not treat the raw executable's generic failure as
+permission to run cleanup.
+
 
 The disposable runtime qualifier accepts `--redis --systemd` and an absolute
 MariaDB production-profile binary path. It uses the production unit's sandbox and

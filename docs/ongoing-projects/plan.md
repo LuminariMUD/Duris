@@ -40,6 +40,36 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — epoch-boundary COMMIT acknowledgment
+
+Branch `branch/issue-264-boundary-commit-ack`, based on PR #348 at `6c3c1f789`.
+Outcome: explicitly prove conservative behavior when the epoch-advance COMMIT has
+an unknown result. Extend the existing native SQL matrix with a client-call wrapper
+armed only by the real epoch UPDATE; fail the COMMIT once before application and
+once after the real database commit. Verify the caller marks the boundary crossed,
+does not resume writers or declare filesystem readiness, and preserves old rows/
+files/grants until legitimate recovery. For the committed outcome, actual normal
+server startup and launcher cleanup must refuse; actual SQL-only recovery must
+finish that same epoch once, followed by guarded filesystem activation and safe
+retry. Reuse existing command/service and reward/activation-ACK proof; no network
+proxy, new production hook or schema is needed. Files: owning native handoff
+fixture and runbook/regression/plan. Proof on both owned engines with current
+production-profile binary. Remaining held-writer and inventory gates stay open.
+
+The MariaDB matrix passes on the current source: both unknown-COMMIT outcomes
+retain rows/payload/files and the grant at three, set crossed=true, leave ready=false
+and never call writer resume. An initial direct-start assertion incorrectly expected
+launcher status 58. Source tracing confirms raw `initialize_mysql` fails at the
+explicit non-active-season guard and the executable returns generic fatal 1;
+the corrected test requires that exact logged reason and no game loop. The
+maintained launcher still refuses with 58. Actual SQL-only recovery completes
+successor epoch 3 once, gives one grant decrement (3 -> 2), clears old summons and
+payload, and preserves roster/stamp on retry; launcher activates 3 and its duplicate
+leaves a fresh file intact. No production defect was found in this pass. Final
+MySQL qualification follows the committed fixture; reuse the identical MariaDB
+source result rather than rerun a passing engine for a documentation commit.
+
+
 ## Current continuation — retained ordinary item custody
 
 Review-ready [PR #348](https://github.com/LuminariMUD/Duris/pull/348), native fixture

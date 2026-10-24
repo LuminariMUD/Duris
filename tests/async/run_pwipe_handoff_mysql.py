@@ -128,6 +128,26 @@ extern "C" int __wrap_posix_spawn(pid_t *pid, const char *path, const posix_spaw
     for (int tries = 0; !result && reaped_child_cursor == 0 && tries < 200; ++tries) usleep(10000);
     return result;
 }
+bool boundary_epoch_updated = false, boundary_commit_fault = false;
+extern "C" int __real_mysql_real_query(MYSQL *, const char *, unsigned long);
+extern "C" int __wrap_mysql_real_query(MYSQL *connection, const char *statement, unsigned long length) {
+    const char *mode = getenv("PWIPE_TEST_BOUNDARY_ACK");
+    const bool before = mode && !strcmp(mode,"before"), after = mode && !strcmp(mode,"after");
+    const std::string_view query(statement,length);
+    if (before && boundary_epoch_updated && query == "COMMIT") {
+        boundary_epoch_updated = false; boundary_commit_fault = true;
+        return 1;
+    }
+    const int result = __real_mysql_real_query(connection,statement,length);
+    if (!result && (before || after)) {
+        if (query.starts_with("UPDATE season_reset_state SET season_epoch=")) boundary_epoch_updated = true;
+        else if (after && boundary_epoch_updated && query == "COMMIT") {
+            boundary_epoch_updated = false; boundary_commit_fault = true;
+            return 1;
+        }
+    }
+    return result;
+}
 MYSQL *DB;
 #define TRUE true
 #define FALSE false
@@ -140,7 +160,8 @@ void logit(const char *, const char *format, ...) {
 void send_to_all(const char *) {}
 int frag_cap_config_reset_level() { return 26; }
 bool pwipe_quiesce_writers() { return true; }
-void pwipe_resume_writers() {}
+unsigned int writer_resumes = 0;
+void pwipe_resume_writers() { ++writer_resumes; }
 redis_maintenance_config fixture_redis{};
 bool redis_cache_store_delete(const char *) { return true; }
 bool redis_validate_pwipe_state() { return !fixture_redis.connection || redis_maintenance_validate(&fixture_redis); }
@@ -492,9 +513,11 @@ int main(int argc, char **argv) {
               !strcmp(argv[1], "ready") ? sql_prepare_pwipe_filesystem() :
               !strcmp(argv[1], "wipe") ? sql_pwipe(1723699) :
               !strcmp(argv[1], "rewards") ? account_bound_rewards_on_successful_pwipe() : sql_load_active_season_state();
+    const bool boundary_ok = !getenv("PWIPE_TEST_BOUNDARY_ACK") ||
+        (boundary_commit_fault && pwipe_crossed_boundary && !pwipe_filesystem_ready && !ok && !writer_resumes);
     redis_connection_settings_destroy(settings);
     mysql_close(DB);
-    return ok ? 0 : 1;
+    return boundary_ok ? (ok ? 0 : 1) : 3;
 }
 ''')
     binary = native.with_suffix("")
@@ -509,7 +532,7 @@ int main(int argc, char **argv) {
                     "src/item/item_uid_allocator.c", "src/flatfile/flatfile_item_uid_allocator.c", "src/flatfile/flatfile_store.c",
                     "src/persistence/persistence_mode.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
                     "src/redis/redis_connection.c", "src/redis/redis_command_observability.c", "src/redis/redis_namespace.c", *repository_sources,
-                    "-lmysqlclient", "-lcrypto", "-lhiredis", "-lhiredis_ssl", "-lssl", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
+                    "-lmysqlclient", "-lcrypto", "-lhiredis", "-lhiredis_ssl", "-lssl", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-Wl,--wrap=mysql_real_query", "-o", str(binary)], cwd=ROOT, check=True)
 
     def epoch_call(command, epoch, expected_code, cwd=None):
         result = subprocess.run([str(binary), command, str(epoch)], env=env, cwd=cwd,
@@ -1136,6 +1159,70 @@ int main(int argc, char **argv) {
         assert (root / "Players/Backup/keep").read_text() == "archive"
         print("Launcher handoff: incomplete SQL, wrong epoch, concurrent cleanup, symlink, missing access, "
               "partial cleanup, retry, duplicate completion and lost activation ACK passed", flush=True)
+
+        # Model an unknown boundary COMMIT result, both before and after application.
+        # Each caller closes its connection; only durable state decides recovery.
+        recovery_canary.write_text("SQL recovery must not clear files")
+        reward_config.write_text("pwipe.preserve=true\n")
+        sql("UPDATE account_bound_reward_pwipe_state SET last_processed_at=NULL")
+        sql("INSERT INTO account_bound_rewards(account_name,remaining_pwipes,display_name) VALUES('fixturebank',3,'boundary-ack-fixture')")
+        grant_id = sql("SELECT id FROM account_bound_rewards WHERE display_name='boundary-ack-fixture'")
+        active_god = sql("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1")
+        assert int(active_god) > 1004
+        sql("INSERT INTO account_bound_reward_summons(grant_id,pid) VALUES(" + grant_id + "," + active_god + ")")
+        sql("INSERT INTO player_items(pid,vnum,quantity,name) VALUES(" + active_god + ",1108,1,'boundary-ack-payload')")
+        roster_before = sql("SELECT pid,name,active FROM player_data ORDER BY pid")
+        payload_before = sql("SELECT id,pid,vnum,name FROM player_items ORDER BY id")
+        file_before = old.read_bytes(), native_handoff.read_bytes()
+        for mode in ("before", "after"):
+            env["PWIPE_TEST_BOUNDARY_ACK"] = mode
+            try:
+                refusal = epoch_call("wipe", 2, 1, cwd=root)
+            finally:
+                del env["PWIPE_TEST_BOUNDARY_ACK"]
+            assert "Failed to establish durable season reset boundary" in refusal.stderr
+            assert status() == ("2:active" if mode == "before" else "3:resetting")
+            assert sql("SELECT pid,name,active FROM player_data ORDER BY pid") == roster_before
+            assert sql("SELECT id,pid,vnum,name FROM player_items ORDER BY id") == payload_before
+            assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=" + grant_id) == "3"
+            assert sql("SELECT COUNT(*) FROM account_bound_reward_summons WHERE grant_id=" + grant_id) == "1"
+            assert (old.read_bytes(), native_handoff.read_bytes()) == file_before
+        assert sql("SELECT CONCAT(roster_recreated,':',reset_completed_at IS NULL) FROM season_reset_state") == "0:1"
+        epoch_call("active", 3, 1)
+        launch(epoch=3); assert (old.read_bytes(), native_handoff.read_bytes()) == file_before
+        if server:
+            import test_flatfile_combat_journey as journey
+            direct_root = root / "direct-fence"; direct_root.mkdir()
+            journey.make_fixture(direct_root); journey.generate_certificate(direct_root)
+            (direct_root / "logs/log").mkdir(parents=True)
+            direct_port, tls_port, ws_port = journey.available_ports()
+            direct_env = dict(env, DURIS_DEV_PORT=str(direct_port), DURIS_TLS_PORT=str(tls_port),
+                              DURIS_WEBSOCKET_PORT=str(ws_port), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
+                              LISTEN_ADDRESS="127.0.0.1")
+            direct = subprocess.run([str(server), "--minimal", str(direct_port)], env=direct_env,
+                                    cwd=direct_root, capture_output=True, text=True, timeout=30)
+            direct_logs = journey.runtime_logs(direct_root)
+            assert direct.returncode == 1, (direct.returncode, direct.stdout, direct.stderr, direct_logs)
+            assert "season reset state is missing, invalid, or not active; recovery is required" in direct_logs, direct_logs
+            assert "Entering game loop" not in direct.stderr
+            assert sql("SELECT pid,name,active FROM player_data ORDER BY pid") == roster_before
+            assert sql("SELECT id,pid,vnum,name FROM player_items ORDER BY id") == payload_before
+            recover(3, 55)
+            assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=" + grant_id) == "2"
+            assert sql("SELECT COUNT(*) FROM account_bound_reward_summons WHERE grant_id=" + grant_id) == "0"
+            assert sql("SELECT COUNT(*) FROM player_items") == "0"
+            recovered_roster = sql("SELECT pid,name,active FROM player_data ORDER BY pid")
+            recovered_stamp = sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state")
+            recover(3, 55)
+            assert sql("SELECT pid,name,active FROM player_data ORDER BY pid") == recovered_roster
+            assert sql("SELECT last_processed_at FROM account_bound_reward_pwipe_state") == recovered_stamp
+            assert sql("SELECT remaining_pwipes FROM account_bound_rewards WHERE id=" + grant_id) == "2"
+            launch(epoch=3, expected=55); assert status() == "3:active"
+            old.write_text("fresh epoch-3 sentinel")
+            launch(epoch=3, expected=55); assert old.read_text() == "fresh epoch-3 sentinel"
+            print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state; actual direct/launcher fence and same-epoch recovery/one reward decrement/activation/retry passed", flush=True)
+        else:
+            print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state and fenced launcher; actual server recovery not requested", flush=True)
 
 
 if __name__ == "__main__":
