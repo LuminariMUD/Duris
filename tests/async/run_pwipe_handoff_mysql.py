@@ -52,11 +52,15 @@ def run():
     functions = source[source.index("static bool sql_connection_execute("):
                        source.index("bool sql_pwipe_crossed_boundary(void)",
                                     source.index("static bool sql_load_active_season_state"))]
-    signals = (ROOT / "src/core/signals.c").read_text()
-    child_status = signals[signals.rindex("void reap(int sig)"):signals.index("void reaper(int")]
     native = ROOT / "bin/tests/pwipe_epoch_mysql.cpp"
     native.parent.mkdir(parents=True, exist_ok=True)
+    signals = (ROOT / "src/core/signals.c").read_text()
+    child_status = signals[signals.index("void reap(int sig)\n{"):signals.index("void reaper(")]
     native.write_text('''#include <mysql/mysql.h>
+#include <spawn.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <cerrno>
 #include <climits>
 #include <cstdarg>
@@ -64,16 +68,21 @@ def run():
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-MYSQL *DB;
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <signal.h>
 #define REAPED_CHILD_STATUS_CAPACITY 64
 static volatile sig_atomic_t reaped_child_pids[64];
 static volatile sig_atomic_t reaped_child_statuses[64];
 static volatile sig_atomic_t reaped_child_cursor;
 ''' + child_status + '''
+extern "C" int __real_posix_spawn(pid_t *, const char *, const posix_spawn_file_actions_t *,
+                                  const posix_spawnattr_t *, char *const[], char *const[]);
+extern "C" int __wrap_posix_spawn(pid_t *pid, const char *path, const posix_spawn_file_actions_t *files,
+                                  const posix_spawnattr_t *attributes, char *const argv[], char *const env[]) {
+    int result = __real_posix_spawn(pid, path, files, attributes, argv, env);
+    // Force the real game reaper to consume the exit before preflight calls waitpid.
+    for (int tries = 0; !result && reaped_child_cursor == 0 && tries < 200; ++tries) usleep(10000);
+    return result;
+}
+MYSQL *DB;
 #define TRUE true
 #define FALSE false
 #define LOG_DEBUG 0
@@ -124,7 +133,7 @@ int main(int argc, char **argv) {
 ''')
     binary = native.with_suffix("")
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", str(native),
-                    "-lmysqlclient", "-o", str(binary)], check=True)
+                    "-lmysqlclient", "-Wl,--wrap=posix_spawn", "-o", str(binary)], check=True)
 
     def epoch_call(command, epoch, expected_code, cwd=None):
         result = subprocess.run([str(binary), command, str(epoch)], env=env, cwd=cwd,
