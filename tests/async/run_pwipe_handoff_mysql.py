@@ -94,7 +94,6 @@ def run(server=None):
 #include "player/player_snapshot_codec.h"
 #include "player/player_load_repository.h"
 #include "item/item_uid_allocator.h"
-#include "flatfile/flatfile_item_uid_allocator.h"
 #include "persistence/persistence_mode.h"
 #include "persistence/persistence_observability.h"
 #include <sys/time.h>
@@ -166,11 +165,6 @@ bool qry(const char *format, ...) {
 }
 ''' + metadata + functions + '''
 unsigned long next_obj_uid = 1;
-bool persistence_mode_requires_mysql(void) { return true; }
-const char *persistence_mode_flatfile_root(void) { return nullptr; }
-flatfile_item_uid_result flatfile_item_uid_reserve(const std::string &, uint64_t, uint64_t *, std::string *) {
-    return flatfile_item_uid_result::invalid;
-}
 uint64_t sql_season_epoch() { return current_season_epoch; }
 bool sql_begin_transaction() { return qry("START TRANSACTION"); }
 bool sql_rollback() { return qry("ROLLBACK"); }
@@ -454,6 +448,8 @@ bool new_collector_candidate() {
            loaded.catalog.records[0].listing==104 && loaded.catalog.next_listing==105;
 }
 int main(int argc, char **argv) {
+    char mode_error[512];
+    if (!persistence_mode_configure(mode_error, sizeof mode_error)) return 2;
     if (argc != 3) return 2;
     signal(SIGCHLD, reap);
     DB = mysql_init(nullptr);
@@ -510,7 +506,8 @@ int main(int argc, char **argv) {
                     str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
                     "src/economy/collector_purchase_preparation.c", "src/guild/artifact_population_repository.c",
                     "src/item/legacy_object_identity.c", "src/player/player_load_repository.c", "src/player/player_load_topology.c",
-                    "src/item/item_uid_allocator.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
+                    "src/item/item_uid_allocator.c", "src/flatfile/flatfile_item_uid_allocator.c", "src/flatfile/flatfile_store.c",
+                    "src/persistence/persistence_mode.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
                     "src/redis/redis_connection.c", "src/redis/redis_command_observability.c", "src/redis/redis_namespace.c", *repository_sources,
                     "-lmysqlclient", "-lcrypto", "-lhiredis", "-lhiredis_ssl", "-lssl", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
 
