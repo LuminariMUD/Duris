@@ -2696,14 +2696,14 @@ void do_flee(P_char ch, char *argument, int cmd)
 	if (IS_AFFECTED(ch, AFF_SNEAK))
 		REMOVE_BIT(ch->specials.affected_by, AFF_SNEAK);
 
-	if (mount_opponent)
-		stop_fighting(mount);
-
 	act("$n attempts to flee.", TRUE, ch, 0, 0, TO_ROOM);
 	send_to_char("You attempt to flee...\n", ch);
 
 	if (grapple_check_entrapment(ch))
 		return;
+
+	if (mount_opponent)
+		stop_fighting(mount);
 
 	if (!IS_TRUSTED(ch) &&
 	    !(GET_CLASS(ch, CLASS_DRUID) ||
