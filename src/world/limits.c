@@ -620,6 +620,12 @@ static void lose_level_impl(P_char ch, std::uint64_t threshold_xp,
 			    telemetry_progression_source source,
 			    telemetry_progression_reason reason);
 
+int death_exp_loss_level_threshold(void)
+{
+	// Retain the legacy property name for existing configurations; the cutoff is universal.
+	return get_property("exp.goodieDeathExpLossLevelThreshold", 30);
+}
+
 static void notify_level_advancement(P_char ch, int previous_level)
 {
 	P_char recipient = IS_SET(ch->specials.act, PLR_MORPH) ? ch->only.pc->switched : ch;
@@ -630,12 +636,23 @@ static void notify_level_advancement(P_char ch, int previous_level)
 	if (levels_gained == 1)
 	{
 		send_to_char("&+WYou raise a level!&N\r\n", recipient);
-		return;
+	}
+	else
+	{
+		char message[128];
+		snprintf(message, sizeof(message), "&+WYou advance to level %d.&N\r\n",
+			 GET_LEVEL(ch));
+		send_to_char(message, recipient);
 	}
 
-	char message[128];
-	snprintf(message, sizeof(message), "&+WYou advance to level %d.&N\r\n", GET_LEVEL(ch));
-	send_to_char(message, recipient);
+	const int cutoff = death_exp_loss_level_threshold();
+	if (previous_level < cutoff && GET_LEVEL(ch) >= cutoff)
+	{
+		send_to_char_f(recipient,
+			       "\r\n&+WWARNING: YOU HAVE REACHED LEVEL %d. DEATH CAN NOW COST YOU "
+			       "EXPERIENCE AND CAUSE YOU TO LOSE LEVELS!&N\r\n\r\n",
+			       cutoff);
+	}
 }
 
 void illithid_advance_level(P_char ch)
@@ -1464,9 +1481,7 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 	}
 	else if (type == EXP_DEATH)
 	{
-		// Goods don't lose exp on death untill over the threshold.
-		if (IS_RACEWAR_GOOD(ch) &&
-		    GET_LEVEL(ch) < (int)get_property("exp.goodieDeathExpLossLevelThreshold", 20))
+		if (GET_LEVEL(ch) < death_exp_loss_level_threshold())
 		{
 			return 0;
 		}
