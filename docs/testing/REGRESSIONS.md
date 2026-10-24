@@ -78,6 +78,13 @@ partial cleanup, fixed retries, duplicate completion and a lost activation ACK.
 Native inputs remain live when SQL is unready, move to retained archives before
 activation, stay archived after a failed cleanup, and a new season's handoff survives
 a duplicate or lost-ACK completion retry.
+The native matrix additionally asks the actual database to kill the caller's live
+connection, confirms further SQL fails, then executes the owning wipe function.
+It must refuse before the irreversible boundary without readiness or writer resume;
+an independent connection verifies exact old epoch, roster, account, bank and item
+payload values, and the filesystem canary remains unchanged. This is actual server-
+side connection loss, not a mocked query result or unavailable-connect-only probe.
+
 The same matrix also pauses the unmodified wiper's actual `find` after clearing
 one old store and archiving native handoff evidence. It SIGKILLs both launcher
 parents while leaving the real wipe child alive: the child's inherited fd 9 must
@@ -177,6 +184,14 @@ monotonic new PIDs and new-season gameplay use the recorded full/native journeys
 The existing load-pipeline/mode executables hold SQL-only provider selection and
 mixed-mode refusal. Filesystem preservation canaries now use actual registration,
 ban and invitation/name-policy paths in addition to account/config/archive sentinels.
+
+`test_zone_story_quest_feature.py` now reloads a retained history blob across a new
+season and higher PID with a reused display name. Both identity dimensions isolate
+progress/daily state; fresh assignment/completion/renown works, old completion replay
+is idempotent, and both historical/new partitions survive another reload. The old
+completion has explicit known-solo telemetry so the existing evidence policy admits
+a daily candidate; unknown-party evidence remains rejected by the original cases.
+The runtime's `current_season_id()` binds SQL-primary calls to `sql_season_epoch()`.
 
 `python3 tests/async/run_pwipe_runtime_journey.py /absolute/mariadb/server` runs the
 real command and unaccelerated five-minute wall-clock deadline through the copied

@@ -40,6 +40,44 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — final SQL/worker consumer reconciliation
+
+Branch `branch/issue-264-consumer-reconciliation`, based on PR #356 at `82814f58b`.
+Outcome: finish the original W1/W2/W4 consumer audit against the actual 200-table,
+35-store, 42-Redis-surface contract and current master ancestry, then reconcile the
+remaining completion gates with authoritative recorded proof. Trace all retained
+families at their real readers/replay consumers rather than deleting history or
+adding blanket epoch columns. Close the remaining explicit before-boundary SQL
+unavailability proof with a real server-killed native connection and independent
+old-state observations. Files: existing native SQL fixture, owning runbook/manifest/
+regression/plan. Proof: both SQL engines for the new failure case plus the narrow
+existing domain/source checks needed by uncovered consumers; reuse valid builds,
+full timers/service/website/matched-restore evidence. Do not mark final readiness
+until every remaining requirement has a concrete disposition.
+
+Both full native SQL/launcher/recovery matrices pass on MariaDB 10.11.19 and MySQL
+8.0.46 with a real pre-boundary disconnect: the database kills the native caller's
+connection, later SQL fails, and actual wipe refuses with no boundary/readiness/
+writer resume. Independent exact observations preserve old epoch/roster/account/
+bank/payload/files. Logs: `bin/analysis/pwipe-final-{mariadb,mysql}.log`.
+The actual zone-story engine now reloads retained old history into new season/PID
+partitions, proves zero inherited progress/daily/renown, fresh assignment/completion,
+old receipt idempotence and another reload. Initial eligibility refusal was the
+fixture's unknown solo-party telemetry, correctly rejected by the existing policy;
+explicit known-solo context supplies the valid candidate. No production defect was
+found. `bin/analysis/pwipe-quest-partitions.log` passes.
+Owning consumers also traced: generic critical duplicate receipt lookup precedes
+domain dispatch; normal outbox drains future status-0 attempts; artifact prepared
+bootstrap can revive status-2 deliveries but its drain includes pending state and
+replacement guards use canonical artifact UID / guild incarnation. Do not claim
+all dead letters are universally inert. Quest runtime uses SQL epoch; epic claims
+use stone UID; artifact mana stores only UID counters; current quest-trophy gameplay
+callers are disabled; critical-test counters do not supply game assets. These five
+manifest purposes and runbook consumer notes now say what actually provides safety.
+No production source/schema change in this chunk; use prior production binary/build
+and full timer/website/service/restore evidence. Full consumer/manual/final checklist
+reconciliation remains in progress rather than inferred from passing these tests.
+
 ## Current continuation — independent email registry repair integration
 
 Review-ready [PR #356](https://github.com/LuminariMUD/Duris/pull/356), integration

@@ -470,6 +470,13 @@ bool new_collector_candidate() {
     return collector_repository_read_bootstrap(DB,&loaded) && loaded.catalog.records.size()==1 &&
            loaded.catalog.records[0].listing==104 && loaded.catalog.next_listing==105;
 }
+bool disconnected_wipe() {
+    const std::string kill = "KILL " + std::to_string(mysql_thread_id(DB));
+    mysql_real_query(DB, kill.data(), kill.size());
+    if (!mysql_real_query(DB, "SELECT 1", 8)) return false;
+    const bool result = sql_pwipe(1723699);
+    return !result && !pwipe_crossed_boundary && !pwipe_filesystem_ready && !writer_resumes;
+}
 int main(int argc, char **argv) {
     char mode_error[512];
     if (!persistence_mode_configure(mode_error, sizeof mode_error)) return 2;
@@ -492,7 +499,8 @@ int main(int argc, char **argv) {
             !redis_namespace_season_key(ns,current_season_epoch,"cache:*",caches,sizeof caches)) return 2;
         fixture_redis={settings,ns,current_season_epoch,current,sessions,retries,caches};
     }
-    bool ok = !strcmp(argv[1], "clear-redis") ? redis_clear_pwipe_state() :
+    bool ok = !strcmp(argv[1], "disconnected-wipe") ? disconnected_wipe() :
+              !strcmp(argv[1], "clear-redis") ? redis_clear_pwipe_state() :
               !strcmp(argv[1], "seed-payloads") ? seed_payloads() :
               !strcmp(argv[1], "empty-payloads") ? payload_readers(true) :
               !strcmp(argv[1], "seed-trade") ? seed_trade() :
@@ -662,6 +670,20 @@ int main(int argc, char **argv) {
         assert payload_id_before > int(sql("SELECT source_row_id FROM item_ownership_baseline WHERE item_uid=991001"))
         allocator_before = int(sql("SELECT next_uid FROM item_uid_allocator WHERE allocator_id=1"))
         epoch_call("items-before", 1, 0)
+        old_queries = (
+            "SELECT season_epoch,reset_status,reset_started_at,reset_completed_at FROM season_reset_state",
+            "SELECT pid,name,level,active,copper,epics,frags FROM player_data ORDER BY pid",
+            "SELECT account_name,pid,char_name,deleted_at FROM account_characters ORDER BY id",
+            "SELECT account_name,password,email,total_donated FROM accounts ORDER BY account_name",
+            "SELECT id,account_name,racewar,bank_copper,bank_silver,bank_gold,bank_platinum FROM account_banks ORDER BY id",
+            "SELECT id,pid,vnum,obj_uid,quantity FROM player_items ORDER BY id",
+        )
+        old_values = [sql(query) for query in old_queries]
+        canary = recovery_canary.read_bytes()
+        epoch_call("disconnected-wipe", 1, 0, cwd=root)
+        assert [sql(query) for query in old_queries] == old_values
+        assert recovery_canary.read_bytes() == canary
+        print("Actual SQL connection killed before preflight: wipe refuses before boundary, no readiness/writer resume, old epoch/roster/account/bank/payload/files unchanged", flush=True)
         epoch_call("wipe", 1, 0, cwd=root)
         assert sql("SELECT * FROM item_current_owner WHERE item_uid=991001") == custody
         assert sql("SELECT * FROM item_owner_revision WHERE owner_type=1 AND owner_id=1002") == owner_revision
