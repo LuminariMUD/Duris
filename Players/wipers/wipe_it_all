@@ -45,6 +45,17 @@ COPYOVER_PATH="${COPYOVER_STATE_FILE:-copyover.dat}"
 COPYOVER_SOURCES=("$COPYOVER_PATH" "$COPYOVER_PATH.recovering"
                   "$COPYOVER_PATH.consuming" "$COPYOVER_PATH.recovering.consuming")
 COPYOVER_NAMES=(publication recovering publication.consuming recovering.consuming)
+# Cleanup keeps a target directory itself but removes every nested directory.
+# A native-state parent must survive both an interrupted cleanup and its retry.
+check_recovery_parent() {
+  local parent="$1" target
+  for target in "${TARGETS[@]}"; do
+    if [[ "$parent" == "$ROOT/$target/"* ]]; then
+      echo "Recovery parent is inside a cleared subtree; relocate it before wiping: $parent" >&2
+      return 1
+    fi
+  done
+}
 check_native_image() {
   local path="$1"
   if [[ -L "$path" || ! -f "$path" || ! -r "$path" || "$(head -c 4 -- "$path")" != COPY ]]; then
@@ -59,6 +70,7 @@ check_copyover_state() {
     return 1
   fi
   parent="$(dirname -- "$path")"
+  check_recovery_parent "$parent" || return 1
   if [[ ! -d "$parent" || ! -r "$parent" || ! -w "$parent" || ! -x "$parent" ]]; then
     echo "Inaccessible native handoff parent: $parent" >&2
     return 1
@@ -82,13 +94,31 @@ MAINTENANCE_PATH="${MAINTENANCE_STATE_FILE:-runtime/maintenance-scheduler.state}
 MAINTENANCE_SOURCES=("$MAINTENANCE_PATH" "$MAINTENANCE_PATH.tmp")
 MAINTENANCE_NAMES=(state state.tmp)
 check_maintenance_state() {
-  local path="$1" parent
+  local path="$1" parent remaining component ancestor="/"
   if [[ -L "$path" || "$(readlink -m -- "$path")" != "$path" ]]; then
     echo "Unsafe maintenance checkpoint path: $path" >&2
     return 1
   fi
-  [[ -e "$path" ]] || return 0
   parent="$(dirname -- "$path")"
+  check_recovery_parent "$parent" || return 1
+  # Check search permission top-down before interpreting -e as absence. A missing
+  # directory is harmless; an existing but unsearchable ancestor hides live state.
+  remaining="${parent#/}"
+  while [[ -n "$remaining" ]]; do
+    component="${remaining%%/*}"
+    if [[ "$remaining" == */* ]]; then remaining="${remaining#*/}"; else remaining=""; fi
+    ancestor="${ancestor%/}/$component"
+    if [[ -L "$ancestor" ]]; then
+      echo "Unsafe maintenance checkpoint ancestor: $ancestor" >&2
+      return 1
+    fi
+    [[ -e "$ancestor" ]] || return 0
+    if [[ ! -d "$ancestor" || ! -x "$ancestor" ]]; then
+      echo "Inaccessible maintenance checkpoint ancestor: $ancestor" >&2
+      return 1
+    fi
+  done
+  [[ -e "$path" ]] || return 0
   if [[ ! -f "$path" || ! -r "$path" || ! -r "$parent" || ! -w "$parent" || ! -x "$parent" ]]; then
     echo "Inaccessible maintenance checkpoint: $path" >&2
     return 1
@@ -149,6 +179,7 @@ for index in "${!MAINTENANCE_SOURCES[@]}"; do
   mv -T -- "$path" "$maintenance_archive/${MAINTENANCE_NAMES[$index]}"
 done
 for path in "${MAINTENANCE_SOURCES[@]}"; do
+  check_maintenance_state "$path"
   if [[ -e "$path" || -L "$path" ]]; then
     echo "Maintenance checkpoint remains live; refusing filesystem completion: $path" >&2
     exit 1

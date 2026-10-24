@@ -154,6 +154,42 @@ class FilesystemWipeTest(unittest.TestCase):
         self.assertEqual(sorted(path.read_bytes() for archive in archives for path in archive.iterdir()
                                 if path.name != "source-path"), [b"COPYclaimed", b"COPYpublished"])
 
+    def test_nested_recovery_parent_refuses_before_cleanup_can_remove_it(self):
+        for maintenance in (False, True):
+            parent = self.root / "Players/a/native"
+            parent.mkdir()
+            state = parent / "state"
+            state.write_bytes(b"DMSMNT4old state" if maintenance else b"COPYold handoff")
+            env = dict(os.environ, COPYOVER_STATE_FILE=str(state if not maintenance else self.root / "copyover.dat"))
+            arguments = {"environment": env}
+            if maintenance: arguments["maintenance_state"] = state
+            self.assertNotEqual(self.run_wipe("--check", **arguments).returncode, 0)
+            self.assertNotEqual(self.run_wipe(**arguments).returncode, 0)
+            self.assertTrue(state.exists() and (self.root / "Players/a/old").exists())
+            state.unlink(); parent.rmdir()
+
+    @unittest.skipIf(os.geteuid() == 0, "permission checks require an unprivileged process")
+    def test_nonsearchable_maintenance_ancestors_are_not_absence(self):
+        for nested in (False, True):
+            parent = self.root / "runtime"
+            parent.mkdir()
+            location = parent / "nested" if nested else parent
+            location.mkdir(exist_ok=True)
+            state = location / "state"
+            state.write_bytes(b"DMSMNT4hidden old state")
+            for mode in (0o600, 0):
+                parent.chmod(mode)
+                try:
+                    self.assertNotEqual(self.run_wipe("--check", maintenance_state=state).returncode, 0)
+                    self.assertNotEqual(self.run_wipe(maintenance_state=state).returncode, 0)
+                    self.assertTrue((self.root / "Players/a/old").exists())
+                finally:
+                    parent.chmod(0o700)
+                self.assertEqual(state.read_bytes(), b"DMSMNT4hidden old state")
+            state.unlink()
+            if nested: location.rmdir()
+            parent.rmdir()
+
     def test_maintenance_unsafe_inputs_refuse_before_any_deletion(self):
         for case in ("unrecognized", "symlink", "directory", "parent-link", "temporary-unrecognized"):
             with self.subTest(case=case), tempfile.TemporaryDirectory(prefix="duris-maintenance-path-") as directory:

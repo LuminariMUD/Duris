@@ -40,6 +40,36 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — recovery path preflight guards
+
+Branch `branch/issue-264-recovery-path-guards`, based on PR #361 at `f3e098387`.
+Resolve #339/#352 review findings. Recovery parents nested below a cleared target
+would disappear during cleanup and make retry impossible; reject that layout in
+read-only preflight while keeping direct target-root and external parents supported.
+Maintenance -e cannot mean absent until each ancestor is known searchable; walk
+ancestors top-down, still allowing genuinely missing directories, and repeat the
+check before filesystem completion. No native format/state marker or directory
+reconstruction layer. Files: existing wiper and focused filesystem/runtime tests,
+configuration/runbook/plan. Proof: failing unprivileged regressions for nested
+parents and hidden checkpoints, actual native before-SQL and launcher refusal,
+existing default/custom/direct-target archival/reader tests. Reuse SQL/C builds;
+production C/C++ unchanged.
+
+Both new regressions fail on the previous wiper (accepted nested parent and hidden
+checkpoint), then all 18 filesystem checks pass after the guard repair. Actual
+native scheduler/default/custom/direct-target tests, actual mail producer/reader,
+and native copyover ASan/UBSan cases pass. The full MariaDB native matrix passes
+with real before-boundary missing/nonexec/denied/hidden/nested refusals and a SQL-ready
+launcher refusal while the checkpoint ancestor is nonsearchable; permission repair
+preserves bytes and normal completion succeeds. Existing MySQL SQL proof is reused
+for this Unix filesystem-only delta; later final SQL fixture runs retain these cases.
+Logs: `bin/analysis/pwipe-recovery-path-{baseline,final,maintenance,mail,copyover,mariadb}.log`.
+No new epoch/version, archive deletion, reconstruction routine or configuration
+option. Nested cleared parents have an explicit preflight refusal/relocation route;
+this preserves retryability without changing ordinary copyover behavior. Review
+#339/#352 findings are repaired in this stack; publication and final review/branch
+reconciliation follow.
+
 ## Current continuation — schema-inventory consumer repair
 
 Review-ready [PR #361](https://github.com/LuminariMUD/Duris/pull/361), repair

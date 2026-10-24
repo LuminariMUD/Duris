@@ -347,7 +347,10 @@ before activation; the archive records their configured source path. Keep these
 bytes with recovery evidence and never restore them into a new season's scheduler
 path. This also covers external configured paths and paths inside a wiped store.
 Unreadable, symlinked, noncanonical or unrecognized checkpoints refuse preflight
-before deletion. Repair/quarantine such input explicitly before retrying; do not
+before deletion. Every existing ancestor must be searchable before an absent-file
+check is trusted; a hidden checkpoint is never treated as missing. Genuinely missing
+directories are allowed. A checkpoint parent nested below a cleared store is refused
+for retryability; direct store-root and external parents remain supported. Repair/quarantine such input explicitly before retrying; do not
 bypass the check. A partial move remains fenced and a normal retry archives what
 remains. A duplicate already-active epoch skips all cleanup and keeps fresh state.
 
@@ -487,7 +490,10 @@ source path recorded. A consumption barrier may be empty or contain only its nat
 symlinks, unknown types/content, inaccessible parents and unsafe backup paths fail
 preflight before destructive SQL. Canonical absolute or data-root-relative custom
 paths with existing parent directories are supported, including a separate state
-volume; `.`/`..` and symlink aliases refuse. All game writers remain
+volume and a file directly in a cleared store root. Parents nested below a cleared
+store are refused before SQL reset: cleanup would remove the parent and break a
+same-epoch retry. Relocate configured recovery state to a persistent parent first.
+`.`/`..` and symlink aliases refuse. All game writers remain
 stopped through archiving and activation. Partial archive failure keeps the season
 fenced; same-epoch retry preserves prior archives and moves remaining inputs. A
 completed-epoch replay skips cleanup and leaves a new season's handoff untouched.
