@@ -42,6 +42,8 @@ was run during planning.
 
 ## Current continuation — Redis disabled/reset/re-enable
 
+Review-ready [PR #341](https://github.com/LuminariMUD/Duris/pull/341); fixture revision
+`4464aab01`, full proof record `ba252fc8c`. Branch is committed/pushed.
 Branch `branch/issue-264-redis-reenable`, stacked on review-ready
 [PR #340](https://github.com/LuminariMUD/Duris/pull/340), latest parent `d2bc5a621`
 (implementation `138b66478`). It was merged locally as `163549c9d`; fixture/checkpoint
