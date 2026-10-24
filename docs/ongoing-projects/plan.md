@@ -53,7 +53,7 @@ Use a second account so rewards do not interfere with the existing combat journe
 Add only the alternate discard-policy option; reuse the same fixture and binary,
 and existing native hook evidence for expiry, delayed/lost-ACK retries and distinct
 resets. Files: existing runtime journey, runbook/regression notes and this plan.
-No production code change is planned absent a reproduced defect. Full W1/W2/W5
+No production code change was needed. Full W1/W2/W5
 and final readiness remain open; production action is excluded.
 
 Both initial actual runs completed the reset and passed the grant/lifetime and
@@ -70,16 +70,39 @@ summons were absent; the new character's claim refused before/after reconnect an
 second boot. Report `bin/analysis/pwipe-runtime-mariadb-discard-rewards.json`, log
 `bin/analysis/pwipe-reward-discard.log`. Owned resources cleaned. Reuse this pass:
 the subsequent transcript correction affects only the preserving branch of the
-fixture. The final preserving run at `528d1e68d` remains live; no combined gate
-completion is claimed until it finishes.
+fixture. The final preserving run at `528d1e68dff08e98c81494313fef295dbf02bb38`
+also passed with the same optimized binary and an empty C/C++ working diff:
+301.993 wall / 289.427 monotonic seconds. Report
+`bin/analysis/pwipe-runtime-reward-preserve.json`, log
+`bin/analysis/pwipe-reward-preserve.log`. Epoch/PIDs match the discard journey.
+Permanent/day grants retained their exact stored templates and expiry; the one-wipe
+grant disappeared and the three-wipe grant became two. Old summon links were gone
+before startup. Fresh claim PID 5 received three distinct new item UIDs with the
+exact saved type/weight/cost/values. Repeated summons did not change them. After
+releasing the third reward, two instances remained byte-for-value stable and the
+third remained on cooldown across save, reconnect and another boot. All owned
+resources cleaned. An unused fixture metadata field was removed afterward; no
+behavior/assertion changed, so reuse both valid real journeys. Existing exact/multi/
+player-UX and native access checks, Python compilation, mode refusal, formatting
+and commit hooks pass. No production source change requires another build.
+Combined with #318/#336's real-hook expiry, 28-day guard, failed/ambiguous commit,
+delayed retry and distinct-reset evidence, W4's reward-policy/claim gate is complete.
+Other reset-completeness, retained-reader and external integration gates stay open.
+
+Next concrete W5 work: rehearse sender stop/drain, existing `telemetry-state
+rollover-season`, season rebinding and restart against the loopback HTTP receiver.
+`python3 tests/async/test_telemetry_outage.py` passed at the unchanged telemetry
+source in this branch, including real native CLI rollover, idempotent bytes,
+historical scopes, same-day quota exhaustion and all publication fault points.
+Log: `bin/analysis/pwipe-telemetry-outage-existing.log`. Reuse that evidence; it
+does not yet prove the combined worker/HTTP cutover. Keep W5's telemetry gate open.
 
 ## Current continuation — shutdown operator flow
 
 Review-ready [PR #343](https://github.com/LuminariMUD/Duris/pull/343), implementation
 `ed8cf5527` plus permission correction `b20372b9f`, proof record `e8fc3597a`.
 Branch `branch/issue-264-shutdown-operator-flow`, based on PR #341 at `9ff8251dc`;
-committed/pushed. This is the current continuation; older sections retain historical
-chunk evidence and next-step notes.
+committed/pushed. Later sections retain historical chunk evidence and next-step notes.
 Source findings: invalid/underlevel pwipe requests cancel existing timers before
 validation; issuer-disconnect cancellation is commented out despite help text;
 new requests leave old timer events queued, and terminal execution leaves its type
@@ -1148,7 +1171,7 @@ completion is safe and overall success appears only after all required stages.
   failure prevents SQL-ready publication. The native real-hook matrix proves
   28-day business protection, delayed retries, rollback/lost ACK and unconditional
   old-body summon cleanup. See the reward-retry chunk above.
-- [ ] Test permanent, time-expiring, finite-one/finite-many grants, both preserve
+- [x] Test permanent, time-expiring, finite-one/finite-many grants, both preserve
   settings, summons, ambiguous commit, immediate/delayed retries, distinct resets
   inside/outside 28 days and failure before activation. Prove new-character claims
   against surviving accounts behave correctly.

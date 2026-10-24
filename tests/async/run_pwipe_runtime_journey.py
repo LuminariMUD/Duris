@@ -376,7 +376,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                                "FROM account_bound_rewards WHERE account_name='" + OBSERVER_ACCOUNT + "' ORDER BY id").splitlines():
                     grant_id, vnum, encoded, expires = row.split("\t")
                     template = json.loads(bytes.fromhex(encoded))
-                    grants.append(dict(id=int(grant_id), vnum=int(vnum), encoded=encoded, expires=expires,
+                    grants.append(dict(id=int(grant_id), encoded=encoded, expires=expires,
                                        payload=(int(vnum), template["type"], template["weight"], template["cost"], *template["values"])))
                 assert len(grants) == 4
                 observer = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=OBSERVER)
