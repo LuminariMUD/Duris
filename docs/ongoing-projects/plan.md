@@ -40,6 +40,48 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — retained locker receipts and legacy admission inputs
+
+Branch `branch/issue-264-receipt-input-audit`, based on PR #353 at `443c6a874`.
+Outcome: prove retained identification receipts do not cross to a new PID on the
+same preserved account, and reconcile misleading legacy compatibility labels with
+actual player/account admission. Extend the existing actual-service/receipt harness
+for prepared/paid/failed/delivered states, both modeled purses, new PID automatic/
+explicit reads, wrong-PID file alias refusal, preserved old bytes and fresh purchase.
+No receipt epoch/version or deletion is needed if the existing PID/account/side
+consumer proves isolation. Files: existing receipt harness/driver, manifest purposes
+and owning runbook/regression/plan. Proof: native codec/service cases plus existing
+actual SQL new-PID/allocator/gameplay evidence; source trace for SQL-only admission
+and client-free provider selection. Reuse unrelated full timer/SQL matrices and
+build evidence; remaining inventory remains explicit.
+
+Native receipt proof passes all four retained states with both modeled purses:
+no old display/payment on same-account higher PID; encoded-PID refusal for an
+intentional copied alias; exact old bytes retained; fresh identification and its
+new delivered receipt work. The first fresh-text assertion omitted the service's
+normal introductory lines; comparison now checks the actual description suffix.
+No production receipt defect was found. Existing crash/recovery/saturation cases
+also pass. Logs: `bin/analysis/pwipe-receipt-inputs.log`.
+Source-grounded admission trace: `account.c::read_account/write_account` select SQL
+in MariaDB builds; `player_load_pipeline.c::selected_execute_callback` selects SQL
+there and explicit flat-file provider only client-free; hybrid mode is refused.
+Flat-file accounts live under `identities/accounts`, not `lib/accounts`.
+Existing load-pipeline/mode executables pass (`pwipe-admission-{pipeline,mode}.log`),
+reusing actual SQL old/new load and full account/gameplay evidence from the stack.
+Five misleading legacy manifest purposes are corrected without changing retention
+or export policy. Registration, ban/name admission and the authoritative client-free
+namespace are explicitly inventoried: current 200 SQL tables / 35 other stores /
+42 Redis surfaces. Sixteen filesystem checks preserve actual-path canary bytes;
+lifecycle (14) and validator pass. No production code/schema/reset action changed;
+reuse unchanged builds and full SQL/timer journeys. Remaining full SQL/worker and
+manual readiness reconciliation stays open.
+
+Independent finding for the next focused repair: optional
+`account.c::is_email_taken` uses `fscanf(...) != 0` (EOF is nonzero), and never
+closes its FILE on either result. It can loop at EOF and leak descriptors when
+`REQUIRE_EMAIL_VERIFICATION` is enabled (default is disabled). Reproduce and repair
+separately rather than folding an account-creation bug into receipt evidence.
+
 ## Current continuation — name-scoped MUD mail isolation
 
 Review-ready [PR #353](https://github.com/LuminariMUD/Duris/pull/353), fix/fixture

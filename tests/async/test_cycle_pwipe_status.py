@@ -16,7 +16,9 @@ class FilesystemWipeTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         (self.root / "Players/wipers").mkdir(parents=True)
-        for path in ("Players/a/old", "Ships/old", "Players/Backup/keep", "Accounts/keep", "config/keep"):
+        for path in ("Players/a/old", "Ships/old", "Players/Backup/keep", "Accounts/keep", "config/keep",
+                     "Accounts/email.db", "lib/misc/ban_sites", "Players/Invited/a/approved",
+                     "Players/Accepted/a/approved", "Players/Declined/a/blocked"):
             target = self.root / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("sentinel")
@@ -38,8 +40,10 @@ class FilesystemWipeTest(unittest.TestCase):
         (self.root / "Players/a/nested-link").symlink_to(outside)
         self.assertEqual(self.run_wipe().returncode, 0)
         self.assertFalse((self.root / "Players/a/old").exists())
-        for path in ("outside", "Players/Backup/keep", "Accounts/keep", "config/keep"):
-            self.assertTrue((self.root / path).is_file(), path)
+        for path in ("outside", "Players/Backup/keep", "Accounts/keep", "config/keep",
+                     "Accounts/email.db", "lib/misc/ban_sites", "Players/Invited/a/approved",
+                     "Players/Accepted/a/approved", "Players/Declined/a/blocked"):
+            self.assertEqual((self.root / path).read_text(), "preserved" if path == "outside" else "sentinel", path)
         self.assertEqual(self.run_wipe().returncode, 0)
 
     def test_copyover_inputs_are_archived_before_cleanup(self):
