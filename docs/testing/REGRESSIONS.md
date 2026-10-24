@@ -78,6 +78,15 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+The native SQL journey now seeds collector candidates, collected, available and
+paused stock and prepares a real purchase before reset. Wipe closes them through
+the real critical executor, destroys held custody, preserves payload/audit/IDs and
+loads an empty new-season catalog. The old prepared buy returns stale without credit
+or materialization; a new character's candidate uses the next listing ID. A corrupt
+record and a missing delegated ledger column abort before epoch advance. A triggered
+mid-batch ledger failure leaves the reset fenced; repaired retries close remaining
+listings without duplicate receipts. The existing SQL collector suite also passes.
+
 ## Contained-being learning feedback
 
 A failed recipe-learning roll reports the failure to the eligible summoner in
