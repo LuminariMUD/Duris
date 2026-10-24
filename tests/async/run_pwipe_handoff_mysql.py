@@ -150,11 +150,32 @@ int main(int argc, char **argv) {
         sql("UPDATE season_reset_state SET season_epoch=1,reset_status='active',"
             "reset_completed_at=NULL WHERE state_id=1")
         sql("INSERT INTO zones(number,name,alignment,epic_type) VALUES(900,'fixture',1,1)")
+        sql("INSERT INTO accounts(account_name,password,email,total_donated,confirmed) "
+            "VALUES('fixturebank','fixture-password','fixture@example.invalid',123.45,1)")
+        account_before = sql("SELECT CONCAT_WS(':',password,email,total_donated,confirmed) "
+                             "FROM accounts WHERE account_name='fixturebank'")
+        sql("INSERT INTO account_banks(id,account_name,racewar,bank_copper,bank_silver,bank_gold,bank_platinum) "
+            "VALUES(900,'fixturebank',1,123,456,789,987),"
+            "(901,'fixturebank',2,2,3,4,5),(902,'fixturebank',0,6,7,8,9)")
+        sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) "
+            "SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum FROM account_banks")
         epoch_call("wipe", 1, 0, cwd=root)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
+        assert sql("SELECT COUNT(*) FROM account_banks") == "0"
+        assert sql("SELECT CONCAT_WS(':',password,email,total_donated,confirmed) "
+                   "FROM accounts WHERE account_name='fixturebank'") == account_before
+        assert sql("SELECT opening_platinum FROM currency_bank_baseline WHERE bank_id=900") == "987"
+        sql("INSERT INTO account_banks(account_name,racewar) VALUES('fixturebank',1)")
+        new_bank = int(sql("SELECT id FROM account_banks WHERE account_name='fixturebank' AND racewar=1"))
+        assert new_bank > 902
+        assert sql("SELECT CONCAT_WS(':',bank_copper,bank_silver,bank_gold,bank_platinum) "
+                   "FROM account_banks WHERE id=" + str(new_bank)) == "0:0:0:0"
+        assert sql("SELECT COUNT(*) FROM currency_bank_baseline WHERE bank_id=" + str(new_bank)) == "0"
+        print("Bank reset: all sides removed, credentials/donations/history retained, new ID and zero balances passed", flush=True)
+
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"
 

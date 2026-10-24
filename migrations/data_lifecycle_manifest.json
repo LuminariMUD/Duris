@@ -234,7 +234,7 @@
         "excluded_fields": [],
         "shared_fields": []
       },
-      "season_action": "retain",
+      "season_action": "reset_delete",
       "active_retention": "pending_controller_decision",
       "archive_retention": "pending_controller_decision",
       "terminal_action": "retain",
