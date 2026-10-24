@@ -8,6 +8,8 @@ import os
 import re
 from pathlib import Path
 import shutil
+import socket
+import time
 import subprocess
 import sys
 import tempfile
@@ -70,6 +72,9 @@ def run():
 #include "ships/ships.h"
 #include "core/files.h"
 #include "guild/artifact_population_repository.h"
+#include "redis/redis_maintenance.h"
+#include "redis/redis_connection.h"
+#include "redis/redis_namespace.h"
 #include "core/runtime_compatibility_contract.h"
 #include <openssl/sha.h>
 #include "economy/collector_repository.h"
@@ -121,8 +126,10 @@ void send_to_all(const char *) {}
 int frag_cap_config_reset_level() { return 26; }
 bool pwipe_quiesce_writers() { return true; }
 void pwipe_resume_writers() {}
-bool redis_validate_pwipe_state() { return true; }
-bool redis_clear_pwipe_state() { return true; }
+redis_maintenance_config fixture_redis{};
+bool redis_cache_store_delete(const char *) { return true; }
+bool redis_validate_pwipe_state() { return !fixture_redis.connection || redis_maintenance_validate(&fixture_redis); }
+bool redis_clear_pwipe_state() { return !fixture_redis.connection || redis_maintenance_clear(&fixture_redis); }
 uint64_t current_season_epoch;
 MYSQL_RES *db_query(const char *format, ...) {
     char statement[16384]; va_list args; va_start(args, format);
@@ -399,7 +406,20 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
-    bool ok = !strcmp(argv[1], "seed-payloads") ? seed_payloads() :
+    redis_connection_settings *settings=nullptr;
+    char current[160], sessions[160], retries[160], caches[160];
+    if (const char *port=getenv("PWIPE_TEST_REDIS_PORT")) {
+        const redis_connection_options options{"127.0.0.1",atoi(port),250,250,0,nullptr,nullptr,false,nullptr,nullptr,false,nullptr};
+        settings=redis_connection_settings_create(&options);
+        constexpr const char *ns="duris:local:pwipe-sql";
+        if (!settings || !redis_namespace_season_key(ns,current_season_epoch,"presence:current",current,sizeof current) ||
+            !redis_namespace_season_key(ns,current_season_epoch,"presence:session:*",sessions,sizeof sessions) ||
+            !redis_namespace_season_key(ns,current_season_epoch,"presence_op:*",retries,sizeof retries) ||
+            !redis_namespace_season_key(ns,current_season_epoch,"cache:*",caches,sizeof caches)) return 2;
+        fixture_redis={settings,ns,current_season_epoch,current,sessions,retries,caches};
+    }
+    bool ok = !strcmp(argv[1], "clear-redis") ? redis_clear_pwipe_state() :
+              !strcmp(argv[1], "seed-payloads") ? seed_payloads() :
               !strcmp(argv[1], "empty-payloads") ? payload_readers(true) :
               !strcmp(argv[1], "seed-trade") ? seed_trade() :
               !strcmp(argv[1], "replay-trade") ? replay_trade(false) :
@@ -419,6 +439,7 @@ int main(int argc, char **argv) {
               !strcmp(argv[1], "ready") ? sql_prepare_pwipe_filesystem() :
               !strcmp(argv[1], "wipe") ? sql_pwipe(1723699) :
               !strcmp(argv[1], "rewards") ? account_bound_rewards_on_successful_pwipe() : sql_load_active_season_state();
+    redis_connection_settings_destroy(settings);
     mysql_close(DB);
     return ok ? 0 : 1;
 }
@@ -431,8 +452,9 @@ int main(int argc, char **argv) {
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql", "-pthread",
                     str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
                     "src/economy/collector_purchase_preparation.c", "src/guild/artifact_population_repository.c",
-                    "src/item/legacy_object_identity.c", *repository_sources,
-                    "-lmysqlclient", "-lcrypto", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
+                    "src/item/legacy_object_identity.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
+                    "src/redis/redis_connection.c", "src/redis/redis_command_observability.c", "src/redis/redis_namespace.c", *repository_sources,
+                    "-lmysqlclient", "-lcrypto", "-lhiredis", "-lhiredis_ssl", "-lssl", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
 
     def epoch_call(command, epoch, expected_code, cwd=None):
         result = subprocess.run([str(binary), command, str(epoch)], env=env, cwd=cwd,
@@ -797,6 +819,58 @@ int main(int argc, char **argv) {
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "26:resetting:1"
         assert sql("SELECT COUNT(*) FROM siege_items") == "2"
         print("A real siege cleanup failure remains fenced and never publishes SQL-ready", flush=True)
+
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            redis_port = listener.getsockname()[1]
+        redis_process = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
+                                          "--save", "", "--appendonly", "no", "--dir", str(root)],
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        def redis(*arguments):
+            return subprocess.check_output(["redis-cli", "--raw", "-h", "127.0.0.1", "-p", str(redis_port),
+                                            *arguments], text=True).strip()
+        try:
+            for _ in range(100):
+                probe = subprocess.run(["redis-cli", "-p", str(redis_port), "PING"], capture_output=True, text=True)
+                if probe.returncode == 0 and probe.stdout.strip() == "PONG":
+                    break
+                time.sleep(.05)
+            else: raise AssertionError("private Redis did not start")
+            old_key = "duris:local:pwipe-sql:season:26:cache:fixture"
+            assert redis("SET", old_key, "old") == "OK"
+            assert redis("SET", "unrelated:fixture", "retained") == "OK"
+            sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+            state_before = sql("SELECT season_epoch,reset_status FROM season_reset_state")
+            players_before = sql("SELECT pid,name,active FROM player_data ORDER BY pid")
+            with socket.socket() as listener:
+                listener.bind(("127.0.0.1", 0))
+                unavailable_port = listener.getsockname()[1]
+            env["PWIPE_TEST_REDIS_PORT"] = str(unavailable_port)
+            refusal = epoch_call("wipe", 26, 1, cwd=root)
+            assert "fresh Redis administrative connection unavailable" in refusal.stderr
+            assert sql("SELECT season_epoch,reset_status FROM season_reset_state") == state_before
+            assert sql("SELECT pid,name,active FROM player_data ORDER BY pid") == players_before
+            assert redis("GET", old_key) == "old"
+            print("Real unavailable Redis endpoint aborts before boundary without changing SQL/old Redis state", flush=True)
+            env["PWIPE_TEST_REDIS_PORT"] = str(redis_port)
+            assert redis("ACL", "SETUSER", "default", "-scan") == "OK"
+            try:
+                refusal = epoch_call("wipe", 26, 1, cwd=root)
+                assert "Redis pwipe invalidation failed" in refusal.stderr
+            finally:
+                assert redis("ACL", "SETUSER", "default", "+scan") == "OK"
+            assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "27:resetting:1"
+            assert redis("GET", old_key) == "old"
+            epoch_call("active", 27, 1)
+            epoch_call("clear-redis", 26, 0)
+            epoch_call("clear-redis", 26, 0)
+            assert redis("EXISTS", old_key) == "0"
+            assert redis("GET", "unrelated:fixture") == "retained"
+            assert sql("SELECT reset_status FROM season_reset_state") == "resetting"
+            print("Real post-boundary Redis SCAN denial stays fenced; repaired cleanup is idempotent and preserves unrelated keys", flush=True)
+        finally:
+            env.pop("PWIPE_TEST_REDIS_PORT", None)
+            redis_process.terminate(); redis_process.wait(timeout=10)
 
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"

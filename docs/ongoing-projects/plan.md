@@ -40,6 +40,63 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Redis dependency failure qualification
+
+Branch `branch/issue-264-redis-failure-qualification`, based on PR #327 at `f1db24d4d`.
+Outcome: exercise actual SQL reset orchestration with the real Redis maintenance
+provider against disposable endpoints. Non-goals: changing game behavior, a second
+Redis client implementation, or activating incomplete SQL after cache repair.
+Files: existing native SQL/launcher journey and this handoff. Proof: unavailable
+endpoint preserves old SQL/Redis state before the boundary; a real SCAN-denying ACL
+fails after the boundary and leaves epoch 27 fenced; repaired repeated cleanup
+preserves unrelated keys and does not activate SQL. The complete native matrix,
+existing live Redis maintenance test and both Redis surface contracts passed.
+The real service journey below is independent in-progress work in this worktree;
+its test/docs changes remain uncommitted until the complete gameplay journey passes.
+
+## Current continuation — Redis-on and systemd runtime journey
+
+Branch `branch/issue-264-redis-service-journey`, based on PR #327 at `f1db24d4d`.
+Outcome: execute the real five-minute reset with private Redis and the complete
+systemd sandbox/restart policy, then login/play/save/reconnect/reboot in the new
+epoch. Reuse the existing runtime journey, private DB/world/account helpers and
+production-profile binary. Render a uniquely named disposable system unit from the
+production template; only identity/path/description and ExecStart's `--minimal`
+fixture flag differ. It runs as the checkout owner, with local test configuration;
+no production unit or data is touched. Preserve unrelated Redis namespaces.
+Files: existing runtime journey, runbook/regression/plan. Proof: actual service
+incomplete-reset exit 58 without restart; successful real reset exit 55 without
+restart; old Redis sentinels gone, unrelated keys survive, new epoch presence and
+normal gameplay/save/reconnect/another boot. Non-goals: production deployment,
+new runtime framework, duplicating the fixture, or repeating a second countdown
+for already-qualified Redis-off behavior. Redis re-enable and SQL restore/resume
+qualification remain separate gates; dependency failure is covered below.
+The full service's exit-58 fence passed. The observation fixture now pins the
+private unit with an active After reference: systemd normally garbage-collects
+successful inactive units and discards their exit statistics. A short full-sandbox
+exit-55 probe verified retained status before rerunning the game; no production
+unit or restart setting changed. Existing scoped Redis maintenance/surface tests
+passed. The native actual-SQL matrix now uses the real Redis maintenance provider:
+an unavailable private endpoint preserves pre-boundary SQL/Redis state, and a real
+SCAN-denying ACL after the boundary leaves SQL fenced. Repaired cleanup is idempotent,
+preserves unrelated keys, and alone does not activate the unfinished SQL reset.
+The complete native matrix passed. The real service run proved reset completion, Redis cleanup/unrelated preservation,
+exit 55 with no restart and recreated staff login/save. A presence assertion wrongly
+expected invisible staff in public presence (the existing `account/nanny.c` staff login
+path sets `wiz_invis=56`). Fix it to verify visibility before the countdown on the original
+mortal, then new-epoch presence on the fresh mortal; hidden staff remain absent.
+The final whole journey must pass before sign-off.
+
+Next external integration finding is source-confirmed in local DurisWeb master
+`7147e6b1` (clean, not edited): `backend/src/services/playerEventSubscriber.ts`
+refreshes channels every 60 seconds, retains the old channel after refresh failure,
+and dispatches events by cached channel equality without rechecking the active SQL
+epoch. Review its tests and async stop/hook races before a focused companion fix.
+`donationOutboxService.ts` and `onlinePlayersService.ts` have active-epoch queries;
+transaction ordering and manual external-writer cutover still need qualification.
+Follow that repository's AGENTS/readme/development/conventions/security instructions
+before editing; no website deployment or production operation is authorized.
+
 ## Current continuation — flat-file command rejection
 
 Branch `branch/issue-264-flatfile-rejection`, based on payload PR #326 at `e332d12b5`.
