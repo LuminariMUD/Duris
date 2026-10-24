@@ -40,6 +40,37 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — telemetry season cutover
+
+Branch `branch/issue-264-telemetry-cutover`, based on review-ready PR #344 at
+`7655c26b2`. Outcome: rehearse the supported manual stop/drain/rollover/rebind/start
+workflow using the real worker, protected outage ledger, native `telemetry-state`
+CLI and loopback HTTPS receiver. Extend existing telemetry runtime fixtures: prove
+rollover refuses while the worker owns the directory; drain/reap the old sender;
+archive old bytes and preserve observations; roll only the season; retry without
+mutation; reject stale-season startup; load the new season through actual runtime
+environment configuration; preserve exhausted same-day quota and scoped identities.
+No new production clock/provider/framework is needed. The existing outage harness
+already proves next-UTC-day allocation and every rollover publication fault; reuse
+its recorded pass. Files: native/Python telemetry runtime fixtures, runbook and
+regression/continuation docs. Proof: both compiled backend variants and local HTTPS,
+required incremental build/format, no real data/settings or external telemetry.
+Full remaining W1/W2/W4, website cutover and final readiness stay open.
+
+The combined worker/CLI/HTTPS journey passes for flat-file and SQL-compiled
+variants: old sender ownership refuses rollover with errno 11; successful drain
+and final reap allow the actual CLI to archive byte-exact prior evidence, retain
+historical scopes and exhaust the day. Retry changes no files; stale startup
+refuses at the outage registration guard (`storage_check=directory`, EINVAL),
+before sender qualification. New environment season 2 starts with distinct same-
+subject character/session identities and zero new HTTP/reservations; old receiver
+history and old observations remain unchanged. The fixture uses the reviewed
+property catalog required by actual environment configuration. The source contract
+was stale after #310: it required literal `return 55;`; it now checks the real
+SQL-ready 55 / fenced 58 return. No production repair was needed.
+Run the committed final fixture below before recording its revision as final proof.
+
+
 ## Current continuation — new-character account reward claims
 
 Review-ready [PR #344](https://github.com/LuminariMUD/Duris/pull/344), fixture
