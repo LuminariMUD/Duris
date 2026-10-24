@@ -36,7 +36,7 @@ class LifecycleArchiveExecutionTest(unittest.TestCase):
         cls.snapshot = MODULE.load_policy()
 
     def test_default_loader_includes_post_baseline_schema(self) -> None:
-        self.assertEqual(MODULE.DEFAULT_SCHEMA_FILES, MODULE.lifecycle_policy.DEFAULT_SCHEMA_FILES)
+        self.assertEqual(MODULE.DEFAULT_SCHEMA_FILES, MODULE.lifecycle_policy.default_schema_files())
         for name in ("0003_season_reset_state.sql", "0004_server_reboots.sql",
                      "0014_telemetry_storage.sql", "0016_artifact_mana.sql",
                      "0017_telemetry_rollup_support.sql",

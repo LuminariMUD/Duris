@@ -33,6 +33,8 @@ prelude = r'''
 #define CORPSE_FLAGS 1
 #define IN_WELL_ROOM(ch) false
 #define TRAP_EFF_OBJECT 2
+#define TRAP_DAM_SLEEP 0
+#define TRAP_DAM_SLASH 8
 #define GETDBG_LOG(...) debug(__VA_ARGS__)
 P_obj object_list=nullptr;
 P_char character_list=nullptr;
@@ -111,6 +113,7 @@ parts=[prelude,
        take('static bulk_get_state *corpse_bulk_get('),
        take('static void publish_container_get('),
        take('static void report_coin_get_rejection('),
+       extract_function('trap.c','static bool trap_damage_supported('),
        extract_function('trap.c','bool checkgetput(')]
 start=source.index('static bool take_coins(',source.index('// Take the selected coins'))
 parts.append(source[start:source.index('P_obj find_live_item_uid(',start)])

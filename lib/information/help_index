@@ -1822,7 +1822,8 @@ These permissions apply to an existing character; they do not enable a forbidden
 ==Spell changes==
 None beyond the base-class registrations.
 ==Innate additions==
-None beyond the base-class registrations.
+*&+centrapment&n (obtained at level &+c45&n)
+'*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 ==See also==
 * Mercenary
@@ -10120,7 +10121,6 @@ These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
 *&+crapier and dirk&n
-*&+centrapment&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Specializations==
 * Brigand
@@ -10410,7 +10410,7 @@ Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
 ==Allowed races==
-&+W*&n &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
+&+W*&n &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 ==Innate abilities==
@@ -14784,7 +14784,6 @@ These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
 ==Innate abilities==
 *&+crapier and dirk&n
-*&+centrapment&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 ==Skills==
 &+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
@@ -22759,10 +22758,10 @@ See also: disease, plague, desecrate land
 Area of effect: <victim>
 Aggressive:     No
 Cumulative:     No
-Duration:       Long (a fixed, lengthy span)
+Duration:       25 seconds
 Type of spell:  Enchantment 
 
-"Contain being" points a finger at a creature and sets its form phasing in and out of this plane of existence, neither wholly here nor wholly elsewhere, for a very long while. The contained victim is marked in a way only summoners care for: a specialized summoner who slays a contained creature may study its fading essence and learn the recipe for conjuring its kind thereafter. Players and the pets of others lie beyond its reach.
+"Contain being" points a finger at a creature and sets its form phasing in and out of this plane of existence for 25 seconds. A specialized summoner who earns kill experience while the mark remains may study the creature's fading essence and learn the recipe for conjuring its kind thereafter. Learning is chance-based: higher Charisma helps, while the creature's level and Intelligence oppose the attempt. An unsuccessful attempt reports that no recipe was learned, and the containment fading is announced in the room. Players and the pets of others lie beyond its reach.
 ===========================================================================
 See also: summoning
 #
