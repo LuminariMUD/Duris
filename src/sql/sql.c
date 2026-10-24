@@ -4212,19 +4212,29 @@ bool sql_pwipe(int code_verify)
 			return FALSE;
 		}
 
+		if (!pwipe_quiesce_writers())
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Writer drain failed; old season remains active.");
+			return FALSE;
+		}
+
 		if (!sql_begin_pwipe_epoch())
 		{
 			logit(LOG_DEBUG,
 			      "sql_pwipe: Failed to establish durable season reset boundary.");
 			send_to_all("Preflight FAILED: season reset boundary unavailable!\n");
+			if (!pwipe_crossed_boundary)
+				pwipe_resume_writers();
 			return FALSE;
 		}
 		logit(LOG_DEBUG, "  success!");
 		send_to_all("  success!\n");
 		logit(LOG_DEBUG, "sql_pwipe: Clearing zone alignments, trophy and touches... .. .");
 		send_to_all("Clearing zone alignments, trophy and touches... .. .");
-		if (sql_clear_zone_trophy() && qry("DELETE FROM zone_trophy") &&
-		    qry("DELETE FROM zone_touches"))
+		// The shared writer is fenced: reset through the owning SQL connection.
+		if (qry("UPDATE zones SET alignment=0 WHERE epic_type > 0") &&
+		    qry("DELETE FROM zone_trophy") && qry("DELETE FROM zone_touches"))
 		{
 			logit(LOG_DEBUG, "  success!");
 			send_to_all("  success!\n");

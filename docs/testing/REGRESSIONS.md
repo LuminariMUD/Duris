@@ -32,6 +32,15 @@ No real `.env`, player data or external notifications are used. It does not prov
 the full game command/countdown, writer quiescence, reset completeness, reward policy
 identity, external integrations or fresh gameplay; those remain #264 gates.
 
+`python3 tests/async/test_pwipe_quiescence.py` executes the production writer
+preparation with the real shared writer and controlled peripheral drains. Held
+jobs and read-callback follow-up writes finish before admission closes; late jobs
+are refused, and timeouts/new terminal failures abort and resume normal persistence.
+`test_player_save_worker.py` also proves that a quiesce timeout preserves queued
+owners and their order. `run_critical_command_schema_mysql.sh` executes actual
+outbox pause/drain/resume against its private database, including a record committed
+while paused. These do not replace the full server/reset/reconnect journey.
+
 ## Contained-being learning feedback
 
 A failed recipe-learning roll reports the failure to the eligible summoner in

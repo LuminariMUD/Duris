@@ -398,6 +398,8 @@ void worker_main(std::promise<bool> startup)
 			if (stop_requested)
 				break;
 			work_requested = false;
+			if (!health.accepting && drain_requested == drain_completed)
+				continue;
 		}
 		MYSQL *connection = sql_pool_acquire();
 		if (!connection)

@@ -4455,7 +4455,9 @@ void timedShutdown(P_char, P_char, P_obj, void * /*data*/)
 				"end!!!\033[0m\r\n\033[1;5;44m............\033[0m\r\n\033[1;5;44m........\033[0m\r\n\033[1;5;44m......\033[0m\r\n\033[1;5;44m...\033[0m\r\n\033[1;5;44m.\033[0m\n\r");
 			send_to_all(buf);
 			logit(LOG_STATUS, "Shutdown pwipe called.");
-			shutdownflag = _pwipe = 1;
+			// Pre-boundary drains must still publish/save accepted old-season work.
+			shutdownflag = 1;
+			_pwipe = 0;
 			if (!sql_pwipe(1723699))
 			{
 				if (sql_pwipe_crossed_boundary())
