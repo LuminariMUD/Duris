@@ -2,9 +2,10 @@
 
 Tracking: [Duris #213](https://github.com/LuminariMUD/Duris/issues/213).
 Implementation branch: `branch/issue-213-evil-onboarding`.
-Status: implementation in progress; death policy/warning implemented and locally
-qualified as the first review chunk. Tutorial/server/client integration and full
-gameplay/persistence acceptance remain outstanding.
+Status: implementation in progress; death policy/warning, shared creation
+validation and the browser refresh companion are committed, qualified and open
+for review. Evil tutorial content/procs/choices and full gameplay/persistence
+acceptance remain outstanding.
 Revised October 23, 2026 for the issue's approved Firbolg/Ogre eligibility decision;
 the previous tutorial exclusions are superseded.
 
@@ -74,10 +75,92 @@ no local environment file was copied or edited. Git fetch/merge also reports
 pre-existing unreachable-object housekeeping warnings; do not prune objects or
 delete recovery logs as part of this work.
 
-Next: publish the first focused PR, then allocate collision-free tutorial IDs
-from refreshed authored sources, implement faithful copies with typed-reference
-parity, wire compiled procedures/creation, and deliver the companion DurisWeb
-PR. Keep later PRs stacked so menus cannot ship before their data and procs.
+First review chunk: [PR #314](https://github.com/LuminariMUD/Duris/pull/314),
+commit `f81f62ffa`, on `branch/issue-213-evil-onboarding`, pushed and ready
+for review. It is not merged and does not close #213.
+
+The next independent chunk is [PR #315](https://github.com/LuminariMUD/Duris/pull/315),
+commit `491df3ca6`, on `branch/issue-213-creation-eligibility` in the same
+worktree, stacked on #314, pushed and ready for review. It shares one eligibility predicate across
+terminal counting/display/selection and web listing/final submission. It adds
+the approved good tutorials for Firbolg and good-side neutral races, preserves
+racial defaults for omitted web homes and forced/staff calls, and rejects
+supplied invalid/fractional/non-numeric/zero/out-of-range/wrong-race/wrong-side
+homes before character allocation or grants. Race/class and account side
+admission checks remain in place. Web lists accept selected alignment and echo
+race/alignment context; legacy neutral race-only requests return racial choices.
+
+The exhaustive terminal selector check exposed another key collision when
+enabling good Thri-kreen tutorials: **Payang and Plane of Life both use P**.
+Payang retains P and Plane of Life uses L only for that race; other existing
+keys are preserved. Displayed town names are now complete. This is required
+supporting behavior, alongside the already-planned C/W keys for evil tutorials.
+
+`python3 tests/async/test_creation_hometowns.py` passes under ASan/UBSan with
+both backend compilation modes. It executes the real shared policy, terminal
+display/selection, web list handler and web pre-persistence validation prefix
+over the full standard roster, malformed/forged homes, omitted defaults,
+neutral-side refresh, disabled-race listing and account-side denial. Surrounding
+class/account services are controlled stubs; this is not actual character-save
+or browser proof. Existing creation availability/all-races/all-classes controls,
+format/diff checks and the required `make -C src -j4` pass for this chunk.
+
+The later restricted-roster audit tightened the good tutorial predicate to its
+existing eligibility rows plus only the approved Firbolg/neutral additions.
+Nominally-good legacy races such as Agathinon/Eladrin must not gain unrelated
+new hometowns when `CREATION_ALL_RACES` is enabled. The executable test now
+checks the restricted roster too. Focused ASan/UBSan checks and incremental
+MariaDB/flat-file builds passed for this correction; no full suite was repeated.
+
+The tutorial content audit found 105 Ailvio mobile templates spanning multiple
+playable races; `convertMob()` and `affect_total()` derive stats/HP from race,
+and XP also has a victim-race modifier. Do not claim numerical field equality
+proves a race substitution. No new content IDs are reserved or activated yet.
+Keep that mechanical parity work together with copies/procs; delivering the
+independent validation first avoids blocking a reviewable server fix on it.
+
+Companion frontend worktree:
+`/home/aiwithapex/projects/durisweb-issue213`, branch
+`branch/issue-213-hometown-parity`, based on clean fetched DurisWeb master
+`7147e6b`. Its primary checkout is untouched. It must carry alignment, reject
+stale response context, block pending hometown skips, clear invalid selections,
+and omit an unspecified hometown instead of serializing the old `-1` sentinel.
+**Coordinate this client change with the server validation PR**: an explicitly
+supplied -1 is deliberately invalid under the locked decision.
+
+The companion is [DurisWeb PR #91](https://github.com/LuminariMUD/DurisWeb/pull/91),
+commit `9eb92e3`, pushed and ready for review. Its handoff and unpublished
+release-news text are in that repository's `docs/ongoing-projects/plan-issue-213.md`.
+107 focused tests, frontend format/lint/type check/build and actual Chromium
+menu/back-navigation checks passed. The browser used this server's complete
+generated authored world and flat-file authority; only unrelated website-shell
+HTTP endpoints were stubbed, with real hometown WebSocket responses. Firbolg's
+three choices and good -> evil -> good Thri-kreen selection invalidation were
+observed. Desktop/phone screenshots under `/tmp/issue213-browser-*.png` were
+inspected; phone label clipping was repaired. The existing Vue Router `next()`
+deprecation warning remains non-blocking. Browser plugin was unavailable, so
+regular Playwright used an already-installed Chromium executable.
+
+Both server binaries now build successfully (`make -C src -j4` and
+`make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=$PWD/bin/server/dms_flatfile`);
+`make world` passed. Generated outputs remain uncommitted. Local browser support
+scripts `/tmp/issue213-browser.py` and `/tmp/issue213-browser-server.py` are not
+the final complete journey runner. The temporary server requires
+`DURIS_WEBSOCKET=TRUE`; the first fixture omitted it and was corrected. Repeated
+synthetic registrations reached the normal throttle; the fixture now reuses
+its own account. No production data or listeners were used.
+
+An independent registration defect discovered in that browser QA was fixed in
+[DurisWeb PR #92](https://github.com/LuminariMUD/DurisWeb/pull/92), commit
+`aeeab8a`, based directly on website master. The form now matches the MUD's
+3-14 character letters/underscores account-name rule, rejecting digits and
+overlong names before connecting. Six focused tests, normal frontend gates and
+Chromium in-place rejection checks passed. It is not a dependency of #91.
+
+Next: allocate collision-free
+tutorial IDs from refreshed authored sources, implement faithful copies with
+typed-reference/mechanical parity, and wire the remaining procedures/choices.
+Keep later PRs stacked so menus cannot ship before their data and procs.
 All full-world terminal/browser routes, cold-restart XP/home persistence on both
 backends, actual rendered web warning and help database publication remain
 unverified; issue #213 stays open until those completion gates pass.
