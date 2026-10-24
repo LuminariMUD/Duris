@@ -153,6 +153,18 @@ fenced; a missing recreation column is refused before the boundary. The bank cas
 reset every side while retaining credentials, donations and historical baselines.
 Real staff login and cold replay remain part of the full #264 journey.
 
+`python3 tests/async/test_locker_receipt_recovery.py` additionally runs eight
+cross-reset identity cases (four receipt states, wallet/bank model). The production
+service/receipt codec and actual disk receipts retain old bytes while a higher PID
+on the same account/side gets no old display or payment submission. A deliberately
+copied old receipt under the new PID's filename fails encoded-PID validation; after
+removing that fixture alias, fresh identification succeeds. Currency scheduling and
+saved purses are modeled, as in the existing crash matrix; actual SQL bank reset,
+monotonic new PIDs and new-season gameplay use the recorded full/native journeys.
+The existing load-pipeline/mode executables hold SQL-only provider selection and
+mixed-mode refusal. Filesystem preservation canaries now use actual registration,
+ban and invitation/name-policy paths in addition to account/config/archive sentinels.
+
 `python3 tests/async/run_pwipe_runtime_journey.py /absolute/mariadb/server` runs the
 real command and unaccelerated five-minute wall-clock deadline through the copied
 launcher in a private MariaDB/world/filesystem. It checks mortal rejection, invalid

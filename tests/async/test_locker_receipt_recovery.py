@@ -25,6 +25,7 @@ def run(temp):
                     '-Isrc/no_mysql', str(source), *SOURCES, '-lcrypto', '-pthread', '-o', str(binary)],
                    cwd=ROOT, check=True)
     for purse in ('wallet', 'bank'):
+        subprocess.run([str(binary), str(directory / ('pwipe-'+purse)), 'pwipe', purse], check=True, timeout=30)
         subprocess.run([str(binary), str(directory / ('normal-'+purse)), 'normal', purse], check=True, timeout=30)
         for crash, exit_code in [('before-payment', 77), ('after-payment', 78), ('after-receipt', 79)]:
             for prefix in ('', 'saturated-'):

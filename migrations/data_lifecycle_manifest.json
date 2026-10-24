@@ -5634,7 +5634,7 @@
       "locator": "CRITICAL_COMMAND_JOURNAL_DIR",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "durable locker identification receipts in locker-identification/<pid>.receipt (the directory held the critical-command journal before the persistence reset)",
+      "technical_purpose": "Durable locker-identification/<pid>.receipt service receipts in the former journal directory; filename and encoded payment PID plus account/racewar checks isolate retired character receipts from fresh PIDs. Preserve old bytes; this directory no longer contains a general critical-command replay journal.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -5665,7 +5665,7 @@
       "locator": "legacy persistence fallback file",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "player_id",
-      "technical_purpose": "retired failure evidence pending explicit quarantine",
+      "technical_purpose": "Retired failure-evidence inventory label without an active runtime fallback provider; MariaDB-primary uses SQL exclusively and the hybrid fallback mode is explicitly refused at configuration.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -5694,7 +5694,7 @@
       "locator": "legacy persistence fallback quarantine",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "player_id",
-      "technical_purpose": "operator inspection and repair evidence",
+      "technical_purpose": "Retained historical fallback/quarantine evidence for explicit operator inspection; no automatic current server replay consumer. Preserve evidence rather than inventing a live fallback path.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -5723,7 +5723,7 @@
       "locator": "lib/players",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "player_id",
-      "technical_purpose": "legacy character runtime compatibility",
+      "technical_purpose": "Retired lib/players policy-inventory compatibility label; normal MariaDB player admission uses the SQL load pipeline, while explicit legacy pfile tools read Players/<initial>, cleared by guarded pwipe. This path is not an automatic SQL fallback.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -5752,7 +5752,7 @@
       "locator": "lib/accounts",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "account_id",
-      "technical_purpose": "legacy account runtime compatibility",
+      "technical_purpose": "Retired lib/accounts policy-inventory compatibility label; normal MariaDB account reads/saves use SQL, and the client-free account provider uses FLATFILE_STATE_DIR/identities/accounts. This path is not an automatic SQL fallback.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -6731,6 +6731,96 @@
       "dependencies": [
         "backup:pfiles"
       ]
+    },
+    {
+      "id": "file:account-registration",
+      "kind": "runtime_file",
+      "locator": "Accounts/email.db",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "account_email",
+      "technical_purpose": "Optional REQUIRE_EMAIL_VERIFICATION registration/uniqueness registry read and appended by account.c; retained with preserved accounts, independent of character assets.",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "none",
+      "protected_record": false,
+      "dependencies": []
+    },
+    {
+      "id": "file:admission-policy",
+      "kind": "runtime_file",
+      "locator": "lib/misc/ban_sites and Players/Invited, Players/Accepted, Players/Declined",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "network_address_or_character_name",
+      "technical_purpose": "Persistent site bans, invitation/admission and accepted/declined-name policy read by boot, nanny and account creation; retained across wipes with operator access configuration.",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "none",
+      "protected_record": false,
+      "dependencies": []
+    },
+    {
+      "id": "file:flatfile-primary-state",
+      "kind": "recovery_state",
+      "locator": "FLATFILE_STATE_DIR metadata, identities, players, operations, domains and manifests",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "account_and_character_identity",
+      "technical_purpose": "Client-free authoritative flat-file namespace, including identities/accounts and operations/wal. MariaDB builds never select it and unsupported flat-file pwipe refuses before countdown or mutation; retain namespace bytes. Specific protected domain/receipt entries remain listed separately.",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [
+          "password",
+          "confirmation_code"
+        ],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": []
     }
   ]
 }
