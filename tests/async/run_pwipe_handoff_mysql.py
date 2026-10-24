@@ -92,6 +92,11 @@ def run(server=None):
 #include "economy/collector_purchase_preparation.h"
 #include "persistence/critical_command_repository.h"
 #include "player/player_snapshot_codec.h"
+#include "player/player_load_repository.h"
+#include "item/item_uid_allocator.h"
+#include "flatfile/flatfile_item_uid_allocator.h"
+#include "persistence/persistence_mode.h"
+#include "persistence/persistence_observability.h"
 #include <sys/time.h>
 #include <memory>
 #include <fstream>
@@ -160,6 +165,12 @@ bool qry(const char *format, ...) {
     return true;
 }
 ''' + metadata + functions + '''
+unsigned long next_obj_uid = 1;
+bool persistence_mode_requires_mysql(void) { return true; }
+const char *persistence_mode_flatfile_root(void) { return nullptr; }
+flatfile_item_uid_result flatfile_item_uid_reserve(const std::string &, uint64_t, uint64_t *, std::string *) {
+    return flatfile_item_uid_result::invalid;
+}
 uint64_t sql_season_epoch() { return current_season_epoch; }
 bool sql_begin_transaction() { return qry("START TRANSACTION"); }
 bool sql_rollback() { return qry("ROLLBACK"); }
@@ -167,6 +178,36 @@ bool sql_commit() { return qry("COMMIT") && !getenv("PWIPE_TEST_LOST_REWARD_ACK"
 bool account_reward_config_preserve_on_pwipe() { return !getenv("PWIPE_TEST_DELETE_REWARDS"); }
 ''' + rewards + source[source.index("// One preparation path serves the read-only preflight"):
                             source.index("void sql_log_player_login", source.rindex("bool sql_pwipe(int code_verify)"))] + '''
+bool retained_items(bool after) {
+    player_load_request request;
+    request.request_id = 1; request.pid = 1002; request.account_name = "fixturebank";
+    request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+    const auto old = player_load_repository_execute(DB, request);
+    if (old.outcome != player_load_outcome::applied || old.item_owner_revision != 1) return false;
+    if (!after) {
+        for (const auto &item : old.item_identities) if (item.item_uid == 991001) return true;
+        return false;
+    }
+    // A retained custody row has no object payload to materialize after reset.
+    if (!old.snapshot.items.empty() || !old.snapshot.pets.empty() || old.missing_payload_rows < 1) return false;
+    MYSQL_RES *rows = db_query("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1");
+    MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
+    const int fresh_pid = row && row[0] ? atoi(row[0]) : 0;
+    if (rows) mysql_free_result(rows);
+    if (fresh_pid <= 1004) return false;
+    request.request_id = 2; request.pid = fresh_pid;
+    request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+    const auto fresh = player_load_repository_execute(DB, request);
+    if (fresh.outcome != player_load_outcome::applied || !fresh.snapshot.items.empty() ||
+        !fresh.snapshot.pets.empty() || fresh.item_owner_revision != 0) return false;
+    if (!item_uid_allocator_reserve(DB, 4)) return false;
+    const uint64_t first = item_uid_allocator_next();
+    if (first <= 991001) return false;
+    for (uint64_t offset = 1; offset < 4; ++offset) if (item_uid_allocator_next() != first + offset) return false;
+    if (item_uid_allocator_next() != 0) return false;
+    printf("%llu", static_cast<unsigned long long>(first));
+    return true;
+}
 bool seed_boons() {
     divine_boon_state state;
     const int64_t now = time(nullptr) / DIVINE_BOON_HOUR * DIVINE_BOON_HOUR;
@@ -445,6 +486,8 @@ int main(int argc, char **argv) {
               !strcmp(argv[1], "new-collector") ? new_collector_candidate() :
               !strcmp(argv[1], "check-collectors") ? check_collectors() :
               !strcmp(argv[1], "reset-collectors") ? sql_reset_collector_state(true) :
+              !strcmp(argv[1], "items-before") ? retained_items(false) :
+              !strcmp(argv[1], "items-after") ? retained_items(true) :
               !strcmp(argv[1], "seed-boons") ? seed_boons() :
               !strcmp(argv[1], "check-boons") ? check_boons() :
               !strcmp(argv[1], "end-boons") ?
@@ -466,7 +509,8 @@ int main(int argc, char **argv) {
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql", "-pthread",
                     str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
                     "src/economy/collector_purchase_preparation.c", "src/guild/artifact_population_repository.c",
-                    "src/item/legacy_object_identity.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
+                    "src/item/legacy_object_identity.c", "src/player/player_load_repository.c", "src/player/player_load_topology.c",
+                    "src/item/item_uid_allocator.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
                     "src/redis/redis_connection.c", "src/redis/redis_command_observability.c", "src/redis/redis_namespace.c", *repository_sources,
                     "-lmysqlclient", "-lcrypto", "-lhiredis", "-lhiredis_ssl", "-lssl", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
 
@@ -583,7 +627,28 @@ int main(int argc, char **argv) {
         assert "Divine Boon state cannot be safely retired" in refusal.stderr
         assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
         sql("UPDATE divine_boon_state SET snapshot=UNHEX('" + boon_bytes + "') WHERE state_id=1")
+        sql("INSERT INTO player_items(pid,vnum,obj_uid,equip_slot,quantity,weight,cost) VALUES(1002,1108,991001,0,1,4,5)")
+        sql("INSERT INTO item_owner_revision(owner_type,owner_id,owner_context_id,revision) VALUES(1,1002,0,1)")
+        sql("INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,item_revision,vnum,state) VALUES(991001,991001,1,1002,1,1108,1)")
+        sql("INSERT INTO item_ownership_baseline(item_uid,root_item_uid,owner_type,owner_id,opening_item_revision,vnum,source_table,source_row_id) "
+            "SELECT obj_uid,obj_uid,1,pid,1,vnum,'player_items',id FROM player_items WHERE obj_uid=991001")
+        sql("UPDATE item_uid_allocator SET next_uid=(SELECT COALESCE(MAX(item_uid),0)+1000000 FROM item_current_owner) WHERE allocator_id=1")
+        custody = sql("SELECT * FROM item_current_owner WHERE item_uid=991001")
+        owner_revision = sql("SELECT * FROM item_owner_revision WHERE owner_type=1 AND owner_id=1002")
+        ownership_baseline = sql("SELECT * FROM item_ownership_baseline WHERE item_uid=991001")
+        payload_id_before = int(sql("SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_items'"))
+        assert payload_id_before > int(sql("SELECT source_row_id FROM item_ownership_baseline WHERE item_uid=991001"))
+        allocator_before = int(sql("SELECT next_uid FROM item_uid_allocator WHERE allocator_id=1"))
+        epoch_call("items-before", 1, 0)
         epoch_call("wipe", 1, 0, cwd=root)
+        assert sql("SELECT * FROM item_current_owner WHERE item_uid=991001") == custody
+        assert sql("SELECT * FROM item_owner_revision WHERE owner_type=1 AND owner_id=1002") == owner_revision
+        assert sql("SELECT * FROM item_ownership_baseline WHERE item_uid=991001") == ownership_baseline
+        assert int(sql("SELECT next_uid FROM item_uid_allocator WHERE allocator_id=1")) == allocator_before
+        assert int(sql("SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_items'")) == payload_id_before
+        assert int(epoch_call("items-after", 2, 0).stdout.strip()) == allocator_before
+        assert int(sql("SELECT next_uid FROM item_uid_allocator WHERE allocator_id=1")) == allocator_before + 4
+        print("Ordinary item custody/revision/baseline retained unchanged; actual loader finds no old payload, fresh Overlord has no old graph, allocator grants only new UIDs", flush=True)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"

@@ -125,6 +125,16 @@ must disappear and the new character's claims must refuse, including after reboo
 The alternate report is `bin/analysis/pwipe-runtime-mariadb-discard-rewards.json`.
 This option cannot combine with the matched-restore or flat-file rejection modes.
 
+The native handoff matrix also invokes the actual SQL player-load repository and
+item UID allocator around the real reset. An ordinary old player payload is readable
+beforehand. Custody, owner revision and opening baseline survive byte-for-value;
+afterward the loader reports the missing payload and returns no old item/pet graph,
+while the recreated Overlord has no inherited graph/revision. Player payload row IDs
+and item UIDs keep advancing, so retained baseline source IDs cannot alias a new
+payload. A real allocator lease yields a bounded, contiguous fresh range. These
+checks supplement the existing artifact, collector and cargo receipt readers;
+protected metadata alone is not a substitute for recovery-input season isolation.
+
 The handoff runner now executes the real account reward hook against the private DB.
 Permanent/unexpired grants survive, finite grants decrement once and exhausted/expired
 grants disappear under the configured policy. It checks wrong/zero epoch, active or

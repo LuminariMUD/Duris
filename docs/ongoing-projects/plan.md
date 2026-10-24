@@ -40,6 +40,22 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — retained ordinary item custody
+
+Branch `branch/issue-264-retained-item-custody`, based on PR #347 at `82b8f7855`.
+Outcome: close the ordinary-item evidence gap in W1/W2/W4 by exercising the actual
+SQL player-load repository and UID allocator before/after the real reset. Seed a
+valid old body/item payload, current custody, owner revision, opening baseline and
+allocator above existing UIDs. Prove payload before reset; afterward keep protected
+metadata byte-exact, load no old item graph from it, give the recreated Overlord no
+old graph/revision and allocate only fresh monotonically higher UIDs. Reuse the
+existing native SQL/launcher matrix; no new persistence layer, schema or blanket
+ledger deletion. Files: existing handoff harness and owning manifest/runbook/plan
+notes. Proof on both owned SQL engines plus focused contracts; reuse unchanged
+full gameplay/build/provider journeys. Offline inspection of a retired PID is not
+normal account admission: the menu requires a live mapping and newly allocated
+body identity. Keep remaining store/writer/readiness requirements open.
+
 ## Current continuation — combined website runtime cutover
 
 Review-ready server [PR #347](https://github.com/LuminariMUD/Duris/pull/347),
