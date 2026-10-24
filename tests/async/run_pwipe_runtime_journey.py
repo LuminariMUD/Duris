@@ -361,7 +361,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 observer.expect("Confirmed player wipe")
                 client.close(); client = None
                 observer.expect("Scheduled pwipe cancelled", timeout=15)
-                client = journey.reconnect_character(plain, character=STAFF)
+                client = journey.reconnect_character(plain, character=STAFF, expected_room=None)
+                client.send("look"); client.expect("The Regression Arena")
                 save(STAFF)
                 observer.close(); observer = None
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
