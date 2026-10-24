@@ -1,263 +1,122 @@
-# Issue #264: shortest path to finish
+# Issue #264: supervised pwipe completion
 
-Updated 2026-10-24. **Implementation resumed by owner request; qualification remains open.**
-Plan branch: `branch/issue-264-pwipe-qualification`.
-Issue: [#264](https://github.com/LuminariMUD/Duris/issues/264).
-The owner's latest instruction permits narrowing #264 to finish quickly. This plan
-supersedes the original W1–W7 schedule, estimates, helper project and repeated
-qualification gates. No new PRs are planned.
+Updated 2026-10-24. Implementation is complete; the reconciled build and final
+review check remain open. Production operations and PR merging are not authorized.
 
-## Finish line and hard scope limit
+## Scope and finish line
 
-**Outcome:** a supervised MariaDB-primary wipe that clears the agreed seasonal
-state, preserves approved carryovers, stays fenced if incomplete, and reaches
-fresh gameplay/save/reconnect/reboot with a working recovery route.
+One supervised MariaDB-primary wipe: drain accepted external work, stop external
+writers and competing service supervision, run the existing launcher as the game
+user, and explicitly start the new season only after durable completion.
+Incomplete resets remain fenced; use the existing same-epoch recovery or matched
+restore procedure. Never run checkout qualification scripts through sudo.
 
-Keep the settled policy: **reset every account-bank balance; recreate only exact
-level-62 Overlords**, under their preserved accounts with new PIDs and clean
-seasonal assets/progression. Preserve accounts, bans, approved account benefits,
-backups, history and configuration according to the existing reset contract.
-Rewards cannot be applied/decremented twice; old characters/items/world state
-cannot return. These are completion requirements.
+Reset every account-bank balance. Recreate only eligible exact level-62 Overlords
+with clean bodies and new PIDs; blocked/deleted characters remain excluded, even
+with stale account projections. Preserve accounts, bans, approved benefits,
+configuration and recovery/history evidence. Old seasonal state must not return;
+retries must not apply or decrement carryovers twice.
 
-**Supported procedure:** planned downtime, drain accepted work and stop external
-writers and service supervision, the existing launcher operated as the game user, the
-real pwipe command, then an explicit fresh start. Keep competing launchers stopped
-through reset/recovery; restart the normal service and integrations only after
-durable completion and the documented cutover. Reuse the existing runbook's
-same-epoch resume and matched-restore procedures. No online/zero-downtime wipe or
-unattended orchestration is required.
+No new PRs, privileged helper, unattended wipe service, flat-file wipe support,
+platform matrix, repository-wide burn-in, broad cleanup or optional hardening.
+The owner explicitly narrowed #264 to this supervised procedure.
 
-**Non-goals:** new features, services, privileged helpers, frameworks, backend
-parity, extra platform/version matrices, general security/persistence cleanup,
-repository-wide burn-in, rendered-browser acceptance, production deployment/wipe.
-Unrelated findings do not create work in this task. Existing blocking findings
-still require a disposition; required review is not waived.
+## Delivered changes
 
-**Files now:** only `docs/ongoing-projects/plan.md`.
-**Files when resumed:** existing runtime qualifier, the two existing DurisWeb probe
-fixes, and their directly affected runbook/regression guidance. No production
-C/C++ or schema work is currently planned. Add such work only for a reproduced
-failure of the supported procedure, with its smallest regression.
-**Proof:** reuse recorded valid results; repair the known restore assertion and
-run that affected journey once. Details below.
+- Existing server [PR #363](https://github.com/LuminariMUD/Duris/pull/363) and
+  [DurisWeb #97](https://github.com/LuminariMUD/DurisWeb/pull/97) target master.
+  The existing stacks are consolidated into these candidates; this task created
+  no PRs and merged no PRs.
+- Removed root-required systemd qualification and the forced Git safe-directory
+  bypass. The removed mode rejects before resource creation. Existing production
+  service behavior is unchanged; historical systemd proof remains historical.
+- Restored-world assertions now check the frozen generation immediately after
+  first boot and a fresh generation independently after second boot. Each reads
+  the current boot's full log, because the launcher rotates logs at every boot.
+- DurisWeb probe waits for durable donation acknowledgement with its existing
+  bounded waiter. Literal loopback matching already passed on the published head.
+  Repair published as `efc9de3`; no player-visible release news is needed.
+- Security finding fixed in `da08e1812`: exclude blocked mappings by PID or name
+  from staff recreation. The existing native regression covers blocked current-name
+  and stale-name mappings, alongside missing/stale/wrong-owner eligible mappings.
+- Runbook and regression guidance describe the supported supervised procedure.
 
-## Reuse what already exists
+## Acceptance evidence
 
-Live GitHub checked 2026-10-24: server [PR #363](https://github.com/LuminariMUD/Duris/pull/363)
-is open at `10acd11765059ec3f158da0b9665a45696bff91f`; companion
-[DurisWeb #97](https://github.com/LuminariMUD/DurisWeb/pull/97) is open at
-`c4772780bb998a52fb379effdd01b26d29f95ca5`. Both remain stacked. This is not
-a merge/readiness claim.
+1. **Contract/runbook:** lifecycle validator covers 200 SQL tables, 35 other stores
+   and 42 Redis surfaces. Fourteen lifecycle tests, thirteen reset-manifest checks
+   and SQL completion checks pass. The manifest, existing consumer proof and
+   runbook describe the same reset/preservation policy.
+2. **Actual new-season journey: passed.** Revision `1ca00c651`, production binary
+   SHA-256 `775c89a6637ad84b544bd41ac0f102754fa32080d7390d23c2ae4811ec90569b`.
+   The 301.44-second real countdown, launcher/filesystem cleanup, Redis isolation,
+   Overlord login, fresh mortal combat/loot, rewards, save, reconnect and second
+   boot passed. Command:
+   `python3 tests/async/run_pwipe_runtime_journey.py --redis --restore /home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production/server/dms_new`.
+3. **Recovery: passed.** The same run restored a frozen matched SQL/journal,
+   filesystem and authenticated Redis generation. First-boot generation,
+   original account/body/bank/reward/items, fresh checkpoint and independent
+   second-boot recovery passed; source SQL/files/Redis and generation hashes
+   remained unchanged. Session 91866 exited 0. Evidence:
+   `bin/analysis/pwipe-integrated-restore.log` and
+   `bin/analysis/pwipe-runtime-mariadb-redis-restore.json`.
+   An earlier assertion failed because it sliced an offset from rotated/bounded
+   diagnostics; its report is preserved as `pwipe-restore-first-attempt.json`.
+4. **Findings:** the blocked-roster repair passed the production build and actual
+   native MariaDB SQL/launcher/recovery suite, including unchanged missing/stale
+   projection repair and stable retry roster. Command:
+   `python3 tests/async/run_pwipe_handoff_mysql.py --server /home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production/server/dms_new`.
+   Logs: `bin/analysis/pwipe-blocked-{build,native,hook}.log`. Session 69736 exited 0.
+   The security thread is resolved. The eligibility-only change retains the
+   successful ordinary-staff gameplay/restore evidence.
 
-The [published evidence record](https://github.com/LuminariMUD/Duris/blob/10acd11765059ec3f158da0b9665a45696bff91f/docs/ongoing-projects/plan.md)
-holds completed changes, commands, revisions and results. The
-[stopped checkpoint](https://github.com/LuminariMUD/Duris/blob/2d8948bd3/docs/ongoing-projects/plan.md)
-preserves unpublished state and remaining findings. Use these records; do not
-copy their chronological history back into this plan or turn completed work into
-new checkboxes.
-
-Reuse the recorded inventory/consumer work, both-engine native SQL/launcher/failure
-matrices, writer/replay fences, real countdown/operator/gameplay journeys,
-Redis off/on/failure/re-enable cases, reward preserve/discard/claim cases,
-telemetry manual cutover, website HTTP/WebSocket/donation cutover, flat-file
-rejection, and maintained builds. Later changes invalidate only affected evidence.
-
-The final recorded production-profile binary SHA-256 is
-`de2aa15f93bc9afe9e50d74888439d5b3bc5f1714d588ede1a6135effaf1a7c4`.
-Confirm the reused binary matches it before the remaining run; do not rebuild
-unchanged C/C++. The paused qualifier draft has no `src/` changes.
-
-Do not count the interrupted ordinary-user systemd run as a pass. Earlier actual
-service exit-55/58 evidence remains historical coverage; the production unit's
-restart policy is unchanged. A newly secured automated systemd harness is outside
-this narrowed completion scope.
-
-## Remaining work — three steps, then stop
-
-2026-10-24 latest result: session 91866 exited 0. The integrated real countdown
-(301.44 seconds), Redis cleanup, fresh gameplay/save/reconnect/reboot, first frozen
-world recovery and independent second restored boot all passed. Report:
-`bin/analysis/pwipe-runtime-mariadb-redis-restore.json`; log:
-`bin/analysis/pwipe-integrated-restore.log`, revision `1ca00c651`, binary `775c89a6…`.
-Security review found one concrete remaining eligibility defect: blocked staff with
-stale projections could be recreated. The existing roster exclusion now rejects
-blocked mappings by PID or name; the existing native test adds blocked current-name
-and stale-name cases. Build/native qualification is running in session 69736,
-logs `bin/analysis/pwipe-blocked-{build,native}.log`. This targeted eligibility repair
-does not invalidate the completed ordinary-staff gameplay/restore journey.
-
-Latest checkpoint: the first run (session 69369) is finished, failed. Wipe,
-fresh gameplay and first frozen-generation recovery passed; second-boot evidence
-incorrectly sliced a bounded diagnostic string after launcher log rotation.
-`94dfa41e2` fixes both assertions to read the current boot's full `logs/log/sys`.
-The failed report is preserved as `bin/analysis/pwipe-restore-first-attempt.json`.
-Master subsequently advanced through #309 and #295–#299/#308. Its two documentation
-conflicts were resolved preserving both regression sections and this reduced plan;
-integration is committed/pushed as `1ca00c651`. Formatting and the commit hook pass
-using Clang 18 with GCC 13 headers (the default GCC 16 headers were incompatible).
-The required integrated production build passes, including the two formatting-only
-file adjustments. Binary SHA-256:
-`775c89a6637ad84b544bd41ac0f102754fa32080d7390d23c2ae4811ec90569b`.
-Corrected real restore run is live in session 91866, log
-`bin/analysis/pwipe-integrated-restore.log`; poll it, do not duplicate it.
-Concurrent integration elsewhere has now squash-merged #310–#312 into master
-(`40bec4d7f`), causing conflicts with their later repairs in this candidate.
-Do not alter the source under the live run. Reconcile the moving base after it
-finishes, keeping all final fixes and checking the resulting content delta before
-deciding whether any proof is invalidated. Do not re-run for ancestry-only changes.
-Earlier progress paragraphs below are chronological evidence, superseded here.
-
-Implementation is authorized for these steps. Production operations and merging remain separate.
-
-Current progress: isolated the existing #363 branch in
-`/home/aiwithapex/projects/duris-issue264-finish`, preserving all stopped drafts.
-Repaired #337 to assert the frozen generation immediately after first boot and
-the newly saved generation in an independent second-boot log window. Python
-compilation and `git diff --check` pass; runtime proof is still pending.
-Removed the root-required systemd qualifier and forced Git safe-directory bypass;
-updated regression guidance and the supervised runbook. The existing production
-binary matches the recorded SHA-256. The direct Redis/matched-restore run is live
-in execution session 69369, logging to `bin/analysis/pwipe-final-restore.log`.
-Poll that session before starting another run; an empty early log is not failure.
-Both existing tip PRs now target master. Website format, lint, type-check, build,
-two donation suites/nine tests, and the compiled principal/delayed-ACK/timeout
-probe check pass on the current source. The literal principal expression was
-already correct at the published head; only the durable ACK repair needs a commit.
-The running restore journey passed operator checks and entered its real countdown.
-Server master has one additional deployment commit `4b4fec518`; integration must
-preserve its migration-runner, news and build repairs before final publication.
-Integration inspection: `git merge-tree --write-tree HEAD origin/master` succeeds
-without conflicts in both repositories; no branch merge/rebase is needed to repair
-integration. Normal final merging preserves master's deployment changes.
-Website repair is published as `efc9de3`; both #97 review threads are resolved
-after the compiled probe checks. Server qualifier repair is published as `622a6604b`.
-Current inventory proof passes: 200 SQL tables, 35 other stores, 42 Redis surfaces;
-14 lifecycle tests, 13 reset-manifest checks and SQL completion checks pass.
-Existing final MariaDB/MySQL native logs still record successful ambiguous-commit,
+Reuse the [published evidence record](https://github.com/LuminariMUD/Duris/blob/10acd11765059ec3f158da0b9665a45696bff91f/docs/ongoing-projects/plan.md)
+for completed both-engine native/failure matrices, writer/replay isolation,
+Redis off/on/failure/re-enable, reward preserve/discard/claims, flat-file rejection,
+telemetry manual cutover and paired website HTTP/WebSocket/donation proof.
+Final MariaDB/MySQL logs were rechecked and retain passing ambiguous-commit,
 same-epoch recovery, residual-store fencing and staff ownership/clock assertions.
-Known ancestor findings were checked against the consolidated source: preflight
-uses `take_reaped_child_status`; reset zone SQL uses synchronous `qry`; staff use
-durable ownership and initialized clocks; wiper rejects nested cleared parents and
-checks maintenance ancestor search permissions before treating files as absent.
-Those intermediate PR heads remain superseded, not individually repaired or merged.
+No fresh matrix is required for unchanged behavior.
 
-### 1. Finish from one candidate per repository
+Website format, lint, type-check, build, two donation suites/nine tests, and actual
+compiled principal/delayed-ACK/timeout checks pass. Both review threads are resolved;
+code and security reviews completed without findings at `efc9de3`.
 
-Use the existing server stack tip (#363) and existing companion tip (#97).
-Retarget those existing PRs to their repository's current master when implementation
-resumes; inspect their cumulative diffs once and resolve only actual integration
-conflicts. Keep required predecessor fixes. Do not replay, rebase, backport, test
-or merge every ancestor separately. Do not create another successor PR.
+Known ancestor dispositions in the consolidated source:
+#309 consumers -> #361/original repair; #310 preflight reaper -> recorded child
+status; #311 reset SQL -> synchronous owning connection; #313 staff mapping/clocks
+-> durable ownership and fresh clocks; #339/#352 recovery parents/access -> guarded
+preflight; #330 -> unsafe qualifier removed; #337 -> independent restored-boot
+proof above. Superseded intermediate heads are not individually repaired.
 
-Carry this corrected plan into the server candidate. Apply the small remaining
-fixes directly to those candidates. For the #310 plan conflict, retain the current
-plan and all schema-consumer repairs in the cumulative result; repairing the
-superseded intermediate branch is unnecessary.
+## Final integration checks
 
-Record known ancestor findings against the final code once:
-#309 schema consumers -> #361 plus original-head repair `b628e6aaa`;
-#310 reaper race -> #317; #311 queued reset SQL -> later synchronous repair;
-#313 staff mapping/clocks -> #363; #339/#352 recovery/maintenance paths -> #362.
-Confirm those fixes are in the candidate. Resolve/disposition the findings with
-their existing proof; do not manufacture new repairs for obsolete heads.
-#330 and #337 are handled below; DurisWeb #97 has the two existing probe fixes.
-Complete applicable review of the cumulative candidate, without waiting for CI.
-Superseded PR closure and final merging belong to a later authorized integration
-step; this plan edit performs neither.
+Another process is merging older PRs into master. This task does not control it.
+Reconciliation through `d9dfb02e4` retains the tested wipe source, launcher,
+runtime qualifier and native handoff test byte-for-byte. Incoming unrelated
+changes remain intact; SQL completion/reaper checks pass after reconciliation.
+The required production build is running in session 84375:
+`make -C src -j8 PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production BIN_ROOT=/home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production`.
+Log: `bin/analysis/pwipe-reconciled-build.log`. Poll this session; do not duplicate it.
+Formatting/hooks use installed Clang 18 with GCC 13 headers; GCC 16 headers are
+incompatible with this Clang. No hook is bypassed.
 
-### 2. Close only the known qualification gaps
+Finish by recording this build result, checking final review findings, publishing
+the evidence and confirming the candidate's current merge state. Do not repeat the
+real countdown for ancestry-only changes. Required review and any reproduced
+blocker of the supported procedure must be complete before readiness sign-off.
+Once these checks hold, stop. No new workstreams or completion estimate.
 
-- **Drop the privileged systemd helper project.** Remove the root-required
-  `--systemd` qualification mode and its instructions from the final candidate,
-  along with its now-unused unit-management code. Keep the direct launcher
-  qualifier unprivileged and remove its forced Git safe-directory bypass.
-  Never instruct root to execute a user-writable checkout: an in-script UID
-  refusal alone is not a security boundary. This removes #330's dangerous
-  workflow without a replacement privileged API, installation, sudo policy,
-  registration system or another systemd wipe run. Preserve the unpublished
-  helper draft in its paused worktree; do not import or develop it.
-- **Fix #337's existing restore assertion.** Immediately after the first restored
-  boot, require recovery of the frozen Redis generation in that boot's own log
-  window, before gameplay or another boot can hide a failure. Wait for the
-  resulting fresh checkpoint and check second-boot recovery separately. Reuse
-  the existing sequence/checkpoint logic. No restore framework or extra modes.
-- **Keep the two already-written DurisWeb probe fixes:** literal loopback
-  principal matching and bounded durable outbox-ACK polling. Preserve their
-  focused proof; if the temporary executable check is gone, add/recreate only
-  those cases in the existing test arrangement. No new website feature and no
-  repeat full website wipe for these probe-only changes.
-- Update only the affected runbook/regression guidance: supervised direct
-  operation, external-writer stop/start, removed root qualifier, truthful restore
-  assertions and coverage limits. Reuse the existing telemetry and donation
-  cutover instructions.
+## Preserved work and limits
 
-### 3. Prove the remaining path once and close the evidence
+Implementation checkout: `/home/aiwithapex/projects/duris-issue264-finish`, existing
+branch `branch/issue-264-overlord-projection-repair`. Website checkout:
+`/home/aiwithapex/projects/durisweb-issue264-presence`.
+The primary checkout and paused `duris-issue264-plan` drafts, including the unused
+privileged-helper draft, remain untouched. The original plan-only worktree also
+remains available. The [stopped checkpoint](https://github.com/LuminariMUD/Duris/blob/2d8948bd3/docs/ongoing-projects/plan.md)
+records their exact paths and files.
 
-First check syntax, report-path writability and the small changed probe/refusal
-cases. Keep existing root-owned/historical reports intact; use owned output in
-the final candidate checkout. Do not burn a five-minute run on a known setup error.
-
-Run the existing direct-launcher matched-restore journey as the ordinary user,
-using the verified existing binary:
-
-```text
-python3 tests/async/run_pwipe_runtime_journey.py --redis --restore <verified-existing-production-binary>
-```
-
-This is one planned real countdown covering the latest wipe, fresh gameplay,
-save/reconnect/reboot and the repaired matched SQL/filesystem/Redis restore.
-Use its existing disposable database/environment. Do not add a second database
-engine run, another systemd run or another standalone happy-path run. The current
-CLI excludes combining restore with website/systemd; do not redesign it to combine
-modes. Repeat only if this run fails or a subsequent relevant change invalidates it.
-
-Reuse the completed native matrices and builds. Run required checks only for
-changed files; C/C++ changes, if genuinely required, still require `make -C src`,
-changed-line formatting and their affected executable regression. No global
-regression sweep, clean-build cycle or CI waiting phase.
-
-Finish with four short evidence dispositions in this plan, using existing records:
-
-1. Reset/preservation contract and supervised operator runbook match the candidate.
-2. Actual reset-to-fresh-gameplay proof identifies the revision, binary, command
-   and passing assertions.
-3. Existing failure/fence/retry proof plus the corrected first-boot restore prove
-   the supported recovery procedure.
-4. Known findings are fixed, disproven, removed with their unsupported workflow,
-   or explicitly outside the narrowed scope; no blocker of the supported wipe
-   remains. The existing lifecycle inventory gets a delta check for candidate
-   changes, not a fresh repository-wide consumer audit.
-
-Record the reduced scope in #264/#97's readiness description when later authorized
-to publish completion. Claim only the supervised configuration qualified here.
-A production wipe/deployment still needs its own authorization. Once these four
-items and required review hold, the technical qualification is done: no further
-hardening phase, extra PRs or optional work.
-
-## Preserve the stopped work
-
-Do not switch/reset/clean the primary checkout (`branch/contain-learning-feedback`).
-
-Server drafts: `/home/aiwithapex/projects/duris-issue264-plan`, branch
-`branch/issue-264-unprivileged-qualifier`, based on `10acd1176`. Dirty files:
-`docs/ongoing-projects/plan.md`, `docs/testing/REGRESSIONS.md`,
-`tests/async/run_pwipe_runtime_journey.py`, and untracked
-`tests/async/pwipe_systemd_helper.py` / `test_pwipe_systemd_helper.py`.
-Preserve them; selectively carry only the changes retained above.
-
-Website drafts: `/home/aiwithapex/projects/durisweb-issue264-presence`, branch
-`branch/issue-264-website-runtime-journey`. Dirty files:
-`backend/src/test/pwipeWebsiteProbe.ts` and `docs/development.md`.
-Recorded format/lint/types/build, two suites/nine tests, and compiled
-selector/delayed-ACK/timeout checks passed; full joint rerun was not performed.
-Temporary evidence: `/tmp/issue264-web-probe-{format,lint,type,build,tests,review}.log`
-and `/tmp/issue264-web-probe-review.mjs`; use it only if still available and valid.
-
-## Ablation result
-
-Removed the seven-phase restart and stale estimates; new privileged-helper work;
-repeat systemd/website/engine matrices; blanket inventory re-audits; per-ancestor
-repair/merge/review loops; new PRs; duplicate history; and unrelated follow-ups.
-Retained the small restore fix because the current assertion can report success
-after a failed first restore. There is no new ETA or speculative work allowance.
+This qualification does not claim production acceptance, unattended systemd
+qualification, flat-file wipe support or rendered-browser coverage. Production
+wipe/deployment and closing/merging superseded PRs remain separate authorized work.
