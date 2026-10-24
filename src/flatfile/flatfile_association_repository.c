@@ -1536,7 +1536,8 @@ flatfile_association_result flatfile_guildhall_save(const std::string &root,
 	flatfile_guildhall_record desired;
 	try
 	{
-		desired = guildhall;
+		// Avoid GCC 15's null-dereference warning in vector copy assignment.
+		desired = flatfile_guildhall_record(guildhall);
 	}
 	catch (const std::bad_alloc &)
 	{

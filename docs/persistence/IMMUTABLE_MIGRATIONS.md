@@ -11,6 +11,20 @@ Duris has two deliberately separate histories:
 
 ## Honest baseline adoption
 
+`run --online-divine-trade` accepts only the sealed 52-step manifest ending in
+`0050_divine_trade_state` and `0051_divine_effect_delivery`, with the earlier
+50 steps already applied. It retains production target confirmation, allow-list,
+fresh backup, advisory lock, checksum, ordered-history and success-last verification.
+On MariaDB 11.8, the first step creates an independent InnoDB table and inserts
+its global generation only if absent. The second appends nullable delivery proof
+columns to `artifact_domain_state` and `guilds` using INSTANT-only, LOCK=NONE DDL.
+Metadata and row-lock waits are bounded to one second; failure leaves writers up.
+The October 24 live review found both affected tables InnoDB/Dynamic, with 171
+artifact rows and two guilds, and no new delivery columns or trade table. Running
+writers name their columns, so NULL preserves the old empty delivery state.
+Coordinate schema-aware backup jobs across DDL and verify the new runtime contract
+before installation. Immutable payloads and ledger checksums remain unchanged.
+
 The checked-in baseline identifies the exact 170-table authoritative contract by a
 sealed positive table inventory and sorted-name fingerprint. A fresh bootstrap and a
 fully completed legacy upgrade must contain that complete inventory. Unrelated tables

@@ -4872,15 +4872,15 @@ hear the faint echoes of their dying pleas.
 ~
 E
 _room_msg~
-&N$n's &q &+rglows blood-red!
+&N$n's $q &+rglows blood-red!
 ~
 E
 _char_msg~
-Your &q &+rglows blood-red!
+Your $q &+rglows blood-red!
 ~
 E
 _victim_msg~
-&N$n's &q &+rglows blood-red!
+&N$n's $q &+rglows blood-red!
 ~
 A
 18 5

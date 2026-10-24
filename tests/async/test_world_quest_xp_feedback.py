@@ -83,6 +83,13 @@ bool in_test_group = false;
 double epic_percent = 0;
 bool grant_allowed = true;
 obj_data reward{};
+bool conjure_valid = false;
+bool recipe_known = false;
+bool sql_has_spellbook_mob(int, int) { return recipe_known; }
+int conjure_roll = 0, conjure_intelligence = 100;
+std::vector<P_char> learned_minions, failed_learning;
+affected_type containment_affect{};
+std::string containment_wear_off_char, containment_wear_off_room;
 namespace economic_gameplay_authority {
 bool enabled = false;
 bool active() { return enabled; }
@@ -97,7 +104,7 @@ int sql_level_cap(int) { return 20; }
 int frag_cap_config_hardcore_level_cap(int cap) { return cap; }
 const hardcore_config *hardcore_config_get() { static hardcore_config config{}; return &config; }
 int IS_MORPH(P_char) { return false; }
-int GET_CLASS(P_char, unsigned int) { return 0; }
+int GET_CLASS(P_char ch, unsigned int cls) { return ch->player.m_class & cls; }
 int flag2idx(int) { return 1; }
 int BOUNDED(int low, int value, int high) { return MAX(low, MIN(value, high)); }
 int shop_keeper(P_char, P_char, int, char *) { return 0; }
@@ -128,8 +135,13 @@ void check_boon_completion(P_char, P_char, double, int option) {
 void update_achievements(P_char, P_char, int, int) {}
 void add_bloodlust(P_char, P_char) {}
 void change_alignment(P_char, P_char) {}
-bool valid_conjure(P_char, P_char) { return false; }
-void learn_conjure_recipe(P_char, P_char) {}
+bool valid_conjure(P_char, P_char) { return conjure_valid; }
+void learn_conjure_recipe(P_char ch, P_char) { learned_minions.push_back(ch); }
+void affect_to_char_with_messages(P_char, affected_type *af, const char *self, const char *room) {
+    containment_affect = *af;
+    containment_wear_off_char = self;
+    containment_wear_off_room = room;
+}
 bool gain_epic(P_char, int, int, int) { assert(false); return false; }
 affected_type *affect_to_char(P_char, affected_type *) { assert(false); return nullptr; }
 bool record_zone_trophy_award(P_char, P_char, int, int) { return false; }
@@ -147,7 +159,10 @@ void logexp(const char *format, ...) {
     va_end(args);
     exp_log += buffer;
 }
-void send_to_char(const char *text, P_char) { output += text; }
+void send_to_char(const char *text, P_char ch) {
+    output += text;
+    if (std::strstr(text, "You fail to learn")) failed_learning.push_back(ch);
+}
 void send_to_char_f(P_char, const char *format, ...) {
     char buffer[1024];
     va_list args;
@@ -156,12 +171,18 @@ void send_to_char_f(P_char, const char *format, ...) {
     va_end(args);
     output += buffer;
 }
-void act(const char *text, int, P_char, P_obj, void *, int target) {
+void act(const char *text, int, P_char ch, P_obj, void *, int target) {
+    if (!IS_AWAKE(ch) && std::strstr(text, "You fail to learn")) return;
     if (target == TO_VICT || target == TO_CHAR) output += text;
+    if (target == TO_CHAR && std::strstr(text, "You fail to learn"))
+        failed_learning.push_back(ch);
 }
 void mobsay(P_char, const char *) {}
 char *coin_stringv(int, int) { static char text[] = "coins"; return text; }
-int number(int low, int) { return low; }
+int number(int low, int high) {
+    if (conjure_roll && low == 1 && high == conjure_intelligence) return conjure_roll;
+    return low;
+}
 void ADD_MONEY(P_char, int) { assert(false); }
 P_obj quest_item_reward(P_char) { return &reward; }
 static bool grant_world_quest_reward(P_char, P_obj, int = 0, bool = false) {
@@ -639,6 +660,130 @@ int main() {
     exp_mods[EXPMOD_GLOBAL] = 1e30f; // Overflow before the old kill log's cast.
     assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
     assert(player.points.curr_exp == 0);
+
+    // Exercise learning through both production kill_gain branches. Enumerating
+    // every possible roll proves the strict threshold and Charisma cap survive.
+    affected_type contained{};
+    contained.type = SPELL_CONTAIN_BEING;
+    struct learning_case { int charisma, level, intelligence, successes; };
+    for (const auto scenario : {learning_case{100, 56, 100, 43},
+                               learning_case{100, 61, 100, 38},
+                               learning_case{56, 56, 100, 0},
+                               learning_case{157, 56, 100, 100},
+                               learning_case{500, 56, 200, 173}}) {
+        for (bool in_group : {false, true}) {
+            int successes = 0;
+            for (int roll = 1; roll <= scenario.intelligence; ++roll) {
+                reset_divine();
+                player.player.level = 56;
+                player.player.m_class = CLASS_SUMMONER;
+                player.player.spec = SPEC_MENTALIST;
+                player.curr_stats.Cha = scenario.charisma;
+                player.curr_stats.Luk = 0;
+                player.affected = &blood;
+                blood.modifier = 0;
+                group.ch = &player;
+                group.next = nullptr;
+                player.group = in_group ? &group : nullptr;
+                mob.player.level = scenario.level;
+                mob.curr_stats.Int = scenario.intelligence;
+                mob.affected = &contained;
+                conjure_valid = true;
+                conjure_roll = roll;
+                conjure_intelligence = scenario.intelligence;
+                learned_minions.clear();
+                failed_learning.clear();
+                kill_gain(&player, &mob);
+                const bool success = roll < MIN(scenario.charisma, 230) - scenario.level;
+                assert(learned_minions.size() == (success ? 1u : 0u));
+                assert(failed_learning.size() == (success ? 0u : 1u));
+                if (success) assert(learned_minions.front() == &player);
+                else assert(failed_learning.front() == &player);
+                successes += success;
+            }
+            assert(successes == scenario.successes);
+        }
+    }
+
+    // One group member's failed roll neither reports to nor prevents another
+    // member's successful learning attempt.
+    reset_divine();
+    player.player.level = other.player.level = 56;
+    player.player.m_class = other.player.m_class = CLASS_SUMMONER;
+    player.player.spec = other.player.spec = SPEC_MENTALIST;
+    player.curr_stats.Cha = 100;
+    other.curr_stats.Cha = 150;
+    player.affected = &blood;
+    other.affected = &other_blood;
+    blood.modifier = other_blood.modifier = 0;
+    player.in_room = other.in_room = 0;
+    group_list other_member{};
+    group.ch = &player;
+    group.next = &other_member;
+    other_member.ch = &other;
+    player.group = other.group = &group;
+    mob.player.level = 56;
+    mob.curr_stats.Int = conjure_intelligence = 100;
+    mob.affected = &contained;
+    conjure_roll = 80;
+    learned_minions.clear();
+    failed_learning.clear();
+    kill_gain(&player, &mob);
+    assert(learned_minions.size() == 1 && learned_minions.front() == &other);
+    assert(failed_learning.size() == 1 && failed_learning.front() == &player);
+
+    // Failed rolls remain private and reach sleeping/knocked-out group members.
+    for (bool knocked_out : {false, true}) {
+        player.specials.position = knocked_out ? POS_STANDING | STAT_NORMAL : STAT_SLEEPING;
+        if (knocked_out) SET_BIT(player.specials.affected_by, AFF_KNOCKED_OUT);
+        assert(!IS_AWAKE(&player));
+        learned_minions.clear();
+        failed_learning.clear();
+        kill_gain(&player, &mob);
+        assert(failed_learning.size() == 1 && failed_learning.front() == &player);
+        assert(learned_minions.size() == 1 && learned_minions.front() == &other);
+        REMOVE_BIT(player.specials.affected_by, AFF_KNOCKED_OUT);
+    }
+    player.specials.position = POS_STANDING | STAT_NORMAL;
+
+    // Both solo and group failed rolls suppress misleading feedback for known recipes.
+    recipe_known = true;
+    group.next = nullptr;
+    for (bool in_group : {false, true}) {
+        player.group = in_group ? &group : nullptr;
+        learned_minions.clear();
+        failed_learning.clear();
+        kill_gain(&player, &mob);
+        assert(learned_minions.empty() && failed_learning.empty());
+    }
+    recipe_known = false;
+
+    // An expired mark makes no learning roll. A rejected target keeps the
+    // existing eligibility feedback rather than claiming a failed random roll.
+    other.group = nullptr;
+    group.next = nullptr;
+    player.group = nullptr;
+    for (bool marked : {false, true}) {
+        mob.affected = marked ? &contained : nullptr;
+        conjure_valid = false;
+        output.clear();
+        learned_minions.clear();
+        failed_learning.clear();
+        kill_gain(&player, &mob);
+        assert(learned_minions.empty() && failed_learning.empty());
+        assert((output.find("outside of your area of expertise") != std::string::npos) == marked);
+    }
+
+    // Registration keeps the existing 25-second duration and explains expiry
+    // to the target and everyone watching the encounter.
+    mob.affected = nullptr;
+    spell_contain_being(56, &player, nullptr, 0, &mob, nullptr);
+    assert(containment_affect.type == SPELL_CONTAIN_BEING);
+    assert(containment_affect.flags == AFFTYPE_SHORT);
+    assert(containment_affect.duration == 25 * WAIT_SEC);
+    assert(containment_wear_off_char.find("containment fades") != std::string::npos);
+    assert(containment_wear_off_room.find("containment around $n fades") != std::string::npos);
+    assert(containment_wear_off_room.find("can no longer be learned") != std::string::npos);
 }
 '''
 
@@ -664,6 +809,7 @@ def main() -> None:
     functions += [extract_function("world_quest.c", signature) for signature in (
         "int quest_exp_reward(", "void quest_full_reward(", "void quest_kill(")]
     functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
+    functions += [extract_function("magic.c", "void spell_contain_being(")]
     functions += [extract_function("fight.c", "void kill_gain(P_char ch, P_char victim)\n")]
     quest = source("world_quest.c").read_text(encoding="utf-8")
     if "static void world_quest_reward_completed(" in quest:

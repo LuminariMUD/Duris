@@ -3071,7 +3071,7 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	if (owned)
+	if (ship)
 	{
 		if (ship->location != ch->in_room)
 		{

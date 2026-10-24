@@ -1,11 +1,76 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 23, 2026&n
+&+WUpdated: October 24, 2026&n
 
-Welcome back! Less background busywork and a clearer bridge await.
+Welcome back! The Gods have new blessings for adventurers and traders.
 Newest first; later updates replace older rules.
 Coverage back to December 14, 2025, and the archive follow.
+
+&+R10/23/26&n &+L-&n &+YDivine Boons: follow the Gods' favor&n
+&+W----------------------------------------------------------------------&n
+
+&+CBlessings without the busywork&n
+&+Y-&n Divine Boons replace the old task-and-shop system with automatic
+  bonuses. Use &+C'boon'&n or &+C'boon list'&n for your current targets,
+  time remaining and next opportunity. Your old &+C'toggle boon'&n setting
+  does not switch these benefits off. Old earned balances remain recorded;
+  there is no new boon shop or task-completion payout.
+&+Y-&n Up to &+Yeight&n global boons share one rotation. At most one starts
+  on each fixed UTC hour, so the rotation fills gradually. Some slots may
+  stay empty. Only one trade boon and one PvP boon can run at a time.
+  Restarting preserves expiry times and skips missed hourly opportunities.
+&+Y-&n Good and Evil receive their own zone targets and opposing-side PvP
+  objectives. Targets consider recent active accounts and suitable group
+  levels; these selection brackets do not restrict entry. Hometowns,
+  safe, private, unfinished and inaccessible zones are excluded.
+  Unaffiliated characters can still use the global trade boon.
+
+&+CMore from the right adventure&n
+&+Y-&n Zone EXP boons last &+Yeight real hours&n and bring eligible NPC
+  combat base EXP to &+Y200%&n in your designated zone. Damage, tanking,
+  healing and kill shares qualify. Quest, resurrection, PvP and other
+  non-combat EXP do not.
+&+Y-&n Epic-zone boons add &+Y50%&n of eligible epic-stone base rewards for
+  &+Yeight real hours&n. PvP boons add &+Y50%&n of legitimate nonzero epic
+  rewards against the opposing Good/Evil side for &+Yfour real hours&n.
+  Normal level, repeat-victim, frag and final reward limits still apply.
+  The separate &+Y500-epic&n Spill Blood reward receives no boon increase.
+&+Y-&n Divine bonuses add to the original eligible base alongside existing
+  bonuses; they do not multiply the whole reward. With a base of 100 epics,
+  an existing bonus of 10 and a Divine bonus of 50 give 160. Fractions are
+  kept until the final award rounds down under the normal limits.
+&+Y-&n Eligible rewards accepted before expiry keep their agreed amount
+  while finishing afterward. Recovery also keeps the matching artifact
+  and guild benefits from being lost or granted twice when saves finish
+  at different times.
+
+&+CA blessing for honest cargo&n
+&+Y-&n Cargo and contraband trade boons add &+Y25% of base sale revenue&n
+  for &+Yfour real hours&n. Buy at the displayed source after the boon
+  starts, then sell at its distinct destination before expiry. Existing
+  market, Nexus and ship effects still apply. Buy for 100 and sell for a
+  base 120: the boon adds 30, giving 150 revenue and 50 profit.
+&+Y-&n Both goods share one account allowance: &+Ythree times&n the hold
+  capacity of your first qualifying ship for that boon. Bigger ships,
+  alts and relogging cannot reset it. Only verified paid batches qualify;
+  old stock, source sellbacks, salvage and unverified transfers receive
+  ordinary revenue. Partial losses leave only the remaining paid goods
+  eligible. A zero-revenue sale uses goods and allowance without a bonus.
+&+Y-&n Trades now settle your payment, goods and allowance together. If
+  merchants say a trade is settling, wait for its completion message;
+  conflicting actions may ask you to try again shortly. Your other saved
+  progress is preserved while the trade finishes.
+&+Y-&n Ordinary cargo and contraband sales reject payments too large to
+  handle before consuming goods. Contraband prices now save their own
+  values instead of cargo prices. Cargo lost to pirates or discarded
+  from a ship is saved with its remaining eligibility for trade bonuses.
+
+&+CKnow the current favor&n
+&+Y-&n Read &+C'help divine boons'&n for the complete rules. Staff can use
+  &+C'divineboon status'&n and &+C'divineboon history'&n to inspect the
+  rotation. Pausing stops new boons while existing ones still expire;
+  resuming or replacing a boon waits for the next hourly opportunity.
 
 &+R10/23/26&n &+L-&n &+YLess busywork, clearer decks&n
 &+W----------------------------------------------------------------------&n

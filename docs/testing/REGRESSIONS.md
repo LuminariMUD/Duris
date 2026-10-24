@@ -373,6 +373,21 @@ record and a missing delegated ledger column abort before epoch advance. A trigg
 mid-batch ledger failure leaves the reset fenced; repaired retries close remaining
 listings without duplicate receipts. The existing SQL collector suite also passes.
 
+## Contained-being learning feedback
+
+A failed recipe-learning roll reports the failure to the eligible summoner in
+both solo and group kills. A group member's failure does not suppress another
+member's successful attempt. Containment expiry announces that the target's
+essence can no longer be learned; its existing duration remains 25 seconds.
+
+`python3 tests/async/test_world_quest_xp_feedback.py` executes the production
+kill-experience paths and spell handler under ASan/UBSan on both persistence
+build variants. It enumerates every roll for representative levels, the strict
+success boundary, zero and guaranteed success, and the Charisma cap. It also
+covers per-recipient group feedback, inactive marks, existing eligibility
+rejection, and expiry message registration. Target eligibility and recipe
+persistence are stubbed; this is not a live-player or network journey.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,
@@ -2182,3 +2197,31 @@ in `bin/analysis/integrated/observer-probe.log` and `connection-fixed.log`.
 The controlled scheduling probe supplies the regression's before/after evidence;
 a normal timely server can pass the old fixture, so its green result alone does
 not establish correct observer cleanup.
+
+## Gith Monk creation eligibility
+
+Normal character creation permits Githzerai Monks with fixed good alignment and
+Githyanki Monks with fixed evil alignment in both Telnet and WebSocket clients.
+The Monk starter kits and both Monk specializations were already defined for
+these races; changing creation eligibility must not broaden random NPC class
+selection. The random-mobile selector continues to skip Monk for both Gith
+races, while using the unchanged `class_table` permission for other races.
+
+`python3 tests/async/test_gith_monk_creation.py` validates the two matrix
+cells, the client entry points, specialization and kit coverage, and the help
+and documentation; it compiles the random-mobile eligibility predicate with the
+real class table and race constants under ASan/UBSan. The specialization lookup
+and actual `specialize list` command are covered by
+`python3 tests/async/test_specialization_permissions_runtime.py`; unmatched
+permissions must not read beyond the table. `python3
+tests/async/test_random_mob_theme_runtime.py` executes `create_random_mob()` for
+themes 4/5/6 with every template faction, checking bounded selection and the
+resulting race/faction while retaining the no-legal-class failure path.
+
+After a fresh flat-file build, run `python3 tests/async/test_gith_monk_journey.py
+--binary bin/gith-monk/server/dms_new`. It creates both races as normal Monks
+through real Telnet and WebSocket clients in isolated mini-world servers, then
+checks saved race/class/faction/alignment and all five equipped Monk kit items
+with stable UIDs across save/restart/relogin. It does not exercise teacher-led
+specialization or a loaded production world. Keep both help import sources in
+sync with `python3 tests/async/test_class_helpfiles_contract.py`.

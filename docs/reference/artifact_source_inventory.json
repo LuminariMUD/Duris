@@ -3,10 +3,10 @@
   "liveAvailabilityVerified": false,
   "configuration": "Compiler defaults; THARKUN_ARTIS enabled",
   "counts": {
-    "templates": 169,
+    "templates": 170,
     "literalBindings": 80,
     "callbacks": 69,
-    "withoutLiteralBinding": 89,
+    "withoutLiteralBinding": 90,
     "goldenTokenPlaceholders": 29
   },
   "templates": [
@@ -4910,6 +4910,36 @@
         "equipment enchantments",
         "Studio trigger/proc-library dynamic assignment",
         "effective native callback and helper continuations"
+      ],
+      "disposition": "retain legacy; outside initial migration wave; requires individual contract and measured budget"
+    },
+    {
+      "vnum": 131200,
+      "source": "areas/obj/earthp.obj",
+      "line": 1,
+      "name": "the earthen hammer of Grumbar",
+      "keywords": "hammer grumbar earth",
+      "type": 5,
+      "extraFlags": 272769304,
+      "wearFlags": 8193,
+      "extra2Flags": 95,
+      "values": [
+        4,
+        8,
+        6,
+        0,
+        0,
+        247506507,
+        60,
+        20
+      ],
+      "literalCallback": null,
+      "placeholder": false,
+      "reviewPaths": [
+        "base stats/affect bitvectors",
+        "equipment enchantments",
+        "Studio trigger/proc-library dynamic assignment",
+        "weapon_proc: positive value[5] and value[7] select packed spell path"
       ],
       "disposition": "retain legacy; outside initial migration wave; requires individual contract and measured budget"
     },
