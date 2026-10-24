@@ -78,6 +78,13 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+Run the real unsupported flat-file path with:
+`python3 tests/async/run_pwipe_runtime_journey.py --flatfile-rejection /absolute/path/to/flatfile/dms_new`.
+It reuses the private world/account/Overlord helpers and verifies immediate rejection,
+unchanged player snapshot and legacy files, preservation of a scheduled reboot,
+then normal save/logout/reconnect/second boot. Evidence is written under
+`bin/analysis/pwipe-runtime-flatfile.json`; no DB or checkout environment is used.
+
 The native reset journey seeds auction custody plus nested siege items with affects
 and descriptions. Actual startup population readers see those bodies before reset
 and none afterward. Missing siege child schema aborts before epoch advance, and a

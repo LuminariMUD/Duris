@@ -40,6 +40,31 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — flat-file command rejection
+
+Branch `branch/issue-264-flatfile-rejection`, based on payload PR #326 at `e332d12b5`.
+Outcome: reject unsupported flatfile-primary pwipe before scheduling a countdown or
+changing an existing shutdown. Current code schedules five minutes and only then
+fails in the SQL stub. Use the existing persistence-mode predicate at command entry.
+Non-goals: adding flat-file wipe support or weakening MariaDB qualification.
+Files: shutdown command, existing pwipe runtime journey, runbook/regression/plan.
+Proof: real flat-file authority on the supported client-free build; preserved player snapshot
+and legacy sentinels, no countdown/cleanup, normal save/logout/reconnect/second boot.
+Reuse private world/account and offline Overlord-promotion helpers. Source inspection
+confirmed hybrid fallback mode is already rejected by `persistence_mode_configure()`;
+a direct test also confirmed the MariaDB binary rejects flatfile-primary at startup.
+There is no supported hybrid fallback wipe to implement or qualify.
+The actual flat-file journey passed immediate/malformed-form rejection, unchanged
+player snapshot and legacy file sentinel, preserved scheduled reboot, and normal
+save/logout/reconnect/second boot. Artifact `bin/analysis/pwipe-runtime-flatfile.json`
+records binary SHA256 `3482bd15b6df6c400db6b0523f3112357ac1de2e7bbcf5c67e5f620cb58ecd42`
+and the source diff digest at qualification. Both development builds, optimized
+MariaDB production build, formatting and reset-fence contracts passed. Publication
+remains; full readiness is open. Next: extend the existing MariaDB runtime journey
+with private Redis and, if practical, the full systemd sandbox in one five-minute
+run. The production restart properties were already tested in isolation; the real
+service should use a private mini-world and test-only unit name, never the live unit.
+
 ## Current continuation — remaining live payload stores
 
 Branch `branch/issue-264-payload-reset`, based on cargo PR #325 at `d92559fdb`.
@@ -684,8 +709,10 @@ and donations and retained telemetry/quota evidence remain correct.
   readiness gate open if that execution is unavailable.
 - [ ] Fully qualify MariaDB-primary with Redis on/off. Build flat-file mode and
   execute unsupported-pwipe rejection, proving no data loss and normal continuation.
-  Record build profiles, enabled optional systems and gaps; do not label rejection
-  successful flat-file wipe qualification.
+  Flat-file rejection/continuation is now proven by the actual client-free server
+  journey (see current continuation); MariaDB Redis-on remains open. Record build
+  profiles, enabled optional systems and gaps; do not label rejection successful
+  flat-file wipe qualification.
 
 Exit: record revisions, sanitized configuration, commands, before/after assertions,
 exit statuses, durable phases and recovery outcomes. Fix every blocker and rerun

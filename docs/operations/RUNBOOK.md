@@ -201,6 +201,13 @@ finished and filesystem cleanup remains. The launcher keeps status `resetting`
 through cleanup, then atomically activates that exact epoch and records the final
 completion time. Only then does it print `Wiped!`. No schema change is needed.
 
+`shutdown pwipe` is unsupported in `flatfile-primary` and refuses immediately,
+before scheduling a countdown or cancelling an existing reboot. The real client-free
+server journey proves unchanged player snapshot/legacy files and continued save,
+logout, reconnect and another boot. A MariaDB client binary refuses flatfile-primary
+at startup; hybrid fallback mode is also rejected by existing configuration. This
+is rejection qualification, not a successful flat-file wipe.
+
 Reset policy confirmed by the owner for #264: every account-bank balance resets,
 including staff and every racewar side. Bank rows are deleted without resetting
 their allocator; accounts, credentials and donation history survive. Retained bank
