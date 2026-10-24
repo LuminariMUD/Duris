@@ -2,11 +2,10 @@
 
 Tracking: [Duris #213](https://github.com/LuminariMUD/Duris/issues/213).
 Implementation branch: `branch/issue-213-evil-onboarding`.
-Status: implementation in progress; death policy/warning, shared creation
-validation, copied data and the browser refresh companion are open for review.
-The active routing chunk implements evil content/procs/choices and passes full
-loaded NPC comparisons on both backends. Remaining gameplay/browser/persistence
-acceptance is tracked below; it is not yet complete.
+Status: local implementation and acceptance complete; the server stack and
+DurisWeb companion are pushed and ready for review. Full native and browser
+journeys pass on both backends. Review/integration and any production release
+remain outstanding; the issue stays open until the coordinated stack lands.
 Revised October 23, 2026 for the issue's approved Firbolg/Ogre eligibility decision;
 the previous tutorial exclusions are superseded.
 
@@ -27,327 +26,211 @@ implementation.
 
 ## Current handoff — October 24, 2026
 
-Worktree: `/home/aiwithapex/projects/duris-issue213-plan`. The primary checkout
-is on unrelated `branch/contain-learning-feedback` and was left untouched.
-The requested branch was clean and equal to its remote before merging fetched
-master `7d3bd3b957196f3136dbca61c01f2cba7f7ac298` without conflicts or history
-rewrites, in merge commit `ae99be838`. No tags or force pushes are needed.
+Active worktree: `/home/aiwithapex/projects/duris-issue213-plan`, branch
+`branch/issue-213-final-acceptance`. The primary checkout remains on unrelated
+`branch/contain-learning-feedback`; its changes were preserved. The requested
+branch was clean and equal to its remote before merging master
+`7d3bd3b957196f3136dbca61c01f2cba7f7ac298` as `ae99be838`, without rewriting
+history. A fresh fetch on October 24 still resolves master to that revision.
+No release tags, force pushes, production operations or CI waits are needed.
 
-First chunk outcome: every death-XP path protects players below the existing
-cutoff (default 30), and the existing consolidated level notification emits one
-bold uppercase warning per upward crossing. Non-goals remain the locked scope
-below. Files are limited to `limits.c`, `fight.c`, their declaration, the
-property comment, both maintained death-help sources, existing focused tests,
-and this handoff. Ablation retained one shared cutoff getter for three real
-callers; no new configuration, saved flag, or test framework was added.
+### Review stack and dependencies
 
-Implemented:
+Every listed PR is pushed, open and ready for review. Do not release an exposed
+menu without the matching data/procedures and website companion.
 
-- Ordinary `EXP_DEATH` is universal, including direct dispatcher calls. The
-  death handler also gates the Lich's forced delevel/residual-XP path. Its
-  zero-initialized loss still reaches corpse creation; death/respawn, arena,
-  staff and hardcore behavior outside that XP block is unchanged.
-- Single-level, multi-level, direct/bulk and Illithid notifications share the
-  crossing warning and retain morph recipient handling. The configured cutoff
-  supplies both policy and wording. `&+W` emits ANSI bold white.
-- Both help sources describe universal protection below 30 and retain the
-  hardcore permanent-death caveat. Flat-file help loads tracked sources;
-  MariaDB uses `scripts/import_help_to_prod.sh`, with parsed help taking
-  precedence. No database or production help was changed.
+- [#314](https://github.com/LuminariMUD/Duris/pull/314),
+  `branch/issue-213-evil-onboarding`, `f81f62ffa`: universal death-XP protection
+  below the configured default 30, including Lich delevel; one bold uppercase
+  warning per upward crossing; both maintained death-help sources.
+- [#315](https://github.com/LuminariMUD/Duris/pull/315), stacked on #314,
+  `branch/issue-213-creation-eligibility`, latest correction `864dbc033`:
+  shared terminal/web eligibility and pre-allocation validation. Firbolg and
+  good-side neutral choices are enabled without opening restricted races.
+- [#320](https://github.com/LuminariMUD/Duris/pull/320), stacked on #315,
+  `branch/issue-213-tutorial-copies`, `39455b39c`: authored ID/reference
+  foundation. Eight shops append only in `areas/shp/end.shp`, preserving all
+  durable load-order shop IDs. Never add `wutvr.shp` in AREA order.
+- [#331](https://github.com/LuminariMUD/Duris/pull/331), stacked on #320,
+  `branch/issue-213-tutorial-routing`, `dcdb151fa`: minimal evil reskin,
+  mechanics parity, compiled bindings, creation/routing and kit integration.
+  Includes independent #328/#335 below; merge those dependencies first.
+- [#333](https://github.com/LuminariMUD/Duris/pull/333), stacked on #331,
+  `branch/issue-213-onboarding-acceptance`, `9f5bdc9f4`: real browser acceptance
+  runner; includes independent #332.
+- [#342](https://github.com/LuminariMUD/Duris/pull/342), stacked on #333,
+  `branch/issue-213-final-acceptance`, `c82b266d9`: native service/death/recovery
+  runner and side-neutral creation-menu recommendation. Includes #338 through
+  `3943f366f`; merge that independent repair first. The review tree exactly
+  matched the integration branch retained at `677f038a7` before the final
+  racial spell-factor correction was merged through the parent. The active worktree
+  now uses this clean review branch; its full native matrix passes on both backends.
+- [DurisWeb #91](https://github.com/LuminariMUD/DurisWeb/pull/91),
+  `branch/issue-213-hometown-parity`, `de17db6` (frontend code `9eb92e3`):
+  selected alignment, stale-response rejection, pending-step protection,
+  selection invalidation, omitted-home compatibility and phone layout.
+  Worktree: `/home/aiwithapex/projects/durisweb-issue213`. Its own plan contains
+  unpublished release-news text; no website publication was performed.
 
-Evidence so far (run from this worktree): `make -C src -j4` passed for the
-MariaDB development binary; `test_lich_death_experience.py` passed under
-ASan/UBSan; `test_world_quest_xp_feedback.py` passed with MariaDB and flat-file
-compilation under ASan/UBSan/float-cast checks; `test_flatfile_help_catalog.py`,
-`test_death_respawn_state.py`, `test_death_transition_contract.py`,
-`test_chaos_infinite_starting_grants.py`, format check and `git diff --check`
-passed. The XP harness covers ordinary deaths at 1/2/29/30/31 across good,
-evil/other sides and Human/Ogre/Firbolg, losses that do/do not delevel,
-configured/default cutoffs, level cap, warning crossing/count/recipient, and
-direct/bulk/Illithid paths. The Lich harness executes the production death-XP
-block with real character macros and retains fractional residual controls.
-These harnesses stub surrounding level side effects; they do not establish
-loaded-server persistence or browser acceptance.
+Independent fixes discovered through the required journeys:
 
-Help importer dry-run passed using explicit dummy preview database settings
-(no connection); its log and build log are under `bin/qualification/issue213/`.
-The first dry-run without settings failed because this worktree has no `.env`;
-no local environment file was copied or edited. Git fetch/merge also reports
-pre-existing unreachable-object housekeeping warnings; do not prune objects or
-delete recovery logs as part of this work.
+- [#319](https://github.com/LuminariMUD/Duris/pull/319), `15e314e43`: remove
+  Ailvio's already-disabled reset for nonexistent bank object 6081. The copied
+  reset deliberately omits it; working sign/locker/object 3097 remain intact.
+  This source repair is separate so feature originals remain byte-identical.
+- [#328](https://github.com/LuminariMUD/Duris/pull/328), `71a86963b`: marked
+  training dummies must not dispatch inherited prototype-1255 quest callbacks
+  that intercept unrelated map requests. Included in #331 as `6cd922ca3`.
+- [#332](https://github.com/LuminariMUD/Duris/pull/332), `909891027`: skip only
+  zero-loss resurrection refunds. Real protected death/resurrection previously
+  fabricated one XP and logged a false memory warning. Nonzero refund rules
+  remain intact. Included in #333 as `e31d5141f`.
+- [#335](https://github.com/LuminariMUD/Duris/pull/335), `48671f8a8`: bind the
+  fourth source spell-up callback to actual Druid teacher 29237 instead of
+  classless wolf 29265. #331's `5082f1df8` includes it and binds copy 91437.
+- [#338](https://github.com/LuminariMUD/Duris/pull/338), `1725417fb`,
+  `branch/fix-flatfile-shop-initialization`: initialize missing flat-file shop
+  catalog/custody baselines after stock reconciliation. Existing journal
+  commits both domains atomically; existing stock/revisions stay intact and
+  UID collisions are refused. Includes legacy disabled-product handling and
+  restoration by actual keeper identity, allowing legitimate quest/tradeskill
+  callbacks. Included here as `2bf4c937d`; merge before releasing the new shops.
+  Its clean review branch has the exact tested tree of retained unpublished
+  development commit `a019ca70e`; no development history was rewritten.
+- [DurisWeb #92](https://github.com/LuminariMUD/DurisWeb/pull/92), `aeeab8a`:
+  match server account names (3–14 letters/underscores) before connecting.
+  This is independent of #91.
 
-First review chunk: [PR #314](https://github.com/LuminariMUD/Duris/pull/314),
-commit `f81f62ffa`, on `branch/issue-213-evil-onboarding`, pushed and ready
-for review. It is not merged and does not close #213.
+### Implementation facts needed to continue
 
-The next independent chunk is [PR #315](https://github.com/LuminariMUD/Duris/pull/315),
-commit `491df3ca6`, on `branch/issue-213-creation-eligibility` in the same
-worktree, stacked on #314, pushed and ready for review. It shares one eligibility predicate across
-terminal counting/display/selection and web listing/final submission. It adds
-the approved good tutorials for Firbolg and good-side neutral races, preserves
-racial defaults for omitted web homes and forced/staff calls, and rejects
-supplied invalid/fractional/non-numeric/zero/out-of-range/wrong-race/wrong-side
-homes before character allocation or grants. Race/class and account side
-admission checks remain in place. Web lists accept selected alignment and echo
-race/alignment context; legacy neutral race-only requests return racial choices.
+- Chaos zone 912: Life entity IDs +68400, zone +684. Wutvr zone 914: Ailvio
+  entity IDs +62200, zone +622. Exactly 124 rooms, 108 mobiles, 143 objects,
+  32 quest-controller records and eight appended shops. Nine new authored
+  files plus the existing append-only shop tail; generated outputs stay ignored.
+  All ten original authored tutorial files remain unchanged on the feature.
+- Home IDs append as Wutvr 25 and Chaos 26. Terminal keys C/W are distinct;
+  good Thri-kreen retains P for Payang and uses L for Life. Complete existing
+  class/racial entry tables and Tiefling's Arachdrathos default/departure are
+  retained. Explicit tutorial selections bypass only that default override.
+- One shared race/side/home predicate serves terminal count/display/selection
+  and web list/submission. Supplied malformed, zero, negative, fractional,
+  wrong-side or unavailable homes fail before allocation/save/kit grants.
+  Omitted home uses existing racial defaults. Legacy race-only neutral lists
+  return only racial choices; responses echo race/alignment for stale detection.
+- Reuse the original guide/tag, signs, stream, search/map controllers, bandage
+  pair, four caster families, eight shops, two pet shops, inns and departure.
+  Direct Wutvr kit uses copied invitation 91519 instead of 29319; entering from
+  stage one grants no second kit. World-quest deny zone 292 is mirrored for 914.
+  Shared sign READ callbacks were corrected from duplicate LOOK branches.
+- `tutorial_mobile_mechanics_race()` applies only to 70 exact copied VNUM/new
+  race pairs. It retains original loaded stats/innates/resistances/equipment,
+  giant classification and victim XP. Review exposed runtime visible-race
+  checks that still altered combat. Commit `436b77652` also routes Minotaur
+  berserk/hit procs, Orc horde damage/counting, Drow dodge, Barbarian cold,
+  Gith word vulnerability and racial casting modifiers through that profile.
+  Follow-up `dcdb151fa` also selects configured offensive/defensive racial
+  spell-damage factors by this profile, with deliberately different factor
+  controls in the production-predicate ASan/UBSan test. Both full builds pass.
+  Player/unrelated-NPC controls remain unchanged. The P2 review thread on #331
+  is resolved after executable sanitizer checks and both builds passed.
+- Source maps are transient/no-rent: assert live map delivery and absence from
+  durable ownership, without changing flags. The secret shop's authored route
+  is `touch orb` / `enter mirror`; do not add directional links. Pet purchases
+  use the advertised numbered list entry. Source zero-price/visibility rules
+  may legitimately produce an empty shop list; do not invent stock/prices.
 
-The exhaustive terminal selector check exposed another key collision when
-enabling good Thri-kreen tutorials: **Payang and Plane of Life both use P**.
-Payang retains P and Plane of Life uses L only for that race; other existing
-keys are preserved. Displayed town names are now complete. This is required
-supporting behavior, alongside the already-planned C/W keys for evil tutorials.
+### Completed local qualification
 
-`python3 tests/async/test_creation_hometowns.py` passes under ASan/UBSan with
-both backend compilation modes. It executes the real shared policy, terminal
-display/selection, web list handler and web pre-persistence validation prefix
-over the full standard roster, malformed/forged homes, omitted defaults,
-neutral-side refresh, disabled-race listing and account-side denial. Surrounding
-class/account services are controlled stubs; this is not actual character-save
-or browser proof. Existing creation availability/all-races/all-classes controls,
-format/diff checks and the required `make -C src -j4` pass for this chunk.
+Already passing evidence under ignored `bin/qualification/issue213/`:
 
-The later restricted-roster audit tightened the good tutorial predicate to its
-existing eligibility rows plus only the approved Firbolg/neutral additions.
-Nominally-good legacy races such as Agathinon/Eladrin must not gain unrelated
-new hometowns when `CREATION_ALL_RACES` is enabled. The executable test now
-checks the restricted roster too. Focused ASan/UBSan checks and incremental
-MariaDB/flat-file builds passed for this correction; no full suite was repeated.
+- Both maintained full builds and world generation. Focused executable
+  death/Lich/warning/XP, creation/hometown, 36,360 legacy kit selections,
+  copied-procedure, world-quest policy and authored/generated parity controls.
+  ASan/UBSan covers runtime racial combat/casting and the independent dummy,
+  zero-loss refund, shop repository/bootstrap/custody/runtime repairs.
+- `run_issue213_tutorial_profiles.py`: all 108 real loaded source/copy NPCs
+  with two identical RNG seeds, **216 comparisons and zero differences per
+  backend**. This proves loaded profiles, not runtime racial dispatch; the
+  separate real combat-block/casting tests cover the review finding above.
+- `run_issue213_browser_journey.py`: real Chromium on flat-file and MariaDB.
+  Firbolg/neutral choice refresh, stale selections/back navigation, 390px
+  layout, four forged submissions allocating no player, evil Thri-kreen
+  Chaos → Wutvr → racial departure, all three saved home fields and actual
+  uppercase warning at computed font weight 700. Only unrelated HTTP shell/map
+  endpoints were fixtures; all MUD/creation traffic used the full real world.
+  The inherited Vue Router `next()` deprecation remains nonblocking.
+- `run_shop_bootstrap_journey.py`: real fresh full-world flat-file shop
+  initialization and cold restore with byte-identical catalog; real Wutvr
+  purchases on both backends deliver/persist a bandage and charge one copper.
+- Full native Ogre and Firbolg journeys on both backends completed search/potion,
+  bandaging, three-item quest payout, all eight shop bindings and purchase,
+  both pets, all four caster families, rent/relogin, reset, racial departure,
+  protected death/resurrection at 1/29, bold crossing, level-30 loss and cold
+  XP/home recovery. The runner checks each family's first authored buff,
+  respecting finite NPC slots and original spell power/timing. Staff allocates
+  the three body-part quest prerequisites; real GIVE dispatch and reward effects
+  are observed. Encounter parity is separately covered by loaded profiles and
+  production combat/casting regressions, rather than a live balance study.
 
-The tutorial content audit found 105 Ailvio mobile templates spanning multiple
-playable races; `convertMob()` and `affect_total()` derive stats/HP from race,
-and XP also has a victim-race modifier. Do not claim numerical field equality
-proves a race substitution. No new content IDs are reserved or activated yet.
-Keep that mechanical parity work together with copies/procs; delivering the
-independent validation first avoids blocking a reviewable server fix on it.
+The **full unfiltered native runs pass on both backends**:
+`onboarding-{flatfile,mariadb}-final.json` / `*-run.log`, with `completed: true`,
+seven routes, four direct starts and **28 acceptance records per backend**.
+Both observed Ogre/Firbolg deaths at level 29 preserved 12,345 XP through
+resurrection; at level 30 normal loss delevelled them to 29. Final cold restart
+preserved those exact XP/level values and all three racial-home fields.
+The frozen runner hash is
+`7ec5a3d64ec20ab3d324d850df80008d676e4cd0ea639119913e6bb40fd2c77c`.
+It covers Ogre/Firbolg full services/death plus Goblin Sorcerer,
+evil Thri-kreen/Minotaur/Tiefling and Human routes; direct Faang/Ugta/Wutvr/Ailvio
+starts; repeat rewards and mid/final cold restarts. Raw ANSI and clean client
+transcripts are saved with the JSON filename prefix. Evidence records source,
+runner, world and binary hashes. Fixed evil races use their authoritative evil
+racewar side regardless of moral alignment; neutral cases explicitly choose E.
 
-Companion frontend worktree:
-`/home/aiwithapex/projects/durisweb-issue213`, branch
-`branch/issue-213-hometown-parity`, based on clean fetched DurisWeb master
-`7147e6b`. Its primary checkout is untouched. It must carry alignment, reject
-stale response context, block pending hometown skips, clear invalid selections,
-and omit an unspecified hometown instead of serializing the old `-1` sentinel.
-**Coordinate this client change with the server validation PR**: an explicitly
-supplied -1 is deliberately invalid under the locked decision.
+The last racial spell-factor selector correction was built to separate
+`bin/server/dms_racial_final` and `dms_flatfile_racial_final` paths, preserving
+the matrix's original binary hashes across its cold restarts. The
+checked-in configuration has no non-unit racial spell-damage factors, so that
+selector change preserves the matrix's observed behavior. Reuse that journey
+evidence alongside the new non-unit-factor executable regression and both
+incremental full-build logs (`build-racial-factors-{backend}.log`); do not rerun
+the entire matrix for a selector that is numerically neutral in that fixture.
+The canonical `dms_new`/`dms_flatfile` binaries were relinked afterward; both
+final full-build logs are `build-final-{backend}.log`.
 
-The companion is [DurisWeb PR #91](https://github.com/LuminariMUD/DurisWeb/pull/91),
-commit `9eb92e3`, pushed and ready for review. Its handoff and unpublished
-release-news text are in that repository's `docs/ongoing-projects/plan-issue-213.md`.
-107 focused tests, frontend format/lint/type check/build and actual Chromium
-menu/back-navigation checks passed. The browser used this server's complete
-generated authored world and flat-file authority; only unrelated website-shell
-HTTP endpoints were stubbed, with real hometown WebSocket responses. Firbolg's
-three choices and good -> evil -> good Thri-kreen selection invalidation were
-observed. Desktop/phone screenshots under `/tmp/issue213-browser-*.png` were
-inspected; phone label clipping was repaired. The existing Vue Router `next()`
-deprecation warning remains non-blocking. Browser plugin was unavailable, so
-regular Playwright used an already-installed Chromium executable.
+Commands from this worktree (the matching binaries already exist):
 
-Both server binaries now build successfully (`make -C src -j4` and
-`make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=$PWD/bin/server/dms_flatfile`);
-`make world` passed. Generated outputs remain uncommitted. Local browser support
-scripts `/tmp/issue213-browser.py` and `/tmp/issue213-browser-server.py` are not
-the final complete journey runner. The temporary server requires
-`DURIS_WEBSOCKET=TRUE`; the first fixture omitted it and was corrected. Repeated
-synthetic registrations reached the normal throttle; the fixture now reuses
-its own account. No production data or listeners were used.
+```sh
+python3 tests/async/run_issue213_onboarding_journey.py --server bin/server/dms_flatfile --backend flatfile --output bin/qualification/issue213/onboarding-flatfile-final.json
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_issue213_onboarding_journey.py --server bin/server/dms_new --backend mariadb --output bin/qualification/issue213/onboarding-mariadb-final.json
+python3 tests/async/test_issue213_tutorial_combat.py
+python3 tests/async/test_spellcast_racial_multiplier.py
+```
 
-An independent registration defect discovered in that browser QA was fixed in
-[DurisWeb PR #92](https://github.com/LuminariMUD/DurisWeb/pull/92), commit
-`aeeab8a`, based directly on website master. The form now matches the MUD's
-3-14 character letters/underscores account-name rule, rejecting digits and
-overlong names before connecting. Six focused tests, normal frontend gates and
-Chromium in-place rejection checks passed. It is not a dependency of #91.
+For browser reruns supply `--frontend-url http://127.0.0.1:15173`,
+`--frontend-source /home/aiwithapex/projects/durisweb-issue213` and
+`--browser-executable /home/aiwithapex/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome`
+to `run_issue213_browser_journey.py`, with matching server/backend/output; wrap
+the MariaDB leg as above. Recreate the loopback frontend first; the task-owned
+Vite listener on 15173 was stopped after qualification.
+Browser plugin was unavailable, so regular Playwright was used.
 
-Data foundation: [PR #320](https://github.com/LuminariMUD/Duris/pull/320),
-original delivery commit `54e10429f`, with the later parent correction merged
-without rewriting history as `43996e73f`, then corrected for append-only shop IDs
-as `39455b39c`, pushed and ready for review.
-`branch/issue-213-tutorial-copies` is stacked on #315 in the
-same worktree. Master was refreshed again and remains ancestral at `7d3bd3b95`.
-All authored namespaces (including inactive sources) were inventoried before
-allocating the formerly OPEN 912-919 range:
+The full diff's format check, 14 documentation checks, original-file equality,
+authored/generated parity and world-quest controls pass. A final master fetch
+still resolves to `7d3bd3b95`. Task-created obsolete authoring/debug scripts and
+the superseded plan backup were removed; qualification evidence remains ignored.
+Recovery stash `875ba9317` has already been restored; **do not apply it again**.
+Primary unrelated work and unmerged review branches/worktrees remain preserved.
+No schema migration is needed.
 
-- Plane of Chaos uses zone 912, rooms 91200-91206, mobiles 91200-91202 and
-  objects 91200-91209. Mapping: each Plane of Life entity +68400, zone +684.
-- Wutvr uses zone 914 spanning room IDs 91401-91517, mobiles 91401-91505 and
-  objects 91401-91533 (sparse sets match the source). Mapping: each Ailvio
-  entity +62200, zone +622. Quest controller/shop record headers follow their
-  copied mobile IDs; durable shop load indices append after the old catalog.
-  Zones 913 and 916-919 remain OPEN.
-- Nine new authored files, eight appended shops and `areas/AREA` are delivered. The
-  focused fixture `tests/async/test_issue213_tutorial_parity.py` holds the typed
-  mappings, all explicit shared external object IDs and stream room 132575,
-  exact counts and authored/generated equality checks. It remaps room exits
-  (including D8), door keys, zone reset entities/containers/equipment, portal
-  rooms, switch rooms, quest item actions/rewards, and shop stocks/keepers/rooms.
-  Numeric rewards, commands, flags and other fields are unchanged.
-- Copied shops append in the established `areas/shp/end.shp` tail; there is no
-  `areas/shp/wutvr.shp`. Including that file at its AREA position shifted later
-  durable shop IDs, which are used by shop trades and restored shopkeeper items.
-  The parent PR #320 was corrected in `39455b39c` and the working integration
-  restored safely afterward. The fixture requires the eight copied shops to
-  occupy only the final catalog positions. No generator change or migration
-  was needed. Both normal and fallback loaders already place end.shp last.
-- Ailvio's final arch also has an authored fallback to Plane of Life; that
-  cross-stage reference maps to Plane of Chaos in the copy. The final racial
-  departure still needs the copied compiled portal assignment. The stone slab
-  `ITEM_SWITCH` stores its target room in value[1], which is also remapped.
-- One inherited no-op is deliberately omitted from the copy: bank object 6081
-  has no prototype, and original boot disables its reset. The original source
-  repair is isolated in [PR #319](https://github.com/LuminariMUD/Duris/pull/319),
-  commit `15e314e43`, with a focused active-catalog bank reset regression.
-  Original tutorial files are unchanged on this feature branch. The working
-  bank sign, locker and object 3097 remain in both the source and copy.
+Next: review and integrate the listed independent fixes, then the feature stack
+in dependency order, coordinating DurisWeb #91 with authoritative validation.
+No implementation or required local qualification remains open. Keep #213 open
+through review/integration. Any deployment, live-player acceptance or production
+help publication needs its own authorized operational work. Reuse valid local
+proof unless a reviewed change affects its path; no full burn-in or CI wait is
+a gate for this completed implementation request.
 
-This is the **ID/reference foundation**, not completed evil-content acceptance.
-Only area/location names are reskinned so far. Original NPC names/races and
-faction prose are deliberately retained until the next chunk can apply and
-prove the required evil replacements together with their compiled behavior.
-No creation menu exposes the copied tutorials yet. Do not release the data
-alone as a functioning tutorial, or count this stage as the locked themed
-copies being complete.
-
-`make world`, the new authored/generated parity test, area filename-case and
-object-bitvector compatibility checks, and `git diff --check` pass. A disposable
-flat-file boot of the complete generated world succeeds: 353 zones, 17,283
-mobile profiles, 1,755 quest-controller records, game loop reached in 2.818s.
-Boot evidence is `bin/qualification/issue213/copy-boot.log`; generated world,
-lookups and binary outputs are uncommitted. A diff against master verifies all
-ten original authored files are byte-for-byte unchanged. Non-theme field
-equality at this foundation stage does not prove derived parity after future
-NPC race substitutions, or copied special-procedure dispatch.
-
-Next: complete minimal NPC naming/race/faction substitutions with mechanical
-parity, wire copied compiled procedures and creation choices, and implement the
-full terminal/browser/persistence runner. See all original acceptance gates
-below; none are dropped by splitting the reference foundation from integration.
-
-### Content and routing integration chunk
-
-Review chunk: [PR #331](https://github.com/LuminariMUD/Duris/pull/331), commit
-`232b04041`, branch `branch/issue-213-tutorial-routing`, stacked on #320 and
-including independent dependency #328. Current follow-up work is on
-`branch/issue-213-onboarding-acceptance`. The integration diff
-adds appended home IDs 25/26, canonical side-aware eligibility rows, complete
-entry/guild tables and C/W keys; preserves forced racial defaults and evil
-Tiefling's default/departure override while allowing its explicit tutorial
-entries. Existing sized arena/justice/auction arrays zero-initialize new slots;
-mail uses an independent postmaster list; training-dummy bootstrap follows the
-expanded existing eligibility/guild tables. No new unrelated services were added.
-
-Copied procedure assignments now reuse the original guide, signs, stream,
-spell-ups, bandage pair, map/search controllers, pet shops, departure and inns.
-ID-dependent grants/routes use the copied constants. The search controller's
-identity is captured before its object pointer is replaced by the requested
-quest item. Direct Wutvr creation selects item 91519 instead of 29319 through
-the existing owned kit planner/cache readiness path; entering from the first
-stage still grants no second kit. Global world-quest denial for source zone 292
-is mirrored for copied zone 914.
-
-The working authored diff now applies the explicit minimal NPC name/race map
-held in `test_issue213_tutorial_parity.py`, including Grubruk (Burbul) and Zyrrak
-(Chyron), and the Chaos reaver guide. Generic forest-width comparisons, existing
-geography descriptions and the ranger's non-centaur lesson remain unchanged.
-Only the stale universal permission sentence at the old Tharnadia exhibit is
-narrowed to existing residents. Lowercase red ingredient/colour text is kept;
-the named Red and his explicit ask/tell targets become Vraz. Colour replacements
-operate on whole visible words, preserving every original ANSI token in order.
-
-Race substitutions affect 70 copied residents across ten original/new race
-pairs, including Taiz's inconsistent source PH mechanical/Half-Elf visible
-identity. The scoped `tutorial_mobile_mechanics_race()` lookup retains the
-original encounters' stat/HP/combat/innate/resistance/equipment/victim-XP
-profiles, while their visible race fields change. It applies only to the exact
-copied VNUM and expected new race, leaving players and other NPCs unchanged.
-No persistent state, global race table edits or generic clone framework is
-introduced. The existing giant classifier also uses this scoped profile, so
-Centaur-to-Minotaur residents retain their original hitroll and wield/tackle
-rules instead of acquiring giant mechanics from their new visible identity.
-
-Focused executable checks currently pass: `test_creation_hometowns.py`
-(original/new entries and all class entry slots, including Tiefling),
-`test_newbie_kit_plan.py` (36,360 legacy selections plus paired Wutvr plans),
-`test_issue213_tutorial_procs.py` (controlled engine boundaries for gates,
-one-time guide reward, stream/final home, map/search and bandage dispatch),
-`test_world_quest_xp_feedback.py` (both backends, including configured copied
-victim-race XP factors), authored/generated parity, format and diff checks.
-Full MariaDB/flat-file builds passed for this expanded C/C++ chunk, including
-the final shared giant classifier and sign READ dispatch correction.
-
-`run_issue213_tutorial_profiles.py` now compares all 108 real loaded NPC pairs
-with two identical RNG seeds: **216 comparisons, zero differences on each
-backend**. Captured points/stats/specials/NPC fields, size/form, active racial
-innates, resistance and inherited equipment eligibility match. Prototype,
-per-instance serial and shop identities are deliberately excluded. Evidence
-under `bin/qualification/issue213/loaded-profiles-{flatfile,mariadb}.json`
-includes binary, source/config and generated-world hashes. This uses existing
-`randomize(seed)`/`read_mobile_probe()` in a GDB-controlled disposable child;
-no production command or toy tutorial room was added.
-
-The real command journey exposed an inherited training-dummy procedure bug:
-prototype 1255's quest procedure intercepted unrelated map requests. Independent
-[PR #328](https://github.com/LuminariMUD/Duris/pull/328), commit `71a86963b`,
-skips only marked dummy instances during mobile/quest callback dispatch and
-has an ASan/UBSan real-dispatch regression. It is merged here as `6cd922ca3`.
-Map requests now reach Grubruk. Source maps are transient/no-rent, so acceptance
-checks live delivery and their absence from durable ownership; their flags
-remain unchanged. The journey also exposed duplicate LOOK instead of READ
-in both shared sign callbacks. READ now grants the authored armor/bless buffs;
-LOOK/EXAMINE behavior and spell power remain unchanged.
-
-`run_issue213_onboarding_journey.py` currently exercises real Ogre/Firbolg
-terminal creation, both first-stage gates/sign buffs, one guide sword despite
-repeat asks and a mid-tutorial cold restart, second-stage map delivery and
-racial departure. It preserves connection transcripts and saved-state evidence.
-The initial final-home assertion counted a commented-out guild row; the parser
-now strips C comments, with the actual stored Faang room 15295 unchanged.
-The corrected full route passed on **both backends** for both races, with all three
-saved home fields resolving to Faang 15295 and Ugta 39283 respectively. The
-focused procedure harness is not a substitute for
-these journeys. Full gameplay acceptance is still outstanding.
-Keep later PRs stacked so menus cannot ship before their data and procs.
-Expanded service/quest, XP death/recovery, complete browser and final home
-restart acceptance remain outstanding; issue #213 stays open until those gates
-pass. The SQL test authority has exercised the maintained help importer against
-its own disposable database. Production help publication is outside this task.
-
-Acceptance follow-up in progress: the expanded terminal runner has passed
-guide gates/reward counts for Ogre, Firbolg, Goblin Sorcerer, evil Thri-kreen,
-evil Minotaur, evil Tiefling and a Human original-tutorial control. Direct
-Faang/Ugta and Wutvr/Ailvio creation/reload also passed, including the correct
-direct-start invitation. Ogre/Firbolg protected deaths before the lesson and
-wielding the guide sword passed. Service, level-29/30 and final restart legs
-are still being developed; `--case Ogreryder` narrows iteration without repeating
-the already-qualified roster setup. The full unfiltered runs on both backends
-remain required. Search reward delivery correctly used the existing ground
-fallback when the test had removed all equipped kit; the runner now re-equips
-the kit and collects the potion instead of changing carry limits or rewards.
-
-A real Chromium run completed evil Thri-kreen creation and Chaos -> Wutvr ->
-racial departure, rejected opposite-side/string/negative/boolean hometowns
-before any new player snapshot, and rendered the complete uppercase crossing
-warning with computed font weight 700. Firbolg/neutral menu refresh and 390px
-layout checks passed. The first gameplay run's map errors came from this test's
-unrelated HTTP fixture returning `{data: []}` to a direct `{nodes, edges}` API;
-the fixture is corrected. The self-contained
-`run_issue213_browser_journey.py` passed the full flow on **both backends**, with
-only the inherited Vue Router deprecation warning. It verifies the three saved
-racial-home fields and confirms forged requests allocate no player snapshot/SQL
-row. Core creation, room traffic and warning responses always came from the real
-disposable MUD. Evidence is `bin/qualification/issue213/browser-{backend}.json`,
-including binary/world/frontend commit IDs and computed warning styles. The
-remaining original completion gates below are still outstanding.
-
-The real protected-death/resurrection probe found zero-loss corpses fabricated
-one XP (12,345 -> 12,346 at level 29) and emitted a false memory-error warning.
-Independent [PR #332](https://github.com/LuminariMUD/Duris/pull/332), commit
-`909891027`, skips only a zero-loss refund block, retaining all nonzero refund
-rules. It is merged into acceptance as `e31d5141f`. The focused ASan/UBSan
-production-block regression and both incremental full builds passed. Actual
-post-fix protected resurrection now leaves XP unchanged; expanded level-29/30
-and service journeys are still in progress. Existing NPC-profile proof remains
-valid: this repair changes only resurrection refund dispatch, not loaded NPC
-profiles, content, creation eligibility or tutorial services.
 
 ## Outcome and locked scope
 
@@ -503,8 +386,8 @@ and live first-hour outcomes were not reproduced. No such balance survey is
 needed now that the owner explicitly retained those mobs. Repository
 [`price.home.plat`](../../lib/duris.properties#L2478) is 500 and
 [`do_home()`](../../src/cmd/actnew.c#L4078) uses it; this is not a reading of
-production configuration. No live server, loaded world, or gameplay journey was
-used to validate this plan.
+production configuration. The October 19 planning inventory used no live server,
+loaded world or gameplay journey; implementation qualification is recorded above.
 
 ## Implementation sequence, files, and proof
 
@@ -761,7 +644,7 @@ git diff --check
 Add focused executable death/notification and creation/proc coverage plus
 `tests/async/test_issue213_tutorial_parity.py` and
 `tests/async/run_issue213_onboarding_journey.py` only for behavior not covered by
-those controls. These are proposed tests, not existing passing checks. The
+those controls. These tests are now implemented and passing as recorded above. The
 parity test must cover authored and generated output; the journey runner must
 accept an explicit server path and backend, reuse existing disposable backend
 support, and retain source/binary/world IDs and observed results under `bin/`.
@@ -799,7 +682,7 @@ IDs during rollback while characters still persist there. Any operational
 rollback must first account for those characters using existing relocation
 procedures and owner-authorized production handling.
 
-Content mapping, server/client integration, review and focused gameplay
-qualification remain in progress. The current handoff above records completed
-chunks and remaining proof; no elapsed delivery schedule or production
-acceptance is implied. Deployment is outside this implementation request.
+Content mapping, server/client implementation and required local qualification
+are complete. The current handoff records observed proof and the review-ready
+stack. Review, coordinated integration and any separately authorized production
+release remain; no production acceptance is implied.
