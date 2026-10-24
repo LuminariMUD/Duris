@@ -42,7 +42,11 @@ was run during planning.
 
 ## Current continuation — shutdown operator flow
 
-Branch `branch/issue-264-shutdown-operator-flow`, based on PR #341 at `9ff8251dc`.
+Review-ready [PR #343](https://github.com/LuminariMUD/Duris/pull/343), implementation
+`ed8cf5527` plus permission correction `b20372b9f`, proof record `e8fc3597a`.
+Branch `branch/issue-264-shutdown-operator-flow`, based on PR #341 at `9ff8251dc`;
+committed/pushed. This is the current continuation; older sections retain historical
+chunk evidence and next-step notes.
 Source findings: invalid/underlevel pwipe requests cancel existing timers before
 validation; issuer-disconnect cancellation is commented out despite help text;
 new requests leave old timer events queued, and terminal execution leaves its type
