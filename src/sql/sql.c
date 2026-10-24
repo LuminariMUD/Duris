@@ -66,6 +66,7 @@
 #include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
 #include "economy/boon.h"
+#include "economy/divine_boon_repository.h"
 #include "world/epic.h"
 #include "world/epic_zone_defaults.h"
 #include "flatfile/flatfile_player_domain_repository.h"
@@ -3909,6 +3910,7 @@ bool sql_verify_pwipe_manifest(void)
 					      "auction_money_pickups",
 					      "auctions",
 					      "boons",
+					      "divine_boon_state",
 					      "boons_progress",
 					      "boons_shop",
 					      "corpse_item_affects",
@@ -4061,6 +4063,9 @@ bool sql_verify_pwipe_manifest(void)
 		{ "combat_frag_baseline", "opening_frags" },
 		{ "combat_frag_baseline", "opening_revision" },
 		{ "player_data", "learned_flight_stops" },
+		{ "divine_boon_state", "state_id" },
+		{ "divine_boon_state", "revision" },
+		{ "divine_boon_state", "snapshot" },
 		{ "account_bound_rewards", "id" },
 		{ "account_bound_rewards", "expires_at" },
 		{ "account_bound_rewards", "remaining_pwipes" },
@@ -4152,7 +4157,20 @@ bool sql_verify_pwipe_manifest(void)
 	row = mysql_fetch_row(result);
 	bool columns_ok = row && row[0] && atoi(row[0]) == expected_columns;
 	mysql_free_result(result);
-	return columns_ok;
+	if (!columns_ok)
+		return false;
+	divine_boon_state boons;
+	const auto loaded = divine_boon_sql_load(DB, &boons);
+	if (loaded == divine_boon_store_result::not_found)
+		return true;
+	if (loaded != divine_boon_store_result::ok ||
+	    !divine_boon_reset_season(&boons, time(nullptr)))
+	{
+		logit(LOG_STATUS,
+		      "sql_pwipe: Divine Boon state cannot be safely retired; preflight aborted.");
+		return false;
+	}
+	return true;
 }
 
 /* Season-reset preflight: verify persistence event schema and auction engines.
@@ -4236,8 +4254,8 @@ bool sql_pwipe(int code_verify)
 		if (!sql_verify_pwipe_manifest())
 		{
 			logit(LOG_DEBUG,
-			      "sql_pwipe: Preflight failed: reset manifest schema incomplete.");
-			send_to_all("Preflight FAILED: reset manifest schema incomplete!\n");
+			      "sql_pwipe: Preflight failed: reset manifest schema or state incomplete.");
+			send_to_all("Preflight FAILED: reset manifest prerequisites incomplete!\n");
 			return FALSE;
 		}
 		/* Verify auction tables are InnoDB (transactional) before reset. */
@@ -4407,6 +4425,14 @@ bool sql_pwipe(int code_verify)
 		{
 			logit(LOG_DEBUG, "        failure!");
 			send_to_all("        failure!\n");
+			return FALSE;
+		}
+		const auto retired_boons = divine_boon_sql_reset_season(DB, time(nullptr));
+		if (retired_boons != divine_boon_store_result::ok &&
+		    retired_boons != divine_boon_store_result::already_applied)
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Divine Boon retirement failed; reset remains fenced.");
 			return FALSE;
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing ctf data... .. .");

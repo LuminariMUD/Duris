@@ -82,6 +82,9 @@ bool divine_boon_state_valid(const divine_boon_state &state);
 // False preserves the input. The runtime owns target safety/access validation.
 bool divine_boon_set_mode(divine_boon_state *state, divine_boon_mode mode, int64_t now);
 bool divine_boon_reconcile(divine_boon_state *state, int64_t now);
+// Retire seasonal objectives/preferences without reusing IDs or erasing staff history.
+// True includes an already-cleared state.
+bool divine_boon_reset_season(divine_boon_state *state, int64_t now);
 bool divine_boon_set_paused(divine_boon_state *state, bool paused, int64_t now);
 bool divine_boon_replace(divine_boon_state *state, size_t slot, int64_t now);
 // A null choice durably consumes an empty opportunity. Choice identity/times
