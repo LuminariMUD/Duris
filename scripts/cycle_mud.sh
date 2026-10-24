@@ -31,6 +31,7 @@ DEV_MODE=0
 MINIMAL_MODE=0
 PRODUCTION_MODE=0
 CONFIG_CHECK_ONLY=0
+PWIPE_RESUME_EPOCH=
 while (( $# > 0 )); do
   case "$1" in
     --dev)
@@ -43,20 +44,29 @@ while (( $# > 0 )); do
     --production)
       PRODUCTION_MODE=1
       ;;
+    --resume-pwipe)
+      PWIPE_RESUME_EPOCH="${2:-}"
+      if ! [[ "$PWIPE_RESUME_EPOCH" =~ ^[1-9][0-9]{0,19}$ ]]; then
+        echo "--resume-pwipe requires the expected reset epoch" >&2
+        exit 2
+      fi
+      shift
+      ;;
     --check-config)
       CONFIG_CHECK_ONLY=1
       ;;
     --help|-h)
-      echo "Usage: $0 [--dev] [--minimal] [--production] [--check-config]"
+      echo "Usage: $0 [--dev] [--minimal] [--production] [--check-config] [--resume-pwipe EPOCH]"
       echo "  --production  Require ENVIRONMENT=production and use the production port role"
       echo "                (DURIS_PRODUCTION_PORT, default 7777)."
       echo "  --minimal  Use the tracked areas_mini dataset (implies --dev)."
+      echo "  --resume-pwipe EPOCH  Finish a SQL-ready reset, then stop without booting."
       echo "  --check-config  Validate persistence configuration without starting the game."
       exit 0
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: $0 [--dev] [--minimal] [--production] [--check-config]" >&2
+      echo "Usage: $0 [--dev] [--minimal] [--production] [--check-config] [--resume-pwipe EPOCH]" >&2
       exit 2
       ;;
   esac
@@ -234,7 +244,46 @@ if (( CONFIG_CHECK_ONLY == 1 )); then
   exit 0
 fi
 
-while [[ $RESULT != 0 && $RESULT != 55 ]]; do
+# The existing season singleton is the handoff receipt: resetting + a completion
+# timestamp means SQL/Redis/rewards finished, but files and activation are pending.
+# Serialize cleanup/resume, then bind every read and final update to the same epoch.
+finish_pwipe() (
+  local expected_epoch="$1" state updated
+  (( DATABASE_REQUIRED == 1 )) || { echo "Pwipe requires MariaDB" >&2; exit 58; }
+  exec 9>"$SERVER_BIN_DIR/.pwipe.lock" || exit 58
+  flock -n 9 || { echo "Another filesystem reset is in progress" >&2; exit 58; }
+  state=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
+    "SELECT CONCAT(reset_status, ':', reset_completed_at IS NOT NULL)
+     FROM season_reset_state WHERE state_id=1 AND season_epoch=$expected_epoch;") || exit 58
+  if [[ "$state" == active:1 ]]; then
+    echo "Pwipe epoch $expected_epoch was already completed; no files changed."
+    exit 0
+  fi
+  if [[ "$state" != resetting:1 ]]; then
+    echo "Reset epoch $expected_epoch is not SQL-ready; refusing filesystem cleanup" >&2
+    exit 58
+  fi
+  if [[ ! -x ./Players/wipers/wipe_it_all ]] || ! ./Players/wipers/wipe_it_all; then
+    echo "Filesystem wipe failed; season remains fenced. Resume epoch $expected_epoch after repair." >&2
+    exit 58
+  fi
+  updated=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
+    "UPDATE season_reset_state SET reset_status='active', reset_completed_at=UTC_TIMESTAMP(6)
+     WHERE state_id=1 AND season_epoch=$expected_epoch AND reset_status='resetting'
+       AND reset_completed_at IS NOT NULL; SELECT ROW_COUNT();") || exit 58
+  if [[ "$updated" != 1 ]]; then
+    echo "Season activation was not acknowledged; verify epoch $expected_epoch before resuming" >&2
+    exit 58
+  fi
+  echo "Wiped! Season epoch $expected_epoch is ready for an explicit start."
+)
+
+if [[ -n "$PWIPE_RESUME_EPOCH" ]]; then
+  finish_pwipe "$PWIPE_RESUME_EPOCH" || exit 58
+  exit 55
+fi
+
+while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
 	DATESTR=$(date +%C%y.%m.%d-%H.%M.%S)
 
   # A staged binary built for another backend or profile is left where it is and
@@ -387,6 +436,15 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
 	fi
 
   # Record boot time (will be used for shutdown record later)
+  if (( DATABASE_REQUIRED == 1 )); then
+    BOOT_SEASON_EPOCH=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
+      "SELECT season_epoch FROM season_reset_state WHERE state_id=1 AND reset_status='active';") || exit 1
+    if ! [[ "$BOOT_SEASON_EPOCH" =~ ^[1-9][0-9]{0,19}$ ]]; then
+      echo "Incomplete season reset; refusing restart. Inspect season_reset_state for recovery." >&2
+      exit 58
+    fi
+  fi
+
   BOOT_TIME=$(date +%s)
 
   echo "Starting duris on port ${MUD_PORT}..."
@@ -417,6 +475,7 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
 		53) STOP_REASON="copyover reboot";;
 		54) STOP_REASON="auto reboot";;
 		55) STOP_REASON="pwipe shutdown";;
+		58) STOP_REASON="incomplete pwipe; operator recovery required";;
 		56) STOP_REASON="mud hung reboot";;
 		57) STOP_REASON="auto reboot with copyover";;
 		*)
@@ -454,7 +513,7 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
       52) DB_SHUTDOWN_TYPE="reboot";;
       53) DB_SHUTDOWN_TYPE="copyover";;
       54) DB_SHUTDOWN_TYPE="autoreboot";;
-      55) DB_SHUTDOWN_TYPE="pwipe";;
+      55|58) DB_SHUTDOWN_TYPE="pwipe";;
       56) DB_SHUTDOWN_TYPE="hung";;
       57) DB_SHUTDOWN_TYPE="autoreboot_copyover";;
       139) DB_SHUTDOWN_TYPE="crash";;
@@ -488,25 +547,34 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     break
   fi
 
+  if [[ "$RESULT" == 55 || "$RESULT" == 58 ]]; then
+    break
+  fi
+
   echo "Sleeping 10 seconds to prevent coreflood..."
   sleep 10
 done
 
-if [ "$RESULT" == 55 ]; then
-  echo "Wiping player data..."
-  if [ ! -x "./Players/wipers/wipe_it_all" ]; then
-    echo "ERROR: required filesystem wipe artifact is missing or not executable" >&2
-    exit 1
-  fi
-  if ! ./Players/wipers/wipe_it_all; then
-    echo "ERROR: filesystem wipe failed; refusing to report pwipe success" >&2
-    exit 1
-  fi
-  echo "Wiped!"
+if [[ "$RESULT" == 55 ]]; then
+  (( DATABASE_REQUIRED == 1 )) || exit 58
+  RESET_EPOCH=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
+    "SELECT season_epoch FROM season_reset_state WHERE state_id=1
+     AND season_epoch=$BOOT_SEASON_EPOCH + 1 AND reset_status='resetting'
+     AND reset_completed_at IS NOT NULL;") || exit 58
+  [[ "$RESET_EPOCH" =~ ^[1-9][0-9]{0,19}$ ]] || {
+    echo "Server exit 55 has no matching SQL-ready reset; refusing filesystem cleanup" >&2
+    exit 58
+  }
+  finish_pwipe "$RESET_EPOCH" || exit 58
 fi
 
 if [ -f /usr/bin/sendemail ]; then
 	/usr/bin/sendEmail -t alert@durismud.com \
 		-f mud@durismud.com -u "Duris Shutdown..." \
 		-m "Mud shutdown at ${DATESTR}, shutdown reason: ${STOP_REASON} [${RESULT}]."
+fi
+
+# Preserve intentional/fenced stop statuses through optional notification commands.
+if [[ "$RESULT" == 55 || "$RESULT" == 58 ]]; then
+  exit "$RESULT"
 fi
