@@ -245,6 +245,16 @@ and retains the incomplete-reset fence. Old summon links are cleared every reset
 independently of the 28-day grant-decrement policy. Staff login/gameplay and selected replay paths are qualified locally; the remaining
 store/writer inventory and final reconciliation stay in issue #264.
 
+Eligible Overlords are selected from active durable character/account ownership,
+independent of whether the account-character projection has already been repaired
+by login. Explicit deletion tombstones still exclude recreation, as in ordinary
+projection repair, and an unregistered durable owner cannot receive a new body.
+Missing, stale-name or wrong-account projections are rebuilt for the new PID under
+the canonical owner in the same roster transaction. Birth and last-save timestamps
+both start at recreation time; first login cannot interpret the body as saved at
+Unix epoch zero and add decades of offline age. Committed roster recovery remains
+idempotent and does not allocate another body.
+
 Ordinary `item_current_owner`, `item_owner_revision` and
 `item_ownership_baseline` records remain protected bookkeeping. They carry typed
 identities, revisions and provenance, not serialized objects. The actual player

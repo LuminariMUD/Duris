@@ -5119,18 +5119,19 @@ bool sql_pwipe(int code_verify)
 			my_ulonglong checkpoint_rows = 0;
 			const bool roster_ok =
 				qry("CREATE TEMPORARY TABLE pwipe_overlords AS "
-				    "SELECT p.name,a.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
-				    "FROM player_data p JOIN account_characters a ON a.pid=p.pid AND a.char_name=p.name "
-				    "JOIN accounts account ON account.account_name=a.account_name "
-				    "WHERE p.active=1 AND p.level=%d AND a.deleted_at IS NULL",
+				    "SELECT p.name,account.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
+				    "FROM player_data p JOIN accounts account ON account.account_name=p.account_name "
+				    "WHERE p.active=1 AND p.level=%d AND NOT EXISTS ("
+				    "SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
+				    "AND (tombstone.pid=p.pid OR LOWER(tombstone.char_name)=LOWER(p.name)))",
 				    OVERLORD) &&
 				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
 				qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
 				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,birthplace,orig_birthplace,"
-				    "height,weight,level,highest_level,birth_time,base_str,base_dex,base_agi,base_con,base_pow,"
+				    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
 				    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
 				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,height,weight,"
-				    "%d,%d,UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
+				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
 				    "FROM pwipe_overlords",
 				    OVERLORD, OVERLORD) &&
 				qry("INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
@@ -5139,9 +5140,11 @@ bool sql_pwipe(int code_verify)
 				    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
 				qry("INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
 				    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
-				qry("UPDATE account_characters a JOIN player_data p ON p.name=a.char_name "
-				    "SET a.pid=p.pid,a.deleted_at=NULL,a.racewar=%d,a.login_count=0,a.last_login=NULL, "
-				    "a.created_at=UTC_TIMESTAMP(),a.last_ip=NULL WHERE p.active=1 AND p.level=%d",
+				qry("INSERT INTO account_characters(account_name,pid,char_name,racewar,login_count,last_login,created_at,last_ip,deleted_at) "
+				    "SELECT o.account_name,p.pid,p.name,%d,0,NULL,UTC_TIMESTAMP(),NULL,NULL "
+				    "FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1 AND p.level=%d "
+				    "ON DUPLICATE KEY UPDATE account_name=VALUES(account_name),pid=VALUES(pid),deleted_at=NULL,"
+				    "racewar=VALUES(racewar),login_count=0,last_login=NULL,created_at=VALUES(created_at),last_ip=NULL",
 				    ACCT_IMMORTAL, OVERLORD) &&
 				sql_connection_execute_affected(DB, roster_checkpoint,
 								&checkpoint_rows) &&

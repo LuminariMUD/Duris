@@ -40,6 +40,41 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — complete Overlord recreation ownership/timestamps
+
+Branch `branch/issue-264-overlord-projection-repair`, based on PR #362 at `aac96fd54`.
+Resolve both #313 review findings. Snapshot eligible active exact-62 bodies through
+durable player/account ownership, with the same explicit deletion-tombstone guard
+as normal projection repair. Recreate clean bodies and upsert their canonical
+account mappings even when the old projection was missing/stale/wrong-account;
+retain deletion intent and refuse orphan accounts. Initialize last_save with the
+new birth time, so first load does not age the body from Unix epoch zero. Files:
+existing SQL roster transaction/native loader tests and runbook/plan. Proof: old
+loader's zero-save baseline, both SQL engines with mapping edge cases, actual
+player-load saved time, no duplicate roster on recovery and maintained builds.
+No new schema, owner policy, projection service or old-body asset carryover.
+
+The old native SQL/actual-loader baseline fails because a recreated Overlord loads
+last_save=0. The repaired roster uses durable player ownership joined to registered
+accounts, applies the ordinary projection repair's explicit tombstone guard, and
+upserts fresh canonical mappings. Both MariaDB 10.11.19 / MySQL 8.0.46 full matrices
+pass missing/stale/
+wrong-owner cases, tombstone and orphan exclusion, new PIDs, exact clock defaults,
+actual loaded save time and SQL-ready recovery without another roster. All three
+incremental builds and 13 reset-manifest checks / SQL completion contracts pass.
+New optimized binary SHA-256:
+`de2aa15f93bc9afe9e50d74888439d5b3bc5f1714d588ede1a6135effaf1a7c4`.
+Logs: `bin/analysis/pwipe-overlord-projection-{baseline,mariadb,mysql}.log` and
+`pwipe-overlord-build-{mariadb,flatfile,production}.log`. Final engine runs pass;
+all owned SQL/Redis/filesystem resources exit cleanly. Native loader/timestamp plus account mapping assertions directly cover
+this change; prior full gameplay/website/service evidence is reused. Remaining
+qualifier/restore review fixes and final branch reconciliation stay open.
+Companion review audit also found two test-probe issues on DurisWeb #97: the listed
+loopback principal regex is overescaped, and event receipt precedes durable outbox
+acknowledgment. Repair those focused fixture issues with proportional backend checks;
+prior successful runtime evidence covers wildcard-root and the observed fast-ACK
+case, not a guarantee for these two paths.
+
 ## Current continuation — recovery path preflight guards
 
 Review-ready [PR #362](https://github.com/LuminariMUD/Duris/pull/362), fix/fixture

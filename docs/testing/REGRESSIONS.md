@@ -193,6 +193,13 @@ their subsystem, runtime exclusion or full command journeys. The MySQL variant i
 `TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh python3 tests/async/run_pwipe_writer_mysql.py`.
 Both MariaDB 10.11.19 and MySQL 8.0.46 pass success/timeout/error.
 
+The native journey also verifies the real loader sees a positive save timestamp
+for every recreated Overlord, initialized with birth time. A failing baseline loaded
+zero. Later cases recreate active level-62 bodies with missing, stale-name and
+wrong-account mappings through durable ownership, repair canonical new-PID links,
+exclude explicit deletion tombstones/unregistered owners, and keep the same roster
+and clocks on recovery. No old assets or progression are copied.
+
 The same native SQL journey now seeds levels 56, 61, 62 and 63. Only the exact
 62 is recreated, under its account/name with a higher PID, clean currency and
 progression, and new opening baselines. Retired names permit new characters. A
