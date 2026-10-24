@@ -190,6 +190,13 @@ in one explicitly requested step. Installation does not create credentials, chan
 `.env`, run legacy migrations, or promote a database. A failed production preflight is
 a deployment blocker, not a reason to weaken the unit or reuse development secrets.
 
+For the supervised wipe, drain accepted external work, stop external writers and
+the normal service, and keep competing launchers stopped. Run the existing
+launcher as the game user and issue the confirmed pwipe command. Keep services
+stopped through any same-epoch recovery. Only after durable completion, explicitly
+start the normal service and perform the integration cutover below. Never run
+checkout qualification scripts as root or through sudo.
+
 Do not use `pwipe` for ordinary restarts. The full supported reset is still under
 qualification in issue #264; this handoff repair alone is not wipe readiness.
 

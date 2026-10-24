@@ -153,7 +153,7 @@ item. The stopped old Redis payload is hashed and left in place while a new proc
 runs the real countdown/reset with Redis disabled. Epoch-2 re-enable must ignore
 that floor marker and old namespace, publish new presence, and pass fresh combat/
 save/reconnect/second-boot recovery. Old payload bytes and unrelated keys remain.
-This option uses the direct launcher and excludes restore/systemd/flat-file modes.
+This option uses the direct launcher and excludes restore/flat-file modes.
 
 `python3 tests/async/test_shutdown_broadcast.py` executes the actual command,
 countdown, broadcast and shutdown-info writer with an isolated descriptor/event
@@ -315,16 +315,11 @@ repository revisions/diffs and binary hash. No cloud provider, real data/setting
 production service or frontend release is used. Run the companion's separate
 PrivateTmp keeper and mount/alias native cases for the pre-stop preservation gate.
 
-The existing real countdown journey supports `--redis --systemd` with an absolute
-MariaDB production-profile binary path. Run this variant as root in the disposable
-qualification environment; it creates its own DB, Redis process/namespace, runtime
-and uniquely named `duris-pwipe-qualification-*` system units. The service keeps all
-production-template sandbox/restart settings, runs unprivileged, and substitutes
-`--minimal` with local test configuration. A private active After target retains
-successful exit statistics without starting or restarting the service. The journey
-checks actual unit state, exit 58/55 without restart, scoped Redis cleanup, unrelated
-key preservation, new-epoch presence, staff access and fresh gameplay/save/reconnect/
-second boot. Results go to `bin/analysis/pwipe-runtime-mariadb-redis-systemd.json`.
+Run the direct-launcher qualifier as an ordinary user, never through sudo.
+The root-required systemd mode has been removed. Historical systemd exit-55/58
+results cover the unchanged service restart policy; this qualifier does not
+create units or install privileged helpers. The supported wipe procedure uses
+supervised downtime and explicit service stop/start.
 
 The roster checkpoint migration is guarded and re-runnable on both database
 families. Legacy NULL values and committed markers survive migration replay;
