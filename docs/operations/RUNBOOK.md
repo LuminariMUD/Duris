@@ -218,6 +218,13 @@ Kingdom realms, purchased garrisons and legacy land ownership reset with guilds,
 even if the optional kingdom feature is disabled. Association IDs can be reused;
 retaining their old world rows would give a new guild the prior season's holdings.
 
+Active Divine Boon objectives and their repeat-selection preferences retire at wipe.
+The same versioned authority keeps its increasing boon-ID counter, bounded staff
+history and pause/mode configuration. New-season objectives cannot reuse an old
+cargo allowance's boon ID. Snapshot validation precedes the irreversible boundary;
+a failed durable retirement leaves the reset fenced. Protected cargo receipts/books
+are retained; their recovery isolation is qualified separately.
+
 Reward policy uses the durable reset start time and validates the current resetting
 epoch. Grant changes and their policy timestamp commit together, so retrying an
 unfinished reset cannot decrement grants again, even months later or after a lost

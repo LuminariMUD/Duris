@@ -60,6 +60,9 @@ def run():
     rewards = rewards_source[rewards_source.index("bool account_bound_rewards_on_successful_pwipe(void)"):
                              rewards_source.index("\n#ifndef __NO_MYSQL__\nstatic void dissolve_reward_containers")]
     native.write_text('''#include <mysql/mysql.h>
+#include "economy/divine_boon_repository.h"
+#include <algorithm>
+#include <ctime>
 #include <spawn.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -125,6 +128,37 @@ bool sql_commit() { return qry("COMMIT") && !getenv("PWIPE_TEST_LOST_REWARD_ACK"
 bool account_reward_config_preserve_on_pwipe() { return !getenv("PWIPE_TEST_DELETE_REWARDS"); }
 ''' + rewards + source[source.index("bool sql_verify_pwipe_manifest(void)"):
                             source.index("void sql_log_player_login", source.rindex("bool sql_pwipe(int code_verify)"))] + '''
+bool seed_boons() {
+    divine_boon_state state;
+    const int64_t now = time(nullptr) / DIVINE_BOON_HOUR * DIVINE_BOON_HOUR;
+    state.mode = divine_boon_mode::divine; state.paused = true;
+    state.next_id = 3; state.last_opportunity = now;
+    state.slots[0].id = 1; state.slots[0].category = divine_boon_category::experience;
+    state.slots[0].starts_at = now - DIVINE_BOON_HOUR;
+    state.slots[0].expires_at = state.slots[0].starts_at + divine_boon_duration(state.slots[0].category);
+    state.slots[0].zones = {900, 901};
+    state.slots[1].id = 2; state.slots[1].category = divine_boon_category::cargo;
+    state.slots[1].starts_at = now;
+    state.slots[1].expires_at = now + divine_boon_duration(state.slots[1].category);
+    state.slots[1].source_port = 0; state.slots[1].destination_port = 1;
+    state.slots[1].cargo_commodity = 0; state.slots[1].contraband_commodity = 0;
+    state.history.push_back({599, 0, now - DIVINE_BOON_HOUR});
+    return qry("DELETE FROM divine_boon_state") &&
+           divine_boon_sql_save(DB, 0, state) == divine_boon_store_result::ok;
+}
+bool check_boons() {
+    divine_boon_state state;
+    if (divine_boon_sql_load(DB, &state) != divine_boon_store_result::ok ||
+        state.next_id != 3 || !state.paused || state.history.size() || state.recent.size() != 2 ||
+        !std::all_of(state.slots.begin(), state.slots.end(), [](const auto &slot) { return !slot.id; })) return false;
+    const auto retired = state;
+    if (divine_boon_sql_reset_season(DB, time(nullptr)) != divine_boon_store_result::already_applied ||
+        divine_boon_sql_load(DB, &state) != divine_boon_store_result::ok || state != retired) return false;
+    divine_boon_slot choice; choice.category = divine_boon_category::experience; choice.zones = {900, 901};
+    return divine_boon_set_paused(&state, false, state.last_opportunity) &&
+           divine_boon_rotate(&state, state.last_opportunity + DIVINE_BOON_HOUR, &choice) &&
+           state.slots[0].id == 3;
+}
 int main(int argc, char **argv) {
     if (argc != 3) return 2;
     signal(SIGCHLD, reap);
@@ -133,7 +167,11 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
-    bool ok = !strcmp(argv[1], "begin") ? sql_begin_pwipe_epoch() :
+    bool ok = !strcmp(argv[1], "seed-boons") ? seed_boons() :
+              !strcmp(argv[1], "check-boons") ? check_boons() :
+              !strcmp(argv[1], "end-boons") ?
+                  divine_boon_sql_reset_season(DB, time(nullptr)) == divine_boon_store_result::ok :
+              !strcmp(argv[1], "begin") ? sql_begin_pwipe_epoch() :
               !strcmp(argv[1], "ready") ? sql_prepare_pwipe_filesystem() :
               !strcmp(argv[1], "wipe") ? sql_pwipe(1723699) :
               !strcmp(argv[1], "rewards") ? account_bound_rewards_on_successful_pwipe() : sql_load_active_season_state();
@@ -142,13 +180,15 @@ int main(int argc, char **argv) {
 }
 ''')
     binary = native.with_suffix("")
-    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", str(native),
-                    "-lmysqlclient", "-Wl,--wrap=posix_spawn", "-o", str(binary)], check=True)
+    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections", "-Isrc",
+                    str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
+                    "-lmysqlclient", "-lcrypto", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
 
     def epoch_call(command, epoch, expected_code, cwd=None):
         result = subprocess.run([str(binary), command, str(epoch)], env=env, cwd=cwd,
                                 capture_output=True, text=True)
         assert result.returncode == expected_code, (command, epoch, result.returncode, result.stderr)
+        return result
 
     epoch_call("active", 1, 0)
     epoch_call("begin", 1, 0)
@@ -199,12 +239,22 @@ int main(int argc, char **argv) {
             "VALUES(777,3,900,80,9999)")
         sql("INSERT INTO kingdom_garrison(assoc_id,slot,guard_class,level) VALUES(777,0,1,50)")
         sql("INSERT INTO kingdom_land(kingdom_id,start_vnum,end_vnum) VALUES(777,900,980)")
+        epoch_call("seed-boons", 1, 0)
+        boon_bytes = sql("SELECT HEX(snapshot) FROM divine_boon_state WHERE state_id=1")
+        sql("UPDATE divine_boon_state SET snapshot=0x00 WHERE state_id=1")
+        refusal = epoch_call("wipe", 1, 1, cwd=root)
+        assert "Divine Boon state cannot be safely retired" in refusal.stderr
+        assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
+        sql("UPDATE divine_boon_state SET snapshot=UNHEX('" + boon_bytes + "') WHERE state_id=1")
         epoch_call("wipe", 1, 0, cwd=root)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
         assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "2"
+        epoch_call("check-boons", 2, 0)
+        print("Divine reset: no old objectives/repeat preferences, IDs/audit/pause retained, retry idempotent and next ID fresh", flush=True)
+
         for table in ("kingdom_garrison", "kingdom_land", "kingdom_realms"):
             assert sql("SELECT COUNT(*) FROM " + table) == "0", table
         sql("INSERT INTO associations(id,name) VALUES(777,'new guild')")
@@ -342,6 +392,20 @@ int main(int argc, char **argv) {
         assert sql("SELECT COUNT(*) FROM account_bound_rewards") == "0"
         del env["PWIPE_TEST_NOW"]
         print("Real reward hook: permanent/finite/expiry, wrong epoch, delayed retry, distinct reset guard, rollback/lost ACK and preserve=false passed", flush=True)
+        epoch_call("seed-boons", 23, 0)
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        sql("CREATE TRIGGER fixture_boon_failure BEFORE UPDATE ON divine_boon_state "
+            "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture write failure'")
+        try:
+            epoch_call("wipe", 23, 1, cwd=root)
+        finally:
+            sql("DROP TRIGGER fixture_boon_failure")
+        assert sql("SELECT CONCAT(reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "resetting:1"
+        assert sql("SELECT revision FROM divine_boon_state WHERE state_id=1") == "1"
+        epoch_call("end-boons", 24, 0)
+        epoch_call("check-boons", 24, 0)
+        print("Failed Divine update fenced the reset; repaired retirement completed once", flush=True)
+
 
 
 

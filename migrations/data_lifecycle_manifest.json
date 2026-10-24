@@ -145,7 +145,7 @@
         "excluded_fields": [],
         "shared_fields": []
       },
-      "season_action": "retain",
+      "season_action": "reset_update",
       "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
       "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
       "terminal_action": "retain",

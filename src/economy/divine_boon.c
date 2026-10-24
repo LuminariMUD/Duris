@@ -269,6 +269,26 @@ bool divine_boon_reconcile(divine_boon_state *state, int64_t now)
 	return publish(state, std::move(next));
 }
 
+bool divine_boon_reset_season(divine_boon_state *state, int64_t now)
+{
+	if (!state || !valid_time(now) || !divine_boon_state_valid(*state))
+		return false;
+	auto next = *state;
+	expire(next, now);
+	for (auto &slot : next.slots)
+	{
+		if (!slot.id)
+			continue;
+		if (slot.starts_at > now)
+			return false;
+		remember(next, slot, now);
+		slot = {};
+	}
+	next.history.clear();
+	next.last_opportunity = std::max(next.last_opportunity, hour(now));
+	return next == *state || publish(state, std::move(next));
+}
+
 bool divine_boon_set_paused(divine_boon_state *state, bool paused, int64_t now)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state) ||
