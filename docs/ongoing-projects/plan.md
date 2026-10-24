@@ -42,9 +42,11 @@ was run during planning.
 
 ## Current continuation — combined website runtime cutover
 
-Server branch `branch/issue-264-website-runtime-journey`, based on PR #345 plus
-handoff `ea36b04fd`. Companion branch of the same name, based on PR #96 at
-`0add858`. Outcome: extend the existing private real command/launcher journey with
+Review-ready server [PR #347](https://github.com/LuminariMUD/Duris/pull/347),
+proof/selector record `c6ec0cf00`, branch `branch/issue-264-website-runtime-journey`,
+based on PR #345 plus handoff `ea36b04fd`. Review-ready companion
+[PR #97](https://github.com/LuminariMUD/DurisWeb/pull/97), tip `263ee11`, branch
+of the same name, based on PR #96 at `0add858`. Both are committed/pushed. Outcome: extend the existing private real command/launcher journey with
 an optional companion checkout; use its normal built backend listener and source-
 owned baseline/forward migrations against the fixture's owned SQL/Redis. Verify
 old account/session/staff reads, live presence and cached ranking inputs, websocket
