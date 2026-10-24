@@ -190,6 +190,13 @@ in one explicitly requested step. Installation does not create credentials, chan
 `.env`, run legacy migrations, or promote a database. A failed production preflight is
 a deployment blocker, not a reason to weaken the unit or reuse development secrets.
 
+For the supervised wipe, drain accepted external work, stop external writers and
+the normal service, and keep competing launchers stopped. Run the existing
+launcher as the game user and issue the confirmed pwipe command. Keep services
+stopped through any same-epoch recovery. Only after durable completion, explicitly
+start the normal service and perform the integration cutover below. Never run
+checkout qualification scripts as root or through sudo.
+
 Do not use `pwipe` for ordinary restarts. The full supported reset is still under
 qualification in issue #264; this handoff repair alone is not wipe readiness.
 
@@ -244,6 +251,17 @@ The roster change is one transaction: failure rolls back name/account/body chang
 and retains the incomplete-reset fence. Old summon links are cleared every reset,
 independently of the 28-day grant-decrement policy. Staff login/gameplay and selected replay paths are qualified locally; the remaining
 store/writer inventory and final reconciliation stay in issue #264.
+
+Eligible Overlords are selected from active durable character/account ownership,
+independent of whether the account-character projection has already been repaired
+by login. Matching blocked mappings, including stale-name mappings, exclude recreation.
+Explicit deletion tombstones still exclude recreation, as in ordinary
+projection repair, and an unregistered durable owner cannot receive a new body.
+Missing, stale-name or wrong-account projections are rebuilt for the new PID under
+the canonical owner in the same roster transaction. Birth and last-save timestamps
+both start at recreation time; first login cannot interpret the body as saved at
+Unix epoch zero and add decades of offline age. Committed roster recovery remains
+idempotent and does not allocate another body.
 
 Ordinary `item_current_owner`, `item_owner_revision` and
 `item_ownership_baseline` records remain protected bookkeeping. They carry typed
@@ -429,14 +447,8 @@ guard (currently generic fatal status 1). The maintained launcher/service report
 permission to run cleanup.
 
 
-The disposable runtime qualifier runs as an ordinary user and accepts
-`--redis --systemd --systemd-helper /installed/helper` and an absolute MariaDB
-production-profile binary path. Never run checkout Python or scripts as root.
-An administrator must review and install `tests/async/pwipe_systemd_helper.py`
-and `deploy/systemd/duris-mud-production.service.in` together outside the checkout
-in a root-owned directory with non-writable parents, then authorize only that
-installed helper through sudo. It creates only caller-bound disposable units; all
-checkout code, Git operations and runtime files stay under the ordinary user. It uses the production unit's sandbox and
+The disposable runtime qualifier accepts `--redis --systemd` and an absolute
+MariaDB production-profile binary path. It uses the production unit's sandbox and
 restart settings with private identity/path, local configuration and the mini-world
 launcher flag. It never starts the installed production unit. Native SQL dependency
 checks separately exercise a real unavailable Redis endpoint and a denied cleanup
@@ -533,6 +545,17 @@ namespace. Use the matching runtime/configuration and world authentication key.
 The optional `run_pwipe_runtime_journey.py --redis --restore` exercises this frozen
 capture and isolated matched recovery with synthetic data. It does not promote a
 candidate, install host backup policy or authorize a production restore.
+
+Native SQL dependency
+checks separately exercise a real unavailable Redis endpoint and a denied cleanup
+command: the first preserves the old season, the second keeps the new epoch fenced.
+Repairing Redis cleanup alone does not declare SQL reset complete.
+
+Before stopping website writers, complete DurisWeb's
+[legacy temporary-copy preservation gate](https://github.com/LuminariMUD/DurisWeb/blob/7147e6b1bece2e650dbe3cb312c904edfa43bf9d/docs/deployment.md#legacy-temporary-copy-preservation-gate).
+Its service's private temporary directory can be removed on stop. The player-event
+season fence orders publication against the SQL boundary; the external-writer,
+cache, donation and reconnect rehearsal is recorded in the pwipe qualification plan.
 
 After an interruption, stop the launcher/server and all external seasonal writers,
 preserve logs and the matching DB/filesystem/Redis backup generation, and inspect

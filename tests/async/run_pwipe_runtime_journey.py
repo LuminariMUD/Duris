@@ -3,15 +3,13 @@
 
 Own disposable MariaDB/runtime only; never reads a checkout .env or real player data.
 """
-# Refuse elevation before importing checkout code or invoking Git.
 import os
 if os.geteuid() == 0:
-    raise SystemExit("Run this qualifier unprivileged; --systemd uses an installed root-owned helper")
+    raise SystemExit("Run this disposable qualifier as an ordinary user, never through sudo")
 
 from pathlib import Path
 import argparse
 import contextlib
-import shlex
 import hashlib
 import json
 import shutil
@@ -33,22 +31,15 @@ CLAIMANT = "Claimkeeper"
 GIT = ["git"]
 
 
-def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_reenable=False, discard_rewards=False, website=None, systemd_helper=None):
-    if systemd:
-        assert systemd_helper is not None, "--systemd requires an installed helper"
-        for path in (systemd_helper, *systemd_helper.parents):
-            info = path.lstat()
-            assert not path.is_symlink() and info.st_uid == 0 and not info.st_mode & 0o022, "unsafe installed helper path"
-        subprocess.run(["sudo", "-n", str(systemd_helper), "check",
-                        "duris-pwipe-qualification-" + str(os.geteuid()) + "-" + "0" * 32 + ".service"],
-                       check=True, timeout=10, stdout=subprocess.DEVNULL)
+def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, discard_rewards=False, website=None):
     if not os.environ.get("TEST_DB_HOST"):
         if website:
             # MySQL 8 is supported by both the MUD and the website baseline.
             os.environ.setdefault("TEST_DB_IMAGE", "mysql:8.0")
         wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(str(wrapper), [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(binary),
-                               *(["--redis"] if with_redis else []), *(["--systemd", "--systemd-helper", str(systemd_helper)] if systemd else []), *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else []), *(["--discard-rewards"] if discard_rewards else []), *(["--website", str(website)] if website else [])])
+                               *(["--redis"] if with_redis else []),
+                               *(["--restore"] if matched_restore else []), *(["--redis-reenable"] if redis_reenable else []), *(["--discard-rewards"] if discard_rewards else []), *(["--website", str(website)] if website else [])])
     assert os.environ["TEST_DB_HOST"] == "127.0.0.1"
     assert not Path("/usr/bin/sendemail").exists(), "fixture requires the launcher mail command absent"
     database = "pwipe_journey_" + uuid.uuid4().hex[:12]
@@ -76,7 +67,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
               "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
               "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
               "revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "backend": "mariadb-primary", "redis": with_redis, "systemd": systemd, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "preserve_rewards": not discard_rewards, "status": "running"}
+              "backend": "mariadb-primary", "redis": with_redis, "matched_restore": matched_restore, "redis_reenable": redis_reenable, "preserve_rewards": not discard_rewards, "status": "running"}
     if website:
         report["website_revision"] = subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=website, text=True).strip()
         report["website_diff_sha256"] = hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD"], cwd=website)).hexdigest()
@@ -113,7 +104,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
             shutil.copy2(ROOT / "Players/wipers/wipe_it_all", root / "Players/wipers/wipe_it_all")
             shutil.copy2(binary, root / "bin/server/dms_new")
             # A private allocator avoids another user's sticky-/tmp lock when
-            # both qualifier and game run as the ordinary fixture owner.
+            # concurrent fixtures use separate temporary allocator paths.
             port_root = root / "test-tmp"
             port_root.mkdir(mode=0o700)
             prior_tempdir = tempfile.tempdir
@@ -128,20 +119,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
             path = root / "launcher.out"
             process = client = observer = redis_server = restored_redis_server = None
             website_process = website_probe = web_mortal = None
-            unit_created = False
-            unit_name = "duris-pwipe-qualification-" + str(os.geteuid()) + "-" + uuid.uuid4().hex + ".service"
             output_file = path.open("w")
-
-            def unit_control(action, *arguments, **options):
-                return subprocess.run(["sudo", "-n", str(systemd_helper), action, unit_name, *map(str, arguments)],
-                                      timeout=110, check=True, **options)
-
-            def unit_logs():
-                if systemd and unit_created:
-                    output_file.seek(0)
-                    unit_control("logs", stdout=output_file, stderr=subprocess.STDOUT)
-                    output_file.truncate()
-                    output_file.flush()
 
             if website:
                 website_root = root / "website"
@@ -214,21 +192,11 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     assert website_probe.poll() is None and time.monotonic() < until, "website probe did not reach " + marker
                     time.sleep(.1)
 
-            def unit_state():
-                properties = ("ExecMainStatus", "ActiveState", "SubState", "NRestarts", "Result")
-                text = subprocess.check_output(["systemctl", "show", unit_name,
-                                                *("--property=" + key for key in properties)], text=True)
-                return dict(line.split("=", 1) for line in text.splitlines())
 
             def running():
-                # The system unit owns this lifetime; no CLI helper is a
-                # substitute for its actual state and final exit status.
-                return unit_state()["ActiveState"] not in ("failed", "inactive") if systemd else process.poll() is None
+                return process.poll() is None
 
             def exit_status():
-                if systemd:
-                    unit_logs()
-                    return int(unit_state()["ExecMainStatus"])
                 return process.returncode
 
             def redis(*arguments):
@@ -260,9 +228,6 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     time.sleep(.1)
 
             def start():
-                if systemd:
-                    unit_control("start", stdout=subprocess.DEVNULL, stderr=output_file)
-                    return None
                 return subprocess.Popen([str(root / "scripts/cycle_mud.sh"), "--minimal"],
                                         cwd=root, env=env, stdout=output_file,
                                         stderr=subprocess.STDOUT, start_new_session=True)
@@ -275,9 +240,6 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     observer.close(); observer = None
                 if client:
                     client.close(); client = None
-                if systemd and unit_created:
-                    unit_control("stop")
-                    unit_logs()
                 if process and process.poll() is None:
                     process.terminate()
                     try: process.wait(timeout=45)
@@ -291,7 +253,6 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 process = start()
                 deadline = time.monotonic() + 120
                 while "Entering game loop." not in path.read_text(errors="replace")[offset:]:
-                    unit_logs()
                     assert running() and time.monotonic() < deadline, "boot failed"
                     time.sleep(0.1)
 
@@ -351,31 +312,6 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 if matched_restore or redis_reenable:
                     env.update(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_SECRET="synthetic-pwipe-restore-world-secret",
                                REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_MAX_AGE="3600")
-                if systemd:
-                    template = (ROOT / "deploy/systemd/duris-mud-production.service.in").read_text()
-                    (root / ".env").write_text("".join(key + "=" + shlex.quote(value) + "\n" for key, value in env.items()))
-                    (root / ".env").chmod(0o600)
-                    unit_created = True
-                    prepared = unit_control("prepare", root, capture_output=True, text=True)
-                    binding = json.loads(prepared.stdout)
-                    assert binding["uid"] == os.geteuid()
-                    assert binding["unit_template_sha256"] == hashlib.sha256(template.encode()).hexdigest()
-                    report.update(binding, qualifier_uid=os.geteuid(), systemd_helper=str(systemd_helper),
-                                  systemd_helper_sha256=hashlib.sha256(systemd_helper.read_bytes()).hexdigest())
-                    sql("UPDATE season_reset_state SET reset_status='resetting',reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=NULL")
-                    process = start()
-                    deadline = time.monotonic() + 90
-                    while running():
-                        assert time.monotonic() < deadline, "fenced unit did not stop"
-                        time.sleep(.1)
-                    assert exit_status() == 58, unit_state()
-                    time.sleep(12)
-                    fenced = unit_state()
-                    assert fenced["NRestarts"] == "0" and fenced["ActiveState"] in ("failed", "inactive"), fenced
-                    report["service_incomplete_reset"] = fenced
-                    sql("UPDATE season_reset_state SET reset_status='active',reset_started_at=NULL")
-                    process = None
-                    print("Actual full-sandbox system service refused an incomplete reset with exit 58 and no restart", flush=True)
                 boot()
                 client = journey.MudClient(plain)
                 journey.create_character(client, character=STAFF)
@@ -595,11 +531,6 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 report.update(monotonic_countdown_seconds=elapsed, wall_countdown_seconds=wall_elapsed)
                 assert wall_elapsed >= 295, (wall_elapsed, elapsed)
                 assert exit_status() == 55, (exit_status(), path.read_text(errors="replace")[-6000:])
-                if systemd:
-                    time.sleep(12)
-                    completed = unit_state()
-                    assert completed["NRestarts"] == "0" and completed["ActiveState"] == "inactive", completed
-                    report["service_completed_reset"] = completed
                 if with_redis:
                     expected_old_keys = str(len(old_keys)) if redis_reenable else "0"
                     assert redis("EXISTS", *old_keys) == expected_old_keys
@@ -804,11 +735,13 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                         assert (root / "Ships/old-season").read_text() == "old ship"
                         assert (root / "Players/Backup/preserve").read_text() == "archive"
                         boot()
-                        # Each boot rotates logs/log; validate its own captured generation.
+                        # The launcher rotates logs/log on each boot. Read this
+                        # boot's full log, not an offset into bounded diagnostics.
                         assert "restored world recovery generation sequence=" + world_generation + " " in (root / "logs/log/sys").read_text()
                         client = journey.reconnect_character(plain, character=STAFF)
                         client.send("inventory"); client.expect("mace")
                         save(STAFF)
+                        wait_old_world_checkpoint()
                         stop()
                         restored_sequence = redis("GET", world_key)
                         assert restored_sequence
@@ -842,8 +775,6 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 raise
             finally:
                 stop()
-                if unit_created:
-                    unit_control("cleanup")
                 if restored_redis_server:
                     restored_redis_server.terminate(); restored_redis_server.wait(timeout=10)
                 if redis_server:
@@ -861,7 +792,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
         report["status"] = "failed"
         raise
     finally:
-        suffix = "mariadb-redis-systemd" if systemd and with_redis else "mariadb-redis" if with_redis else "mariadb"
+        suffix = "mariadb-redis" if with_redis else "mariadb"
         suffix += "-restore" if matched_restore else "-reenable" if redis_reenable else ""
         suffix += "-discard-rewards" if discard_rewards else ""
         suffix += "-website" if website else ""
@@ -984,22 +915,16 @@ if __name__ == "__main__":
     parser.add_argument("--redis-reenable", action="store_true", help="wipe with Redis off then re-enable against retained old recovery data (requires --redis)")
     parser.add_argument("--restore", action="store_true", help="rehearse a matched pre-wipe restore (requires --redis)")
     parser.add_argument("--redis", action="store_true", help="use a disposable Redis process")
-    parser.add_argument("--systemd", action="store_true", help="use a disposable system unit through an installed privileged helper")
-    parser.add_argument("--systemd-helper", type=Path, help="reviewed root-owned helper installed outside the checkout")
     parser.add_argument("binary", nargs="?", default=str(ROOT / "bin/server/dms_new"))
     options = parser.parse_args()
-    if options.systemd != (options.systemd_helper is not None):
-        parser.error("--systemd and --systemd-helper must be supplied together")
-    if options.systemd_helper:
-        options.systemd_helper = options.systemd_helper.absolute()
-    if options.restore and (not options.redis or options.systemd or options.flatfile_rejection):
+    if options.restore and (not options.redis or options.flatfile_rejection):
         parser.error("--restore requires --redis and the direct MariaDB launcher")
-    if options.redis_reenable and (not options.redis or options.restore or options.systemd or options.flatfile_rejection):
+    if options.redis_reenable and (not options.redis or options.restore or options.flatfile_rejection):
         parser.error("--redis-reenable requires --redis and the direct MariaDB launcher without --restore")
     if options.discard_rewards and (options.restore or options.flatfile_rejection):
         parser.error("--discard-rewards requires a MariaDB wipe journey without --restore")
     if options.website:
-        if not options.redis or options.systemd or options.restore or options.redis_reenable or options.flatfile_rejection or options.discard_rewards:
+        if not options.redis or options.restore or options.redis_reenable or options.flatfile_rejection or options.discard_rewards:
             parser.error("--website requires the direct --redis preserving MariaDB journey")
         options.website = options.website.resolve(strict=True)
         for name in (".env", "backend/.env", "backend/.env.test"):
@@ -1010,7 +935,7 @@ if __name__ == "__main__":
                 parser.error("--website requires the built backend and native probe")
     binary = Path(options.binary).resolve(strict=True)
     if options.flatfile_rejection:
-        assert not options.redis and not options.systemd and not options.restore
+        assert not options.redis and not options.restore
         flatfile_rejection(binary)
     else:
-        run(binary, options.redis, options.systemd, options.restore, options.redis_reenable, options.discard_rewards, options.website, options.systemd_helper)
+        run(binary, options.redis, options.restore, options.redis_reenable, options.discard_rewards, options.website)

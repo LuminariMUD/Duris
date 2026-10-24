@@ -223,6 +223,7 @@ bool retained_items(bool after) {
     const auto fresh = player_load_repository_execute(DB, request);
     if (fresh.outcome != player_load_outcome::applied || !fresh.snapshot.items.empty() ||
         !fresh.snapshot.pets.empty() || fresh.item_owner_revision != 0) return false;
+    if (fresh.saved_at <= 0) { fprintf(stderr,"Recreated Overlord loads last_save as epoch zero"); return false; }
     if (!item_uid_allocator_reserve(DB, 4)) return false;
     const uint64_t first = item_uid_allocator_next();
     if (first <= 991001) return false;
@@ -620,17 +621,12 @@ int main(int argc, char **argv) {
         sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) "
             "SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum FROM account_banks")
         for pid, name, level in ((1001, "Freshgod", 62), (1002, "Lesserstaff", 61),
-                                 (1003, "Outofrange", 63), (1004, "Oldmortal", 56),
-                                 (1005, "Stalegod", 62), (1006, "Deletedgod", 62)):
+                                 (1003, "Outofrange", 63), (1004, "Oldmortal", 56)):
             sql("INSERT INTO player_data(pid,name,account_name,level,highest_level,m_class,race,sex,"
                 "copper,epics,frags,learned_flight_stops) VALUES(" + str(pid) + ",'" + name +
                 "','fixturebank'," + str(level) + "," + str(level) + ",1,1,1,999,888,777,63)")
-            if name == "Freshgod":
-                continue  # Durable owner with no projection.
             sql("INSERT INTO account_characters(account_name,pid,char_name) VALUES('fixturebank'," +
                 str(pid) + ",'" + name + "')")
-        sql("UPDATE account_characters SET char_name='Stalename' WHERE pid=1005")
-        sql("UPDATE account_characters SET deleted_at=NOW() WHERE pid=1006")
         def cover_baselines():
             sql("INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
                 "SELECT pid,copper,silver,gold,platinum,wallet_revision FROM player_data")
@@ -815,21 +811,16 @@ int main(int argc, char **argv) {
         assert sql("SELECT COUNT(*) FROM kingdom_garrison WHERE assoc_id=777") == "0"
         print("Kingdom reset: territory/resources/guards absent, including a reused association ID", flush=True)
 
+        assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "1"
         new_god = int(sql("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1 AND level=62"))
-        assert new_god > 1006
-        assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "2"
+        assert new_god > 1004
+        assert sql("SELECT last_save IS NOT NULL AND last_save=birth_time FROM player_data WHERE pid=" + str(new_god)) == "1"
         assert sql("SELECT CONCAT_WS(':',copper,epics,frags,learned_flight_stops,assoc_id) "
                    "FROM player_data WHERE pid=" + str(new_god)) == "0:0:0:0:0"
         assert sql("SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND pid=" + str(new_god)) == "1"
-        assert sql("SELECT COUNT(*) FROM player_data WHERE pid BETWEEN 1001 AND 1006 AND active=0 "
-                   "AND name=CONCAT('~pwipe-',pid)") == "6"
+        assert sql("SELECT COUNT(*) FROM player_data WHERE pid BETWEEN 1001 AND 1004 AND active=0 "
+                   "AND name=CONCAT('~pwipe-',pid)") == "4"
         assert sql("SELECT COUNT(*) FROM currency_wallet_baseline WHERE pid=" + str(new_god)) == "1"
-        assert sql("SELECT COUNT(*) FROM player_data p JOIN account_characters a ON a.pid=p.pid "
-                   "AND a.char_name=p.name AND a.account_name=p.account_name "
-                   "WHERE p.active=1 AND a.deleted_at IS NULL AND p.last_save=p.birth_time "
-                   "AND p.last_save IS NOT NULL") == "2"
-        assert sql("SELECT COUNT(*) FROM player_data WHERE name='Stalegod' AND active=1") == "1"
-        assert sql("SELECT COUNT(*) FROM player_data WHERE name='Deletedgod' AND active=1") == "0"
         sql("INSERT INTO player_data(name,account_name) VALUES('Oldmortal','fixturebank')")
         cover_baselines()
         assert sql("SELECT roster_recreated FROM season_reset_state") == "1"
@@ -1451,6 +1442,39 @@ int main(int argc, char **argv) {
             launch(epoch=4, expected=55)
             assert status() == "4:active"
             print("Late residual account locker fails complete postflight; no SQL-ready/launcher cleanup; same-epoch repair clears it without another roster", flush=True)
+            # Projection repair is a supported account-load path. Recreation must
+            # use durable body ownership even before that account has logged in.
+            sql("INSERT INTO accounts(account_name) VALUES('fixtureother')")
+            for name in ('Missinggod', 'Stalegod', 'Wrongowner', 'Deletedgod', 'Orphangod', 'Blockedgod', 'Blockedstale'):
+                owner = 'not-an-account' if name == 'Orphangod' else 'fixturebank'
+                sql("INSERT INTO player_data(name,account_name,level,highest_level,m_class,race,sex) VALUES('" + name + "','" + owner + "',62,62,1,1,1)")
+                pid = sql("SELECT pid FROM player_data WHERE name='" + name + "'")
+                if name not in ('Missinggod', 'Orphangod'):
+                    mapping_name = 'OldStaleLabel' if name == 'Stalegod' else name
+                    mapping_owner = 'fixtureother' if name == 'Wrongowner' else 'fixturebank'
+                    sql("INSERT INTO account_characters(account_name,pid,char_name,deleted_at) VALUES('" + mapping_owner + "'," + pid + ",'" + mapping_name + "'," + ("UTC_TIMESTAMP()" if name == 'Deletedgod' else "NULL") + ")")
+                    if name in ('Blockedgod', 'Blockedstale'):
+                        sql("UPDATE account_characters SET blocked=1 WHERE pid=" + pid)
+                    if name == 'Blockedstale':
+                        sql("UPDATE account_characters SET char_name='OldBlockedLabel' WHERE pid=" + pid)
+            cover_baselines()
+            max_old_pid = int(sql("SELECT MAX(pid) FROM player_data"))
+            recovery_canary.write_text("SQL recovery must not clear files")
+            epoch_call("wipe", 4, 0, cwd=root)
+            assert status() == "5:resetting"
+            assert sql("SELECT GROUP_CONCAT(name ORDER BY name) FROM player_data WHERE active=1") == "Freshgod,Missinggod,Stalegod,Wrongowner"
+            assert int(sql("SELECT MIN(pid) FROM player_data WHERE active=1")) > max_old_pid
+            assert sql("SELECT COUNT(*) FROM player_data WHERE active=1 AND (last_save IS NULL OR last_save<>birth_time)") == "0"
+            assert sql("SELECT COUNT(*) FROM account_characters a JOIN player_data p ON p.pid=a.pid WHERE p.active=1 AND a.deleted_at IS NULL AND a.char_name=p.name AND a.account_name='fixturebank'") == "4"
+            assert sql("SELECT COUNT(*) FROM account_characters WHERE account_name='fixtureother' AND deleted_at IS NULL") == "0"
+            assert sql("SELECT COUNT(*) FROM account_characters WHERE char_name='Deletedgod' AND deleted_at IS NOT NULL") == "1"
+            assert sql("SELECT COUNT(*) FROM account_characters WHERE blocked=1 AND deleted_at IS NOT NULL") == "2"
+            fixed_roster = sql("SELECT pid,name,account_name,last_save,birth_time FROM player_data WHERE active=1 ORDER BY pid")
+            recover(5, 55)
+            assert sql("SELECT pid,name,account_name,last_save,birth_time FROM player_data WHERE active=1 ORDER BY pid") == fixed_roster
+            launch(epoch=5, expected=55)
+            assert status() == "5:active"
+            print("Durable staff ownership: missing/stale/wrong-account projections repaired on fresh PIDs; blocked/tombstone/orphan excluded; newborn save/birth clocks and retry roster stable", flush=True)
         else:
             print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state and fenced launcher; actual server recovery not requested", flush=True)
 

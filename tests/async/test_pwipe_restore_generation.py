@@ -4,7 +4,8 @@ import tempfile
 import textwrap
 
 source = Path(__file__).with_name("run_pwipe_runtime_journey.py").read_text()
-start = source.index('                        boot()\n                        # Each boot rotates')
+check = source.index('assert "restored world recovery generation sequence=" + world_generation')
+start = source.rfind("                        boot()", 0, check)
 end = source.index('                        client = journey.reconnect_character', start)
 first_boot = compile(textwrap.dedent(source[start:end]), "first_restore_boot", "exec")
 with tempfile.TemporaryDirectory() as directory:
