@@ -169,11 +169,12 @@ void charm_broken(struct char_link_data *cld)
 	int necropets[] = { 3, 4, 5, 6, 7, 8, 9, 10, 78, 79, 80, 81, 82, 83, 84, 85 };
 
 	// Once control breaks, the owner's next save no longer includes this pet.
-	// Put its gear on the floor before it can go rogue or be extracted.
+	// Preserve ledger-held durable gear, then drop the rest before hostility/extraction.
 	if (cld->type == LNK_PET && IS_NPC(cld->linking) && IS_PC(cld->linked) &&
 	    cld->linking->in_room != NOWHERE)
 	{
 		P_char pet = cld->linking;
+		hold_durable_pet_items(pet);
 		unequip_all(pet);
 		while (pet->carrying)
 		{

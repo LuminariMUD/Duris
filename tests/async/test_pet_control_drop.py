@@ -13,6 +13,8 @@ harness = r"""
 #include "classes/necromancy.h"
 #include "persistence/persistence_checkpoint.h"
 #include "redis/redis_floor_runtime.h"
+#include "item/item_ownership_runtime.h"
+#include <map>
 #include <cassert>
 #include <cstdlib>
 #include <set>
@@ -26,6 +28,14 @@ link_description link_types[LNK_MAX + 1] = {};
 static int dirty_calls, fights, deaths, scheduled;
 static bool hostile;
 static std::vector<uint64_t> floor_uids;
+static std::map<uint64_t, item_ownership_runtime_entry> custody;
+bool item_ownership_runtime_lookup(uint64_t uid, item_ownership_runtime_entry *entry)
+{
+    auto found = custody.find(uid);
+    if (found == custody.end()) return false;
+    *entry = found->second;
+    return true;
+}
 
 void charm_broken(char_link_data *);
 void __free(void *pointer, const char *, int) { std::free(pointer); }
@@ -90,6 +100,21 @@ void obj_to_room(P_obj object, int room)
 }
 """
 
+harness += r"""
+void extract_obj(P_obj object, int)
+{
+    if (OBJ_WORN(object)) {
+        P_char pet = object->loc.wearing;
+        for (int slot = 0; slot < MAX_WEAR; ++slot)
+            if (pet->equipment[slot] == object) (void)unequip_char(pet, slot, false);
+    } else if (OBJ_CARRIED(object)) obj_from_char(object);
+    for (P_obj child = object->contains; child; child = child->next_content)
+        extract_obj(child);
+    object->contains = nullptr;
+    object->loc_p = LOC_NOWHERE;
+}
+"""
+
 for file, signature in (
     ("affects.c", "P_char get_linked_char(P_char ch, ush_int type)"),
     ("affects.c", "void internal_unlink_char(P_char ch, struct char_link_data *cld,"),
@@ -98,6 +123,7 @@ for file, signature in (
     ("sparser.c", "void stop_follower(P_char ch)"),
     ("sparser.c", "void die_follower(P_char ch)"),
     ("handler.c", "void unequip_all(P_char ch)"),
+    ("handler.c", "void hold_durable_pet_items(P_char ch)"),
     ("necromancy.c", "void charm_broken(struct char_link_data *cld)"),
 ):
     harness += "\n" + extract_function(file, signature) + "\n"
@@ -112,7 +138,7 @@ struct fixture
     fixture(bool following = true, int link_type = LNK_PET)
     {
         rooms[0] = {}; rooms[1] = {}; rooms[0].number = 100; rooms[1].number = 200;
-        dirty_calls = fights = deaths = scheduled = 0; hostile = false; floor_uids.clear();
+        dirty_calls = fights = deaths = scheduled = 0; hostile = false; floor_uids.clear(); custody.clear();
         owner.only.pc = &pc; pc.pid = 42; GET_HIT(&owner) = 100;
         pet.only.npc = &npc; pet.specials.act = ACT_ISNPC;
         pet.in_room = 1; owner.in_room = 1;
@@ -156,6 +182,23 @@ int main()
     { fixture f(false); clear_links(&f.pet, LNK_PET); f.assert_dropped(); }
     { fixture f; f.owner.in_room = 0; clear_links(&f.pet, LNK_PET); f.assert_dropped(); }
     { fixture f; f.pet.durable_pet_uid = 123; clear_links(&f.pet, LNK_PET); f.assert_dropped(); }
+    for (auto owner_type : {item_owner_type::pet, item_owner_type::player})
+    {
+        fixture f; f.pet.durable_pet_uid = 123; f.pet.durable_pet_owner_pid = 42;
+        for (auto uid : {9001ULL, 9002ULL}) {
+            item_ownership_runtime_entry entry{};
+            entry.item_uid = uid; entry.state = item_custody_state::active;
+            entry.owner = {owner_type, owner_type == item_owner_type::pet ? 123ULL : 42ULL, 0};
+            custody[uid] = entry;
+        }
+        hostile = true;
+        clear_links(&f.pet, LNK_PET);
+        assert(!f.pet.carrying && !f.pet.equipment[WEAR_BODY] && floor_uids.empty());
+        assert(OBJ_NOWHERE(&f.worn) && OBJ_NOWHERE(&f.bag) && OBJ_NOWHERE(&f.child));
+        assert(custody.size() == 2 && custody.at(9001).state == item_custody_state::active);
+        assert(fights == 1 && dirty_calls == 1 && !f.pet.following);
+    }
+
     { fixture f; mob_indexes[0].virtual_number = 1201; clear_links(&f.pet, LNK_PET); f.assert_dropped(); assert(scheduled == 1); }
     { fixture f; auto *coins = new obj_data{}; coins->type = ITEM_MONEY; coins->obj_uid = 9004;
       obj_to_char(coins, &f.pet); clear_links(&f.pet, LNK_PET); f.assert_dropped(); }
