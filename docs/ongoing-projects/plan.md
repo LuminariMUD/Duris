@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-reward-claim-journey/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-reward-claim-journey`, [PR #344](https://github.com/LuminariMUD/Duris/pull/344).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `7655c26b2`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-telemetry-cutover/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-telemetry-cutover`, [PR #345](https://github.com/LuminariMUD/Duris/pull/345).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `a85e496a7`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -61,8 +61,14 @@ mortal, exact new item UIDs/values, duplicate refusal, dismiss cooldown, save,
 reconnect and second boot. Preserve fixture `528d1e68d`, discard `7819c9916`, same
 optimized binary as #343. Reuse native #318/#336 expiry/28-day/ambiguous/delayed
 retry proof and unchanged builds. Reports and commands are in the stack-tip plan.
-Next telemetry cutover can reuse the passed existing native quota/rollover CLI
-fault suite; combined stop/drain/rebind/restart with loopback HTTP remains open.
+PR #345 completes the documented manual telemetry cutover gate: actual native
+worker/CLI/loopback HTTPS proves active-owner refusal, drain/reap, byte-exact old
+archive/history, idempotent rollover, stale refusal, new environment season and
+distinct same-subject identities with zero fresh same-day HTTP allowance. All 46
+cases pass across both UBSan-compiled backend variants at fixture `123d0bb73`;
+reuse the passed native quota fault suite for next-day allocation/interruption.
+Required incremental build/format/hooks pass; no production source changed.
+The runbook records the exact operator/sender-owner procedure and expected states.
 Companion DurisWeb [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
 [#94](https://github.com/LuminariMUD/DurisWeb/pull/94) fence stale events and redact
 driver details, with backend checks and native SELECT-only lock proof. The clean
@@ -70,7 +76,7 @@ pushed companion worktree is `/home/aiwithapex/projects/durisweb-issue264-presen
 branch `branch/issue-264-presence-diagnostics` at `69c8671`.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
-fallback consumer proof, complete website/donation/client/telemetry cutover, W2
+fallback consumer proof, complete website/donation/client cutover, W2
 remaining writer/replay audit, W4 reset/retained-reader completeness and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
