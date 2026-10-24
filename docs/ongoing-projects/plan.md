@@ -1,7 +1,8 @@
 # Issue #264: supervised pwipe completion
 
-Updated 2026-10-24. Implementation is complete; the reconciled build and final
-review check remain open. Production operations and PR merging are not authorized.
+Updated 2026-10-24. Implementation and local qualification pass. Concurrent master
+integration and current automated review remain open. Production operations and
+PR merging are not authorized.
 
 ## Scope and finish line
 
@@ -92,20 +93,28 @@ proof above. Superseded intermediate heads are not individually repaired.
 ## Final integration checks
 
 Another process is merging older PRs into master. This task does not control it.
-Reconciliation through `d9dfb02e4` retains the tested wipe source, launcher,
+Reconciliation through `72753dc30` retains the tested wipe source, launcher,
 runtime qualifier and native handoff test byte-for-byte. Incoming unrelated
 changes remain intact; SQL completion/reaper checks pass after reconciliation.
-The required production build is running in session 84375:
-`make -C src -j8 PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production BIN_ROOT=/home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production`.
-Log: `bin/analysis/pwipe-reconciled-build.log`. Poll this session; do not duplicate it.
+The required production build passes at `568c2de6c`:
+`make -C src -j4 PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production BIN_ROOT=/home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production`.
+Log: `bin/analysis/pwipe-last-build.log`; session 60798 exited 0.
+Binary SHA-256: `fc2d1d244dfb0769ca3ef355a2c06864235bc2464ea3498da274dd0502d32271`.
+The incoming training-dummy dispatch regression passes. One earlier incremental
+link used a stale `wiz_newchar.o` after the incoming hometown API changed; rebuilding
+that caller fixed the link without source changes. There are no live test/build jobs.
 Formatting/hooks use installed Clang 18 with GCC 13 headers; GCC 16 headers are
 incompatible with this Clang. No hook is bypassed.
 
-Finish by recording this build result, checking final review findings, publishing
-the evidence and confirming the candidate's current merge state. Do not repeat the
-real countdown for ancestry-only changes. Required review and any reproduced
-blocker of the supported procedure must be complete before readiness sign-off.
-Once these checks hold, stop. No new workstreams or completion estimate.
+Both final PRs have zero unresolved review threads. Website review is complete;
+automated server review of `568c2de6c` is still running. Further concurrent master
+merges have again made #363 non-mergeable; the companion remains mergeable. This is
+integration churn, not a failing wipe journey. Do not repeat the real countdown for
+ancestry-only changes. Awaiting owner direction on handing merge coordination to
+the process already merging the ancestors versus continuing reconciliation here.
+No new implementation, matrix, helper or PR is needed unless a concrete blocker
+of the supported procedure is found. No readiness claim for the changing merged
+production tree is made.
 
 ## Preserved work and limits
 
