@@ -1628,6 +1628,10 @@ the switch on: each save of the looted banana wrote an `unowned_object` line, an
 the boot the ghost is gone, the rows whose items the save holds stay, and the login counts
 nothing. The capture test runs the production save with the switch off (three saves, no
 line) and on (one line per save).
+A dropped player tree whose cache still names the former player is captured without
+asserting room authority. The pipeline codec regression proves its payload survives;
+recovery still filters a UID held by saved player/economic/terminal state, and capture
+keeps terminal/non-player/vnum conflicts closed.
 
 Not covered: a stale container in the flat-file catalog whose contents a payload still
 holds (no transfer path produces that state there; the rule is held by the MariaDB
