@@ -2993,6 +2993,10 @@ object_template parse_object_template(int nr)
 		obj->trap_charge = tmp;
 		REQUIRED_FSCANF(obj_f, " %d \n", &tmp);
 		obj->trap_level = tmp;
+		// trapdamage supports sleep (0) through slash (8).
+		if (obj->trap_dam < 0 || obj->trap_dam > 8)
+			logit(LOG_STATUS, "Object %d has unsupported trap damage type %d.",
+			      obj_index[nr].virtual_number, obj->trap_dam);
 	}
 	/* ensure builders dont mess things up */
 	if (IS_SET(obj->wear_flags, ITEM_TAKE) && !IS_SET(obj->wear_flags, ITEM_HOLD))

@@ -42,6 +42,12 @@ mm_ds *dead_obj_pool = nullptr;
 static unsigned pool_allocations, uid_allocations, proc_calls, conversion_calls;
 static unsigned periodic_calls, event_calls, duplicate_strings;
 static unsigned empty_proc_rejections, noarg_proc_calls;
+static unsigned unsupported_traps;
+void logit(const char *, const char *format, ...)
+{
+    if (std::string(format).find("unsupported trap damage type") != std::string::npos)
+        ++unsupported_traps;
+}
 char *proclibobj_parse_default(char *);
 static std::unordered_set<void *> allocations;
 static std::unordered_map<int, object_template> object_templates;
@@ -309,6 +315,7 @@ int main()
     assert(bag->affected[0].location == 4 && bag->affected[0].modifier == -2);
     assert(bag->affected[1].location == 5 && bag->affected[1].modifier == 3);
     assert(bag->trap_eff == 9 && bag->trap_dam == 10 && bag->trap_charge == 11 && bag->trap_level == 12);
+    assert(unsupported_traps > 0 && "unsupported trap type was not reported at boot");
     assert(bag->descriptions.size() == 2 && bag->descriptions[0].keyword == "_proclib_fixture");
     assert(IS_SET(bag->wear_flags, ITEM_TAKE) && IS_SET(bag->wear_flags, ITEM_HOLD) &&
            IS_SET(bag->wear_flags, ITEM_ATTACH_BELT));
