@@ -196,7 +196,7 @@ class TelemetryRollupSchemaTest(unittest.TestCase):
         runtime = json.loads(RUNTIME.read_text())
         runtime_tables = runtime["runtime_table_sql_list"].split(",")
         runtime_tables = [name.strip("'") for name in runtime_tables]
-        expected_tables = lifecycle.schema_tables(lifecycle.DEFAULT_SCHEMA_FILES)
+        expected_tables = lifecycle.schema_tables(lifecycle.default_schema_files())
         self.assertEqual(len(runtime_tables), runtime["current_table_count"])
         self.assertEqual(len(expected_tables), runtime["current_table_count"])
         self.assertEqual(runtime_tables, sorted(expected_tables))

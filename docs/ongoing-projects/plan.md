@@ -40,6 +40,27 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — schema-inventory consumer repair
+
+Branch `branch/issue-264-schema-consumers`, based on PR #360 at `89705bbeb`.
+Resolve review finding on PR #309: removing the validator's old constant left the
+archive module and two test consumers referencing it. Actual archive execution
+regression fails at import with AttributeError; erasure/export import that module.
+Outcome: use the sealed `default_schema_files()` API at those existing consumers,
+preserving the archive module's local resolved default tuple. No compatibility
+shim, second schema list or new loader. Files: existing archive module and two
+focused tests plus plan/regression record. Proof: archive, erasure/export and
+telemetry schema executable checks; read-only CLI imports/help, canonical validator.
+No DB, migration, runtime wipe or C/C++ changes; reuse prior game/native evidence.
+
+All four focused suites pass after the three reference replacements; CLI help/import
+checks for archive, erasure and export and the canonical validator pass. Baseline:
+`bin/analysis/pwipe-schema-consumers-baseline.log`; final logs:
+`pwipe-schema-{archive,telemetry,erasure,export}.log`. No other removed-validator
+constant references remain. Python compilation/diff and commit hooks pass. The #309
+review finding is repaired in the current stack; publication follows. This repairs
+existing operational tools rather than bypassing their retention/privacy approval.
+
 ## Current continuation — complete SQL postflight coverage
 
 Review-ready [PR #360](https://github.com/LuminariMUD/Duris/pull/360), fix/fixture
