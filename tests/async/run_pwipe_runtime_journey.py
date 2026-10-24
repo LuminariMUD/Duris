@@ -120,6 +120,19 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 return subprocess.check_output(["redis-cli", "--raw", "-h", "127.0.0.1", "-p",
                                                 env["REDIS_PORT"], *arguments], text=True).strip()
 
+            def wait_old_world_checkpoint():
+                key = env["REDIS_NAMESPACE"] + ":season:1:world_state:current"
+                previous = int(redis("GET", key) or "0")
+                deadline = time.monotonic() + 45
+                while True:
+                    current = int(redis("GET", key) or "0")
+                    # One capture may already be in flight when the item drops.
+                    if current >= previous + 2:
+                        print("Post-drop world checkpoint acknowledged sequence=" + str(current), flush=True)
+                        return
+                    assert running() and time.monotonic() < deadline, "post-drop world checkpoint did not publish"
+                    time.sleep(.1)
+
             def expect_presence(pid, epoch):
                 deadline = time.monotonic() + 15
                 while True:
@@ -243,6 +256,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     assert old_floor_uid > 0
                     client.send("drop sword"); client.expect("You drop a long steel sword.")
                     save(STAFF)
+                    wait_old_world_checkpoint()
                 old_items = sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid))
                 assert int(old_items) > 0
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
@@ -319,6 +333,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     client.send("get sword"); client.expect("get a long steel sword")
                     client.send("drop sword"); client.expect("You drop a long steel sword.")
                     save(STAFF)
+                    wait_old_world_checkpoint()
                     client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                     stop()
                     old_world_key = env["REDIS_NAMESPACE"] + ":season:1:world_state:current"
