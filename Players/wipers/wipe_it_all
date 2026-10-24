@@ -36,6 +36,7 @@ check_tree() {
 }
 for path in "${TARGETS[@]}"; do check_tree "$path"; done
 check_tree Players/Backup
+check_tree Accounts
 
 # Both hotboot and cold artifact boot inspect these unscoped native inputs.
 # Preserve old evidence outside their live paths before the new epoch activates.
@@ -128,6 +129,18 @@ check_maintenance_state() {
   esac
 }
 for path in "${MAINTENANCE_SOURCES[@]}"; do check_maintenance_state "$path"; done
+# Both paths are automatic mail boot inputs, indexed by reusable character name.
+# Preserve the historical spool outside both the preferred and fallback locations.
+MAIL_SOURCES=("$ROOT/Accounts/mail" "$ROOT/Players/mail")
+MAIL_NAMES=(current legacy)
+check_mail_spool() {
+  local path="$1"
+  if [[ -L "$path" || ( -e "$path" && ( ! -f "$path" || ! -r "$path" ) ) ]]; then
+    echo "Unsafe or inaccessible MUD mail spool: $path" >&2
+    return 1
+  fi
+}
+for path in "${MAIL_SOURCES[@]}"; do check_mail_spool "$path"; done
 if [[ "${1:-}" == --check ]]; then
   echo "Filesystem wipe preflight passed; no files changed."
   exit 0
@@ -173,6 +186,26 @@ for path in "${MAINTENANCE_SOURCES[@]}"; do
   fi
 done
 [[ -z "$maintenance_archive" ]] || echo "wipe_it_all: archived maintenance evidence at $maintenance_archive"
+mail_archive=""
+for index in "${!MAIL_SOURCES[@]}"; do
+  path="${MAIL_SOURCES[$index]}"
+  check_mail_spool "$path"
+  [[ -e "$path" ]] || continue
+  if [[ -z "$mail_archive" ]]; then
+    check_tree Players/Backup
+    mkdir -p Players/Backup
+    mail_archive="$(mktemp -d -- "$ROOT/Players/Backup/pwipe-mail.XXXXXX")"
+    printf '%s\n' "${MAIL_SOURCES[@]}" > "$mail_archive/source-paths"
+  fi
+  mv -T -- "$path" "$mail_archive/${MAIL_NAMES[$index]}"
+done
+for path in "${MAIL_SOURCES[@]}"; do
+  if [[ -e "$path" || -L "$path" ]]; then
+    echo "MUD mail spool remains live; refusing filesystem completion: $path" >&2
+    exit 1
+  fi
+done
+[[ -z "$mail_archive" ]] || echo "wipe_it_all: archived mail evidence at $mail_archive"
 for path in "${TARGETS[@]}"; do
   check_tree "$path"
   [[ -d "$path" ]] || continue

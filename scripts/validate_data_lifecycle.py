@@ -79,6 +79,7 @@ REQUIRED_NON_DATABASE_STORES = {
         "recovery_state", "FLATFILE_ROOT/domains/zone-story-quests.state",
     ),
     "file:artifact-mana": ("recovery_state", "FLATFILE_ROOT/domains/artifact-mana-*"),
+    "file:mud-mail": ("runtime_file", "Accounts/mail and legacy Players/mail"),
     "file:runtime_pfiles": ("runtime_file", "lib/players"),
     "file:runtime_accounts": ("runtime_file", "lib/accounts"),
     "file:player_logs": ("log", "logs/player-log"),

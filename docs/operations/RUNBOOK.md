@@ -336,6 +336,18 @@ before deletion. Repair/quarantine such input explicitly before retrying; do not
 bypass the check. A partial move remains fenced and a normal retry archives what
 remains. A duplicate already-active epoch skips all cleanup and keeps fresh state.
 
+MUD mail is character-name scoped, independent of current SQL PID/account identity.
+Normal boot reads `Accounts/mail`, or `Players/mail` when the preferred path is
+absent. A recreated/reused name must not receive its old character's letters.
+Cleanup archives **both** fixed spool paths under private
+`Players/Backup/pwipe-mail.*` (`current` / `legacy`, plus `source-paths`) before
+activation. Preserve that historical evidence outside the automatic mail paths.
+A fresh boot creates a new empty current spool; normal new mail still works.
+`Accounts` account/registration files are preserved. Unsafe/unreadable spools or an
+unsafe/inaccessible account directory refuse preflight; a partial archival stays
+fenced and normal retry finishes it. Already-active duplicate completion preserves
+fresh mail. Do not copy an archived spool back into the new season's live path.
+
 The filesystem lock is inherited by the wipe child. Killing launcher parents
 therefore does not permit overlapping cleanup while that child is still running;
 a competing resume refuses. An orphan can finish file cleanup but cannot activate
