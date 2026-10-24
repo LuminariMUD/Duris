@@ -77,11 +77,12 @@ countdown, broadcast and shutdown-info writer with an isolated descriptor/event
 fixture and fake wall clock. It covers invalid/underlevel/unsupported requests,
 strict confirmation and bounded delay parsing without cancelling an old request,
 replacement/cancellation, late deadlines, duplicate ticks and each pwipe failure
-outcome, menu/link/permission loss at the final tick, switched issuer identity,
+outcome, menu/link/permission loss at the final tick, explicit grants/revocation, switched issuer identity,
 automatic reboot and launcher signals. SQL wipe is a controlled call counter;
 the real SQL/launcher journey covers its persistence behavior. The actual runtime
-journey also exercises Forger denial, malformed/repeated requests and both menu and
-network disconnect cancellation before its valid full wipe. Staff level 61 is
+journey also exercises granted staff access/revocation, underlevel pwipe denial,
+malformed/repeated requests and both menu and
+network disconnect cancellation before its valid full wipe. Staff level 60 with an explicit grant is
 seeded and must be retired while the exact level-62 issuer is recreated.
 
 `python3 tests/async/test_pwipe_quiescence.py` executes the production writer

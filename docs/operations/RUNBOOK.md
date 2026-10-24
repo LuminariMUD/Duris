@@ -193,7 +193,8 @@ a deployment blocker, not a reason to weaken the unit or reuse development secre
 Do not use `pwipe` for ordinary restarts. The full supported reset is still under
 qualification in issue #264; this handoff repair alone is not wipe readiness.
 
-The in-game operator command requires Forger permission; `shutdown pwipe confirm yes`
+The in-game operator command requires Forger level or explicit trusted command
+permission; `shutdown pwipe confirm yes`
 additionally requires Overlord permission and MariaDB-primary. The pwipe phrase
 accepts no extra arguments and always schedules five minutes, announced as PWIPE.
 Malformed input, unsupported mode and insufficient permission preserve an existing

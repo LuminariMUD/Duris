@@ -72,6 +72,20 @@ fixture against the rebuilt optimized binary before claiming operator qualificat
 No new timer state store was added: queued cleanup uses the existing global event
 lookup/cancel API only at request/cancel/final transitions.
 
+The first full actual journey passed at `08b7a0b15` with a level-61 observer and
+optimized binary `dba9588d139b7ab2e1fa69c95a1d800e2066d80788a919782d94de4436008c81`;
+its preserved report is `bin/analysis/pwipe-runtime-operator-level61.json`.
+A final authorization audit then caught a regression in the proposed level-only
+countdown check: trusted staff can hold an explicit shutdown grant below Forger.
+The native regression reproduced immediate cancellation of that valid delegation.
+The recheck now uses the actual interpreter `can_exec_cmd()` plus the separate
+Overlord minimum for pwipe. Native tests execute that shared predicate and cover
+grants, revocation and loss of trusted status; all three rebuilt profiles pass.
+The final real fixture seeds level 60, grants shutdown through the actual command,
+verifies ordinary countdown permission, revokes it live and observes cancellation,
+then continues the malformed/repeated/logout/link/full-wipe journey. Run this final
+committed fixture; no final operator pass is claimed until it completes.
+
 ## Current continuation — Redis disabled/reset/re-enable
 
 Review-ready [PR #341](https://github.com/LuminariMUD/Duris/pull/341); fixture revision

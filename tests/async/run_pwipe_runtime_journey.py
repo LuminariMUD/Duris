@@ -273,7 +273,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 # Synthetic staff promotion while offline, as other real-server fixtures do.
                 sql("UPDATE player_data SET level=62,highest_level=62 WHERE pid=" + str(old_pid))
                 sql("UPDATE account_characters SET racewar=0 WHERE pid=" + str(old_pid))
-                sql("UPDATE player_data SET level=61,highest_level=61 WHERE pid=" + str(observer_pid))
+                sql("UPDATE player_data SET level=60,highest_level=60 WHERE pid=" + str(observer_pid))
                 sql("UPDATE account_characters SET racewar=0 WHERE pid=" + str(observer_pid))
                 sql("INSERT INTO account_banks(account_name,racewar,bank_platinum) VALUES('" + journey.ACCOUNT + "',1,9)")
                 sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) "
@@ -336,10 +336,20 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 boot()
                 client = journey.reconnect_character(plain, character=STAFF)
                 observer = journey.reconnect_character(plain, account=OBSERVER_ACCOUNT, character=OBSERVER)
-                observer.send("shutdown reboot 10 retained Forger request")
-                observer.expect("retained Forger request")
+                observer.send("shutdown pwipe confirm yes"); observer.expect("Pardon?")
+                client.send("grant " + OBSERVER + " shutdown")
+                client.expect("You have granted the command 'shutdown'")
+                observer.expect("granted you the use of the 'shutdown' command")
+                observer.send("shutdown reboot 10 retained delegated request")
+                observer.expect("retained delegated request")
                 observer.send("shutdown pwipe confirm yes"); observer.expect("higher level")
                 observer.send("shutdown"); observer.expect("Scheduled reboot cancelled")
+                observer.send("shutdown reboot 10 revoke permission control")
+                observer.expect("revoke permission control")
+                client.send("revoke " + OBSERVER + " shutdown")
+                client.expect("You have revoked the command 'shutdown'")
+                observer.expect("revoked your ability to use the 'shutdown' command")
+                observer.expect("Scheduled reboot cancelled", timeout=15)
                 save(STAFF) # Flush earlier broadcasts before the next command group.
                 observer.send("save"); observer.expect("Save complete for " + OBSERVER + ".")
                 client.send("shutdown reboot 10 retained malformed-request control")
@@ -367,7 +377,7 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 observer.close(); observer = None
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
                 assert (root / "Players/a/old-season").read_text() == "old pfile"
-                report["operator_assertions"] = "mortal dispatch refusal, Forger pwipe refusal preserving reboot, malformed input preserves countdown, repeated requests, issuer menu/connection departure cancels, reconnect/save and unchanged epoch/files"
+                report["operator_assertions"] = "mortal/ungranted dispatch refusal, trusted granted shutdown and live revocation, underlevel pwipe refusal preserving reboot, malformed input preserves countdown, repeated requests, issuer menu/connection departure cancels, reconnect/save and unchanged epoch/files"
                 print("Real operator permissions, malformed/repeated requests and menu/link disconnect cancellation passed", flush=True)
                 if redis_reenable:
                     assert "restored world recovery generation" in journey.runtime_logs(root)

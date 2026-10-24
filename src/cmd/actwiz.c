@@ -4413,9 +4413,10 @@ void timedShutdown(P_char, P_char, P_obj, void * /*data*/)
 			    shutdownData.eShutdownType != TimedShutdownData::AUTOREBOOT_COPYOVER;
 	const bool pending = shutdownData.eShutdownType == TimedShutdownData::PWIPE ||
 			     shutdownData.reboot_time != 0 || shutdownData.next_warning >= 0;
-	const int required_level =
-		shutdownData.eShutdownType == TimedShutdownData::PWIPE ? OVERLORD : FORGER;
-	if (manual && pending && (!issuer || GET_LEVEL(issuer) < required_level))
+	if (manual && pending &&
+	    (!issuer || !can_exec_cmd(issuer, CMD_SHUTDOWN) ||
+	     (shutdownData.eShutdownType == TimedShutdownData::PWIPE &&
+	      GET_LEVEL(issuer) < OVERLORD)))
 	{
 		cancel_shutdown_ticks(timedShutdown);
 		const char *type = scheduled_shutdown_type_name(shutdownData.eShutdownType, false);

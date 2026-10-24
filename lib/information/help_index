@@ -21206,8 +21206,8 @@ SHUTDOWN (Immortal Command)
 Syntax: shutdown ok|reboot|copyover|autoreboot [minutes] [reason]
         shutdown pwipe confirm yes   (Overlord, MariaDB-primary only)
 
-Forger command (level 61). Optional delays are nonnegative whole minutes.
-Reasons for ordinary stops are broadcast and recorded. A plain shutdown cancels
+Normally a Forger command (level 61); trusted staff may also use an explicit
+shutdown grant. Optional delays are nonnegative whole minutes. Reasons for ordinary stops are broadcast and recorded. A plain shutdown cancels
 a manual countdown; a valid new request replaces it. Invalid input leaves an
 existing countdown unchanged. Manual countdowns cancel if the issuer leaves play,
 disconnects or loses the required permission, including the final pending tick.

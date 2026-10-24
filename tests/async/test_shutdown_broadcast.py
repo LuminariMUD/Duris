@@ -27,6 +27,7 @@ harness = r'''
 #include <unistd.h>
 
 #define WIZLOG "wiz"
+command_info cmd_info[CMD_SHUTDOWN + 1] = {};
 void sql_log(P_char, const char *, const char *, ...);
 static int wipe_calls = 0, restore_calls = 0;
 static bool mysql_required = true, wipe_succeeds = true, crossed = false;
@@ -78,6 +79,7 @@ void send_to_char(const char *text, P_char character) {
 
 for filename, signature in (
     ("interp.c", "char *one_argument("),
+    ("utility.c", "int can_exec_cmd("),
     ("comm.c", "void send_to_all("),
     ("actwiz.c", "static const char *scheduled_shutdown_type_name("),
     ("actwiz.c", "static void log_shutdown("),
@@ -92,7 +94,11 @@ for filename, signature in (
 harness += r'''
 int main()
 {
+    pc_only_data issuer_pc = {};
     char_data issuer = {};
+    issuer.only.pc = &issuer_pc;
+    cmd_info[CMD_SHUTDOWN].minimum_level = FORGER;
+    cmd_info[CMD_SHUTDOWN].grantable = 1;
     char name[] = "Zusuk";
     issuer.player.name = name;
     issuer.player.level = OVERLORD;
@@ -117,7 +123,8 @@ int main()
         wipe_calls = restore_calls = 0; mysql_required = wipe_succeeds = true; crossed = false;
         ticks.clear(); running_tick = nullptr;
         first.connected = CON_PLAYING; first.character = &issuer; first.original = nullptr;
-        descriptor_list = &first; issuer.player.level = OVERLORD;
+        descriptor_list = &first; issuer.player.level = OVERLORD; issuer.specials.act = 0;
+        issuer_pc.numb_gcmd = 0; issuer_pc.gcmd_arr = nullptr;
         output.clear();
         unlink("logs/shutdown_info.txt");
     };
@@ -265,6 +272,22 @@ int main()
     first.character = &body; first.original = &issuer;
     now += 1; fire();
     assert(shutdownData.eShutdownType == TimedShutdownData::PWIPE && active_ticks() == 1);
+    for (bool fog : {false, true}) {
+        reset(); issuer.player.level = GREATER_G;
+        int grant[] = {CMD_SHUTDOWN};
+        issuer_pc.gcmd_arr = grant; issuer_pc.numb_gcmd = 1;
+        assert(can_exec_cmd(&issuer, CMD_SHUTDOWN));
+        command("shutdown reboot 3 granted delegation");
+        assert(shutdownData.eShutdownType == TimedShutdownData::REBOOT && active_ticks() == 1);
+        command("shutdown pwipe confirm yes"); // A grant never supplies Overlord level.
+        assert(shutdownData.eShutdownType == TimedShutdownData::REBOOT);
+        if (fog) issuer.specials.act |= PLR_MORTAL;
+        else issuer_pc.numb_gcmd = 0;
+        assert(!can_exec_cmd(&issuer, CMD_SHUTDOWN));
+        fire();
+        assert(shutdownData.eShutdownType == TimedShutdownData::NONE &&
+               !shutdownflag && !wipe_calls && !active_ticks());
+    }
     reset(); command("shutdown autoreboot 5 scheduled automation");
     command("shutdown copyover");
     assert(shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT_COPYOVER);
