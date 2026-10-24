@@ -136,23 +136,46 @@ int main()
 	player.player.name = const_cast<char *>("Tester");
 	auto shown = invoke(&player, "");
 	assert(shown.starts_with(
-		"The Gods of Duris have given you and your allies the following boons:\r\n"));
+		"&+YThe Gods of Duris have given you and your allies the following boons:&n\r\n"));
+	assert(shown.find("&+G[1] 200% Experience&n") != string::npos);
+	assert(shown.find("&+C[3] +25% Cargo & Contraband&n") != string::npos);
+	assert(shown.find("&+R[4] +50% PvP Epic Points&n") != string::npos);
 	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
-	assert(shown.find("Good defeats qualifying Evil") != string::npos);
+	assert(shown.find("Frags against Evil racewar") != string::npos);
 	assert(shown.find("&+CSource&n") != string::npos &&
 	       shown.find("&+YDestination&n") != string::npos);
-	assert(shown.find("200% total base") != string::npos &&
-	       shown.find("50% base") != string::npos &&
-	       shown.find("25% base sale") != string::npos);
-	assert(shown.find("Epic stone") == string::npos); // Invalid target is never advertised.
+	assert(shown.find("From:") == string::npos && shown.find("To:") == string::npos);
+	assert(shown.find("Next hourly opportunity:") == string::npos);
+	assert(shown.find("&+YNext Divine Boon opportunity in ") != string::npos);
+	assert(shown.find("base sale") == string::npos);
+	assert(shown.find("&+M[2]") == string::npos); // Invalid epic target is hidden.
+	// A single cargo boon occupies one aligned table row, not three separate lines.
+	const size_t cargo_at = shown.find("&+C[3]");
+	assert(cargo_at != string::npos);
+	const size_t cargo_start = shown.rfind("\r\n", cargo_at) + 2;
+	const size_t cargo_end = shown.find("\r\n", cargo_at);
+	const string cargo_line =
+		strip_ansi(shown.substr(cargo_start, cargo_end - cargo_start).c_str());
+	assert(cargo_line.size() == 79);
+	assert(cargo_line.substr(2, 4) == "[3] ");
+	assert(cargo_line.find("Source -> Destination", 35) != string::npos);
+	assert(cargo_line.substr(69, 10).find("h ") != string::npos);
+	// A valid epic target is magenta; zone colouring remains its original ANSI.
+	const int original_zone = zones[0].number;
+	zones[0].number = 21;
+	shown = invoke(&player, "");
+	assert(shown.find("&+M[2] +50% Epic Points&n") != string::npos);
+	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
+	zones[0].number = original_zone;
 	player.player.racewar = RACEWAR_EVIL;
 	shown = invoke(&player, "list");
-	assert(shown.find("Evil defeats qualifying Good") != string::npos &&
+	assert(shown.find("Frags against Good racewar") != string::npos &&
 	       shown.find("&+Gxxx") != string::npos);
 	player.player.racewar = RACEWAR_NEUTRAL;
 	shown = invoke(&player, "");
-	assert(shown.find("PvP") == string::npos && shown.find("Zone EXP") == string::npos &&
-	       shown.find("Cargo & contraband") != string::npos);
+	assert(shown.find("PvP Epic Points") == string::npos &&
+	       shown.find("200% Experience") == string::npos &&
+	       shown.find("+25% Cargo & Contraband") != string::npos);
 	eligible = false;
 	shown = invoke(&player, "");
 	assert(shown.find("no active boons") != string::npos);
