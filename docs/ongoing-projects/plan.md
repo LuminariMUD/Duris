@@ -42,7 +42,10 @@ was run during planning.
 
 ## Current continuation — epoch-boundary COMMIT acknowledgment
 
-Branch `branch/issue-264-boundary-commit-ack`, based on PR #348 at `6c3c1f789`.
+Review-ready [PR #349](https://github.com/LuminariMUD/Duris/pull/349), fixture
+`361425efd`, proof record `a38c8f39c`. Branch
+`branch/issue-264-boundary-commit-ack`, committed/pushed, based on PR #348 at
+`6c3c1f789`.
 Outcome: explicitly prove conservative behavior when the epoch-advance COMMIT has
 an unknown result. Extend the existing native SQL matrix with a client-call wrapper
 armed only by the real epoch UPDATE; fail the COMMIT once before application and
