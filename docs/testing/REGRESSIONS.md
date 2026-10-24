@@ -152,6 +152,21 @@ outage harness proves next-UTC-day allowance and all interrupted-publication cas
 Both compiled backend variants use synthetic state and local receivers only.
 The shutdown source contract includes SQL-ready 55 versus fenced 58 behavior.
 
+`python3 tests/async/run_pwipe_runtime_journey.py --redis --website /absolute/companion/checkout /absolute/production/dms_new`
+extends the same real reset with the normal companion backend listener. Its owned
+wrapper automatically selects the jointly supported MySQL 8 image; ordinary MUD
+journeys retain the MariaDB 10.11 default. The target
+must have its built backend/probe/dependencies and no root/backend runtime env
+files. It uses the parent-owned SQL/Redis/world and source-owned website schema.
+Old HTTP/session/WHO/rank/cache/live-event checks precede graceful WS close and
+publisher drain. New sessions reconnect after activation while stale general cache
+entries survive; retired staff are refused. A queued synthetic webhook publishes
+on the new `nchat` epoch and the actual game client receives it; duplicate callbacks
+must not add credit. Reports use `pwipe-runtime-mariadb-redis-website.json` with both
+repository revisions/diffs and binary hash. No cloud provider, real data/settings,
+production service or frontend release is used. Run the companion's separate
+PrivateTmp keeper and mount/alias native cases for the pre-stop preservation gate.
+
 The existing real countdown journey supports `--redis --systemd` with an absolute
 MariaDB production-profile binary path and `--systemd-helper /installed/helper`.
 Run the qualifier as an ordinary user, never root. Install the reviewed
