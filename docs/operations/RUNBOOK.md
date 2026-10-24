@@ -229,6 +229,11 @@ a same-named fresh mortal receives a higher-ID ship. Historical books/generation
 remain unchanged; old wallet/cargo/market after-images do not return. Current boon
 IDs are monotonic, so old books do not supply a new objective's allowance.
 
+Auction custody payloads and siege items/affects/descriptions reset with the other
+physical stores, including rows read by the startup artifact population scan. Their
+separate audit ledgers, receipts and quarantine evidence survive. Quest trophies
+remain character history; current gameplay does not consult their boot-loaded cache.
+
 Artifact domain rows clear ownership, location, timers, souls and legacy custody
 references. Canonical UIDs become retired (or absent when none existed), preserving
 old-body rejection and allowing a fresh body through the existing creation path.
