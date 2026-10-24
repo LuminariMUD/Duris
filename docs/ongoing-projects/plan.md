@@ -40,6 +40,29 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — independent email registry repair integration
+
+Branch `branch/issue-264-email-fix-integration`, based on PR #354 at `9383ca3ef`.
+Independent review-ready [PR #355](https://github.com/LuminariMUD/Duris/pull/355)
+targets master from `branch/fix-account-email-registry-eof`, repair `9b61a23f0`.
+Source worktree: `/home/aiwithapex/projects/duris-account-email-fix` (clean/pushed).
+Outcome: resolve the real optional account-creation defect found in the inventory,
+with a focused independent PR rather than adding it to receipt qualification.
+An actual empty-registry call confirms EOF loops; scoped input now terminates,
+closes on every return and fails closed on unavailable/read-error registry, while
+preserving whitespace-token/exact-case behavior. No new configuration or service.
+Files: account helper, focused actual-function test and regression record. Proof:
+ASan/UBSan in enabled/default-disabled configurations, matching/nonmatching/empty/
+whitespace/long tokens, open/read failures and 2,000 repeated lookups with unchanged
+fd count. Both standalone and integrated tests pass. Required incremental MariaDB
+build passes on the qualification checkout; no full timer/regression rerun for this
+inactive-by-default helper. Logs: independent `bin/analysis/account-email-registry.log`;
+integration `bin/analysis/account-email-integration{,-build}.log`.
+Local merge `7d73f6477` integrates the independent repair on this review branch;
+the documentation-only merge conflict retained both complete regression sections.
+No GitHub PR or master was merged. Integration publication is next; remaining full
+SQL/worker/manual readiness reconciliation stays open.
+
 ## Current continuation — retained locker receipts and legacy admission inputs
 
 Review-ready [PR #354](https://github.com/LuminariMUD/Duris/pull/354), fixture/audit
@@ -79,10 +102,11 @@ reuse unchanged builds and full SQL/timer journeys. Remaining full SQL/worker an
 manual readiness reconciliation stays open.
 
 Independent finding for the next focused repair: optional
-`account.c::is_email_taken` uses `fscanf(...) != 0` (EOF is nonzero), and never
-closes its FILE on either result. It can loop at EOF and leak descriptors when
-`REQUIRE_EMAIL_VERIFICATION` is enabled (default is disabled). Reproduce and repair
-separately rather than folding an account-creation bug into receipt evidence.
+`account.c::is_email_taken` used `fscanf(...) != 0` (EOF is nonzero), and never
+closed its FILE on either result. It could loop at EOF and leak descriptors when
+`REQUIRE_EMAIL_VERIFICATION` is enabled (default is disabled). This was reproduced
+and repaired independently in PR #355, then integrated in the current continuation
+above; it was kept out of receipt proof.
 
 ## Current continuation — name-scoped MUD mail isolation
 
