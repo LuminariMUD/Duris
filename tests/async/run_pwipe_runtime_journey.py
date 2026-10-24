@@ -239,9 +239,9 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 if with_redis:
                     expect_presence(old_pid, 1)
                 if redis_reenable:
-                    old_floor_uid = int(sql("SELECT obj_uid FROM player_items WHERE pid=" + str(old_pid) + " AND vnum=283"))
+                    old_floor_uid = int(sql("SELECT obj_uid FROM player_items WHERE pid=" + str(old_pid) + " AND vnum=1108"))
                     assert old_floor_uid > 0
-                    client.send("drop sword"); client.expect("You drop a steel long sword.")
+                    client.send("drop sword"); client.expect("You drop a long steel sword.")
                     save(STAFF)
                 old_items = sql("SELECT COUNT(*) FROM player_items WHERE pid=" + str(old_pid))
                 assert int(old_items) > 0
@@ -316,8 +316,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                 assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
                 if redis_reenable:
                     assert "restored world recovery generation" in journey.runtime_logs(root)
-                    client.send("get sword"); client.expect("get a steel long sword")
-                    client.send("drop sword"); client.expect("You drop a steel long sword.")
+                    client.send("get sword"); client.expect("get a long steel sword")
+                    client.send("drop sword"); client.expect("You drop a long steel sword.")
                     save(STAFF)
                     client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                     stop()
