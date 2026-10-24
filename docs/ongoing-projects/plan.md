@@ -56,6 +56,14 @@ resets. Files: existing runtime journey, runbook/regression notes and this plan.
 No production code change is planned absent a reproduced defect. Full W1/W2/W5
 and final readiness remain open; production action is excluded.
 
+Both initial actual runs completed the reset and passed the grant/lifetime and
+old-body summon postconditions. The preserve fixture then exposed an output
+consumption assumption: character creation consumes through the starter-kit line,
+which follows the successful automatic reward message. Check the captured login
+transcript for that message, then assert physical item payloads/UIDs as before.
+This is a fixture correction, not a server failure. The discard run remains live;
+no end-to-end reward claim pass is claimed until both final journeys complete.
+
 ## Current continuation — shutdown operator flow
 
 Review-ready [PR #343](https://github.com/LuminariMUD/Duris/pull/343), implementation
@@ -107,7 +115,7 @@ then continues the malformed/repeated/logout/link/full-wipe journey. This final
 journey passed at source `b20372b9f273cec3e57ee894f2cd98b6c4c89bf4`, C/C++ working
 diff empty, production binary SHA-256
 `ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`.
-Report: `bin/analysis/pwipe-runtime-mariadb.json`; log:
+Report: `bin/analysis/pwipe-runtime-operator-final.json`; log:
 `bin/analysis/pwipe-operator-runtime-final.log`. Countdown: 301.961 wall / 289.485
 monotonic seconds (known host clock drift). Old mortal PID 1 and delegated staff
 PID 2 retired; only the level-62 Overlord was recreated as PID 3, and the fresh

@@ -551,7 +551,8 @@ def run(binary, with_redis=False, systemd=False, matched_restore=False, redis_re
                     claimed_items = {}
                 else:
                     # Login summons the oldest eligible grant; explicitly summon the rest.
-                    client.expect("A divine account reward begins to materialize:")
+                    # Character creation consumes output through the later starter-kit message.
+                    assert b"A divine account reward begins to materialize:" in client.transcript
                     for number in (2, 3):
                         client.send("divineclaim summon " + str(number))
                         client.expect("A divine account reward begins to materialize:")
