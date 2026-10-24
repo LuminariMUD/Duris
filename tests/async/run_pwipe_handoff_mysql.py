@@ -64,6 +64,8 @@ def run():
                              rewards_source.index("\n#ifndef __NO_MYSQL__\nstatic void dissolve_reward_containers")]
     native.write_text('''#include <mysql/mysql.h>
 #include "economy/divine_boon_repository.h"
+#include "guild/artifact_identity.h"
+#include "guild/artifact_guild_repository.h"
 #include "core/runtime_compatibility_contract.h"
 #include <openssl/sha.h>
 #include "economy/collector_repository.h"
@@ -247,6 +249,37 @@ bool seed_collectors(uint64_t base, uint32_t owner, uint64_t count) {
     }
     return qry("UPDATE collector_catalog_state SET next_listing=%llu WHERE state_id=1", static_cast<unsigned long long>(base+count));
 }
+bool artifact_history_command(bool prepared, critical_command *command) {
+    artifact_guild_payload payload{};
+    payload.parent_operation_id.bytes.fill(19); payload.actor_pid=1004;
+    payload.artifact_count=1; payload.feeding_cap=2000100000;
+    payload.artifacts[0]={900,ARTIFACT_DELTA_FEED,1999999700,2000000000,1004,1004,20,20,880001,300};
+    critical_operation_id operation{};
+    operation.bytes.fill(20);
+    const bool built=prepared ?
+        critical_operation_id_derive(payload.parent_operation_id,ARTIFACT_GUILD_DERIVATION_DOMAIN,1004,&operation) &&
+            artifact_guild_command_build_prepared(command,operation,payload) :
+        artifact_guild_command_build(command,operation,payload);
+    command->accepted_at_usec=1;
+    return built;
+}
+bool seed_artifact_history() {
+    if (!qry("INSERT INTO critical_operation_inbox(operation_id,command_hash,keys_hash,command_type,schema_version,"
+             "payload_version,status,result_payload,committed_at) VALUES(REPEAT(CHAR(19),16),REPEAT(CHAR(1),32),"
+             "REPEAT(CHAR(2),32),2,1,1,1,'',NOW(6))")) return false;
+    critical_command history, delivery;
+    if (!artifact_history_command(false,&history) || !artifact_history_command(true,&delivery)) return false;
+    if (critical_command_repository_apply(DB,history).outcome!=critical_apply_outcome::applied) return false;
+    return qry("START TRANSACTION") && artifact_guild_repository_prepare_delivery(DB,delivery) && qry("COMMIT");
+}
+bool check_artifact_history() {
+    critical_command history, delivery, loaded;
+    bool acknowledged=true, saved=false;
+    if (!artifact_history_command(false,&history) || !artifact_history_command(true,&delivery)) return false;
+    return critical_command_repository_apply(DB,history).outcome==critical_apply_outcome::already_applied &&
+        artifact_guild_repository_load_delivery(DB,delivery.operation_id,&loaded,&acknowledged) && !acknowledged &&
+        artifact_guild_repository_delivery_saved(DB,loaded,&saved) && saved;
+}
 bool check_collectors() {
     collector_bootstrap_snapshot loaded;
     return collector_repository_read_bootstrap(DB,&loaded) && loaded.catalog.records.empty() &&
@@ -278,7 +311,9 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
-    bool ok = !strcmp(argv[1], "seed-collectors") ? seed_collectors(strtoull(argv[2],nullptr,10),1004,4) :
+    bool ok = !strcmp(argv[1], "seed-artifact-history") ? seed_artifact_history() :
+              !strcmp(argv[1], "check-artifact-history") ? check_artifact_history() :
+              !strcmp(argv[1], "seed-collectors") ? seed_collectors(strtoull(argv[2],nullptr,10),1004,4) :
               !strcmp(argv[1], "stale-collector") ? stale_collector_purchase() :
               !strcmp(argv[1], "new-collector") ? new_collector_candidate() :
               !strcmp(argv[1], "check-collectors") ? check_collectors() :
@@ -360,6 +395,20 @@ int main(int argc, char **argv) {
             "VALUES(777,3,900,80,9999)")
         sql("INSERT INTO kingdom_garrison(assoc_id,slot,guard_class,level) VALUES(777,0,1,50)")
         sql("INSERT INTO kingdom_land(kingdom_id,start_vnum,end_vnum) VALUES(777,900,980)")
+        sql("INSERT INTO artifacts(vnum,owned,locType,location,timer,type,lastUpdate) "
+            "VALUES(900,'Y',3,1004,FROM_UNIXTIME(2000000000),1,NOW())")
+        sql("INSERT INTO artifact_bind(vnum,owner_pid,timer) VALUES(900,1004,20)")
+        sql("INSERT INTO artifact_domain_state(vnum,owned,loc_type,location,timer_epoch,artifact_type,"
+            "bind_owner_pid,bind_timer_epoch,canonical_item_uid,identity_state,rejected_item_uids,revision) "
+            "VALUES(900,1,3,1004,2000000000,1,1004,20,880001,1,'879999',700),"
+            "(901,0,1,0,1234,1,1004,20,880002,2,NULL,9),"
+            "(902,1,3,1004,1234,1,1004,20,NULL,0,NULL,0)")
+        sql("INSERT INTO artifact_domain_baseline(vnum,opening_timer_epoch,opening_bind_owner_pid,"
+            "opening_bind_timer_epoch,opening_revision) VALUES(900,1900000000,1004,10,700)")
+        epoch_call("seed-artifact-history", 1, 0)
+        artifact_baseline = sql("SELECT * FROM artifact_domain_baseline ORDER BY vnum")
+        artifact_history = sql("SELECT * FROM artifact_delta_ledger ORDER BY vnum,revision")
+        assert sql("SELECT revision FROM artifact_delta_ledger WHERE vnum=900") == "701"
         env["PWIPE_TEST_COLLECTOR_BUY"] = str(root / "old-buy.command")
         epoch_call("seed-collectors", 100, 0)
         listing_bytes = sql("SELECT HEX(record_blob) FROM collector_listings WHERE listing_id=101")
@@ -380,7 +429,21 @@ int main(int argc, char **argv) {
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
-        assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "2"
+        assert sql("SELECT COUNT(*) FROM artifact_domain_state WHERE owned<>0 OR loc_type<>1 OR location<>0 "
+                   "OR timer_epoch<>0 OR bind_owner_pid<>0 OR bind_timer_epoch<>0 OR item_uid IS NOT NULL "
+                   "OR item_revision IS NOT NULL") == "0"
+        assert sql("SELECT CONCAT_WS(':',vnum,canonical_item_uid,identity_state,COALESCE(rejected_item_uids,''),revision) "
+                   "FROM artifact_domain_state ORDER BY vnum") == "900:880001:2:879999:700\n901:880002:2::9\n902:3::0"
+        assert sql("SELECT * FROM artifact_domain_baseline ORDER BY vnum") == artifact_baseline
+        assert sql("SELECT * FROM artifact_delta_ledger ORDER BY vnum,revision") == artifact_history
+        epoch_call("check-artifact-history", 2, 0)
+        subprocess.run([str(ROOT / "migrations/reconcile_artifact_guild_outcomes.sh")],
+                       cwd=ROOT, env=env, check=True)
+        recovery_env = dict(env, TEST_DB_HOST=env["DB_HOST"], TEST_DB_PORT=env["DB_PORT"])
+        subprocess.run([sys.executable, str(ROOT / "tests/async/test_artifact_guild_snapshots.py"),
+                        "--pwipe-recovery"], cwd=ROOT, env=recovery_env, check=True)
+        assert sql("SELECT * FROM artifact_delta_ledger ORDER BY vnum,revision") == artifact_history
+        print("Artifact reset/restart: old bodies retired, ownership/timers/souls cleared, history/revisions retained; old delivery and receipt replay cannot restore state", flush=True)
         epoch_call("check-collectors", 2, 0)
         assert sql("SELECT COUNT(*) FROM collector_listings WHERE status=5") == "4"
         assert sql("SELECT COUNT(*) FROM item_current_owner WHERE owner_type=8 AND state=2") == "3"
@@ -412,6 +475,7 @@ int main(int argc, char **argv) {
 
         new_god = int(sql("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1 AND level=62"))
         assert new_god > 1006
+        assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "2"
         assert sql("SELECT CONCAT_WS(':',copper,epics,frags,learned_flight_stops,assoc_id) "
                    "FROM player_data WHERE pid=" + str(new_god)) == "0:0:0:0:0"
         assert sql("SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND pid=" + str(new_god)) == "1"
@@ -569,6 +633,19 @@ int main(int argc, char **argv) {
 
 
 
+
+        sql("UPDATE artifact_domain_state SET owned=1,timer_epoch=1234 WHERE vnum=900")
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        sql("CREATE TRIGGER fixture_artifact_failure BEFORE UPDATE ON artifact_domain_state "
+            "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture artifact failure'")
+        try:
+            epoch_call("wipe", 24, 1, cwd=root)
+        finally:
+            sql("DROP TRIGGER fixture_artifact_failure")
+        assert sql("SELECT CONCAT(reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "resetting:1"
+        assert sql("SELECT timer_epoch FROM artifact_domain_state WHERE vnum=900") == "1234"
+        print("Failed artifact retirement kept the reset fenced with its old snapshot intact", flush=True)
+        sql("UPDATE season_reset_state SET season_epoch=24 WHERE state_id=1")
 
         epoch_call("seed-collectors", 200, 0)
         sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")

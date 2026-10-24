@@ -67,6 +67,7 @@
 #include "net/poll.h"
 #include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
+#include "guild/artifact_identity.h"
 #include "economy/boon.h"
 #include "economy/collector_repository.h"
 #include "economy/collector_purchase_preparation.h"
@@ -4024,6 +4025,7 @@ bool sql_verify_pwipe_manifest(void)
 					      "account_lockers",
 					      "alliances",
 					      "artifact_bind",
+					      "artifact_domain_state",
 					      "artifacts",
 					      "artifacts_mortal",
 					      "associations",
@@ -4530,7 +4532,14 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing artifact bind data... .. .");
 		send_to_all("Clearing artifact bind data... .. .");
-		if (qry("DELETE FROM artifact_bind"))
+		// Match physical retirement: old canonical UIDs remain rejected by recovery,
+		// while ownership, timers and souls belong to the new season.
+		if (qry("UPDATE artifact_domain_state SET owned=0,loc_type=1,location=0,"
+			"timer_epoch=0,bind_owner_pid=0,bind_timer_epoch=0,item_uid=NULL,"
+			"item_revision=NULL,identity_state=IF(canonical_item_uid IS NULL,%u,%u)",
+			static_cast<unsigned>(artifact_identity_state::absent),
+			static_cast<unsigned>(artifact_identity_state::retired)) &&
+		    qry("DELETE FROM artifact_bind"))
 		{
 			logit(LOG_DEBUG, "  success!");
 			send_to_all("  success!\n");
