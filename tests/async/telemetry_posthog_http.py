@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import errno
 from pathlib import Path
 import socket
 import ssl
@@ -245,7 +246,76 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
     print(f"PostHog HTTPS: {len(cases)} loopback delivery/quota/cancellation scenarios PASS")
 
 
-def runtime_tests(binary: Path, root: Path) -> None:
+def season_rollover_tests(binary: Path, tool: Path, journal: Path,
+                          env: dict[str, str], received: list[dict]) -> None:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts/telemetry"))
+    from outage import decode
+
+    env = dict(env, TELEMETRY_ENABLED="true", TELEMETRY_BACKEND="posthog", TELEMETRY_SEASON_ID="1")
+    command = [str(tool), "rollover-season", str(journal), "678214", "99", "1000", "2", "100", "90", "10"]
+    old = subprocess.Popen([str(binary), "season-before", str(journal)], env=env,
+                           text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 5
+        while not (journal / "cutover-ready").exists():
+            if old.poll() is not None:
+                stdout, stderr = old.communicate()
+                raise AssertionError(("old sender exited before cutover", old.returncode, stdout, stderr))
+            assert time.monotonic() < deadline, "old sender did not start"
+            time.sleep(.01)
+        refused = subprocess.run(command, env=env, capture_output=True, text=True, timeout=5)
+        assert refused.returncode == 2 and json.loads(refused.stdout)["error_code"] == errno.EWOULDBLOCK, refused
+        (journal / "cutover-release").touch()
+        stdout, stderr = old.communicate(timeout=10)
+        assert old.returncode == 0 and not stderr, (stdout, stderr)
+    finally:
+        if old.poll() is None:
+            old.kill(); old.wait(timeout=5)
+    assert "telemetry PostHog runtime path passed" in stdout
+    before = (journal / "outages.ledger").read_bytes()
+    historical = decode(before)["observations"]
+    assert historical and all(row["season_id"] == 1 for row in historical)
+    assert historical[-1]["phase"] == "unknown_tail"  # HTTP acknowledgment cannot close an evidence tail.
+    old_identity = next(json.loads(line) for line in stdout.splitlines() if line.startswith('{"character"'))
+    assert received and all(int(row["properties"]["duris_season_id"]) == 1 for row in received)
+    sessions = [row["properties"] for row in received if row["event"] == "duris_session"]
+    assert any(row["distinct_id"] == old_identity["character"] and
+               row["duris_session_id"] == old_identity["session"] for row in sessions)
+    old_http = list(received)
+
+    rolled = subprocess.run(command, env=env, capture_output=True, text=True, check=True, timeout=5)
+    assert not rolled.stderr
+    quota = json.loads(rolled.stdout)
+    assert quota["normal_reserved"] == 90 and quota["health_reserved"] == 10
+    assert any(path.read_bytes() == before for path in journal.glob("outages.ledger.recovery.*"))
+    after = decode((journal / "outages.ledger").read_bytes())
+    assert after["observations"] == historical and after["quota"]["season_id"] == 2
+    durable = {path.name: path.read_bytes() for path in journal.iterdir() if path.is_file()}
+    retry = subprocess.run(command, env=env, capture_output=True, text=True, check=True, timeout=5)
+    assert json.loads(retry.stdout) == quota and not retry.stderr
+    assert {path.name: path.read_bytes() for path in journal.iterdir() if path.is_file()} == durable
+
+    for case, season in (("season-stale", "1"), ("season-after", "2")):
+        result = subprocess.run([str(binary), case, str(journal)], env=dict(env, TELEMETRY_SEASON_ID=season),
+                                text=True, capture_output=True, timeout=10)
+        assert result.returncode == 0 and not result.stderr, (case, result)
+        assert "telemetry PostHog runtime path passed" in result.stdout
+        assert received == old_http, "season change or stale binding created fresh same-day HTTP allowance"
+        if case == "season-after":
+            new_identity = next(json.loads(line) for line in result.stdout.splitlines() if line.startswith('{"character"'))
+            assert new_identity["season"] == 2 and old_identity["season"] == 1
+            assert new_identity["character"] != old_identity["character"]
+            assert new_identity["session"] != old_identity["session"]
+    final = decode((journal / "outages.ledger").read_bytes())
+    assert final["observations"][:len(historical)] == historical
+    assert final["observations"][-1]["season_id"] == 2
+    assert final["quota"]["normal_reserved"] == 90 and final["quota"]["health_reserved"] == 10
+    assert received == old_http  # Old receiver history was neither relabeled nor replayed.
+    print("PostHog native runtime season rollover: active-owner refusal, drain/reap, real CLI archive/retry, stale refusal, environment rebind, distinct identities and same-day quota conserved PASS")
+
+
+def runtime_tests(binary: Path, root: Path, tool: Path) -> None:
     import os
     # Never inherit project tokens, telemetry settings or host database targets.
     environment = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "ENVIRONMENT": "local"}
@@ -256,7 +326,7 @@ def runtime_tests(binary: Path, root: Path) -> None:
         "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
         "-keyout", str(key), "-out", str(cert),
     ], env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for case in ("success", "restart", "deadline", "quota", "storage", "rollback",
+    for case in ("season-rollover", "success", "restart", "deadline", "quota", "storage", "rollback",
                  "missing-key", "missing-token", "missing-host", "missing-sender",
                  "invalid-host", "invalid-project", "invalid-scope", "missing-scope", "production-scope",
                  "missing-quota", "quota-mismatch", "owner", "400", "401", "403", "503"):
@@ -291,6 +361,9 @@ def runtime_tests(binary: Path, root: Path) -> None:
                    TELEMETRY_IDENTITY_KEY="01" * 32, DURIS_TEST_POSTHOG_PORT=str(server.server_port),
                    DURIS_TEST_POSTHOG_CA=str(cert))
         try:
+            if case == "season-rollover":
+                season_rollover_tests(binary, tool, journal, env, received)
+                continue
             result = subprocess.run([str(binary), case, str(journal)], env=env,
                                     text=True, capture_output=True, timeout=15)
         finally:

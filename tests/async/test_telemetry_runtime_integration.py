@@ -23,8 +23,9 @@ def verify_shutdown_contract() -> None:
         "shutdown_mysql();"
     ) < main.index("return game_exit_status;")
     assert "exit(" not in run
-    for status in (52, 54, 55):
+    for status in (52, 54):
         assert f"return {status};" in run
+    assert "return sql_pwipe_filesystem_ready() ? 55 : 58;" in run
 
 
 def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = False) -> None:
@@ -39,6 +40,14 @@ def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = Fals
                 break
         else:
             print("telemetry runtime SQL variant skipped: mysql headers unavailable")
+
+        tool = Path(directory) / "telemetry-state"
+        if posthog:
+            subprocess.run([
+                "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pedantic",
+                "-I", str(ROOT / "src"), str(ROOT / "src/telemetry/telemetry_outage.c"),
+                str(ROOT / "src/telemetry/telemetry_state.cc"), "-lcrypto", "-o", str(tool),
+            ], cwd=ROOT, check=True, timeout=60)
 
         for label, no_mysql, mysql_include in variants:
             executable = str(Path(directory) / f"telemetry-runtime-integration-{label}")
@@ -100,7 +109,7 @@ def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = Fals
             subprocess.run(command, cwd=ROOT, check=True, timeout=120)
             if posthog:
                 from telemetry_posthog_http import runtime_tests
-                runtime_tests(Path(executable), Path(directory) / (label + "-https"))
+                runtime_tests(Path(executable), Path(directory) / (label + "-https"), tool)
                 continue
             completed = subprocess.run(
                 [executable], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30

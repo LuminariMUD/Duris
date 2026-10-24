@@ -141,6 +141,17 @@ pwipe. A database-triggered update failure keeps the reset fenced; a repaired re
 retires the same stored state once. It uses the actual codec/repository CAS, with no
 snapshot deletion or new season schema.
 
+`python3 tests/async/test_telemetry_runtime_integration.py --posthog` also
+rehearses telemetry season cutover with the actual worker, protected ledger,
+native `telemetry-state` CLI and loopback HTTPS receiver. It first refuses rollover
+while the old sender owns the directory, then drains/reaps it, preserves the old
+frame/history, rolls the season and proves a retry changes no bytes. Stale-season
+startup refuses; actual environment configuration starts the new scope with distinct
+identities for the same subject but no fresh same-day HTTP quota. The existing
+outage harness proves next-UTC-day allowance and all interrupted-publication cases.
+Both compiled backend variants use synthetic state and local receivers only.
+The shutdown source contract includes SQL-ready 55 versus fenced 58 behavior.
+
 The existing real countdown journey supports `--redis --systemd` with an absolute
 MariaDB production-profile binary path and `--systemd-helper /installed/helper`.
 Run the qualifier as an ordinary user, never root. Install the reviewed

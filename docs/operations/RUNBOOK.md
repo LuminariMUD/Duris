@@ -422,6 +422,51 @@ old keys are evidence, not a reason to clear shared Redis. The disposable
 `--redis --redis-reenable` runtime journey exercises this cutover with a real old
 floor item and authenticated world payload.
 
+### Telemetry at a season reset
+
+The wipe operator and telemetry sender owner coordinate this manual cutover.
+`TELEMETRY_SEASON_ID` is independent of the SQL epoch; record both old and intended
+new IDs. Keep the assigned project/sender/environment/limits, identity key,
+reviewed property catalog and protected outage directory unchanged.
+
+1. Before the reset, record sender health with `world telemetry` and include the
+   protected outage directory in the matched recovery generation. Do not print
+   tokens or keys. The old process continues to report its old telemetry scope.
+2. Let the old MUD drain and exit normally. Its shutdown path reaps the telemetry
+   worker before returning the wipe exit status. Confirm the process has exited;
+   keep the new MUD stopped while rolling the sender. A live owner makes the
+   state command refuse with errno 11; do not bypass that lock.
+3. Use `scripts/telemetry/outage.py DIRECTORY` while stopped to inspect the existing
+   binding/history. Run the existing native command with that binding's allocation:
+
+   ```text
+   bin/tools/telemetry-state rollover-season DIRECTORY PROJECT SENDER ENVIRONMENT NEW_SEASON TOTAL NORMAL HEALTH
+   ```
+
+4. Verify `outages.ledger.recovery.<generation>` contains the prior frame, old
+   observations retain their scopes, and the new quota binding has the intended
+   season with both current-day classes exhausted. Repeating the same command on
+   that day is safe and must not change bytes/generation/archives. After an
+   interrupted publication, reopen/validate and retry; never initialize a new
+   directory or delete quota evidence.
+5. Set the service's `TELEMETRY_SEASON_ID` to that same new ID, preserve the other
+   binding and reviewed-catalog settings, and start explicitly after the SQL reset
+   is complete. A stale telemetry season refuses worker startup. New character/
+   session identities carry the new season; old observations are not relabeled.
+6. Expect no new HTTP allowance on the rollover day, including health attempts.
+   Quota resumes normally on the next UTC day; inspect sender progress then.
+   Keep archived history and any honest `unknown_tail` classification even when
+   old HTTP requests were acknowledged. Complete the website writer/client steps
+   separately before claiming the entire external cutover.
+
+`test_telemetry_runtime_integration.py --posthog` rehearses the worker/CLI/HTTPS
+sequence in a private directory for both compiled backend variants. It checks
+active-owner refusal, complete drain/reap, archived bytes, idempotence, stale and
+new environment bindings, distinct same-subject identities and zero new HTTP on
+that day. The outage fault harness separately proves next-day allocation and
+interrupted rollover recovery. These are local component/manual-cutover proofs;
+production execution remains governed by the reset authorization above.
+
 ## Pre-service safety gate
 
 Before a development start, confirm the intended role and target without printing

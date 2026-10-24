@@ -10,6 +10,8 @@ int main(int argc, char **argv)
 	assert(argc == 3);
 	const std::string scenario = argv[1];
 	const char *directory = argv[2];
+	const bool cutover = scenario == "season-before" || scenario == "season-stale" ||
+			     scenario == "season-after";
 	telemetry_monotonic_usec now = 0U;
 	telemetry_utc_usec utc = 0;
 	utc = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -24,7 +26,7 @@ int main(int argc, char **argv)
 		binding = { 678214U, 99U, 1000U, 1U, 2U, 10U, 12U };
 	telemetry_outage_journal journal{};
 	assert(telemetry_outage_read(&journal, directory) == telemetry_outage_result::ready);
-	if (scenario != "missing-quota")
+	if (scenario != "missing-quota" && scenario != "season-stale" && scenario != "season-after")
 		assert(telemetry_outage_quota_initialize(
 			       &journal, binding,
 			       utc + (scenario == "rollback" ? 86'400'000'000LL : 0LL)) ==
@@ -61,13 +63,36 @@ int main(int argc, char **argv)
 				   scenario == "invalid-scope" || scenario == "missing-scope" ||
 				   scenario == "production-scope";
 	const bool refused = configuration || scenario == "missing-quota" ||
-			     scenario == "quota-mismatch" || scenario == "owner";
-	std::uint32_t prior_reserved = 0U;
+			     scenario == "quota-mismatch" || scenario == "owner" ||
+			     scenario == "season-stale";
+	if (cutover)
+	{
+		const auto catalog = std::filesystem::path(directory) / "reviewed-catalog";
+		if (scenario == "season-before")
+		{
+			reload_property_values values{ 0.0F, 10.0F, 1.0F, 0.2F, 0.15F };
+			telemetry_config_property_capture capture{};
+			capture.reader = { reload_property_read, &values };
+			capture.mode = telemetry_config_property_capture_mode::require_reader;
+			telemetry_config_property_snapshot properties{};
+			assert(telemetry_config_property_snapshot_capture(&capture, &properties) ==
+			       telemetry_config_build_outcome::built);
+			write_reviewed_catalog(catalog.c_str(), properties, 1U);
+		}
+		setenv("TELEMETRY_PROPERTY_CATALOG_FILE", catalog.c_str(), 1);
+	}
+	std::uint32_t prior_reserved = scenario == "season-after" ? binding.total_limit : 0U;
 	for (unsigned int incarnation = 0U; incarnation < (scenario == "restart" ? 2U : 1U);
 	     ++incarnation)
 	{
 		std::uint64_t expected_connected = 0U;
-		auto options = make_enabled_options();
+		auto options = cutover ? telemetry_runtime_options_from_environment() :
+					 make_enabled_options();
+		if (cutover)
+		{
+			assert(options.config.enabled);
+			assert(options.config.season_id == (scenario == "season-after" ? 2U : 1U));
+		}
 		options.config.backend = telemetry_storage_backend::posthog;
 		options.config.environment_id = binding.environment_id;
 		options.config.interval_usec = 100'000U;
@@ -93,16 +118,35 @@ int main(int argc, char **argv)
 			assert(health.last_storage_check ==
 			       (configuration	    ? telemetry_storage_check::configuration :
 				scenario == "owner" ? telemetry_storage_check::owner :
-						      telemetry_storage_check::quota));
+				scenario == "season-stale" ? telemetry_storage_check::directory :
+							     telemetry_storage_check::quota));
 			assert(health.last_error_code ==
-			       (configuration || scenario == "quota-mismatch" ? EINVAL :
-				scenario == "missing-quota"		      ? ENODATA :
-										EWOULDBLOCK));
+			       (configuration || scenario == "quota-mismatch" ||
+						scenario == "season-stale" ?
+					EINVAL :
+				scenario == "missing-quota" ? ENODATA :
+							      EWOULDBLOCK));
 		}
 		else
 			telemetry_test_start_runtime(options);
 		auto enter = make_enter(options.producer, options.config);
 		enter.session.environment_id = 1000U;
+		enter.session.season_id = options.config.season_id;
+		if (cutover && !refused)
+		{
+			telemetry_posthog_identity_key key{};
+			telemetry_posthog_character_identity character{};
+			telemetry_posthog_scoped_identity session{};
+			assert(telemetry_posthog_parse_identity_key(
+				getenv("TELEMETRY_IDENTITY_KEY"), key));
+			assert(telemetry_posthog_character_id(key, enter.session.environment_id,
+							      enter.session.season_id,
+							      enter.session.subject_id, character));
+			assert(telemetry_posthog_session_id(enter.session, session));
+			std::printf("{\"character\":\"%s\",\"session\":\"%s\",\"season\":%llu}\n",
+				    character.data(), session.data(),
+				    (unsigned long long)enter.session.season_id);
+		}
 		assert(telemetry_runtime_now(&enter.at_monotonic_usec, &enter.at_utc_usec));
 		const auto entered = telemetry_runtime_session_enter(enter);
 		if (refused)
@@ -118,6 +162,19 @@ int main(int argc, char **argv)
 			const auto handoff = telemetry_runtime_session_handoff_copy(enter.session);
 			assert(handoff.outcome == telemetry_runtime_outcome::accepted);
 			assert(handoff.handoff.cumulative.connected_usec > 0U);
+			if (scenario == "season-before")
+			{
+				std::filesystem::create_directory(std::filesystem::path(directory) /
+								  "cutover-ready");
+				const auto release =
+					std::filesystem::path(directory) / "cutover-release";
+				const auto until =
+					std::chrono::steady_clock::now() + std::chrono::seconds(5);
+				while (!std::filesystem::exists(release) &&
+				       std::chrono::steady_clock::now() < until)
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				assert(std::filesystem::exists(release));
+			}
 			if (scenario == "storage")
 				std::filesystem::create_directory(std::filesystem::path(directory) /
 								  "outages.pending");
@@ -137,7 +194,8 @@ int main(int argc, char **argv)
 			const auto flushed = telemetry_runtime_flush_for_copyover(now + 250'000U);
 			assert(std::chrono::steady_clock::now() - start <
 			       std::chrono::milliseconds(350));
-			if (scenario == "success" || scenario == "restart")
+			if (scenario == "success" || scenario == "restart" ||
+			    scenario == "season-before")
 				assert(flushed == telemetry_runtime_outcome::accepted);
 			else
 				assert(flushed != telemetry_runtime_outcome::accepted);
@@ -164,7 +222,10 @@ int main(int argc, char **argv)
 			}
 		}
 		assert(telemetry_runtime_now(&now, &utc));
-		(void)telemetry_runtime_shutdown({ now + 300'000U, 1U, {} });
+		const auto stopped = telemetry_runtime_shutdown({ now + 300'000U, 1U, {} });
+		if (cutover && !refused)
+			assert(stopped == telemetry_runtime_outcome::accepted ||
+			       stopped == telemetry_runtime_outcome::stopping);
 		assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
 		telemetry_runtime_posthog_health health{};
 		if (!refused)
@@ -180,8 +241,11 @@ int main(int argc, char **argv)
 				assert(health.sender.reserved_events + prior_reserved ==
 				       health.normal_reserved + health.health_reserved);
 			prior_reserved = health.normal_reserved + health.health_reserved;
-			if (scenario == "quota")
+			if (scenario == "quota" || scenario == "season-after")
 				assert(health.sender.quota_refusals > 0U);
+			if (scenario == "season-after")
+				assert(health.sender.reserved_events == 0U &&
+				       health.reducer.http_acknowledged == 0U);
 			if (scenario == "storage")
 				assert(health.sender.storage_failures > 0U);
 			if (scenario == "rollback")
@@ -213,7 +277,8 @@ int main(int argc, char **argv)
 				assert(health.reducer.ambiguous_events > 0U);
 				assert(health.reducer.http_acknowledged > 0U);
 			}
-			if (scenario == "success" || scenario == "restart")
+			if (scenario == "success" || scenario == "restart" ||
+			    scenario == "season-before")
 			{
 				assert(health.reducer.http_acknowledged ==
 				       health.reducer.created_events);
