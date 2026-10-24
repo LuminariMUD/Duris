@@ -56,6 +56,46 @@ full gameplay/build/provider journeys. Offline inspection of a retired PID is no
 normal account admission: the menu requires a live mapping and newly allocated
 body identity. Keep remaining store/writer/readiness requirements open.
 
+Final native proof at `6eb621601`: both MariaDB 10.11.19 and MySQL 8.0.46 pass the
+full SQL/launcher/recovery matrix with the new ordinary-item checks. Each run
+installs the sealed current schema and compares all 200 actual tables with the
+lifecycle manifest. Before reset, PID 1002's real load returns ordinary UID 991001.
+After reset its custody, owner revision and opening baseline are byte-for-value
+unchanged, but the actual loader returns no item/pet graph and reports missing
+payload. The recreated Overlord has neither old graph nor old owner revision.
+The `player_items` row allocator remains beyond the retired source-row reference;
+the real UID allocator gives exactly one bounded fresh contiguous lease. Both
+actual allocator providers and mode selection are linked, without a fake provider.
+Commands: `python3 tests/async/run_pwipe_handoff_mysql.py --server bin/qualification-production/server/dms_new`,
+then the same command through `TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh`.
+Logs: `bin/analysis/pwipe-retained-items-{mariadb,mysql}-final.log`.
+Lifecycle checks (14), reset manifest checks (12), standalone validator and format/
+commit hooks pass. The manifest's three book descriptions now state their actual
+role and limits. No production code/schema/reset action changed; reuse prior game
+builds and full gameplay/provider/website journeys. This closes this ordinary-player
+custody/identity gap, not every retained-store consumer.
+
+Audit reconciliation: W3's remaining two boxes are supported by #310/#330/#334/
+#336/#339 and the current native matrix: durable readiness/activation guards,
+normal direct-boot fencing, exit 55/58 with zero service restarts, interrupted/
+partial cleanup, duplicate completion and lost activation ACK. The service template
+and owning fence code remain unchanged by later command/floor-capture work.
+W6's isolation requirement is supported by the actual private SQL/Redis/runtime
+journeys and synthetic configuration; no checkout `.env` or real player data is
+sourced. These boxes are now checked rather than left stale.
+
+Remaining work is concrete: finish the full retained SQL/path/worker consumer
+inventory (including legacy compatibility inputs); prove held accepted shared-
+writer/callback chains at the actual quiescence boundary; explicitly inject a
+lost ACK of the epoch-boundary COMMIT (the source conservatively sets its crossed
+flag before COMMIT, while current executable lost-ACK cases cover reward and
+activation commits). Then reconcile the final manual/backup record and W7 findings.
+A rendered visual browser pass was never an issue #264 acceptance item; the real
+HTTP/WS journey and traced Vue reconnect/refetch path cover the stated website
+reader/client gate. Do not invent a separate visual-release requirement or require
+production execution to finish this local qualification. Full readiness stays open.
+
+
 ## Current continuation — combined website runtime cutover
 
 Review-ready server [PR #347](https://github.com/LuminariMUD/Duris/pull/347),
@@ -1405,7 +1445,7 @@ old-season work and normal saves continue.
   incomplete SQL, SQL-ready filesystem cleanup and completed reset. Resume uses
   the same reset identity/epoch. Use additive guarded migrations; do not change
   previously applied immutable migrations.
-- [ ] Keep startup fenced until SQL, reward processing, required Redis cleanup,
+- [x] Keep startup fenced until SQL, reward processing, required Redis cleanup,
   filesystem cleanup and all postconditions succeed. Use truthful stage messages;
   final activation must be guarded by expected reset identity.
 - [x] Distinguish a fenced failed stop from permission to clean files. Exit 55
@@ -1416,7 +1456,7 @@ old-season work and normal saves continue.
   canonical targets during cleanup; reject unexpected symlink/path escape, denied
   access and partial deletion. Preserve accounts/config/backups. Repeating cleanup
   for the same unfinished reset must be safe.
-- [ ] Make direct launcher and production service honor intentional pwipe stop
+- [x] Make direct launcher and production service honor intentional pwipe stop
   and incomplete-reset fencing, using the existing exit contract with explicit
   non-restart status where needed. Preserve ordinary reboot/crash recovery. Direct
   server starts must also honor the fence.
@@ -1484,7 +1524,7 @@ and donations and retained telemetry/quota evidence remain correct.
   fixtures. PR #317 executes the real five-minute command, launcher/wiper, explicit
   new season, recreated Overlord login, fresh mortal gameplay and another boot.
   Qualified scope: MariaDB-primary, Redis off, mini world. Wider cases remain below.
-- [ ] Use independent database, Redis process/namespace, ports and runtime tree.
+- [x] Use independent database, Redis process/namespace, ports and runtime tree.
   Never source the checkout's `.env` or read real player/account data. Disable
   production mail/Discord/PostHog in fixtures; artifacts belong under `bin/`.
 - [ ] Assert SQL/filesystem/Redis/recovery results, log into an existing account,
