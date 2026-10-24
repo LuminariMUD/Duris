@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — maintenance checkpoint isolation
 
-Branch `branch/issue-264-maintenance-state-isolation`, based on PR #351 at `9525db3a7`.
+Review-ready [PR #352](https://github.com/LuminariMUD/Duris/pull/352), fix/fixture
+`cfc5fce3f`, committed/pushed on `branch/issue-264-maintenance-state-isolation`,
+based on PR #351 at `9525db3a7`.
 Outcome: remove a live old-season replay input from automatic new-season startup.
 The actual maintenance scheduler persists captured request values/content and
 requeues `request_pending` on init; its drain waits for execution, not durable
@@ -74,7 +76,8 @@ and all legacy-version checks pass. Lifecycle (14), reset manifest (12), standal
 validator (200 tables/31 other stores/42 Redis surfaces), reset fence, SQL completion,
 shared-writer regression, Python compilation, shell syntax and formatting pass.
 Wiper SHA-256: `efdf0f215bd13a448d7a3d9eeb5a6683c370249768bbfcd9506b90210b4becbb`.
-Publication follows; remaining full inventory/direct-writer audit stays open.
+Remaining full inventory/direct-writer audit stays open. All owned fixture processes,
+containers and temporary trees cleaned. No merge, release tag or production operation.
 No production C/C++ source/schema changed; reuse existing binaries/builds and full
 command/gameplay/service/website journeys with actual launcher proof for this delta.
 Next audit targets remain explicit: retained locker-identification receipts (real
