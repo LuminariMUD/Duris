@@ -734,9 +734,10 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                         assert (root / "Players/a/old-season").read_text() == "old pfile"
                         assert (root / "Ships/old-season").read_text() == "old ship"
                         assert (root / "Players/Backup/preserve").read_text() == "archive"
-                        offset = len(journey.runtime_logs(root))
                         boot()
-                        assert "restored world recovery generation sequence=" + world_generation + " " in journey.runtime_logs(root)[offset:]
+                        # The launcher rotates logs/log on each boot. Read this
+                        # boot's full log, not an offset into bounded diagnostics.
+                        assert "restored world recovery generation sequence=" + world_generation + " " in (root / "logs/log/sys").read_text()
                         client = journey.reconnect_character(plain, character=STAFF)
                         client.send("inventory"); client.expect("mace")
                         save(STAFF)
@@ -744,9 +745,8 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                         stop()
                         restored_sequence = redis("GET", world_key)
                         assert restored_sequence
-                        offset = len(journey.runtime_logs(root))
                         boot()
-                        assert "restored world recovery generation sequence=" + restored_sequence + " " in journey.runtime_logs(root)[offset:]
+                        assert "restored world recovery generation sequence=" + restored_sequence + " " in (root / "logs/log/sys").read_text()
                         client = journey.reconnect_character(plain, character=STAFF)
                         save(STAFF); stop()
                         restore.database_qualify(restored_env, "matched_restore_after_gameplay")

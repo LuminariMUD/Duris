@@ -94,6 +94,20 @@ already correct at the published head; only the durable ACK repair needs a commi
 The running restore journey passed operator checks and entered its real countdown.
 Server master has one additional deployment commit `4b4fec518`; integration must
 preserve its migration-runner, news and build repairs before final publication.
+Integration inspection: `git merge-tree --write-tree HEAD origin/master` succeeds
+without conflicts in both repositories; no branch merge/rebase is needed to repair
+integration. Normal final merging preserves master's deployment changes.
+Website repair is published as `efc9de3`; both #97 review threads are resolved
+after the compiled probe checks. Server qualifier repair is published as `622a6604b`.
+Current inventory proof passes: 200 SQL tables, 35 other stores, 42 Redis surfaces;
+14 lifecycle tests, 13 reset-manifest checks and SQL completion checks pass.
+Existing final MariaDB/MySQL native logs still record successful ambiguous-commit,
+same-epoch recovery, residual-store fencing and staff ownership/clock assertions.
+Known ancestor findings were checked against the consolidated source: preflight
+uses `take_reaped_child_status`; reset zone SQL uses synchronous `qry`; staff use
+durable ownership and initialized clocks; wiper rejects nested cleared parents and
+checks maintenance ancestor search permissions before treating files as absent.
+Those intermediate PR heads remain superseded, not individually repaired or merged.
 
 ### 1. Finish from one candidate per repository
 
