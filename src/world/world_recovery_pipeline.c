@@ -313,6 +313,7 @@ bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t 
 	item_ownership_runtime_entry authority = {};
 	if (item_ownership_runtime_lookup(item_uid, &authority))
 	{
+		bool authority_required = true;
 		if (copyover_custody)
 		{
 			// A synchronous hotboot hands off the live ledger. Its logical custody
@@ -335,11 +336,20 @@ bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t 
 			    authority.vnum != entry.vnum ||
 			    authority.state != item_custody_state::active)
 			{
-				*skip = true;
-				return true;
+				if (authority.owner.type != item_owner_type::player ||
+				    authority.vnum != entry.vnum ||
+				    authority.state != item_custody_state::active)
+				{
+					*skip = true;
+					return true;
+				}
+				// A drop/save can leave the former player claim behind. Keep
+				// the live floor tree; recovery still excludes saved holdings.
+				authority_required = false;
 			}
 		}
-		entry.flags |= WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED;
+		if (authority_required)
+			entry.flags |= WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED;
 	}
 	for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 		entry.values[index] = object->value[index];

@@ -427,10 +427,33 @@ int main()
            captured_native.data() + sizeof(world_recovery_object_record),
            sizeof(captured_item));
     assert(captured_item.flags == WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED);
+    // A completed player save may leave the former active ownership row behind
+    // after a drop. Capture the physical floor tree; recovery checks saved holdings.
     lookup_entry.owner = {item_owner_type::player, 1, 0};
-    assert(world_recovery_write_object_to_buffer(
-               &captured, 100, reinterpret_cast<char *>(capture_buffer.data()),
-               capture_buffer.size()) == 0);
+    captured_size = world_recovery_write_object_to_buffer(
+        &captured, 100, reinterpret_cast<char *>(capture_buffer.data()), capture_buffer.size());
+    assert(captured_size > 0);
+    assert(world_recovery_encode_record(
+        world_recovery_record_type::object, capture_buffer.data(), captured_size,
+        captured_wire.data(), captured_wire.size(), &captured_wire_size));
+    assert(world_recovery_decode_record(world_recovery_record_type::object,
+                                        captured_wire.data(), captured_wire_size,
+                                        &captured_native));
+    memcpy(&captured_item, captured_native.data() + sizeof(world_recovery_object_record),
+           sizeof(captured_item));
+    assert(captured_item.item_uid == 800 && captured_item.flags == 0);
+    for (int conflict = 0; conflict != 4; ++conflict) {
+        lookup_entry.owner = {item_owner_type::player, 1, 0};
+        lookup_entry.state = item_custody_state::active;
+        lookup_entry.vnum = 1000;
+        if (conflict == 0) lookup_entry.state = item_custody_state::destroyed;
+        if (conflict == 1) lookup_entry.owner = {item_owner_type::auction, 1, 0};
+        if (conflict == 2) ++lookup_entry.vnum;
+        if (conflict == 3) lookup_entry.owner = {item_owner_type::room, 101, 0};
+        assert(world_recovery_write_object_to_buffer(
+                   &captured, 100, reinterpret_cast<char *>(capture_buffer.data()),
+                   capture_buffer.size()) == 0);
+    }
     lookup_succeeds = false;
 
     char_data master = {}, pet = {}, ordinary = {}, unlinked_summon = {};
