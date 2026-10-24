@@ -192,7 +192,13 @@ bool queue_job(std::function<unsigned int(MYSQL*, sql_rows*)> work,
     pending = [work, done]() {
         MYSQL connection; sql_rows rows; stage = 0; executed.clear();
         const bool ok = work(&connection, &rows) == 0;
-        if (ok) durable_active = false;
+        if (ok) {
+            durable_active = false;
+            // The composed writer executes ship SQL inside this transaction.
+            // Publish modeled rows only after every staged statement succeeds.
+            for (const auto &statement : executed)
+                if (statement == "delete ship") ++ship_rows;
+        }
         done(ok, rows);
     };
     return true;
@@ -209,7 +215,6 @@ std::vector<std::string> sql_save_guild_statements(Guild *g) {
     if (fail_guild_capture) throw std::bad_alloc();
     ++guild_rows; return {"guild row", "guild members"};
 }
-bool sql_delete_ship(const char *) { assert(!durable_active); ++ship_rows; return true; }
 #endif
 void artifacts_forget_deleted_character(int) { assert(!durable_active); ++forgotten; }
 void player_revision_forget(int) { assert(!durable_active); ++forgotten; }
@@ -290,7 +295,13 @@ int main() {
         assert(d.output.find("did not complete")!=std::string::npos);
         assert(d.output.find("successfully")==std::string::npos && !ship_rows);
         fail_stage=0; input(&d,"1"); input(&d,"yes"); pulse(); released(d);
-        deleted(a); assert(ship_rows==1 && guild_rows==2 && executed.size()==statements);
+        deleted(a);
+        if (ship_rows!=1 || guild_rows!=2 || executed.size()!=statements) {
+            fprintf(stderr,"retry failed: ship_rows=%d guild_rows=%d executed=%zu fail_stage=%d injected=%d\n",
+                    ship_rows,guild_rows,executed.size(),fail_stage,failure);
+            for (const auto &statement : executed) fprintf(stderr,"  %s\n",statement.c_str());
+        }
+        assert(ship_rows==1 && guild_rows==2 && executed.size()==statements);
         assert(d.output.find("successfully")!=std::string::npos);
         int calls=backend_calls; input(&d,"yes"); assert(backend_calls==calls && audits==2);
         dispose(a);
