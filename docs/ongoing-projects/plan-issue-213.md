@@ -28,7 +28,7 @@ implementation.
 ## Current handoff — October 24, 2026
 
 Active worktree: `/home/aiwithapex/projects/duris-issue213-plan`, branch
-`branch/issue-213-service-acceptance`. The primary checkout remains on unrelated
+`branch/issue-213-final-acceptance`. The primary checkout remains on unrelated
 `branch/contain-learning-feedback`; its changes were preserved. The requested
 branch was clean and equal to its remote before merging master
 `7d3bd3b957196f3136dbca61c01f2cba7f7ac298` as `ae99be838`, without rewriting
@@ -58,8 +58,13 @@ menu without the matching data/procedures and website companion.
   Includes independent #328/#335 below; merge those dependencies first.
 - [#333](https://github.com/LuminariMUD/Duris/pull/333), stacked on #331,
   `branch/issue-213-onboarding-acceptance`, `68084a80c`: real browser acceptance
-  runner; includes independent #332. Native service/death coverage follows on
-  the active branch, which includes #333 through `973d29bad` and #338.
+  runner; includes independent #332.
+- [#342](https://github.com/LuminariMUD/Duris/pull/342), stacked on #333,
+  `branch/issue-213-final-acceptance`, `c82b266d9`: native service/death/recovery
+  runner and side-neutral creation-menu recommendation. Includes #338 through
+  `3943f366f`; merge that independent repair first. The review tree exactly
+  matches the integration branch retained at `677f038a7`. The active worktree
+  now uses this clean review branch; its full native matrix is still running.
 - [DurisWeb #91](https://github.com/LuminariMUD/DurisWeb/pull/91),
   `branch/issue-213-hometown-parity`, `e97c9e1` (frontend code `9eb92e3`):
   selected alignment, stale-response rejection, pending-step protection,
@@ -188,8 +193,7 @@ to `run_issue213_browser_journey.py`, with matching server/backend/output; wrap
 the MariaDB leg as above. The task-owned Vite listener on 15173 is still running.
 Browser plugin was unavailable, so regular Playwright was used.
 
-Next: finish the current native runs and repair concrete failures, then commit,
-push and open the service/death acceptance PR stacked on #333. Update this
+Next: finish the current native runs and repair concrete failures. Update this
 section and the companion handoff with final observed results, inspect diff/
 format/original-file parity, refresh master and verify remote PR heads. Reuse
 valid proof rather than repeating full suites. Remove task-created obsolete
