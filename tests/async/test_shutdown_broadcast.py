@@ -19,19 +19,49 @@ harness = r'''
 #include <bsd/string.h>
 #include <cassert>
 #include <cctype>
+#include <cerrno>
+#include <climits>
+#include <deque>
 #include <fstream>
 #include <map>
 #include <unistd.h>
 
 #define WIZLOG "wiz"
+command_info cmd_info[CMD_SHUTDOWN + 1] = {};
 void sql_log(P_char, const char *, const char *, ...);
-bool sql_pwipe(int) { abort(); }
-bool sql_pwipe_crossed_boundary() { abort(); }
-void do_restore(P_char, char *, int) {}
-int fill_word(char *) { return 0; } // None of the commands below uses filler words.
-nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int)
+static int wipe_calls = 0, restore_calls = 0;
+static bool mysql_required = true, wipe_succeeds = true, crossed = false;
+bool persistence_mode_requires_mysql() { return mysql_required; }
+bool sql_pwipe(int code) { assert(code == 1723699); ++wipe_calls; return wipe_succeeds; }
+bool sql_pwipe_crossed_boundary() { return crossed; }
+void do_restore(P_char, char *, int) { ++restore_calls; }
+int fill_word(char *) { return 0; }
+struct tick { nevent_data event{}; event_func function; int delay; bool active = true; };
+static std::deque<tick> ticks;
+static P_nevent running_tick = nullptr;
+static unsigned long long sequence = 0;
+nevent_schedule_result add_event(event_func function, int delay, P_char, P_char, P_obj, int, const void *, int)
 {
-    return {nevent_schedule_status::scheduled, {nullptr, 0}};
+    if (delay < 0) return {nevent_schedule_status::negative_delay, {nullptr, 0}};
+    ticks.push_back({{}, function, delay, true});
+    ticks.back().event.sequence = ++sequence;
+    return {nevent_schedule_status::scheduled, {&ticks.back().event, sequence}};
+}
+nevent_handle nevent_find_next(event_func_type function)
+{
+    for (auto &tick : ticks)
+        if (tick.active && tick.function == function)
+            return {&tick.event, tick.event.sequence};
+    return {nullptr, 0};
+}
+nevent_cancel_result nevent_cancel(nevent_handle handle)
+{
+    for (auto &tick : ticks)
+        if (&tick.event == handle.event && tick.event.sequence == handle.sequence) {
+            tick.active = false;
+            return nevent_cancel_result::canceled;
+        }
+    return nevent_cancel_result::stale_handle;
 }
 static time_t now = 100000;
 time_t test_time(time_t *) { return now; }
@@ -42,27 +72,39 @@ TimedShutdownData shutdownData = {0, -1, TimedShutdownData::NONE, "", ""};
 P_desc descriptor_list = nullptr;
 std::map<txt_q *, std::string> output;
 void write_to_q(const char *text, txt_q *queue, const int) { output[queue] += text; }
+void send_to_char(const char *text, P_char character) {
+    if (character && character->desc) output[&character->desc->output] += text;
+}
 '''
 
 for filename, signature in (
     ("interp.c", "char *one_argument("),
+    ("utility.c", "int can_exec_cmd("),
     ("comm.c", "void send_to_all("),
     ("actwiz.c", "static const char *scheduled_shutdown_type_name("),
     ("actwiz.c", "static void log_shutdown("),
     ("actwiz.c", "void write_shutdown_info("),
+    ("actwiz.c", "static void cancel_shutdown_ticks("),
     ("actwiz.c", "void timedShutdown("),
     ("actwiz.c", "void do_shutdown("),
+    ("comm.c", "void request_shutdown("),
 ):
     harness += "\n" + extract_function(filename, signature) + "\n"
 
 harness += r'''
 int main()
 {
+    pc_only_data issuer_pc = {};
     char_data issuer = {};
+    issuer.only.pc = &issuer_pc;
+    cmd_info[CMD_SHUTDOWN].minimum_level = FORGER;
+    cmd_info[CMD_SHUTDOWN].grantable = 1;
     char name[] = "Zusuk";
     issuer.player.name = name;
     issuer.player.level = OVERLORD;
     descriptor_data first = {}, second = {}, menu = {};
+    first.character = &issuer;
+    issuer.desc = &first;
     first.connected = second.connected = CON_PLAYING;
     menu.connected = CON_MAIN_MENU;
     first.next = &second;
@@ -78,6 +120,11 @@ int main()
     auto reset = [&]() {
         shutdownData = {0, -1, TimedShutdownData::NONE, "", ""};
         shutdownflag = _reboot = _copyover = _autoboot = _pwipe = 0;
+        wipe_calls = restore_calls = 0; mysql_required = wipe_succeeds = true; crossed = false;
+        ticks.clear(); running_tick = nullptr;
+        first.connected = CON_PLAYING; first.character = &issuer; first.original = nullptr;
+        descriptor_list = &first; issuer.player.level = OVERLORD; issuer.specials.act = 0;
+        issuer_pc.numb_gcmd = 0; issuer_pc.gcmd_arr = nullptr;
         output.clear();
         unlink("logs/shutdown_info.txt");
     };
@@ -142,6 +189,114 @@ int main()
     output.clear();
     command("shutdown invalid 3 " + reason);
     assert(output[&second.output].empty());
+    auto active_ticks = [&]() {
+        size_t count = 0;
+        for (const auto &tick : ticks) if (tick.active) ++count;
+        return count;
+    };
+    auto fire = [&]() {
+        for (auto &tick : ticks) if (tick.active) {
+            running_tick = &tick.event;
+            tick.function(nullptr, nullptr, nullptr, nullptr);
+            tick.active = false; running_tick = nullptr; return;
+        }
+        assert(false && "no countdown event queued");
+    };
+    reset();
+    command("shutdown reboot 10 retained request");
+    const auto retained = shutdownData;
+    for (const char *invalid : {"pwipe", "pwipe confirm", "pwipe yes", "pwipe confirm no",
+                               "pwipe confirm yes extra", "pwipe confirm the yes", "invalid",
+                               "reboot -1", "reboot 2junk", "copyover 99999999999999999999999"}) {
+        output.clear();
+        command(std::string("shutdown ") + invalid);
+        assert(shutdownData.eShutdownType == retained.eShutdownType &&
+               shutdownData.reboot_time == retained.reboot_time &&
+               !strcmp(shutdownData.Reason, retained.Reason));
+        assert(active_ticks() == 1 && !shutdownflag && !wipe_calls);
+        assert(output[&second.output].empty());
+    }
+    for (bool backend : {true, false}) {
+        mysql_required = backend;
+        issuer.player.level = backend ? FORGER : OVERLORD;
+        command("shutdown pwipe confirm yes");
+        assert(shutdownData.eShutdownType == retained.eShutdownType && active_ticks() == 1);
+    }
+    mysql_required = true; issuer.player.level = OVERLORD;
+    command("shutdown pwipe CONFIRM\tYES   ");
+    assert(shutdownData.eShutdownType == TimedShutdownData::PWIPE &&
+           shutdownData.reboot_time == now + 300 && active_ticks() == 1);
+    assert(!strcmp(shutdownData.Reason, "Confirmed player wipe"));
+    assert(output[&second.output].find("PWIPE in 5 minutes") != std::string::npos);
+    command("shutdown pwipe confirm yes");
+    assert(active_ticks() == 1);
+    // Even an old duplicate cannot execute the reset twice; a late tick stays schedulable.
+    add_event(timedShutdown, 1, nullptr, nullptr, nullptr, 0, nullptr, 0);
+    now += 305;
+    fire(); assert(active_ticks() == 1 && !wipe_calls && restore_calls == 1);
+    fire(); assert(wipe_calls == 1 && _pwipe && shutdownflag && active_ticks() == 0);
+    timedShutdown(nullptr, nullptr, nullptr, nullptr);
+    assert(wipe_calls == 1 && shutdownData.eShutdownType == TimedShutdownData::NONE);
+
+    for (int departure = 0; departure != 4; ++departure) {
+        reset(); command("shutdown pwipe confirm yes");
+        if (departure == 0) first.connected = CON_MAIN_MENU;
+        if (departure == 1) descriptor_list = &second; // linkdead body stays allocated
+        if (departure == 2) issuer.player.level = FORGER;
+        if (departure == 3) {
+            now = shutdownData.reboot_time; fire(); // final armed tick
+            first.connected = CON_MAIN_MENU;
+        }
+        output.clear(); fire();
+        assert(shutdownData.eShutdownType == TimedShutdownData::NONE &&
+               !wipe_calls && !shutdownflag && !active_ticks());
+        assert(output[&second.output].find("cancelled") != std::string::npos);
+    }
+    for (const char *kind : {"ok", "reboot", "copyover"}) {
+        reset(); command(std::string("shutdown ") + kind + " 3");
+        first.connected = CON_MAIN_MENU; fire();
+        assert(shutdownData.eShutdownType == TimedShutdownData::NONE &&
+               !shutdownflag && !active_ticks() && !wipe_calls);
+    }
+    for (int outcome = 0; outcome != 3; ++outcome) {
+        reset(); command("shutdown pwipe confirm yes");
+        wipe_succeeds = outcome == 2; crossed = outcome == 1;
+        shutdownData.reboot_time = 0;
+        fire(); timedShutdown(nullptr, nullptr, nullptr, nullptr);
+        assert(wipe_calls == 1 && shutdownData.eShutdownType == TimedShutdownData::NONE);
+        assert(shutdownflag == (outcome != 0) && _pwipe == (outcome != 0));
+    }
+    reset(); command("shutdown pwipe confirm yes");
+    char_data body{}; char body_name[] = "Goblin"; body.player.name = body_name;
+    body.specials.act = ACT_ISNPC;
+    first.character = &body; first.original = &issuer;
+    now += 1; fire();
+    assert(shutdownData.eShutdownType == TimedShutdownData::PWIPE && active_ticks() == 1);
+    for (bool fog : {false, true}) {
+        reset(); issuer.player.level = GREATER_G;
+        int grant[] = {CMD_SHUTDOWN};
+        issuer_pc.gcmd_arr = grant; issuer_pc.numb_gcmd = 1;
+        assert(can_exec_cmd(&issuer, CMD_SHUTDOWN));
+        command("shutdown reboot 3 granted delegation");
+        assert(shutdownData.eShutdownType == TimedShutdownData::REBOOT && active_ticks() == 1);
+        command("shutdown pwipe confirm yes"); // A grant never supplies Overlord level.
+        assert(shutdownData.eShutdownType == TimedShutdownData::REBOOT);
+        if (fog) issuer.specials.act |= PLR_MORTAL;
+        else issuer_pc.numb_gcmd = 0;
+        assert(!can_exec_cmd(&issuer, CMD_SHUTDOWN));
+        fire();
+        assert(shutdownData.eShutdownType == TimedShutdownData::NONE &&
+               !shutdownflag && !wipe_calls && !active_ticks());
+    }
+    reset(); command("shutdown autoreboot 5 scheduled automation");
+    command("shutdown copyover");
+    assert(shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT_COPYOVER);
+    descriptor_list = &second; now += 301; fire(); fire();
+    assert(_autoboot && _copyover && !wipe_calls && !active_ticks());
+    reset(); command("shutdown pwipe confirm yes"); descriptor_list = &second;
+    request_shutdown(2, "Launcher", "signal");
+    assert(_reboot && !_pwipe && !wipe_calls && !active_ticks());
+    puts("Shutdown parsing/permission/cancellation/deadline/switch/automation/signal checks pass");
     puts("Shutdown reasons reach playing clients once; countdown, cancellation and saved reasons pass");
 }
 '''
