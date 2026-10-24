@@ -318,6 +318,21 @@ accounts and configuration are preserved; symlinks within a wiped store are remo
 as links. This check covers the legacy stores handled by this script, not yet every
 modern recovery store; the remaining inventory/isolation work is a readiness gate.
 
+SQL-ready publication requires an independent empty-row check for every one of
+the 103 canonical delete/reset tables, including account lockers and all payload
+children. The focused contract ties the fixed runtime list to the lifecycle
+manifest. A residual row leaves the same epoch resetting with no SQL-ready stamp;
+repair its writer/cause and resume that epoch. Do not delete protected receipt or
+history tables to satisfy a seasonal-empty check.
+
+Partial-update stores have explicit values: outpost ownership/resources/units and
+territory/portal clear, level becomes 8, walls 1 and hitpoints 300000; nexus alignment
+and touch clear while its catalogue/effect/bonus remain; timer names remain with
+zero values; cap counters/leaders/side unlocks clear and its configured base/deadline
+reset. Zone catalogue/rules remain while epic alignment resets. The native matrix
+seeds nondefault values and checks these results alongside versioned artifact,
+collector and Divine-state retirement.
+
 A successful SQL-stage server exits 55; an incomplete irreversible reset exits 58.
 Exit 55 alone never authorizes deletion: the launcher checks its boot epoch's
 successor and the durable SQL-ready receipt. Both terminal statuses propagate

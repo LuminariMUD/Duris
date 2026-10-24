@@ -226,6 +226,18 @@ else:
         checks_passed += 1
         print("account_characters soft-delete with COALESCE: ok")
 
+# Every canonical deleted store must be independently empty before SQL-ready.
+postflight = pwipe_body[pwipe_body.index("const char *postflight_tables[]"):]
+postflight = postflight[:postflight.index("};")]
+postflight_tables = set(re.findall(r'"([a-z_]+)"', postflight))
+if postflight_tables != RESET_TABLES:
+    errors.append("Postflight differs from canonical reset-delete stores: "
+                  f"missing={sorted(RESET_TABLES-postflight_tables)} "
+                  f"unexpected={sorted(postflight_tables-RESET_TABLES)}")
+else:
+    checks_passed += 1
+    print(f"Complete postflight empty-store coverage: ok ({len(postflight_tables)} tables)")
+
 # ── Summary ──
 print(f"\nTotal checks passed: {checks_passed}")
 if errors:

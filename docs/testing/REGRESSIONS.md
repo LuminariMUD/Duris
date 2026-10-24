@@ -78,6 +78,17 @@ partial cleanup, fixed retries, duplicate completion and a lost activation ACK.
 Native inputs remain live when SQL is unready, move to retained archives before
 activation, stay archived after a failed cleanup, and a new season's handoff survives
 a duplicate or lost-ACK completion retry.
+The canonical empty-store postflight now covers all 103 delete/reset tables; the
+previous 35-table subset wrongly accepted a real late account-locker row and
+published SQL-ready (recorded failing baseline). The native query wrapper inserts
+that actual row after the owning delete and before postflight. Correct behavior
+refuses readiness and launcher cleanup, retains the epoch/committed roster, then
+same-epoch SQL recovery clears the row and activates normally. The contract test
+requires exact equality with canonical reset-delete tables. Additional native
+canaries check all outpost reset fields, cap/side/deadline, nexus catalogue versus
+alignment/touch, timer values and zone catalogue/alignment. Actual before-boundary
+missing/nonexecutable wiper and denied-target cases retain exact old SQL/file values.
+
 The native matrix additionally asks the actual database to kill the caller's live
 connection, confirms further SQL fails, then executes the owning wipe function.
 It must refuse before the irreversible boundary without readiness or writer resume;
