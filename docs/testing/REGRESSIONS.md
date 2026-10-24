@@ -24,6 +24,15 @@ under ASan/UBSan in both configurations. It checks empty/nonmatching/matching in
 whitespace/long tokens, missing/directory read failure and 2,000 repeated lookups
 with unchanged descriptor count. It uses private synthetic files and no mail send.
 
+## Sealed schema inventory consumers
+
+The lifecycle archive module and schema tests consume `default_schema_files()` from
+the validator rather than its removed `DEFAULT_SCHEMA_FILES` export. The archive
+keeps its own resolved tuple for existing default arguments; it contains the sealed
+bootstrap/migration sequence. The old import raised AttributeError and also blocked
+erasure/export. Archive execution, erasure/export and telemetry-rollup schema tests
+plus all three read-only CLI help paths cover the repaired consumers.
+
 ## Pwipe SQL/filesystem handoff
 
 `python3 tests/async/test_cycle_pwipe_status.py` executes the real filesystem
