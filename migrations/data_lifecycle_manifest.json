@@ -6669,6 +6669,37 @@
       "dependencies": [
         "file:flatfile-command-receipts"
       ]
+    },
+    {
+      "id": "file:copyover-state",
+      "kind": "recovery_state",
+      "locator": "COPYOVER_STATE_FILE and native recovery/consumption siblings",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "player_pid_name_and_descriptor_host",
+      "technical_purpose": "Native world and descriptor hotboot recovery; guarded pwipe moves live publication, claim and consumption barriers into private Players/Backup/pwipe-copyover.* archives before activation, outside automatic boot input paths",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "regenerate",
+      "active_retention": "current_season_until_guarded_pwipe_archival",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": [
+        "backup:pfiles"
+      ]
     }
   ]
 }

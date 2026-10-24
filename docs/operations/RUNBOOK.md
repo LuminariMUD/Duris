@@ -292,6 +292,24 @@ Its service's private temporary directory can be removed on stop. The player-eve
 season fence orders publication against the SQL boundary; the full external-writer,
 cache, donation and reconnect cutover still needs its separate rehearsal.
 
+Native hotboot and cold artifact boot inspect `COPYOVER_STATE_FILE` (default
+`copyover.dat`) and its `.recovering` claim. These images contain no SQL epoch and
+must leave their live paths before a new season activates. The guarded filesystem
+step archives the publication, claim and either `.consuming` barrier directory
+under a private `Players/Backup/pwipe-copyover.*` directory, with the configured
+source path recorded. A consumption barrier may be empty or contain only its native
+`image`. Existing images must be readable regular files with native `COPY` magic;
+symlinks, unknown types/content, inaccessible parents and unsafe backup paths fail
+preflight before destructive SQL. Canonical absolute or data-root-relative custom
+paths with existing parent directories are supported, including a separate state
+volume; `.`/`..` and symlink aliases refuse. All game writers remain
+stopped through archiving and activation. Partial archive failure keeps the season
+fenced; same-epoch retry preserves prior archives and moves remaining inputs. A
+completed-epoch replay skips cleanup and leaves a new season's handoff untouched.
+Keep these archives as recovery evidence and include configured external handoff
+paths in the matched backup inventory; never republish an old image into a new
+season's live path. Ordinary same-season copyover keeps its existing format/flow.
+
 Before scheduling a wipe, prepare and verify a **matched pre-wipe recovery point**.
 The regular MariaDB backup contains SQL and journals; `PREBOOT_BACKUP=1` does not
 add legacy filesystem or Redis coverage. After the website preservation gate above,

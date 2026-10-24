@@ -63,6 +63,7 @@ REQUIRED_NON_DATABASE_STORES = {
     ),
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
+    "file:copyover-state": ("recovery_state", "COPYOVER_STATE_FILE and native recovery/consumption siblings"),
     "file:flatfile-command-receipts": (
         "recovery_state", "FLATFILE_ROOT/domains/command-*.receipt",
     ),

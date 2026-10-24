@@ -1017,9 +1017,11 @@ int main(int argc, char **argv) {
 
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"
+        native_handoff = root / "copyover.dat"
 
         def prepare(ready=True):
             old.write_text("old season")
+            native_handoff.write_bytes(b"COPYold season handoff")
             sql("UPDATE season_reset_state SET season_epoch=2,reset_status='resetting',roster_recreated=NULL,"
                 "reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=" +
                 ("UTC_TIMESTAMP(6)" if ready else "NULL") + " WHERE state_id=1")
@@ -1033,7 +1035,7 @@ int main(int argc, char **argv) {
         def status():
             return sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state WHERE state_id=1")
 
-        prepare(False); launch(); assert old.exists() and status() == "2:resetting"
+        prepare(False); launch(); assert old.exists() and native_handoff.exists() and status() == "2:resetting"
         prepare(); launch(epoch=3); assert old.exists()
         with (root / "bin/server/.pwipe.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1046,7 +1048,9 @@ int main(int argc, char **argv) {
         wiper.chmod(0o600); launch(); assert old.exists(); wiper.chmod(0o700)
         # Fail after real cleanup: no activation, and a repaired retry finishes once.
         wiper.write_text(original.replace('echo "wipe_it_all: filesystem cleanup completed"', 'exit 1'))
-        launch(); assert not old.exists() and status() == "2:resetting"
+        launch(); assert not old.exists() and not native_handoff.exists() and status() == "2:resetting"
+        archive, = (root / "Players/Backup").glob("pwipe-copyover.*")
+        assert (archive / "publication").read_bytes() == b"COPYold season handoff"
         wiper.write_text(original)
         launch(expected=55); assert status() == "2:active"
         old.write_text("new season sentinel")
@@ -1064,7 +1068,9 @@ int main(int argc, char **argv) {
         failing_env = dict(env, PATH=str(commands) + ":" + env["PATH"])
         launch(environment=failing_env); assert status() == "2:active"
         old.write_text("saved after ambiguous completion")
+        native_handoff.write_bytes(b"COPYfresh season handoff")
         launch(expected=55); assert old.read_text() == "saved after ambiguous completion"
+        assert native_handoff.read_bytes() == b"COPYfresh season handoff"
         assert (root / "Players/Backup/keep").read_text() == "archive"
         print("Launcher handoff: incomplete SQL, wrong epoch, concurrent cleanup, symlink, missing access, "
               "partial cleanup, retry, duplicate completion and lost activation ACK passed", flush=True)

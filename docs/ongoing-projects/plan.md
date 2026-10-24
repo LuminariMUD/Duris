@@ -40,6 +40,45 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — isolate retained native handoffs
+
+Branch `branch/issue-264-copyover-season-fence`, based on PR #337 at `7bc1672de`.
+Source review found that native handoff images have no SQL epoch and survive the
+filesystem wipe. Warm `-C` preparation can claim them; cold artifact boot also reads
+the configured publication and `.recovering` image, so clearing descriptors alone
+would miss another consumer. Outcome: before the existing launcher activates the
+SQL-ready epoch, move all configured live handoff inputs/barriers into a private
+`Players/Backup` archive, preserving bytes and leaving their live paths absent.
+Reuse the existing SQL/launcher fence and wiper preflight/retry contract. This
+avoids a wire-version change, new per-image season metadata or another startup
+coordinator. Normal same-season copyover and archived evidence remain intact.
+Files: filesystem wiper, existing filesystem/SQL handoff and native reader fixtures,
+runbook/config/regression notes and this plan. Proof: reproduce retained live input;
+read-only preflight; configured/default paths and consuming directories; unsafe/
+inaccessible state refusal before deletion; partial archive retry; actual native
+readers see absence; launcher activates only afterward. Existing builds/runtime
+journeys remain valid for unchanged C/C++ source. Production action is excluded.
+
+The original filesystem regression reproduced the bug (published handoff remained
+live after cleanup). Ten filesystem tests now pass, including default/custom/
+external paths, input inside a wiped tree, consuming directories, permissions,
+unknown content and symlink/`..`/missing-parent refusal, plus partial move/retry.
+The actual native producer/reader/projection fixture passes all 12 ASan/UBSan
+scenarios, including real world-image archival and subsequent warm/cold-reader
+absence with exact archived bytes. Live paths are validated as configured before
+any normalization can hide an alias. Existing parent directories are required.
+The lifecycle inventory now includes protected `file:copyover-state`, regenerating
+live inputs while retaining archives under `backup:pfiles`: 200 tables, 31 other
+stores, 42 Redis surfaces; 14 lifecycle, 12 reset-manifest and 7 runtime-contract
+checks pass. No schema/migration change or production C/C++ change was needed.
+The complete SQL/launcher matrix already passed with native inputs seeded; a final
+run after path hardening is pending. It must verify SQL-unready preservation,
+archive-before-activation, failed-cleanup fencing and new-season handoff survival
+on duplicate/lost-ACK retry. Wiper SHA-256:
+`f259ef22ebc32be4b3a8508aca1c3e072ed1c4057ecbd4f17c516ab1ed8283bb`.
+Required incremental MariaDB build, Bash syntax, Python compilation, changed-line
+format and C++ fixture formatting pass; reuse #336's flat-file/optimized builds.
+
 ## Current continuation — matched pre-wipe restore
 
 Branch `branch/issue-264-matched-restore`, based on PR #336 at `24d68b3d8`.
