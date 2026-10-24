@@ -706,16 +706,35 @@ int main(int argc, char **argv) {
         original_wiper_mode = wiper.stat().st_mode & 0o777
         original_ships_mode = ships_path.stat().st_mode & 0o777
         held_wiper = wiper.with_name("fixture-held-wiper")
-        for failure in ("missing", "non-executable", "denied-target"):
+        for failure in ("missing", "non-executable", "denied-target", "hidden-maintenance", "nested-native-parent"):
+            hidden_parent = root / "runtime"
+            nested_parent = root / "Players/a/native"
             if failure == "missing": wiper.rename(held_wiper)
             elif failure == "non-executable": wiper.chmod(0o600)
-            else: ships_path.chmod(0o500)
+            elif failure == "denied-target": ships_path.chmod(0o500)
+            elif failure == "hidden-maintenance":
+                hidden_parent.mkdir(exist_ok=True)
+                (hidden_parent / "state").write_bytes(b"DMSMNT4hidden prior state")
+                env["MAINTENANCE_STATE_FILE"] = str(hidden_parent / "state")
+                hidden_parent.chmod(0o600)
+            else:
+                nested_parent.mkdir()
+                (nested_parent / "copyover.dat").write_bytes(b"COPYold nested handoff")
+                env["COPYOVER_STATE_FILE"] = str(nested_parent / "copyover.dat")
             try:
                 epoch_call("wipe", 1, 1, cwd=root)
             finally:
                 if failure == "missing": held_wiper.rename(wiper)
                 wiper.chmod(original_wiper_mode)
                 ships_path.chmod(original_ships_mode)
+                if failure == "hidden-maintenance":
+                    hidden_parent.chmod(0o700)
+                    assert (hidden_parent / "state").read_bytes() == b"DMSMNT4hidden prior state"
+                    (hidden_parent / "state").unlink(); env.pop("MAINTENANCE_STATE_FILE")
+                if failure == "nested-native-parent":
+                    assert (nested_parent / "copyover.dat").read_bytes() == b"COPYold nested handoff"
+                    (nested_parent / "copyover.dat").unlink(); nested_parent.rmdir()
+                    env.pop("COPYOVER_STATE_FILE")
             assert [sql(query) for query in old_queries] == old_values
             assert recovery_canary.read_bytes() == canary
         print("Actual native before-boundary missing/non-executable artifact and denied target refuse with exact old SQL/files intact", flush=True)
@@ -1205,6 +1224,12 @@ int main(int argc, char **argv) {
 
         prepare(False); launch(); assert old.exists() and native_handoff.exists() and status() == "2:resetting"
         prepare(); launch(epoch=3); assert old.exists()
+        maintenance_checkpoint.parent.chmod(0o600)
+        try:
+            launch(); assert old.exists() and native_handoff.exists() and status() == "2:resetting"
+        finally:
+            maintenance_checkpoint.parent.chmod(0o700)
+        assert maintenance_checkpoint.read_bytes() == b"DMSMNT4old captured maintenance"
         with (root / "bin/server/.pwipe.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             launch(); assert old.exists()
