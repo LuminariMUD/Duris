@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — same-epoch SQL resume
 
 Branch `branch/issue-264-sql-resume`, based on PR #334 at `613d15aa5`.
+Review-ready [PR #336](https://github.com/LuminariMUD/Duris/pull/336), implementation
+`9720c98f9`; both-engine evidence committed at `b8479d01a`.
 Outcome: a SQL-only native recovery command verifies the existing sealed schema and
 runtime exclusion guard, resumes only the exact unfinished checkpoint-aware reset,
 and returns SQL-ready without starting the world. Reuse the reset body, skip a
@@ -90,6 +92,13 @@ passed. Lifecycle (14), runtime compatibility (7), reset manifest (12), writer/d
 shutdown/fence/completion/Redis scope contracts and format checks passed. Earlier
 five-minute/gameplay/systemd evidence remains applicable to unchanged normal reset,
 launcher and writer behavior; full matched restore and final W7 audit remain open.
+Format/tidy commit hooks passed; branch and PR are pushed/ready for review. All
+private test DB/Redis processes were removed; unrelated local services remain.
+Next: qualify a matched pre-wipe SQL/filesystem/Redis backup and restore generation
+using the existing backup/restore tools and disposable fixture. Then continue W1
+retained custody/baseline consumers and W5 website/donation/client/telemetry cutover;
+the website stop still requires its legacy temporary-copy preservation gate. No
+release tag or readiness sign-off while those gates remain open.
 
 ## Current continuation — durable roster checkpoint
 
@@ -101,7 +110,7 @@ already committed, without inferring completion from character data or timestamp
 Add one nullable `roster_recreated` field to the existing season singleton: NULL
 preserves legacy/unknown provenance, begin sets 0, and the atomic roster transaction
 sets 1. New SQL-ready publication requires 1. This is the dependency for safe
-same-epoch SQL-stage recovery; that recovery entry point remains the next chunk.
+same-epoch SQL-stage recovery, implemented and qualified in PR #336 above.
 Non-goals: another job store, new fields on every table, or claiming that existing
 SQL/journal backups already cover the filesystem and Redis. Files: additive sealed
 migration/verifier and synchronized runtime contract, SQL boundary/roster/readiness,
@@ -122,16 +131,12 @@ now reads the sealed owner manifest. A MySQL-incompatible constrained-column ren
 in an existing corruption fixture now uses the delegated ledger's unconstrained
 source-site column, preserving the same missing-schema preflight assertion.
 
-Next SQL recovery entry point must acquire the runtime exclusion guard and verify
-sealed schema/current resetting epoch without booting the world. Only a checkpoint-
-aware reset (0 or 1) may resume; legacy NULL without SQL-ready must retain the matched-
-restore route. A committed 1 must skip roster recreation; retries must retain the
-same epoch and fixed reward-policy boundary. Redis cleanup must use the original
-old epoch (expected reset epoch minus one), not the current resetting namespace.
+The SQL recovery requirements from this dependency are now implemented and tested
+in PR #336 above: runtime exclusion, sealed metadata, same-epoch 0/1 checkpoint
+recovery without world startup, committed-roster skip and original Redis epoch.
 The existing SQL/journal backup tool still needs verified filesystem/Redis pairing
-and recovery rehearsal. Full SQL resume, matched restore and readiness remain open.
-Commit hooks passed; PR #334 is ready for review. Full SQL recovery remains the
-next implementation chunk, not a completed capability.
+and recovery rehearsal. Matched restore and full readiness remain open.
+Commit hooks passed; PR #334 is ready for review.
 
 ## Current continuation — DurisWeb presence fence
 
@@ -167,8 +172,8 @@ or live application write occurred.
 
 Next: backup/recovery prerequisites and matched restore/SQL-stage recovery using
 `src/sql/sql.c`, `scripts/persistence_backup.py`, `scripts/persistence_restore.py`
-and existing disposable fixtures. Native SQL-stage resume remains unimplemented;
-never rerun the non-idempotent roster recreation or manually set active as a recovery.
+and existing disposable fixtures. Native SQL-stage resume is now qualified in
+PR #336 above; use its guarded entry point, never manually set active as recovery.
 W5 also retains whole website/cache/donation/client/telemetry cutover acceptance.
 Before any website service stop, follow its `docs/deployment.md` legacy temporary-copy
 preservation gate: PrivateTmp cleanup can remove unmanaged copies. Rehearse that
@@ -798,18 +803,18 @@ old-season work and normal saves continue.
 
 ### W3 — Durable completion through filesystem cleanup (6–10 hours)
 
-- [ ] Extend the singleton only with phase/receipt information needed to distinguish
+- [x] Extend the singleton only with phase/receipt information needed to distinguish
   incomplete SQL, SQL-ready filesystem cleanup and completed reset. Resume uses
   the same reset identity/epoch. Use additive guarded migrations; do not change
   previously applied immutable migrations.
 - [ ] Keep startup fenced until SQL, reward processing, required Redis cleanup,
   filesystem cleanup and all postconditions succeed. Use truthful stage messages;
   final activation must be guarded by expected reset identity.
-- [ ] Distinguish a fenced failed stop from permission to clean files. Exit 55
+- [x] Distinguish a fenced failed stop from permission to clean files. Exit 55
   alone cannot authorize deletion after post-boundary SQL failure. The launcher
   must verify durable state or a handoff bound to it, preserving failure status
   through logging/notification commands.
-- [ ] Preflight artifact, target layout and access before destructive SQL. Revalidate
+- [x] Preflight artifact, target layout and access before destructive SQL. Revalidate
   canonical targets during cleanup; reject unexpected symlink/path escape, denied
   access and partial deletion. Preserve accounts/config/backups. Repeating cleanup
   for the same unfinished reset must be safe.
@@ -906,7 +911,8 @@ and donations and retained telemetry/quota evidence remain correct.
 - [ ] Fully qualify MariaDB-primary with Redis on/off. Build flat-file mode and
   execute unsupported-pwipe rejection, proving no data loss and normal continuation.
   Flat-file rejection/continuation is now proven by the actual client-free server
-  journey (see current continuation); MariaDB Redis-on remains open. Record build
+  journey. MariaDB Redis-off and Redis-on/systemd core journeys passed (see recorded
+  revisions); final optional integration coverage remains open. Record build
   profiles, enabled optional systems and gaps; do not label rejection successful
   flat-file wipe qualification.
 
