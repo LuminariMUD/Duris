@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-redis-reenable/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-redis-reenable`, [PR #341](https://github.com/LuminariMUD/Duris/pull/341).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `9ff8251dc`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-shutdown-operator-flow/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-shutdown-operator-flow`, [PR #343](https://github.com/LuminariMUD/Duris/pull/343).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `bb49e8d88`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -46,6 +46,14 @@ new-scope recovery/second boot passed. Exact fixture revision `4464aab01`, binar
 `e09aacfefb4aec8007d519b029b6af91c78292ceb624d11840571b3572df5cf3`, and reports are
 in the stack-tip plan. The Redis on/off/failure/re-enable gate is now qualified;
 full external website/donation/client/telemetry cutover remains open.
+PR #343 completes the operator gate: strict request validation preserves existing
+countdowns, manual timers cancel on issuer departure or lost shared command
+permission, replacement has one queued timer, and terminal execution is disarmed.
+Native ASan/UBSan clock/event regressions and all three builds pass. The actual
+journey at `b20372b9f` proves level-60 grant/revoke, malformed/repeated requests,
+menu/link cancellation, and the 301.961-second wipe followed by bank reset, only
+level-62 Overlord recreation and fresh combat/loot/save/reconnect/second boot.
+Binary/report hashes and commands are recorded in the current stack-tip plan.
 Companion DurisWeb [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
 [#94](https://github.com/LuminariMUD/DurisWeb/pull/94) fence stale events and redact
 driver details, with backend checks and native SELECT-only lock proof. The clean
@@ -54,7 +62,7 @@ branch `branch/issue-264-presence-diagnostics` at `69c8671`.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
 fallback consumer proof, complete website/donation/client/telemetry cutover, W2
-command edge cases, W4 new-character reward claims and W7 readiness audit. The
+remaining writer/replay audit, W4 new-character reward claims and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
 
