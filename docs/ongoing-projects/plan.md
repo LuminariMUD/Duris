@@ -58,6 +58,8 @@ The complete real service/Redis journey is qualified separately below.
 ## Current continuation — Redis-on and systemd runtime journey
 
 Branch `branch/issue-264-systemd-qualification`, based on PR #329 at `4c2017f15`.
+Review-ready PR #330 (https://github.com/LuminariMUD/Duris/pull/330), implementation
+`f3768e7cf`; committed and pushed after this handoff update.
 Outcome: real five-minute reset with private Redis and the complete systemd sandbox/
 restart settings, followed by staff access and fresh gameplay/save/reconnect/reboot.
 Reuse the existing runtime journey and production-profile binary; no game or launcher
@@ -83,7 +85,7 @@ Wall countdown/reset observation: **303.049 seconds**, monotonic **292.201 secon
 the game uses wall time and both clocks are recorded. Service results: exit 58,
 failed, zero restarts; exit 55, inactive/success, zero restarts. Existing three-build
 and Redis-off gameplay evidence is reused: this chunk changes only tests/docs.
-Publication remains. Scope is the private mini world; full #264 readiness remains
+Commit hooks passed; PR #330 is ready for review. Scope is the private mini world; full #264 readiness remains
 open for inventory/custody/recovery, Redis re-enable, external cutover and the other
 W1–W7 acceptance items.
 
