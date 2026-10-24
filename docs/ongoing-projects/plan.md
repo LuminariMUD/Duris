@@ -8,7 +8,7 @@ Implementation branch: `branch/issue-264-pwipe-qualification`.
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
 gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-telemetry-cutover/docs/ongoing-projects/plan.md),
 branch `branch/issue-264-telemetry-cutover`, [PR #345](https://github.com/LuminariMUD/Duris/pull/345).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `54da451f1`
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `ea36b04fd`
 (clean and pushed). Review-ready server stack:
 #309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
@@ -73,7 +73,7 @@ Companion DurisWeb [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
 [#94](https://github.com/LuminariMUD/DurisWeb/pull/94) fence stale events and redact
 driver details, with backend checks and native SELECT-only lock proof. The clean
 pushed companion worktree is `/home/aiwithapex/projects/durisweb-issue264-presence`,
-branch `branch/issue-264-current-account-characters` at `1819a63`.
+branch `branch/issue-264-current-mud-permissions` at `0add858`.
 Companion [#95](https://github.com/LuminariMUD/DurisWeb/pull/95), stacked on #94,
 repairs retired-account characters and reused-name ownership across old caches.
 Three regressions fail on the parent and pass after repair; actual service queries
@@ -82,7 +82,16 @@ Backend format/lint/types/build/MUD-write verification pass; combined account/
 presence unit checks pass (28). The native account case passes explicitly on both
 engines; unchanged native presence locking proof is reused. News remains a local
 unpublished draft. The full website HTTP/client/cache/donation cutover remains
-open, including invalidation of the existing permission cache for retired staff.
+open. Companion [#96](https://github.com/LuminariMUD/DurisWeb/pull/96) removes
+that derived-permission cache and obsolete cleanup, filters active bodies and
+recomputes MUD privileges at every authorization. Two regressions fail on #95;
+seven tests per owned MariaDB/MySQL fixture pass, including actual JWT/HTTP 200
+before level-61 retirement -> 403 for the same token afterward, and 200 for the
+recreated Overlord. Explicit website-admin grants remain separate. The fixture
+stubs only active-session validity; session-persistence/full-client evidence is
+not replaced. Focused unit checks pass (36), all required backend checks pass.
+Existing websocket principals still need the stopped-service/reconnect cutover;
+full presence/cache/leaderboard/donation integration remains open.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
 fallback consumer proof, complete website/donation/client cutover, W2
