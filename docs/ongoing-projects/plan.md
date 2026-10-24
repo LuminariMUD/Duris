@@ -40,6 +40,23 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — Redis disabled/reset/re-enable
+
+Branch `branch/issue-264-redis-reenable`, based on PR #339 at `8ec555765`.
+Outcome: prove the actual command/launcher reset with Redis disabled, followed by
+re-enable into the new SQL epoch while valid authenticated old world data, an old
+floor-item marker and old presence/cache keys remain. Extend the existing runtime
+journey with one explicit mode; retain the private Redis process across the switch.
+First prove the old snapshot is accepted, then stop/drain, disable for the wipe,
+re-enable after activation, and prove old state remains invisible while fresh
+presence/gameplay/save/reconnect/second-boot recovery works. No new Redis schema,
+namespace or runtime fallback is needed unless the executable journey finds a defect.
+Files: existing journey and runbook/regression/continuation docs. Proof: authenticated
+old payload hash survives; old floor marker is absent after reset/re-enable; correct
+old/new PIDs, banks and epoch; new-scope presence and recovery; unrelated keys stay.
+Reuse the unchanged optimized binary/builds and existing failure/systemd evidence.
+Full external cutover, W1/W2/W4 and final audit remain open; production is excluded.
+
 ## Current continuation — isolate retained native handoffs
 
 Branch `branch/issue-264-copyover-season-fence`, based on PR #337 at `7bc1672de`.
