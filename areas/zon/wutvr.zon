@@ -188,7 +188,6 @@ O 0 91522 1 91449 100 0 0 0        * a sign
 O 0 336 999 91449 100 0 0 0        * (object type not in this .obj file)
 O 0 91426 1 91455 100 0 0 0        * the elven ship 'Lilynswift'
 O 0 91427 1 91466 100 0 0 0        * the Bank sign
-* Unresolved legacy bank object 6081 omitted (PR #319).
 O 0 91513 1 91466 100 0 0 0        * unseen locker teleporter
 O 0 3097 1 91466 100 0 0 0         * (object type not in this .obj file)
 O 0 91521 1 91467 100 0 0 0        * a marble fountain

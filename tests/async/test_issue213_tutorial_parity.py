@@ -173,12 +173,6 @@ def copied_record(source, kind, record):
             command = lines[index][0]
             assert command in references, f"unmapped reset opcode {command}"
             values = [int(value) for value in re.findall(r"-?\d+", lines[index].split("*", 1)[0])]
-            if command == "O" and values[1] == 6081:
-                # No such prototype exists; original boot already disables this
-                # legacy bank reset. Its independent source repair is PR #319.
-                assert source == "newbie" and values[3] == 29266
-                lines[index] = "* Unresolved legacy bank object 6081 omitted (PR #319).\n"
-                continue
             lines[index] = numbers(lines[index], {field: remap(namespace, values[field])
                                                 for field, namespace in references[command].items()})
     elif kind == "shp":
