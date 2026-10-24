@@ -103,6 +103,7 @@ class MudClient:
         self.socket.settimeout(0.25)
         self.pending = bytearray()
         self.transcript = bytearray()
+        self.raw_transcript = bytearray()
 
     def close(self) -> None:
         self.socket.close()
@@ -124,6 +125,7 @@ class MudClient:
             return False
         if not chunk:
             raise AssertionError("server closed the gameplay connection")
+        self.raw_transcript.extend(chunk)
         cleaned = self._clean(chunk)
         self.pending.extend(cleaned)
         self.transcript.extend(cleaned)
