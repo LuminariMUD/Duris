@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-retained-item-custody/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-retained-item-custody`, [PR #348](https://github.com/LuminariMUD/Duris/pull/348).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `6c3c1f789`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-boundary-commit-ack/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-boundary-commit-ack`, [PR #349](https://github.com/LuminariMUD/Duris/pull/349).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `f43c43603`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -115,9 +115,20 @@ substitute for recovery-input epoch isolation. Existing handoff/service/isolatio
 proof reconciles the remaining W3 and W6-isolation checkboxes. No production
 code/schema/reset action changed. Current origin/master is already an ancestor.
 Next required gaps: full retained-store/path/worker consumer inventory, held actual
-shared-writer/callback-chain quiescence proof, explicit lost ACK at the epoch
-boundary COMMIT, then final manual/backup and readiness reconciliation. Visual
+shared-writer/callback-chain quiescence proof, launcher-kill/child-lock inheritance, then final manual/backup and readiness reconciliation. Visual
 browser release testing is not an added #264 acceptance gate.
+PR #349 closes the unknown epoch-boundary COMMIT result gap. A targeted native
+client wrapper fails once before application and once after real COMMIT; the SQL
+caller never resumes writers or marks filesystem-ready, and old rows/files/grants
+remain intact. The committed case refuses actual direct startup at the explicit
+season fence (raw fatal 1) and launcher cleanup (58). Real SQL-only recovery reuses
+the successor epoch, decrements one grant 3 -> 2 once, clears old payload/summons,
+and preserves roster/stamp/fresh files on readiness/activation retry. Both full
+native matrices pass at fixture `361425efd` on MariaDB 10.11.19 and MySQL 8.0.46;
+incremental build/syntax/format/hooks pass. No production source/schema changed.
+Remaining required proof: actual held shared-writer/callback chains, launcher
+SIGKILL/child-lock inheritance, full retained-store/path consumer inventory and
+final manual/backup/readiness reconciliation. No new visual/deployment gate.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
 fallback consumer proof, final manual/backup readiness reconciliation, W2
