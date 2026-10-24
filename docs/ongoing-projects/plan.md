@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-website-runtime-journey/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-website-runtime-journey`, [PR #347](https://github.com/LuminariMUD/Duris/pull/347).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `82b8f7855`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-retained-item-custody/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-retained-item-custody`, [PR #348](https://github.com/LuminariMUD/Duris/pull/348).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `6c3c1f789`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -105,9 +105,22 @@ alias controls pass. The website factory now selects supported MySQL 8, with nar
 wrapper/default/boot checks and reused full proof. Joint MariaDB 11.8 and rendered-
 browser/production acceptance are not claimed. W5 backend/client-wire integration
 is qualified; final manual/readiness and full store/writer reconciliation stay open.
+PR #348 proves ordinary retained custody/revision/baseline rows cannot rebuild
+wiped player payloads. The actual load repository sees the old payload before,
+then no old item/pet graph afterward despite exact metadata retention. Recreated
+Overlord has no inherited graph/revision; payload row IDs and a real UID lease stay
+monotonic. The committed native matrix passes on MariaDB 10.11.19 and MySQL 8.0.46,
+including all 200 lifecycle tables. Descriptions clarify these books are not a
+substitute for recovery-input epoch isolation. Existing handoff/service/isolation
+proof reconciles the remaining W3 and W6-isolation checkboxes. No production
+code/schema/reset action changed. Current origin/master is already an ancestor.
+Next required gaps: full retained-store/path/worker consumer inventory, held actual
+shared-writer/callback-chain quiescence proof, explicit lost ACK at the epoch
+boundary COMMIT, then final manual/backup and readiness reconciliation. Visual
+browser release testing is not an added #264 acceptance gate.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
-fallback consumer proof, final website/manual/browser readiness reconciliation, W2
+fallback consumer proof, final manual/backup readiness reconciliation, W2
 remaining writer/replay audit, W4 reset/retained-reader completeness and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
