@@ -242,8 +242,24 @@ opening baselines. Other characters and staff are retired. Their rows remain ina
 under reserved `~pwipe-PID` names, releasing ordinary names for the new season.
 The roster change is one transaction: failure rolls back name/account/body changes
 and retains the incomplete-reset fence. Old summon links are cleared every reset,
-independently of the 28-day grant-decrement policy. Full staff login/gameplay proof
-and persistent replay isolation are still issue #264 readiness gates.
+independently of the 28-day grant-decrement policy. Staff login/gameplay and selected replay paths are qualified locally; the remaining
+store/writer inventory and final reconciliation stay in issue #264.
+
+Ordinary `item_current_owner`, `item_owner_revision` and
+`item_ownership_baseline` records remain protected bookkeeping. They carry typed
+identities, revisions and provenance, not serialized objects. The actual player
+loader reports an owner claim with no payload as missing; it does not rebuild that
+object from the claim or baseline. Wipe removes saved payloads and keeps their
+row-ID and UID allocators increasing, so retained source references and custody
+cannot alias newly created items. Recreated characters have new PIDs and do not
+inherit retired player-owner revisions. Offline inspection of a retired PID may
+still read its historical status; normal account menus exclude deleted mappings.
+
+This metadata is not an independent epoch fence: live payload stores must reset,
+and old Redis/native recovery inputs must stay isolated or archived. Do not delete
+books to make an inventory appear empty or republish an old world image into a
+new epoch. The native SQL journey checks exact metadata retention, absent old
+item graphs, clean recreated-owner reads and fresh UID allocation on both engines.
 
 Kingdom realms, purchased garrisons and legacy land ownership reset with guilds,
 even if the optional kingdom feature is disabled. Association IDs can be reused;

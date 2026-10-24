@@ -2348,7 +2348,7 @@
       "locator": "item_current_owner",
       "data_category": "reconciliation_or_replay_record",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "idempotent replay, reconciliation, auditability, and balance or ownership correctness",
+      "technical_purpose": "Typed custody and revision catalog used by transfer checks and saved-payload admission; contains no serialized object. Retained through wipe while live payload stores reset and old recovery inputs are isolated; this catalog is not an independent season fence.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -2408,7 +2408,7 @@
       "locator": "item_owner_revision",
       "data_category": "reconciliation_or_replay_record",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "idempotent replay, reconciliation, auditability, and balance or ownership correctness",
+      "technical_purpose": "Monotonic revision for a typed owner identity, retained with custody and reconciliation evidence; fresh character PIDs do not inherit retired player revisions.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -2437,7 +2437,7 @@
       "locator": "item_ownership_baseline",
       "data_category": "reconciliation_or_replay_record",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "idempotent replay, reconciliation, auditability, and balance or ownership correctness",
+      "technical_purpose": "Opening ownership provenance and source-row identity for reconciliation, not a serialized object payload or a startup reconstruction source; retained after seasonal payload removal.",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
