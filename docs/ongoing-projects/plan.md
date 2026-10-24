@@ -40,6 +40,51 @@ postconditions; new-season gameplay; required builds/formatting. No production
 operation is authorized by this plan. No C/C++ build or destructive runtime test
 was run during planning.
 
+## Current continuation — same-epoch SQL resume
+
+Branch `branch/issue-264-sql-resume`, based on PR #334 at `613d15aa5`.
+Outcome: a SQL-only native recovery command verifies the existing sealed schema and
+runtime exclusion guard, resumes only the exact unfinished checkpoint-aware reset,
+and returns SQL-ready without starting the world. Reuse the reset body, skip a
+committed roster, retain the fixed epoch/reward boundary, and clean the original
+Redis epoch. Load the same lifecycle configuration in ordinary/minimal/recovery
+modes. The existing launcher remains the final filesystem/activation step; no
+binary-promotion framework or new recovery service is needed.
+Files: native argument/config boot, SQL connection/reset/guard, offline Redis
+maintenance, existing executable SQL journey and docs. Proof: actual binary wrong/
+active/legacy refusal, before/after-roster retry, no PID/reward duplication, runtime
+exclusion, no world/listeners/filesystem cleanup, SQL-ready then launcher completion,
+Redis old-epoch selection and interruption/failure fencing. Matched restore and
+other W1–W7 gates remain open; production operation is not authorized.
+
+Implemented `bin/server/dms_new --resume-pwipe EPOCH PORT`: shared verified
+connection/guard, full boot metadata/baseline gate, explicit checkpoint-aware
+same-epoch reset, and offline old-epoch Redis maintenance. It returns 55 for SQL
+readiness (including an already SQL-ready resetting epoch), 58 for refusal/failure;
+only the existing launcher can clear files and activate. Legacy pending NULL and
+active epochs refuse. No schema extension beyond #334 and no new coordinator or
+binary-selection machinery. Common lifecycle config loading also fixes minimal
+mode ignoring the configured cap reset/reward preservation policy.
+
+MariaDB 10.11.19: the complete existing native SQL/launcher matrix plus actual
+SQL-only process cases passed. The process was SIGKILLed while its roster transaction
+slept before checkpoint commit: roster/mappings rolled back, marker stayed 0,
+another process was excluded, and retry completed epoch 3 once with configured cap
+37. After marker 1, Redis SCAN denial and readiness failure after reward commit
+stayed fenced; repair/retry kept PIDs and remaining reward count, cleaned old epoch
+26, preserved epoch 27/unrelated keys, and honored preserve=false on a distinct
+eligible reset. SQL resume left the file canary; launcher resume removed it and
+activated epoch 3. Test setup now uses the canonical sealed migration runner and
+opening baselines, so the actual binary's full verifier runs unchanged. Source
+contracts now scope the real reset function and recovery's offline drain exception.
+MySQL 8 optimized-binary qualification is running; do not count it as passed yet.
+
+Development MariaDB, optimized MariaDB production, and isolated flat-file builds
+passed. Lifecycle (14), runtime compatibility (7), reset manifest (12), writer/drain,
+shutdown/fence/completion/Redis scope contracts and format checks passed. Earlier
+five-minute/gameplay/systemd evidence remains applicable to unchanged normal reset,
+launcher and writer behavior; full matched restore and final W7 audit remain open.
+
 ## Current continuation — durable roster checkpoint
 
 Branch `branch/issue-264-roster-checkpoint`, based on PR #330 at `79593ec9d`.
@@ -887,9 +932,10 @@ its failing path, not just the happy path.
 - **Drop** blanket ledger deletion/epoch columns, new flat-file reset support,
   repository-wide burn-in and unrelated cleanup. Add isolation/tests for actual
   consumers; do not trade away acceptance requirements.
-- **Investigate** bank/staff carryovers, protected recovery records and reward
-  policy before destructive choices. Preserve policy/evidence by default; those
-  stores remain in completion criteria.
+- **Keep** the confirmed owner policy: every account-bank balance resets; only
+  exact level-62 Overlords are recreated. **Investigate** protected recovery
+  consumers and prove approved reward carryovers; retained stores remain in
+  completion criteria.
 
 ## Validation recorded during planning
 

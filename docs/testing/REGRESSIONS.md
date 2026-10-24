@@ -28,9 +28,15 @@ functions and executes begin/ready/boot fencing against that DB, then drives the
 actual launcher's resume path with synthetic filesystem data. Cases cover missing
 SQL readiness, wrong epoch, overlapping cleanup, unsafe paths/nonexecutable artifact,
 partial cleanup, fixed retries, duplicate completion and a lost activation ACK.
-No real `.env`, player data or external notifications are used. It does not prove
-the full game command/countdown, writer quiescence, reset completeness, reward policy
-identity, external integrations or fresh gameplay; those remain #264 gates.
+Add `--server /absolute/path/to/bin/server/dms_new` to execute the native SQL-only
+recovery entry point against the same sealed private DB and synthetic data root.
+It proves wrong/active/legacy refusal, concurrent runtime exclusion, SIGKILL during
+roster commit, same-epoch retry and launcher completion, loaded lifecycle policy,
+post-roster Redis selection, and reward-commit/readiness failure without duplicate
+PIDs or reward consumption. Existing `TEST_DB_*` variables can select an owned
+MySQL 8 fixture instead of creating MariaDB. No real `.env`, player data or external
+notifications are used. This does not replace the full command/countdown, writer
+drain, gameplay, matched restore or external integration journeys in #264.
 
 `python3 tests/async/test_pwipe_quiescence.py` executes the production writer
 preparation with the real shared writer and controlled peripheral drains. Held

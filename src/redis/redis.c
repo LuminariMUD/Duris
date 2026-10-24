@@ -208,6 +208,45 @@ bool redis_clear_pwipe_state(void)
 	return redis_maintenance_clear(&config);
 }
 
+bool redis_recover_pwipe_state(uint64_t old_epoch, bool apply)
+{
+#ifdef __NO_REDIS__
+	(void)old_epoch;
+	(void)apply;
+	return true;
+#else
+	const char *enabled = getenv("REDIS");
+	if (!enabled || strcasecmp(enabled, "TRUE"))
+		return true;
+	redis_runtime_connections connections = {};
+	char key_namespace[64], current[160], sessions[160], retries[160], caches[160];
+	const bool configured =
+		old_epoch &&
+		redis_namespace_validate(getenv("REDIS_NAMESPACE"), getenv("ENVIRONMENT"),
+					 key_namespace, sizeof key_namespace) &&
+		redis_runtime_connections_configure(false, &connections) &&
+		redis_namespace_season_key(key_namespace, old_epoch, REDIS_PRESENCE_CURRENT,
+					   current, sizeof current) &&
+		redis_namespace_season_key(key_namespace, old_epoch, REDIS_PRESENCE_SESSION_PATTERN,
+					   sessions, sizeof sessions) &&
+		redis_namespace_season_key(key_namespace, old_epoch, REDIS_PRESENCE_RETRY_PATTERN,
+					   retries, sizeof retries) &&
+		redis_namespace_season_key(key_namespace, old_epoch, REDIS_CACHE_PATTERN, caches,
+					   sizeof caches);
+	const redis_maintenance_config config = { connections.maintenance,
+						  key_namespace,
+						  old_epoch,
+						  current,
+						  sessions,
+						  retries,
+						  caches };
+	const bool ready = configured && (apply ? redis_maintenance_clear(&config) :
+						  redis_maintenance_validate(&config));
+	redis_runtime_connections_destroy(&connections);
+	return ready;
+#endif
+}
+
 bool redis_validate_pwipe_state(void)
 {
 	if (!redis_enabled)

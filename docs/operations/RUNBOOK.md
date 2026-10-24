@@ -199,7 +199,7 @@ its handoff receipt: while `reset_status='resetting'`, a NULL `reset_completed_a
 means SQL/Redis/reward processing is incomplete; a non-NULL value means those stages
 finished and filesystem cleanup remains. The launcher keeps status `resetting`
 through cleanup, then atomically activates that exact epoch and records the final
-completion time. Only then does it print `Wiped!`. No schema change is needed.
+completion time. Only then does it print `Wiped!`.
 
 `shutdown pwipe` is unsupported in `flatfile-primary` and refuses immediately,
 before scheduling a countdown or cancelling an existing reboot. The real client-free
@@ -307,18 +307,31 @@ New reset epochs also record `roster_recreated` in the season singleton. Begin
 sets it to 0; Overlord recreation and its 1 checkpoint commit in the same transaction.
 New SQL-ready publication requires that committed checkpoint. NULL denotes legacy
 or unknown provenance; the additive migration preserves it. Previously SQL-ready
-legacy epochs can still use filesystem resume. This checkpoint prepares SQL-stage
-recovery; it does not by itself provide a SQL resume command.
+legacy epochs can still use filesystem resume.
 
-For `resetting` with NULL completion time, file cleanup is prohibited. The current
-supported recovery is a matched pre-wipe DB/filesystem/Redis restore under operator
-control, not an unqualified rerun of SQL or a manual `active` update. The MariaDB
-generations made by `persistence_backup.py` contain SQL and journals; filesystem
-and Redis recovery evidence must be verified separately for a matched wipe restore. SQL-stage resume
-and full carryover/recovery qualification remain tracked in #264. Never change the
-row to `active` merely to bypass the fence. Production reset/restore requires owner
-authorization. Once the complete workflow is qualified and the row is active,
-start the new season explicitly.
+For `resetting` with NULL completion time and a known 0/1 roster checkpoint, use the
+matching built native binary from the data root, with the original environment,
+port and lifecycle configuration: `bin/server/dms_new --resume-pwipe EPOCH PORT`.
+This SQL-only command acquires the normal runtime exclusion guard and verifies the
+sealed schema and baselines before mutation. It refuses active/wrong/unknown epochs,
+keeps the existing epoch and reset start, retries the reset body, skips a committed
+roster, and targets the original Redis epoch. It starts no world, listeners or runtime
+writers and does not clear filesystem data or activate the season. Exit 55 means SQL
+is ready; run the existing launcher resume above to finish files and activation.
+Exit 58 means recovery refused or remains incomplete; inspect `logs/log/status` and
+`logs/log/debug`, repair the cause and repeat the same expected epoch. A second SQL
+resume of a SQL-ready resetting epoch is read-only and also returns 55. It does not
+reopen a completed active season. Keep all external writers stopped through both steps.
+
+An unfinished legacy/unknown checkpoint cannot safely establish whether new staff
+PIDs already committed. Use a matched pre-wipe DB/filesystem/Redis restore under
+operator control for that case. Never infer a checkpoint or change the row to
+`active` merely to bypass the fence. MariaDB generations made by
+`persistence_backup.py` contain SQL and journals; filesystem and Redis recovery
+evidence must be verified separately for a matched wipe restore. Full matched-restore,
+carryover and integration qualification remain tracked in #264. Production reset,
+recovery or restore requires owner authorization. Once the complete workflow is
+qualified and the row is active, start the new season explicitly.
 
 Every active Redis key and channel includes the boot-captured SQL season epoch. The old
 process continues to target only the old epoch while pwipe is in progress; after restart,
