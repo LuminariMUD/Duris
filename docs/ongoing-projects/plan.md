@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-copyover-season-fence/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-copyover-season-fence`, [PR #339](https://github.com/LuminariMUD/Duris/pull/339).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `8ec555765`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-redis-reenable/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-redis-reenable`, [PR #341](https://github.com/LuminariMUD/Duris/pull/341).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `9ff8251dc`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -35,6 +35,17 @@ fresh-handoff preservation after lost activation ACK. The missing native store i
 classified: current lifecycle inventory is 200 tables, 31 other stores, 42 Redis
 surfaces. Required incremental build/format/hooks pass; unchanged full-build evidence
 is reused. See the stack-tip plan for commands, hashes and remaining gates.
+PR #340 independently repairs a lost-floor precondition: stale active player custody
+no longer suppresses the physical recovery tree; existing saved-holder/terminal/
+economic ownership checks still prevent duplicate replay. Native ASan/UBSan capture/
+ownership/codec tests and all three builds pass. Real same-epoch floor recovery passed.
+PR #341 then passed the actual five-minute Redis-off wipe and epoch-2 re-enable with
+valid authenticated epoch-1 world/floor payloads retained. Old payload hash/keys stayed
+unchanged; the old sword stayed absent, fresh presence/combat/save/reconnect and
+new-scope recovery/second boot passed. Exact fixture revision `4464aab01`, binary
+`e09aacfefb4aec8007d519b029b6af91c78292ceb624d11840571b3572df5cf3`, and reports are
+in the stack-tip plan. The Redis on/off/failure/re-enable gate is now qualified;
+full external website/donation/client/telemetry cutover remains open.
 Companion DurisWeb [#93](https://github.com/LuminariMUD/DurisWeb/pull/93) and
 [#94](https://github.com/LuminariMUD/DurisWeb/pull/94) fence stale events and redact
 driver details, with backend checks and native SELECT-only lock proof. The clean
@@ -42,9 +53,8 @@ pushed companion worktree is `/home/aiwithapex/projects/durisweb-issue264-presen
 branch `branch/issue-264-presence-diagnostics` at `69c8671`.
 Full #264/#97 readiness remains OPEN. Owner policy: reset all account-bank balances;
 recreate only exact level-62 Overlords. Next: retained custody/baseline and legacy
-fallback consumer proof, Redis re-enable with retained authenticated old recovery
-payloads, and complete website/donation/client/telemetry cutover, then W2
-command edge cases and W7 readiness audit. The
+fallback consumer proof, complete website/donation/client/telemetry cutover, W2
+command edge cases, W4 new-character reward claims and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
 
