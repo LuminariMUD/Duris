@@ -3926,6 +3926,9 @@ bool sql_verify_pwipe_manifest(void)
 					      "guildhall_rooms",
 					      "guildhalls",
 					      "guilds",
+					      "kingdom_garrison",
+					      "kingdom_land",
+					      "kingdom_realms",
 					      "ip_info",
 					      "level_cap",
 					      "locker_access",
@@ -4339,7 +4342,9 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing prestige lists... .. .");
 		send_to_all("Clearing prestige lists... .. .");
-		if (qry("DELETE FROM associations"))
+		// Association IDs are reused; retire their world state before the owner.
+		if (qry("DELETE FROM kingdom_garrison") && qry("DELETE FROM kingdom_land") &&
+		    qry("DELETE FROM kingdom_realms") && qry("DELETE FROM associations"))
 		{
 			logit(LOG_DEBUG, "  success!");
 			send_to_all("  success!\n");
@@ -4948,6 +4953,9 @@ bool sql_pwipe(int code_verify)
 							    "ship_crew",
 							    "ship_armor",
 							    "guilds",
+							    "kingdom_garrison",
+							    "kingdom_land",
+							    "kingdom_realms",
 							    "guild_members",
 							    "guild_ranks",
 							    "artifacts",
