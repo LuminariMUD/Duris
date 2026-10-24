@@ -1653,7 +1653,8 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 	if (XP_final > 0)
 	{
 		const int storage_limit = std::numeric_limits<int>::max();
-		const std::int64_t ceiling = std::min<std::int64_t>(global_exp_limit, storage_limit);
+		const std::int64_t ceiling =
+			std::min<std::int64_t>(global_exp_limit, storage_limit);
 		next_exp = std::min(next_exp, std::max<std::int64_t>(before_exp, ceiling));
 	}
 	else
