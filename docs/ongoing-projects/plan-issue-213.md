@@ -2,11 +2,10 @@
 
 Tracking: [Duris #213](https://github.com/LuminariMUD/Duris/issues/213).
 Implementation branch: `branch/issue-213-evil-onboarding`.
-Status: implementation in progress; death policy/warning, shared creation
-validation, copied data and the browser refresh companion are open for review.
-The active routing chunk implements evil content/procs/choices and passes full
-loaded NPC comparisons on both backends. Browser acceptance passes on both backends; expanded native service/death
-qualification is running and tracked below.
+Status: local implementation and acceptance complete; the server stack and
+DurisWeb companion are pushed and ready for review. Full native and browser
+journeys pass on both backends. Review/integration and any production release
+remain outstanding; the issue stays open until the coordinated stack lands.
 Revised October 23, 2026 for the issue's approved Firbolg/Ogre eligibility decision;
 the previous tutorial exclusions are superseded.
 
@@ -53,20 +52,21 @@ menu without the matching data/procedures and website companion.
   foundation. Eight shops append only in `areas/shp/end.shp`, preserving all
   durable load-order shop IDs. Never add `wutvr.shp` in AREA order.
 - [#331](https://github.com/LuminariMUD/Duris/pull/331), stacked on #320,
-  `branch/issue-213-tutorial-routing`, `436b77652`: minimal evil reskin,
+  `branch/issue-213-tutorial-routing`, `dcdb151fa`: minimal evil reskin,
   mechanics parity, compiled bindings, creation/routing and kit integration.
   Includes independent #328/#335 below; merge those dependencies first.
 - [#333](https://github.com/LuminariMUD/Duris/pull/333), stacked on #331,
-  `branch/issue-213-onboarding-acceptance`, `68084a80c`: real browser acceptance
+  `branch/issue-213-onboarding-acceptance`, `9f5bdc9f4`: real browser acceptance
   runner; includes independent #332.
 - [#342](https://github.com/LuminariMUD/Duris/pull/342), stacked on #333,
   `branch/issue-213-final-acceptance`, `c82b266d9`: native service/death/recovery
   runner and side-neutral creation-menu recommendation. Includes #338 through
   `3943f366f`; merge that independent repair first. The review tree exactly
-  matches the integration branch retained at `677f038a7`. The active worktree
-  now uses this clean review branch; its full native matrix is still running.
+  matched the integration branch retained at `677f038a7` before the final
+  racial spell-factor correction was merged through the parent. The active worktree
+  now uses this clean review branch; its full native matrix passes on both backends.
 - [DurisWeb #91](https://github.com/LuminariMUD/DurisWeb/pull/91),
-  `branch/issue-213-hometown-parity`, `e97c9e1` (frontend code `9eb92e3`):
+  `branch/issue-213-hometown-parity`, `de17db6` (frontend code `9eb92e3`):
   selected alignment, stale-response rejection, pending-step protection,
   selection invalidation, omitted-home compatibility and phone layout.
   Worktree: `/home/aiwithapex/projects/durisweb-issue213`. Its own plan contains
@@ -128,6 +128,9 @@ Independent fixes discovered through the required journeys:
   checks that still altered combat. Commit `436b77652` also routes Minotaur
   berserk/hit procs, Orc horde damage/counting, Drow dodge, Barbarian cold,
   Gith word vulnerability and racial casting modifiers through that profile.
+  Follow-up `dcdb151fa` also selects configured offensive/defensive racial
+  spell-damage factors by this profile, with deliberately different factor
+  controls in the production-predicate ASan/UBSan test. Both full builds pass.
   Player/unrelated-NPC controls remain unchanged. The P2 review thread on #331
   is resolved after executable sanitizer checks and both builds passed.
 - Source maps are transient/no-rent: assert live map delivery and absence from
@@ -136,7 +139,7 @@ Independent fixes discovered through the required journeys:
   use the advertised numbered list entry. Source zero-price/visibility rules
   may legitimately produce an empty shop list; do not invent stock/prices.
 
-### Qualification and remaining work
+### Completed local qualification
 
 Already passing evidence under ignored `bin/qualification/issue213/`:
 
@@ -159,23 +162,41 @@ Already passing evidence under ignored `bin/qualification/issue213/`:
 - `run_shop_bootstrap_journey.py`: real fresh full-world flat-file shop
   initialization and cold restore with byte-identical catalog; real Wutvr
   purchases on both backends deliver/persist a bandage and charge one copper.
-- Filtered native Ogre journeys on both backends completed search/potion,
+- Full native Ogre and Firbolg journeys on both backends completed search/potion,
   bandaging, three-item quest payout, all eight shop bindings and purchase,
   both pets, all four caster families, rent/relogin, reset, racial departure,
   protected death/resurrection at 1/29, bold crossing, level-30 loss and cold
-  XP/home recovery. Original Firbolg service runs reached the Cleric but a test
-  incorrectly waited for its third spell; the current runner checks each
-  family's first authored buff without changing NPC slots/power/timing.
+  XP/home recovery. The runner checks each family's first authored buff,
+  respecting finite NPC slots and original spell power/timing. Staff allocates
+  the three body-part quest prerequisites; real GIVE dispatch and reward effects
+  are observed. Encounter parity is separately covered by loaded profiles and
+  production combat/casting regressions, rather than a live balance study.
 
-The **full unfiltered native runs on both backends are currently running**:
-`onboarding-{flatfile,mariadb}-final.json` / `*-run.log`. Require `completed:
-true`, all seven routes and four direct starts before declaring completion.
-The frozen runner covers Ogre/Firbolg full services/death plus Goblin Sorcerer,
+The **full unfiltered native runs pass on both backends**:
+`onboarding-{flatfile,mariadb}-final.json` / `*-run.log`, with `completed: true`,
+seven routes, four direct starts and **28 acceptance records per backend**.
+Both observed Ogre/Firbolg deaths at level 29 preserved 12,345 XP through
+resurrection; at level 30 normal loss delevelled them to 29. Final cold restart
+preserved those exact XP/level values and all three racial-home fields.
+The frozen runner hash is
+`7ec5a3d64ec20ab3d324d850df80008d676e4cd0ea639119913e6bb40fd2c77c`.
+It covers Ogre/Firbolg full services/death plus Goblin Sorcerer,
 evil Thri-kreen/Minotaur/Tiefling and Human routes; direct Faang/Ugta/Wutvr/Ailvio
 starts; repeat rewards and mid/final cold restarts. Raw ANSI and clean client
 transcripts are saved with the JSON filename prefix. Evidence records source,
 runner, world and binary hashes. Fixed evil races use their authoritative evil
 racewar side regardless of moral alignment; neutral cases explicitly choose E.
+
+The last racial spell-factor selector correction was built to separate
+`bin/server/dms_racial_final` and `dms_flatfile_racial_final` paths, preserving
+the matrix's original binary hashes across its cold restarts. The
+checked-in configuration has no non-unit racial spell-damage factors, so that
+selector change preserves the matrix's observed behavior. Reuse that journey
+evidence alongside the new non-unit-factor executable regression and both
+incremental full-build logs (`build-racial-factors-{backend}.log`); do not rerun
+the entire matrix for a selector that is numerically neutral in that fixture.
+The canonical `dms_new`/`dms_flatfile` binaries were relinked afterward; both
+final full-build logs are `build-final-{backend}.log`.
 
 Commands from this worktree (the matching binaries already exist):
 
@@ -190,17 +211,25 @@ For browser reruns supply `--frontend-url http://127.0.0.1:15173`,
 `--frontend-source /home/aiwithapex/projects/durisweb-issue213` and
 `--browser-executable /home/aiwithapex/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome`
 to `run_issue213_browser_journey.py`, with matching server/backend/output; wrap
-the MariaDB leg as above. The task-owned Vite listener on 15173 is still running.
+the MariaDB leg as above. Recreate the loopback frontend first; the task-owned
+Vite listener on 15173 was stopped after qualification.
 Browser plugin was unavailable, so regular Playwright was used.
 
-Next: finish the current native runs and repair concrete failures. Update this
-section and the companion handoff with final observed results, inspect diff/
-format/original-file parity, refresh master and verify remote PR heads. Reuse
-valid proof rather than repeating full suites. Remove task-created obsolete
-scratch scripts, retaining evidence. Recovery stash `875ba9317` has already
-been restored; **do not apply it again**. Primary unrelated work and unmerged
-review branches/worktrees remain preserved. No production deployment or live
-player acceptance is claimed. No schema migration is needed.
+The full diff's format check, 14 documentation checks, original-file equality,
+authored/generated parity and world-quest controls pass. A final master fetch
+still resolves to `7d3bd3b95`. Task-created obsolete authoring/debug scripts and
+the superseded plan backup were removed; qualification evidence remains ignored.
+Recovery stash `875ba9317` has already been restored; **do not apply it again**.
+Primary unrelated work and unmerged review branches/worktrees remain preserved.
+No schema migration is needed.
+
+Next: review and integrate the listed independent fixes, then the feature stack
+in dependency order, coordinating DurisWeb #91 with authoritative validation.
+No implementation or required local qualification remains open. Keep #213 open
+through review/integration. Any deployment, live-player acceptance or production
+help publication needs its own authorized operational work. Reuse valid local
+proof unless a reviewed change affects its path; no full burn-in or CI wait is
+a gate for this completed implementation request.
 
 
 ## Outcome and locked scope
@@ -357,8 +386,8 @@ and live first-hour outcomes were not reproduced. No such balance survey is
 needed now that the owner explicitly retained those mobs. Repository
 [`price.home.plat`](../../lib/duris.properties#L2478) is 500 and
 [`do_home()`](../../src/cmd/actnew.c#L4078) uses it; this is not a reading of
-production configuration. No live server, loaded world, or gameplay journey was
-used to validate this plan.
+production configuration. The October 19 planning inventory used no live server,
+loaded world or gameplay journey; implementation qualification is recorded above.
 
 ## Implementation sequence, files, and proof
 
@@ -615,7 +644,7 @@ git diff --check
 Add focused executable death/notification and creation/proc coverage plus
 `tests/async/test_issue213_tutorial_parity.py` and
 `tests/async/run_issue213_onboarding_journey.py` only for behavior not covered by
-those controls. These are proposed tests, not existing passing checks. The
+those controls. These tests are now implemented and passing as recorded above. The
 parity test must cover authored and generated output; the journey runner must
 accept an explicit server path and backend, reuse existing disposable backend
 support, and retain source/binary/world IDs and observed results under `bin/`.
@@ -653,7 +682,7 @@ IDs during rollback while characters still persist there. Any operational
 rollback must first account for those characters using existing relocation
 procedures and owner-authorized production handling.
 
-Content mapping, server/client integration, review and focused gameplay
-qualification remain in progress. The current handoff above records completed
-chunks and remaining proof; no elapsed delivery schedule or production
-acceptance is implied. Deployment is outside this implementation request.
+Content mapping, server/client implementation and required local qualification
+are complete. The current handoff records observed proof and the review-ready
+stack. Review, coordinated integration and any separately authorized production
+release remain; no production acceptance is implied.
