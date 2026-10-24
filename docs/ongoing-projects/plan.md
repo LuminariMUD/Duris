@@ -6,11 +6,11 @@ the **Wipe system** readiness item in [#97](https://github.com/LuminariMUD/Duris
 Implementation branch: `branch/issue-264-pwipe-qualification`.
 
 **Continuation pointer (2026-10-24):** current implementation/evidence and remaining
-gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-boundary-commit-ack/docs/ongoing-projects/plan.md),
-branch `branch/issue-264-boundary-commit-ack`, [PR #349](https://github.com/LuminariMUD/Duris/pull/349).
-Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `f43c43603`
+gates are in the [stack-tip plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-264-launcher-interruption/docs/ongoing-projects/plan.md),
+branch `branch/issue-264-launcher-interruption`, [PR #351](https://github.com/LuminariMUD/Duris/pull/351).
+Reuse `/home/aiwithapex/projects/duris-issue264-plan`, on that branch at `9525db3a7`
 (clean and pushed). Review-ready server stack:
-#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349,
+#309 -> #310 -> #311 -> #312 -> #313 -> #317 -> #318 -> #321 -> #322 -> #323 -> #324 -> #325 -> #326 -> #327 -> #329 -> #330 -> #334 -> #336 -> #337 -> #339 -> #340 -> #341 -> #343 -> #344 -> #345 -> #347 -> #348 -> #349 -> #350 -> #351,
 plus independent production-build repair #316. PR #334 adds the sealed nullable
 roster checkpoint. PR #336 resumes the same unfinished SQL epoch without world
 startup, acquires the normal runtime exclusion guard, skips a committed roster and
@@ -135,6 +135,18 @@ fallback consumer proof, final manual/backup readiness reconciliation, W2
 remaining writer/replay audit, W4 reset/retained-reader completeness and W7 readiness audit. The
 website stop procedure includes its legacy temporary-copy preservation gate.
 Nothing is deployed or published; no release tag/readiness sign-off is appropriate.
+
+PR #350 closes the actual shared-writer/SQL callback gap: canonical disposable
+MariaDB/MySQL prove held accepted player saves/SQL writes, two dependent real reads
+and their final commit drain before admission closes; timeout preserves accepted
+work and terminal SQL failure rolls back, with normal persistence resuming afterward.
+PR #351 proves actual launcher-parent SIGKILL leaves the orphan wipe child holding
+its inherited kernel flock, so a concurrent resume refuses. Orphan completion and
+whole-group partial cleanup kill stay fenced; same-epoch resume and duplicate
+completion succeed without deleting fresh state. Both full native engine matrices,
+focused contracts/format/hooks pass. No production code changed in these two chunks;
+reuse the existing builds/full runtime evidence. Remaining store/path/worker consumer
+reconciliation and final readiness remain open; see the current stack-tip plan.
 
 Source baseline: [master `e2a2166f34fc`](https://github.com/LuminariMUD/Duris/commit/e2a2166f34fc56b814d553feed0a43d952b4a4d2).
 Issue #264 had no comments when inspected. This plan covers its seven review areas,
