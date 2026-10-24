@@ -68,7 +68,21 @@ history and old observations remain unchanged. The fixture uses the reviewed
 property catalog required by actual environment configuration. The source contract
 was stale after #310: it required literal `return 55;`; it now checks the real
 SQL-ready 55 / fenced 58 return. No production repair was needed.
-Run the committed final fixture below before recording its revision as final proof.
+Final proof: `123d0bb73`, command
+`python3 tests/async/test_telemetry_runtime_integration.py --posthog`, log
+`bin/analysis/pwipe-telemetry-cutover-final.log`: all 46 cases pass (23 for each
+UBSan-compiled backend variant, including the combined cutover). Active-owner
+refusal is checked specifically as EWOULDBLOCK. The helper compiles the actual
+native CLI once and reuses it across both variants. Required incremental MariaDB
+build, Python compilation, changed-line format and hooks pass. Production `src/`
+is unchanged from #344; reuse all three prior builds and valid wipe journeys.
+No new clock seam, persistence format or production option was added. Reuse the
+previous passing outage suite for next-day allocation and all interruption points.
+The runbook now gives the wipe operator/sender owner the exact stop/drain/CLI/
+verify/rebind/start order and expected quota/history/identity state. W5's telemetry
+gate is complete for the documented manual workflow. The whole website writer/
+cache/websocket/donation cutover, retained-store/writer audit and W7 remain open.
+No external telemetry, host environment or production operation was used.
 
 
 ## Current continuation — new-character account reward claims
@@ -1230,7 +1244,7 @@ nor suppress an independent reset's required cleanup.
   reset. Verify website writers cannot race it, including stale subscriptions
   during `resetting` and refresh. Link necessary DurisWeb fixes to #264 with their
   revisions/tests; required untested integrations remain open.
-- [ ] Specify telemetry season-ID change and sender stop/drain/rebind/start order,
+- [x] Specify telemetry season-ID change and sender stop/drain/rebind/start order,
   historical events, identity separation and same-day quota conservation. Reuse
   protected outage-ledger tools and local HTTP receiver. Never delete/reinitialize
   quota evidence or send fixtures to production PostHog.
