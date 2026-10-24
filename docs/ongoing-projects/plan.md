@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — killed launcher and orphan wipe child
 
-Branch `branch/issue-264-launcher-interruption`, based on PR #350 at `0a78dfd15`.
+Review-ready [PR #351](https://github.com/LuminariMUD/Duris/pull/351), fixture
+`37e8dd7d2`, committed/pushed on `branch/issue-264-launcher-interruption`,
+based on PR #350 at `0a78dfd15`.
 Outcome: exercise the actual launcher/wiper after partial physical cleanup, kill
 launcher parents while leaving its wipe child running, and prove the child retains
 the inherited filesystem lock. A competing launcher must refuse, completion by an
@@ -66,7 +68,7 @@ Python compilation, shell syntax, formatting and commit hooks pass. No productio
 source changed; reuse binary `ff211d8e8ca8da3f46ace35f27dd338eece5ad419515254623bbccd2fc894345`
 and existing build/full-gameplay/service proof. Both new SIGKILL gaps are closed;
 remaining retained-store/direct-writer inventory and final readiness reconciliation
-stay open. All owned fixture trees/processes/containers cleaned. Publication follows.
+stay open. All owned fixture trees/processes/containers cleaned. No merge, tag or production operation.
 
 ## Current continuation — shared writer and real SQL callbacks
 
