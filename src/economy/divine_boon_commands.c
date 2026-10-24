@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
+#include <new>
 #include <string>
 
 extern zone_data *zone_table;
 extern int top_of_zone_table;
+extern P_desc descriptor_list;
 
 namespace
 {
@@ -350,4 +352,86 @@ void do_divineboon(P_char ch, char *argument, int /*cmd*/)
 	wizlog(IMMORTAL, "%s divineboon %s %s requested revision=%llu", GET_NAME(ch), verb, value,
 	       static_cast<unsigned long long>(next.revision));
 	send_to_char("State update submitted; inspect status for durable confirmation.\r\n", ch);
+}
+
+namespace
+{
+bool same_boon(const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &slots, uint64_t id)
+{
+	return std::any_of(slots.begin(), slots.end(),
+			   [id](const divine_boon_slot &slot) { return slot.id == id; });
+}
+
+void announce_divine_event(const divine_boon_slot &slot, bool granted)
+{
+	if (slot.category == divine_boon_category::none)
+		return;
+	const std::string reward =
+		std::string(reward_color(slot.category)) + reward_label(slot.category) + "&n";
+	const std::string prefix = "&+YThe Gods of Duris&n ";
+	if (slot.category == divine_boon_category::cargo)
+	{
+		const std::string route = player_objective(slot, 0);
+		if (route == "Unavailable")
+			return;
+		const std::string message =
+			prefix +
+			(granted ? "have blessed the trade route " :
+				   "have withdrawn their blessing from the trade route ") +
+			route +
+			(granted ? "! " + reward + " is active. Type BOON for details.&n\r\n" :
+				   ". " + reward + " has expired.&n\r\n");
+		send_to_all(message.c_str());
+		return;
+	}
+	if (slot.category == divine_boon_category::pvp)
+	{
+		const std::string message =
+			prefix + (granted ? "have blessed the racewar! " + reward +
+						    " is active. Type BOON for details.&n\r\n" :
+					    "have withdrawn their racewar blessing. " + reward +
+						    " has expired.&n\r\n");
+		send_to_all(message.c_str());
+		return;
+	}
+	// Broadcast each side's own objective, without disclosing the other side's.
+	for (P_desc descriptor = descriptor_list; descriptor; descriptor = descriptor->next)
+	{
+		if (descriptor->connected != CON_PLAYING || !descriptor->character ||
+		    IS_NPC(descriptor->character))
+			continue;
+		const int side = IS_RACEWAR_GOOD(descriptor->character) ? 0 :
+				 IS_RACEWAR_EVIL(descriptor->character) ? 1 :
+									  -1;
+		if (side < 0 || slot.zones[side] < 0)
+			continue;
+		const std::string zone = player_objective(slot, side);
+		if (zone == "Unavailable")
+			continue;
+		const std::string message =
+			prefix +
+			(granted ? "have blessed " + zone + "&n with " + reward +
+					   "! Type BOON for details.&n\r\n" :
+				   "have withdrawn " + reward + " from " + zone + "&n.&n\r\n");
+		send_to_char(message.c_str(), descriptor->character);
+	}
+}
+} // namespace
+
+void divine_boon_announce_changes(const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &previous,
+				  const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &current,
+				  int64_t now)
+try
+{
+	// Staff replacement is not expiry; a committed new ID is a real grant.
+	for (const auto &old : previous)
+		if (old.id && old.expires_at <= now && !same_boon(current, old.id))
+			announce_divine_event(old, false);
+	for (const auto &slot : current)
+		if (slot.id && divine_boon_active(slot, now) && !same_boon(previous, slot.id))
+			announce_divine_event(slot, true);
+}
+catch (const std::bad_alloc &)
+{
+	// Cosmetic broadcast failures must not unwind committed state publication.
 }
