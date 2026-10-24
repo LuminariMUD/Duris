@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — retained locker receipts and legacy admission inputs
 
-Branch `branch/issue-264-receipt-input-audit`, based on PR #353 at `443c6a874`.
+Review-ready [PR #354](https://github.com/LuminariMUD/Duris/pull/354), fixture/audit
+`2020243cd`, committed/pushed on `branch/issue-264-receipt-input-audit`,
+based on PR #353 at `443c6a874`.
 Outcome: prove retained identification receipts do not cross to a new PID on the
 same preserved account, and reconcile misleading legacy compatibility labels with
 actual player/account admission. Extend the existing actual-service/receipt harness
