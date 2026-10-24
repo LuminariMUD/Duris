@@ -26,6 +26,7 @@ struct newbie_kit_input
 	bool ailvio = false;
 	bool bandages = false;
 	bool shield = false;
+	bool wutvr = false;
 };
 struct newbie_kit_item
 {

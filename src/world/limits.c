@@ -961,6 +961,7 @@ static void apply_exp_modifier(Amount &amount, Amount *eligible_base, Modifier f
 template <typename Amount> Amount gain_exp_modifiers_race_only(P_char ch, P_char victim, Amount XP,
 							       Amount *eligible_base = nullptr)
 {
+	const int victim_race = victim ? tutorial_mobile_mechanics_race(victim) : RACE_NONE;
 	// debug("Gain exp race (%d) Start.", (int)XP);
 
 	if (ch && GET_RACE(ch) >= 1 && GET_RACE(ch) <= LAST_RACE)
@@ -968,9 +969,9 @@ template <typename Amount> Amount gain_exp_modifiers_race_only(P_char ch, P_char
 		apply_exp_modifier(XP, eligible_base, racial_exp_mods[GET_RACE(ch)]);
 	}
 	// debug("Gain exp ch (%d) Start.", (int)XP);
-	if (victim && GET_RACE(victim) >= 1 && GET_RACE(victim) <= LAST_RACE)
+	if (victim && victim_race >= 1 && victim_race <= LAST_RACE)
 	{
-		apply_exp_modifier(XP, eligible_base, racial_exp_mod_victims[GET_RACE(victim)]);
+		apply_exp_modifier(XP, eligible_base, racial_exp_mod_victims[victim_race]);
 	}
 	// debug("Gain exp victim (%d) Start.", (int)XP);
 	// debug("Gain exp race End (%d).", (int)XP);

@@ -143,7 +143,7 @@ D 0 91507 2 1 100 0 0 0
 *
 *
 O 0 91526 1 91401 100 0 0 0        * the information stand
-O 0 91528 1 91401 100 0 0 0        * burbul map object
+O 0 91528 1 91401 100 0 0 0        * grubruk map object
 O 0 91490 1 91405 100 0 0 0        * shattered bits of ice
 O 0 91508 1 91406 100 0 0 0        * a handcarved totem
 O 0 91451 1 91412 100 0 0 0        * a sharp dagger of death
@@ -182,7 +182,7 @@ O 0 91484 1 91445 100 0 0 0        * a red feather
 O 0 91414 1 91446 100 0 0 0        * the statue of Dionysus
 O 0 91420 1 91447 100 0 0 0        * a salt box
 O 0 91421 1 91447 100 0 0 0        * a vial of basilisk tears
-O 0 91529 1 91447 100 0 0 0        * chyron_search_obj
+O 0 91529 1 91447 100 0 0 0        * zyrrak_search_obj
 O 0 91530 1 91448 100 0 0 0        * a meteor fragment
 O 0 91522 1 91449 100 0 0 0        * a sign
 O 0 336 999 91449 100 0 0 0        * (object type not in this .obj file)
@@ -211,7 +211,7 @@ O 0 91494 1 91502 100 0 0 0        * a broken half of an amulet
 O 0 91504 1 91505 100 0 0 0        * a one-way mirror
 O 0 91514 1 91508 100 0 0 0        * a storage chest
 *
-M 0 91401 1 91401 100 0 0 0        * Burbul the halfling
+M 0 91401 1 91401 100 0 0 0        * Grubruk the halfling
 G 1 91401 999 0 100 0 0 0          *    a small map of the newbie area
 G 1 91401 999 0 100 0 0 0          *    a small map of the newbie area
 G 1 363 999 0 100 0 0 0            *    (object type not in this .obj file)
@@ -220,40 +220,40 @@ G 1 369 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 393 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 338 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 98621 999 0 100 0 0 0          *    (object type not in this .obj file)
-M 0 91436 1 91406 100 0 0 0        * Creyset, the minotaur shaman
+M 0 91436 1 91406 100 0 0 0        * Kresht, the minotaur shaman
 E 1 91454 3 12 100 0 0 0           *   a silky flowing gown
 G 1 91456 1 0 100 0 0 0            *    a leaf-made crown
-M 0 91462 1 91409 100 0 0 0        * Osule, the human ethermancer
+M 0 91462 1 91409 100 0 0 0        * Ozuk, the human ethermancer
 E 1 91532 1 16 100 0 0 0           *   a slender sword of vapor
 M 0 91505 2 91411 100 0 0 0        * an overgrown vine
 G 1 91533 1 0 100 0 0 0            *    a vine stalk
 M 0 91505 2 91411 100 0 0 0        * an overgrown vine
 M 0 91427 7 91412 100 0 0 0        * a large rat
-M 0 91458 1 91413 100 0 0 0        * Quek, the halfling Rogue
+M 0 91458 1 91413 100 0 0 0        * Zikk, the halfling Rogue
 G 1 412 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 91479 1 0 100 0 0 0            *    a stunning jewel of bludgeoning
 M 0 91501 1 91413 100 0 0 0        * an amateur assassin
 M 0 91427 7 91414 100 0 0 0        * a large rat
-M 0 91457 1 91417 100 0 0 0        * Kord, the barbarian mercenary
+M 0 91457 1 91417 100 0 0 0        * Krag, the barbarian mercenary
 E 1 91478 1 12 100 0 0 0           *   cloak of stealth
 G 1 53 1 0 100 0 0 0               *    (object type not in this .obj file)
 M 0 91499 1 91417 100 0 0 0        * a mercenary in training
 M 0 91500 2 91417 100 0 0 0        * a mercenary in training
 M 0 91500 2 91417 100 0 0 0        * a mercenary in training
-M 0 91460 1 91419 100 0 0 0        * Perr, the Githzerai monk
+M 0 91460 1 91419 100 0 0 0        * Xerr, the Githzerai monk
 E 1 91448 1 12 100 0 0 0           *   simple white robes
-M 0 91440 1 91421 100 0 0 0        * Agare, the half-elf paladin
+M 0 91440 1 91421 100 0 0 0        * Zhaleth, the half-elf paladin
 E 1 91444 1 5 100 0 0 0            *   a silver platemail with etched crosses
 E 1 91443 1 16 100 0 0 0           *   a holy avenger
 M 0 91447 1 91422 100 0 0 0        * an archery apprentice
-M 0 91439 1 91424 100 0 0 0        * Nalk, the thri-kreen warrior
+M 0 91439 1 91424 100 0 0 0        * Skarrix, the thri-kreen warrior
 E 1 91445 4 16 100 0 0 0           *   a razor sharp gythka
 E 1 91445 4 17 100 0 0 0           *   a razor sharp gythka
 E 1 91445 4 25 100 0 0 0           *   a razor sharp gythka
 E 1 91445 4 26 100 0 0 0           *   a razor sharp gythka
 M 0 91490 2 91424 100 0 0 0        * a young warrior
 M 0 91490 2 91424 100 0 0 0        * a young warrior
-M 0 91438 1 91427 100 0 0 0        * Roshenbly, the gnomish cleric
+M 0 91438 1 91427 100 0 0 0        * Skritch, the gnomish cleric
 E 1 91460 1 3 100 0 0 0            *   some prayer beads with a single cross
 E 1 91454 3 12 100 0 0 0           *   a silky flowing gown
 E 1 91461 1 18 100 0 0 0           *   a holy book of prayers
@@ -265,43 +265,43 @@ M 0 91465 1 91428 100 0 0 0        * a black wolf
 M 0 91497 3 91428 100 0 0 0        * a young druid
 M 0 91497 3 91428 100 0 0 0        * a young druid
 M 0 91497 3 91428 100 0 0 0        * a young druid
-M 0 91437 1 91428 100 0 0 0        * Lapney, the centaur druid
-M 0 91463 1 91430 100 0 0 0        * Esera, the gnome conjurer
+M 0 91437 1 91428 100 0 0 0        * Mordrak, the centaur druid
+M 0 91463 1 91430 100 0 0 0        * Kessra, the gnome conjurer
 E 1 91489 1 5 100 0 0 0            *   a long flowing robe
 E 1 91488 2 16 100 0 0 0           *   a wizards staff
 M 0 91492 3 91430 100 0 0 0        * a young mage
 M 0 91492 3 91430 100 0 0 0        * a young mage
 M 0 91492 3 91430 100 0 0 0        * a young mage
-M 0 91434 1 91431 100 0 0 0        * Drinnan, the halfling illusionist
-M 0 91470 1 91431 100 0 0 0        * a huge illusion of Drinnan
+M 0 91434 1 91431 100 0 0 0        * Krizzik, the halfling illusionist
+M 0 91470 1 91431 100 0 0 0        * a huge illusion of Krizzik
 M 0 91495 1 91431 100 0 0 0        * A shadow monster
 M 0 91494 2 91431 100 0 0 0        * A shadow monster
 M 0 91494 2 91431 100 0 0 0        * A shadow monster
-M 0 91432 1 91433 100 0 0 0        * Saelryn, the elven sorceress
+M 0 91432 1 91433 100 0 0 0        * Vhaezra, the elven sorceress
 E 1 91480 1 2 100 0 0 0            *   a large glowing ring
 E 1 91481 1 6 100 0 0 0            *   a seashell haircomb
 M 0 91493 3 91433 100 0 0 0        * a young mage
 M 0 91493 3 91433 100 0 0 0        * a young mage
 M 0 91493 3 91433 100 0 0 0        * a young mage
-M 0 91433 1 91434 100 0 0 0        * Red, the human alchemist
+M 0 91433 1 91434 100 0 0 0        * Vraz, the human alchemist
 M 0 91496 3 91434 100 0 0 0        * a living stone elemental
 M 0 91496 3 91434 100 0 0 0        * a living stone elemental
 M 0 91496 3 91434 100 0 0 0        * a living stone elemental
-M 0 91464 1 91436 100 0 0 0        * Taiz, the half-elf theurgist
+M 0 91464 1 91436 100 0 0 0        * Zair, the half-elf theurgist
 E 1 91407 1 5 100 0 0 0            *   some flowing deep purple robes
 G 1 91406 1 0 100 0 0 0            *    a glowing black tome with a bone splint spine
 M 0 91427 7 91438 100 0 0 0        * a large rat
 M 0 91427 7 91439 100 0 0 0        * a large rat
 M 0 91421 2 91442 100 0 0 0        * a centaur child
 M 0 91428 1 91443 100 0 0 0        * a slightly drunk centaur
-M 0 91422 1 91444 100 0 0 0        * a gandharvas
+M 0 91422 1 91444 100 0 0 0        * a nethravas
 M 0 91468 5 91444 100 0 0 0        * a red robin
 M 0 91430 1 91445 100 0 0 0        * a young mother
 M 0 91431 1 91445 100 0 0 0        * a centaur child
 M 0 91468 5 91445 100 0 0 0        * a red robin
 M 0 91429 1 91446 100 0 0 0        * a maenad worshiper
 M 0 91448 1 91446 100 0 0 0        * a druid apprentice
-M 0 91416 1 91447 100 0 0 0        * Chyron, the centaur alchemist
+M 0 91416 1 91447 100 0 0 0        * Zyrrak, the centaur alchemist
 M 0 91444 2 91448 100 0 0 0        * a small squirrel
 M 0 91468 5 91448 100 0 0 0        * a red robin
 M 0 91427 7 91449 100 0 0 0        * a large rat
@@ -319,27 +319,27 @@ E 1 91434 999 3 100 0 0 0          *   a large spiked metal collar
 M 0 91409 2 91454 100 0 0 0        * an eel
 M 0 91412 3 91454 100 0 0 0        * a herring
 M 0 91411 2 91454 100 0 0 0        * an otter
-M 0 91441 1 91455 100 0 0 0        * Grinda, the Ship Master
+M 0 91441 1 91455 100 0 0 0        * Khardra, the Ship Master
 M 0 91408 2 91456 100 0 0 0        * an insect larvae
 M 0 91410 2 91456 100 0 0 0        * a gurnard
-M 0 91426 1 91457 100 0 0 0        * Brodi, an old fisherman
+M 0 91426 1 91457 100 0 0 0        * Ghoruk, an old fisherman
 G 1 336 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 91432 999 0 100 0 0 0          *    a flax skiff
 M 0 91415 1 91460 100 0 0 0        * a serving wench
 G 1 91404 999 0 100 0 0 0          *    some mulled wine
 G 1 91405 999 0 100 0 0 0          *    a crystal decanter of mountain water
 M 0 91405 1 91461 100 0 0 0        * a serving boy
-M 0 91417 1 91461 100 0 0 0        * Mier Sadev the pimp
+M 0 91417 1 91461 100 0 0 0        * Zhar Kuleth the pimp
 E 1 91433 1 5 100 0 0 0            *   a colorful silk coat
-M 0 91403 1 91462 100 0 0 0        * Janella
+M 0 91403 1 91462 100 0 0 0        * Zarneth
 E 1 91431 1 12 100 0 0 0           *   a warm woolen blanket
-M 0 91404 1 91463 100 0 0 0        * Lady Laurel
+M 0 91404 1 91463 100 0 0 0        * Lady Zereth
 E 1 91430 1 16 100 0 0 0           *   a small black leather whip
-M 0 91402 1 91464 100 0 0 0        * Fleurita
+M 0 91402 1 91464 100 0 0 0        * Vexira
 E 1 91429 1 24 100 0 0 0           *   a delicate rose
 M 0 91421 2 91465 100 0 0 0        * a centaur child
-M 0 91442 1 91466 100 0 0 0        * Eian, the Collector
-M 0 91456 1 91468 100 0 0 0        * Burnarg, the armorer
+M 0 91442 1 91466 100 0 0 0        * Orvak, the Collector
+M 0 91456 1 91468 100 0 0 0        * Morzag, the armorer
 G 1 91434 999 0 100 0 0 0          *    a large spiked metal collar
 G 1 91435 999 0 100 0 0 0          *    a shining mithril longsword
 M 0 91406 1 91469 100 0 0 0        * a performing minstrel
@@ -353,9 +353,9 @@ G 1 412 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 500 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 91425 999 0 100 0 0 0          *    a long black dagger with a blood-red hilt
 G 1 54 999 0 100 0 0 0             *    (object type not in this .obj file)
-M 0 91418 1 91472 100 0 0 0        * Maerg, an old herb woman
+M 0 91418 1 91472 100 0 0 0        * Grash, an old herb woman
 E 1 91491 1 18 100 0 0 0           *   a small magical jar
-M 0 91449 1 91474 100 0 0 0        * Tor, the Chief Guardsman
+M 0 91449 1 91474 100 0 0 0        * Grath, the Chief Guardsman
 M 0 91423 1 91475 100 0 0 0        * a sniveling drow
 M 0 91424 2 91475 100 0 0 0        * a screaming drow child
 M 0 91425 1 91475 100 0 0 0        * a drow mother
@@ -366,21 +366,21 @@ E 1 91416 1 16 100 0 0 0           *   a wet dishrag
 G 1 91418 999 0 100 0 0 0          *    a mug of vegetable broth
 G 1 91419 999 0 100 0 0 0          *    a large steak and kidney pie
 M 0 91427 7 91476 100 0 0 0        * a large rat
-M 0 91450 1 91477 100 0 0 0        * Vaugh, a tired adventurer
-M 0 91435 1 91478 100 0 0 0        * Llerrad, the centaur ranger
+M 0 91450 1 91477 100 0 0 0        * Urzak, a tired adventurer
+M 0 91435 1 91478 100 0 0 0        * Vargesh, the centaur ranger
 E 1 91447 2 35 100 0 0 0           *   a leather saddle etched with ruins
 E 1 91446 1 16 100 0 0 0           *   a carved dragonbone longbow
 M 0 91491 2 91478 100 0 0 0        * a new ranger
 M 0 91491 2 91478 100 0 0 0        * a new ranger
-M 0 91461 1 91479 100 0 0 0        * Foet, the grey elf bard
+M 0 91461 1 91479 100 0 0 0        * Vaex, the grey elf bard
 E 1 91454 3 12 100 0 0 0           *   a silky flowing gown
 E 1 91452 1 18 100 0 0 0           *   a glass flute
 G 1 91453 1 0 100 0 0 0            *    a simple leather pouch
 M 0 91473 1 91479 100 0 0 0        * a young girl
-M 0 91443 1 91480 100 0 0 0        * Deline, the Beast Mistress
+M 0 91443 1 91480 100 0 0 0        * Velkris, the Beast Mistress
 M 0 91454 1 91481 100 0 0 0        * a huge mottled moa
 M 0 91455 1 91481 100 0 0 0        * a black mountain pony
-M 0 91452 1 91482 100 0 0 0        * Victa, the Hawk Master
+M 0 91452 1 91482 100 0 0 0        * Vorka, the Hawk Master
 M 0 91444 2 91483 100 0 0 0        * a small squirrel
 M 0 91451 1 91483 100 0 0 0        * a tiny fire-fantail
 M 0 91453 1 91483 100 0 0 0        * a sapphire dragonnet
@@ -409,7 +409,7 @@ M 0 91475 2 91501 100 0 0 0        * a tired bear cub
 M 0 91475 2 91501 100 0 0 0        * a tired bear cub
 M 0 91481 1 91504 100 0 0 0        * a large xorn
 G 1 91467 1 0 100 0 0 0            *    a piece of stoned skin
-M 0 91483 1 91505 100 0 0 0        * Hizzy, the magic store owner
+M 0 91483 1 91505 100 0 0 0        * Skizz, the magic store owner
 G 1 91505 1 0 100 0 0 0            *    an elegant tome
 G 1 91488 2 0 100 0 0 0            *    a wizards staff
 G 1 91506 1 0 100 0 0 0            *    a plain quill

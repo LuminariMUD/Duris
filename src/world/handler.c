@@ -4872,16 +4872,17 @@ int can_char_use_item(P_char ch, P_obj obj)
 		return TRUE;
 	}
 
+	const int mechanics_race = tutorial_mobile_mechanics_race(ch);
 	if (!IS_SET(obj->extra_flags, ITEM_ALLOWED_RACES))
 	{
-		if (obj_race_bit_set(obj, GET_RACE(ch)))
+		if (obj_race_bit_set(obj, mechanics_race))
 		{
 			return FALSE;
 		}
 	}
 	else
 	{
-		if (!obj_race_bit_set(obj, GET_RACE(ch)))
+		if (!obj_race_bit_set(obj, mechanics_race))
 		{
 			return FALSE;
 		}

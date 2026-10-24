@@ -393,7 +393,8 @@ def runtime_logs(run_root: pathlib.Path) -> str:
 def create_character(client: MudClient, expected_room: str | None = "The Regression Arena",
                      class_name: str = "w", *, account: str = ACCOUNT,
                      character: str = CHARACTER, email: str = EMAIL,
-                     hometown: str | None = None, race_name: str = "h") -> None:
+                     hometown: str | None = None, race_name: str = "h",
+                     alignment: str = "g") -> None:
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
         client.send("9")
@@ -430,19 +431,22 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     client.expect("Class Selection")
     client.send(class_name)
     stat_prompt_seen = False
-    if hometown is not None:
-        client.expect("Hometown Selection")
+    prompt, _ = client.expect_any(("Alignment only affects", "Hometown Selection", "Your stat rolling system [D]:"))
+    if prompt == "Alignment only affects":
+        client.expect("Your selection")
+        client.send(alignment)
+        prompt, _ = client.expect_any(("Hometown Selection", "Your stat rolling system [D]:"))
+    if prompt == "Hometown Selection":
+        menu = client.expect("Your selection")
+        if hometown is None:
+            # Keep the existing preference for the optional first introduction,
+            # using the actual offered key (Life can be L; Chaos uses C).
+            choices = re.findall(r"(?m)^\s*([A-Za-z0-9])\)([^\r\n]+)", menu)
+            require(bool(choices), "hometown menu had no selectable choices")
+            hometown = next((key for key, name in choices if "Beginner Introduction" in name), choices[0][0])
         client.send(hometown)
     else:
-        prompt, _ = client.expect_any(("Alignment only affects", "Hometown Selection", "Your stat rolling system [D]:"))
-        if prompt == "Alignment only affects":
-            client.send("g")
-            client.expect("Your selection")
-            client.send("p")
-        elif prompt == "Hometown Selection":
-            client.send("p")
-        else:
-            stat_prompt_seen = True
+        stat_prompt_seen = True
     if not stat_prompt_seen:
         client.expect("Your stat rolling system [D]:")
     client.send("")

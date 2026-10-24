@@ -896,6 +896,8 @@ static std::vector<prepared_newbie_item> prepare_legacy_newbie_plan(P_char ch)
 	input.blighter = GET_CLASS(ch, CLASS_BLIGHTER);
 	input.ailvio = ch->in_room > NOWHERE && ch->in_room <= top_of_world &&
 		       world[ch->in_room].number == 29201;
+	input.wutvr = ch->in_room > NOWHERE && ch->in_room <= top_of_world &&
+		      world[ch->in_room].number == VROOM_WUTVR_ENTRY;
 	input.bandages = GET_LVL_FOR_SKILL(ch, SKILL_BANDAGE);
 	input.shield = !GET_CLASS(ch, CLASS_PALADIN) && !GET_CLASS(ch, CLASS_ANTIPALADIN);
 	const auto selection = make_newbie_kit_plan(input);
@@ -3063,6 +3065,10 @@ void select_alignment(P_desc d, char *arg)
 
 static char hometown_selection_key(int race, int hometown)
 {
+	if (hometown == HOME_PLANE_OF_CHAOS)
+		return 'C';
+	if (hometown == HOME_WUTVR)
+		return 'W';
 	// Good-side Thri-kreen can choose both Payang and Plane of Life.
 	if (race == RACE_THRIKREEN && hometown == HOME_PLANE_OF_LIFE)
 		return 'L';
@@ -3303,8 +3309,9 @@ bool creation_hometown_available(int race, int racewar, int hometown)
 	if (race < 1 || race > LAST_RACE || hometown < 1 || hometown > LAST_HOME)
 		return false;
 	if (hometown == HOME_NEWBIE || hometown == HOME_PLANE_OF_LIFE)
-		return racewar == RACEWAR_GOOD && (avail_hometowns[hometown][race] == 1 ||
-						   race == RACE_FIRBOLG || OLD_RACE_NEUTRAL(race));
+		return racewar == RACEWAR_GOOD && avail_hometowns[hometown][race] == 1;
+	if (hometown == HOME_WUTVR || hometown == HOME_PLANE_OF_CHAOS)
+		return racewar == RACEWAR_EVIL && avail_hometowns[hometown][race] == 1;
 	return avail_hometowns[hometown][race] == 1;
 }
 
@@ -3370,7 +3377,8 @@ void find_starting_location(P_char ch, int hometown)
 
 	// I think this is kind've hacky, but it will work!
 	// -- Eikel
-	if (GET_RACE(ch) == RACE_TIEFLING)
+	if (GET_RACE(ch) == RACE_TIEFLING && hometown != HOME_WUTVR &&
+	    hometown != HOME_PLANE_OF_CHAOS)
 	{
 		if (GET_ALIGNMENT(ch) < 0)
 		{
@@ -3414,7 +3422,7 @@ void find_starting_location(P_char ch, int hometown)
 		GET_HOME(ch) = guild_locations[hometown][0];
 		return;
 	}
-	if (guild_num == 22800)
+	if (guild_num == 22800 || guild_num == VROOM_CHAOS_ENTRY)
 	{
 		apply_achievement(ch, TAG_LIFESTREAMNEWBIE);
 	}
