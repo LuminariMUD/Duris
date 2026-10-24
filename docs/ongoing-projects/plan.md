@@ -42,7 +42,9 @@ was run during planning.
 
 ## Current continuation — final SQL/worker consumer reconciliation
 
-Branch `branch/issue-264-consumer-reconciliation`, based on PR #356 at `82814f58b`.
+Review-ready [PR #358](https://github.com/LuminariMUD/Duris/pull/358), fixture/proof
+`a1558f431`, committed/pushed on `branch/issue-264-consumer-reconciliation`,
+based on PR #356 at `82814f58b`.
 Outcome: finish the original W1/W2/W4 consumer audit against the actual 200-table,
 35-store, 42-Redis-surface contract and current master ancestry, then reconcile the
 remaining completion gates with authoritative recorded proof. Trace all retained
