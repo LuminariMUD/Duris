@@ -178,6 +178,25 @@ int main()
 	shown = invoke(&player, "");
 	assert(shown.find("&+M[2] +50% Epic Points&n") != string::npos);
 	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
+	// Truncated real targets retain an explicit identity within the same row width.
+	char *original_name = zones[0].name;
+	for (const auto &[id, name] :
+	     { std::pair{ 27, "&+MZalkapfaan, City of the Headless Horde&n" },
+	       std::pair{ 1398, "&+CThe Para-Elemental Plane of Smoke&n" } })
+	{
+		zones[0].number = authority.slots[1].zones[0] = id;
+		zones[0].name = const_cast<char *>(name);
+		shown = invoke(&player, "");
+		const auto at = shown.find("&+M[2]");
+		const auto start = shown.rfind("\r\n", at) + 2;
+		const auto end = shown.find("\r\n", at);
+		const string row = strip_ansi(shown.substr(start, end - start).c_str());
+		assert(row.size() == 79);
+		assert(row.substr(35, 32).ends_with("... [" + std::to_string(id) + "]"));
+		assert(shown.find(string(name).substr(0, 3)) != string::npos);
+	}
+	zones[0].name = original_name;
+	authority.slots[1].zones[0] = 21;
 	zones[0].number = original_zone;
 	player.player.racewar = RACEWAR_EVIL;
 	shown = invoke(&player, "list");

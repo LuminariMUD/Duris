@@ -218,7 +218,20 @@ void do_divine_boon(P_char ch, char *argument, int /*cmd*/)
 		const std::string reward = std::string(reward_color(slot.category)) + "[" +
 					   std::to_string(index + 1) + "] " +
 					   reward_label(slot.category) + "&n";
-		const std::string objective = player_objective(slot, side);
+		std::string objective = player_objective(slot, side);
+		if ((slot.category == divine_boon_category::experience ||
+		     slot.category == divine_boon_category::epic) &&
+		    strip_ansi(objective.c_str()).size() > objective_width)
+		{
+			const std::string identity =
+				"&n... [" + std::to_string(slot.zones[side]) + "]";
+			objective = pad_ansi(objective.c_str(),
+					     objective_width -
+						     static_cast<int>(
+							     strip_ansi(identity.c_str()).size()),
+					     true) +
+				    identity;
+		}
 		const std::string duration = remaining_label(slot.expires_at - now);
 		const std::string reward_cell = pad_ansi(reward.c_str(), reward_width, true);
 		const std::string objective_cell =
