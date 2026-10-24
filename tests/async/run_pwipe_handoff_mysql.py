@@ -78,6 +78,8 @@ static volatile sig_atomic_t reaped_child_cursor;
 #define FALSE false
 #define LOG_DEBUG 0
 #define LOG_STATUS 1
+#define OVERLORD 62
+#define ACCT_IMMORTAL 0
 bool pwipe_crossed_boundary, pwipe_filesystem_ready;
 void logit(int, const char *format, ...) {
     va_list args; va_start(args, format); vfprintf(stderr, format, args); va_end(args); fputc(10, stderr);
@@ -98,6 +100,8 @@ MYSQL_RES *db_query(const char *format, ...) {
 bool qry(const char *format, ...) {
     char statement[16384]; va_list args; va_start(args, format);
     vsnprintf(statement, sizeof statement, format, args); va_end(args);
+    const char *fail = getenv("PWIPE_TEST_FAIL_SQL");
+    if (fail && strstr(statement, fail)) return false;
     if (mysql_real_query(DB, statement, strlen(statement))) return false;
     MYSQL_RES *result = mysql_store_result(DB); if (result) mysql_free_result(result);
     return true;
@@ -159,11 +163,40 @@ int main(int argc, char **argv) {
             "(901,'fixturebank',2,2,3,4,5),(902,'fixturebank',0,6,7,8,9)")
         sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) "
             "SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum FROM account_banks")
+        for pid, name, level in ((1001, "Freshgod", 62), (1002, "Lesserstaff", 61),
+                                 (1003, "Outofrange", 63), (1004, "Oldmortal", 56),
+                                 (1005, "Stalegod", 62), (1006, "Deletedgod", 62)):
+            sql("INSERT INTO player_data(pid,name,account_name,level,highest_level,m_class,race,sex,"
+                "copper,epics,frags,learned_flight_stops) VALUES(" + str(pid) + ",'" + name +
+                "','fixturebank'," + str(level) + "," + str(level) + ",1,1,1,999,888,777,63)")
+            if name == "Freshgod":
+                continue  # Durable owner with no projection.
+            sql("INSERT INTO account_characters(account_name,pid,char_name) VALUES('fixturebank'," +
+                str(pid) + ",'" + name + "')")
+        sql("UPDATE account_characters SET char_name='Stalename' WHERE pid=1005")
+        sql("UPDATE account_characters SET deleted_at=NOW() WHERE pid=1006")
         epoch_call("wipe", 1, 0, cwd=root)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
         assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',reset_completed_at IS NOT NULL) "
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
+        assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "2"
+        new_god = int(sql("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1 AND level=62"))
+        assert new_god > 1006
+        assert sql("SELECT CONCAT_WS(':',copper,epics,frags,learned_flight_stops,assoc_id) "
+                   "FROM player_data WHERE pid=" + str(new_god)) == "0:0:0:0:0"
+        assert sql("SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND pid=" + str(new_god)) == "1"
+        assert sql("SELECT COUNT(*) FROM player_data WHERE pid BETWEEN 1001 AND 1006 AND active=0 "
+                   "AND name=CONCAT('~pwipe-',pid)") == "6"
+        assert sql("SELECT COUNT(*) FROM currency_wallet_baseline WHERE pid=" + str(new_god)) == "1"
+        assert sql("SELECT COUNT(*) FROM player_data p JOIN account_characters a ON a.pid=p.pid "
+                   "AND a.char_name=p.name AND a.account_name=p.account_name "
+                   "WHERE p.active=1 AND a.deleted_at IS NULL AND p.last_save=p.birth_time "
+                   "AND p.last_save IS NOT NULL") == "2"
+        assert sql("SELECT COUNT(*) FROM player_data WHERE name='Stalegod' AND active=1") == "1"
+        assert sql("SELECT COUNT(*) FROM player_data WHERE name='Deletedgod' AND active=1") == "0"
+        sql("INSERT INTO player_data(name,account_name) VALUES('Oldmortal','fixturebank')")
+        print("Overlord recreation: exact 62 only, new PID, clean balances/progression, account mapping and freed mortal name passed", flush=True)
         assert sql("SELECT COUNT(*) FROM account_banks") == "0"
         assert sql("SELECT CONCAT_WS(':',password,email,total_donated,confirmed) "
                    "FROM accounts WHERE account_name='fixturebank'") == account_before
@@ -175,6 +208,30 @@ int main(int argc, char **argv) {
                    "FROM account_banks WHERE id=" + str(new_bank)) == "0:0:0:0"
         assert sql("SELECT COUNT(*) FROM currency_bank_baseline WHERE bank_id=" + str(new_bank)) == "0"
         print("Bank reset: all sides removed, credentials/donations/history retained, new ID and zero balances passed", flush=True)
+        roster_before = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
+        mappings_before = sql("SELECT pid,char_name,deleted_at FROM account_characters ORDER BY id")
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        env["PWIPE_TEST_FAIL_SQL"] = "INSERT INTO epic_balance_baseline"
+        try:
+            epoch_call("wipe", 2, 1, cwd=root)
+        finally:
+            del env["PWIPE_TEST_FAIL_SQL"]
+        assert sql("SELECT pid,name,level,active FROM player_data ORDER BY pid") == roster_before
+        assert sql("SELECT pid,char_name,deleted_at FROM account_characters ORDER BY id") == mappings_before
+        assert sql("SELECT CONCAT(reset_status,':',reset_completed_at IS NULL) "
+                   "FROM season_reset_state WHERE state_id=1") == "resetting:1"
+        print("Mid-recreation failure rolled back the entire roster and kept startup fenced", flush=True)
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        before = sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1")
+        sql("ALTER TABLE player_data RENAME COLUMN base_luk TO fixture_base_luk")
+        try:
+            epoch_call("wipe", 3, 1, cwd=root)
+            assert sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1") == before
+        finally:
+            sql("ALTER TABLE player_data RENAME COLUMN fixture_base_luk TO base_luk")
+        print("Missing recreation schema rejected before the irreversible boundary", flush=True)
+
+
 
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"

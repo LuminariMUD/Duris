@@ -3886,7 +3886,10 @@ bool sql_clear_zone_trophy()
  * migration-only helper tables. */
 bool sql_verify_pwipe_manifest(void)
 {
-	static const char *const tables[] = { "account_banks",
+	static const char *const tables[] = { "combat_frag_baseline",
+					      "currency_wallet_baseline",
+					      "epic_balance_baseline",
+					      "account_banks",
 					      "account_bound_rewards",
 					      "account_bound_reward_summons",
 					      "account_bound_reward_pwipe_state",
@@ -3993,6 +3996,67 @@ bool sql_verify_pwipe_manifest(void)
 					      "zone_trophy",
 					      NULL };
 	static const char *const columns[][2] = {
+		{ "player_data", "name" },
+		{ "player_data", "pid" },
+		{ "player_data", "level" },
+		{ "player_data", "highest_level" },
+		{ "player_data", "account_name" },
+		{ "player_data", "m_class" },
+		{ "player_data", "race" },
+		{ "player_data", "sex" },
+		{ "player_data", "hometown" },
+		{ "player_data", "birthplace" },
+		{ "player_data", "orig_birthplace" },
+		{ "player_data", "height" },
+		{ "player_data", "weight" },
+		{ "player_data", "birth_time" },
+		{ "player_data", "base_str" },
+		{ "player_data", "base_dex" },
+		{ "player_data", "base_agi" },
+		{ "player_data", "base_con" },
+		{ "player_data", "base_pow" },
+		{ "player_data", "base_int" },
+		{ "player_data", "base_wis" },
+		{ "player_data", "base_cha" },
+		{ "player_data", "base_kar" },
+		{ "player_data", "base_luk" },
+		{ "player_data", "mana" },
+		{ "player_data", "base_mana" },
+		{ "player_data", "base_hit" },
+		{ "player_data", "vitality" },
+		{ "player_data", "copper" },
+		{ "player_data", "silver" },
+		{ "player_data", "gold" },
+		{ "player_data", "platinum" },
+		{ "player_data", "bank_copper" },
+		{ "player_data", "bank_silver" },
+		{ "player_data", "bank_gold" },
+		{ "player_data", "bank_platinum" },
+		{ "player_data", "exp" },
+		{ "player_data", "epics" },
+		{ "player_data", "frags" },
+		{ "player_data", "assoc_id" },
+		{ "account_characters", "login_count" },
+		{ "account_characters", "last_login" },
+		{ "account_characters", "created_at" },
+		{ "account_characters", "last_ip" },
+		{ "account_characters", "pid" },
+		{ "account_characters", "char_name" },
+		{ "account_characters", "account_name" },
+		{ "account_characters", "racewar" },
+		{ "accounts", "account_name" },
+		{ "currency_wallet_baseline", "pid" },
+		{ "currency_wallet_baseline", "opening_copper" },
+		{ "currency_wallet_baseline", "opening_silver" },
+		{ "currency_wallet_baseline", "opening_gold" },
+		{ "currency_wallet_baseline", "opening_platinum" },
+		{ "currency_wallet_baseline", "opening_revision" },
+		{ "epic_balance_baseline", "pid" },
+		{ "epic_balance_baseline", "opening_balance" },
+		{ "epic_balance_baseline", "opening_revision" },
+		{ "combat_frag_baseline", "pid" },
+		{ "combat_frag_baseline", "opening_frags" },
+		{ "combat_frag_baseline", "opening_revision" },
 		{ "player_data", "learned_flight_stops" },
 		{ "account_bound_rewards", "id" },
 		{ "account_bound_rewards", "expires_at" },
@@ -4032,7 +4096,7 @@ bool sql_verify_pwipe_manifest(void)
 		{ "season_reset_state", "reset_completed_at" },
 		{ NULL, NULL }
 	};
-	char query[8192];
+	char query[16384];
 	int pos = snprintf(
 		query, sizeof(query),
 		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN (");
@@ -4773,6 +4837,8 @@ bool sql_pwipe(int code_verify)
 			send_to_all("        failure!\n");
 			return FALSE;
 		}
+		if (!qry("DELETE FROM account_bound_reward_summons"))
+			return FALSE;
 		// Bank balances are seasonal. DELETE preserves the monotonic bank allocator,
 		// so a new season cannot inherit an old bank's ledger/baseline identity.
 		if (!qry("DELETE FROM account_banks"))
@@ -4780,33 +4846,49 @@ bool sql_pwipe(int code_verify)
 			logit(LOG_STATUS, "sql_pwipe: Failed to reset account banks.");
 			return FALSE;
 		}
-		/* -- Season-reset manifest: soft-delete account characters -- */
-		logit(LOG_DEBUG, "sql_pwipe: Soft-deleting account characters... .. .");
-		send_to_all("Soft-deleting account characters... .. .");
-		if (qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL"))
+		// Recreate only exact Overlords on new PIDs. Keep retired rows as history,
+		// but release their unique names; never attach a new body to an old ledger.
+		if (!qry("START TRANSACTION"))
+			return FALSE;
+		const bool roster_ok =
+			qry("CREATE TEMPORARY TABLE pwipe_overlords AS "
+			    "SELECT p.name,account.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
+			    "FROM player_data p JOIN accounts account ON account.account_name=p.account_name "
+			    "WHERE p.active=1 AND p.level=%d AND NOT EXISTS ("
+			    "SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
+			    "AND (tombstone.pid=p.pid OR LOWER(tombstone.char_name)=LOWER(p.name)))",
+			    OVERLORD) &&
+			qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
+			qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
+			qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,birthplace,orig_birthplace,"
+			    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
+			    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
+			    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,height,weight,"
+			    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
+			    "FROM pwipe_overlords",
+			    OVERLORD, OVERLORD) &&
+			qry("INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
+			    "SELECT p.pid,0,0,0,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
+			qry("INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
+			    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
+			qry("INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
+			    "SELECT p.pid,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
+			qry("INSERT INTO account_characters(account_name,pid,char_name,racewar,login_count,last_login,created_at,last_ip,deleted_at) "
+			    "SELECT o.account_name,p.pid,p.name,%d,0,NULL,UTC_TIMESTAMP(),NULL,NULL "
+			    "FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1 AND p.level=%d "
+			    "ON DUPLICATE KEY UPDATE account_name=VALUES(account_name),pid=VALUES(pid),deleted_at=NULL,"
+			    "racewar=VALUES(racewar),login_count=0,last_login=NULL,created_at=VALUES(created_at),last_ip=NULL",
+			    ACCT_IMMORTAL, OVERLORD) &&
+			qry("COMMIT");
+		if (!roster_ok)
 		{
-			logit(LOG_DEBUG, "  success!");
-			send_to_all("  success!\n");
-		}
-		else
-		{
-			logit(LOG_DEBUG, "        failure!");
-			send_to_all("        failure!\n");
+			qry("ROLLBACK");
+			logit(LOG_STATUS,
+			      "sql_pwipe: Overlord recreation failed; reset remains fenced.");
 			return FALSE;
 		}
-		logit(LOG_DEBUG, "sql_pwipe: Deactivating player_data... .. .");
-		send_to_all("Deactivating player_data... .. .");
-		if (qry("UPDATE player_data SET active = 0, learned_flight_stops = 0"))
-		{
-			logit(LOG_DEBUG, "  success!");
-			send_to_all("  success!\n");
-		}
-		else
-		{
-			logit(LOG_DEBUG, "        failure!");
-			send_to_all("        failure!\n");
+		if (!qry("DROP TEMPORARY TABLE pwipe_overlords"))
 			return FALSE;
-		}
 		logit(LOG_DEBUG, "sql_pwipe: Clearing persistence event data... .. .");
 		send_to_all("Clearing persistence event data... .. .");
 		if (qry("DELETE FROM persistence_item_events") &&
@@ -4901,9 +4983,15 @@ bool sql_pwipe(int code_verify)
 					postflight_ok = FALSE;
 				}
 			}
-			/* Retained player rows must be inactive and have no seasonal discoveries. */
+			/* Only clean, recreated Overlords may be active. */
 			MYSQL_RES *res = db_query(
-				"SELECT COUNT(*) FROM player_data WHERE active = 1 OR learned_flight_stops <> 0");
+				"SELECT COUNT(*) FROM player_data WHERE learned_flight_stops <> 0 OR "
+				"(active=1 AND (level<>%d OR copper<>0 OR silver<>0 OR gold<>0 OR platinum<>0 "
+				"OR bank_copper<>0 OR bank_silver<>0 OR bank_gold<>0 OR bank_platinum<>0 "
+				"OR exp<>0 OR epics<>0 OR frags<>0 OR assoc_id<>0 "
+				"OR NOT EXISTS(SELECT 1 FROM account_characters a WHERE a.pid=player_data.pid "
+				"AND a.deleted_at IS NULL AND a.account_name=player_data.account_name)))",
+				OVERLORD);
 			if (res)
 			{
 				MYSQL_ROW row = mysql_fetch_row(res);
@@ -4922,9 +5010,11 @@ bool sql_pwipe(int code_verify)
 				      "sql_pwipe: Postflight FAILED: cannot query player_data reset state.");
 				postflight_ok = FALSE;
 			}
-			/* Verify account_characters are all soft-deleted. */
+			/* Active mappings must point to the recreated Overlords only. */
 			res = db_query(
-				"SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL");
+				"SELECT COUNT(*) FROM account_characters a LEFT JOIN player_data p ON p.pid=a.pid "
+				"WHERE a.deleted_at IS NULL AND (p.pid IS NULL OR p.active<>1 OR p.level<>%d)",
+				OVERLORD);
 			if (res)
 			{
 				MYSQL_ROW row = mysql_fetch_row(res);
