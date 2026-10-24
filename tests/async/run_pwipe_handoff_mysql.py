@@ -5,6 +5,7 @@ This qualifies the cross-process handoff, not the real game command or writer dr
 """
 import fcntl
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,6 +53,8 @@ def run():
     functions = source[source.index("static bool sql_connection_execute("):
                        source.index("bool sql_pwipe_crossed_boundary(void)",
                                     source.index("static bool sql_load_active_season_state"))]
+    metadata = source[source.index("static bool sql_verify_metadata_fingerprint(void)\n{"):
+                      source.index("/* Store core player data", source.index("static bool sql_verify_metadata_fingerprint(void)\n{"))]
     native = ROOT / "bin/tests/pwipe_epoch_mysql.cpp"
     native.parent.mkdir(parents=True, exist_ok=True)
     signals = (ROOT / "src/core/signals.c").read_text()
@@ -61,6 +64,17 @@ def run():
                              rewards_source.index("\n#ifndef __NO_MYSQL__\nstatic void dissolve_reward_containers")]
     native.write_text('''#include <mysql/mysql.h>
 #include "economy/divine_boon_repository.h"
+#include "core/runtime_compatibility_contract.h"
+#include <openssl/sha.h>
+#include "economy/collector_repository.h"
+#include "economy/collector_purchase_preparation.h"
+#include "persistence/critical_command_repository.h"
+#include "player/player_snapshot_codec.h"
+#include <sys/time.h>
+#include <memory>
+#include <fstream>
+#include <iterator>
+#include <new>
 #include <algorithm>
 #include <ctime>
 #include <spawn.h>
@@ -120,13 +134,13 @@ bool qry(const char *format, ...) {
     MYSQL_RES *result = mysql_store_result(DB); if (result) mysql_free_result(result);
     return true;
 }
-''' + functions + '''
+''' + metadata + functions + '''
 uint64_t sql_season_epoch() { return current_season_epoch; }
 bool sql_begin_transaction() { return qry("START TRANSACTION"); }
-void sql_rollback() { (void)qry("ROLLBACK"); }
+bool sql_rollback() { return qry("ROLLBACK"); }
 bool sql_commit() { return qry("COMMIT") && !getenv("PWIPE_TEST_LOST_REWARD_ACK"); }
 bool account_reward_config_preserve_on_pwipe() { return !getenv("PWIPE_TEST_DELETE_REWARDS"); }
-''' + rewards + source[source.index("bool sql_verify_pwipe_manifest(void)"):
+''' + rewards + source[source.index("// One preparation path serves the read-only preflight"):
                             source.index("void sql_log_player_login", source.rindex("bool sql_pwipe(int code_verify)"))] + '''
 bool seed_boons() {
     divine_boon_state state;
@@ -159,6 +173,103 @@ bool check_boons() {
            divine_boon_rotate(&state, state.last_opportunity + DIVINE_BOON_HOUR, &choice) &&
            state.slots[0].id == 3;
 }
+std::string fixture_hex(const uint8_t *bytes, size_t size) {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string text; text.reserve(size * 2);
+    for (size_t i=0; i<size; ++i) { text += digits[bytes[i]>>4]; text += digits[bytes[i]&15]; }
+    return text;
+}
+bool seed_collectors(uint64_t base, uint32_t owner, uint64_t count) {
+    const uint64_t now = static_cast<uint64_t>(time(nullptr));
+    collector::rules rules; rules.enabled = true;
+    for (uint64_t i=0; i<count; ++i) {
+        char operation[33]; snprintf(operation,sizeof operation,"%032llx",static_cast<unsigned long long>(base+i+1));
+        const std::string death = operation;
+        const uint64_t died = now - 30 * 3600 + base + i;
+        const uint64_t listing = base+i, uid = 800000+base*10+i;
+        if (!qry("INSERT INTO collector_deaths(death_operation_id,beneficiary_pid,death_time) "
+                 "VALUES(UNHEX('%s'),%u,%llu)", death.c_str(), owner, static_cast<unsigned long long>(died))) return false;
+        collector::record entry;
+        if (collector::enroll(listing, death, owner, uid, 1, died, rules, &entry) != collector::outcome::applied) return false;
+        std::vector<uint8_t> item_blob;
+        uint64_t due = entry.collect_at;
+        if (i) {
+            if (collector::collect(&entry, entry.revision, 1, 1, true, 250, now) != collector::outcome::applied) return false;
+            due = entry.sale_at;
+            if (i>=2) {
+                if (collector::activate(&entry, entry.revision, now) != collector::outcome::applied) return false;
+                due = entry.expires_at;
+                if (i==3) {
+                    if (collector::pause(&entry, entry.revision, now) != collector::outcome::applied) return false;
+                    due = 0;
+                }
+            }
+            player_item_snapshot item{}; item.object_uid=uid; item.vnum=900; item.cost=250;
+            item.parent_index=PLAYER_SNAPSHOT_NO_PARENT; item.type=15; item.weight=1;
+            if (player_item_snapshot_list_encode({item}, &item_blob) != player_snapshot_codec_result::ok) return false;
+            if (!qry("INSERT INTO item_owner_revision(owner_type,owner_id,owner_context_id,revision) VALUES(10,%llu,0,1)",
+                     static_cast<unsigned long long>(listing)) ||
+                !qry("INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,owner_id,owner_context_id,"
+                     "item_revision,vnum,state) VALUES(%llu,%llu,NULL,10,%llu,0,%llu,900,1)",
+                     static_cast<unsigned long long>(uid), static_cast<unsigned long long>(uid),
+                     static_cast<unsigned long long>(listing), static_cast<unsigned long long>(entry.item_revision))) return false;
+        }
+        if (i==2 && getenv("PWIPE_TEST_COLLECTOR_BUY")) {
+            collector_purchase_actor_snapshot actor;
+            actor.pid=owner; strcpy(actor.account_name.data(),"fixturebank");
+            actor.carried_currency_value=999; actor.carry_item_limit=10; actor.carry_weight_limit=100;
+            actor.observed_at=now;
+            const item_ownership_runtime_entry held{uid,uid,0,{item_owner_type::collector,listing,0},entry.item_revision,1,900,item_custody_state::active};
+            std::unique_ptr<collector_command_payload> payload; player_item_snapshot decoded;
+            if (collector_purchase_prepare(entry,{entry,item_blob},held,actor,&payload,&decoded) != collector_purchase_prepare_outcome::prepared) return false;
+            critical_operation_id operation; critical_command command;
+            if (!critical_operation_id_generate(&operation) || !collector_command_build(&command,operation,*payload,
+                    critical_source_site::command,critical_deadline_class::interactive)) return false;
+            command.accepted_at_usec=now*1000000;
+            std::vector<uint8_t> bytes;
+            if (critical_command_encode(command,&bytes) != critical_command_codec_result::ok) return false;
+            std::ofstream output(getenv("PWIPE_TEST_COLLECTOR_BUY"),std::ios::binary);
+            output.write(reinterpret_cast<const char *>(bytes.data()),static_cast<std::streamsize>(bytes.size()));
+            if (!output.good()) return false;
+        }
+        std::array<uint8_t,collector::encoded_record_bytes> encoded;
+        if (collector::record_encode(entry, &encoded) != collector::codec_result::ok) return false;
+        const auto record = fixture_hex(encoded.data(),encoded.size());
+        const auto blob = item_blob.empty() ? "NULL" : "UNHEX('"+fixture_hex(item_blob.data(),item_blob.size())+"')";
+        const auto deadline = due ? std::to_string(due) : "NULL";
+        if (!qry("INSERT INTO collector_listings(listing_id,death_operation_id,beneficiary_pid,item_uid,status,holding_paused,"
+                 "due_at,listing_revision,item_revision,price_value,record_blob,item_blob) "
+                 "VALUES(%llu,UNHEX('%s'),%u,%llu,%u,%u,%s,%llu,%llu,%llu,UNHEX('%s'),%s)",
+                 static_cast<unsigned long long>(listing),death.c_str(),owner,static_cast<unsigned long long>(uid),
+                 static_cast<unsigned>(entry.status),static_cast<unsigned>(entry.holding_paused),deadline.c_str(),
+                 static_cast<unsigned long long>(entry.revision),static_cast<unsigned long long>(entry.item_revision),
+                 static_cast<unsigned long long>(entry.price_value),record.c_str(),blob.c_str())) return false;
+    }
+    return qry("UPDATE collector_catalog_state SET next_listing=%llu WHERE state_id=1", static_cast<unsigned long long>(base+count));
+}
+bool check_collectors() {
+    collector_bootstrap_snapshot loaded;
+    return collector_repository_read_bootstrap(DB,&loaded) && loaded.catalog.records.empty() &&
+           loaded.held_items.empty() && loaded.deaths.empty() && loaded.catalog.next_listing==104;
+}
+bool stale_collector_purchase() {
+    std::ifstream input(getenv("PWIPE_TEST_COLLECTOR_BUY"),std::ios::binary);
+    const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input),std::istreambuf_iterator<char>()};
+    critical_command command;
+    if (critical_command_decode(bytes.data(),bytes.size(),&command) != critical_command_codec_result::ok) return false;
+    const auto result=critical_command_repository_apply(DB,command);
+    return result.outcome==critical_apply_outcome::terminal_failure && result.error_code==ESTALE;
+}
+bool new_collector_candidate() {
+    MYSQL_RES *rows=db_query("SELECT pid FROM player_data WHERE name='Oldmortal' AND active=1");
+    MYSQL_ROW row=rows?mysql_fetch_row(rows):nullptr;
+    const uint32_t owner=row && row[0]?static_cast<uint32_t>(strtoul(row[0],nullptr,10)):0;
+    if (rows) mysql_free_result(rows);
+    if (!owner || !seed_collectors(104,owner,1)) return false;
+    collector_bootstrap_snapshot loaded;
+    return collector_repository_read_bootstrap(DB,&loaded) && loaded.catalog.records.size()==1 &&
+           loaded.catalog.records[0].listing==104 && loaded.catalog.next_listing==105;
+}
 int main(int argc, char **argv) {
     if (argc != 3) return 2;
     signal(SIGCHLD, reap);
@@ -167,7 +278,12 @@ int main(int argc, char **argv) {
                             getenv("DB_NAME"), atoi(getenv("DB_PORT")), nullptr, 0)) return 2;
     if (const char *clock = getenv("PWIPE_TEST_NOW")) qry("SET TIMESTAMP=%lld", atoll(clock));
     current_season_epoch = strtoull(argv[2], nullptr, 10);
-    bool ok = !strcmp(argv[1], "seed-boons") ? seed_boons() :
+    bool ok = !strcmp(argv[1], "seed-collectors") ? seed_collectors(strtoull(argv[2],nullptr,10),1004,4) :
+              !strcmp(argv[1], "stale-collector") ? stale_collector_purchase() :
+              !strcmp(argv[1], "new-collector") ? new_collector_candidate() :
+              !strcmp(argv[1], "check-collectors") ? check_collectors() :
+              !strcmp(argv[1], "reset-collectors") ? sql_reset_collector_state(true) :
+              !strcmp(argv[1], "seed-boons") ? seed_boons() :
               !strcmp(argv[1], "check-boons") ? check_boons() :
               !strcmp(argv[1], "end-boons") ?
                   divine_boon_sql_reset_season(DB, time(nullptr)) == divine_boon_store_result::ok :
@@ -180,8 +296,13 @@ int main(int argc, char **argv) {
 }
 ''')
     binary = native.with_suffix("")
-    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections", "-Isrc",
+    build_script = (ROOT / "tests/async/run_collector_repository_schema_mysql.sh").read_text()
+    compile_sources = build_script[build_script.index("g++ -std=c++20"):build_script.index('"${MYSQL_LIBS[@]}" -lcrypto')]
+    repository_sources = re.findall(r"(?:src|tests/async)/[A-Za-z0-9_/]+\.(?:cpp|c)", compile_sources)
+    repository_sources.remove("tests/async/collector_repository_mysql_harness.cpp")
+    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql", "-pthread",
                     str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
+                    "src/economy/collector_purchase_preparation.c", *repository_sources,
                     "-lmysqlclient", "-lcrypto", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-o", str(binary)], cwd=ROOT, check=True)
 
     def epoch_call(command, epoch, expected_code, cwd=None):
@@ -239,6 +360,14 @@ int main(int argc, char **argv) {
             "VALUES(777,3,900,80,9999)")
         sql("INSERT INTO kingdom_garrison(assoc_id,slot,guard_class,level) VALUES(777,0,1,50)")
         sql("INSERT INTO kingdom_land(kingdom_id,start_vnum,end_vnum) VALUES(777,900,980)")
+        env["PWIPE_TEST_COLLECTOR_BUY"] = str(root / "old-buy.command")
+        epoch_call("seed-collectors", 100, 0)
+        listing_bytes = sql("SELECT HEX(record_blob) FROM collector_listings WHERE listing_id=101")
+        sql("UPDATE collector_listings SET record_blob=REPEAT(CHAR(0),154) WHERE listing_id=101")
+        refusal = epoch_call("wipe", 1, 1, cwd=root)
+        assert "Collector retirement preflight failed" in refusal.stderr
+        assert sql("SELECT CONCAT(season_epoch,':',reset_status) FROM season_reset_state") == "1:active"
+        sql("UPDATE collector_listings SET record_blob=UNHEX('" + listing_bytes + "') WHERE listing_id=101")
         epoch_call("seed-boons", 1, 0)
         boon_bytes = sql("SELECT HEX(snapshot) FROM divine_boon_state WHERE state_id=1")
         sql("UPDATE divine_boon_state SET snapshot=0x00 WHERE state_id=1")
@@ -252,6 +381,25 @@ int main(int argc, char **argv) {
                    "FROM season_reset_state WHERE state_id=1") == "2:resetting:1"
         print("Actual native SQL reset/preflight/postflight passed without shared-writer admission", flush=True)
         assert sql("SELECT COUNT(*) FROM player_data WHERE active=1") == "2"
+        epoch_call("check-collectors", 2, 0)
+        assert sql("SELECT COUNT(*) FROM collector_listings WHERE status=5") == "4"
+        assert sql("SELECT COUNT(*) FROM item_current_owner WHERE owner_type=8 AND state=2") == "3"
+        assert sql("SELECT COUNT(*) FROM collector_ledger WHERE closed_reason=6") == "4"
+        preserved = sql("SELECT HEX(item_blob) FROM collector_listings WHERE listing_id=103")
+        assert preserved
+        receipts = sql("SELECT COUNT(*) FROM collector_ledger")
+        epoch_call("reset-collectors", 2, 0)
+        assert sql("SELECT COUNT(*) FROM collector_ledger") == receipts
+        assert sql("SELECT HEX(item_blob) FROM collector_listings WHERE listing_id=103") == preserved
+        print("Collector reset: candidate/collected/available/paused retired, custody destroyed, audit/payload/IDs retained and restart view empty", flush=True)
+        retired_wallet = sql("SELECT copper FROM player_data WHERE pid=1004")
+        epoch_call("stale-collector", 2, 0)
+        assert sql("SELECT copper FROM player_data WHERE pid=1004") == retired_wallet
+        assert sql("SELECT COUNT(*) FROM player_items WHERE obj_uid IN (SELECT item_uid FROM collector_listings)") == "0"
+        del env["PWIPE_TEST_COLLECTOR_BUY"]
+        print("A real pre-reset prepared purchase was refused as stale without payment or item resurrection", flush=True)
+
+
         epoch_call("check-boons", 2, 0)
         print("Divine reset: no old objectives/repeat preferences, IDs/audit/pause retained, retry idempotent and next ID fresh", flush=True)
 
@@ -278,6 +426,10 @@ int main(int argc, char **argv) {
         assert sql("SELECT COUNT(*) FROM player_data WHERE name='Deletedgod' AND active=1") == "0"
         sql("INSERT INTO player_data(name,account_name) VALUES('Oldmortal','fixturebank')")
         print("Overlord recreation: exact 62 only, new PID, clean balances/progression, account mapping and freed mortal name passed", flush=True)
+        epoch_call("new-collector", 2, 0)
+        assert sql("SELECT COUNT(*) FROM collector_listings") == "5"
+        print("Fresh collector enrollment/bootstrap uses the next ID and excludes retired protected history", flush=True)
+
         assert sql("SELECT COUNT(*) FROM account_banks") == "0"
         assert sql("SELECT CONCAT_WS(':',password,email,total_donated,confirmed) "
                    "FROM accounts WHERE account_name='fixturebank'") == account_before
@@ -318,6 +470,14 @@ int main(int argc, char **argv) {
         finally:
             sql("RENAME TABLE fixture_kingdom_realms TO kingdom_realms")
         print("Missing kingdom store rejected before the irreversible boundary", flush=True)
+        sql("ALTER TABLE collector_ledger RENAME COLUMN closed_reason TO fixture_closed_reason")
+        try:
+            epoch_call("wipe", 3, 1, cwd=root)
+            assert sql("SELECT season_epoch,reset_status FROM season_reset_state WHERE state_id=1") == before
+        finally:
+            sql("ALTER TABLE collector_ledger RENAME COLUMN fixture_closed_reason TO closed_reason")
+        print("Delegated collector ledger schema drift rejected before epoch advance", flush=True)
+
 
 
         # Exercise the real policy hook. Its fixed reset boundary separates retry
@@ -409,6 +569,24 @@ int main(int argc, char **argv) {
 
 
 
+
+        epoch_call("seed-collectors", 200, 0)
+        sql("UPDATE season_reset_state SET reset_status='active' WHERE state_id=1")
+        prior_ledger = int(sql("SELECT COUNT(*) FROM collector_ledger"))
+        sql("CREATE TRIGGER fixture_collector_failure BEFORE INSERT ON collector_ledger "
+            "FOR EACH ROW SET NEW.closed_reason=IF(NEW.listing_id=202,99,NEW.closed_reason)")
+        try:
+            epoch_call("wipe", 24, 1, cwd=root)
+        finally:
+            sql("DROP TRIGGER fixture_collector_failure")
+        assert sql("SELECT CONCAT(reset_status,':',reset_completed_at IS NULL) FROM season_reset_state") == "resetting:1"
+        assert int(sql("SELECT COUNT(*) FROM collector_ledger")) == prior_ledger + 2
+        epoch_call("reset-collectors", 25, 0)
+        assert sql("SELECT COUNT(*) FROM collector_listings WHERE status BETWEEN 1 AND 3") == "0"
+        repaired = sql("SELECT COUNT(*) FROM collector_ledger")
+        epoch_call("reset-collectors", 25, 0)
+        assert sql("SELECT COUNT(*) FROM collector_ledger") == repaired
+        print("Partial collector failure stayed fenced; repaired retry closed remaining rows without duplicate receipts", flush=True)
 
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"
