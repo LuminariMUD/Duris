@@ -62,6 +62,14 @@ system-service qualification remain separate #264 gates. The native handoff runn
 also forces the actual SIGCHLD reaper to finish preflight first and proves the SQL
 caller consumes its saved exit status rather than spuriously rejecting ECHILD.
 
+The handoff runner now executes the real account reward hook against the private DB.
+Permanent/unexpired grants survive, finite grants decrement once and exhausted/expired
+grants disappear under the configured policy. It checks wrong/zero epoch, active or
+missing reset boundary, same-reset retry after 90 days, distinct resets inside/outside
+28 days, summon cleanup, rollback, lost COMMIT acknowledgment and preserve=false.
+The test clock changes only that native fixture connection. No new schema or ledger
+is used: the policy timestamp records the fixed reset boundary atomically with grants.
+
 ## Contained-being learning feedback
 
 A failed recipe-learning roll reports the failure to the eligible summoner in
