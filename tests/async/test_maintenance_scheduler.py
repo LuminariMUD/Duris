@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import shlex
 import struct
+import shutil
+import os
 from pathlib import Path
 from _paths import HARNESS_STUBS
 
@@ -26,6 +28,7 @@ HARNESS = r'''
 #include <chrono>
 #include <condition_variable>
 #include <ctime>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <sys/stat.h>
@@ -120,8 +123,57 @@ template <typename Predicate> void wait_until(Predicate predicate)
     }
 }
 
+// A captured retry is a real startup input even after its worker was drained.
+bool report_only(maintenance_request &request, void *)
+{
+    if (request.job_id != maintenance_job_id::web_status) return false;
+    const char text[] = "old-season-captured-report";
+    memcpy(request.content.data(), text, sizeof(text));
+    request.content_size = sizeof(text) - 1;
+    return true;
+}
+maintenance_result report_retry(const maintenance_request &request, void *raw)
+{
+    auto &state = *static_cast<state_type *>(raw);
+    std::lock_guard<std::mutex> lock(state.mutex);
+    assert(std::string(request.content.data(), request.content_size) == "old-season-captured-report");
+    state.requests.push_back(request);
+    return {request.work_id, request.job_id, maintenance_outcome::retryable_failure, 0, 0, 0, 11, 0, {}};
+}
+int pwipe_report(const char *path, const std::string &mode)
+{
+    state_type state;
+    assert(maintenance_scheduler_set_state_path(path));
+    assert(maintenance_scheduler_init(9, report_retry, &state, report_only));
+    const auto initial = maintenance_scheduler_health_copy(0);
+    const auto report = static_cast<size_t>(maintenance_job_id::web_status);
+    maintenance_result results[MAINTENANCE_COMPLETION_MAX] = {};
+    if (mode == "pwipe-fresh") {
+        assert(initial.queued == 0 && initial.inflight == 0 && initial.completions == 0);
+        for (const auto &job : initial.jobs) assert(job.work_id == 0 && job.cursor == 0);
+    } else {
+        if (mode == "pwipe-seed") {
+            uint64_t tick = 0;
+            wait_until([&] {
+                if (maintenance_scheduler_health_copy(tick).jobs[report].submitted) return true;
+                maintenance_scheduler_pulse(++tick, results, MAINTENANCE_COMPLETION_MAX);
+                return false;
+            });
+        } else assert(mode == "pwipe-replay");
+        wait_until([&] { return maintenance_scheduler_health_copy(0).completions == 1; });
+        maintenance_scheduler_quiesce();
+        assert(maintenance_scheduler_drain(3000));
+        assert(maintenance_scheduler_pulse(0, results, MAINTENANCE_COMPLETION_MAX) == 1);
+        assert(results[0].outcome == maintenance_outcome::retryable_failure);
+        assert(state.requests.size() == 1);
+    }
+    maintenance_scheduler_shutdown();
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 3) return pwipe_report(argv[1], argv[2]);
     assert(argc == 2);
     size_t count = 0;
     const auto *registry = maintenance_registry(&count);
@@ -331,6 +383,34 @@ with tempfile.TemporaryDirectory(prefix="duris-maintenance-scheduler-") as temp_
     )
     state_file = Path(temp_dir) / "scheduler.state"
     subprocess.run([str(binary), str(state_file)], check=True, timeout=10)
+    # Baseline: actual init replays a captured retry after a successful drain.
+    wipe_root = Path(temp_dir) / "wipe"
+    (wipe_root / "Players/wipers").mkdir(parents=True)
+    wiper = wipe_root / "Players/wipers/wipe_it_all"
+    shutil.copy2(ROOT / "Players/wipers/wipe_it_all", wiper)
+    default_checkpoint = wipe_root / "runtime/maintenance-scheduler.state"
+    for checkpoint in (default_checkpoint, Path(temp_dir) / "custom checkpoint",
+                       wipe_root / "Players/a/scheduler.state"):
+        subprocess.run([str(binary), str(checkpoint), "pwipe-seed"], check=True, timeout=10)
+        subprocess.run([str(binary), str(checkpoint), "pwipe-replay"], check=True, timeout=10)
+        checkpoint.unlink()
+        subprocess.run([str(binary), str(checkpoint), "pwipe-seed"], check=True, timeout=10)
+        original_checkpoint = checkpoint.read_bytes()
+        temporary_checkpoint = Path(str(checkpoint) + ".tmp")
+        temporary_checkpoint.write_bytes(original_checkpoint)
+        wipe_env = dict(os.environ, COPYOVER_STATE_FILE=str(wipe_root / "copyover.dat"),
+                        MAINTENANCE_STATE_FILE="" if checkpoint == default_checkpoint else str(checkpoint))
+        subprocess.run([str(wiper), "--check"], cwd=wipe_root, env=wipe_env, check=True, stdout=subprocess.DEVNULL)
+        assert checkpoint.read_bytes() == original_checkpoint
+        subprocess.run([str(wiper)], cwd=wipe_root, env=wipe_env, check=True, stdout=subprocess.DEVNULL)
+        assert not checkpoint.exists() and not temporary_checkpoint.exists()
+        archives = [archive for archive in (wipe_root / "Players/Backup").glob("pwipe-maintenance.*")
+                    if (archive / "source-path").read_text().strip() == str(checkpoint)]
+        archive, = archives
+        assert archive.stat().st_mode & 0o777 == 0o700
+        assert (archive / "state").read_bytes() == (archive / "state.tmp").read_bytes() == original_checkpoint
+        subprocess.run([str(binary), str(checkpoint), "pwipe-fresh"], check=True, timeout=10)
+    print("Actual maintenance retry replay before wipe; default/custom/external/wipe-target state isolated byte-exact and fresh after wipe")
     current = state_file.read_bytes()
     assert current.startswith(b"DMSMNT4\0" + struct.pack("=II", 4, 13))
     job_size = (len(current) - 24) // 13

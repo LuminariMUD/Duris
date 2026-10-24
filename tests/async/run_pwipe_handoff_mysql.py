@@ -1116,10 +1116,15 @@ int main(int argc, char **argv) {
         (root / "Players/Backup/keep").write_text("archive")
         old = root / "Players/a/old"
         native_handoff = root / "copyover.dat"
+        maintenance_checkpoint = root / "runtime/maintenance-scheduler.state"
+        maintenance_checkpoint.parent.mkdir(exist_ok=True)
+        maintenance_temporary = Path(str(maintenance_checkpoint) + ".tmp")
 
         def prepare(ready=True):
             old.write_text("old season")
             native_handoff.write_bytes(b"COPYold season handoff")
+            maintenance_checkpoint.write_bytes(b"DMSMNT4old captured maintenance")
+            maintenance_temporary.write_bytes(b"DMSMNT4old partial state save")
             sql("UPDATE season_reset_state SET season_epoch=2,reset_status='resetting',roster_recreated=NULL,"
                 "reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=" +
                 ("UTC_TIMESTAMP(6)" if ready else "NULL") + " WHERE state_id=1")
@@ -1238,8 +1243,13 @@ int main(int argc, char **argv) {
         assert (archive / "publication").read_bytes() == b"COPYold season handoff"
         wiper.write_text(original)
         launch(expected=55); assert status() == "2:active"
+        assert not maintenance_checkpoint.exists() and not maintenance_temporary.exists()
+        archived_maintenance = list((root / "Players/Backup").glob("pwipe-maintenance.*/state"))
+        assert archived_maintenance and all(path.read_bytes() == b"DMSMNT4old captured maintenance" for path in archived_maintenance)
         old.write_text("new season sentinel")
+        maintenance_checkpoint.write_bytes(b"DMSMNT4fresh season checkpoint")
         launch(expected=55); assert old.read_text() == "new season sentinel"
+        assert maintenance_checkpoint.read_bytes() == b"DMSMNT4fresh season checkpoint"
         # A lost activation ACK must be recovered by reading the same epoch;
         # replay must not delete a new season's files.
         prepare()
@@ -1254,8 +1264,10 @@ int main(int argc, char **argv) {
         launch(environment=failing_env); assert status() == "2:active"
         old.write_text("saved after ambiguous completion")
         native_handoff.write_bytes(b"COPYfresh season handoff")
+        maintenance_checkpoint.write_bytes(b"DMSMNT4fresh after ambiguous activation")
         launch(expected=55); assert old.read_text() == "saved after ambiguous completion"
         assert native_handoff.read_bytes() == b"COPYfresh season handoff"
+        assert maintenance_checkpoint.read_bytes() == b"DMSMNT4fresh after ambiguous activation"
         assert (root / "Players/Backup/keep").read_text() == "archive"
         print("Launcher handoff: incomplete SQL, wrong epoch, concurrent cleanup, symlink, missing access, "
               "partial cleanup, retry, duplicate completion and lost activation ACK passed", flush=True)
