@@ -389,7 +389,14 @@ process continues to target only the old epoch while pwipe is in progress; after
 the new process targets only the completed new epoch. Redis invalidation deletes and then
 verifies the old epoch when Redis is enabled. If Redis is explicitly disabled, old keys
 cannot become visible when it is enabled in a later season because no active unscoped
-surface remains.
+surface remains. If a wipe completed with Redis disabled, keep the game stopped
+while enabling the configured Redis connection again, verify the SQL season is
+active, and start explicitly with the same deployment namespace. Boot captures the
+new SQL epoch; it does not select an old epoch's authenticated world image or cache/
+presence inputs. Check new-epoch presence and fresh save/reconnect/recovery. Retained
+old keys are evidence, not a reason to clear shared Redis. The disposable
+`--redis --redis-reenable` runtime journey exercises this cutover with a real old
+floor item and authenticated world payload.
 
 ## Pre-service safety gate
 
