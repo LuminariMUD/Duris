@@ -15945,14 +15945,11 @@ void spell_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	 * restore lost exp from death
 	 */
 
-	if (IS_PC(t_ch) && !IS_TRUSTED(t_ch))
+	// Protected and level-one deaths legitimately have no XP to restore. The
+	// XP dispatcher floors ordinary gains at one, so skip a zero-loss corpse.
+	if (IS_PC(t_ch) && !IS_TRUSTED(t_ch) && obj->value[4] != 0)
 	{
 		resu_exp = obj->value[4];
-		if (resu_exp == 0)
-		{
-			// send_to_char("&-RERROR! Player corpse with zero exp, please notify a god!&n\r\n", ch);
-			wizlog(56, "MEMORY ERROR: Player corpse with zero exp!");
-		}
 
 		if (!IS_TRUSTED(ch))
 		{
