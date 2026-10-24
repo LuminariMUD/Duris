@@ -56,11 +56,45 @@ Files: existing runtime journey, runbook/regression notes and this plan. Proof:
 actual command/reset/fresh gameplay, matched hashes/epoch, independent SQL import,
 real Redis RDB restart/recovery, restored account login/save/reconnect, unchanged
 source and retained generation. Production action and full readiness are excluded.
-The first trial captured a verified SQL generation and real authenticated world RDB,
-then passed command/reset/filesystem cleanup; fresh gameplay/recovery is running.
-The fixture was tightened during review to give the restored Redis its own port
-and retain the post-wipe source for comparison. Run that final fixture before
-claiming the full matched restore. No C/C++ source changed; reuse #336 builds.
+Implemented in `797968309`. The final committed fixture passed:
+`python3 tests/async/run_pwipe_runtime_journey.py --redis --restore bin/qualification-production/server/dms_new`.
+Report: ignored `bin/analysis/pwipe-runtime-mariadb-redis-restore.json`; log:
+`bin/analysis/pwipe-matched-restore-final.log`. Report revision is
+`797968309f4141680a301becb86d7b5ae37f2361`, C/C++ diff hash is empty, optimized
+binary SHA-256 `4c5b38d73cbb017e2cc72c8bb3ed1ee183f614fad43b0f70063dfc894df3745c`.
+Source database image is MariaDB 10.11.19; fresh private restore daemon is local
+MariaDB 10.11.14. The actual countdown was 301.379 wall / 290.435 monotonic seconds
+(the previously observed host clock drift persists). No production action occurred.
+
+The frozen cut had active epoch 1, original PID 1, bank platinum 9, grant count 3,
+legacy pfile/ship markers, preserved archive and authenticated Redis world generation 1.
+The actual wipe reached active epoch 2 with clean recreated Overlord PID 2 and fresh
+mortal PID 3; bank rows and old payloads were gone, grant count was 2, and fresh
+combat/loot/save/reconnect/second boot passed. A new Unix-socket DB imported the
+verified generation; native receipts, sealed history/value reconciliation and current
+independent tombstone gate passed. Filesystem and RDB supplements remained bound by
+hashes to the frozen SQL manifest/binary. The restored private Redis used its own
+port and authenticated world recovery was actually accepted. Original account/body,
+items, banks/rewards and files returned in epoch 1; login/save/reconnect/second boot
+and post-gameplay DB qualification passed. The completed source's epoch-2 SQL roster,
+wiped file targets and Redis world/unrelated keys stayed unchanged; the source SQL
+backup and supplement hashes also stayed unchanged. All owned fixture processes,
+containers and temporary trees were removed; unrelated local test services were kept.
+
+The runbook makes the matched-capture/preparation gate explicit and keeps shared live
+Redis and production promotion outside this isolated drill. It reuses the existing
+backup CLI, DB import/reconciliation, tombstone/native receipt APIs and private-daemon
+helper; no new backup service, policy format or promotion path. Python compilation,
+invalid-mode refusal before service creation, changed-line format and commit hooks
+passed. No C/C++ change: #336's three builds and existing systemd/failure evidence are
+reused. This proves the matched MariaDB/Redis mini-world path, not loaded-world or
+external website/telemetry cutover. Full readiness stays OPEN.
+
+Next: finish W1 retained custody/baseline consumer proof and W5 whole website/cache/
+donation/client/telemetry cutover, then W2 command edge cases and W7 readiness audit.
+Native source review also confirmed `towns` has no live query consumer; its retained
+compatibility classification needs no destructive reset. General item ownership and
+collector-history population remain consumer-audit work, not confirmed defects.
 
 ## Current continuation — same-epoch SQL resume
 
@@ -844,7 +878,7 @@ old-season work and normal saves continue.
   and incomplete-reset fencing, using the existing exit contract with explicit
   non-restart status where needed. Preserve ordinary reboot/crash recovery. Direct
   server starts must also honor the fence.
-- [ ] Document/exercise resume at each irreversible stage and restore of a matched
+- [x] Document/exercise resume at each irreversible stage and restore of a matched
   pre-wipe DB/filesystem/Redis generation. Resume cannot increment epoch again or
   repeat rewards. Never bypass recovery by simply setting state active.
 
@@ -921,7 +955,7 @@ and donations and retained telemetry/quota evidence remain correct.
   cleanup and final activation. Interrupt server and launcher separately at
   SQL/filesystem/completion boundaries. Attempt direct start, repeated launcher
   invocation and service restart against incomplete state.
-- [ ] Exercise resume and disposable restore, including interruption after reward
+- [x] Exercise resume and disposable restore, including interruption after reward
   commit but before completion. Preserve backup/audit sentinels and unrelated
   Redis keys through repeated cleanup attempts.
 - [x] Execute production-template sandbox/restart behavior in an isolated real
