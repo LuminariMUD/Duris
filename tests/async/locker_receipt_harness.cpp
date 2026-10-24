@@ -13,6 +13,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -210,6 +211,75 @@ int main(int argc, char **argv)
 	baseline(&ch);
 	assert(locker_identify_init(root.c_str()));
 	object obj{ &ch, 0, "ORIGINAL SWORD STATS" };
+	if (mode == "pwipe")
+	{
+		const uint32_t retired_pid = ch.pid;
+		for (const auto old_state :
+		     { locker_receipt_state::prepared, locker_receipt_state::paid,
+		       locker_receipt_state::failed, locker_receipt_state::delivered })
+		{
+			ch.pid = retired_pid;
+			locker_receipt old;
+			assert(currency_transaction_prepare_identify(&ch, 175, &old.payment));
+			old.text = "OLD CHARACTER RECEIPT";
+			old.state = old_state;
+			assert(locker_receipt_write(receipt_directory, old));
+			const auto old_path =
+				receipt_directory + "/" + std::to_string(retired_pid) + ".receipt";
+			auto bytes = [](const std::string &path)
+			{
+				std::ifstream file(path, std::ios::binary);
+				return std::string(std::istreambuf_iterator<char>(file), {});
+			};
+			const auto original = bytes(old_path);
+			assert(!original.empty());
+			// SQL wipe/recreation allocates a higher PID, even on the same account
+			// and side. Name never participates in this receipt consumer.
+			ch.pid = retired_pid + 1000 + static_cast<uint32_t>(old_state);
+			purse = {};
+			purse.wallet.amount[0] = purse.bank.amount[0] = 1000;
+			submissions = 0;
+			output.clear();
+			locker_identify_replay(&ch);
+			locker_identify_receipt(&ch);
+			drained();
+			assert(submissions == 0 && output.empty());
+			assert(purse.wallet.amount[0] == 1000 && purse.bank.amount[0] == 1000);
+			assert(bytes(old_path) == original);
+			// Even an incorrectly renamed/copied old receipt cannot bypass the
+			// PID encoded inside its command payload.
+			const auto new_path =
+				receipt_directory + "/" + std::to_string(ch.pid) + ".receipt";
+			std::filesystem::copy_file(old_path, new_path);
+			locker_receipt decoded;
+			assert(locker_receipt_read(receipt_directory, ch.pid, &decoded) ==
+			       flatfile_read_result::invalid);
+			locker_identify_replay(&ch);
+			drained();
+			assert(submissions == 0 && output.find(old.text) == std::string::npos);
+			std::filesystem::remove(new_path); // Only the fixture's deliberate alias.
+			output.clear();
+			obj.text = "FRESH CHARACTER IDENTIFICATION";
+			locker_identify(&ch, &obj, 175);
+			until([] { return submissions == 1; });
+			finish();
+			drained();
+			assert(output.find(obj.text) != std::string::npos &&
+			       output.find(old.text) == std::string::npos);
+			assert(purse.wallet.amount[0] == (bank_purchase ? 1000 : 825));
+			assert(purse.bank.amount[0] == (bank_purchase ? 825 : 1000));
+			assert(locker_receipt_read(receipt_directory, ch.pid, &decoded) ==
+			       flatfile_read_result::ok);
+			assert(decoded.state == locker_receipt_state::delivered &&
+			       decoded.text.ends_with(obj.text) &&
+			       decoded.text.find(old.text) == std::string::npos);
+			assert(bytes(old_path) == original);
+		}
+		locker_identify_shutdown();
+		std::cout
+			<< "Retained locker receipts: all four states isolated from fresh PID, alias refused, old bytes retained, new purchase works\n";
+		return 0;
+	}
 	// Copyover enqueues all playing characters before the first service pulse.
 	// The last player's recovery must survive more than two full admission batches.
 	std::vector<character> crowd(40, ch);

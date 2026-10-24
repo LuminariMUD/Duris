@@ -336,6 +336,31 @@ before deletion. Repair/quarantine such input explicitly before retrying; do not
 bypass the check. A partial move remains fenced and a normal retry archives what
 remains. A duplicate already-active epoch skips all cleanup and keeps fresh state.
 
+The former `CRITICAL_COMMAND_JOURNAL_DIR` now holds only
+`locker-identification/<pid>.receipt` service receipts. Their filenames and encoded
+payment identities bind PID/account/side. Preserve prepared/paid/failed/delivered
+receipts: a recreated character gets a higher PID and cannot load/charge its old
+receipt, even on the same account. This is receipt identity, not a new season field.
+The actual-service regression also refuses an old receipt copied to a new PID's
+filename and proves fresh identification works without altering retained bytes.
+
+Normal MariaDB account admission calls `sql_load_account` / `sql_save_account`;
+player admission selects the SQL load repository in `player_load_pipeline.c`.
+The client-free build selects its explicit flat-file provider and
+`FLATFILE_STATE_DIR/identities/accounts`; mixed fallback mode is refused. Legacy
+`lib/players`, `lib/accounts`, fallback and quarantine entries remain policy/
+historical inventory labels, not automatic current SQL fallback inputs. Explicit
+pfile inspection/import commands use `SAVE_DIR` (`Players`) or artifact import
+paths; do not use old-season import sources to repopulate a fresh season.
+
+Keep `Accounts/email.db` when optional email verification is enabled, site bans in
+`lib/misc/ban_sites`, and invitation/accepted/declined-name policy under `Players`.
+These account/admission controls survive; byte-exact synthetic canaries cover the
+actual paths during cleanup. In a client-free installation the whole
+`FLATFILE_STATE_DIR` namespace remains authoritative and untouched: pwipe refuses
+before countdown/mutation. This does not claim flat-file wipe support. Specific
+protected flat-file domain/journal entries remain independently inventoried.
+
 MUD mail is character-name scoped, independent of current SQL PID/account identity.
 Normal boot reads `Accounts/mail`, or `Players/mail` when the preferred path is
 absent. A recreated/reused name must not receive its old character's letters.
