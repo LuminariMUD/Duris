@@ -380,6 +380,20 @@ int main() {
     illithid_advance_level(&player);
     assert(player.player.level == 31);
     warning(30);
+    // A high XP reserve must not advance a fragging illithid above the mortal maximum.
+    reset();
+    maximum_exp_level = 50;
+    for (auto &xp : new_exp_table) xp = 40000000;
+    player.player.level = 50;
+    player.points.curr_exp = 500000000;
+    illithid_advance_level(&player);
+    assert(player.player.level == MAXLVLMORTAL);
+    assert(player.points.curr_exp == 500000000 - 6 * 40000000);
+    illithid_advance_level(&player);
+    assert(player.player.level == MAXLVLMORTAL);
+    assert(player.points.curr_exp == 500000000 - 6 * 40000000);
+    for (auto &xp : new_exp_table) xp = 10000;
+    maximum_exp_level = 20;
     reset();
     player.player.level = 24;
     death_cutoff = 25;
@@ -484,6 +498,11 @@ int main() {
     output.clear();
     assert(gain_exp(&player, nullptr, 1000, EXP_WORLD_QUEST) == 0);
     assert(player.points.curr_exp == INT_MAX && output.empty());
+    reset();
+    global_exp_limit = std::numeric_limits<long>::max();
+    player.points.curr_exp = INT_MAX - 30;
+    assert(gain_exp(&player, nullptr, 1000, EXP_QUEST) == 30);
+    assert(player.points.curr_exp == INT_MAX);
     // Banked XP cannot cross the locked cap, then advances normally upon unlock.
     reset();
     player.player.level = 29;

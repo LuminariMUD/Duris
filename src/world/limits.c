@@ -657,14 +657,15 @@ static void notify_level_advancement(P_char ch, int previous_level)
 
 void illithid_advance_level(P_char ch)
 {
-	int minlvl = get_property("exp.maxExpLevel", 46);
-	int i;
+	const int minlvl = get_property("exp.maxExpLevel", 46);
 	const int previous_level = GET_LEVEL(ch);
 
-	if (GET_LEVEL(ch) >= 56)
+	if (GET_LEVEL(ch) >= MAXLVLMORTAL)
 		return;
 
-	for (i = GET_LEVEL(ch) + 1; i > minlvl && (new_exp_table[i] <= GET_EXP(ch)); i++)
+	// Illithids gain these levels on frags, but must remain mortals.
+	for (int i = GET_LEVEL(ch) + 1;
+	     i > minlvl && i <= MAXLVLMORTAL && new_exp_table[i] <= GET_EXP(ch); ++i)
 	{
 		GET_EXP(ch) -= new_exp_table[i];
 		advance_level_impl(ch, false, true, static_cast<std::uint64_t>(new_exp_table[i]));
@@ -1598,9 +1599,9 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		if (GET_LEVEL(ch) < MINLVLIMMORTAL)
 		{
 			logit(LOG_EXP,
-			      "W-QUEST EXP: %s - level %d: old exp: %d, new exp: %d, +exp: %d",
-			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch), GET_EXP(ch) + (int)XP,
-			      (int)XP);
+			      "W-QUEST EXP: %s - level %d: old exp: %d, new exp: %lld, +exp: %d",
+			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch),
+			      static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
 		}
 		// debug("world quest 1 (%d)", (int)XP);
 	}
@@ -1610,9 +1611,9 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		if (GET_LEVEL(ch) < MINLVLIMMORTAL)
 		{
 			logit(LOG_EXP,
-			      "QUEST EXP: %s - level %d: old exp: %d, new exp: %d, +exp: %d",
-			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch), GET_EXP(ch) + (int)XP,
-			      (int)XP);
+			      "QUEST EXP: %s - level %d: old exp: %d, new exp: %lld, +exp: %d",
+			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch),
+			      static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
 		}
 		// debug("quest 1 (%d)", (int)XP);
 	}
@@ -1651,17 +1652,17 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 	std::int64_t next_exp = static_cast<std::int64_t>(before_exp) + XP_final;
 	if (XP_final > 0)
 	{
-		const std::int64_t ceiling = std::min<std::int64_t>(
-			global_exp_limit, std::numeric_limits<int>::max());
+		const int storage_limit = std::numeric_limits<int>::max();
+		const std::int64_t ceiling = std::min<std::int64_t>(global_exp_limit, storage_limit);
 		next_exp = std::min(next_exp, std::max<std::int64_t>(before_exp, ceiling));
 	}
 	else
 	{
 		next_exp = std::max<std::int64_t>(next_exp, std::numeric_limits<int>::min());
 	}
-	const int credited_xp = GET_LEVEL(ch) < MINLVLIMMORTAL
-					? static_cast<int>(next_exp - before_exp)
-					: 0;
+	int credited_xp = 0;
+	if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+		credited_xp = static_cast<int>(next_exp - before_exp);
 	if (credited_xp != 0)
 	{
 		GET_EXP(ch) = static_cast<int>(next_exp);
