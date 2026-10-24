@@ -2669,7 +2669,7 @@
       "locator": "level_cap",
       "data_category": "world_or_gameplay_state",
       "data_subject_key": "none",
-      "technical_purpose": "shared world simulation, economy, competition, and season state",
+      "technical_purpose": "Seasonal cap counters/leaders and side unlocks reset to zero, configured base level restored and next_update reset to current time.",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
@@ -3078,7 +3078,7 @@
       "locator": "nexus_stones",
       "data_category": "world_or_gameplay_state",
       "data_subject_key": "none",
-      "technical_purpose": "shared world simulation, economy, competition, and season state",
+      "technical_purpose": "Nexus catalogue/name/room/effect/bonus retained; seasonal alignment becomes zero and last_touched_at NULL.",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
@@ -3165,7 +3165,7 @@
       "locator": "outposts",
       "data_category": "world_or_gameplay_state",
       "data_subject_key": "none",
-      "technical_purpose": "shared world simulation, economy, competition, and season state",
+      "technical_purpose": "Persistent tower catalogue IDs with seasonal ownership/fortification state reset: owner/territory/portal/resources/units zero, level 8, walls 1 and hitpoints 300000.",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
@@ -4849,7 +4849,7 @@
       "locator": "timers",
       "data_category": "reference_or_configuration",
       "data_subject_key": "none",
-      "technical_purpose": "game rules, lookup publication, and operator configuration",
+      "technical_purpose": "Named scheduler/timer marker catalogue retained while seasonal date/work marker values reset to zero.",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
@@ -5052,7 +5052,7 @@
       "locator": "zones",
       "data_category": "reference_or_configuration",
       "data_subject_key": "none",
-      "technical_purpose": "game rules, lookup publication, and operator configuration",
+      "technical_purpose": "Static world catalogue, rules and tuning retained; pwipe resets seasonal alignment for epic zones and clears separate zone touch/trophy stores.",
       "controller_decision": {
         "status": "not_required",
         "reference": "TECHNICAL-NONPERSONAL-CLASSIFICATION"
