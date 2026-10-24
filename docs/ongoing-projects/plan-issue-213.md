@@ -224,7 +224,10 @@ below; none are dropped by splitting the reference foundation from integration.
 
 ### Content and routing integration chunk
 
-Current branch: `branch/issue-213-tutorial-routing`, from #320. The working diff
+Review chunk: [PR #331](https://github.com/LuminariMUD/Duris/pull/331), commit
+`232b04041`, branch `branch/issue-213-tutorial-routing`, stacked on #320 and
+including independent dependency #328. Current follow-up work is on
+`branch/issue-213-onboarding-acceptance`. The integration diff
 adds appended home IDs 25/26, canonical side-aware eligibility rows, complete
 entry/guild tables and C/W keys; preserves forced racial defaults and evil
 Tiefling's default/departure override while allowing its explicit tutorial
@@ -298,14 +301,53 @@ repeat asks and a mid-tutorial cold restart, second-stage map delivery and
 racial departure. It preserves connection transcripts and saved-state evidence.
 The initial final-home assertion counted a commented-out guild row; the parser
 now strips C comments, with the actual stored Faang room 15295 unchanged.
-The corrected full route passed on flat-file for both races, with all three
+The corrected full route passed on **both backends** for both races, with all three
 saved home fields resolving to Faang 15295 and Ugta 39283 respectively. The
-MariaDB leg is running. The focused procedure harness is not a substitute for
+focused procedure harness is not a substitute for
 these journeys. Full gameplay acceptance is still outstanding.
 Keep later PRs stacked so menus cannot ship before their data and procs.
-All full-world terminal/browser routes, cold-restart XP/home persistence on both
-backends, actual rendered web warning and help database publication remain
-unverified; issue #213 stays open until those completion gates pass.
+Expanded service/quest, XP death/recovery, complete browser and final home
+restart acceptance remain outstanding; issue #213 stays open until those gates
+pass. The SQL test authority has exercised the maintained help importer against
+its own disposable database. Production help publication is outside this task.
+
+Acceptance follow-up in progress: the expanded terminal runner has passed
+guide gates/reward counts for Ogre, Firbolg, Goblin Sorcerer, evil Thri-kreen,
+evil Minotaur, evil Tiefling and a Human original-tutorial control. Direct
+Faang/Ugta and Wutvr/Ailvio creation/reload also passed, including the correct
+direct-start invitation. Ogre/Firbolg protected deaths before the lesson and
+wielding the guide sword passed. Service, level-29/30 and final restart legs
+are still being developed; `--case Ogreryder` narrows iteration without repeating
+the already-qualified roster setup. The full unfiltered runs on both backends
+remain required. Search reward delivery correctly used the existing ground
+fallback when the test had removed all equipped kit; the runner now re-equips
+the kit and collects the potion instead of changing carry limits or rewards.
+
+A real Chromium run completed evil Thri-kreen creation and Chaos -> Wutvr ->
+racial departure, rejected opposite-side/string/negative/boolean hometowns
+before any new player snapshot, and rendered the complete uppercase crossing
+warning with computed font weight 700. Firbolg/neutral menu refresh and 390px
+layout checks passed. The first gameplay run's map errors came from this test's
+unrelated HTTP fixture returning `{data: []}` to a direct `{nodes, edges}` API;
+the fixture is corrected. The self-contained
+`run_issue213_browser_journey.py` passed the full flow on **both backends**, with
+only the inherited Vue Router deprecation warning. It verifies the three saved
+racial-home fields and confirms forged requests allocate no player snapshot/SQL
+row. Core creation, room traffic and warning responses always came from the real
+disposable MUD. Evidence is `bin/qualification/issue213/browser-{backend}.json`,
+including binary/world/frontend commit IDs and computed warning styles. The
+remaining original completion gates below are still outstanding.
+
+The real protected-death/resurrection probe found zero-loss corpses fabricated
+one XP (12,345 -> 12,346 at level 29) and emitted a false memory-error warning.
+Independent [PR #332](https://github.com/LuminariMUD/Duris/pull/332), commit
+`909891027`, skips only a zero-loss refund block, retaining all nonzero refund
+rules. It is merged into acceptance as `e31d5141f`. The focused ASan/UBSan
+production-block regression and both incremental full builds passed. Actual
+post-fix protected resurrection now leaves XP unchanged; expanded level-29/30
+and service journeys are still in progress. Existing NPC-profile proof remains
+valid: this repair changes only resurrection refund dispatch, not loaded NPC
+profiles, content, creation eligibility or tutorial services.
 
 ## Outcome and locked scope
 
