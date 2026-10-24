@@ -3,6 +3,8 @@
 
 #include <cassert>
 #include <climits>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -371,6 +373,32 @@ int main(int argc, char **argv)
 			assert(read_bytes("target.dat") == valid);
 		if (replace_on_open < 3)
 			assert(access(claimed.c_str(), F_OK) != 0);
+	}
+	else if (std::string(argv[1]) == "pwipe")
+	{
+		write_bytes(path, valid);
+		write_bytes(claimed, valid);
+		copyover_boot_snapshot snapshot;
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready);
+		artifact_recovery_population old_world;
+		assert(!artifact_population_read_copyover(snapshot, &old_world) &&
+		       !old_world.items.empty());
+		assert(system("./Players/wipers/wipe_it_all --check >/dev/null") == 0);
+		assert(read_bytes(path) == valid && read_bytes(claimed) == valid);
+		assert(system("./Players/wipers/wipe_it_all >/dev/null") == 0);
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::absent);
+		assert(copyover_read_file(claimed, &snapshot) == copyover_boot_result::absent);
+		assert(copyover_prepare_boot() == copyover_boot_result::absent);
+		unsigned archived = 0;
+		for (const auto &entry : std::filesystem::directory_iterator("Players/Backup"))
+			if (entry.path().filename().string().starts_with("pwipe-copyover."))
+			{
+				assert(read_bytes((entry.path() / "publication").string()) ==
+				       valid);
+				assert(read_bytes((entry.path() / "recovering").string()) == valid);
+				++archived;
+			}
+		assert(archived == 1);
 	}
 	else if (std::string(argv[1]) == "pin")
 	{

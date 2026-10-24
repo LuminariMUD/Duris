@@ -35,10 +35,76 @@ check_tree() {
   fi
 }
 for path in "${TARGETS[@]}"; do check_tree "$path"; done
+check_tree Players/Backup
+
+# Both hotboot and cold artifact boot inspect these unscoped native inputs.
+# Preserve old evidence outside their live paths before the new epoch activates.
+COPYOVER_PATH="${COPYOVER_STATE_FILE:-copyover.dat}"
+[[ "$COPYOVER_PATH" == /* ]] || COPYOVER_PATH="$ROOT/$COPYOVER_PATH"
+COPYOVER_SOURCES=("$COPYOVER_PATH" "$COPYOVER_PATH.recovering"
+                  "$COPYOVER_PATH.consuming" "$COPYOVER_PATH.recovering.consuming")
+COPYOVER_NAMES=(publication recovering publication.consuming recovering.consuming)
+check_native_image() {
+  local path="$1"
+  if [[ -L "$path" || ! -f "$path" || ! -r "$path" || "$(head -c 4 -- "$path")" != COPY ]]; then
+    echo "Unsafe or unrecognized native handoff image: $path" >&2
+    return 1
+  fi
+}
+check_copyover_state() {
+  local index="$1" path="${COPYOVER_SOURCES[$1]}" parent target
+  if [[ -L "$path" || "$(readlink -m -- "$path")" != "$path" ]]; then
+    echo "Unsafe native handoff path: $path" >&2
+    return 1
+  fi
+  parent="$(dirname -- "$path")"
+  # Cleanup retains each target itself but removes nested directories.
+  for target in "${TARGETS[@]}"; do
+    if [[ "$parent" == "$ROOT/$target/"* ]]; then
+      echo "Native handoff parent would be removed; relocate it before wiping: $parent" >&2
+      return 1
+    fi
+  done
+  if [[ ! -d "$parent" || ! -r "$parent" || ! -w "$parent" || ! -x "$parent" ]]; then
+    echo "Inaccessible native handoff parent: $parent" >&2
+    return 1
+  fi
+  [[ -e "$path" ]] || return 0
+  if (( index < 2 )); then
+    check_native_image "$path"
+  elif [[ ! -d "$path" || ! -r "$path" || ! -w "$path" || ! -x "$path" ||
+          -n "$(find "$path" -mindepth 1 -maxdepth 1 ! -name image -printf x -quit)" ]]; then
+    echo "Unsafe native handoff consumption barrier: $path" >&2
+    return 1
+  elif [[ -e "$path/image" || -L "$path/image" ]]; then
+    check_native_image "$path/image"
+  fi
+}
+for index in "${!COPYOVER_SOURCES[@]}"; do check_copyover_state "$index"; done
 if [[ "${1:-}" == --check ]]; then
   echo "Filesystem wipe preflight passed; no files changed."
   exit 0
 fi
+archive=""
+for index in "${!COPYOVER_SOURCES[@]}"; do
+  check_copyover_state "$index"
+  path="${COPYOVER_SOURCES[$index]}"
+  [[ -e "$path" ]] || continue
+  if [[ -z "$archive" ]]; then
+    check_tree Players/Backup
+    mkdir -p Players/Backup
+    archive="$(mktemp -d -- "$ROOT/Players/Backup/pwipe-copyover.XXXXXX")"
+    printf '%s\n' "$COPYOVER_PATH" > "$archive/source-path"
+  fi
+  mv -T -- "$path" "$archive/${COPYOVER_NAMES[$index]}"
+done
+for path in "${COPYOVER_SOURCES[@]}"; do
+  if [[ -e "$path" || -L "$path" ]]; then
+    echo "Native handoff input remains live; refusing filesystem completion: $path" >&2
+    exit 1
+  fi
+done
+[[ -z "$archive" ]] || echo "wipe_it_all: archived native handoff evidence at $archive"
 for path in "${TARGETS[@]}"; do
   check_tree "$path"
   [[ -d "$path" ]] || continue

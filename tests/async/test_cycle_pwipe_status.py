@@ -23,8 +23,10 @@ class FilesystemWipeTest(unittest.TestCase):
         self.script = self.root / "Players/wipers/wipe_it_all"
         shutil.copy2(ROOT / "Players/wipers/wipe_it_all", self.script)
 
-    def run_wipe(self, *args):
-        return subprocess.run([str(self.script), *args], capture_output=True, text=True)
+    def run_wipe(self, *args, environment=None):
+        if environment is None:
+            environment = dict(os.environ, COPYOVER_STATE_FILE=str(self.root / "copyover.dat"))
+        return subprocess.run([str(self.script), *args], capture_output=True, text=True, env=environment)
 
     def test_preflight_is_read_only_and_cleanup_preserves_carryovers(self):
         self.assertEqual(self.run_wipe("--check").returncode, 0)
@@ -37,6 +39,124 @@ class FilesystemWipeTest(unittest.TestCase):
         for path in ("outside", "Players/Backup/keep", "Accounts/keep", "config/keep"):
             self.assertTrue((self.root / path).is_file(), path)
         self.assertEqual(self.run_wipe().returncode, 0)
+
+    def test_copyover_inputs_are_archived_before_cleanup(self):
+        original = self.root / "copyover.dat"
+        original.write_bytes(b"COPYold native world and descriptors")
+        self.assertEqual(self.run_wipe("--check").returncode, 0)
+        self.assertTrue(original.exists())
+        self.assertEqual(self.run_wipe().returncode, 0)
+        self.assertFalse(original.exists())
+        archives = list((self.root / "Players/Backup").glob("pwipe-copyover.*"))
+        self.assertEqual(len(archives), 1)
+        self.assertEqual((archives[0] / "publication").read_bytes(), b"COPYold native world and descriptors")
+        self.assertEqual(self.run_wipe().returncode, 0)
+        self.assertEqual(list((self.root / "Players/Backup").glob("pwipe-copyover.*")), archives)
+
+    def test_configured_native_inputs_and_consumption_barriers_survive_in_archive(self):
+        with tempfile.TemporaryDirectory(prefix="duris-private-copyover-") as external:
+            source = Path(external) / "native state"
+            published, recovering = source, Path(str(source) + ".recovering")
+            published.write_bytes(b"COPYpublication")
+            recovering.write_bytes(b"COPYclaimed")
+            barrier = Path(str(source) + ".recovering.consuming")
+            barrier.mkdir(mode=0o700)
+            (barrier / "image").write_bytes(b"COPYisolated")
+            empty_barrier = Path(str(source) + ".consuming")
+            empty_barrier.mkdir(mode=0o700)
+            env = dict(os.environ, COPYOVER_STATE_FILE=str(source))
+            self.assertEqual(self.run_wipe("--check", environment=env).returncode, 0)
+            self.assertTrue(published.exists() and recovering.exists() and barrier.exists())
+            self.assertEqual(self.run_wipe(environment=env).returncode, 0)
+            self.assertFalse(any(path.exists() for path in (published, recovering, barrier, empty_barrier)))
+            archive, = (self.root / "Players/Backup").glob("pwipe-copyover.*")
+            self.assertEqual(archive.stat().st_mode & 0o777, 0o700)
+            self.assertEqual((archive / "source-path").read_text(), str(source) + "\n")
+            self.assertEqual((archive / "publication").read_bytes(), b"COPYpublication")
+            self.assertEqual((archive / "recovering").read_bytes(), b"COPYclaimed")
+            self.assertEqual((archive / "recovering.consuming/image").read_bytes(), b"COPYisolated")
+            self.assertTrue((archive / "publication.consuming").is_dir())
+
+    def test_native_input_inside_wiped_tree_is_archived_first(self):
+        source = self.root / "Players/a/native.dat"
+        source.write_bytes(b"COPYinside season store")
+        env = dict(os.environ, COPYOVER_STATE_FILE=str(source))
+        self.assertEqual(self.run_wipe(environment=env).returncode, 0)
+        archive, = (self.root / "Players/Backup").glob("pwipe-copyover.*")
+        self.assertEqual((archive / "publication").read_bytes(), b"COPYinside season store")
+        self.assertEqual(self.run_wipe(environment=env).returncode, 0)
+
+    def test_nested_native_parent_refused_before_cleanup(self):
+        source = self.root / "Players/a/native/copyover.dat"
+        source.parent.mkdir()
+        source.write_bytes(b"COPYnested")
+        env = dict(os.environ, COPYOVER_STATE_FILE=str(source))
+        for arguments in (("--check",), ()):
+            self.assertNotEqual(self.run_wipe(*arguments, environment=env).returncode, 0)
+            self.assertEqual(source.read_bytes(), b"COPYnested")
+
+    def test_unsafe_native_state_refuses_before_seasonal_deletion(self):
+        path = self.root / "copyover.dat"
+        for case in ("invalid", "symlink", "barrier-entry", "barrier-link", "parent-link", "parent-link-dotdot", "missing-parent", "backup-link"):
+            with self.subTest(case=case):
+                env = dict(os.environ, COPYOVER_STATE_FILE=str(path))
+                if case == "invalid":
+                    path.write_text("configuration must not be moved")
+                elif case == "symlink":
+                    path.symlink_to(self.root / "Accounts/keep")
+                elif case.startswith("barrier"):
+                    barrier = self.root / "copyover.dat.recovering.consuming"
+                    barrier.mkdir()
+                    if case == "barrier-entry":
+                        (barrier / "unrecognized").touch()
+                    else:
+                        (barrier / "image").symlink_to(self.root / "Accounts/keep")
+                elif case == "parent-link":
+                    path.symlink_to(self.root / "Accounts", target_is_directory=True)
+                    env["COPYOVER_STATE_FILE"] = str(path / "absent")
+                elif case == "parent-link-dotdot":
+                    elsewhere = self.root / "elsewhere/child"
+                    elsewhere.mkdir(parents=True)
+                    (elsewhere.parent / "publication.dat").write_bytes(b"COPYactual native input")
+                    path.symlink_to(elsewhere, target_is_directory=True)
+                    env["COPYOVER_STATE_FILE"] = str(path / ".." / "publication.dat")
+                elif case == "missing-parent":
+                    env["COPYOVER_STATE_FILE"] = str(self.root / "absent/native.dat")
+                else:
+                    backup = self.root / "Players/Backup"
+                    backup.rename(self.root / "saved-backup")
+                    backup.symlink_to(self.root / "saved-backup", target_is_directory=True)
+                self.assertNotEqual(self.run_wipe("--check", environment=env).returncode, 0)
+                self.assertNotEqual(self.run_wipe(environment=env).returncode, 0)
+                self.assertTrue((self.root / "Players/a/old").exists())
+                self.assertEqual((self.root / "Accounts/keep").read_text(), "sentinel")
+                if path.exists() or path.is_symlink():
+                    path.unlink()
+                if case.startswith("barrier"):
+                    shutil.rmtree(barrier)
+                if case == "backup-link":
+                    backup.unlink()
+                    (self.root / "saved-backup").rename(backup)
+
+    def test_partial_native_archive_retry_preserves_each_image(self):
+        published = self.root / "copyover.dat"
+        claimed = self.root / "copyover.dat.recovering"
+        published.write_bytes(b"COPYpublished")
+        claimed.write_bytes(b"COPYclaimed")
+        commands = self.root / "commands"
+        commands.mkdir()
+        (commands / "mv").write_text("#!/bin/sh\ncase \"$*\" in *.recovering*) exit 1;; esac\nexec /usr/bin/mv \"$@\"\n")
+        (commands / "mv").chmod(0o700)
+        env = dict(os.environ, PATH=str(commands) + ":" + os.environ["PATH"],
+                   COPYOVER_STATE_FILE=str(published))
+        self.assertNotEqual(self.run_wipe(environment=env).returncode, 0)
+        self.assertFalse(published.exists())
+        self.assertTrue(claimed.exists() and (self.root / "Players/a/old").exists())
+        self.assertEqual(self.run_wipe().returncode, 0)
+        archives = list((self.root / "Players/Backup").glob("pwipe-copyover.*"))
+        self.assertEqual(len(archives), 2)
+        self.assertEqual(sorted(path.read_bytes() for archive in archives for path in archive.iterdir()
+                                if path.name != "source-path"), [b"COPYclaimed", b"COPYpublished"])
 
     def test_top_level_symlinks_and_wrong_types_fail_before_any_deletion(self):
         for dangling in (False, True):
@@ -60,6 +180,23 @@ class FilesystemWipeTest(unittest.TestCase):
         self.assertNotEqual(self.run_wipe("--check").returncode, 0)
         self.assertNotEqual(self.run_wipe().returncode, 0)
         self.assertTrue((self.root / "Players/a/old").exists())
+
+    @unittest.skipIf(os.geteuid() == 0, "permission checks require an unprivileged process")
+    def test_denied_native_or_archive_access_fails_before_deletion(self):
+        parent = self.root / "native"
+        parent.mkdir()
+        state = parent / "copyover.dat"
+        state.write_bytes(b"COPYnative")
+        env = dict(os.environ, COPYOVER_STATE_FILE=str(state))
+        for path, mode in ((state, 0), (parent, 0o500), (self.root / "Players/Backup", 0o500)):
+            old_mode = path.stat().st_mode & 0o777
+            path.chmod(mode)
+            try:
+                self.assertNotEqual(self.run_wipe("--check", environment=env).returncode, 0)
+                self.assertNotEqual(self.run_wipe(environment=env).returncode, 0)
+                self.assertTrue((self.root / "Players/a/old").exists())
+            finally:
+                path.chmod(old_mode)
 
     def test_launcher_and_service_preserve_fenced_stop_status(self):
         launcher = (ROOT / "scripts/cycle_mud.sh").read_text()
