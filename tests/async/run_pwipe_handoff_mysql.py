@@ -1445,7 +1445,7 @@ int main(int argc, char **argv) {
             # Projection repair is a supported account-load path. Recreation must
             # use durable body ownership even before that account has logged in.
             sql("INSERT INTO accounts(account_name) VALUES('fixtureother')")
-            for name in ('Missinggod', 'Stalegod', 'Wrongowner', 'Deletedgod', 'Orphangod'):
+            for name in ('Missinggod', 'Stalegod', 'Wrongowner', 'Deletedgod', 'Orphangod', 'Blockedgod', 'Blockedstale'):
                 owner = 'not-an-account' if name == 'Orphangod' else 'fixturebank'
                 sql("INSERT INTO player_data(name,account_name,level,highest_level,m_class,race,sex) VALUES('" + name + "','" + owner + "',62,62,1,1,1)")
                 pid = sql("SELECT pid FROM player_data WHERE name='" + name + "'")
@@ -1453,6 +1453,10 @@ int main(int argc, char **argv) {
                     mapping_name = 'OldStaleLabel' if name == 'Stalegod' else name
                     mapping_owner = 'fixtureother' if name == 'Wrongowner' else 'fixturebank'
                     sql("INSERT INTO account_characters(account_name,pid,char_name,deleted_at) VALUES('" + mapping_owner + "'," + pid + ",'" + mapping_name + "'," + ("UTC_TIMESTAMP()" if name == 'Deletedgod' else "NULL") + ")")
+                    if name in ('Blockedgod', 'Blockedstale'):
+                        sql("UPDATE account_characters SET blocked=1 WHERE pid=" + pid)
+                    if name == 'Blockedstale':
+                        sql("UPDATE account_characters SET char_name='OldBlockedLabel' WHERE pid=" + pid)
             cover_baselines()
             max_old_pid = int(sql("SELECT MAX(pid) FROM player_data"))
             recovery_canary.write_text("SQL recovery must not clear files")
@@ -1464,12 +1468,13 @@ int main(int argc, char **argv) {
             assert sql("SELECT COUNT(*) FROM account_characters a JOIN player_data p ON p.pid=a.pid WHERE p.active=1 AND a.deleted_at IS NULL AND a.char_name=p.name AND a.account_name='fixturebank'") == "4"
             assert sql("SELECT COUNT(*) FROM account_characters WHERE account_name='fixtureother' AND deleted_at IS NULL") == "0"
             assert sql("SELECT COUNT(*) FROM account_characters WHERE char_name='Deletedgod' AND deleted_at IS NOT NULL") == "1"
+            assert sql("SELECT COUNT(*) FROM account_characters WHERE blocked=1 AND deleted_at IS NOT NULL") == "2"
             fixed_roster = sql("SELECT pid,name,account_name,last_save,birth_time FROM player_data WHERE active=1 ORDER BY pid")
             recover(5, 55)
             assert sql("SELECT pid,name,account_name,last_save,birth_time FROM player_data WHERE active=1 ORDER BY pid") == fixed_roster
             launch(epoch=5, expected=55)
             assert status() == "5:active"
-            print("Durable staff ownership: missing/stale/wrong-account projections repaired on fresh PIDs; tombstone/orphan excluded; newborn save/birth clocks and retry roster stable", flush=True)
+            print("Durable staff ownership: missing/stale/wrong-account projections repaired on fresh PIDs; blocked/tombstone/orphan excluded; newborn save/birth clocks and retry roster stable", flush=True)
         else:
             print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state and fenced launcher; actual server recovery not requested", flush=True)
 

@@ -75,6 +75,39 @@ this narrowed completion scope.
 
 ## Remaining work — three steps, then stop
 
+2026-10-24 latest result: session 91866 exited 0. The integrated real countdown
+(301.44 seconds), Redis cleanup, fresh gameplay/save/reconnect/reboot, first frozen
+world recovery and independent second restored boot all passed. Report:
+`bin/analysis/pwipe-runtime-mariadb-redis-restore.json`; log:
+`bin/analysis/pwipe-integrated-restore.log`, revision `1ca00c651`, binary `775c89a6…`.
+Security review found one concrete remaining eligibility defect: blocked staff with
+stale projections could be recreated. The existing roster exclusion now rejects
+blocked mappings by PID or name; the existing native test adds blocked current-name
+and stale-name cases. Build/native qualification is running in session 69736,
+logs `bin/analysis/pwipe-blocked-{build,native}.log`. This targeted eligibility repair
+does not invalidate the completed ordinary-staff gameplay/restore journey.
+
+Latest checkpoint: the first run (session 69369) is finished, failed. Wipe,
+fresh gameplay and first frozen-generation recovery passed; second-boot evidence
+incorrectly sliced a bounded diagnostic string after launcher log rotation.
+`94dfa41e2` fixes both assertions to read the current boot's full `logs/log/sys`.
+The failed report is preserved as `bin/analysis/pwipe-restore-first-attempt.json`.
+Master subsequently advanced through #309 and #295–#299/#308. Its two documentation
+conflicts were resolved preserving both regression sections and this reduced plan;
+integration is committed/pushed as `1ca00c651`. Formatting and the commit hook pass
+using Clang 18 with GCC 13 headers (the default GCC 16 headers were incompatible).
+The required integrated production build passes, including the two formatting-only
+file adjustments. Binary SHA-256:
+`775c89a6637ad84b544bd41ac0f102754fa32080d7390d23c2ae4811ec90569b`.
+Corrected real restore run is live in session 91866, log
+`bin/analysis/pwipe-integrated-restore.log`; poll it, do not duplicate it.
+Concurrent integration elsewhere has now squash-merged #310–#312 into master
+(`40bec4d7f`), causing conflicts with their later repairs in this candidate.
+Do not alter the source under the live run. Reconcile the moving base after it
+finishes, keeping all final fixes and checking the resulting content delta before
+deciding whether any proof is invalidated. Do not re-run for ancestry-only changes.
+Earlier progress paragraphs below are chronological evidence, superseded here.
+
 Implementation is authorized for these steps. Production operations and merging remain separate.
 
 Current progress: isolated the existing #363 branch in

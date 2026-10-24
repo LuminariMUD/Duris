@@ -5122,7 +5122,7 @@ bool sql_pwipe(int code_verify)
 				    "SELECT p.name,account.account_name,p.m_class,p.race,p.sex,p.hometown,p.height,p.weight "
 				    "FROM player_data p JOIN accounts account ON account.account_name=p.account_name "
 				    "WHERE p.active=1 AND p.level=%d AND NOT EXISTS ("
-				    "SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
+				    "SELECT 1 FROM account_characters tombstone WHERE (tombstone.deleted_at IS NOT NULL OR tombstone.blocked<>0) "
 				    "AND (tombstone.pid=p.pid OR LOWER(tombstone.char_name)=LOWER(p.name)))",
 				    OVERLORD) &&
 				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&

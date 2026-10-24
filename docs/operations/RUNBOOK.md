@@ -254,7 +254,8 @@ store/writer inventory and final reconciliation stay in issue #264.
 
 Eligible Overlords are selected from active durable character/account ownership,
 independent of whether the account-character projection has already been repaired
-by login. Explicit deletion tombstones still exclude recreation, as in ordinary
+by login. Matching blocked mappings, including stale-name mappings, exclude recreation.
+Explicit deletion tombstones still exclude recreation, as in ordinary
 projection repair, and an unregistered durable owner cannot receive a new body.
 Missing, stale-name or wrong-account projections are rebuilt for the new PID under
 the canonical owner in the same roster transaction. Birth and last-save timestamps
