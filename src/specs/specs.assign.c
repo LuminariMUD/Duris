@@ -208,7 +208,7 @@ void assign_mobiles(void)
 	mob_index[real_mobile0(29236)].func.mob = newbie_spellup_mob;
 	mob_index[real_mobile0(29238)].func.mob = newbie_spellup_mob;
 	mob_index[real_mobile0(29232)].func.mob = newbie_spellup_mob;
-	mob_index[real_mobile0(29265)].func.mob = newbie_spellup_mob;
+	mob_index[real_mobile0(29237)].func.mob = newbie_spellup_mob;
 
 	/* Ako */
 	mob_index[real_mobile0(3715)].func.mob = ako_hypersquirrel;
