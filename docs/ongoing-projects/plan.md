@@ -43,6 +43,8 @@ was run during planning.
 ## Current continuation — matched pre-wipe restore
 
 Branch `branch/issue-264-matched-restore`, based on PR #336 at `24d68b3d8`.
+Review-ready [PR #337](https://github.com/LuminariMUD/Duris/pull/337), implementation
+`797968309`, qualification record `9e6300b81`; branch is committed/pushed.
 Outcome: rehearse a frozen pre-wipe SQL/journal generation paired with legacy
 filesystem and real authenticated Redis world-recovery data; restore all three
 into fresh owned candidates, prove original epoch/bodies/banks/rewards/files/world
