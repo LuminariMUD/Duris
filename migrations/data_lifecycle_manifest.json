@@ -6700,6 +6700,37 @@
       "dependencies": [
         "backup:pfiles"
       ]
+    },
+    {
+      "id": "file:mud-mail",
+      "kind": "runtime_file",
+      "locator": "Accounts/mail and legacy Players/mail",
+      "data_category": "personal_or_mixed_durable_store",
+      "data_subject_key": "legacy_character_name",
+      "technical_purpose": "Native character-name mail spool read at every boot and materialized as letters; guarded pwipe archives both preferred and legacy fallback paths under private Players/Backup/pwipe-mail.* before activation, preserving history outside automatic startup input paths",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "non_database",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "regenerate",
+      "active_retention": "current_season_until_guarded_pwipe_archival",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_recovery_replay_or_restore_horizon",
+      "protected_record": true,
+      "dependencies": [
+        "backup:pfiles"
+      ]
     }
   ]
 }

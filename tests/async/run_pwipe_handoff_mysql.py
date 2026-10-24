@@ -1119,12 +1119,16 @@ int main(int argc, char **argv) {
         maintenance_checkpoint = root / "runtime/maintenance-scheduler.state"
         maintenance_checkpoint.parent.mkdir(exist_ok=True)
         maintenance_temporary = Path(str(maintenance_checkpoint) + ".tmp")
+        mail_current, mail_legacy = root / "Accounts/mail", root / "Players/mail"
+        mail_current.parent.mkdir(exist_ok=True)
 
         def prepare(ready=True):
             old.write_text("old season")
             native_handoff.write_bytes(b"COPYold season handoff")
             maintenance_checkpoint.write_bytes(b"DMSMNT4old captured maintenance")
             maintenance_temporary.write_bytes(b"DMSMNT4old partial state save")
+            mail_current.write_bytes(b"old current mail")
+            mail_legacy.write_bytes(b"old fallback mail")
             sql("UPDATE season_reset_state SET season_epoch=2,reset_status='resetting',roster_recreated=NULL,"
                 "reset_started_at=UTC_TIMESTAMP(6),reset_completed_at=" +
                 ("UTC_TIMESTAMP(6)" if ready else "NULL") + " WHERE state_id=1")
@@ -1244,12 +1248,17 @@ int main(int argc, char **argv) {
         wiper.write_text(original)
         launch(expected=55); assert status() == "2:active"
         assert not maintenance_checkpoint.exists() and not maintenance_temporary.exists()
+        assert not mail_current.exists() and not mail_legacy.exists()
+        archived_mail = list((root / "Players/Backup").glob("pwipe-mail.*/current"))
+        assert archived_mail and all(path.read_bytes() == b"old current mail" for path in archived_mail)
         archived_maintenance = list((root / "Players/Backup").glob("pwipe-maintenance.*/state"))
         assert archived_maintenance and all(path.read_bytes() == b"DMSMNT4old captured maintenance" for path in archived_maintenance)
         old.write_text("new season sentinel")
         maintenance_checkpoint.write_bytes(b"DMSMNT4fresh season checkpoint")
+        mail_current.write_bytes(b"fresh season mail")
         launch(expected=55); assert old.read_text() == "new season sentinel"
         assert maintenance_checkpoint.read_bytes() == b"DMSMNT4fresh season checkpoint"
+        assert mail_current.read_bytes() == b"fresh season mail"
         # A lost activation ACK must be recovered by reading the same epoch;
         # replay must not delete a new season's files.
         prepare()
@@ -1265,9 +1274,11 @@ int main(int argc, char **argv) {
         old.write_text("saved after ambiguous completion")
         native_handoff.write_bytes(b"COPYfresh season handoff")
         maintenance_checkpoint.write_bytes(b"DMSMNT4fresh after ambiguous activation")
+        mail_current.write_bytes(b"fresh mail after ambiguous activation")
         launch(expected=55); assert old.read_text() == "saved after ambiguous completion"
         assert native_handoff.read_bytes() == b"COPYfresh season handoff"
         assert maintenance_checkpoint.read_bytes() == b"DMSMNT4fresh after ambiguous activation"
+        assert mail_current.read_bytes() == b"fresh mail after ambiguous activation"
         assert (root / "Players/Backup/keep").read_text() == "archive"
         print("Launcher handoff: incomplete SQL, wrong epoch, concurrent cleanup, symlink, missing access, "
               "partial cleanup, retry, duplicate completion and lost activation ACK passed", flush=True)
