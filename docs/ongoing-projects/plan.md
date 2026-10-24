@@ -42,8 +42,10 @@ was run during planning.
 
 ## Current continuation — telemetry season cutover
 
-Branch `branch/issue-264-telemetry-cutover`, based on review-ready PR #344 at
-`7655c26b2`. Outcome: rehearse the supported manual stop/drain/rollover/rebind/start
+Review-ready [PR #345](https://github.com/LuminariMUD/Duris/pull/345), fixture
+`123d0bb73`, proof record `86c6e5c8d`. Branch
+`branch/issue-264-telemetry-cutover`, committed/pushed, based on review-ready
+PR #344 at `7655c26b2`. Outcome: rehearse the supported manual stop/drain/rollover/rebind/start
 workflow using the real worker, protected outage ledger, native `telemetry-state`
 CLI and loopback HTTPS receiver. Extend existing telemetry runtime fixtures: prove
 rollover refuses while the worker owns the directory; drain/reap the old sender;
