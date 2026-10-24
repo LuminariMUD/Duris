@@ -69,6 +69,14 @@ archives both paths before activation and keeps fresh mail after duplicate or
 ambiguous activation acknowledgment. This qualifies input isolation and actual
 native reader behavior; it does not simulate a postmaster NPC interaction.
 
+Recovery-path regressions additionally refuse parents nested below a cleared store
+before cleanup can remove them and make resume impossible. Direct target-root paths
+remain supported. Unprivileged mode-0600/0000 checkpoint parents and inaccessible
+higher ancestors must refuse preflight/cleanup with old files intact; missing
+searchable directories remain allowed. The actual native SQL/launcher matrix also
+checks hidden checkpoints and nested native parents before the boundary, and
+launcher refusal against a SQL-ready reset until checkpoint access is repaired.
+
 `test_cycle_pwipe_status.py` also proves native handoff archival: default/custom
 paths (including an external directory and a wipe target), publication/claim and
 consumption barriers, byte preservation/private archive, unsafe-state refusal,
