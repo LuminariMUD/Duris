@@ -77,7 +77,7 @@ void confirm_diagnostic(const divine_boon_state &state, bool pending)
 		}
 		catch (const std::bad_alloc &)
 		{
-			// Read-only diagnostics must never interrupt game commands.
+			return; // Retry recording this confirmed diagnostic on the next tick.
 		}
 	}
 	// Never report a refused, superseded or failed write as committed.
@@ -568,8 +568,10 @@ try
 				centre += level;
 			if (!levels.empty())
 				centre = std::clamp((centre / levels.size() - 10) / 40, 0.0, 1.0);
-			for (double reach = 0.25; reach < 1.1 && pick[1].zones[side] < 0;
-			     reach += 0.1)
+			for (unsigned expansion = 0; expansion <= 8 && pick[1].zones[side] < 0;
+			     ++expansion)
+			{
+				const double reach = 0.25 + 0.1 * expansion;
 				for (unsigned relaxed = 0; relaxed < 2 && pick[1].zones[side] < 0;
 				     ++relaxed)
 				{
@@ -601,6 +603,7 @@ try
 						diagnostic->epic_relaxed[side] = relaxed;
 					}
 				}
+			}
 		}
 		divine_boon_slot selected;
 		unsigned total = 0;

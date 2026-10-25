@@ -236,24 +236,34 @@ See also: "ETHEREAL FORM"
 "AIR MAGUS" (Specialization)
 ===========================================================================
 Air Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b7th Circle: &+ccyclone, wall of air&n
-&+b8th Circle: &+cethereal recharge&n
-&+b9th Circle: &+celectrical execution, group haste&n
-&+b10th Circle: &+cair form, transmute water to air&n
-&+b11th Circle: &+cethereal grounds&n
+
+&+W7th Circle: &+ccyclone, wall of air&n
+&+W8th Circle: &+cethereal recharge&n
+&+W9th Circle: &+celectrical execution, group haste&n
+&+W10th Circle: &+cair form, transmute water to air&n
+&+W11th Circle: &+cethereal grounds&n
+
 ==Innate additions==
+
 *&+cfly&n (obtained at level &+c30&n)
 *&+cspeedy&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Conjurer
 * Conjurer Skills
 * Specialization
@@ -285,18 +295,26 @@ This standalone class is not offered in normal character creation.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Battle-Forger
 * Blacksmith
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Alchemist Skills
 * Classes
 * Specialization
@@ -363,24 +381,34 @@ craft.
 ANIMALIST
 ===========================================================================
 Animalist is a Shaman specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDrow Elf&n, &+yFir&+cbolg&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+bOgre&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b5th Circle: &+cprotection from animals&n
-&+b7th Circle: &+canimal growth, pulchritude&n
-&+b8th Circle: &+cscent of the bloodhound&n
-&+b9th Circle: &+cgreater summon beast&n
-&+b11th Circle: &+cessence of the wolf, guardian spirits&n
+
+&+W5th Circle: &+cprotection from animals&n
+&+W7th Circle: &+canimal growth, pulchritude&n
+&+W8th Circle: &+cscent of the bloodhound&n
+&+W9th Circle: &+cgreater summon beast&n
+&+W11th Circle: &+cessence of the wolf, guardian spirits&n
+
 ==Innate additions==
+
  &+ccharm animal&n (obtained at level &+c31&n)
  &+cshapechange&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Shaman
 * Shaman Skills
 * Specialization
@@ -481,11 +509,15 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+LOrc&n, &+GGith&+Wyanki&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+canti-good&n
  &+caura_of_protection&n
 *&+cdecrepify&n
@@ -497,13 +529,17 @@ still apply. Other forms and event settings may differ.
  &+cdrain life&n (obtained at level &+c36&n)
  &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Dark Knight
 * Demonic Rider
 * Violator
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Anti-Paladin Skills
 * Classes
 * Specialization
@@ -918,17 +954,27 @@ separately defined standalone class.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 No named specialization choices.
+
 ==Rogue specialization==
+
 For the ordinary Rogue path, read help Rogue Assassin.
+
 ==See also==
+
 * Rogue Assassin
 * Assassin Skills
 * Classes
@@ -1007,23 +1053,31 @@ This standalone class is not offered in normal character creation.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+ceyeless&n
 *&+choly light&n
 *&+cmagic resistance&n
  &+cgod call&n (obtained at level &+c21&n)
 *&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Lightbringer
 * Inquisitor
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Avenger Skills
 * Classes
 * Specialization
@@ -1164,20 +1218,28 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
   &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Disharmonist
 * Scoundrel
 * Minstrel
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Bard Skills
 * Classes
 * Specialization
@@ -1243,19 +1305,29 @@ bloodlust.
 "BATTLE-FORGER" "BATTLE FORGER" (Specialization)
 ===========================================================================
 Battle-Forger is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+cswitch opponents (cap 100%)&n
-&+b36th Level: &+criposte (cap 70%)&n
-&+b51st Level: &+ctriple attack (cap 70%)&n
+
+&+W30th Level: &+cswitch opponents (cap 100%)&n
+&+W36th Level: &+criposte (cap 70%)&n
+&+W51st Level: &+ctriple attack (cap 70%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Alchemist
 * Alchemist Skills
 * Specialization
@@ -1378,18 +1450,26 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+BBarbarian&n, &+YDwarf&n, &+rDuergar&n, &+gTroll&n, &+LOrc&n, &+LMino&+rtaur&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * MaUleR
 * RaGeloRd
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Berserker Skills
 * Classes
 * Specialization
@@ -1481,18 +1561,28 @@ See Also: ANTI-PALADIN, WARRIOR, MULTI-CLASS, PRAY
 BLACKSMITH (Specialization)
 ===========================================================================
 Blacksmith is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
  &+cfoundry&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Alchemist
 * Alchemist Skills
 * Specialization
@@ -1503,24 +1593,36 @@ Requirements are registration values, not automatic learning or preparation. Bas
 BLADEMASTER (Specialization)
 ===========================================================================
 Blademaster is a Ranger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Class mechanics==
+
 Blademasters receive a 10% bonus to the defensive parry value and a 5% bonus
 to the standard riposte value used in combat checks. Training caps are
 unchanged, and normal skill, weapon, and combat conditions still apply.
+
 ==Skill changes==
-&+b30th Level: &+cwhirlwind (cap 100%)&n
-&+b36th Level: &+cdouble strike (cap 100%)&n
-&+b51st Level: &+cfollow-up riposte (cap 60%)&n
-&+b55th Level: &+cquadruple attack (cap 50%)&n
+
+&+W30th Level: &+cwhirlwind (cap 100%)&n
+&+W36th Level: &+cdouble strike (cap 100%)&n
+&+W51st Level: &+cfollow-up riposte (cap 60%)&n
+&+W55th Level: &+cquadruple attack (cap 50%)&n
+
 ==Spell changes==
-&+b7th Circle: &+cfortitude&n
+
+&+W7th Circle: &+cfortitude&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Ranger
 * Ranger Skills
 * Specialization
@@ -1755,24 +1857,34 @@ damage and if it hits dead on will knock the victim to the ground.
 "BOUNTY HUNTER"
 ===========================================================================
 Bounty Hunter is a Mercenary specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+mDrow Elf&n, &+rDuergar&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b1st Level: &+ctrack (cap 100%)&n
-&+b30th Level: &+clisten (cap 80%)&n
-&+b51st Level: &+ctrap (cap 100%)&n
+
+&+W1st Level: &+ctrack (cap 100%)&n
+&+W30th Level: &+clisten (cap 80%)&n
+&+W51st Level: &+ctrap (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+cdetect subversion&n (obtained at level &+c30&n)
 *&+cintercept&n (obtained at level &+c31&n)
 *&+cperception&n (obtained at level &+c31&n)
 *&+cbattlefield aid&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Mercenary
 * Mercenary Skills
 * Specialization
@@ -1811,23 +1923,33 @@ towards his/her victim.
 BRIGAND
 ===========================================================================
 Brigand is a Mercenary specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+mDrow Elf&n, &+rDuergar&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b35th Level: &+csneak (cap 60%)&n
-&+b36th Level: &+cambush (cap 100%)&n
-&+b40th Level: &+clisten (cap 90%)&n
-&+b41st Level: &+ccrippling strike (cap 100%)&n
-&+b46th Level: &+cdisruptive blow (cap 100%)&n
+
+&+W35th Level: &+csneak (cap 60%)&n
+&+W36th Level: &+cambush (cap 100%)&n
+&+W40th Level: &+clisten (cap 90%)&n
+&+W41st Level: &+ccrippling strike (cap 100%)&n
+&+W46th Level: &+cdisruptive blow (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+centrapment&n (obtained at level &+c45&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Mercenary
 * Mercenary Skills
 * Specialization
@@ -2109,21 +2231,33 @@ See also: "CAUSE CRITICAL", "CAUSE LIGHT"
 CAVALIER (Specialization)
 ===========================================================================
 Cavalier is a Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Class mechanics==
+
 Cavaliers can guard two people at once under the checked-in multi-guard limit. Guard still requires an eligible nearby target and the ordinary guard skill; server properties can change the simultaneous-target limit.
+
 ==Skill changes==
-&+b30th Level: &+csidestep (cap 100%)&n
-&+b41st Level: &+clance charge (cap 100%)&n
+
+&+W30th Level: &+csidestep (cap 100%)&n
+&+W41st Level: &+clance charge (cap 100%)&n
+
 ==Spell changes==
-&+b10th Circle: &+choly sacrifice&n
+
+&+W10th Circle: &+choly sacrifice&n
+
 ==Innate additions==
+
 *&+cknight&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Paladin
 * Paladin Skills
 * Specialization
@@ -2459,14 +2593,18 @@ CLASSES (General Information)
 ===========================================================================
 Choose a class from the menu offered for the selected race. Race, alignment,
 and server settings determine creation eligibility.
+
 ==Normal creation classes==
+
 Warrior, Ranger, Psionicist, Paladin, Anti-Paladin, Cleric, Monk, Druid, Shaman, Sorcerer, Necromancer, Conjurer, Rogue, Mercenary, Bard, Berserker, Reaver, Illusionist, Blighter, Ethermancer, Summoner.
 
 Dragoon is disabled in the checked-in policy. Standalone Assassin, Thief,
 Warlock, MindFlayer, Alchemist, Dreadlord, Avenger, and Theurgist have no
 normal-roster creation combination. Assassin and Thief are normally Rogue
 specializations. Special event settings can expose additional choices.
+
 ==See also==
+
 Class Guides, Specialization, Multiclass, Skills, Spell circle
 
 #
@@ -2481,21 +2619,29 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+rDuergar&n, &+LOrc&n,
   &+GGith&+Wyanki&n, &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
  &+cgod call&n
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Zealot
 * Healer
 * Holyman
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Cleric Skills
 * Classes
 * Specialization
@@ -2870,21 +3016,29 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
   &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Air Magus
 * Water Magus
 * Fire Magus
 * Earth Magus
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Conjurer Skills
 * Classes
 * Specialization
@@ -3332,20 +3486,30 @@ See also: BASH, BLINDNESS, SWORDSMAN
 CRUSADER (Specialization)
 ===========================================================================
 Crusader is a Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+csmite evil (cap 100%), taunt (cap 80%)&n
-&+b36th Level: &+cskewer (cap 100%)&n
+
+&+W30th Level: &+csmite evil (cap 100%), taunt (cap 80%)&n
+&+W36th Level: &+cskewer (cap 100%)&n
+
 ==Spell changes==
-&+b9th Circle: &+cdivine blessing&n
-&+b10th Circle: &+choly sacrifice&n
+
+&+W9th Circle: &+cdivine blessing&n
+&+W10th Circle: &+choly sacrifice&n
+
 ==Innate additions==
+
 *&+choly crusade&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Paladin
 * Paladin Skills
 * Specialization
@@ -3510,20 +3674,30 @@ See also: RELOCATE
 "DARK DREAMER"
 ===========================================================================
 Dark Dreamer is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b8th Circle: &+cshadow merging&n
-&+b9th Circle: &+cshadow spawn&n
-&+b10th Circle: &+cgate to ardgral&n
+
+&+W8th Circle: &+cshadow merging&n
+&+W9th Circle: &+cshadow spawn&n
+&+W10th Circle: &+cgate to ardgral&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Illusionist
 * Illusionist Skills
 * Specialization
@@ -3534,19 +3708,29 @@ Requirements are registration values, not automatic learning or preparation. Bas
 "DARK KNIGHT" (Specialization)
 ===========================================================================
 Dark Knight is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b36th Level: &+cskewer (cap 100%)&n
+
+&+W36th Level: &+cskewer (cap 100%)&n
+
 ==Spell changes==
-&+b9th Circle: &+cdread blade&n
-&+b10th Circle: &+cblood tithe, hellfire&n
+
+&+W9th Circle: &+cdread blade&n
+&+W10th Circle: &+cblood tithe, hellfire&n
+
 ==Innate additions==
+
 *&+csense weakness&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Anti-Paladin
 * Anti-Paladin Skills
 * Specialization
@@ -3680,19 +3864,29 @@ See also: ANTI-PALADIN, SKILL_ANTI-PALADIN
 DEATHLORD (Specialization)
 ===========================================================================
 Deathlord is a Dreadlord specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 None. This path has no ordinary race permission row.
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b36th Level: &+cblood scent (cap 100%), soul trap (cap 100%)&n
+
+&+W36th Level: &+cblood scent (cap 100%), soul trap (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
  &+ccall of the grave&n (obtained at level &+c30&n)
 *&+cembrace death&n (obtained at level &+c31&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Dreadlord
 * Dreadlord Skills
 * Specialization
@@ -3783,21 +3977,33 @@ See also: STATS, CLASSES, RACES, REIMBURSEMENT
 "DEMONIC RIDER" (Specialization)
 ===========================================================================
 Demonic Rider is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Class mechanics==
+
 Demonic Riders can guard two people at once under the checked-in multi-guard limit. Guard still requires an eligible nearby target and the ordinary guard skill; server properties can change the simultaneous-target limit.
+
 ==Skill changes==
-&+b30th Level: &+csidestep (cap 100%)&n
-&+b41st Level: &+clance charge (cap 100%)&n
+
+&+W30th Level: &+csidestep (cap 100%)&n
+&+W41st Level: &+clance charge (cap 100%)&n
+
 ==Spell changes==
-&+b10th Circle: &+cblood tithe, hellfire&n
+
+&+W10th Circle: &+cblood tithe, hellfire&n
+
 ==Innate additions==
+
 *&+cknight&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Anti-Paladin
 * Anti-Paladin Skills
 * Specialization
@@ -3935,21 +4141,31 @@ See also: "SPELL, DEXTERITY", "ENHANCE DEXTERITY", STATISTICS
 DIABOLIS (Specialization)
 ===========================================================================
 Diabolis is a Necromancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+CHuman&n, &+LKobold&n, &+LL&+mic&+Lh&n,
   &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+cexhume (cap 100%)&n
+
+&+W30th Level: &+cexhume (cap 100%)&n
+
 ==Spell changes==
-&+b4th Circle: &+cunmaking&n
-&+b8th Circle: &+cdestroy undead&n
-&+b9th Circle: &+ccreate golem&n
+
+&+W4th Circle: &+cunmaking&n
+&+W8th Circle: &+cdestroy undead&n
+&+W9th Circle: &+ccreate golem&n
+
 ==Innate additions==
+
 *&+cmummify&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Necromancer
 * Necromancer Skills
 * Specialization
@@ -4095,20 +4311,30 @@ instead of just race. Check local justice to see if disguise is allowed.
 DISHARMONIST (Specialization)
 ===========================================================================
 Disharmonist is a Bard specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+criff (cap 100%)&n
-&+b36th Level: &+cshriek (cap 100%)&n
+
+&+W30th Level: &+criff (cap 100%)&n
+&+W36th Level: &+cshriek (cap 100%)&n
+
 ==Spell changes==
-&+b9th Circle: &+cshatter&n
+
+&+W9th Circle: &+cshatter&n
+
 ==Innate additions==
+
 *&+cecho&n (obtained at level &+c31&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Bard
 * Bard Skills
 * Specialization
@@ -4402,21 +4628,29 @@ This standalone class is not offered in normal character creation.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+cacid blood&n
 *&+ceyeless&n
 *&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Deathlord
 * Shadowlord
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Dreadlord Skills
 * Classes
 * Specialization
@@ -4511,22 +4745,30 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+gCen&+Ltaur&n, &+WGith&+Gzerai&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+cforest sight&n
  &+cshapechange&n (obtained at level &+c11&n)
  &+ccharm animal&n (obtained at level &+c21&n)
  &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Forest Druid
 * Storm Druid
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Druid Skills
 * Classes
 * Specialization
@@ -4658,23 +4900,33 @@ are grouped with the caster.
 "EARTH MAGUS"
 ===========================================================================
 Earth Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b7th Circle: &+cearthen maul&n
-&+b9th Circle: &+cacidimmolate&n
-&+b10th Circle: &+ctransmute rock to mud&n
-&+b12th Circle: &+cearthen tomb&n
+
+&+W7th Circle: &+cearthen maul&n
+&+W9th Circle: &+cacidimmolate&n
+&+W10th Circle: &+ctransmute rock to mud&n
+&+W12th Circle: &+cearthen tomb&n
+
 ==Innate additions==
+
 *&+cliving stone&n (obtained at level &+c30&n)
  &+cstone skin&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Conjurer
 * Conjurer Skills
 * Specialization
@@ -4737,19 +4989,29 @@ a small amount of damage.
 ELAPHIDIST
 ===========================================================================
 Elaphidist is a Monk specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+cflurry of blows (cap 100%)&n
-&+b46th Level: &+ctiger palm (cap 100%)&n
+
+&+W30th Level: &+cflurry of blows (cap 100%)&n
+&+W46th Level: &+ctiger palm (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+cevasion&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Monk
 * Monk Skills
 * Specialization
@@ -4760,22 +5022,32 @@ Requirements are registration values, not automatic learning or preparation. Bas
 ELEMENTALIST (Specialization)
 ===========================================================================
 Elementalist is a Shaman specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDrow Elf&n, &+yFir&+cbolg&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+bOgre&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b7th Circle: &+celemental affinity&n
-&+b9th Circle: &+cwind tunnel&n
-&+b11th Circle: &+cbinding wind, cascading elemental beam, nivards wicked firebrand&n
-&+b12th Circle: &+celemental fury, guardian spirits&n
+
+&+W7th Circle: &+celemental affinity&n
+&+W9th Circle: &+cwind tunnel&n
+&+W11th Circle: &+cbinding wind, cascading elemental beam, nivards wicked firebrand&n
+&+W12th Circle: &+celemental fury, guardian spirits&n
+
 ==Innate additions==
+
 *&+celemental power&n (obtained at level &+c35&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Shaman
 * Shaman Skills
 * Specialization
@@ -5111,20 +5383,30 @@ by primal fury to cast spells.
 ENSLAVER (Specialization)
 ===========================================================================
 Enslaver is a Psionicist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b1st Circle: &+ccombat mind&n
-&+b6th Circle: &+cawe&n
-&+b8th Circle: &+ccannibalize, inertial barrier&n
-&+b12th Circle: &+cspinal corruption&n
+
+&+W1st Circle: &+ccombat mind&n
+&+W6th Circle: &+cawe&n
+&+W8th Circle: &+ccannibalize, inertial barrier&n
+&+W12th Circle: &+cspinal corruption&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Psionicist
 * Psionicist Skills
 * Specialization
@@ -5307,21 +5589,29 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n,
   &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+cfly&n
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Tempest Magus
 * Frost Magus
 * Star Magus
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Ethermancer Skills
 * Classes
 * Specialization
@@ -5738,20 +6028,30 @@ of the abilities inherent to the plane of fire.
 "FIRE MAGUS"
 ===========================================================================
 Fire Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b9th Circle: &+cimmolate, magma burst&n
-&+b10th Circle: &+csolar flare, transmute rock to lava&n
+
+&+W9th Circle: &+cimmolate, magma burst&n
+&+W10th Circle: &+csolar flare, transmute rock to lava&n
+
 ==Innate additions==
+
 *&+cprotection from fire&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Conjurer
 * Conjurer Skills
 * Specialization
@@ -5881,26 +6181,36 @@ enemy and causing considerable damage.
 "FLAME REAVER" (Specialization)
 ===========================================================================
 Flame Reaver is a Reaver specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+c1h flaying (cap 100%), 1h slashing (cap 95%)&n
-&+b53rd Level: &+c2h flaying (cap 100%)&n
+
+&+W30th Level: &+c1h flaying (cap 100%), 1h slashing (cap 95%)&n
+&+W53rd Level: &+c2h flaying (cap 100%)&n
+
 ==Spell changes==
-&+b4th Circle: &+cflameburst&n
-&+b5th Circle: &+cburning hands&n
-&+b6th Circle: &+cfireshield&n
-&+b8th Circle: &+cfireball&n
-&+b10th Circle: &+cfirestorm, immolate&n
-&+b11th Circle: &+cilienzes flaming sword&n
-&+b12th Circle: &+ccegilunes searing blade&n
+
+&+W4th Circle: &+cflameburst&n
+&+W5th Circle: &+cburning hands&n
+&+W6th Circle: &+cfireshield&n
+&+W8th Circle: &+cfireball&n
+&+W10th Circle: &+cfirestorm, immolate&n
+&+W11th Circle: &+cilienzes flaming sword&n
+&+W12th Circle: &+ccegilunes searing blade&n
+
 ==Innate additions==
+
 *&+cprotection from fire&n (obtained at level &+c31&n)
  &+cpyrokinesis&n (obtained at level &+c31&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Reaver
 * Reaver Skills
 * Specialization
@@ -6072,21 +6382,31 @@ See also: ALCHEMIST, INGREDIENTS, "FOREST DRUID"
 "FOREST DRUID" (Specialization)
 ===========================================================================
 Forest Druid is a Druid specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+cshield block (cap 60%)&n
+
+&+W30th Level: &+cshield block (cap 60%)&n
+
 ==Spell changes==
-&+b7th Circle: &+ccall woodland beings, summon insects&n
-&+b8th Circle: &+canimal growth, entangle, ironwood, spore cloud&n
-&+b9th Circle: &+cvines&n
-&+b10th Circle: &+cgrow&n
-&+b11th Circle: &+cawaken forest, spore burst&n
+
+&+W7th Circle: &+ccall woodland beings, summon insects&n
+&+W8th Circle: &+canimal growth, entangle, ironwood, spore cloud&n
+&+W9th Circle: &+cvines&n
+&+W10th Circle: &+cgrow&n
+&+W11th Circle: &+cawaken forest, spore burst&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Druid
 * Druid Skills
 * Specialization
@@ -6254,23 +6574,33 @@ chills them to the bone.
 "FROST MAGUS"
 ===========================================================================
 Frost Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n,
   &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b7th Circle: &+cconjure ice, ice spikes, wall of ice&n
-&+b8th Circle: &+ciceflow armor&n
-&+b9th Circle: &+carctic blast, lightning ring&n
-&+b10th Circle: &+cwindrage&n
-&+b11th Circle: &+csquall&n
-&+b12th Circle: &+cpolar vortex&n
+
+&+W7th Circle: &+cconjure ice, ice spikes, wall of ice&n
+&+W8th Circle: &+ciceflow armor&n
+&+W9th Circle: &+carctic blast, lightning ring&n
+&+W10th Circle: &+cwindrage&n
+&+W11th Circle: &+csquall&n
+&+W12th Circle: &+cpolar vortex&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Ethermancer
 * Ethermancer Skills
 * Specialization
@@ -7738,26 +8068,38 @@ See also: DEFEND, RESCUE
 GUARDIAN (Specialization)
 ===========================================================================
 Guardian is a Warrior specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+yFir&+cbolg&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n,
   &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+bOgre&n, &+LOrc&n,
   &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Class mechanics==
+
 Guardians can guard two people at once. The checked-in multi-guard limit is two; server properties can change it. From level 46, rescue <character> all attempts to take that character's attackers and applies six seconds of lag after a successful rescue. Guardian's Bulwark is granted at level 41 and reduces incoming damage while a shield is worn; its checked-in reduction factor is 0.850.
+
 ==Skill changes==
-&+b30th Level: &+cfollow-up riposte (cap 100%), guard (cap 100%),&n
+
+&+W30th Level: &+cfollow-up riposte (cap 100%), guard (cap 100%),&n
     &+cshield punch (cap 100%), taunt (cap 90%)&n
-&+b41st Level: &+cdreadnaught (cap 100%)&n
-&+b46th Level: &+ctriple attack (cap 100%)&n
+&+W41st Level: &+cdreadnaught (cap 100%)&n
+&+W46th Level: &+ctriple attack (cap 100%)&n
 dual wield: no grant in this specialization
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+cbulwark&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Warrior
 * Warrior Skills
 * Specialization
@@ -8137,27 +8479,37 @@ See also: BLINDNESS, "CURE BLIND", "FULL HEAL"
 HEALER (Specialization)
 ===========================================================================
 Healer is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 No specialization overrides; ordinary Cleric Kick remains trainable to 40%.
+
 ==Spell changes==
-&+b6th Circle: &+chealing salve&n
-&+b7th Circle: &+cendurance&n
-&+b8th Circle: &+cregeneration&n
-&+b10th Circle: &+cgroup heal&n
-&+b11th Circle: &+cdivine font&n
-&+b12th Circle: &+caura of rebirth&n
+
+&+W6th Circle: &+chealing salve&n
+&+W7th Circle: &+cendurance&n
+&+W8th Circle: &+cregeneration&n
+&+W10th Circle: &+cgroup heal&n
+&+W11th Circle: &+cdivine font&n
+&+W12th Circle: &+caura of rebirth&n
+
 ==Innate additions==
+
  &+caura_of_spell_protection&n
 The magenta Spell Protection aura unlocks when you specialize at level 30.
 Healers have no innate ward and cannot receive Improved Healing from Paladins.
 Healer-cast healing spells do not gain the Paladin Improved Healing multiplier.
 All ordinary Cleric offensive spells and sixth-circle Negative Energy Barrier remain available, with their normal restrictions.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Cleric
 * Cleric Skills
 * Specialization
@@ -8319,22 +8671,32 @@ See also: "DOUBLE ATTACK", "DUAL WIELD"
 HOLYMAN (Specialization)
 ===========================================================================
 Holyman is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+cshield block (cap 90%)&n
+
+&+W30th Level: &+cshield block (cap 90%)&n
+
 ==Spell changes==
-&+b8th Circle: &+cprotection from undead, virtue&n
-&+b11th Circle: &+clesser sanctuary&n
-&+b12th Circle: &+cprayer&n
+
+&+W8th Circle: &+cprotection from undead, virtue&n
+&+W11th Circle: &+clesser sanctuary&n
+&+W12th Circle: &+cprayer&n
+
 ==Innate additions==
+
  &+caura_of_protection&n
  &+caura_of_spell_protection&n
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Cleric
 * Cleric Skills
 * Specialization
@@ -8444,22 +8806,32 @@ See also: RACES, INNATE
 HUNTSMAN (Specialization)
 ===========================================================================
 Huntsman is a Ranger specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b1st Level: &+ctrack (cap 100%)&n
-&+b30th Level: &+ctrap (cap 100%)&n
-&+b41st Level: &+chide (cap 80%)&n
+
+&+W1st Level: &+ctrack (cap 100%)&n
+&+W30th Level: &+ctrap (cap 100%)&n
+&+W41st Level: &+chide (cap 80%)&n
+
 ==Spell changes==
-&+b8th Circle: &+cendurance&n
+
+&+W8th Circle: &+cendurance&n
+
 ==Innate additions==
+
 *&+csneak&n
 *&+cwoodland renewal&n (obtained at level &+c30&n)
 *&+cnatural movement&n (obtained at level &+c46&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Ranger
 * Ranger Skills
 * Specialization
@@ -8601,19 +8973,27 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
   &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Magician
 * Dark Dreamer
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Illusionist Skills
 * Classes
 * Specialization
@@ -9809,21 +10189,31 @@ See also: SORCERER, NECROMANCER, CONJURER, PSIONICIST, ILLUSIONIST,
 MAGICIAN
 ===========================================================================
 Magician is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b41st Level: &+cexpedited retreat (cap 80%)&n
+
+&+W41st Level: &+cexpedited retreat (cap 80%)&n
+
 ==Spell changes==
-&+b6th Circle: &+cwatching wall&n
-&+b10th Circle: &+cobscuring mist&n
-&+b11th Circle: &+csuppress sound&n
+
+&+W6th Circle: &+cwatching wall&n
+&+W10th Circle: &+cobscuring mist&n
+&+W11th Circle: &+csuppress sound&n
+
 ==Innate additions==
+
 *&+cdeceptive flee&n (obtained at level &+c31&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Illusionist
 * Illusionist Skills
 * Specialization
@@ -9895,18 +10285,28 @@ See also: MAULER, BOILING BLOOD, SPEC_LIST, BERSERKER, SKILL_BERSERKER
 MAULER (Specialization)
 ===========================================================================
 Mauler is a Berserker specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+rDuergar&n, &+CHuman&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b41st Level: &+cboiling blood (cap 100%)&n
-&+b51st Level: &+cmangle (cap 100%)&n
+
+&+W41st Level: &+cboiling blood (cap 100%)&n
+&+W51st Level: &+cmangle (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Berserker
 * Berserker Skills
 * Specialization
@@ -10118,20 +10518,28 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+RGnome&n, &+mDrow Elf&n, &+rDuergar&n, &+gTroll&n,
   &+LOrc&n, &+GGoblin&n, &+LKobold&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+crapier and dirk&n
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Brigand
 * Bounty Hunter
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Mercenary Skills
 * Classes
 * Specialization
@@ -10260,21 +10668,33 @@ See also: RACES, INFRAVISION, ULTRAVISION, CHARGE, BODYSLAM, DOORBASH
 MINSTREL (Specialization)
 ===========================================================================
 Minstrel is a Bard specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+criff (cap 100%)&n
+
+&+W30th Level: &+criff (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Song changes==
-&+b46th Level: &+csong of drifting (cap 100%)&n
+
+&+W46th Level: &+csong of drifting (cap 100%)&n
+
 ==Innate additions==
+
 *&+cblindsinging&n
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Bard
 * Bard Skills
 * Specialization
@@ -10413,19 +10833,27 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+ccalming&n
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Red Dragon
 * Elaphidist
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Monk Skills
 * Classes
 * Specialization
@@ -10818,21 +11246,31 @@ See also: NEWBIE, TOGGLE_NCHAT, JCHAT, CHANNELS
 NECROLYTE (Specialization)
 ===========================================================================
 Necrolyte is a Necromancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+CHuman&n, &+LKobold&n, &+LL&+mic&+Lh&n,
   &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+c1h bludgeon (cap 100%), 2h bludgeon (cap 90%)&n
+
+&+W30th Level: &+c1h bludgeon (cap 100%), 2h bludgeon (cap 90%)&n
+
 ==Spell changes==
-&+b9th Circle: &+ctaint&n
+
+&+W9th Circle: &+ctaint&n
+
 ==Innate additions==
+
 *&+cunholy alliance&n (obtained at level &+c31&n)
 *&+cvision of the dead&n (obtained at level &+c31&n)
  &+cspawn&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Necromancer
 * Necromancer Skills
 * Specialization
@@ -10850,19 +11288,27 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LKobold&n, &+mDri&+Lder&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Diabolis
 * Necrolyte
 * Reaper
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Necromancer Skills
 * Classes
 * Specialization
@@ -11272,11 +11718,15 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+WGith&+Gzerai&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+canti-evil&n
  &+caura_of_protection&n
  &+clay hands&n
@@ -11287,12 +11737,16 @@ still apply. Other forms and event settings may differ.
  &+caura_of_improved_healing&n (obtained at level &+c30&n)
  &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Crusader
 * Cavalier
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Paladin Skills
 * Classes
 * Specialization
@@ -11966,19 +12420,27 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+WGith&+Gzerai&n, &+GGith&+Wyanki&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Pyrokinetic
 * Enslaver
 * Psycheporter
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Psionicist Skills
 * Classes
 * Specialization
@@ -11989,22 +12451,32 @@ specialization/multiclass state. Type specialize to see personal choices.
 PSYCHEPORTER (Specialization)
 ===========================================================================
 Psycheporter is a Psionicist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b1st Circle: &+ccombat mind&n
-&+b8th Circle: &+ccannibalize, inertial barrier&n
-&+b9th Circle: &+cdisplacement&n
-&+b12th Circle: &+cthought beacon&n
+
+&+W1st Circle: &+ccombat mind&n
+&+W8th Circle: &+ccannibalize, inertial barrier&n
+&+W9th Circle: &+cdisplacement&n
+&+W12th Circle: &+cthought beacon&n
+
 ==Innate additions==
+
 *&+castral affinity&n (obtained at level &+c30&n)
 *&+cspacial focus&n (obtained at level &+c46&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Psionicist
 * Psionicist Skills
 * Specialization
@@ -12112,23 +12584,33 @@ amount of fire damage to those in the room not in the reaver's group.
 PYROKINETIC (Specialization)
 ===========================================================================
 Pyrokinetic is a Psionicist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b41st Level: &+cdisperse flames (cap 100%)&n
-&+b46th Level: &+cflame mastery (cap 100%)&n
+
+&+W41st Level: &+cdisperse flames (cap 100%)&n
+&+W46th Level: &+cflame mastery (cap 100%)&n
+
 ==Spell changes==
-&+b1st Circle: &+ccombat mind&n
-&+b8th Circle: &+ccannibalize, inertial barrier&n
-&+b11th Circle: &+cpyrokinesis&n
-&+b12th Circle: &+cconfuse, fire aura&n
+
+&+W1st Circle: &+ccombat mind&n
+&+W8th Circle: &+ccannibalize, inertial barrier&n
+&+W11th Circle: &+cpyrokinesis&n
+&+W12th Circle: &+cconfuse, fire aura&n
+
 ==Innate additions==
+
  &+cfireshield&n (obtained at level &+c30&n)
 *&+cprotection from fire&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Psionicist
 * Psionicist Skills
 * Specialization
@@ -12485,21 +12967,31 @@ mostly from sheer numbers.
 RAGELORD (Specialization)
 ===========================================================================
 Ragelord is a Berserker specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+rDuergar&n, &+CHuman&n, &+LMino&+rtaur&n, &+YDwarf&n, &+LOrc&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b1st Level: &+c2h flaying (cap 95%)&n
-&+b30th Level: &+cdual wield (cap 100%), taunt (cap 100%)&n
-&+b50th Level: &+cfollow-up riposte (cap 60%)&n
-&+b51st Level: &+cgrapple (cap 100%)&n
+
+&+W1st Level: &+c2h flaying (cap 95%)&n
+&+W30th Level: &+cdual wield (cap 100%), taunt (cap 100%)&n
+&+W50th Level: &+cfollow-up riposte (cap 60%)&n
+&+W51st Level: &+cgrapple (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+chammer master&n (obtained at level &+c31&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Berserker
 * Berserker Skills
 * Specialization
@@ -12553,21 +13045,29 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+coutdoor sneak&n
 *&+cdual wielding master&n (obtained at level &+c41&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Blademaster
 * Huntsman
 * Marshall
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Ranger Skills
 * Classes
 * Specialization
@@ -12655,21 +13155,31 @@ See also: WRITE
 REAPER (Specialization)
 ===========================================================================
 Reaper is a Necromancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+CHuman&n, &+LKobold&n, &+LL&+mic&+Lh&n,
   &+LOrc&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+c1h piercing (cap 95%), 1h slashing (cap 90%)&n
+
+&+W30th Level: &+c1h piercing (cap 95%), 1h slashing (cap 90%)&n
+
 ==Spell changes==
-&+b4th Circle: &+cdarkness&n
-&+b8th Circle: &+cdoom blade&n
-&+b9th Circle: &+craise shadow&n
+
+&+W4th Circle: &+cdarkness&n
+&+W8th Circle: &+cdoom blade&n
+&+W9th Circle: &+craise shadow&n
+
 ==Innate additions==
+
  &+cremort&n (obtained at level &+c46&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Necromancer
 * Necromancer Skills
 * Specialization
@@ -12687,20 +13197,28 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+rDuergar&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+mDri&+Lder&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Ice Reaver
 * Flame Reaver
 * Shock Reaver
 * Earth Reaver
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Reaver Skills
 * Classes
 * Specialization
@@ -13128,21 +13646,29 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+mDrow Elf&n, &+rDuergar&n, &+gTroll&n, &+LOrc&n,
   &+GGith&+Wyanki&n, &+GGoblin&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Assassin
 * Thief
 * Shadow Archer
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
 Shadow Archer is defined but has no normal allowed race row.
+
 ==See also==
+
 * Rogue Skills
 * Classes
 * Specialization
@@ -13341,22 +13867,32 @@ and load carried.
 SCOUNDREL
 ===========================================================================
 Scoundrel is a Bard specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b1st Level: &+chide (cap 90%)&n
-&+b30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
+
+&+W1st Level: &+chide (cap 90%)&n
+&+W30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
     &+cdouble attack (cap 95%), dual wield (cap 70%), riff (cap 100%)&n
-&+b51st Level: &+cdisguise (cap 55%), trip (cap 90%)&n
+&+W51st Level: &+cdisguise (cap 55%), trip (cap 90%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+cimproved flee&n
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Bard
 * Bard Skills
 * Specialization
@@ -13510,19 +14046,29 @@ See also: HIDE, SNEAK, FOLLOW
 SHADOWMAGE (Specialization)
 ===========================================================================
 Shadowmage is a Sorcerer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b6th Circle: &+cblink&n
-&+b12th Circle: &+cobtenebration&n
+
+&+W6th Circle: &+cblink&n
+&+W12th Circle: &+cobtenebration&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Sorcerer
 * Sorcerer Skills
 * Specialization
@@ -13656,20 +14202,28 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+gCen&+Ltaur&n, &+yFir&+cbolg&n, &+mDrow Elf&n,
   &+bOgre&n, &+gTroll&n, &+LOrc&n, &+GGoblin&n, &+LKobold&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Elementalist
 * Spiritualist
 * Animalist
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Shaman Skills
 * Classes
 * Specialization
@@ -14405,16 +14959,24 @@ SKILL_ALCHEMIST (Skillset)
 The following is a list of all skills and spells available to the Alchemist class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, fishing, kick,&n
+
+&+W1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, fishing, kick,&n
     &+clore, mix, mount, parry, retreat, salvage, throwpotion&n
-&+b11th Level: &+cdouble attack&n
-&+b51st Level: &+cremix&n
+&+W11th Level: &+cdouble attack&n
+&+W51st Level: &+cremix&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Alchemist
 * Specialization
 * Spell circle
@@ -14426,7 +14988,9 @@ SKILL_ANTI-PALADIN (Skillset)
 The following is a list of all skills and spells available to the Anti-Paladin class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+canti-good&n
  &+caura_of_protection&n
 *&+cdecrepify&n
@@ -14438,29 +15002,35 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+cdrain life&n (obtained at level &+c36&n)
  &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
+
+&+W1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
     &+cclimb, double attack, fishing, kick, meditate, mount, parry, quick chant,&n
     &+cretreat, riposte, salvage, swim, switch opponents, unarmed damage&n
-&+b10th Level: &+cclerical spell knowledge, mounted combat, sorcerous spell knowledge&n
-&+b11th Level: &+ctaunt&n
-&+b20th Level: &+cguard&n
-&+b31st Level: &+crescue&n
-&+b36th Level: &+ccleave&n
-&+b41st Level: &+cskewer&n
-&+b56th Level: &+ctriple attack&n
+&+W10th Level: &+cclerical spell knowledge, mounted combat, sorcerous spell knowledge&n
+&+W11th Level: &+ctaunt&n
+&+W20th Level: &+cguard&n
+&+W31st Level: &+crescue&n
+&+W36th Level: &+ccleave&n
+&+W41st Level: &+cskewer&n
+&+W56th Level: &+ctriple attack&n
+
 ==Spells==
-&+b3rd Circle: &+carmor, cause light, protection from good&n
-&+b4th Circle: &+cdispel good&n
-&+b5th Circle: &+ccause serious, fear, invigorate&n
-&+b6th Circle: &+cblindness, cause critical, curse&n
-&+b7th Circle: &+charm, soulshield&n
-&+b8th Circle: &+cbattle ecstasy, darkness, enervation, wither&n
-&+b9th Circle: &+cunholy word&n
-&+b10th Circle: &+cvortex of fear&n
-&+b11th Circle: &+capocalypse, energy drain, taint&n
-&+b12th Circle: &+cbleak foeman&n
+
+&+W3rd Circle: &+carmor, cause light, protection from good&n
+&+W4th Circle: &+cdispel good&n
+&+W5th Circle: &+ccause serious, fear, invigorate&n
+&+W6th Circle: &+cblindness, cause critical, curse&n
+&+W7th Circle: &+charm, soulshield&n
+&+W8th Circle: &+cbattle ecstasy, darkness, enervation, wither&n
+&+W9th Circle: &+cunholy word&n
+&+W10th Circle: &+cvortex of fear&n
+&+W11th Circle: &+capocalypse, energy drain, taint&n
+&+W12th Circle: &+cbleak foeman&n
+
 ==See also==
+
 * Anti-Paladin
 * Specialization
 * Spell circle
@@ -14472,33 +15042,41 @@ SKILL_AVENGER (Skillset)
 The following is a list of all skills and spells available to the Avenger class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+ceyeless&n
 *&+choly light&n
 *&+cmagic resistance&n
  &+cgod call&n (obtained at level &+c21&n)
 *&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, clerical spell knowledge,&n
+
+&+W1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, clerical spell knowledge,&n
     &+cclimb, double attack, fishing, hitall, kick, meditate, parry, retreat,&n
     &+criposte, salvage, swim, unarmed damage&n
-&+b11th Level: &+cflank, holy smite&n
-&+b21st Level: &+cgaze&n
-&+b26th Level: &+choly blade, switch opponents&n
-&+b46th Level: &+ctriple attack&n
-&+b51st Level: &+cbattle orders&n
-&+b56th Level: &+cquadruple attack&n
+&+W11th Level: &+cflank, holy smite&n
+&+W21st Level: &+cgaze&n
+&+W26th Level: &+choly blade, switch opponents&n
+&+W46th Level: &+ctriple attack&n
+&+W51st Level: &+cbattle orders&n
+&+W56th Level: &+cquadruple attack&n
+
 ==Spells==
-&+b4th Circle: &+cbless&n
-&+b5th Circle: &+cprotection from evil&n
-&+b7th Circle: &+catonement&n
-&+b8th Circle: &+cturn undead&n
-&+b9th Circle: &+cdivine power&n
-&+b10th Circle: &+cdestroy undead&n
-&+b11th Circle: &+choly sword&n
-&+b12th Circle: &+ccelestial aura&n
+
+&+W4th Circle: &+cbless&n
+&+W5th Circle: &+cprotection from evil&n
+&+W7th Circle: &+catonement&n
+&+W8th Circle: &+cturn undead&n
+&+W9th Circle: &+cdivine power&n
+&+W10th Circle: &+cdestroy undead&n
+&+W11th Circle: &+choly sword&n
+&+W12th Circle: &+ccelestial aura&n
+
 ==See also==
+
 * Avenger
 * Specialization
 * Spell circle
@@ -14510,41 +15088,53 @@ SKILL_BARD (Skillset)
 The following is a list of all skills and spells available to the Bard class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h piercing, 1h slashing, awareness, backstab, bandage, carve,&n
+
+&+W1st Level: &+c1h piercing, 1h slashing, awareness, backstab, bandage, carve,&n
     &+cclimb, concentration, double attack, fishing, hide, kick, meditate, mount,&n
     &+cparry, quick chant, retreat, salvage, scribe, shield block, sneak, swim,&n
     &+cunarmed damage&n
-&+b10th Level: &+cappraise, lore, sorcerous spell knowledge&n
-&+b11th Level: &+ctaunt&n
-&+b15th Level: &+clisten&n
-&+b36th Level: &+clegend lore&n
+&+W10th Level: &+cappraise, lore, sorcerous spell knowledge&n
+&+W11th Level: &+ctaunt&n
+&+W15th Level: &+clisten&n
+&+W36th Level: &+clegend lore&n
+
 ==Spells==
-&+b2nd Circle: &+cmirror image&n
-&+b3rd Circle: &+cmagic missile&n
-&+b4th Circle: &+cburning hands, minor creation&n
-&+b5th Circle: &+cconcealment&n
-&+b6th Circle: &+cdispel magic, infravision, lightning bolt, ray of enfeeblement&n
-&+b7th Circle: &+cdimension door, fireball, slowness&n
-&+b8th Circle: &+cbigbys clenched fist&n
-&+b9th Circle: &+cfeeblemind&n
-&+b10th Circle: &+cdetect invisibility&n
-&+b11th Circle: &+cfreedom of movement, rope trick&n
-&+b12th Circle: &+cenlarge, sirens song&n
+
+&+W2nd Circle: &+cmirror image&n
+&+W3rd Circle: &+cmagic missile&n
+&+W4th Circle: &+cburning hands, minor creation&n
+&+W5th Circle: &+cconcealment&n
+&+W6th Circle: &+cdispel magic, infravision, lightning bolt, ray of enfeeblement&n
+&+W7th Circle: &+cdimension door, fireball, slowness&n
+&+W8th Circle: &+cbigbys clenched fist&n
+&+W9th Circle: &+cfeeblemind&n
+&+W10th Circle: &+cdetect invisibility&n
+&+W11th Circle: &+cfreedom of movement, rope trick&n
+&+W12th Circle: &+cenlarge, sirens song&n
+
 ==Songs==
-&+b6th Level: &+csong of sleep&n
-&+b16th Level: &+csong of calming, song of discord, song of harmony&n
-&+b21st Level: &+csong of cowardice, song of forgetfulness, song of protection&n
-&+b26th Level: &+csong of dissonance, song of peace&n
-&+b31st Level: &+csong of flight, song of healing&n
-&+b36th Level: &+csong of charming, song of dragons, song of harming&n
-&+b41st Level: &+csong of heroism, song of storms&n
-&+b46th Level: &+csong of chaos, song of revelation&n
+
+&+W6th Level: &+csong of sleep&n
+&+W16th Level: &+csong of calming, song of discord, song of harmony&n
+&+W21st Level: &+csong of cowardice, song of forgetfulness, song of protection&n
+&+W26th Level: &+csong of dissonance, song of peace&n
+&+W31st Level: &+csong of flight, song of healing&n
+&+W36th Level: &+csong of charming, song of dragons, song of harming&n
+&+W41st Level: &+csong of heroism, song of storms&n
+&+W46th Level: &+csong of chaos, song of revelation&n
+
 ==Instruments==
-&+b5th Level: &+cdrums, flute, harp, horn, lyre, mandolin&n
+
+&+W5th Level: &+cdrums, flute, harp, horn, lyre, mandolin&n
+
 ==See also==
+
 * Bard
 * Specialization
 * Spell circle
@@ -14556,21 +15146,29 @@ SKILL_BERSERKER (Skillset)
 The following is a list of all skills and spells available to the Berserker class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 2h bludgeon, bandage, berserk, carve,&n
+
+&+W1st Level: &+c1h bludgeon, 1h flaying, 2h bludgeon, bandage, berserk, carve,&n
     &+cclimb, fishing, kick, mount, parry, retreat, salvage, unarmed damage&n
-&+b6th Level: &+cblindfighting, rage, riposte&n
-&+b11th Level: &+cdouble attack, dual wield, hitall, taunt&n
-&+b26th Level: &+cwar cry&n
-&+b30th Level: &+cmaul&n
-&+b36th Level: &+crampage&n
-&+b41st Level: &+cinfuriate&n
-&+b51st Level: &+crush, triple attack, vicious strike&n
+&+W6th Level: &+cblindfighting, rage, riposte&n
+&+W11th Level: &+cdouble attack, dual wield, hitall, taunt&n
+&+W26th Level: &+cwar cry&n
+&+W30th Level: &+cmaul&n
+&+W36th Level: &+crampage&n
+&+W41st Level: &+cinfuriate&n
+&+W51st Level: &+crush, triple attack, vicious strike&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Berserker
 * Specialization
 * Spell circle
@@ -14582,35 +15180,43 @@ SKILL_CLERIC (Skillset)
 The following is a list of all skills and spells available to the Cleric class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
  &+cgod call&n
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, bandage, carve, clerical spell knowledge, climb,&n
+
+&+W1st Level: &+c1h bludgeon, bandage, carve, clerical spell knowledge, climb,&n
     &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, shield block, swim&n
-&+b40th Level: &+cage corpse&n
+&+W40th Level: &+cage corpse&n
+
 ==Spells==
-&+b1st Circle: &+carmor, bless, cause light, cure light, detect evil, detect good,&n
+
+&+W1st Circle: &+carmor, bless, cause light, cure light, detect evil, detect good,&n
     &+cdetect magic, turn undead&n
-&+b2nd Circle: &+cblindness, cause serious, cure serious, preserve,&n
+&+W2nd Circle: &+cblindness, cause serious, cure serious, preserve,&n
     &+cprotection from cold, protection from fire, slow poison, word of command&n
-&+b3rd Circle: &+ccause critical, cure blind, cure critic, dispel evil, dispel good,&n
+&+W3rd Circle: &+ccause critical, cure blind, cure critic, dispel evil, dispel good,&n
     &+cearthquake, remove poison, sense life&n
-&+b4th Circle: &+ccure disease, invigorate, protection from acid,&n
+&+W4th Circle: &+ccure disease, invigorate, protection from acid,&n
     &+cprotection from evil, protection from gas, protection from good,&n
     &+cprotection from lightning, remove curse, self comprehension, summon&n
-&+b5th Circle: &+cdestroy undead, heal, soulshield, vitality&n
-&+b6th Circle: &+ccontinual light, curse, darkness, fear, flame strike, harm,&n
+&+W5th Circle: &+cdestroy undead, heal, soulshield, vitality&n
+&+W6th Circle: &+ccontinual light, curse, darkness, fear, flame strike, harm,&n
     &+cmass preserve, negative energy barrier&n
-&+b7th Circle: &+cfull heal, lesser resurrect, water breathing&n
-&+b8th Circle: &+cdispel magic, mass heal, miracle&n
-&+b9th Circle: &+choly word, plane shift, resurrect, silence, unholy word,&n
+&+W7th Circle: &+cfull heal, lesser resurrect, water breathing&n
+&+W8th Circle: &+cdispel magic, mass heal, miracle&n
+&+W9th Circle: &+choly word, plane shift, resurrect, silence, unholy word,&n
     &+cword of recall&n
-&+b10th Circle: &+caccelerated healing, full harm, taint, true seeing&n
-&+b11th Circle: &+cdivine warding, freedom of movement, group recall&n
-&+b12th Circle: &+cmass purification&n
+&+W10th Circle: &+caccelerated healing, full harm, taint, true seeing&n
+&+W11th Circle: &+cdivine warding, freedom of movement, group recall&n
+&+W12th Circle: &+cmass purification&n
+
 ==See also==
+
 * Cleric
 * Specialization
 * Spell circle
@@ -14622,33 +15228,41 @@ SKILL_CONJURER (Skillset)
 The following is a list of all skills and spells available to the Conjurer class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, scribe, sorcerous spell knowledge, swim&n
+
 ==Spells==
-&+b1st Circle: &+cdetect magic, magic missile, minor creation&n
-&+b2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
-&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp,&n
+
+&+W1st Circle: &+cdetect magic, magic missile, minor creation&n
+&+W2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
+&+W3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp,&n
     &+cstrength&n
-&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt,&n
+&+W4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt,&n
     &+cray of enfeeblement, reveal true name, wall of force&n
-&+b5th Circle: &+ccoldshield, conjure elemental, fireshield, identify,&n
+&+W5th Circle: &+ccoldshield, conjure elemental, fireshield, identify,&n
     &+csense follower, slowness, wall of stone&n
-&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability,&n
+&+W6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability,&n
     &+cstone skin, teleport, wall of iron&n
-&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste,&n
+&+W7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste,&n
     &+cice storm, stornogs metamagic shroud, wall of flames, wall of ice, web&n
-&+b8th Circle: &+cdetect invisibility, disintegrate, globe of invulnerability,&n
+&+W8th Circle: &+cdetect invisibility, disintegrate, globe of invulnerability,&n
     &+cinvisibility, prismatic spray&n
-&+b9th Circle: &+cfly, gate, relocate&n
-&+b10th Circle: &+cfarsee, group stone skin, stornogs shimmering starshell&n
-&+b11th Circle: &+cconjure greater elemental, group globe of invulnerability,&n
+&+W9th Circle: &+cfly, gate, relocate&n
+&+W10th Circle: &+cfarsee, group stone skin, stornogs shimmering starshell&n
+&+W11th Circle: &+cconjure greater elemental, group globe of invulnerability,&n
     &+cprismatic cube, stornogs spheres&n
-&+b12th Circle: &+cgroup stornogs spheres&n
+&+W12th Circle: &+cgroup stornogs spheres&n
+
 ==See also==
+
 * Conjurer
 * Specialization
 * Spell circle
@@ -14660,24 +15274,32 @@ SKILL_DREADLORD (Skillset)
 The following is a list of all skills and spells available to the Dreadlord class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+cacid blood&n
 *&+ceyeless&n
 *&+ccommand aura&n (obtained at level &+c36&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, climb, double attack,&n
+
+&+W1st Level: &+c2h bludgeon, 2h slashing, bandage, carve, climb, double attack,&n
     &+cfishing, hitall, kick, mount, parry, retreat, riposte, salvage, swim,&n
     &+cunarmed damage&n
-&+b11th Level: &+cbattle senses, flank&n
-&+b21st Level: &+ccall of the grave, gaze&n
-&+b26th Level: &+cswitch opponents, tainted blade&n
-&+b46th Level: &+ctriple attack&n
-&+b51st Level: &+cbattle orders&n
-&+b56th Level: &+cdread wrath, quadruple attack&n
+&+W11th Level: &+cbattle senses, flank&n
+&+W21st Level: &+ccall of the grave, gaze&n
+&+W26th Level: &+cswitch opponents, tainted blade&n
+&+W46th Level: &+ctriple attack&n
+&+W51st Level: &+cbattle orders&n
+&+W56th Level: &+cdread wrath, quadruple attack&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Dreadlord
 * Specialization
 * Spell circle
@@ -14689,30 +15311,38 @@ SKILL_DRUID (Skillset)
 The following is a list of all skills and spells available to the Druid class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+cforest sight&n
  &+cshapechange&n (obtained at level &+c11&n)
  &+ccharm animal&n (obtained at level &+c21&n)
  &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h slashing, bandage, carve, clerical spell knowledge,&n
+
+&+W1st Level: &+c1h bludgeon, 1h slashing, bandage, carve, clerical spell knowledge,&n
     &+cclimb, concentration, double attack, fishing, kick, mount, retreat,&n
     &+csalvage, swim&n
+
 ==Spells==
-&+b1st Circle: &+canimal friendship, barkskin, fortitude, pulchritude&n
-&+b2nd Circle: &+caid, disease, sticks to snakes&n
-&+b3rd Circle: &+cfaerie fire, faerie fog, flame blade, protection from animals&n
-&+b4th Circle: &+ccreate spring, lightning bolt, poison, serendipity&n
-&+b5th Circle: &+cearthquake, natures touch, tranquility&n
-&+b6th Circle: &+cearthen maul, endurance, regeneration&n
-&+b7th Circle: &+ccyclone, dispel magic, mielikki vitality&n
-&+b8th Circle: &+canimal vision, pass without trace&n
-&+b9th Circle: &+cconsecrate land, sunray, wandering woods&n
-&+b10th Circle: &+ccreeping doom, moonwell, natures blessing&n
-&+b11th Circle: &+celemental aura, freedom of movement&n
-&+b12th Circle: &+cmoonstone, nova&n
+
+&+W1st Circle: &+canimal friendship, barkskin, fortitude, pulchritude&n
+&+W2nd Circle: &+caid, disease, sticks to snakes&n
+&+W3rd Circle: &+cfaerie fire, faerie fog, flame blade, protection from animals&n
+&+W4th Circle: &+ccreate spring, lightning bolt, poison, serendipity&n
+&+W5th Circle: &+cearthquake, natures touch, tranquility&n
+&+W6th Circle: &+cearthen maul, endurance, regeneration&n
+&+W7th Circle: &+ccyclone, dispel magic, mielikki vitality&n
+&+W8th Circle: &+canimal vision, pass without trace&n
+&+W9th Circle: &+cconsecrate land, sunray, wandering woods&n
+&+W10th Circle: &+ccreeping doom, moonwell, natures blessing&n
+&+W11th Circle: &+celemental aura, freedom of movement&n
+&+W12th Circle: &+cmoonstone, nova&n
+
 ==See also==
+
 * Druid
 * Specialization
 * Spell circle
@@ -14724,26 +15354,34 @@ SKILL_ETHERMANCER (Skillset)
 The following is a list of all skills and spells available to the Ethermancer class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+cfly&n
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve,&n
     &+cclerical spell knowledge, climb, concentration, double attack, fishing,&n
     &+ckick, meditate, mount, quick chant, retreat, salvage, shield block, swim&n
+
 ==Spells==
-&+b1st Circle: &+cfaerie fire, ice missile, vapor armor&n
-&+b2nd Circle: &+cchill touch, detect magic, purify spirit&n
-&+b3rd Circle: &+cfaerie fog, frost bolt, wind blade&n
-&+b4th Circle: &+ccoldshield, cone of cold, faerie sight, lightning bolt&n
-&+b5th Circle: &+cice storm, static discharge, storm empathy, vapor strike&n
-&+b6th Circle: &+cfrost beacon, frostbite, lightning curtain, lightning shield&n
-&+b7th Circle: &+ccold snap, dispel magic, windwalk&n
-&+b8th Circle: &+cethereal form, ethereal recharge&n
-&+b9th Circle: &+carcane whirlwind, plane shift&n
-&+b10th Circle: &+cfrost beam, induce tupor, purge&n
-&+b11th Circle: &+cmass fly, tempest terrain&n
+
+&+W1st Circle: &+cfaerie fire, ice missile, vapor armor&n
+&+W2nd Circle: &+cchill touch, detect magic, purify spirit&n
+&+W3rd Circle: &+cfaerie fog, frost bolt, wind blade&n
+&+W4th Circle: &+ccoldshield, cone of cold, faerie sight, lightning bolt&n
+&+W5th Circle: &+cice storm, static discharge, storm empathy, vapor strike&n
+&+W6th Circle: &+cfrost beacon, frostbite, lightning curtain, lightning shield&n
+&+W7th Circle: &+ccold snap, dispel magic, windwalk&n
+&+W8th Circle: &+cethereal form, ethereal recharge&n
+&+W9th Circle: &+carcane whirlwind, plane shift&n
+&+W10th Circle: &+cfrost beam, induce tupor, purge&n
+&+W11th Circle: &+cmass fly, tempest terrain&n
+
 ==See also==
+
 * Ethermancer
 * Specialization
 * Spell circle
@@ -14755,26 +15393,34 @@ SKILL_ILLUSIONIST (Skillset)
 The following is a list of all skills and spells available to the Illusionist class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, scribe,&n
     &+csorcerous spell knowledge, swim&n
+
 ==Spells==
-&+b1st Circle: &+cdetect magic, magic missile, minor creation, phantom armor&n
-&+b2nd Circle: &+cburning hands, continual light, darkness, dispel magic&n
-&+b3rd Circle: &+cblindness, concealment, mirror image, shadow monster&n
-&+b4th Circle: &+cfarsee, infravision, insects, levitate, sleep&n
-&+b5th Circle: &+cboulder, illusionary wall, shadow travel&n
-&+b6th Circle: &+cnightmare, reflection, stunning visions&n
-&+b7th Circle: &+cdispel invisible, hammer, reveal true name&n
-&+b8th Circle: &+cfly, mask, shadow shield, vanish&n
-&+b9th Circle: &+casphyxiate, detect illusion, dream travel, mass invisibility&n
-&+b10th Circle: &+cclone form, delirium, imprisonment&n
-&+b11th Circle: &+cflicker, nonexistence, titan&n
-&+b12th Circle: &+cdragon, mirage&n
+
+&+W1st Circle: &+cdetect magic, magic missile, minor creation, phantom armor&n
+&+W2nd Circle: &+cburning hands, continual light, darkness, dispel magic&n
+&+W3rd Circle: &+cblindness, concealment, mirror image, shadow monster&n
+&+W4th Circle: &+cfarsee, infravision, insects, levitate, sleep&n
+&+W5th Circle: &+cboulder, illusionary wall, shadow travel&n
+&+W6th Circle: &+cnightmare, reflection, stunning visions&n
+&+W7th Circle: &+cdispel invisible, hammer, reveal true name&n
+&+W8th Circle: &+cfly, mask, shadow shield, vanish&n
+&+W9th Circle: &+casphyxiate, detect illusion, dream travel, mass invisibility&n
+&+W10th Circle: &+cclone form, delirium, imprisonment&n
+&+W11th Circle: &+cflicker, nonexistence, titan&n
+&+W12th Circle: &+cdragon, mirage&n
+
 ==See also==
+
 * Illusionist
 * Specialization
 * Spell circle
@@ -14786,23 +15432,31 @@ SKILL_MERCENARY (Skillset)
 The following is a list of all skills and spells available to the Mercenary class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+crapier and dirk&n
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
+
+&+W1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
     &+c2h flaying, 2h slashing, backstab, bandage, carve, climb, double attack,&n
     &+cdual wield, fishing, headbutt, hide, kick, mount, parry, retreat, riposte,&n
     &+csalvage, shield block, swim, track, unarmed damage&n
-&+b10th Level: &+crescue&n
-&+b20th Level: &+cappraise, tackle&n
-&+b30th Level: &+creach weapons&n
-&+b51st Level: &+cswitch opponents, throat crush&n
-&+b53rd Level: &+ctriple attack&n
-&+b56th Level: &+cdouble headbutt&n
+&+W10th Level: &+crescue&n
+&+W20th Level: &+cappraise, tackle&n
+&+W30th Level: &+creach weapons&n
+&+W51st Level: &+cswitch opponents, throat crush&n
+&+W53rd Level: &+ctriple attack&n
+&+W56th Level: &+cdouble headbutt&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Mercenary
 * Specialization
 * Spell circle
@@ -14814,21 +15468,29 @@ SKILL_MONK (Skillset)
 The following is a list of all skills and spells available to the Monk class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+ccalming&n
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+cawareness, bandage, blindfighting, calm, chant, climb, diamond soul,&n
+
+&+W1st Level: &+cawareness, bandage, blindfighting, calm, chant, climb, diamond soul,&n
     &+cdragon punch, feign death, fishing, heroism, kick, martial arts, mount,&n
     &+cretreat, roundkick, safe fall, salvage, springleap, swim, switch opponents,&n
     &+cunarmed damage&n
-&+b10th Level: &+ccombination attack, quivering palm&n
-&+b15th Level: &+cbuddha palm&n
-&+b20th Level: &+cregenerate&n
-&+b21st Level: &+cchi purge&n
+&+W10th Level: &+ccombination attack, quivering palm&n
+&+W15th Level: &+cbuddha palm&n
+&+W20th Level: &+cregenerate&n
+&+W21st Level: &+cchi purge&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Monk
 * Specialization
 * Spell circle
@@ -14840,34 +15502,42 @@ SKILL_NECROMANCER (Skillset)
 The following is a list of all skills and spells available to the Necromancer class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h piercing, carve, climb, concentration, feign death, fishing,&n
+
+&+W1st Level: &+c1h piercing, carve, climb, concentration, feign death, fishing,&n
     &+ckick, meditate, mount, quick chant, retreat, salvage, scribe,&n
     &+csorcerous spell knowledge, swim&n
-&+b20th Level: &+cage corpse&n
+&+W20th Level: &+cage corpse&n
+
 ==Spells==
-&+b1st Circle: &+cdetect magic, minor creation, preserve, protection from undead,&n
+
+&+W1st Circle: &+cdetect magic, minor creation, preserve, protection from undead,&n
     &+cslashing darkness&n
-&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep,&n
+&+W2nd Circle: &+cchill touch, protection from cold, protection from living, sleep,&n
     &+cvampiric touch&n
-&+b3rd Circle: &+canimate dead, dispel magic, embalm, sense follower&n
-&+b4th Circle: &+clife leech, rejuvenate minor, strength, wither&n
-&+b5th Circle: &+ccoldshield, concealment, feeblemind, fireshield, heal undead,&n
+&+W3rd Circle: &+canimate dead, dispel magic, embalm, sense follower&n
+&+W4th Circle: &+clife leech, rejuvenate minor, strength, wither&n
+&+W5th Circle: &+ccoldshield, concealment, feeblemind, fireshield, heal undead,&n
     &+clevitate, raise spectre, teleport&n
-&+b6th Circle: &+ccone of cold, enervation, minor globe of invulnerability,&n
+&+W6th Circle: &+ccone of cold, enervation, minor globe of invulnerability,&n
     &+crejuvenate major, vitalize undead&n
-&+b7th Circle: &+cknock, protect undead, raise wraith, reveal true name&n
-&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility,&n
+&+W7th Circle: &+cknock, protect undead, raise wraith, reveal true name&n
+&+W8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility,&n
     &+cnegative concussion blast&n
-&+b9th Circle: &+cage, dimension door, energy drain, globe of darkness,&n
+&+W9th Circle: &+cage, dimension door, energy drain, globe of darkness,&n
     &+craise vampire, undeath to death&n
-&+b10th Circle: &+cblackmantle, cloak of fear, compact corpse, fly, mass embalm,&n
+&+W10th Circle: &+cblackmantle, cloak of fear, compact corpse, fly, mass embalm,&n
     &+craise lich, vampiric trance&n
-&+b11th Circle: &+ccorpseform, create dracolich, power word kill, summon ghasts&n
-&+b12th Circle: &+ccreate greater dracolich&n
+&+W11th Circle: &+ccorpseform, create dracolich, power word kill, summon ghasts&n
+&+W12th Circle: &+ccreate greater dracolich&n
+
 ==See also==
+
 * Necromancer
 * Specialization
 * Spell circle
@@ -14879,7 +15549,9 @@ SKILL_PALADIN (Skillset)
 The following is a list of all skills and spells available to the Paladin class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+canti-evil&n
  &+caura_of_protection&n
  &+clay hands&n
@@ -14890,29 +15562,35 @@ Learning, preparation, equipment, and current ability conditions still apply.
  &+caura_of_improved_healing&n (obtained at level &+c30&n)
  &+caura_of_battlelust&n (obtained at level &+c45&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
+
+&+W1st Level: &+c2h bludgeon, 2h slashing, bandage, bash, blindfighting, carve,&n
     &+cclimb, double attack, fishing, kick, meditate, mount, parry, quick chant,&n
     &+crescue, retreat, riposte, salvage, swim, unarmed damage&n
-&+b10th Level: &+cclerical spell knowledge, mounted combat&n
-&+b20th Level: &+cguard&n
-&+b36th Level: &+ccleave&n
-&+b41st Level: &+cskewer&n
-&+b51st Level: &+cswitch opponents&n
-&+b56th Level: &+ctriple attack&n
+&+W10th Level: &+cclerical spell knowledge, mounted combat&n
+&+W20th Level: &+cguard&n
+&+W36th Level: &+ccleave&n
+&+W41st Level: &+cskewer&n
+&+W51st Level: &+cswitch opponents&n
+&+W56th Level: &+ctriple attack&n
+
 ==Spells==
-&+b2nd Circle: &+cbless&n
-&+b3rd Circle: &+carmor, cure light, protection from evil&n
-&+b4th Circle: &+ccure blind, dispel evil, remove poison&n
-&+b5th Circle: &+ccure serious, invigorate, turn undead&n
-&+b6th Circle: &+ccure critic, remove curse&n
-&+b7th Circle: &+cdestroy undead, soulshield&n
-&+b8th Circle: &+ccontinual light, cure disease, heal&n
-&+b9th Circle: &+cdharma, holy word&n
-&+b10th Circle: &+cgroup heal, sanctuary&n
-&+b11th Circle: &+caccelerated healing, judgement&n
-&+b12th Circle: &+crighteous aura&n
+
+&+W2nd Circle: &+cbless&n
+&+W3rd Circle: &+carmor, cure light, protection from evil&n
+&+W4th Circle: &+ccure blind, dispel evil, remove poison&n
+&+W5th Circle: &+ccure serious, invigorate, turn undead&n
+&+W6th Circle: &+ccure critic, remove curse&n
+&+W7th Circle: &+cdestroy undead, soulshield&n
+&+W8th Circle: &+ccontinual light, cure disease, heal&n
+&+W9th Circle: &+cdharma, holy word&n
+&+W10th Circle: &+cgroup heal, sanctuary&n
+&+W11th Circle: &+caccelerated healing, judgement&n
+&+W12th Circle: &+crighteous aura&n
+
 ==See also==
+
 * Paladin
 * Specialization
 * Spell circle
@@ -14977,28 +15655,36 @@ SKILL_PSIONICIST (Skillset)
 The following is a list of all skills and spells available to the Psionicist class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cconcentration, fishing, kick, meditate, mount, retreat, salvage, swim&n
-&+b21st Level: &+c1h slashing&n
-&+b36th Level: &+cunarmed damage&n
+&+W21st Level: &+c1h slashing&n
+&+W36th Level: &+cunarmed damage&n
+
 ==Spells==
-&+b1st Circle: &+cadrenaline control, ego whip, excogitate&n
-&+b2nd Circle: &+cballistic attack, enhance agility, enhance constitution,&n
+
+&+W1st Circle: &+cadrenaline control, ego whip, excogitate&n
+&+W2nd Circle: &+cballistic attack, enhance agility, enhance constitution,&n
     &+cenhance dexterity, enhance strength&n
-&+b3rd Circle: &+caura sight, lend health, molecular agitation&n
-&+b4th Circle: &+cego blast, energy containment, flesh armor&n
-&+b5th Circle: &+cinflict pain&n
-&+b6th Circle: &+ccell adjustment, create sound, flight, intellect fortress&n
-&+b7th Circle: &+cdetonate, tower of iron will&n
-&+b8th Circle: &+cectoplasmic form, molecular control&n
-&+b9th Circle: &+cether warp, psychic crush&n
-&+b10th Circle: &+cdeath field, wormhole&n
-&+b11th Circle: &+cbiofeedback&n
-&+b12th Circle: &+cenrage&n
+&+W3rd Circle: &+caura sight, lend health, molecular agitation&n
+&+W4th Circle: &+cego blast, energy containment, flesh armor&n
+&+W5th Circle: &+cinflict pain&n
+&+W6th Circle: &+ccell adjustment, create sound, flight, intellect fortress&n
+&+W7th Circle: &+cdetonate, tower of iron will&n
+&+W8th Circle: &+cectoplasmic form, molecular control&n
+&+W9th Circle: &+cether warp, psychic crush&n
+&+W10th Circle: &+cdeath field, wormhole&n
+&+W11th Circle: &+cbiofeedback&n
+&+W12th Circle: &+cenrage&n
+
 ==See also==
+
 * Psionicist
 * Specialization
 * Spell circle
@@ -15010,29 +15696,37 @@ SKILL_RANGER (Skillset)
 The following is a list of all skills and spells available to the Ranger class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+coutdoor sneak&n
 *&+cdual wielding master&n (obtained at level &+c41&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h piercing, 1h slashing, awareness, bandage, blindfighting, carve,&n
+
+&+W1st Level: &+c1h piercing, 1h slashing, awareness, bandage, blindfighting, carve,&n
     &+cclimb, double attack, dual wield, fishing, kick, meditate, mount, parry,&n
     &+cquick chant, ranged weapons, retreat, riposte, salvage, springleap,&n
     &+csurprise, swim, switch opponents, track, unarmed damage&n
-&+b10th Level: &+cclerical spell knowledge, rescue, sorcerous spell knowledge&n
-&+b16th Level: &+cblade barrage&n
-&+b51st Level: &+ctriple attack&n
-&+b56th Level: &+cvicious attack&n
+&+W10th Level: &+cclerical spell knowledge, rescue, sorcerous spell knowledge&n
+&+W16th Level: &+cblade barrage&n
+&+W51st Level: &+ctriple attack&n
+&+W56th Level: &+cvicious attack&n
+
 ==Spells==
-&+b3rd Circle: &+cdetect evil, detect good, detect magic&n
-&+b4th Circle: &+cprotection from animals, protection from evil&n
-&+b5th Circle: &+cbarkskin, invigorate&n
-&+b6th Circle: &+ccure blind, sense life&n
-&+b7th Circle: &+cinfravision&n
-&+b9th Circle: &+cfarsee, haste&n
-&+b10th Circle: &+cdazzle, tree&n
-&+b11th Circle: &+canimal vision, blur, freedom of movement&n
+
+&+W3rd Circle: &+cdetect evil, detect good, detect magic&n
+&+W4th Circle: &+cprotection from animals, protection from evil&n
+&+W5th Circle: &+cbarkskin, invigorate&n
+&+W6th Circle: &+ccure blind, sense life&n
+&+W7th Circle: &+cinfravision&n
+&+W9th Circle: &+cfarsee, haste&n
+&+W10th Circle: &+cdazzle, tree&n
+&+W11th Circle: &+canimal vision, blur, freedom of movement&n
+
 ==See also==
+
 * Ranger
 * Specialization
 * Spell circle
@@ -15044,30 +15738,38 @@ SKILL_REAVER (Skillset)
 The following is a list of all skills and spells available to the Reaver class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, bandage, carve,&n
+
+&+W1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, bandage, carve,&n
     &+cclimb, double attack, dual wield, fishing, kick, mount, retreat, salvage,&n
     &+cscribe, switch opponents, track&n
-&+b10th Level: &+csorcerous spell knowledge&n
-&+b11th Level: &+cblindfighting, quick chant&n
-&+b18th Level: &+cparry&n
-&+b21st Level: &+cmeditate&n
-&+b26th Level: &+criposte, springleap&n
-&+b51st Level: &+ctriple attack&n
+&+W10th Level: &+csorcerous spell knowledge&n
+&+W11th Level: &+cblindfighting, quick chant&n
+&+W18th Level: &+cparry&n
+&+W21st Level: &+cmeditate&n
+&+W26th Level: &+criposte, springleap&n
+&+W51st Level: &+ctriple attack&n
+
 ==Spells==
-&+b2nd Circle: &+cmagic missile&n
-&+b3rd Circle: &+cchill touch, detect magic&n
-&+b4th Circle: &+csleep&n
-&+b5th Circle: &+cbaladors protection&n
-&+b6th Circle: &+cray of enfeeblement&n
-&+b7th Circle: &+cferrix precision&n
-&+b8th Circle: &+cdispel magic, kanchelsis fury&n
-&+b9th Circle: &+cdetect invisibility, feeblemind&n
-&+b10th Circle: &+chaste&n
-&+b11th Circle: &+cbigbys clenched fist, dimension door, freedom of movement&n
+
+&+W2nd Circle: &+cmagic missile&n
+&+W3rd Circle: &+cchill touch, detect magic&n
+&+W4th Circle: &+csleep&n
+&+W5th Circle: &+cbaladors protection&n
+&+W6th Circle: &+cray of enfeeblement&n
+&+W7th Circle: &+cferrix precision&n
+&+W8th Circle: &+cdispel magic, kanchelsis fury&n
+&+W9th Circle: &+cdetect invisibility, feeblemind&n
+&+W10th Circle: &+chaste&n
+&+W11th Circle: &+cbigbys clenched fist, dimension door, freedom of movement&n
+
 ==See also==
+
 * Reaver
 * Specialization
 * Spell circle
@@ -15079,20 +15781,28 @@ SKILL_ROGUE (Skillset)
 The following is a list of all skills and spells available to the Rogue class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h piercing, awareness, backstab, bandage, blindfighting, carve,&n
+
+&+W1st Level: &+c1h piercing, awareness, backstab, bandage, blindfighting, carve,&n
     &+ccircle, climb, double attack, dual wield, fishing, hide, kick, mount,&n
     &+cpick lock, ranged weapons, retreat, safe fall, salvage, sneak, swim,&n
     &+cswitch opponents, track, unarmed damage&n
-&+b10th Level: &+cappraise&n
-&+b11th Level: &+ctaunt&n
-&+b20th Level: &+cparry, subterfuge&n
-&+b46th Level: &+cdisguise&n
+&+W10th Level: &+cappraise&n
+&+W11th Level: &+ctaunt&n
+&+W20th Level: &+cparry, subterfuge&n
+&+W46th Level: &+cdisguise&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Rogue
 * Specialization
 * Spell circle
@@ -15104,31 +15814,39 @@ SKILL_SHAMAN (Skillset)
 The following is a list of all skills and spells available to the Shaman class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, concentration,&n
+
+&+W1st Level: &+c1h bludgeon, 2h bludgeon, bandage, carve, climb, concentration,&n
     &+cfishing, kick, meditate, mount, quick chant, retreat, salvage,&n
     &+cshaman spell knowledge, swim&n
+
 ==Spells==
-&+b1st Circle: &+cice missile, spirit armor, transfer wellness, wolfspeed&n
-&+b2nd Circle: &+cflameburst, lesser mending, reveal spirit essence&n
-&+b3rd Circle: &+ccold ward, fire ward, molevision, purify spirit, pythonsting,&n
+
+&+W1st Circle: &+cice missile, spirit armor, transfer wellness, wolfspeed&n
+&+W2nd Circle: &+cflameburst, lesser mending, reveal spirit essence&n
+&+W3rd Circle: &+ccold ward, fire ward, molevision, purify spirit, pythonsting,&n
     &+cscalding blast, snailspeed&n
-&+b4th Circle: &+chawkvision, mending, mousestrength, pantherspeed, scorching touch,&n
+&+W4th Circle: &+chawkvision, mending, mousestrength, pantherspeed, scorching touch,&n
     &+csoul disturbance, summon beast&n
-&+b5th Circle: &+cbearstrength, malison, molten spray, sense spirit, shrewtameness&n
-&+b6th Circle: &+cearthen grasp, greater mending, lionrage, spirit anguish,&n
+&+W5th Circle: &+cbearstrength, malison, molten spray, sense spirit, shrewtameness&n
+&+W6th Circle: &+cearthen grasp, greater mending, lionrage, spirit anguish,&n
     &+cspirit sight, wellness&n
-&+b7th Circle: &+celephantstrength, greater soul disturbance, ravenflight,&n
+&+W7th Circle: &+celephantstrength, greater soul disturbance, ravenflight,&n
     &+cspirit ward&n
-&+b8th Circle: &+ccorrosive blast, greater pythonsting, reveal true form,&n
+&+W8th Circle: &+ccorrosive blast, greater pythonsting, reveal true form,&n
     &+cscathing wind, spirit jump&n
-&+b9th Circle: &+carieks shattering iceball, greater ravenflight, greater spirit ward&n
-&+b10th Circle: &+cearthen rain, etherportal, gaseous cloud&n
-&+b11th Circle: &+cgreater earthen grasp, greater spirit sight&n
-&+b12th Circle: &+cgreater spirit anguish&n
+&+W9th Circle: &+carieks shattering iceball, greater ravenflight, greater spirit ward&n
+&+W10th Circle: &+cearthen rain, etherportal, gaseous cloud&n
+&+W11th Circle: &+cgreater earthen grasp, greater spirit sight&n
+&+W12th Circle: &+cgreater spirit anguish&n
+
 ==See also==
+
 * Shaman
 * Specialization
 * Spell circle
@@ -15140,30 +15858,38 @@ SKILL_SORCERER (Skillset)
 The following is a list of all skills and spells available to the Sorcerer class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, scribe, sorcerous spell knowledge, swim&n
+
 ==Spells==
-&+b1st Circle: &+cdetect magic, magic missile, minor creation&n
-&+b2nd Circle: &+cburning hands, chill touch, sleep, strength&n
-&+b3rd Circle: &+cacid blast, agility, concealment, shocking grasp&n
-&+b4th Circle: &+cdispel magic, farsee, infravision, levitate, lightning bolt,&n
+
+&+W1st Circle: &+cdetect magic, magic missile, minor creation&n
+&+W2nd Circle: &+cburning hands, chill touch, sleep, strength&n
+&+W3rd Circle: &+cacid blast, agility, concealment, shocking grasp&n
+&+W4th Circle: &+cdispel magic, farsee, infravision, levitate, lightning bolt,&n
     &+cminor paralysis, ray of enfeeblement, wizard eye&n
-&+b5th Circle: &+ccoldshield, cone of cold, dimension door,&n
+&+W5th Circle: &+ccoldshield, cone of cold, dimension door,&n
     &+cminor globe of invulnerability, slowness&n
-&+b6th Circle: &+ccolor spray, feeblemind, fireball, fireshield, ice storm, teleport&n
-&+b7th Circle: &+cbigbys clenched fist, detect invisibility, haste, invisibility,&n
+&+W6th Circle: &+ccolor spray, feeblemind, fireball, fireshield, ice storm, teleport&n
+&+W7th Circle: &+cbigbys clenched fist, detect invisibility, haste, invisibility,&n
     &+cpower word blind, power word stun, reveal true name&n
-&+b8th Circle: &+cdispel invisible, fly, immolate, power word kill, shadow shield&n
-&+b9th Circle: &+celectrical execution, incendiary cloud, mass invisibility,&n
+&+W8th Circle: &+cdispel invisible, fly, immolate, power word kill, shadow shield&n
+&+W9th Circle: &+celectrical execution, incendiary cloud, mass invisibility,&n
     &+cprismatic ray, relocate&n
-&+b10th Circle: &+cbigbys crushing hand, chain lightning, meteorswarm&n
-&+b11th Circle: &+cenlarge, reduce, solbeeps missile barrage&n
-&+b12th Circle: &+cdeflect, globe of invulnerability&n
+&+W10th Circle: &+cbigbys crushing hand, chain lightning, meteorswarm&n
+&+W11th Circle: &+cenlarge, reduce, solbeeps missile barrage&n
+&+W12th Circle: &+cdeflect, globe of invulnerability&n
+
 ==See also==
+
 * Sorcerer
 * Specialization
 * Spell circle
@@ -15175,30 +15901,38 @@ SKILL_WARLOCK (Skillset)
 The following is a list of all skills and spells available to the Warlock class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cfishing, meditate, mount, quick chant, retreat, salvage,&n
     &+csorcerous spell knowledge, swim&n
-&+b10th Level: &+cclerical spell knowledge&n
+&+W10th Level: &+cclerical spell knowledge&n
+
 ==Spells==
-&+b1st Circle: &+csense holiness, sleep, unholy wind&n
-&+b2nd Circle: &+cprotection from cold, protection from living&n
-&+b3rd Circle: &+cblindness, invoke negative energy, protection from fire,&n
+
+&+W1st Circle: &+csense holiness, sleep, unholy wind&n
+&+W2nd Circle: &+cprotection from cold, protection from living&n
+&+W3rd Circle: &+cblindness, invoke negative energy, protection from fire,&n
     &+cprotection from good, remove poison&n
-&+b4th Circle: &+cdispel good, lifelust, unmaking&n
-&+b5th Circle: &+cdevitalize, heal undead, purge living, remove curse&n
-&+b6th Circle: &+ccure blind, darkness, frostbite, negative energy barrier,&n
+&+W4th Circle: &+cdispel good, lifelust, unmaking&n
+&+W5th Circle: &+cdevitalize, heal undead, purge living, remove curse&n
+&+W6th Circle: &+ccure blind, darkness, frostbite, negative energy barrier,&n
     &+cnether touch, slowness&n
-&+b7th Circle: &+cgreater heal undead&n
-&+b8th Circle: &+cdispel lifeforce, dispel magic&n
-&+b9th Circle: &+calter energy polarity, plane shift&n
-&+b10th Circle: &+cchannel negative energy, hand of death, life ward, nether gate,&n
+&+W7th Circle: &+cgreater heal undead&n
+&+W8th Circle: &+cdispel lifeforce, dispel magic&n
+&+W9th Circle: &+calter energy polarity, plane shift&n
+&+W10th Circle: &+cchannel negative energy, hand of death, life ward, nether gate,&n
     &+cshadow gate&n
-&+b11th Circle: &+centropy storm, shadow vision&n
-&+b12th Circle: &+cdeath blessing&n
+&+W11th Circle: &+centropy storm, shadow vision&n
+&+W12th Circle: &+cdeath blessing&n
+
 ==See also==
+
 * Warlock
 * Specialization
 * Spell circle
@@ -15210,21 +15944,29 @@ SKILL_WARRIOR (Skillset)
 The following is a list of all skills and spells available to the Warrior class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
+
+&+W1st Level: &+c1h bludgeon, 1h flaying, 1h piercing, 1h slashing, 2h bludgeon,&n
     &+c2h flaying, 2h slashing, bandage, bash, berserk, blindfighting, carve,&n
     &+cclimb, disarm, double attack, dual wield, fishing, hitall, kick, mount,&n
     &+cparry, rescue, retreat, riposte, salvage, shield block, swim,&n
     &+cswitch opponents, unarmed damage&n
-&+b11th Level: &+ctaunt&n
-&+b25th Level: &+creach weapons&n
-&+b41st Level: &+cguard&n
-&+b51st Level: &+ctriple attack&n
+&+W11th Level: &+ctaunt&n
+&+W25th Level: &+creach weapons&n
+&+W41st Level: &+cguard&n
+&+W51st Level: &+ctriple attack&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Warrior
 * Specialization
 * Spell circle
@@ -15956,20 +16698,28 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
   &+GGoblin&n, &+LKobold&n, &+mDri&+Lder&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Wildmage
 * Wizard
 * Shadowmage
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Sorcerer Skills
 * Classes
 * Specialization
@@ -16192,7 +16942,9 @@ Being high enough level is not the same as having learned or prepared the
 spell. Resource and preparation paths depend on class and race. Secondary-only
 multiclass spells cost one extra circle; a spell granted by the primary class
 keeps its primary circle.
+
 ==See also==
+
 Classes, Memorize, Pray, Commune, Tupor, Multiclass
 
 #
@@ -16310,24 +17062,34 @@ See Also: SHAMAN, CLERIC, MULTI-CLASS, PRAY, MEMORIZE
 SPIRITUALIST (Specialization)
 ===========================================================================
 Spiritualist is a Shaman specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDrow Elf&n, &+yFir&+cbolg&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+bOgre&n, &+LOrc&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b7th Circle: &+cindomitability&n
-&+b8th Circle: &+ctormenting spirits&n
-&+b9th Circle: &+cconsecrate land, lesser resurrect&n
-&+b10th Circle: &+cdepressed earth, restoration, spirit walk&n
-&+b11th Circle: &+cguardian spirits, resurrect&n
+
+&+W7th Circle: &+cindomitability&n
+&+W8th Circle: &+ctormenting spirits&n
+&+W9th Circle: &+cconsecrate land, lesser resurrect&n
+&+W10th Circle: &+cdepressed earth, restoration, spirit walk&n
+&+W11th Circle: &+cguardian spirits, resurrect&n
+
 ==Innate additions==
+
 *&+cimproved healing&n (obtained at level &+c36&n)
 *&+cresurrection&n (obtained at level &+c56&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Shaman
 * Shaman Skills
 * Specialization
@@ -16627,21 +17389,31 @@ See also: BIOFEEDBACK
 "STORM DRUID" (Specialization)
 ===========================================================================
 Storm Druid is a Druid specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+gCen&+Ltaur&n, &+WGith&+Gzerai&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+YDwarf&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b25th Level: &+cshield block (cap 80%)&n
+
+&+W25th Level: &+cshield block (cap 80%)&n
+
 ==Spell changes==
-&+b7th Circle: &+ccall lightning, earth spike&n
-&+b8th Circle: &+cacid stream, lightning curtain, wind tunnel&n
-&+b9th Circle: &+cfirestorm, storm shield&n
-&+b10th Circle: &+cbinding wind, hurricane&n
-&+b11th Circle: &+cblood to stone, elemental swarm, spike growth&n
+
+&+W7th Circle: &+ccall lightning, earth spike&n
+&+W8th Circle: &+cacid stream, lightning curtain, wind tunnel&n
+&+W9th Circle: &+cfirestorm, storm shield&n
+&+W10th Circle: &+cbinding wind, hurricane&n
+&+W11th Circle: &+cblood to stone, elemental swarm, spike growth&n
+
 ==Innate additions==
+
 None beyond the base-class registrations.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Druid
 * Druid Skills
 * Specialization
@@ -16890,22 +17662,28 @@ their feet, causing them lose some of the movement.
 SWASHBUCKLER (Specialization)
 ===========================================================================
 Swashbuckler is a Warrior specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+cGrey Elf&n, &+CHuman&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Class mechanics==
+
 Swashbucklers receive a 10% bonus to both the defensive parry value and the
 standard riposte value used in combat checks. Their attacks are also harder
 to parry: the attacker's value in the defender's parry check is increased by
 10%. Training caps are unchanged, and normal skill, weapon, and combat
 conditions still apply.
+
 ==Skill changes==
-&+b1st Level: &+cawareness (cap 80%), retreat (cap 100%)&n
-&+b30th Level: &+cdual wield (cap 100%), legsweep (cap 100%),&n
+
+&+W1st Level: &+cawareness (cap 80%), retreat (cap 100%)&n
+&+W30th Level: &+cdual wield (cap 100%), legsweep (cap 100%),&n
     &+cswitch opponents (cap 100%)&n
-&+b36th Level: &+cquick step (cap 100%)&n
-&+b41st Level: &+cevade (cap 25%), sneak (cap 60%), triple attack (cap 90%)&n
-&+b56th Level: &+cvicious attack (cap 100%)&n
+&+W36th Level: &+cquick step (cap 100%)&n
+&+W41st Level: &+cevade (cap 25%), sneak (cap 60%), triple attack (cap 90%)&n
+&+W56th Level: &+cvicious attack (cap 100%)&n
 1h bludgeon: no grant in this specialization
 1h flaying: no grant in this specialization
 2h bludgeon: no grant in this specialization
@@ -16916,14 +17694,20 @@ berserk: no grant in this specialization
 guard: no grant in this specialization
 reach weapons: no grant in this specialization
 shield block: no grant in this specialization
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+crapier and dirk&n
 *&+cseadog&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Warrior
 * Warrior Skills
 * Specialization
@@ -16952,23 +17736,33 @@ See also: KILL
 SWORDSMAN (Specialization)
 ===========================================================================
 Swordsman is a Warrior specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+BBarbarian&n, &+gCen&+Ltaur&n, &+mDri&+Lder&n, &+mDrow Elf&n, &+rDuergar&n, &+yFir&+cbolg&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n,
   &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+YDwarf&n, &+bOgre&n, &+LOrc&n,
   &+GThri-&+YKreen&n, &+MTie&+cfl&+ming&n, &+gTroll&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b1st Level: &+cbash (cap 70%)&n
-&+b30th Level: &+csweeping thrust (cap 100%)&n
-&+b41st Level: &+ccritical attack (cap 100%), triple attack (cap 100%)&n
-&+b56th Level: &+cquadruple attack (cap 100%)&n
+
+&+W1st Level: &+cbash (cap 70%)&n
+&+W30th Level: &+csweeping thrust (cap 100%)&n
+&+W41st Level: &+ccritical attack (cap 100%), triple attack (cap 100%)&n
+&+W56th Level: &+cquadruple attack (cap 100%)&n
+
 ==Spell changes==
+
 None beyond the base-class registrations.
+
 ==Innate additions==
+
 *&+cmelee mastery&n
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Warrior
 * Warrior Skills
 * Specialization
@@ -17202,17 +17996,27 @@ separately defined standalone class.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 No named specialization choices.
+
 ==Rogue specialization==
+
 For the ordinary Rogue path, read help Rogue Thief.
+
 ==See also==
+
 * Rogue Thief
 * Thief Skills
 * Classes
@@ -18527,15 +19331,23 @@ This standalone class is not offered in normal character creation.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 No named specialization choices.
+
 ==See also==
+
 * Warlock Skills
 * Classes
 * Specialization
@@ -18553,21 +19365,29 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+BBarbarian&n, &+cGrey Elf&n, &+YDwarf&n, &+yHalfling&n, &+RGnome&n, &+gCen&+Ltaur&n, &+WGith&+Gzerai&n,
   &+yFir&+cbolg&n, &+mDrow Elf&n, &+rDuergar&n, &+bOgre&n, &+gTroll&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+LKobold&n,
   &+mDri&+Lder&n, &+GThri-&+YKreen&n, &+LMino&+rtaur&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Swordsman
 * Guardian
 * Swashbuckler
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Warrior Skills
 * Classes
 * Specialization
@@ -18592,16 +19412,24 @@ to the caster if  someone is trying to destroy the wall.
 "WATER MAGUS" (Specialization)
 ===========================================================================
 Water Magus is a Conjurer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n, &+CHuman&n,
   &+LKobold&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b7th Circle: &+cwater to life&n
-&+b10th Circle: &+cdread wave, transmute mud to water&n
+
+&+W7th Circle: &+cwater to life&n
+&+W10th Circle: &+cdread wave, transmute mud to water&n
+
 ==Innate additions==
+
  &+cconjure water&n (obtained at level &+c30&n)
 *&+cprotection from cold&n (obtained at level &+c30&n)
 *&+cprotection from fire&n (obtained at level &+c30&n)
@@ -18609,7 +19437,9 @@ None beyond the base-class registrations.
 *&+cregeneration&n (obtained at level &+c36&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Conjurer
 * Conjurer Skills
 * Specialization
@@ -18850,21 +19680,31 @@ See also: WARRIOR, MERCENARY
 WILDMAGE
 ===========================================================================
 Wildmage is a Sorcerer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
+
 None beyond the base-class registrations.
+
 ==Spell changes==
-&+b9th Circle: &+cchaos volley&n
-&+b11th Circle: &+cchaos shield&n
-&+b12th Circle: &+cchaotic ripple&n
+
+&+W9th Circle: &+cchaos volley&n
+&+W11th Circle: &+cchaos shield&n
+&+W12th Circle: &+cchaotic ripple&n
+
 ==Innate additions==
+
 *&+cwildmagic&n (obtained at level &+c41&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Sorcerer
 * Sorcerer Skills
 * Specialization
@@ -18983,23 +19823,33 @@ victim and harder for the victim to flee.
 WIZARD
 ===========================================================================
 Wizard is a Sorcerer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDri&+Lder&n, &+mDrow Elf&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+LMino&+rtaur&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b30th Level: &+carcane block (cap 100%)&n
-&+b41st Level: &+cspellweave (cap 100%)&n
-&+b51st Level: &+carcane riposte (cap 100%)&n
+
+&+W30th Level: &+carcane block (cap 100%)&n
+&+W41st Level: &+cspellweave (cap 100%)&n
+&+W51st Level: &+carcane riposte (cap 100%)&n
+
 ==Spell changes==
-&+b11th Circle: &+canti-magic ray&n
-&+b12th Circle: &+cmordenkainens lucubration&n
+
+&+W11th Circle: &+canti-magic ray&n
+&+W12th Circle: &+cmordenkainens lucubration&n
 solbeeps missile barrage: no grant in this specialization
+
 ==Innate additions==
+
  &+csummon book&n (obtained at level &+c30&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Sorcerer
 * Sorcerer Skills
 * Specialization
@@ -19146,30 +19996,40 @@ See also: READ BOARD DELETE
 ZEALOT (Specialization)
 ===========================================================================
 Zealot is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+rDuergar&n, &+GGith&+Wyanki&n, &+WGith&+Gzerai&n, &+RGnome&n, &+GGoblin&n, &+cGrey Elf&n, &+yHalfling&n,
   &+CHuman&n, &+LKobold&n, &+YDwarf&n, &+LOrc&n, &+MTie&+cfl&+ming&n
 These permissions apply to an existing character; they do not enable a forbidden creation race/class combination. Server event settings can relax the race filter.
+
 ==Skill changes==
-&+b1st Level: &+ckick (cap 90%)&n
-&+b30th Level: &+c1h bludgeon (cap 100%), 1h flaying (cap 95%),&n
+
+&+W1st Level: &+ckick (cap 90%)&n
+&+W30th Level: &+c1h bludgeon (cap 100%), 1h flaying (cap 95%),&n
     &+c2h bludgeon (cap 100%), switch opponents (cap 85%)&n
-&+b41st Level: &+cdouble attack (cap 95%)&n
-&+b51st Level: &+cdual wield (cap 80%)&n
+&+W41st Level: &+cdouble attack (cap 95%)&n
+&+W51st Level: &+cdual wield (cap 80%)&n
+
 ==Spell changes==
-&+b3rd Circle: &+cdisease&n
-&+b4th Circle: &+cpoison&n
-&+b6th Circle: &+cwither&n
-&+b7th Circle: &+cprotection from undead&n
-&+b8th Circle: &+cbanish&n
-&+b10th Circle: &+cwarring zeal&n
-&+b11th Circle: &+cplague&n
-&+b12th Circle: &+cbattletide&n
+
+&+W3rd Circle: &+cdisease&n
+&+W4th Circle: &+cpoison&n
+&+W6th Circle: &+cwither&n
+&+W7th Circle: &+cprotection from undead&n
+&+W8th Circle: &+cbanish&n
+&+W10th Circle: &+cwarring zeal&n
+&+W11th Circle: &+cplague&n
+&+W12th Circle: &+cbattletide&n
+
 ==Innate additions==
+
  &+caura_of_protection&n
 Aura of Protection unlocks with the Zealot specialization at level 30.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
 ==See also==
+
 * Cleric
 * Cleric Skills
 * Specialization
@@ -19219,25 +20079,32 @@ grants them natural resistance to magic and an agile intellect that shines in co
 scholarly pursuits.
 
 ==Strengths==
+
 Half-elves possess innate magic resistance, reducing the effectiveness of hostile spells
 cast against them. They have natural mastery with longswords, keen infravision, and the
 Quick Thinking ability which enhances their reaction speed. Their balanced attribute spread
 and fast spellcasting pulse make them capable in nearly any discipline.
 
 ==Weakness==
+
 Half-elves do not possess the extreme physical brawn of giants or ogres, nor the specialized
 intellectual focus of pureblood Grey Elves.
 
 ==See also==
+
 * Innate
 * Races
 * Infravision
 * Tharnadia
 * Human
 * Grey elf
+
 ==Class list==
+
 No classes available.
+
 ==Racial Statistics==
+
 Strength    : 105
 Agility     : 110
 Dexterity   : 110
@@ -19248,10 +20115,14 @@ Wisdom      : 110
 Charisma    : 115
 Luck        : 100
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : average
 Spell Pulse  : above average
+
 ==Innate abilities==
+
 *infravision
 *magic resistance
 *quick thinker (obtained at level 30)
@@ -19273,26 +20144,33 @@ shift between planes of existence. In battle, an illithid unleashes devastating 
 blasts that shatter the minds of their foes before consuming their intellect.
 
 ==Strengths==
+
 Illithids possess unmatched mental execution speed, boasting the fastest spell and psionic
 pulse in the realms. They have immense Power and Intelligence, innate psionic mind blast,
 permanent levitation, planar shifting to Astral and Prime planes, and natural magic resistance.
 
 ==Weakness==
+
 Illithids are physically frail with low Strength and Constitution. They suffer from severe
 dayblindness and sunlight vulnerability on the surface world, and are universally hunted
 by all surface races.
 
 ==See also==
+
 * Innate
 * Races
 * Psionicist
 * Mindflayer
 * Ultravision
 * Ixarkon
+
 ==Class list==
+
 * Psionicist  :
 * MindFlayer  :
+
 ==Racial Statistics==
+
 Strength    : 70
 Agility     : 90
 Dexterity   : 90
@@ -19303,10 +20181,14 @@ Wisdom      : 110
 Charisma    : 25
 Luck        : 100
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : poor
 Spell Pulse  : incredible
+
 ==Innate abilities==
+
  levitate
 *ultravision
  blast
@@ -19329,23 +20211,30 @@ in deep magma foundries. In battle, their Warcaller's Fury inspires savage comba
 their colossal musculature allows them to overpower frontline opponents with ease.
 
 ==Strengths==
+
 Orogs possess massive physical Strength (160) and Constitution (170) alongside high agility.
 Their Warcaller's Fury innate provides significant combat enhancements, and they possess keen
 ultravision for subterranean warfare.
 
 ==Weakness==
+
 Orogs suffer from severe dayblindness and sunlight vulnerability on the surface world. They have
 low charisma and limited magical power.
 
 ==See also==
+
 * Innate
 * Races
 * Orc
 * Ultravision
 * Orogs
+
 ==Class list==
+
 No classes available.
+
 ==Racial Statistics==
+
 Strength    : 160
 Agility     : 120
 Dexterity   : 120
@@ -19356,10 +20245,14 @@ Wisdom      : 80
 Charisma    : 50
 Luck        : 75
 Karma       : 60
+
 ==Racial Traits==
+
 Combat Pulse : below average
 Spell Pulse  : atrociously bad
+
 ==Innate abilities==
+
 *ultravision
 *vulnerable to sun
 *warcallers fury (obtained at level 21)
@@ -19379,21 +20272,26 @@ levitation and planar shifting with effortless grace, focusing their minds throu
 rite of Rrakkma to hunt and slay mind flayers.
 
 ==Strengths==
+
 Githzerai possess innate magic resistance, dual dayvision and ultravision, levitation, and planar
 shifting to both Prime and Astral planes. Their Rrakkma innate grants focused combat mastery,
 and they excel across a vast array of psionic, arcane, and martial classes.
 
 ==Weakness==
+
 Githzerai possess balanced physical attributes without the colossal brute strength of giant-kin.
 
 ==See also==
+
 * Innate
 * Races
 * Githyanki
 * Psionicist
 * Monk
 * Tharnadia
+
 ==Class list==
+
 * Warrior     : Swordsman, Guardian
 * Ranger      : Blademaster, Huntsman, Marshall
 * Psionicist  : Pyrokinetic, Enslaver, Psycheporter
@@ -19408,7 +20306,9 @@ Githzerai possess balanced physical attributes without the colossal brute streng
 * Ethermancer : Tempest Magus, Frost Magus, Star Magus
 * Summoner    : Controller, Mentalist, Naturalist
 * Dragoon     : Dragon Priest, Dragon Lancer
+
 ==Racial Statistics==
+
 Strength    : 100
 Agility     : 100
 Dexterity   : 100
@@ -19419,10 +20319,14 @@ Wisdom      : 110
 Charisma    : 90
 Luck        : 100
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : below average
 Spell Pulse  : above average
+
 ==Innate abilities==
+
  levitate (obtained at level 11)
 *ultravision
  shift_astral (obtained at level 45)
@@ -19445,28 +20349,35 @@ making them nearly impossible to trip or knock down in combat. They can spin thi
 to wrap and immobilize their victims before closing in with blade and venomous spellcraft.
 
 ==Strengths==
+
 Driders possess innate magic resistance, the Webwrap ability to paralyze foes in combat,
 natural groundfighting stability from their spider body, high agility and constitution, and keen
 ultravision. They excel as Warriors, Sorcerers, Necromancers, Reavers, and Blighters.
 
 ==Weakness==
+
 Driders suffer from dayblindness under bright sunlight. Due to their spider anatomy, they cannot
 wear standard human trousers, greaves, or footwear.
 
 ==See also==
+
 * Innate
 * Races
 * Drow elf
 * Arach-Drathos
 * Reaver
 * Blighter
+
 ==Class list==
+
 * Warrior     : Swordsman, Guardian
 * Sorcerer    : Wildmage, Wizard, Shadowmage
 * Necromancer : Diabolis, Necrolyte, Reaper
 * Reaver      : Ice Reaver, Flame Reaver, Shock Reaver, Earth Reaver
 * Blighter    : Storm Bringer, Scourge, Ruiner
+
 ==Racial Statistics==
+
 Strength    : 95
 Agility     : 110
 Dexterity   : 110
@@ -19477,10 +20388,14 @@ Wisdom      : 90
 Charisma    : 70
 Luck        : 100
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : average
 Spell Pulse  : above average
+
 ==Innate abilities==
+
 *ultravision
 *magic resistance
 *groundfighting (obtained at level 21)
@@ -19502,22 +20417,27 @@ using their soothing, calming demeanor to avoid unwanted aggression from dangero
 beasts.
 
 ==Strengths==
+
 Kobolds boast exceptional combat and spellcasting pulse speeds, ranking among the fastest in
 the game. They have high Intelligence, Agility, and Luck, dual dayvision and ultravision, natural
 Underdark stealth, innate Calming aura, and mining mastery.
 
 ==Weakness==
+
 Kobolds have lower raw Strength and Constitution due to their small size, limiting their maximum
 carrying capacity and bash resistance.
 
 ==See also==
+
 * Innate
 * Races
 * Goblin
 * Ultravision
 * Dayvision
 * Shaman
+
 ==Class list==
+
 * Warrior     : Swordsman, Guardian
 * Cleric      : Zealot, Healer, Holyman
 * Shaman      : Elementalist, Spiritualist, Animalist
@@ -19529,7 +20449,9 @@ carrying capacity and bash resistance.
 * Illusionist : Magician, Dark Dreamer
 * Ethermancer : Tempest Magus, Frost Magus, Star Magus
 * Summoner    : Controller, Mentalist, Naturalist
+
 ==Racial Statistics==
+
 Strength    : 90
 Agility     : 120
 Dexterity   : 110
@@ -19540,10 +20462,14 @@ Wisdom      : 105
 Charisma    : 100
 Luck        : 110
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : formidable
 Spell Pulse  : formidable
+
 ==Innate abilities==
+
 *ultravision
 *ud-sneak
 *dayvision
@@ -19563,26 +20489,33 @@ Prime Material and Astral planes at will, commanding powerful summoned allies an
 sorceries.
 
 ==Strengths==
+
 Planetbound Illithids possess immense Power and Intelligence, very fast spellcasting recovery,
 innate magic resistance, innate levitation, planar shifting, and keen ultravision.
 
 ==Weakness==
+
 Planetbound Illithids are physically delicate with low Strength and Constitution. They suffer
 from dayblindness and sunlight vulnerability on the surface world.
 
 ==See also==
+
 * Innate
 * Races
 * Illithid
 * Psionicist
 * Sorcerer
 * Ixarkon
+
 ==Class list==
+
 * Psionicist  :
 * Sorcerer    : Wizard, Shadowmage
 * Conjurer    : Air Magus, Water Magus, Fire Magus, Earth Magus
 * Summoner    : Controller, Mentalist, Naturalist
+
 ==Racial Statistics==
+
 Strength    : 83
 Agility     : 105
 Dexterity   : 105
@@ -19593,10 +20526,14 @@ Wisdom      : 100
 Charisma    : 100
 Luck        : 100
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : average
 Spell Pulse  : very good
+
 ==Innate abilities==
+
  levitate (obtained at level 10)
 *ultravision
  shift_astral
@@ -19620,24 +20557,31 @@ uncanny vision through thick foliage, making them the premier rangers and druids
 realms.
 
 ==Strengths==
+
 Wood Elves possess exceptional wilderness stealth (Outdoor Sneak) and Forest Sight to see through
 dense woods. They have innate magic resistance, natural Longsword Mastery, higher Constitution
 and Strength than Grey Elves, and keen senses.
 
 ==Weakness==
+
 Wood Elves are slightly less focused on pure scholarly arcane magic than Grey Elves, having
 slightly lower raw Intelligence.
 
 ==See also==
+
 * Innate
 * Races
 * Grey elf
 * Ranger
 * Druid
 * Tharnadia
+
 ==Class list==
+
 No classes available.
+
 ==Racial Statistics==
+
 Strength    : 125
 Agility     : 115
 Dexterity   : 115
@@ -19648,10 +20592,14 @@ Wisdom      : 91
 Charisma    : 85
 Luck        : 100
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : average
 Spell Pulse  : above average
+
 ==Innate abilities==
+
 *outdoor sneak (obtained at level 11)
 *forest sight (obtained at level 11)
 *magic resistance
@@ -19671,25 +20619,32 @@ destruction. Their immense physical mass allows them to shatter castle gates wit
 crush armored opponents beneath devastating Bodyslams, making them unmatched frontline titans.
 
 ==Strengths==
+
 Firbolgs possess the highest raw Strength (230) in the game and a colossal Constitution (200),
 yielding unmatched health and carrying capacity. They possess innate Bodyslam, Doorbash, and
 Forest Sight.
 
 ==Weakness==
+
 Firbolgs have very slow combat and spell recovery speeds, low agility and dexterity, and an innate
 vulnerability to magical damage.
 
 ==See also==
+
 * Innate
 * Races
 * Giant
 * Bodyslam
 * Ugta
 * Shaman
+
 ==Class list==
+
 * Warrior     : Swordsman, Guardian
 * Shaman      : Elementalist, Spiritualist, Animalist
+
 ==Racial Statistics==
+
 Strength    : 230
 Agility     : 75
 Dexterity   : 75
@@ -19700,10 +20655,14 @@ Wisdom      : 80
 Charisma    : 80
 Luck        : 90
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : atrociously bad
 Spell Pulse  : atrociously bad
+
 ==Innate abilities==
+
  doorbash
  bodyslam
 *forest sight
@@ -19722,15 +20681,18 @@ natural resistance to both magic and fire, while their acute senses allow them t
 world through both infravision and ultravision. They excel across nearly every class and discipline.
 
 ==Strengths==
+
 Tieflings possess innate magic resistance, natural protection from fire, and dual infravision and
 ultravision. They have high Intelligence, Charisma, Agility, and Dexterity, alongside vast class
 versatility.
 
 ==Weakness==
+
 Tieflings face widespread social prejudice from conservative cultures, and possess average
 physical constitution.
 
 ==See also==
+
 * Innate
 * Races
 * Infravision
@@ -19738,7 +20700,9 @@ physical constitution.
 * NaxVaran
 * Paladin
 * Anti-Paladin
+
 ==Class list==
+
 * Warrior     : Swordsman, Guardian, Swashbuckler
 * Ranger      : Blademaster, Huntsman, Marshall
 * Paladin     : Crusader, Cavalier
@@ -19756,7 +20720,9 @@ physical constitution.
 * Ethermancer : Tempest Magus, Frost Magus, Star Magus
 * Summoner    : Controller, Mentalist, Naturalist
 * Dragoon     : Dragon Hunter, Dragon Priest, Dragon Lancer
+
 ==Racial Statistics==
+
 Strength    : 110
 Agility     : 110
 Dexterity   : 110
@@ -19767,10 +20733,14 @@ Wisdom      : 100
 Charisma    : 120
 Luck        : 110
 Karma       : 100
+
 ==Racial Traits==
+
 Combat Pulse : average
 Spell Pulse  : above average
+
 ==Innate abilities==
+
 *infravision
 *ultravision
 *protection from fire
@@ -19789,22 +20759,30 @@ enable it.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+cophidian eyes&n
  &+csummon mount&n
 *&+cbattle frenzy&n (obtained at level &+c16&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Dragon Hunter
 * Dragon Priest
 * Dragon Lancer
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Dragoon Skills
 * Classes
 * Specialization
@@ -19817,29 +20795,37 @@ SKILL_DRAGOON (Skillset)
 The following is a list of all skills and spells available to the Dragoon class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+cophidian eyes&n
  &+csummon mount&n
 *&+cbattle frenzy&n (obtained at level &+c16&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h slashing, bandage, carve, climb, double attack, dragon breath,&n
+
+&+W1st Level: &+c1h slashing, bandage, carve, climb, double attack, dragon breath,&n
     &+cdragon roar, dragon strike, fishing, kick, mount, mounted combat, parry,&n
     &+cquick chant, retreat, riposte, salvage, swim, unarmed damage&n
-&+b10th Level: &+cappraise, shaman spell knowledge&n
-&+b15th Level: &+clore&n
-&+b35th Level: &+creach weapons&n
-&+b51st Level: &+cswitch opponents&n
+&+W10th Level: &+cappraise, shaman spell knowledge&n
+&+W15th Level: &+clore&n
+&+W35th Level: &+creach weapons&n
+&+W51st Level: &+cswitch opponents&n
+
 ==Spells==
-&+b3rd Circle: &+canimae cicatrix&n
-&+b4th Circle: &+censis unguis&n
-&+b5th Circle: &+cstigmata draconica&n
-&+b6th Circle: &+caegis squamarum&n
-&+b7th Circle: &+cjudicium fidei&n
-&+b10th Circle: &+cedictum cineris&n
-&+b11th Circle: &+csigillum negati&n
-&+b12th Circle: &+cdraconic apotheosis&n
+
+&+W3rd Circle: &+canimae cicatrix&n
+&+W4th Circle: &+censis unguis&n
+&+W5th Circle: &+cstigmata draconica&n
+&+W6th Circle: &+caegis squamarum&n
+&+W7th Circle: &+cjudicium fidei&n
+&+W10th Circle: &+cedictum cineris&n
+&+W11th Circle: &+csigillum negati&n
+&+W12th Circle: &+cdraconic apotheosis&n
+
 ==See also==
+
 * Dragoon
 * Specialization
 * Spell circle
@@ -19856,20 +20842,28 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+CHuman&n, &+cGrey Elf&n, &+yHalfling&n, &+RGnome&n, &+WGith&+Gzerai&n, &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n,
   &+GGoblin&n, &+LKobold&n, &+MTie&+cfl&+ming&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Controller
 * Mentalist
 * Naturalist
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Summoner Skills
 * Classes
 * Specialization
@@ -19882,30 +20876,38 @@ SKILL_SUMMONER (Skillset)
 The following is a list of all skills and spells available to the Summoner class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cconcentration, fishing, kick, meditate, mount, quick chant, retreat,&n
     &+csalvage, scribe, sorcerous spell knowledge, swim&n
+
 ==Spells==
-&+b1st Circle: &+cdetect magic, magic missile, minor creation&n
-&+b2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
-&+b3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp,&n
+
+&+W1st Circle: &+cdetect magic, magic missile, minor creation&n
+&+W2nd Circle: &+cburning hands, chill touch, mirror image, sleep&n
+&+W3rd Circle: &+cagility, concealment, dispel magic, mage flame, shocking grasp,&n
     &+cstrength&n
-&+b4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt,&n
+&+W4th Circle: &+cenchant weapon, infravision, levitate, lightning bolt,&n
     &+cray of enfeeblement, reveal true name, wall of force&n
-&+b5th Circle: &+ccoldshield, fireshield, identify, sense follower, slowness&n
-&+b6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability,&n
+&+W5th Circle: &+ccoldshield, fireshield, identify, sense follower, slowness&n
+&+W6th Circle: &+ccolor spray, feeblemind, minor globe of invulnerability,&n
     &+cstone skin, teleport&n
-&+b7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste,&n
+&+W7th Circle: &+cairy water, cone of cold, dimension door, fireball, haste,&n
     &+cice storm, wall of flames, wall of ice, web&n
-&+b8th Circle: &+cdetect invisibility, globe of invulnerability, invisibility,&n
+&+W8th Circle: &+cdetect invisibility, globe of invulnerability, invisibility,&n
     &+cprismatic spray&n
-&+b9th Circle: &+cfly, gate, prismatic ray, relocate&n
-&+b10th Circle: &+cfarsee, group stone skin&n
-&+b11th Circle: &+cgroup globe of invulnerability, prismatic cube&n
+&+W9th Circle: &+cfly, gate, prismatic ray, relocate&n
+&+W10th Circle: &+cfarsee, group stone skin&n
+&+W11th Circle: &+cgroup globe of invulnerability, prismatic cube&n
+
 ==See also==
+
 * Summoner
 * Specialization
 * Spell circle
@@ -19921,19 +20923,27 @@ This standalone class is not offered in normal character creation.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 None.
+
 ==Specializations==
+
 * Medium
 * Templar
 * Thaumaturge
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Theurgist Skills
 * Classes
 * Specialization
@@ -19946,33 +20956,41 @@ SKILL_THEURGIST (Skillset)
 The following is a list of all skills and spells available to the Theurgist class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+ccarve, climb, feign death, fishing, kick, meditate, mount,&n
+
+&+W1st Level: &+ccarve, climb, feign death, fishing, kick, meditate, mount,&n
     &+cquick chant, retreat, scribe, sorcerous spell knowledge, swim&n
-&+b20th Level: &+cage corpse&n
+&+W20th Level: &+cage corpse&n
+
 ==Spells==
-&+b1st Circle: &+cdetect magic, life bolt, minor creation, preserve,&n
+
+&+W1st Circle: &+cdetect magic, life bolt, minor creation, preserve,&n
     &+cprotection from undead&n
-&+b2nd Circle: &+cchill touch, protection from cold, protection from living, sleep,&n
+&+W2nd Circle: &+cchill touch, protection from cold, protection from living, sleep,&n
     &+cvampiric touch&n
-&+b3rd Circle: &+ccall archon, dispel magic, embalm, sense follower&n
-&+b4th Circle: &+crejuvenate minor, strength, wither&n
-&+b5th Circle: &+ccall asura, coldshield, concealment, feeblemind, fireshield,&n
+&+W3rd Circle: &+ccall archon, dispel magic, embalm, sense follower&n
+&+W4th Circle: &+crejuvenate minor, strength, wither&n
+&+W5th Circle: &+ccall asura, coldshield, concealment, feeblemind, fireshield,&n
     &+clevitate, mend soul, teleport&n
-&+b6th Circle: &+ccone of cold, minor globe of invulnerability, rejuvenate major,&n
+&+W6th Circle: &+ccone of cold, minor globe of invulnerability, rejuvenate major,&n
     &+crestore spirit, vitalize soul&n
-&+b7th Circle: &+ccall bralani, holy aura, knock, protect soul, reveal true name&n
-&+b8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility,&n
+&+W7th Circle: &+ccall bralani, holy aura, knock, protect soul, reveal true name&n
+&+W8th Circle: &+cdetect invisibility, dispel invisible, haste, invisibility,&n
     &+cnegative concussion blast&n
-&+b9th Circle: &+cage, call knight, dimension door, energy drain, holy light,&n
+&+W9th Circle: &+cage, call knight, dimension door, energy drain, holy light,&n
     &+cundeath to death, voice of creation&n
-&+b10th Circle: &+cangelic countenance, blackmantle, call liberator, cloak of fear,&n
+&+W10th Circle: &+cangelic countenance, blackmantle, call liberator, cloak of fear,&n
     &+cfly, mass embalm&n
-&+b11th Circle: &+caid of the heavens, call titan, corpseform, power word kill&n
-&+b12th Circle: &+ccall avatar&n
+&+W11th Circle: &+caid of the heavens, call titan, corpseform, power word kill&n
+&+W12th Circle: &+ccall avatar&n
+
 ==See also==
+
 * Theurgist
 * Specialization
 * Spell circle
@@ -19989,22 +21007,30 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 &+W*&n &+mDrow Elf&n, &+LOrc&n, &+GGith&+Wyanki&n, &+GGoblin&n, &+mDri&+Lder&n
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+cforest sight&n
  &+cshapechange&n (obtained at level &+c11&n)
  &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 * Storm Bringer
 * Scourge
 * Ruiner
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
 ==See also==
+
 * Blighter Skills
 * Classes
 * Specialization
@@ -20017,31 +21043,39 @@ SKILL_BLIGHTER (Skillset)
 The following is a list of all skills and spells available to the Blighter class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+cforest sight&n
  &+cshapechange&n (obtained at level &+c11&n)
  &+cplane shift&n (obtained at level &+c41&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 1h slashing, bandage, carve,&n
     &+cclerical spell knowledge, climb, concentration, double attack, fishing,&n
     &+ckick, mount, quick chant, retreat, salvage, swim&n
+
 ==Spells==
-&+b1st Circle: &+ccause light, detect magic, fortitude, thornskin&n
-&+b2nd Circle: &+cburning hands, cause serious, chill touch, unholy wind&n
-&+b3rd Circle: &+cacid blast, cause critical, darkness, faerie fire, faerie fog&n
-&+b4th Circle: &+ccreate pond, flame sphere, poison, ray of enfeeblement,&n
+
+&+W1st Circle: &+ccause light, detect magic, fortitude, thornskin&n
+&+W2nd Circle: &+cburning hands, cause serious, chill touch, unholy wind&n
+&+W3rd Circle: &+cacid blast, cause critical, darkness, faerie fire, faerie fog&n
+&+W4th Circle: &+ccreate pond, flame sphere, poison, ray of enfeeblement,&n
     &+cvampiric touch, wither&n
-&+b5th Circle: &+canimate dead, blight, drain nature, earthquake, harm, life leech&n
-&+b6th Circle: &+cfirelance, flame strike, sap nature, waves of fatigue&n
-&+b7th Circle: &+cdispel magic, faluzures vitality, forbiddance, toxic fog,&n
+&+W5th Circle: &+canimate dead, blight, drain nature, earthquake, harm, life leech&n
+&+W6th Circle: &+cfirelance, flame strike, sap nature, waves of fatigue&n
+&+W7th Circle: &+cdispel magic, faluzures vitality, forbiddance, toxic fog,&n
     &+cwall of flames&n
-&+b8th Circle: &+cacid stream, shadow vision&n
-&+b9th Circle: &+cdesecrate land, firestorm, horrid wilting&n
-&+b10th Circle: &+cacid rain, shadow gate, transmute rock to mud&n
-&+b11th Circle: &+celemental aura, freedom of movement&n
-&+b12th Circle: &+cbloodstone, implosion, sandstorm&n
+&+W8th Circle: &+cacid stream, shadow vision&n
+&+W9th Circle: &+cdesecrate land, firestorm, horrid wilting&n
+&+W10th Circle: &+cacid rain, shadow gate, transmute rock to mud&n
+&+W11th Circle: &+celemental aura, freedom of movement&n
+&+W12th Circle: &+cbloodstone, implosion, sandstorm&n
+
 ==See also==
+
 * Blighter
 * Specialization
 * Spell circle
@@ -20057,16 +21091,24 @@ This standalone class is not offered in normal character creation.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
 ==Allowed races==
+
 None in the normal creation roster.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
+
 ==Innate abilities==
+
 *&+cspacial focus&n (obtained at level &+c46&n)
 '*' Designates passive ability.
+
 ==Specializations==
+
 No named specialization choices.
+
 ==See also==
+
 * MindFlayer Skills
 * Classes
 * Specialization
@@ -20079,29 +21121,37 @@ SKILL_MINDFLAYER (Skillset)
 The following is a list of all skills and spells available to the MindFlayer class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 *&+cspacial focus&n (obtained at level &+c46&n)
 '*' Designates passive ability.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, 2h bludgeon, bandage, carve, climb,&n
     &+cfishing, kick, meditate, mount, quick chant, retreat, salvage, swim&n
+
 ==Spells==
-&+b1st Circle: &+cadrenaline control, combat mind, ego whip, excogitate&n
-&+b2nd Circle: &+cballistic attack, cell adjustment, create sound, enhance agility,&n
+
+&+W1st Circle: &+cadrenaline control, combat mind, ego whip, excogitate&n
+&+W2nd Circle: &+cballistic attack, cell adjustment, create sound, enhance agility,&n
     &+cenhance constitution, enhance dexterity, enhance strength&n
-&+b3rd Circle: &+caura sight, lend health, molecular agitation&n
-&+b4th Circle: &+cawe, comprehend languages, energy containment, molecular control,&n
+&+W3rd Circle: &+caura sight, lend health, molecular agitation&n
+&+W4th Circle: &+cawe, comprehend languages, energy containment, molecular control,&n
     &+cteleport&n
-&+b5th Circle: &+cflesh armor, flight, inflict pain, intellect fortress&n
-&+b6th Circle: &+cdetonate, ectoplasmic form, enhance armor&n
-&+b7th Circle: &+cbiofeedback, cannibalize, ether warp, inertial barrier,&n
+&+W5th Circle: &+cflesh armor, flight, inflict pain, intellect fortress&n
+&+W6th Circle: &+cdetonate, ectoplasmic form, enhance armor&n
+&+W7th Circle: &+cbiofeedback, cannibalize, ether warp, inertial barrier,&n
     &+ctower of iron will&n
-&+b8th Circle: &+cdisplacement, mental anguish, radial navigation&n
-&+b9th Circle: &+cconfuse, enrage, memory block, wormhole&n
-&+b10th Circle: &+cdeath field, psionic cloud&n
-&+b11th Circle: &+cmind travel&n
-&+b12th Circle: &+cmind blank, spinal corruption&n
+&+W8th Circle: &+cdisplacement, mental anguish, radial navigation&n
+&+W9th Circle: &+cconfuse, enrage, memory block, wormhole&n
+&+W10th Circle: &+cdeath field, psionic cloud&n
+&+W11th Circle: &+cmind travel&n
+&+W12th Circle: &+cmind blank, spinal corruption&n
+
 ==See also==
+
 * MindFlayer
 * Specialization
 * Spell circle
@@ -20113,21 +21163,29 @@ SKILL_ASSASSIN (Skillset)
 The following is a list of all skills and spells available to the Assassin class:
 This uses its directly initialized standalone slot.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h piercing, 1h slashing, apply poison, awareness, backstab,&n
+
+&+W1st Level: &+c1h piercing, 1h slashing, apply poison, awareness, backstab,&n
     &+cbandage, blindfighting, carve, circle, climb, double attack, dual wield,&n
     &+cfishing, hide, mount, pick lock, ranged weapons, retreat, safe fall,&n
     &+csalvage, sneak, swim, switch opponents, track&n
-&+b20th Level: &+cappraise, garrote&n
-&+b35th Level: &+cspinal tap&n
-&+b36th Level: &+cparry&n
-&+b45th Level: &+ccontrol flee&n
-&+b51st Level: &+ccritical stab&n
+&+W20th Level: &+cappraise, garrote&n
+&+W35th Level: &+cspinal tap&n
+&+W36th Level: &+cparry&n
+&+W45th Level: &+ccontrol flee&n
+&+W51st Level: &+ccritical stab&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Assassin
 * Specialization
 * Spell circle
@@ -20139,22 +21197,30 @@ SKILL_THIEF (Skillset)
 The following is a list of all skills and spells available to the Thief class:
 This uses its directly initialized standalone slot.
 Learning, preparation, equipment, and current ability conditions still apply.
+
 ==Innate abilities==
+
 None.
+
 ==Skills==
-&+b1st Level: &+c1h bludgeon, 1h piercing, awareness, backstab, bandage,&n
+
+&+W1st Level: &+c1h bludgeon, 1h piercing, awareness, backstab, bandage,&n
     &+cblindfighting, carve, circle, climb, dirt toss, double attack, fishing,&n
     &+chide, mount, pick lock, ranged weapons, retreat, safe fall, salvage, steal,&n
     &+cswim, switch opponents, track&n
-&+b10th Level: &+cappraise&n
-&+b15th Level: &+clisten&n
-&+b16th Level: &+ctrip&n
-&+b20th Level: &+cparry, subterfuge&n
-&+b46th Level: &+cevade&n
-&+b51st Level: &+chamstring, trap&n
+&+W10th Level: &+cappraise&n
+&+W15th Level: &+clisten&n
+&+W16th Level: &+ctrip&n
+&+W20th Level: &+cparry, subterfuge&n
+&+W46th Level: &+cevade&n
+&+W51st Level: &+chamstring, trap&n
+
 ==Spells==
+
 None.
+
 ==See also==
+
 * Thief
 * Specialization
 * Spell circle

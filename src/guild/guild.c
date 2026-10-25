@@ -1317,7 +1317,7 @@ string list_spells(int cls, int spec)
 		}
 		if (!spl || circle != oldcircle)
 		{
-			snprintf(buf, MAX_STRING_LENGTH, "\n&+B%d%s Circle:&N", circle,
+			snprintf(buf, MAX_STRING_LENGTH, "\n&+W%d%s Circle:&N", circle,
 				 circle == 1 ? "st" :
 				 circle == 2 ? "nd" :
 				 circle == 3 ? "rd" :
@@ -1418,7 +1418,7 @@ string list_skills(int cls, int spec)
 		{
 			// Lvls 4-20 get "th", rest get the st/nd/rd or th.
 			lvlending = (skllvl > 3 && skllvl < 21) ? 4 : skllvl % 10;
-			snprintf(buf, MAX_STRING_LENGTH, "\n&+B%d%s Level:&N", skllvl,
+			snprintf(buf, MAX_STRING_LENGTH, "\n&+W%d%s Level:&N", skllvl,
 				 lvlending == 1 ? "st" :
 				 lvlending == 2 ? "nd" :
 				 lvlending == 3 ? "rd" :
@@ -1516,7 +1516,7 @@ string list_songs(int cls, int spec)
 		{
 			// Lvls 4-20 get "th", rest get the st/nd/rd or th.
 			lvlending = (snglvl > 3 && snglvl < 21) ? 4 : snglvl % 10;
-			snprintf(buf, MAX_STRING_LENGTH, "\n&+B%d%s Level:&N", snglvl,
+			snprintf(buf, MAX_STRING_LENGTH, "\n&+W%d%s Level:&N", snglvl,
 				 lvlending == 1 ? "st" :
 				 lvlending == 2 ? "nd" :
 				 lvlending == 3 ? "rd" :
@@ -1542,11 +1542,11 @@ string list_songs(int cls, int spec)
 
 	if (spec == 0)
 	{
-		strcat(buf1, "\n==Instruments==");
+		strcat(buf1, "\n\n==Instruments==\n");
 	}
 	else
 	{
-		strcat(buf1, "\n==Additional Instruments==");
+		strcat(buf1, "\n\n==Additional Instruments==\n");
 	}
 	// first, build a list of all the instrument skills for this class/spec.
 	memset(instrument_list, 0, sizeof(spl_list) * (LAST_INSTRUMENT - FIRST_INSTRUMENT + 1));
@@ -1610,7 +1610,7 @@ string list_songs(int cls, int spec)
 		{
 			// Lvls 4-20 get "th", rest get the st/nd/rd or th.
 			lvlending = (snglvl > 3 && snglvl < 21) ? 4 : snglvl % 10;
-			snprintf(buf, MAX_STRING_LENGTH, "\n&+B%d%s Level:&N", snglvl,
+			snprintf(buf, MAX_STRING_LENGTH, "\n&+W%d%s Level:&N", snglvl,
 				 lvlending == 1 ? "st" :
 				 lvlending == 2 ? "nd" :
 				 lvlending == 3 ? "rd" :

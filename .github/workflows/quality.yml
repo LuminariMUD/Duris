@@ -71,7 +71,7 @@ jobs:
         run: |
           python3 tests/async/test_flatfile_ship_repository.py
           python3 tests/async/test_flatfile_cargo_market.py
-      - name: Verify flat-file nexus authority
+      - name: Verify flat-file nexus authority and capture bonuses
         run: |
           python3 tests/async/test_flatfile_nexus_repository.py
           python3 tests/async/test_nexus_runtime.py

@@ -26,7 +26,9 @@ Topic title
 Topic title - Last Edited: YYYY-MM-DD
 ============================================================
 Current description and usable syntax.
+
 ==See also==
+
 * Related topic
 #0
 ```
@@ -35,6 +37,16 @@ Do not add author or contributor attributions. A date identifies the content
 revision, not proof of deployment. Preserve the importer's two-line title shape.
 Do not include captured prompts or the unrelated search results printed by a
 previous help lookup inside the topic body.
+
+## Section layout
+
+Place exactly one blank line before a `==Section==` heading (when it follows
+other content) and one blank line after it. This includes `==Description==`,
+`==Syntax==`, `==See also==`, racial statistics, and class progression headings.
+Preserve topic delimiters (`#0` in parsed help; `#` in the index), title lines,
+existing paragraph breaks and any deliberate colours outside progression labels.
+Run `python3 scripts/format_help_topics.py` when modifying help content;
+use `--write` to normalise the two maintained sources without changing prose.
 
 ## Describe the actual rule
 
@@ -89,9 +101,10 @@ Do not duplicate those sections in the authored body of a dynamic page.
 Use numeric progression rows in both base-class skillsets and specialization
 change sections rather than one `ability: circle N` or `ability: level N` entry
 per line. Group spells by circle, and skills, songs and instruments by level,
-in ascending numeric order; alphabetize names within each group. Render circle and level labels in dark blue (`&+b`) and names in
-cyan (`&+c`), resetting at the end of each row (`&n`). Wrap long groups to
-four-space-indented cyan continuation lines.
+in ascending numeric order; alphabetize names within each group. Render circle
+and level labels in bright white (`&+W`) and names in cyan (`&+c`), resetting
+at the end of each row (`&n`). Wrap long groups to four-space-indented cyan
+continuation lines.
 
 Keep skill caps beside individual skill names (e.g. `parry (cap 90%)`). For
 innate additions, use one cyan name per line, a leading `*` for passive
